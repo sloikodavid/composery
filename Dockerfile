@@ -10,7 +10,6 @@ ARG CODE_SERVER_SHA256_AMD64=ab4dee01cacc20eb500c96660477d8ba755f69f402cc9cbab3a
 # renovate: datasource=custom.code-server-linux-arm64 depName=code-server-linux-arm64 versioning=semver
 # code-server-linux-arm64 version=4.118.0
 ARG CODE_SERVER_SHA256_ARM64=70dd29a9bffa1ca7a9578e24106e612ee041192bf6aa5ece964b1af1e3d27c08
-ARG DEBIAN_SNAPSHOT=20260510T000000Z
 ARG TARGETARCH
 
 # renovate: suite=trixie depName=ca-certificates
@@ -18,21 +17,7 @@ ARG CODE_SERVER_INSTALLER_CA_CERTIFICATES_VERSION=20250419
 # renovate: suite=trixie depName=curl
 ARG CODE_SERVER_INSTALLER_CURL_VERSION=8.14.1-2+deb13u2
 
-RUN printf '%s\n' \
-    'Types: deb' \
-    "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/" \
-    'Suites: trixie trixie-updates' \
-    'Components: main' \
-    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-    '' \
-    'Types: deb' \
-    "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/" \
-    'Suites: trixie-security' \
-    'Components: main' \
-    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-    > /etc/apt/sources.list.d/debian.sources \
-  && printf '%s\n' 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot \
-  && apt-get update \
+RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates="${CODE_SERVER_INSTALLER_CA_CERTIFICATES_VERSION}" \
     curl="${CODE_SERVER_INSTALLER_CURL_VERSION}" \
@@ -49,20 +34,23 @@ RUN case "${TARGETARCH}" in \
   && printf '%s  %s\n' "${code_server_sha256}" /tmp/code-server.tar.gz | sha256sum -c - \
   && mkdir -p /opt/code-server/current \
   && tar -xzf /tmp/code-server.tar.gz --strip-components=1 -C /opt/code-server/current \
+  && XDG_CONFIG_HOME=/tmp/code-server-config /opt/code-server/current/bin/code-server --version --json > /tmp/code-server.version.json \
+  && node -e 'const fs = require("node:fs"); const line = fs.readFileSync("/tmp/code-server.version.json", "utf8").split(/\n/).find((entry) => entry.trim().startsWith("{")); if (!line) { throw new Error("code-server version JSON was not found"); } const actual = JSON.parse(line); if (actual.codeServer !== process.argv[1] || actual.commit !== process.argv[2]) { throw new Error(`code-server version mismatch: ${JSON.stringify(actual)}`); }' \
+    "${CODE_SERVER_VERSION}" \
+    "${CODE_SERVER_COMMIT}" \
   && printf 'version=%s\ncommit=%s\narch=%s\nsha256=%s\n' \
     "${CODE_SERVER_VERSION}" \
     "${CODE_SERVER_COMMIT}" \
     "${code_server_arch}" \
     "${code_server_sha256}" \
     > /opt/code-server/current/.agentbox-upstream \
-  && rm /tmp/code-server.tar.gz
+  && rm -rf /tmp/code-server.tar.gz /tmp/code-server.version.json /tmp/code-server-config
 
 FROM node:26.1.0-trixie-slim@sha256:424cafd2a035ed2b2d74acc3142b68b426fb62a47742c80a75e7117db02d6b30 AS runtime
 
 ARG AGENTBOX_BUILD_VERSION=unknown
 ARG AGENTBOX_BUILD_REVISION=unknown
 ARG AGENTBOX_BUILD_SOURCE=https://github.com/sloikodavid/agentbox
-ARG DEBIAN_SNAPSHOT=20260510T000000Z
 
 LABEL org.opencontainers.image.title="Agentbox" \
   org.opencontainers.image.description="A persistent VPS-like Linux appliance with code-server in the browser." \
@@ -82,7 +70,7 @@ ARG CURL_VERSION=8.14.1-2+deb13u2
 # renovate: suite=trixie depName=desktop-file-utils
 ARG DESKTOP_FILE_UTILS_VERSION=0.28-1
 # renovate: suite=trixie depName=git
-ARG RUNTIME_GIT_VERSION=1:2.47.3-0+deb13u1
+ARG GIT_VERSION=1:2.47.3-0+deb13u1
 # renovate: suite=trixie depName=jq
 ARG JQ_VERSION=1.7.1-6+deb13u1
 # renovate: suite=trixie depName=less
@@ -104,7 +92,7 @@ ARG PNPM_VERSION=11.0.9
 # renovate: suite=trixie depName=ripgrep
 ARG RIPGREP_VERSION=14.1.1-1+b4
 # renovate: suite=trixie depName=rsync
-ARG RUNTIME_RSYNC_VERSION=3.4.1+ds1-5+deb13u1
+ARG RSYNC_VERSION=3.4.1+ds1-5+deb13u1
 # renovate: suite=trixie depName=shared-mime-info
 ARG SHARED_MIME_INFO_VERSION=2.4-5+b2
 # renovate: suite=trixie depName=sudo
@@ -138,27 +126,13 @@ ENV AGENTBOX_BUILD_VERSION="${AGENTBOX_BUILD_VERSION}" \
   LC_ALL="C.UTF-8" \
   VISUAL="code --wait"
 
-RUN printf '%s\n' \
-    'Types: deb' \
-    "URIs: http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/" \
-    'Suites: trixie trixie-updates' \
-    'Components: main' \
-    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-    '' \
-    'Types: deb' \
-    "URIs: http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}/" \
-    'Suites: trixie-security' \
-    'Components: main' \
-    'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-    > /etc/apt/sources.list.d/debian.sources \
-  && printf '%s\n' 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot \
-  && apt-get update \
+RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     bash="${BASH_VERSION}" \
     ca-certificates="${CA_CERTIFICATES_VERSION}" \
     curl="${CURL_VERSION}" \
     desktop-file-utils="${DESKTOP_FILE_UTILS_VERSION}" \
-    git="${RUNTIME_GIT_VERSION}" \
+    git="${GIT_VERSION}" \
     jq="${JQ_VERSION}" \
     less="${LESS_VERSION}" \
     libfile-mimeinfo-perl="${LIBFILE_MIMEINFO_PERL_VERSION}" \
@@ -168,7 +142,7 @@ RUN printf '%s\n' \
     procps="${PROCPS_VERSION}" \
     python3="${PYTHON3_VERSION}" \
     ripgrep="${RIPGREP_VERSION}" \
-    rsync="${RUNTIME_RSYNC_VERSION}" \
+    rsync="${RSYNC_VERSION}" \
     shared-mime-info="${SHARED_MIME_INFO_VERSION}" \
     sudo="${SUDO_VERSION}" \
     supervisor="${SUPERVISOR_VERSION}" \

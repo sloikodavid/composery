@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-const tsFiles = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
+const TS_FILES = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
 export default defineConfig(
 	globalIgnores(["coverage/", "rootfs/home/user/.local/share/code-server/"]),
@@ -13,7 +13,7 @@ export default defineConfig(
 	},
 	js.configs.recommended,
 	{
-		files: tsFiles,
+		files: TS_FILES,
 		extends: [tseslint.configs.recommendedTypeChecked],
 		languageOptions: {
 			parserOptions: {

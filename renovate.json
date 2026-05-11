@@ -4,6 +4,7 @@
 	"dependencyDashboard": true,
 	"semanticCommits": "enabled",
 	"automerge": false,
+	"minimumReleaseAge": "3 days",
 	"prConcurrentLimit": 3,
 	"prHourlyLimit": 1,
 	"vulnerabilityAlerts": {
@@ -84,14 +85,14 @@
 			"defaultRegistryUrlTemplate": "https://api.github.com/repos/coder/code-server/releases",
 			"format": "json",
 			"transformTemplates": [
-				"{\"releases\": $map($, function($v) { {\"version\": $replace($v.tag_name, /^v/, \"\"), \"digest\": $replace($filter($v.assets, function($a) { $a.name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-amd64.tar.gz\" })[0].digest, /^sha256:/, \"\"), \"sourceUrl\": $v.html_url} })}"
+				"{\"releases\": $map($filter($, function($v) { $exists($v.assets[name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-amd64.tar.gz\"].digest) }), function($v) { {\"version\": $replace($v.tag_name, /^v/, \"\"), \"digest\": $replace(($v.assets[name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-amd64.tar.gz\"].digest)[0], /^sha256:/, \"\"), \"sourceUrl\": $v.html_url} })}"
 			]
 		},
 		"code-server-linux-arm64": {
 			"defaultRegistryUrlTemplate": "https://api.github.com/repos/coder/code-server/releases",
 			"format": "json",
 			"transformTemplates": [
-				"{\"releases\": $map($, function($v) { {\"version\": $replace($v.tag_name, /^v/, \"\"), \"digest\": $replace($filter($v.assets, function($a) { $a.name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-arm64.tar.gz\" })[0].digest, /^sha256:/, \"\"), \"sourceUrl\": $v.html_url} })}"
+				"{\"releases\": $map($filter($, function($v) { $exists($v.assets[name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-arm64.tar.gz\"].digest) }), function($v) { {\"version\": $replace($v.tag_name, /^v/, \"\"), \"digest\": $replace(($v.assets[name = \"code-server-\" & $replace($v.tag_name, /^v/, \"\") & \"-linux-arm64.tar.gz\"].digest)[0], /^sha256:/, \"\"), \"sourceUrl\": $v.html_url} })}"
 			]
 		}
 	}

@@ -56,6 +56,10 @@ rootfs/
         .gitkeep
       Pictures/
         .gitkeep
+      Public/
+        .gitkeep
+      Templates/
+        .gitkeep
       Videos/
         .gitkeep
       .bashrc
@@ -88,7 +92,7 @@ tests/
 compose.yml
 Dockerfile
 eslint.config.mjs
-LICENSE.md
+LICENSE
 package.json
 pnpm-lock.yaml
 renovate.json

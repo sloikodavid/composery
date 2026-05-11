@@ -8,30 +8,26 @@ args=(
   --disable-update-check
 )
 
-if [[ "${AGENTBOX_BASE_PATH:-/}" != "/" && -n "${AGENTBOX_BASE_PATH:-}" ]]; then
-  path="${AGENTBOX_BASE_PATH}"
-  [[ "$path" == /* ]] || path="/$path"
-  path="${path%/}"
-  args+=(--abs-proxy-base-path "$path")
-fi
-
-proxy_domain="$(
+agentbox_config_json="$(
   node --input-type=module <<'JS'
-const value = process.env.AGENTBOX_PORT_TEMPLATE_URL?.trim();
-if (!value || value.startsWith("./") || value.startsWith("/")) {
-	process.exit(0);
-}
-try {
-	const url = new URL(value);
-	const prefix = "{{port}}.";
-	if (url.hostname.startsWith(prefix)) {
-		console.log(url.hostname.slice(prefix.length));
-	}
-} catch {
-	process.exit(0);
-}
+import { parseConfig } from "/opt/agentbox/config.ts";
+
+const config = parseConfig(process.env, { loadTlsFiles: false });
+console.log(JSON.stringify({
+	basePath: config.basePath,
+	publicProxyUrlTemplate: config.publicProxyUrlTemplate,
+	proxyDomain: config.proxyDomain ?? "",
+}));
 JS
 )"
+
+base_path="$(jq -r .basePath <<<"$agentbox_config_json")"
+public_proxy_url_template="$(jq -r .publicProxyUrlTemplate <<<"$agentbox_config_json")"
+proxy_domain="$(jq -r .proxyDomain <<<"$agentbox_config_json")"
+
+if [[ "$base_path" != "/" ]]; then
+  args+=(--abs-proxy-base-path "$base_path")
+fi
 if [[ -n "$proxy_domain" ]]; then
   args+=(--proxy-domain "$proxy_domain")
 fi
@@ -40,5 +36,5 @@ fi
 # fixed loopback listener behind that gateway, so clear the public port env to
 # avoid code-server rebinding it.
 unset PORT
-export VSCODE_PROXY_URI="${AGENTBOX_PORT_TEMPLATE_URL:-./proxy/{{port}}}"
+export VSCODE_PROXY_URI="$public_proxy_url_template"
 exec /usr/local/bin/code-server "${args[@]}"

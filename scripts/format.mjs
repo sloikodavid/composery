@@ -7,20 +7,20 @@ import { fileURLToPath } from "node:url";
 import prettier from "prettier";
 
 const require = createRequire(import.meta.url);
-const prettierBin = require.resolve("prettier/bin/prettier.cjs");
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const PRETTIER_BIN = require.resolve("prettier/bin/prettier.cjs");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
-const allowedArgs = new Set(["--check", "-c", "--write", "-w"]);
+const ALLOWED_ARGS = new Set(["--check", "-c", "--write", "-w"]);
 const write = args.has("--write") || args.has("-w");
 const explicitCheck = args.has("--check") || args.has("-c");
 const hasUnknownArg = process.argv
 	.slice(2)
-	.some((arg) => !allowedArgs.has(arg));
+	.some((arg) => !ALLOWED_ARGS.has(arg));
 const check = !write && (args.size === 0 || explicitCheck);
-const treeOutputFile = "TREE.md";
-const ignorePath = [
-	join(repoRoot, ".gitignore"),
-	join(repoRoot, ".prettierignore"),
+const TREE_OUTPUT_FILE = "TREE.md";
+const IGNORE_PATH = [
+	join(REPO_ROOT, ".gitignore"),
+	join(REPO_ROOT, ".prettierignore"),
 ];
 
 if (hasUnknownArg || (write && explicitCheck) || (!write && !check)) {
@@ -28,7 +28,7 @@ if (hasUnknownArg || (write && explicitCheck) || (!write && !check)) {
 	process.exit(2);
 }
 
-const llmReplacements = [
+const LLM_REPLACEMENTS = [
 	[/\u2014/g, "-"],
 	[/\u2013/g, "-"],
 	[/\u2212/g, "-"],
@@ -50,25 +50,25 @@ const llmReplacements = [
 	[/\u200d/g, ""],
 	[/\ufeff/g, ""],
 ];
-const listItem = /^(\s*(?:[-*+]|\d+\.)\s+)(.+)$/;
-const terminalPunctuation = /[.!?:;,)\]"']$/;
+const LIST_ITEM = /^(\s*(?:[-*+]|\d+\.)\s+)(.+)$/;
+const TERMINAL_PUNCTUATION = /[.!?:;,)\]"']$/;
 
 function toRelative(file) {
-	return relative(repoRoot, file).replaceAll("\\", "/");
+	return relative(REPO_ROOT, file).replaceAll("\\", "/");
 }
 
 function gitFiles() {
 	const output = execFileSync(
 		"git",
 		["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-		{ cwd: repoRoot },
+		{ cwd: REPO_ROOT },
 	);
 	return output
 		.toString("utf8")
 		.split("\0")
 		.filter(Boolean)
 		.filter(
-			(path) => path !== treeOutputFile && existsSync(join(repoRoot, path)),
+			(path) => path !== TREE_OUTPUT_FILE && existsSync(join(REPO_ROOT, path)),
 		);
 }
 
@@ -81,8 +81,8 @@ function readTextFile(file) {
 async function checkedFiles() {
 	const files = [];
 	for (const path of gitFiles()) {
-		const file = join(repoRoot, path);
-		const info = await prettier.getFileInfo(file, { ignorePath });
+		const file = join(REPO_ROOT, path);
+		const info = await prettier.getFileInfo(file, { IGNORE_PATH });
 		if (!info.ignored) files.push({ file, parser: info.inferredParser });
 	}
 	return files;
@@ -91,11 +91,11 @@ async function checkedFiles() {
 function renderTree() {
 	const root = {
 		children: new Map(),
-		name: basename(repoRoot),
+		name: basename(REPO_ROOT),
 		type: "directory",
 	};
 
-	for (const path of [...gitFiles(), treeOutputFile]) {
+	for (const path of [...gitFiles(), TREE_OUTPUT_FILE]) {
 		const parts = path.split("/").filter(Boolean);
 		let current = root;
 		for (const [index, name] of parts.entries()) {
@@ -139,7 +139,7 @@ function renderTree() {
 }
 
 function runTree({ write }) {
-	const file = join(repoRoot, treeOutputFile);
+	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
 	const expected = renderTree();
 	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 	if (actual === expected) return true;
@@ -147,18 +147,18 @@ function runTree({ write }) {
 		writeFileSync(file, expected);
 		return true;
 	}
-	console.error(`${treeOutputFile} is out of date. Run 'pnpm fix'.`);
+	console.error(`${TREE_OUTPUT_FILE} is out of date. Run 'pnpm fix'.`);
 	return false;
 }
 
 function replaceLlmCharacters(content) {
 	let output = content;
-	for (const [from, to] of llmReplacements) output = output.replace(from, to);
+	for (const [from, to] of LLM_REPLACEMENTS) output = output.replace(from, to);
 	return output;
 }
 
 function lineHasLlmCharacter(line) {
-	return llmReplacements.some(([pattern]) => {
+	return LLM_REPLACEMENTS.some(([pattern]) => {
 		pattern.lastIndex = 0;
 		return pattern.test(line);
 	});
@@ -198,10 +198,10 @@ async function runLlmCharacters({ write }) {
 function addListPeriods(content) {
 	const hits = [];
 	const fixed = content.split(/\r?\n/).map((line, index) => {
-		const match = listItem.exec(line);
+		const match = LIST_ITEM.exec(line);
 		if (!match) return line;
 		const [, prefix, text] = match;
-		if (terminalPunctuation.test(text)) return line;
+		if (TERMINAL_PUNCTUATION.test(text)) return line;
 		hits.push({ lineNo: index + 1, text: line.trim() });
 		return `${prefix}${text}.`;
 	});
@@ -237,8 +237,8 @@ async function runListPeriods({ write }) {
 function runPrettier({ write }) {
 	const result = spawnSync(
 		process.execPath,
-		[prettierBin, "--log-level", "warn", write ? "--write" : "--check", "."],
-		{ cwd: repoRoot, stdio: "inherit" },
+		[PRETTIER_BIN, "--log-level", "warn", write ? "--write" : "--check", "."],
+		{ cwd: REPO_ROOT, stdio: "inherit" },
 	);
 	return result.status === 0;
 }

@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "vitest";
 import { createGateway } from "../rootfs/opt/agentbox/gateway.ts";
 import type { AgentboxConfig } from "../rootfs/opt/agentbox/config.ts";
-import { rootfsHeartbeatPath } from "../rootfs/opt/agentbox/rootfs.ts";
+import { ROOTFS_HEARTBEAT_PATH } from "../rootfs/opt/agentbox/rootfs.ts";
 
 const tempDirs: string[] = [];
 const servers: Server[] = [];
@@ -27,7 +27,7 @@ afterEach(async () => {
 				}),
 		),
 	);
-	await rm(rootfsHeartbeatPath, { force: true });
+	await rm(ROOTFS_HEARTBEAT_PATH, { force: true });
 	await Promise.all(
 		tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
 	);
@@ -52,7 +52,7 @@ describe("createGateway", () => {
 		expect(gateway.server.listening).toBe(false);
 	});
 
-	test("uses configured health endpoint under the base path", async () => {
+	test("serves fixed health endpoint under the base path", async () => {
 		await listenCodeServer(
 			createServer((request, response) => {
 				if (sendCodeServerHealth(request, response)) {
@@ -62,32 +62,26 @@ describe("createGateway", () => {
 			}),
 		);
 		await writeRootfsHeartbeat();
-		const gateway = createGateway(
-			config({ port: 0, basePath: "/agentbox", healthPath: "/status" }),
-		);
+		const gateway = createGateway(config({ port: 0, basePath: "/agentbox" }));
 		await gateway.startGateway();
 		const address = gateway.server.address();
 		if (!address || typeof address === "string") {
 			throw new Error("expected TCP address");
 		}
 		const health = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/status`,
+			`http://127.0.0.1:${address.port}/agentbox/healthz`,
 		);
 		expect(health.status).toBe(200);
 		const body = (await health.json()) as { readonly ready: boolean };
 		expect(body.ready).toBe(true);
 		const readiness = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/status/readiness`,
+			`http://127.0.0.1:${address.port}/agentbox/healthz/readiness`,
 		);
 		expect(readiness.status).toBe(200);
 		const defaultHealth = await fetch(
 			`http://127.0.0.1:${address.port}/healthz`,
 		);
 		expect(defaultHealth.status).toBe(404);
-		const unprefixedHealth = await fetch(
-			`http://127.0.0.1:${address.port}/status`,
-		);
-		expect(unprefixedHealth.status).toBe(404);
 		await gateway.stopGateway();
 	});
 
@@ -117,6 +111,41 @@ describe("createGateway", () => {
 			`http://127.0.0.1:${address.port}/agentbox/path?q=1`,
 		);
 		expect(await response.text()).toContain("proxied:/path?q=1:/agentbox");
+		await gateway.stopGateway();
+	});
+
+	test("serves an auto-continuing starting page for browsers", async () => {
+		const gateway = createGateway(config({ port: 0, basePath: "/agentbox" }));
+		await gateway.startGateway();
+		const address = gateway.server.address();
+		if (!address || typeof address === "string") {
+			throw new Error("expected TCP address");
+		}
+		const response = await fetch(`http://127.0.0.1:${address.port}/agentbox/`, {
+			headers: { accept: "text/html" },
+		});
+		expect(response.status).toBe(503);
+		expect(response.headers.get("content-type")).toContain("text/html");
+		const body = await response.text();
+		expect(body).toContain("Agentbox is starting");
+		expect(body).toContain("/agentbox/healthz/readiness");
+		expect(body).toContain("location.reload()");
+		await gateway.stopGateway();
+	});
+
+	test("keeps the starting response plain text for non-browser clients", async () => {
+		const gateway = createGateway(config({ port: 0 }));
+		await gateway.startGateway();
+		const address = gateway.server.address();
+		if (!address || typeof address === "string") {
+			throw new Error("expected TCP address");
+		}
+		const response = await fetch(`http://127.0.0.1:${address.port}/`, {
+			headers: { accept: "application/json" },
+		});
+		expect(response.status).toBe(503);
+		expect(response.headers.get("content-type")).toContain("text/plain");
+		expect(await response.text()).toBe("Agentbox is starting\n");
 		await gateway.stopGateway();
 	});
 
@@ -211,7 +240,7 @@ describe("createGateway", () => {
 		);
 		await writeRootfsHeartbeat();
 
-		const gateway = createGateway(config({ port: 0, proxyHops: 1 }));
+		const gateway = createGateway(config({ port: 0, trustedProxyHops: 1 }));
 		await gateway.startGateway();
 		const address = gateway.server.address();
 		if (!address || typeof address === "string") {
@@ -296,7 +325,7 @@ describe("createGateway", () => {
 		);
 		await writeRootfsHeartbeat();
 
-		const gateway = createGateway(config({ port: 0, proxyHops: 0 }));
+		const gateway = createGateway(config({ port: 0, trustedProxyHops: 0 }));
 		await gateway.startGateway();
 		const address = gateway.server.address();
 		if (!address || typeof address === "string") {
@@ -379,7 +408,7 @@ describe("createGateway", () => {
 		);
 		await writeRootfsHeartbeat();
 		const stale = new Date(Date.now() - 60_000);
-		await utimes(rootfsHeartbeatPath, stale, stale);
+		await utimes(ROOTFS_HEARTBEAT_PATH, stale, stale);
 
 		const gateway = createGateway(config({ port: 0 }));
 		await gateway.startGateway();
@@ -426,9 +455,9 @@ async function listenCodeServer(server: Server): Promise<void> {
 async function writeRootfsHeartbeat(
 	overrides: { readonly watcherCount?: number } = {},
 ): Promise<void> {
-	await mkdir(dirname(rootfsHeartbeatPath), { recursive: true });
+	await mkdir(dirname(ROOTFS_HEARTBEAT_PATH), { recursive: true });
 	await writeFile(
-		rootfsHeartbeatPath,
+		ROOTFS_HEARTBEAT_PATH,
 		`${JSON.stringify({
 			updatedAt: new Date().toISOString(),
 			watcherCount: overrides.watcherCount ?? 1,
@@ -523,15 +552,12 @@ function sendCodeServerHealth(
 function config(overrides: Partial<AgentboxConfig> = {}): AgentboxConfig {
 	return {
 		port: 8080,
-		listenAddress: "127.0.0.1",
+		bindAddress: "127.0.0.1",
 		volumePath: "/data",
 		basePath: "/",
-		host: "localhost",
-		protocol: "http",
-		url: "http://localhost:8080",
-		portTemplateUrl: "./proxy/{{port}}",
-		proxyHops: 0,
-		healthPath: "/healthz",
+		publicUrl: "http://localhost:8080",
+		publicProxyUrlTemplate: "./proxy/{{port}}",
+		trustedProxyHops: 0,
 		enableMetrics: false,
 		buildVersion: "test",
 		buildRevision: "test",

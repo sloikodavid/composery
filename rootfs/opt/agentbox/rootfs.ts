@@ -21,11 +21,11 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { parseConfig } from "./config.ts";
 
-export const removalSuffix = ".__removed__";
-export const rootfsHeartbeatPath = "/run/agentbox/rootfs.ready";
-export const rootfsHeartbeatIntervalMs = 5_000;
-export const rootfsHeartbeatMaxAgeMs = 15_000;
-export const eventBatchWindowMs = 200;
+export const REMOVAL_SUFFIX = ".__removed__";
+export const ROOTFS_HEARTBEAT_PATH = "/run/agentbox/rootfs.ready";
+export const ROOTFS_HEARTBEAT_INTERVAL_MS = 5_000;
+export const ROOTFS_HEARTBEAT_MAX_AGE_MS = 15_000;
+export const EVENT_BATCH_WINDOW_MS = 200;
 
 export interface RootfsOptions {
 	readonly volumePath?: string;
@@ -96,7 +96,7 @@ export async function watchRootfs(
 	const paths = rootfsPaths(options);
 	await mkdir(paths.filesPath, { recursive: true });
 	await mkdir(paths.removedFilesPath, { recursive: true });
-	await mkdir(dirname(rootfsHeartbeatPath), { recursive: true });
+	await mkdir(dirname(ROOTFS_HEARTBEAT_PATH), { recursive: true });
 
 	const queue = new Map<string, QueuedEvent>();
 	const watchers: AsyncDisposable[] = [];
@@ -111,9 +111,9 @@ export async function watchRootfs(
 			watcherCount: watchers.length,
 			failedWatchers: watcherFailures,
 		};
-		const tempPath = `${rootfsHeartbeatPath}.${process.pid}.tmp`;
+		const tempPath = `${ROOTFS_HEARTBEAT_PATH}.${process.pid}.tmp`;
 		await writeFile(tempPath, `${JSON.stringify(heartbeat)}\n`);
-		await rename(tempPath, rootfsHeartbeatPath);
+		await rename(tempPath, ROOTFS_HEARTBEAT_PATH);
 	};
 
 	const flush = async (): Promise<void> => {
@@ -141,7 +141,7 @@ export async function watchRootfs(
 		queue.set(event.livePath, event);
 		timer ??= setTimeout(() => {
 			flush().catch((error: unknown) => log(`flush failed: ${String(error)}`));
-		}, eventBatchWindowMs);
+		}, EVENT_BATCH_WINDOW_MS);
 	};
 
 	const watchDirectory = (livePath: string, recursive: boolean): void => {
@@ -206,7 +206,7 @@ export async function watchRootfs(
 		beat().catch((error: unknown) =>
 			log(`heartbeat update failed: ${String(error)}`),
 		);
-	}, rootfsHeartbeatIntervalMs);
+	}, ROOTFS_HEARTBEAT_INTERVAL_MS);
 	heartbeatTimer.unref();
 
 	const stop = async (): Promise<void> => {
@@ -305,7 +305,7 @@ export function removalMarkerForLivePath(
 ): string {
 	return join(
 		paths.removedFilesPath,
-		`${relativeFromRoot(livePath, paths)}${removalSuffix}`,
+		`${relativeFromRoot(livePath, paths)}${REMOVAL_SUFFIX}`,
 	);
 }
 
@@ -425,12 +425,12 @@ async function processRemove(
 
 async function applyRemovalMarkers(paths: RootfsPaths): Promise<void> {
 	await walk(paths.removedFilesPath, async (marker) => {
-		if (!marker.endsWith(removalSuffix)) {
+		if (!marker.endsWith(REMOVAL_SUFFIX)) {
 			return;
 		}
 		const relativeMarker = relative(paths.removedFilesPath, marker).slice(
 			0,
-			-removalSuffix.length,
+			-REMOVAL_SUFFIX.length,
 		);
 		await rm(join(paths.rootPath, relativeMarker), {
 			recursive: true,

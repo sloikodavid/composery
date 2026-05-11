@@ -5,3 +5,4 @@
   - Close -> Stop.
   - Complete, End -> Finish.
   - Spawn, Provision -> Create.
+- Use SCREAMING_SNAKE_CASE for module-level semantic constants, args, vars, etc.

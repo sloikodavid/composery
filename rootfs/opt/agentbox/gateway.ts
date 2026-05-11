@@ -11,8 +11,8 @@ import { readFile, stat } from "node:fs/promises";
 import type { Server } from "node:http";
 import { parseConfig, type AgentboxConfig } from "./config.ts";
 import {
-	rootfsHeartbeatMaxAgeMs,
-	rootfsHeartbeatPath,
+	ROOTFS_HEARTBEAT_MAX_AGE_MS,
+	ROOTFS_HEARTBEAT_PATH,
 	type RootfsHeartbeat,
 } from "./rootfs.ts";
 
@@ -38,8 +38,8 @@ export interface Gateway {
 	health(): HealthResponse;
 }
 
-const codeServerTarget = new URL("http://127.0.0.1:13337");
-const hopByHopHeaders = new Set([
+const CODE_SERVER_TARGET = new URL("http://127.0.0.1:13337");
+const HOP_BY_HOP_HEADERS = new Set([
 	"connection",
 	"keep-alive",
 	"proxy-authenticate",
@@ -49,7 +49,7 @@ const hopByHopHeaders = new Set([
 	"transfer-encoding",
 	"upgrade",
 ]);
-const upstreamUpgradeTimeoutMs = 5_000;
+const UPSTREAM_UPGRADE_TIMEOUT_MS = 5_000;
 
 export function createGateway(config = parseConfig()): Gateway {
 	let readyAt: Date | null = null;
@@ -58,9 +58,9 @@ export function createGateway(config = parseConfig()): Gateway {
 	const sockets = new Set<Socket>();
 
 	const server =
-		config.protocol === "https"
+		config.tlsKey && config.tlsCert
 			? createHttpsServer(
-					{ key: config.sslKey, cert: config.sslCert },
+					{ key: config.tlsKey, cert: config.tlsCert },
 					(request, response) => handleRequest(request, response),
 				)
 			: createHttpServer((request, response) =>
@@ -98,9 +98,9 @@ export function createGateway(config = parseConfig()): Gateway {
 			);
 		}, 1_000);
 		await new Promise<void>((resolve) => {
-			server.listen(config.port, config.listenAddress, resolve);
+			server.listen(config.port, config.bindAddress, resolve);
 		});
-		log(`listening on ${config.listenAddress}:${config.port}`);
+		log(`listening on ${config.bindAddress}:${config.port}`);
 	}
 
 	async function stopGateway(): Promise<void> {
@@ -133,7 +133,7 @@ export function createGateway(config = parseConfig()): Gateway {
 	): void {
 		try {
 			const url = parseRequestUrl(request);
-			const healthPath = joinUrlPath(config.basePath, config.healthPath);
+			const healthPath = joinUrlPath(config.basePath, "/healthz");
 			const metricsPath = joinUrlPath(config.basePath, "/metrics");
 			if (
 				url.pathname === healthPath ||
@@ -158,7 +158,14 @@ export function createGateway(config = parseConfig()): Gateway {
 
 			if (!health().ready) {
 				response.setHeader("Retry-After", "1");
-				sendText(response, 503, "Agentbox is starting\n");
+				if (acceptsHtml(request)) {
+					sendStartingPage(
+						response,
+						joinUrlPath(config.basePath, "/healthz/readiness"),
+					);
+				} else {
+					sendText(response, 503, "Agentbox is starting\n");
+				}
 				return;
 			}
 
@@ -214,8 +221,8 @@ export function createGateway(config = parseConfig()): Gateway {
 
 		const proxyRequest = httpRequest(
 			{
-				host: codeServerTarget.hostname,
-				port: Number(codeServerTarget.port),
+				host: CODE_SERVER_TARGET.hostname,
+				port: Number(CODE_SERVER_TARGET.port),
 				path: `${proxiedPath}${url.search}`,
 				method: request.method,
 				headers,
@@ -237,7 +244,7 @@ export function createGateway(config = parseConfig()): Gateway {
 			},
 		);
 
-		proxyRequest.setTimeout(upstreamUpgradeTimeoutMs, () => {
+		proxyRequest.setTimeout(UPSTREAM_UPGRADE_TIMEOUT_MS, () => {
 			failUpgrade();
 			proxyRequest.destroy();
 		});
@@ -355,9 +362,9 @@ function readCodeServerHealthStatus(body: Buffer): string | null {
 
 async function checkRootfs(): Promise<HealthCheck> {
 	try {
-		const stats = await stat(rootfsHeartbeatPath);
+		const stats = await stat(ROOTFS_HEARTBEAT_PATH);
 		const ageMs = Date.now() - stats.mtimeMs;
-		if (ageMs > rootfsHeartbeatMaxAgeMs) {
+		if (ageMs > ROOTFS_HEARTBEAT_MAX_AGE_MS) {
 			return {
 				name: "rootfs",
 				status: "fail",
@@ -396,7 +403,7 @@ async function checkRootfs(): Promise<HealthCheck> {
 async function readRootfsHeartbeat(): Promise<RootfsHeartbeat | null> {
 	try {
 		const parsed: unknown = JSON.parse(
-			await readFile(rootfsHeartbeatPath, "utf8"),
+			await readFile(ROOTFS_HEARTBEAT_PATH, "utf8"),
 		);
 		if (
 			typeof parsed === "object" &&
@@ -459,8 +466,8 @@ function proxyHttp(
 
 	const proxyRequest = httpRequest(
 		{
-			host: codeServerTarget.hostname,
-			port: Number(codeServerTarget.port),
+			host: CODE_SERVER_TARGET.hostname,
+			port: Number(CODE_SERVER_TARGET.port),
 			path: `${proxiedPath}${url.search}`,
 			method: request.method,
 			headers,
@@ -503,7 +510,7 @@ function filterHeaders(
 	for (const [name, value] of Object.entries(headers)) {
 		const lowerName = name.toLowerCase();
 		if (
-			!hopByHopHeaders.has(lowerName) &&
+			!HOP_BY_HOP_HEADERS.has(lowerName) &&
 			!connectionTokens.has(lowerName) &&
 			!lowerName.startsWith("x-forwarded-") &&
 			value !== undefined
@@ -518,18 +525,19 @@ function forwardedHeaders(
 	config: AgentboxConfig,
 	request: IncomingMessage,
 ): Record<string, string | string[]> {
+	const publicUrl = new URL(config.publicUrl);
 	const trustedHost =
 		getTrustedForwardedHeader(
 			request.headers["x-forwarded-host"],
-			config.proxyHops,
+			config.trustedProxyHops,
 		) ??
 		request.headers.host ??
-		config.host;
+		publicUrl.host;
 	const trustedProto =
 		getTrustedForwardedHeader(
 			request.headers["x-forwarded-proto"],
-			config.proxyHops,
-		) ?? config.protocol;
+			config.trustedProxyHops,
+		) ?? publicUrl.protocol.replace(/:$/, "");
 	return {
 		"x-forwarded-host": trustedHost,
 		"x-forwarded-proto": trustedProto,
@@ -556,9 +564,9 @@ function isPortProxyHost(
 
 function getTrustedForwardedHeader(
 	value: string | string[] | undefined,
-	proxyHops: number,
+	trustedProxyHops: number,
 ): string | undefined {
-	if (proxyHops <= 0 || !value) {
+	if (trustedProxyHops <= 0 || !value) {
 		return undefined;
 	}
 	const values = (Array.isArray(value) ? value.join(",") : value)
@@ -568,7 +576,7 @@ function getTrustedForwardedHeader(
 	if (values.length === 0) {
 		return undefined;
 	}
-	return values[Math.max(values.length - proxyHops, 0)];
+	return values[Math.max(values.length - trustedProxyHops, 0)];
 }
 
 function writeRawResponseHead(
@@ -634,8 +642,41 @@ function sendText(
 	response.end(body);
 }
 
+function acceptsHtml(request: IncomingMessage): boolean {
+	const accept = request.headers.accept;
+	return (Array.isArray(accept) ? accept.join(",") : (accept ?? ""))
+		.toLowerCase()
+		.includes("text/html");
+}
+
+function sendStartingPage(
+	response: ServerResponse,
+	readinessPath: string,
+): void {
+	const body = `<style>body{font-family:monospace;white-space:pre}</style>Agentbox is starting
+<script>
+const readinessPath = ${JSON.stringify(readinessPath)};
+async function waitUntilReady() {
+	try {
+		if ((await fetch(readinessPath, { cache: "no-store" })).ok) {
+			location.reload();
+			return;
+		}
+	} catch {}
+	setTimeout(waitUntilReady, 1000);
+}
+waitUntilReady();
+</script>
+`;
+	response.writeHead(503, {
+		"cache-control": "no-store",
+		"content-type": "text/html; charset=utf-8",
+	});
+	response.end(body);
+}
+
 function logReady(config: AgentboxConfig): void {
-	log(`Agentbox is ready.\nOpen Agentbox at:\n${config.url}`);
+	log(`Agentbox is ready.\nOpen Agentbox at:\n${config.publicUrl}`);
 }
 
 function log(message: string): void {

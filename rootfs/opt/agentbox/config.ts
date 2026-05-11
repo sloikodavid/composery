@@ -4,26 +4,32 @@ export type AgentboxProtocol = "http" | "https";
 
 export interface AgentboxConfig {
 	readonly port: number;
-	readonly listenAddress: string;
+	readonly bindAddress: string;
 	readonly volumePath: string;
 	readonly basePath: string;
-	readonly host: string;
-	readonly protocol: AgentboxProtocol;
-	readonly url: string;
-	readonly portTemplateUrl: string;
+	readonly publicUrl: string;
+	readonly publicProxyUrlTemplate: string;
 	readonly proxyDomain?: string;
-	readonly proxyHops: number;
-	readonly healthPath: string;
+	readonly trustedProxyHops: number;
 	readonly enableMetrics: boolean;
-	readonly sslKeyPath?: string;
-	readonly sslCertPath?: string;
-	readonly sslKey?: string;
-	readonly sslCert?: string;
-	readonly timezone?: string;
+	readonly tlsKeyPath?: string;
+	readonly tlsCertPath?: string;
+	readonly tlsKey?: string;
+	readonly tlsCert?: string;
 	readonly buildVersion: string;
 	readonly buildRevision: string;
 	readonly buildSource: string;
 }
+
+export interface ParseConfigOptions {
+	readonly loadTlsFiles?: boolean;
+}
+
+const DEFAULT_PORT = 8080;
+const DEFAULT_BUILD_SOURCE = "https://github.com/sloikodavid/agentbox";
+const DEFAULT_PUBLIC_PROXY_URL_TEMPLATE = "./proxy/{{port}}";
+const BOOLEAN_TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const BOOLEAN_FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
 export class ConfigError extends Error {
 	constructor(message: string) {
@@ -34,25 +40,24 @@ export class ConfigError extends Error {
 
 export function parseConfig(
 	env: NodeJS.ProcessEnv = process.env,
+	options: ParseConfigOptions = {},
 ): AgentboxConfig {
 	const port = parsePort(env.PORT);
-	const listenAddress = env.AGENTBOX_LISTEN_ADDRESS?.trim() || "::";
+	const bindAddress = env.AGENTBOX_BIND_ADDRESS?.trim() || "::";
 	const volumePath = env.AGENTBOX_VOLUME_PATH?.trim() || "/data";
-	const basePath = normalizeUrlPath(
-		env.AGENTBOX_BASE_PATH,
-		"AGENTBOX_BASE_PATH",
+	const trustedProxyHops = parseNonNegativeInteger(
+		env.AGENTBOX_TRUSTED_PROXY_HOPS,
+		"AGENTBOX_TRUSTED_PROXY_HOPS",
+		0,
 	);
-	const host = env.AGENTBOX_HOST?.trim() || "localhost";
-	const protocol = parseProtocol(env.AGENTBOX_PROTOCOL);
-	const proxyHops = parseNonNegativeInteger(env.AGENTBOX_PROXY_HOPS, 0);
-	const healthPath = normalizeUrlPath(
-		env.AGENTBOX_HEALTH_PATH || "/healthz",
-		"AGENTBOX_HEALTH_PATH",
+	const enableMetrics = parseBoolean(
+		env.AGENTBOX_ENABLE_METRICS,
+		"AGENTBOX_ENABLE_METRICS",
 	);
-	const enableMetrics = parseBoolean(env.AGENTBOX_ENABLE_METRICS);
-	const sslKeyPath = emptyToUndefined(env.AGENTBOX_SSL_KEY);
-	const sslCertPath = emptyToUndefined(env.AGENTBOX_SSL_CERT);
-	const timezone = emptyToUndefined(env.TZ);
+	const tlsKeyPath = emptyToUndefined(env.AGENTBOX_TLS_KEY_PATH);
+	const tlsCertPath = emptyToUndefined(env.AGENTBOX_TLS_CERT_PATH);
+	const listenerProtocol: AgentboxProtocol =
+		tlsKeyPath && tlsCertPath ? "https" : "http";
 
 	if (!volumePath.startsWith("/")) {
 		throw new ConfigError(
@@ -65,44 +70,52 @@ export function parseConfig(
 		);
 	}
 
-	if (protocol === "https" && (!sslKeyPath || !sslCertPath)) {
+	if (Boolean(tlsKeyPath) !== Boolean(tlsCertPath)) {
 		throw new ConfigError(
-			"AGENTBOX_PROTOCOL=https requires AGENTBOX_SSL_KEY and AGENTBOX_SSL_CERT",
+			"AGENTBOX_TLS_KEY_PATH and AGENTBOX_TLS_CERT_PATH must be set together",
 		);
 	}
 
-	const url = env.AGENTBOX_URL?.trim()
-		? validateAgentboxUrl(env.AGENTBOX_URL.trim(), basePath)
-		: deriveAgentboxUrl({ protocol, host, port, basePath });
-	const { portTemplateUrl, proxyDomain } = parsePortTemplateUrl(
-		env.AGENTBOX_PORT_TEMPLATE_URL,
+	const publicUrl = parsePublicUrl(env.AGENTBOX_PUBLIC_URL, {
+		protocol: listenerProtocol,
+		port,
+	});
+	const basePath = normalizeUrlPath(
+		new URL(publicUrl).pathname,
+		"AGENTBOX_PUBLIC_URL pathname",
 	);
+	const { publicProxyUrlTemplate, proxyDomain } = parsePublicProxyUrlTemplate(
+		env.AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE,
+	);
+	const loadTlsFiles = options.loadTlsFiles ?? true;
 
 	return {
 		port,
-		listenAddress,
+		bindAddress,
 		volumePath,
 		basePath,
-		host,
-		protocol,
-		url,
-		portTemplateUrl,
+		publicUrl,
+		publicProxyUrlTemplate,
 		...(proxyDomain ? { proxyDomain } : {}),
-		proxyHops,
-		healthPath,
+		trustedProxyHops,
 		enableMetrics,
-		...(sslKeyPath
-			? { sslKeyPath, sslKey: readFileSync(sslKeyPath, "utf8") }
+		...(tlsKeyPath
+			? {
+					tlsKeyPath,
+					...(loadTlsFiles ? { tlsKey: readFileSync(tlsKeyPath, "utf8") } : {}),
+				}
 			: {}),
-		...(sslCertPath
-			? { sslCertPath, sslCert: readFileSync(sslCertPath, "utf8") }
+		...(tlsCertPath
+			? {
+					tlsCertPath,
+					...(loadTlsFiles
+						? { tlsCert: readFileSync(tlsCertPath, "utf8") }
+						: {}),
+				}
 			: {}),
-		...(timezone ? { timezone } : {}),
 		buildVersion: env.AGENTBOX_BUILD_VERSION?.trim() || "unknown",
 		buildRevision: env.AGENTBOX_BUILD_REVISION?.trim() || "unknown",
-		buildSource:
-			env.AGENTBOX_BUILD_SOURCE?.trim() ||
-			"https://github.com/sloikodavid/agentbox",
+		buildSource: env.AGENTBOX_BUILD_SOURCE?.trim() || DEFAULT_BUILD_SOURCE,
 	};
 }
 
@@ -128,27 +141,52 @@ export function normalizeUrlPath(
 }
 
 function parsePort(value: string | undefined): number {
-	const parsed = Number.parseInt(value ?? "", 10);
-	return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535
-		? parsed
-		: 8080;
-}
-
-function parseProtocol(value: string | undefined): AgentboxProtocol {
-	return value === "https" ? "https" : "http";
+	const trimmed = emptyToUndefined(value);
+	if (!trimmed) {
+		return DEFAULT_PORT;
+	}
+	if (!/^\d+$/.test(trimmed)) {
+		throw new ConfigError("PORT must be an integer between 1 and 65535");
+	}
+	const parsed = Number(trimmed);
+	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+		throw new ConfigError("PORT must be an integer between 1 and 65535");
+	}
+	return parsed;
 }
 
 function parseNonNegativeInteger(
 	value: string | undefined,
+	name: string,
 	fallback: number,
 ): number {
-	const parsed = Number.parseInt(value ?? "", 10);
-	return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+	const trimmed = emptyToUndefined(value);
+	if (!trimmed) {
+		return fallback;
+	}
+	if (!/^\d+$/.test(trimmed)) {
+		throw new ConfigError(`${name} must be a non-negative integer`);
+	}
+	const parsed = Number(trimmed);
+	if (!Number.isSafeInteger(parsed)) {
+		throw new ConfigError(`${name} must be a non-negative integer`);
+	}
+	return parsed;
 }
 
-function parseBoolean(value: string | undefined): boolean {
-	return ["1", "true", "yes", "on"].includes(
-		(value ?? "").trim().toLowerCase(),
+function parseBoolean(value: string | undefined, name: string): boolean {
+	const trimmed = emptyToUndefined(value)?.toLowerCase();
+	if (!trimmed) {
+		return false;
+	}
+	if (BOOLEAN_TRUE_VALUES.has(trimmed)) {
+		return true;
+	}
+	if (BOOLEAN_FALSE_VALUES.has(trimmed)) {
+		return false;
+	}
+	throw new ConfigError(
+		`${name} must be a boolean (1/0, true/false, yes/no, on/off)`,
 	);
 }
 
@@ -157,30 +195,30 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 	return trimmed ? trimmed : undefined;
 }
 
-function deriveAgentboxUrl(input: {
-	readonly protocol: AgentboxProtocol;
-	readonly host: string;
-	readonly port: number;
-	readonly basePath: string;
-}): string {
-	const defaultPort =
-		(input.protocol === "http" && input.port === 80) ||
-		(input.protocol === "https" && input.port === 443);
-	const port = defaultPort ? "" : `:${input.port}`;
-	return `${input.protocol}://${input.host}${port}${input.basePath === "/" ? "" : input.basePath}`;
-}
-
-function validateAgentboxUrl(value: string, basePath: string): string {
-	let url: URL;
-	try {
-		url = new URL(value);
-	} catch {
-		throw new ConfigError("AGENTBOX_URL must be a valid absolute URL");
+function parsePublicUrl(
+	value: string | undefined,
+	fallback: { readonly protocol: AgentboxProtocol; readonly port: number },
+): string {
+	const trimmed = emptyToUndefined(value);
+	if (!trimmed) {
+		return deriveLocalPublicUrl(fallback);
 	}
 
-	if (normalizeUrlPath(url.pathname, "AGENTBOX_URL pathname") !== basePath) {
+	let url: URL;
+	try {
+		url = new URL(trimmed);
+	} catch {
+		throw new ConfigError("AGENTBOX_PUBLIC_URL must be a valid absolute URL");
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		throw new ConfigError("AGENTBOX_PUBLIC_URL must use http or https");
+	}
+	if (url.username || url.password) {
+		throw new ConfigError("AGENTBOX_PUBLIC_URL must not include credentials");
+	}
+	if (url.search || url.hash) {
 		throw new ConfigError(
-			"AGENTBOX_URL pathname must equal AGENTBOX_BASE_PATH",
+			"AGENTBOX_PUBLIC_URL must not include query or fragment",
 		);
 	}
 
@@ -191,19 +229,37 @@ function validateAgentboxUrl(value: string, basePath: string): string {
 	return url.toString().replace(/\/$/, "");
 }
 
-function parsePortTemplateUrl(value: string | undefined): {
-	readonly portTemplateUrl: string;
+function deriveLocalPublicUrl(input: {
+	readonly protocol: AgentboxProtocol;
+	readonly port: number;
+}): string {
+	const isDefaultPort =
+		(input.protocol === "http" && input.port === 80) ||
+		(input.protocol === "https" && input.port === 443);
+	const port = isDefaultPort ? "" : `:${input.port}`;
+	return `${input.protocol}://localhost${port}`;
+}
+
+function parsePublicProxyUrlTemplate(value: string | undefined): {
+	readonly publicProxyUrlTemplate: string;
 	readonly proxyDomain?: string;
 } {
 	const trimmed = value?.trim();
 	if (!trimmed) {
-		return { portTemplateUrl: "./proxy/{{port}}" };
+		return { publicProxyUrlTemplate: DEFAULT_PUBLIC_PROXY_URL_TEMPLATE };
 	}
 	if (!trimmed.includes("{{port}}")) {
-		throw new ConfigError("AGENTBOX_PORT_TEMPLATE_URL must include {{port}}");
+		throw new ConfigError(
+			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must include {{port}}",
+		);
 	}
-	if (trimmed.startsWith("./") || trimmed.startsWith("/")) {
-		return { portTemplateUrl: trimmed };
+	if (trimmed.startsWith("/")) {
+		throw new ConfigError(
+			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must be relative or an absolute http/https URL",
+		);
+	}
+	if (trimmed.startsWith("./")) {
+		return { publicProxyUrlTemplate: trimmed };
 	}
 
 	let url: URL;
@@ -211,20 +267,22 @@ function parsePortTemplateUrl(value: string | undefined): {
 		url = new URL(trimmed);
 	} catch {
 		throw new ConfigError(
-			"AGENTBOX_PORT_TEMPLATE_URL must be a valid URL template",
+			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must be relative or an absolute http/https URL",
 		);
 	}
 
 	if (url.protocol !== "http:" && url.protocol !== "https:") {
-		throw new ConfigError("AGENTBOX_PORT_TEMPLATE_URL must use http or https");
+		throw new ConfigError(
+			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must use http or https",
+		);
 	}
 	if (!url.hostname.includes("{{port}}")) {
-		return { portTemplateUrl: trimmed };
+		return { publicProxyUrlTemplate: trimmed };
 	}
 	const proxyDomain = proxyDomainFromHostname(url.hostname);
 	return proxyDomain
-		? { portTemplateUrl: trimmed, proxyDomain }
-		: { portTemplateUrl: trimmed };
+		? { publicProxyUrlTemplate: trimmed, proxyDomain }
+		: { publicProxyUrlTemplate: trimmed };
 }
 
 function proxyDomainFromHostname(hostname: string): string | undefined {

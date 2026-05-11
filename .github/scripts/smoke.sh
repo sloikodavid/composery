@@ -14,6 +14,10 @@ readonly DEFAULT_HEALTH_URL="http://127.0.0.1:${DEFAULT_PORT}/healthz"
 readonly DEFAULT_READINESS_URL="${DEFAULT_HEALTH_URL}/readiness"
 readonly CUSTOM_BASE_URL="http://127.0.0.1:${CUSTOM_PORT}/agentbox"
 readonly TLS_BASE_URL="https://127.0.0.1:${TLS_PORT}/secure"
+readonly HEALTH_ATTEMPTS=120
+readonly READINESS_ATTEMPTS=180
+readonly EXEC_ATTEMPTS=30
+readonly PORT_PROXY_ATTEMPTS=30
 
 dump_container_logs() {
   docker ps -a >&2 || true
@@ -76,12 +80,10 @@ run_custom_container() {
   docker run -d --name "$CONTAINER_NAME" \
     -p "127.0.0.1:${CUSTOM_PORT}:${CUSTOM_PORT}" \
     -e "PORT=${CUSTOM_PORT}" \
-    -e AGENTBOX_BASE_PATH=/agentbox \
-    -e AGENTBOX_HEALTH_PATH=/status \
-    -e AGENTBOX_URL=https://example.com/agentbox \
+    -e AGENTBOX_PUBLIC_URL=https://example.com/agentbox \
     -e AGENTBOX_VOLUME_PATH=/persist \
     -e AGENTBOX_ENABLE_METRICS=1 \
-    -e 'AGENTBOX_PORT_TEMPLATE_URL=https://{{port}}.ports.example.com' \
+    -e 'AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE=https://{{port}}.ports.example.com' \
     -v "$CUSTOM_VOLUME_NAME:/persist" \
     "$IMAGE_TAG"
 }
@@ -90,10 +92,9 @@ run_tls_container() {
   docker run -d --name "$CONTAINER_NAME" \
     -p "127.0.0.1:${TLS_PORT}:${TLS_PORT}" \
     -e "PORT=${TLS_PORT}" \
-    -e AGENTBOX_BASE_PATH=/secure \
-    -e AGENTBOX_PROTOCOL=https \
-    -e AGENTBOX_SSL_KEY=/certs/key.pem \
-    -e AGENTBOX_SSL_CERT=/certs/cert.pem \
+    -e "AGENTBOX_PUBLIC_URL=https://127.0.0.1:${TLS_PORT}/secure" \
+    -e AGENTBOX_TLS_KEY_PATH=/certs/key.pem \
+    -e AGENTBOX_TLS_CERT_PATH=/certs/cert.pem \
     -e AGENTBOX_VOLUME_PATH=/tls-data \
     -v "$TLS_VOLUME_NAME:/tls-data" \
     -v "$PWD/tests/fixtures:/certs:ro" \
@@ -101,23 +102,24 @@ run_tls_container() {
 }
 
 assert_websocket_upgrade() {
-  python3 - <<'PY'
+  SMOKE_DEFAULT_PORT="$DEFAULT_PORT" python3 - <<'PY'
 import base64
 import hashlib
 import os
 import socket
 
+port = int(os.environ["SMOKE_DEFAULT_PORT"])
 key = base64.b64encode(os.urandom(16)).decode("ascii")
 request = (
     "GET /websocket-smoke HTTP/1.1\r\n"
-    "Host: 127.0.0.1:8080\r\n"
+    f"Host: 127.0.0.1:{port}\r\n"
     "Upgrade: websocket\r\n"
     "Connection: Upgrade\r\n"
     f"Sec-WebSocket-Key: {key}\r\n"
     "Sec-WebSocket-Version: 13\r\n\r\n"
 )
 response = b""
-with socket.create_connection(("127.0.0.1", 8080), timeout=5) as connection:
+with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
     connection.settimeout(5)
     connection.sendall(request.encode("ascii"))
     while b"\r\n\r\n" not in response:
@@ -149,8 +151,8 @@ PY
 }
 
 assert_default_container() {
-  wait_for_url "$DEFAULT_HEALTH_URL" 120
-  wait_for_url "$DEFAULT_READINESS_URL" 180
+  wait_for_url "$DEFAULT_HEALTH_URL" "$HEALTH_ATTEMPTS"
+  wait_for_url "$DEFAULT_READINESS_URL" "$READINESS_ATTEMPTS"
 
   local root_page
   root_page="$(curl -fsS "http://127.0.0.1:${DEFAULT_PORT}/")"
@@ -164,37 +166,37 @@ assert_default_container() {
 assert_rootfs_persistence() {
   docker exec "$CONTAINER_NAME" \
     sudo -u user sh -lc 'printf hello > /home/user/Desktop/smoke.txt'
-  wait_for_exec 30 \
+  wait_for_exec "$EXEC_ATTEMPTS" \
     sh -lc 'test "$(cat /data/rootfs/files/home/user/Desktop/smoke.txt)" = hello'
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf restored > /custom-restore'
-  wait_for_exec 30 \
+  wait_for_exec "$EXEC_ATTEMPTS" \
     sh -lc 'test "$(cat /data/rootfs/files/custom-restore)" = restored'
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf persisted > /custom-persist'
-  wait_for_exec 30 sh -lc 'test -f /data/rootfs/files/custom-persist'
+  wait_for_exec "$EXEC_ATTEMPTS" sh -lc 'test -f /data/rootfs/files/custom-persist'
 
   docker exec "$CONTAINER_NAME" sh -lc 'rm /custom-persist'
-  wait_for_exec 30 \
+  wait_for_exec "$EXEC_ATTEMPTS" \
     sh -lc 'test -f /data/rootfs/removed-files/custom-persist.__removed__'
 
   docker restart "$CONTAINER_NAME"
-  wait_for_url "$DEFAULT_READINESS_URL" 180
+  wait_for_url "$DEFAULT_READINESS_URL" "$READINESS_ATTEMPTS"
   docker exec "$CONTAINER_NAME" sh -lc 'test "$(cat /custom-restore)" = restored'
   docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /custom-persist'
 
   docker rm -f "$CONTAINER_NAME"
   run_default_container
-  wait_for_url "$DEFAULT_READINESS_URL" 180
+  wait_for_url "$DEFAULT_READINESS_URL" "$READINESS_ATTEMPTS"
   docker exec "$CONTAINER_NAME" sh -lc 'test "$(cat /custom-restore)" = restored'
   docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /custom-persist'
 }
 
 assert_custom_container() {
-  wait_for_url "${CUSTOM_BASE_URL}/status/readiness" 180
+  wait_for_url "${CUSTOM_BASE_URL}/healthz/readiness" "$READINESS_ATTEMPTS"
 
   local status_response
-  status_response="$(curl -fsS "${CUSTOM_BASE_URL}/status")"
+  status_response="$(curl -fsS "${CUSTOM_BASE_URL}/healthz")"
   grep -q '"ready":true' <<<"$status_response"
 
   local metrics_response
@@ -219,7 +221,7 @@ assert_custom_container() {
       cd /tmp/agentbox-port-proxy &&
       python3 -m http.server 7777 --bind 127.0.0.1'
 
-  for i in $(seq 1 30); do
+  for i in $(seq 1 "$PORT_PROXY_ATTEMPTS"); do
     local proxy_response
     proxy_response="$(
       curl -fsS -H 'Host: 7777.ports.example.com' \
@@ -228,7 +230,7 @@ assert_custom_container() {
     if [[ "$proxy_response" == "port-proxy-ok" ]]; then
       break
     fi
-    if [[ "$i" -eq 30 ]]; then
+    if [[ "$i" -eq "$PORT_PROXY_ATTEMPTS" ]]; then
       echo "Timed out waiting for code-server port proxy" >&2
       dump_container_logs
       exit 1
@@ -237,11 +239,11 @@ assert_custom_container() {
   done
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf custom > /custom-volume-path'
-  wait_for_exec 30 sh -lc 'test -f /persist/rootfs/files/custom-volume-path'
+  wait_for_exec "$EXEC_ATTEMPTS" sh -lc 'test -f /persist/rootfs/files/custom-volume-path'
 }
 
 assert_tls_container() {
-  wait_for_url "${TLS_BASE_URL}/healthz/readiness" 180
+  wait_for_url "${TLS_BASE_URL}/healthz/readiness" "$READINESS_ATTEMPTS"
 
   local health_response
   health_response="$(curl -kfsS "${TLS_BASE_URL}/healthz")"
