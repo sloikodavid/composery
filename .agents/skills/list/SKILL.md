@@ -74,11 +74,23 @@ rootfs/
       .bashrc
   opt/
     agentbox/
+      gateway/
+        index.ts
+        proxy.ts
+        public-address.ts
+        readiness.ts
+        routing.ts
+      persistence/
+        constants.ts
+        copy.ts
+        index.ts
+        rootfs.ts
+        types.ts
+        watch.ts
       code-server.ts
       config.ts
+      defaults.ts
       entrypoint.sh
-      gateway.ts
-      rootfs.ts
   usr/
     share/
       applications/
@@ -92,7 +104,7 @@ tests/
   code-server.test.ts
   config.test.ts
   gateway.test.ts
-  rootfs.test.ts
+  persistence.test.ts
 vendor/
   code-server/
     overlay/

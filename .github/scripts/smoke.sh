@@ -39,6 +39,26 @@ dump_container_logs() {
   docker logs "$CONTAINER_NAME" >&2 || true
 }
 
+on_failure() {
+  local line="$1"
+  echo "Smoke failed at line $line" >&2
+  dump_container_logs
+}
+
+trap 'on_failure "$LINENO"' ERR
+
+assert_contains() {
+  local label="$1"
+  local haystack="$2"
+  local needle="$3"
+
+  if ! grep -Fqi "$needle" <<<"$haystack"; then
+    echo "Expected $label to contain: $needle" >&2
+    echo "$haystack" >&2
+    return 1
+  fi
+}
+
 assert_container_running() {
   local state
   state="$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || true)"
@@ -135,6 +155,7 @@ run_custom_container() {
     -e "AGENTBOX_PASSWORD=${SMOKE_PASSWORD}" \
     -e AGENTBOX_PUBLIC_URL=https://example.com/agentbox \
     -e AGENTBOX_VOLUME_PATH=/persist \
+    -e AGENTBOX_WORKSPACE_PATH=/workspace \
     -e AGENTBOX_ENABLE_METRICS=1 \
     -e 'AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE=https://{{port}}.ports.example.com' \
     -v "$CUSTOM_VOLUME_NAME:/persist" \
@@ -227,7 +248,7 @@ assert_default_container() {
 
   local root_page
   root_page="$(fetch_authed_text "http://127.0.0.1:${SMOKE_DEFAULT_PORT}/" "$SMOKE_READINESS_ATTEMPTS" "$cookie_jar")"
-  grep -qi code-server <<<"$root_page"
+  assert_contains "default root page" "$root_page" "code-server"
 
   assert_websocket_upgrade "$cookie_jar"
   rm -f "$cookie_jar"
@@ -240,29 +261,45 @@ assert_rootfs_persistence() {
   docker exec "$CONTAINER_NAME" \
     sudo -u user sh -lc 'printf hello > /home/user/Desktop/smoke.txt'
   wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
-    sh -lc 'test "$(cat /data/rootfs/files/home/user/Desktop/smoke.txt)" = hello'
+    sh -lc 'test "$(cat /data/rootfs-persistence/files/home/user/Desktop/smoke.txt)" = hello'
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf restored > /custom-restore'
   wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
-    sh -lc 'test "$(cat /data/rootfs/files/custom-restore)" = restored'
+    sh -lc 'test "$(cat /data/rootfs-persistence/files/custom-restore)" = restored'
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf persisted > /custom-persist'
-  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" sh -lc 'test -f /data/rootfs/files/custom-persist'
+  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" sh -lc 'test -f /data/rootfs-persistence/files/custom-persist'
 
   docker exec "$CONTAINER_NAME" sh -lc 'rm /custom-persist'
   wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
-    sh -lc 'test -f /data/rootfs/removed-files/custom-persist.__removed__'
+    sh -lc 'test -f /data/rootfs-persistence/removed-files/custom-persist.__removed__'
+
+  docker exec "$CONTAINER_NAME" sh -lc 'mkdir -p /foo123 && printf nested > /foo123/nested.txt'
+  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
+    sh -lc 'test "$(cat /data/rootfs-persistence/files/foo123/nested.txt)" = nested'
+
+  docker exec "$CONTAINER_NAME" sh -lc 'printf changed > /foo123/nested.txt'
+  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
+    sh -lc 'test "$(cat /data/rootfs-persistence/files/foo123/nested.txt)" = changed'
+
+  docker exec "$CONTAINER_NAME" sh -lc 'rm /foo123/nested.txt'
+  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" \
+    sh -lc 'test -f /data/rootfs-persistence/removed-files/foo123/nested.txt.__removed__'
 
   docker restart "$CONTAINER_NAME" >/dev/null
   wait_for_url "$SMOKE_DEFAULT_READINESS_URL" "$SMOKE_READINESS_ATTEMPTS"
   docker exec "$CONTAINER_NAME" sh -lc 'test "$(cat /custom-restore)" = restored'
   docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /custom-persist'
+  docker exec "$CONTAINER_NAME" sh -lc 'test -d /foo123'
+  docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /foo123/nested.txt'
 
   docker rm -f "$CONTAINER_NAME" >/dev/null
   run_default_container
   wait_for_url "$SMOKE_DEFAULT_READINESS_URL" "$SMOKE_READINESS_ATTEMPTS"
   docker exec "$CONTAINER_NAME" sh -lc 'test "$(cat /custom-restore)" = restored'
   docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /custom-persist'
+  docker exec "$CONTAINER_NAME" sh -lc 'test -d /foo123'
+  docker exec "$CONTAINER_NAME" sh -lc 'test ! -e /foo123/nested.txt'
 }
 
 assert_custom_container() {
@@ -271,11 +308,11 @@ assert_custom_container() {
 
   local status_response
   status_response="$(fetch_text "${SMOKE_CUSTOM_BASE_URL}/healthz" "$SMOKE_READINESS_ATTEMPTS")"
-  grep -q '"ready":true' <<<"$status_response"
+  assert_contains "custom health response" "$status_response" '"ready":true'
 
   local metrics_response
   metrics_response="$(fetch_text "${SMOKE_CUSTOM_BASE_URL}/metrics" "$SMOKE_READINESS_ATTEMPTS")"
-  grep -q 'agentbox_ready 1' <<<"$metrics_response"
+  assert_contains "custom metrics response" "$metrics_response" 'agentbox_ready 1'
 
   local cookie_jar
   cookie_jar="$(mktemp)"
@@ -283,8 +320,11 @@ assert_custom_container() {
 
   local root_page
   root_page="$(fetch_authed_text "${SMOKE_CUSTOM_BASE_URL}/" "$SMOKE_READINESS_ATTEMPTS" "$cookie_jar")"
-  grep -qi code-server <<<"$root_page"
+  assert_contains "custom root page" "$root_page" "code-server"
 
+  docker exec "$CONTAINER_NAME" sh -lc \
+    'pgrep -u user -af "[c]ode-server" | grep -F -- "/workspace"' >/dev/null
+  docker exec "$CONTAINER_NAME" sh -lc 'test -d /workspace && test "$(stat -c %U:%G /workspace)" = user:user'
   docker exec "$CONTAINER_NAME" sh -lc \
     'pgrep -u user -af "[c]ode-server" | grep -F -- "--proxy-domain {{port}}.ports.example.com"' >/dev/null
   docker exec "$CONTAINER_NAME" sudo -u user sh -lc \
@@ -319,7 +359,7 @@ assert_custom_container() {
   rm -f "$cookie_jar"
 
   docker exec "$CONTAINER_NAME" sh -lc 'printf custom > /custom-volume-path'
-  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" sh -lc 'test -f /persist/rootfs/files/custom-volume-path'
+  wait_for_exec "$SMOKE_EXEC_ATTEMPTS" sh -lc 'test -f /persist/rootfs-persistence/files/custom-volume-path'
 }
 
 assert_tls_container() {
@@ -328,7 +368,7 @@ assert_tls_container() {
 
   local health_response
   health_response="$(fetch_text "${SMOKE_TLS_BASE_URL}/healthz" "$SMOKE_READINESS_ATTEMPTS")"
-  grep -q '"ready":true' <<<"$health_response"
+  assert_contains "TLS health response" "$health_response" '"ready":true'
 
   local cookie_jar
   cookie_jar="$(mktemp)"
@@ -336,7 +376,7 @@ assert_tls_container() {
 
   local root_page
   root_page="$(fetch_authed_text "${SMOKE_TLS_BASE_URL}/" "$SMOKE_READINESS_ATTEMPTS" "$cookie_jar")"
-  grep -qi code-server <<<"$root_page"
+  assert_contains "TLS root page" "$root_page" "code-server"
   rm -f "$cookie_jar"
 }
 

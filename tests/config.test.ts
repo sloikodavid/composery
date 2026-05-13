@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ConfigError, parseConfig } from "../rootfs/opt/agentbox/config.ts";
+import { createPublicAddress } from "../rootfs/opt/agentbox/gateway/public-address.ts";
 
 const passwordEnv = { AGENTBOX_PASSWORD: "secret" };
 
@@ -9,7 +10,7 @@ describe("parseConfig", () => {
 		expect(config.port).toBe(8080);
 		expect(config.bindAddress).toBe("::");
 		expect(config.volumePath).toBe("/data");
-		expect(config.publicUrlPath).toBe("/");
+		expect(config.workspacePath).toBe("/home/user/Desktop");
 		expect(config.publicUrl).toBe("http://localhost:8080");
 		expect(config.publicProxyUrlTemplate).toBe("./proxy/{{port}}");
 		expect(config.authType).toBe("password");
@@ -53,13 +54,13 @@ describe("parseConfig", () => {
 		);
 	});
 
-	test("derives public URL path from public URL", () => {
+	test("derives public base URL path from public URL", () => {
 		const config = parseConfig({
 			...passwordEnv,
 			AGENTBOX_PUBLIC_URL: "https://example.com/box/",
 		});
 		expect(config.publicUrl).toBe("https://example.com/box");
-		expect(config.publicUrlPath).toBe("/box");
+		expect(createPublicAddress(config).baseUrlPath).toBe("/box");
 	});
 
 	test("defaults public URL to https when TLS files are configured", () => {
@@ -75,7 +76,7 @@ describe("parseConfig", () => {
 		expect(config.publicUrl).toBe("https://localhost");
 	});
 
-	test("accepts a host-based public proxy URL template and derives proxy domain", () => {
+	test("accepts a hostname-based public proxy URL template", () => {
 		const config = parseConfig({
 			...passwordEnv,
 			AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE: "https://{{port}}.box.example.com",
@@ -83,16 +84,20 @@ describe("parseConfig", () => {
 		expect(config.publicProxyUrlTemplate).toBe(
 			"https://{{port}}.box.example.com",
 		);
-		expect(config.proxyDomain).toBe("{{port}}.box.example.com");
+		expect(createPublicAddress(config).proxyHostnameTemplate).toBe(
+			"{{port}}.box.example.com",
+		);
 	});
 
-	test("accepts a patterned public proxy host template", () => {
+	test("accepts a patterned public proxy hostname template", () => {
 		const config = parseConfig({
 			...passwordEnv,
 			AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE:
 				"https://code-{{port}}.box.example.com",
 		});
-		expect(config.proxyDomain).toBe("code-{{port}}.box.example.com");
+		expect(createPublicAddress(config).proxyHostnameTemplate).toBe(
+			"code-{{port}}.box.example.com",
+		);
 	});
 
 	test("accepts a relative public proxy URL template", () => {
@@ -101,7 +106,7 @@ describe("parseConfig", () => {
 			AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE: "./ports/{{port}}",
 		});
 		expect(config.publicProxyUrlTemplate).toBe("./ports/{{port}}");
-		expect(config.proxyDomain).toBeUndefined();
+		expect(createPublicAddress(config).proxyHostnameTemplate).toBeUndefined();
 	});
 
 	test("rejects ambiguous public proxy URL templates", () => {
@@ -155,6 +160,14 @@ describe("parseConfig", () => {
 		).toThrow(ConfigError);
 	});
 
+	test("accepts an explicit workspace path", () => {
+		const config = parseConfig({
+			...passwordEnv,
+			AGENTBOX_WORKSPACE_PATH: "/workspace",
+		});
+		expect(config.workspacePath).toBe("/workspace");
+	});
+
 	test("requires absolute volume path", () => {
 		expect(() =>
 			parseConfig({ ...passwordEnv, AGENTBOX_VOLUME_PATH: "data" }),
@@ -164,12 +177,24 @@ describe("parseConfig", () => {
 		).toThrow(ConfigError);
 	});
 
-	test("rejects the filesystem root as the persistence path", () => {
+	test("rejects the filesystem root as the volume path", () => {
 		expect(() =>
 			parseConfig({ ...passwordEnv, AGENTBOX_VOLUME_PATH: "/" }),
 		).toThrow(ConfigError);
 		expect(() =>
 			parseConfig({ ...passwordEnv, AGENTBOX_VOLUME_PATH: "/data/.." }),
+		).toThrow(ConfigError);
+	});
+
+	test("requires a normalized absolute workspace path", () => {
+		expect(() =>
+			parseConfig({ ...passwordEnv, AGENTBOX_WORKSPACE_PATH: "workspace" }),
+		).toThrow(ConfigError);
+		expect(() =>
+			parseConfig({ ...passwordEnv, AGENTBOX_WORKSPACE_PATH: "/" }),
+		).toThrow(ConfigError);
+		expect(() =>
+			parseConfig({ ...passwordEnv, AGENTBOX_WORKSPACE_PATH: "/workspace/.." }),
 		).toThrow(ConfigError);
 	});
 
@@ -214,10 +239,9 @@ describe("parseConfig", () => {
 			},
 			{ loadTlsFiles: false },
 		);
-		expect(config.tlsKeyPath).toBe("/missing-key.pem");
-		expect(config.tlsCertPath).toBe("/missing-cert.pem");
-		expect(config.tlsKey).toBeUndefined();
-		expect(config.tlsCert).toBeUndefined();
+		expect(config.tls).toEqual({
+			filePaths: { key: "/missing-key.pem", cert: "/missing-cert.pem" },
+		});
 	});
 
 	test("requires public URL to be a clean http or https base URL", () => {
@@ -244,7 +268,7 @@ describe("parseConfig", () => {
 		).toThrow(ConfigError);
 	});
 
-	test("rejects control characters in proxy URL templates", () => {
+	test("rejects control characters in public proxy URL templates", () => {
 		expect(() =>
 			parseConfig({
 				...passwordEnv,

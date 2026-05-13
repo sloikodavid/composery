@@ -11,14 +11,18 @@ import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, test } from "vitest";
-import { createGateway } from "../rootfs/opt/agentbox/gateway.ts";
+import {
+	createGatewayServer,
+	type GatewayServer,
+} from "../rootfs/opt/agentbox/gateway/index.ts";
 import type { AgentboxConfig } from "../rootfs/opt/agentbox/config.ts";
-import { ROOTFS_HEARTBEAT_PATH } from "../rootfs/opt/agentbox/rootfs.ts";
 
 const tempDirs: string[] = [];
 const servers: Server[] = [];
+const gateways: GatewayServer[] = [];
 
 afterEach(async () => {
+	await Promise.all(gateways.splice(0).map((gateway) => gateway.stop()));
 	await Promise.all(
 		servers.splice(0).map(
 			(server) =>
@@ -27,16 +31,18 @@ afterEach(async () => {
 				}),
 		),
 	);
-	await rm(ROOTFS_HEARTBEAT_PATH, { force: true });
 	await Promise.all(
-		tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
+		tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
 	);
-	tempDirs.length = 0;
 });
 
-describe("createGateway", () => {
-	test("reports health shape before dependencies are ready", () => {
-		const gateway = createGateway(config());
+describe("createGatewayServer", () => {
+	test("reports health shape before dependencies are checked", async () => {
+		const heartbeatPath = await tempHeartbeatPath();
+		const gateway = createGatewayServer(config(), {
+			persistenceHeartbeatPath: heartbeatPath,
+			log: () => {},
+		});
 		const health = gateway.health();
 		expect(health.ready).toBe(false);
 		expect(health.status).toBe("starting");
@@ -45,99 +51,88 @@ describe("createGateway", () => {
 	});
 
 	test("can start and stop a listener", async () => {
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		expect(gateway.server.listening).toBe(true);
-		await gateway.stopGateway();
-		expect(gateway.server.listening).toBe(false);
+		const harness = await startGatewayHarness({ ready: false });
+		expect(harness.gateway.server.listening).toBe(true);
+		await harness.gateway.stop();
+		expect(harness.gateway.server.listening).toBe(false);
 	});
 
 	test("can stop before it starts", async () => {
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.stopGateway();
+		const heartbeatPath = await tempHeartbeatPath();
+		const gateway = createGatewayServer(config({ port: 0 }), {
+			persistenceHeartbeatPath: heartbeatPath,
+			log: () => {},
+		});
+		await gateway.stop();
 		expect(gateway.server.listening).toBe(false);
 	});
 
-	test("serves fixed health endpoint under the public URL path", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
-				response.end("proxied");
-			}),
-		);
-		await writeRootfsHeartbeat();
-		const gateway = createGateway(
-			config({ port: 0, publicUrlPath: "/agentbox" }),
-		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const health = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/healthz`,
-		);
+	test("serves fixed health endpoint under the public base URL path", async () => {
+		const harness = await startGatewayHarness({
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+		});
+
+		const health = await harness.fetch("/agentbox/healthz");
 		expect(health.status).toBe(200);
 		const body = (await health.json()) as { readonly ready: boolean };
 		expect(body.ready).toBe(true);
-		const readiness = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/healthz/readiness`,
+		expect((await harness.fetch("/agentbox/healthz/readiness")).status).toBe(
+			200,
 		);
-		expect(readiness.status).toBe(200);
-		const defaultHealth = await fetch(
-			`http://127.0.0.1:${address.port}/healthz`,
-		);
-		expect(defaultHealth.status).toBe(404);
-		await gateway.stopGateway();
+		expect((await harness.fetch("/healthz")).status).toBe(404);
+	});
+
+	test("returns unavailable readiness status while dependencies are starting", async () => {
+		const harness = await startGatewayHarness({
+			ready: false,
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+		});
+
+		const response = await harness.fetch("/agentbox/healthz/readiness");
+		expect(response.status).toBe(503);
+		const body = (await response.json()) as { readonly ready: boolean };
+		expect(body.ready).toBe(false);
 	});
 
 	test("proxies prefixed requests when ready", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+		const harness = await startGatewayHarness({
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+			codeServerRequest(request, response) {
 				const prefix = request.headers["x-forwarded-prefix"];
 				response.end(
 					`proxied:${request.url}:${Array.isArray(prefix) ? prefix.join(",") : (prefix ?? "")}`,
 				);
-			}),
-		);
-		const dir = await mkdtemp(join(tmpdir(), "agentbox-gateway-"));
-		tempDirs.push(dir);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(
-			config({ port: 0, publicUrlPath: "/agentbox" }),
+		expect(await harness.text("/agentbox/path?q=1")).toContain(
+			"proxied:/path?q=1:/agentbox",
 		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/path?q=1`,
-		);
-		expect(await response.text()).toContain("proxied:/path?q=1:/agentbox");
-		const wrongPrefix = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox2/path`,
-		);
-		expect(wrongPrefix.status).toBe(404);
-		await gateway.stopGateway();
+		expect((await harness.fetch("/agentbox2/path")).status).toBe(404);
+	});
+
+	test("rejects requests outside the public base URL path before readiness gating", async () => {
+		const harness = await startGatewayHarness({
+			ready: false,
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+		});
+
+		expect(
+			(
+				await harness.fetch("/wrong-prefix", {
+					headers: { accept: "text/html" },
+				})
+			).status,
+		).toBe(404);
 	});
 
 	test("serves an auto-continuing starting page for browsers", async () => {
-		const gateway = createGateway(
-			config({ port: 0, publicUrlPath: "/agentbox" }),
-		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await fetch(`http://127.0.0.1:${address.port}/agentbox/`, {
+		const harness = await startGatewayHarness({
+			ready: false,
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+		});
+
+		const response = await harness.fetch("/agentbox/", {
 			headers: { accept: "text/html" },
 		});
 		expect(response.status).toBe(503);
@@ -146,389 +141,380 @@ describe("createGateway", () => {
 		expect(body).toContain("Agentbox is starting");
 		expect(body).toContain("/agentbox/healthz/readiness");
 		expect(body).toContain("location.reload()");
-		await gateway.stopGateway();
 	});
 
 	test("keeps the starting response plain text for non-browser clients", async () => {
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await fetch(`http://127.0.0.1:${address.port}/`, {
+		const harness = await startGatewayHarness({ ready: false });
+
+		const response = await harness.fetch("/", {
 			headers: { accept: "application/json" },
 		});
 		expect(response.status).toBe(503);
 		expect(response.headers.get("content-type")).toContain("text/plain");
 		expect(await response.text()).toBe("Agentbox is starting\n");
-		await gateway.stopGateway();
 	});
 
-	test("serves metrics under the public URL path when enabled", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
-				response.end("ok");
-			}),
-		);
-		await writeRootfsHeartbeat();
+	test("serves metrics under the public base URL path when enabled", async () => {
+		const harness = await startGatewayHarness({
+			config: {
+				publicUrl: "http://localhost:8080/agentbox",
+				enableMetrics: true,
+			},
+		});
 
-		const gateway = createGateway(
-			config({ port: 0, publicUrlPath: "/agentbox", enableMetrics: true }),
-		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const metrics = await fetch(
-			`http://127.0.0.1:${address.port}/agentbox/metrics`,
-		);
-		expect(await metrics.text()).toBe("agentbox_ready 1\n");
-		const unprefixedMetrics = await fetch(
-			`http://127.0.0.1:${address.port}/metrics`,
-		);
-		expect(unprefixedMetrics.status).toBe(404);
-		await gateway.stopGateway();
+		expect(await harness.text("/agentbox/metrics")).toBe("agentbox_ready 1\n");
+		expect((await harness.fetch("/metrics")).status).toBe(404);
 	});
 
 	test("preserves websocket upgrade handshakes", async () => {
 		let upstreamUrl = "";
 		let forwardedPrefix = "";
-		const codeServer = createServer((request, response) => {
-			if (sendCodeServerHealth(request, response)) {
-				return;
-			}
-			response.end("ok");
+		const harness = await startGatewayHarness({
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+			codeServerUpgrade(request, socket) {
+				upstreamUrl = request.url ?? "";
+				forwardedPrefix = headerValue(request.headers["x-forwarded-prefix"]);
+				const key = request.headers["sec-websocket-key"];
+				if (typeof key !== "string") {
+					socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+					return;
+				}
+				const accept = createHash("sha1")
+					.update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+					.digest("base64");
+				socket.end(
+					"HTTP/1.1 101 Switching Protocols\r\n" +
+						"Upgrade: websocket\r\n" +
+						"Connection: Upgrade\r\n" +
+						`Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
+				);
+			},
 		});
-		codeServer.on("upgrade", (request, socket) => {
-			upstreamUrl = request.url ?? "";
-			forwardedPrefix = headerValue(request.headers["x-forwarded-prefix"]);
-			const key = request.headers["sec-websocket-key"];
-			if (typeof key !== "string") {
-				socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
-				return;
-			}
-			const accept = createHash("sha1")
-				.update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
-				.digest("base64");
-			socket.end(
-				"HTTP/1.1 101 Switching Protocols\r\n" +
-					"Upgrade: websocket\r\n" +
-					"Connection: Upgrade\r\n" +
-					`Sec-WebSocket-Accept: ${accept}\r\n\r\n`,
-			);
-		});
-		await listenCodeServer(codeServer);
-		await writeRootfsHeartbeat();
 
-		const gateway = createGateway(
-			config({ port: 0, publicUrlPath: "/agentbox" }),
-		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-
-		const response = await rawUpgrade(address.port, "/agentbox/ws?x=1");
+		const response = await harness.rawUpgrade("/agentbox/ws?x=1");
 		expect(response).toContain("HTTP/1.1 101 Switching Protocols");
 		expect(response.toLowerCase()).toContain("upgrade: websocket");
 		expect(response.toLowerCase()).toContain("connection: upgrade");
 		expect(upstreamUrl).toBe("/ws?x=1");
 		expect(forwardedPrefix).toBe("/agentbox");
-		await gateway.stopGateway();
+	});
+
+	test("strips hop-by-hop and untrusted forwarded request headers", async () => {
+		const harness = await startGatewayHarness({
+			codeServerRequest(request, response) {
+				response.end(
+					[
+						headerValue(request.headers["x-remove"]),
+						headerValue(request.headers["x-forwarded-host"]),
+						headerValue(request.headers["x-forwarded-proto"]),
+					].join(":"),
+				);
+			},
+		});
+
+		expect(
+			await harness.requestText("/", "box.example.com", {
+				connection: "keep-alive, x-remove",
+				"x-remove": "nope",
+				"x-forwarded-host": "evil.example",
+				"x-forwarded-proto": "https",
+			}),
+		).toBe(":box.example.com:http");
 	});
 
 	test("forwards trusted proxy hop headers", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+		const harness = await startGatewayHarness({
+			config: { trustedProxyHops: 1 },
+			codeServerRequest(request, response) {
 				const forwardedHost = headerValue(request.headers["x-forwarded-host"]);
 				const forwardedProto = headerValue(
 					request.headers["x-forwarded-proto"],
 				);
 				response.end(`${forwardedHost}:${forwardedProto}`);
-			}),
-		);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(config({ port: 0, trustedProxyHops: 1 }));
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await fetch(`http://127.0.0.1:${address.port}/`, {
+		const response = await harness.fetch("/", {
 			headers: {
 				"x-forwarded-host": "client.example, proxy.example",
 				"x-forwarded-proto": "https, http",
 			},
 		});
 		expect(await response.text()).toBe("proxy.example:http");
-		await gateway.stopGateway();
 	});
 
-	test("preserves the public host for code-server port proxying", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+	test("preserves the public hostname for code-server proxying", async () => {
+		const harness = await startGatewayHarness({
+			codeServerRequest(request, response) {
 				response.end(headerValue(request.headers.host));
-			}),
-		);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		expect(await requestText(address.port, "/", "3000.box.example.com")).toBe(
+		expect(await harness.requestText("/", "3000.box.example.com")).toBe(
 			"3000.box.example.com",
 		);
-		await gateway.stopGateway();
 	});
 
-	test("lets port-template hosts bypass the base path", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+	test("lets public proxy hostnames bypass the public base URL path", async () => {
+		const harness = await startGatewayHarness({
+			config: {
+				publicUrl: "http://localhost:8080/agentbox",
+				publicProxyUrlTemplate: "https://{{port}}.box.example.com",
+			},
+			codeServerRequest(request, response) {
 				response.end(
 					`${request.url}:${headerValue(request.headers["x-forwarded-prefix"])}`,
 				);
-			}),
-		);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(
-			config({
-				port: 0,
-				publicUrlPath: "/agentbox",
-				proxyDomain: "{{port}}.box.example.com",
-			}),
+		expect(await harness.requestText("/hook", "8787.box.example.com")).toBe(
+			"/hook:",
 		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		expect(
-			await requestText(address.port, "/hook", "8787.box.example.com"),
-		).toBe("/hook:");
-		await gateway.stopGateway();
 	});
 
 	test("matches patterned port-template hosts", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+		const harness = await startGatewayHarness({
+			config: {
+				publicUrl: "http://localhost:8080/agentbox",
+				publicProxyUrlTemplate: "https://code-{{port}}.box.example.com",
+			},
+			codeServerRequest(request, response) {
 				response.end(
 					`${request.url}:${headerValue(request.headers["x-forwarded-prefix"])}`,
 				);
-			}),
-		);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(
-			config({
-				port: 0,
-				publicUrlPath: "/agentbox",
-				proxyDomain: "code-{{port}}.box.example.com",
-			}),
-		);
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
 		expect(
-			await requestText(address.port, "/hook", "code-8787.box.example.com"),
+			await harness.requestText("/hook", "code-8787.box.example.com"),
 		).toBe("/hook:");
-		expect(
-			await requestText(address.port, "/agentbox/hook", "box.example.com"),
-		).toBe("/hook:/agentbox");
-		await gateway.stopGateway();
+		expect(await harness.requestText("/agentbox/hook", "box.example.com")).toBe(
+			"/hook:/agentbox",
+		);
 	});
 
 	test("ignores untrusted forwarded headers when proxy hops are disabled", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
+		const harness = await startGatewayHarness({
+			config: { trustedProxyHops: 0 },
+			codeServerRequest(request, response) {
 				const forwardedHost = headerValue(request.headers["x-forwarded-host"]);
 				const forwardedProto = headerValue(
 					request.headers["x-forwarded-proto"],
 				);
 				response.end(`${forwardedHost}:${forwardedProto}`);
-			}),
-		);
-		await writeRootfsHeartbeat();
+			},
+		});
 
-		const gateway = createGateway(config({ port: 0, trustedProxyHops: 0 }));
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await fetch(`http://127.0.0.1:${address.port}/`, {
+		const response = await harness.fetch("/", {
 			headers: {
 				"x-forwarded-host": "evil.example",
 				"x-forwarded-proto": "https",
 			},
 		});
 		const body = await response.text();
-		expect(body).toContain(`127.0.0.1:${address.port}`);
+		expect(body).toContain(`127.0.0.1:${harness.port}`);
 		expect(body).toContain(":http");
 		expect(body).not.toContain("evil.example");
-		await gateway.stopGateway();
+	});
+
+	test("rejects websocket upgrades outside the public base URL path before readiness gating", async () => {
+		const harness = await startGatewayHarness({
+			ready: false,
+			config: { publicUrl: "http://localhost:8080/agentbox" },
+		});
+
+		const response = await harness.rawUpgrade("/outside/ws");
+		expect(response).toContain("HTTP/1.1 404 Not Found");
 	});
 
 	test("returns upstream non-upgrade responses for rejected websocket handshakes", async () => {
-		const codeServer = createServer((request, response) => {
-			if (sendCodeServerHealth(request, response)) {
-				return;
-			}
-			response.end("ok");
+		const harness = await startGatewayHarness({
+			codeServerUpgrade(_request, socket) {
+				socket.end(
+					"HTTP/1.1 403 Forbidden\r\n" +
+						"Connection: close\r\n" +
+						"X-Blocked: yes\r\n" +
+						"Content-Length: 8\r\n\r\n" +
+						"rejected",
+				);
+			},
 		});
-		codeServer.on("upgrade", (_request, socket) => {
-			socket.end(
-				"HTTP/1.1 403 Forbidden\r\n" +
-					"Connection: close\r\n" +
-					"X-Blocked: yes\r\n" +
-					"Content-Length: 8\r\n\r\n" +
-					"rejected",
-			);
-		});
-		await listenCodeServer(codeServer);
-		await writeRootfsHeartbeat();
 
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		const address = gateway.server.address();
-		if (!address || typeof address === "string") {
-			throw new Error("expected TCP address");
-		}
-		const response = await rawUpgrade(address.port, "/ws");
+		const response = await harness.rawUpgrade("/ws");
 		expect(response).toContain("HTTP/1.1 403 Forbidden");
 		expect(response.toLowerCase()).toContain("x-blocked: yes");
-		await gateway.stopGateway();
 	});
 
 	test("allows readiness when code-server is idle but accepting connections", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response, "expired")) {
-					return;
-				}
-				response.end("ok");
-			}),
-		);
-		await writeRootfsHeartbeat();
+		const harness = await startGatewayHarness({ healthStatus: "expired" });
 
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		expect(gateway.health().ready).toBe(true);
-		expect(gateway.health().checks).toContainEqual({
+		expect(harness.gateway.health().ready).toBe(true);
+		expect(harness.gateway.health().checks).toContainEqual({
 			name: "code_server",
 			status: "pass",
 			message: "code-server is accepting connections (expired)",
 		});
-		await gateway.stopGateway();
 	});
 
-	test("fails readiness when the rootfs heartbeat is stale", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
-				response.end("ok");
-			}),
-		);
-		await writeRootfsHeartbeat();
+	test("fails readiness when the persistence heartbeat is stale", async () => {
+		const heartbeatPath = await tempHeartbeatPath();
+		await writePersistenceHeartbeat(heartbeatPath);
 		const stale = new Date(Date.now() - 60_000);
-		await utimes(ROOTFS_HEARTBEAT_PATH, stale, stale);
+		await utimes(heartbeatPath, stale, stale);
+		const harness = await startGatewayHarness({
+			ready: false,
+			heartbeatPath,
+		});
 
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		const health = gateway.health();
+		const health = harness.gateway.health();
 		expect(health.ready).toBe(false);
 		expect(health.checks).toContainEqual({
-			name: "rootfs",
+			name: "persistence",
 			status: "fail",
-			message: "rootfs store heartbeat is stale",
+			message: "persistence heartbeat is stale",
 		});
-		await gateway.stopGateway();
 	});
 
-	test("fails readiness when the rootfs heartbeat has no active watchers", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
-				response.end("ok");
-			}),
-		);
-		await writeRootfsHeartbeat({ watcherCount: 0 });
-
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		expect(gateway.health().ready).toBe(false);
-		expect(gateway.health().checks).toContainEqual({
-			name: "rootfs",
-			status: "fail",
-			message: "rootfs store watcher is not running",
+	test("fails readiness when the persistence heartbeat has no active watchers", async () => {
+		const heartbeatPath = await tempHeartbeatPath();
+		await writePersistenceHeartbeat(heartbeatPath, { watcherCount: 0 });
+		const harness = await startGatewayHarness({
+			ready: false,
+			heartbeatPath,
 		});
-		await gateway.stopGateway();
+
+		expect(harness.gateway.health().ready).toBe(false);
+		expect(harness.gateway.health().checks).toContainEqual({
+			name: "persistence",
+			status: "fail",
+			message: "persistence watcher is not running",
+		});
 	});
 
-	test("fails readiness when a rootfs watcher failed", async () => {
-		await listenCodeServer(
-			createServer((request, response) => {
-				if (sendCodeServerHealth(request, response)) {
-					return;
-				}
-				response.end("ok");
-			}),
-		);
-		await writeRootfsHeartbeat({
+	test("fails readiness when a persistence watcher failed", async () => {
+		const heartbeatPath = await tempHeartbeatPath();
+		await writePersistenceHeartbeat(heartbeatPath, {
 			failedWatchers: [{ path: "/home", message: "watch failed" }],
 		});
-
-		const gateway = createGateway(config({ port: 0 }));
-		await gateway.startGateway();
-		expect(gateway.health().ready).toBe(false);
-		expect(gateway.health().checks).toContainEqual({
-			name: "rootfs",
-			status: "fail",
-			message: "rootfs store watcher failed for /home",
+		const harness = await startGatewayHarness({
+			ready: false,
+			heartbeatPath,
 		});
-		await gateway.stopGateway();
+
+		expect(harness.gateway.health().ready).toBe(false);
+		expect(harness.gateway.health().checks).toContainEqual({
+			name: "persistence",
+			status: "fail",
+			message: "persistence watcher failed for /home",
+		});
 	});
 });
 
-async function listenCodeServer(server: Server): Promise<void> {
-	await new Promise<void>((resolve) =>
-		server.listen(13337, "127.0.0.1", resolve),
-	);
-	servers.push(server);
+interface GatewayHarness {
+	readonly gateway: GatewayServer;
+	readonly port: number;
+	fetch(path: string, init?: RequestInit): Promise<Response>;
+	text(path: string, init?: RequestInit): Promise<string>;
+	requestText(
+		path: string,
+		host: string,
+		headers?: Record<string, string>,
+	): Promise<string>;
+	rawUpgrade(path: string): Promise<string>;
 }
 
-async function writeRootfsHeartbeat(
+interface GatewayHarnessOptions {
+	readonly ready?: boolean;
+	readonly heartbeatPath?: string;
+	readonly healthStatus?: string;
+	readonly config?: Partial<AgentboxConfig>;
+	readonly codeServerRequest?: (
+		request: IncomingMessage,
+		response: ServerResponse,
+	) => void;
+	readonly codeServerUpgrade?: (
+		request: IncomingMessage,
+		socket: Socket,
+		head: Buffer,
+	) => void;
+}
+
+async function startGatewayHarness(
+	options: GatewayHarnessOptions = {},
+): Promise<GatewayHarness> {
+	const heartbeatPath = options.heartbeatPath ?? (await tempHeartbeatPath());
+	if (options.ready ?? true) {
+		await writePersistenceHeartbeat(heartbeatPath);
+	}
+	const codeServer = createServer((request, response) => {
+		if (
+			sendCodeServerHealth(request, response, options.healthStatus ?? "alive")
+		) {
+			return;
+		}
+		if (options.codeServerRequest) {
+			options.codeServerRequest(request, response);
+			return;
+		}
+		response.end("ok");
+	});
+	if (options.codeServerUpgrade) {
+		codeServer.on("upgrade", options.codeServerUpgrade);
+	}
+	await listen(codeServer);
+	servers.push(codeServer);
+	const codeServerAddress = codeServer.address();
+	if (!codeServerAddress || typeof codeServerAddress === "string") {
+		throw new Error("expected code-server TCP address");
+	}
+
+	const gateway = createGatewayServer(config({ port: 0, ...options.config }), {
+		codeServerOrigin: new URL(`http://127.0.0.1:${codeServerAddress.port}`),
+		persistenceHeartbeatPath: heartbeatPath,
+		log: () => {},
+	});
+	await gateway.start();
+	gateways.push(gateway);
+	const gatewayAddress = gateway.server.address();
+	if (!gatewayAddress || typeof gatewayAddress === "string") {
+		throw new Error("expected gateway TCP address");
+	}
+	const port = gatewayAddress.port;
+	const fetchGateway = (path: string, init?: RequestInit): Promise<Response> =>
+		fetch(`http://127.0.0.1:${port}${path}`, init);
+	return {
+		gateway,
+		port,
+		fetch: fetchGateway,
+		async text(path: string, init?: RequestInit): Promise<string> {
+			return await (await fetchGateway(path, init)).text();
+		},
+		requestText(
+			path: string,
+			host: string,
+			headers: Record<string, string> = {},
+		): Promise<string> {
+			return requestText(port, path, host, headers);
+		},
+		rawUpgrade(path: string): Promise<string> {
+			return rawUpgrade(port, path);
+		},
+	};
+}
+
+async function listen(server: Server): Promise<void> {
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+}
+
+async function tempHeartbeatPath(): Promise<string> {
+	const dir = await mkdtemp(join(tmpdir(), "agentbox-gateway-"));
+	tempDirs.push(dir);
+	return join(dir, "persistence.ready");
+}
+
+async function writePersistenceHeartbeat(
+	path: string,
 	overrides: {
 		readonly watcherCount?: number;
 		readonly failedWatchers?: readonly {
@@ -537,9 +523,9 @@ async function writeRootfsHeartbeat(
 		}[];
 	} = {},
 ): Promise<void> {
-	await mkdir(dirname(ROOTFS_HEARTBEAT_PATH), { recursive: true });
+	await mkdir(dirname(path), { recursive: true });
 	await writeFile(
-		ROOTFS_HEARTBEAT_PATH,
+		path,
 		`${JSON.stringify({
 			updatedAt: new Date().toISOString(),
 			watcherCount: overrides.watcherCount ?? 1,
@@ -592,6 +578,7 @@ async function requestText(
 	port: number,
 	path: string,
 	host: string,
+	headers: Record<string, string> = {},
 ): Promise<string> {
 	return await new Promise<string>((resolve, reject) => {
 		const request = httpRequest(
@@ -599,7 +586,7 @@ async function requestText(
 				host: "127.0.0.1",
 				port,
 				path,
-				headers: { host },
+				headers: { host, ...headers },
 			},
 			(response) => {
 				const chunks: Buffer[] = [];
@@ -636,7 +623,7 @@ function config(overrides: Partial<AgentboxConfig> = {}): AgentboxConfig {
 		port: 8080,
 		bindAddress: "127.0.0.1",
 		volumePath: "/data",
-		publicUrlPath: "/",
+		workspacePath: "/home/user/Desktop",
 		publicUrl: "http://localhost:8080",
 		publicProxyUrlTemplate: "./proxy/{{port}}",
 		trustedProxyHops: 0,

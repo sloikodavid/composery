@@ -24,11 +24,13 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 What we often collapse, depending on the context:
 
 - Delete, Erase -> Remove.
-- Open, Launch -> Start.
+- Launch, Open -> Start.
 - Close -> Stop.
 - Complete, End -> Finish.
 - Spawn, Provision -> Create.
 - Mode -> Type.
+- Material -> Contents.
+- Kind -> Type.
 
 ## 4. No Reward Hacking
 

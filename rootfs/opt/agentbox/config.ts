@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { posix as path } from "node:path";
+import { CONFIG_DEFAULTS } from "./defaults.ts";
 
 export type AgentboxProtocol = "http" | "https";
 export type AgentboxAuthType = "password" | "none";
@@ -8,31 +9,36 @@ export interface AgentboxConfig {
 	readonly port: number;
 	readonly bindAddress: string;
 	readonly volumePath: string;
-	readonly publicUrlPath: string;
+	readonly workspacePath: string;
 	readonly publicUrl: string;
 	readonly publicProxyUrlTemplate: string;
-	readonly proxyDomain?: string;
 	readonly trustedProxyHops: number;
 	readonly enableMetrics: boolean;
 	readonly authType: AgentboxAuthType;
 	readonly password?: string;
 	readonly hashedPassword?: string;
-	readonly tlsKeyPath?: string;
-	readonly tlsCertPath?: string;
-	readonly tlsKey?: string;
-	readonly tlsCert?: string;
+	readonly tls?: AgentboxTls;
 	readonly buildVersion: string;
 	readonly buildRevision: string;
 	readonly buildSource: string;
+}
+
+export interface AgentboxTls {
+	readonly filePaths: {
+		readonly key: string;
+		readonly cert: string;
+	};
+	readonly fileContents?: {
+		readonly key: string;
+		readonly cert: string;
+	};
 }
 
 export interface ParseConfigOptions {
 	readonly loadTlsFiles?: boolean;
 }
 
-const DEFAULT_PORT = 8080;
-const DEFAULT_AGENTBOX_BUILD_SOURCE = "https://github.com/sloikodavid/agentbox";
-const DEFAULT_AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE = "./proxy/{{port}}";
+const DEFAULTS = CONFIG_DEFAULTS;
 const BOOLEAN_TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const BOOLEAN_FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
@@ -48,13 +54,17 @@ export function parseConfig(
 	options: ParseConfigOptions = {},
 ): AgentboxConfig {
 	const port = parsePort(env.PORT);
-	const bindAddress = envString(env.AGENTBOX_BIND_ADDRESS) ?? "::";
-	const volumePath = envString(env.AGENTBOX_VOLUME_PATH) ?? "/data";
+	const bindAddress =
+		envString(env.AGENTBOX_BIND_ADDRESS) ?? DEFAULTS.bindAddress;
+	const volumePath = envString(env.AGENTBOX_VOLUME_PATH) ?? DEFAULTS.volumePath;
+	const workspacePath =
+		envString(env.AGENTBOX_WORKSPACE_PATH) ?? DEFAULTS.workspacePath;
 	const tlsKeyPath = envString(env.AGENTBOX_TLS_KEY_PATH);
 	const tlsCertPath = envString(env.AGENTBOX_TLS_CERT_PATH);
 	const auth = parseAuthConfig(env);
 
 	requireAbsolutePath(volumePath, "AGENTBOX_VOLUME_PATH");
+	requireAbsolutePath(workspacePath, "AGENTBOX_WORKSPACE_PATH");
 	if (tlsKeyPath) requireAbsolutePath(tlsKeyPath, "AGENTBOX_TLS_KEY_PATH");
 	if (tlsCertPath) requireAbsolutePath(tlsCertPath, "AGENTBOX_TLS_CERT_PATH");
 	if (Boolean(tlsKeyPath) !== Boolean(tlsCertPath)) {
@@ -67,7 +77,7 @@ export function parseConfig(
 		protocol: tlsKeyPath ? "https" : "http",
 		port,
 	});
-	const proxy = parsePublicProxyUrlTemplate(
+	const publicProxyUrlTemplate = parsePublicProxyUrlTemplate(
 		env.AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE,
 	);
 	const loadTlsFiles = options.loadTlsFiles ?? true;
@@ -76,40 +86,40 @@ export function parseConfig(
 		port,
 		bindAddress,
 		volumePath,
-		publicUrlPath: normalizePublicUrlPath(
-			new URL(publicUrl).pathname,
-			"AGENTBOX_PUBLIC_URL pathname",
-		),
+		workspacePath,
 		publicUrl,
-		...proxy,
+		publicProxyUrlTemplate,
 		trustedProxyHops: parseNonNegativeInteger(
 			env.AGENTBOX_TRUSTED_PROXY_HOPS,
 			"AGENTBOX_TRUSTED_PROXY_HOPS",
-			0,
+			DEFAULTS.trustedProxyHops,
 		),
 		enableMetrics: parseBoolean(
 			env.AGENTBOX_ENABLE_METRICS,
 			"AGENTBOX_ENABLE_METRICS",
+			DEFAULTS.enableMetrics,
 		),
 		...auth,
-		...(tlsKeyPath
+		...(tlsKeyPath && tlsCertPath
 			? {
-					tlsKeyPath,
-					...(loadTlsFiles ? { tlsKey: readFileSync(tlsKeyPath, "utf8") } : {}),
+					tls: {
+						filePaths: { key: tlsKeyPath, cert: tlsCertPath },
+						...(loadTlsFiles
+							? {
+									fileContents: {
+										key: readFileSync(tlsKeyPath, "utf8"),
+										cert: readFileSync(tlsCertPath, "utf8"),
+									},
+								}
+							: {}),
+					},
 				}
 			: {}),
-		...(tlsCertPath
-			? {
-					tlsCertPath,
-					...(loadTlsFiles
-						? { tlsCert: readFileSync(tlsCertPath, "utf8") }
-						: {}),
-				}
-			: {}),
-		buildVersion: envString(env.AGENTBOX_BUILD_VERSION) ?? "unknown",
-		buildRevision: envString(env.AGENTBOX_BUILD_REVISION) ?? "unknown",
-		buildSource:
-			envString(env.AGENTBOX_BUILD_SOURCE) ?? DEFAULT_AGENTBOX_BUILD_SOURCE,
+		buildVersion:
+			envString(env.AGENTBOX_BUILD_VERSION) ?? DEFAULTS.buildVersion,
+		buildRevision:
+			envString(env.AGENTBOX_BUILD_REVISION) ?? DEFAULTS.buildRevision,
+		buildSource: envString(env.AGENTBOX_BUILD_SOURCE) ?? DEFAULTS.buildSource,
 	};
 }
 
@@ -118,7 +128,7 @@ function parseAuthConfig(env: NodeJS.ProcessEnv): {
 	readonly password?: string;
 	readonly hashedPassword?: string;
 } {
-	const rawAuthType = envString(env.AGENTBOX_AUTH) ?? "password";
+	const rawAuthType = envString(env.AGENTBOX_AUTH) ?? DEFAULTS.authType;
 	if (rawAuthType !== "password" && rawAuthType !== "none") {
 		throw new ConfigError("AGENTBOX_AUTH must be password or none");
 	}
@@ -146,27 +156,9 @@ function parseAuthConfig(env: NodeJS.ProcessEnv): {
 	};
 }
 
-function normalizePublicUrlPath(
-	value: string | undefined,
-	name: string,
-): string {
-	let result = envString(value) ?? "/";
-	if (
-		hasControlCharacter(result) ||
-		result.includes("?") ||
-		result.includes("#")
-	) {
-		throw new ConfigError(`${name} must be a URL path`);
-	}
-	result = result.startsWith("/") ? result : `/${result}`;
-	while (result.length > 1 && result.endsWith("/"))
-		result = result.slice(0, -1);
-	return result;
-}
-
 function parsePort(value: string | undefined): number {
 	return parseInteger(value, "PORT", {
-		fallback: DEFAULT_PORT,
+		fallback: DEFAULTS.port,
 		min: 1,
 		max: 65535,
 	});
@@ -206,9 +198,14 @@ function parseInteger(
 	return parsed;
 }
 
-function parseBoolean(value: string | undefined, name: string): boolean {
+function parseBoolean(
+	value: string | undefined,
+	name: string,
+	fallback: boolean,
+): boolean {
 	const raw = envString(value)?.toLowerCase();
-	if (!raw || BOOLEAN_FALSE_VALUES.has(raw)) return false;
+	if (!raw) return fallback;
+	if (BOOLEAN_FALSE_VALUES.has(raw)) return false;
 	if (BOOLEAN_TRUE_VALUES.has(raw)) return true;
 	throw new ConfigError(
 		`${name} must be a boolean (1/0, true/false, yes/no, on/off)`,
@@ -248,15 +245,9 @@ function deriveLocalPublicUrl(input: {
 	return `${input.protocol}://localhost${defaultPort ? "" : `:${input.port}`}`;
 }
 
-function parsePublicProxyUrlTemplate(value: string | undefined): {
-	readonly publicProxyUrlTemplate: string;
-	readonly proxyDomain?: string;
-} {
+function parsePublicProxyUrlTemplate(value: string | undefined): string {
 	const raw = envString(value);
-	if (!raw)
-		return {
-			publicProxyUrlTemplate: DEFAULT_AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE,
-		};
+	if (!raw) return DEFAULTS.publicProxyUrlTemplate;
 	if (hasControlCharacter(raw) || raw.includes("?") || raw.includes("#")) {
 		throw new ConfigError(
 			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must not include query or fragment",
@@ -267,17 +258,14 @@ function parsePublicProxyUrlTemplate(value: string | undefined): {
 			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must include {{port}}",
 		);
 	}
-	if (raw.startsWith("./")) return { publicProxyUrlTemplate: raw };
+	if (raw.startsWith("./")) return raw;
 	if (raw.startsWith("/")) {
 		throw new ConfigError(
 			"AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE must be relative or an absolute http/https URL",
 		);
 	}
-	const url = parseHttpUrl(raw, "AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE");
-	return {
-		publicProxyUrlTemplate: raw,
-		...(url.hostname.includes("{{port}}") ? { proxyDomain: url.hostname } : {}),
-	};
+	parseHttpUrl(raw, "AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE");
+	return raw;
 }
 
 function parseHttpUrl(value: string, name: string): URL {

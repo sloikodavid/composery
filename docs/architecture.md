@@ -8,7 +8,11 @@ Agentbox is a self-hostable image that feels like a persistent VPS with a browse
 
 The image exposes one public listener: `PORT`. Agentbox-owned configuration uses `AGENTBOX_*`; `PORT` stays unprefixed because it is platform-standard.
 
-`AGENTBOX_PUBLIC_URL` is the public URL for the gateway. Its pathname is derived internally as `publicUrlPath`; there is no separate public path variable.
+`AGENTBOX_PUBLIC_URL` is the public URL for the gateway. Its pathname is derived internally as `baseUrlPath`; there is no separate public path variable.
+
+`AGENTBOX_PUBLIC_PROXY_URL_TEMPLATE` is the URL template used for code-server previews. If its hostname contains `{{port}}`, Agentbox derives `proxyHostnameTemplate` for hostname-based preview routing.
+
+`AGENTBOX_WORKSPACE_PATH` is the absolute path opened by code-server at startup. It defaults to `/home/user/Desktop`.
 
 ## Gateway
 
@@ -17,8 +21,8 @@ The gateway is a thin front door. It owns:
 - public `PORT` listener.
 - optional TLS termination from configured cert/key files.
 - health, readiness, and explicitly enabled metrics.
-- rootfs and code-server readiness checks.
-- exact `publicUrlPath` stripping.
+- persistence and code-server readiness checks.
+- exact `baseUrlPath` stripping.
 - HTTP and WebSocket forwarding to code-server.
 - forwarded host/proto/prefix headers needed by code-server.
 
@@ -26,15 +30,15 @@ The gateway does not own workspace auth, login UI, public app ingress, tunnels, 
 
 ## code-server substrate
 
-code-server runs on a fixed loopback port behind the gateway. It owns workspace auth, sessions, logout, WebSocket auth, and private port previews such as `/proxy/<port>` and host-based proxy domains.
+code-server runs on a fixed loopback port behind the gateway. It owns workspace auth, sessions, logout, WebSocket auth, and private previews such as `/proxy/<port>` and hostname-based proxying.
 
 Users configure Agentbox, not code-server directly. Agentbox maps intentional config into the code-server child process and prevents public `PORT` or upstream code-server env vars from accidentally controlling it.
 
-## Rootfs persistence
+## Persistence
 
 Agentbox persists user and system changes broadly so the container behaves like a VPS. This includes home files, package installs, system tweaks, and user-created app files.
 
-Agentbox control-plane and volatile runtime paths regenerate from the image and are not persisted. Exclusions include `/opt/agentbox`, `/etc/supervisor`, `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, Docker-injected host files, lock/cache paths, and the mounted volume path itself.
+Agentbox control-plane and volatile runtime paths regenerate from the image and are not persisted. Exclusions include `/opt/agentbox`, `/opt/code-server`, `/etc/supervisor`, `/proc`, `/sys`, `/dev`, `/run`, `/tmp`, Docker-injected host files, lock/cache paths, and the mounted volume path itself.
 
 ## Auth configuration
 

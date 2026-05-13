@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
 	codeServerConfigYaml,
-	codeServerLaunchPlan,
+	codeServerStartPlan,
 } from "../rootfs/opt/agentbox/code-server.ts";
 import type { AgentboxConfig } from "../rootfs/opt/agentbox/config.ts";
 
-describe("code-server launch plan", () => {
-	test("maps Agentbox password auth into code-server child env", () => {
-		const plan = codeServerLaunchPlan(config({ password: "secret" }), {
+describe("code-server start plan", () => {
+	test("maps Agentbox password auth into code-server config", () => {
+		const plan = codeServerStartPlan(config({ password: "secret" }), {
 			PORT: "8080",
 			PASSWORD: "ignored",
 			HASHED_PASSWORD: "ignored",
@@ -15,35 +15,41 @@ describe("code-server launch plan", () => {
 			CS_DISABLE_PROXY: "ignored",
 			PATH: "/bin",
 		});
-		expect(plan.env.PASSWORD).toBe("secret");
+		expect(plan.env.PASSWORD).toBeUndefined();
 		expect(plan.env.HASHED_PASSWORD).toBeUndefined();
 		expect(plan.env.PORT).toBeUndefined();
 		expect(plan.env.CODE_SERVER_CONFIG).toBeUndefined();
 		expect(plan.env.CS_DISABLE_PROXY).toBeUndefined();
 		expect(plan.env.PATH).toBe("/bin");
 		expect(plan.configYaml).toContain("auth: password");
+		expect(plan.configYaml).toContain('password: "secret"');
 	});
 
-	test("maps Agentbox hashed password into code-server child env", () => {
-		const plan = codeServerLaunchPlan(config({ hashedPassword: "hashed" }));
+	test("maps Agentbox hashed password into code-server config", () => {
+		const plan = codeServerStartPlan(config({ hashedPassword: "hashed" }));
 		expect(plan.env.PASSWORD).toBeUndefined();
-		expect(plan.env.HASHED_PASSWORD).toBe("hashed");
+		expect(plan.env.HASHED_PASSWORD).toBeUndefined();
 		expect(plan.configYaml).toContain("auth: password");
+		expect(plan.configYaml).toContain('hashed-password: "hashed"');
 	});
 
 	test("supports explicit auth none", () => {
-		const plan = codeServerLaunchPlan(config({ authType: "none" }));
+		const plan = codeServerStartPlan(config({ authType: "none" }));
 		expect(plan.authDisabled).toBe(true);
 		expect(plan.env.PASSWORD).toBeUndefined();
 		expect(plan.env.HASHED_PASSWORD).toBeUndefined();
 		expect(plan.configYaml).toContain("auth: none");
 	});
 
-	test("adds public URL path and proxy domain arguments", () => {
-		const plan = codeServerLaunchPlan(
+	test("uses the configured workspace path", () => {
+		const plan = codeServerStartPlan(config({ workspacePath: "/workspace" }));
+		expect(plan.args[0]).toBe("/workspace");
+	});
+
+	test("adds public base URL path and public proxy hostname template arguments", () => {
+		const plan = codeServerStartPlan(
 			config({
-				publicUrlPath: "/agentbox",
-				proxyDomain: "{{port}}.box.example.com",
+				publicUrl: "http://localhost:8080/agentbox",
 				publicProxyUrlTemplate: "https://{{port}}.box.example.com",
 			}),
 		);
@@ -56,7 +62,7 @@ describe("code-server launch plan", () => {
 
 	test("writes a minimal ephemeral config", () => {
 		expect(codeServerConfigYaml(config())).toBe(
-			"bind-addr: 127.0.0.1:13337\nauth: password\ncert: false\n",
+			'bind-addr: 127.0.0.1:13337\nauth: password\npassword: "secret"\ncert: false\n',
 		);
 	});
 });
@@ -66,7 +72,7 @@ function config(overrides: Partial<AgentboxConfig> = {}): AgentboxConfig {
 		port: 8080,
 		bindAddress: "127.0.0.1",
 		volumePath: "/data",
-		publicUrlPath: "/",
+		workspacePath: "/home/user/Desktop",
 		publicUrl: "http://localhost:8080",
 		publicProxyUrlTemplate: "./proxy/{{port}}",
 		trustedProxyHops: 0,
