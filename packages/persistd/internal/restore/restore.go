@@ -17,6 +17,7 @@ import (
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/config"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
+	"github.com/sloikodavid/agentbox/packages/persistd/internal/metadata"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/objectstore"
 )
 
@@ -47,9 +48,17 @@ func Run(ctx context.Context, paths config.Paths) error {
 	// length is a sufficient ordering since every parent path is a prefix
 	// of its children and thus strictly shorter.
 	sort.Slice(present, func(i, j int) bool { return len(present[i].Path) < len(present[j].Path) })
+	xattrsByID, err := loadXattrs(ctx, sqldb)
+	if err != nil {
+		return err
+	}
+	firstByGroup := map[string]string{}
 	for _, r := range present {
-		if err := applyPresent(ctx, store, r); err != nil {
+		if err := applyPresent(ctx, store, r, firstByGroup); err != nil {
 			return fmt.Errorf("restore: %s: %w", r.Path, err)
+		}
+		if err := metadata.ApplyXattrs(r.Path, xattrsByID[r.ID]); err != nil {
+			return fmt.Errorf("restore: xattrs %s: %w", r.Path, err)
 		}
 	}
 
@@ -106,7 +115,7 @@ func splitByState(rows []db.PathRow) (present, removed []db.PathRow) {
 	return
 }
 
-func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow) error {
+func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow, firstByGroup map[string]string) error {
 	switch r.Kind {
 	case db.KindDir:
 		if err := os.MkdirAll(r.Path, 0o755); err != nil {
@@ -116,15 +125,27 @@ func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow) e
 		if r.ObjectAlgorithm == nil || r.ObjectHash == nil {
 			return fmt.Errorf("file row missing object reference")
 		}
+		if err := ensureParent(r.Path); err != nil {
+			return err
+		}
+		if r.HardlinkGroupID != nil {
+			if peer, ok := firstByGroup[*r.HardlinkGroupID]; ok {
+				_ = os.Remove(r.Path)
+				if err := os.Link(peer, r.Path); err == nil {
+					return applyMetadata(r)
+				}
+				// Fall through to copy on link failure (cross-device, etc).
+			}
+		}
 		objPath, err := store.Path(*r.ObjectAlgorithm, *r.ObjectHash)
 		if err != nil {
 			return err
 		}
-		if err := ensureParent(r.Path); err != nil {
-			return err
-		}
 		if err := copyFile(objPath, r.Path); err != nil {
 			return err
+		}
+		if r.HardlinkGroupID != nil {
+			firstByGroup[*r.HardlinkGroupID] = r.Path
 		}
 	case db.KindSymlink:
 		if r.SymlinkTarget == nil {
@@ -137,13 +158,47 @@ func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow) e
 		if err := os.Symlink(*r.SymlinkTarget, r.Path); err != nil {
 			return err
 		}
-	case db.KindFIFO, db.KindDevice, db.KindOther:
-		// Deferred to Slice 10; skip without error so restore can proceed.
+	case db.KindFIFO:
+		if err := ensureParent(r.Path); err != nil {
+			return err
+		}
+		_ = os.Remove(r.Path)
+		mode := uint32(0o644)
+		if r.Mode != nil {
+			mode = uint32(*r.Mode)
+		}
+		if err := metadata.Mkfifo(r.Path, mode); err != nil {
+			return err
+		}
+	case db.KindDevice, db.KindOther:
+		// Device nodes require CAP_MKNOD; the runtime may not allow it.
+		// Skip without failing so the rest of restore proceeds.
 		return nil
 	default:
 		return fmt.Errorf("unknown kind %q", r.Kind)
 	}
 	return applyMetadata(r)
+}
+
+func loadXattrs(ctx context.Context, sqldb *sql.DB) (map[int64][]metadata.Xattr, error) {
+	rows, err := sqldb.QueryContext(ctx, `SELECT path_id, name, value FROM xattrs`)
+	if err != nil {
+		return nil, fmt.Errorf("restore: load xattrs: %w", err)
+	}
+	defer rows.Close()
+	out := map[int64][]metadata.Xattr{}
+	for rows.Next() {
+		var (
+			pid   int64
+			name  string
+			value []byte
+		)
+		if err := rows.Scan(&pid, &name, &value); err != nil {
+			return nil, err
+		}
+		out[pid] = append(out[pid], metadata.Xattr{Name: name, Value: value})
+	}
+	return out, rows.Err()
 }
 
 func applyTombstone(r db.PathRow) error {

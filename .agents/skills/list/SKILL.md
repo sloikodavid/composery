@@ -57,15 +57,24 @@ packages/
         db.go
         objects.go
         paths.go
+      gc/
+        gc_test.go
+        gc.go
       heartbeat/
         heartbeat_test.go
         heartbeat.go
+      metadata/
+        metadata_linux_test.go
+        metadata_linux.go
+        metadata_other.go
+        metadata.go
       objectstore/
         objectstore_test.go
         objectstore.go
       restore/
         lchown_linux.go
         lchown_other.go
+        restore_linux_test.go
         restore_test.go
         restore.go
       scheduler/

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
+	"github.com/sloikodavid/agentbox/packages/persistd/internal/metadata"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/scheduler"
 )
 
@@ -242,7 +243,13 @@ func (a *Auditor) openDir(ctx context.Context, cur *cursor) error {
 	parentRow.MtimeNs = &mtime
 	now := time.Now().UnixNano()
 	parentRow.LastAuditedAtNs = &now
-	if err := a.upsertInTx(ctx, parentRow); err != nil {
+	md, err := metadata.Capture(cur.path, info)
+	if err != nil {
+		return err
+	}
+	parentRow.UID = md.UID
+	parentRow.GID = md.GID
+	if err := a.upsertWithMetadata(ctx, parentRow, md.Xattrs); err != nil {
 		return err
 	}
 	dir, err := os.Open(cur.path)
@@ -284,7 +291,14 @@ func (a *Auditor) upsertChild(ctx context.Context, cur *cursor, childPath string
 	row.MtimeNs = &mtime
 	now := time.Now().UnixNano()
 	row.LastAuditedAtNs = &now
-	if err := a.upsertInTx(ctx, row); err != nil {
+	md, err := metadata.Capture(childPath, info)
+	if err != nil {
+		return err
+	}
+	row.UID = md.UID
+	row.GID = md.GID
+	row.HardlinkGroupID = md.HardlinkGroupID
+	if err := a.upsertWithMetadata(ctx, row, md.Xattrs); err != nil {
 		return err
 	}
 	if info.IsDir() {
@@ -304,13 +318,31 @@ func (a *Auditor) upsertChild(ctx context.Context, cur *cursor, childPath string
 }
 
 func (a *Auditor) upsertInTx(ctx context.Context, row db.PathRow) error {
+	return a.upsertWithMetadata(ctx, row, nil)
+}
+
+func (a *Auditor) upsertWithMetadata(ctx context.Context, row db.PathRow, xattrs []metadata.Xattr) error {
 	tx, err := a.sqldb.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if _, err := db.UpsertPath(ctx, tx, row); err != nil {
+	saved, err := db.UpsertPath(ctx, tx, row)
+	if err != nil {
 		_ = tx.Rollback()
 		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM xattrs WHERE path_id=?`, saved.ID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	for _, x := range xattrs {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO xattrs(path_id, name, value) VALUES (?, ?, ?)`,
+			saved.ID, x.Name, x.Value,
+		); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 	}
 	return tx.Commit()
 }
