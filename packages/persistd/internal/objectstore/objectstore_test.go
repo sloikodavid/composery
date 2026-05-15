@@ -221,7 +221,7 @@ func TestCleanTemp_RemovesStrayTempFiles(t *testing.T) {
 
 func TestPath_FanoutLayout(t *testing.T) {
 	s, _ := newStore(t)
-	hash := "abcdef0123456789"
+	hash := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 	p, err := s.Path(Algorithm, hash)
 	if err != nil {
 		t.Fatalf("Path: %v", err)
@@ -229,6 +229,21 @@ func TestPath_FanoutLayout(t *testing.T) {
 	want := filepath.Join(s.algoDir, "ab", "cd", hash)
 	if p != want {
 		t.Errorf("Path = %q, want %q", p, want)
+	}
+}
+
+func TestPath_RejectsTraversalAndMalformedHashes(t *testing.T) {
+	s, _ := newStore(t)
+	bad := []string{
+		"abcd/../../etc/passwd",
+		"abcd\\..\\..\\etc\\passwd",
+		"abcdef0123456789",
+		"ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
+	}
+	for _, hash := range bad {
+		if _, err := s.Path(Algorithm, hash); err == nil {
+			t.Fatalf("Path accepted malformed hash %q", hash)
+		}
 	}
 }
 

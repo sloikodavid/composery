@@ -33,12 +33,22 @@ func NewDirtyQueue(maxSize int) *DirtyQueue {
 // seen-set to avoid storming on a hot file. Reports whether the path was
 // newly accepted.
 func (q *DirtyQueue) Enqueue(path string) bool {
+	return q.enqueue(path, false)
+}
+
+// EnqueueRequired adds correctness-critical paths that must not be dropped
+// just because the normal watcher-event cap is full. It still dedupes.
+func (q *DirtyQueue) EnqueueRequired(path string) bool {
+	return q.enqueue(path, true)
+}
+
+func (q *DirtyQueue) enqueue(path string, required bool) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if _, ok := q.seen[path]; ok {
 		return false
 	}
-	if len(q.paths) >= q.maxSize {
+	if !required && len(q.paths) >= q.maxSize {
 		q.overflow++
 		return false
 	}

@@ -65,8 +65,8 @@ func (s *Store) Path(algorithm, hash string) (string, error) {
 	if algorithm != Algorithm {
 		return "", fmt.Errorf("objectstore: unsupported algorithm %q", algorithm)
 	}
-	if len(hash) < FanoutDepth*2 {
-		return "", fmt.Errorf("objectstore: hash %q too short", hash)
+	if !validHash(hash) {
+		return "", fmt.Errorf("objectstore: invalid %s hash %q", algorithm, hash)
 	}
 	parts := []string{s.algoDir}
 	for i := 0; i < FanoutDepth; i++ {
@@ -191,6 +191,19 @@ func (s *Store) Remove(algorithm, hash string) error {
 
 // CleanTemp removes any stray .tmp-* files left over from a previous run.
 // Safe to call at startup before the daemon begins issuing captures.
+func validHash(hash string) bool {
+	if len(hash) != 64 {
+		return false
+	}
+	for _, c := range hash {
+		if (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func (s *Store) CleanTemp() error {
 	entries, err := os.ReadDir(s.algoDir)
 	if err != nil {

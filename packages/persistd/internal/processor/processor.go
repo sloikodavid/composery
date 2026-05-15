@@ -165,30 +165,11 @@ func (p *Processor) markRemoved(ctx context.Context, livePath string) error {
 	}
 	rollback := func() { _ = tx.Rollback() }
 
-	prev, err := db.GetPath(ctx, tx, livePath)
-	if errors.Is(err, sql.ErrNoRows) {
-		_ = tx.Rollback()
-		return nil
-	}
-	if err != nil {
-		rollback()
-		return err
-	}
-	if prev.State == db.StateRemoved {
-		_ = tx.Rollback()
-		return nil
-	}
-	if prev.ObjectAlgorithm != nil && prev.ObjectHash != nil {
-		if err := db.ReleaseObject(ctx, tx, *prev.ObjectAlgorithm, *prev.ObjectHash); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			rollback()
-			return err
+	if err := db.MarkRemovedTree(ctx, tx, livePath); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = tx.Rollback()
+			return nil
 		}
-	}
-	if err := db.MarkRemoved(ctx, tx, livePath); err != nil {
-		rollback()
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM xattrs WHERE path_id=?`, prev.ID); err != nil {
 		rollback()
 		return err
 	}

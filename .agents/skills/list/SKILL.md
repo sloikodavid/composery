@@ -142,10 +142,12 @@ rootfs/
         public-address.ts
         readiness.ts
         routing.ts
-      code-server.ts
+      services/
+        code-server.sh
       config.ts
       defaults.ts
       entrypoint.sh
+      runtime.ts
   usr/
     share/
       applications/

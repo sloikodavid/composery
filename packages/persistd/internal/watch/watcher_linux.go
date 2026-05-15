@@ -203,9 +203,11 @@ func (w *Watcher) dispatch(raw *unix.InotifyEvent, name string) {
 	op := classify(raw.Mask)
 
 	if isDir && (op == OpCreated || op == OpMovedTo) {
-		if err := w.addOne(full); err != nil {
+		if err := w.AddTree(full); err != nil {
 			if errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EMFILE) {
 				w.markDegraded(fmt.Sprintf("watch limit hit at %s", full))
+			} else {
+				w.markDegraded(fmt.Sprintf("watch subtree %s: %v", full, err))
 			}
 		}
 	}

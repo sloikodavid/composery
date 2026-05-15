@@ -81,6 +81,83 @@ func TestRun_DetectsMissingObject(t *testing.T) {
 	}
 }
 
+func TestRun_DetectsPresentFileWithoutObjectRef(t *testing.T) {
+	paths := setupPaths(t)
+	ctx := context.Background()
+	sqldb, err := db.Open(ctx, paths.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, _ := sqldb.Begin()
+	if _, err := db.UpsertPath(ctx, tx, db.PathRow{
+		Path: "/audit-only", Basename: "audit-only", State: db.StatePresent, Kind: db.KindFile, MetadataVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	_ = sqldb.Close()
+
+	r, err := Run(ctx, paths)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !r.HasFatal() {
+		t.Fatalf("expected fatal missing object ref finding, got %+v", r.Findings)
+	}
+}
+
+func TestRun_DetectsCorruptObjectContent(t *testing.T) {
+	paths := setupPaths(t)
+	ctx := context.Background()
+	store, err := objectstore.Open(paths.Objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "seed")
+	if err := os.WriteFile(src, []byte("good"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := store.Capture(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqldb, err := db.Open(ctx, paths.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, _ := sqldb.Begin()
+	if err := db.RetainObject(ctx, tx, res.Algorithm, res.Hash, res.Size); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertPath(ctx, tx, db.PathRow{
+		Path: "/corrupt", Basename: "corrupt", State: db.StatePresent, Kind: db.KindFile,
+		ObjectAlgorithm: &res.Algorithm, ObjectHash: &res.Hash, Size: &res.Size, MetadataVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	_ = sqldb.Close()
+	objPath, err := store.Path(res.Algorithm, res.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(objPath, []byte("bad"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := Run(ctx, paths)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !r.HasFatal() {
+		t.Fatalf("expected fatal corrupt object finding, got %+v", r.Findings)
+	}
+}
+
 func TestRun_DetectsDanglingParent(t *testing.T) {
 	paths := setupPaths(t)
 	ctx := context.Background()

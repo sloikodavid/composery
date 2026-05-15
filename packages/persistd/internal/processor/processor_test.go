@@ -111,6 +111,46 @@ func TestApply_TombstoneOnDelete(t *testing.T) {
 	}
 }
 
+func TestApply_TombstonesDeletedDirectoryRecursively(t *testing.T) {
+	p, sqldb, _ := newProcessor(t)
+	dir := filepath.Join(t.TempDir(), "tree")
+	child := filepath.Join(dir, "child.txt")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(child, []byte("body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Apply(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Apply(context.Background(), child); err != nil {
+		t.Fatal(err)
+	}
+	before, err := db.GetPath(context.Background(), sqldb, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Apply(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	parent, _ := db.GetPath(context.Background(), sqldb, dir)
+	after, _ := db.GetPath(context.Background(), sqldb, child)
+	if parent.State != db.StateRemoved || after.State != db.StateRemoved {
+		t.Fatalf("subtree not tombstoned: parent=%s child=%s", parent.State, after.State)
+	}
+	obj, err := db.GetObject(context.Background(), sqldb, *before.ObjectAlgorithm, *before.ObjectHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if obj.RefCount != 0 {
+		t.Fatalf("child object refcount = %d, want 0", obj.RefCount)
+	}
+}
+
 func TestApply_IsIdempotent(t *testing.T) {
 	p, sqldb, _ := newProcessor(t)
 	src := filepath.Join(t.TempDir(), "x.txt")

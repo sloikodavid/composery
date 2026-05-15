@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
+	"github.com/sloikodavid/agentbox/packages/persistd/internal/objectstore"
+	"github.com/sloikodavid/agentbox/packages/persistd/internal/processor"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/scheduler"
 )
 
@@ -78,6 +80,32 @@ func TestAudit_DiscoversTreeFromScratch(t *testing.T) {
 	}
 }
 
+func TestAudit_CapturesRegularFilesWhenProcessorConfigured(t *testing.T) {
+	live := t.TempDir()
+	target := filepath.Join(live, "startup.txt")
+	mustWrite(t, target, "created before watcher")
+
+	sqldb := newTestDB(t)
+	store, err := objectstore.Open(filepath.Join(t.TempDir(), "objects"))
+	if err != nil {
+		t.Fatalf("objectstore.Open: %v", err)
+	}
+	proc := processor.New(sqldb, store)
+	a := New(sqldb, nil, Config{DirectoryBatchSize: 16, CaptureRegularFile: proc.Apply})
+	if err := a.Start(context.Background(), []string{live}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	drainAudit(t, a)
+
+	row, err := db.GetPath(context.Background(), sqldb, target)
+	if err != nil {
+		t.Fatalf("file row missing: %v", err)
+	}
+	if row.ObjectAlgorithm == nil || row.ObjectHash == nil {
+		t.Fatalf("audit-created file row missing object reference: %+v", row)
+	}
+}
+
 func TestAudit_ExcludedSubtreeNotDescended(t *testing.T) {
 	live := t.TempDir()
 	mustMkdir(t, filepath.Join(live, "skip"))
@@ -139,6 +167,68 @@ func TestAudit_DeletionsTombstonedOnSecondPass(t *testing.T) {
 	row, err = db.GetPath(context.Background(), sqldb, filepath.Join(live, "survivor.txt"))
 	if err != nil || row.State != db.StatePresent {
 		t.Errorf("survivor lost: row=%+v err=%v", row, err)
+	}
+}
+
+func TestAudit_TombstonesImmediateChildWithBackslashInName(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("backslash is a path separator on non-Linux platforms")
+	}
+	live := t.TempDir()
+	victim := filepath.Join(live, `name\\with\\backslashes`)
+	mustWrite(t, victim, "x")
+
+	sqldb := newTestDB(t)
+	a := New(sqldb, nil, Config{DirectoryBatchSize: 16})
+	if err := a.Start(context.Background(), []string{live}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	drainAudit(t, a)
+	if err := os.Remove(victim); err != nil {
+		t.Fatal(err)
+	}
+	a2 := New(sqldb, nil, Config{DirectoryBatchSize: 16})
+	if err := a2.Start(context.Background(), []string{live}); err != nil {
+		t.Fatalf("Start (2): %v", err)
+	}
+	drainAudit(t, a2)
+	row, err := db.GetPath(context.Background(), sqldb, victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.State != db.StateRemoved {
+		t.Fatalf("state = %s, want removed", row.State)
+	}
+}
+
+func TestAudit_DoesNotReviveTombstoneWithoutObjectWhenRegularFileQueued(t *testing.T) {
+	live := t.TempDir()
+	victim := filepath.Join(live, "revived.txt")
+	mustWrite(t, victim, "x")
+	sqldb := newTestDB(t)
+	tx, err := sqldb.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertPath(context.Background(), tx, db.PathRow{
+		Path: victim, Basename: filepath.Base(victim), State: db.StateRemoved, Kind: db.KindFile, MetadataVersion: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	a := New(sqldb, nil, Config{DirectoryBatchSize: 16, CaptureRegularFile: func(context.Context, string) error { return nil }})
+	if err := a.Start(context.Background(), []string{live}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	drainAudit(t, a)
+	row, err := db.GetPath(context.Background(), sqldb, victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.State != db.StateRemoved || row.ObjectHash != nil {
+		t.Fatalf("audit revived invalid tombstone: %+v", row)
 	}
 }
 

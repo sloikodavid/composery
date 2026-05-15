@@ -2,6 +2,7 @@ package restore
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -199,6 +200,161 @@ func TestRun_AppliesTombstones(t *testing.T) {
 	}
 	if _, err := os.Stat(stranded); !os.IsNotExist(err) {
 		t.Errorf("tombstone did not remove file: %v", err)
+	}
+}
+
+func TestRun_ReplacesConflictingTypes(t *testing.T) {
+	live := t.TempDir()
+	paths := setupPaths(t, live)
+
+	dirPath := filepath.Join(live, "dir")
+	filePath := filepath.Join(live, "file")
+	if err := os.WriteFile(dirPath, []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filePath, "stranded"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedDir(t, paths, dirPath, 0o755)
+	seedFile(t, paths, filePath, []byte("now a file"), 0o644)
+
+	if err := Run(context.Background(), paths); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if info, err := os.Stat(dirPath); err != nil || !info.IsDir() {
+		t.Fatalf("dir type not restored: %v", err)
+	}
+	got, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "now a file" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
+func TestRun_SkipsExcludedTombstones(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("absolute exclude syntax is Linux/container-specific")
+	}
+	live := t.TempDir()
+	paths := setupPaths(t, live)
+	excluded := filepath.Join(live, "excluded")
+	if err := os.MkdirAll(excluded, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keep := filepath.Join(excluded, "keep.txt")
+	if err := os.WriteFile(keep, []byte("do not delete"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Exclude.RootRelative = []string{excluded}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Config, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedTombstone(t, paths, keep)
+
+	if err := Run(context.Background(), paths); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got, err := os.ReadFile(keep); err != nil || string(got) != "do not delete" {
+		t.Fatalf("excluded tombstone touched file: got=%q err=%v", got, err)
+	}
+}
+
+func TestRun_RejectsSymlinkAncestorForFileRestore(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("symlink ancestor semantics are Linux/container-specific")
+	}
+	live := t.TempDir()
+	outside := t.TempDir()
+	paths := setupPaths(t, live)
+	link := filepath.Join(live, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(link, "escaped.txt")
+	seedFile(t, paths, target, []byte("no escape"), 0o644)
+	if err := Run(context.Background(), paths); err == nil {
+		t.Fatal("expected restore to reject symlink ancestor")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "escaped.txt")); !os.IsNotExist(err) {
+		t.Fatalf("restore escaped through symlink ancestor: %v", err)
+	}
+}
+
+func TestRun_RejectsSymlinkAncestorForTombstone(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("symlink ancestor semantics are Linux/container-specific")
+	}
+	live := t.TempDir()
+	outside := t.TempDir()
+	paths := setupPaths(t, live)
+	link := filepath.Join(live, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	outsideTarget := filepath.Join(outside, "do-not-delete.txt")
+	if err := os.WriteFile(outsideTarget, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedTombstone(t, paths, filepath.Join(link, "do-not-delete.txt"))
+	if err := Run(context.Background(), paths); err == nil {
+		t.Fatal("expected restore to reject symlink ancestor tombstone")
+	}
+	if got, err := os.ReadFile(outsideTarget); err != nil || string(got) != "keep" {
+		t.Fatalf("tombstone escaped through symlink ancestor: got=%q err=%v", got, err)
+	}
+}
+
+func TestRun_FailsOnCorruptObject(t *testing.T) {
+	live := t.TempDir()
+	paths := setupPaths(t, live)
+	target := filepath.Join(live, "corrupt.txt")
+	seedFile(t, paths, target, []byte("original"), 0o644)
+
+	ctx := context.Background()
+	sqldb, err := db.Open(ctx, paths.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := db.GetPath(ctx, sqldb, target)
+	_ = sqldb.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := objectstore.Open(paths.Objects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objPath, err := store.Path(*row.ObjectAlgorithm, *row.ObjectHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(objPath, []byte("tampered"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(ctx, paths); err == nil {
+		t.Fatal("expected restore to reject corrupt object")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("corrupt object should not be installed, stat err=%v", err)
+	}
+}
+
+func TestRun_FailsOnUnsafeRootPath(t *testing.T) {
+	paths := setupPaths(t, t.TempDir())
+	seedTombstone(t, paths, string(filepath.Separator))
+	if err := Run(context.Background(), paths); err == nil {
+		t.Fatal("expected unsafe root path to fail validation")
 	}
 }
 

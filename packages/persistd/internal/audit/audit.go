@@ -12,11 +12,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/metadata"
+	"github.com/sloikodavid/agentbox/packages/persistd/internal/objectstore"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/scheduler"
 )
 
@@ -29,10 +31,11 @@ type Excluder interface {
 // Auditor implements scheduler.Source and walks the included live tree
 // via multiple round-robin cursors.
 type Auditor struct {
-	sqldb     *sql.DB
-	excluder  Excluder
-	batchSize int
-	priority  int
+	sqldb              *sql.DB
+	excluder           Excluder
+	batchSize          int
+	priority           int
+	captureRegularFile func(context.Context, string) error
 
 	mu      sync.Mutex
 	cursors []*cursor
@@ -44,6 +47,10 @@ type Auditor struct {
 type Config struct {
 	DirectoryBatchSize int
 	Priority           int
+	// CaptureRegularFile is called for regular files discovered by audit.
+	// The daemon wires this to processor.Apply so audit-only discoveries are
+	// restorable content rows, not metadata-only file rows.
+	CaptureRegularFile func(context.Context, string) error
 }
 
 // New constructs an Auditor backed by sqldb. Roots are not registered
@@ -59,10 +66,11 @@ func New(sqldb *sql.DB, excluder Excluder, cfg Config) *Auditor {
 		cfg.Priority = 100
 	}
 	return &Auditor{
-		sqldb:     sqldb,
-		excluder:  excluder,
-		batchSize: cfg.DirectoryBatchSize,
-		priority:  cfg.Priority,
+		sqldb:              sqldb,
+		excluder:           excluder,
+		batchSize:          cfg.DirectoryBatchSize,
+		priority:           cfg.Priority,
+		captureRegularFile: cfg.CaptureRegularFile,
 	}
 }
 
@@ -298,7 +306,17 @@ func (a *Auditor) upsertChild(ctx context.Context, cur *cursor, childPath string
 	row.UID = md.UID
 	row.GID = md.GID
 	row.HardlinkGroupID = md.HardlinkGroupID
-	if err := a.upsertWithMetadata(ctx, row, md.Xattrs); err != nil {
+	if info.Mode().IsRegular() && a.captureRegularFile != nil {
+		if err := a.captureRegularFile(ctx, childPath); err != nil {
+			if errors.Is(err, objectstore.ErrChangedDuringCopy) {
+				return a.touchExistingPath(ctx, childPath, now)
+			}
+			return err
+		}
+		if err := a.touchExistingPath(ctx, childPath, now); err != nil {
+			return err
+		}
+	} else if err := a.upsertWithMetadata(ctx, row, md.Xattrs); err != nil {
 		return err
 	}
 	if info.IsDir() {
@@ -319,6 +337,14 @@ func (a *Auditor) upsertChild(ctx context.Context, cur *cursor, childPath string
 
 func (a *Auditor) upsertInTx(ctx context.Context, row db.PathRow) error {
 	return a.upsertWithMetadata(ctx, row, nil)
+}
+
+func (a *Auditor) touchExistingPath(ctx context.Context, path string, auditedAtNs int64) error {
+	_, err := a.sqldb.ExecContext(ctx,
+		`UPDATE paths SET last_audited_at_ns=? WHERE path=? AND state='present'`,
+		auditedAtNs, path,
+	)
+	return err
 }
 
 func (a *Auditor) upsertWithMetadata(ctx context.Context, row db.PathRow, xattrs []metadata.Xattr) error {
@@ -351,20 +377,10 @@ func (a *Auditor) upsertWithMetadata(ctx context.Context, row db.PathRow, xattrs
 // whose last_audited_at_ns is older than this audit epoch. That is how
 // deletions are discovered without holding the full snapshot in memory.
 func (a *Auditor) reconcileDirectory(ctx context.Context, cur *cursor) error {
-	prefix := cur.path
-	if prefix == "/" {
-		prefix = ""
-	}
-	likeImmediate := prefix + "/%"
-	likeDeeper := prefix + "/%/%"
 	rows, err := a.sqldb.QueryContext(ctx, `
 SELECT path FROM paths
 WHERE state='present'
-  AND path LIKE ?
-  AND path NOT LIKE ?
-  AND (last_audited_at_ns IS NULL OR last_audited_at_ns < ?)`,
-		likeImmediate, likeDeeper, cur.auditStartNs,
-	)
+  AND (last_audited_at_ns IS NULL OR last_audited_at_ns < ?)`, cur.auditStartNs)
 	if err != nil {
 		return fmt.Errorf("audit: scan stale children: %w", err)
 	}
@@ -375,7 +391,13 @@ WHERE state='present'
 			rows.Close()
 			return err
 		}
-		stale = append(stale, p)
+		if immediateChild(cur.path, p) {
+			stale = append(stale, p)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
 	}
 	rows.Close()
 	for _, p := range stale {
@@ -383,7 +405,7 @@ WHERE state='present'
 		if err != nil {
 			return err
 		}
-		if err := db.MarkRemoved(ctx, tx, p); err != nil {
+		if err := db.MarkRemovedTree(ctx, tx, p); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			_ = tx.Rollback()
 			return err
 		}
@@ -392,6 +414,21 @@ WHERE state='present'
 		}
 	}
 	return nil
+}
+
+func immediateChild(parent, child string) bool {
+	if parent == child {
+		return false
+	}
+	prefix := parent
+	if prefix != string(filepath.Separator) && prefix != "/" {
+		prefix += string(filepath.Separator)
+	}
+	if !strings.HasPrefix(child, prefix) {
+		return false
+	}
+	rest := strings.TrimPrefix(child, prefix)
+	return rest != "" && !strings.ContainsRune(rest, filepath.Separator)
 }
 
 func classifyKind(info os.FileInfo) db.PathKind {

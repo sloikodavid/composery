@@ -6,9 +6,13 @@ package check
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+
+	"lukechampine.com/blake3"
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/config"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
@@ -83,6 +87,11 @@ func Run(ctx context.Context, paths config.Paths) (*Report, error) {
 		return r, nil
 	}
 
+	r.Checks = append(r.Checks, "file_rows_have_objects")
+	if err := checkFileRowsHaveObjects(ctx, sqldb, r); err != nil {
+		return r, fmt.Errorf("check: file object refs: %w", err)
+	}
+
 	r.Checks = append(r.Checks, "objects_referenced_exist")
 	if err := checkReferencedObjectsExist(ctx, sqldb, store, r); err != nil {
 		return r, fmt.Errorf("check: scan referenced objects: %w", err)
@@ -101,9 +110,29 @@ func Run(ctx context.Context, paths config.Paths) (*Report, error) {
 	return r, nil
 }
 
+func checkFileRowsHaveObjects(ctx context.Context, sqldb *sql.DB, r *Report) error {
+	rows, err := sqldb.QueryContext(ctx, `
+SELECT path
+FROM paths
+WHERE state='present' AND kind='file'
+  AND (object_algorithm IS NULL OR object_hash IS NULL)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return err
+		}
+		r.add("file_rows_have_objects", Fatal, fmt.Sprintf("present file %q has no object reference", path))
+	}
+	return rows.Err()
+}
+
 func checkReferencedObjectsExist(ctx context.Context, sqldb *sql.DB, store *objectstore.Store, r *Report) error {
 	rows, err := sqldb.QueryContext(ctx, `
-SELECT DISTINCT object_algorithm, object_hash
+SELECT DISTINCT object_algorithm, object_hash, size
 FROM paths
 WHERE state='present' AND object_algorithm IS NOT NULL AND object_hash IS NOT NULL`)
 	if err != nil {
@@ -112,13 +141,17 @@ WHERE state='present' AND object_algorithm IS NOT NULL AND object_hash IS NOT NU
 	defer rows.Close()
 	missing := 0
 	for rows.Next() {
-		var algo, hash string
-		if err := rows.Scan(&algo, &hash); err != nil {
+		var (
+			algo, hash string
+			size       sql.NullInt64
+		)
+		if err := rows.Scan(&algo, &hash, &size); err != nil {
 			return err
 		}
 		exists, err := store.Has(algo, hash)
 		if err != nil {
-			return err
+			r.add("objects_referenced_exist", Fatal, fmt.Sprintf("invalid object reference %s/%s: %v", algo, hash, err))
+			continue
 		}
 		if !exists {
 			missing++
@@ -127,9 +160,48 @@ WHERE state='present' AND object_algorithm IS NOT NULL AND object_hash IS NOT NU
 				r.add("objects_referenced_exist", Warning, "stopping enumeration after 10 missing objects")
 				return nil
 			}
+			continue
+		}
+		var expectedSize *int64
+		if size.Valid {
+			expectedSize = &size.Int64
+		}
+		if err := verifyObject(store, algo, hash, expectedSize); err != nil {
+			r.add("objects_referenced_exist", Fatal, fmt.Sprintf("corrupt object %s/%s: %v", algo, hash, err))
 		}
 	}
 	return rows.Err()
+}
+
+func verifyObject(store *objectstore.Store, algo, hash string, expectedSize *int64) error {
+	p, err := store.Path(algo, hash)
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(p)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file")
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := blake3.New(32, nil)
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return err
+	}
+	if expectedSize != nil && n != *expectedSize {
+		return fmt.Errorf("size mismatch: expected %d got %d", *expectedSize, n)
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != hash {
+		return fmt.Errorf("hash mismatch: got %s", got)
+	}
+	return nil
 }
 
 func checkParentIntegrity(ctx context.Context, sqldb *sql.DB, r *Report) error {
@@ -244,4 +316,3 @@ func loadKnownHashes(ctx context.Context, sqldb *sql.DB) (map[string]struct{}, e
 	}
 	return out, rows.Err()
 }
-

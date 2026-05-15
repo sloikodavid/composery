@@ -30,6 +30,8 @@ export const GATEWAY_DEFAULTS = {
 
 export const CHILD_PROCESS_DEFAULTS = {
 	userName: "user",
+	userId: 1000,
+	groupId: 1000,
 	homePath: "/home/user",
 	shellPath: "/bin/bash",
 	defaultPath: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",

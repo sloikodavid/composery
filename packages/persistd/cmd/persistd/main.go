@@ -34,8 +34,16 @@ func restoreFailedMarker(paths config.Paths) string {
 	return filepath.Join(filepath.Dir(paths.Heartbeat), "persistd.restore-failed")
 }
 
+func watchFailedMarker(paths config.Paths) string {
+	return filepath.Join(filepath.Dir(paths.Heartbeat), "persistd.watch-failed")
+}
+
 func restoreErrorLog(paths config.Paths) string {
 	return filepath.Join(filepath.Dir(paths.Config), "restore-error.log")
+}
+
+func watchErrorLog(paths config.Paths) string {
+	return filepath.Join(filepath.Dir(paths.Config), "watch-error.log")
 }
 
 func main() {
@@ -90,20 +98,41 @@ func writeRestoreFailure(paths config.Paths, restoreErr error) {
 	}
 }
 
+func writeWatchFailure(paths config.Paths, watchErr error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	report := fmt.Sprintf("persistd watch failed at %s\n\n%v\n", now, watchErr)
+	if err := os.MkdirAll(filepath.Dir(watchErrorLog(paths)), 0o755); err == nil {
+		_ = os.WriteFile(watchErrorLog(paths), []byte(report), 0o644)
+	}
+	if err := os.MkdirAll(filepath.Dir(watchFailedMarker(paths)), 0o755); err == nil {
+		_ = os.WriteFile(watchFailedMarker(paths), []byte(now+"\n"), 0o644)
+	}
+	_ = heartbeat.Write(
+		paths.Heartbeat,
+		heartbeat.Disabled("watch failed; see "+watchErrorLog(paths)),
+	)
+}
+
+func failWatch(paths config.Paths, format string, args ...any) int {
+	err := fmt.Errorf(format, args...)
+	fmt.Fprintf(os.Stderr, "persistd watch: %v\n", err)
+	writeWatchFailure(paths, err)
+	return 1
+}
+
 func runWatch() int {
 	paths := config.ResolvePaths(os.Getenv)
 	if err := storage.Init(paths); err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: storage init: %v\n", err)
-		return 1
+		return failWatch(paths, "storage init: %w", err)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	_ = os.Remove(watchFailedMarker(paths))
 
 	if _, err := os.Stat(restoreFailedMarker(paths)); err == nil {
 		return runDisabled(ctx, paths)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(os.Stderr, "persistd watch: stat marker: %v\n", err)
-		return 1
+		return failWatch(paths, "stat marker: %w", err)
 	}
 
 	return runDaemon(ctx, paths)
@@ -159,6 +188,9 @@ func runStatus(args []string) int {
 	if _, err := os.Stat(restoreFailedMarker(paths)); err == nil {
 		report["restoreMarker"] = "present"
 	}
+	if _, err := os.Stat(watchFailedMarker(paths)); err == nil {
+		report["watchMarker"] = "present"
+	}
 
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
@@ -190,6 +222,9 @@ func printHumanStatus(report map[string]any) {
 	fmt.Printf("  exclusions: %v entries\n", report["excludeCount"])
 	if v, ok := report["restoreMarker"]; ok {
 		fmt.Printf("  restoreMarker: %v\n", v)
+	}
+	if v, ok := report["watchMarker"]; ok {
+		fmt.Printf("  watchMarker: %v\n", v)
 	}
 }
 

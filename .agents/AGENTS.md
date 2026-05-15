@@ -24,7 +24,7 @@ Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, sim
 What we often collapse, depending on the context:
 
 - Delete, Erase -> Remove.
-- Launch, Open -> Start.
+- Open -> Start.
 - Close -> Stop.
 - Complete, End -> Finish.
 - Spawn, Provision -> Create.

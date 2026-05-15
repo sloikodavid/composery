@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,27 +19,26 @@ import (
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/watch"
 )
 
+var runtimeProtectedPaths = []string{"/etc/hostname", "/etc/hosts", "/etc/resolv.conf"}
+
 // runDaemon wires watcher + scheduler + audit + dirty queue + GC + heartbeat
 // into the long-running persistd watch loop. It returns when ctx is
 // cancelled (SIGTERM/SIGINT) or a fatal error occurs.
 func runDaemon(ctx context.Context, paths config.Paths) int {
 	cfg, _, err := config.LoadOrCreate(paths.Config)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: load config: %v\n", err)
-		return 1
+		return failWatch(paths, "load config: %w", err)
 	}
 
 	sqldb, err := db.Open(ctx, paths.DB)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: open db: %v\n", err)
-		return 1
+		return failWatch(paths, "open db: %w", err)
 	}
 	defer sqldb.Close()
 
 	store, err := objectstore.Open(paths.Objects)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: open object store: %v\n", err)
-		return 1
+		return failWatch(paths, "open object store: %w", err)
 	}
 	_ = store.CleanTemp()
 
@@ -48,8 +48,7 @@ func runDaemon(ctx context.Context, paths config.Paths) int {
 
 	watcher, err := watch.New(exc)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: inotify init: %v\n", err)
-		return 1
+		return failWatch(paths, "inotify init: %w", err)
 	}
 	defer watcher.Close()
 	for _, r := range roots {
@@ -58,16 +57,18 @@ func runDaemon(ctx context.Context, paths config.Paths) int {
 		}
 	}
 
+	queue := scheduler.NewDirtyQueue(4096)
 	auditor := audit.New(sqldb, exc, audit.Config{
 		DirectoryBatchSize: cfg.Audit.DirectoryBatchSize,
 		Priority:           100,
+		CaptureRegularFile: func(_ context.Context, path string) error {
+			queue.EnqueueRequired(path)
+			return nil
+		},
 	})
 	if err := auditor.Start(ctx, roots); err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: audit.Start: %v\n", err)
-		return 1
+		return failWatch(paths, "audit.Start: %w", err)
 	}
-
-	queue := scheduler.NewDirtyQueue(4096)
 	dirty := scheduler.NewDirtySource(queue, 10, func(ctx context.Context, path string) error {
 		if err := proc.Apply(ctx, path); err != nil {
 			fmt.Fprintf(os.Stderr, "persistd watch: apply %s: %v\n", path, err)
@@ -90,7 +91,7 @@ func runDaemon(ctx context.Context, paths config.Paths) int {
 			fmt.Fprintf(os.Stderr, "persistd watch: watcher: %v\n", err)
 		}
 	}()
-	go pumpEvents(ctx, watcher, queue)
+	go pumpEvents(ctx, watcher, queue, exc)
 	go func() {
 		if err := sched.Run(ctx); err != nil && err != context.Canceled {
 			fmt.Fprintf(os.Stderr, "persistd watch: scheduler: %v\n", err)
@@ -110,7 +111,7 @@ func runDaemon(ctx context.Context, paths config.Paths) int {
 	}
 }
 
-func pumpEvents(ctx context.Context, watcher *watch.Watcher, queue *scheduler.DirtyQueue) {
+func pumpEvents(ctx context.Context, watcher *watch.Watcher, queue *scheduler.DirtyQueue, exc *excluder) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -122,9 +123,29 @@ func pumpEvents(ctx context.Context, watcher *watch.Watcher, queue *scheduler.Di
 			if ev.Op == watch.OpOverflow || ev.Path == "" {
 				continue
 			}
+			if ev.IsDir && (ev.Op == watch.OpCreated || ev.Op == watch.OpMovedTo) {
+				enqueueTree(ev.Path, queue, exc)
+				continue
+			}
 			queue.Enqueue(ev.Path)
 		}
 	}
+}
+
+func enqueueTree(root string, queue *scheduler.DirtyQueue, exc *excluder) {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path != root && exc.Excluded(path) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		queue.EnqueueRequired(path)
+		return nil
+	})
 }
 
 func writeWatchHeartbeat(paths config.Paths, watcher *watch.Watcher, queue *scheduler.DirtyQueue, auditor *audit.Auditor, gcCol *gc.Collector, sqldb interface{}) {
@@ -159,6 +180,7 @@ type excluder struct {
 }
 
 func newExcluder(prefixes []string) *excluder {
+	prefixes = append(runtimeProtectedPaths, prefixes...)
 	out := make([]string, 0, len(prefixes))
 	for _, p := range prefixes {
 		if p == "" {

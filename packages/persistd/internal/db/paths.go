@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 )
 
 // PathState enumerates the durable lifecycle of a path row.
@@ -30,28 +32,28 @@ const (
 // PathRow is the durable representation of a single live-tree path. Fields
 // match the migration column order; pointer types model nullable columns.
 type PathRow struct {
-	ID                       int64
-	Path                     string
-	ParentID                 *int64
-	Basename                 string
-	State                    PathState
-	Kind                     PathKind
-	Mode                     *int64
-	UID                      *int64
-	GID                      *int64
-	AtimeNs                  *int64
-	MtimeNs                  *int64
-	CtimeSeenNs              *int64
-	Size                     *int64
-	ObjectAlgorithm          *string
-	ObjectHash               *string
-	SymlinkTarget            *string
-	SpecialMajor             *int64
-	SpecialMinor             *int64
-	HardlinkGroupID          *string
-	ContentHashVerifiedAtNs  *int64
-	LastAuditedAtNs          *int64
-	MetadataVersion          int64
+	ID                      int64
+	Path                    string
+	ParentID                *int64
+	Basename                string
+	State                   PathState
+	Kind                    PathKind
+	Mode                    *int64
+	UID                     *int64
+	GID                     *int64
+	AtimeNs                 *int64
+	MtimeNs                 *int64
+	CtimeSeenNs             *int64
+	Size                    *int64
+	ObjectAlgorithm         *string
+	ObjectHash              *string
+	SymlinkTarget           *string
+	SpecialMajor            *int64
+	SpecialMinor            *int64
+	HardlinkGroupID         *string
+	ContentHashVerifiedAtNs *int64
+	LastAuditedAtNs         *int64
+	MetadataVersion         int64
 }
 
 // UpsertPath inserts or replaces the current-state row for row.Path. The
@@ -130,6 +132,69 @@ WHERE path=?`, path)
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// MarkRemovedTree transitions path and all present descendants to state=removed,
+// releases any referenced objects, and clears their xattrs. It returns sql.ErrNoRows
+// when no present row matched the subtree root or descendants.
+func MarkRemovedTree(ctx context.Context, tx *sql.Tx, path string) error {
+	rows, err := tx.QueryContext(ctx, `
+SELECT path, path_id, object_algorithm, object_hash
+FROM paths
+WHERE state='present'`)
+	if err != nil {
+		return fmt.Errorf("db: scan subtree %q: %w", path, err)
+	}
+	type victim struct {
+		path string
+		id   int64
+		algo *string
+		hash *string
+	}
+	var victims []victim
+	for rows.Next() {
+		var v victim
+		if err := rows.Scan(&v.path, &v.id, &v.algo, &v.hash); err != nil {
+			rows.Close()
+			return err
+		}
+		if sameOrDescendant(path, v.path) {
+			victims = append(victims, v)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if len(victims) == 0 {
+		return sql.ErrNoRows
+	}
+	for _, v := range victims {
+		if v.algo != nil && v.hash != nil {
+			if err := ReleaseObject(ctx, tx, *v.algo, *v.hash); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
+		if err := MarkRemoved(ctx, tx, v.path); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM xattrs WHERE path_id=?`, v.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func sameOrDescendant(parent, child string) bool {
+	if child == parent {
+		return true
+	}
+	if !strings.HasPrefix(child, parent) || len(child) == len(parent) {
+		return false
+	}
+	next := child[len(parent)]
+	return next == os.PathSeparator
 }
 
 // GetPath fetches the row for an absolute path. Returns sql.ErrNoRows if absent.

@@ -103,6 +103,41 @@ func TestWatcher_NewDirectoryGetsWatched(t *testing.T) {
 	})
 }
 
+func TestWatcher_MovedPopulatedDirectoryGetsRecursiveWatches(t *testing.T) {
+	dir := t.TempDir()
+	w := startWatcher(t, nil, dir)
+
+	incoming := filepath.Join(t.TempDir(), "incoming")
+	if err := os.MkdirAll(filepath.Join(incoming, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(incoming, "nested", "before.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(dir, "incoming")
+	if err := os.Rename(incoming, moved); err != nil {
+		t.Fatal(err)
+	}
+	drainOneMatching(t, w.Events(), func(e Event) bool {
+		return e.Path == moved && e.Op == OpMovedTo && e.IsDir
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for w.WatchCount() < 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if w.WatchCount() < 3 {
+		t.Fatalf("recursive watches not installed: count=%d", w.WatchCount())
+	}
+	child := filepath.Join(moved, "nested", "after.txt")
+	if err := os.WriteFile(child, []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	drainOneMatching(t, w.Events(), func(e Event) bool {
+		return e.Path == child && e.Op == OpCreated
+	})
+}
+
 func TestWatcher_ExcludedDirectoryIsNotWatched(t *testing.T) {
 	dir := t.TempDir()
 	excludedSub := filepath.Join(dir, "skip")

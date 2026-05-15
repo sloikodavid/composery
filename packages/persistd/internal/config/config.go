@@ -16,11 +16,11 @@ import (
 // Paths holds the resolved filesystem locations persistd uses at runtime.
 // All fields are absolute paths.
 type Paths struct {
-	Volume        string
-	Config        string
-	DB            string
-	Objects       string
-	Heartbeat     string
+	Volume    string
+	Config    string
+	DB        string
+	Objects   string
+	Heartbeat string
 }
 
 // Exclude lists path patterns that persistd will not capture.
@@ -58,6 +58,9 @@ func Default() Config {
 				"/home/user/.local/share/Trash",
 				"/opt/agentbox",
 				"/opt/code-server",
+				"/etc/hostname",
+				"/etc/hosts",
+				"/etc/resolv.conf",
 				"/etc/supervisor",
 				"/usr/share/applications/agentbox.desktop",
 				"/var/cache/apt/archives",

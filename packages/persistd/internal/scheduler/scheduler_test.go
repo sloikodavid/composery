@@ -33,15 +33,15 @@ func TestTokenBucket_CannotExceedCapacity(t *testing.T) {
 }
 
 type fakeSource struct {
-	name        string
-	priority    int
-	calls       atomic.Int64
+	name          string
+	priority      int
+	calls         atomic.Int64
 	workRemaining atomic.Int64
-	consumeOps  int
+	consumeOps    int
 }
 
-func (f *fakeSource) Name() string   { return f.name }
-func (f *fakeSource) Priority() int  { return f.priority }
+func (f *fakeSource) Name() string  { return f.name }
+func (f *fakeSource) Priority() int { return f.priority }
 func (f *fakeSource) RunOne(_ context.Context, budget *Budget) (bool, error) {
 	f.calls.Add(1)
 	if f.consumeOps > 0 && !budget.FsOps.TryTake(float64(f.consumeOps)) {
@@ -151,6 +151,25 @@ func TestDirtyQueue_DedupesAndCapsBacklog(t *testing.T) {
 	}
 	if q.Len() != 3 {
 		t.Errorf("len = %d, want 3", q.Len())
+	}
+}
+
+func TestDirtyQueue_RequiredEnqueueBypassesCapButDedupes(t *testing.T) {
+	q := NewDirtyQueue(1)
+	if !q.Enqueue("/a") {
+		t.Fatal("first enqueue should accept")
+	}
+	if q.Enqueue("/b") {
+		t.Fatal("normal enqueue past cap should reject")
+	}
+	if !q.EnqueueRequired("/b") {
+		t.Fatal("required enqueue should bypass cap")
+	}
+	if q.EnqueueRequired("/b") {
+		t.Fatal("required enqueue should still dedupe")
+	}
+	if q.Len() != 2 {
+		t.Fatalf("len = %d, want 2", q.Len())
 	}
 }
 
