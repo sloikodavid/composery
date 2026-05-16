@@ -5,7 +5,12 @@ import tseslint from "typescript-eslint";
 const TS_FILES = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
 export default defineConfig(
-	globalIgnores(["coverage/", "rootfs/home/user/.local/share/code-server/"]),
+	globalIgnores([
+		"coverage/",
+		"tmp/",
+		"vendor/",
+		"rootfs/home/user/.local/share/code-server/",
+	]),
 	{
 		linterOptions: {
 			reportUnusedDisableDirectives: "error",

@@ -1,4 +1,6 @@
 LICENSE
 node_modules/
 coverage/
+vendor/
+tmp/
 pnpm-lock.yaml

@@ -14,7 +14,7 @@ import (
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/storage"
 )
 
-func setupPaths(t *testing.T, live string) config.Paths {
+func setupPaths(t *testing.T) config.Paths {
 	t.Helper()
 	root := t.TempDir()
 	p := config.Paths{
@@ -141,7 +141,7 @@ func seedTombstone(t *testing.T, paths config.Paths, livePath string) {
 
 func TestRun_CreatesDirectoriesAndFiles(t *testing.T) {
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 
 	dirPath := filepath.Join(live, "sub")
 	filePath := filepath.Join(live, "sub", "hello.txt")
@@ -170,7 +170,7 @@ func TestRun_RestoresSymlink(t *testing.T) {
 		t.Skip("symlink target semantics are Linux-only; persistd runs in a Linux container")
 	}
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	link := filepath.Join(live, "ln")
 	seedSymlink(t, paths, link, "./target")
 
@@ -188,7 +188,7 @@ func TestRun_RestoresSymlink(t *testing.T) {
 
 func TestRun_AppliesTombstones(t *testing.T) {
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	stranded := filepath.Join(live, "stranded.txt")
 	if err := os.WriteFile(stranded, []byte("garbage"), 0o644); err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestRun_AppliesTombstones(t *testing.T) {
 
 func TestRun_ReplacesConflictingTypes(t *testing.T) {
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 
 	dirPath := filepath.Join(live, "dir")
 	filePath := filepath.Join(live, "file")
@@ -241,7 +241,7 @@ func TestRun_SkipsExcludedTombstones(t *testing.T) {
 		t.Skip("absolute exclude syntax is Linux/container-specific")
 	}
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	excluded := filepath.Join(live, "excluded")
 	if err := os.MkdirAll(excluded, 0o755); err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestRun_RejectsSymlinkAncestorForFileRestore(t *testing.T) {
 	}
 	live := t.TempDir()
 	outside := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	link := filepath.Join(live, "link")
 	if err := os.Symlink(outside, link); err != nil {
 		t.Fatal(err)
@@ -296,7 +296,7 @@ func TestRun_RejectsSymlinkAncestorForTombstone(t *testing.T) {
 	}
 	live := t.TempDir()
 	outside := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	link := filepath.Join(live, "link")
 	if err := os.Symlink(outside, link); err != nil {
 		t.Fatal(err)
@@ -314,9 +314,9 @@ func TestRun_RejectsSymlinkAncestorForTombstone(t *testing.T) {
 	}
 }
 
-func TestRun_FailsOnCorruptObject(t *testing.T) {
+func TestRun_DoesNotRehashObjectContent(t *testing.T) {
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 	target := filepath.Join(live, "corrupt.txt")
 	seedFile(t, paths, target, []byte("original"), 0o644)
 
@@ -342,16 +342,20 @@ func TestRun_FailsOnCorruptObject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Run(ctx, paths); err == nil {
-		t.Fatal("expected restore to reject corrupt object")
+	if err := Run(ctx, paths); err != nil {
+		t.Fatalf("Run: %v", err)
 	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatalf("corrupt object should not be installed, stat err=%v", err)
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "tampered" {
+		t.Fatalf("restored content = %q", got)
 	}
 }
 
 func TestRun_FailsOnUnsafeRootPath(t *testing.T) {
-	paths := setupPaths(t, t.TempDir())
+	paths := setupPaths(t)
 	seedTombstone(t, paths, string(filepath.Separator))
 	if err := Run(context.Background(), paths); err == nil {
 		t.Fatal("expected unsafe root path to fail validation")
@@ -360,7 +364,7 @@ func TestRun_FailsOnUnsafeRootPath(t *testing.T) {
 
 func TestRun_FailsOnMissingObject(t *testing.T) {
 	live := t.TempDir()
-	paths := setupPaths(t, live)
+	paths := setupPaths(t)
 
 	target := filepath.Join(live, "ghost.txt")
 	seedFile(t, paths, target, []byte("ephemeral"), 0o644)

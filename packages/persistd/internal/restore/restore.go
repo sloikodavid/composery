@@ -7,7 +7,6 @@ package restore
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,8 +15,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"lukechampine.com/blake3"
 
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/config"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
@@ -66,7 +63,7 @@ func Run(ctx context.Context, paths config.Paths) error {
 	}
 	firstByGroup := map[string]string{}
 	for _, r := range present {
-		if err := applyPresent(ctx, store, r, firstByGroup); err != nil {
+		if err := applyPresent(store, r, firstByGroup); err != nil {
 			return fmt.Errorf("restore: %s: %w", r.Path, err)
 		}
 		if err := metadata.ApplyXattrs(r.Path, xattrsByID[r.ID]); err != nil {
@@ -194,7 +191,7 @@ func isDescendant(parent, child string) bool {
 	return next == '/' || next == filepath.Separator
 }
 
-func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow, firstByGroup map[string]string) error {
+func applyPresent(store *objectstore.Store, r db.PathRow, firstByGroup map[string]string) error {
 	switch r.Kind {
 	case db.KindDir:
 		if err := ensureDirectory(r.Path); err != nil {
@@ -213,7 +210,7 @@ func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow, f
 		}
 		if r.HardlinkGroupID != nil {
 			if peer, ok := firstByGroup[*r.HardlinkGroupID]; ok {
-				if err := verifyObjectFile(objPath, *r.ObjectHash, r.Size); err != nil {
+				if err := verifyObjectFile(objPath, r.Size); err != nil {
 					return err
 				}
 				_ = removeExisting(r.Path)
@@ -223,7 +220,7 @@ func applyPresent(ctx context.Context, store *objectstore.Store, r db.PathRow, f
 				// Fall through to copy on link failure (cross-device, etc).
 			}
 		}
-		if err := copyObjectFile(objPath, r.Path, *r.ObjectHash, r.Size); err != nil {
+		if err := copyObjectFile(objPath, r.Path, r.Size); err != nil {
 			return err
 		}
 		if r.HardlinkGroupID != nil {
@@ -353,7 +350,7 @@ func rejectSymlinkAncestors(p string) error {
 	}
 }
 
-func verifyObjectFile(src, expectedHash string, expectedSize *int64) error {
+func verifyObjectFile(src string, expectedSize *int64) error {
 	info, err := os.Lstat(src)
 	if err != nil {
 		return fmt.Errorf("stat object: %w", err)
@@ -361,33 +358,15 @@ func verifyObjectFile(src, expectedHash string, expectedSize *int64) error {
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("object is not a regular file")
 	}
-	in, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("open object: %w", err)
-	}
-	defer in.Close()
-	h := blake3.New(32, nil)
-	written, err := io.Copy(h, in)
-	if err != nil {
-		return fmt.Errorf("read object: %w", err)
-	}
-	gotHash := hex.EncodeToString(h.Sum(nil))
-	if gotHash != expectedHash {
-		return fmt.Errorf("object hash mismatch: expected %s got %s", expectedHash, gotHash)
-	}
-	if expectedSize != nil && written != *expectedSize {
-		return fmt.Errorf("object size mismatch: expected %d got %d", *expectedSize, written)
+	if expectedSize != nil && info.Size() != *expectedSize {
+		return fmt.Errorf("object size mismatch: expected %d got %d", *expectedSize, info.Size())
 	}
 	return nil
 }
 
-func copyObjectFile(src, dst, expectedHash string, expectedSize *int64) error {
-	info, err := os.Lstat(src)
-	if err != nil {
-		return fmt.Errorf("stat object: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("object is not a regular file")
+func copyObjectFile(src, dst string, expectedSize *int64) error {
+	if err := verifyObjectFile(src, expectedSize); err != nil {
+		return err
 	}
 	if err := ensureParent(dst); err != nil {
 		return err
@@ -411,16 +390,10 @@ func copyObjectFile(src, dst, expectedHash string, expectedSize *int64) error {
 		}
 	}()
 
-	h := blake3.New(32, nil)
-	written, err := io.Copy(io.MultiWriter(tmp, h), in)
+	written, err := io.Copy(tmp, in)
 	if err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("copy: %w", err)
-	}
-	gotHash := hex.EncodeToString(h.Sum(nil))
-	if gotHash != expectedHash {
-		_ = tmp.Close()
-		return fmt.Errorf("object hash mismatch: expected %s got %s", expectedHash, gotHash)
 	}
 	if expectedSize != nil && written != *expectedSize {
 		_ = tmp.Close()
