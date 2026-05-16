@@ -21,8 +21,8 @@ func TestUsageMentionsAllCommands(t *testing.T) {
 func TestWriteWatchFailureWritesDiagnosticPaths(t *testing.T) {
 	root := t.TempDir()
 	paths := config.Paths{
-		Config:    filepath.Join(root, "persistence", "config.json"),
-		Heartbeat: filepath.Join(root, "run", "persistd.ready"),
+		Config:    filepath.Join(root, "persistd", "config.json"),
+		Heartbeat: filepath.Join(root, "run", "persistd", "ready"),
 	}
 
 	writeWatchFailure(paths, errors.New("database is locked"))
@@ -30,11 +30,13 @@ func TestWriteWatchFailureWritesDiagnosticPaths(t *testing.T) {
 	for _, path := range []string{
 		watchFailedMarker(paths),
 		watchErrorLog(paths),
-		paths.Heartbeat,
 	} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected %s to exist: %v", path, err)
 		}
+	}
+	if _, err := os.Stat(paths.Heartbeat); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected heartbeat to be removed, got %v", err)
 	}
 	log, err := os.ReadFile(watchErrorLog(paths))
 	if err != nil {
@@ -42,16 +44,6 @@ func TestWriteWatchFailureWritesDiagnosticPaths(t *testing.T) {
 	}
 	if !strings.Contains(string(log), "database is locked") {
 		t.Fatalf("watch log missing error: %s", log)
-	}
-	heartbeat, err := os.ReadFile(paths.Heartbeat)
-	if err != nil {
-		t.Fatalf("read heartbeat: %v", err)
-	}
-	if !strings.Contains(string(heartbeat), `"status": "disabled"`) {
-		t.Fatalf("heartbeat not disabled: %s", heartbeat)
-	}
-	if !strings.Contains(string(heartbeat), "watch-error.log") {
-		t.Fatalf("heartbeat missing watch error path: %s", heartbeat)
 	}
 }
 

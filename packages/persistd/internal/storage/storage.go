@@ -1,4 +1,4 @@
-// Package storage owns the on-disk layout under /data/persistence: the
+// Package storage owns the on-disk layout under /data/persistd: the
 // SQLite database file and the BLAKE3-addressed object store directory tree.
 package storage
 
@@ -18,12 +18,12 @@ const ObjectAlgorithm = "blake3"
 // exists. The SQLite database file itself is created lazily by the driver
 // on first connection.
 func Init(paths config.Paths) error {
-	persistenceDir := filepath.Dir(paths.Config)
-	if persistenceDir != filepath.Dir(paths.DB) {
+	persistdDir := filepath.Dir(paths.Config)
+	if persistdDir != filepath.Dir(paths.DB) {
 		return fmt.Errorf("storage: config and db paths must share a parent directory (config=%q db=%q)", paths.Config, paths.DB)
 	}
 	for _, dir := range []string{
-		persistenceDir,
+		persistdDir,
 		paths.Objects,
 		filepath.Join(paths.Objects, ObjectAlgorithm),
 		filepath.Dir(paths.Heartbeat),

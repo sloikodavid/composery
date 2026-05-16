@@ -40,7 +40,7 @@ type Scheduler struct {
 	status  Status
 }
 
-// Config holds the tunables read from /data/persistence/config.json.
+// Config holds the tunables read from /data/persistd/config.json.
 type Config struct {
 	MaxFsOpsPerSecond     float64
 	MaxHashBytesPerSecond float64

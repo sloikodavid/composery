@@ -1,29 +1,20 @@
 import { chown, lstat, mkdir } from "node:fs/promises";
-import { parseConfig } from "./config.ts";
-import { CHILD_PROCESS_DEFAULTS } from "./defaults.ts";
+
+const USER_ID = 1000;
+const GROUP_ID = 1000;
+const WORKSPACE_PATH = "/home/user/Desktop";
 
 export async function prepareRuntimeDirs(): Promise<void> {
-	await mkdir("/run/agentbox", { recursive: true });
-	await mkdir("/run/code-server", { recursive: true });
-	await chown(
-		"/run/code-server",
-		CHILD_PROCESS_DEFAULTS.userId,
-		CHILD_PROCESS_DEFAULTS.groupId,
-	);
+	await mkdir("/run/persistd", { recursive: true });
 	await mkdir("/var/log/supervisor", { recursive: true });
 }
 
 export async function prepareWorkspace(): Promise<void> {
-	const config = parseConfig(process.env, { loadTlsFiles: false });
-	if (await exists(config.workspacePath)) {
+	if (await exists(WORKSPACE_PATH)) {
 		return;
 	}
-	await mkdir(config.workspacePath, { recursive: true });
-	await chown(
-		config.workspacePath,
-		CHILD_PROCESS_DEFAULTS.userId,
-		CHILD_PROCESS_DEFAULTS.groupId,
-	);
+	await mkdir(WORKSPACE_PATH, { recursive: true });
+	await chown(WORKSPACE_PATH, USER_ID, GROUP_ID);
 }
 
 async function exists(path: string): Promise<boolean> {

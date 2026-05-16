@@ -136,16 +136,8 @@ rootfs/
       .bashrc
   opt/
     agentbox/
-      gateway/
-        index.ts
-        proxy.ts
-        public-address.ts
-        readiness.ts
-        routing.ts
       services/
         code-server.sh
-      config.ts
-      defaults.ts
       entrypoint.sh
       runtime.ts
   usr/
@@ -159,8 +151,6 @@ tests/
     cert.pem
     key.pem
   code-server.test.ts
-  config.test.ts
-  gateway.test.ts
 vendor/
   code-server/
     overlay/
@@ -169,7 +159,7 @@ vendor/
           pages/
             login.html
     patches/
-      .gitkeep
+      0001-gate-code-server-on-persistd-readiness.patch
     README.md
 .dockerignore
 .editorconfig

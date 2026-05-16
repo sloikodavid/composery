@@ -149,18 +149,12 @@ func enqueueTree(root string, queue *scheduler.DirtyQueue, exc *excluder) {
 }
 
 func writeWatchHeartbeat(paths config.Paths, watcher *watch.Watcher, queue *scheduler.DirtyQueue, auditor *audit.Auditor, gcCol *gc.Collector, sqldb interface{}) {
-	hb := heartbeat.Heartbeat{
-		Status:           heartbeat.StatusOK,
-		Mode:             heartbeat.ModeWatch,
-		WatcherCount:     watcher.WatchCount(),
-		DegradedReasons:  watcher.DegradedReasons(),
-		DirtyBacklog:     queue.Len(),
-		AuditCursorCount: auditor.CursorCount(),
-	}
-	if len(hb.DegradedReasons) > 0 {
-		hb.Status = heartbeat.StatusDegraded
-	}
-	if err := heartbeat.Write(paths.Heartbeat, hb); err != nil {
+	_ = watcher
+	_ = queue
+	_ = auditor
+	_ = gcCol
+	_ = sqldb
+	if err := heartbeat.Write(paths.Heartbeat, heartbeat.Ready()); err != nil {
 		fmt.Fprintf(os.Stderr, "persistd watch: heartbeat: %v\n", err)
 	}
 }

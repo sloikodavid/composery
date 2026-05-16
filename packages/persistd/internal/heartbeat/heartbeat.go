@@ -1,5 +1,4 @@
-// Package heartbeat writes the runtime status file consumed by the gateway
-// readiness check at /run/agentbox/persistd.ready.
+// Package heartbeat writes the runtime ready file consumed by code-server.
 package heartbeat
 
 import (
@@ -10,53 +9,21 @@ import (
 	"time"
 )
 
-// Status enumerates the values for Heartbeat.Status.
-type Status string
-
-const (
-	StatusOK       Status = "ok"
-	StatusDegraded Status = "degraded"
-	StatusDisabled Status = "disabled"
-)
-
-// Mode enumerates the daemon mode reported in the heartbeat.
-type Mode string
-
-const (
-	ModeWatch   Mode = "watch"
-	ModeRestore Mode = "restore"
-	ModeStarting Mode = "starting"
-)
-
-// Heartbeat is the runtime status document. JSON shape is part of the
-// contract with the gateway readiness check; only add fields, never remove.
+// Heartbeat is the runtime ready document. Its presence means persistd has
+// completed startup and is ready to protect the live filesystem.
 type Heartbeat struct {
-	UpdatedAt        time.Time `json:"updatedAt"`
-	Status           Status    `json:"status"`
-	Mode             Mode      `json:"mode"`
-	WatcherCount     int       `json:"watcherCount"`
-	DegradedReasons  []string  `json:"degradedReasons"`
-	DirtyBacklog     int       `json:"dirtyBacklog"`
-	AuditCursorCount int       `json:"auditCursorCount"`
-	LastError        *string   `json:"lastError"`
+	Ready     bool      `json:"ready"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Disabled returns a heartbeat representing the refuse-to-persist state.
-func Disabled(reason string) Heartbeat {
-	return Heartbeat{
-		UpdatedAt:       time.Now().UTC(),
-		Status:          StatusDisabled,
-		Mode:            ModeWatch,
-		DegradedReasons: []string{reason},
-	}
+// Ready returns a heartbeat representing a ready persistd daemon.
+func Ready() Heartbeat {
+	return Heartbeat{Ready: true, UpdatedAt: time.Now().UTC()}
 }
 
 // Write atomically replaces the heartbeat file at path with hb. The parent
 // directory must already exist.
 func Write(path string, hb Heartbeat) error {
-	if hb.DegradedReasons == nil {
-		hb.DegradedReasons = []string{}
-	}
 	if hb.UpdatedAt.IsZero() {
 		hb.UpdatedAt = time.Now().UTC()
 	}
@@ -75,6 +42,11 @@ func Write(path string, hb Heartbeat) error {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("heartbeat: write temp: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("heartbeat: chmod temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		_ = os.Remove(tmpPath)

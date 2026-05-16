@@ -19,10 +19,10 @@ func setupPaths(t *testing.T, live string) config.Paths {
 	root := t.TempDir()
 	p := config.Paths{
 		Volume:    root,
-		Config:    filepath.Join(root, "persistence", "config.json"),
-		DB:        filepath.Join(root, "persistence", "db.sqlite"),
-		Objects:   filepath.Join(root, "persistence", "objects"),
-		Heartbeat: filepath.Join(root, "run", "persistd.ready"),
+		Config:    filepath.Join(root, "persistd", "config.json"),
+		DB:        filepath.Join(root, "persistd", "db.sqlite"),
+		Objects:   filepath.Join(root, "persistd", "objects"),
+		Heartbeat: filepath.Join(root, "run", "persistd", "ready"),
 	}
 	if err := storage.Init(p); err != nil {
 		t.Fatalf("storage.Init: %v", err)

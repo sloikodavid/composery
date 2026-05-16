@@ -16,11 +16,14 @@ ARG TARGETARCH
 ARG CODE_SERVER_INSTALLER_CA_CERTIFICATES_VERSION=20250419
 # renovate: suite=trixie depName=curl
 ARG CODE_SERVER_INSTALLER_CURL_VERSION=8.14.1-2+deb13u2
+# renovate: suite=trixie depName=patch
+ARG CODE_SERVER_INSTALLER_PATCH_VERSION=2.8-2
 
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates="${CODE_SERVER_INSTALLER_CA_CERTIFICATES_VERSION}" \
     curl="${CODE_SERVER_INSTALLER_CURL_VERSION}" \
+    patch="${CODE_SERVER_INSTALLER_PATCH_VERSION}" \
   && rm -rf /var/lib/apt/lists/*
 
 RUN case "${TARGETARCH}" in \
@@ -47,6 +50,10 @@ RUN case "${TARGETARCH}" in \
   && rm -rf /tmp/code-server.tar.gz /tmp/code-server.version.json /tmp/code-server-config
 
 COPY vendor/code-server/overlay/ /opt/code-server/current/
+COPY vendor/code-server/patches/ /tmp/code-server-patches/
+RUN if find /tmp/code-server-patches -name '*.patch' -print -quit | grep -q .; then \
+    for patch_file in /tmp/code-server-patches/*.patch; do patch -d /opt/code-server/current -p1 < "${patch_file}"; done; \
+  fi
 
 FROM golang:1.24-trixie AS persistd-builder
 

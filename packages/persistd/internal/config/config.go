@@ -1,5 +1,5 @@
 // Package config loads and validates the persistd user configuration and
-// resolves runtime path settings from environment variables.
+// resolves the fixed runtime paths used by the container image.
 package config
 
 import (
@@ -80,33 +80,19 @@ func Default() Config {
 	}
 }
 
-// ResolvePaths reads the AGENTBOX_* environment variables and returns the
-// resolved paths. AGENTBOX_VOLUME_PATH (default /data) seeds the derived
-// defaults; each AGENTBOX_PERSISTENCE_*_PATH override wins if set.
+// ResolvePaths returns the fixed persistd runtime paths. The env callback is
+// kept for call-site stability while the path contract is intentionally not
+// configurable.
 func ResolvePaths(env func(string) string) Paths {
-	volume := env("AGENTBOX_VOLUME_PATH")
-	if volume == "" {
-		volume = "/data"
-	}
-	persistence := path.Join(volume, "persistence")
+	_ = env
+	volume := "/data"
+	persistd := path.Join(volume, "persistd")
 	p := Paths{
 		Volume:    volume,
-		Config:    path.Join(persistence, "config.json"),
-		DB:        path.Join(persistence, "db.sqlite"),
-		Objects:   path.Join(persistence, "objects"),
-		Heartbeat: "/run/agentbox/persistd.ready",
-	}
-	if v := env("AGENTBOX_PERSISTENCE_CONFIG_PATH"); v != "" {
-		p.Config = v
-	}
-	if v := env("AGENTBOX_PERSISTENCE_DB_PATH"); v != "" {
-		p.DB = v
-	}
-	if v := env("AGENTBOX_PERSISTENCE_OBJECTS_PATH"); v != "" {
-		p.Objects = v
-	}
-	if v := env("AGENTBOX_PERSISTENCE_HEARTBEAT_PATH"); v != "" {
-		p.Heartbeat = v
+		Config:    path.Join(persistd, "config.json"),
+		DB:        path.Join(persistd, "db.sqlite"),
+		Objects:   path.Join(persistd, "objects"),
+		Heartbeat: "/run/persistd/ready",
 	}
 	return p
 }

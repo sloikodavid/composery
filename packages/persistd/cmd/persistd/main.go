@@ -15,7 +15,6 @@ import (
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/check"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/config"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/db"
-	"github.com/sloikodavid/agentbox/packages/persistd/internal/heartbeat"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/objectstore"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/restore"
 	"github.com/sloikodavid/agentbox/packages/persistd/internal/storage"
@@ -24,18 +23,18 @@ import (
 const usage = `usage: persistd <command>
 
 commands:
-  restore   apply durable persistence state to the live filesystem
-  watch     run the persistence daemon
+  restore   apply durable persistd state to the live filesystem
+  watch     run the persistd daemon
   status    print current daemon status (--json for machine output)
   check     run deep consistency checks (--deep also walks orphan objects)
 `
 
 func restoreFailedMarker(paths config.Paths) string {
-	return filepath.Join(filepath.Dir(paths.Heartbeat), "persistd.restore-failed")
+	return filepath.Join(filepath.Dir(paths.Heartbeat), "restore-failed")
 }
 
 func watchFailedMarker(paths config.Paths) string {
-	return filepath.Join(filepath.Dir(paths.Heartbeat), "persistd.watch-failed")
+	return filepath.Join(filepath.Dir(paths.Heartbeat), "watch-failed")
 }
 
 func restoreErrorLog(paths config.Paths) string {
@@ -101,16 +100,13 @@ func writeRestoreFailure(paths config.Paths, restoreErr error) {
 func writeWatchFailure(paths config.Paths, watchErr error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	report := fmt.Sprintf("persistd watch failed at %s\n\n%v\n", now, watchErr)
+	_ = os.Remove(paths.Heartbeat)
 	if err := os.MkdirAll(filepath.Dir(watchErrorLog(paths)), 0o755); err == nil {
 		_ = os.WriteFile(watchErrorLog(paths), []byte(report), 0o644)
 	}
 	if err := os.MkdirAll(filepath.Dir(watchFailedMarker(paths)), 0o755); err == nil {
 		_ = os.WriteFile(watchFailedMarker(paths), []byte(now+"\n"), 0o644)
 	}
-	_ = heartbeat.Write(
-		paths.Heartbeat,
-		heartbeat.Disabled("watch failed; see "+watchErrorLog(paths)),
-	)
 }
 
 func failWatch(paths config.Paths, format string, args ...any) int {
@@ -139,10 +135,7 @@ func runWatch() int {
 }
 
 func runDisabled(ctx context.Context, paths config.Paths) int {
-	hb := heartbeat.Disabled("restore failed; see " + restoreErrorLog(paths))
-	if err := heartbeat.Write(paths.Heartbeat, hb); err != nil {
-		fmt.Fprintf(os.Stderr, "persistd watch: write heartbeat: %v\n", err)
-	}
+	_ = os.Remove(paths.Heartbeat)
 	fmt.Fprintln(os.Stderr, "persistd watch: DISABLED - restore failed; daemon is refusing to persist")
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -151,7 +144,7 @@ func runDisabled(ctx context.Context, paths config.Paths) int {
 		case <-ctx.Done():
 			return 0
 		case <-ticker.C:
-			_ = heartbeat.Write(paths.Heartbeat, heartbeat.Disabled("restore failed; see "+restoreErrorLog(paths)))
+			_ = os.Remove(paths.Heartbeat)
 		}
 	}
 }
@@ -208,16 +201,10 @@ func runStatus(args []string) int {
 func printHumanStatus(report map[string]any) {
 	fmt.Printf("persistd status:\n")
 	if hb, ok := report["heartbeat"].(map[string]any); ok {
-		fmt.Printf("  status:   %v\n", hb["status"])
-		fmt.Printf("  mode:     %v\n", hb["mode"])
-		fmt.Printf("  watchers: %v\n", hb["watcherCount"])
-		fmt.Printf("  backlog:  %v\n", hb["dirtyBacklog"])
-		fmt.Printf("  cursors:  %v\n", hb["auditCursorCount"])
-		if reasons, ok := hb["degradedReasons"].([]any); ok && len(reasons) > 0 {
-			fmt.Printf("  degraded: %v\n", reasons)
-		}
+		fmt.Printf("  ready:    %v\n", hb["ready"])
+		fmt.Printf("  updated:  %v\n", hb["updatedAt"])
 	} else {
-		fmt.Printf("  (no heartbeat yet)\n")
+		fmt.Printf("  (not ready)\n")
 	}
 	fmt.Printf("  exclusions: %v entries\n", report["excludeCount"])
 	if v, ok := report["restoreMarker"]; ok {

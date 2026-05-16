@@ -23,7 +23,7 @@ import (
 )
 
 // Excluder reuses the watch package's interface shape so the same
-// /data/persistence/config.json exclude list drives both.
+// /data/persistd/config.json exclude list drives both.
 type Excluder interface {
 	Excluded(absPath string) bool
 }
@@ -43,7 +43,7 @@ type Auditor struct {
 }
 
 // Config holds the per-tick audit tunables; mirrors the audit section of
-// /data/persistence/config.json.
+// /data/persistd/config.json.
 type Config struct {
 	DirectoryBatchSize int
 	Priority           int

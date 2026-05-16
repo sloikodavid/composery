@@ -4,19 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestWrite_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "persistd.ready")
-	hb := Heartbeat{
-		Status:           StatusOK,
-		Mode:             ModeWatch,
-		WatcherCount:     12,
-		DirtyBacklog:     3,
-		AuditCursorCount: 4,
-	}
+	path := filepath.Join(dir, "ready")
+	hb := Ready()
 	if err := Write(path, hb); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -28,37 +23,40 @@ func TestWrite_RoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if got.Status != StatusOK || got.WatcherCount != 12 || got.DirtyBacklog != 3 {
+	if !got.Ready || got.UpdatedAt.IsZero() {
 		t.Errorf("round trip mismatch: %+v", got)
 	}
-	if got.DegradedReasons == nil {
-		t.Error("degradedReasons should serialize as [] not null")
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if mode := info.Mode().Perm(); mode != 0o644 {
+			t.Errorf("mode = %v, want 0644", mode)
+		}
 	}
 }
 
-func TestDisabled_HasReason(t *testing.T) {
-	hb := Disabled("restore failed")
-	if hb.Status != StatusDisabled {
-		t.Errorf("status = %q", hb.Status)
-	}
-	if len(hb.DegradedReasons) != 1 || hb.DegradedReasons[0] != "restore failed" {
-		t.Errorf("degradedReasons = %v", hb.DegradedReasons)
+func TestReady_IsReady(t *testing.T) {
+	hb := Ready()
+	if !hb.Ready {
+		t.Error("expected ready heartbeat")
 	}
 }
 
 func TestWrite_AtomicReplace(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "persistd.ready")
-	if err := Write(path, Disabled("first")); err != nil {
+	path := filepath.Join(dir, "ready")
+	if err := Write(path, Heartbeat{Ready: false}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Write(path, Disabled("second")); err != nil {
+	if err := Write(path, Ready()); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(path)
 	var got Heartbeat
 	_ = json.Unmarshal(raw, &got)
-	if got.DegradedReasons[0] != "second" {
-		t.Errorf("expected replaced content, got %v", got.DegradedReasons)
+	if !got.Ready {
+		t.Errorf("expected replaced ready content, got %+v", got)
 	}
 }

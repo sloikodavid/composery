@@ -12,12 +12,12 @@ import (
 // TokenBucket is a classic refilling bucket. Capacity caps the burst size;
 // refill happens lazily on access proportional to elapsed time.
 type TokenBucket struct {
-	mu        sync.Mutex
-	capacity  float64
-	rate      float64 // tokens per second
-	tokens    float64
-	lastFill  time.Time
-	now       func() time.Time
+	mu       sync.Mutex
+	capacity float64
+	rate     float64 // tokens per second
+	tokens   float64
+	lastFill time.Time
+	now      func() time.Time
 }
 
 // NewTokenBucket constructs a bucket with the given capacity and refill

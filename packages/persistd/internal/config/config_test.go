@@ -83,45 +83,27 @@ func TestResolvePaths_Defaults(t *testing.T) {
 	if p.Volume != "/data" {
 		t.Errorf("Volume = %q, want /data", p.Volume)
 	}
-	if p.Config != "/data/persistence/config.json" {
+	if p.Config != "/data/persistd/config.json" {
 		t.Errorf("Config = %q", p.Config)
 	}
-	if p.DB != "/data/persistence/db.sqlite" {
+	if p.DB != "/data/persistd/db.sqlite" {
 		t.Errorf("DB = %q", p.DB)
 	}
-	if p.Objects != "/data/persistence/objects" {
+	if p.Objects != "/data/persistd/objects" {
 		t.Errorf("Objects = %q", p.Objects)
 	}
-	if p.Heartbeat != "/run/agentbox/persistd.ready" {
+	if p.Heartbeat != "/run/persistd/ready" {
 		t.Errorf("Heartbeat = %q", p.Heartbeat)
 	}
 }
 
-func TestResolvePaths_VolumeOverride(t *testing.T) {
-	env := map[string]string{"AGENTBOX_VOLUME_PATH": "/mnt/persist"}
+func TestResolvePaths_IgnoresEnvironment(t *testing.T) {
+	env := map[string]string{"PERSISTD_VOLUME_PATH": "/mnt/persist"}
 	p := ResolvePaths(func(k string) string { return env[k] })
-	if p.Config != "/mnt/persist/persistence/config.json" {
+	if p.Config != "/data/persistd/config.json" {
 		t.Errorf("Config = %q", p.Config)
 	}
-	if p.DB != "/mnt/persist/persistence/db.sqlite" {
+	if p.DB != "/data/persistd/db.sqlite" {
 		t.Errorf("DB = %q", p.DB)
-	}
-}
-
-func TestResolvePaths_IndividualOverridesWin(t *testing.T) {
-	env := map[string]string{
-		"AGENTBOX_VOLUME_PATH":              "/data",
-		"AGENTBOX_PERSISTENCE_DB_PATH":      "/elsewhere/db.sqlite",
-		"AGENTBOX_PERSISTENCE_OBJECTS_PATH": "/elsewhere/objects",
-	}
-	p := ResolvePaths(func(k string) string { return env[k] })
-	if p.DB != "/elsewhere/db.sqlite" {
-		t.Errorf("DB override not applied: %q", p.DB)
-	}
-	if p.Objects != "/elsewhere/objects" {
-		t.Errorf("Objects override not applied: %q", p.Objects)
-	}
-	if p.Config != "/data/persistence/config.json" {
-		t.Errorf("Config should keep derived default: %q", p.Config)
 	}
 }

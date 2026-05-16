@@ -1,5 +1,5 @@
 // Package objectstore writes regular file contents into the durable
-// BLAKE3-addressed object store under /data/persistence/objects/blake3.
+// BLAKE3-addressed object store under /data/persistd/objects/blake3.
 // Captured objects are immutable; identical content dedupes to one file.
 package objectstore
 
