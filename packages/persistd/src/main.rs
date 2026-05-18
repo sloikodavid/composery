@@ -1,12 +1,16 @@
 mod baseline;
 mod cli;
 mod config;
+mod control;
 mod daemon;
+mod doctor;
 mod internal;
 mod layout;
 mod metadata;
 mod paths;
+mod prune;
 mod readiness;
+mod status;
 mod update;
 
 #[cfg(unix)]

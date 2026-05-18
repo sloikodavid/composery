@@ -5,7 +5,7 @@ use std::path::Path;
 
 #[cfg(unix)]
 use crate::apply;
-use crate::{config, daemon, internal, layout, paths::Paths};
+use crate::{config, control, daemon, doctor, internal, layout, paths::Paths, prune, status};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -67,7 +67,7 @@ fn run_apply(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
-fn daemon_command(paths: &Paths, name: &str, _json: bool) -> Result<()> {
+fn daemon_command(paths: &Paths, name: &str, json: bool) -> Result<()> {
     if !paths.control_socket.exists() {
         bail!(
             "persistd {name}: daemon is not running; expected control socket at {}",
@@ -75,5 +75,36 @@ fn daemon_command(paths: &Paths, name: &str, _json: bool) -> Result<()> {
         );
     }
 
-    bail!("persistd {name}: control socket protocol is not implemented yet")
+    match name {
+        "status" => {
+            let report: status::StatusReport =
+                control::request(&paths.control_socket, control::Command::Status)?;
+            print_report(&report, json, status::print_human)
+        }
+        "doctor" => {
+            let report: doctor::DoctorReport =
+                control::request(&paths.control_socket, control::Command::Doctor)?;
+            print_report(&report, json, doctor::print_human)
+        }
+        "prune" => {
+            let report: prune::PruneReport =
+                control::request(&paths.control_socket, control::Command::Prune)?;
+            print_report(&report, json, prune::print_human)
+        }
+        _ => bail!("unknown daemon command {name}"),
+    }
+}
+
+fn print_report<T: serde::Serialize>(
+    report: &T,
+    json: bool,
+    print_human: impl FnOnce(&T),
+) -> Result<()> {
+    if json {
+        serde_json::to_writer_pretty(std::io::stdout(), report)?;
+        println!();
+    } else {
+        print_human(report);
+    }
+    Ok(())
 }

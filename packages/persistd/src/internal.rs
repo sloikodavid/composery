@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use fs2::FileExt;
 use rusqlite::{Connection, params};
 use std::{
@@ -109,8 +109,7 @@ impl StateDb {
         Ok(())
     }
 
-    #[cfg(test)]
-    fn public_count(&self, kind: &str) -> Result<u64> {
+    pub fn public_count(&self, kind: &str) -> Result<u64> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM public_index WHERE kind = ?1",
             params![kind],
@@ -119,8 +118,7 @@ impl StateDb {
         count.try_into().context("public_count was negative")
     }
 
-    #[cfg(test)]
-    fn metadata_record_count(&self) -> Result<u64> {
+    pub fn metadata_record_count(&self) -> Result<u64> {
         let value = match self.conn.query_row(
             "SELECT value FROM meta WHERE key = 'metadata_record_count'",
             [],
@@ -132,6 +130,18 @@ impl StateDb {
         };
         let count = value.parse().context("parse metadata_record_count")?;
         Ok(count)
+    }
+
+    pub fn meta_value(&self, key: &str) -> Result<Option<String>> {
+        match self.conn.query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        ) {
+            Ok(value) => Ok(Some(value)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error).with_context(|| format!("read meta key {key}")),
+        }
     }
 
     pub fn record_phase_success(&self, phase: &str) -> Result<()> {
@@ -213,16 +223,6 @@ fn timestamp() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     format!("{}-{:09}", duration.as_secs(), duration.subsec_nanos())
-}
-
-pub fn assert_daemon_not_running(paths: &Paths) -> Result<()> {
-    if paths.control_socket.exists() {
-        bail!(
-            "daemon control socket already exists at {}",
-            paths.control_socket.display()
-        );
-    }
-    Ok(())
 }
 
 #[cfg(test)]

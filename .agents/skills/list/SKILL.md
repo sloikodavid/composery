@@ -99,13 +99,17 @@ packages/
       baseline.rs
       cli.rs
       config.rs
+      control.rs
       daemon.rs
+      doctor.rs
       internal.rs
       layout.rs
       main.rs
       metadata.rs
       paths.rs
+      prune.rs
       readiness.rs
+      status.rs
       update.rs
       watch.rs
     Cargo.lock
