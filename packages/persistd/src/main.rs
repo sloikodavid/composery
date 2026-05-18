@@ -6,6 +6,7 @@ mod internal;
 mod layout;
 mod paths;
 mod readiness;
+mod update;
 
 use anyhow::Result;
 use clap::Parser;

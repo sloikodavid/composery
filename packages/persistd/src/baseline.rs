@@ -3,7 +3,7 @@
 #[cfg(unix)]
 mod imp {
     use anyhow::{Context, Result};
-    use rusqlite::{Connection, params};
+    use rusqlite::{Connection, OptionalExtension, params};
     use std::{
         fs::{self, File, Metadata},
         io::BufReader,
@@ -156,22 +156,80 @@ mod imp {
         ))
     }
 
-    #[derive(Debug)]
-    struct BaselineRecord {
-        path: String,
-        kind: &'static str,
-        mode: i64,
-        uid: i64,
-        gid: i64,
-        size: Option<i64>,
-        mtime_ns: i64,
-        content_hash: Option<String>,
-        symlink_target: Option<String>,
-        rdev_major: Option<i64>,
-        rdev_minor: Option<i64>,
-        xattr_json: Option<String>,
-        acl_json: Option<String>,
-        capability_json: Option<String>,
+    pub struct BaselineDb {
+        conn: Connection,
+    }
+
+    impl BaselineDb {
+        pub fn open(path: &Path) -> Result<Self> {
+            let conn = Connection::open(path)
+                .with_context(|| format!("open baseline {}", path.display()))?;
+            Ok(Self { conn })
+        }
+
+        pub fn get(&self, path: &str) -> Result<Option<BaselineRecord>> {
+            self.conn
+                .query_row(
+                    "
+                    SELECT
+                        path,
+                        kind,
+                        mode,
+                        uid,
+                        gid,
+                        size,
+                        mtime_ns,
+                        content_hash,
+                        symlink_target,
+                        rdev_major,
+                        rdev_minor,
+                        xattr_json,
+                        acl_json,
+                        capability_json
+                    FROM records
+                    WHERE path = ?1
+                    ",
+                    params![path],
+                    |row| {
+                        Ok(BaselineRecord {
+                            path: row.get(0)?,
+                            kind: row.get(1)?,
+                            mode: row.get(2)?,
+                            uid: row.get(3)?,
+                            gid: row.get(4)?,
+                            size: row.get(5)?,
+                            mtime_ns: row.get(6)?,
+                            content_hash: row.get(7)?,
+                            symlink_target: row.get(8)?,
+                            rdev_major: row.get(9)?,
+                            rdev_minor: row.get(10)?,
+                            xattr_json: row.get(11)?,
+                            acl_json: row.get(12)?,
+                            capability_json: row.get(13)?,
+                        })
+                    },
+                )
+                .optional()
+                .context("lookup baseline record")
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct BaselineRecord {
+        pub path: String,
+        pub kind: String,
+        pub mode: i64,
+        pub uid: i64,
+        pub gid: i64,
+        pub size: Option<i64>,
+        pub mtime_ns: i64,
+        pub content_hash: Option<String>,
+        pub symlink_target: Option<String>,
+        pub rdev_major: Option<i64>,
+        pub rdev_minor: Option<i64>,
+        pub xattr_json: Option<String>,
+        pub acl_json: Option<String>,
+        pub capability_json: Option<String>,
     }
 
     impl BaselineRecord {
@@ -200,7 +258,7 @@ mod imp {
 
             Ok(Self {
                 path: display_path(&options.root, path)?,
-                kind,
+                kind: kind.to_string(),
                 mode: metadata.mode().into(),
                 uid: metadata.uid().into(),
                 gid: metadata.gid().into(),
@@ -271,7 +329,7 @@ mod imp {
 
     #[cfg(test)]
     mod tests {
-        use super::{GenerateOptions, generate};
+        use super::{BaselineDb, GenerateOptions, generate};
         use rusqlite::{Connection, OptionalExtension, params};
         use std::{fs, os::unix::fs::symlink};
 
@@ -380,5 +438,36 @@ mod imp {
                 assert_eq!(count, 1, "missing column {column}");
             }
         }
+
+        #[test]
+        fn baseline_db_loads_record_by_path() {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let output = root.join("opt/persistd/baseline.sqlite");
+            fs::create_dir_all(root.join("opt/persistd")).unwrap();
+            fs::create_dir_all(root.join("etc")).unwrap();
+            fs::write(root.join("etc/hello.txt"), "hello").unwrap();
+
+            generate(&GenerateOptions {
+                root,
+                output: output.clone(),
+            })
+            .unwrap();
+
+            let db = BaselineDb::open(&output).unwrap();
+            let record = db.get("/etc/hello.txt").unwrap().unwrap();
+
+            assert_eq!(record.path, "/etc/hello.txt");
+            assert_eq!(record.kind, "file");
+            assert_eq!(
+                record.content_hash,
+                Some(blake3::hash(b"hello").to_hex().to_string())
+            );
+            assert_eq!(db.get("/missing").unwrap(), None);
+        }
     }
 }
+
+#[cfg(unix)]
+#[allow(unused_imports)]
+pub use imp::{BaselineDb, BaselineRecord, GenerateOptions, generate};

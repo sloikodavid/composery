@@ -103,6 +103,7 @@ packages/
       main.rs
       paths.rs
       readiness.rs
+      update.rs
     Cargo.lock
     Cargo.toml
     go.mod
