@@ -4,12 +4,12 @@
 use anyhow::{Context, Result, bail};
 use std::{
     fs::{self, File},
-    io::BufReader,
+    io::{BufReader, BufWriter},
     os::unix::fs::{FileTypeExt, MetadataExt, symlink},
     path::{Path, PathBuf},
 };
 
-use crate::{baseline::BaselineDb, config::Config, paths::Paths};
+use crate::{baseline::BaselineDb, config::Config, metadata, paths::Paths};
 
 pub struct UpdateContext<'a> {
     pub root: &'a Path,
@@ -44,17 +44,20 @@ pub fn update_path(ctx: &UpdateContext<'_>, path: &str) -> Result<UpdateOutcome>
         (None, Some(_)) => {
             remove_changed(ctx.paths, &path)?;
             write_removed_marker(ctx.paths, &path)?;
+            metadata::remove(&ctx.paths.metadata_file, &path)?;
             Ok(UpdateOutcome::PersistedRemoved)
         }
         (None, None) => {
             remove_changed(ctx.paths, &path)?;
             remove_removed_marker(ctx.paths, &path)?;
+            metadata::remove(&ctx.paths.metadata_file, &path)?;
             Ok(UpdateOutcome::Pruned)
         }
         (Some(metadata), Some(record)) => {
             if equals_baseline(&live_path, &metadata, &record)? {
                 remove_changed(ctx.paths, &path)?;
                 remove_removed_marker(ctx.paths, &path)?;
+                metadata::remove(&ctx.paths.metadata_file, &path)?;
                 Ok(UpdateOutcome::Pruned)
             } else {
                 persist_changed(ctx.paths, &path, &live_path, &metadata)?;
@@ -163,17 +166,14 @@ fn persist_changed(
 
     let file_type = metadata.file_type();
     if file_type.is_file() {
-        fs::copy(live_path, &destination).with_context(|| {
-            format!("copy {} to {}", live_path.display(), destination.display())
-        })?;
+        copy_file_atomic(live_path, &destination)?;
     } else if file_type.is_dir() {
         fs::create_dir_all(&destination)
             .with_context(|| format!("create changed dir {}", destination.display()))?;
     } else if file_type.is_symlink() {
         let target = fs::read_link(live_path)
             .with_context(|| format!("readlink {}", live_path.display()))?;
-        symlink(target, &destination)
-            .with_context(|| format!("symlink {}", destination.display()))?;
+        symlink_atomic(&target, &destination)?;
     } else {
         bail!(
             "persist changed does not yet support {} at {}",
@@ -181,6 +181,11 @@ fn persist_changed(
             live_path.display()
         );
     }
+
+    metadata::upsert(
+        &paths.metadata_file,
+        metadata_record(public_path, live_path, metadata)?,
+    )?;
 
     Ok(())
 }
@@ -192,7 +197,10 @@ fn remove_changed(paths: &Paths, public_path: &str) -> Result<()> {
 fn write_removed_marker(paths: &Paths, public_path: &str) -> Result<()> {
     let marker = public_path_destination(&paths.removed_dir, public_path);
     ensure_parent(&marker)?;
-    fs::write(&marker, []).with_context(|| format!("write removed marker {}", marker.display()))
+    let temp = temp_path(&marker);
+    fs::write(&temp, []).with_context(|| format!("write removed marker {}", temp.display()))?;
+    fs::rename(&temp, &marker)
+        .with_context(|| format!("publish removed marker {}", marker.display()))
 }
 
 fn remove_removed_marker(paths: &Paths, public_path: &str) -> Result<()> {
@@ -232,6 +240,64 @@ fn hash_file(path: &Path) -> Result<String> {
         .update_reader(&mut reader)
         .with_context(|| format!("hash {}", path.display()))?;
     Ok(hasher.finalize().to_hex().to_string())
+}
+
+fn copy_file_atomic(source: &Path, destination: &Path) -> Result<()> {
+    let temp = temp_path(destination);
+    {
+        let mut reader = BufReader::new(File::open(source)?);
+        let mut writer = BufWriter::new(File::create(&temp)?);
+        std::io::copy(&mut reader, &mut writer)
+            .with_context(|| format!("copy {} to {}", source.display(), temp.display()))?;
+    }
+    fs::rename(&temp, destination)
+        .with_context(|| format!("publish {} to {}", temp.display(), destination.display()))
+}
+
+fn symlink_atomic(target: &Path, destination: &Path) -> Result<()> {
+    let temp = temp_path(destination);
+    let _ = fs::remove_file(&temp);
+    symlink(target, &temp).with_context(|| format!("symlink {}", temp.display()))?;
+    fs::rename(&temp, destination)
+        .with_context(|| format!("publish {} to {}", temp.display(), destination.display()))
+}
+
+fn temp_path(path: &Path) -> PathBuf {
+    path.with_file_name(format!(
+        ".{}.persistd-tmp",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("target")
+    ))
+}
+
+fn metadata_record(
+    public_path: &str,
+    live_path: &Path,
+    metadata: &fs::Metadata,
+) -> Result<metadata::MetadataRecord> {
+    let file_type = metadata.file_type();
+    Ok(metadata::MetadataRecord {
+        path: public_path.to_string(),
+        kind: kind(&file_type).to_string(),
+        mode: Some(metadata.mode()),
+        uid: Some(metadata.uid()),
+        gid: Some(metadata.gid()),
+        mtime_ns: Some(metadata.mtime() * 1_000_000_000 + metadata.mtime_nsec()),
+        symlink_target: if file_type.is_symlink() {
+            Some(
+                fs::read_link(live_path)
+                    .with_context(|| format!("readlink {}", live_path.display()))?
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+        } else {
+            None
+        },
+        xattrs: None,
+        acl: None,
+        capability: None,
+    })
 }
 
 fn kind(file_type: &std::fs::FileType) -> &'static str {
@@ -294,6 +360,9 @@ mod tests {
             "changed"
         );
         assert!(!fixture.paths.removed_dir.join("etc/hello.txt").exists());
+        let metadata = crate::metadata::load(&fixture.paths.metadata_file).unwrap();
+        assert_eq!(metadata.len(), 1);
+        assert_eq!(metadata[0].path, "/etc/hello.txt");
     }
 
     #[test]
@@ -309,6 +378,11 @@ mod tests {
         assert_eq!(outcome, UpdateOutcome::Pruned);
         assert!(!fixture.paths.changed_dir.join("etc/hello.txt").exists());
         assert!(!fixture.paths.removed_dir.join("etc/hello.txt").exists());
+        assert!(
+            crate::metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -336,6 +410,11 @@ mod tests {
         assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
         assert!(fixture.paths.removed_dir.join("etc/hello.txt").exists());
         assert!(!fixture.paths.changed_dir.join("etc/hello.txt").exists());
+        assert!(
+            crate::metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

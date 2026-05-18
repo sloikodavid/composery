@@ -1,7 +1,11 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 
-use crate::{daemon, internal, layout, paths::Paths};
+use std::path::Path;
+
+#[cfg(unix)]
+use crate::apply;
+use crate::{config, daemon, internal, layout, paths::Paths};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -55,6 +59,9 @@ fn run_apply(paths: &Paths) -> Result<()> {
     layout::ensure(paths)?;
     let _lock = internal::WriterLock::acquire(paths)?;
     let db = internal::StateDb::open_or_rebuild(paths)?;
+    let config = config::load_or_create(&paths.config_file)?;
+    #[cfg(unix)]
+    apply::apply_public_truth(Path::new("/"), paths, &config)?;
     db.record_phase_success("apply")?;
     tracing::info!("persistd apply scaffold completed");
     Ok(())

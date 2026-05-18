@@ -94,6 +94,7 @@ packages/
         watcher_linux.go
         watcher_other.go
     src/
+      apply.rs
       baseline.rs
       cli.rs
       config.rs
@@ -101,6 +102,7 @@ packages/
       internal.rs
       layout.rs
       main.rs
+      metadata.rs
       paths.rs
       readiness.rs
       update.rs

@@ -4,9 +4,13 @@ mod config;
 mod daemon;
 mod internal;
 mod layout;
+mod metadata;
 mod paths;
 mod readiness;
 mod update;
+
+#[cfg(unix)]
+mod apply;
 
 use anyhow::Result;
 use clap::Parser;
