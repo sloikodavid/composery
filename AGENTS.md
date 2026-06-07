@@ -55,9 +55,8 @@ You're being judged strictly on results that benefit the project's future - not 
 	"packageManager": "pnpm@11.0.9",
 	"scripts": {
 		"dev": "docker compose up --build",
-		"prepare": "husky",
-		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json",
-		"fix": "node scripts/format.mjs --write && eslint . --fix"
+		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json && symlink-agents --check",
+		"fix": "symlink-agents --yes && node scripts/format.mjs --write && eslint . --fix"
 	},
 ```
 

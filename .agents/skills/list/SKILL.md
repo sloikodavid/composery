@@ -18,7 +18,6 @@ description: Use when you're not sure where to look, need to find the right file
       SKILL.md
     research/
       SKILL.md
-  AGENTS.md
 .github/
   scripts/
     smoke.sh
@@ -33,6 +32,9 @@ description: Use when you're not sure where to look, need to find the right file
   RELEASE.md
 .vscode/
   extensions.json
+  settings.json
+.zed/
+  settings.json
 docs/
   self-hosting.md
 hosting/
@@ -177,6 +179,7 @@ vendor/
 .gitattributes
 .gitignore
 .prettierignore
+AGENTS.md
 CHANGELOG.md
 compose.yml
 Dockerfile
@@ -188,6 +191,7 @@ pnpm-lock.yaml
 README.md
 renovate.json
 SECURITY.md
+symlink-agents.jsonc
 TODO.md
 tsconfig.json
 vitest.config.ts

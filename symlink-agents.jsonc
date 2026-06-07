@@ -1,0 +1,61 @@
+// symlink-agents configuration.
+//
+// Roles -- reason from these keys, not from the default paths (every path here
+// is configurable):
+//   - symlinkToDirectory / symlinkToFile: the real, committed source of truth.
+//     Defaults: .agents/ and AGENTS.md.
+//   - symlinkFromDirectories / symlinkFromFiles: where generated symlinks are
+//     created, each pointing back at the source so a tool finds files where it
+//     expects them. Defaults: .claude/ and CLAUDE.md.
+// A link lives at a "from" path and points at the matching "to" path (ln -s
+// semantics): "to" is always real, "from" is always generated. Nothing forces
+// .agents/AGENTS.md to be the source -- you could instead make .claude/CLAUDE.md
+// canonical and generate the rest, just by swapping which paths go in to/from.
+//
+// include / exclude decide which paths inside a "from" target are shared
+// (replaced with a symlink into the source) versus left real and tool-owned.
+// Patterns are gitignore-style globs; the most specific match wins; on a tie
+// exclude wins; an unmatched path falls back to "default". A pattern matches by
+// subpath: a bare name like "skills" applies to every target, while prefixing it
+// (".claude/skills") scopes it to one. "default" sets the polarity: "exclude"
+// shares only what include lists; "include" shares everything except what
+// exclude lists.
+//
+// How to extend this safely:
+//
+// Sharing a path only makes sense if its contents are PORTABLE -- the same file
+// must stay valid when another tool reads it through the symlink. Never assume;
+// read the target tool's own up-to-date docs and check two things:
+//   - Format: an open, cross-tool standard every tool parses the same way, or a
+//     tool-specific schema/frontmatter another tool would misread? Share only
+//     standards.
+//   - Ownership: authored, committed, shareable content -- or runtime config,
+//     generated state, mutable memory, or local/private data? Keep the latter
+//     real.
+//
+// To add a tool: put its directory in symlinkFromDirectories, apply both checks
+// to each surface, include what carries over, exclude the rest. When unsure,
+// leave it excluded; real is the safe, reversible default.
+{
+	"symlinkToDirectory": ".agents",
+	"symlinkToFile": "AGENTS.md",
+	"symlinkFromDirectories": [".claude"],
+	"symlinkFromFiles": ["CLAUDE.md"],
+	"default": "exclude",
+	"include": ["skills", "agents", "commands"],
+	"exclude": [
+		".claude/CLAUDE.md",
+		".claude/settings.json",
+		".claude/rules",
+		".claude/output-styles",
+		".claude/workflows",
+		".claude/agent-memory",
+		".claude/agent-memory-local",
+		"**/*.local.*",
+		"**/settings.local.json"
+	],
+	"gitignore": true,
+	"vscode": true,
+	"zed": true,
+	"noteDefaultIncludeDrift": true
+}

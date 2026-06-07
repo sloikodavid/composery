@@ -1,0 +1,10 @@
+{
+	"files.exclude": {
+		".claude": true,
+		"CLAUDE.md": true
+	},
+	"search.exclude": {
+		".claude": true,
+		"CLAUDE.md": true
+	}
+}
