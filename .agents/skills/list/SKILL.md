@@ -186,7 +186,6 @@ Dockerfile
 eslint.config.mjs
 LICENSE
 package.json
-PLAN.md
 pnpm-lock.yaml
 README.md
 renovate.json
