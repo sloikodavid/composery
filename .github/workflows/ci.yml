@@ -29,4 +29,5 @@ jobs:
         with:
           workspaces: packages/persistd
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec symlink-agents --yes
       - run: pnpm check
