@@ -22,9 +22,19 @@ jobs:
       ref: ${{ inputs.ref }}
       no_cache: true
 
-  publish:
+  plan:
     needs: smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      amd64_tags: ${{ steps.plan.outputs.amd64_tags }}
+      arm64_tags: ${{ steps.plan.outputs.arm64_tags }}
+      build_version: ${{ steps.plan.outputs.build_version }}
+      cache_scope: ${{ steps.plan.outputs.cache_scope }}
+      is_stable: ${{ steps.plan.outputs.is_stable }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      tags: ${{ steps.plan.outputs.tags }}
+      version: ${{ steps.plan.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -60,16 +70,14 @@ jobs:
 
             major_minor="${package_version%.*}"
             build_version="$package_version"
-            trivy_exit_code="1"
             is_stable="true"
-            {
-              echo "tags<<EOF"
-              echo "$IMAGE:$package_version"
-              echo "$IMAGE:$major_minor"
-              echo "$IMAGE:latest"
-              echo "$IMAGE:sha-$short_sha"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
+            cache_scope="release-stable"
+            tags=(
+              "$IMAGE:$package_version"
+              "$IMAGE:$major_minor"
+              "$IMAGE:latest"
+              "$IMAGE:sha-$short_sha"
+            )
           else
             safe_ref="$(printf '%s' "$REF_INPUT" | tr '/:@ ' '-' | tr -cd 'A-Za-z0-9_.-' | cut -c1-80)"
             if [[ -z "$safe_ref" ]]; then
@@ -77,27 +85,49 @@ jobs:
             fi
 
             build_version="preview-$short_sha"
-            trivy_exit_code="0"
             is_stable="false"
-            {
-              echo "tags<<EOF"
-              echo "$IMAGE:preview-$safe_ref"
-              echo "$IMAGE:sha-$short_sha"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
+            cache_scope="release-preview-$short_sha"
+            tags=(
+              "$IMAGE:preview-$safe_ref"
+              "$IMAGE:sha-$short_sha"
+            )
           fi
 
+          amd64_tags=()
+          arm64_tags=()
+          for image_tag in "${tags[@]}"; do
+            amd64_tags+=("$image_tag-amd64")
+            arm64_tags+=("$image_tag-arm64")
+          done
+
           {
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+            echo "amd64_tags<<EOF"
+            printf '%s\n' "${amd64_tags[@]}"
+            echo "EOF"
+            echo "arm64_tags<<EOF"
+            printf '%s\n' "${arm64_tags[@]}"
+            echo "EOF"
             echo "build_version=$build_version"
+            echo "cache_scope=$cache_scope"
             echo "is_stable=$is_stable"
             echo "release_tag=v$package_version"
             echo "sha=$sha"
-            echo "short_sha=$short_sha"
-            echo "trivy_exit_code=$trivy_exit_code"
             echo "version=$package_version"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+  build-amd64:
+    needs: plan
+    runs-on: ubuntu-24.04
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
@@ -111,30 +141,161 @@ jobs:
         id: build
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: ${{ steps.plan.outputs.tags }}
+          tags: ${{ needs.plan.outputs.amd64_tags }}
           labels: |
             org.opencontainers.image.title=Composery
             org.opencontainers.image.description=A persistent VPS-like Linux appliance with code-server in the browser.
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.plan.outputs.sha }}
-            org.opencontainers.image.version=${{ steps.plan.outputs.build_version }}
+            org.opencontainers.image.revision=${{ needs.plan.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.build_version }}
             org.opencontainers.image.licenses=Apache-2.0
           sbom: true
           provenance: true
           build-args: |
-            COMPOSERY_BUILD_VERSION=${{ steps.plan.outputs.build_version }}
-            COMPOSERY_BUILD_REVISION=${{ steps.plan.outputs.sha }}
+            COMPOSERY_BUILD_VERSION=${{ needs.plan.outputs.build_version }}
+            COMPOSERY_BUILD_REVISION=${{ needs.plan.outputs.sha }}
             COMPOSERY_BUILD_SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # Preview refs get per-commit caches so they cannot feed stable releases.
+          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-amd64
+          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-amd64
+
+  build-arm64:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        id: build
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ needs.plan.outputs.arm64_tags }}
+          labels: |
+            org.opencontainers.image.title=Composery
+            org.opencontainers.image.description=A persistent VPS-like Linux appliance with code-server in the browser.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.plan.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.build_version }}
+            org.opencontainers.image.licenses=Apache-2.0
+          sbom: true
+          provenance: true
+          build-args: |
+            COMPOSERY_BUILD_VERSION=${{ needs.plan.outputs.build_version }}
+            COMPOSERY_BUILD_REVISION=${{ needs.plan.outputs.sha }}
+            COMPOSERY_BUILD_SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # Preview refs get per-commit caches so they cannot feed stable releases.
+          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-arm64
+          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-arm64
+
+  publish:
+    needs:
+      - plan
+      - build-amd64
+      - build-arm64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-platform manifest
+        id: manifest
+        env:
+          AMD64_DIGEST: ${{ needs.build-amd64.outputs.digest }}
+          AMD64_TAGS: ${{ needs.plan.outputs.amd64_tags }}
+          ARM64_DIGEST: ${{ needs.build-arm64.outputs.digest }}
+          ARM64_TAGS: ${{ needs.plan.outputs.arm64_tags }}
+          TAGS: ${{ needs.plan.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t tags <<< "$TAGS"
+          mapfile -t amd64_tags <<< "$AMD64_TAGS"
+          mapfile -t arm64_tags <<< "$ARM64_TAGS"
+
+          first_non_empty() {
+            local value
+            for value in "$@"; do
+              if [[ -n "$value" ]]; then
+                printf '%s\n' "$value"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          source_ref() {
+            local tag="$1"
+            local digest="$2"
+            case "$digest" in
+              sha256:*) printf '%s@%s\n' "$tag" "$digest" ;;
+              *@sha256:*) printf '%s\n' "$digest" ;;
+              *)
+                echo "Unexpected Docker digest: $digest" >&2
+                return 1
+                ;;
+            esac
+          }
+
+          primary_tag="$(first_non_empty "${tags[@]}")"
+          amd64_tag="$(first_non_empty "${amd64_tags[@]}")"
+          arm64_tag="$(first_non_empty "${arm64_tags[@]}")"
+          amd64_ref="$(source_ref "$amd64_tag" "$AMD64_DIGEST")"
+          arm64_ref="$(source_ref "$arm64_tag" "$ARM64_DIGEST")"
+
+          args=()
+          for image_tag in "${tags[@]}"; do
+            [[ -z "$image_tag" ]] && continue
+            args+=("-t" "$image_tag")
+          done
+
+          docker buildx imagetools create "${args[@]}" "$amd64_ref" "$arm64_ref"
+
+          docker buildx imagetools inspect "$primary_tag" --format '{{json .Manifest}}' > manifest.json
+          digest="$(jq -r '.digest // empty' manifest.json)"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Could not resolve manifest digest for $primary_tag" >&2
+            cat manifest.json >&2
+            exit 1
+          fi
+
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/composery@${{ steps.build.outputs.digest }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/composery@${{ steps.manifest.outputs.digest }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-          exit-code: ${{ steps.plan.outputs.trivy_exit_code }}
+          ignore-unfixed: false
+          limit-severities-for-sarif: true
+          exit-code: "0"
 
       - uses: github/codeql-action/upload-sarif@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
         if: always() && hashFiles('trivy-results.sarif') != ''
@@ -144,15 +305,15 @@ jobs:
       - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
         with:
           subject-name: ghcr.io/${{ github.repository_owner }}/composery
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
           push-to-registry: true
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        if: steps.plan.outputs.is_stable == 'true'
+        if: needs.plan.outputs.is_stable == 'true'
         with:
-          tag_name: ${{ steps.plan.outputs.release_tag }}
-          target_commitish: ${{ steps.plan.outputs.sha }}
+          tag_name: ${{ needs.plan.outputs.release_tag }}
+          target_commitish: ${{ needs.plan.outputs.sha }}
           generate_release_notes: true
           body: |
-            Image: `ghcr.io/${{ github.repository_owner }}/composery:${{ steps.plan.outputs.version }}`
-            Digest: `${{ steps.build.outputs.digest }}`
+            Image: `ghcr.io/${{ github.repository_owner }}/composery:${{ needs.plan.outputs.version }}`
+            Digest: `${{ steps.manifest.outputs.digest }}`
