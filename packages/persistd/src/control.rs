@@ -7,6 +7,7 @@ use std::path::Path;
 use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::UnixStream,
+    time::Duration,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,32 +76,49 @@ pub fn request<T: DeserializeOwned>(socket: &Path, command: Command) -> Result<T
 
     #[cfg(unix)]
     {
-        let mut stream =
-            UnixStream::connect(socket).with_context(|| format!("connect {}", socket.display()))?;
-        let request = Request {
-            version: 1,
-            command,
-        };
-        serde_json::to_writer(&mut stream, &request).context("encode daemon request")?;
-        stream.write_all(b"\n").context("finish daemon request")?;
-        stream.flush().context("flush daemon request")?;
-
-        let mut line = String::new();
-        BufReader::new(stream)
-            .read_line(&mut line)
-            .context("read daemon response")?;
-        if line.is_empty() {
-            bail!("daemon closed the control socket without a response");
-        }
-
-        let response: Response = serde_json::from_str(&line).context("decode daemon response")?;
-        response.decode_payload()
+        request_with_timeout(socket, command, Duration::from_secs(10))
     }
+}
+
+#[cfg(unix)]
+fn request_with_timeout<T: DeserializeOwned>(
+    socket: &Path,
+    command: Command,
+    timeout: Duration,
+) -> Result<T> {
+    let mut stream =
+        UnixStream::connect(socket).with_context(|| format!("connect {}", socket.display()))?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .context("set daemon read timeout")?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .context("set daemon write timeout")?;
+    let request = Request {
+        version: 1,
+        command,
+    };
+    serde_json::to_writer(&mut stream, &request).context("encode daemon request")?;
+    stream.write_all(b"\n").context("finish daemon request")?;
+    stream.flush().context("flush daemon request")?;
+
+    let mut line = String::new();
+    BufReader::new(stream)
+        .read_line(&mut line)
+        .context("read daemon response")?;
+    if line.is_empty() {
+        bail!("daemon closed the control socket without a response");
+    }
+
+    let response: Response = serde_json::from_str(&line).context("decode daemon response")?;
+    response.decode_payload()
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Command, Request, Response};
+    #[cfg(unix)]
+    use std::{os::unix::net::UnixListener, thread, time::Duration};
 
     #[test]
     fn request_protocol_is_json_line_friendly() {
@@ -121,5 +139,28 @@ mod tests {
         let payload: serde_json::Value = response.decode_payload().unwrap();
 
         assert_eq!(payload["ready"], true);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn request_times_out_when_daemon_does_not_respond() {
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("control.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        let server = thread::spawn(move || {
+            let (_stream, _addr) = listener.accept().unwrap();
+            thread::sleep(Duration::from_millis(100));
+        });
+
+        let error = super::request_with_timeout::<serde_json::Value>(
+            &socket,
+            Command::Status,
+            Duration::from_millis(20),
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("read daemon response"));
+        server.join().unwrap();
     }
 }

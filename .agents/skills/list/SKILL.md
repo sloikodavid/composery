@@ -19,8 +19,6 @@ description: Use when you're not sure where to look, need to find the right file
     research/
       SKILL.md
 .github/
-  scripts/
-    smoke.sh
   workflows/
     ci.yml
     cla.yml
@@ -69,6 +67,8 @@ packages/
       status.rs
       update.rs
       watch.rs
+    tests/
+      persistd_roundtrip.rs
     Cargo.lock
     Cargo.toml
 rootfs/
@@ -120,6 +120,8 @@ rootfs/
 scripts/
   check-rust.mjs
   format.mjs
+  generate-icons.mjs
+  smoke.mjs
 tests/
   fixtures/
     cert.pem
@@ -145,6 +147,7 @@ vendor/
       src/
         browser/
           media/
+            composery-logo.svg
             favicon-dark-support.svg
             favicon.ico
             favicon.svg
@@ -186,6 +189,7 @@ Dockerfile
 eslint.config.mjs
 LICENSE
 package.json
+PLAN.md
 pnpm-lock.yaml
 README.md
 renovate.json

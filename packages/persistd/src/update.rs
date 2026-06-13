@@ -62,6 +62,16 @@ pub fn update_public_path(
         }
     };
 
+    if live
+        .as_ref()
+        .is_some_and(|facts| matches!(facts.kind, FileKind::Socket))
+    {
+        remove_changed_tree(ctx.paths, public_path)?;
+        remove_removed_marker(ctx.paths, public_path)?;
+        metadata::remove(&ctx.paths.metadata_file, public_path)?;
+        return Ok(UpdateOutcome::Pruned);
+    }
+
     match (live, baseline) {
         (None, Some(_)) => {
             remove_changed_tree(ctx.paths, public_path)?;
@@ -94,16 +104,16 @@ pub fn update_public_path(
                     Ok(UpdateOutcome::PersistedMetadata)
                 }
                 DeltaDecision::Changed => {
-                    persist_changed(ctx.paths, public_path, &live_path, &live)?;
+                    let persisted = persist_changed(ctx.paths, public_path, &live_path, &live)?;
                     remove_removed_marker(ctx.paths, public_path)?;
-                    Ok(UpdateOutcome::PersistedChanged)
+                    Ok(persisted.outcome())
                 }
             }
         }
         (Some(live), None) => {
-            persist_changed(ctx.paths, public_path, &live_path, &live)?;
+            let persisted = persist_changed(ctx.paths, public_path, &live_path, &live)?;
             remove_removed_marker(ctx.paths, public_path)?;
-            Ok(UpdateOutcome::PersistedChanged)
+            Ok(persisted.outcome())
         }
     }
 }
@@ -231,21 +241,54 @@ pub(crate) fn mtime_matches_baseline(live_mtime_ns: i64, baseline_mtime_ns: i64)
         || live_mtime_ns == baseline_mtime_ns.div_euclid(1_000_000_000) * 1_000_000_000
 }
 
+enum PersistedDelta {
+    Changed,
+    Metadata,
+}
+
+impl PersistedDelta {
+    fn outcome(self) -> UpdateOutcome {
+        match self {
+            Self::Changed => UpdateOutcome::PersistedChanged,
+            Self::Metadata => UpdateOutcome::PersistedMetadata,
+        }
+    }
+}
+
 fn persist_changed(
     paths: &Paths,
     public_path: &PublicPath,
     live_path: &Path,
     live: &FsFacts,
-) -> Result<()> {
+) -> Result<PersistedDelta> {
     let destination = public_path.destination(&paths.changed_dir);
     match live.kind {
         FileKind::Socket => {
             bail!("refusing to persist live socket {}", live_path.display());
         }
-        FileKind::CharDevice | FileKind::BlockDevice => {
+        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice => {
+            if let Err(error) = prepare_changed_destination(paths, &destination) {
+                if is_symlink_ancestor_error(&error) {
+                    return Err(error);
+                }
+                metadata::upsert(
+                    &paths.metadata_file,
+                    metadata_record(public_path, live)
+                        .with_context(|| format!("record fallback metadata for {}", public_path))?,
+                )?;
+                tracing::warn!(
+                    error = %error,
+                    path = %public_path,
+                    "stored special file as fallback metadata"
+                );
+                return Ok(PersistedDelta::Metadata);
+            }
             match rootfs::copy_entry_atomic(live_path, &destination) {
                 Ok(()) => {}
                 Err(error) => {
+                    if is_symlink_ancestor_error(&error) {
+                        return Err(error);
+                    }
                     metadata::upsert(
                         &paths.metadata_file,
                         metadata_record(public_path, live).with_context(|| {
@@ -255,31 +298,34 @@ fn persist_changed(
                     tracing::warn!(
                         error = %error,
                         path = %public_path,
-                        "stored device node as fallback metadata"
+                        "stored special file as fallback metadata"
                     );
-                    return Ok(());
+                    return Ok(PersistedDelta::Metadata);
                 }
             }
         }
-        _ => match rootfs::copy_entry_atomic(live_path, &destination) {
-            Ok(()) => {}
-            Err(error) if rootfs::is_xattr_error(&error) => {
-                rootfs::copy_entry_atomic_without_xattrs(live_path, &destination)?;
-                metadata::upsert(
-                    &paths.metadata_file,
-                    metadata_record(public_path, live).with_context(|| {
-                        format!("record xattr fallback metadata for {}", public_path)
-                    })?,
-                )?;
-                tracing::warn!(
-                    error = %error,
-                    path = %public_path,
-                    "stored xattrs as fallback metadata"
-                );
-                return Ok(());
+        _ => {
+            prepare_changed_destination(paths, &destination)?;
+            match rootfs::copy_entry_atomic(live_path, &destination) {
+                Ok(()) => {}
+                Err(error) if rootfs::is_xattr_error(&error) => {
+                    rootfs::copy_entry_atomic_without_xattrs(live_path, &destination)?;
+                    metadata::upsert(
+                        &paths.metadata_file,
+                        metadata_record(public_path, live).with_context(|| {
+                            format!("record xattr fallback metadata for {}", public_path)
+                        })?,
+                    )?;
+                    tracing::warn!(
+                        error = %error,
+                        path = %public_path,
+                        "stored xattrs as fallback metadata"
+                    );
+                    return Ok(PersistedDelta::Metadata);
+                }
+                Err(error) => return Err(error),
             }
-            Err(error) => return Err(error),
-        },
+        }
     }
 
     if metadata_record_needed(live) {
@@ -287,7 +333,20 @@ fn persist_changed(
     } else {
         metadata::remove(&paths.metadata_file, public_path)?;
     }
-    Ok(())
+    Ok(PersistedDelta::Changed)
+}
+
+fn prepare_changed_destination(paths: &Paths, destination: &Path) -> Result<()> {
+    if changed_ancestor_entry_exists(paths, destination)? {
+        remove_changed_ancestor_entry(paths, destination)?;
+    }
+    rootfs::ensure_safe_parent(&paths.changed_dir, destination)
+}
+
+fn is_symlink_ancestor_error(error: &anyhow::Error) -> bool {
+    error
+        .chain()
+        .any(|cause| cause.to_string().contains("symlink ancestor"))
 }
 
 fn metadata_record_needed(live: &FsFacts) -> bool {
@@ -328,15 +387,49 @@ fn metadata_record(public_path: &PublicPath, live: &FsFacts) -> Result<MetadataR
         } else {
             Some(live.xattrs.clone())
         },
-        acl: None,
-        capability: None,
+        acl: acl_value(&live.xattrs)?,
+        capability: capability_value(&live.xattrs)?,
     };
     record.set_public_path(public_path);
     Ok(record)
 }
 
+fn acl_value(xattrs: &[rootfs::XattrRecord]) -> Result<Option<serde_json::Value>> {
+    let acl_records = xattrs
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.name.as_str(),
+                "system.posix_acl_access" | "system.posix_acl_default"
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if acl_records.is_empty() {
+        Ok(None)
+    } else {
+        serde_json::to_value(acl_records)
+            .map(Some)
+            .context("encode ACL fallback metadata")
+    }
+}
+
+fn capability_value(xattrs: &[rootfs::XattrRecord]) -> Result<Option<serde_json::Value>> {
+    xattrs
+        .iter()
+        .find(|record| record.name == "security.capability")
+        .cloned()
+        .map(serde_json::to_value)
+        .transpose()
+        .context("encode file capability fallback metadata")
+}
+
 fn remove_changed_entry(paths: &Paths, public_path: &PublicPath) -> Result<()> {
     let path = public_path.destination(&paths.changed_dir);
+    if changed_ancestor_entry_exists(paths, &path)? {
+        return Ok(());
+    }
+    rootfs::ensure_safe_parent(&paths.changed_dir, &path)?;
     match fs::symlink_metadata(&path) {
         Ok(metadata) if metadata.file_type().is_dir() => match fs::remove_dir(&path) {
             Ok(()) => Ok(()),
@@ -357,11 +450,23 @@ fn remove_changed_entry(paths: &Paths, public_path: &PublicPath) -> Result<()> {
 }
 
 fn remove_changed_tree(paths: &Paths, public_path: &PublicPath) -> Result<()> {
-    public::remove_path(&public_path.destination(&paths.changed_dir))
+    let path = public_path.destination(&paths.changed_dir);
+    if changed_ancestor_entry_exists(paths, &path)? {
+        return Ok(());
+    }
+    rootfs::ensure_safe_parent(&paths.changed_dir, &path)?;
+    public::remove_path(&path)
 }
 
 fn write_removed_marker(paths: &Paths, public_path: &PublicPath) -> Result<()> {
     let marker = public_path.destination(&paths.removed_dir);
+    if changed_ancestor_entry_exists(paths, &public_path.destination(&paths.changed_dir))? {
+        return Ok(());
+    }
+    if removed_ancestor_marker_exists(paths, &marker)? {
+        return Ok(());
+    }
+    rootfs::ensure_safe_parent(&paths.removed_dir, &marker)?;
     public::ensure_parent(&marker)?;
     let temp = public::temp_path(&marker);
     let _ = fs::remove_file(&temp);
@@ -376,13 +481,88 @@ fn write_removed_marker(paths: &Paths, public_path: &PublicPath) -> Result<()> {
         file.sync_all()
             .with_context(|| format!("fsync removed marker {}", temp.display()))?;
     }
+    public::remove_path(&marker)?;
     fs::rename(&temp, &marker)
         .with_context(|| format!("publish removed marker {}", marker.display()))?;
     rootfs::fsync_parent(&marker)
 }
 
+fn changed_ancestor_entry_exists(paths: &Paths, target: &Path) -> Result<bool> {
+    ancestor_non_directory_exists(&paths.changed_dir, target)
+}
+
+fn remove_changed_ancestor_entry(paths: &Paths, target: &Path) -> Result<()> {
+    let mut blocker = None;
+    let mut current = target.parent();
+    while let Some(path) = current {
+        if path == paths.changed_dir {
+            break;
+        }
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!(
+                    "refusing to use public truth through symlink ancestor {}",
+                    path.display()
+                );
+            }
+            Ok(_) => blocker = Some(path.to_path_buf()),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) => {}
+            Err(error) => return Err(error).with_context(|| format!("stat {}", path.display())),
+        }
+        current = path.parent();
+    }
+
+    if let Some(path) = blocker {
+        public::remove_path(&path)?;
+    }
+    Ok(())
+}
+
+fn removed_ancestor_marker_exists(paths: &Paths, marker: &Path) -> Result<bool> {
+    ancestor_non_directory_exists(&paths.removed_dir, marker)
+}
+
+fn ancestor_non_directory_exists(root: &Path, target: &Path) -> Result<bool> {
+    let mut current = target.parent();
+    while let Some(path) = current {
+        if path == root {
+            return Ok(false);
+        }
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!(
+                    "refusing to use public truth through symlink ancestor {}",
+                    path.display()
+                );
+            }
+            Ok(_) => return Ok(true),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                if error.kind() == std::io::ErrorKind::NotADirectory {
+                    return Ok(true);
+                }
+            }
+            Err(error) => return Err(error).with_context(|| format!("stat {}", path.display())),
+        }
+        current = path.parent();
+    }
+    Ok(false)
+}
+
 fn remove_removed_marker(paths: &Paths, public_path: &PublicPath) -> Result<()> {
-    public::remove_path(&public_path.destination(&paths.removed_dir))
+    let path = public_path.destination(&paths.removed_dir);
+    rootfs::ensure_safe_parent(&paths.removed_dir, &path)?;
+    public::remove_path(&path)
 }
 
 #[cfg(test)]
@@ -397,6 +577,7 @@ mod tests {
     use std::{
         ffi::OsString,
         fs,
+        os::unix::net::UnixListener,
         os::unix::{ffi::OsStringExt, fs::symlink},
     };
 
@@ -503,6 +684,22 @@ mod tests {
     }
 
     #[test]
+    fn removed_marker_write_replaces_crash_leftover_temp_file() {
+        let fixture = Fixture::new();
+        let marker = fixture.paths.removed_dir.join("etc/hello.txt");
+        let leftover = crate::public::temp_path(&marker);
+        fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        fs::write(&leftover, "partial").unwrap();
+        fs::remove_file(fixture.root.join("etc/hello.txt")).unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/etc/hello.txt").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
+        assert!(marker.exists());
+        assert!(!leftover.exists());
+    }
+
+    #[test]
     fn missing_baseline_directory_removes_changed_subtree_and_creates_removed_marker() {
         let fixture = Fixture::new();
         fs::create_dir_all(fixture.paths.changed_dir.join("home/user/Desktop")).unwrap();
@@ -521,6 +718,69 @@ mod tests {
         assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
         assert!(!fixture.paths.changed_dir.join("home/user/Desktop").exists());
         assert!(fixture.paths.removed_dir.join("home/user/Desktop").exists());
+    }
+
+    #[test]
+    fn directory_tombstone_replaces_nested_child_tombstones() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.removed_dir.join("home/user/Desktop")).unwrap();
+        fs::write(
+            fixture
+                .paths
+                .removed_dir
+                .join("home/user/Desktop/stale-child"),
+            "",
+        )
+        .unwrap();
+        fs::remove_dir_all(fixture.root.join("home/user/Desktop")).unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/home/user/Desktop").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
+        assert!(
+            fixture
+                .paths
+                .removed_dir
+                .join("home/user/Desktop")
+                .is_file()
+        );
+        assert!(
+            !fixture
+                .paths
+                .removed_dir
+                .join("home/user/Desktop/stale-child")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn child_tombstone_is_covered_by_existing_parent_tombstone() {
+        let fixture = Fixture::new();
+        fs::write(fixture.paths.removed_dir.join("etc"), "").unwrap();
+        fs::remove_file(fixture.root.join("etc/hello.txt")).unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/etc/hello.txt").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
+        assert!(fixture.paths.removed_dir.join("etc").is_file());
+        assert!(!fixture.paths.removed_dir.join("etc/hello.txt").exists());
+    }
+
+    #[test]
+    fn changed_parent_file_covers_deleted_baseline_children() {
+        let fixture = Fixture::new();
+        fs::remove_dir_all(fixture.root.join("etc")).unwrap();
+        fs::write(fixture.root.join("etc"), "file now").unwrap();
+
+        assert_eq!(
+            update_path(&fixture.ctx(), "/etc").unwrap(),
+            UpdateOutcome::PersistedChanged
+        );
+        let outcome = update_path(&fixture.ctx(), "/etc/hello.txt").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
+        assert!(fixture.paths.changed_dir.join("etc").is_file());
+        assert!(!fixture.paths.removed_dir.join("etc/hello.txt").exists());
     }
 
     #[test]
@@ -565,6 +825,21 @@ mod tests {
             fs::read_to_string(fixture.paths.changed_dir.join("new.txt")).unwrap(),
             "new"
         );
+    }
+
+    #[test]
+    fn changed_capture_replaces_crash_leftover_temp_file() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("new.txt"), "new").unwrap();
+        let destination = fixture.paths.changed_dir.join("new.txt");
+        let leftover = crate::public::temp_path(&destination);
+        fs::write(&leftover, "partial").unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/new.txt").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedChanged);
+        assert_eq!(fs::read_to_string(destination).unwrap(), "new");
+        assert!(!leftover.exists());
     }
 
     #[test]
@@ -687,6 +962,183 @@ mod tests {
         let outcome = update_path(&fixture.ctx(), "/data/ignored").unwrap();
 
         assert_eq!(outcome, UpdateOutcome::Ignored);
+    }
+
+    #[test]
+    fn runtime_socket_is_pruned() {
+        let fixture = Fixture::new();
+        let socket = fixture.root.join("home/user/app/app.sock");
+        fs::create_dir_all(socket.parent().unwrap()).unwrap();
+        fs::create_dir_all(fixture.paths.changed_dir.join("home/user/app")).unwrap();
+        fs::write(
+            fixture.paths.changed_dir.join("home/user/app/app.sock"),
+            "stale",
+        )
+        .unwrap();
+        let _listener = UnixListener::bind(&socket).unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/home/user/app/app.sock").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::Pruned);
+        assert!(
+            !fixture
+                .paths
+                .changed_dir
+                .join("home/user/app/app.sock")
+                .exists()
+        );
+        assert!(
+            crate::metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn metadata_record_has_acl_and_capability_views() {
+        let facts = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::File,
+            mode: 0o100644,
+            uid: 0,
+            gid: 0,
+            size: Some(1),
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 2,
+            nlink: 1,
+            xattrs: vec![
+                crate::rootfs::XattrRecord {
+                    name: "system.posix_acl_access".into(),
+                    name_bytes_b64: {
+                        use base64::Engine as _;
+                        base64::engine::general_purpose::STANDARD.encode("system.posix_acl_access")
+                    },
+                    value_b64: {
+                        use base64::Engine as _;
+                        base64::engine::general_purpose::STANDARD.encode("acl")
+                    },
+                },
+                crate::rootfs::XattrRecord {
+                    name: "security.capability".into(),
+                    name_bytes_b64: {
+                        use base64::Engine as _;
+                        base64::engine::general_purpose::STANDARD.encode("security.capability")
+                    },
+                    value_b64: {
+                        use base64::Engine as _;
+                        base64::engine::general_purpose::STANDARD.encode("cap")
+                    },
+                },
+            ],
+        };
+
+        let record =
+            super::metadata_record(&crate::public::PublicPath::parse("/file").unwrap(), &facts)
+                .unwrap();
+
+        assert!(record.acl.unwrap().to_string().contains("posix_acl"));
+        assert!(
+            record
+                .capability
+                .unwrap()
+                .to_string()
+                .contains("security.capability")
+        );
+    }
+
+    #[test]
+    fn child_capture_removes_stale_changed_parent_file() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.root.join("new")).unwrap();
+        fs::write(fixture.root.join("new/file"), "child").unwrap();
+        fs::write(fixture.paths.changed_dir.join("new"), "stale parent").unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/new/file").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedChanged);
+        assert_eq!(
+            fs::read_to_string(fixture.paths.changed_dir.join("new/file")).unwrap(),
+            "child"
+        );
+    }
+
+    #[test]
+    fn fifo_capture_removes_stale_changed_parent_file() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.root.join("new")).unwrap();
+        unsafe {
+            let fifo = fixture.root.join("new/fifo");
+            let c =
+                std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(fifo.as_os_str()))
+                    .unwrap();
+            assert_eq!(libc::mkfifo(c.as_ptr(), 0o644), 0);
+        }
+        fs::write(fixture.paths.changed_dir.join("new"), "parent conflict").unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/new/fifo").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedChanged);
+        assert_eq!(
+            crate::rootfs::facts(&fixture.paths.changed_dir.join("new/fifo"))
+                .unwrap()
+                .kind,
+            crate::rootfs::FileKind::Fifo
+        );
+    }
+
+    #[test]
+    fn changed_capture_refuses_public_truth_symlink_ancestor() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::create_dir_all(fixture.root.join("escape")).unwrap();
+        fs::write(fixture.root.join("escape/file"), "live").unwrap();
+        symlink(&outside, fixture.paths.changed_dir.join("escape")).unwrap();
+
+        let error = update_path(&fixture.ctx(), "/escape/file")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("symlink ancestor"));
+        assert!(!outside.join("file").exists());
+    }
+
+    #[test]
+    fn changed_prune_refuses_public_truth_symlink_ancestor() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("owned"), "outside").unwrap();
+        symlink(&outside, fixture.paths.changed_dir.join("escape")).unwrap();
+
+        let error = update_path(&fixture.ctx(), "/escape/owned")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("symlink ancestor"));
+        assert_eq!(
+            fs::read_to_string(outside.join("owned")).unwrap(),
+            "outside"
+        );
+    }
+
+    #[test]
+    fn removed_marker_write_refuses_public_truth_symlink_ancestor() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, fixture.paths.removed_dir.join("etc")).unwrap();
+        fs::remove_file(fixture.root.join("etc/hello.txt")).unwrap();
+
+        let error = update_path(&fixture.ctx(), "/etc/hello.txt")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("symlink ancestor"));
+        assert!(!outside.join("hello.txt").exists());
     }
 
     struct Fixture {

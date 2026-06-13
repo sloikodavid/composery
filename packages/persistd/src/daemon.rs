@@ -19,7 +19,7 @@ use crate::{
     capabilities, dirty,
     lifecycle::{LifecycleState, LifecycleStatus},
     public::PublicPath,
-    update, watch,
+    rootfs, update, watch,
 };
 
 #[cfg(unix)]
@@ -36,6 +36,7 @@ struct WriterRuntime {
     config: config::Config,
     baseline: BaselineDb,
     db: internal::StateDb,
+    dirty_tx: dirty::DirtySender,
     dirty_pending: Arc<AtomicU64>,
     watch_status: LifecycleStatus,
     audit_status: LifecycleStatus,
@@ -43,9 +44,14 @@ struct WriterRuntime {
 
 #[cfg(unix)]
 pub fn run(paths: &Paths) -> Result<()> {
-    layout::remove_ready(paths)?;
+    run_inner(paths, PathBuf::from("/"), None)
+}
+
+#[cfg(unix)]
+fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()>>) -> Result<()> {
     layout::ensure(paths)?;
     let _lock = internal::WriterLock::acquire(paths)?;
+    layout::remove_ready(paths)?;
     remove_stale_control_socket(paths)?;
 
     let db = internal::StateDb::open_or_rebuild(paths)?;
@@ -58,12 +64,46 @@ pub fn run(paths: &Paths) -> Result<()> {
     let baseline_records = baseline.all_records()?;
     let (writer_tx, writer_rx) = mpsc::channel();
     let (dirty_tx, dirty_rx) = mpsc::channel();
+    let (watch_error_tx, watch_error_rx) = mpsc::channel();
     let dirty_pending = Arc::new(AtomicU64::new(0));
     let dirty_sender = dirty::DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
     let watch_status = LifecycleStatus::new(LifecycleState::Initializing);
     let audit_status = LifecycleStatus::new(LifecycleState::Initializing);
+
+    let _watcher = match watch::Watcher::start(
+        root.clone(),
+        config.clone(),
+        dirty_sender.clone(),
+        watch_status.clone(),
+        paths.watch_error_log.clone(),
+        watch_error_tx,
+    ) {
+        Ok(watcher) => watcher,
+        Err(error) => {
+            let summary = format!("{error:#}");
+            let _ = db.record_phase_failure("watch", &summary);
+            let _ = internal::write_error_log(&paths.watch_error_log, &summary);
+            return Err(error).context("initialize watcher");
+        }
+    };
+    let _auditor = match audit::Auditor::start(
+        root.clone(),
+        baseline_records,
+        config.clone(),
+        dirty_sender.clone(),
+        audit_status.clone(),
+    ) {
+        Ok(auditor) => auditor,
+        Err(error) => {
+            let _ = db.record_phase_failure("audit", &format!("{error:#}"));
+            return Err(error).context("initialize auditor");
+        }
+    };
+
+    let writer_dirty_sender = dirty_sender.clone();
+    let writer_root = root;
     let writer_paths = paths.clone();
-    let writer_config = config.clone();
+    let writer_config = config;
     let writer_watch_status = watch_status.clone();
     let writer_audit_status = audit_status.clone();
     let writer = thread::Builder::new()
@@ -71,42 +111,22 @@ pub fn run(paths: &Paths) -> Result<()> {
         .spawn(move || {
             writer_loop(
                 WriterRuntime {
-                    root: PathBuf::from("/"),
+                    root: writer_root,
                     paths: writer_paths,
                     config: writer_config,
                     baseline,
                     db,
+                    dirty_tx: writer_dirty_sender,
                     dirty_pending: Arc::clone(&dirty_pending),
                     watch_status: writer_watch_status,
                     audit_status: writer_audit_status,
                 },
                 writer_rx,
                 dirty_rx,
+                watch_error_rx,
             );
         })
         .context("spawn writer thread")?;
-
-    let _watcher = match watch::Watcher::start(
-        PathBuf::from("/"),
-        config.clone(),
-        dirty_sender.clone(),
-        watch_status.clone(),
-        paths.watch_error_log.clone(),
-    ) {
-        Ok(watcher) => watcher,
-        Err(error) => {
-            let _ = internal::write_error_log(&paths.watch_error_log, &format!("{error:#}"));
-            return Err(error).context("initialize watcher");
-        }
-    };
-    let _auditor = audit::Auditor::start(
-        PathBuf::from("/"),
-        baseline_records,
-        config,
-        dirty_sender,
-        audit_status.clone(),
-    )
-    .context("initialize auditor")?;
 
     request_unit(&writer_tx, WriterCommand::Status).context("verify writer status")?;
     let listener = UnixListener::bind(&paths.control_socket)
@@ -121,9 +141,13 @@ pub fn run(paths: &Paths) -> Result<()> {
     db.record_diagnostic("audit_status", &audit_status.text())?;
     db.record_diagnostic("capabilities", &serde_json::to_string(&capability_report)?)?;
     readiness::write_ready(paths, "daemon")?;
+    let _runtime_files = RuntimeFilesGuard { paths };
     tracing::info!("persistd daemon is ready");
 
     loop {
+        if should_stop(&mut stop_rx) {
+            break;
+        }
         match listener.accept() {
             Ok((stream, _addr)) => {
                 if let Err(error) = handle_control_stream(stream, &writer_tx) {
@@ -139,6 +163,16 @@ pub fn run(paths: &Paths) -> Result<()> {
             Err(error) => return Err(error).context("accept control connection"),
         }
     }
+
+    drop(listener);
+    drop(_watcher);
+    drop(_auditor);
+    drop(writer_tx);
+    writer
+        .join()
+        .map_err(|_| anyhow::anyhow!("persistd writer thread panicked"))?;
+
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -151,6 +185,7 @@ fn writer_loop(
     runtime: WriterRuntime,
     command_rx: mpsc::Receiver<WriterCommand>,
     dirty_rx: mpsc::Receiver<PublicPath>,
+    watch_error_rx: mpsc::Receiver<String>,
 ) {
     let update_context = update::UpdateContext {
         root: &runtime.root,
@@ -161,6 +196,10 @@ fn writer_loop(
 
     loop {
         let mut public_index_dirty = false;
+        for error in watch_error_rx.try_iter() {
+            let _ = runtime.db.record_phase_failure("watch", &error);
+        }
+        let mut retry_paths = Vec::new();
         for _ in 0..256 {
             let Ok(public_path) = dirty_rx.try_recv() else {
                 break;
@@ -171,13 +210,24 @@ fn writer_loop(
                     public_index_dirty = true;
                 }
                 Err(error) => {
-                    tracing::warn!(error = %error, path = %public_path, "dirty path update failed");
-                    let _ = runtime
-                        .db
-                        .record_phase_failure("update", &format!("{error:#}"));
+                    if rootfs::is_copy_unstable_error(&error) {
+                        tracing::warn!(error = %error, path = %public_path, "dirty path changed during copy; requeueing");
+                        retry_paths.push(public_path.clone());
+                    } else {
+                        tracing::warn!(error = %error, path = %public_path, "dirty path update failed");
+                        let _ = runtime
+                            .db
+                            .record_phase_failure("update", &format!("{error:#}"));
+                    }
                 }
             }
             dirty::mark_processed(&runtime.dirty_pending);
+        }
+        if !retry_paths.is_empty() {
+            thread::sleep(Duration::from_millis(50));
+            for public_path in retry_paths {
+                let _ = runtime.dirty_tx.send(public_path);
+            }
         }
         if public_index_dirty {
             let _ = runtime.db.rebuild_public_index(&runtime.paths);
@@ -233,6 +283,30 @@ fn remove_stale_control_socket(paths: &Paths) -> Result<()> {
                 paths.control_socket.display()
             )
         }),
+    }
+}
+
+#[cfg(unix)]
+struct RuntimeFilesGuard<'a> {
+    paths: &'a Paths,
+}
+
+#[cfg(unix)]
+impl Drop for RuntimeFilesGuard<'_> {
+    fn drop(&mut self) {
+        let _ = layout::remove_ready(self.paths);
+        let _ = std::fs::remove_file(&self.paths.control_socket);
+    }
+}
+
+#[cfg(unix)]
+fn should_stop(stop_rx: &mut Option<mpsc::Receiver<()>>) -> bool {
+    let Some(stop_rx) = stop_rx else {
+        return false;
+    };
+    match stop_rx.try_recv() {
+        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => true,
+        Err(mpsc::TryRecvError::Empty) => false,
     }
 }
 
@@ -300,15 +374,18 @@ fn request_unit<T: Send + 'static>(
 #[cfg(unix)]
 #[cfg(test)]
 mod tests {
-    use super::{WriterCommand, WriterRuntime, handle_control_stream, writer_loop};
+    use super::{WriterCommand, WriterRuntime, handle_control_stream, run_inner, writer_loop};
     use crate::{
         baseline::{BaselineDb, GenerateOptions, generate},
         config::Config,
         control,
+        dirty::DirtySender,
         internal::StateDb,
         layout,
         lifecycle::{LifecycleState, LifecycleStatus},
         paths::Paths,
+        public::PublicPath,
+        status::StatusReport,
     };
     use std::{
         fs,
@@ -316,14 +393,17 @@ mod tests {
         os::unix::net::UnixStream,
         sync::{Arc, atomic::AtomicU64, mpsc},
         thread,
+        time::{Duration, Instant},
     };
 
     #[test]
     fn status_doctor_and_prune_requests_are_served_through_writer() {
         let fixture = Fixture::new();
         let (writer_tx, writer_rx) = mpsc::channel();
-        let (_dirty_tx, dirty_rx) = mpsc::channel();
+        let (dirty_tx, dirty_rx) = mpsc::channel();
+        let (watch_error_tx, watch_error_rx) = mpsc::channel();
         let dirty_pending = Arc::new(AtomicU64::new(0));
+        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
         let root = fixture.root.clone();
         let paths = fixture.paths.clone();
         let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
@@ -336,18 +416,33 @@ mod tests {
                     config: Config::default(),
                     baseline,
                     db,
+                    dirty_tx: dirty_sender,
                     dirty_pending,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
                 },
                 writer_rx,
                 dirty_rx,
+                watch_error_rx,
             );
         });
 
+        watch_error_tx
+            .send("inotify event queue overflowed; rolling audit will recover".into())
+            .unwrap();
         let response = request(&writer_tx, control::Command::Status);
         assert!(response.ok);
-        assert!(response.payload.unwrap()["publicCounts"]["changed"].is_number());
+        let payload = response.payload.unwrap();
+        assert!(payload["publicCounts"]["changed"].is_number());
+        assert_eq!(
+            payload["lastError"],
+            "inotify event queue overflowed; rolling audit will recover"
+        );
+        let db = StateDb::open_or_rebuild(&fixture.paths).unwrap();
+        assert_eq!(
+            db.meta_value("last_watch_error").unwrap().as_deref(),
+            Some("inotify event queue overflowed; rolling audit will recover")
+        );
 
         let response = request(&writer_tx, control::Command::Doctor);
         assert!(response.ok);
@@ -355,6 +450,271 @@ mod tests {
 
         let response = request(&writer_tx, control::Command::Prune);
         assert!(response.ok);
+
+        drop(writer_tx);
+        writer_thread.join().unwrap();
+    }
+
+    #[test]
+    fn writer_status_reports_shared_worker_lifecycle_states() {
+        let fixture = Fixture::new();
+        let (writer_tx, writer_rx) = mpsc::channel();
+        let (dirty_tx, dirty_rx) = mpsc::channel();
+        let (_watch_error_tx, watch_error_rx) = mpsc::channel();
+        let dirty_pending = Arc::new(AtomicU64::new(0));
+        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let watch_status = LifecycleStatus::new(LifecycleState::Initializing);
+        let audit_status = LifecycleStatus::new(LifecycleState::Initializing);
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        let writer_watch_status = watch_status.clone();
+        let writer_audit_status = audit_status.clone();
+        let writer_thread = thread::spawn(move || {
+            writer_loop(
+                WriterRuntime {
+                    root,
+                    paths,
+                    config: Config::default(),
+                    baseline,
+                    db,
+                    dirty_tx: dirty_sender,
+                    dirty_pending,
+                    watch_status: writer_watch_status,
+                    audit_status: writer_audit_status,
+                },
+                writer_rx,
+                dirty_rx,
+                watch_error_rx,
+            );
+        });
+
+        for state in [
+            LifecycleState::Initializing,
+            LifecycleState::Running,
+            LifecycleState::Degraded,
+            LifecycleState::Stopped,
+        ] {
+            watch_status.set(state);
+            audit_status.set(state);
+
+            let response = request(&writer_tx, control::Command::Status);
+            assert!(response.ok);
+            let payload = response.payload.unwrap();
+            assert_eq!(payload["watchStatus"], state.as_str());
+            assert_eq!(payload["auditStatus"], state.as_str());
+        }
+
+        drop(writer_tx);
+        writer_thread.join().unwrap();
+    }
+
+    #[test]
+    fn daemon_writes_ready_after_workers_start_and_serves_socket() {
+        let fixture = Fixture::new();
+        fs::write(&fixture.paths.ready_file, "stale").unwrap();
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let daemon = thread::spawn(move || run_inner(&paths, root, Some(stop_rx)));
+
+        wait_for(
+            || {
+                fs::read_to_string(&fixture.paths.ready_file)
+                    .is_ok_and(|ready| ready.contains("\"phase\": \"daemon\""))
+            },
+            "daemon ready file",
+        );
+
+        let ready = fs::read_to_string(&fixture.paths.ready_file).unwrap();
+        assert!(ready.contains("\"ready\": true"));
+        assert!(ready.contains("\"phase\": \"daemon\""));
+        assert_ne!(ready, "stale");
+
+        let report: StatusReport =
+            control::request(&fixture.paths.control_socket, control::Command::Status).unwrap();
+        assert!(report.ready);
+        assert_eq!(report.watch_status, "running");
+        assert_eq!(report.audit_status, "running");
+        assert!(report.last_daemon_success_at.is_some());
+
+        fs::write(fixture.root.join("etc/hello"), "changed").unwrap();
+        wait_for(
+            || {
+                fs::read_to_string(fixture.paths.changed_dir.join("etc/hello"))
+                    .is_ok_and(|contents| contents == "changed")
+            },
+            "persisted changed file",
+        );
+
+        let report: StatusReport =
+            control::request(&fixture.paths.control_socket, control::Command::Status).unwrap();
+        assert!(report.public_counts.changed >= 1);
+
+        stop_tx.send(()).unwrap();
+        daemon.join().unwrap().unwrap();
+        assert!(!fixture.paths.ready_file.exists());
+        assert!(!fixture.paths.control_socket.exists());
+
+        fs::write(fixture.root.join("etc/after-stop"), "not persisted").unwrap();
+        thread::sleep(Duration::from_millis(200));
+        assert!(!fixture.paths.changed_dir.join("etc/after-stop").exists());
+    }
+
+    #[test]
+    fn daemon_does_not_remove_live_ready_when_writer_lock_is_held() {
+        let fixture = Fixture::new();
+        let _lock = crate::internal::WriterLock::acquire(&fixture.paths).unwrap();
+        fs::write(&fixture.paths.ready_file, "live").unwrap();
+
+        let error = run_inner(&fixture.paths, fixture.root.clone(), None)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("lock"));
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.ready_file).unwrap(),
+            "live"
+        );
+    }
+
+    #[test]
+    fn daemon_does_not_write_ready_when_watcher_initialization_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let paths = Paths::new(
+            temp.path().join("opt/persistd"),
+            temp.path().join("run/persistd"),
+            temp.path().join("data/persistd"),
+        );
+        fs::create_dir_all(root.join("etc")).unwrap();
+        fs::write(root.join("etc/hello"), "hello").unwrap();
+        generate(&GenerateOptions {
+            root: root.clone(),
+            output: paths.baseline_db.clone(),
+        })
+        .unwrap();
+        layout::ensure(&paths).unwrap();
+        fs::write(&paths.ready_file, "stale").unwrap();
+        fs::remove_dir_all(&root).unwrap();
+
+        let error = run_inner(&paths, root, None).unwrap_err().to_string();
+
+        assert!(error.contains("initialize watcher"));
+        assert!(!paths.ready_file.exists());
+        assert!(
+            fs::read_to_string(&paths.watch_error_log)
+                .unwrap()
+                .contains("watch root")
+        );
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        assert!(
+            db.meta_value("last_watch_error")
+                .unwrap()
+                .unwrap()
+                .contains("watch root")
+        );
+    }
+
+    #[test]
+    fn daemon_restart_does_not_replay_apply() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/hello"), "persisted").unwrap();
+
+        run_daemon_until_ready_then_stop(&fixture);
+        assert_eq!(
+            fs::read_to_string(fixture.root.join("etc/hello")).unwrap(),
+            "hello"
+        );
+
+        run_daemon_until_ready_then_stop(&fixture);
+        assert_eq!(
+            fs::read_to_string(fixture.root.join("etc/hello")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn daemon_restart_audit_recovers_change_missed_while_stopped() {
+        let fixture = Fixture::new();
+        run_daemon_until_ready_then_stop(&fixture);
+
+        fs::write(fixture.root.join("etc/hello"), "missed while stopped").unwrap();
+
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let daemon = thread::spawn(move || run_inner(&paths, root, Some(stop_rx)));
+
+        wait_for(
+            || {
+                fs::read_to_string(fixture.paths.changed_dir.join("etc/hello"))
+                    .is_ok_and(|contents| contents == "missed while stopped")
+            },
+            "audit recovered missed change",
+        );
+
+        stop_tx.send(()).unwrap();
+        daemon.join().unwrap().unwrap();
+        assert!(!fixture.paths.ready_file.exists());
+    }
+
+    #[test]
+    fn writer_requeues_unstable_copy_errors() {
+        if !std::path::Path::new("/proc/uptime").exists() {
+            eprintln!("skipping writer requeue test: /proc/uptime is unavailable");
+            return;
+        }
+        let fixture = Fixture::new();
+        let (writer_tx, writer_rx) = mpsc::channel();
+        let (dirty_tx, dirty_rx) = mpsc::channel();
+        let (_watch_error_tx, watch_error_rx) = mpsc::channel();
+        let dirty_pending = Arc::new(AtomicU64::new(0));
+        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let root = std::path::PathBuf::from("/");
+        let paths = fixture.paths.clone();
+        let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        let writer_dirty_sender = dirty_sender.clone();
+        let writer_pending = Arc::clone(&dirty_pending);
+        let writer_thread = thread::spawn(move || {
+            writer_loop(
+                WriterRuntime {
+                    root,
+                    paths,
+                    config: Config {
+                        exclusions: Vec::new(),
+                        ..Config::default()
+                    },
+                    baseline,
+                    db,
+                    dirty_tx: writer_dirty_sender,
+                    dirty_pending: writer_pending,
+                    watch_status: LifecycleStatus::new(LifecycleState::Running),
+                    audit_status: LifecycleStatus::new(LifecycleState::Running),
+                },
+                writer_rx,
+                dirty_rx,
+                watch_error_rx,
+            );
+        });
+
+        dirty_sender
+            .send(PublicPath::parse("/proc/uptime").unwrap())
+            .unwrap();
+        thread::sleep(Duration::from_millis(300));
+
+        let response = request(&writer_tx, control::Command::Status);
+        assert!(response.ok);
+        assert!(
+            response.payload.unwrap()["dirtyQueueSize"]
+                .as_u64()
+                .unwrap()
+                >= 1
+        );
+        assert!(!fixture.paths.changed_dir.join("proc/uptime").exists());
 
         drop(writer_tx);
         writer_thread.join().unwrap();
@@ -384,6 +744,36 @@ mod tests {
         server_thread.join().unwrap();
 
         serde_json::from_str(&line).unwrap()
+    }
+
+    fn wait_for(mut predicate: impl FnMut() -> bool, label: &str) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if predicate() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        panic!("timed out waiting for {label}");
+    }
+
+    fn run_daemon_until_ready_then_stop(fixture: &Fixture) {
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let daemon = thread::spawn(move || run_inner(&paths, root, Some(stop_rx)));
+
+        wait_for(
+            || {
+                fs::read_to_string(&fixture.paths.ready_file)
+                    .is_ok_and(|ready| ready.contains("\"phase\": \"daemon\""))
+            },
+            "daemon ready file",
+        );
+
+        stop_tx.send(()).unwrap();
+        daemon.join().unwrap().unwrap();
+        assert!(!fixture.paths.ready_file.exists());
     }
 
     struct Fixture {

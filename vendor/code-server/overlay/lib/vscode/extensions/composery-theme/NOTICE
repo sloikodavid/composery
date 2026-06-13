@@ -1,0 +1,10 @@
+themes/base-dark.json and themes/base-light.json are the "Dark Modern" and
+"Light Modern" color themes from Visual Studio Code, flattened from their
+include chains (dark_modern -> dark_plus -> dark_vs and the light equivalents).
+
+  Copyright (c) Microsoft Corporation
+  Licensed under the MIT License.
+  https://github.com/microsoft/vscode
+
+The Composery retint (themes/composery-dark.json, themes/composery-light.json)
+and this packaging are likewise MIT-licensed.

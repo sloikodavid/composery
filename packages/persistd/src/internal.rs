@@ -3,6 +3,7 @@ use fs2::FileExt;
 use rusqlite::{Connection, params};
 use std::{
     fs::{self, File, OpenOptions},
+    io::Write,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -15,6 +16,10 @@ pub struct WriterLock {
 
 impl WriterLock {
     pub fn acquire(paths: &Paths) -> Result<Self> {
+        if let Some(parent) = paths.lock_file.parent() {
+            ensure_real_dir(parent)?;
+        }
+        ensure_real_file_or_missing(&paths.lock_file)?;
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -47,6 +52,7 @@ impl StateDb {
     }
 
     fn open(paths: &Paths) -> Result<Self> {
+        ensure_real_state_db_path(paths)?;
         let conn = Connection::open(&paths.state_db)
             .with_context(|| format!("open {}", paths.state_db.display()))?;
         let db = Self { conn };
@@ -147,6 +153,7 @@ impl StateDb {
         let now = timestamp();
         self.set_meta(&format!("last_{phase}_success_at"), &now)?;
         self.set_meta("last_error", "")?;
+        self.set_meta(&format!("last_{phase}_error"), "")?;
         Ok(())
     }
 
@@ -171,9 +178,17 @@ impl StateDb {
     }
 }
 
+fn ensure_real_state_db_path(paths: &Paths) -> Result<()> {
+    ensure_real_file_or_missing(&paths.state_db)
+}
+
 fn move_corrupt_db(paths: &Paths) -> Result<()> {
-    if !paths.state_db.exists() {
-        return Ok(());
+    match fs::symlink_metadata(&paths.state_db) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(error).with_context(|| format!("stat {}", paths.state_db.display()));
+        }
     }
 
     let backup = paths
@@ -198,15 +213,60 @@ fn timestamp() -> String {
 pub fn write_error_log(path: &Path, error: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        ensure_real_dir(parent)?;
     }
-    fs::write(path, format!("{error}\n")).with_context(|| format!("write {}", path.display()))
+    ensure_real_file_or_missing(path)?;
+
+    let temp = path.with_extension("log.tmp");
+    let _ = fs::remove_file(&temp);
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .with_context(|| format!("create {}", temp.display()))?;
+        file.write_all(format!("{error}\n").as_bytes())
+            .with_context(|| format!("write {}", temp.display()))?;
+        file.sync_all()
+            .with_context(|| format!("fsync {}", temp.display()))?;
+    }
+    fs::rename(&temp, path)
+        .with_context(|| format!("publish error log {} to {}", temp.display(), path.display()))?;
+    fsync_parent(path)
+}
+
+fn ensure_real_file_or_missing(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
+        Ok(_) => anyhow::bail!("{} must be a real file", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+    Ok(())
+}
+
+fn ensure_real_dir(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real directory", path.display()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
+fn fsync_parent(path: &Path) -> Result<()> {
+    let parent = path
+        .parent()
+        .with_context(|| format!("path has no parent: {}", path.display()))?;
+    let dir = File::open(parent).with_context(|| format!("open {}", parent.display()))?;
+    dir.sync_all()
+        .with_context(|| format!("fsync {}", parent.display()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{StateDb, WriterLock};
     use crate::{layout, paths::Paths};
-    use std::fs;
+    use std::{fs, os::unix::fs::symlink};
 
     #[test]
     fn lock_prevents_a_second_writer() {
@@ -260,6 +320,28 @@ mod tests {
     }
 
     #[test]
+    fn state_db_symlink_is_moved_aside_and_rebuilt() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        layout::ensure(&paths).unwrap();
+        let outside = temp.path().join("outside.sqlite");
+        fs::write(&outside, "not sqlite").unwrap();
+        fs::remove_file(&paths.state_db).unwrap_or(());
+        symlink(&outside, &paths.state_db).unwrap();
+
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+
+        assert_eq!(db.public_count("changed").unwrap(), 0);
+        assert!(
+            !fs::symlink_metadata(&paths.state_db)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_to_string(outside).unwrap(), "not sqlite");
+    }
+
+    #[test]
     fn records_phase_failures_and_error_logs() {
         let temp = tempfile::tempdir().unwrap();
         let paths = test_paths(temp.path());
@@ -274,11 +356,68 @@ mod tests {
             db.meta_value("last_error").unwrap().as_deref(),
             Some("missing baseline")
         );
+        db.record_phase_success("apply").unwrap();
+        assert_eq!(
+            db.meta_value("last_apply_error").unwrap().as_deref(),
+            Some("")
+        );
         assert!(
             fs::read_to_string(paths.apply_error_log)
                 .unwrap()
                 .contains("missing baseline")
         );
+    }
+
+    #[test]
+    fn error_log_write_rejects_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        layout::ensure(&paths).unwrap();
+        let outside = temp.path().join("outside.log");
+        fs::write(&outside, "outside").unwrap();
+        symlink(&outside, &paths.apply_error_log).unwrap();
+
+        let error = super::write_error_log(&paths.apply_error_log, "boom")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("real file"));
+        assert_eq!(fs::read_to_string(outside).unwrap(), "outside");
+    }
+
+    #[test]
+    fn lock_rejects_symlink_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.data_dir).unwrap();
+        let outside = temp.path().join("outside-internal");
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, &paths.internal_dir).unwrap();
+
+        let error = match WriterLock::acquire(&paths) {
+            Ok(_) => panic!("lock acquired through symlink parent"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains("real directory"));
+        assert!(!outside.join("lock").exists());
+    }
+
+    #[test]
+    fn error_log_write_rejects_symlink_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        fs::create_dir_all(&paths.data_dir).unwrap();
+        let outside = temp.path().join("outside-internal");
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, &paths.internal_dir).unwrap();
+
+        let error = super::write_error_log(&paths.apply_error_log, "boom")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("real directory"));
+        assert!(!outside.join("apply-error.log").exists());
     }
 
     fn test_paths(root: &std::path::Path) -> Paths {

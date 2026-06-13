@@ -93,8 +93,8 @@ Most useful for self-hosting:
 | `HASHED_PASSWORD`           | Sets an argon2 hashed password and takes precedence over `PASSWORD`. Escape `$` as `$$` in Docker Compose values.                        |
 | `PORT`                      | Changes code-server's listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.         |
 | `VSCODE_PROXY_URI`          | Controls links in the Ports panel, for example `https://{{port}}.dev.example.com`. The default path proxy works without setting this.    |
-| `CS_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                    |
-| `CS_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                         |
+| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                    |
+| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                         |
 | `EXTENSIONS_GALLERY`        | Points code-server at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                    |
 | `LOG_LEVEL`                 | Sets code-server logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                |
 | `GITHUB_TOKEN`              | Supplies code-server's GitHub auth token. Treat it as a secret; code-server removes it from the child-process environment after startup. |
@@ -103,12 +103,12 @@ Accepted by code-server but usually less important for Composery:
 
 | Variable                                                 | Use                                                                                                         |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `CODE_SERVER_CONFIG`                                     | Overrides the code-server YAML config path.                                                                 |
-| `CODE_SERVER_HOST`                                       | Overrides the bind host. Avoid setting this unless you understand the container networking impact.          |
-| `CODE_SERVER_COOKIE_SUFFIX`                              | Adds a cookie suffix, useful when sharing a parent domain across multiple code-server instances.            |
-| `CODE_SERVER_RECONNECTION_GRACE_TIME`                    | Overrides reconnection grace time in seconds.                                                               |
-| `CODE_SERVER_IDLE_TIMEOUT_SECONDS`                       | Asks code-server to exit after an idle period. Supervisor currently restarts code-server, so use with care. |
-| `CS_DISABLE_GETTING_STARTED_OVERRIDE`                    | Set to `1` or `true` to disable code-server's Getting Started override.                                     |
+| `COMPOSERY_CONFIG`                                     | Overrides the code-server YAML config path.                                                                 |
+| `COMPOSERY_HOST`                                       | Overrides the bind host. Avoid setting this unless you understand the container networking impact.          |
+| `COMPOSERY_COOKIE_SUFFIX`                              | Adds a cookie suffix, useful when sharing a parent domain across multiple code-server instances.            |
+| `COMPOSERY_RECONNECTION_GRACE_TIME`                    | Overrides reconnection grace time in seconds.                                                               |
+| `COMPOSERY_IDLE_TIMEOUT_SECONDS`                       | Asks code-server to exit after an idle period. Supervisor currently restarts code-server, so use with care. |
+| `COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE`                    | Set to `1` or `true` to disable code-server's Getting Started override.                                     |
 | `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` | Sets an outbound HTTP(S) proxy for code-server update and extension-related requests.                       |
 
 ## Persistence Contract
@@ -122,8 +122,8 @@ Persisted:
 - symlinks;
 - hardlinks when the volume supports them;
 - mode bits, ownership, and mtimes;
-- xattrs, ACLs, and file capabilities where supported;
-- FIFOs and device-node metadata where supported;
+- xattrs, ACLs, and file capabilities, when supported by the kernel, mounted filesystem, and container privileges;
+- FIFOs and device-node metadata, when supported by the mounted filesystem and container privileges;
 - package manager state under paths such as `/usr`, `/etc`, and `/var/lib/dpkg`.
 
 Excluded by default:
@@ -132,6 +132,14 @@ Excluded by default:
 - `/run`, `/var/run`, `/proc`, `/sys`, `/dev`, and `/tmp`;
 - `/opt/persistd` and `/opt/composery`;
 - resolver and hostname files: `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`.
+
+Unix sockets are runtime endpoints and are ignored even outside excluded
+directories. The owning process must recreate them after restart.
+
+When a regular file still has the same bytes as the image but only metadata has
+changed, such as mode, owner, mtime, or xattrs, Composery stores the metadata
+delta without copying the full file into `changed/`. This keeps a touched large
+image file from ballooning the `/data` volume.
 
 The active config lives at `/data/persistd/config.json`. Self-hosters may edit the
 exclusion list. Invalid exclusion paths are rejected at startup.

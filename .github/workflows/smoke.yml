@@ -28,45 +28,38 @@ concurrency:
 
 jobs:
   smoke:
-    name: ${{ matrix.platform }}
+    name: ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: amd64
-            docker_platform: linux/amd64
-            runner: ubuntu-24.04
-          - platform: arm64
-            docker_platform: linux/arm64
-            runner: ubuntu-24.04-arm
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
     env:
-      CONTAINER_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
-      IMAGE_TAG: composery:smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
-      VOLUME_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+      SMOKE_CONTAINER_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+      SMOKE_IMAGE_TAG: composery:smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+      SMOKE_NO_CACHE: ${{ inputs.no_cache || false }}
+      SMOKE_VOLUME_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          driver: docker
-      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        with:
-          context: .
-          platforms: ${{ matrix.docker_platform }}
-          load: true
-          tags: ${{ env.IMAGE_TAG }}
-          provenance: false
-          no-cache: ${{ inputs.no_cache || false }}
+          node-version: "26.1.0"
+          cache: pnpm
       - name: Run smoke suite
-        timeout-minutes: 25
-        run: bash .github/scripts/smoke.sh
+        timeout-minutes: 50
+        run: pnpm smoke
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        if: matrix.platform == 'amd64'
+        if: matrix.arch == 'amd64'
         with:
-          image-ref: ${{ env.IMAGE_TAG }}
+          image-ref: ${{ env.SMOKE_IMAGE_TAG }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -76,7 +69,7 @@ jobs:
       - uses: github/codeql-action/upload-sarif@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
         if: >-
           always() &&
-          matrix.platform == 'amd64' &&
+          matrix.arch == 'amd64' &&
           hashFiles('trivy-results.sarif') != '' &&
           (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:
@@ -85,10 +78,12 @@ jobs:
         if: failure()
         run: |
           docker ps -a || true
-          docker logs "$CONTAINER_NAME" || true
+          docker logs "$SMOKE_CONTAINER_NAME" || true
+          docker exec "$SMOKE_CONTAINER_NAME" /opt/persistd/bin/persistd status --json || true
+          docker exec "$SMOKE_CONTAINER_NAME" sh -lc 'for file in /data/persistd/.internal/apply-error.log /data/persistd/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done' || true
       - name: Cleanup
         if: always()
         run: |
-          docker rm -f "$CONTAINER_NAME" || true
-          docker volume rm "$VOLUME_NAME" || true
-          docker image rm "$IMAGE_TAG" || true
+          docker rm -f "$SMOKE_CONTAINER_NAME" || true
+          docker volume rm "$SMOKE_VOLUME_NAME" || true
+          docker image rm "$SMOKE_IMAGE_TAG" || true

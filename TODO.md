@@ -1,5 +1,9 @@
 # To-do
 
+- Clipboard sync, i.e. when apps like Claude Code write to it via 'c'.
+
+- Error code: Out of Memory.
+
 - Figure out the API including Shortcuts.
   - Copy URL button for shortcuts - uses a Webhook for command shortcuts and passes payload.
 

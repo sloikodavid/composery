@@ -1,0 +1,676 @@
+import { Buffer } from "node:buffer";
+import { spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import http from "node:http";
+import net from "node:net";
+import { dirname, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+import { URL, URLSearchParams, fileURLToPath } from "node:url";
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const RUN_ID = `${Date.now()}-${process.pid}`;
+const DEFAULT_ATTEMPTS = {
+	exec: 30,
+	health: 120,
+	readiness: 180
+};
+
+const config = {
+	containerName:
+		process.env.SMOKE_CONTAINER_NAME ?? `composery-smoke-${RUN_ID}`,
+	imageTag: process.env.SMOKE_IMAGE_TAG ?? "composery:smoke",
+	noCache: parseBoolean(process.env.SMOKE_NO_CACHE),
+	password: process.env.SMOKE_PASSWORD ?? "smoke-password",
+	port: parsePort(process.env.SMOKE_PORT ?? "18080"),
+	volumeName: process.env.SMOKE_VOLUME_NAME ?? `composery-smoke-${RUN_ID}`
+};
+
+let failureDumped = false;
+
+process.once("SIGINT", () => stopFromSignal("SIGINT", 130));
+process.once("SIGTERM", () => stopFromSignal("SIGTERM", 143));
+
+try {
+	await main();
+} catch (error) {
+	console.error(error instanceof Error ? error.stack || error.message : error);
+	dumpContainerLogs();
+	process.exitCode = 1;
+} finally {
+	cleanupResources();
+}
+
+async function main() {
+	requireDocker();
+	cleanupResources();
+	buildImage();
+	docker(["volume", "create", config.volumeName], { quiet: true });
+	runDefaultContainer();
+	await assertWebAppSmoke();
+	await assertPersistdAppliesChanges();
+}
+
+function requireDocker() {
+	run("docker", ["version", "--format", "{{.Server.Version}}"], {
+		capture: true,
+		quiet: true,
+		timeoutMs: 20_000
+	});
+}
+
+function buildImage() {
+	log(`building ${config.imageTag}`);
+	const args = ["build", "-t", config.imageTag];
+	if (config.noCache) args.push("--no-cache");
+	args.push(".");
+	docker(args, { timeoutMs: 45 * 60_000 });
+}
+
+function runDefaultContainer() {
+	log("starting default container");
+	docker(
+		[
+			"run",
+			"-d",
+			"--name",
+			config.containerName,
+			"-p",
+			`127.0.0.1:${config.port}:${config.port}`,
+			"-e",
+			`PORT=${config.port}`,
+			"-e",
+			`PASSWORD=${config.password}`,
+			"-v",
+			`${config.volumeName}:/data`,
+			config.imageTag
+		],
+		{ capture: true, quiet: true }
+	);
+}
+
+async function assertWebAppSmoke() {
+	log("checking web app startup, auth, and code-server");
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health);
+
+	const cookies = new Map();
+	await login(cookies);
+	const rootPage = await fetchAuthedText("/", cookies);
+	assertContains("default root page", rootPage, "code-server");
+
+	await assertWebsocketUpgrade(cookies);
+	await assertCodeServerGatesWhenPersistdNotReady(cookies);
+	dockerExec(["sudo", "-u", "user", "sudo", "-n", "true"]);
+	dockerExec(["sudo", "-u", "user", "code", "--version"], {
+		capture: true,
+		quiet: true
+	});
+}
+
+async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
+	log("checking code-server gates requests while persistd is not ready");
+	const readyFile = execSh("cat /run/persistd/ready", {
+		capture: true,
+		quiet: true
+	}).stdout;
+
+	try {
+		execSh("rm -f /run/persistd/ready");
+
+		const health = await request("/healthz", { cookies });
+		if (health.statusCode !== 503) {
+			throw new Error(
+				`Expected /healthz to return 503 without persistd ready; got HTTP ${health.statusCode}.`
+			);
+		}
+		const healthJson = JSON.parse(health.body);
+		if (healthJson.persistd?.ready !== false) {
+			throw new Error("Expected /healthz to report persistd.ready=false.");
+		}
+
+		const startup = await request("/", {
+			cookies,
+			headers: { accept: "text/html" }
+		});
+		if (startup.statusCode !== 503) {
+			throw new Error(
+				`Expected HTML requests to return 503 without persistd ready; got HTTP ${startup.statusCode}.`
+			);
+		}
+		assertContains("startup page", startup.body, "Preparing workspace");
+
+		await assertWebsocketServiceUnavailable(cookies);
+	} finally {
+		execSh('printf "%s" "$1" > /run/persistd/ready', {
+			args: [readyFile],
+			quiet: true
+		});
+	}
+
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health, { cookies });
+	await assertWebsocketUpgrade(cookies);
+}
+
+async function assertPersistdAppliesChanges() {
+	log("checking persistd applies filesystem changes");
+
+	log("checking persistd layout and command surface");
+	await waitForExec("test -x /opt/persistd/bin/persistd");
+	await waitForExec("test ! -e /opt/persistd/bin/persistd-baseline");
+	await waitForExec("test -f /opt/persistd/baseline.sqlite");
+	await waitForExec("test -f /data/persistd/.internal/state.sqlite");
+	await waitForExec("test -f /run/persistd/ready");
+	execSh("test ! -e /run/persistd/restore-failed");
+	execSh("test ! -e /run/persistd/watch-failed");
+	execSh(
+		'/opt/persistd/bin/persistd status --json | jq -e ".ready == true and .baselineValid == true"'
+	);
+	execSh(
+		'/opt/persistd/bin/persistd doctor --json | jq -e ".rebuiltPublicIndex == true"'
+	);
+	execSh(
+		"/opt/persistd/bin/persistd prune --json | jq -e '.removed | type == \"array\"'"
+	);
+
+	log("creating files that should be applied after restart");
+	execSh("printf hello > /home/user/Desktop/smoke.txt", {
+		user: "user"
+	});
+	execSh("printf restored > /custom-restore");
+	execSh("mkdir -p /foo123 && printf nested > /foo123/nested.txt");
+
+	log("waiting for persistd to record changed filesystem state");
+	await waitForExec("test -f /data/persistd/config.json");
+	await waitForExec("test -d /data/persistd/changed");
+	await waitForExec("test -d /data/persistd/removed");
+	await waitForExec("test -f /data/persistd/metadata.jsonl");
+	await waitForExec("test -f /data/persistd/.internal/lock");
+	await waitForContainerFile(
+		"/data/persistd/changed/home/user/Desktop/smoke.txt"
+	);
+	await waitForContainerFile("/data/persistd/changed/custom-restore");
+	await waitForContainerFile("/data/persistd/changed/foo123/nested.txt");
+
+	log("restarting container and checking changed files are applied");
+	restartContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh('test "$(cat /home/user/Desktop/smoke.txt)" = hello');
+	execSh('test "$(cat /custom-restore)" = restored');
+	execSh("test -d /foo123");
+	execSh('test "$(cat /foo123/nested.txt)" = nested');
+
+	log("removing a file and checking the removal is applied");
+	execSh("rm /custom-restore");
+	await waitForContainerPathAbsent("/data/persistd/changed/custom-restore");
+	restartContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh("test ! -e /custom-restore");
+
+	log(
+		"recreating container with the same volume and checking changes are applied"
+	);
+	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
+	runDefaultContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh('test "$(cat /home/user/Desktop/smoke.txt)" = hello');
+	execSh("test -d /foo123");
+
+	log("checking image-file deletion and tombstone removal");
+	execSh("rm /usr/share/applications/composery-text-editor.desktop");
+	await waitForContainerFile(
+		"/data/persistd/removed/usr/share/applications/composery-text-editor.desktop"
+	);
+	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
+	runDefaultContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh("test ! -e /usr/share/applications/composery-text-editor.desktop");
+	execSh(
+		"rm -f /data/persistd/removed/usr/share/applications/composery-text-editor.desktop"
+	);
+	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
+	runDefaultContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh("test -f /usr/share/applications/composery-text-editor.desktop");
+
+	log("checking baseline-equal changes do not remain in changed");
+	execSh(
+		"cp /etc/mailcap /tmp/mailcap.baseline && printf changed > /etc/mailcap"
+	);
+	await waitForExec("test -e /data/persistd/changed/etc/mailcap");
+	execSh("cat /tmp/mailcap.baseline > /etc/mailcap");
+	await waitForContainerPathAbsent("/data/persistd/changed/etc/mailcap");
+
+	log("checking touched large baseline file does not create changed payload");
+	const large = execSh(
+		"find /opt/code-server/current -xdev -type f -size +1M | head -n1",
+		{ capture: true, quiet: true }
+	).stdout.trim();
+	if (!large) throw new Error("No large baseline file found for smoke check.");
+	execSh('touch "$1"', { args: [large] });
+	await assertContainerPathStaysAbsent(
+		`/data/persistd/changed/${large.replace(/^\//, "")}`,
+		5
+	);
+
+	log("checking custom exclusions are ignored and not pruned");
+	execSh(
+		'tmp="$(mktemp)"; jq \'.exclusions += ["/excluded-smoke"]\' /data/persistd/config.json > "$tmp"; mv "$tmp" /data/persistd/config.json'
+	);
+	restartContainer();
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	execSh("mkdir -p /excluded-smoke && printf ignored > /excluded-smoke/file");
+	await assertContainerPathStaysAbsent(
+		"/data/persistd/changed/excluded-smoke/file",
+		5
+	);
+	execSh(
+		"mkdir -p /data/persistd/changed/excluded-smoke /data/persistd/removed/excluded-smoke && printf dormant > /data/persistd/changed/excluded-smoke/dormant && : > /data/persistd/removed/excluded-smoke/tombstone"
+	);
+	dockerExec(["/opt/persistd/bin/persistd", "prune", "--json"], {
+		capture: true,
+		quiet: true
+	});
+	execSh("test -f /data/persistd/changed/excluded-smoke/dormant");
+	execSh("test -f /data/persistd/removed/excluded-smoke/tombstone");
+}
+
+async function login(cookies) {
+	const baseUrl = `http://127.0.0.1:${config.port}`;
+	const loginPage = await waitForHttp("/login", DEFAULT_ATTEMPTS.readiness, {
+		cookies
+	});
+	storeCookies(cookies, loginPage.headers["set-cookie"]);
+
+	const body = new URLSearchParams({
+		base: ".",
+		href: `${baseUrl}/login`,
+		password: config.password
+	}).toString();
+
+	const response = await request("/login", {
+		body,
+		cookies,
+		headers: {
+			"content-length": Buffer.byteLength(body).toString(),
+			"content-type": "application/x-www-form-urlencoded"
+		},
+		method: "POST"
+	});
+	storeCookies(cookies, response.headers["set-cookie"]);
+	if (!isHttpSuccess(response)) {
+		throw new Error(`Login failed with HTTP ${response.statusCode}.`);
+	}
+}
+
+async function fetchAuthedText(path, cookies) {
+	const response = await waitForHttp(path, DEFAULT_ATTEMPTS.readiness, {
+		cookies
+	});
+	return response.body;
+}
+
+async function waitForHttp(path, attempts, options = {}) {
+	return retry(`fetch ${path}`, attempts, async () => {
+		const response = await requestFollow(path, options);
+		if (isHttpSuccess(response)) return response;
+		throw new Error(`HTTP ${response.statusCode} from ${path}.`);
+	});
+}
+
+async function requestFollow(path, options = {}, redirects = 5) {
+	const response = await request(path, options);
+	storeCookies(options.cookies, response.headers["set-cookie"]);
+	const location = response.headers.location;
+	if (
+		response.statusCode >= 300 &&
+		response.statusCode < 400 &&
+		location &&
+		redirects > 0
+	) {
+		const next = new URL(location, `http://127.0.0.1:${config.port}${path}`);
+		const base = `http://127.0.0.1:${config.port}`;
+		if (next.origin !== base) {
+			throw new Error(`Refusing smoke redirect to ${next.href}.`);
+		}
+		const headers = { ...(options.headers ?? {}) };
+		delete headers["content-length"];
+		delete headers["content-type"];
+		return requestFollow(
+			`${next.pathname}${next.search}`,
+			{
+				...options,
+				body: undefined,
+				headers,
+				method: "GET"
+			},
+			redirects - 1
+		);
+	}
+	return response;
+}
+
+function request(path, options = {}) {
+	return new Promise((resolvePromise, reject) => {
+		const headers = { ...(options.headers ?? {}) };
+		const cookie = cookieHeader(options.cookies);
+		if (cookie) headers.cookie = cookie;
+
+		const requestOptions = {
+			headers,
+			host: "127.0.0.1",
+			method: options.method ?? "GET",
+			path,
+			port: config.port,
+			timeout: 5000
+		};
+
+		const clientRequest = http.request(requestOptions, (response) => {
+			const chunks = [];
+			response.on("data", (chunk) => chunks.push(chunk));
+			response.on("end", () => {
+				resolvePromise({
+					body: Buffer.concat(chunks).toString("utf8"),
+					headers: response.headers,
+					statusCode: response.statusCode ?? 0
+				});
+			});
+		});
+
+		clientRequest.on("error", reject);
+		clientRequest.on("timeout", () => {
+			clientRequest.destroy(new Error(`Timed out fetching ${path}.`));
+		});
+
+		if (options.body) clientRequest.write(options.body);
+		clientRequest.end();
+	});
+}
+
+async function assertWebsocketUpgrade(cookies) {
+	const { expected, headers, status } = await websocketHandshake(cookies);
+
+	if (!status.startsWith("HTTP/1.1 101")) {
+		throw new Error(`Unexpected websocket status: ${status}`);
+	}
+	if (headers.upgrade?.toLowerCase() !== "websocket") {
+		throw new Error("Missing websocket upgrade header.");
+	}
+	const connection = headers.connection ?? "";
+	if (
+		!connection
+			.split(",")
+			.map((value) => value.trim().toLowerCase())
+			.includes("upgrade")
+	) {
+		throw new Error("Missing websocket connection upgrade header.");
+	}
+	if (headers["sec-websocket-accept"] !== expected) {
+		throw new Error("Unexpected websocket accept header.");
+	}
+}
+
+async function assertWebsocketServiceUnavailable(cookies) {
+	const { status } = await websocketHandshake(cookies);
+	if (!status.startsWith("HTTP/1.1 503")) {
+		throw new Error(`Expected websocket 503 while not ready; got ${status}.`);
+	}
+}
+
+function websocketHandshake(cookies) {
+	return new Promise((resolvePromise, reject) => {
+		const key = randomBytes(16).toString("base64");
+		const expected = createHash("sha1")
+			.update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+			.digest("base64");
+		const requestText = [
+			"GET /websocket-smoke HTTP/1.1",
+			`Host: 127.0.0.1:${config.port}`,
+			"Upgrade: websocket",
+			"Connection: Upgrade",
+			`Cookie: ${cookieHeader(cookies)}`,
+			`Sec-WebSocket-Key: ${key}`,
+			"Sec-WebSocket-Version: 13",
+			"",
+			""
+		].join("\r\n");
+		let response = "";
+		const socket = net.createConnection(
+			{ host: "127.0.0.1", port: config.port },
+			() => socket.write(requestText, "ascii")
+		);
+
+		socket.setTimeout(5000);
+		socket.on("data", (chunk) => {
+			response += chunk.toString("latin1");
+			if (response.includes("\r\n\r\n")) {
+				socket.end();
+				try {
+					const parsed = parseHttpHeaders(response);
+					resolvePromise({ ...parsed, expected });
+				} catch (error) {
+					reject(error);
+				}
+			}
+		});
+		socket.on("error", reject);
+		socket.on("timeout", () => {
+			socket.destroy();
+			reject(new Error("Timed out waiting for websocket upgrade."));
+		});
+	});
+}
+
+function parseHttpHeaders(response) {
+	const lines = response.split("\r\n");
+	const headers = {};
+	for (const line of lines.slice(1)) {
+		const separator = line.indexOf(":");
+		if (separator === -1) continue;
+		headers[line.slice(0, separator).trim().toLowerCase()] = line
+			.slice(separator + 1)
+			.trim();
+	}
+	return { headers, status: lines[0] ?? "" };
+}
+
+async function waitForExec(script, args = []) {
+	await retry(`exec ${script}`, DEFAULT_ATTEMPTS.exec, async () => {
+		const result = execSh(script, {
+			args,
+			check: false,
+			quiet: true
+		});
+		if (result.status === 0) return true;
+		throw new Error(`Command failed in container: ${script}`);
+	});
+}
+
+function waitForContainerFile(path) {
+	return waitForExec('test -f "$1"', [path]);
+}
+
+function waitForContainerPathAbsent(path) {
+	return waitForExec('test ! -e "$1"', [path]);
+}
+
+async function assertContainerPathStaysAbsent(path, seconds) {
+	for (let second = 0; second < seconds; second += 1) {
+		assertContainerRunning();
+		execSh('test ! -e "$1"', { args: [path], quiet: true });
+		await sleep(1000);
+	}
+}
+
+async function retry(label, attempts, fn) {
+	let lastError;
+	for (let attempt = 1; attempt <= attempts; attempt += 1) {
+		try {
+			assertContainerRunning();
+			return await fn();
+		} catch (error) {
+			lastError = error;
+			await sleep(1000);
+		}
+	}
+	throw new Error(
+		`Timed out waiting for ${label}: ${
+			lastError instanceof Error ? lastError.message : lastError
+		}`
+	);
+}
+
+function restartContainer() {
+	docker(["restart", config.containerName], { capture: true, quiet: true });
+}
+
+function dockerExec(args, options = {}) {
+	return docker(["exec", config.containerName, ...args], options);
+}
+
+function execSh(script, options = {}) {
+	const args = ["exec"];
+	if (options.user) args.push("--user", options.user);
+	args.push(config.containerName, "sh", "-lc", script, "sh");
+	if (options.args) args.push(...options.args);
+	return docker(args, options);
+}
+
+function assertContainerRunning() {
+	const result = docker(
+		["inspect", "-f", "{{.State.Running}}", config.containerName],
+		{
+			capture: true,
+			check: false,
+			quiet: true
+		}
+	);
+	if (result.status !== 0 || result.stdout.trim() !== "true") {
+		throw new Error(`Container ${config.containerName} is not running.`);
+	}
+}
+
+function docker(args, options = {}) {
+	return run("docker", args, options);
+}
+
+function run(command, args, options = {}) {
+	if (!options.quiet) logCommand(command, args);
+	const result = spawnSync(command, args, {
+		cwd: REPO_ROOT,
+		encoding: "utf8",
+		stdio: options.capture ? "pipe" : "inherit",
+		timeout: options.timeoutMs ?? 120_000
+	});
+	if (result.error) throw result.error;
+	if (options.check !== false && result.status !== 0) {
+		throw new Error(
+			`${command} ${args.join(" ")} failed with exit code ${
+				result.status ?? "unknown"
+			}.`
+		);
+	}
+	return {
+		status: result.status ?? 1,
+		stderr: result.stderr ?? "",
+		stdout: result.stdout ?? ""
+	};
+}
+
+function cleanupResources() {
+	docker(["rm", "-f", config.containerName], {
+		capture: true,
+		check: false,
+		quiet: true
+	});
+	docker(["volume", "rm", config.volumeName], {
+		capture: true,
+		check: false,
+		quiet: true
+	});
+}
+
+function dumpContainerLogs() {
+	if (failureDumped) return;
+	failureDumped = true;
+	try {
+		run("docker", ["ps", "-a"], { check: false, quiet: true });
+		run("docker", ["logs", config.containerName], {
+			check: false,
+			quiet: true
+		});
+		dumpPersistdDiagnostics();
+	} catch {
+		// The original error is more useful when Docker itself is unavailable.
+	}
+}
+
+function dumpPersistdDiagnostics() {
+	dockerExec(["/opt/persistd/bin/persistd", "status", "--json"], {
+		check: false
+	});
+	dockerExec(
+		[
+			"sh",
+			"-lc",
+			'for file in /data/persistd/.internal/apply-error.log /data/persistd/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done'
+		],
+		{ check: false }
+	);
+}
+
+function stopFromSignal(signal, exitCode) {
+	console.error(`Received ${signal}; cleaning up smoke resources.`);
+	cleanupResources();
+	process.exit(exitCode);
+}
+
+function cookieHeader(cookies) {
+	if (!cookies || cookies.size === 0) return "";
+	return [...cookies.entries()]
+		.map(([name, value]) => `${name}=${value}`)
+		.join("; ");
+}
+
+function storeCookies(cookies, values) {
+	if (!cookies || !values) return;
+	for (const value of Array.isArray(values) ? values : [values]) {
+		const pair = value.split(";", 1)[0];
+		const separator = pair.indexOf("=");
+		if (separator === -1) continue;
+		cookies.set(pair.slice(0, separator), pair.slice(separator + 1));
+	}
+}
+
+function isHttpSuccess(response) {
+	return response.statusCode >= 200 && response.statusCode < 400;
+}
+
+function assertContains(label, haystack, needle) {
+	if (!haystack.toLowerCase().includes(needle.toLowerCase())) {
+		throw new Error(`Expected ${label} to contain ${needle}.`);
+	}
+}
+
+function parseBoolean(value) {
+	return value === "1" || value === "true";
+}
+
+function parsePort(value) {
+	const port = Number.parseInt(value, 10);
+	if (!Number.isInteger(port) || port < 1 || port > 65535) {
+		throw new Error(`Invalid smoke port: ${value}`);
+	}
+	return port;
+}
+
+function log(message) {
+	console.log(`[smoke] ${message}`);
+}
+
+function logCommand(command, args) {
+	console.log(`\n$ ${[command, ...args].map(formatArg).join(" ")}`);
+}
+
+function formatArg(arg) {
+	if (/^[A-Za-z0-9_./:@=-]+$/.test(arg)) return arg;
+	return JSON.stringify(arg);
+}

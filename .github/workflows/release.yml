@@ -24,7 +24,7 @@ jobs:
 
   plan:
     needs: smoke
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       amd64_tags: ${{ steps.plan.outputs.amd64_tags }}
       arm64_tags: ${{ steps.plan.outputs.arm64_tags }}
@@ -120,7 +120,7 @@ jobs:
 
   build-amd64:
     needs: plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -163,7 +163,7 @@ jobs:
 
   build-arm64:
     needs: plan
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     outputs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
@@ -209,7 +209,7 @@ jobs:
       - plan
       - build-amd64
       - build-arm64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

@@ -120,6 +120,7 @@ pub fn replace(path: &Path, records: &[MetadataRecord]) -> Result<()> {
 }
 
 fn load_compacted(path: &Path) -> Result<BTreeMap<Vec<u8>, MetadataRecord>> {
+    ensure_real_file_or_missing(path)?;
     let file = match File::open(path) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -149,6 +150,8 @@ fn write_records<'a>(
         .parent()
         .with_context(|| format!("metadata path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    ensure_real_dir(parent)?;
+    ensure_real_file_or_missing(path)?;
 
     let temp = path.with_extension("jsonl.tmp");
     let _ = fs::remove_file(&temp);
@@ -182,10 +185,27 @@ fn fsync_parent(path: &Path) -> Result<()> {
         .with_context(|| format!("fsync {}", parent.display()))
 }
 
+fn ensure_real_file_or_missing(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real file", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
+fn ensure_real_dir(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real directory", path.display()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{MetadataRecord, compact, load, remove, upsert};
-    use std::fs;
+    use std::{fs, os::unix::fs::symlink};
 
     #[test]
     fn metadata_jsonl_compacts_to_latest_record_by_path() {
@@ -270,5 +290,110 @@ mod tests {
         let loaded = load(&path).unwrap();
         assert_eq!(loaded[0].public_path().unwrap(), public_path);
         assert!(fs::read_to_string(&path).unwrap().contains("pathBytesB64"));
+    }
+
+    #[test]
+    fn metadata_writes_reject_symlink_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        let outside = temp.path().join("outside.jsonl");
+        fs::write(&outside, "outside").unwrap();
+        symlink(&outside, &path).unwrap();
+
+        let error = upsert(
+            &path,
+            MetadataRecord {
+                version: 1,
+                path: "/a".into(),
+                path_bytes_b64: None,
+                kind: "file".into(),
+                mode: None,
+                uid: None,
+                gid: None,
+                mtime_ns: None,
+                symlink_target: None,
+                symlink_target_bytes_b64: None,
+                rdev_major: None,
+                rdev_minor: None,
+                hardlink_key: None,
+                xattrs: None,
+                acl: None,
+                capability: None,
+            },
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("real file"));
+        assert_eq!(fs::read_to_string(outside).unwrap(), "outside");
+    }
+
+    #[test]
+    fn metadata_reads_reject_symlink_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        let outside = temp.path().join("outside.jsonl");
+        fs::write(&outside, "{}\n").unwrap();
+        symlink(&outside, &path).unwrap();
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.contains("real file"));
+    }
+
+    #[test]
+    fn metadata_ignores_and_replaces_crash_leftover_temp_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        let leftover = path.with_extension("jsonl.tmp");
+        fs::write(
+            &path,
+            r#"{"path":"/kept","kind":"file"}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            &leftover,
+            r#"{"path":"/partial","kind":"file"}
+"#,
+        )
+        .unwrap();
+
+        let records = load(&path).unwrap();
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].public_path().unwrap().as_bytes(), b"/kept");
+
+        upsert(
+            &path,
+            MetadataRecord {
+                version: 1,
+                path: "/new".into(),
+                path_bytes_b64: None,
+                kind: "file".into(),
+                mode: None,
+                uid: None,
+                gid: None,
+                mtime_ns: None,
+                symlink_target: None,
+                symlink_target_bytes_b64: None,
+                rdev_major: None,
+                rdev_minor: None,
+                hardlink_key: None,
+                xattrs: None,
+                acl: None,
+                capability: None,
+            },
+        )
+        .unwrap();
+
+        assert!(!leftover.exists());
+        let records = load(&path).unwrap();
+        assert_eq!(records.len(), 2);
+        assert!(
+            records
+                .iter()
+                .all(|record| record.public_path().unwrap().as_bytes() != b"/partial")
+        );
     }
 }

@@ -502,7 +502,10 @@ mod imp {
         use std::{
             ffi::OsString,
             fs,
-            os::unix::{ffi::OsStringExt, fs::symlink},
+            os::unix::{
+                ffi::OsStringExt,
+                fs::{MetadataExt, PermissionsExt, symlink},
+            },
         };
 
         #[test]
@@ -513,7 +516,13 @@ mod imp {
             fs::create_dir_all(root.join("opt/persistd")).unwrap();
             fs::create_dir_all(root.join("etc")).unwrap();
             fs::write(root.join("etc/hello.txt"), "hello").unwrap();
+            fs::set_permissions(
+                root.join("etc/hello.txt"),
+                fs::Permissions::from_mode(0o640),
+            )
+            .unwrap();
             symlink("/etc/hello.txt", root.join("etc/hello-link")).unwrap();
+            let file_metadata = fs::symlink_metadata(root.join("etc/hello.txt")).unwrap();
 
             generate(&GenerateOptions {
                 root: root.clone(),
@@ -522,6 +531,18 @@ mod imp {
             .unwrap();
 
             let conn = Connection::open(output).unwrap();
+            for path in ["/etc", "/etc/hello.txt", "/etc/hello-link"] {
+                let found: Option<String> = conn
+                    .query_row(
+                        "SELECT path FROM records WHERE path = ?1",
+                        params![path],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .unwrap();
+                assert_eq!(found, Some(path.into()), "{path} should be recorded");
+            }
+
             let hash: String = conn
                 .query_row(
                     "SELECT content_hash FROM records WHERE path = '/etc/hello.txt'",
@@ -530,6 +551,16 @@ mod imp {
                 )
                 .unwrap();
             assert_eq!(hash, blake3::hash(b"hello").to_hex().to_string());
+            let (mode, uid, gid): (i64, i64, i64) = conn
+                .query_row(
+                    "SELECT mode, uid, gid FROM records WHERE path = '/etc/hello.txt'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(mode, i64::from(file_metadata.mode()));
+            assert_eq!(uid, i64::from(file_metadata.uid()));
+            assert_eq!(gid, i64::from(file_metadata.gid()));
 
             let target: Vec<u8> = conn
                 .query_row(
@@ -668,6 +699,43 @@ mod imp {
             assert_eq!(a.hardlink_key, b.hardlink_key);
             assert!(a.xattr_json.unwrap().contains("user.persistd-test"));
             assert_eq!(fifo.kind, "fifo");
+        }
+
+        #[test]
+        fn baseline_records_device_numbers_when_mknod_is_permitted() {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let output = root.join("opt/persistd/baseline.sqlite");
+            let device = root.join("null-device");
+            fs::create_dir_all(root.join("opt/persistd")).unwrap();
+            let c =
+                std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(device.as_os_str()))
+                    .unwrap();
+            let result =
+                unsafe { libc::mknod(c.as_ptr(), libc::S_IFCHR | 0o666, libc::makedev(1, 3)) };
+            if result != 0 {
+                eprintln!(
+                    "skipping device baseline test: mknod unavailable or not permitted: {}",
+                    std::io::Error::last_os_error()
+                );
+                return;
+            }
+
+            generate(&GenerateOptions {
+                root,
+                output: output.clone(),
+            })
+            .unwrap();
+
+            let db = BaselineDb::open(&output).unwrap();
+            let record = db
+                .get(&crate::public::PublicPath::parse("/null-device").unwrap())
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(record.kind, "char_device");
+            assert_eq!(record.rdev_major, Some(1));
+            assert_eq!(record.rdev_minor, Some(3));
         }
 
         #[test]

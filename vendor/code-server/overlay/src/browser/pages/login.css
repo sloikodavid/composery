@@ -4,11 +4,12 @@
 	width: min(100%, 420px);
 }
 
-.login-icon {
+.login-logo {
 	display: block;
-	height: clamp(88px, 16vw, 132px);
-	margin: 0 auto 6px;
-	width: clamp(88px, 16vw, 132px);
+	height: clamp(40px, 9vw, 52px);
+	margin: 0 auto 14px;
+	max-width: 100%;
+	width: auto;
 }
 
 .auth-fields,

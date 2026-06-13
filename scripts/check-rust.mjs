@@ -20,7 +20,11 @@ function run(command, args, options = {}) {
 }
 
 function canRun(command, args) {
-	const result = spawnSync(command, args, { cwd: REPO_ROOT, stdio: "ignore" });
+	const result = spawnSync(command, args, {
+		cwd: REPO_ROOT,
+		stdio: "ignore",
+		timeout: 20_000
+	});
 	return result.status === 0;
 }
 
@@ -125,6 +129,7 @@ if (!canRun("docker", ["version", "--format", "{{.Server.Version}}"])) {
 const script = [
 	"set -e",
 	'export PATH="/usr/local/cargo/bin:${PATH}"',
+	"export CARGO_TARGET_DIR=/tmp/composery-cargo-target",
 	"rustup component add rustfmt clippy >/dev/null",
 	...cargoCommands(targets).map(([command, args]) =>
 		[command, ...args.map(shellQuote)].join(" ")

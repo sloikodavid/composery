@@ -17,9 +17,6 @@ pub struct Config {
 #[serde(rename_all = "camelCase")]
 pub struct AuditConfig {
     pub max_work_ms_per_tick: u64,
-    pub max_filesystem_ops_per_second: u64,
-    pub max_hash_bytes_per_second: u64,
-    pub directory_batch_size: u64,
 }
 
 impl Default for Config {
@@ -41,9 +38,6 @@ impl Default for Config {
             ],
             audit: AuditConfig {
                 max_work_ms_per_tick: 10,
-                max_filesystem_ops_per_second: 2_000,
-                max_hash_bytes_per_second: 20_000_000,
-                directory_batch_size: 256,
             },
         }
     }
@@ -60,8 +54,9 @@ impl Config {
 }
 
 pub fn load_or_create(path: &Path) -> Result<Config> {
-    match fs::read(path) {
-        Ok(data) => {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            let data = fs::read(path).with_context(|| format!("read config {}", path.display()))?;
             let config: Config = serde_json::from_slice(&data)
                 .with_context(|| format!("parse config {}", path.display()))?;
             config
@@ -69,13 +64,14 @@ pub fn load_or_create(path: &Path) -> Result<Config> {
                 .with_context(|| format!("validate config {}", path.display()))?;
             Ok(config)
         }
+        Ok(_) => anyhow::bail!("{} must be a real file", path.display()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let config = Config::default();
             config.validate().context("validate default config")?;
             write(path, &config)?;
             Ok(config)
         }
-        Err(error) => Err(error).with_context(|| format!("read config {}", path.display())),
+        Err(error) => Err(error).with_context(|| format!("stat config {}", path.display())),
     }
 }
 
@@ -85,6 +81,7 @@ fn write(path: &Path, config: &Config) -> Result<()> {
         .with_context(|| format!("config path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent)
         .with_context(|| format!("create config dir {}", parent.display()))?;
+    ensure_real_dir(parent)?;
 
     let mut data = serde_json::to_vec_pretty(config).context("encode default config")?;
     data.push(b'\n');
@@ -106,6 +103,14 @@ fn write(path: &Path, config: &Config) -> Result<()> {
     let dir = File::open(parent).with_context(|| format!("open {}", parent.display()))?;
     dir.sync_all()
         .with_context(|| format!("fsync {}", parent.display()))
+}
+
+fn ensure_real_dir(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real directory", path.display()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
 }
 
 fn validate_exclusion(value: &str) -> Result<()> {
@@ -164,5 +169,35 @@ mod tests {
         let error = load_or_create(&path).unwrap_err().to_string();
 
         assert!(error.contains("validate config"));
+    }
+
+    #[test]
+    fn load_or_create_rejects_config_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistd/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let outside = temp.path().join("outside-config.json");
+        fs::write(&outside, "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, &path).unwrap();
+
+        let error = load_or_create(&path).unwrap_err().to_string();
+
+        assert!(error.contains("real file"));
+    }
+
+    #[test]
+    fn load_or_create_rejects_symlink_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = temp.path().join("outside");
+        let parent = temp.path().join("persistd");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &parent).unwrap();
+
+        let error = load_or_create(&parent.join("config.json"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("real directory"));
+        assert!(!outside.join("config.json").exists());
     }
 }

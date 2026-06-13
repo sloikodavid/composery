@@ -7,7 +7,8 @@ fn main() -> Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "persistd=info".into()),
         )
-        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .with_writer(std::io::stdout)
         .init();
 
     persistd::cli::run(persistd::cli::Args::parse())

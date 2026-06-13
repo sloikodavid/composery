@@ -1,7 +1,7 @@
 #![cfg(unix)]
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::{collections::BTreeMap, fs, path::Path};
 
 use crate::{
@@ -28,7 +28,10 @@ fn apply_removed(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
         if public::is_excluded(&public_path, config) {
             continue;
         }
-        public::remove_path(&public::live_path(root, &public_path))?;
+        let target = public::live_path(root, &public_path);
+        if rootfs::ensure_safe_existing_parent(root, &target)? {
+            public::remove_path(&target)?;
+        }
     }
     Ok(())
 }
@@ -54,7 +57,7 @@ fn apply_metadata(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
             continue;
         }
         let target = public::live_path(root, &public_path);
-        apply_metadata_record(&target, &record)?;
+        apply_metadata_record(root, &target, &record)?;
     }
     Ok(())
 }
@@ -86,9 +89,14 @@ fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Pat
     Ok(())
 }
 
-fn apply_metadata_record(target: &Path, record: &MetadataRecord) -> Result<()> {
+fn apply_metadata_record(root: &Path, target: &Path, record: &MetadataRecord) -> Result<()> {
+    rootfs::ensure_safe_parent(root, target)?;
+    let xattrs = metadata_xattrs(record)?;
+    if needs_fallback_target(target, record)? {
+        create_fallback_target(target, record, xattrs.as_deref().unwrap_or(&[]))?;
+    }
     if fs::symlink_metadata(target).is_err() {
-        create_fallback_target(target, record)?;
+        bail!("metadata record for {} has no target to apply", record.path);
     }
 
     if let Ok(mut facts) = rootfs::facts(target) {
@@ -104,15 +112,51 @@ fn apply_metadata_record(target: &Path, record: &MetadataRecord) -> Result<()> {
         if let Some(mtime_ns) = record.mtime_ns {
             facts.mtime_ns = mtime_ns;
         }
-        if let Some(xattrs) = &record.xattrs {
-            facts.xattrs = xattrs.clone();
+        if let Some(xattrs) = xattrs {
+            facts.xattrs = xattrs;
         }
         rootfs::apply_facts(target, &facts)?;
     }
     Ok(())
 }
 
-fn create_fallback_target(target: &Path, record: &MetadataRecord) -> Result<()> {
+fn needs_fallback_target(target: &Path, record: &MetadataRecord) -> Result<bool> {
+    let expected = FileKind::from_kind_name(&record.kind);
+    if !matches!(
+        expected,
+        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice
+    ) {
+        return Ok(fs::symlink_metadata(target).is_err());
+    }
+
+    let facts = match rootfs::facts(target) {
+        Ok(facts) => facts,
+        Err(error) => {
+            let not_found = error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+                || fs::symlink_metadata(target).is_err();
+            if not_found {
+                return Ok(true);
+            }
+            return Err(error).with_context(|| format!("inspect {}", target.display()));
+        }
+    };
+
+    if facts.kind != expected {
+        return Ok(true);
+    }
+    if matches!(expected, FileKind::CharDevice | FileKind::BlockDevice) {
+        return Ok(facts.rdev_major != record.rdev_major || facts.rdev_minor != record.rdev_minor);
+    }
+    Ok(false)
+}
+
+fn create_fallback_target(
+    target: &Path,
+    record: &MetadataRecord,
+    xattrs: &[rootfs::XattrRecord],
+) -> Result<()> {
     public::ensure_parent(target)?;
     let facts = FsFacts {
         kind: FileKind::from_kind_name(&record.kind),
@@ -127,7 +171,7 @@ fn create_fallback_target(target: &Path, record: &MetadataRecord) -> Result<()> 
         dev: 0,
         ino: 0,
         nlink: 1,
-        xattrs: record.xattrs.clone().unwrap_or_default(),
+        xattrs: xattrs.to_vec(),
     };
 
     match facts.kind {
@@ -139,6 +183,29 @@ fn create_fallback_target(target: &Path, record: &MetadataRecord) -> Result<()> 
         _ => {}
     }
     Ok(())
+}
+
+fn metadata_xattrs(record: &MetadataRecord) -> Result<Option<Vec<rootfs::XattrRecord>>> {
+    if record.xattrs.is_none() && record.acl.is_none() && record.capability.is_none() {
+        return Ok(None);
+    }
+    let mut by_name = BTreeMap::new();
+    for xattr in record.xattrs.clone().unwrap_or_default() {
+        by_name.insert(xattr.name_bytes_b64.clone(), xattr);
+    }
+    if let Some(acl) = &record.acl {
+        for xattr in serde_json::from_value::<Vec<rootfs::XattrRecord>>(acl.clone())
+            .context("decode ACL metadata xattrs")?
+        {
+            by_name.insert(xattr.name_bytes_b64.clone(), xattr);
+        }
+    }
+    if let Some(capability) = &record.capability {
+        let xattr = serde_json::from_value::<rootfs::XattrRecord>(capability.clone())
+            .context("decode capability metadata xattr")?;
+        by_name.insert(xattr.name_bytes_b64.clone(), xattr);
+    }
+    Ok(Some(by_name.into_values().collect()))
 }
 
 fn tempfile_like_source(target: &Path, facts: &FsFacts) -> Result<std::path::PathBuf> {
@@ -187,13 +254,17 @@ fn apply_hardlinks(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
         let mut existing = paths
             .iter()
             .map(|path| public::live_path(root, path))
-            .filter(|path| path.exists())
+            .filter(|path| path.exists() || fs::symlink_metadata(path).is_ok())
             .collect::<Vec<_>>();
+        for path in &existing {
+            rootfs::ensure_safe_parent(root, path)?;
+        }
         existing.sort();
         let Some(source) = existing.first().cloned() else {
             continue;
         };
         for target in existing.into_iter().skip(1) {
+            rootfs::ensure_safe_parent(root, &target)?;
             let source_facts = rootfs::facts(&source)?;
             let target_facts = rootfs::facts(&target)?;
             if source_facts.dev == target_facts.dev && source_facts.ino == target_facts.ino {
@@ -245,6 +316,22 @@ mod tests {
     }
 
     #[test]
+    fn apply_changed_file_replaces_crash_leftover_target_temp() {
+        let fixture = Fixture::new();
+        let target = fixture.root.join("etc/conf");
+        let leftover = crate::public::temp_path(&target);
+        fs::write(&target, "image").unwrap();
+        fs::write(&leftover, "partial").unwrap();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/conf"), "changed").unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(fs::read_to_string(target).unwrap(), "changed");
+        assert!(!leftover.exists());
+    }
+
+    #[test]
     fn apply_removes_deleted_image_path() {
         let fixture = Fixture::new();
         fs::write(fixture.root.join("remove-me"), "image").unwrap();
@@ -287,6 +374,17 @@ mod tests {
                 .join("usr/share/applications/composery-text-editor.desktop")
                 .exists()
         );
+    }
+
+    #[test]
+    fn apply_removed_does_not_create_missing_parent_dirs() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.removed_dir.join("missing")).unwrap();
+        fs::write(fixture.paths.removed_dir.join("missing/child"), "").unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert!(!fixture.root.join("missing").exists());
     }
 
     #[test]
@@ -441,6 +539,142 @@ mod tests {
     }
 
     #[test]
+    fn apply_metadata_without_xattrs_preserves_existing_xattrs() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("file"), "file").unwrap();
+        xattr::set(fixture.root.join("file"), "user.persistd-kept", b"kept").unwrap();
+        let public_path = PublicPath::parse("/file").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(
+            xattr::get(fixture.root.join("file"), "user.persistd-kept").unwrap(),
+            Some(b"kept".to_vec())
+        );
+        assert_eq!(
+            fs::metadata(fixture.root.join("file"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn apply_metadata_honors_acl_and_capability_xattr_views() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("file"), "file").unwrap();
+        let public_path = PublicPath::parse("/file").unwrap();
+        let acl_xattr = crate::rootfs::XattrRecord {
+            name: "user.persistd-acl-view".into(),
+            name_bytes_b64: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode("user.persistd-acl-view")
+            },
+            value_b64: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode("acl")
+            },
+        };
+        let capability_xattr = crate::rootfs::XattrRecord {
+            name: "user.persistd-capability-view".into(),
+            name_bytes_b64: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode("user.persistd-capability-view")
+            },
+            value_b64: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode("capability")
+            },
+        };
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: None,
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: Some(serde_json::to_value(vec![acl_xattr]).unwrap()),
+            capability: Some(serde_json::to_value(capability_xattr).unwrap()),
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(
+            xattr::get(fixture.root.join("file"), "user.persistd-acl-view").unwrap(),
+            Some(b"acl".to_vec())
+        );
+        assert_eq!(
+            xattr::get(fixture.root.join("file"), "user.persistd-capability-view").unwrap(),
+            Some(b"capability".to_vec())
+        );
+    }
+
+    #[test]
+    fn apply_metadata_fails_for_standalone_normal_record() {
+        let fixture = Fixture::new();
+        let public_path = PublicPath::parse("/missing-normal").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        let error = apply_public_truth(&fixture.root, &fixture.paths, &Config::default())
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("no target to apply"));
+        assert!(!fixture.root.join("missing-normal").exists());
+    }
+
+    #[test]
     fn apply_replaces_symlink_with_changed_directory() {
         let fixture = Fixture::new();
         fs::create_dir_all(fixture.paths.changed_dir.join("safe/link")).unwrap();
@@ -491,6 +725,218 @@ mod tests {
         assert_eq!(
             crate::rootfs::facts(&fixture.root.join("a")).unwrap().ino,
             crate::rootfs::facts(&fixture.root.join("b")).unwrap().ino
+        );
+    }
+
+    #[test]
+    fn apply_fifo_metadata_replaces_existing_image_file() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("pipe"), "image").unwrap();
+        let public_path = PublicPath::parse("/pipe").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "fifo".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        let facts = crate::rootfs::facts(&fixture.root.join("pipe")).unwrap();
+        assert_eq!(facts.kind, crate::rootfs::FileKind::Fifo);
+    }
+
+    #[test]
+    fn apply_device_metadata_creates_device_or_fails_clearly() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("dev-null-copy"), "image").unwrap();
+        let public_path = PublicPath::parse("/dev-null-copy").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "char_device".into(),
+            mode: Some(0o666),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: Some(1),
+            rdev_minor: Some(3),
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        match apply_public_truth(&fixture.root, &fixture.paths, &Config::default()) {
+            Ok(()) => {
+                let facts = crate::rootfs::facts(&fixture.root.join("dev-null-copy")).unwrap();
+                assert_eq!(facts.kind, crate::rootfs::FileKind::CharDevice);
+                assert_eq!(facts.rdev_major, Some(1));
+                assert_eq!(facts.rdev_minor, Some(3));
+            }
+            Err(error) => {
+                let message = format!("{error:#}");
+                assert!(message.contains("mknod"), "{message}");
+            }
+        }
+    }
+
+    #[test]
+    fn apply_ignores_excluded_changed_removed_and_metadata() {
+        let fixture = Fixture::new();
+        let mut config = Config::default();
+        config.exclusions.push("/secret".into());
+        fs::create_dir_all(fixture.root.join("secret")).unwrap();
+        fs::write(fixture.root.join("secret/kept"), "live").unwrap();
+        fs::set_permissions(
+            fixture.root.join("secret/kept"),
+            fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        fs::create_dir_all(fixture.paths.changed_dir.join("secret")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("secret/new"), "changed").unwrap();
+        fs::write(fixture.paths.removed_dir.join("secret"), "").unwrap();
+        let public_path = PublicPath::parse("/secret/kept").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &config).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(fixture.root.join("secret/kept")).unwrap(),
+            "live"
+        );
+        assert!(!fixture.root.join("secret/new").exists());
+        assert_eq!(
+            fs::metadata(fixture.root.join("secret/kept"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o644
+        );
+    }
+
+    #[test]
+    fn apply_public_truth_is_idempotent() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("remove-me"), "image").unwrap();
+        fs::write(fixture.paths.removed_dir.join("remove-me"), "").unwrap();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/conf"), "changed").unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert!(!fixture.root.join("remove-me").exists());
+        assert_eq!(
+            fs::read_to_string(fixture.root.join("etc/conf")).unwrap(),
+            "changed"
+        );
+    }
+
+    #[test]
+    fn apply_removed_refuses_symlink_ancestor() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("owned"), "outside").unwrap();
+        fs::create_dir_all(fixture.root.join("safe")).unwrap();
+        symlink(&outside, fixture.root.join("safe/link")).unwrap();
+        fs::create_dir_all(fixture.paths.removed_dir.join("safe/link")).unwrap();
+        fs::write(fixture.paths.removed_dir.join("safe/link/owned"), "").unwrap();
+
+        let error = apply_public_truth(&fixture.root, &fixture.paths, &Config::default())
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("symlink ancestor"));
+        assert_eq!(
+            fs::read_to_string(outside.join("owned")).unwrap(),
+            "outside"
+        );
+    }
+
+    #[test]
+    fn apply_metadata_refuses_symlink_ancestor() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("owned"), "outside").unwrap();
+        fs::set_permissions(outside.join("owned"), fs::Permissions::from_mode(0o644)).unwrap();
+        fs::create_dir_all(fixture.root.join("safe")).unwrap();
+        symlink(&outside, fixture.root.join("safe/link")).unwrap();
+        let public_path = PublicPath::parse("/safe/link/owned").unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+
+        let error = apply_public_truth(&fixture.root, &fixture.paths, &Config::default())
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("symlink ancestor"));
+        assert_eq!(
+            fs::metadata(outside.join("owned"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o644
         );
     }
 

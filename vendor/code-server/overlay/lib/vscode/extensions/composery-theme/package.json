@@ -1,0 +1,37 @@
+{
+	"name": "composery-theme",
+	"displayName": "Composery",
+	"description": "Composery's light and dark color themes, matching the website's warm amber branding.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "MIT",
+	"categories": ["Themes"],
+	"engines": {
+		"vscode": "*"
+	},
+	"contributes": {
+		"themes": [
+			{
+				"id": "Composery Light",
+				"label": "Composery Light",
+				"uiTheme": "vs",
+				"path": "./themes/composery-light.json"
+			},
+			{
+				"id": "Composery Dark",
+				"label": "Composery Dark",
+				"uiTheme": "vs-dark",
+				"path": "./themes/composery-dark.json"
+			}
+		],
+		"configurationDefaults": {
+			"workbench.colorTheme": "Composery Dark",
+			"workbench.preferredDarkColorTheme": "Composery Dark",
+			"workbench.preferredLightColorTheme": "Composery Light"
+		}
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/composery/composery.git"
+	}
+}

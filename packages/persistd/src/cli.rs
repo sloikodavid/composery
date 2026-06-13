@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use crate::apply;
@@ -10,6 +10,8 @@ use crate::baseline::{GenerateOptions, generate};
 #[cfg(unix)]
 use crate::capabilities;
 use crate::{config, control, daemon, doctor, internal, layout, paths::Paths, prune, status};
+#[cfg(unix)]
+use std::os::unix::fs::FileTypeExt;
 
 #[derive(Debug, Parser)]
 #[command(name = "persistd", about = "Root filesystem persistence daemon")]
@@ -66,11 +68,15 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 fn run_apply(paths: &Paths) -> Result<()> {
-    layout::remove_ready(paths)?;
+    run_apply_with_root(paths, Path::new("/"))
+}
+
+fn run_apply_with_root(paths: &Paths, root: &Path) -> Result<()> {
     layout::ensure(paths)?;
     let _lock = internal::WriterLock::acquire(paths)?;
+    layout::remove_ready(paths)?;
     let db = internal::StateDb::open_or_rebuild(paths)?;
-    match run_apply_inner(paths, &db) {
+    match run_apply_inner(paths, root, &db) {
         Ok(()) => {
             db.record_phase_success("apply")?;
             tracing::info!("persistd apply completed");
@@ -85,7 +91,7 @@ fn run_apply(paths: &Paths) -> Result<()> {
     }
 }
 
-fn run_apply_inner(paths: &Paths, db: &internal::StateDb) -> Result<()> {
+fn run_apply_inner(paths: &Paths, root: &Path, db: &internal::StateDb) -> Result<()> {
     let config = config::load_or_create(&paths.config_file)?;
     let _baseline = crate::baseline::BaselineDb::open(&paths.baseline_db)
         .with_context(|| format!("apply requires baseline {}", paths.baseline_db.display()))?;
@@ -93,13 +99,13 @@ fn run_apply_inner(paths: &Paths, db: &internal::StateDb) -> Result<()> {
     db.record_diagnostic("capabilities", &serde_json::to_string(&capability_report)?)?;
     crate::metadata::compact(&paths.metadata_file)?;
     #[cfg(unix)]
-    apply::apply_public_truth(std::path::Path::new("/"), paths, &config)?;
+    apply::apply_public_truth(root, paths, &config)?;
     db.rebuild_public_index(paths)?;
     Ok(())
 }
 
 fn daemon_command(paths: &Paths, name: &str, json: bool) -> Result<()> {
-    if !paths.control_socket.exists() {
+    if !control_socket_available(paths) {
         bail!(
             "persistd {name}: daemon is not running; expected control socket at {}",
             paths.control_socket.display()
@@ -126,6 +132,20 @@ fn daemon_command(paths: &Paths, name: &str, json: bool) -> Result<()> {
     }
 }
 
+fn control_socket_available(paths: &Paths) -> bool {
+    #[cfg(unix)]
+    {
+        std::fs::symlink_metadata(&paths.control_socket)
+            .is_ok_and(|metadata| metadata.file_type().is_socket())
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = paths;
+        false
+    }
+}
+
 fn print_report<T: serde::Serialize>(
     report: &T,
     json: bool,
@@ -142,8 +162,7 @@ fn print_report<T: serde::Serialize>(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::run_apply;
-    use crate::{baseline, internal::StateDb, paths::Paths};
+    use crate::{baseline, internal::StateDb, layout, paths::Paths};
     use std::fs;
 
     #[test]
@@ -152,7 +171,9 @@ mod tests {
         fs::create_dir_all(&fixture.paths.run_dir).unwrap();
         fs::write(&fixture.paths.ready_file, "stale").unwrap();
 
-        let error = run_apply(&fixture.paths).unwrap_err().to_string();
+        let error = super::run_apply_with_root(&fixture.paths, &fixture.root)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("baseline"));
         assert!(!fixture.paths.ready_file.exists());
@@ -172,7 +193,9 @@ mod tests {
         fs::create_dir_all(&fixture.paths.opt_dir).unwrap();
         fs::write(&fixture.paths.baseline_db, "not sqlite").unwrap();
 
-        let error = run_apply(&fixture.paths).unwrap_err().to_string();
+        let error = super::run_apply_with_root(&fixture.paths, &fixture.root)
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("baseline"));
         assert!(!fixture.paths.ready_file.exists());
@@ -195,12 +218,57 @@ mod tests {
         fs::create_dir_all(fixture.paths.changed_dir.join("tmp")).unwrap();
         fs::write(fixture.paths.changed_dir.join("tmp/persisted"), "value").unwrap();
 
-        run_apply(&fixture.paths).unwrap();
+        super::run_apply_with_root(&fixture.paths, &fixture.root).unwrap();
 
         let db = StateDb::open_or_rebuild(&fixture.paths).unwrap();
         assert_eq!(db.public_count("changed").unwrap(), 2);
         assert!(db.meta_value("last_apply_success_at").unwrap().is_some());
         assert!(!fixture.paths.ready_file.exists());
+    }
+
+    #[test]
+    fn apply_does_not_remove_live_ready_when_writer_lock_is_held() {
+        let fixture = Fixture::new();
+        layout::ensure(&fixture.paths).unwrap();
+        let _lock = crate::internal::WriterLock::acquire(&fixture.paths).unwrap();
+        fs::write(&fixture.paths.ready_file, "live").unwrap();
+
+        let error = super::run_apply_with_root(&fixture.paths, &fixture.root)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("lock"));
+        assert_eq!(
+            fs::read_to_string(&fixture.paths.ready_file).unwrap(),
+            "live"
+        );
+    }
+
+    #[test]
+    fn daemon_commands_fail_when_daemon_is_not_running() {
+        let fixture = Fixture::new();
+        for command in ["status", "doctor", "prune"] {
+            let error = super::daemon_command(&fixture.paths, command, true)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("daemon is not running"),
+                "{command}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn daemon_commands_reject_stale_non_socket_control_path() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(&fixture.paths.internal_dir).unwrap();
+        fs::write(&fixture.paths.control_socket, "not a socket").unwrap();
+
+        let error = super::daemon_command(&fixture.paths, "status", true)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("daemon is not running"));
     }
 
     struct Fixture {

@@ -11,7 +11,11 @@ pub struct StatusReport {
     pub ready: bool,
     pub phase: String,
     pub last_apply_success_at: Option<String>,
+    pub last_apply_failure_at: Option<String>,
+    pub last_apply_error: Option<String>,
     pub last_daemon_success_at: Option<String>,
+    pub last_daemon_failure_at: Option<String>,
+    pub last_daemon_error: Option<String>,
     pub watch_status: String,
     pub audit_status: String,
     pub last_error: Option<String>,
@@ -46,6 +50,7 @@ pub fn build_with_runtime(
     db: &StateDb,
     runtime: RuntimeStatus,
 ) -> Result<StatusReport> {
+    let ready = ready_file_exists(paths);
     let baseline_present = paths.baseline_db.exists();
     let baseline_valid = baseline_present && BaselineDb::open(&paths.baseline_db).is_ok();
     let last_error = db
@@ -67,14 +72,22 @@ pub fn build_with_runtime(
             .unwrap_or_else(|| "unknown".into()),
     };
     Ok(StatusReport {
-        ready: paths.ready_file.exists(),
-        phase: if paths.ready_file.exists() {
+        ready,
+        phase: if ready {
             "ready".into()
         } else {
             "starting".into()
         },
         last_apply_success_at: db.meta_value("last_apply_success_at")?,
+        last_apply_failure_at: db.meta_value("last_apply_failure_at")?,
+        last_apply_error: db
+            .meta_value("last_apply_error")?
+            .filter(|value| !value.is_empty()),
         last_daemon_success_at: db.meta_value("last_daemon_success_at")?,
+        last_daemon_failure_at: db.meta_value("last_daemon_failure_at")?,
+        last_daemon_error: db
+            .meta_value("last_daemon_error")?
+            .filter(|value| !value.is_empty()),
         watch_status,
         audit_status,
         last_error,
@@ -88,6 +101,11 @@ pub fn build_with_runtime(
             metadata: db.metadata_record_count()?,
         },
     })
+}
+
+fn ready_file_exists(paths: &Paths) -> bool {
+    std::fs::symlink_metadata(&paths.ready_file)
+        .is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 pub fn print_human(report: &StatusReport) {
@@ -105,7 +123,112 @@ pub fn print_human(report: &StatusReport) {
     if let Some(last_apply) = &report.last_apply_success_at {
         println!("  lastApplySuccessAt: {last_apply}");
     }
+    if let Some(last_apply_failure) = &report.last_apply_failure_at {
+        println!("  lastApplyFailureAt: {last_apply_failure}");
+    }
+    if let Some(last_apply_error) = &report.last_apply_error {
+        println!("  lastApplyError: {last_apply_error}");
+    }
     if let Some(last_daemon) = &report.last_daemon_success_at {
         println!("  lastDaemonSuccessAt: {last_daemon}");
+    }
+    if let Some(last_daemon_failure) = &report.last_daemon_failure_at {
+        println!("  lastDaemonFailureAt: {last_daemon_failure}");
+    }
+    if let Some(last_daemon_error) = &report.last_daemon_error {
+        println!("  lastDaemonError: {last_daemon_error}");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::{RuntimeStatus, build_with_runtime};
+    use crate::{
+        baseline::{GenerateOptions, generate},
+        capabilities, internal, layout,
+        paths::Paths,
+        readiness,
+    };
+    use std::{fs, os::unix::fs::symlink};
+
+    #[test]
+    fn status_reports_runtime_diagnostics_errors_and_cached_counts() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/hello"), "changed").unwrap();
+        readiness::write_ready(&fixture.paths, "daemon").unwrap();
+        let db = internal::StateDb::open_or_rebuild(&fixture.paths).unwrap();
+        db.record_phase_failure("apply", "boom").unwrap();
+        let capabilities = capabilities::probe(&fixture.paths.data_dir).unwrap();
+        db.record_diagnostic(
+            "capabilities",
+            &serde_json::to_string(&capabilities).unwrap(),
+        )
+        .unwrap();
+        db.rebuild_public_index(&fixture.paths).unwrap();
+
+        let report = build_with_runtime(
+            &fixture.paths,
+            &db,
+            RuntimeStatus {
+                dirty_queue_size: 7,
+                watch_status: Some("degraded".into()),
+                audit_status: Some("running".into()),
+            },
+        )
+        .unwrap();
+
+        assert!(report.ready);
+        assert_eq!(report.phase, "ready");
+        assert_eq!(report.last_error.as_deref(), Some("boom"));
+        assert!(report.last_apply_failure_at.is_some());
+        assert_eq!(report.last_apply_error.as_deref(), Some("boom"));
+        assert_eq!(report.watch_status, "degraded");
+        assert_eq!(report.audit_status, "running");
+        assert_eq!(report.dirty_queue_size, 7);
+        assert_eq!(report.public_counts.changed, 2);
+        assert!(report.baseline_valid);
+        assert_eq!(report.capabilities, Some(capabilities));
+    }
+
+    #[test]
+    fn status_does_not_treat_ready_symlink_as_ready() {
+        let fixture = Fixture::new();
+        let outside = fixture._temp.path().join("outside-ready");
+        fs::write(&outside, "ready").unwrap();
+        symlink(&outside, &fixture.paths.ready_file).unwrap();
+        let db = internal::StateDb::open_or_rebuild(&fixture.paths).unwrap();
+
+        let report = build_with_runtime(&fixture.paths, &db, RuntimeStatus::default()).unwrap();
+
+        assert!(!report.ready);
+        assert_eq!(report.phase, "starting");
+    }
+
+    struct Fixture {
+        _temp: tempfile::TempDir,
+        paths: Paths,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let paths = Paths::new(
+                root.join("opt/persistd"),
+                temp.path().join("run/persistd"),
+                temp.path().join("data/persistd"),
+            );
+            fs::create_dir_all(root.join("opt/persistd")).unwrap();
+            fs::create_dir_all(root.join("etc")).unwrap();
+            fs::write(root.join("etc/hello"), "hello").unwrap();
+            generate(&GenerateOptions {
+                root,
+                output: paths.baseline_db.clone(),
+            })
+            .unwrap();
+            layout::ensure(&paths).unwrap();
+            Self { _temp: temp, paths }
+        }
     }
 }

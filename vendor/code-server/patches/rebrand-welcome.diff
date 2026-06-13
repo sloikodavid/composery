@@ -1,0 +1,109 @@
+Replace the Coder Getting Started promo with a Composery welcome card
+
+code-server injects a "Deploy code-server for your team" Coder advert into the
+Welcome page (getting-started.diff). This swaps that block's contents for a
+clean, theme-aware Composery card (icon, one line, link to docs.composery.io),
+keeping the existing isEnabledCoderGettingStarted gate so it can still be turned
+off with COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE.
+
+diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+@@ -928,65 +928,48 @@
+ 		let gettingStartedCoder: HTMLElement = $('.header', {});
+ 		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
+ 			gettingStartedCoder = $('.gettingStartedCategory', {},
+-				$('h2', {
+-					style: 'margin-bottom: 12px',
+-				}, 'Next Up'),
+ 				$('a', {
+-					href: 'https://cdr.co/code-server-to-coder',
++					href: 'https://docs.composery.io',
+ 					target: '_blank',
++					style: [
++						'display: flex',
++						'align-items: center',
++						'gap: 14px',
++						'max-width: 440px',
++						'padding: 14px 16px',
++						'border-radius: 8px',
++						'border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25))',
++						'text-decoration: none',
++						'color: inherit',
++					].join(';'),
+ 				},
+-					$('button', {
+-						style: [
+-							'padding: 10px 16px	',
+-							'border-radius: 4px',
+-							'background: linear-gradient(94.04deg, #7934DA 0%, #4D52E0 101.2%)',
+-							'color: white',
+-							'overflow: hidden',
+-							'margin-right: 14px',
+-						].join(';'),
+-					},
+-					$('h3', {
+-						style: [
+-							'margin: 0px 0px 6px',
+-							'font-weight: 500',
+-						].join(';'),
+-					}, 'Deploy code-server for your team'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Provision software development environments on your infrastructure with Coder.'),
+-					$('p', {
+-						style: [
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Coder is a self-service portal which provisions via Terraform—Linux, macOS, Windows, x86, ARM, and, of course, Kubernetes based infrastructure.'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'display: flex',
+-							'align-items: center',
+-						].join(';'),
+-					}, 'Get started ', $('span', {
+-						class: ThemeIcon.asClassName(Codicon.arrowRight),
+-						style: [
+-							'color: white',
+-							'margin-left: 8px',
+-						].join(';'),
+-					})),
+ 					$('img', {
+-						src: './_static/src/browser/media/templates.png',
++						src: './_static/src/browser/media/favicon.svg',
+ 						style: [
+-							'margin-bottom: -65px',
++							'width: 40px',
++							'height: 40px',
++							'flex-shrink: 0',
+ 						].join(';'),
+ 					}),
++					$('span', { style: 'flex: 1' },
++						$('h3', {
++							style: [
++								'margin: 0 0 4px',
++								'font-weight: 600',
++							].join(';'),
++						}, 'Welcome to Composery'),
++						$('p', {
++							style: [
++								'margin: 0',
++								'font-size: 13px',
++								'opacity: 0.7',
++							].join(';'),
++						}, 'Your cloud workspace is ready. Open a folder to start, or read the documentation.'),
+ 					),
++					$('span', {
++						class: ThemeIcon.asClassName(Codicon.arrowRight),
++						style: 'flex-shrink: 0',
++					}),
+ 				),
+ 			);
+ 		}

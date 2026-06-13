@@ -5,7 +5,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{OsStr, OsString},
-    fs,
+    fs::{self, File},
     os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Path, PathBuf},
 };
@@ -150,7 +150,7 @@ pub fn live_path(root: &Path, public_path: &PublicPath) -> PathBuf {
 }
 
 pub fn list_public_entries(root: &Path) -> Result<Vec<PublicEntry>> {
-    if !root.exists() {
+    if !real_dir_exists(root)? {
         return Ok(Vec::new());
     }
 
@@ -203,15 +203,21 @@ pub fn ensure_parent(path: &Path) -> Result<()> {
 }
 
 pub fn remove_path(path: &Path) -> Result<()> {
+    let mut removed = false;
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_dir() => {
             fs::remove_dir_all(path).with_context(|| format!("remove dir {}", path.display()))?;
+            removed = true;
         }
         Ok(_) => {
             fs::remove_file(path).with_context(|| format!("remove file {}", path.display()))?;
+            removed = true;
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+    if removed {
+        fsync_parent(path)?;
     }
     Ok(())
 }
@@ -231,6 +237,15 @@ pub fn is_persistd_temp_path(path: &Path) -> bool {
         .is_some_and(|name| name.starts_with('.') && name.contains(".persistd-tmp"))
 }
 
+fn real_dir_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(true),
+        Ok(_) => anyhow::bail!("{} must be a real directory", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
 fn display_bytes(bytes: &[u8]) -> String {
     if let Ok(text) = std::str::from_utf8(bytes) {
         return text.to_string();
@@ -245,6 +260,15 @@ fn display_bytes(bytes: &[u8]) -> String {
         }
     }
     display
+}
+
+fn fsync_parent(path: &Path) -> Result<()> {
+    let parent = path
+        .parent()
+        .with_context(|| format!("path has no parent: {}", path.display()))?;
+    let dir = File::open(parent).with_context(|| format!("open {}", parent.display()))?;
+    dir.sync_all()
+        .with_context(|| format!("fsync {}", parent.display()))
 }
 
 #[cfg(test)]
@@ -266,6 +290,23 @@ mod tests {
             b"/space here/percent%/unicode-\xe2\x98\x83"
         );
         assert_eq!(path.display(), "/space here/percent%/unicode-\u{2603}");
+    }
+
+    #[test]
+    fn preserves_newlines_and_long_components() {
+        let long_component = vec![b'a'; 240];
+        let mut raw = b"/line\nbreak/".to_vec();
+        raw.extend_from_slice(&long_component);
+
+        let path = PublicPath::from_absolute_bytes(&raw).unwrap();
+
+        assert_eq!(path.as_bytes(), raw);
+        assert!(path.display().contains('\n'));
+        assert!(
+            path.relative_os_string()
+                .as_bytes()
+                .ends_with(&long_component)
+        );
     }
 
     #[test]
@@ -302,5 +343,39 @@ mod tests {
         let temp = super::temp_path(&target);
 
         assert!(super::is_persistd_temp_path(&temp));
+    }
+
+    #[test]
+    fn public_list_rejects_root_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = temp.path().join("outside");
+        let root = temp.path().join("changed");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, &root).unwrap();
+
+        let error = super::list_public_entries(&root).unwrap_err().to_string();
+
+        assert!(error.contains("real directory"));
+    }
+
+    #[test]
+    fn public_list_ignores_crash_leftover_temp_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("changed");
+        let target = root.join("etc/hello");
+        let leftover = super::temp_path(&target);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(&leftover, "partial").unwrap();
+        std::fs::write(&target, "hello").unwrap();
+
+        let entries = super::list_public_paths(&root).unwrap();
+
+        assert!(entries.iter().any(|path| path.as_bytes() == b"/etc"));
+        assert!(entries.iter().any(|path| path.as_bytes() == b"/etc/hello"));
+        assert!(
+            entries
+                .iter()
+                .all(|path| !path.display().contains(".persistd-tmp"))
+        );
     }
 }

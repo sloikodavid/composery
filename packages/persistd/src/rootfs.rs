@@ -5,7 +5,8 @@ use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    ffi::{CString, OsStr},
+    ffi::{CString, OsStr, OsString},
+    fmt,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     os::unix::{
@@ -13,7 +14,7 @@ use std::{
         fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink},
         io::AsRawFd,
     },
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use crate::public;
@@ -161,12 +162,41 @@ pub fn is_xattr_error(error: &anyhow::Error) -> bool {
     })
 }
 
+pub fn is_copy_unstable_error(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<CopyUnstableError>().is_some()
+}
+
+#[derive(Debug)]
+struct CopyUnstableError {
+    path: PathBuf,
+}
+
+impl fmt::Display for CopyUnstableError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "source changed while copying {}",
+            self.path.display()
+        )
+    }
+}
+
+impl std::error::Error for CopyUnstableError {}
+
+fn copy_unstable_error(source: &Path) -> anyhow::Error {
+    anyhow::Error::new(CopyUnstableError {
+        path: source.to_path_buf(),
+    })
+}
+
 fn copy_entry_atomic_inner(source: &Path, destination: &Path, apply_xattrs: bool) -> Result<()> {
-    let source_facts = facts(source)?;
+    let mut source_facts = facts(source)?;
     public::ensure_parent(destination)?;
 
     match source_facts.kind {
-        FileKind::File => copy_regular_stable(source, destination)?,
+        FileKind::File => {
+            source_facts = copy_regular_stable(source, destination)?;
+        }
         FileKind::Dir => ensure_directory_destination(destination)?,
         FileKind::Symlink => {
             let target = source_facts
@@ -276,6 +306,40 @@ pub fn ensure_safe_parent(root: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn ensure_safe_existing_parent(root: &Path, target: &Path) -> Result<bool> {
+    let parent = target
+        .parent()
+        .with_context(|| format!("target has no parent: {}", target.display()))?;
+    let relative = parent
+        .strip_prefix(root)
+        .with_context(|| format!("target escaped root: {}", target.display()))?;
+
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                bail!(
+                    "refusing to apply through symlink ancestor {}",
+                    current.display()
+                );
+            }
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(_) => return Ok(false),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(false);
+            }
+            Err(error) => return Err(error).with_context(|| format!("stat {}", current.display())),
+        }
+    }
+    Ok(true)
+}
+
 pub fn make_hardlink(source: &Path, target: &Path) -> Result<()> {
     public::ensure_parent(target)?;
     public::remove_path(target)?;
@@ -293,30 +357,39 @@ pub fn fsync_parent(path: &Path) -> Result<()> {
         .with_context(|| format!("fsync {}", parent.display()))
 }
 
-fn copy_regular_stable(source: &Path, destination: &Path) -> Result<()> {
+fn copy_regular_stable(source: &Path, destination: &Path) -> Result<FsFacts> {
     let mut last_error = None;
     for _ in 0..3 {
-        let before =
-            fs::symlink_metadata(source).with_context(|| format!("stat {}", source.display()))?;
+        let before = facts(source).with_context(|| format!("stat {}", source.display()))?;
         let temp = copy_regular_to_temp(source, destination)?;
-        let after =
-            fs::symlink_metadata(source).with_context(|| format!("stat {}", source.display()))?;
-        if before.ino() == after.ino()
-            && before.dev() == after.dev()
-            && before.len() == after.len()
-            && before.mtime() == after.mtime()
-            && before.mtime_nsec() == after.mtime_nsec()
-        {
-            publish_temp(&temp, destination)?;
-            return Ok(());
+        let after_copy = facts(source).with_context(|| format!("stat {}", source.display()))?;
+        if facts_match_for_stable_copy(&before, &after_copy) {
+            let temp_hash = hash_file(&temp)?;
+            let source_hash = hash_file(source)?;
+            let after_hash = facts(source).with_context(|| format!("stat {}", source.display()))?;
+            if facts_match_for_stable_copy(&after_copy, &after_hash) && temp_hash == source_hash {
+                publish_temp(&temp, destination)?;
+                return Ok(after_hash);
+            }
         }
         let _ = public::remove_path(&temp);
-        last_error = Some(anyhow::anyhow!(
-            "source changed while copying {}",
-            source.display()
-        ));
+        last_error = Some(copy_unstable_error(source));
     }
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("copy retry failed")))
+}
+
+fn facts_match_for_stable_copy(left: &FsFacts, right: &FsFacts) -> bool {
+    matches!(left.kind, FileKind::File)
+        && matches!(right.kind, FileKind::File)
+        && left.mode == right.mode
+        && left.uid == right.uid
+        && left.gid == right.gid
+        && left.size == right.size
+        && left.mtime_ns == right.mtime_ns
+        && left.dev == right.dev
+        && left.ino == right.ino
+        && left.nlink == right.nlink
+        && left.xattrs == right.xattrs
 }
 
 fn copy_regular_to_temp(source: &Path, destination: &Path) -> Result<std::path::PathBuf> {
@@ -532,35 +605,77 @@ fn file_time_from_ns(ns: i64) -> (i64, u32) {
 }
 
 fn read_xattrs(path: &Path) -> Result<Vec<XattrRecord>> {
-    let mut records = Vec::new();
-    let names = match xattr::list(path) {
-        Ok(names) => names,
+    let mut records = BTreeMap::new();
+    match xattr::list(path) {
+        Ok(names) => {
+            for name in names {
+                if let Some(record) = read_xattr_record(path, &name, false)? {
+                    records.insert(decode_b64(&record.name_bytes_b64)?, record);
+                }
+            }
+        }
         Err(error)
             if matches!(
                 error.kind(),
                 std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
             ) =>
         {
-            return Ok(records);
+            // Some filesystems do not support listing, while direct reads of known
+            // Linux metadata xattrs may still tell us more below.
         }
         Err(error) => return Err(error).with_context(|| format!("list xattrs {}", path.display())),
-    };
-
-    for name in names {
-        let Some(value) = xattr::get(path, &name)
-            .with_context(|| format!("get xattr {:?} from {}", name, path.display()))?
-        else {
-            continue;
-        };
-        let name_bytes = name.as_bytes();
-        records.push(XattrRecord {
-            name: display_xattr_name(name_bytes),
-            name_bytes_b64: encode_b64(name_bytes),
-            value_b64: encode_b64(&value),
-        });
     }
-    records.sort_by(|left, right| left.name_bytes_b64.cmp(&right.name_bytes_b64));
-    Ok(records)
+
+    for name in known_linux_metadata_xattrs() {
+        let name_bytes = name.as_bytes().to_vec();
+        if records.contains_key(&name_bytes) {
+            continue;
+        }
+        if let Some(record) = read_xattr_record(path, &name, true)? {
+            records.insert(name_bytes, record);
+        }
+    }
+    Ok(records.into_values().collect())
+}
+
+fn known_linux_metadata_xattrs() -> [OsString; 3] {
+    [
+        OsString::from("system.posix_acl_access"),
+        OsString::from("system.posix_acl_default"),
+        OsString::from("security.capability"),
+    ]
+}
+
+fn read_xattr_record(
+    path: &Path,
+    name: &OsStr,
+    ignore_unsupported: bool,
+) -> Result<Option<XattrRecord>> {
+    let value = match xattr::get(path, name) {
+        Ok(value) => value,
+        Err(error)
+            if ignore_unsupported
+                && matches!(
+                    error.kind(),
+                    std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
+                ) =>
+        {
+            None
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("get xattr {:?} from {}", name, path.display()));
+        }
+    };
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let name_bytes = name.as_bytes();
+    Ok(Some(XattrRecord {
+        name: display_xattr_name(name_bytes),
+        name_bytes_b64: encode_b64(name_bytes),
+        value_b64: encode_b64(&value),
+    }))
 }
 
 fn encode_b64(bytes: &[u8]) -> String {
@@ -599,7 +714,7 @@ fn make_dev(major: u64, minor: u64) -> libc::dev_t {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileKind, copy_entry_atomic, facts, make_hardlink};
+    use super::{FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink};
     use std::{
         fs,
         io::Write,
@@ -607,6 +722,7 @@ mod tests {
             ffi::OsStrExt,
             fs::{PermissionsExt, symlink},
         },
+        path::Path,
         process::Command,
     };
 
@@ -657,6 +773,31 @@ mod tests {
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("cap_net_bind_service"));
+    }
+
+    #[test]
+    fn copies_acl_xattrs_when_supported() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("acl-source");
+        let dest = temp.path().join("acl-dest");
+        fs::write(&source, "acl").unwrap();
+        let acl = extended_acl_xattr_value(unsafe { libc::geteuid() });
+
+        if let Err(error) = xattr::set(&source, "system.posix_acl_access", &acl) {
+            eprintln!("skipping ACL copy test: setting system.posix_acl_access failed: {error}");
+            return;
+        }
+        if xattr::get(&source, "system.posix_acl_access").unwrap() != Some(acl.clone()) {
+            eprintln!("skipping ACL copy test: kernel normalized ACL away");
+            return;
+        }
+
+        copy_entry_atomic(&source, &dest).unwrap();
+
+        assert_eq!(
+            xattr::get(&dest, "system.posix_acl_access").unwrap(),
+            Some(acl)
+        );
     }
 
     #[test]
@@ -713,5 +854,50 @@ mod tests {
         make_hardlink(&source, &target).unwrap();
 
         assert_eq!(facts(&source).unwrap().ino, facts(&target).unwrap().ino);
+    }
+
+    #[test]
+    fn copy_entry_atomic_reports_unstable_regular_source() {
+        let source = Path::new("/proc/uptime");
+        if !source.exists() {
+            eprintln!("skipping unstable copy test: /proc/uptime is unavailable");
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("uptime");
+
+        let error = copy_entry_atomic(source, &dest).unwrap_err();
+
+        assert!(is_copy_unstable_error(&error), "{error:#}");
+    }
+
+    #[test]
+    fn classifies_source_copy_instability_through_context() {
+        let error =
+            super::copy_unstable_error(std::path::Path::new("/tmp/source")).context("persist");
+
+        assert!(super::is_copy_unstable_error(&error));
+    }
+
+    fn extended_acl_xattr_value(uid: u32) -> Vec<u8> {
+        const ACL_USER_OBJ: u16 = 0x01;
+        const ACL_USER: u16 = 0x02;
+        const ACL_GROUP_OBJ: u16 = 0x04;
+        const ACL_MASK: u16 = 0x10;
+        const ACL_OTHER: u16 = 0x20;
+
+        let mut value = 2_u32.to_le_bytes().to_vec();
+        push_acl_entry(&mut value, ACL_USER_OBJ, 0o6, u32::MAX);
+        push_acl_entry(&mut value, ACL_USER, 0o4, uid);
+        push_acl_entry(&mut value, ACL_GROUP_OBJ, 0o4, u32::MAX);
+        push_acl_entry(&mut value, ACL_MASK, 0o4, u32::MAX);
+        push_acl_entry(&mut value, ACL_OTHER, 0o0, u32::MAX);
+        value
+    }
+
+    fn push_acl_entry(value: &mut Vec<u8>, tag: u16, permissions: u16, id: u32) {
+        value.extend_from_slice(&tag.to_le_bytes());
+        value.extend_from_slice(&permissions.to_le_bytes());
+        value.extend_from_slice(&id.to_le_bytes());
     }
 }

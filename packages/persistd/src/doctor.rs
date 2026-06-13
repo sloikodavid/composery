@@ -181,4 +181,109 @@ mod tests {
         assert!(paths.changed_dir.join("conflict").exists());
         assert!(paths.removed_dir.join("conflict").exists());
     }
+
+    #[test]
+    fn doctor_reports_missing_and_invalid_baseline() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistd"),
+            temp.path().join("run/persistd"),
+            temp.path().join("data/persistd"),
+        );
+        layout::ensure(&paths).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+
+        let missing = run(&paths, &db).unwrap();
+
+        assert!(!missing.baseline_present);
+        assert!(!missing.baseline_valid);
+        assert!(
+            missing
+                .findings
+                .iter()
+                .any(|finding| finding.contains("missing baseline"))
+        );
+
+        fs::create_dir_all(&paths.opt_dir).unwrap();
+        fs::write(&paths.baseline_db, "not sqlite").unwrap();
+        let invalid = run(&paths, &db).unwrap();
+
+        assert!(invalid.baseline_present);
+        assert!(!invalid.baseline_valid);
+        assert!(
+            invalid
+                .findings
+                .iter()
+                .any(|finding| finding.contains("invalid baseline"))
+        );
+    }
+
+    #[test]
+    fn doctor_compacts_metadata_and_rebuilds_public_index() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let paths = Paths::new(
+            root.join("opt/persistd"),
+            temp.path().join("run/persistd"),
+            temp.path().join("data/persistd"),
+        );
+        fs::create_dir_all(root.join("opt/persistd")).unwrap();
+        generate(&GenerateOptions {
+            root,
+            output: paths.baseline_db.clone(),
+        })
+        .unwrap();
+        layout::ensure(&paths).unwrap();
+        fs::create_dir_all(paths.changed_dir.join("etc")).unwrap();
+        fs::write(paths.changed_dir.join("etc/hello"), "changed").unwrap();
+        fs::write(
+            &paths.metadata_file,
+            r#"{"path":"/a","kind":"file","mode":420}
+{"path":"/a","kind":"file","mode":384}
+"#,
+        )
+        .unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+
+        let report = run(&paths, &db).unwrap();
+
+        assert!(report.rebuilt_public_index);
+        assert_eq!(report.metadata_records, 1);
+        assert_eq!(db.public_count("changed").unwrap(), 2);
+        assert_eq!(db.metadata_record_count().unwrap(), 1);
+        assert_eq!(
+            metadata::load(&paths.metadata_file).unwrap()[0].mode,
+            Some(384)
+        );
+    }
+
+    #[test]
+    fn doctor_rejects_invalid_metadata_path_without_rewriting_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let paths = Paths::new(
+            root.join("opt/persistd"),
+            temp.path().join("run/persistd"),
+            temp.path().join("data/persistd"),
+        );
+        fs::create_dir_all(root.join("opt/persistd")).unwrap();
+        generate(&GenerateOptions {
+            root,
+            output: paths.baseline_db.clone(),
+        })
+        .unwrap();
+        layout::ensure(&paths).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        let invalid_metadata = r#"{"path":"/../escape","kind":"file"}
+"#;
+        fs::write(&paths.metadata_file, invalid_metadata).unwrap();
+
+        let error = run(&paths, &db).unwrap_err().to_string();
+
+        assert!(error.contains(".."), "{error}");
+        assert_eq!(
+            fs::read_to_string(&paths.metadata_file).unwrap(),
+            invalid_metadata
+        );
+    }
 }

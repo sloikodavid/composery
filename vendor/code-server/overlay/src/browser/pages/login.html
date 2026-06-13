@@ -9,21 +9,20 @@
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>{{I18N_LOGIN_TITLE}}</title>
-		<link rel="icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg" />
-		<link rel="alternate icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon.ico" />
+		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg" />
+		<link rel="alternate icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" />
 		<link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
-		<link href="{{CS_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
-		<link href="{{CS_STATIC_BASE}}/src/browser/pages/login.css" rel="stylesheet" />
+		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
+		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/login.css" rel="stylesheet" />
 		<meta id="coder-options" data-settings="{{OPTIONS}}" />
 	</head>
 	<body>
 		<main class="page">
 			<form class="login-form" method="post" autocomplete="on" aria-label="Sign in">
 				<img
-					class="login-icon"
-					src="{{CS_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg"
-					alt=""
-					aria-hidden="true"
+					class="login-logo"
+					src="{{COMPOSERY_STATIC_BASE}}/src/browser/media/composery-logo.svg"
+					alt="Composery"
 				/>
 				<input
 					class="username"
@@ -61,6 +60,6 @@
 				<div class="login-message" aria-live="polite">{{ERROR}}</div>
 			</form>
 		</main>
-		<script src="{{CS_STATIC_BASE}}/src/browser/pages/auth.js"></script>
+		<script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/auth.js"></script>
 	</body>
 </html>

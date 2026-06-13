@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -38,6 +39,7 @@ impl Auditor {
         lifecycle: LifecycleStatus,
     ) -> Result<Self> {
         lifecycle.set(LifecycleState::Initializing);
+        initialize(&root)?;
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
         let (ready_tx, ready_rx) = mpsc::channel();
@@ -70,10 +72,27 @@ impl Auditor {
     }
 }
 
+fn initialize(root: &Path) -> Result<()> {
+    ensure_real_root(root)?;
+    Ok(())
+}
+
+fn ensure_real_root(root: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(root)
+        .with_context(|| format!("stat audit root {}", root.display()))?;
+    if metadata.file_type().is_dir() {
+        Ok(())
+    } else {
+        anyhow::bail!("audit root must be a real directory: {}", root.display())
+    }
+}
+
 impl Drop for Auditor {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        let _ = self.thread.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }
 
@@ -107,6 +126,7 @@ pub fn run_once(
     stop: &AtomicBool,
 ) -> Result<()> {
     let mut seen = BTreeSet::new();
+    let hardlink_groups = hardlink_groups(baseline);
     let mut work_started = Instant::now();
     let budget = Duration::from_millis(config.audit.max_work_ms_per_tick.max(1));
 
@@ -129,7 +149,15 @@ pub fn run_once(
         seen.insert(public.clone());
         let facts = rootfs::facts(entry.path())
             .with_context(|| format!("inspect audit candidate {}", entry.path().display()))?;
-        if candidate_needs_update(&facts, baseline.get(&public))? {
+        if candidate_needs_update(
+            root,
+            entry.path(),
+            &public,
+            &facts,
+            baseline.get(&public),
+            &hardlink_groups,
+            config,
+        )? {
             let _ = dirty_tx.send(public);
         }
         throttle_if_needed(&mut work_started, budget, stop);
@@ -149,7 +177,15 @@ pub fn run_once(
     Ok(())
 }
 
-fn candidate_needs_update(live: &FsFacts, baseline: Option<&BaselineRecord>) -> Result<bool> {
+fn candidate_needs_update(
+    root: &Path,
+    live_path: &Path,
+    public_path: &PublicPath,
+    live: &FsFacts,
+    baseline: Option<&BaselineRecord>,
+    hardlink_groups: &BTreeMap<String, Vec<PublicPath>>,
+    config: &Config,
+) -> Result<bool> {
     let Some(record) = baseline else {
         return Ok(true);
     };
@@ -159,7 +195,6 @@ fn candidate_needs_update(live: &FsFacts, baseline: Option<&BaselineRecord>) -> 
         || i64::from(live.uid) != record.uid
         || i64::from(live.gid) != record.gid
         || !update::mtime_matches_baseline(live.mtime_ns, record.mtime_ns)
-        || live.nlink as i64 != record.nlink
     {
         return Ok(true);
     }
@@ -167,6 +202,10 @@ fn candidate_needs_update(live: &FsFacts, baseline: Option<&BaselineRecord>) -> 
     match live.kind {
         FileKind::File => {
             if live.size.map(|size| size as i64) != record.size {
+                return Ok(true);
+            }
+            let live_hash = rootfs::hash_file(live_path)?;
+            if Some(live_hash) != record.content_hash {
                 return Ok(true);
             }
         }
@@ -191,7 +230,75 @@ fn candidate_needs_update(live: &FsFacts, baseline: Option<&BaselineRecord>) -> 
         .map(serde_json::from_str::<Vec<rootfs::XattrRecord>>)
         .transpose()?
         .unwrap_or_default();
-    Ok(live.xattrs != baseline_xattrs)
+    if live.xattrs != baseline_xattrs {
+        return Ok(true);
+    }
+
+    hardlink_topology_needs_update(root, public_path, live, record, hardlink_groups, config)
+}
+
+fn hardlink_groups(
+    baseline: &BTreeMap<PublicPath, BaselineRecord>,
+) -> BTreeMap<String, Vec<PublicPath>> {
+    let mut groups: BTreeMap<String, Vec<PublicPath>> = BTreeMap::new();
+    for record in baseline.values() {
+        if let Some(key) = &record.hardlink_key {
+            groups
+                .entry(key.clone())
+                .or_default()
+                .push(record.path.clone());
+        }
+    }
+    groups
+}
+
+fn hardlink_topology_needs_update(
+    root: &Path,
+    public_path: &PublicPath,
+    live: &FsFacts,
+    record: &BaselineRecord,
+    hardlink_groups: &BTreeMap<String, Vec<PublicPath>>,
+    config: &Config,
+) -> Result<bool> {
+    if !matches!(live.kind, FileKind::File) {
+        return Ok(false);
+    }
+
+    let Some(key) = &record.hardlink_key else {
+        return Ok(live.nlink > 1);
+    };
+    if live.nlink as i64 != record.nlink {
+        return Ok(true);
+    }
+
+    let Some(siblings) = hardlink_groups.get(key) else {
+        return Ok(false);
+    };
+    for sibling in siblings {
+        if sibling == public_path || crate::public::is_excluded(sibling, config) {
+            continue;
+        }
+        let sibling_path = crate::public::live_path(root, sibling);
+        let sibling_facts = match rootfs::facts(&sibling_path) {
+            Ok(facts) => facts,
+            Err(error) => {
+                let missing = error.downcast_ref::<std::io::Error>().is_some_and(|io| {
+                    matches!(
+                        io.kind(),
+                        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+                    )
+                }) || fs::symlink_metadata(&sibling_path).is_err();
+                if missing {
+                    return Ok(true);
+                }
+                return Err(error).with_context(|| format!("inspect hardlink sibling {}", sibling));
+            }
+        };
+        if sibling_facts.dev != live.dev || sibling_facts.ino != live.ino {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn throttle_if_needed(work_started: &mut Instant, budget: Duration, stop: &AtomicBool) {
@@ -218,7 +325,7 @@ fn public_path(root: &Path, path: &Path) -> Result<PublicPath> {
 
 #[cfg(test)]
 mod tests {
-    use super::run_once;
+    use super::{Auditor, run_once};
     use crate::{
         baseline::{BaselineDb, BaselineRecord, GenerateOptions, generate},
         config::Config,
@@ -260,6 +367,102 @@ mod tests {
         assert!(!candidates.contains(&"/etc/unchanged".into()));
     }
 
+    #[test]
+    fn audit_hashes_same_size_same_mtime_file_changes() {
+        let fixture = Fixture::new();
+        let public_path = PublicPath::parse("/etc/unchanged").unwrap();
+        let record = fixture.baseline.get(&public_path).unwrap().unwrap();
+        fs::write(fixture.root.join("etc/unchanged"), "diff").unwrap();
+        filetime::set_file_mtime(
+            fixture.root.join("etc/unchanged"),
+            filetime::FileTime::from_unix_time(
+                record.mtime_ns.div_euclid(1_000_000_000),
+                record.mtime_ns.rem_euclid(1_000_000_000) as u32,
+            ),
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::channel();
+        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+
+        run_once(
+            &fixture.root,
+            &fixture.baseline_map(),
+            &Config::default(),
+            &dirty_tx,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        drop(dirty_tx);
+
+        let candidates = rx.try_iter().map(|path| path.display()).collect::<Vec<_>>();
+        assert!(candidates.contains(&"/etc/unchanged".into()));
+    }
+
+    #[test]
+    fn audit_detects_hardlink_topology_changes_with_matching_content_and_link_counts() {
+        let fixture = Fixture::new();
+        let hard_a = PublicPath::parse("/etc/hard-a").unwrap();
+        let hard_b = PublicPath::parse("/etc/hard-b").unwrap();
+        let hard_a_record = fixture.baseline.get(&hard_a).unwrap().unwrap();
+        let hard_b_record = fixture.baseline.get(&hard_b).unwrap().unwrap();
+        fs::remove_file(fixture.root.join("etc/hard-b")).unwrap();
+        fs::write(fixture.root.join("etc/hard-b"), "shared").unwrap();
+        filetime::set_file_mtime(
+            fixture.root.join("etc/hard-a"),
+            filetime_from_ns(hard_a_record.mtime_ns),
+        )
+        .unwrap();
+        filetime::set_file_mtime(
+            fixture.root.join("etc/hard-b"),
+            filetime_from_ns(hard_b_record.mtime_ns),
+        )
+        .unwrap();
+        fs::hard_link(
+            fixture.root.join("etc/hard-a"),
+            fixture.root.join("etc/hard-a-extra"),
+        )
+        .unwrap();
+        fs::hard_link(
+            fixture.root.join("etc/hard-b"),
+            fixture.root.join("etc/hard-b-extra"),
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::channel();
+        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+
+        run_once(
+            &fixture.root,
+            &fixture.baseline_map(),
+            &Config::default(),
+            &dirty_tx,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        drop(dirty_tx);
+
+        let candidates = rx.try_iter().map(|path| path.display()).collect::<Vec<_>>();
+        assert!(candidates.contains(&"/etc/hard-a".into()));
+        assert!(candidates.contains(&"/etc/hard-b".into()));
+    }
+
+    #[test]
+    fn auditor_rejects_non_directory_root_before_ready() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root-file");
+        fs::write(&root, "not a directory").unwrap();
+        let (tx, _rx) = mpsc::channel();
+        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let lifecycle =
+            crate::lifecycle::LifecycleStatus::new(crate::lifecycle::LifecycleState::Initializing);
+
+        let error = match Auditor::start(root, Vec::new(), Config::default(), dirty_tx, lifecycle) {
+            Ok(_) => panic!("auditor accepted non-directory root"),
+            Err(error) => error.to_string(),
+        };
+
+        assert!(error.contains("real directory"));
+    }
+
     struct Fixture {
         _temp: tempfile::TempDir,
         root: std::path::PathBuf,
@@ -281,6 +484,8 @@ mod tests {
             fs::write(root.join("etc/hello.txt"), "hello").unwrap();
             fs::write(root.join("etc/delete-me"), "bye").unwrap();
             fs::write(root.join("etc/unchanged"), "same").unwrap();
+            fs::write(root.join("etc/hard-a"), "shared").unwrap();
+            fs::hard_link(root.join("etc/hard-a"), root.join("etc/hard-b")).unwrap();
             generate(&GenerateOptions {
                 root: root.clone(),
                 output: paths.baseline_db.clone(),
@@ -304,5 +509,12 @@ mod tests {
                 .map(|record| (record.path.clone(), record))
                 .collect()
         }
+    }
+
+    fn filetime_from_ns(ns: i64) -> filetime::FileTime {
+        filetime::FileTime::from_unix_time(
+            ns.div_euclid(1_000_000_000),
+            ns.rem_euclid(1_000_000_000) as u32,
+        )
     }
 }
