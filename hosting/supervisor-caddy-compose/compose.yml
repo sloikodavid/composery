@@ -16,9 +16,8 @@ services:
   composery:
     image: ghcr.io/sloikodavid/composery:latest
     restart: unless-stopped
-    # environment:
-    #   PASSWORD: "example"
     volumes:
+      - ./composery.env:/etc/composery/composery.env:ro
       - composery_data:/data
     expose:
       - "8080"

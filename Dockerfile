@@ -137,6 +137,7 @@ RUN apt-get update \
     shared-mime-info \
     sudo \
     supervisor \
+    systemd \
     tar \
     unzip \
     vim-tiny \
@@ -160,11 +161,19 @@ COPY --from=persistd-builder /out/persistd /opt/persistd/bin/persistd
 COPY rootfs/ /
 
 RUN find /home/user -name .gitkeep -type f -delete \
-  && mkdir -p /data \
+  && mkdir -p /data /etc/composery /etc/systemd/system/multi-user.target.wants \
+  && rm -f /etc/machine-id \
+  && touch /etc/machine-id \
   && chown -R user:user /home/user \
   && chmod 0440 /etc/sudoers.d/user \
   && chmod +x /opt/composery/entrypoint.sh \
   && chmod +x /opt/composery/code-server.sh \
+  && chmod +x /opt/composery/init/*.sh \
+  && chmod +x /usr/local/bin/xclip /usr/local/bin/xsel /usr/local/bin/wl-paste /usr/local/bin/wl-copy \
+  && rm -f /etc/systemd/system/multi-user.target.wants/supervisor.service \
+  && ln -sf /dev/null /etc/systemd/system/systemd-modules-load.service \
+  && ln -sf ../persistd.service /etc/systemd/system/multi-user.target.wants/persistd.service \
+  && ln -sf ../composery.service /etc/systemd/system/multi-user.target.wants/composery.service \
   && ln -sf /opt/code-server/current/lib/vscode/bin/remote-cli/code-server /usr/local/bin/code \
   && ln -sf /opt/code-server/current/bin/code-server /usr/local/bin/code-server \
   && update-desktop-database /usr/share/applications \
@@ -175,8 +184,8 @@ RUN find /home/user -name .gitkeep -type f -delete \
 # drops to the unprivileged `user` for code-server. Root is intentional.
 EXPOSE 8080
 
-# Liveness against code-server's auth-exempt /healthz; ${PORT:-8080} follows a PORT override.
+# Liveness against code-server's auth-exempt /healthz; composery.env may set PORT.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
+  CMD if [ -f /etc/composery/composery.env ]; then . /etc/composery/composery.env; fi; curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
 
 ENTRYPOINT ["/opt/composery/entrypoint.sh"]

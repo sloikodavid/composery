@@ -1,0 +1,153 @@
+Replace the Coder Getting Started promo with a Composery agent setup card
+
+code-server injects a "Deploy code-server for your team" Coder advert into the
+Welcome page (getting-started.diff). This swaps that block's contents for a
+"Set up an AI coding agent" card: a grid of agents (logo + name). Each card runs
+composery.installAgent (the composery-agents builtin extension) directly via the
+command service, which runs that agent's official setup command in a new terminal.
+Logos are CSS-masked and filled with the theme accent (textLink.foreground), so
+they read as one accent silhouette and adapt to light/dark. Keeps the existing
+isEnabledCoderGettingStarted gate, so COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE
+still turns the whole block off.
+
+diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+--- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
++++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+@@ -928,65 +928,75 @@
+ 		let gettingStartedCoder: HTMLElement = $('.header', {});
+ 		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
+-			gettingStartedCoder = $('.gettingStartedCategory', {},
+-				$('h2', {
+-					style: 'margin-bottom: 12px',
+-				}, 'Next Up'),
+-				$('a', {
+-					href: 'https://cdr.co/code-server-to-coder',
+-					target: '_blank',
+-				},
+-					$('button', {
+-						style: [
+-							'padding: 10px 16px	',
+-							'border-radius: 4px',
+-							'background: linear-gradient(94.04deg, #7934DA 0%, #4D52E0 101.2%)',
+-							'color: white',
+-							'overflow: hidden',
+-							'margin-right: 14px',
+-						].join(';'),
+-					},
+-					$('h3', {
+-						style: [
+-							'margin: 0px 0px 6px',
+-							'font-weight: 500',
+-						].join(';'),
+-					}, 'Deploy code-server for your team'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Provision software development environments on your infrastructure with Coder.'),
+-					$('p', {
+-						style: [
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Coder is a self-service portal which provisions via Terraform—Linux, macOS, Windows, x86, ARM, and, of course, Kubernetes based infrastructure.'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'display: flex',
+-							'align-items: center',
+-						].join(';'),
+-					}, 'Get started ', $('span', {
+-						class: ThemeIcon.asClassName(Codicon.arrowRight),
+-						style: [
+-							'color: white',
+-							'margin-left: 8px',
+-						].join(';'),
+-					})),
+-					$('img', {
+-						src: './_static/src/browser/media/templates.png',
+-						style: [
+-							'margin-bottom: -65px',
+-						].join(';'),
+-					}),
+-					),
+-				),
+-			);
++			const composeryAgents = [
++				{ id: 'claude', name: 'Claude Code', tagline: 'Anthropic' },
++				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
++				{ id: 'opencode', name: 'OpenCode', tagline: 'SST' },
++				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
++				{ id: 'openclaw', name: 'OpenClaw', tagline: 'Personal agent' },
++				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
++			];
++			gettingStartedCoder = $('.gettingStartedCategory', {},
++				$('h2', {
++					style: 'margin: 0 0 4px;font-weight: 600;',
++				}, 'Set up an AI coding agent'),
++				$('p', {
++					style: 'margin: 0 0 16px;font-size: 13px;opacity: 0.7;',
++				}, 'Click one to run its official latest setup command in a new terminal.'),
++				$('.composery-agent-grid', {
++					style: [
++						'display: grid',
++						'grid-template-columns: repeat(2, minmax(0, 1fr))',
++						'gap: 10px',
++						'max-width: 560px',
++					].join(';'),
++				},
++					...composeryAgents.map(agent => {
++						const iconUrl = `url(./_static/src/browser/media/agents/${agent.id}.svg) center / contain no-repeat`;
++						const card = $('.composery-agent', {
++							role: 'button',
++							tabindex: '0',
++							title: `Set up ${agent.name}`,
++							style: [
++								'display: flex',
++								'align-items: center',
++								'gap: 12px',
++								'padding: 12px 14px',
++								'border-radius: 8px',
++								'border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25))',
++								'cursor: pointer',
++								'color: inherit',
++							].join(';'),
++						},
++							$('.composery-agent-icon', {
++								style: [
++									'width: 28px',
++									'height: 28px',
++									'flex-shrink: 0',
++									`-webkit-mask: ${iconUrl}`,
++									`mask: ${iconUrl}`,
++									'background-color: var(--vscode-textLink-foreground)',
++								].join(';'),
++							}),
++							$('span', {
++								style: 'display: flex;flex-direction: column;min-width: 0;',
++							},
++								$('span', { style: 'font-weight: 600;' }, agent.name),
++								$('span', { style: 'font-size: 12px;opacity: 0.7;' }, agent.tagline),
++							),
++						);
++						const launch = () => this.commandService.executeCommand('composery.installAgent', agent.id);
++						card.addEventListener('click', e => {
++							e.preventDefault();
++							launch();
++						});
++						card.addEventListener('keydown', e => {
++							if (e.key === 'Enter' || e.key === ' ') {
++								e.preventDefault();
++								launch();
++							}
++						});
++						return card;
++					}),
++				),
++			);
+ 		}

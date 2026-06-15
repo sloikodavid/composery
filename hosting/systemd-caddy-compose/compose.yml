@@ -1,0 +1,36 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      composery:
+        condition: service_healthy
+
+  composery:
+    image: ghcr.io/sloikodavid/composery:latest
+    restart: unless-stopped
+    privileged: true
+    cgroup: host
+    stop_signal: SIGRTMIN+3
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    volumes:
+      - ./composery.env:/etc/composery/composery.env:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - composery_data:/data
+    expose:
+      - "8080"
+
+volumes:
+  composery_data:
+  caddy_data:
+  caddy_config:

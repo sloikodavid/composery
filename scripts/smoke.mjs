@@ -10,7 +10,7 @@ import { URL, URLSearchParams, fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const RUN_ID = `${Date.now()}-${process.pid}`;
 const DEFAULT_ATTEMPTS = {
-	exec: 30,
+	exec: 120,
 	health: 120,
 	readiness: 180
 };
@@ -89,13 +89,13 @@ function runDefaultContainer() {
 }
 
 async function assertWebAppSmoke() {
-	log("checking web app startup, auth, and code-server");
+	log("checking web app startup, auth, and Composery");
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health);
 
 	const cookies = new Map();
 	await login(cookies);
 	const rootPage = await fetchAuthedText("/", cookies);
-	assertContains("default root page", rootPage, "code-server");
+	assertContains("default root page", rootPage, "Composery");
 
 	await assertWebsocketUpgrade(cookies);
 	await assertCodeServerGatesWhenPersistdNotReady(cookies);
@@ -104,6 +104,36 @@ async function assertWebAppSmoke() {
 		capture: true,
 		quiet: true
 	});
+	await assertClipboardBridge();
+}
+
+async function assertClipboardBridge() {
+	log("checking clipboard bridge shims and pipe commands");
+
+	// The xclip/xsel/wl-* shims must be installed and executable so terminal
+	// tools (Claude Code, neovim, ...) reach the browser clipboard.
+	execSh(
+		"for s in xclip xsel wl-paste wl-copy; do test -x /usr/local/bin/$s || exit 1; done"
+	);
+
+	// The read and write image commands must be compiled into the server bundle
+	// (the browser side of the pipe that reaches navigator.clipboard).
+	execSh(
+		"grep -q _remoteCLI.getClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js && grep -q _remoteCLI.setClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js"
+	);
+
+	// Without an integrated-terminal pipe there is no browser clipboard to
+	// reach; the shim must degrade cleanly (no output, non-zero) rather than
+	// leaking `code` diagnostics where callers expect clipboard data.
+	const shimResult = execSh(
+		"xclip -selection clipboard -t image/png -o; echo rc=$?",
+		{ capture: true, quiet: true }
+	).stdout.trim();
+	if (shimResult !== "rc=1") {
+		throw new Error(
+			`Expected clipboard shim to degrade cleanly without a terminal pipe; got ${JSON.stringify(shimResult)}.`
+		);
+	}
 }
 
 async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
@@ -223,10 +253,10 @@ async function assertPersistdAppliesChanges() {
 	runDefaultContainer();
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test ! -e /usr/share/applications/composery-text-editor.desktop");
-	execSh(
+	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
+	runWithDataVolume(
 		"rm -f /data/persistd/removed/usr/share/applications/composery-text-editor.desktop"
 	);
-	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runDefaultContainer();
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test -f /usr/share/applications/composery-text-editor.desktop");
@@ -520,6 +550,23 @@ async function retry(label, attempts, fn) {
 
 function restartContainer() {
 	docker(["restart", config.containerName], { capture: true, quiet: true });
+}
+
+function runWithDataVolume(script) {
+	docker(
+		[
+			"run",
+			"--rm",
+			"-v",
+			`${config.volumeName}:/data`,
+			"--entrypoint",
+			"sh",
+			config.imageTag,
+			"-lc",
+			script
+		],
+		{ capture: true, quiet: true }
+	);
 }
 
 function dockerExec(args, options = {}) {

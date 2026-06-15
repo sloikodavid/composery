@@ -1,5 +1,6 @@
 {
-	"security.workspace.trust.enabled": false,
 	"telemetry.telemetryLevel": "off",
-	"workbench.startupEditor": "none"
+	"security.workspace.trust.enabled": false,
+	"chat.disableAIFeatures": true,
+	"window.autoDetectColorScheme": true
 }

@@ -13,16 +13,19 @@ The closest match to the production cloud runtime is:
 - DNS `A` and `AAAA` records pointing at the VPS;
 - inbound ports `80` and `443` open;
 - Docker Compose;
-- Caddy in front of Composery for automatic HTTPS.
+- Caddy in front of Composery for automatic HTTPS;
+- the systemd init profile on hosts with privileged containers and host cgroups.
 
-Use [hosting/caddy-compose](../hosting/caddy-compose/) for this setup.
+Use [hosting/systemd-caddy-compose](../hosting/systemd-caddy-compose/) for this
+setup. Use [hosting/supervisor-caddy-compose](../hosting/supervisor-caddy-compose/)
+when the host cannot provide the systemd container requirements.
 
 ## Deployment Targets
 
 | Target                                | Status            | Notes                                                                                                                                                                  |
 | ------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker Compose on one VPS             | Supported         | Best default for indie/self-hosted use. Use the Caddy example for HTTPS.                                                                                               |
-| Hetzner CX/CPX VPS                    | Production target | This is the production cloud target in (Composery Cloud)[https://composery.io/pricing].                                                                                |
+| Docker Compose on one VPS             | Supported         | Use the systemd Caddy example when privileged cgroups are available; use the supervisor Caddy example for simpler Docker hosts.                                        |
+| Hetzner CX/CPX VPS                    | Production target | This is the production cloud target in [Composery Cloud](https://composery.io/pricing).                                                                                |
 | DigitalOcean Droplet or similar VPS   | Supported         | Same Compose/Caddy shape as Hetzner.                                                                                                                                   |
 | Railway, Render, Fly, or similar PaaS | Supported         | Mount a writable persistent disk at `/data`, run a single instance per volume, and check `persistd status --json` after boot. Provider-specific setup is still manual. |
 | Kubernetes                            | Manual            | Use one replica, a PVC mounted at `/data`, and an ingress/proxy. Do not scale one Composery instance horizontally against the same PVC.                                |
@@ -31,13 +34,15 @@ Use [hosting/caddy-compose](../hosting/caddy-compose/) for this setup.
 
 ### VPS Providers
 
-Use [hosting/caddy-compose](../hosting/caddy-compose/) on a Droplet, Hetzner VPS,
-or similar host:
+Use [hosting/systemd-caddy-compose](../hosting/systemd-caddy-compose/) on a
+Droplet, Hetzner VPS, or similar host when you want `systemctl`, service units,
+and journald inside Composery:
 
 1. Point DNS at the server.
 2. Open inbound `80` and `443`.
 3. Install Docker Compose.
-4. Copy the example, edit `Caddyfile`, and run `docker compose up -d`.
+4. Copy the example and edit `Caddyfile` plus `composery.env`.
+5. Run `docker compose up -d`.
 
 This matches the runtime shape used by Composery Cloud.
 
@@ -79,36 +84,38 @@ Ingress or Gateway for TLS. Composery is not currently a horizontally scalable
 Kubernetes app because `persistd` is a single-writer daemon for one root
 filesystem delta.
 
-## code-server Environment Variables
+## Runtime Environment Variables
 
-Composery does not define `COMPOSERY_*` runtime wrappers around code-server
-settings. Set code-server environment variables directly in Compose or in your
-hosting provider's environment-variable UI.
+Composery does not define extra wrappers around upstream runtime settings. In
+the Compose examples, set the documented variables in `composery.env`; the file
+is mounted at `/etc/composery/composery.env` and read by the runtime. Other
+hosting providers can use their environment-variable UI.
 
 Most useful for self-hosting:
 
-| Variable                    | Use                                                                                                                                      |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `PASSWORD`                  | Sets a plaintext code-server password and skips first-visit registration.                                                                |
-| `HASHED_PASSWORD`           | Sets an argon2 hashed password and takes precedence over `PASSWORD`. Escape `$` as `$$` in Docker Compose values.                        |
-| `PORT`                      | Changes code-server's listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.         |
-| `VSCODE_PROXY_URI`          | Controls links in the Ports panel, for example `https://{{port}}.dev.example.com`. The default path proxy works without setting this.    |
-| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                    |
-| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                         |
-| `EXTENSIONS_GALLERY`        | Points code-server at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                    |
-| `LOG_LEVEL`                 | Sets code-server logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                |
-| `GITHUB_TOKEN`              | Supplies code-server's GitHub auth token. Treat it as a secret; code-server removes it from the child-process environment after startup. |
+| Variable                           | Use                                                                                                                                            |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSWORD`                         | Sets a plaintext code-server password and skips first-visit registration.                                                                      |
+| `HASHED_PASSWORD`                  | Sets an argon2 hashed password and takes precedence over `PASSWORD`. Quote values containing `$` in `composery.env`.                           |
+| `PORT`                             | Changes code-server's listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.               |
+| `COMPOSERY_INIT`                   | Selects the init profile: `supervisor` by default, or `systemd` when the container is started with the required cgroup and privilege settings. |
+| `VSCODE_PROXY_URI`                 | Controls links in the Ports panel, for example `https://{{port}}.dev.example.com`. The default path proxy works without setting this.          |
+| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                          |
+| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                               |
+| `EXTENSIONS_GALLERY`               | Points code-server at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                          |
+| `LOG_LEVEL`                        | Sets code-server logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                      |
+| `GITHUB_TOKEN`                     | Supplies code-server's GitHub auth token. Treat it as a secret; code-server removes it from the child-process environment after startup.       |
 
 Accepted by code-server but usually less important for Composery:
 
 | Variable                                                 | Use                                                                                                         |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `COMPOSERY_CONFIG`                                     | Overrides the code-server YAML config path.                                                                 |
-| `COMPOSERY_HOST`                                       | Overrides the bind host. Avoid setting this unless you understand the container networking impact.          |
-| `COMPOSERY_COOKIE_SUFFIX`                              | Adds a cookie suffix, useful when sharing a parent domain across multiple code-server instances.            |
-| `COMPOSERY_RECONNECTION_GRACE_TIME`                    | Overrides reconnection grace time in seconds.                                                               |
-| `COMPOSERY_IDLE_TIMEOUT_SECONDS`                       | Asks code-server to exit after an idle period. Supervisor currently restarts code-server, so use with care. |
-| `COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE`                    | Set to `1` or `true` to disable code-server's Getting Started override.                                     |
+| `COMPOSERY_CONFIG`                                       | Overrides the code-server YAML config path.                                                                 |
+| `COMPOSERY_HOST`                                         | Overrides the bind host. Avoid setting this unless you understand the container networking impact.          |
+| `COMPOSERY_COOKIE_SUFFIX`                                | Adds a cookie suffix, useful when sharing a parent domain across multiple code-server instances.            |
+| `COMPOSERY_RECONNECTION_GRACE_TIME`                      | Overrides reconnection grace time in seconds.                                                               |
+| `COMPOSERY_IDLE_TIMEOUT_SECONDS`                         | Asks code-server to exit after an idle period. Supervisor currently restarts code-server, so use with care. |
+| `COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE`             | Set to `1` or `true` to disable code-server's Getting Started override.                                     |
 | `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` | Sets an outbound HTTP(S) proxy for code-server update and extension-related requests.                       |
 
 ## Persistence Contract
@@ -133,6 +140,11 @@ Excluded by default:
 - `/opt/persistd` and `/opt/composery`;
 - resolver and hostname files: `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`.
 
+For the systemd profile, keep `/etc/systemd`, `/var/lib/systemd`, and
+`/etc/machine-id` persisted. Those paths store enabled units, service state, and
+machine identity. Excluding them would make Composery feel less like a VPS after
+restart.
+
 Unix sockets are runtime endpoints and are ignored even outside excluded
 directories. The owning process must recreate them after restart.
 
@@ -153,6 +165,13 @@ sudo /opt/persistd/bin/persistd status
 sudo /opt/persistd/bin/persistd status --json
 sudo /opt/persistd/bin/persistd doctor
 sudo /opt/persistd/bin/persistd prune
+```
+
+When running the systemd profile:
+
+```bash
+systemctl status composery persistd
+journalctl -u composery -u persistd --no-pager
 ```
 
 Readiness is exposed through `/run/persistd/ready` and code-server's `/healthz`

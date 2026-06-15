@@ -1,0 +1,300 @@
+Index: work/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
++++ work/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+@@ -73,6 +73,14 @@ export class BrowserClipboardService ext
+ 		return new Uint8Array(0);
+ 	}
+ 
++	async writeImage(buffer: Uint8Array, mimeType: string = 'image/png'): Promise<void> {
++		try {
++			await getActiveWindow().navigator.clipboard.write([new ClipboardItem({ [mimeType]: new Blob([buffer as Uint8Array<ArrayBuffer>], { type: mimeType }) })]);
++		} catch (error) {
++			console.error('Error writing image to clipboard:', error);
++		}
++	}
++
+ 	private webKitPendingClipboardWritePromise: DeferredPromise<string> | undefined;
+ 
+ 	// In Safari, it has the following note:
+Index: work/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
++++ work/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
+@@ -64,4 +64,9 @@ export interface IClipboardService {
+ 	 * image, an empty buffer is returned.
+ 	 */
+ 	readImage(): Promise<Uint8Array>;
++
++	/**
++	 * Writes an image (encoded bytes, e.g. PNG) to the system clipboard.
++	 */
++	writeImage(buffer: Uint8Array, mimeType?: string): Promise<void>;
+ }
+Index: work/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
++++ work/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
+@@ -11,6 +11,10 @@ export class TestClipboardService implem
+ 		throw new Error('Method not implemented.');
+ 	}
+ 
++	writeImage(): Promise<void> {
++		throw new Error('Method not implemented.');
++	}
++
+ 	_serviceBrand: undefined;
+ 
+ 	private text: string | undefined = undefined;
+Index: work/lib/vscode/src/vs/platform/environment/common/argv.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/environment/common/argv.ts
++++ work/lib/vscode/src/vs/platform/environment/common/argv.ts
+@@ -150,6 +150,9 @@ export interface NativeParsedArgs {
+ 	sandbox?: boolean;
+ 	'enable-coi'?: boolean;
+ 	'stdin-to-clipboard'?: boolean;
++	'clipboard-out'?: boolean;
++	'clipboard-image-out'?: boolean;
++	'clipboard-image-in'?: boolean;
+ 	'unresponsive-sample-interval'?: string;
+ 	'unresponsive-sample-period'?: string;
+ 	'enable-rdp-display-tracking'?: boolean;
+Index: work/lib/vscode/src/vs/platform/environment/node/argv.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/environment/node/argv.ts
++++ work/lib/vscode/src/vs/platform/environment/node/argv.ts
+@@ -116,6 +116,9 @@ export const OPTIONS: OptionDescriptions
+ 	'profile': { type: 'string', 'cat': 'o', args: 'profileName', description: localize('profileName', "Opens the provided folder or workspace with the given profile and associates the profile with the workspace. If the profile does not exist, a new empty one is created.") },
+ 	'help': { type: 'boolean', cat: 'o', alias: 'h', description: localize('help', "Print usage.") },
+ 	'stdin-to-clipboard': { type: 'boolean', cat: 'o', alias: 'c', description: localize('clipboard', "copies the STDIN to the clipboard") },
++	'clipboard-out': { type: 'boolean', cat: 'o', description: localize('clipboardOut', "prints the clipboard text to STDOUT") },
++	'clipboard-image-out': { type: 'boolean', cat: 'o', description: localize('clipboardImageOut', "prints the clipboard image bytes (PNG) to STDOUT") },
++	'clipboard-image-in': { type: 'boolean', cat: 'o', description: localize('clipboardImageIn', "copies an image read from STDIN to the clipboard") },
+ 
+ 	'extensions-dir': { type: 'string', deprecates: ['extensionHomePath'], cat: 'e', args: 'dir', description: localize('extensionHomePath', "Set the root path for extensions.") },
+ 	'extensions-download-dir': { type: 'string' },
+Index: work/lib/vscode/src/vs/platform/native/common/native.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/native/common/native.ts
++++ work/lib/vscode/src/vs/platform/native/common/native.ts
+@@ -218,6 +218,7 @@ export interface ICommonNativeHostServic
+ 	readClipboardBuffer(format: string): Promise<VSBuffer>;
+ 	hasClipboard(format: string, type?: 'selection' | 'clipboard'): Promise<boolean>;
+ 	readImage(): Promise<Uint8Array>;
++	writeImage(buffer: Uint8Array): Promise<void>;
+ 
+ 	// macOS Touchbar
+ 	newWindowTab(): Promise<void>;
+Index: work/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ work/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -5,7 +5,7 @@
+ 
+ import * as fs from 'fs';
+ import { exec } from 'child_process';
+-import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, webContents } from 'electron';
++import { app, BrowserWindow, clipboard, nativeImage, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, webContents } from 'electron';
+ import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
+ import { promisify } from 'util';
+ import { memoize } from '../../../base/common/decorators.js';
+@@ -931,6 +931,10 @@ export class NativeHostMainService exten
+ 		return clipboard.readImage().toPNG();
+ 	}
+ 
++	async writeImage(windowId: number | undefined, buffer: Uint8Array): Promise<void> {
++		clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(buffer)));
++	}
++
+ 	async writeClipboardText(windowId: number | undefined, text: string, type?: 'selection' | 'clipboard'): Promise<void> {
+ 		return clipboard.writeText(text, type);
+ 	}
+Index: work/lib/vscode/src/vs/server/node/server.cli.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/server/node/server.cli.ts
++++ work/lib/vscode/src/vs/server/node/server.cli.ts
+@@ -78,6 +78,9 @@ const isSupportedForPipe = (optionId: ke
+ 		case 'remote':
+ 		case 'locate-shell-integration-path':
+ 		case 'stdin-to-clipboard':
++		case 'clipboard-out':
++		case 'clipboard-image-out':
++		case 'clipboard-image-in':
+ 			return true;
+ 		default:
+ 			return false;
+@@ -301,6 +304,38 @@ export async function main(desc: Product
+ 			}
+ 		}
+ 	} else {
++		if (parsedArgs['clipboard-out']) {
++			await sendToPipe({ type: 'clipboard-read' }, verbose).then((res: string) => {
++				process.stdout.write(res ?? '');
++			}).catch(e => {
++				console.error('Error when reading the clipboard:', e);
++			});
++			return;
++		}
++
++		if (parsedArgs['clipboard-image-out']) {
++			await sendToPipe({ type: 'clipboard-image-read' }, verbose).then((res: string) => {
++				if (res) {
++					process.stdout.write(Buffer.from(res, 'base64'));
++				}
++			}).catch(e => {
++				console.error('Error when reading the clipboard image:', e);
++			});
++			return;
++		}
++
++		if (parsedArgs['clipboard-image-in']) {
++			if (!hasStdinWithoutTty()) {
++				console.error('stdin has a tty.');
++				return;
++			}
++			const stdinBuffer = fs.readFileSync(0);
++			await sendToPipe({ type: 'clipboard-image-write', content: stdinBuffer.toString('base64') }, verbose).catch(e => {
++				console.error('Error when writing the clipboard image:', e);
++			});
++			return;
++		}
++
+ 		if (parsedArgs['stdin-to-clipboard']) {
+ 			if(!hasStdinWithoutTty()) {
+ 				console.error("stdin has a tty.");
+Index: work/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
++++ work/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
+@@ -3,6 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { VSBuffer, decodeBase64, encodeBase64 } from '../../../base/common/buffer.js';
+ import { Schemas } from '../../../base/common/network.js';
+ import { isWeb } from '../../../base/common/platform.js';
+ import { isString } from '../../../base/common/types.js';
+@@ -102,6 +103,21 @@ CommandsRegistry.registerCommand('_remot
+ 	clipboardService.writeText(content);
+ })
+ 
++CommandsRegistry.registerCommand('_remoteCLI.getClipboard', function (accessor: ServicesAccessor): Promise<string> {
++	const clipboardService = accessor.get(IClipboardService);
++	return clipboardService.readText();
++})
++
++CommandsRegistry.registerCommand('_remoteCLI.getClipboardImage', async function (accessor: ServicesAccessor): Promise<string> {
++	const clipboardService = accessor.get(IClipboardService);
++	return encodeBase64(VSBuffer.wrap(await clipboardService.readImage()));
++})
++
++CommandsRegistry.registerCommand('_remoteCLI.setClipboardImage', async function (accessor: ServicesAccessor, content: string) {
++	const clipboardService = accessor.get(IClipboardService);
++	await clipboardService.writeImage(decodeBase64(content).buffer);
++})
++
+ class RemoteExtensionManagementCLI extends ExtensionManagementCLI {
+ 
+ 	private _location: string | undefined;
+Index: work/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
++++ work/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
+@@ -49,7 +49,20 @@ export interface ClipboardPipeArgs {
+ 	content: string;
+ }
+ 
+-export type PipeCommand = OpenCommandPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs;
++export interface ClipboardReadPipeArgs {
++	type: 'clipboard-read';
++}
++
++export interface ClipboardImageReadPipeArgs {
++	type: 'clipboard-image-read';
++}
++
++export interface ClipboardImageWritePipeArgs {
++	type: 'clipboard-image-write';
++	content: string;
++}
++
++export type PipeCommand = OpenCommandPipeArgs | StatusPipeArgs | OpenExternalCommandPipeArgs | ExtensionManagementPipeArgs | ClipboardPipeArgs | ClipboardReadPipeArgs | ClipboardImageReadPipeArgs | ClipboardImageWritePipeArgs;
+ 
+ export interface ICommandsExecuter {
+ 	executeCommand<T>(id: string, ...args: unknown[]): Promise<T>;
+@@ -118,6 +131,15 @@ export class CLIServerBase {
+ 					case 'clipboard':
+ 						returnObj = await this.clipboard(data);
+ 						break;
++					case 'clipboard-read':
++						returnObj = await this.clipboardRead();
++						break;
++					case 'clipboard-image-read':
++						returnObj = await this.clipboardImageRead();
++						break;
++					case 'clipboard-image-write':
++						returnObj = await this.clipboardImageWrite(data);
++						break;
+ 					default:
+ 						sendResponse(404, `Unknown message type: ${data.type}`);
+ 						break;
+@@ -192,6 +214,18 @@ export class CLIServerBase {
+ 		return await this._commands.executeCommand('_remoteCLI.setClipboard', data.content);
+ 	}
+ 
++	private async clipboardRead(): Promise<string | undefined> {
++		return await this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboard');
++	}
++
++	private async clipboardImageRead(): Promise<string | undefined> {
++		return await this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboardImage');
++	}
++
++	private async clipboardImageWrite(data: ClipboardImageWritePipeArgs): Promise<undefined> {
++		return await this._commands.executeCommand('_remoteCLI.setClipboardImage', data.content);
++	}
++
+ 	dispose(): void {
+ 		this._disposed = true;
+ 		this._server?.close();
+Index: work/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
++++ work/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+@@ -99,7 +99,7 @@ class RemoteTerminalBackend extends Base
+ 			}
+ 		}));
+ 
+-		const allowedCommands = ['_remoteCLI.openExternal', '_remoteCLI.windowOpen', '_remoteCLI.getSystemStatus', '_remoteCLI.manageExtensions', '_remoteCLI.setClipboard'];
++		const allowedCommands = ['_remoteCLI.openExternal', '_remoteCLI.windowOpen', '_remoteCLI.getSystemStatus', '_remoteCLI.manageExtensions', '_remoteCLI.setClipboard', '_remoteCLI.getClipboard', '_remoteCLI.getClipboardImage', '_remoteCLI.setClipboardImage'];
+ 		this._register(this._remoteTerminalChannel.onExecuteCommand(async e => {
+ 			// Ensure this request for for this window
+ 			const pty = this._ptys.get(e.persistentProcessId);
+Index: work/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
++++ work/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
+@@ -31,6 +31,10 @@ export class NativeClipboardService impl
+ 		return this.nativeHostService.readImage();
+ 	}
+ 
++	async writeImage(buffer: Uint8Array): Promise<void> {
++		return this.nativeHostService.writeImage(buffer);
++	}
++
+ 	async writeText(text: string, type?: 'selection' | 'clipboard'): Promise<void> {
+ 		this.logService.trace('NativeClipboardService#writeText called with type:', type, ' with text.length:', text.length);
+ 		return this.nativeHostService.writeClipboardText(text, type);
+Index: work/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+===================================================================
+--- work.orig/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ work/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -181,6 +181,7 @@ export class TestNativeHostService imple
+ 	async writeClipboardBuffer(format: string, buffer: VSBuffer, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
+ 	async triggerPaste(options?: INativeHostOptions): Promise<void> { }
+ 	async readImage(): Promise<Uint8Array> { return Uint8Array.from([]); }
++	async writeImage(buffer: Uint8Array): Promise<void> { }
+ 	async readClipboardBuffer(format: string): Promise<VSBuffer> { return VSBuffer.wrap(Uint8Array.from([])); }
+ 	async hasClipboard(format: string, type?: 'selection' | 'clipboard' | undefined): Promise<boolean> { return false; }
+ 	async windowsGetStringRegKey(hive: 'HKEY_CURRENT_USER' | 'HKEY_LOCAL_MACHINE' | 'HKEY_CLASSES_ROOT' | 'HKEY_USERS' | 'HKEY_CURRENT_CONFIG', path: string, name: string): Promise<string | undefined> { return undefined; }

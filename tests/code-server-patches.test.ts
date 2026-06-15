@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
@@ -101,5 +101,57 @@ describe("code-server patch stack", () => {
 
 		expect(suspiciousRouteIndex).toBeGreaterThanOrEqual(0);
 		expect(passThroughIndex).toBeGreaterThan(suspiciousRouteIndex);
+	});
+});
+
+describe("composery agent setup", () => {
+	const extension = readRepoFile(
+		"vendor/code-server/overlay/lib/vscode/extensions/composery-agents/extension.js"
+	);
+	const welcome = readRepoFile("vendor/code-server/patches/welcome.diff");
+
+	// AGENTS entries in the extension: id: "claude"
+	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
+		(match) => match[1]
+	);
+	// Agent objects added to the welcome card: { id: 'claude', name: ...
+	const welcomeIds = [...welcome.matchAll(/\{\s*id:\s*'([a-z]+)'/g)].map(
+		(match) => match[1]
+	);
+
+	test("welcome card and extension cover the same agents in the same order", () => {
+		expect(extensionIds).toHaveLength(6);
+		expect(welcomeIds).toEqual(extensionIds);
+	});
+
+	test("every agent ships a logo served from the welcome _static media path", () => {
+		for (const id of extensionIds) {
+			const logo = resolve(
+				repoRoot,
+				`vendor/code-server/overlay/src/browser/media/agents/${id}.svg`
+			);
+			expect(existsSync(logo)).toBe(true);
+		}
+	});
+
+	test("agent logos are accent-tinted via a CSS mask", () => {
+		// Each logo is a CSS mask filled with the theme accent, so it reads as one
+		// accent silhouette and adapts to light/dark through the variable.
+		expect(welcome).toContain(
+			"background-color: var(--vscode-textLink-foreground)"
+		);
+		expect(welcome).toContain(
+			"url(./_static/src/browser/media/agents/${agent.id}.svg)"
+		);
+	});
+
+	test("welcome card dispatches installs through the composery-agents command", () => {
+		// Direct command dispatch, not a command: href (which the getting-started
+		// page lets the browser follow and break the workbench).
+		expect(welcome).not.toContain("command:composery");
+		expect(welcome).toContain(
+			"this.commandService.executeCommand('composery.installAgent'"
+		);
+		expect(extension).toContain('registerCommand("composery.installAgent"');
 	});
 });

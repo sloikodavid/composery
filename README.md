@@ -20,17 +20,20 @@ the container to a network.
 For a real domain and automatic HTTPS, use the Caddy example:
 
 ```bash
-cd hosting/caddy-compose
+cd hosting/supervisor-caddy-compose
 # edit Caddyfile and replace example.com with your domain
 docker compose up -d
 ```
 
-See [docs/self-hosting.md](docs/self-hosting.md) for deployment targets,
-operational notes, and the persistence contract.
+For a host-integrated VPS with systemd inside the runtime container, use
+`hosting/systemd-caddy-compose` instead. See
+[docs/self-hosting.md](docs/self-hosting.md) for deployment targets, operational
+notes, and the persistence contract.
 
 On first visit, the browser registration flow creates the initial password. If
 you deliberately want an environment-managed password instead, set code-server's
-standard `PASSWORD` or `HASHED_PASSWORD` variable in Compose.
+standard `PASSWORD` or `HASHED_PASSWORD` variable in the example's
+`composery.env`.
 
 Composery does not define `COMPOSERY_*` runtime wrappers around code-server
 settings. Use code-server environment variables directly.
@@ -45,7 +48,7 @@ Composery currently needs:
 - root inside the container so `persistd` can rebuild the filesystem on boot.
 
 The production cloud repo deploys this shape on Hetzner VPSes with Docker Compose
-and Caddy.
+and Caddy, using the systemd init profile.
 
 Do not run multiple Composery containers against the same `/data` volume. `persistd`
 is a single-writer filesystem delta daemon.

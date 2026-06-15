@@ -1,0 +1,25 @@
+--- a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
++++ b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+@@ -124,9 +124,21 @@
+ 		// Clear resources given we are writing text
+ 		this.clearResourcesState();
+ 
+-		// With type: only in-memory is supported
++		// With type: only in-memory is supported in the browser. The regular
++		// clipboard ('clipboard') is additionally mirrored to the real system
++		// clipboard best-effort, so terminal programs copying via OSC 52 reach it.
++		// The write can reject when the tab is unfocused or the browser requires a
++		// user gesture; the in-memory copy stays as the fallback and we never steal
++		// focus to force it.
+ 		if (type) {
+ 			this.mapTextToType.set(type, text);
++			if (type === 'clipboard') {
++				try {
++					await getActiveWindow().navigator.clipboard.writeText(text);
++				} catch (error) {
++					this.logService.trace('BrowserClipboardService#writeText system clipboard mirror failed', error);
++				}
++			}
+ 			this.logService.trace('BrowserClipboardService#writeText');
+ 			return;
+ 		}

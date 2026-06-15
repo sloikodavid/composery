@@ -50,15 +50,13 @@ You're being judged strictly on results that benefit the project's future - not 
 
 - Use `pnpm install <package>@latest` over editing package.json from memory.
 - Use `tmp/` for temporary scratch files and artifacts, it's gitignored.
-
-```json
-	"packageManager": "pnpm@11.0.9",
-	"scripts": {
-		"dev": "docker compose up --build",
-		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json && symlink-agents --check",
-		"fix": "symlink-agents --yes && node scripts/format.mjs --write && eslint . --fix"
-	},
-```
+- Browser and operator-facing names use Composery.
+- Keep `code-server` only for upstream machinery.
+- Upstream machinery includes the cloned source, patch names, build coordinates,
+  CLI binary, direct exec scripts, artifact paths, and env contracts such as
+  `PASSWORD`, `HASHED_PASSWORD`, and `PORT`.
+- Do not create hybrid visible names like `composery-code-server`.
+- Visible services and supervisor programs should be `composery` and `persistd`.
 
 # Additional
 

@@ -36,9 +36,15 @@ description: Use when you're not sure where to look, need to find the right file
 docs/
   self-hosting.md
 hosting/
-  caddy-compose/
+  supervisor-caddy-compose/
     Caddyfile
     compose.yml
+    composery.env
+    README.md
+  systemd-caddy-compose/
+    Caddyfile
+    compose.yml
+    composery.env
     README.md
 packages/
   persistd/
@@ -79,6 +85,10 @@ rootfs/
       conf.d/
         composery.conf
       supervisord.conf
+    systemd/
+      system/
+        composery.service
+        persistd.service
     xdg/
       mimeapps.list
     mailcap
@@ -88,7 +98,7 @@ rootfs/
         user-dirs.dirs
       .local/
         share/
-          code-server/
+          composery/
             User/
               settings.json
       Desktop/
@@ -110,9 +120,18 @@ rootfs/
       .bashrc
   opt/
     composery/
+      init/
+        supervisor.sh
+        systemd.sh
       code-server.sh
       entrypoint.sh
   usr/
+    local/
+      bin/
+        wl-copy
+        wl-paste
+        xclip
+        xsel
     share/
       applications/
         composery-text-editor.desktop
@@ -137,6 +156,20 @@ vendor/
     overlay/
       lib/
         vscode/
+          extensions/
+            composery-agents/
+              extension.js
+              package.json
+              README.md
+            composery-theme/
+              themes/
+                base-dark.json
+                base-light.json
+                composery-dark.json
+                composery-light.json
+              NOTICE
+              package.json
+              README.md
           out/
             vs/
               code/
@@ -147,6 +180,14 @@ vendor/
       src/
         browser/
           media/
+            agents/
+              claude.svg
+              codex.svg
+              hermes.svg
+              NOTICE
+              openclaw.svg
+              opencode.svg
+              pi.svg
             composery-logo.svg
             favicon-dark-support.svg
             favicon.ico
@@ -155,7 +196,6 @@ vendor/
             pwa-icon-512.png
             pwa-icon-maskable-192.png
             pwa-icon-maskable-512.png
-            templates.png
           pages/
             auth.js
             error.css
@@ -167,12 +207,16 @@ vendor/
             reset-password.html
     patches/
       auth-flow.diff
+      branding.diff
       browser-friendly-url.diff
+      clipboard-osc52-system.diff
+      clipboard-pipe.diff
       markdown-preview-loopback-callback-bridge.diff
       no-generated-password.diff
       persistd-readiness.diff
       series
       trusted-domains-loopback-callback-guard.diff
+      welcome.diff
       workbench-auth-actions.diff
       workbench-cache.diff
       workbench-mobile.diff

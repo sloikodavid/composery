@@ -7,9 +7,7 @@ markdown-preview-loopback-callback-bridge.diff
 trusted-domains-loopback-callback-guard.diff
 workbench-cache.diff
 workbench-mobile.diff
-rebrand-product.diff
-rebrand-env-vars.diff
-rebrand-welcome.diff
-rebrand-paths.diff
-rebrand-assets.diff
-rebrand-theme-cache.diff
+branding.diff
+welcome.diff
+clipboard-osc52.diff
+clipboard-ipc.diff

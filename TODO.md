@@ -4,12 +4,10 @@
 
 - Error code: Out of Memory.
 
+- Fix renovate or move off of it for update handling.
+
 - Figure out the API including Shortcuts.
   - Copy URL button for shortcuts - uses a Webhook for command shortcuts and passes payload.
-
-- Add theme, and welcome with popular agent 1 click installations.
-
-- Patch branding - name as well as letterpress, files under `/src/browser` in code-server source?
 
 - Enable rulesets on GitHub.
 
