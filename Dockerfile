@@ -161,7 +161,7 @@ COPY --from=persistd-builder /out/persistd /opt/persistd/bin/persistd
 COPY rootfs/ /
 
 RUN find /home/user -name .gitkeep -type f -delete \
-  && mkdir -p /data /etc/composery /etc/systemd/system/multi-user.target.wants \
+  && mkdir -p /data /etc/systemd/system/multi-user.target.wants \
   && rm -f /etc/machine-id \
   && touch /etc/machine-id \
   && chown -R user:user /home/user \
@@ -184,8 +184,8 @@ RUN find /home/user -name .gitkeep -type f -delete \
 # drops to the unprivileged `user` for code-server. Root is intentional.
 EXPOSE 8080
 
-# Liveness against code-server's auth-exempt /healthz; composery.env may set PORT.
+# Liveness against code-server's auth-exempt /healthz; PORT comes from the container env.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD if [ -f /etc/composery/composery.env ]; then . /etc/composery/composery.env; fi; curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
+  CMD curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
 
 ENTRYPOINT ["/opt/composery/entrypoint.sh"]

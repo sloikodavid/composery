@@ -1,0 +1,12 @@
+services:
+  composery:
+    image: ghcr.io/sloikodavid/composery:latest
+    restart: unless-stopped
+    env_file: ./composery.env
+    volumes:
+      - composery_data:/data
+    ports:
+      - "8080:8080"
+
+volumes:
+  composery_data:

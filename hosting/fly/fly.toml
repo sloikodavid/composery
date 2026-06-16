@@ -1,0 +1,33 @@
+# Fly.io app config - https://fly.io/docs/reference/configuration/
+# Create the volume once before the first deploy:
+#   fly volumes create composery_data --size 10 --region iad
+app = "composery"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/sloikodavid/composery:latest"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep the box running; this is an interactive workspace, not a burst worker.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "90s"
+
+[[mounts]]
+  source = "composery_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

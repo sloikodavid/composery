@@ -22,6 +22,10 @@ const config = {
 	noCache: parseBoolean(process.env.SMOKE_NO_CACHE),
 	password: process.env.SMOKE_PASSWORD ?? "smoke-password",
 	port: parsePort(process.env.SMOKE_PORT ?? "18080"),
+	// The systemd path needs a privileged container with host cgroups; set
+	// SMOKE_SKIP_SYSTEMD=1 to skip it where that is unavailable (e.g. Docker
+	// Desktop). CI runs on Linux runners that support it.
+	skipSystemd: parseBoolean(process.env.SMOKE_SKIP_SYSTEMD),
 	volumeName: process.env.SMOKE_VOLUME_NAME ?? `composery-smoke-${RUN_ID}`
 };
 
@@ -48,6 +52,7 @@ async function main() {
 	runDefaultContainer();
 	await assertWebAppSmoke();
 	await assertPersistdAppliesChanges();
+	await assertSystemdEnvBridge();
 }
 
 function requireDocker() {
@@ -86,6 +91,79 @@ function runDefaultContainer() {
 		],
 		{ capture: true, quiet: true }
 	);
+}
+
+function runSystemdContainer() {
+	log("starting systemd container");
+	docker(
+		[
+			"run",
+			"-d",
+			"--name",
+			config.containerName,
+			"--privileged",
+			"--cgroupns=host",
+			"--stop-signal",
+			"SIGRTMIN+3",
+			"--tmpfs",
+			"/run",
+			"--tmpfs",
+			"/run/lock",
+			"--tmpfs",
+			"/tmp",
+			"-v",
+			"/sys/fs/cgroup:/sys/fs/cgroup:rw",
+			"-p",
+			`127.0.0.1:${config.port}:${config.port}`,
+			"-e",
+			`PORT=${config.port}`,
+			"-e",
+			`PASSWORD=${config.password}`,
+			"-e",
+			"COMPOSERY_DISABLE_FILE_DOWNLOADS=1",
+			"-v",
+			`${config.volumeName}:/data`,
+			config.imageTag,
+			"systemd"
+		],
+		{ capture: true, quiet: true }
+	);
+}
+
+async function assertSystemdEnvBridge() {
+	if (config.skipSystemd) {
+		log("skipping systemd init check (SMOKE_SKIP_SYSTEMD set)");
+		return;
+	}
+
+	log("checking systemd init bridges deployment env to code-server");
+
+	// systemd (PID 1) starts services with a clean environment, so PASSWORD/PORT/
+	// COMPOSERY_* only reach code-server if entrypoint writes them to
+	// /run/composery.env and the unit loads it via EnvironmentFile. Prove the
+	// whole chain on a fresh container + volume.
+	cleanupResources();
+	docker(["volume", "create", config.volumeName], { quiet: true });
+	runSystemdContainer();
+
+	await waitForExec('test "$(cat /proc/1/comm)" = systemd');
+	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+
+	// The bridge file exists and captured the injected settings, including a
+	// COMPOSERY_* knob (guards the entrypoint filter that forwards them).
+	await waitForContainerFile("/run/composery.env");
+	execSh("grep -q '^PASSWORD=' /run/composery.env");
+	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=1$' /run/composery.env");
+
+	// End to end: the injected password crossed into the systemd-managed
+	// code-server, so login succeeds and the app serves.
+	const cookies = new Map();
+	await login(cookies);
+	const rootPage = await fetchAuthedText("/", cookies);
+	assertContains("systemd root page", rootPage, "Composery");
+
+	// code-server runs as a first-class systemd unit, not a stray process.
+	execSh("systemctl is-active composery");
 }
 
 async function assertWebAppSmoke() {

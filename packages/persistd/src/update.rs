@@ -76,13 +76,13 @@ pub fn update_public_path(
         (None, Some(_)) => {
             remove_changed_tree(ctx.paths, public_path)?;
             write_removed_marker(ctx.paths, public_path)?;
-            metadata::remove(&ctx.paths.metadata_file, public_path)?;
+            metadata::remove_subtree(&ctx.paths.metadata_file, public_path)?;
             Ok(UpdateOutcome::PersistedRemoved)
         }
         (None, None) => {
             remove_changed_tree(ctx.paths, public_path)?;
             remove_removed_marker(ctx.paths, public_path)?;
-            metadata::remove(&ctx.paths.metadata_file, public_path)?;
+            metadata::remove_subtree(&ctx.paths.metadata_file, public_path)?;
             Ok(UpdateOutcome::Pruned)
         }
         (Some(live), Some(record)) => {
@@ -711,6 +711,11 @@ mod tests {
             "stale",
         )
         .unwrap();
+        upsert_test_metadata(
+            &fixture.paths.metadata_file,
+            "/home/user/Desktop/smoke.txt",
+            "file",
+        );
         fs::remove_dir_all(fixture.root.join("home/user/Desktop")).unwrap();
 
         let outcome = update_path(&fixture.ctx(), "/home/user/Desktop").unwrap();
@@ -718,6 +723,11 @@ mod tests {
         assert_eq!(outcome, UpdateOutcome::PersistedRemoved);
         assert!(!fixture.paths.changed_dir.join("home/user/Desktop").exists());
         assert!(fixture.paths.removed_dir.join("home/user/Desktop").exists());
+        assert!(
+            crate::metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -805,12 +815,22 @@ mod tests {
             "stale",
         )
         .unwrap();
+        upsert_test_metadata(
+            &fixture.paths.metadata_file,
+            "/workspace/new-dir/file.txt",
+            "file",
+        );
 
         let outcome = update_path(&fixture.ctx(), "/workspace/new-dir").unwrap();
 
         assert_eq!(outcome, UpdateOutcome::Pruned);
         assert!(!fixture.paths.changed_dir.join("workspace/new-dir").exists());
         assert!(!fixture.paths.removed_dir.join("workspace/new-dir").exists());
+        assert!(
+            crate::metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1193,5 +1213,29 @@ mod tests {
                 baseline: &self.baseline,
             }
         }
+    }
+
+    fn upsert_test_metadata(metadata_file: &std::path::Path, public_path: &str, kind: &str) {
+        let public_path = crate::public::PublicPath::parse(public_path).unwrap();
+        let mut record = crate::metadata::MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: kind.into(),
+            mode: None,
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        crate::metadata::upsert(metadata_file, record).unwrap();
     }
 }

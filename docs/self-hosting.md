@@ -18,17 +18,25 @@ The closest match to the production cloud runtime is:
 
 Use [hosting/systemd-caddy-compose](../hosting/systemd-caddy-compose/) for this
 setup. Use [hosting/supervisor-caddy-compose](../hosting/supervisor-caddy-compose/)
-when the host cannot provide the systemd container requirements.
+when the host cannot provide the systemd container requirements. The
+[hosting/](../hosting/) index routes every target by host capability and TLS edge.
 
 ## Deployment Targets
 
-| Target                                | Status            | Notes                                                                                                                                                                  |
-| ------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Docker Compose on one VPS             | Supported         | Use the systemd Caddy example when privileged cgroups are available; use the supervisor Caddy example for simpler Docker hosts.                                        |
-| Hetzner CX/CPX VPS                    | Production target | This is the production cloud target in [Composery Cloud](https://composery.io/pricing).                                                                                |
-| DigitalOcean Droplet or similar VPS   | Supported         | Same Compose/Caddy shape as Hetzner.                                                                                                                                   |
-| Railway, Render, Fly, or similar PaaS | Supported         | Mount a writable persistent disk at `/data`, run a single instance per volume, and check `persistd status --json` after boot. Provider-specific setup is still manual. |
-| Kubernetes                            | Manual            | Use one replica, a PVC mounted at `/data`, and an ingress/proxy. Do not scale one Composery instance horizontally against the same PVC.                                |
+Every target is the same shape: one container, one persistent volume at `/data`, one
+HTTP edge. Composery cannot externalize its state to a managed database, so platforms
+with an ephemeral filesystem and no attachable disk are not viable.
+
+| Target                                         | Status            | Example                                                                                                                                                                                                                             |
+| ---------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker Compose on one VPS                      | Supported         | [systemd-caddy-compose](../hosting/systemd-caddy-compose/) when privileged cgroups are available; [supervisor-caddy-compose](../hosting/supervisor-caddy-compose/) otherwise. Drop `-caddy` to front Composery with your own proxy. |
+| Hetzner CX/CPX VPS                             | Production target | [systemd-caddy-compose](../hosting/systemd-caddy-compose/). This is the production cloud target in [Composery Cloud](https://composery.io/pricing).                                                                                 |
+| DigitalOcean Droplet or similar VPS            | Supported         | Same Compose/Caddy shape as Hetzner.                                                                                                                                                                                                |
+| Render                                         | Supported         | [hosting/render](../hosting/render/) - `render.yaml` Blueprint with a persistent disk (paid instance type).                                                                                                                         |
+| Fly.io                                         | Supported         | [hosting/fly](../hosting/fly/) - `fly.toml` with one volume. Run a single Machine.                                                                                                                                                  |
+| Railway                                        | Supported         | [hosting/railway](../hosting/railway/) - image service with a volume at `/data`.                                                                                                                                                    |
+| Kubernetes                                     | Supported         | [hosting/kubernetes](../hosting/kubernetes/) - one replica, a PVC at `/data`, Service, and example Ingress.                                                                                                                         |
+| Heroku, DO App Platform, Cloud Run, App Runner | Not viable        | Ephemeral filesystem with no attachable disk. Composery loses state there; use a VPS or one of the disk-backed targets above.                                                                                                       |
 
 ## Provider Notes
 
@@ -48,63 +56,69 @@ This matches the runtime shape used by Composery Cloud.
 
 ### Render
 
-Deploy the Composery image as a Docker-backed web service, attach a persistent
-disk mounted at `/data`, and set `PORT=8080`.
+Use [hosting/render](../hosting/render/). The `render.yaml` Blueprint deploys the
+Composery image as a web service with a persistent disk mounted at `/data` and routes
+to `PORT=8080`. Render provides the public HTTPS edge, so it does not use Caddy.
 
-Use the browser registration flow to create the initial password. Set `PASSWORD`
-or `HASHED_PASSWORD` only if you want the password managed by environment
-variables instead.
-
-Render provides the public HTTPS edge, so do not use the Caddy example there.
-Without a persistent disk mounted at `/data`, filesystem changes will not survive
-redeploys.
+A persistent disk requires a paid instance type; free Render web services have an
+ephemeral filesystem and would lose Composery state on redeploy. Register the initial
+password in the browser, or set `PASSWORD` / `HASHED_PASSWORD` as a service variable.
 
 ### Railway
 
-Deploy the Composery image, attach a Railway volume with mount path `/data`, and
-route the public HTTP domain to target port `8080`.
+Use [hosting/railway](../hosting/railway/). Deploy the Composery image, attach a Railway
+volume at `/data`, set `PORT=8080`, and generate a public domain (Railway terminates
+TLS). `railway.json` carries the health check and single-replica deploy settings.
 
-Use the browser registration flow to create the initial password. Set `PASSWORD`
-or `HASHED_PASSWORD` only if you want the password managed by environment
-variables instead.
-
-Railway volumes are mounted at runtime, so persistence should be verified after
-the service starts with `persistd status --json`.
+Railway volumes are mounted at runtime, so verify persistence after the service starts
+with `persistd status --json`.
 
 ### Fly.io
 
-Use one Machine with one volume mounted at `/data`. Fly volumes are local to the
-Machine, so do not scale one Composery instance to multiple Machines unless each
-Machine is treated as a separate box with its own volume.
+Use [hosting/fly](../hosting/fly/). The `fly.toml` deploys the image with one volume at
+`/data` behind Fly's HTTPS proxy. Create the volume before the first deploy and run a
+single Machine - Fly volumes are local to the Machine, so do not scale one Composery
+instance to multiple Machines against the same volume.
 
 ### Kubernetes
 
-Use a single replica, a `PersistentVolumeClaim` mounted at `/data`, and an
-Ingress or Gateway for TLS. Composery is not currently a horizontally scalable
-Kubernetes app because `persistd` is a single-writer daemon for one root
-filesystem delta.
+Use [hosting/kubernetes](../hosting/kubernetes/): a single replica, a
+`PersistentVolumeClaim` mounted at `/data`, a `Service`, and an example `Ingress`.
+Composery is not a horizontally scalable Kubernetes app because `persistd` is a
+single-writer daemon for one root filesystem delta - keep `replicas: 1`.
+
+### Ephemeral-filesystem platforms
+
+Heroku, DigitalOcean App Platform, Google Cloud Run, App Engine, AWS App Runner, and
+ECS Fargate (without EFS) give containers an ephemeral filesystem and no attachable
+disk. Composery stores all user state on `/data`, so it cannot run durably there. Use a
+VPS, a disk-backed PaaS above, or mount a network filesystem (EFS, Azure Files) at
+`/data` on the platforms that support it.
 
 ## Runtime Environment Variables
 
 Composery does not define extra wrappers around upstream runtime settings. In
-the Compose examples, set the documented variables in `composery.env`; the file
-is mounted at `/etc/composery/composery.env` and read by the runtime. Other
-hosting providers can use their environment-variable UI.
+the Compose examples, set the documented variables in `composery.env`; Compose
+loads it into the container (`env_file`). Other hosting providers can use their
+environment-variable UI.
+
+The init is not an environment variable: it is the container command. The default
+is supervisor; pass `systemd` (the `command` in the systemd Compose examples) to
+run systemd as PID 1 on hosts with privileged containers and host cgroups.
 
 Most useful for self-hosting:
 
-| Variable                           | Use                                                                                                                                            |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PASSWORD`                         | Sets a plaintext code-server password and skips first-visit registration.                                                                      |
-| `HASHED_PASSWORD`                  | Sets an argon2 hashed password and takes precedence over `PASSWORD`. Quote values containing `$` in `composery.env`.                           |
-| `PORT`                             | Changes code-server's listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.               |
-| `COMPOSERY_INIT`                   | Selects the init profile: `supervisor` by default, or `systemd` when the container is started with the required cgroup and privilege settings. |
-| `VSCODE_PROXY_URI`                 | Controls links in the Ports panel, for example `https://{{port}}.dev.example.com`. The default path proxy works without setting this.          |
-| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                          |
-| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                               |
-| `EXTENSIONS_GALLERY`               | Points code-server at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                          |
-| `LOG_LEVEL`                        | Sets code-server logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                      |
-| `GITHUB_TOKEN`                     | Supplies code-server's GitHub auth token. Treat it as a secret; code-server removes it from the child-process environment after startup.       |
+| Variable                           | Use                                                                                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `PASSWORD`                         | Sets a plaintext code-server password and skips first-visit registration.                                                                |
+| `HASHED_PASSWORD`                  | Sets an argon2 hashed password and takes precedence over `PASSWORD`. Single-quote values containing `$` in `composery.env`.              |
+| `PORT`                             | Changes code-server's listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.         |
+| `VSCODE_PROXY_URI`                 | Controls links in the Ports panel, for example `https://{{port}}.dev.example.com`. The default path proxy works without setting this.    |
+| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                    |
+| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable code-server's port proxy routes.                                                                         |
+| `EXTENSIONS_GALLERY`               | Points code-server at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                    |
+| `LOG_LEVEL`                        | Sets code-server logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                |
+| `GITHUB_TOKEN`                     | Supplies code-server's GitHub auth token. Treat it as a secret; code-server removes it from the child-process environment after startup. |
 
 Accepted by code-server but usually less important for Composery:
 

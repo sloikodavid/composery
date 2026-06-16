@@ -36,8 +36,25 @@ description: Use when you're not sure where to look, need to find the right file
 docs/
   self-hosting.md
 hosting/
+  fly/
+    fly.toml
+    README.md
+  kubernetes/
+    composery.yaml
+    ingress.yaml
+    README.md
+  railway/
+    railway.json
+    README.md
+  render/
+    README.md
+    render.yaml
   supervisor-caddy-compose/
     Caddyfile
+    compose.yml
+    composery.env
+    README.md
+  supervisor-compose/
     compose.yml
     composery.env
     README.md
@@ -46,6 +63,11 @@ hosting/
     compose.yml
     composery.env
     README.md
+  systemd-compose/
+    compose.yml
+    composery.env
+    README.md
+  README.md
 packages/
   persistd/
     src/
@@ -175,6 +197,10 @@ vendor/
               code/
                 browser/
                   workbench/
+                    commit-mono-400.woff2
+                    commit-mono-700.woff2
+                    manrope.woff2
+                    workbench-fonts.css
                     workbench-mobile.css
                     workbench-mobile.js
       src/
@@ -188,10 +214,12 @@ vendor/
               openclaw.svg
               opencode.svg
               pi.svg
+            bricolage-grotesque.woff2
             composery-logo.svg
             favicon-dark-support.svg
             favicon.ico
             favicon.svg
+            manrope.woff2
             pwa-icon-192.png
             pwa-icon-512.png
             pwa-icon-maskable-192.png
@@ -209,8 +237,8 @@ vendor/
       auth-flow.diff
       branding.diff
       browser-friendly-url.diff
-      clipboard-osc52-system.diff
-      clipboard-pipe.diff
+      clipboard-ipc.diff
+      clipboard-osc52.diff
       markdown-preview-loopback-callback-bridge.diff
       no-generated-password.diff
       persistd-readiness.diff
@@ -219,6 +247,7 @@ vendor/
       welcome.diff
       workbench-auth-actions.diff
       workbench-cache.diff
+      workbench-fonts.diff
       workbench-mobile.diff
     README.md
 .dockerignore

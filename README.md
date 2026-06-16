@@ -26,9 +26,12 @@ docker compose up -d
 ```
 
 For a host-integrated VPS with systemd inside the runtime container, use
-`hosting/systemd-caddy-compose` instead. See
-[docs/self-hosting.md](docs/self-hosting.md) for deployment targets, operational
-notes, and the persistence contract.
+`hosting/systemd-caddy-compose` instead. Managed platforms with a persistent disk
+have ready-made templates: [hosting/render](hosting/render/),
+[hosting/fly](hosting/fly/), [hosting/railway](hosting/railway/), and
+[hosting/kubernetes](hosting/kubernetes/). The [hosting/](hosting/) index routes every
+target by host capability and TLS edge; [docs/self-hosting.md](docs/self-hosting.md)
+covers deployment targets, operational notes, and the persistence contract.
 
 On first visit, the browser registration flow creates the initial password. If
 you deliberately want an environment-managed password instead, set code-server's

@@ -51,13 +51,26 @@ fn apply_changed(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
 
 fn apply_metadata(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
     let records = metadata::compact(&paths.metadata_file)?;
+    let mut kept = Vec::with_capacity(records.len());
+    let mut removed_stale = false;
+
     for record in records {
         let public_path = record.public_path()?;
         if public::is_excluded(&public_path, config) {
+            kept.push(record);
             continue;
         }
         let target = public::live_path(root, &public_path);
-        apply_metadata_record(root, &target, &record)?;
+        if apply_metadata_record(root, &target, &record)? {
+            kept.push(record);
+        } else {
+            removed_stale = true;
+            tracing::warn!(path = %public_path, "removed stale metadata record");
+        }
+    }
+
+    if removed_stale {
+        metadata::replace(&paths.metadata_file, &kept)?;
     }
     Ok(())
 }
@@ -89,67 +102,118 @@ fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Pat
     Ok(())
 }
 
-fn apply_metadata_record(root: &Path, target: &Path, record: &MetadataRecord) -> Result<()> {
-    rootfs::ensure_safe_parent(root, target)?;
+fn apply_metadata_record(root: &Path, target: &Path, record: &MetadataRecord) -> Result<bool> {
+    let expected = FileKind::from_kind_name(&record.kind);
+    let is_fallback = is_fallback_only_kind(&expected);
+    let parent_exists = rootfs::ensure_safe_existing_parent(root, target)?;
+
+    if !parent_exists {
+        if !is_fallback {
+            return Ok(false);
+        }
+        rootfs::ensure_safe_parent(root, target)?;
+    }
+
+    if !is_fallback {
+        let Some(mut facts) = facts_if_exists(target)? else {
+            return Ok(false);
+        };
+        if facts.kind != expected {
+            return Ok(false);
+        }
+        let xattrs = metadata_xattrs(record)?;
+        apply_record_facts(target, record, &mut facts, xattrs)?;
+        return Ok(true);
+    }
+
     let xattrs = metadata_xattrs(record)?;
-    if needs_fallback_target(target, record)? {
+    if needs_fallback_target(target, record, &expected)? {
         create_fallback_target(target, record, xattrs.as_deref().unwrap_or(&[]))?;
     }
-    if fs::symlink_metadata(target).is_err() {
+
+    let Some(mut facts) = facts_if_exists(target)? else {
         bail!("metadata record for {} has no target to apply", record.path);
-    }
-
-    if let Ok(mut facts) = rootfs::facts(target) {
-        if let Some(mode) = record.mode {
-            facts.mode = mode;
-        }
-        if let Some(uid) = record.uid {
-            facts.uid = uid;
-        }
-        if let Some(gid) = record.gid {
-            facts.gid = gid;
-        }
-        if let Some(mtime_ns) = record.mtime_ns {
-            facts.mtime_ns = mtime_ns;
-        }
-        if let Some(xattrs) = xattrs {
-            facts.xattrs = xattrs;
-        }
-        rootfs::apply_facts(target, &facts)?;
-    }
-    Ok(())
-}
-
-fn needs_fallback_target(target: &Path, record: &MetadataRecord) -> Result<bool> {
-    let expected = FileKind::from_kind_name(&record.kind);
-    if !matches!(
-        expected,
-        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice
-    ) {
-        return Ok(fs::symlink_metadata(target).is_err());
-    }
-
-    let facts = match rootfs::facts(target) {
-        Ok(facts) => facts,
-        Err(error) => {
-            let not_found = error
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
-                || fs::symlink_metadata(target).is_err();
-            if not_found {
-                return Ok(true);
-            }
-            return Err(error).with_context(|| format!("inspect {}", target.display()));
-        }
     };
 
     if facts.kind != expected {
+        bail!(
+            "metadata record for {} expected {} but target is {}",
+            record.path,
+            record.kind,
+            facts.kind.as_str()
+        );
+    }
+
+    apply_record_facts(target, record, &mut facts, xattrs)?;
+    Ok(true)
+}
+
+fn apply_record_facts(
+    target: &Path,
+    record: &MetadataRecord,
+    facts: &mut FsFacts,
+    xattrs: Option<Vec<rootfs::XattrRecord>>,
+) -> Result<()> {
+    if let Some(mode) = record.mode {
+        facts.mode = mode;
+    }
+    if let Some(uid) = record.uid {
+        facts.uid = uid;
+    }
+    if let Some(gid) = record.gid {
+        facts.gid = gid;
+    }
+    if let Some(mtime_ns) = record.mtime_ns {
+        facts.mtime_ns = mtime_ns;
+    }
+    if let Some(xattrs) = xattrs {
+        facts.xattrs = xattrs;
+    }
+    rootfs::apply_facts(target, facts)
+}
+
+fn is_fallback_only_kind(kind: &FileKind) -> bool {
+    matches!(
+        kind,
+        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice
+    )
+}
+
+fn needs_fallback_target(
+    target: &Path,
+    record: &MetadataRecord,
+    expected: &FileKind,
+) -> Result<bool> {
+    let Some(facts) = facts_if_exists(target)? else {
+        return Ok(true);
+    };
+
+    if facts.kind != *expected {
         return Ok(true);
     }
     if matches!(expected, FileKind::CharDevice | FileKind::BlockDevice) {
         return Ok(facts.rdev_major != record.rdev_major || facts.rdev_minor != record.rdev_minor);
     }
     Ok(false)
+}
+
+fn facts_if_exists(target: &Path) -> Result<Option<FsFacts>> {
+    match rootfs::facts(target) {
+        Ok(facts) => Ok(Some(facts)),
+        Err(error) if is_not_found_error(&error) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("inspect {}", target.display())),
+    }
+}
+
+fn is_not_found_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause.downcast_ref::<std::io::Error>().is_some_and(|io| {
+            matches!(
+                io.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            )
+        })
+    })
 }
 
 fn create_fallback_target(
@@ -642,36 +706,99 @@ mod tests {
     }
 
     #[test]
-    fn apply_metadata_fails_for_standalone_normal_record() {
+    fn apply_removes_stale_normal_metadata_without_creating_parents() {
         let fixture = Fixture::new();
-        let public_path = PublicPath::parse("/missing-normal").unwrap();
-        let mut record = MetadataRecord {
-            version: 1,
-            path: String::new(),
-            path_bytes_b64: None,
-            kind: "file".into(),
-            mode: Some(0o600),
-            uid: None,
-            gid: None,
-            mtime_ns: None,
-            symlink_target: None,
-            symlink_target_bytes_b64: None,
-            rdev_major: None,
-            rdev_minor: None,
-            hardlink_key: None,
-            xattrs: None,
-            acl: None,
-            capability: None,
-        };
-        record.set_public_path(&public_path);
-        metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+        upsert_test_metadata(
+            &fixture.paths.metadata_file,
+            "/missing/normal",
+            "file",
+            Some(0o600),
+            Some("stale-hardlink"),
+        );
 
-        let error = apply_public_truth(&fixture.root, &fixture.paths, &Config::default())
-            .unwrap_err()
-            .to_string();
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
 
-        assert!(error.contains("no target to apply"));
-        assert!(!fixture.root.join("missing-normal").exists());
+        assert!(!fixture.root.join("missing").exists());
+        assert!(
+            metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn apply_removes_staging_rename_leftover_metadata_and_restores_final_tree() {
+        let fixture = Fixture::new();
+        let final_path = "home/user/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/context7";
+        fs::create_dir_all(fixture.paths.changed_dir.join(final_path)).unwrap();
+        fs::write(
+            fixture
+                .paths
+                .changed_dir
+                .join(final_path)
+                .join("plugin.json"),
+            "{}",
+        )
+        .unwrap();
+        for path in [
+            "/home/user/.claude/plugins/marketplaces/claude-plugins-official.staging/external_plugins/context7",
+            "/home/user/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/context7",
+        ] {
+            upsert_test_metadata(&fixture.paths.metadata_file, path, "dir", Some(0o755), None);
+        }
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(fixture.root.join(final_path).join("plugin.json")).unwrap(),
+            "{}"
+        );
+        assert!(
+            !fixture
+                .root
+                .join("home/user/.claude/plugins/marketplaces/claude-plugins-official.staging")
+                .exists()
+        );
+        assert!(
+            metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .into_iter()
+                .all(|record| !record.path.contains(".staging"))
+        );
+    }
+
+    #[test]
+    fn apply_removes_metadata_when_target_type_changes() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("thing"), "image").unwrap();
+        fs::set_permissions(
+            fixture.root.join("thing"),
+            fs::Permissions::from_mode(0o644),
+        )
+        .unwrap();
+        upsert_test_metadata(
+            &fixture.paths.metadata_file,
+            "/thing",
+            "dir",
+            Some(0o755),
+            None,
+        );
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(
+            fs::metadata(fixture.root.join("thing"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o644
+        );
+        assert!(
+            metadata::load(&fixture.paths.metadata_file)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -963,5 +1090,35 @@ mod tests {
                 paths,
             }
         }
+    }
+
+    fn upsert_test_metadata(
+        metadata_file: &std::path::Path,
+        public_path: &str,
+        kind: &str,
+        mode: Option<u32>,
+        hardlink_key: Option<&str>,
+    ) {
+        let public_path = PublicPath::parse(public_path).unwrap();
+        let mut record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: None,
+            kind: kind.into(),
+            mode,
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: hardlink_key.map(str::to_string),
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&public_path);
+        metadata::upsert(metadata_file, record).unwrap();
     }
 }

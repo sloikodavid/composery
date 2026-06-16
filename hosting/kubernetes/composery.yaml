@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: composery-data
+  labels:
+    app: composery
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: composery
+  labels:
+    app: composery
+spec:
+  replicas: 1
+  # persistd is a single writer for one /data volume: never run two pods against it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: composery
+  template:
+    metadata:
+      labels:
+        app: composery
+    spec:
+      containers:
+        - name: composery
+          image: ghcr.io/sloikodavid/composery:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            # Register the first password in the browser, or supply one from a Secret:
+            # - name: PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: composery
+            #       key: password
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: composery-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: composery
+  labels:
+    app: composery
+spec:
+  selector:
+    app: composery
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

@@ -17,7 +17,7 @@ provide privileged containers, cgroups, or tmpfs mounts.
 ## Run
 
 ```bash
-# edit Caddyfile and replace example.com with your domain
+# edit Caddyfile and replace composery.example.com with your domain
 # optionally edit composery.env to pre-register a password
 docker compose up -d
 ```
@@ -29,16 +29,15 @@ didn't already set `PASSWORD` or `HASHED_PASSWORD` in `composery.env`. To pin a
 specific image version, edit `compose.yml` and replace the `composery` image tag
 with the version or digest you want to run.
 
-The runtime env file is mounted at `/etc/composery/composery.env`. The container
-entrypoint reads it before selecting an init profile, and systemd reads the same
-file for the Composery service. Keep `COMPOSERY_INIT=systemd` and
-`container=docker` in that file. Quote values containing `$`, such as
-`HASHED_PASSWORD`.
+Set code-server variables in `composery.env` when you need them; Compose loads it
+into the container, and systemd forwards them to the Composery service. Single-quote
+values containing `$`, such as `HASHED_PASSWORD`. systemd as PID 1 is selected by the
+`command: ["systemd"]` line in `compose.yml`.
 
-Composery state is stored in the `composery_data` Docker volume. Systemd service
-state under `/etc/systemd`, package state under `/var/lib`, and the machine id are
-persisted by `persistd`; runtime paths such as `/run`, `/tmp`, `/sys`, and `/dev`
-stay excluded.
+Composery state is stored in the `composery_data` Docker volume. Caddy certificate
+state is stored in `caddy_data`. Systemd service state under `/etc/systemd`, package
+state under `/var/lib`, and the machine id are persisted by `persistd`; runtime paths
+such as `/run`, `/tmp`, `/sys`, and `/dev` stay excluded.
 
 ## Operations
 

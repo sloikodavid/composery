@@ -102,6 +102,17 @@ pub fn remove(path: &Path, public_path: &PublicPath) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+pub fn remove_subtree(path: &Path, public_path: &PublicPath) -> Result<()> {
+    let mut records = load_compacted(path)?;
+    let before = records.len();
+    records.retain(|key, _| !path_is_at_or_below(key, public_path.as_bytes()));
+    if records.len() != before {
+        write_records(path, records.values())?;
+    }
+    Ok(())
+}
+
 #[cfg(not(unix))]
 pub fn remove(path: &Path, public_path: &str) -> Result<()> {
     let mut records = load_compacted(path)?;
@@ -109,6 +120,11 @@ pub fn remove(path: &Path, public_path: &str) -> Result<()> {
         write_records(path, records.values())?;
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn path_is_at_or_below(path: &[u8], parent: &[u8]) -> bool {
+    path == parent || (path.starts_with(parent) && path.get(parent.len()) == Some(&b'/'))
 }
 
 pub fn load(path: &Path) -> Result<Vec<MetadataRecord>> {
@@ -204,7 +220,7 @@ fn ensure_real_dir(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MetadataRecord, compact, load, remove, upsert};
+    use super::{MetadataRecord, compact, load, remove, remove_subtree, upsert};
     use std::{fs, os::unix::fs::symlink};
 
     #[test]
@@ -258,6 +274,26 @@ mod tests {
         remove(&path, &crate::public::PublicPath::parse("/a").unwrap()).unwrap();
 
         assert!(load(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn remove_subtree_keeps_similar_prefix_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        fs::write(
+            &path,
+            r#"{"path":"/a","kind":"dir"}
+{"path":"/a/b","kind":"file"}
+{"path":"/ab","kind":"file"}
+"#,
+        )
+        .unwrap();
+
+        remove_subtree(&path, &crate::public::PublicPath::parse("/a").unwrap()).unwrap();
+
+        let records = load(&path).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].path, "/ab");
     }
 
     #[test]

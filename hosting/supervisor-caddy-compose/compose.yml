@@ -8,7 +8,6 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-      - caddy_config:/config
     depends_on:
       composery:
         condition: service_healthy
@@ -16,8 +15,8 @@ services:
   composery:
     image: ghcr.io/sloikodavid/composery:latest
     restart: unless-stopped
+    env_file: ./composery.env
     volumes:
-      - ./composery.env:/etc/composery/composery.env:ro
       - composery_data:/data
     expose:
       - "8080"
@@ -25,4 +24,3 @@ services:
 volumes:
   composery_data:
   caddy_data:
-  caddy_config:

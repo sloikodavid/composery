@@ -1,17 +1,4 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-    depends_on:
-      composery:
-        condition: service_healthy
-
   composery:
     image: ghcr.io/sloikodavid/composery:latest
     restart: unless-stopped
@@ -27,9 +14,8 @@ services:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - composery_data:/data
-    expose:
-      - "8080"
+    ports:
+      - "8080:8080"
 
 volumes:
   composery_data:
-  caddy_data:

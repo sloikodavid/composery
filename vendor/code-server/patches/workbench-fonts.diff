@@ -1,0 +1,11 @@
+diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench.html b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+index 989f8f8..a1b2c3d 100644
+--- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
++++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+@@ -29,5 +29,6 @@
+ 		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
+ 		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
+ 		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-mobile.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-fonts.css">
+ 
+ 	</head>

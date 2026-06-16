@@ -1,0 +1,44 @@
+@font-face {
+	font-family: "Manrope";
+	src: url("./manrope.woff2") format("woff2");
+	font-weight: 200 800;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "CommitMono";
+	src: url("./commit-mono-400.woff2") format("woff2");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "CommitMono";
+	src: url("./commit-mono-700.woff2") format("woff2");
+	font-weight: 700;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* Override VS Code's per-OS UI stacks (src/vs/workbench/browser/media/style.css)
+   at equal specificity. Loaded after workbench.css, so this wins. Falls back to
+   the same native stack the website leads with, so Apple devices still get SF. */
+.monaco-workbench.mac,
+.monaco-workbench.windows,
+.monaco-workbench.linux {
+	font-family:
+		"Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+		"Ubuntu", "Droid Sans", sans-serif;
+}
+
+/* The monospace custom property feeds everything VS Code renders monospaced that
+   does not read editor.fontFamily (e.g. some tree/inline contexts). */
+.monaco-workbench.mac,
+.monaco-workbench.windows,
+.monaco-workbench.linux {
+	--monaco-monospace-font:
+		"CommitMono", "Menlo", "Consolas", "Ubuntu Mono", "Liberation Mono",
+		"Courier New", monospace;
+}
