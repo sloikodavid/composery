@@ -85,19 +85,33 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts b/lib
 diff --git a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 --- a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 +++ b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
-@@ -722,7 +722,11 @@
+@@ -722,7 +722,12 @@
  		if (this.isSessionsWindow) {
  			return '{}';
  		}
 -		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, '{}');
-+		// Composery: default container locations for fresh profiles — Extensions and Terminal in the
-+		// Auxiliary (secondary) side bar. ViewContainerLocation.AuxiliaryBar === 2. Overridden the
++		// Composery: default container locations for fresh profiles. Source Control stays in the
++		// primary side bar, Problems stays in the bottom panel, and Extensions and Terminal move to
++		// the secondary side bar. ViewContainerLocation.Sidebar === 0, Panel === 1, AuxiliaryBar === 2. Overridden the
 +		// moment the user moves a container.
-+		const defaultCustomizations = '{"viewContainerLocations":{"workbench.view.extensions":2,"terminal":2},"viewLocations":{},"viewContainerBadgeEnablementStates":{}}';
++		const defaultCustomizations = '{"viewContainerLocations":{"workbench.view.scm":0,"workbench.panel.markers":1,"workbench.view.extensions":2,"terminal":2},"viewLocations":{},"viewContainerBadgeEnablementStates":{}}';
 +		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, defaultCustomizations);
  	}
  
  	private setStoredViewCustomizationsValue(value: string): void {
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
+@@ -445,7 +445,8 @@
+ 					},
+ 					group: 'navigation',
+ 					order: 2,
+-					when: TerminalContextKeys.shouldShowViewInlineActions
++					when: TerminalContextKeys.shouldShowViewInlineActions,
++					isHiddenByDefault: true
+ 				}
+ 			},
+ 			{
 diff --git a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
 --- a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
