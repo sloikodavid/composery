@@ -155,3 +155,79 @@ describe("composery agent setup", () => {
 		expect(extension).toContain('registerCommand("composery.installAgent"');
 	});
 });
+
+describe("composery shortcuts", () => {
+	const extension = readRepoFile(
+		"vendor/code-server/overlay/lib/vscode/extensions/composery-shortcuts/extension.js"
+	);
+	const manifest = readRepoFile(
+		"vendor/code-server/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
+	);
+	const shortcutsPatch = readRepoFile(
+		"vendor/code-server/patches/shortcuts.diff"
+	);
+	const series = readRepoFile("vendor/code-server/patches/series");
+
+	test("keeps patched internal commands aligned with the extension", () => {
+		for (const command of [
+			"composery.shortcuts.pickIcon",
+			"composery.shortcuts.pickColor",
+			"composery.shortcuts.resolveVariables"
+		]) {
+			expect(extension).toContain(command);
+			expect(shortcutsPatch).toContain(command);
+		}
+	});
+
+	test("loads the shortcut contribution from the terminal workbench contribution", () => {
+		expect(shortcutsPatch).toContain("import './shortcuts.contribution.js';");
+		expect(shortcutsPatch).toContain("TerminalIconPicker");
+		expect(shortcutsPatch).toContain("createColorStyleElement");
+		expect(shortcutsPatch).toContain("IConfigurationResolverService");
+		expect(series.trimEnd().split(/\r?\n/).at(-1)).toBe("shortcuts.diff");
+	});
+
+	test("ships the full shortcut command surface", () => {
+		const parsed = JSON.parse(manifest) as {
+			contributes: { commands: Array<{ command: string }> };
+		};
+		const commands = parsed.contributes.commands.map((entry) => entry.command);
+
+		expect(commands).toEqual([
+			"composery.shortcuts.run",
+			"composery.shortcuts.add",
+			"composery.shortcuts.edit",
+			"composery.shortcuts.duplicate",
+			"composery.shortcuts.remove",
+			"composery.shortcuts.moveUp",
+			"composery.shortcuts.moveDown",
+			"composery.shortcuts.refresh",
+			"composery.shortcuts.undoRemove"
+		]);
+	});
+
+	test("covers terminal, file, and folder shortcut behavior", () => {
+		expect(extension).toContain('type: "terminal"');
+		expect(extension).toContain('type: "file"');
+		expect(extension).toContain('type: "folder"');
+		expect(extension).toContain("vscode.openFolder");
+		expect(extension).toContain("text/uri-list");
+		expect(extension).toContain("new vscode.ThemeIcon");
+		expect(extension).not.toContain("shortcut.kind");
+	});
+
+	test("settles on Run Shortcut naming", () => {
+		expect(extension).not.toContain("Open Shortcut");
+		expect(manifest).not.toContain("Open Shortcut");
+		expect(manifest).toContain('"title": "Run Shortcut"');
+	});
+
+	test("persists storage without losing data", () => {
+		// Writes go through a temp file + rename so an interrupted write can't
+		// truncate the real file, and unreadable contents are backed up rather
+		// than crashing activation.
+		expect(extension).toContain(".rename(");
+		expect(extension).toContain(".bak");
+		expect(extension).toContain("await this.backup(");
+	});
+});

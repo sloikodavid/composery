@@ -185,6 +185,9 @@ vendor/
               extension.js
               package.json
               README.md
+            composery-shortcuts/
+              extension.js
+              package.json
             composery-themes/
               themes/
                 composery-dark.json
@@ -245,6 +248,7 @@ vendor/
       no-generated-password.diff
       persistd-readiness.diff
       series
+      shortcuts.diff
       tips.diff
       titlebar-logo.diff
       trusted-domains-loopback-callback-guard.diff

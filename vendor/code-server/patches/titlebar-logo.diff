@@ -108,10 +108,10 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpa
 +}
 +
 +/* Composery: outside our own themes, render the title-bar logo monochrome in the theme's
-+   link/accent colour (via mask) so it doesn't clash with third-party themes. */
++   button accent colour (via mask) so it doesn't clash with third-party themes. */
 +.monaco-workbench:not(.composery-theme) .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon) {
 +	background-image: none;
-+	background-color: var(--vscode-textLink-foreground, var(--vscode-titleBar-activeForeground, var(--vscode-foreground)));
++	background-color: var(--vscode-button-background, var(--vscode-activityBarBadge-background, var(--vscode-titleBar-activeForeground, var(--vscode-foreground))));
 +	-webkit-mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
 +	mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
  }
