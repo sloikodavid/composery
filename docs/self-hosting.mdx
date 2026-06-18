@@ -1,4 +1,7 @@
-# Self-Hosting Composery
+---
+title: Self-Hosting
+description: Deploy Composery with one container, one persistent /data volume, and one HTTP edge.
+---
 
 Composery should feel like a small Debian-style VPS in a browser: users can install
 packages, edit system files, build projects, and keep that state across restarts.
@@ -30,7 +33,7 @@ with an ephemeral filesystem and no attachable disk are not viable.
 | Target                                         | Status            | Example                                                                                                                                                                                                                             |
 | ---------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Docker Compose on one VPS                      | Supported         | [systemd-caddy-compose](../hosting/systemd-caddy-compose/) when privileged cgroups are available; [supervisor-caddy-compose](../hosting/supervisor-caddy-compose/) otherwise. Drop `-caddy` to front Composery with your own proxy. |
-| Hetzner CX/CPX VPS                             | Production target | [systemd-caddy-compose](../hosting/systemd-caddy-compose/). This is the production cloud target in [Composery Cloud](https://composery.io/pricing).                                                                                 |
+| Hetzner CX/CPX VPS                             | Production target | [systemd-caddy-compose](../hosting/systemd-caddy-compose/). This is the production cloud target in [Composery Cloud](https://www.composery.io/pricing).                                                                             |
 | DigitalOcean Droplet or similar VPS            | Supported         | Same Compose/Caddy shape as Hetzner.                                                                                                                                                                                                |
 | Render                                         | Supported         | [hosting/render](../hosting/render/) - `render.yaml` Blueprint with a persistent disk (paid instance type).                                                                                                                         |
 | Fly.io                                         | Supported         | [hosting/fly](../hosting/fly/) - `fly.toml` with one volume. Run a single Machine.                                                                                                                                                  |
@@ -102,9 +105,9 @@ the Compose examples, set the documented variables in `composery.env`; Compose
 loads it into the container (`env_file`). Other hosting providers can use their
 environment-variable UI.
 
-The init is not an environment variable: it is the container command. The default
-is supervisor; pass `systemd` (the `command` in the systemd Compose examples) to
-run systemd as PID 1 on hosts with privileged containers and host cgroups.
+The init is selected by `COMPOSERY_INIT`, set in the compose service's
+`environment:` block (not in `composery.env`). The default is supervisor, or
+`systemd` on hosts with privileged containers and host cgroups.
 
 Most useful for self-hosting:
 
@@ -151,6 +154,7 @@ Excluded by default:
 
 - `/data`;
 - `/run`, `/var/run`, `/proc`, `/sys`, `/dev`, and `/tmp`;
+- `/var/cache` (regenerable caches such as downloaded apt archives);
 - `/opt/persistd` and `/opt/composery`;
 - resolver and hostname files: `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`.
 
@@ -190,6 +194,21 @@ journalctl -u composery -u persistd --no-pager
 
 Readiness is exposed through `/run/persistd/ready` and code-server's `/healthz`
 route. If `persistd apply` fails during boot, code-server does not become ready.
+
+## Working in the box
+
+The box is meant to feel like your own VPS:
+
+- you are `user`, a normal account with passwordless `sudo` (root on demand);
+- `user` owns `/usr/local`, so `npm i -g`, `make install`, and `curl ... | sh` installers that target `/usr/local/bin` work without `sudo`;
+- `~/.local/bin` and `~/bin` are on `PATH` for every shell, including ones an AI agent or task spawns (`bash -c`), not just the interactive terminal;
+- `cron` runs in both init profiles, so `crontab -e` schedules jobs;
+- `XDG_RUNTIME_DIR` is set to `/run/user/1000`, as a real login would set it;
+- `LANG` defaults to `C.UTF-8`; override the locale per session if you need to.
+
+The hostname is set by your container runtime, not the image (it is one of the
+Docker-managed files Composery cannot persist). Set a stable one through your
+orchestrator: `docker run --hostname ...`, Compose `hostname:`, or the equivalent.
 
 ## Security
 

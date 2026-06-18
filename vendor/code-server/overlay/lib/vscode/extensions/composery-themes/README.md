@@ -1,4 +1,4 @@
-# Composery theme
+# Composery themes
 
 Composery Light and Composery Dark color themes, matching the website's warm
 amber branding (see `composery-web/app/globals.css`).
@@ -54,8 +54,8 @@ extensions, then reload.
 
 ```sh
 # Windows (PowerShell, as admin or with developer mode):
-New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.vscode\extensions\composery-theme" `
-  -Target "$PWD\vendor\code-server\overlay\lib\vscode\extensions\composery-theme"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.vscode\extensions\composery-themes" `
+  -Target "$PWD\vendor\code-server\overlay\lib\vscode\extensions\composery-themes"
 ```
 
 Note: with this installed, `configurationDefaults` only changes the default for

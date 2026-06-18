@@ -81,9 +81,9 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 +			const composeryAgents = [
 +				{ id: 'claude', name: 'Claude Code', tagline: 'Anthropic' },
 +				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
-+				{ id: 'opencode', name: 'OpenCode', tagline: 'SST' },
++				{ id: 'opencode', name: 'OpenCode', tagline: 'Anomaly' },
 +				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
-+				{ id: 'openclaw', name: 'OpenClaw', tagline: 'Personal agent' },
++				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
 +				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
 +			];
 +			gettingStartedCoder = $('.gettingStartedCategory', {},
@@ -131,8 +131,8 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 +							$('span', {
 +								style: 'display: flex;flex-direction: column;min-width: 0;',
 +							},
-+								$('span', { style: 'font-weight: 600;' }, agent.name),
-+								$('span', { style: 'font-size: 12px;opacity: 0.7;' }, agent.tagline),
++								$('span', { style: 'font-weight: 600;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;' }, agent.name),
++								$('span', { style: 'font-size: 12px;opacity: 0.7;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;' }, agent.tagline),
 +							),
 +						);
 +						const launch = () => this.commandService.executeCommand('composery.installAgent', agent.id);
@@ -151,3 +151,19 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 +				),
 +			);
  		}
+diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
+--- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
++++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
+@@ -1146,3 +1146,12 @@
+ .monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlide .getting-started-checkbox {
+ 	border-color: var(--vscode-checkbox-border) !important;
+ }
++
++/* Composery: slight hover on the welcome agent cards (their base styles are inline in welcome.diff). */
++.composery-agent {
++	transition: background-color 0.1s ease;
++}
++
++.composery-agent:hover {
++	background-color: var(--vscode-list-hoverBackground);
++}

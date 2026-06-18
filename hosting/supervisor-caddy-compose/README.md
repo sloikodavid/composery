@@ -12,7 +12,7 @@ supervisor init.
 ## Run
 
 ```bash
-# edit Caddyfile and replace composery.example.com with your domain
+# edit Caddyfile and replace example.com with your domain
 # optionally edit composery.env to pre-register a password
 docker compose up -d
 ```

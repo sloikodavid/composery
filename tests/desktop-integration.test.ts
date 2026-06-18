@@ -100,9 +100,22 @@ describe("desktop URL and text editor integration", () => {
 
 	test("exports BROWSER at image scope instead of only interactive bash startup", () => {
 		const dockerfile = readRepoFile("Dockerfile");
-		const bashrc = readRepoFile("rootfs/home/user/.bashrc");
 
 		expect(dockerfile).toContain(`BROWSER="${browserHelper}"`);
-		expect(bashrc).not.toContain("BROWSER=");
+		expect(dockerfile).not.toContain("export BROWSER");
+	});
+
+	test("integrated terminal runs a login shell so ~/.profile and ~/.local/bin load", () => {
+		const settings = JSON.parse(
+			readRepoFile("rootfs/home/user/.local/share/composery/User/settings.json")
+		) as {
+			"terminal.integrated.defaultProfile.linux"?: string;
+			"terminal.integrated.profiles.linux"?: { bash?: { args?: string[] } };
+		};
+
+		expect(settings["terminal.integrated.defaultProfile.linux"]).toBe("bash");
+		expect(
+			settings["terminal.integrated.profiles.linux"]?.bash?.args
+		).toContain("-l");
 	});
 });

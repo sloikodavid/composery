@@ -3,8 +3,15 @@ set -euo pipefail
 
 /opt/persistd/bin/persistd apply
 
-# The init is chosen by the container command; default to supervisor.
-case "${1:-supervisor}" in
+# A stable machine-id makes the box behave like a real host (dbus and friends
+# expect one). systemd would generate one, but supervisor mode would not, so do
+# it for both. persistd persists /etc/machine-id, so it stays stable on restart.
+if [ ! -s /etc/machine-id ]; then
+  tr -d '-' < /proc/sys/kernel/random/uuid > /etc/machine-id
+fi
+
+# The init is chosen by COMPOSERY_INIT; default to supervisor.
+case "${COMPOSERY_INIT:-supervisor}" in
   supervisor)
     # supervisord and code-server inherit this process's environment directly.
     exec /opt/composery/init/supervisor.sh
@@ -14,11 +21,11 @@ case "${1:-supervisor}" in
     # so bridge the code-server settings through a file its unit reads. /run is
     # tmpfs and excluded from persistd, so nothing written here reaches /data.
     ( umask 077
-      env | grep -E '^(PASSWORD|HASHED_PASSWORD|PORT|VSCODE_PROXY_URI|EXTENSIONS_GALLERY|LOG_LEVEL|GITHUB_TOKEN|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
+      env | grep -E '^(PASSWORD|HASHED_PASSWORD|PORT|VSCODE_PROXY_URI|EXTENSIONS_GALLERY|LOG_LEVEL|GITHUB_TOKEN|BROWSER|EDITOR|VISUAL|GIT_EDITOR|KUBE_EDITOR|LANG|LC_ALL|PATH|XDG_RUNTIME_DIR|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
     exec /opt/composery/init/systemd.sh
     ;;
   *)
-    printf 'Unsupported init: %s (expected "supervisor" or "systemd")\n' "${1}" >&2
+    printf 'Unsupported COMPOSERY_INIT: %s (expected "supervisor" or "systemd")\n' "${COMPOSERY_INIT:-}" >&2
     exit 64
     ;;
 esac

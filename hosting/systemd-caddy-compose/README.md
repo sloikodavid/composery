@@ -17,7 +17,7 @@ provide privileged containers, cgroups, or tmpfs mounts.
 ## Run
 
 ```bash
-# edit Caddyfile and replace composery.example.com with your domain
+# edit Caddyfile and replace example.com with your domain
 # optionally edit composery.env to pre-register a password
 docker compose up -d
 ```
@@ -31,8 +31,8 @@ with the version or digest you want to run.
 
 Set code-server variables in `composery.env` when you need them; Compose loads it
 into the container, and systemd forwards them to the Composery service. Single-quote
-values containing `$`, such as `HASHED_PASSWORD`. systemd as PID 1 is selected by the
-`command: ["systemd"]` line in `compose.yml`.
+values containing `$`, such as `HASHED_PASSWORD`. systemd as PID 1 is selected by
+`COMPOSERY_INIT=systemd` in `compose.yml`.
 
 Composery state is stored in the `composery_data` Docker volume. Caddy certificate
 state is stored in `caddy_data`. Systemd service state under `/etc/systemd`, package

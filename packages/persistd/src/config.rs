@@ -29,6 +29,7 @@ impl Default for Config {
                 "/sys".into(),
                 "/dev".into(),
                 "/tmp".into(),
+                "/var/cache".into(),
                 "/var/run".into(),
                 "/opt/persistd".into(),
                 "/opt/composery".into(),

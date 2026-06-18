@@ -116,6 +116,8 @@ function runSystemdContainer() {
 			"-p",
 			`127.0.0.1:${config.port}:${config.port}`,
 			"-e",
+			"COMPOSERY_INIT=systemd",
+			"-e",
 			`PORT=${config.port}`,
 			"-e",
 			`PASSWORD=${config.password}`,
@@ -123,8 +125,7 @@ function runSystemdContainer() {
 			"COMPOSERY_DISABLE_FILE_DOWNLOADS=1",
 			"-v",
 			`${config.volumeName}:/data`,
-			config.imageTag,
-			"systemd"
+			config.imageTag
 		],
 		{ capture: true, quiet: true }
 	);
@@ -164,6 +165,10 @@ async function assertSystemdEnvBridge() {
 
 	// code-server runs as a first-class systemd unit, not a stray process.
 	execSh("systemctl is-active composery");
+
+	// cron is a first-class unit here too, and the user's XDG_RUNTIME_DIR exists.
+	execSh("systemctl is-active cron");
+	execSh("test -d /run/user/1000");
 }
 
 async function assertWebAppSmoke() {
@@ -182,7 +187,61 @@ async function assertWebAppSmoke() {
 		capture: true,
 		quiet: true
 	});
+	assertUserEnvironment();
 	await assertClipboardBridge();
+}
+
+function assertUserEnvironment() {
+	log("checking the user's shell environment behaves like a real VPS");
+
+	const hasLocalBin =
+		'case ":$PATH:" in *:/home/user/.local/bin:*) ;; *) exit 1 ;; esac';
+
+	// Non-login shells (what an AI agent's `bash -c`/sandboxed commands inherit,
+	// since they source no startup files) get ~/.local/bin from the inherited
+	// process environment.
+	userBash(false, hasLocalBin);
+
+	// Login shells (the interactive terminal) get it back via the stock ~/.profile
+	// after /etc/profile resets PATH; the dir is created at build so this holds
+	// even before the user installs anything.
+	userBash(true, hasLocalBin);
+
+	// The user owns /usr/local, so global installs (`npm i -g`, `make install`,
+	// curl|sh into /usr/local/bin) work without sudo and land on the default PATH.
+	userBash(
+		false,
+		"test -w /usr/local/bin && test -w /usr/local/lib/node_modules"
+	);
+
+	// XDG_RUNTIME_DIR points at a private 0700 dir the user owns, like a real
+	// login (gpg, dbus, podman, ... expect it).
+	userBash(
+		false,
+		'test "$XDG_RUNTIME_DIR" = /run/user/1000 && [ "$(stat -c "%U %a" "$XDG_RUNTIME_DIR")" = "user 700" ]'
+	);
+
+	// cron behaves like a real VPS: the daemon runs and crontab is available.
+	userBash(false, "command -v crontab >/dev/null");
+	execSh("pgrep -x cron >/dev/null");
+
+	// A stable machine-id was generated for hosts/dbus to key off.
+	execSh("test -s /etc/machine-id");
+}
+
+function userBash(loginShell, script) {
+	return docker(
+		[
+			"exec",
+			"--user",
+			"user",
+			config.containerName,
+			"bash",
+			loginShell ? "-lc" : "-c",
+			script
+		],
+		{ capture: true, quiet: true }
+	);
 }
 
 async function assertClipboardBridge() {

@@ -1,6 +1,6 @@
 {
-	"name": "composery-theme",
-	"displayName": "Composery",
+	"name": "composery-themes",
+	"displayName": "Composery Themes",
 	"description": "Composery's light and dark color themes, matching the website's warm amber branding.",
 	"version": "0.1.0",
 	"publisher": "composery",
@@ -23,12 +23,7 @@
 				"uiTheme": "vs-dark",
 				"path": "./themes/composery-dark.json"
 			}
-		],
-		"configurationDefaults": {
-			"workbench.colorTheme": "Composery Dark",
-			"workbench.preferredDarkColorTheme": "Composery Dark",
-			"workbench.preferredLightColorTheme": "Composery Light"
-		}
+		]
 	},
 	"repository": {
 		"type": "git",

@@ -1,0 +1,113 @@
+diff --git a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
+--- a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
++++ b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
+@@ -23,6 +23,18 @@
+ 
+ export function getViewsStateStorageId(viewContainerStorageId: string): string { return `${viewContainerStorageId}.hidden`; }
+ 
++// Composery: views hidden by default (as if their descriptor set hideByDefault).
++// Applied only when the user has no stored visibility state for the view, so a
++// user un-hiding any of these persists normally.
++const COMPOSERY_DEFAULT_HIDDEN_VIEW_IDS = new Set<string>([
++	'outline',
++	'timeline',
++	'workbench.explorer.openEditorsView',
++	'npm',
++	'workbench.scm.repositories',
++	'extensions.recommendedList',
++]);
++
+ interface IStoredWorkspaceViewState {
+ 	collapsed: boolean;
+ 	isHidden: boolean;
+@@ -503,23 +515,25 @@
+ 			}
+ 
+ 			let state = this.viewDescriptorsState.get(viewDescriptor.id);
++			// Composery: treat ids in the default-hidden set as if hideByDefault was set.
++			const hideByDefault = viewDescriptor.hideByDefault || COMPOSERY_DEFAULT_HIDDEN_VIEW_IDS.has(viewDescriptor.id);
+ 			if (state) {
+ 				// set defaults if not set
+ 				if (viewDescriptor.workspace) {
+-					state.visibleWorkspace = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleWorkspace) ? !viewDescriptor.hideByDefault : state.visibleWorkspace) : addedViewDescriptorState.visible;
++					state.visibleWorkspace = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleWorkspace) ? !hideByDefault : state.visibleWorkspace) : addedViewDescriptorState.visible;
+ 				} else {
+ 					const isVisible = state.visibleGlobal;
+-					state.visibleGlobal = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleGlobal) ? !viewDescriptor.hideByDefault : state.visibleGlobal) : addedViewDescriptorState.visible;
++					state.visibleGlobal = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleGlobal) ? !hideByDefault : state.visibleGlobal) : addedViewDescriptorState.visible;
+ 					if (state.visibleGlobal && !isVisible) {
+-						this.logger.value.trace(`Added view ${viewDescriptor.id} in the container ${this.viewContainer.id} and showing it.`, `${isVisible}`, `${viewDescriptor.hideByDefault}`, `${addedViewDescriptorState.visible}`);
++						this.logger.value.trace(`Added view ${viewDescriptor.id} in the container ${this.viewContainer.id} and showing it.`, `${isVisible}`, `${hideByDefault}`, `${addedViewDescriptorState.visible}`);
+ 					}
+ 				}
+ 				state.collapsed = isUndefinedOrNull(addedViewDescriptorState.collapsed) ? (isUndefinedOrNull(state.collapsed) ? !!viewDescriptor.collapsed : state.collapsed) : addedViewDescriptorState.collapsed;
+ 			} else {
+ 				state = {
+ 					active: false,
+-					visibleGlobal: isUndefinedOrNull(addedViewDescriptorState.visible) ? !viewDescriptor.hideByDefault : addedViewDescriptorState.visible,
+-					visibleWorkspace: isUndefinedOrNull(addedViewDescriptorState.visible) ? !viewDescriptor.hideByDefault : addedViewDescriptorState.visible,
++					visibleGlobal: isUndefinedOrNull(addedViewDescriptorState.visible) ? !hideByDefault : addedViewDescriptorState.visible,
++					visibleWorkspace: isUndefinedOrNull(addedViewDescriptorState.visible) ? !hideByDefault : addedViewDescriptorState.visible,
+ 					collapsed: isUndefinedOrNull(addedViewDescriptorState.collapsed) ? !!viewDescriptor.collapsed : addedViewDescriptorState.collapsed,
+ 				};
+ 			}
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts b/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
+@@ -32,6 +32,14 @@
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+ import { IViewsService } from '../../services/views/common/viewsService.js';
+ 
++// Composery: view containers hidden from their bar by default. Enforced in shouldBeHidden so it
++// runs on the fresh-registration path; the user's stored choice (cached visible) wins once set.
++const COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS = new Set<string>([
++	'workbench.view.debug',
++	'workbench.panel.output',
++	'workbench.panel.repl',
++]);
++
+ interface IPlaceholderViewContainer {
+ 	readonly id: string;
+ 	readonly name?: string;
+@@ -431,6 +439,12 @@
+ 		const viewContainer = isString(viewContainerOrId) ? this.getViewContainer(viewContainerOrId) : viewContainerOrId;
+ 		const viewContainerId = isString(viewContainerOrId) ? viewContainerOrId : viewContainerOrId.id;
+ 
++		// Composery: default-hidden containers stay hidden until the user explicitly shows one
++		// (which stores visible: true in the cached pinned state, letting their choice win).
++		if (COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS.has(viewContainerId) && this.cachedViewContainers.find(({ id }) => id === viewContainerId)?.visible !== true) {
++			return true;
++		}
++
+ 		if (viewContainer) {
+ 			if (viewContainer.hideIfEmpty) {
+ 				if (this.viewService.isViewContainerActive(viewContainerId)) {
+diff --git a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
+--- a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
++++ b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
+@@ -722,7 +722,11 @@
+ 		if (this.isSessionsWindow) {
+ 			return '{}';
+ 		}
+-		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, '{}');
++		// Composery: default container locations for fresh profiles — Extensions and Terminal in the
++		// Auxiliary (secondary) side bar. ViewContainerLocation.AuxiliaryBar === 2. Overridden the
++		// moment the user moves a container.
++		const defaultCustomizations = '{"viewContainerLocations":{"workbench.view.extensions":2,"terminal":2},"viewLocations":{},"viewContainerBadgeEnablementStates":{}}';
++		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, defaultCustomizations);
+ 	}
+ 
+ 	private setStoredViewCustomizationsValue(value: string): void {
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -742,7 +742,8 @@
+ }
+ 
+ export function isAccountsActionVisible(storageService: IStorageService): boolean {
+-	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
++	// Composery: hide the Accounts entry by default (overridable by the user).
++	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, false);
+ }
+ 
+ function setAccountsActionVisible(storageService: IStorageService, visible: boolean) {

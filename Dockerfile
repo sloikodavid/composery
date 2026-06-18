@@ -11,6 +11,8 @@ ARG CODE_SERVER_VERSION=4.118.0
 ARG CODE_SERVER_COMMIT=871f1d904834ee78db1c4585e2f14f65c119374a
 ARG CODE_SERVER_REPOSITORY=https://github.com/coder/code-server.git
 
+# Apt packages are intentionally unpinned: the Debian suite comes from the base
+# image, and the image digest is the reproducibility boundary.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     build-essential \
@@ -101,9 +103,11 @@ LABEL org.opencontainers.image.title="Composery" \
   org.opencontainers.image.licenses="Apache-2.0"
 
 # renovate: datasource=npm depName=bun
-ARG BUN_VERSION=1.3.13
+ARG BUN_VERSION=1.3.14
+# renovate: datasource=npm depName=npm
+ARG NPM_VERSION=11.17.0
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=11.0.9
+ARG PNPM_VERSION=11.7.0
 
 ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
   COMPOSERY_BUILD_REVISION="${COMPOSERY_BUILD_REVISION}" \
@@ -113,15 +117,29 @@ ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
   GIT_EDITOR="code --wait" \
   KUBE_EDITOR="code --wait" \
   LANG="C.UTF-8" \
-  LC_ALL="C.UTF-8" \
-  VISUAL="code --wait"
+  VISUAL="code --wait" \
+  XDG_RUNTIME_DIR="/run/user/1000"
+# LANG gives a UTF-8 default; LC_ALL is intentionally not pinned so the user can
+# override the locale per session (a pinned LC_ALL overrides every LC_* and LANG,
+# which would prevent that). A deployment-provided LC_ALL is still honored.
 
-# APT lists are kept (not deleted) so `sudo apt install` works out of the box in this
-# VPS-like appliance; `apt update` refreshes them, and persistd persists any changes.
+# Put the user's standard bin dirs on PATH at the process level, not just in
+# interactive shells, so binaries on ~/.local/bin work everywhere that inherits
+# this environment: integrated terminals, and shells an AI agent or task spawns
+# (including `bash -c`/sandboxed commands, which source no startup files and so
+# rely on inherited PATH). Interactive login shells layer rc-file PATH edits
+# (cargo, rustup, ...) on top of this.
+ENV PATH="/home/user/.local/bin:/home/user/bin:${PATH}"
+
+# Apt packages are intentionally unpinned: the Debian suite comes from the base
+# image, and the image digest is the reproducibility boundary. APT lists are kept
+# so `sudo apt install` works out of the box in this VPS-like appliance; `apt
+# update` refreshes them, and persistd persists any changes.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     bash \
     ca-certificates \
+    cron \
     curl \
     desktop-file-utils \
     git \
@@ -147,8 +165,14 @@ RUN apt-get update \
     xz-utils \
     zip
 
+# cron's PAM stack fails `session required pam_loginuid.so` in an unprivileged
+# container (no writable /proc/self/loginuid), which silently stops cron jobs from
+# running even though the daemon is up. Make it optional so `crontab` works.
+RUN sed -i 's/session\s\+required\s\+pam_loginuid/session optional pam_loginuid/' /etc/pam.d/cron
+
 RUN npm install --global \
     "bun@${BUN_VERSION}" \
+    "npm@${NPM_VERSION}" \
     "pnpm@${PNPM_VERSION}" \
   && npm cache clean --force
 
@@ -160,8 +184,14 @@ COPY --from=code-server-builder /src/code-server/release /opt/code-server/curren
 COPY --from=persistd-builder /out/persistd /opt/persistd/bin/persistd
 COPY rootfs/ /
 
+# Final runtime wiring: create the user's standard bin dirs (so login shells add
+# them to PATH via the stock ~/.profile even before anything is installed), fix
+# ownership (home, and /usr/local so the user can install globally without sudo),
+# permissions, unit symlinks, and desktop/mime caches, then snapshot the baseline
+# persistd restores from.
 RUN find /home/user -name .gitkeep -type f -delete \
   && mkdir -p /data /etc/systemd/system/multi-user.target.wants \
+  && mkdir -p /home/user/.local/bin /home/user/bin \
   && rm -f /etc/machine-id \
   && touch /etc/machine-id \
   && chown -R user:user /home/user \
@@ -178,6 +208,7 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && ln -sf /opt/code-server/current/bin/code-server /usr/local/bin/code-server \
   && update-desktop-database /usr/share/applications \
   && update-mime-database /usr/share/mime \
+  && chown -R user:user /usr/local \
   && /opt/persistd/bin/persistd __generate-baseline --root / --output /opt/persistd/baseline.sqlite
 
 # No USER directive: persistd needs root to rebuild the filesystem on boot; supervisor

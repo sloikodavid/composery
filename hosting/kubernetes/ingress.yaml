@@ -12,10 +12,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - composery.example.com
+        - example.com
       secretName: composery-tls
   rules:
-    - host: composery.example.com
+    - host: example.com
       http:
         paths:
           - path: /

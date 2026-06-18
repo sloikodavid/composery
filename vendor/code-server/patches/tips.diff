@@ -1,0 +1,14 @@
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
+@@ -54,7 +54,9 @@
+ ]);
+
+ const workspaceEntries: WatermarkEntry[] = [
+-	...baseEntries,
++	showCommands,
++	gotoFile,
++	openRecent,
+ ];
+
+ const otherEntries: WatermarkEntry[] = [

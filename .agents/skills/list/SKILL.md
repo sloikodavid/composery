@@ -34,7 +34,9 @@ description: Use when you're not sure where to look, need to find the right file
 .zed/
   settings.json
 docs/
-  self-hosting.md
+  repo/
+    maintenance.mdx
+  self-hosting.mdx
 hosting/
   fly/
     fly.toml
@@ -139,7 +141,6 @@ rootfs/
         .gitkeep
       Videos/
         .gitkeep
-      .bashrc
   opt/
     composery/
       init/
@@ -159,6 +160,7 @@ rootfs/
         composery-text-editor.desktop
         composery-url-handler.desktop
 scripts/
+  check-code-server-patches.mjs
   check-rust.mjs
   format.mjs
   generate-icons.mjs
@@ -183,10 +185,8 @@ vendor/
               extension.js
               package.json
               README.md
-            composery-theme/
+            composery-themes/
               themes/
-                base-dark.json
-                base-light.json
                 composery-dark.json
                 composery-light.json
               NOTICE
@@ -197,9 +197,8 @@ vendor/
               code/
                 browser/
                   workbench/
-                    commit-mono-400.woff2
-                    commit-mono-700.woff2
-                    manrope.woff2
+                    geist-mono.woff2
+                    inter.woff2
                     workbench-fonts.css
                     workbench-mobile.css
                     workbench-mobile.js
@@ -219,7 +218,7 @@ vendor/
             favicon-dark-support.svg
             favicon.ico
             favicon.svg
-            manrope.woff2
+            inter.woff2
             pwa-icon-192.png
             pwa-icon-512.png
             pwa-icon-maskable-192.png
@@ -239,10 +238,15 @@ vendor/
       browser-friendly-url.diff
       clipboard-ipc.diff
       clipboard-osc52.diff
+      default-color-theme.diff
+      default-layout.diff
+      extensions-view-themes.diff
       markdown-preview-loopback-callback-bridge.diff
       no-generated-password.diff
       persistd-readiness.diff
       series
+      tips.diff
+      titlebar-logo.diff
       trusted-domains-loopback-callback-guard.diff
       welcome.diff
       workbench-auth-actions.diff

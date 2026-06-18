@@ -26,8 +26,8 @@ Open `http://<host>:8080`.
 
 On first visit, register the initial Composery password in the browser if you didn't
 already set `PASSWORD` or `HASHED_PASSWORD` in `composery.env`. Single-quote values
-containing `$`, such as `HASHED_PASSWORD`. systemd as PID 1 is selected by the
-`command: ["systemd"]` line in `compose.yml`.
+containing `$`, such as `HASHED_PASSWORD`. systemd as PID 1 is selected by
+`COMPOSERY_INIT=systemd` in `compose.yml`.
 
 ## Security
 

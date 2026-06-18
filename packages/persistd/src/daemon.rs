@@ -196,9 +196,7 @@ fn writer_loop(
 
     loop {
         let mut public_index_dirty = false;
-        for error in watch_error_rx.try_iter() {
-            let _ = runtime.db.record_phase_failure("watch", &error);
-        }
+        record_watch_errors(&runtime, &watch_error_rx);
         let mut retry_paths = Vec::new();
         for _ in 0..256 {
             let Ok(public_path) = dirty_rx.try_recv() else {
@@ -234,41 +232,54 @@ fn writer_loop(
         }
 
         match command_rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(WriterCommand::Status(response)) => {
-                let dirty_queue_size = dirty::pending_count(&runtime.dirty_pending);
-                let _ = response.send(
-                    status::build_with_runtime(
-                        &runtime.paths,
-                        &runtime.db,
-                        status::RuntimeStatus {
-                            dirty_queue_size,
-                            watch_status: Some(runtime.watch_status.text()),
-                            audit_status: Some(runtime.audit_status.text()),
-                        },
-                    )
-                    .map_err(|error| format!("{error:#}")),
-                );
-            }
-            Ok(WriterCommand::Doctor(response)) => {
-                let _ = response.send(
-                    doctor::run(&runtime.paths, &runtime.db).map_err(|error| format!("{error:#}")),
-                );
-            }
-            Ok(WriterCommand::Prune(response)) => {
-                let _ = response.send(
-                    prune::run(
-                        &runtime.root,
-                        &runtime.paths,
-                        &runtime.config,
-                        &runtime.baseline,
-                        &runtime.db,
-                    )
-                    .map_err(|error| format!("{error:#}")),
-                );
+            Ok(command) => {
+                record_watch_errors(&runtime, &watch_error_rx);
+                match command {
+                    WriterCommand::Status(response) => {
+                        let dirty_queue_size = dirty::pending_count(&runtime.dirty_pending);
+                        let _ = response.send(
+                            status::build_with_runtime(
+                                &runtime.paths,
+                                &runtime.db,
+                                status::RuntimeStatus {
+                                    dirty_queue_size,
+                                    watch_status: Some(runtime.watch_status.text()),
+                                    audit_status: Some(runtime.audit_status.text()),
+                                },
+                            )
+                            .map_err(|error| format!("{error:#}")),
+                        );
+                    }
+                    WriterCommand::Doctor(response) => {
+                        let _ = response.send(
+                            doctor::run(&runtime.paths, &runtime.db)
+                                .map_err(|error| format!("{error:#}")),
+                        );
+                    }
+                    WriterCommand::Prune(response) => {
+                        let _ = response.send(
+                            prune::run(
+                                &runtime.root,
+                                &runtime.paths,
+                                &runtime.config,
+                                &runtime.baseline,
+                                &runtime.db,
+                            )
+                            .map_err(|error| format!("{error:#}")),
+                        );
+                    }
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+    }
+}
+
+#[cfg(unix)]
+fn record_watch_errors(runtime: &WriterRuntime, watch_error_rx: &mpsc::Receiver<String>) {
+    for error in watch_error_rx.try_iter() {
+        let _ = runtime.db.record_phase_failure("watch", &error);
     }
 }
 

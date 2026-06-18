@@ -1,0 +1,24 @@
+diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
+@@ -1296,7 +1296,7 @@
+ export class DefaultPopularExtensionsView extends ExtensionsListView {
+ 
+ 	override async show(): Promise<IPagedModel<IExtension>> {
+-		const query = this.extensionManagementServerService.webExtensionManagementServer && !this.extensionManagementServerService.localExtensionManagementServer && !this.extensionManagementServerService.remoteExtensionManagementServer ? '@web' : '';
++		const query = this.extensionManagementServerService.webExtensionManagementServer && !this.extensionManagementServerService.localExtensionManagementServer && !this.extensionManagementServerService.remoteExtensionManagementServer ? '@web' : 'category:themes @popular';
+ 		return super.show(query);
+ 	}
+ 
+diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+@@ -257,7 +257,7 @@
+ 		 */
+ 		viewDescriptors.push({
+ 			id: 'workbench.views.extensions.popular',
+-			name: localize2('popularExtensions', "Popular"),
++			name: localize2('themes', "Themes"),
+ 			ctorDescriptor: new SyncDescriptor(DefaultPopularExtensionsView, [{ hideBadge: true }]),
+ 			when: ContextKeyExpr.and(DefaultViewsContext, ContextKeyExpr.not('hasInstalledExtensions'), CONTEXT_HAS_GALLERY),
+ 			weight: 60,

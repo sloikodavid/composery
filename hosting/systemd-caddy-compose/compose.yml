@@ -15,8 +15,9 @@ services:
   composery:
     image: ghcr.io/sloikodavid/composery:latest
     restart: unless-stopped
-    command: ["systemd"]
     env_file: ./composery.env
+    environment:
+      - COMPOSERY_INIT=systemd
     privileged: true
     cgroup: host
     stop_signal: SIGRTMIN+3

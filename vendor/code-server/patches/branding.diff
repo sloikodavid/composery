@@ -60,7 +60,7 @@ diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
 -    "newsletterSignupUrl": "https://www.research.net/r/vsc-newsletter",
 +    "introductoryVideosUrl": "https://docs.composery.io",
 +    "tipsAndTricksUrl": "https://docs.composery.io",
-+    "newsletterSignupUrl": "https://composery.io",
++    "newsletterSignupUrl": "https://www.composery.io",
      "linkProtectionTrustedDomains": [
        "https://open-vsx.org"
      ],
@@ -88,48 +88,48 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    }
 -  process.env.CODE_SERVER_SESSION_SOCKET = args["session-socket"]
 +  process.env.COMPOSERY_SESSION_SOCKET = args["session-socket"]
- 
+
    // --verbose takes priority over --log and --log takes priority over the
    // environment variable.
 @@ -613,15 +613,15 @@
      args.password = process.env.PASSWORD
    }
- 
+
 -  if (process.env.CS_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
 +  if (process.env.COMPOSERY_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
      args["disable-file-downloads"] = true
    }
- 
+
 -  if (process.env.CS_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
 +  if (process.env.COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
      args["disable-getting-started-override"] = true
    }
- 
+
 -  if (process.env.CS_DISABLE_PROXY?.match(/^(1|true)$/)) {
 +  if (process.env.COMPOSERY_DISABLE_PROXY?.match(/^(1|true)$/)) {
      args["disable-proxy"] = true
    }
- 
+
 @@ -631,26 +631,26 @@
      usingEnvPassword = false
    }
- 
+
 -  if (process.env.CODE_SERVER_COOKIE_SUFFIX) {
 -    args["cookie-suffix"] = process.env.CODE_SERVER_COOKIE_SUFFIX
 +  if (process.env.COMPOSERY_COOKIE_SUFFIX) {
 +    args["cookie-suffix"] = process.env.COMPOSERY_COOKIE_SUFFIX
    }
- 
+
    if (process.env.GITHUB_TOKEN) {
      args["github-auth"] = process.env.GITHUB_TOKEN
    }
- 
+
 -  if (process.env.CODE_SERVER_RECONNECTION_GRACE_TIME) {
 -    args["reconnection-grace-time"] = process.env.CODE_SERVER_RECONNECTION_GRACE_TIME
 +  if (process.env.COMPOSERY_RECONNECTION_GRACE_TIME) {
 +    args["reconnection-grace-time"] = process.env.COMPOSERY_RECONNECTION_GRACE_TIME
    }
- 
+
 -  if (process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS) {
 -    if (isNaN(Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS))) {
 -      logger.info("CODE_SERVER_IDLE_TIMEOUT_SECONDS must be a number")
@@ -144,16 +144,16 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
 -    args["idle-timeout-seconds"] = Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS)
 +    args["idle-timeout-seconds"] = Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS)
    }
- 
+
    // Ensure they're not readable by child processes.
 @@ -678,7 +678,7 @@
    args["proxy-domain"] = finalProxies
- 
+
    if (!args["app-name"]) {
 -    args["app-name"] = "code-server"
 +    args["app-name"] = "Composery"
    }
- 
+
    args._ = getResolvedPathsFromArgs(args)
 @@ -720,11 +720,11 @@
  /**
@@ -191,7 +191,7 @@ diff --git a/src/node/http.ts b/src/node/http.ts
 +    .replace(/{{COMPOSERY_STATIC_BASE}}/g, serverOptions.csStaticBase)
      .replace("{{OPTIONS}}", () => escapeJSON(serverOptions))
  }
- 
+
 diff --git a/src/node/main.ts b/src/node/main.ts
 --- a/src/node/main.ts
 +++ b/src/node/main.ts
@@ -239,7 +239,7 @@ diff --git a/src/node/wrapper.ts b/src/node/wrapper.ts
 +  typeof process.env.COMPOSERY_PARENT_PID !== "undefined"
 +    ? new ChildProcess(parseInt(process.env.COMPOSERY_PARENT_PID))
      : new ParentProcess(require("../../package.json").version)
- 
+
  export function isChild(proc: ChildProcess | ParentProcess): proc is ChildProcess {
 diff --git a/lib/vscode/src/vs/workbench/browser/media/code-icon.svg b/lib/vscode/src/vs/workbench/browser/media/code-icon.svg
 --- a/lib/vscode/src/vs/workbench/browser/media/code-icon.svg
@@ -355,5 +355,5 @@ diff --git a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeS
 +				.then(() => this.reloadCurrentColorTheme())
 +				.catch(errors.onUnexpectedError);
  		});
- 
+
  		const codiconStyleSheet = createStyleSheet();
