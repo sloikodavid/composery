@@ -118,32 +118,3 @@ index 7948a7b..12989e4 100644
  				},
  			});
  		}
-diff --git a/src/node/cli.ts b/src/node/cli.ts
-index 77eb725..31100c4 100644
---- a/src/node/cli.ts
-+++ b/src/node/cli.ts
-@@ -58,6 +58,7 @@ export interface UserProvidedCodeArgs {
-   "link-protection-trusted-domains"?: string[]
-   // locale is used by both VS Code and code-server.
-   locale?: string
-+  "reset-password"?: boolean
- }
- 
- /**
-@@ -173,6 +174,9 @@ export const options: Options<Required<UserProvidedArgs>> = {
-   "session-socket": {
-     type: "string",
-   },
-+  "reset-password": {
-+    type: "boolean",
-+  },
-   "cookie-suffix": {
-     type: "string",
-     description:
-@@ -919,5 +920,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
-     version: !!args.version,
-     port: args.port?.toString(),
-     log: args.log ? [args.log] : undefined,
-+    "reset-password": args.auth === AuthType.Password && !args.usingEnvPassword && !args.usingEnvHashedPassword,
-   }
- }

@@ -23,10 +23,6 @@ display-language.diff
 trusted-domains.diff
 signature-verification.diff
 copilot.diff
-auth-flow.diff
-no-generated-password.diff
-persistence-readiness.diff
-browser-friendly-url.diff
 auth-actions.diff
 markdown-preview-loopback-callback-bridge.diff
 trusted-domains-loopback-callback-guard.diff

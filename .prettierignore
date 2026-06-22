@@ -4,3 +4,12 @@ coverage/
 vendor/
 tmp/
 pnpm-lock.yaml
+packages/ide/lib/vscode/
+packages/ide/overlay/
+packages/ide/out/
+packages/ide/release/
+**/.cache/
+dist/
+build/
+.next/
+.source/

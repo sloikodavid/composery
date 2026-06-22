@@ -31,7 +31,8 @@ function extractLoopbackParamLists(patch: string): string[][] {
 
 describe("IDE patch stack", () => {
 	test("keeps touch editor source aligned with the split touch/narrow overlays", () => {
-		const base = "packages/ide/workbench-assets";
+		const base =
+			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
 		const touchEditorPatch = readRepoFile(
 			"packages/ide/patches/touch-editor.diff"
 		);
@@ -126,7 +127,7 @@ describe("IDE patch stack", () => {
 
 describe("composery agent setup", () => {
 	const extension = readRepoFile(
-		"packages/ide/extensions/composery-agents/extension.js"
+		"packages/ide/overlay/lib/vscode/extensions/composery-agents/extension.js"
 	);
 	const welcome = readRepoFile("packages/ide/patches/welcome.diff");
 
@@ -178,14 +179,12 @@ describe("composery agent setup", () => {
 
 describe("composery shortcuts", () => {
 	const extension = readRepoFile(
-		"packages/ide/extensions/composery-shortcuts/extension.js"
+		"packages/ide/overlay/lib/vscode/extensions/composery-shortcuts/extension.js"
 	);
 	const manifest = readRepoFile(
-		"packages/ide/extensions/composery-shortcuts/package.json"
+		"packages/ide/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
 	);
-	const shortcutsPatch = readRepoFile(
-		"packages/ide/patches/shortcuts.diff"
-	);
+	const shortcutsPatch = readRepoFile("packages/ide/patches/shortcuts.diff");
 	const series = readRepoFile("packages/ide/patches/series");
 
 	test("keeps patched internal commands aligned with the extension", () => {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 main() {
   cd "$(dirname "$0")/../.."
-  bats ./test/scripts
+  bats ./tests/scripts
 }
 
 main "$@"

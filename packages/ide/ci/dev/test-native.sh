@@ -4,7 +4,7 @@ set -euo pipefail
 help() {
   echo >&2 "  You can build the release with 'KEEP_MODULES=1 npm run release'"
   echo >&2 "  Or you can pass in a custom path."
-  echo >&2 "  CODE_SERVER_PATH='/var/tmp/coder/code-server/bin/code-server' npm run test:integration"
+  echo >&2 "  COMPOSERY_IDE_PATH='/var/tmp/coder/code-server/bin/code-server' npm run test:integration"
 }
 
 # Make sure a code-server release works. You can pass in the path otherwise it
@@ -18,10 +18,10 @@ main() {
   source ./ci/lib.sh
 
   local path="$RELEASE_PATH/bin/code-server"
-  if [[ ! ${CODE_SERVER_PATH-} ]]; then
-    echo "Set CODE_SERVER_PATH to test another build of code-server"
+  if [[ ! ${COMPOSERY_IDE_PATH-} ]]; then
+    echo "Set COMPOSERY_IDE_PATH to test another build of code-server"
   else
-    path="$CODE_SERVER_PATH"
+    path="$COMPOSERY_IDE_PATH"
   fi
 
   echo "Running tests with code-server binary: '$path'"
@@ -33,7 +33,7 @@ main() {
     exit 1
   fi
 
-  CODE_SERVER_PATH="$path" ./node_modules/.bin/jest "$@" --coverage=false --testRegex "./test/integration/help.test.ts"
+  COMPOSERY_IDE_PATH="$path" ./node_modules/.bin/jest "$@" --coverage=false --testRegex "./tests/integration/help.test.ts"
 }
 
 main "$@"

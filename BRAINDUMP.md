@@ -63,6 +63,7 @@ No 3-way merges from code-server. The only upstream we still sync from is VS Cod
 ### Round 7: final shape
 
 The user corrected several remaining issues:
+
 - Patches should be brought verbatim, not "translated" or split. Just copy them 1:1.
 - The overlay shouldn't have `lib/vscode/` paths as if patching onto code-server.
 - No `code-server` wording should remain (but verbatim migration keeps it initially,
@@ -94,6 +95,7 @@ language, different ecosystem. But pnpm + npm in the same JS ecosystem feels lik
 a mistake that should be resolved one way or the other.
 
 The user chose pnpm everywhere because:
+
 - The repo is already pnpm (root + docs-website)
 - pnpm is the better package manager (disk efficiency, strict deps, speed)
 - Converting to npm just to match code-server's default would be a downgrade
@@ -120,6 +122,7 @@ The user chose pnpm everywhere because:
 
 The user's instruction: "just bring the code from them verbatim 1:1 without your
 own flavoring." This means:
+
 - All 50 patches (code-server's 25 + our 25) copied as-is into packages/ide/patches/
 - Source files copied as-is from code-server v4.118.0
 - No splitting, renaming, or reformatting during the migration
@@ -141,10 +144,8 @@ The overlay had two kinds of files:
 
 2. `overlay/lib/vscode/extensions/` and `overlay/lib/vscode/out/.../workbench/` —
    these go into the VS Code built output, which lives in the submodule and its
-   build artifacts. They can't go in the submodule. They stay as separate
-   directories (`packages/ide/extensions/` and `packages/ide/workbench-assets/`)
-   that the Dockerfile copies onto the release after the build, same as today
-   but with cleaner paths.
+   build artifacts. They can't go in the submodule. They live under
+   `packages/ide/overlay/lib/vscode/` and are applied by `build-release.sh`.
 
 ### Why .gitmodules at the repo root
 
@@ -171,13 +172,14 @@ to review the structural change independently.
 
 Our 25 patches in vendor/code-server/patches/ target two different codebases:
 
-### Patches targeting code-server source (src/node/*, src/browser/*, ci/build/*):
+### Patches targeting code-server source (src/node/_, src/browser/_, ci/build/\*):
+
 - auth-flow.diff → src/node/{cli,http,main,routes/index,routes/login,routes/passwordConfig,routes/register,routes/resetPassword}.ts
 - no-generated-password.diff → src/node/cli.ts
 - persistence-readiness.diff → src/node/{persistence/readiness,routes/health,routes/index}.ts
 - browser-friendly-url.diff → src/node/{main,util}.ts
-- branding.diff → src/node/{cli,http,main,util,wrapper}.ts + ci/build/build-vscode.sh (ALSO targets lib/vscode/*)
-- auth-actions.diff → src/node/cli.ts (ALSO targets lib/vscode/*)
+- branding.diff → src/node/{cli,http,main,util,wrapper}.ts + ci/build/build-vscode.sh (ALSO targets lib/vscode/\*)
+- auth-actions.diff → src/node/cli.ts (ALSO targets lib/vscode/\*)
 - clipboard-osc52.diff → lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
 - clipboard-ipc.diff → lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts (Index: format)
 
@@ -187,6 +189,7 @@ lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts. They are VSCOD
 patches, not code-server patches.
 
 So the actual split is:
+
 - CODE-SERVER source patches: auth-flow, no-generated-password, persistence-readiness,
   browser-friendly-url (4 patches)
 - BOTH (code-server + VS Code): branding, auth-actions (2 patches)
@@ -200,11 +203,13 @@ of the 2 "both" patches are candidates for direct source edits (REVISIT).
 ## The pnpm wrinkle
 
 code-server's postinstall.sh runs `npm ci` in three subdirectories:
+
 - test/ (has its own package.json + package-lock.json)
 - test/e2e/extensions/test-extension/ (has its own package.json + package-lock.json)
 - lib/vscode/ (has its own package.json + .npmrc with electron headers + lockfiles)
 
 These subdirectory installs use npm, not pnpm. This is because:
+
 1. lib/vscode/ has .npmrc with electron-specific config (disturl, target, runtime)
 2. test/ has jest and playwright deps that are separate from the main package
 3. These are not pnpm workspace members — they're nested npm projects
@@ -239,6 +244,7 @@ that code-server 4.118.0 uses). Confirmed from `git submodule status` in the fre
 clone.
 
 When updating VS Code:
+
 1. Bump the submodule: `cd packages/ide/lib/vscode && git fetch origin <new-commit> && git checkout <new-commit>`
 2. Re-run `quilt push -a` — if any of the 50 patches fail, fix the failing patch
 3. Rebuild
@@ -265,18 +271,17 @@ approaches work. The submodule approach means VS Code source is available after
    original order
 4. Overlay src/browser/ files: copied into packages/ide/src/browser/ (replacing
    upstream versions)
-5. Overlay extensions + workbench-assets: copied to packages/ide/extensions/ and
-   packages/ide/workbench-assets/
+5. Overlay extensions + workbench-assets: kept under packages/ide/overlay/lib/vscode/
 6. Config files (package.json, tsconfig.json, eslint.config.mjs): copied 1:1
 7. Bloat: deleted (docs/, .github/, ci/helm-chart/, ci/release-image/, ci/steps/,
-   ci/build/{build-packages.sh,nfpm.yaml,code-server-nfpm.sh,code-server-*.service},
-   install.sh, flake.*, .tours/, CHANGELOG.md, renovate.json, .git-blame-ignore-revs,
+   ci/build/{build-packages.sh,nfpm.yaml,code-server-nfpm.sh,code-server-_.service},
+   install.sh, flake._, .tours/, CHANGELOG.md, renovate.json, .git-blame-ignore-revs,
    .prettierignore, .prettierrc.yaml, .editorconfig, .gitattributes, .dockerignore,
    .gitignore, package-lock.json)
 
 ## What changes at the repo root
 
-- pnpm-workspace.yaml: packages/ide is now a workspace member (covered by packages/*)
+- pnpm-workspace.yaml: packages/ide is now a workspace member (covered by packages/\*)
 - Dockerfile: no clone, no patch copy. COPY packages/ide/, submodule update, quilt
   push, pnpm install, pnpm run build
 - .gitmodules: new file at root for the VS Code submodule

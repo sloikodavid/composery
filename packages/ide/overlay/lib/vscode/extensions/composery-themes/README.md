@@ -4,8 +4,8 @@ Composery Light and Composery Dark color themes, matching the website's warm
 amber branding (see `composery-web/app/globals.css`).
 
 This ships as a builtin extension inside Composery's code-server release. The
-path (`packages/ide/extensions/`) is copied
-straight into the release tree during the Docker build, so the themes are
+path (`packages/ide/overlay/lib/vscode/extensions/`) is copied
+straight into the release tree during the build, so the themes are
 available with no Dockerfile or `product.json` changes. `configurationDefaults`
 in `package.json` makes Composery Dark the default theme on a fresh instance
 (and wires the auto light/dark pair).
@@ -55,7 +55,7 @@ extensions, then reload.
 ```sh
 # Windows (PowerShell, as admin or with developer mode):
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.vscode\extensions\composery-themes" `
-  -Target "$PWD\vendor\code-server\overlay\lib\vscode\extensions\composery-themes"
+  -Target "$PWD\packages\ide\overlay\lib\vscode\extensions\composery-themes"
 ```
 
 Note: with this installed, `configurationDefaults` only changes the default for

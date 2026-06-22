@@ -20,7 +20,7 @@ committed places, each hand-maintained. There is no shared token source, so a
 brand change means editing all of them together:
 
 - **Editor themes**.
-  `packages/ide/extensions/composery-themes/themes/composery-{dark,light}.json`.
+  `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.
   Self-contained builtin themes, VS Code Dark/Light Modern retinted to the amber
   brand while syntax `tokenColors` stay Modern. The true editor default via
   `packages/ide/patches/default-color-theme.diff`, which points

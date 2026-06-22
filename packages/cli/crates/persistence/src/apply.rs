@@ -700,7 +700,11 @@ mod tests {
             Some(b"acl".to_vec())
         );
         assert_eq!(
-            xattr::get(fixture.root.join("file"), "user.persistence-capability-view").unwrap(),
+            xattr::get(
+                fixture.root.join("file"),
+                "user.persistence-capability-view"
+            )
+            .unwrap(),
             Some(b"capability".to_vec())
         );
     }

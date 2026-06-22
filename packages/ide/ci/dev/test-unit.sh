@@ -8,7 +8,7 @@ main() {
 
   # We must run jest from the root otherwise coverage will not include our
   # source files.
-  ./node_modules/.bin/jest "$@" --testRegex "./test/unit/.*ts"
+  ./node_modules/.bin/jest "$@" --testRegex "./tests/unit/.*ts"
 }
 
 main "$@"

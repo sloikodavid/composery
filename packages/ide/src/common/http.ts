@@ -1,12 +1,12 @@
 export enum HttpCode {
-  Ok = 200,
-  Redirect = 302,
-  NotFound = 404,
-  BadRequest = 400,
-  Unauthorized = 401,
-  Forbidden = 403,
-  LargePayload = 413,
-  ServerError = 500,
+	Ok = 200,
+	Redirect = 302,
+	NotFound = 404,
+	BadRequest = 400,
+	Unauthorized = 401,
+	Forbidden = 403,
+	LargePayload = 413,
+	ServerError = 500
 }
 
 /**
@@ -14,16 +14,18 @@ export enum HttpCode {
  * used in the HTTP response.
  */
 export class HttpError extends Error {
-  public constructor(
-    message: string,
-    public readonly statusCode: HttpCode,
-    public readonly details?: object,
-  ) {
-    super(message)
-    this.name = this.constructor.name
-  }
+	public constructor(
+		message: string,
+		public readonly statusCode: HttpCode,
+		public readonly details?: object
+	) {
+		super(message);
+		this.name = this.constructor.name;
+	}
 }
 
 export function getCookieSessionName(suffix?: string): string {
-  return suffix ? `code-server-session-${suffix.replace(/[^a-zA-Z0-9-]/g, "-")}` : "code-server-session"
+	return suffix
+		? `code-server-session-${suffix.replace(/[^a-zA-Z0-9-]/g, "-")}`
+		: "code-server-session";
 }

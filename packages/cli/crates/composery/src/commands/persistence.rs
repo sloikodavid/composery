@@ -55,7 +55,10 @@ pub fn run(command: PersistenceCommand, json: bool) -> Result<()> {
         ),
         #[cfg(unix)]
         PersistenceCommand::GenerateBaseline { root, output } => {
-            persistence::baseline::generate(&persistence::baseline::GenerateOptions { root, output })
+            persistence::baseline::generate(&persistence::baseline::GenerateOptions {
+                root,
+                output,
+            })
         }
     }
 }

@@ -37,7 +37,7 @@ Index: code-server/lib/vscode/src/vs/workbench/api/node/extHostExtensionService.
  
 +		(async () => {
 +			const socketPath = process.env['VSCODE_IPC_HOOK_CLI'];
-+			const codeServerSocketPath = process.env['CODE_SERVER_SESSION_SOCKET']
++			const codeServerSocketPath = process.env['COMPOSERY_SESSION_SOCKET']
 +			if (!socketPath || !codeServerSocketPath) {
 +				return;
 +			}
@@ -105,7 +105,7 @@ Index: code-server/lib/vscode/src/vs/workbench/api/node/extensionHostProcess.ts
 +		extensionHostMain.terminate(reason);
 +
 +		const socketPath = process.env['VSCODE_IPC_HOOK_CLI'];
-+		const codeServerSocketPath = process.env['CODE_SERVER_SESSION_SOCKET']
++		const codeServerSocketPath = process.env['COMPOSERY_SESSION_SOCKET']
 +		if (!socketPath || !codeServerSocketPath) {
 +			return;
 +		}
