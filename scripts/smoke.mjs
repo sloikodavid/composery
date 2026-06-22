@@ -321,21 +321,21 @@ async function assertPersistdAppliesChanges() {
 	log("checking persistence applies filesystem changes");
 
 	log("checking persistence layout and command surface");
-	await waitForExec("test -x /opt/persistence/bin/persistence");
-	await waitForExec("test ! -e /opt/persistence/bin/persistence-baseline");
+	await waitForExec("test -x /opt/composery/bin/composery");
+	await waitForExec("command -v composery");
 	await waitForExec("test -f /opt/persistence/baseline.sqlite");
 	await waitForExec("test -f /data/persistence/.internal/state.sqlite");
 	await waitForExec("test -f /run/persistence/ready");
 	execSh("test ! -e /run/persistence/restore-failed");
 	execSh("test ! -e /run/persistence/watch-failed");
 	execSh(
-		'/opt/persistence/bin/persistence status --json | jq -e ".ready == true and .baselineValid == true"'
+		'composery persistence status --json | jq -e ".ready == true and .baselineValid == true"'
 	);
 	execSh(
-		'/opt/persistence/bin/persistence doctor --json | jq -e ".rebuiltPublicIndex == true"'
+		'composery persistence doctor --json | jq -e ".rebuiltPublicIndex == true"'
 	);
 	execSh(
-		"/opt/persistence/bin/persistence prune --json | jq -e '.removed | type == \"array\"'"
+		"composery persistence prune --json | jq -e '.removed | type == \"array\"'"
 	);
 
 	log("creating files that should be applied after restart");
@@ -432,7 +432,7 @@ async function assertPersistdAppliesChanges() {
 	execSh(
 		"mkdir -p /data/persistence/changed/excluded-smoke /data/persistence/removed/excluded-smoke && printf dormant > /data/persistence/changed/excluded-smoke/dormant && : > /data/persistence/removed/excluded-smoke/tombstone"
 	);
-	dockerExec(["/opt/persistence/bin/persistence", "prune", "--json"], {
+	dockerExec(["composery", "persistence", "prune", "--json"], {
 		capture: true,
 		quiet: true
 	});
@@ -788,7 +788,7 @@ function dumpContainerLogs() {
 }
 
 function dumpPersistdDiagnostics() {
-	dockerExec(["/opt/persistence/bin/persistence", "status", "--json"], {
+	dockerExec(["composery", "persistence", "status", "--json"], {
 		check: false
 	});
 	dockerExec(

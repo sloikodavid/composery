@@ -31,7 +31,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: packages/persistence
+          workspaces: packages/cli
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec symlink-agents --yes
       - run: pnpm check

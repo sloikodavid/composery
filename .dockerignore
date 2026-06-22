@@ -3,4 +3,4 @@
 !rootfs/**
 !packages/**
 packages/ide/lib
-packages/persistence/target
+packages/cli/target

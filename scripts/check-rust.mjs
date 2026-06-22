@@ -101,13 +101,9 @@ function cargoCommands(targets = cargoTargets()) {
 
 function rustImage() {
 	const dockerfile = readFileSync(join(REPO_ROOT, "Dockerfile"), "utf8");
-	const match = /^FROM\s+(rust:[^\s]+)\s+AS\s+persistence-chef\s*$/m.exec(
-		dockerfile
-	);
+	const match = /^FROM\s+(rust:[^\s]+)\s+AS\s+cli-chef\s*$/m.exec(dockerfile);
 	if (!match) {
-		console.error(
-			"Could not find the persistence-chef Rust image in Dockerfile."
-		);
+		console.error("Could not find the cli-chef Rust image in Dockerfile.");
 		process.exit(1);
 	}
 	return match[1];

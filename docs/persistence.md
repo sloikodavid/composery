@@ -48,16 +48,16 @@ exclusion list; invalid exclusion paths are rejected at startup.
 Inside the container:
 
 ```bash
-sudo /opt/persistence/bin/persistence status
-sudo /opt/persistence/bin/persistence status --json
-sudo /opt/persistence/bin/persistence doctor
-sudo /opt/persistence/bin/persistence prune
+sudo composery persistence status
+sudo composery persistence status --json
+sudo composery persistence doctor
+sudo composery persistence prune
 ```
 
 ## Readiness
 
 Readiness is exposed through `/run/persistence/ready` and code-server's `/healthz` route.
-If `persistence apply` fails during boot, code-server does not become ready.
+If `composery persistence apply` fails during boot, code-server does not become ready.
 
 ## Hostname
 

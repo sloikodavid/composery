@@ -6,7 +6,7 @@ coverage/
 *.log
 dist/
 target/
-packages/persistence/target/
+packages/cli/target/
 .pnpm-store/
 .DS_Store
 Thumbs.db

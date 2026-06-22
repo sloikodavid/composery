@@ -1,36 +1,30 @@
 {
-  "name": "code-server",
+  "name": "@composery/ide",
   "license": "MIT",
   "version": "0.0.0",
-  "description": "Run VS Code on a remote server.",
-  "homepage": "https://github.com/coder/code-server",
+  "description": "Composery IDE: VS Code in the browser",
+  "homepage": "https://github.com/sloikodavid/composery",
   "bugs": {
-    "url": "https://github.com/coder/code-server/issues"
+    "url": "https://github.com/sloikodavid/composery/issues"
   },
-  "repository": "https://github.com/coder/code-server",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sloikodavid/composery"
+  },
   "scripts": {
-    "clean": "./ci/build/clean.sh",
+    "clean": "git clean -Xffd",
     "build": "./ci/build/build-code-server.sh",
     "build:vscode": "./ci/build/build-vscode.sh",
-    "doctoc": "./ci/dev/doctoc.sh",
     "release": "./ci/build/build-release.sh",
-    "release:prep": "./ci/build/release-prep.sh",
-    "test:e2e": "VSCODE_IPC_HOOK_CLI= ./ci/dev/test-e2e.sh",
-    "test:e2e:proxy": "USE_PROXY=1 ./ci/dev/test-e2e.sh",
     "test:unit": "./ci/dev/test-unit.sh --forceExit --detectOpenHandles",
     "test:integration": "./ci/dev/test-integration.sh",
-    "test:native": "./ci/dev/test-native.sh",
+    "test:e2e": "VSCODE_IPC_HOOK_CLI= ./ci/dev/test-e2e.sh",
     "test:scripts": "./ci/dev/test-scripts.sh",
-    "package": "./ci/build/build-packages.sh",
+    "test": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e && pnpm run test:scripts",
+    "fmt": "pnpm run prettier && ./ci/dev/doctoc.sh",
     "prettier": "prettier --write --log-level=warn --cache .",
-    "preinstall": "node ./ci/dev/preinstall.js",
-    "postinstall": "./ci/dev/postinstall.sh",
-    "publish:npm": "./ci/steps/publish-npm.sh",
-    "publish:docker": "./ci/steps/docker-buildx-push.sh",
-    "fmt": "npm run prettier && ./ci/dev/doctoc.sh",
     "lint:scripts": "./ci/dev/lint-scripts.sh",
     "lint:ts": "eslint --max-warnings=0 --fix $(git ls-files '*.ts' '*.js' | grep -v 'lib/vscode')",
-    "test": "echo 'Run npm run test:unit or npm run test:e2e' && exit 1",
     "watch": "VSCODE_DEV=1 VSCODE_IPC_HOOK_CLI= NODE_OPTIONS='--max_old_space_size=32384 --trace-warnings' ts-node ./ci/dev/watch.ts",
     "icons": "./ci/dev/gen_icons.sh"
   },
@@ -39,32 +33,48 @@
     "@eslint/compat": "^1.2.0",
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.12.0",
+    "@jest-mock/express": "^1.4.5",
+    "@playwright/test": "^1.56.1",
     "@schemastore/package": "^0.0.10",
     "@types/compression": "^1.7.3",
     "@types/cookie-parser": "^1.4.4",
     "@types/eslint__js": "^8.42.3",
     "@types/express": "^5.0.0",
+    "@types/express-serve-static-core": "^5.0.0",
     "@types/http-proxy": "1.17.7",
+    "@types/jest": "^29.5.0",
     "@types/js-yaml": "^4.0.6",
+    "@types/jsdom": "^16.2.13",
     "@types/node": "22.x",
+    "@types/node-fetch": "^2.5.8",
     "@types/pem": "^1.14.1",
     "@types/proxy-from-env": "^1.0.1",
+    "@types/qs": "^6.9.7",
     "@types/safe-compare": "^1.1.0",
     "@types/semver": "^7.5.2",
     "@types/trusted-types": "^2.0.4",
     "@types/ws": "^8.5.5",
+    "@types/wtfnode": "^0.7.0",
     "doctoc": "^2.2.1",
     "eslint": "^9.12.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.28.1",
     "eslint-plugin-prettier": "^5.0.0",
+    "extract-zip": "^2.0.1",
     "globals": "^16.1.0",
+    "jest": "^29.7.0",
+    "jest-fetch-mock": "^3.0.3",
+    "jsdom": "^16.4.0",
+    "node-fetch": "^2.6.7",
+    "playwright": "^1.59.1",
     "prettier": "3.6.2",
     "prettier-plugin-sh": "^0.18.0",
+    "ts-jest": "^29.1.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.6.2",
-    "typescript-eslint": "^8.8.0"
+    "typescript-eslint": "^8.8.0",
+    "wtfnode": "^0.9.1"
   },
   "dependencies": {
     "@coder/logger": "^3.0.1",
@@ -87,17 +97,14 @@
     "ws": "^8.14.2",
     "xdg-basedir": "^4.0.0"
   },
-  "resolutions": {
-    "@types/node": "22.x"
-  },
   "bin": {
-    "code-server": "out/node/entry.js"
+    "composery": "out/node/entry.js"
   },
   "keywords": [
     "vscode",
     "development",
     "ide",
-    "coder",
+    "composery",
     "vscode-remote",
     "browser-ide",
     "remote-development"
@@ -107,7 +114,7 @@
   },
   "jest": {
     "transform": {
-      "^.+\\.ts$": "<rootDir>/test/node_modules/ts-jest"
+      "^.+\\.ts$": "ts-jest"
     },
     "testEnvironment": "node",
     "testPathIgnorePatterns": [
@@ -136,12 +143,7 @@
       }
     },
     "modulePathIgnorePatterns": [
-      "<rootDir>/release-packages",
       "<rootDir>/release",
-      "<rootDir>/release-standalone",
-      "<rootDir>/release-npm-package",
-      "<rootDir>/release-gcp",
-      "<rootDir>/release-images",
       "<rootDir>/lib"
     ],
     "moduleNameMapper": {

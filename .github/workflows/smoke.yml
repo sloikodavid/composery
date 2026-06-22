@@ -79,7 +79,7 @@ jobs:
         run: |
           docker ps -a || true
           docker logs "$SMOKE_CONTAINER_NAME" || true
-          docker exec "$SMOKE_CONTAINER_NAME" /opt/persistence/bin/persistence status --json || true
+          docker exec "$SMOKE_CONTAINER_NAME" composery persistence status --json || true
           docker exec "$SMOKE_CONTAINER_NAME" sh -lc 'for file in /data/persistence/.internal/apply-error.log /data/persistence/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done' || true
       - name: Cleanup
         if: always()

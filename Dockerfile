@@ -27,10 +27,19 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src/ide
+# Keep the pnpm version in sync with the runtime stage below.
+ARG PNPM_VERSION=11.7.0
+RUN npm install --global "pnpm@${PNPM_VERSION}"
 
-# Copy the IDE source (hard fork of code-server, with our patches and overlay assets).
-COPY packages/ide/ .
+WORKDIR /src
+
+# Copy the workspace root (so pnpm can use the frozen lockfile) and the packages
+# the workspace references.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/ide ./packages/ide
+COPY packages/docs-website ./packages/docs-website
+
+WORKDIR /src/packages/ide
 
 # Fetch VS Code at the pinned commit (the .gitmodules in the repo is for local dev;
 # in Docker we clone directly since there's no git context after COPY).
@@ -45,41 +54,34 @@ RUN git clone --depth 1 https://github.com/microsoft/vscode.git lib/vscode \
 # The series file already lists all 50 patches in order; quilt reads it from patches/.
 RUN quilt push -a
 
-# Install dependencies. No --frozen-lockfile here: the Docker context only includes
-# packages/ide/ (not the root pnpm-lock.yaml), so pnpm resolves from package.json.
-# The base image digest is the reproducibility boundary for the Docker build.
-# REVISIT: generate a standalone pnpm-lock.yaml for packages/ide/ or restructure
-# the Docker build to include the root workspace lockfile.
-RUN pnpm install
+# Install dependencies from the frozen workspace lockfile.
+RUN pnpm install --frozen-lockfile
 
 # Build the standalone release.
 RUN pnpm run build \
   && VERSION="0.0.0" pnpm run build:vscode \
   && KEEP_MODULES=1 pnpm run release
 
-# Overlay Composery extensions and workbench assets onto the built release.
-COPY packages/ide/extensions/ /src/ide/release/lib/vscode/extensions/
-COPY packages/ide/workbench-assets/ /src/ide/release/lib/vscode/out/vs/code/browser/workbench/
 RUN printf 'source=https://github.com/sloikodavid/composery\n' \
-    > /src/ide/release/.composery-upstream
+    > /src/packages/ide/release/.composery-upstream
 
-# Build persistence. cargo-chef caches the dependency compile so source-only edits skip it.
-FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS persistence-chef
+# Build the Composery CLI. cargo-chef caches the dependency compile so source-only edits skip it.
+FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS cli-chef
 # renovate: datasource=crate depName=cargo-chef
 ARG CARGO_CHEF_VERSION=0.1.77
 RUN cargo install cargo-chef --version "${CARGO_CHEF_VERSION}" --locked
-WORKDIR /src/persistence
+WORKDIR /src/cli
 
-FROM persistence-chef AS persistence-planner
-COPY packages/persistence/ .
+FROM cli-chef AS cli-planner
+COPY packages/cli/ .
 RUN cargo chef prepare --recipe-path /recipe.json
 
-FROM persistence-chef AS persistence-builder
-COPY --from=persistence-planner /recipe.json /recipe.json
+FROM cli-chef AS cli-builder
+COPY --from=cli-planner /recipe.json /recipe.json
 RUN cargo chef cook --release --recipe-path /recipe.json
-COPY packages/persistence/ .
-RUN cargo build --release --locked --bin persistence \
-  && install -D target/release/persistence /out/persistence
+COPY packages/cli/ .
+RUN cargo build --release --locked --bin composery \
+  && install -D target/release/composery /out/composery
 
 # Assemble the runtime image.
 FROM ${NODE_IMAGE} AS runtime
@@ -173,8 +175,8 @@ RUN groupmod --new-name user node \
   && usermod --login user --home /home/user --move-home node \
   && mkdir -p /home/user
 
-COPY --from=ide-builder /src/ide/release /opt/code-server/current
-COPY --from=persistence-builder /out/persistence /opt/persistence/bin/persistence
+COPY --from=ide-builder /src/packages/ide/release /opt/code-server/current
+COPY --from=cli-builder /out/composery /opt/composery/bin/composery
 COPY rootfs/ /
 
 # Show only the working directory in the interactive prompt (~/Desktop, not
@@ -209,10 +211,11 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && ln -sf ../composery.service /etc/systemd/system/multi-user.target.wants/composery.service \
   && ln -sf /opt/code-server/current/lib/vscode/bin/remote-cli/code-server /usr/local/bin/code \
   && ln -sf /opt/code-server/current/bin/code-server /usr/local/bin/code-server \
+  && ln -sf /opt/composery/bin/composery /usr/local/bin/composery \
   && update-desktop-database /usr/share/applications \
   && update-mime-database /usr/share/mime \
   && chown -R user:user /usr/local \
-  && /opt/persistence/bin/persistence __generate-baseline --root / --output /opt/persistence/baseline.sqlite
+  && /opt/composery/bin/composery persistence __generate-baseline --root / --output /opt/persistence/baseline.sqlite
 
 # No USER directive: persistence needs root to rebuild the filesystem on boot; supervisor
 # drops to the unprivileged `user` for code-server. Root is intentional.

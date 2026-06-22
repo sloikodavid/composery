@@ -19,7 +19,7 @@ kubectl apply -f composery.yaml
 kubectl apply -f ingress.yaml
 ```
 
-Wait for the pod to become ready (the startup probe allows ~150s for `persistence apply`):
+Wait for the pod to become ready (the startup probe allows ~150s for `composery persistence apply`):
 
 ```bash
 kubectl rollout status deploy/composery

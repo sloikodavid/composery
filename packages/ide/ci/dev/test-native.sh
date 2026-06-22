@@ -33,7 +33,7 @@ main() {
     exit 1
   fi
 
-  CODE_SERVER_PATH="$path" ./test/node_modules/.bin/jest "$@" --coverage=false --testRegex "./test/integration/help.test.ts"
+  CODE_SERVER_PATH="$path" ./node_modules/.bin/jest "$@" --coverage=false --testRegex "./test/integration/help.test.ts"
 }
 
 main "$@"

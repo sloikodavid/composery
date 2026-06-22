@@ -577,13 +577,14 @@ mod imp {
             let temp = tempfile::tempdir().unwrap();
             let root = temp.path().join("root");
             let output = root.join("opt/persistence/baseline.sqlite");
-            fs::create_dir_all(root.join("opt/persistence/bin")).unwrap();
+            fs::create_dir_all(root.join("opt/persistence")).unwrap();
+            fs::create_dir_all(root.join("opt/composery/bin")).unwrap();
             fs::create_dir_all(root.join("data")).unwrap();
             fs::create_dir_all(root.join("run")).unwrap();
             fs::write(&output, "old baseline").unwrap();
             fs::write(root.join("data/user-file"), "ignored").unwrap();
             fs::write(root.join("run/runtime-file"), "ignored").unwrap();
-            fs::write(root.join("opt/persistence/bin/persistence"), "kept").unwrap();
+            fs::write(root.join("opt/composery/bin/composery"), "kept").unwrap();
 
             generate(&GenerateOptions {
                 root: root.clone(),
@@ -610,15 +611,15 @@ mod imp {
                 assert_eq!(found, None, "{path} should be excluded");
             }
 
-            let persistence: Option<String> = conn
+            let composery: Option<String> = conn
                 .query_row(
-                    "SELECT path FROM records WHERE path = '/opt/persistence/bin/persistence'",
+                    "SELECT path FROM records WHERE path = '/opt/composery/bin/composery'",
                     [],
                     |row| row.get(0),
                 )
                 .optional()
                 .unwrap();
-            assert_eq!(persistence, Some("/opt/persistence/bin/persistence".into()));
+            assert_eq!(composery, Some("/opt/composery/bin/composery".into()));
         }
 
         #[test]

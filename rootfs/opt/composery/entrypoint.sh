@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-/opt/persistence/bin/persistence apply
+/opt/composery/bin/composery persistence apply
 
 # A stable machine-id makes the box behave like a real host (dbus and friends
 # expect one). systemd would generate one, but supervisor mode would not, so do

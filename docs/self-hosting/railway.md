@@ -26,4 +26,4 @@ Recipe: [hosting/railway](https://github.com/sloikodavid/composery/tree/main/hos
 
 - Run a single replica; `persistence` is a single writer for one `/data` volume.
 - Railway volumes are attached at runtime - after first boot, confirm persistence with.
-  `persistence status --json` in the service shell.
+  `composery persistence status --json` in the service shell.
