@@ -4,7 +4,11 @@ packages:
 patchedDependencies:
   fumadocs-ui@16.10.4: patches/fumadocs-ui@16.10.4.patch
 
+overrides:
+  "@types/node": "22.x"
+
 allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+  argon2: true

@@ -51,13 +51,16 @@ You're being judged strictly on results that benefit the project's future - not 
 - Use `pnpm install <package>@latest` over editing package.json from memory.
 - Use `tmp/` for temporary scratch files and artifacts, it's gitignored.
 - Browser and operator-facing names use Composery.
-- Keep `code-server` only for upstream machinery.
-- Upstream machinery includes the cloned source, patch names, build coordinates,
-  CLI binary, direct exec scripts, artifact paths, and env contracts such as
-  `PASSWORD`, `HASHED_PASSWORD`, and `PORT`.
+- The IDE at `packages/ide/` is a hard fork of code-server 4.118.0. We own it.
+  See REVISIT.md for the remaining `code-server` references to rename.
+- Keep `code-server` only for upstream machinery we haven't renamed yet (CLI binary,
+  build script names, env var names inside patches, product.json fields).
+- Upstream machinery includes the VS Code submodule at `packages/ide/lib/vscode/`,
+  patch names, build coordinates, CLI binary, direct exec scripts, artifact paths,
+  and env contracts such as `PASSWORD`, `HASHED_PASSWORD`, and `PORT`.
 - Do not create hybrid visible names like `composery-code-server`.
 - Visible services and supervisor programs should be `composery` and `persistence`.
-- Composery prefix = namespacing, not decoration. Use `composery`/`composery-`.
+- Composery prefix = namespacing, not decoration. Use `composery`/`composery-`
   only for identifiers injected into a shared upstream namespace (CSS classes,
   custom properties, DOM attributes, command/setting/contribution/extension ids).
   Never on things we own outright - TS files, symbols, types, or patch filenames.

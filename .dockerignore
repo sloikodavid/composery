@@ -1,6 +1,6 @@
 **
 !Dockerfile
 !rootfs/**
-!vendor/**
 !packages/**
+packages/ide/lib
 packages/persistence/target

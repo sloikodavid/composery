@@ -29,12 +29,11 @@ function extractLoopbackParamLists(patch: string): string[][] {
 	return lists;
 }
 
-describe("code-server patch stack", () => {
+describe("IDE patch stack", () => {
 	test("keeps touch editor source aligned with the split touch/narrow overlays", () => {
-		const base =
-			"vendor/code-server/overlay/lib/vscode/out/vs/code/browser/workbench";
+		const base = "packages/ide/workbench-assets";
 		const touchEditorPatch = readRepoFile(
-			"vendor/code-server/patches/touch-editor.diff"
+			"packages/ide/patches/touch-editor.diff"
 		);
 		const touchCss = readRepoFile(`${base}/touch.css`);
 		const narrowCss = readRepoFile(`${base}/narrow.css`);
@@ -53,10 +52,10 @@ describe("code-server patch stack", () => {
 
 	test("keeps loopback callback parameter names aligned across copied runtime patches", () => {
 		const markdownPatch = readRepoFile(
-			"vendor/code-server/patches/markdown-preview-loopback-callback-bridge.diff"
+			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
 		);
 		const trustedDomainsPatch = readRepoFile(
-			"vendor/code-server/patches/trusted-domains-loopback-callback-guard.diff"
+			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
 		);
 
 		const lists = [
@@ -72,10 +71,10 @@ describe("code-server patch stack", () => {
 
 	test("keeps Markdown preview as a bridge and trusted domains as the decision point", () => {
 		const markdownPatch = readRepoFile(
-			"vendor/code-server/patches/markdown-preview-loopback-callback-bridge.diff"
+			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
 		);
 		const trustedDomainsPatch = readRepoFile(
-			"vendor/code-server/patches/trusted-domains-loopback-callback-guard.diff"
+			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
 		);
 
 		expect(markdownPatch).toContain(
@@ -94,7 +93,7 @@ describe("code-server patch stack", () => {
 
 	test("checks loopback callbacks before trusted-workspace bypasses", () => {
 		const trustedDomainsPatch = readRepoFile(
-			"vendor/code-server/patches/trusted-domains-loopback-callback-guard.diff"
+			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
 		);
 
 		const guardIndex = trustedDomainsPatch.indexOf(
@@ -110,7 +109,7 @@ describe("code-server patch stack", () => {
 
 	test("routes suspicious Markdown HTTP links before normal pass-through schemes", () => {
 		const markdownPatch = readRepoFile(
-			"vendor/code-server/patches/markdown-preview-loopback-callback-bridge.diff"
+			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
 		);
 
 		const suspiciousRouteIndex = markdownPatch.indexOf(
@@ -127,9 +126,9 @@ describe("code-server patch stack", () => {
 
 describe("composery agent setup", () => {
 	const extension = readRepoFile(
-		"vendor/code-server/overlay/lib/vscode/extensions/composery-agents/extension.js"
+		"packages/ide/extensions/composery-agents/extension.js"
 	);
-	const welcome = readRepoFile("vendor/code-server/patches/welcome.diff");
+	const welcome = readRepoFile("packages/ide/patches/welcome.diff");
 
 	// AGENTS entries in the extension: id: "claude"
 	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
@@ -149,7 +148,7 @@ describe("composery agent setup", () => {
 		for (const id of extensionIds) {
 			const logo = resolve(
 				repoRoot,
-				`vendor/code-server/overlay/src/browser/media/agents/${id}.svg`
+				`packages/ide/src/browser/media/agents/${id}.svg`
 			);
 			expect(existsSync(logo)).toBe(true);
 		}
@@ -179,15 +178,15 @@ describe("composery agent setup", () => {
 
 describe("composery shortcuts", () => {
 	const extension = readRepoFile(
-		"vendor/code-server/overlay/lib/vscode/extensions/composery-shortcuts/extension.js"
+		"packages/ide/extensions/composery-shortcuts/extension.js"
 	);
 	const manifest = readRepoFile(
-		"vendor/code-server/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
+		"packages/ide/extensions/composery-shortcuts/package.json"
 	);
 	const shortcutsPatch = readRepoFile(
-		"vendor/code-server/patches/shortcuts.diff"
+		"packages/ide/patches/shortcuts.diff"
 	);
-	const series = readRepoFile("vendor/code-server/patches/series");
+	const series = readRepoFile("packages/ide/patches/series");
 
 	test("keeps patched internal commands aligned with the extension", () => {
 		for (const command of [

@@ -20,23 +20,23 @@ committed places, each hand-maintained. There is no shared token source, so a
 brand change means editing all of them together:
 
 - **Editor themes**.
-  `vendor/code-server/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.
+  `packages/ide/extensions/composery-themes/themes/composery-{dark,light}.json`.
   Self-contained builtin themes, VS Code Dark/Light Modern retinted to the amber
   brand while syntax `tokenColors` stay Modern. The true editor default via
-  `vendor/code-server/patches/default-color-theme.diff`, which points
+  `packages/ide/patches/default-color-theme.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
   symmetric: every chrome key one theme retints, the other should too, or one
   theme leaks upstream's Modern blue.
 - **Auth pages**.
-  `vendor/code-server/overlay/src/browser/pages/global.css` (login, register,
+  `packages/ide/src/browser/pages/global.css` (login, register,
   reset, error).
 - **Startup page**.
-  `vendor/code-server/patches/persistence-readiness.diff`, the "Preparing workspace"
+  `packages/ide/patches/persistence-readiness.diff`, the "Preparing workspace"
   page shown until the workspace is ready.
 - **Logo and wordmark**.
-  `vendor/code-server/patches/branding.diff` and
-  `vendor/code-server/overlay/src/browser/media/composery-logo.svg` (amber
+  `packages/ide/patches/branding.diff` and
+  `packages/ide/src/browser/media/composery-logo.svg` (amber
   gradient and fill).
 - **Welcome tiles**.
   `scripts/generate-icons.mjs`, the `TILE_BG` constant.
@@ -51,15 +51,13 @@ when the themes change, never hand-edit the patch's color lines, and confirm no
 
 ## code-server / VS Code Bumps
 
-The editor is built from source in `Dockerfile`, pinned by
-`CODE_SERVER_VERSION` and `CODE_SERVER_COMMIT`. Bump both together; Renovate does
-this atomically through the custom `code-server-tags` datasource.
+The editor is built from the in-repo hard fork at `packages/ide/`, which descends\nfrom code-server 4.118.0. The VS Code submodule at `packages/ide/lib/vscode/` is\npinned to a specific commit; bump it with `git submodule update` and re-run\n`quilt push -a`.
 
 This is intentionally source-build territory. Downloading upstream release
 tarballs would be simpler and better by default, but this repo applies
 Composery's patch stack before `npm run build`, `npm run build:vscode`, and
 `npm run release`. A code-server bump is never just those two ARG lines: the
-whole `vendor/code-server/patches/series` stack is applied against that source at
+whole `packages/ide/patches/series` stack is applied against that source at
 build time. On each bump:
 
 - Sync the patch base.
@@ -67,7 +65,7 @@ build time. On each bump:
   authoring/check base, not a guess from memory.
 - Re-check every patch.
   Patches can fail loudly or silently no-op if upstream moved the code they
-  target. The authoring recipe is in `vendor/code-server/README.md`; do not
+  target. The authoring recipe is in `packages/ide/README.md`; do not
   duplicate it here.
 - Re-flatten the themes.
   Use the new Dark/Light Modern base, then regenerate the first-paint maps.

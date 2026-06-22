@@ -1,15 +1,10 @@
-# Node major is pinned by code-server (engines + VS Code remote/.npmrc target), whose
+# Node major is pinned by the IDE (engines + VS Code remote/.npmrc target), whose
 # native modules are built for this ABI. The builder and runtime must share it, so it
-# lives in one ARG; bump both together when code-server moves to a new Node major.
+# lives in one ARG; bump both together when the IDE moves to a new Node major.
 ARG NODE_IMAGE=node:22-trixie-slim@sha256:e637ac91fb4f2f40761d217c5d48c41a05edf0b65eb9c34e72c27cce55af9e65
 
-# Build patched code-server from source.
-FROM ${NODE_IMAGE} AS code-server-builder
-
-# renovate: datasource=custom.code-server-tags depName=coder/code-server versioning=semver
-ARG CODE_SERVER_VERSION=4.118.0
-ARG CODE_SERVER_COMMIT=871f1d904834ee78db1c4585e2f14f65c119374a
-ARG CODE_SERVER_REPOSITORY=https://github.com/coder/code-server.git
+# Build the IDE from the in-repo hard fork of code-server.
+FROM ${NODE_IMAGE} AS ide-builder
 
 # Apt packages are intentionally unpinned: the Debian suite comes from the base
 # image, and the image digest is the reproducibility boundary.
@@ -32,43 +27,41 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /src/code-server
+WORKDIR /src/ide
 
-# Fetch code-server and VS Code.
-RUN git clone --branch "v${CODE_SERVER_VERSION}" --depth 1 "${CODE_SERVER_REPOSITORY}" . \
-  && test "$(git rev-parse HEAD)" = "${CODE_SERVER_COMMIT}" \
-  && git submodule update --init --depth 1
+# Copy the IDE source (hard fork of code-server, with our patches and overlay assets).
+COPY packages/ide/ .
 
-# Install dependencies before local diffs so patch-only changes keep this layer cached.
-RUN npm ci
+# Fetch VS Code at the pinned commit (the .gitmodules in the repo is for local dev;
+# in Docker we clone directly since there's no git context after COPY).
+# renovate: datasource=git-tags depName=microsoft/vscode versioning=semver
+ARG VSCODE_COMMIT=9b8ae15a8cf95b9bce1b590b42954530f440e816
+RUN git clone --depth 1 https://github.com/microsoft/vscode.git lib/vscode \
+  && cd lib/vscode \
+  && git fetch --depth 1 origin "${VSCODE_COMMIT}" \
+  && git checkout "${VSCODE_COMMIT}"
 
-# Add local code-server source diffs before building the standalone release.
-COPY vendor/code-server/patches/ /tmp/code-server-patches/
-RUN while IFS= read -r patch_name || [ -n "${patch_name}" ]; do \
-    case "${patch_name}" in ""|\#*) continue ;; esac; \
-    cp "/tmp/code-server-patches/${patch_name}" "patches/${patch_name}"; \
-    printf '%s\n' "${patch_name}" >> patches/series; \
-  done < /tmp/code-server-patches/series \
-  && quilt push -a \
-  && rm -rf /tmp/code-server-patches
+# Apply the merged quilt patch stack (code-server's 25 VS Code patches + our 25).
+# The series file already lists all 50 patches in order; quilt reads it from patches/.
+RUN quilt push -a
+
+# Install dependencies. No --frozen-lockfile here: the Docker context only includes
+# packages/ide/ (not the root pnpm-lock.yaml), so pnpm resolves from package.json.
+# The base image digest is the reproducibility boundary for the Docker build.
+# REVISIT: generate a standalone pnpm-lock.yaml for packages/ide/ or restructure
+# the Docker build to include the root workspace lockfile.
+RUN pnpm install
 
 # Build the standalone release.
-RUN npm run build \
-  && VERSION="${CODE_SERVER_VERSION}" npm run build:vscode \
-  && KEEP_MODULES=1 npm run release
+RUN pnpm run build \
+  && VERSION="0.0.0" pnpm run build:vscode \
+  && KEEP_MODULES=1 pnpm run release
 
-# Overlay Composery browser assets onto the built release.
-COPY vendor/code-server/overlay/ /src/code-server/release/
-RUN XDG_CONFIG_HOME=/tmp/code-server-config /src/code-server/release/bin/code-server --version --json > /tmp/code-server.version.json \
-  && node -e 'const fs = require("node:fs"); const line = fs.readFileSync("/tmp/code-server.version.json", "utf8").split(/\n/).find((entry) => entry.trim().startsWith("{")); if (!line) { throw new Error("code-server version JSON was not found"); } const actual = JSON.parse(line); if (actual.codeServer !== process.argv[1] || actual.commit !== process.argv[2]) { throw new Error(`code-server version mismatch: ${JSON.stringify(actual)}`); }' \
-    "${CODE_SERVER_VERSION}" \
-    "${CODE_SERVER_COMMIT}" \
-  && printf 'version=%s\ncommit=%s\nsource=%s\n' \
-    "${CODE_SERVER_VERSION}" \
-    "${CODE_SERVER_COMMIT}" \
-    "${CODE_SERVER_REPOSITORY}" \
-    > /src/code-server/release/.composery-upstream \
-  && rm -rf /tmp/code-server.version.json /tmp/code-server-config
+# Overlay Composery extensions and workbench assets onto the built release.
+COPY packages/ide/extensions/ /src/ide/release/lib/vscode/extensions/
+COPY packages/ide/workbench-assets/ /src/ide/release/lib/vscode/out/vs/code/browser/workbench/
+RUN printf 'source=https://github.com/sloikodavid/composery\n' \
+    > /src/ide/release/.composery-upstream
 
 # Build persistence. cargo-chef caches the dependency compile so source-only edits skip it.
 FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS persistence-chef
@@ -180,7 +173,7 @@ RUN groupmod --new-name user node \
   && usermod --login user --home /home/user --move-home node \
   && mkdir -p /home/user
 
-COPY --from=code-server-builder /src/code-server/release /opt/code-server/current
+COPY --from=ide-builder /src/ide/release /opt/code-server/current
 COPY --from=persistence-builder /out/persistence /opt/persistence/bin/persistence
 COPY rootfs/ /
 
