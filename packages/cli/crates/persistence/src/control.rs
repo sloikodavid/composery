@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::path::Path;
 
+use crate::paths::Paths;
+
 #[cfg(unix)]
 use std::{
     io::{BufRead, BufReader, Write},
-    os::unix::net::UnixStream,
+    os::unix::{fs::FileTypeExt, net::UnixStream},
     time::Duration,
 };
 
@@ -80,6 +82,34 @@ pub fn request<T: DeserializeOwned>(socket: &Path, command: Command) -> Result<T
     }
 }
 
+/// Query the running daemon over the control socket, returning the typed report.
+///
+/// Reports a clear "daemon is not running" error when the control socket is
+/// missing or is not a socket, rather than a raw connection failure.
+pub fn query<T: DeserializeOwned>(paths: &Paths, command: Command) -> Result<T> {
+    if !control_socket_available(paths) {
+        bail!(
+            "daemon is not running; expected control socket at {}",
+            paths.control_socket.display()
+        );
+    }
+    request(&paths.control_socket, command)
+}
+
+fn control_socket_available(paths: &Paths) -> bool {
+    #[cfg(unix)]
+    {
+        std::fs::symlink_metadata(&paths.control_socket)
+            .is_ok_and(|metadata| metadata.file_type().is_socket())
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = paths;
+        false
+    }
+}
+
 #[cfg(unix)]
 fn request_with_timeout<T: DeserializeOwned>(
     socket: &Path,
@@ -117,6 +147,8 @@ fn request_with_timeout<T: DeserializeOwned>(
 #[cfg(test)]
 mod tests {
     use super::{Command, Request, Response};
+    use crate::paths::Paths;
+    use std::fs;
     #[cfg(unix)]
     use std::{os::unix::net::UnixListener, thread, time::Duration};
 
@@ -162,5 +194,49 @@ mod tests {
 
         assert!(error.contains("read daemon response"));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn query_fails_when_daemon_is_not_running() {
+        let fixture = Fixture::new();
+        for command in [Command::Status, Command::Doctor, Command::Prune] {
+            let error = super::query::<serde_json::Value>(&fixture.paths, command)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains("daemon is not running"),
+                "{command:?}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn query_rejects_stale_non_socket_control_path() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(&fixture.paths.internal_dir).unwrap();
+        fs::write(&fixture.paths.control_socket, "not a socket").unwrap();
+
+        let error = super::query::<serde_json::Value>(&fixture.paths, Command::Status)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("daemon is not running"));
+    }
+
+    struct Fixture {
+        _temp: tempfile::TempDir,
+        paths: Paths,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let paths = Paths::new(
+                temp.path().join("opt/persistence"),
+                temp.path().join("run/persistence"),
+                temp.path().join("data/persistence"),
+            );
+            Self { _temp: temp, paths }
+        }
     }
 }

@@ -1,7 +1,7 @@
 pub mod baseline;
+pub mod boot;
 #[cfg(unix)]
 pub mod capabilities;
-pub mod cli;
 pub mod config;
 pub mod control;
 pub mod daemon;

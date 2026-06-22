@@ -1,0 +1,24 @@
+[package]
+name = "persistence"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+base64 = "0.22.1"
+blake3 = "1.8.5"
+filetime = "0.2.29"
+fs2 = "0.4.3"
+inotify = "0.11.1"
+libc = "0.2.186"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+walkdir = "2.5.0"
+xattr = "1.6.1"
+
+[dev-dependencies]
+tempfile.workspace = true

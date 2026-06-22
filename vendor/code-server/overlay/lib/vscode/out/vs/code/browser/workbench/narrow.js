@@ -231,3 +231,47 @@
 	window.setTimeout(schedule, 500);
 	window.setTimeout(schedule, 1500);
 })();
+
+(function () {
+	// TEMP Composery touch/keyboard diagnostic HUD. Remove after debugging. Pure read-only overlay
+	// (pointer-events:none) that surfaces the device-only viewport/keyboard/hit-test state so a bug
+	// that never reproduces in headless can be read straight off the phone screen.
+	const hud = document.createElement("div");
+	hud.style.cssText =
+		"position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;" +
+		"font:11px/1.35 monospace;color:#fff;background:rgba(0,0,0,.72);padding:3px 5px;white-space:pre-wrap;";
+	const probe = document.createElement("div");
+	probe.style.cssText =
+		"position:fixed;left:-9999px;bottom:0;width:1px;height:env(keyboard-inset-height,0px);";
+	function attach() {
+		document.body.appendChild(hud);
+		document.body.appendChild(probe);
+	}
+	if (document.body) attach();
+	else document.addEventListener("DOMContentLoaded", attach);
+
+	let lastX = -1, lastY = -1, minVV = 99999, maxOff = 0, maxEnv = 0;
+	function rec(e) {
+		const t = (e.touches && e.touches[0]) || e;
+		if (t && t.clientX != null) { lastX = Math.round(t.clientX); lastY = Math.round(t.clientY); }
+	}
+	document.addEventListener("touchstart", rec, { capture: true, passive: true });
+	document.addEventListener("pointerdown", rec, { capture: true, passive: true });
+	const desc = (el) => (el ? el.tagName + "." + ((el.className || "") + "").slice(0, 18) : "null");
+	function tick() {
+		const vv = window.visualViewport;
+		const env = probe.offsetHeight;
+		const vk = navigator.virtualKeyboard;
+		if (vv) { minVV = Math.min(minVV, Math.round(vv.height)); maxOff = Math.max(maxOff, Math.round(vv.offsetTop)); }
+		maxEnv = Math.max(maxEnv, env);
+		const hit = lastX >= 0 ? desc(document.elementFromPoint(lastX, lastY)) : "-";
+		hud.textContent =
+			"VK:" + ("virtualKeyboard" in navigator ? "y" : "n") + " ovl:" + (vk ? vk.overlaysContent : "-") +
+			" | iH:" + window.innerHeight + " vvH:" + (vv ? Math.round(vv.height) : "-") + "(min" + (minVV === 99999 ? "-" : minVV) + ")" +
+			" vvOff:" + (vv ? Math.round(vv.offsetTop) : "-") + "(max" + maxOff + ")" +
+			" env:" + env + "(max" + maxEnv + ")" +
+			"\nact:" + desc(document.activeElement) + " | tap:" + lastX + "," + lastY + " hit:" + hit;
+		requestAnimationFrame(tick);
+	}
+	requestAnimationFrame(tick);
+})();
