@@ -3,7 +3,7 @@
 	"extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
 	"dependencyDashboard": true,
 	"semanticCommits": "enabled",
-	"automerge": false,
+	"labels": ["dependencies"],
 	"minimumReleaseAge": "3 days",
 	"prConcurrentLimit": 3,
 	"prHourlyLimit": 1,
@@ -15,18 +15,49 @@
 	},
 	"packageRules": [
 		{
+			"description": "Major updates: never automerge, hold for manual approval on the dashboard.",
+			"matchUpdateTypes": ["major"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Pin Dockerfile base image digests.",
 			"matchManagers": ["dockerfile"],
 			"pinDigests": true
 		},
 		{
-			"matchUpdateTypes": ["major"],
-			"dependencyDashboardApproval": true
+			"description": "Automerge low-risk updates once CI + smoke pass.",
+			"matchUpdateTypes": ["patch", "pin", "digest"],
+			"automerge": true
 		},
 		{
+			"description": "Automerge dev dependency minor + patch once CI passes.",
+			"matchDepTypes": ["devDependencies"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"automerge": true
+		},
+		{
+			"description": "Group + automerge GitHub Actions bumps (digest/minor/patch).",
+			"matchManagers": ["github-actions"],
+			"matchUpdateTypes": ["digest", "pin", "patch", "minor"],
+			"groupName": "github-actions",
+			"automerge": true
+		},
+		{
+			"description": "Group + automerge the Dockerfile build tools.",
+			"matchPackageNames": ["bun", "npm", "pnpm", "cargo-chef"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"groupName": "build tools",
+			"automerge": true
+		},
+		{
+			"description": "code-server is the vendored core: group and always review by hand (a bump can break patches).",
 			"matchPackageNames": ["coder/code-server"],
-			"groupName": "code-server"
+			"groupName": "code-server",
+			"automerge": false
 		},
 		{
+			"description": "Never bump our own published image.",
 			"matchPackageNames": ["ghcr.io/sloikodavid/composery"],
 			"enabled": false
 		}

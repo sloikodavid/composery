@@ -1,7 +1,7 @@
 [Unit]
 Description=Composery
-After=persistd.service
-Wants=persistd.service
+After=persistence.service
+Wants=persistence.service
 
 [Service]
 Type=simple

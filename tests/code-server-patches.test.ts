@@ -30,6 +30,27 @@ function extractLoopbackParamLists(patch: string): string[][] {
 }
 
 describe("code-server patch stack", () => {
+	test("keeps touch editor source aligned with the split touch/narrow overlays", () => {
+		const base =
+			"vendor/code-server/overlay/lib/vscode/out/vs/code/browser/workbench";
+		const touchEditorPatch = readRepoFile(
+			"vendor/code-server/patches/touch-editor.diff"
+		);
+		const touchCss = readRepoFile(`${base}/touch.css`);
+		const narrowCss = readRepoFile(`${base}/narrow.css`);
+		const narrowJs = readRepoFile(`${base}/narrow.js`);
+
+		expect(touchEditorPatch).toContain("TOUCH_SELECTION_THRESHOLD");
+		expect(touchEditorPatch).toContain("composery-touch-selection-handles");
+		expect(touchEditorPatch).toContain(
+			"this.viewController.setSelection(nextSelection)"
+		);
+		// Touch gate owns the selection handles; narrow gate owns viewport vars + keyboard inset.
+		expect(touchCss).toContain(".composery-touch-selection-handle");
+		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
+		expect(narrowJs).toContain("updateViewportVars");
+	});
+
 	test("keeps loopback callback parameter names aligned across copied runtime patches", () => {
 		const markdownPatch = readRepoFile(
 			"vendor/code-server/patches/markdown-preview-loopback-callback-bridge.diff"
@@ -184,7 +205,7 @@ describe("composery shortcuts", () => {
 		expect(shortcutsPatch).toContain("TerminalIconPicker");
 		expect(shortcutsPatch).toContain("createColorStyleElement");
 		expect(shortcutsPatch).toContain("IConfigurationResolverService");
-		expect(series.trimEnd().split(/\r?\n/).at(-1)).toBe("shortcuts.diff");
+		expect(series.trimEnd().split(/\r?\n/)).toContain("shortcuts.diff");
 	});
 
 	test("ships the full shortcut command surface", () => {
@@ -229,5 +250,16 @@ describe("composery shortcuts", () => {
 		expect(extension).toContain(".rename(");
 		expect(extension).toContain(".bak");
 		expect(extension).toContain("await this.backup(");
+	});
+
+	test("creates file and folder shortcuts from dropped resources", () => {
+		// Dropping Explorer/OS items onto the view stats each resource and
+		// creates file/folder shortcuts.
+		expect(extension).toContain(
+			'this.dropMimeTypes = [TREE_MIME, "text/uri-list"]'
+		);
+		expect(extension).toContain("vscode.workspace.fs.stat");
+		expect(extension).toContain("fileOrFolderShortcut");
+		expect(extension).toContain("hasResourceShortcut");
 	});
 });

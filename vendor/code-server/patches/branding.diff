@@ -5,8 +5,10 @@ from the former rebrand-product/env-vars/paths/assets/theme-cache patches:
 
 - product.json identity and links (ci/build/build-vscode.sh): nameShort/nameLong
   -> "Composery" (tab, window, About), serverDataFolderName -> ".composery-server",
-  and report-issue/docs/license/tips/videos/newsletter links -> Composery. Internal
-  ids (applicationName, win32/darwin, keyboard-shortcut PDFs) stay code-server.
+  and report-issue/docs/license/tips/videos/newsletter links -> Composery, plus
+  https://www.composery.io added to linkProtectionTrustedDomains so opening the
+  brand link (e.g. the title-bar logo's "Open Link in New Tab") never prompts.
+  Internal ids (applicationName, win32/darwin, keyboard-shortcut PDFs) stay code-server.
 - env vars (src/node/cli.ts, http.ts, main.ts, wrapper.ts): every CODE_SERVER_*/CS_*
   var and the {{CS_STATIC_BASE}} template token -> COMPOSERY_* namespace, no fallback,
   so the code-server name can never leak into operator config. Paired overlay HTML
@@ -28,7 +30,7 @@ machinery, never user-visible). See README "Branding rename policy".
 diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
 --- a/ci/build/build-vscode.sh
 +++ b/ci/build/build-vscode.sh
-@@ -72,26 +72,27 @@
+@@ -72,26 +72,28 @@
      "enableTelemetry": true,
      "quality": "stable",
      "codeServerVersion": "$VERSION",
@@ -62,7 +64,9 @@ diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
 +    "tipsAndTricksUrl": "https://docs.composery.io",
 +    "newsletterSignupUrl": "https://www.composery.io",
      "linkProtectionTrustedDomains": [
-       "https://open-vsx.org"
+-      "https://open-vsx.org"
++      "https://open-vsx.org",
++      "https://www.composery.io"
      ],
 diff --git a/src/node/cli.ts b/src/node/cli.ts
 --- a/src/node/cli.ts

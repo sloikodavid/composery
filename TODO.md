@@ -1,15 +1,13 @@
 # To-do
 
-- Implement docs website, possibly GitHub pages, Fumadocs, or other. Docs content has to be in this repo.
-
-- Error code: Out of Memory.
-
-- Fix renovate or move off of it for update handling. Possibly slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most whenever possible.
-
-- Better mobile support.
-
 - Figure out the API including Shortcuts.
   - Copy URL button for shortcuts - uses a Webhook for command shortcuts and passes payload.
+
+- Slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most tasks whenever possible, integrate AI into automations.
+
+- Refactor/rewrite EVERYTHING to be clean, high quality, and maintainable across updates.
+
+- Error code: Out of Memory.
 
 - Enable rulesets on GitHub.
 

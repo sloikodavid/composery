@@ -4,10 +4,19 @@
 	width: min(100%, 420px);
 }
 
+.login-logo-link {
+	display: block;
+	margin: 0 auto 14px;
+}
+
+.login-logo-link:hover {
+	opacity: 0.8;
+	transition: opacity 0.1s;
+}
+
 .login-logo {
 	display: block;
 	height: clamp(40px, 9vw, 52px);
-	margin: 0 auto 14px;
 	max-width: 100%;
 	width: auto;
 }

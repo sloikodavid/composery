@@ -1,0 +1,100 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* Fonts match composery-web: Inter for UI, Bricolage Grotesque for headings and
+   the wordmark. The system font leads so Apple devices render SF directly. */
+@theme inline {
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, var(--font-inter), "Segoe UI", system-ui,
+		sans-serif;
+	--font-heading:
+		var(--font-bricolage), -apple-system, BlinkMacSystemFont, var(--font-inter),
+		"Segoe UI", system-ui, sans-serif;
+
+	/* The composery-web radius scale, so fumadocs' rounded-md/lg/xl surfaces
+	   (buttons, cards, popovers, the search box) carry the same softness as the
+	   marketing site instead of Tailwind's tighter defaults. */
+	--radius: 0.625rem;
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+}
+
+/* The composery-web warm-amber palette, mapped onto fumadocs' theme tokens so
+   the docs match the marketing site (and its light/dark behaviour). */
+:root {
+	--color-fd-background: oklch(0.993 0.005 85);
+	--color-fd-foreground: oklch(0.27 0.018 60);
+	--color-fd-muted: oklch(0.96 0.01 82);
+	--color-fd-muted-foreground: oklch(0.53 0.018 62);
+	--color-fd-popover: oklch(0.993 0.005 85);
+	--color-fd-popover-foreground: oklch(0.27 0.018 60);
+	/* Flat with composery-web, whose --card equals --background: the sidebar reads
+	   as a bordered panel, not a distinct fill. */
+	--color-fd-card: oklch(0.993 0.005 85);
+	--color-fd-card-foreground: oklch(0.27 0.018 60);
+	--color-fd-border: oklch(0.905 0.012 75);
+	--color-fd-primary: oklch(0.55 0.12 64);
+	--color-fd-primary-foreground: oklch(0.99 0.02 95);
+	--color-fd-secondary: oklch(0.96 0.01 82);
+	--color-fd-secondary-foreground: oklch(0.27 0.018 60);
+	--color-fd-accent: oklch(0.96 0.01 82);
+	--color-fd-accent-foreground: oklch(0.27 0.018 60);
+	--color-fd-ring: oklch(0.62 0.09 64);
+}
+
+.dark {
+	--color-fd-background: oklch(0.265 0.018 62);
+	--color-fd-foreground: oklch(0.96 0.01 85);
+	--color-fd-muted: oklch(0.325 0.02 62);
+	--color-fd-muted-foreground: oklch(0.77 0.022 70);
+	--color-fd-popover: oklch(0.265 0.018 62);
+	--color-fd-popover-foreground: oklch(0.96 0.01 85);
+	--color-fd-card: oklch(0.265 0.018 62);
+	--color-fd-card-foreground: oklch(0.96 0.01 85);
+	--color-fd-border: oklch(0.96 0.018 80 / 14%);
+	--color-fd-primary: oklch(0.6 0.14 64);
+	--color-fd-primary-foreground: oklch(0.99 0.02 95);
+	--color-fd-secondary: oklch(0.325 0.02 62);
+	--color-fd-secondary-foreground: oklch(0.96 0.01 85);
+	--color-fd-accent: oklch(0.325 0.02 62);
+	--color-fd-accent-foreground: oklch(0.96 0.01 85);
+	--color-fd-ring: oklch(0.58 0.08 68);
+}
+
+/* fumadocs' neutral preset re-tints the dark sidebar with pure-gray muted and
+   secondary tokens at a higher specificity than .dark, which makes the sidebar
+   drift cold against the warm-amber body. Restore the warm .dark values. */
+.dark #nd-sidebar {
+	--color-fd-muted: oklch(0.325 0.02 62);
+	--color-fd-secondary: oklch(0.325 0.02 62);
+	--color-fd-muted-foreground: oklch(0.77 0.022 70);
+}
+
+html {
+	font-family: var(--font-sans);
+	scrollbar-gutter: stable;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-family: var(--font-heading);
+}
+
+/* Match composery-web: interactive controls show the hand cursor. */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+	cursor: pointer;
+}
+
+html > body[data-scroll-locked] {
+	margin-right: 0px !important;
+	--removed-body-scroll-bar-size: 0px !important;
+}

@@ -1,0 +1,296 @@
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts
+@@ -31,2 +31,3 @@
+ import './media/xterm.css';
++import './terminalKeybar.contribution.js';
+ import { RemoteTerminalBackendContribution } from './remoteTerminalBackend.js';
+--- /dev/null
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalKeybar.contribution.ts
+@@ -0,0 +1,208 @@
++/*---------------------------------------------------------------------------------------------
++ * Composery Mobile Keybar: a strip of control / modifier keys docked above the on-screen
++ * keyboard, since touch browsers expose no Esc / Ctrl / Alt / Tab / arrows. Terminal only -
++ * dedicated keys send raw pty bytes via ITerminalInstance.sendText (the path Ctrl+C already
++ * uses), and sticky Ctrl/Alt rewrite the next typed character via beforeinput (robust on
++ * Android, where keydown reports keyCode 229). Loaded for side effects from
++ * terminal.contribution.ts. Visual structure reuses vscode's .monaco-action-bar styling.
++ *--------------------------------------------------------------------------------------------*/
++
++import './media/terminalKeybar.css';
++import * as dom from '../../../../base/browser/dom.js';
++import { mainWindow } from '../../../../base/browser/window.js';
++import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
++import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
++import { WorkbenchPhase, registerWorkbenchContribution2, IWorkbenchContribution } from '../../../common/contributions.js';
++import { isTouch, keyboardInset } from '../../../browser/touchGate.js';
++import { ITerminalService } from './terminal.js';
++
++type Modifier = 'ctrl' | 'alt' | 'shift';
++type ModifierState = 'off' | 'oneShot' | 'locked';
++
++// px of keyboard overlap below which we treat the keyboard as down (ignores URL-bar jitter).
++const KEYBOARD_THRESHOLD = 80;
++const DOUBLE_TAP_MS = 350;
++
++interface KeyDef {
++	readonly label: string;
++	readonly title: string;
++	// Bytes for the plain key; arrows/tab pass modifiers through for a combined sequence.
++	readonly bytes: (mods: ReadonlySet<Modifier>) => string;
++}
++
++function csiArrow(letter: string, mods: ReadonlySet<Modifier>): string {
++	const code = mods.has('ctrl') ? 5 : mods.has('alt') ? 3 : mods.has('shift') ? 2 : 1;
++	return code === 1 ? `\x1b[${letter}` : `\x1b[1;${code}${letter}`;
++}
++
++const CONTROL_KEYS: KeyDef[] = [
++	{ label: 'Esc', title: 'Escape', bytes: () => '\x1b' },
++	{ label: 'Tab', title: 'Tab', bytes: mods => mods.has('shift') ? '\x1b[Z' : '\x09' },
++	{ label: 'Ctrl C', title: 'Ctrl+C (interrupt)', bytes: () => '\x03' },
++	{ label: '←', title: 'Left', bytes: mods => csiArrow('D', mods) },
++	{ label: '↓', title: 'Down', bytes: mods => csiArrow('B', mods) },
++	{ label: '↑', title: 'Up', bytes: mods => csiArrow('A', mods) },
++	{ label: '→', title: 'Right', bytes: mods => csiArrow('C', mods) },
++	{ label: 'Home', title: 'Home', bytes: () => '\x1b[H' },
++	{ label: 'End', title: 'End', bytes: () => '\x1b[F' },
++	{ label: 'PgUp', title: 'Page Up', bytes: () => '\x1b[5~' },
++	{ label: 'PgDn', title: 'Page Down', bytes: () => '\x1b[6~' },
++];
++
++const MODIFIER_KEYS: { readonly id: Modifier; readonly label: string }[] = [
++	{ id: 'ctrl', label: 'Ctrl' },
++	{ id: 'alt', label: 'Alt' },
++	{ id: 'shift', label: 'Shift' },
++];
++
++class TerminalKeybarContribution extends Disposable implements IWorkbenchContribution {
++	static readonly ID = 'terminal.composeryMobileKeybar';
++
++	private readonly container: HTMLElement;
++	private readonly focusListeners = this._register(new DisposableStore());
++	private readonly modifiers = new Map<Modifier, ModifierState>();
++	private readonly modifierElements = new Map<Modifier, HTMLElement>();
++	private readonly lastTap = new Map<Modifier, number>();
++
++	constructor(
++		@ITerminalService private readonly terminalService: ITerminalService,
++		@ILayoutService layoutService: ILayoutService,
++	) {
++		super();
++
++		// Touch is a device property, not a runtime state - if it can't apply, build nothing.
++		if (!isTouch(mainWindow)) {
++			this.container = document.createElement('div');
++			return;
++		}
++
++		for (const { id } of MODIFIER_KEYS) {
++			this.modifiers.set(id, 'off');
++		}
++
++		this.container = dom.$('.monaco-action-bar.composery-touch-keybar');
++		const list = dom.append(this.container, dom.$('ul.actions-container'));
++		for (const key of CONTROL_KEYS) {
++			this.addKey(list, key.label, key.title, () => this.pressControl(key));
++		}
++		for (const mod of MODIFIER_KEYS) {
++			this.modifierElements.set(mod.id, this.addKey(list, mod.label, mod.label, () => this.tapModifier(mod.id)));
++		}
++		layoutService.mainContainer.appendChild(this.container);
++		this._register(toDisposable(() => this.container.remove()));
++
++		// Tapping the strip must not pull focus off the terminal (which would drop the keyboard).
++		this._register(dom.addDisposableListener(this.container, 'mousedown', e => e.preventDefault()));
++
++		this._register(dom.addDisposableListener(mainWindow.document, 'beforeinput', e => this.onBeforeInput(e as InputEvent), true));
++		this._register(this.terminalService.onDidChangeActiveInstance(() => this.bindFocus()));
++		this._register(dom.addDisposableListener(mainWindow.visualViewport ?? mainWindow, 'resize', () => this.update()));
++
++		const virtualKeyboard = (mainWindow.navigator as { virtualKeyboard?: { overlaysContent: boolean } & EventTarget }).virtualKeyboard;
++		if (virtualKeyboard) {
++			virtualKeyboard.overlaysContent = true;
++			this._register(dom.addDisposableListener(virtualKeyboard, 'geometrychange', () => this.update()));
++		}
++
++		this.bindFocus();
++	}
++
++	private addKey(list: HTMLElement, label: string, title: string, run: () => void): HTMLElement {
++		const item = dom.append(list, dom.$('li.action-item'));
++		const button = dom.append(item, dom.$('a.action-label'));
++		button.textContent = label;
++		button.title = title;
++		button.setAttribute('role', 'button');
++		button.tabIndex = -1;
++		this._register(dom.addDisposableListener(button, 'click', () => run()));
++		return button;
++	}
++
++	private activeModifiers(): Set<Modifier> {
++		const active = new Set<Modifier>();
++		for (const [id, state] of this.modifiers) {
++			if (state !== 'off') { active.add(id); }
++		}
++		return active;
++	}
++
++	private pressControl(key: KeyDef): void {
++		const mods = this.activeModifiers();
++		this.terminalService.activeInstance?.sendText(key.bytes(mods), false);
++		this.consumeOneShot();
++		this.terminalService.activeInstance?.focus();
++	}
++
++	private tapModifier(id: Modifier): void {
++		const now = Date.now();
++		const previous = this.modifiers.get(id) ?? 'off';
++		const doubleTap = now - (this.lastTap.get(id) ?? 0) < DOUBLE_TAP_MS;
++		this.lastTap.set(id, now);
++
++		let next: ModifierState;
++		if (previous === 'locked') {
++			next = 'off';
++		} else if (previous === 'oneShot') {
++			next = doubleTap ? 'locked' : 'off';
++		} else {
++			next = 'oneShot';
++		}
++		this.setModifier(id, next);
++		this.terminalService.activeInstance?.focus();
++	}
++
++	private setModifier(id: Modifier, state: ModifierState): void {
++		this.modifiers.set(id, state);
++		const element = this.modifierElements.get(id);
++		element?.classList.toggle('checked', state !== 'off');
++		element?.classList.toggle('locked', state === 'locked');
++	}
++
++	private consumeOneShot(): void {
++		for (const [id, state] of this.modifiers) {
++			if (state === 'oneShot') { this.setModifier(id, 'off'); }
++		}
++	}
++
++	private onBeforeInput(event: InputEvent): void {
++		const instance = this.terminalService.activeInstance;
++		if (!instance?.hasFocus) {
++			return;
++		}
++		const ctrl = this.modifiers.get('ctrl') !== 'off';
++		const alt = this.modifiers.get('alt') !== 'off';
++		if (!ctrl && !alt) {
++			return; // shift alone is already applied by the soft keyboard's casing.
++		}
++		const data = event.data;
++		if (!data || data.length !== 1) {
++			return;
++		}
++		event.preventDefault();
++		let out = ctrl ? String.fromCharCode(data.charCodeAt(0) & 0x1f) : data;
++		if (alt) {
++			out = '\x1b' + out;
++		}
++		instance.sendText(out, false);
++		this.consumeOneShot();
++	}
++
++	private bindFocus(): void {
++		this.focusListeners.clear();
++		const instance = this.terminalService.activeInstance;
++		if (instance) {
++			this.focusListeners.add(instance.onDidFocus(() => this.update()));
++			this.focusListeners.add(instance.onDidBlur(() => this.update()));
++		}
++		this.update();
++	}
++
++	private update(): void {
++		const show = isTouch(mainWindow)
++			&& !!this.terminalService.activeInstance?.hasFocus
++			&& keyboardInset(mainWindow) > KEYBOARD_THRESHOLD;
++		this.container.classList.toggle('visible', show);
++	}
++}
++
++registerWorkbenchContribution2(TerminalKeybarContribution.ID, TerminalKeybarContribution, WorkbenchPhase.AfterRestored);
+--- /dev/null
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminalKeybar.css
+@@ -0,0 +1,75 @@
++/*---------------------------------------------------------------------------------------------
++ * Composery Mobile Keybar - strip docked above the on-screen keyboard. See
++ * terminalKeybar.contribution.ts. The keyboard inset comes from the Chromium VirtualKeyboard
++ * API (env(keyboard-inset-height)) with the overlay's visualViewport var as the iOS fallback.
++ *--------------------------------------------------------------------------------------------*/
++
++.monaco-workbench .composery-touch-keybar {
++	display: none;
++	position: fixed;
++	left: 0;
++	right: 0;
++	bottom: max(env(keyboard-inset-height, 0px), var(--composery-touch-keyboard-inset, 0px));
++	z-index: 2550;
++	box-sizing: border-box;
++	height: 40px;
++	padding: 0 4px;
++	background-color: var(--vscode-editorWidget-background);
++	border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
++	overflow-x: auto;
++	overflow-y: hidden;
++	overscroll-behavior: contain;
++	-webkit-overflow-scrolling: touch;
++}
++
++.monaco-workbench .composery-touch-keybar.visible {
++	display: block;
++}
++
++.monaco-workbench .composery-touch-keybar > .actions-container {
++	display: flex;
++	align-items: stretch;
++	gap: 4px;
++	height: 100%;
++	margin: 0;
++	padding: 4px 0;
++	list-style: none;
++}
++
++.monaco-workbench .composery-touch-keybar .action-item {
++	display: flex;
++}
++
++.monaco-workbench .composery-touch-keybar .action-label {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	min-width: 38px;
++	padding: 0 10px;
++	border-radius: 5px;
++	color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
++	background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
++	font-size: 13px;
++	line-height: 1;
++	white-space: nowrap;
++	cursor: pointer;
++	user-select: none;
++	-webkit-user-select: none;
++	touch-action: manipulation;
++}
++
++.monaco-workbench .composery-touch-keybar .action-label:active {
++	background-color: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
++}
++
++.monaco-workbench .composery-touch-keybar .action-label.checked {
++	color: var(--vscode-inputOption-activeForeground);
++	background-color: var(--vscode-inputOption-activeBackground);
++	box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
++}
++
++/* Locked (double-tapped) modifier - persists until tapped off; underline marks the difference. */
++.monaco-workbench .composery-touch-keybar .action-label.locked {
++	text-decoration: underline;
++	text-underline-offset: 3px;
++}

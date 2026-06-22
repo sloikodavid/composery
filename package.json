@@ -6,7 +6,7 @@
 	"type": "module",
 	"packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
 	"scripts": {
-		"dev": "docker compose up --build",
+		"dev": "concurrently -k -n compose,docs -c blue,magenta \"docker compose up --build\" \"pnpm --filter docs-website dev\"",
 		"icons": "node scripts/generate-icons.mjs",
 		"smoke": "node scripts/smoke.mjs",
 		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json && symlink-agents --check",
@@ -20,6 +20,7 @@
 		"@eslint/js": "10.0.1",
 		"@types/node": "24.13.2",
 		"@vitest/coverage-v8": "4.1.5",
+		"concurrently": "^10.0.3",
 		"eslint": "10.3.0",
 		"png-to-ico": "^3.0.1",
 		"prettier": "3.8.3",

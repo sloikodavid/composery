@@ -29,7 +29,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: packages/persistd
+          workspaces: packages/persistence
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec symlink-agents --yes
       - run: pnpm check

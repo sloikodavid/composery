@@ -1,0 +1,162 @@
+/*
+ * Touch-pointer workbench styles - the touch half of the two small-screen gates (any touch device,
+ * any screen size). Gate: (hover: none), (any-pointer: coarse). Mirrored - but not importable - in
+ * touchGate.ts and touch.js; keep the touch query in sync.
+ */
+
+.keybindings-editor > .keybindings-body {
+	position: relative;
+}
+
+.composery-touch-selection-handles {
+	display: none;
+	left: 0;
+	pointer-events: none;
+	position: absolute;
+	top: 0;
+	z-index: 50;
+}
+
+.composery-touch-selection-handle {
+	background: var(--vscode-editorCursor-foreground);
+	border: 2px solid var(--vscode-editor-background);
+	border-radius: 999px;
+	box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+	box-sizing: border-box;
+	display: none;
+	height: 22px;
+	left: 0;
+	pointer-events: auto;
+	position: absolute;
+	top: 0;
+	touch-action: none;
+	width: 22px;
+}
+
+.composery-touch-selection-handle::before {
+	background: var(--vscode-editorCursor-foreground);
+	bottom: 18px;
+	content: "";
+	height: 18px;
+	left: 8px;
+	position: absolute;
+	width: 2px;
+}
+
+.composery-touch-selection-handle-caret,
+.composery-touch-selection-handle-end {
+	margin-left: -10px;
+	margin-top: -2px;
+}
+
+.composery-touch-selection-handle-start {
+	margin-left: -10px;
+	margin-top: -2px;
+}
+
+@media (hover: none), (any-pointer: coarse) {
+	.composery-touch-selection-handles {
+		display: block;
+	}
+}
+
+.keybindings-editor > .keybindings-body > .keybindings-table-container {
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .keybindings-table-container::-webkit-scrollbar {
+	display: none;
+}
+
+.keybindings-editor > .keybindings-body > .keybindings-table-container > .monaco-table {
+	min-width: 920px;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 10px;
+	background: var(--vscode-scrollbar-background);
+	z-index: 20;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar.hidden {
+	display: none;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 10px;
+	min-width: 20px;
+	background: var(--vscode-scrollbarSlider-background);
+	contain: strict;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider.active {
+	background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/*
+ * Scroll affordances a mouse gets from hover/wheel that a finger does not - native panning for
+ * overflowing lists/tables, and horizontal scrollbars kept visible since there is no hover.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-list.mouse-support .monaco-list-row,
+	.workbench-suggest-widget .monaco-list .monaco-list-row {
+		touch-action: pan-x pan-y;
+	}
+
+	.settings-editor
+		.monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .split-view-container,
+	.profiles-editor
+		> .monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .split-view-container {
+		touch-action: pan-y;
+	}
+
+	.keybindings-editor > .keybindings-body > .keybindings-table-container {
+		touch-action: pan-y;
+	}
+
+	.settings-editor
+		.monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .scrollbar.horizontal,
+	.profiles-editor
+		> .monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .scrollbar.horizontal {
+		opacity: 1 !important;
+		pointer-events: auto !important;
+		transition: none !important;
+	}
+}

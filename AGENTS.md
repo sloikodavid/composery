@@ -56,7 +56,11 @@ You're being judged strictly on results that benefit the project's future - not 
   CLI binary, direct exec scripts, artifact paths, and env contracts such as
   `PASSWORD`, `HASHED_PASSWORD`, and `PORT`.
 - Do not create hybrid visible names like `composery-code-server`.
-- Visible services and supervisor programs should be `composery` and `persistd`.
+- Visible services and supervisor programs should be `composery` and `persistence`.
+- Composery prefix = namespacing, not decoration. Use `composery`/`composery-`.
+  only for identifiers injected into a shared upstream namespace (CSS classes,
+  custom properties, DOM attributes, command/setting/contribution/extension ids).
+  Never on things we own outright - TS files, symbols, types, or patch filenames.
 
 # Additional
 

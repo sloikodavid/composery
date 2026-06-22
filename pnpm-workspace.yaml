@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+
+patchedDependencies:
+  fumadocs-ui@16.10.4: patches/fumadocs-ui@16.10.4.patch
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true

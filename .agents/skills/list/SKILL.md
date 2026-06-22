@@ -35,8 +35,19 @@ description: Use when you're not sure where to look, need to find the right file
   settings.json
 docs/
   repo/
-    maintenance.mdx
-  self-hosting.mdx
+    maintenance.md
+  self-hosting/
+    fly.md
+    index.md
+    kubernetes.md
+    meta.json
+    railway.md
+    render.md
+    vps.md
+  configuration.md
+  index.md
+  meta.json
+  persistence.md
 hosting/
   fly/
     fly.toml
@@ -71,7 +82,53 @@ hosting/
     README.md
   README.md
 packages/
-  persistd/
+  docs-website/
+    src/
+      app/
+        (docs)/
+          [[...slug]]/
+            page.tsx
+          layout.tsx
+        api/
+          search/
+            route.ts
+        fonts/
+          bricolage-grotesque-latin-wght-normal.woff2
+          inter-latin-wght-normal.woff2
+        llms-full.txt/
+          route.ts
+        llms.mdx/
+          docs/
+            [[...slug]]/
+              route.ts
+        llms.txt/
+          route.ts
+        og/
+          docs/
+            [...slug]/
+              route.tsx
+        fonts.ts
+        global.css
+        icon.svg
+        layout.tsx
+      components/
+        logo-data.ts
+        logo.tsx
+        mdx.tsx
+      lib/
+        cn.ts
+        layout.shared.tsx
+        shared.ts
+        source.ts
+    .gitignore
+    eslint.config.mjs
+    next.config.mjs
+    package.json
+    postcss.config.mjs
+    proxy.ts
+    source.config.ts
+    tsconfig.json
+  persistence/
     src/
       apply.rs
       audit.rs
@@ -98,9 +155,11 @@ packages/
       update.rs
       watch.rs
     tests/
-      persistd_roundtrip.rs
+      persistence_roundtrip.rs
     Cargo.lock
     Cargo.toml
+patches/
+  fumadocs-ui@16.10.4.patch
 rootfs/
   etc/
     sudoers.d/
@@ -112,7 +171,7 @@ rootfs/
     systemd/
       system/
         composery.service
-        persistd.service
+        persistence.service
     xdg/
       mimeapps.list
     mailcap
@@ -184,27 +243,32 @@ vendor/
             composery-agents/
               extension.js
               package.json
+              pnpm-lock.yaml
               README.md
             composery-shortcuts/
               extension.js
               package.json
+              pnpm-lock.yaml
             composery-themes/
               themes/
                 composery-dark.json
                 composery-light.json
               NOTICE
               package.json
+              pnpm-lock.yaml
               README.md
           out/
             vs/
               code/
                 browser/
                   workbench/
+                    fonts.css
                     geist-mono.woff2
                     inter.woff2
-                    workbench-fonts.css
-                    workbench-mobile.css
-                    workbench-mobile.js
+                    narrow.css
+                    narrow.js
+                    touch.css
+                    touch.js
       src/
         browser/
           media/
@@ -236,6 +300,8 @@ vendor/
             register.html
             reset-password.html
     patches/
+      asset-cache.diff
+      auth-actions.diff
       auth-flow.diff
       branding.diff
       browser-friendly-url.diff
@@ -244,19 +310,23 @@ vendor/
       default-color-theme.diff
       default-layout.diff
       extensions-view-themes.diff
+      fonts.diff
       markdown-preview-loopback-callback-bridge.diff
+      narrow-fullscreen.diff
+      narrow-gate.diff
       no-generated-password.diff
-      persistd-readiness.diff
+      overlays.diff
+      persistence-readiness.diff
       series
       shortcuts.diff
       tips.diff
       titlebar-logo.diff
+      touch-editor.diff
+      touch-gate.diff
+      touch-terminal-focus.diff
+      touch-terminal-keybar.diff
       trusted-domains-loopback-callback-guard.diff
       welcome.diff
-      workbench-auth-actions.diff
-      workbench-cache.diff
-      workbench-fonts.diff
-      workbench-mobile.diff
     README.md
 .dockerignore
 .editorconfig
@@ -272,6 +342,7 @@ LICENSE
 package.json
 PLAN.md
 pnpm-lock.yaml
+pnpm-workspace.yaml
 README.md
 renovate.json
 SECURITY.md

@@ -1,7 +1,7 @@
 # Composery
 
 Composery is a persistent, VPS-like Linux appliance with code-server in the browser.
-It runs as one container, but `persistd` stores root filesystem changes on a single
+It runs as one container, but `persistence` stores root filesystem changes on a single
 mounted `/data` volume so installed packages, edited config, CLI state, projects,
 and user files survive restarts and image upgrades.
 
@@ -48,10 +48,10 @@ Composery currently needs:
 - one Composery container;
 - one persistent volume mounted at `/data`;
 - one HTTP edge, usually Caddy, nginx, Traefik, or a platform proxy;
-- root inside the container so `persistd` can rebuild the filesystem on boot.
+- root inside the container so `persistence` can rebuild the filesystem on boot.
 
 The production cloud repo deploys this shape on Hetzner VPSes with Docker Compose
 and Caddy, using the systemd init profile.
 
-Do not run multiple Composery containers against the same `/data` volume. `persistd`
+Do not run multiple Composery containers against the same `/data` volume. `persistence`
 is a single-writer filesystem delta daemon.

@@ -269,7 +269,7 @@ class ShortcutsDragAndDropController {
 		this.getShortcuts = getShortcuts;
 		this.saveShortcuts = saveShortcuts;
 		this.dragMimeTypes = [TREE_MIME, "text/uri-list", "text/plain"];
-		this.dropMimeTypes = [TREE_MIME];
+		this.dropMimeTypes = [TREE_MIME, "text/uri-list"];
 	}
 
 	handleDrag(source, dataTransfer) {
@@ -295,10 +295,19 @@ class ShortcutsDragAndDropController {
 	}
 
 	async handleDrop(target, dataTransfer) {
-		const item = dataTransfer.get(TREE_MIME);
-		const value = item ? await item.asString() : undefined;
-		if (!value) return;
+		const internal = dataTransfer.get(TREE_MIME);
+		if (internal) {
+			await this.reorder(target, await internal.asString());
+			return;
+		}
 
+		const uriList = dataTransfer.get("text/uri-list");
+		if (uriList) {
+			await this.addResources(target, await uriList.asString());
+		}
+	}
+
+	async reorder(target, value) {
 		const draggedIds = parseDraggedShortcutIds(value);
 		if (draggedIds.length === 0) return;
 
@@ -310,14 +319,33 @@ class ShortcutsDragAndDropController {
 
 		const draggedIdSet = new Set(draggedIds);
 		const remaining = current.filter((shortcut) => !draggedIdSet.has(shortcut.id));
-		const targetIndex = target
-			? remaining.findIndex((shortcut) => shortcut.id === target.shortcut.id)
-			: remaining.length;
-		const insertAt = targetIndex < 0 ? remaining.length : targetIndex;
+		const insertAt = dropIndex(target, remaining);
 		await this.saveShortcuts([
 			...remaining.slice(0, insertAt),
 			...dragged,
 			...remaining.slice(insertAt)
+		]);
+	}
+
+	async addResources(target, uriList) {
+		const now = new Date().toISOString();
+		const current = this.getShortcuts();
+		const created = [];
+		for (const uri of parseUriList(uriList)) {
+			const type = await resourceType(uri);
+			const resource = uri.toString();
+			if (!type) continue;
+			if (hasResourceShortcut(current, type, resource)) continue;
+			if (hasResourceShortcut(created, type, resource)) continue;
+			created.push(fileOrFolderShortcut(type, resource, now));
+		}
+		if (created.length === 0) return;
+
+		const insertAt = dropIndex(target, current);
+		await this.saveShortcuts([
+			...current.slice(0, insertAt),
+			...created,
+			...current.slice(insertAt)
 		]);
 	}
 }
@@ -742,6 +770,54 @@ function resourceUriForShortcut(shortcut) {
 	if (shortcut.type === "file" && shortcut.file) return vscode.Uri.parse(shortcut.file);
 	if (shortcut.type === "folder" && shortcut.folder) return vscode.Uri.parse(shortcut.folder);
 	return undefined;
+}
+
+function fileOrFolderShortcut(type, resource, now) {
+	return {
+		id: randomUUID(),
+		type,
+		label: resourceLabel(resource),
+		[type]: resource,
+		createdAt: now,
+		updatedAt: now
+	};
+}
+
+function hasResourceShortcut(list, type, resource) {
+	return list.some(
+		(shortcut) => shortcut.type === type && (type === "file" ? shortcut.file : shortcut.folder) === resource
+	);
+}
+
+async function resourceType(uri) {
+	try {
+		const stat = await vscode.workspace.fs.stat(uri);
+		if (stat.type & vscode.FileType.Directory) return "folder";
+		if (stat.type & vscode.FileType.File) return "file";
+		return undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function parseUriList(value) {
+	const uris = [];
+	for (const line of value.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+		try {
+			uris.push(vscode.Uri.parse(trimmed, true));
+		} catch {
+			// Skip anything that isn't a parseable URI.
+		}
+	}
+	return uris;
+}
+
+function dropIndex(target, list) {
+	if (!target) return list.length;
+	const index = list.findIndex((shortcut) => shortcut.id === target.shortcut.id);
+	return index < 0 ? list.length : index;
 }
 
 function shortcutTooltip(shortcut) {

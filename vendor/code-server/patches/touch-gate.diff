@@ -1,0 +1,29 @@
+--- /dev/null
++++ b/lib/vscode/src/vs/workbench/browser/touchGate.ts
+@@ -0,0 +1,26 @@
++/*---------------------------------------------------------------------------------------------
++ * Composery: the canonical touch gate - the touch half of the two small-screen gates (the
++ * narrow-viewport half is a width breakpoint, local to narrow-fullscreen.diff). Used by
++ * every feature that branches on touch input (touch-terminal-keybar.diff). Mirrored - but not
++ * importable - in the overlay touch.css/.js; keep the touch query in sync.
++ *--------------------------------------------------------------------------------------------*/
++
++export const TOUCH_QUERY = '(hover: none), (any-pointer: coarse)';
++
++export function isTouch(targetWindow: Window): boolean {
++	return targetWindow.matchMedia(TOUCH_QUERY).matches;
++}
++
++// Height in px the on-screen keyboard currently occupies, 0 when hidden. Prefers the Chromium
++// VirtualKeyboard API (reliable on Android) and falls back to visualViewport (iOS Safari).
++export function keyboardInset(targetWindow: Window): number {
++	const virtualKeyboard = (targetWindow.navigator as { virtualKeyboard?: { boundingRect: DOMRect } }).virtualKeyboard;
++	if (virtualKeyboard?.boundingRect) {
++		return Math.round(virtualKeyboard.boundingRect.height);
++	}
++	const viewport = targetWindow.visualViewport;
++	if (viewport) {
++		return Math.max(0, Math.round(targetWindow.innerHeight - viewport.height - viewport.offsetTop));
++	}
++	return 0;
++}

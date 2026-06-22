@@ -274,24 +274,24 @@ async function assertClipboardBridge() {
 }
 
 async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
-	log("checking code-server gates requests while persistd is not ready");
-	const readyFile = execSh("cat /run/persistd/ready", {
+	log("checking code-server gates requests while persistence is not ready");
+	const readyFile = execSh("cat /run/persistence/ready", {
 		capture: true,
 		quiet: true
 	}).stdout;
 
 	try {
-		execSh("rm -f /run/persistd/ready");
+		execSh("rm -f /run/persistence/ready");
 
 		const health = await request("/healthz", { cookies });
 		if (health.statusCode !== 503) {
 			throw new Error(
-				`Expected /healthz to return 503 without persistd ready; got HTTP ${health.statusCode}.`
+				`Expected /healthz to return 503 without persistence ready; got HTTP ${health.statusCode}.`
 			);
 		}
 		const healthJson = JSON.parse(health.body);
-		if (healthJson.persistd?.ready !== false) {
-			throw new Error("Expected /healthz to report persistd.ready=false.");
+		if (healthJson.persistence?.ready !== false) {
+			throw new Error("Expected /healthz to report persistence.ready=false.");
 		}
 
 		const startup = await request("/", {
@@ -300,14 +300,14 @@ async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
 		});
 		if (startup.statusCode !== 503) {
 			throw new Error(
-				`Expected HTML requests to return 503 without persistd ready; got HTTP ${startup.statusCode}.`
+				`Expected HTML requests to return 503 without persistence ready; got HTTP ${startup.statusCode}.`
 			);
 		}
 		assertContains("startup page", startup.body, "Preparing workspace");
 
 		await assertWebsocketServiceUnavailable(cookies);
 	} finally {
-		execSh('printf "%s" "$1" > /run/persistd/ready', {
+		execSh('printf "%s" "$1" > /run/persistence/ready', {
 			args: [readyFile],
 			quiet: true
 		});
@@ -318,24 +318,24 @@ async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
 }
 
 async function assertPersistdAppliesChanges() {
-	log("checking persistd applies filesystem changes");
+	log("checking persistence applies filesystem changes");
 
-	log("checking persistd layout and command surface");
-	await waitForExec("test -x /opt/persistd/bin/persistd");
-	await waitForExec("test ! -e /opt/persistd/bin/persistd-baseline");
-	await waitForExec("test -f /opt/persistd/baseline.sqlite");
-	await waitForExec("test -f /data/persistd/.internal/state.sqlite");
-	await waitForExec("test -f /run/persistd/ready");
-	execSh("test ! -e /run/persistd/restore-failed");
-	execSh("test ! -e /run/persistd/watch-failed");
+	log("checking persistence layout and command surface");
+	await waitForExec("test -x /opt/persistence/bin/persistence");
+	await waitForExec("test ! -e /opt/persistence/bin/persistence-baseline");
+	await waitForExec("test -f /opt/persistence/baseline.sqlite");
+	await waitForExec("test -f /data/persistence/.internal/state.sqlite");
+	await waitForExec("test -f /run/persistence/ready");
+	execSh("test ! -e /run/persistence/restore-failed");
+	execSh("test ! -e /run/persistence/watch-failed");
 	execSh(
-		'/opt/persistd/bin/persistd status --json | jq -e ".ready == true and .baselineValid == true"'
+		'/opt/persistence/bin/persistence status --json | jq -e ".ready == true and .baselineValid == true"'
 	);
 	execSh(
-		'/opt/persistd/bin/persistd doctor --json | jq -e ".rebuiltPublicIndex == true"'
+		'/opt/persistence/bin/persistence doctor --json | jq -e ".rebuiltPublicIndex == true"'
 	);
 	execSh(
-		"/opt/persistd/bin/persistd prune --json | jq -e '.removed | type == \"array\"'"
+		"/opt/persistence/bin/persistence prune --json | jq -e '.removed | type == \"array\"'"
 	);
 
 	log("creating files that should be applied after restart");
@@ -345,17 +345,17 @@ async function assertPersistdAppliesChanges() {
 	execSh("printf restored > /custom-restore");
 	execSh("mkdir -p /foo123 && printf nested > /foo123/nested.txt");
 
-	log("waiting for persistd to record changed filesystem state");
-	await waitForExec("test -f /data/persistd/config.json");
-	await waitForExec("test -d /data/persistd/changed");
-	await waitForExec("test -d /data/persistd/removed");
-	await waitForExec("test -f /data/persistd/metadata.jsonl");
-	await waitForExec("test -f /data/persistd/.internal/lock");
+	log("waiting for persistence to record changed filesystem state");
+	await waitForExec("test -f /data/persistence/config.json");
+	await waitForExec("test -d /data/persistence/changed");
+	await waitForExec("test -d /data/persistence/removed");
+	await waitForExec("test -f /data/persistence/metadata.jsonl");
+	await waitForExec("test -f /data/persistence/.internal/lock");
 	await waitForContainerFile(
-		"/data/persistd/changed/home/user/Desktop/smoke.txt"
+		"/data/persistence/changed/home/user/Desktop/smoke.txt"
 	);
-	await waitForContainerFile("/data/persistd/changed/custom-restore");
-	await waitForContainerFile("/data/persistd/changed/foo123/nested.txt");
+	await waitForContainerFile("/data/persistence/changed/custom-restore");
+	await waitForContainerFile("/data/persistence/changed/foo123/nested.txt");
 
 	log("restarting container and checking changed files are applied");
 	restartContainer();
@@ -367,7 +367,7 @@ async function assertPersistdAppliesChanges() {
 
 	log("removing a file and checking the removal is applied");
 	execSh("rm /custom-restore");
-	await waitForContainerPathAbsent("/data/persistd/changed/custom-restore");
+	await waitForContainerPathAbsent("/data/persistence/changed/custom-restore");
 	restartContainer();
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test ! -e /custom-restore");
@@ -384,7 +384,7 @@ async function assertPersistdAppliesChanges() {
 	log("checking image-file deletion and tombstone removal");
 	execSh("rm /usr/share/applications/composery-text-editor.desktop");
 	await waitForContainerFile(
-		"/data/persistd/removed/usr/share/applications/composery-text-editor.desktop"
+		"/data/persistence/removed/usr/share/applications/composery-text-editor.desktop"
 	);
 	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runDefaultContainer();
@@ -392,7 +392,7 @@ async function assertPersistdAppliesChanges() {
 	execSh("test ! -e /usr/share/applications/composery-text-editor.desktop");
 	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runWithDataVolume(
-		"rm -f /data/persistd/removed/usr/share/applications/composery-text-editor.desktop"
+		"rm -f /data/persistence/removed/usr/share/applications/composery-text-editor.desktop"
 	);
 	runDefaultContainer();
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
@@ -402,9 +402,9 @@ async function assertPersistdAppliesChanges() {
 	execSh(
 		"cp /etc/mailcap /tmp/mailcap.baseline && printf changed > /etc/mailcap"
 	);
-	await waitForExec("test -e /data/persistd/changed/etc/mailcap");
+	await waitForExec("test -e /data/persistence/changed/etc/mailcap");
 	execSh("cat /tmp/mailcap.baseline > /etc/mailcap");
-	await waitForContainerPathAbsent("/data/persistd/changed/etc/mailcap");
+	await waitForContainerPathAbsent("/data/persistence/changed/etc/mailcap");
 
 	log("checking touched large baseline file does not create changed payload");
 	const large = execSh(
@@ -414,30 +414,30 @@ async function assertPersistdAppliesChanges() {
 	if (!large) throw new Error("No large baseline file found for smoke check.");
 	execSh('touch "$1"', { args: [large] });
 	await assertContainerPathStaysAbsent(
-		`/data/persistd/changed/${large.replace(/^\//, "")}`,
+		`/data/persistence/changed/${large.replace(/^\//, "")}`,
 		5
 	);
 
 	log("checking custom exclusions are ignored and not pruned");
 	execSh(
-		'tmp="$(mktemp)"; jq \'.exclusions += ["/excluded-smoke"]\' /data/persistd/config.json > "$tmp"; mv "$tmp" /data/persistd/config.json'
+		'tmp="$(mktemp)"; jq \'.exclusions += ["/excluded-smoke"]\' /data/persistence/config.json > "$tmp"; mv "$tmp" /data/persistence/config.json'
 	);
 	restartContainer();
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("mkdir -p /excluded-smoke && printf ignored > /excluded-smoke/file");
 	await assertContainerPathStaysAbsent(
-		"/data/persistd/changed/excluded-smoke/file",
+		"/data/persistence/changed/excluded-smoke/file",
 		5
 	);
 	execSh(
-		"mkdir -p /data/persistd/changed/excluded-smoke /data/persistd/removed/excluded-smoke && printf dormant > /data/persistd/changed/excluded-smoke/dormant && : > /data/persistd/removed/excluded-smoke/tombstone"
+		"mkdir -p /data/persistence/changed/excluded-smoke /data/persistence/removed/excluded-smoke && printf dormant > /data/persistence/changed/excluded-smoke/dormant && : > /data/persistence/removed/excluded-smoke/tombstone"
 	);
-	dockerExec(["/opt/persistd/bin/persistd", "prune", "--json"], {
+	dockerExec(["/opt/persistence/bin/persistence", "prune", "--json"], {
 		capture: true,
 		quiet: true
 	});
-	execSh("test -f /data/persistd/changed/excluded-smoke/dormant");
-	execSh("test -f /data/persistd/removed/excluded-smoke/tombstone");
+	execSh("test -f /data/persistence/changed/excluded-smoke/dormant");
+	execSh("test -f /data/persistence/removed/excluded-smoke/tombstone");
 }
 
 async function login(cookies) {
@@ -788,14 +788,14 @@ function dumpContainerLogs() {
 }
 
 function dumpPersistdDiagnostics() {
-	dockerExec(["/opt/persistd/bin/persistd", "status", "--json"], {
+	dockerExec(["/opt/persistence/bin/persistence", "status", "--json"], {
 		check: false
 	});
 	dockerExec(
 		[
 			"sh",
 			"-lc",
-			'for file in /data/persistd/.internal/apply-error.log /data/persistd/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done'
+			'for file in /data/persistence/.internal/apply-error.log /data/persistence/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done'
 		],
 		{ check: false }
 	);

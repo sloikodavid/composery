@@ -1,8 +1,8 @@
-# persistd Rust Rewrite Plan
+# persistence Rust Rewrite Plan
 
 ## 0. Purpose
 
-This document is the handoff plan for rewriting `persistd` from first principles in Rust.
+This document is the handoff plan for rewriting `persistence` from first principles in Rust.
 
 It is written for a junior engineer or a new agent with no prior context.
 
@@ -25,8 +25,8 @@ Before coding, read these files in this order:
 5. `C:\Users\sloik\Documents\Projects\composery\.agents\skills\list\SKILL.md`.
 6. `C:\Users\sloik\Documents\Projects\deployery\packages\docker\linux\opt\deployery\core\src\persistence.ts`.
 7. `C:\Users\sloik\Documents\Projects\deployery\packages\docker\linux\opt\deployery\core\src\persistence-paths.ts`.
-8. `C:\Users\sloik\Documents\Projects\composery\packages\persistd\internal\restore\restore_test.go`.
-9. `C:\Users\sloik\Documents\Projects\composery\packages\persistd\internal\watch\watcher_linux.go`.
+8. `C:\Users\sloik\Documents\Projects\composery\packages\persistence\internal\restore\restore_test.go`.
+9. `C:\Users\sloik\Documents\Projects\composery\packages\persistence\internal\watch\watcher_linux.go`.
 
 The Deployery files are reference material only.
 
@@ -34,7 +34,7 @@ Do not clone Deployery's implementation.
 
 Use Deployery to understand the previous open-mirror idea and its shortcomings.
 
-The old Go persistd files are behavioral and edge-case references only.
+The old Go persistence files are behavioral and edge-case references only.
 
 Do not port the Go module structure.
 
@@ -45,19 +45,19 @@ Do not let old Go internals pollute the new design.
 Strict decisions:
 
 - public layout.
-- `/opt/persistd/baseline.sqlite`.
-- `/run/persistd/ready`.
-- `/data/persistd/config.json`.
-- `/data/persistd/changed`.
-- `/data/persistd/removed`.
-- `/data/persistd/metadata.jsonl`.
-- `/data/persistd/.internal/state.sqlite`.
-- `/data/persistd/.internal/lock`.
-- `/data/persistd/.internal/control.sock`.
+- `/opt/persistence/baseline.sqlite`.
+- `/run/persistence/ready`.
+- `/data/persistence/config.json`.
+- `/data/persistence/changed`.
+- `/data/persistence/removed`.
+- `/data/persistence/metadata.jsonl`.
+- `/data/persistence/.internal/state.sqlite`.
+- `/data/persistence/.internal/lock`.
+- `/data/persistence/.internal/control.sock`.
 - command set: `apply`, `daemon`, `status`, `doctor`, `prune`.
 - boot apply and live daemon are separate operational phases.
-- only `persistd apply` and `persistd daemon` mutate filesystem or persistence state.
-- `persistd apply` is one-shot and must finish before the daemon starts.
+- only `persistence apply` and `persistence daemon` mutate filesystem or persistence state.
+- `persistence apply` is one-shot and must finish before the daemon starts.
 - `status`, `doctor`, and `prune` talk to the daemon and fail if it is not running.
 - baseline comparison before writing to `changed`.
 - watcher plus rolling audit.
@@ -109,7 +109,7 @@ Include your recommended answer.
 
 ## 1. Product Contract
 
-An application that uses persistd should feel like a mutable Linux system.
+An application that uses persistence should feel like a mutable Linux system.
 
 The user should be able to change files anywhere in the container root filesystem, except excluded runtime paths.
 
@@ -157,7 +157,7 @@ Do not require special PaaS privileges beyond realistic root-in-container behavi
 
 Do not make SQLite the public persistence truth.
 
-Do not make `persistd` depend on users editing internal daemon files.
+Do not make `persistence` depend on users editing internal daemon files.
 
 ## 3. Hard Requirements
 
@@ -203,21 +203,21 @@ If unsure, fail not-ready rather than guessing.
 Image-shipped baseline data:
 
 ```text
-/opt/persistd/
+/opt/persistence/
   baseline.sqlite
 ```
 
 Ephemeral runtime readiness:
 
 ```text
-/run/persistd/
+/run/persistence/
   ready
 ```
 
 Persistent user delta and daemon internals:
 
 ```text
-/data/persistd/
+/data/persistence/
   config.json
   changed/
   removed/
@@ -230,20 +230,20 @@ Persistent user delta and daemon internals:
     watch-error.log
 ```
 
-The path `/opt/persistd` is image data.
+The path `/opt/persistence` is image data.
 
-The path `/run/persistd` is runtime data.
+The path `/run/persistence` is runtime data.
 
-The path `/data/persistd` is persistent volume data.
+The path `/data/persistence` is persistent volume data.
 
 ## 5. Public Truth
 
 The public persistence truth is exactly:
 
 ```text
-/data/persistd/changed/
-/data/persistd/removed/
-/data/persistd/metadata.jsonl
+/data/persistence/changed/
+/data/persistence/removed/
+/data/persistence/metadata.jsonl
 ```
 
 These are user-facing and human-editable.
@@ -261,16 +261,16 @@ If `.internal/state.sqlite` is missing, stale, or corrupt, rebuild it from publi
 Internal daemon state lives under:
 
 ```text
-/data/persistd/.internal/
+/data/persistence/.internal/
 ```
 
 Use:
 
 ```text
-/data/persistd/.internal/state.sqlite
+/data/persistence/.internal/state.sqlite
 ```
 
-Do not use `persistd.sqlite`.
+Do not use `persistence.sqlite`.
 
 Do not use `db.sqlite` unless `state.sqlite` becomes clearly wrong.
 
@@ -301,11 +301,11 @@ Internal SQLite must not be required to understand or manually repair user data.
 The command surface is settled:
 
 ```bash
-persistd apply
-persistd daemon
-persistd status
-persistd doctor
-persistd prune
+persistence apply
+persistence daemon
+persistence status
+persistence doctor
+persistence prune
 ```
 
 Avoid hidden flag mazes.
@@ -322,7 +322,7 @@ Do not keep public `check`.
 
 ## 8. Command Semantics
 
-### `persistd apply`
+### `persistence apply`
 
 This is the one-shot boot apply phase.
 
@@ -337,7 +337,7 @@ It does:
 3. acquire lock.
 4. open or recover `.internal/state.sqlite`.
 5. load config.
-6. load `/opt/persistd/baseline.sqlite`.
+6. load `/opt/persistence/baseline.sqlite`.
 7. probe volume capabilities.
 8. validate and normalize public truth.
 9. compact `metadata.jsonl`.
@@ -350,15 +350,15 @@ It does:
 
 If apply fails, it must exit non-zero.
 
-If apply fails, it must not write `/run/persistd/ready`.
+If apply fails, it must not write `/run/persistence/ready`.
 
 If apply fails, Supervisor should not start.
 
-Record apply failure details in `.internal/state.sqlite` and `/data/persistd/.internal/apply-error.log` unless the failure is the inability to create or write those diagnostics.
+Record apply failure details in `.internal/state.sqlite` and `/data/persistence/.internal/apply-error.log` unless the failure is the inability to create or write those diagnostics.
 
-Do not make apply failure coordination depend on marker files such as the old `/run/persistd/restore-failed`.
+Do not make apply failure coordination depend on marker files such as the old `/run/persistence/restore-failed`.
 
-### `persistd daemon`
+### `persistence daemon`
 
 This is the long-running live persistence daemon.
 
@@ -373,23 +373,23 @@ It does:
 3. acquire lock.
 4. open or recover `.internal/state.sqlite`.
 5. load config.
-6. load `/opt/persistd/baseline.sqlite`.
+6. load `/opt/persistence/baseline.sqlite`.
 7. probe volume capabilities.
 8. initialize watcher.
 9. initialize rolling audit.
 10. create control socket.
-11. write `/run/persistd/ready`.
+11. write `/run/persistence/ready`.
 12. continue processing watcher and audit candidates through `update`.
 
-The normal guarantee that apply already succeeded comes from entrypoint ordering: Supervisor starts only after `persistd apply` exits zero.
+The normal guarantee that apply already succeeded comes from entrypoint ordering: Supervisor starts only after `persistence apply` exits zero.
 
-`persistd daemon` may report the last apply status from `.internal/state.sqlite`, but it must not invent a second runtime apply-success marker.
+`persistence daemon` may report the last apply status from `.internal/state.sqlite`, but it must not invent a second runtime apply-success marker.
 
-If watcher or audit initialization fails fatally, `daemon` must not write `/run/persistd/ready`.
+If watcher or audit initialization fails fatally, `daemon` must not write `/run/persistence/ready`.
 
 If watcher or audit degrades but rolling audit can still protect correctness, record diagnostics and continue only if that degraded mode is explicitly accepted by the implementation.
 
-### `persistd status`
+### `persistence status`
 
 Fast operational status.
 
@@ -413,7 +413,7 @@ It should report:
 - audit progress summary.
 - public path counts from cached state.
 
-### `persistd doctor`
+### `persistence doctor`
 
 Validation and safe repair.
 
@@ -434,7 +434,7 @@ Examples of safe normalization:
 
 It must not destructively remove user data.
 
-### `persistd prune`
+### `persistence prune`
 
 Intentional destructive cleanup.
 
@@ -458,17 +458,17 @@ Prune can remove:
 
 ## 9. Single Writer Rule
 
-Only `persistd apply` and `persistd daemon` mutate filesystem or persistence state.
+Only `persistence apply` and `persistence daemon` mutate filesystem or persistence state.
 
 They must never run concurrently.
 
-`persistd apply` runs before Supervisor starts and exits.
+`persistence apply` runs before Supervisor starts and exits.
 
-`persistd daemon` is the only long-running writer.
+`persistence daemon` is the only long-running writer.
 
 `status`, `doctor`, and `prune` do not directly mutate the filesystem.
 
-They talk to `persistd daemon`.
+They talk to `persistence daemon`.
 
 There is no fallback path where commands take the lock and mutate directly.
 
@@ -478,15 +478,15 @@ This avoids split-brain behavior.
 
 ## 10. Locking
 
-`persistd apply` and `persistd daemon` use:
+`persistence apply` and `persistence daemon` use:
 
 ```text
-/data/persistd/.internal/lock
+/data/persistence/.internal/lock
 ```
 
-`persistd apply` holds the lock for the duration of apply.
+`persistence apply` holds the lock for the duration of apply.
 
-`persistd daemon` holds the lock for the whole daemon lifetime.
+`persistence daemon` holds the lock for the whole daemon lifetime.
 
 The lock prevents apply and daemon from writing at once.
 
@@ -499,7 +499,7 @@ If the lock cannot be acquired, the command exits or reports already-running cle
 Use one command/control socket:
 
 ```text
-/data/persistd/.internal/control.sock
+/data/persistence/.internal/control.sock
 ```
 
 Do not add a second command path.
@@ -508,7 +508,7 @@ Do not place the control socket under `/run`.
 
 The control socket belongs with lock and internal state.
 
-`/run/persistd/ready` is only for readiness integration.
+`/run/persistence/ready` is only for readiness integration.
 
 The socket protocol is not yet settled.
 
@@ -519,7 +519,7 @@ Invoke the grill skill before finalizing the socket protocol if it is not obviou
 Readiness marker:
 
 ```text
-/run/persistd/ready
+/run/persistence/ready
 ```
 
 This is the only runtime readiness marker.
@@ -527,19 +527,19 @@ This is the only runtime readiness marker.
 Do not create:
 
 ```text
-/run/persistd/restore-failed
-/run/persistd/watch-failed
+/run/persistence/restore-failed
+/run/persistence/watch-failed
 ```
 
 Failure details live in:
 
 ```text
-/data/persistd/.internal/state.sqlite
-/data/persistd/.internal/apply-error.log
-/data/persistd/.internal/watch-error.log
+/data/persistence/.internal/state.sqlite
+/data/persistence/.internal/apply-error.log
+/data/persistence/.internal/watch-error.log
 ```
 
-Write `/run/persistd/ready` only after:
+Write `/run/persistence/ready` only after:
 
 - public truth was updated.
 - apply completed.
@@ -556,22 +556,22 @@ Remove stale ready at apply start.
 Runtime config lives in:
 
 ```text
-/data/persistd/config.json
+/data/persistence/config.json
 ```
 
 There is only one active runtime config.
 
-Do not put runtime config in `/opt/persistd`.
+Do not put runtime config in `/opt/persistence`.
 
-`/opt/persistd` is persistd-owned image data, including the daemon binary and baseline database.
+`/opt/persistence` is persistence-owned image data, including the daemon binary and baseline database.
 
-Do not put config templates in `/opt/persistd`.
+Do not put config templates in `/opt/persistence`.
 
 Do not read runtime policy from `/opt`.
 
-If `/data/persistd/config.json` is absent, `persistd` writes built-in defaults from the binary.
+If `/data/persistence/config.json` is absent, `persistence` writes built-in defaults from the binary.
 
-After first boot, `/data/persistd/config.json` is the only active config.
+After first boot, `/data/persistence/config.json` is the only active config.
 
 If config is absent, create a default config.
 
@@ -614,7 +614,7 @@ Default exclusions in the config file must include at least:
 - `/dev`.
 - `/tmp`.
 - `/var/run`.
-- `/opt/persistd`.
+- `/opt/persistence`.
 - `/opt/composery`.
 - runtime files such as `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf`.
 
@@ -629,7 +629,7 @@ If unsure about an exclusion or anything mentioned in the plan, or any contradic
 Baseline lives in:
 
 ```text
-/opt/persistd/baseline.sqlite
+/opt/persistence/baseline.sqlite
 ```
 
 It is generated at Docker image build time.
@@ -649,11 +649,11 @@ It should skip technical runtime/self-reference paths:
 - `/dev`.
 - `/run`.
 - `/data`.
-- `/opt/persistd/baseline.sqlite`.
+- `/opt/persistence/baseline.sqlite`.
 
 Baseline must include content hashes for all included regular files.
 
-Baseline must be available before `persistd apply` can apply public truth and before `persistd daemon` can protect the live system.
+Baseline must be available before `persistence apply` can apply public truth and before `persistence daemon` can protect the live system.
 
 If baseline is missing or corrupt, fail not-ready.
 
@@ -768,9 +768,9 @@ It stores actual filesystem entries for regular files, directories, symlinks, FI
 Examples:
 
 ```text
-/data/persistd/changed/etc/foo
-/data/persistd/changed/home/user/new.txt
-/data/persistd/changed/home/user/link
+/data/persistence/changed/etc/foo
+/data/persistence/changed/home/user/new.txt
+/data/persistence/changed/home/user/link
 ```
 
 Regular files are stored as regular files.
@@ -796,7 +796,7 @@ It uses empty marker files mirroring deleted paths.
 Example:
 
 ```text
-/data/persistd/removed/usr/bin/tool
+/data/persistence/removed/usr/bin/tool
 ```
 
 This means:
@@ -816,8 +816,8 @@ To bring back the image version, delete the marker.
 Both may exist:
 
 ```text
-/data/persistd/removed/etc/foo
-/data/persistd/changed/etc/foo
+/data/persistence/removed/etc/foo
+/data/persistence/changed/etc/foo
 ```
 
 This is valid.
@@ -849,14 +849,14 @@ Applying `removed/` before `changed/` is required.
 
 Apply must be idempotent.
 
-If the container crashes mid-apply, the next `persistd apply` starts over safely.
+If the container crashes mid-apply, the next `persistence apply` starts over safely.
 
 ## 25. `metadata.jsonl`
 
 Path:
 
 ```text
-/data/persistd/metadata.jsonl
+/data/persistence/metadata.jsonl
 ```
 
 It is public truth.
@@ -899,7 +899,7 @@ Indexes belong in `.internal/state.sqlite`.
 
 ## 27. Metadata Update
 
-`metadata.jsonl` is compacted and normalized on `persistd apply` startup and by `doctor`.
+`metadata.jsonl` is compacted and normalized on `persistence apply` startup and by `doctor`.
 
 If the user deletes from `changed/` but metadata remains, drop stale metadata when appropriate.
 
@@ -915,7 +915,7 @@ Fallback-only state includes device node records and other entries that cannot e
 
 ## 28. Capability Probes
 
-On startup, probe the volume under `/data/persistd`.
+On startup, probe the volume under `/data/persistence`.
 
 Store probe results in `.internal/state.sqlite`.
 
@@ -1119,13 +1119,13 @@ Set `rust-version = "1.95"` unless the team intentionally chooses a lower MSRV.
 Compile the binary to:
 
 ```text
-/opt/persistd/bin/persistd
+/opt/persistence/bin/persistence
 ```
 
 Generate baseline during image build and install:
 
 ```text
-/opt/persistd/baseline.sqlite
+/opt/persistence/baseline.sqlite
 ```
 
 ## 39. Repo Structure
@@ -1133,7 +1133,7 @@ Generate baseline during image build and install:
 The initial Rust module shape is settled:
 
 ```text
-packages/persistd/
+packages/persistence/
   Cargo.toml
   Cargo.lock
   src/
@@ -1158,23 +1158,23 @@ packages/persistd/
 
 `main.rs` is the tiny Rust binary entrypoint.
 
-`cli.rs` parses `persistd apply`, `persistd daemon`, `persistd status`, `persistd doctor`, and `persistd prune`.
+`cli.rs` parses `persistence apply`, `persistence daemon`, `persistence status`, `persistence doctor`, and `persistence prune`.
 
-`config.rs` owns `/data/persistd/config.json`, built-in defaults, exclusions, and tunables.
+`config.rs` owns `/data/persistence/config.json`, built-in defaults, exclusions, and tunables.
 
-`paths.rs` owns resolved path constants for `/opt/persistd`, `/data/persistd`, and `/run/persistd`.
+`paths.rs` owns resolved path constants for `/opt/persistence`, `/data/persistence`, and `/run/persistence`.
 
-`baseline.rs` owns `/opt/persistd/baseline.sqlite`, image lower-layer facts, baseline loading, baseline generation, and baseline lookup.
+`baseline.rs` owns `/opt/persistence/baseline.sqlite`, image lower-layer facts, baseline loading, baseline generation, and baseline lookup.
 
-`public.rs` owns public truth under `/data/persistd`: `changed/`, `removed/`, and `metadata.jsonl`.
+`public.rs` owns public truth under `/data/persistence`: `changed/`, `removed/`, and `metadata.jsonl`.
 
-`internal.rs` owns daemon machinery under `/data/persistd/.internal`: `state.sqlite`, `lock`, `control.sock`, cached indexes, journals, queues, checkpoints, capability cache, and diagnostics.
+`internal.rs` owns daemon machinery under `/data/persistence/.internal`: `state.sqlite`, `lock`, `control.sock`, cached indexes, journals, queues, checkpoints, capability cache, and diagnostics.
 
 `rootfs.rs` owns live root filesystem operations: `lstat`, readlink, hashing, copying, applying files, chmod/chown/mtime, xattrs, ACLs, capabilities, symlinks, hardlinks, special files, capability probes, and symlink ancestor safety.
 
 `apply.rs` applies public truth to rootfs: `removed/` first, `changed/` second, fallback metadata last.
 
-`daemon.rs` owns the long-running `persistd daemon` process: layout checks, lock, internal DB, watcher/audit startup, readiness, control socket, and single-writer command routing for status/doctor/prune.
+`daemon.rs` owns the long-running `persistence daemon` process: layout checks, lock, internal DB, watcher/audit startup, readiness, control socket, and single-writer command routing for status/doctor/prune.
 
 `watch.rs` owns raw inotify only: watch registration, low-level event decoding, overflow/degraded signals, and emitting dirty path candidates.
 
@@ -1326,7 +1326,7 @@ Then it runs:
 pnpm smoke
 ```
 
-The rewrite must update smoke expectations to the new persistd layout.
+The rewrite must update smoke expectations to the new persistence layout.
 
 The current release workflow is:
 
@@ -1351,7 +1351,7 @@ Do not update only CI and forget smoke/release/nightly.
 Target script shape:
 
 ```json
-"check": "tsc --noEmit && vitest run --coverage && eslint . && cargo fmt --manifest-path packages/persistd/Cargo.toml --check && cargo clippy --manifest-path packages/persistd/Cargo.toml --all-targets --all-features -- -D warnings && cargo test --manifest-path packages/persistd/Cargo.toml --all-targets --all-features && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json"
+"check": "tsc --noEmit && vitest run --coverage && eslint . && cargo fmt --manifest-path packages/persistence/Cargo.toml --check && cargo clippy --manifest-path packages/persistence/Cargo.toml --all-targets --all-features -- -D warnings && cargo test --manifest-path packages/persistence/Cargo.toml --all-targets --all-features && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json"
 ```
 
 Use actual final command syntax after testing.
@@ -1377,7 +1377,7 @@ Recommended workflow shape:
 
 - uses: Swatinem/rust-cache@...
   with:
-    workspaces: packages/persistd
+    workspaces: packages/persistence
 ```
 
 Research current recommended action versions before editing CI.
@@ -1391,25 +1391,25 @@ Do not guess; use the `research` skill.
 Remove:
 
 ```text
-FROM golang:1.24-trixie AS persistd-builder
+FROM golang:1.24-trixie AS persistence-builder
 ```
 
 Add:
 
 ```text
-FROM rust:1.95.0-trixie AS persistd-builder
+FROM rust:1.95.0-trixie AS persistence-builder
 ```
 
 Build binary:
 
 ```bash
-cargo build --release --locked --manifest-path packages/persistd/Cargo.toml
+cargo build --release --locked --manifest-path packages/persistence/Cargo.toml
 ```
 
 Copy binary:
 
 ```text
-COPY --from=persistd-builder /out/persistd /opt/persistd/bin/persistd
+COPY --from=persistence-builder /out/persistence /opt/persistence/bin/persistence
 ```
 
 Generate baseline after rootfs and runtime files are assembled.
@@ -1430,18 +1430,18 @@ Entrypoint should prepare runtime dirs, run one-shot apply, prepare workspace, a
 Entrypoint should run:
 
 ```bash
-/opt/persistd/bin/persistd apply
+/opt/persistence/bin/persistence apply
 ```
 
 If apply exits non-zero, entrypoint should stop before Supervisor starts.
 
-Do not have Supervisor autorestart `persistd apply`.
+Do not have Supervisor autorestart `persistence apply`.
 
 Supervisor should run:
 
 ```ini
-[program:persistd]
-command=/opt/persistd/bin/persistd daemon
+[program:persistence]
+command=/opt/persistence/bin/persistence daemon
 user=root
 autorestart=true
 priority=1
@@ -1449,9 +1449,9 @@ priority=1
 
 code-server can start under Supervisor too.
 
-code-server remains gated by `/run/persistd/ready`.
+code-server remains gated by `/run/persistence/ready`.
 
-`persistd daemon` must not replay apply when Supervisor restarts it.
+`persistence daemon` must not replay apply when Supervisor restarts it.
 
 ## 44. code-server Readiness Patch
 
@@ -1460,25 +1460,25 @@ Update readiness patch expectations:
 Keep:
 
 ```text
-/run/persistd/ready
+/run/persistence/ready
 ```
 
 Remove reliance on:
 
 ```text
-/run/persistd/restore-failed
-/run/persistd/watch-failed
+/run/persistence/restore-failed
+/run/persistence/watch-failed
 ```
 
 Daemon readiness failure details should come from a simple status surface.
 
-If boot apply fails before Supervisor starts, failure details live in `.internal/state.sqlite` and `/data/persistd/.internal/apply-error.log` unless the failure is the inability to create or write those diagnostics.
+If boot apply fails before Supervisor starts, failure details live in `.internal/state.sqlite` and `/data/persistence/.internal/apply-error.log` unless the failure is the inability to create or write those diagnostics.
 
 Options:
 
-- keep page generic: "persistd is not ready"
-- have code-server execute `persistd status --json`.
-- have persistd write a small read-only status summary file.
+- keep page generic: "persistence is not ready"
+- have code-server execute `persistence status --json`.
+- have persistence write a small read-only status summary file.
 
 This was not fully settled.
 
@@ -1499,11 +1499,11 @@ Use Docker smoke tests for real image startup.
 Rust testing rules:
 
 - Put pure logic unit tests beside the module with `#[cfg(test)]`.
-- Put cross-module behavior tests in `packages/persistd/tests/`.
+- Put cross-module behavior tests in `packages/persistence/tests/`.
 - Use `tempfile` or a controlled temp directory for filesystem tests.
 - Prefer real filesystem operations over mocks.
 - Prefer real SQLite temp databases over mocking SQLite.
-- Keep tests Linux-focused; persistd is a Linux daemon.
+- Keep tests Linux-focused; persistence is a Linux daemon.
 - Use `std::os::unix` APIs in tests where path bytes and metadata matter.
 - Test behavior through module interfaces, not private helpers.
 - Avoid snapshot tests for filesystem state unless the snapshot is genuinely clearer than explicit assertions.
@@ -1631,12 +1631,12 @@ They currently reference old or mismatched persistence paths in places.
 New expected paths:
 
 ```text
-/data/persistd/changed
-/data/persistd/removed
-/data/persistd/metadata.jsonl
-/data/persistd/.internal/state.sqlite
-/opt/persistd/baseline.sqlite
-/run/persistd/ready
+/data/persistence/changed
+/data/persistence/removed
+/data/persistence/metadata.jsonl
+/data/persistence/.internal/state.sqlite
+/opt/persistence/baseline.sqlite
+/run/persistence/ready
 ```
 
 Smoke should verify:
@@ -1680,7 +1680,7 @@ Before implementation, verify versions again if meaningful time has passed.
 
 ### Slice 1: Rust Scaffold
 
-Create Rust package under `packages/persistd`.
+Create Rust package under `packages/persistence`.
 
 Add `Cargo.toml`.
 
@@ -1689,11 +1689,11 @@ Add `Cargo.lock`.
 Add CLI with commands:
 
 ```bash
-persistd apply
-persistd daemon
-persistd status
-persistd doctor
-persistd prune
+persistence apply
+persistence daemon
+persistence status
+persistence doctor
+persistence prune
 ```
 
 Implement command stubs.
@@ -1711,11 +1711,11 @@ Implement layout creation.
 Create:
 
 ```text
-/data/persistd/config.json
-/data/persistd/changed/
-/data/persistd/removed/
-/data/persistd/metadata.jsonl
-/data/persistd/.internal/
+/data/persistence/config.json
+/data/persistence/changed/
+/data/persistence/removed/
+/data/persistence/metadata.jsonl
+/data/persistence/.internal/
 ```
 
 Do not create obsolete Go layout.
@@ -1741,7 +1741,7 @@ Implement build-time baseline generation.
 Output:
 
 ```text
-/opt/persistd/baseline.sqlite
+/opt/persistence/baseline.sqlite
 ```
 
 Hash regular files with BLAKE3.
@@ -1816,7 +1816,7 @@ Recover missed events.
 
 ### Slice 10: Daemon Lifecycle
 
-Implement full `persistd daemon`.
+Implement full `persistence daemon`.
 
 Open internal state and report the last apply status if useful.
 
@@ -1894,16 +1894,16 @@ For each question, provide a recommended answer.
 
 The rewrite is acceptable when:
 
-- Go `persistd` is gone.
-- Rust `persistd` builds in Docker.
-- `/opt/persistd/baseline.sqlite` exists in the image.
-- `/data/persistd` uses the new layout.
-- `persistd apply` is one-shot and exits before Supervisor starts.
-- `persistd daemon` is the only long-running writer.
-- Supervisor runs `persistd daemon`, not apply.
-- `persistd status`, `doctor`, and `prune` talk to the daemon.
-- readiness is based only on `/run/persistd/ready`.
-- `persistd daemon` does not replay apply when autorestarted.
+- Go `persistence` is gone.
+- Rust `persistence` builds in Docker.
+- `/opt/persistence/baseline.sqlite` exists in the image.
+- `/data/persistence` uses the new layout.
+- `persistence apply` is one-shot and exits before Supervisor starts.
+- `persistence daemon` is the only long-running writer.
+- Supervisor runs `persistence daemon`, not apply.
+- `persistence status`, `doctor`, and `prune` talk to the daemon.
+- readiness is based only on `/run/persistence/ready`.
+- `persistence daemon` does not replay apply when autorestarted.
 - changed files persist across restart.
 - deleted files persist across restart.
 - image updates flow through for untouched files.

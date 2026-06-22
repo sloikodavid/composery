@@ -70,23 +70,23 @@ RUN XDG_CONFIG_HOME=/tmp/code-server-config /src/code-server/release/bin/code-se
     > /src/code-server/release/.composery-upstream \
   && rm -rf /tmp/code-server.version.json /tmp/code-server-config
 
-# Build persistd. cargo-chef caches the dependency compile so source-only edits skip it.
-FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS persistd-chef
+# Build persistence. cargo-chef caches the dependency compile so source-only edits skip it.
+FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS persistence-chef
 # renovate: datasource=crate depName=cargo-chef
 ARG CARGO_CHEF_VERSION=0.1.77
 RUN cargo install cargo-chef --version "${CARGO_CHEF_VERSION}" --locked
-WORKDIR /src/persistd
+WORKDIR /src/persistence
 
-FROM persistd-chef AS persistd-planner
-COPY packages/persistd/ .
+FROM persistence-chef AS persistence-planner
+COPY packages/persistence/ .
 RUN cargo chef prepare --recipe-path /recipe.json
 
-FROM persistd-chef AS persistd-builder
-COPY --from=persistd-planner /recipe.json /recipe.json
+FROM persistence-chef AS persistence-builder
+COPY --from=persistence-planner /recipe.json /recipe.json
 RUN cargo chef cook --release --recipe-path /recipe.json
-COPY packages/persistd/ .
-RUN cargo build --release --locked --bin persistd \
-  && install -D target/release/persistd /out/persistd
+COPY packages/persistence/ .
+RUN cargo build --release --locked --bin persistence \
+  && install -D target/release/persistence /out/persistence
 
 # Assemble the runtime image.
 FROM ${NODE_IMAGE} AS runtime
@@ -134,7 +134,7 @@ ENV PATH="/home/user/.local/bin:/home/user/bin:${PATH}"
 # Apt packages are intentionally unpinned: the Debian suite comes from the base
 # image, and the image digest is the reproducibility boundary. APT lists are kept
 # so `sudo apt install` works out of the box in this VPS-like appliance; `apt
-# update` refreshes them, and persistd persists any changes.
+# update` refreshes them, and persistence persists any changes.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     bash \
@@ -181,14 +181,24 @@ RUN groupmod --new-name user node \
   && mkdir -p /home/user
 
 COPY --from=code-server-builder /src/code-server/release /opt/code-server/current
-COPY --from=persistd-builder /out/persistd /opt/persistd/bin/persistd
+COPY --from=persistence-builder /out/persistence /opt/persistence/bin/persistence
 COPY rootfs/ /
+
+# Show only the working directory in the interactive prompt (~/Desktop, not
+# user@<container-id>:~/Desktop). The stock Debian skel ~/.bashrc (moved from
+# /home/node) sets the user@host prompt; the last PS1 assignment wins, so
+# appending here overrides it. Captured in the persistence baseline below.
+RUN printf '%s\n' \
+    '' \
+    '# Composery: show only the working directory in the prompt.' \
+    'PS1='\''${debian_chroot:+($debian_chroot)}\[\033[01;34m\]\w\[\033[00m\]\$ '\''' \
+    >> /home/user/.bashrc
 
 # Final runtime wiring: create the user's standard bin dirs (so login shells add
 # them to PATH via the stock ~/.profile even before anything is installed), fix
 # ownership (home, and /usr/local so the user can install globally without sudo),
 # permissions, unit symlinks, and desktop/mime caches, then snapshot the baseline
-# persistd restores from.
+# persistence restores from.
 RUN find /home/user -name .gitkeep -type f -delete \
   && mkdir -p /data /etc/systemd/system/multi-user.target.wants \
   && mkdir -p /home/user/.local/bin /home/user/bin \
@@ -202,16 +212,16 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && chmod +x /usr/local/bin/xclip /usr/local/bin/xsel /usr/local/bin/wl-paste /usr/local/bin/wl-copy \
   && rm -f /etc/systemd/system/multi-user.target.wants/supervisor.service \
   && ln -sf /dev/null /etc/systemd/system/systemd-modules-load.service \
-  && ln -sf ../persistd.service /etc/systemd/system/multi-user.target.wants/persistd.service \
+  && ln -sf ../persistence.service /etc/systemd/system/multi-user.target.wants/persistence.service \
   && ln -sf ../composery.service /etc/systemd/system/multi-user.target.wants/composery.service \
   && ln -sf /opt/code-server/current/lib/vscode/bin/remote-cli/code-server /usr/local/bin/code \
   && ln -sf /opt/code-server/current/bin/code-server /usr/local/bin/code-server \
   && update-desktop-database /usr/share/applications \
   && update-mime-database /usr/share/mime \
   && chown -R user:user /usr/local \
-  && /opt/persistd/bin/persistd __generate-baseline --root / --output /opt/persistd/baseline.sqlite
+  && /opt/persistence/bin/persistence __generate-baseline --root / --output /opt/persistence/baseline.sqlite
 
-# No USER directive: persistd needs root to rebuild the filesystem on boot; supervisor
+# No USER directive: persistence needs root to rebuild the filesystem on boot; supervisor
 # drops to the unprivileged `user` for code-server. Root is intentional.
 EXPOSE 8080
 

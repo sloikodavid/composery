@@ -19,7 +19,7 @@ metadata:
     app: composery
 spec:
   replicas: 1
-  # persistd is a single writer for one /data volume: never run two pods against it.
+  # persistence is a single writer for one /data volume: never run two pods against it.
   strategy:
     type: Recreate
   selector:
