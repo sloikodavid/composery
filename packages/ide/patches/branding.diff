@@ -1,7 +1,54 @@
+diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
+--- a/ci/build/build-vscode.sh
++++ b/ci/build/build-vscode.sh
+@@ -72,28 +72,30 @@
+     "enableTelemetry": true,
+     "quality": "stable",
+     "codeServerVersion": "$VERSION",
+-    "nameShort": "code-server",
+-    "nameLong": "code-server",
++    "nameShort": "Composery",
++    "nameLong": "Composery",
+     "applicationName": "code-server",
+     "dataFolderName": ".code-server",
++    "serverDataFolderName": ".composery-server",
+     "win32MutexName": "codeserver",
+-    "licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE",
++    "licenseUrl": "https://github.com/sloikodavid/composery/blob/main/LICENSE",
+     "win32DirName": "code-server",
+     "win32NameVersion": "code-server",
+     "win32AppUserModelId": "coder.code-server",
+     "win32ShellNameShort": "c&ode-server",
+     "darwinBundleIdentifier": "com.coder.code.server",
+     "linuxIconName": "com.coder.code.server",
+-    "reportIssueUrl": "https://github.com/coder/code-server/issues/new",
+-    "documentationUrl": "https://go.microsoft.com/fwlink/?LinkID=533484#vscode",
++    "reportIssueUrl": "https://github.com/sloikodavid/composery/issues/new",
++    "documentationUrl": "https://docs.composery.io",
+     "keyboardShortcutsUrlMac": "https://go.microsoft.com/fwlink/?linkid=832143",
+     "keyboardShortcutsUrlLinux": "https://go.microsoft.com/fwlink/?linkid=832144",
+     "keyboardShortcutsUrlWin": "https://go.microsoft.com/fwlink/?linkid=832145",
+-    "introductoryVideosUrl": "https://go.microsoft.com/fwlink/?linkid=832146",
+-    "tipsAndTricksUrl": "https://go.microsoft.com/fwlink/?linkid=852118",
+-    "newsletterSignupUrl": "https://www.research.net/r/vsc-newsletter",
++    "introductoryVideosUrl": "https://docs.composery.io",
++    "tipsAndTricksUrl": "https://docs.composery.io",
++    "newsletterSignupUrl": "https://www.composery.io",
+     "linkProtectionTrustedDomains": [
+-      "https://open-vsx.org"
++      "https://open-vsx.org",
++      "https://www.composery.io"
+     ],
+     "trustedExtensionAuthAccess": [
+       "vscode.git", "vscode.github",
+
+
 Rebrand VS Code surfaces to Composery (identity, assets, theme cache)
 
-VS Code-only patch; the code-server/src/node env var, path, and template token
-renames are now direct edits in packages/ide/src/node/*. This patch covers:
+VS Code-only patch. The code-server src/node env var, path, and template token
+renames (CODE_SERVER_*/CS_* -> COMPOSERY_*, code-server -> composery paths,
+{{CS_STATIC_BASE}} -> {{COMPOSERY_STATIC_BASE}}) live in the src-node-*.diff
+patches. This patch covers:
 
 - product.json identity and links (ci/build/build-vscode.sh): nameShort/nameLong
   -> "Composery" (tab, window, About), serverDataFolderName -> ".composery-server",

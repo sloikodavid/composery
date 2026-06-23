@@ -27,17 +27,12 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-# Keep the pnpm version in sync with the runtime stage below.
-ARG PNPM_VERSION=11.7.0
-RUN npm install --global "pnpm@${PNPM_VERSION}"
-
+# The IDE build runs code-server's own toolchain (npm ci / npm run build) inside
+# the cloned upstream tree, so no pnpm or workspace root is needed here.
 WORKDIR /src
 
-# Copy the workspace root (so pnpm can use the frozen lockfile) and the packages
-# the workspace references.
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+# Copy the IDE package: overlay, patches, series, and build.sh.
 COPY packages/ide ./packages/ide
-COPY packages/docs-website ./packages/docs-website
 
 WORKDIR /src/packages/ide
 

@@ -217,9 +217,17 @@ packages/
           persistence/
             readiness.ts
           routes/
+            health.ts
+            index.ts
+            login.ts
             passwordConfig.ts
             register.ts
             resetPassword.ts
+          cli.ts
+          http.ts
+          main.ts
+          util.ts
+          wrapper.ts
     patches/
       asset-cache.diff
       auth-actions.diff
@@ -230,28 +238,12 @@ packages/
       default-layout.diff
       extensions-view-themes.diff
       fonts.diff
-      integration.diff
       markdown-preview-loopback-callback-bridge.diff
       narrow-fullscreen.diff
       narrow-gate.diff
       overlays.diff
       series
       shortcuts.diff
-      src-node-app.diff
-      src-node-cli.diff
-      src-node-constants.diff
-      src-node-http.diff
-      src-node-main.diff
-      src-node-routes-health.diff
-      src-node-routes-index.diff
-      src-node-routes-login.diff
-      src-node-routes-logout.diff
-      src-node-routes-pathProxy.diff
-      src-node-socket.diff
-      src-node-util.diff
-      src-node-vscodeSocket.diff
-      src-node-wrapper.diff
-      store-socket.diff
       tips.diff
       titlebar-logo.diff
       touch-editor.diff
@@ -354,7 +346,6 @@ pnpm-workspace.yaml
 README.md
 renovate.json
 SECURITY.md
-symlink-agents.jsonc
 TODO.md
 TREE.md
 tsconfig.json

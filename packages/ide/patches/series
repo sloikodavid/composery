@@ -19,17 +19,3 @@ titlebar-logo.diff
 default-color-theme.diff
 shortcuts.diff
 touch-terminal-keybar.diff
-src-node-app.diff
-src-node-cli.diff
-src-node-constants.diff
-src-node-http.diff
-src-node-main.diff
-src-node-routes-health.diff
-src-node-routes-index.diff
-src-node-routes-login.diff
-src-node-routes-logout.diff
-src-node-routes-pathProxy.diff
-src-node-socket.diff
-src-node-util.diff
-src-node-vscodeSocket.diff
-src-node-wrapper.diff

@@ -12,8 +12,3 @@ packages/cli/target/
 .DS_Store
 Thumbs.db
 .playwright-cli
-
-# symlink-agents start
-/.claude/skills
-/CLAUDE.md
-# symlink-agents end

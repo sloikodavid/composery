@@ -149,7 +149,7 @@ describe("composery agent setup", () => {
 		for (const id of extensionIds) {
 			const logo = resolve(
 				repoRoot,
-				`packages/ide/src/browser/media/agents/${id}.svg`
+				`packages/ide/overlay/src/browser/media/agents/${id}.svg`
 			);
 			expect(existsSync(logo)).toBe(true);
 		}

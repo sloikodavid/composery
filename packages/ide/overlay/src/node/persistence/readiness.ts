@@ -10,12 +10,6 @@ type PersistdReadiness = {
 };
 
 export async function checkPersistdReadiness(): Promise<PersistdReadiness> {
-	// The persistence supervisor is Unix-only; on Windows there is nothing to
-	// wait for, so report ready immediately.
-	if (process.platform === "win32") {
-		return { ready: true, message: "persistence is not used on Windows" };
-	}
-
 	let data: string;
 	try {
 		data = await fs.readFile(readyPath, "utf8");

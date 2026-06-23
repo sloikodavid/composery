@@ -17,7 +17,7 @@ const hasUnknownArg = process.argv
 	.slice(2)
 	.some((arg) => !ALLOWED_ARGS.has(arg));
 const check = !write && (args.size === 0 || explicitCheck);
-const TREE_OUTPUT_FILE = "TREE.md";
+const TREE_OUTPUT_FILE = "prompts/TREE.md";
 const IGNORE_PATH = [
 	join(REPO_ROOT, ".gitignore"),
 	join(REPO_ROOT, ".prettierignore")

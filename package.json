@@ -10,8 +10,8 @@
 		"icons": "node scripts/generate-icons.mjs",
 		"setup": "node scripts/setup.mjs",
 		"smoke": "node scripts/smoke.mjs",
-		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json && symlink-agents --check",
-		"fix": "symlink-agents --yes && node scripts/format.mjs --write && eslint . --fix"
+		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json",
+		"fix": "node scripts/format.mjs --write && eslint . --fix"
 	},
 	"prettier": {
 		"useTabs": true,
@@ -23,11 +23,9 @@
 		"@vitest/coverage-v8": "4.1.5",
 		"concurrently": "^10.0.3",
 		"eslint": "9.39.4",
-		"globals": "^16.4.0",
 		"png-to-ico": "^3.0.1",
 		"prettier": "3.8.3",
 		"sharp": "^0.35.0",
-		"symlink-agents": "0.2.0",
 		"typescript": "6.0.3",
 		"typescript-eslint": "8.61.1",
 		"vitest": "4.1.5"

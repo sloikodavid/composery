@@ -9,37 +9,16 @@
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>Register</title>
-		<link
-			rel="icon"
-			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg"
-		/>
-		<link
-			rel="alternate icon"
-			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico"
-		/>
-		<link
-			rel="manifest"
-			href="{{BASE}}/manifest.json"
-			crossorigin="use-credentials"
-		/>
-		<link
-			href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css"
-			rel="stylesheet"
-		/>
-		<link
-			href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/login.css"
-			rel="stylesheet"
-		/>
+		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg" />
+		<link rel="alternate icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" />
+		<link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
+		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
+		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/login.css" rel="stylesheet" />
 		<meta id="coder-options" data-settings="{{OPTIONS}}" />
 	</head>
 	<body>
 		<main class="page">
-			<form
-				class="login-form"
-				method="post"
-				autocomplete="on"
-				aria-label="Register"
-			>
+			<form class="login-form" method="post" autocomplete="on" aria-label="Register">
 				<a
 					class="login-logo-link"
 					href="https://www.composery.io"
@@ -53,7 +32,11 @@
 						alt="Composery"
 					/>
 				</a>
-				<input class="username" type="text" autocomplete="username" />
+				<input
+					class="username"
+					type="text"
+					autocomplete="username"
+				/>
 				<input id="base" type="hidden" name="base" value="{{BASE}}" />
 				<input id="href" type="hidden" name="href" value="" />
 				<div class="auth-fields password-fields">
@@ -93,19 +76,7 @@
 					</div>
 				</div>
 				<button class="submit-button" type="submit">
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 16 16"
-						xmlns="http://www.w3.org/2000/svg"
-						fill="currentColor"
-						aria-hidden="true"
-						focusable="false"
-					>
-						<path
-							d="M10 13.5C10 13.776 9.776 14 9.5 14H4.5C3.119 14 2 12.881 2 11.5V3.5C2 2.119 3.119 1 4.5 1H9.5C9.776 1 10 1.224 10 1.5C10 1.776 9.776 2 9.5 2H4.5C3.672 2 3 2.672 3 3.5V11.5C3 12.328 3.672 13 4.5 13H9.5C9.776 13 10 13.224 10 13.5ZM14.5 6.999H7.707L9.853 4.853C10.048 4.658 10.048 4.341 9.853 4.146C9.658 3.951 9.341 3.951 9.146 4.146L6.146 7.146C5.951 7.341 5.951 7.657 6.146 7.852L9.146 10.852C9.341 11.047 9.658 11.047 9.853 10.852C10.048 10.657 10.048 10.34 9.853 10.145L7.707 7.999H14.5C14.776 7.999 15 7.775 15 7.499C15 7.223 14.776 6.999 14.5 6.999Z"
-						/>
-					</svg>
+					<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 13.5C10 13.776 9.776 14 9.5 14H4.5C3.119 14 2 12.881 2 11.5V3.5C2 2.119 3.119 1 4.5 1H9.5C9.776 1 10 1.224 10 1.5C10 1.776 9.776 2 9.5 2H4.5C3.672 2 3 2.672 3 3.5V11.5C3 12.328 3.672 13 4.5 13H9.5C9.776 13 10 13.224 10 13.5ZM14.5 6.999H7.707L9.853 4.853C10.048 4.658 10.048 4.341 9.853 4.146C9.658 3.951 9.341 3.951 9.146 4.146L6.146 7.146C5.951 7.341 5.951 7.657 6.146 7.852L9.146 10.852C9.341 11.047 9.658 11.047 9.853 10.852C10.048 10.657 10.048 10.34 9.853 10.145L7.707 7.999H14.5C14.776 7.999 15 7.775 15 7.499C15 7.223 14.776 6.999 14.5 6.999Z"/></svg>
 					<span>Register</span>
 				</button>
 				<div class="login-message" aria-live="polite">{{ERROR}}</div>

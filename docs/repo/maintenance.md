@@ -29,15 +29,26 @@ brand change means editing all of them together:
   symmetric: every chrome key one theme retints, the other should too, or one
   theme leaks upstream's Modern blue.
 - **Auth pages**.
-  `packages/ide/src/browser/pages/global.css` (login, register,
+  `packages/ide/overlay/src/browser/pages/global.css` (login, register,
   reset, error).
 - **Startup page**.
-  `packages/ide/patches/persistence-readiness.diff`, the "Preparing workspace"
-  page shown until the workspace is ready.
+  `packages/ide/overlay/src/node/persistence/readiness.ts` (`renderStartupPage`),
+  the "Preparing workspace" page shown until the workspace is ready, wired in by
+  our owned `packages/ide/overlay/src/node/routes/index.ts` (the `persistenceGate`).
 - **Logo and wordmark**.
   `packages/ide/patches/branding.diff` and
-  `packages/ide/src/browser/media/composery-logo.svg` (amber
+  `packages/ide/overlay/src/browser/media/composery-logo.svg` (amber
   gradient and fill).
+- **Auth backend (register / reset-password / login flow)**.
+  `packages/ide/overlay/src/node/routes/{register,resetPassword,passwordConfig,login}.ts`
+  and `packages/ide/overlay/src/node/{cli,http,main}.ts` - whole owned files, not
+  patches. Readable and editable directly.
+- **code-server src/node customizations** (env-var rename to `COMPOSERY_*`, paths,
+  `toLocalBrowserAddress`, no-generated-password, `reset-password` CLI flag).
+  `packages/ide/overlay/src/node/{cli,http,main,util,wrapper,routes/...}.ts` -
+  whole owned files. The two env vars that cross into VS Code
+  (`CODE_SERVER_SESSION_SOCKET`, `CODE_SERVER_PARENT_PID`) keep upstream's names
+  so code-server's own `integration.diff` and `store-socket.diff` apply unmodified.
 - **Welcome tiles**.
   `scripts/generate-icons.mjs`, the `TILE_BG` constant.
 
@@ -51,30 +62,52 @@ when the themes change, never hand-edit the patch's color lines, and confirm no
 
 ## code-server / VS Code Bumps
 
-The editor is built from the in-repo hard fork at `packages/ide/`, which descends\nfrom code-server 4.118.0. The VS Code submodule at `packages/ide/lib/vscode/` is\npinned to a specific commit; bump it with `git submodule update` and re-run\n`quilt push -a`.
+The editor is built from pristine code-server (the `packages/ide/upstream/`
+submodule, pinned in `.gitmodules`) plus our overlay and patch stack. It is not a
+hard fork: `src/` is never checked in. `packages/ide/build.sh` copies the
+submodule into a scratch `build/` tree, appends our `patches/series` to
+code-server's, `quilt push -a` (fuzz=0), path-mirrors `overlay/` onto the tree,
+then runs code-server's `npm ci` / build / release.
 
-This is intentionally source-build territory. Downloading upstream release
-tarballs would be simpler and better by default, but this repo applies
-Composery's patch stack before `npm run build`, `npm run build:vscode`, and
-`npm run release`. A code-server bump is never just those two ARG lines: the
-whole `packages/ide/patches/series` stack is applied against that source at
-build time. On each bump:
+There are two kinds of customization, kept deliberately separate:
+
+- **Patches** (`packages/ide/patches/`) are VS Code-side only (`lib/vscode/*`):
+  brand svgs, welcome, touch/narrow, theme cache, clipboard, etc. These must be
+  patches because the VS Code build minifies/relocates the source, so a whole
+  owned file would not survive the build. code-server's own 25 patches (including
+  `integration.diff` and `store-socket.diff`) apply **unmodified** - we do not
+  fork them.
+- **Overlay** (`packages/ide/overlay/`) is whole owned files, path-mirrored onto.
+  the tree after quilt push. This carries all our code-server `src/node/*`
+  customizations (cli, http, main, util, wrapper, routes, persistence, the auth
+  backend) and all browser assets/pages/extensions. Whole files, not diffs -
+  readable and diffable directly.
+
+This is intentionally source-build territory. A code-server bump is never just
+the submodule pointer: the patch stack is applied against that source at build
+time, and the overlay files must be re-merged against the new upstream `src/node`
+versions. On each bump:
 
 - Sync the patch base.
-  Use the `../sources/code-server-<version>` clone. That clone is the
-  authoring/check base, not a guess from memory.
+  Check out the new code-server commit in `packages/ide/upstream` (and its
+  nested `lib/vscode` submodule). That tree is the authoring/check base, not a
+  guess from memory.
 - Re-check every patch.
   Patches can fail loudly or silently no-op if upstream moved the code they
-  target. The authoring recipe is in `packages/ide/README.md`; do not
-  duplicate it here.
+  target. The authoring recipe is in `packages/ide/build.sh`; do not duplicate
+  it here.
+- Re-merge the overlay `src/node` files.
+  Diff each owned file against the new upstream version and re-apply our changes.
+  Easier than patches: you see the whole file, and `git diff` against the new
+  upstream shows exactly what moved.
 - Re-flatten the themes.
   Use the new Dark/Light Modern base, then regenerate the first-paint maps.
 
-The image build is the only real check of the full patch stack. Budget for it.
-CI also runs `scripts/check-code-server-patches.mjs`, which is a cheaper early
-gate: it clones the pinned source, checks the pinned commit, appends our patches,
-and runs `quilt push -a`. That catches broken patch application before the full
-image build, but it does not prove the patched app builds or behaves correctly.
+The image build is the only real check of the full stack. Budget for it.
+CI also runs an early gate that lays our patch stack over the submodule and runs
+`quilt push -a` with `--fuzz=0` (see `.github/workflows/ci.yml`). That catches
+broken patch application before the full image build, but it does not prove the
+patched app builds or behaves correctly.
 
 ## Renovate
 

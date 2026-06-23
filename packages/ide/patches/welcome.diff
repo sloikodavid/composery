@@ -13,17 +13,38 @@ still turns the whole block off.
 diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
-@@ -928,65 +928,75 @@
+@@ -927,66 +927,76 @@
+ 
  		let gettingStartedCoder: HTMLElement = $('.header', {});
  		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
--			gettingStartedCoder = $('.gettingStartedCategory', {},
--				$('h2', {
++			const composeryAgents = [
++				{ id: 'claude', name: 'Claude Code', tagline: 'Anthropic' },
++				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
++				{ id: 'opencode', name: 'OpenCode', tagline: 'Anomaly' },
++				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
++				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
++				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
++			];
+ 			gettingStartedCoder = $('.gettingStartedCategory', {},
+ 				$('h2', {
 -					style: 'margin-bottom: 12px',
 -				}, 'Next Up'),
 -				$('a', {
 -					href: 'https://cdr.co/code-server-to-coder',
 -					target: '_blank',
--				},
++					style: 'margin: 0 0 4px;font-weight: 600;',
++				}, 'Set up an AI coding agent'),
++				$('p', {
++					style: 'margin: 0 0 16px;font-size: 13px;opacity: 0.7;',
++				}, 'Click one to run its official latest setup command in a new terminal.'),
++				$('.composery-agent-grid', {
++					style: [
++						'display: grid',
++						'grid-template-columns: repeat(2, minmax(0, 1fr))',
++						'gap: 10px',
++						'max-width: 560px',
++					].join(';'),
+ 				},
 -					$('button', {
 -						style: [
 -							'padding: 10px 16px	',
@@ -74,33 +95,6 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 -						style: [
 -							'margin-bottom: -65px',
 -						].join(';'),
--					}),
--					),
--				),
--			);
-+			const composeryAgents = [
-+				{ id: 'claude', name: 'Claude Code', tagline: 'Anthropic' },
-+				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
-+				{ id: 'opencode', name: 'OpenCode', tagline: 'Anomaly' },
-+				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
-+				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
-+				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
-+			];
-+			gettingStartedCoder = $('.gettingStartedCategory', {},
-+				$('h2', {
-+					style: 'margin: 0 0 4px;font-weight: 600;',
-+				}, 'Set up an AI coding agent'),
-+				$('p', {
-+					style: 'margin: 0 0 16px;font-size: 13px;opacity: 0.7;',
-+				}, 'Click one to run its official latest setup command in a new terminal.'),
-+				$('.composery-agent-grid', {
-+					style: [
-+						'display: grid',
-+						'grid-template-columns: repeat(2, minmax(0, 1fr))',
-+						'gap: 10px',
-+						'max-width: 560px',
-+					].join(';'),
-+				},
 +					...composeryAgents.map(agent => {
 +						const iconUrl = `url(./_static/src/browser/media/agents/${agent.id}.svg) center / contain no-repeat`;
 +						const card = $('.composery-agent', {
@@ -147,10 +141,12 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 +							}
 +						});
 +						return card;
-+					}),
-+				),
-+			);
+ 					}),
+-					),
+ 				),
+ 			);
  		}
+
 diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css

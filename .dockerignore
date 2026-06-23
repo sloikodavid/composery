@@ -1,8 +1,5 @@
 **
 !Dockerfile
-!package.json
-!pnpm-workspace.yaml
-!pnpm-lock.yaml
 !rootfs/**
 !packages/**
 packages/ide/upstream

@@ -25,7 +25,20 @@ jobs:
           node-version: "24.14.1"
           cache: pnpm
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs quilt
-      - run: cd packages/ide && quilt push -a
+      # Cheaper early gate than the full image build: lay our VS Code-side
+      # patch stack over pristine code-server (submodule) and quilt-push with
+      # fuzz=0, exactly like packages/ide/build.sh does at build time. Our own
+      # src/node changes are overlay files (not patches), so this only exercises
+      # the lib/vscode patch stack.
+      - name: Verify IDE patch stack applies
+        working-directory: packages/ide
+        env:
+          QUILT_PUSH_ARGS: "--fuzz=0"
+        run: |
+          while IFS= read -r p; do
+            [ -z "$p" ] || { cp "patches/$p" "upstream/patches/$p"; printf '%s\n' "$p" >> upstream/patches/series; }
+          done < patches/series
+          cd upstream && QUILT_PATCHES=patches quilt push -a
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
@@ -33,5 +46,4 @@ jobs:
         with:
           workspaces: packages/cli
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec symlink-agents --yes
       - run: pnpm check
