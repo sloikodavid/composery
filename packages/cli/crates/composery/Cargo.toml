@@ -16,4 +16,10 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+sha2.workspace = true
+base64.workspace = true
+getrandom.workspace = true
 persistence = { path = "../persistence" }
+
+[dev-dependencies]
+tempfile.workspace = true

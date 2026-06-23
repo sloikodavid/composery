@@ -16,10 +16,10 @@ That gives four recipes:
 
 | Recipe                                                                                                    | When                                                                           |
 | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [systemd + Caddy](https://github.com/sloikodavid/composery/tree/main/hosting/systemd-caddy-compose)       | Recommended VPS - Hetzner/DigitalOcean-style host with a domain. Cloud parity. |
-| [systemd, no proxy](https://github.com/sloikodavid/composery/tree/main/hosting/systemd-compose)           | Privileged host where your own proxy terminates TLS.                           |
-| [supervisor + Caddy](https://github.com/sloikodavid/composery/tree/main/hosting/supervisor-caddy-compose) | Locked-down or rootless host with a domain.                                    |
-| [supervisor, no proxy](https://github.com/sloikodavid/composery/tree/main/hosting/supervisor-compose)     | Quick trial, or behind your own proxy. Also the `docker run` quickstart.       |
+| [systemd + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-caddy-compose)       | Recommended VPS - Hetzner/DigitalOcean-style host with a domain. Cloud parity. |
+| [systemd, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-compose)           | Privileged host where your own proxy terminates TLS.                           |
+| [supervisor + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-caddy-compose) | Locked-down or rootless host with a domain.                                    |
+| [supervisor, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-compose)     | Quick trial, or behind your own proxy. Also the `docker run` quickstart.       |
 
 If unsure: a VPS with a domain wants a **Caddy** variant; use **systemd** when the host
 allows privileged containers and host cgroups, otherwise **supervisor**.

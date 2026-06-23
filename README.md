@@ -20,16 +20,16 @@ the container to a network.
 For a real domain and automatic HTTPS, use the Caddy example:
 
 ```bash
-cd hosting/supervisor-caddy-compose
+cd templates/supervisor-caddy-compose
 # edit Caddyfile and replace example.com with your domain
 docker compose up -d
 ```
 
 For a host-integrated VPS with systemd inside the runtime container, use
-`hosting/systemd-caddy-compose` instead. Managed platforms with a persistent disk
-have ready-made templates: [hosting/render](hosting/render/),
-[hosting/fly](hosting/fly/), [hosting/railway](hosting/railway/), and
-[hosting/kubernetes](hosting/kubernetes/). The [hosting/](hosting/) index routes every
+`templates/systemd-caddy-compose` instead. Managed platforms with a persistent disk
+have ready-made templates: [templates/render](templates/render/),
+[templates/fly](templates/fly/), [templates/railway](templates/railway/), and
+[templates/kubernetes](templates/kubernetes/). The [templates/](templates/) index routes every
 target by host capability and TLS edge; [docs/self-hosting.md](docs/self-hosting.md)
 covers deployment targets, operational notes, and the persistence contract.
 

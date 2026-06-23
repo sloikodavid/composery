@@ -26,6 +26,7 @@ import * as registerRoute from "./register"
 import * as resetPasswordRoute from "./resetPassword"
 import * as pathProxy from "./pathProxy"
 import * as update from "./update"
+import * as api from "./api"
 import * as vscode from "./vscode"
 
 /**
@@ -208,6 +209,14 @@ export const register = async (
   }
 
   app.router.use("/update", update.router)
+
+  // The box automation API (/v1/...). API-key auth (Bearer / X-API-Key), served
+  // in-process on the single port. Mounted before the VS Code catch-all so it is
+  // not swallowed; gated by the persistence-readiness middleware above.
+  app.router.use(api.router)
+  if (api.enabled) {
+    app.wsRouter.use(api.wsRouter.router)
+  }
 
   // For historic reasons we also load at /vscode because the root was replaced
   // by a plugin in v1 of Coder.  The plugin system (which was for internal use

@@ -30,7 +30,7 @@ docs/
   index.md
   meta.json
   persistence.md
-hosting/
+templates/
   fly/
     fly.toml
     README.md

@@ -1,3 +1,3 @@
 {
-	"pages": ["index", "self-hosting", "configuration", "persistence", "repo"]
+	"pages": ["index", "self-hosting", "configuration", "persistence", "api", "repo"]
 }

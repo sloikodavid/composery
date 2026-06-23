@@ -6,13 +6,13 @@ description: Deploy Composery on Fly.io with one volume behind Fly's HTTPS proxy
 Fly provides the public HTTPS edge through its proxy, and a Fly Volume gives Composery a
 persistent `/data`. No Caddy.
 
-Recipe: [hosting/fly](https://github.com/sloikodavid/composery/tree/main/hosting/fly)
+Recipe: [templates/fly](https://github.com/sloikodavid/composery/tree/main/templates/fly)
 (`fly.toml`).
 
 ## Deploy
 
 ```bash
-# from the hosting/fly directory
+# from the templates/fly directory
 fly apps create composery            # or: fly launch --no-deploy --copy-config
 fly volumes create composery_data --size 10 --region iad
 fly deploy

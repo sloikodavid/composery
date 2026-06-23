@@ -8,7 +8,7 @@ A single replica, a `PersistentVolumeClaim` mounted at `/data`, a `Service`, and
 for one root-filesystem delta, so the Deployment is pinned to one replica with the
 `Recreate` strategy.
 
-Recipe: [hosting/kubernetes](https://github.com/sloikodavid/composery/tree/main/hosting/kubernetes)
+Recipe: [templates/kubernetes](https://github.com/sloikodavid/composery/tree/main/templates/kubernetes)
 (`composery.yaml`, `ingress.yaml`).
 
 ## Apply

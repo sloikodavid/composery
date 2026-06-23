@@ -6,7 +6,7 @@ description: Deploy Composery on Render as a Docker web service with a persisten
 Render provides the public HTTPS edge and an attachable persistent disk, so Composery runs
 as a single Docker-image web service with the disk mounted at `/data`. No Caddy.
 
-Recipe: [hosting/render](https://github.com/sloikodavid/composery/tree/main/hosting/render)
+Recipe: [templates/render](https://github.com/sloikodavid/composery/tree/main/templates/render)
 (`render.yaml`).
 
 ## Deploy

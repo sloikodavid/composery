@@ -10,7 +10,7 @@ Railway provisions volumes and the image source at the service level (in the das
 published template), not from a repo file. `railway.json` only carries the deploy settings
 Railway reads as config-as-code (health check, restart policy, single replica).
 
-Recipe: [hosting/railway](https://github.com/sloikodavid/composery/tree/main/hosting/railway)
+Recipe: [templates/railway](https://github.com/sloikodavid/composery/tree/main/templates/railway)
 (`railway.json`).
 
 ## Deploy from the image

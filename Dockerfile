@@ -140,6 +140,7 @@ RUN apt-get update \
     supervisor \
     systemd \
     tar \
+    tmux \
     unzip \
     vim-tiny \
     wget \
