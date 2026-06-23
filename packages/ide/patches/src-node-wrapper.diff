@@ -1,0 +1,23 @@
+diff --git a/src/node/wrapper.ts b/src/node/wrapper.ts
+--- a/src/node/wrapper.ts
++++ b/src/node/wrapper.ts
+@@ -337,7 +337,7 @@
+     return cp.fork(path.join(__dirname, "entry"), {
+       env: {
+         ...process.env,
+-        CODE_SERVER_PARENT_PID: process.pid.toString(),
++        COMPOSERY_PARENT_PID: process.pid.toString(),
+         NODE_EXEC_PATH: process.execPath,
+       },
+       stdio: ["pipe", "pipe", "pipe", "ipc"],
+@@ -374,8 +374,8 @@
+  * Process wrapper.
+  */
+ export const wrapper =
+-  typeof process.env.CODE_SERVER_PARENT_PID !== "undefined"
+-    ? new ChildProcess(parseInt(process.env.CODE_SERVER_PARENT_PID))
++  typeof process.env.COMPOSERY_PARENT_PID !== "undefined"
++    ? new ChildProcess(parseInt(process.env.COMPOSERY_PARENT_PID))
+     : new ParentProcess(require("../../package.json").version)
+ 
+ export function isChild(proc: ChildProcess | ParentProcess): proc is ChildProcess {

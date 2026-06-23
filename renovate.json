@@ -13,6 +13,9 @@
 	"docker-compose": {
 		"enabled": false
 	},
+	"git-submodules": {
+		"enabled": true
+	},
 	"packageRules": [
 		{
 			"description": "Major updates: never automerge, hold for manual approval on the dashboard.",
@@ -54,6 +57,12 @@
 			"description": "Never bump our own published image.",
 			"matchPackageNames": ["ghcr.io/sloikodavid/composery"],
 			"enabled": false
+		},
+		{
+			"description": "Hold code-server submodule bumps for manual patch-rebase; a new release can break the quilt stack.",
+			"matchManagers": ["git-submodules"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
 		}
 	],
 	"customManagers": [

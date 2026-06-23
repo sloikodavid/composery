@@ -1,0 +1,167 @@
+diff --git a/src/node/routes/login.ts b/src/node/routes/login.ts
+--- a/src/node/routes/login.ts
++++ b/src/node/routes/login.ts
+@@ -6,12 +6,19 @@
+ import { authenticated, getCookieOptions, redirect, replaceTemplates } from "../http"
+ import i18n from "../i18n"
+ import { getPasswordMethod, handlePasswordValidation, sanitizeString, escapeHtml } from "../util"
++import { hasPassword } from "./passwordConfig"
+ 
+ // RateLimiter wraps around the limiter library for logins.
+ // It allows 2 logins every minute plus 12 logins every hour.
+ export class RateLimiter {
+-  private readonly minuteLimiter = new Limiter({ tokensPerInterval: 2, interval: "minute" })
+-  private readonly hourLimiter = new Limiter({ tokensPerInterval: 12, interval: "hour" })
++  private readonly minuteLimiter = new Limiter({
++    tokensPerInterval: 2,
++    interval: "minute",
++  })
++  private readonly hourLimiter = new Limiter({
++    tokensPerInterval: 12,
++    interval: "hour",
++  })
+ 
+   public canTry(): boolean {
+     // Note: we must check using >= 1 because technically when there are no tokens left
+@@ -39,6 +46,8 @@
+     passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
+   }
+ 
++  const displayError = error || getErrorFromQuery(req)
++
+   return replaceTemplates(
+     req,
+     content
+@@ -48,18 +57,39 @@
+       .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
+       .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
+       .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
+-      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
++      .replace(
++        /{{ERROR}}/,
++        displayError ? `<span class="error" role="alert">${escapeHtml(displayError.message)}</span>` : "",
++      ),
+   )
+ }
+ 
++const getErrorFromQuery = (req: Request): Error | undefined => {
++  switch (req.query.error) {
++    case "configured":
++      return new Error("Password was already configured. Sign in instead.")
++    case "rate-limit":
++      return new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
++    case "missing":
++      return new Error(i18n.t("MISS_PASSWORD") as string)
++    case "incorrect":
++      return new Error(i18n.t("INCORRECT_PASSWORD") as string)
++    default:
++      return undefined
++  }
++}
++
+ const limiter = new RateLimiter()
+ 
+ export const router = Router()
+ 
+ router.use(async (req, res, next) => {
+   const to = (typeof req.query.to === "string" && req.query.to) || "/"
++  if (!hasPassword(req)) {
++    return redirect(req, res, "register", { to, error: undefined })
++  }
+   if (await authenticated(req)) {
+-    return redirect(req, res, to, { to: undefined })
++    return redirect(req, res, to, { to: undefined, error: undefined })
+   }
+   next()
+ })
+@@ -72,50 +102,45 @@
+   const password = sanitizeString(req.body?.password)
+   const hashedPasswordFromArgs = req.args["hashed-password"]
+ 
+-  try {
+-    // Check to see if they exceeded their login attempts
+-    if (!limiter.canTry()) {
+-      throw new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
+-    }
+-
+-    if (!password) {
+-      throw new Error(i18n.t("MISS_PASSWORD") as string)
+-    }
+-
+-    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
+-    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
+-      passwordMethod,
+-      hashedPasswordFromArgs,
+-      passwordFromRequestBody: password,
+-      passwordFromArgs: req.args.password,
+-    })
+-
+-    if (isPasswordValid) {
+-      // The hash does not add any actual security but we do it for
+-      // obfuscation purposes (and as a side effect it handles escaping).
+-      res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
+-
+-      const to = (typeof req.query.to === "string" && req.query.to) || "/"
+-      return redirect(req, res, to, { to: undefined })
+-    }
+-
+-    // Note: successful logins should not count against the RateLimiter
+-    // which is why this logic must come after the successful login logic
+-    limiter.removeToken()
+-
+-    console.error(
+-      "Failed login attempt",
+-      JSON.stringify({
+-        xForwardedFor: req.headers["x-forwarded-for"],
+-        remoteAddress: req.connection.remoteAddress,
+-        userAgent: req.headers["user-agent"],
+-        timestamp: Math.floor(new Date().getTime() / 1000),
+-      }),
+-    )
+-
+-    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
+-  } catch (error: any) {
+-    const renderedHtml = await getRoot(req, error)
+-    res.send(renderedHtml)
++  // Check to see if they exceeded their login attempts
++  if (!limiter.canTry()) {
++    return redirect(req, res, "login", { error: "rate-limit" })
++  }
++
++  if (!password) {
++    return redirect(req, res, "login", { error: "missing" })
+   }
++
++  const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
++  const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
++    passwordMethod,
++    hashedPasswordFromArgs,
++    passwordFromRequestBody: password,
++    passwordFromArgs: req.args.password,
++  })
++
++  if (isPasswordValid) {
++    // The hash does not add any actual security but we do it for
++    // obfuscation purposes (and as a side effect it handles escaping).
++    res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
++
++    const to = (typeof req.query.to === "string" && req.query.to) || "/"
++    return redirect(req, res, to, { to: undefined, error: undefined })
++  }
++
++  // Note: successful logins should not count against the RateLimiter
++  // which is why this logic must come after the successful login logic
++  limiter.removeToken()
++
++  console.error(
++    "Failed login attempt",
++    JSON.stringify({
++      xForwardedFor: req.headers["x-forwarded-for"],
++      remoteAddress: req.connection.remoteAddress,
++      userAgent: req.headers["user-agent"],
++      timestamp: Math.floor(new Date().getTime() / 1000),
++    }),
++  )
++
++  return redirect(req, res, "login", { error: "incorrect" })
+ })

@@ -41,29 +41,22 @@ COPY packages/docs-website ./packages/docs-website
 
 WORKDIR /src/packages/ide
 
-# Fetch VS Code at the pinned commit (the .gitmodules in the repo is for local dev;
-# in Docker we clone directly since there's no git context after COPY).
-# renovate: datasource=git-tags depName=microsoft/vscode versioning=semver
-ARG VSCODE_COMMIT=9b8ae15a8cf95b9bce1b590b42954530f440e816
-RUN git clone --depth 1 https://github.com/microsoft/vscode.git lib/vscode \
-  && cd lib/vscode \
-  && git fetch --depth 1 origin "${VSCODE_COMMIT}" \
-  && git checkout "${VSCODE_COMMIT}"
+# Clone pristine code-server at the pinned commit (the submodule .gitmodules is for
+# local dev; in Docker there's no git context after COPY, so fetch directly). It
+# brings its own VS Code submodule.
+# renovate: datasource=git-tags depName=coder/code-server versioning=semver
+ARG CODE_SERVER_COMMIT=871f1d904834ee78db1c4585e2f14f65c119374a
+RUN git init -q upstream \
+  && git -C upstream remote add origin https://github.com/coder/code-server.git \
+  && git -C upstream fetch --depth 1 origin "${CODE_SERVER_COMMIT}" \
+  && git -C upstream checkout -q FETCH_HEAD \
+  && git -C upstream submodule update --init --recursive --depth 1
 
-# Apply the merged quilt patch stack (code-server's 25 VS Code patches + our 25).
-# The series file already lists all 50 patches in order; quilt reads it from patches/.
-RUN quilt push -a
+# Lay our overlay + patches over pristine code-server and build the release.
+RUN ./build.sh
 
-# Install dependencies from the frozen workspace lockfile.
-RUN pnpm install --frozen-lockfile
-
-# Build the standalone release.
-RUN pnpm run build \
-  && VERSION="0.0.0" pnpm run build:vscode \
-  && KEEP_MODULES=1 pnpm run release
-
-RUN printf 'source=https://github.com/sloikodavid/composery\n' \
-    > /src/packages/ide/release/.composery-upstream
+RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${CODE_SERVER_COMMIT}" \
+    > build/release/.composery-upstream
 
 # Build the Composery CLI. cargo-chef caches the dependency compile so source-only edits skip it.
 FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS cli-chef
@@ -175,7 +168,7 @@ RUN groupmod --new-name user node \
   && usermod --login user --home /home/user --move-home node \
   && mkdir -p /home/user
 
-COPY --from=ide-builder /src/packages/ide/release /opt/code-server/current
+COPY --from=ide-builder /src/packages/ide/build/release /opt/code-server/current
 COPY --from=cli-builder /out/composery /opt/composery/bin/composery
 COPY rootfs/ /
 

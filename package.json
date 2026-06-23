@@ -8,6 +8,7 @@
 	"scripts": {
 		"dev": "concurrently -k -n compose,docs -c blue,magenta \"docker compose up --build\" \"pnpm --filter docs-website dev\"",
 		"icons": "node scripts/generate-icons.mjs",
+		"setup": "node scripts/setup.mjs",
 		"smoke": "node scripts/smoke.mjs",
 		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && node scripts/format.mjs --check && pnpm dlx --package renovate renovate-config-validator renovate.json && symlink-agents --check",
 		"fix": "symlink-agents --yes && node scripts/format.mjs --write && eslint . --fix"

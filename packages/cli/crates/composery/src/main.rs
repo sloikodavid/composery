@@ -8,7 +8,7 @@ fn main() -> ExitCode {
     composery::cli::init_tracing();
     match composery::cli::run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
-        // A closed downstream pipe (`composery … | head`) is not a failure.
+        // A closed downstream pipe (`composery ... | head`) is not a failure.
         Err(error) if is_broken_pipe(&error) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("composery: {error:#}");

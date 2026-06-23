@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use crate::output;
 
-/// `composery persistence …` — manage the root filesystem persistence subsystem.
+/// `composery persistence ...` - manage the root filesystem persistence subsystem.
 #[derive(Debug, Subcommand)]
 pub enum PersistenceCommand {
     /// Apply persisted public truth to the live filesystem during boot.

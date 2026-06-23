@@ -1,0 +1,14 @@
+diff --git a/src/node/constants.ts b/src/node/constants.ts
+--- a/src/node/constants.ts
++++ b/src/node/constants.ts
+@@ -18,7 +18,9 @@
+ export const vsRootPath = path.join(rootPath, "lib/vscode")
+ const PACKAGE_JSON = "package.json"
+ const pkg = getPackageJson(`${rootPath}/${PACKAGE_JSON}`)
+-const codePkg = getPackageJson(`${vsRootPath}/${PACKAGE_JSON}`) || { version: "0.0.0" }
++const codePkg = getPackageJson(`${vsRootPath}/${PACKAGE_JSON}`) || {
++  version: "0.0.0",
++}
+ export const version = pkg.version || "development"
+ export const commit = pkg.commit || "development"
+ export const codeVersion = codePkg.version || "development"

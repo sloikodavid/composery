@@ -1,0 +1,21 @@
+diff --git a/src/node/routes/health.ts b/src/node/routes/health.ts
+--- a/src/node/routes/health.ts
++++ b/src/node/routes/health.ts
+@@ -1,12 +1,15 @@
+ import { Router } from "express"
++import { checkPersistdReadiness } from "../persistence/readiness"
+ import { wss, Router as WsRouter } from "../wsRouter"
+ 
+ export const router = Router()
+ 
+-router.get("/", (req, res) => {
+-  res.json({
++router.get("/", async (req, res) => {
++  const persistence = await checkPersistdReadiness()
++  res.status(persistence.ready ? 200 : 503).json({
+     status: req.heart.alive() ? "alive" : "expired",
+     lastHeartbeat: req.heart.lastHeartbeat,
++    persistence,
+   })
+ })
+ 

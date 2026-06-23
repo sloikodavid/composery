@@ -1,0 +1,362 @@
+# Tree
+
+> Run `pnpm fix` to regenerate this file - do not edit manually.
+
+```text
+.github/
+  workflows/
+    ci.yml
+    cla.yml
+    release.yml
+    smoke-nightly.yml
+    smoke.yml
+  CLA.md
+  PULL_REQUEST_TEMPLATE.md
+  RELEASE.md
+docs/
+  repo/
+    maintenance.md
+  self-hosting/
+    fly.md
+    index.md
+    kubernetes.md
+    meta.json
+    railway.md
+    render.md
+    vps.md
+  configuration.md
+  index.md
+  meta.json
+  persistence.md
+hosting/
+  fly/
+    fly.toml
+    README.md
+  kubernetes/
+    composery.yaml
+    ingress.yaml
+    README.md
+  railway/
+    railway.json
+    README.md
+  render/
+    README.md
+    render.yaml
+  supervisor-caddy-compose/
+    Caddyfile
+    compose.yml
+    composery.env
+    README.md
+  supervisor-compose/
+    compose.yml
+    composery.env
+    README.md
+  systemd-caddy-compose/
+    Caddyfile
+    compose.yml
+    composery.env
+    README.md
+  systemd-compose/
+    compose.yml
+    composery.env
+    README.md
+  README.md
+packages/
+  cli/
+    crates/
+      composery/
+        src/
+          commands/
+            mod.rs
+            persistence.rs
+          cli.rs
+          lib.rs
+          main.rs
+          output.rs
+        Cargo.toml
+      persistence/
+        src/
+          apply.rs
+          audit.rs
+          baseline.rs
+          boot.rs
+          capabilities.rs
+          config.rs
+          control.rs
+          daemon.rs
+          dirty.rs
+          doctor.rs
+          internal.rs
+          layout.rs
+          lib.rs
+          lifecycle.rs
+          metadata.rs
+          paths.rs
+          prune.rs
+          public.rs
+          readiness.rs
+          rootfs.rs
+          status.rs
+          update.rs
+          watch.rs
+        tests/
+          roundtrip.rs
+        Cargo.toml
+    Cargo.lock
+    Cargo.toml
+  docs-website/
+    src/
+      app/
+        (docs)/
+          [[...slug]]/
+            page.tsx
+          layout.tsx
+        api/
+          search/
+            route.ts
+        fonts/
+          bricolage-grotesque-latin-wght-normal.woff2
+          inter-latin-wght-normal.woff2
+        llms-full.txt/
+          route.ts
+        llms.mdx/
+          docs/
+            [[...slug]]/
+              route.ts
+        llms.txt/
+          route.ts
+        og/
+          docs/
+            [...slug]/
+              route.tsx
+        fonts.ts
+        global.css
+        icon.svg
+        layout.tsx
+      components/
+        logo-data.ts
+        logo.tsx
+        mdx.tsx
+      lib/
+        cn.ts
+        layout.shared.tsx
+        shared.ts
+        source.ts
+    .gitignore
+    eslint.config.mjs
+    next.config.mjs
+    package.json
+    postcss.config.mjs
+    proxy.ts
+    source.config.ts
+    tsconfig.json
+  ide/
+    overlay/
+      lib/
+        vscode/
+          extensions/
+            composery-agents/
+              extension.js
+              package.json
+              README.md
+            composery-shortcuts/
+              extension.js
+              package.json
+            composery-themes/
+              themes/
+                composery-dark.json
+                composery-light.json
+              NOTICE
+              package.json
+              README.md
+          out/
+            vs/
+              code/
+                browser/
+                  workbench/
+                    workbench-assets/
+                      fonts.css
+                      geist-mono.woff2
+                      inter.woff2
+                      narrow.css
+                      narrow.js
+                      touch.css
+                      touch.js
+      src/
+        browser/
+          media/
+            agents/
+              claude.svg
+              codex.svg
+              hermes.svg
+              NOTICE
+              openclaw.svg
+              opencode.svg
+              pi.svg
+            bricolage-grotesque.woff2
+            composery-logo.svg
+            favicon-dark-support.svg
+            favicon.ico
+            favicon.svg
+            inter.woff2
+            pwa-icon-192.png
+            pwa-icon-512.png
+            pwa-icon-maskable-192.png
+            pwa-icon-maskable-512.png
+            templates.png
+          pages/
+            auth.js
+            error.css
+            error.html
+            global.css
+            login.css
+            login.html
+            register.html
+            reset-password.html
+        node/
+          persistence/
+            readiness.ts
+          routes/
+            passwordConfig.ts
+            register.ts
+            resetPassword.ts
+    patches/
+      asset-cache.diff
+      auth-actions.diff
+      branding.diff
+      clipboard-ipc.diff
+      clipboard-osc52.diff
+      default-color-theme.diff
+      default-layout.diff
+      extensions-view-themes.diff
+      fonts.diff
+      integration.diff
+      markdown-preview-loopback-callback-bridge.diff
+      narrow-fullscreen.diff
+      narrow-gate.diff
+      overlays.diff
+      series
+      shortcuts.diff
+      src-node-app.diff
+      src-node-cli.diff
+      src-node-constants.diff
+      src-node-http.diff
+      src-node-main.diff
+      src-node-routes-health.diff
+      src-node-routes-index.diff
+      src-node-routes-login.diff
+      src-node-routes-logout.diff
+      src-node-routes-pathProxy.diff
+      src-node-socket.diff
+      src-node-util.diff
+      src-node-vscodeSocket.diff
+      src-node-wrapper.diff
+      store-socket.diff
+      tips.diff
+      titlebar-logo.diff
+      touch-editor.diff
+      touch-gate.diff
+      touch-terminal-keybar.diff
+      trusted-domains-loopback-callback-guard.diff
+      welcome.diff
+    build.sh
+    upstream
+patches/
+  fumadocs-ui@16.10.4.patch
+rootfs/
+  etc/
+    sudoers.d/
+      user
+    supervisor/
+      conf.d/
+        composery.conf
+      supervisord.conf
+    systemd/
+      system/
+        composery.service
+        persistence.service
+    xdg/
+      mimeapps.list
+    mailcap
+  home/
+    user/
+      .config/
+        user-dirs.dirs
+      .local/
+        share/
+          composery/
+            User/
+              settings.json
+      Desktop/
+        .gitkeep
+      Documents/
+        .gitkeep
+      Downloads/
+        .gitkeep
+      Music/
+        .gitkeep
+      Pictures/
+        .gitkeep
+      Public/
+        .gitkeep
+      Templates/
+        .gitkeep
+      Videos/
+        .gitkeep
+  opt/
+    composery/
+      init/
+        supervisor.sh
+        systemd.sh
+      code-server.sh
+      entrypoint.sh
+  usr/
+    local/
+      bin/
+        wl-copy
+        wl-paste
+        xclip
+        xsel
+    share/
+      applications/
+        composery-text-editor.desktop
+        composery-url-handler.desktop
+scripts/
+  check-rust.mjs
+  format.mjs
+  generate-icons.mjs
+  setup.mjs
+  smoke.mjs
+tests/
+  fixtures/
+    cert.pem
+    key.pem
+  support/
+    loopbackCallbackGuard.ts
+  code-server-patches.test.ts
+  code-server.test.ts
+  desktop-integration.test.ts
+  loopback-callback-guard.test.ts
+.dockerignore
+.editorconfig
+.gitattributes
+.gitignore
+.gitmodules
+.prettierignore
+CHANGELOG.md
+compose.yml
+Dockerfile
+eslint.config.mjs
+LICENSE
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+README.md
+renovate.json
+SECURITY.md
+symlink-agents.jsonc
+TODO.md
+TREE.md
+tsconfig.json
+vitest.config.ts
+```

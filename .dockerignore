@@ -5,5 +5,7 @@
 !pnpm-lock.yaml
 !rootfs/**
 !packages/**
-packages/ide/lib
+packages/ide/upstream
+packages/ide/build
 packages/cli/target
+**/node_modules

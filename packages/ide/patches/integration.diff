@@ -105,6 +105,7 @@ Index: code-server/lib/vscode/src/vs/base/common/processes.ts
  		/^SNAP(|_.*)$/,
  		/^GDK_PIXBUF_.+$/,
 +		/^COMPOSERY_.+$/,
++		/^COMPOSERY_.+$/,
  	];
  	const envKeys = Object.keys(env);
  	envKeys

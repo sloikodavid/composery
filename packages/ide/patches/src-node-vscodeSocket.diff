@@ -1,0 +1,43 @@
+diff --git a/src/node/vscodeSocket.ts b/src/node/vscodeSocket.ts
+--- a/src/node/vscodeSocket.ts
++++ b/src/node/vscodeSocket.ts
+@@ -1,11 +1,10 @@
+ import { logger } from "@coder/logger"
+ import express from "express"
+ import * as http from "http"
+-import * as path from "path"
+ import { HttpCode, HttpError } from "../common/http"
+ import { listen } from "./app"
+ import { errorHandler } from "./routes/errors"
+-import { canConnect } from "./util"
++import { canConnect, toNativeSocketPath } from "./util"
+ 
+ export interface EditorSessionEntry {
+   workspace: {
+@@ -98,7 +97,7 @@
+       if (matchCheckResults.has(entry.socketPath)) {
+         return matchCheckResults.get(entry.socketPath)!
+       }
+-      const result = entry.workspace.folders.some((folder) => filePath.startsWith(folder.uri.path + path.sep))
++      const result = entry.workspace.folders.some((folder) => filePath.startsWith(folder.uri.path + "/"))
+       matchCheckResults.set(entry.socketPath, result)
+       return result
+     }
+@@ -155,7 +154,7 @@
+     const response = await new Promise<GetSessionResponse>((resolve, reject) => {
+       const opts = {
+         path: "/session?filePath=" + encodeURIComponent(filePath),
+-        socketPath: this.codeServerSocketPath,
++        socketPath: toNativeSocketPath(this.codeServerSocketPath),
+         method: "GET",
+       }
+       const req = http.request(opts, (res) => {
+@@ -188,7 +187,7 @@
+     await new Promise<void>((resolve, reject) => {
+       const opts = {
+         path: "/add-session",
+-        socketPath: this.codeServerSocketPath,
++        socketPath: toNativeSocketPath(this.codeServerSocketPath),
+         method: "POST",
+         headers: {
+           "content-type": "application/json",

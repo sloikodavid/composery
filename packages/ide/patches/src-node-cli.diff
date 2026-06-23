@@ -1,0 +1,315 @@
+diff --git a/src/node/cli.ts b/src/node/cli.ts
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -2,7 +2,7 @@
+ import { promises as fs } from "fs"
+ import { load } from "js-yaml"
+ import * as path from "path"
+-import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
++import { generateCertificate, paths, splitOnFirstEquals } from "./util"
+ import { EditorSessionManagerClient } from "./vscodeSocket"
+ 
+ export enum Feature {
+@@ -58,6 +58,7 @@
+   "link-protection-trusted-domains"?: string[]
+   // locale is used by both VS Code and code-server.
+   locale?: string
++  "reset-password"?: boolean
+ }
+ 
+ /**
+@@ -163,27 +164,34 @@
+     type: "string",
+     description: "Hostname to use when generating a self signed certificate.",
+   },
+-  "cert-key": { type: "string", path: true, description: "Path to certificate key when using non-generated cert." },
++  "cert-key": {
++    type: "string",
++    path: true,
++    description: "Path to certificate key when using non-generated cert.",
++  },
+   "disable-telemetry": { type: "boolean", description: "Disable telemetry." },
+   "disable-update-check": {
+     type: "boolean",
+     description:
+-      "Disable update check. Without this flag, code-server checks every 6 hours against the latest github release and \n" +
++      "Disable update check. Without this flag, Composery checks every 6 hours against the latest GitHub release and \n" +
+       "then notifies you once every week that a new release is available.",
+   },
+   "session-socket": {
+     type: "string",
+   },
++  "reset-password": {
++    type: "boolean",
++  },
+   "cookie-suffix": {
+     type: "string",
+     description:
+       "Adds a suffix to the cookie. This can prevent a collision of cookies for subdomains, making them explixit. \n" +
+-      "Without this flag, no suffix is used. This can also be set with CODE_SERVER_COOKIE_SUFFIX set to any string.",
++      "Without this flag, no suffix is used. This can also be set with COMPOSERY_COOKIE_SUFFIX set to any string.",
+   },
+   "disable-file-downloads": {
+     type: "boolean",
+     description:
+-      "Disable file downloads from Code. This can also be set with CS_DISABLE_FILE_DOWNLOADS set to 'true' or '1'.",
++      "Disable file downloads from Code. This can also be set with COMPOSERY_DISABLE_FILE_DOWNLOADS set to 'true' or '1'.",
+   },
+   "disable-file-uploads": {
+     type: "boolean",
+@@ -218,7 +226,10 @@
+       https://en.wikipedia.org/wiki/IETF_language_tag
+     `,
+   },
+-  open: { type: "boolean", description: "Open in browser on startup. Does not work remotely." },
++  open: {
++    type: "boolean",
++    description: "Open in browser on startup. Does not work remotely.",
++  },
+ 
+   "bind-addr": {
+     type: "string",
+@@ -234,21 +245,43 @@
+   host: { type: "string", description: "" },
+   port: { type: "number", description: "" },
+ 
+-  socket: { type: "string", path: true, description: "Path to a socket (bind-addr will be ignored)." },
++  socket: {
++    type: "string",
++    path: true,
++    description: "Path to a socket (bind-addr will be ignored).",
++  },
+   "socket-mode": { type: "string", description: "File mode of the socket." },
+   "trusted-origins": {
+     type: "string[]",
+     description:
+       "Disables authenticate origin check for trusted origin. Useful if not able to access reverse proxy configuration.",
+   },
+-  version: { type: "boolean", short: "v", description: "Display version information." },
++  version: {
++    type: "boolean",
++    short: "v",
++    description: "Display version information.",
++  },
+   _: { type: "string[]" },
+ 
+-  "user-data-dir": { type: "string", path: true, description: "Path to the user data directory." },
+-  "extensions-dir": { type: "string", path: true, description: "Path to the extensions directory." },
++  "user-data-dir": {
++    type: "string",
++    path: true,
++    description: "Path to the user data directory.",
++  },
++  "extensions-dir": {
++    type: "string",
++    path: true,
++    description: "Path to the extensions directory.",
++  },
+   "builtin-extensions-dir": { type: "string", path: true },
+-  "list-extensions": { type: "boolean", description: "List installed VS Code extensions." },
+-  force: { type: "boolean", description: "Avoid prompts when installing VS Code extensions." },
++  "list-extensions": {
++    type: "boolean",
++    description: "List installed VS Code extensions.",
++  },
++  force: {
++    type: "boolean",
++    description: "Avoid prompts when installing VS Code extensions.",
++  },
+   "locate-extension": { type: "string[]" },
+   category: { type: "string" },
+   "install-extension": {
+@@ -262,13 +295,22 @@
+     description:
+       "Enable proposed API features for extensions. Can receive one or more extension IDs to enable individually.",
+   },
+-  "uninstall-extension": { type: "string[]", description: "Uninstall a VS Code extension by id." },
+-  "show-versions": { type: "boolean", description: "Show VS Code extension versions." },
++  "uninstall-extension": {
++    type: "string[]",
++    description: "Uninstall a VS Code extension by id.",
++  },
++  "show-versions": {
++    type: "boolean",
++    description: "Show VS Code extension versions.",
++  },
+   "github-auth": {
+     type: "string",
+     description: "GitHub authentication token (can only be passed in via $GITHUB_TOKEN or the config file).",
+   },
+-  "proxy-domain": { type: "string[]", description: "Domain used for proxying ports." },
++  "proxy-domain": {
++    type: "string[]",
++    description: "Domain used for proxying ports.",
++  },
+   "skip-auth-preflight": {
+     type: "boolean",
+     description: "Allows preflight requests through proxy without authentication.",
+@@ -290,7 +332,11 @@
+   },
+ 
+   log: { type: LogLevel },
+-  verbose: { type: "boolean", short: "vvv", description: "Enable verbose logging." },
++  verbose: {
++    type: "boolean",
++    short: "vvv",
++    description: "Enable verbose logging.",
++  },
+   "app-name": {
+     type: "string",
+     short: "an",
+@@ -550,7 +596,7 @@
+   if (!args["session-socket"]) {
+     args["session-socket"] = path.join(args["user-data-dir"], "code-server-ipc.sock")
+   }
+-  process.env.CODE_SERVER_SESSION_SOCKET = args["session-socket"]
++  process.env.COMPOSERY_SESSION_SOCKET = args["session-socket"]
+ 
+   // --verbose takes priority over --log and --log takes priority over the
+   // environment variable.
+@@ -611,46 +657,48 @@
+   let usingEnvPassword = !!process.env.PASSWORD
+   if (process.env.PASSWORD) {
+     args.password = process.env.PASSWORD
++    args["hashed-password"] = undefined
+   }
+ 
+-  if (process.env.CS_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
++  if (process.env.COMPOSERY_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
+     args["disable-file-downloads"] = true
+   }
+ 
+-  if (process.env.CS_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
++  if (process.env.COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
+     args["disable-getting-started-override"] = true
+   }
+ 
+-  if (process.env.CS_DISABLE_PROXY?.match(/^(1|true)$/)) {
++  if (process.env.COMPOSERY_DISABLE_PROXY?.match(/^(1|true)$/)) {
+     args["disable-proxy"] = true
+   }
+ 
+   const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
+   if (process.env.HASHED_PASSWORD) {
+     args["hashed-password"] = process.env.HASHED_PASSWORD
++    args.password = undefined
+     usingEnvPassword = false
+   }
+ 
+-  if (process.env.CODE_SERVER_COOKIE_SUFFIX) {
+-    args["cookie-suffix"] = process.env.CODE_SERVER_COOKIE_SUFFIX
++  if (process.env.COMPOSERY_COOKIE_SUFFIX) {
++    args["cookie-suffix"] = process.env.COMPOSERY_COOKIE_SUFFIX
+   }
+ 
+   if (process.env.GITHUB_TOKEN) {
+     args["github-auth"] = process.env.GITHUB_TOKEN
+   }
+ 
+-  if (process.env.CODE_SERVER_RECONNECTION_GRACE_TIME) {
+-    args["reconnection-grace-time"] = process.env.CODE_SERVER_RECONNECTION_GRACE_TIME
++  if (process.env.COMPOSERY_RECONNECTION_GRACE_TIME) {
++    args["reconnection-grace-time"] = process.env.COMPOSERY_RECONNECTION_GRACE_TIME
+   }
+ 
+-  if (process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS) {
+-    if (isNaN(Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS))) {
+-      logger.info("CODE_SERVER_IDLE_TIMEOUT_SECONDS must be a number")
++  if (process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) {
++    if (isNaN(Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS))) {
++      logger.info("COMPOSERY_IDLE_TIMEOUT_SECONDS must be a number")
+     }
+-    if (Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS) <= 60) {
++    if (Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) <= 60) {
+       throw new Error("--idle-timeout-seconds must be greater than 60 seconds.")
+     }
+-    args["idle-timeout-seconds"] = Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS)
++    args["idle-timeout-seconds"] = Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS)
+   }
+ 
+   // Ensure they're not readable by child processes.
+@@ -678,7 +726,7 @@
+   args["proxy-domain"] = finalProxies
+ 
+   if (!args["app-name"]) {
+-    args["app-name"] = "code-server"
++    args["app-name"] = "Composery"
+   }
+ 
+   args._ = getResolvedPathsFromArgs(args)
+@@ -691,24 +739,28 @@
+ }
+ 
+ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
+-  return (args._ ?? []).map((p) => path.resolve(p))
++  return (args._ ?? []).map((p) => {
++    // On Windows, POSIX-style absolute paths used in tests/URIs should stay
++    // POSIX; otherwise resolve normally.
++    if (process.platform === "win32" && p.startsWith("/")) {
++      return path.posix.resolve(p)
++    }
++    return path.resolve(p)
++  })
+ }
+ 
+ /**
+  * Helper function to return the default config file.
+  *
+- * @param {string} password - Password passed in (usually from generatePassword())
+  * @returns The default config file:
+  *
+  * - bind-addr: 127.0.0.1:8080
+  * - auth: password
+- * - password: <password>
+  * - cert: false
+  */
+-export function defaultConfigFile(password: string): string {
++export function defaultConfigFile(): string {
+   return `bind-addr: 127.0.0.1:8080
+ auth: password
+-password: ${password}
+ cert: false
+ `
+ }
+@@ -720,11 +772,11 @@
+ /**
+  * Reads the code-server yaml config file and returns it as Args.
+  *
+- * @param configPath Read the config from configPath instead of $CODE_SERVER_CONFIG or the default.
++ * @param configPath Read the config from configPath instead of $COMPOSERY_CONFIG or the default.
+  */
+ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
+   if (!configPath) {
+-    configPath = process.env.CODE_SERVER_CONFIG
++    configPath = process.env.COMPOSERY_CONFIG
+     if (!configPath) {
+       configPath = path.join(paths.config, "config.yaml")
+     }
+@@ -733,8 +785,7 @@
+   await fs.mkdir(path.dirname(configPath), { recursive: true })
+ 
+   try {
+-    const generatedPassword = await generatePassword()
+-    await fs.writeFile(configPath, defaultConfigFile(generatedPassword), {
++    await fs.writeFile(configPath, defaultConfigFile(), {
+       flag: "wx", // wx means to fail if the path exists.
+     })
+     logger.info(`Wrote default config file to ${configPath}`)
+@@ -811,8 +862,8 @@
+   if (args["bind-addr"]) {
+     addr = parseBindAddr(args["bind-addr"])
+   }
+-  if (process.env.CODE_SERVER_HOST) {
+-    addr.host = process.env.CODE_SERVER_HOST
++  if (process.env.COMPOSERY_HOST) {
++    addr.host = process.env.COMPOSERY_HOST
+   }
+   if (args.host) {
+     addr.host = args.host
+@@ -923,5 +974,6 @@
+     version: !!args.version,
+     port: args.port?.toString(),
+     log: args.log ? [args.log] : undefined,
++    "reset-password": args.auth === AuthType.Password && !args.usingEnvPassword && !args.usingEnvHashedPassword,
+   }
+ }

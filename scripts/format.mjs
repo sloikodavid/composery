@@ -17,7 +17,7 @@ const hasUnknownArg = process.argv
 	.slice(2)
 	.some((arg) => !ALLOWED_ARGS.has(arg));
 const check = !write && (args.size === 0 || explicitCheck);
-const LIST_OUTPUT_FILE = ".agents/skills/list/SKILL.md";
+const TREE_OUTPUT_FILE = "TREE.md";
 const IGNORE_PATH = [
 	join(REPO_ROOT, ".gitignore"),
 	join(REPO_ROOT, ".prettierignore")
@@ -68,14 +68,18 @@ function gitFiles() {
 		.split("\0")
 		.filter(Boolean)
 		.filter(
-			(path) => path !== LIST_OUTPUT_FILE && existsSync(join(REPO_ROOT, path))
+			(path) => path !== TREE_OUTPUT_FILE && existsSync(join(REPO_ROOT, path))
 		);
 }
 
 function readTextFile(file) {
-	const buffer = readFileSync(file);
-	if (buffer.includes(0)) return undefined;
-	return buffer.toString("utf8");
+	try {
+		const buffer = readFileSync(file);
+		if (buffer.includes(0)) return undefined;
+		return buffer.toString("utf8");
+	} catch {
+		return undefined;
+	}
 }
 
 async function checkedFiles() {
@@ -88,14 +92,14 @@ async function checkedFiles() {
 	return files;
 }
 
-function renderList() {
+function renderTree() {
 	const root = {
 		children: new Map(),
 		name: basename(REPO_ROOT),
 		type: "directory"
 	};
 
-	for (const path of [...gitFiles(), LIST_OUTPUT_FILE]) {
+	for (const path of [...gitFiles(), TREE_OUTPUT_FILE]) {
 		const parts = path.split("/").filter(Boolean);
 		let current = root;
 		for (const [index, name] of parts.entries()) {
@@ -127,10 +131,7 @@ function renderList() {
 	}
 
 	return [
-		"---",
-		"name: list",
-		"description: Use when you're not sure where to look, need to find the right file, or need to understand the project structure in a token-efficient list format. Saves the user time and money.",
-		"---",
+		"# Tree",
 		"",
 		"> Run `pnpm fix` to regenerate this file - do not edit manually.",
 		"",
@@ -141,9 +142,9 @@ function renderList() {
 	].join("\n");
 }
 
-function runList({ write }) {
-	const file = join(REPO_ROOT, LIST_OUTPUT_FILE);
-	const expected = renderList();
+function runTree({ write }) {
+	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const expected = renderTree();
 	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 	if (actual === expected) return true;
 	if (write) {
@@ -151,7 +152,7 @@ function runList({ write }) {
 		writeFileSync(file, expected);
 		return true;
 	}
-	console.error(`${LIST_OUTPUT_FILE} is out of date. Run 'pnpm fix'.`);
+	console.error(`${TREE_OUTPUT_FILE} is out of date. Run 'pnpm fix'.`);
 	return false;
 }
 
@@ -249,7 +250,7 @@ function runPrettier({ write }) {
 
 async function runAll({ write }) {
 	const results = [
-		runList({ write }),
+		runTree({ write }),
 		await runLlmCharacters({ write }),
 		await runListPeriods({ write }),
 		runPrettier({ write })

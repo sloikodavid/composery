@@ -8,6 +8,7 @@ packages/ide/lib/vscode/
 packages/ide/overlay/
 packages/ide/out/
 packages/ide/release/
+packages/ide/upstream/
 **/.cache/
 dist/
 build/
