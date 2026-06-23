@@ -12,3 +12,4 @@ dist/
 build/
 .next/
 .source/
+prompts/TREE.md

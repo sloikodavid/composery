@@ -38,7 +38,7 @@ function toRepoPath(file) {
 
 function findCargoManifests() {
 	// Discover via git so .gitignore is respected (e.g. throwaway checkouts
-	// under tmp/ are excluded), matching scripts/format.mjs.
+	// under tmp/ are excluded), matching scripts/tree.mjs.
 	const output = execFileSync(
 		"git",
 		[

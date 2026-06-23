@@ -74,7 +74,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
 -							'font-size: 13px',
 -							'color: #dcdee2',
 -						].join(';'),
--					}, 'Coder is a self-service portal which provisions via Terraform-Linux, macOS, Windows, x86, ARM, and, of course, Kubernetes based infrastructure.'),
+-					}, 'Coder is a self-service portal which provisions via Terraform—Linux, macOS, Windows, x86, ARM, and, of course, Kubernetes based infrastructure.'),
 -					$('p', {
 -						style: [
 -							'margin: 0',

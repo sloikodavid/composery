@@ -76,7 +76,10 @@ export const writeHashedPassword = async (
 		config.auth = "password";
 		delete config.password;
 		config["hashed-password"] = hashedPassword;
-		await fs.writeFile(configPath, dump(config, { lineWidth: -1 }));
+		// Write atomically so a crash mid-write can't corrupt the auth config.
+		const tmpPath = `${configPath}.${process.pid}.tmp`;
+		await fs.writeFile(tmpPath, dump(config, { lineWidth: -1 }));
+		await fs.rename(tmpPath, configPath);
 
 		req.args.password = undefined;
 		req.args["hashed-password"] = hashedPassword;

@@ -651,7 +651,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
 
   if (process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) {
     if (isNaN(Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS))) {
-      logger.info("COMPOSERY_IDLE_TIMEOUT_SECONDS must be a number")
+      throw new Error("COMPOSERY_IDLE_TIMEOUT_SECONDS must be a number")
     }
     if (Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) <= 60) {
       throw new Error("--idle-timeout-seconds must be greater than 60 seconds.")

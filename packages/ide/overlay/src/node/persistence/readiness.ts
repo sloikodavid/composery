@@ -9,7 +9,23 @@ type PersistdReadiness = {
 	updatedAt?: string;
 };
 
+// The gate runs on every request and ws upgrade, so cache the result briefly to
+// avoid a disk read per request. 1s TTL stays correct whether readiness is
+// monotonic or can revert (matches the Retry-After/poll cadence), and beats
+// re-reading tmpfs thousands of times under load.
+const cacheTtlMs = 1000;
+let cached: { value: PersistdReadiness; at: number } | undefined;
+
 export async function checkPersistdReadiness(): Promise<PersistdReadiness> {
+	if (cached && Date.now() - cached.at < cacheTtlMs) {
+		return cached.value;
+	}
+	const value = await readPersistdReadiness();
+	cached = { value, at: Date.now() };
+	return value;
+}
+
+async function readPersistdReadiness(): Promise<PersistdReadiness> {
 	let data: string;
 	try {
 		data = await fs.readFile(readyPath, "utf8");

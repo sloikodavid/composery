@@ -1,7 +1,6 @@
 # To-do
 
-- Figure out the API including Shortcuts.
-  - Copy URL button for shortcuts - uses a Webhook for command shortcuts and passes payload.
+- Figure out the API.
 
 - Slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most tasks whenever possible, integrate AI into automations.
 
@@ -18,10 +17,12 @@
 
 ## Future Ideas:
 
+- File router depending on host platform, possibly changing AGENTS.md instructions.
+
+- Turn the IDE into an actual OS.
+
 - Product icon support.
 
 - File/folder/workspace/shortcut/artifact sharing/collaboration.
 
-- File router depending on host platform, possibly changing AGENTS.md instructions.
-
-- Behavioral hooks for VS Code actions.
+- Workflows, possibly with behavioral hooks for VS Code actions.

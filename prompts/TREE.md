@@ -13,6 +13,8 @@
   CLA.md
   PULL_REQUEST_TEMPLATE.md
   RELEASE.md
+.vscode/
+  settings.json
 docs/
   repo/
     maintenance.md
@@ -255,6 +257,9 @@ packages/
     upstream
 patches/
   fumadocs-ui@16.10.4.patch
+prompts/
+  REFACTOR.md
+  TREE.md
 rootfs/
   etc/
     sudoers.d/
@@ -315,10 +320,10 @@ rootfs/
         composery-url-handler.desktop
 scripts/
   check-rust.mjs
-  format.mjs
   generate-icons.mjs
   setup.mjs
   smoke.mjs
+  tree.mjs
 tests/
   fixtures/
     cert.pem
@@ -335,7 +340,9 @@ tests/
 .gitignore
 .gitmodules
 .prettierignore
+AGENTS.md
 CHANGELOG.md
+CLAUDE.md
 compose.yml
 Dockerfile
 eslint.config.mjs
@@ -347,7 +354,6 @@ README.md
 renovate.json
 SECURITY.md
 TODO.md
-TREE.md
 tsconfig.json
 vitest.config.ts
 ```
