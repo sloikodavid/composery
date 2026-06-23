@@ -180,10 +180,12 @@ mod imp {
         }
 
         let public_path = public_path(&options.root, path)?;
+        let display = public_path.display();
+        let volume_root = crate::paths::volume_root();
         Ok(matches!(
-            public_path.display().as_str(),
-            "/proc" | "/sys" | "/dev" | "/run" | "/data" | "/opt/persistence/baseline.sqlite"
-        ))
+            display.as_str(),
+            "/proc" | "/sys" | "/dev" | "/run" | "/opt/persistence/baseline.sqlite"
+        ) || display.as_str() == volume_root.to_string_lossy().as_ref())
     }
 
     pub struct BaselineDb {

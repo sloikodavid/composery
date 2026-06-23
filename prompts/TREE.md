@@ -26,52 +26,22 @@ docs/
     railway.md
     render.md
     vps.md
+  api.md
   configuration.md
   index.md
   meta.json
   persistence.md
-templates/
-  fly/
-    fly.toml
-    README.md
-  kubernetes/
-    composery.yaml
-    ingress.yaml
-    README.md
-  railway/
-    railway.json
-    README.md
-  render/
-    README.md
-    render.yaml
-  supervisor-caddy-compose/
-    Caddyfile
-    compose.yml
-    composery.env
-    README.md
-  supervisor-compose/
-    compose.yml
-    composery.env
-    README.md
-  systemd-caddy-compose/
-    Caddyfile
-    compose.yml
-    composery.env
-    README.md
-  systemd-compose/
-    compose.yml
-    composery.env
-    README.md
-  README.md
 packages/
   cli/
     crates/
       composery/
         src/
           commands/
+            api.rs
             mod.rs
             persistence.rs
           cli.rs
+          keystore.rs
           lib.rs
           main.rs
           output.rs
@@ -219,6 +189,15 @@ packages/
           persistence/
             readiness.ts
           routes/
+            api/
+              auth.ts
+              config.ts
+              exec.ts
+              index.ts
+              keystore.ts
+              pty.ts
+              ratelimit.ts
+              session.ts
             health.ts
             index.ts
             login.ts
@@ -324,6 +303,39 @@ scripts/
   setup.mjs
   smoke.mjs
   tree.mjs
+templates/
+  fly/
+    fly.toml
+    README.md
+  kubernetes/
+    composery.yaml
+    ingress.yaml
+    README.md
+  railway/
+    railway.json
+    README.md
+  render/
+    README.md
+    render.yaml
+  supervisor-caddy-compose/
+    Caddyfile
+    compose.yml
+    composery.env
+    README.md
+  supervisor-compose/
+    compose.yml
+    composery.env
+    README.md
+  systemd-caddy-compose/
+    Caddyfile
+    compose.yml
+    composery.env
+    README.md
+  systemd-compose/
+    compose.yml
+    composery.env
+    README.md
+  README.md
 tests/
   fixtures/
     cert.pem

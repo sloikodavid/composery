@@ -31,9 +31,9 @@ composery api key revoke <id>
 ```
 
 The secret (`csy_...`) is shown once at creation and never again — only its
-SHA-256 hash is stored, in `${COMPOSERY_DATA_DIR:-/data}/api/keys.json` (`0600`,
-on the persistent volume so keys survive a redeploy). Add `--json` to any command
-for machine-readable output.
+SHA-256 hash is stored, in `<volume>/api/keys.json` (`0600`, on the persistent
+volume so keys survive a redeploy; `/data` by default). Add `--json` to any command for
+machine-readable output.
 
 Authenticate with either header:
 
@@ -55,7 +55,13 @@ curl -X POST https://<your-box>/v1/exec \
 ```
 
 ```json
-{ "stdout": "...", "stderr": "...", "exit_code": 0, "timed_out": false, "truncated": false }
+{
+	"stdout": "...",
+	"stderr": "...",
+	"exit_code": 0,
+	"timed_out": false,
+	"truncated": false
+}
 ```
 
 Fields: `command` (required), `cwd` (default `$HOME`), `env` (overlay), `timeout`
@@ -89,16 +95,15 @@ DELETE /v1/sessions/:name    # kill one
 
 All overridable via environment; defaults are sane and never bite real use.
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `COMPOSERY_API_ENABLED` | `true` | `false` hard-disables the API. |
-| `COMPOSERY_DATA_DIR` | `/data` | Volume base; key store at `<dir>/api/keys.json`. |
-| `COMPOSERY_API_EXEC_TIMEOUT` | `60` | One-shot default timeout (seconds). |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT` | `10485760` | One-shot output cap (bytes). |
-| `COMPOSERY_API_RATE_RPS` | `50` | Per-key sustained requests/sec. |
-| `COMPOSERY_API_RATE_BURST` | `200` | Per-key burst. |
-| `COMPOSERY_API_MAX_SESSIONS` | `50` | Concurrent sessions per key. |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN` | `20` | Failed-auth attempts/min/IP. |
+| Variable                          | Default    | Meaning                             |
+| --------------------------------- | ---------- | ----------------------------------- |
+| `COMPOSERY_API_ENABLED`           | `true`     | `false` hard-disables the API.      |
+| `COMPOSERY_API_EXEC_TIMEOUT`      | `60`       | One-shot default timeout (seconds). |
+| `COMPOSERY_API_EXEC_MAX_OUTPUT`   | `10485760` | One-shot output cap (bytes).        |
+| `COMPOSERY_API_RATE_RPS`          | `50`       | Per-key sustained requests/sec.     |
+| `COMPOSERY_API_RATE_BURST`        | `200`      | Per-key burst.                      |
+| `COMPOSERY_API_MAX_SESSIONS`      | `50`       | Concurrent sessions per key.        |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN` | `20`       | Failed-auth attempts/min/IP.        |
 
 Rate limits are abuse/quota rails, not DDoS defense (that is handled by your
 platform in front of the box). They never trip on normal automation.

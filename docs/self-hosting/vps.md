@@ -14,8 +14,8 @@ system, and whether Composery **owns its TLS edge**.
 
 That gives four recipes:
 
-| Recipe                                                                                                    | When                                                                           |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Recipe                                                                                                      | When                                                                           |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | [systemd + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-caddy-compose)       | Recommended VPS - Hetzner/DigitalOcean-style host with a domain. Cloud parity. |
 | [systemd, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-compose)           | Privileged host where your own proxy terminates TLS.                           |
 | [supervisor + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-caddy-compose) | Locked-down or rootless host with a domain.                                    |

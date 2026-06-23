@@ -1,13 +1,13 @@
-//! On-disk API key store: `<data>/api/keys.json`.
+//! On-disk API key store: `/data/api/keys.json`.
 //!
 //! This is the cross-language contract. The code-server TypeScript route reads
 //! the same file and verifies a presented secret against `sha256(secret)`. The
-//! store path (`$COMPOSERY_DATA_DIR/api/keys.json`, default `/data`), the JSON
-//! shape, and the hex SHA-256 hashing MUST stay identical on both sides - do not
-//! change one without the other.
+//! store path, the JSON shape, and the hex SHA-256 hashing MUST stay identical
+//! on both sides - do not change one without the other.
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
+use persistence::paths::volume_root;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -18,7 +18,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const DEFAULT_DATA_DIR: &str = "/data";
 const KEY_PREFIX: &str = "csy_";
 
 /// The whole key store, as persisted.
@@ -73,13 +72,11 @@ impl KeyStore {
     }
 }
 
-/// Resolve the store path from the environment. The base mirrors persistence's
-/// volume convention and is overridable so the volume can move.
+/// Resolve the key store path. The persistent volume mounts at `/data` by
+/// deployment contract (overridable with `COMPOSERY_DOCKER_VOLUME_PATH`); derive
+/// from persistence's shared `volume_root` so there is one source of truth.
 pub fn store_path() -> PathBuf {
-    let base = std::env::var_os("COMPOSERY_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR));
-    base.join("api").join("keys.json")
+    volume_root().join("api").join("keys.json")
 }
 
 /// Load the store, or a fresh empty one if the file does not exist yet.

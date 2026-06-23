@@ -51,6 +51,7 @@ async function main() {
 	docker(["volume", "create", config.volumeName], { quiet: true });
 	runDefaultContainer();
 	await assertWebAppSmoke();
+	await assertApiSmoke();
 	await assertPersistdAppliesChanges();
 	await assertSystemdEnvBridge();
 }
@@ -315,6 +316,88 @@ async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
 
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health, { cookies });
 	await assertWebsocketUpgrade(cookies);
+}
+
+async function assertApiSmoke() {
+	log("checking the automation API: mint key, exec, headers, revoke");
+
+	// Mint a key as the editor user (the realistic path; that user owns /data/api).
+	const created = JSON.parse(
+		execSh("composery api key create --name smoke --json", {
+			capture: true,
+			user: "user"
+		}).stdout
+	);
+	if (
+		typeof created.secret !== "string" ||
+		!created.secret.startsWith("csy_")
+	) {
+		throw new Error("composery api key create did not return a csy_ secret.");
+	}
+	const key = created.secret;
+
+	// No key => 401.
+	const unauthorized = await request("/v1/exec", {
+		body: JSON.stringify({ command: "echo nope" }),
+		headers: { "content-type": "application/json" },
+		method: "POST"
+	});
+	if (unauthorized.statusCode !== 401) {
+		throw new Error(
+			`Expected 401 without a key, got ${unauthorized.statusCode}.`
+		);
+	}
+
+	// One-shot exec with a Bearer key runs as the editor user and returns output.
+	const marker = `composery-api-smoke-${RUN_ID}`;
+	const execResponse = await request("/v1/exec", {
+		body: JSON.stringify({ command: `echo ${marker}` }),
+		headers: {
+			authorization: `Bearer ${key}`,
+			"content-type": "application/json"
+		},
+		method: "POST"
+	});
+	if (execResponse.statusCode !== 200) {
+		throw new Error(
+			`Expected 200 from /v1/exec, got ${execResponse.statusCode}.`
+		);
+	}
+	const result = JSON.parse(execResponse.body);
+	assertContains("exec stdout", result.stdout, marker);
+	if (result.exit_code !== 0) {
+		throw new Error(`Expected exit_code 0, got ${result.exit_code}.`);
+	}
+
+	// The X-API-Key header is also accepted.
+	const viaApiKeyHeader = await request("/v1/exec", {
+		body: JSON.stringify({ command: "true" }),
+		headers: { "content-type": "application/json", "x-api-key": key },
+		method: "POST"
+	});
+	if (viaApiKeyHeader.statusCode !== 200) {
+		throw new Error(
+			`Expected 200 via X-API-Key, got ${viaApiKeyHeader.statusCode}.`
+		);
+	}
+
+	// Revoking the key stops it working.
+	execSh(`composery api key revoke ${created.id}`, { user: "user" });
+	const afterRevoke = await request("/v1/exec", {
+		body: JSON.stringify({ command: "true" }),
+		headers: {
+			authorization: `Bearer ${key}`,
+			"content-type": "application/json"
+		},
+		method: "POST"
+	});
+	if (afterRevoke.statusCode !== 401) {
+		throw new Error(
+			`Expected 401 after revoke, got ${afterRevoke.statusCode}.`
+		);
+	}
+
+	log("API smoke passed");
 }
 
 async function assertPersistdAppliesChanges() {

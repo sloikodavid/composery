@@ -11,7 +11,7 @@
 		"setup": "node scripts/setup.mjs",
 		"smoke": "node scripts/smoke.mjs",
 		"check": "tsc --noEmit && vitest run --coverage && eslint . && node scripts/check-rust.mjs && prettier --check . && node scripts/tree.mjs && pnpm dlx --package renovate renovate-config-validator renovate.json",
-		"fix": "eslint . --fix && prettier --write . && node scripts/tree.mjs --write"
+		"fix": "node scripts/tree.mjs --write && eslint . --fix && prettier --write ."
 	},
 	"prettier": {
 		"useTabs": true,

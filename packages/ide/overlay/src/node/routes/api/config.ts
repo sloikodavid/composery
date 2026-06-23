@@ -14,8 +14,6 @@ export const apiConfig = {
   // `false` hard-disables the API (routes 404). Otherwise it auto-gates: no
   // keys means every endpoint 401s, so it is effectively off until one is minted.
   enabled: process.env.COMPOSERY_API_ENABLED !== "false",
-  // Volume base, mirroring persistence's convention. The key store lives under it.
-  dataDir: process.env.COMPOSERY_DATA_DIR || "/data",
   // Exec runs in the editor's own login shell as the code-server user - no drift.
   shell: process.env.SHELL || "/bin/bash",
   home: process.env.HOME,
@@ -30,7 +28,12 @@ export const apiConfig = {
   authFailPerMin: num("COMPOSERY_API_AUTH_FAIL_PER_MIN", 20),
 }
 
-// `$COMPOSERY_DATA_DIR/api/keys.json` - must match the Rust CLI's resolution.
+// The persistent volume mounts at /data by deployment contract (the same root
+// persistence owns), overridable with COMPOSERY_DOCKER_VOLUME_PATH. Mirrors the
+// Rust `volume_root` - this is the cross-language contract, both sides must agree.
+const DATA_ROOT = process.env.COMPOSERY_DOCKER_VOLUME_PATH?.trim() || "/data"
+
+// `<volume>/api/keys.json` - must match the Rust CLI's key store path.
 export function keysPath(): string {
-  return path.join(apiConfig.dataDir, "api", "keys.json")
+  return path.join(DATA_ROOT, "api", "keys.json")
 }

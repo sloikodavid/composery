@@ -23,7 +23,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             exclusions: vec![
-                "/data".into(),
+                // The volume root must never be persisted into itself; track the
+                // configurable root, not a literal, or an override would corrupt.
+                crate::paths::volume_root().to_string_lossy().into_owned(),
                 "/run".into(),
                 "/proc".into(),
                 "/sys".into(),

@@ -21,7 +21,22 @@ pub struct Paths {
 
 impl Default for Paths {
     fn default() -> Self {
-        Self::new("/opt/persistence", "/run/persistence", "/data/persistence")
+        Self::new(
+            "/opt/persistence",
+            "/run/persistence",
+            volume_root().join("persistence"),
+        )
+    }
+}
+
+/// The container's persistent volume root. `/data` by deployment contract;
+/// `COMPOSERY_DOCKER_VOLUME_PATH` overrides it (the mount target must match).
+/// Single source of truth for the volume root across persistence and the API
+/// key store - every path on the volume derives from here.
+pub fn volume_root() -> PathBuf {
+    match std::env::var("COMPOSERY_DOCKER_VOLUME_PATH") {
+        Ok(value) if !value.trim().is_empty() => PathBuf::from(value.trim()),
+        _ => PathBuf::from("/data"),
     }
 }
 
