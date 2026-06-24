@@ -1,6 +1,6 @@
 # To-do
 
-- Refactor/rewrite EVERYTHING to be clean, high quality, and maintainable across updates.
+- Refactor/rewrite EVERYTHING to be clean, high quality, and maintainable across updates. Make proper full E2E tests and ensure good testing throughout the project, and refresh CI.
 
 - Slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most tasks whenever possible, integrate AI into automations.
 

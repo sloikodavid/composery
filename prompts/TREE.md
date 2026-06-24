@@ -14,6 +14,7 @@
   PULL_REQUEST_TEMPLATE.md
   RELEASE.md
 .vscode/
+  extensions.json
   settings.json
 docs/
   repo/
@@ -68,6 +69,7 @@ packages/
           public.rs
           readiness.rs
           rootfs.rs
+          snapshot.rs
           status.rs
           update.rs
           watch.rs
@@ -234,6 +236,8 @@ packages/
       welcome.diff
     build.sh
     upstream
+  mobile-app/
+    .gitkeep
 patches/
   fumadocs-ui@16.10.4.patch
 prompts/

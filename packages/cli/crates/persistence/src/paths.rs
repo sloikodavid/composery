@@ -12,6 +12,7 @@ pub struct Paths {
     pub removed_dir: PathBuf,
     pub metadata_file: PathBuf,
     pub internal_dir: PathBuf,
+    pub snapshots_dir: PathBuf,
     pub state_db: PathBuf,
     pub lock_file: PathBuf,
     pub control_socket: PathBuf,
@@ -58,6 +59,7 @@ impl Paths {
             changed_dir: join(&data_dir, "changed"),
             removed_dir: join(&data_dir, "removed"),
             metadata_file: join(&data_dir, "metadata.jsonl"),
+            snapshots_dir: join(&internal_dir, "snapshots"),
             state_db: join(&internal_dir, "state.sqlite"),
             lock_file: join(&internal_dir, "lock"),
             control_socket: join(&internal_dir, "control.sock"),
@@ -115,6 +117,10 @@ mod tests {
         assert_eq!(
             paths.control_socket.to_string_lossy(),
             "/data/persistence/.internal/control.sock"
+        );
+        assert_eq!(
+            paths.snapshots_dir.to_string_lossy(),
+            "/data/persistence/.internal/snapshots"
         );
     }
 }
