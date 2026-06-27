@@ -14,6 +14,8 @@
 
 - Mobile app.
 
+- QR codes to scan from mobile to open Composery.
+
 - Turn the IDE into an actual OS.
 
 - Mirror the exact upstream release tarballs used by `Dockerfile` in a project-controlled location, such as an Composery GitHub release or GHCR artifact:

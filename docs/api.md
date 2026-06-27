@@ -1,16 +1,16 @@
 ---
 title: API
-description: Run commands against a running Composery from anywhere, authenticated by API keys minted on the box.
+description: Run commands against a running Composery from anywhere, authenticated by API keys minted on the instance.
 ---
 
 Every Composery serves a small automation API on its own URL, in-process with the
-editor, on the same single port. It lets you run commands against the box from
+editor, on the same single port. It lets you run commands against the instance from
 outside the editor — `curl`, CI, a script, your laptop — using API keys you mint
-on the box. It is the same box you already have root in; the API just makes that
+on the instance. It is the same instance you already have root in; the API just makes that
 shell programmatic and remote.
 
 This is not a control-plane API. There is no lifecycle here (no create/stop/delete
-of boxes). The box already exists; this only automates work inside it.
+of instances). The instance already exists; this only automates work inside it.
 
 ## Enabling it
 
@@ -20,7 +20,7 @@ The API is on by default but **auto-gated**: with no keys, every endpoint return
 
 ## API keys
 
-Keys are created, listed, and revoked **on the box** with the `composery` CLI —
+Keys are created, listed, and revoked **on the instance** with the `composery` CLI —
 local shell access is the authorization. You cannot mint a key remotely without
 already being able to log in, which is the intended boundary.
 
@@ -48,7 +48,7 @@ X-API-Key: csy_...
 environment your editor terminal has — and returns the result.
 
 ```bash
-curl -X POST https://<your-box>/v1/exec \
+curl -X POST https://<your-instance>/v1/exec \
   -H "Authorization: Bearer csy_..." \
   -H "Content-Type: application/json" \
   -d '{"command":"pnpm build","cwd":"~/app","timeout":600}'
@@ -106,4 +106,4 @@ All overridable via environment; defaults are sane and never bite real use.
 | `COMPOSERY_API_AUTH_FAIL_PER_MIN` | `20`       | Failed-auth attempts/min/IP.        |
 
 Rate limits are abuse/quota rails, not DDoS defense (that is handled by your
-platform in front of the box). They never trip on normal automation.
+platform in front of the instance). They never trip on normal automation.

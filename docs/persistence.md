@@ -52,25 +52,7 @@ sudo composery persistence status
 sudo composery persistence status --json
 sudo composery persistence doctor
 sudo composery persistence prune
-sudo composery persistence snapshot
 ```
-
-## Snapshots
-
-`composery persistence snapshot` captures a consistent point-in-time copy of the
-persisted public truth (`config.json`, `changed/`, `removed/`, `metadata.jsonl`)
-under `/data/persistence/.internal/snapshots/<id>`. It runs on the daemon's
-single writer thread, so no delta update is in flight while it runs; `changed/`
-and `removed/` are hardlinked (the daemon publishes them by atomic rename, so a
-hardlink pins the point-in-time even as the box keeps changing). There is **no
-box downtime** - code-server keeps serving while the snapshot is taken.
-
-`state.sqlite` is intentionally excluded; it is derived and rebuilt on next
-open. The command prints the snapshot directory (use `--json` for the path).
-The caller owns archiving the directory and removing it afterward - to restore,
-lay `config.json`, `changed/`, `removed/`, and `metadata.jsonl` back into
-`/data/persistence`, remove `.internal/`, and restart so boot `apply` rebuilds
-the rootfs from the restored delta.
 
 ## Readiness
 

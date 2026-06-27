@@ -8,7 +8,7 @@ pub mod persistence;
 /// its own module; adding a domain is a new module plus one variant here.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Box automation API (keys, exec surface).
+    /// Composery automation API (keys, exec surface).
     #[command(subcommand)]
     Api(api::ApiCommand),
     /// Root filesystem persistence.

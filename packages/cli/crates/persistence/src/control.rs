@@ -18,7 +18,6 @@ pub enum Command {
     Status,
     Doctor,
     Prune,
-    Snapshot,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,33 +94,6 @@ pub fn query<T: DeserializeOwned>(paths: &Paths, command: Command) -> Result<T> 
         );
     }
     request(&paths.control_socket, command)
-}
-
-/// Like [`query`], but with a caller-chosen timeout. Used for commands the
-/// writer thread may take longer than the default 10s to serve (e.g. snapshot
-/// hardlinking on a large delta).
-pub fn query_with_timeout<T: DeserializeOwned>(
-    paths: &Paths,
-    command: Command,
-    timeout: Duration,
-) -> Result<T> {
-    if !control_socket_available(paths) {
-        bail!(
-            "daemon is not running; expected control socket at {}",
-            paths.control_socket.display()
-        );
-    }
-
-    #[cfg(unix)]
-    {
-        request_with_timeout(&paths.control_socket, command, timeout)
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = (command, timeout);
-        bail!("persistence control socket is only supported on Unix");
-    }
 }
 
 fn control_socket_available(paths: &Paths) -> bool {

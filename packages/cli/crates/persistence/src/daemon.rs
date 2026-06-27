@@ -10,9 +10,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    config, control, doctor, internal, layout, paths::Paths, prune, readiness, snapshot, status,
-};
+use crate::{config, control, doctor, internal, layout, paths::Paths, prune, readiness, status};
 
 #[cfg(unix)]
 use crate::{
@@ -29,7 +27,6 @@ enum WriterCommand {
     Status(mpsc::Sender<Result<status::StatusReport, String>>),
     Doctor(mpsc::Sender<Result<doctor::DoctorReport, String>>),
     Prune(mpsc::Sender<Result<prune::PruneReport, String>>),
-    Snapshot(mpsc::Sender<Result<snapshot::SnapshotReport, String>>),
 }
 
 #[cfg(unix)]
@@ -271,11 +268,6 @@ fn writer_loop(
                             .map_err(|error| format!("{error:#}")),
                         );
                     }
-                    WriterCommand::Snapshot(response) => {
-                        let _ = response.send(
-                            snapshot::run(&runtime.paths).map_err(|error| format!("{error:#}")),
-                        );
-                    }
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -370,16 +362,6 @@ fn handle_control_request(
         }
         control::Command::Prune => {
             let report = request_unit(writer_tx, WriterCommand::Prune)?;
-            control::Response::ok(&report)
-        }
-        control::Command::Snapshot => {
-            // Snapshot hardlinks the whole changed/ + removed/ trees on the
-            // writer thread, so give it a longer ceiling than the default 10s.
-            let report = request_unit_with_timeout(
-                writer_tx,
-                WriterCommand::Snapshot,
-                Duration::from_secs(120),
-            )?;
             control::Response::ok(&report)
         }
     }
@@ -756,146 +738,6 @@ mod tests {
 
         drop(writer_tx);
         writer_thread.join().unwrap();
-    }
-
-    #[test]
-    fn snapshot_request_is_served_through_writer() {
-        let fixture = Fixture::new();
-        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
-        fs::write(fixture.paths.changed_dir.join("etc/hosts"), "changed").unwrap();
-        let (writer_tx, writer_rx) = mpsc::channel();
-        let (dirty_tx, dirty_rx) = mpsc::channel();
-        let (_watch_error_tx, watch_error_rx) = mpsc::channel();
-        let dirty_pending = Arc::new(AtomicU64::new(0));
-        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
-        let root = fixture.root.clone();
-        let paths = fixture.paths.clone();
-        let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
-        let db = StateDb::open_or_rebuild(&paths).unwrap();
-        let writer_thread = thread::spawn(move || {
-            writer_loop(
-                WriterRuntime {
-                    root,
-                    paths,
-                    config: Config::default(),
-                    baseline,
-                    db,
-                    dirty_tx: dirty_sender,
-                    dirty_pending,
-                    watch_status: LifecycleStatus::new(LifecycleState::Running),
-                    audit_status: LifecycleStatus::new(LifecycleState::Running),
-                },
-                writer_rx,
-                dirty_rx,
-                watch_error_rx,
-            );
-        });
-
-        let response = request(&writer_tx, control::Command::Snapshot);
-        assert!(response.ok, "snapshot response: {:?}", response.error);
-        let payload = response.payload.unwrap();
-        let path = payload["path"].as_str().unwrap();
-        assert!(std::path::Path::new(path).join("manifest.json").exists());
-        assert_eq!(
-            fs::read_to_string(std::path::Path::new(path).join("changed/etc/hosts")).unwrap(),
-            "changed"
-        );
-
-        drop(writer_tx);
-        writer_thread.join().unwrap();
-    }
-
-    #[test]
-    fn snapshot_through_running_daemon_is_consistent_under_concurrent_writes() {
-        let fixture = Fixture::new();
-        let (stop_tx, stop_rx) = mpsc::channel();
-        let root = fixture.root.clone();
-        let paths = fixture.paths.clone();
-        let daemon = thread::spawn(move || run_inner(&paths, root, Some(stop_rx)));
-
-        wait_for(
-            || {
-                fs::read_to_string(&fixture.paths.ready_file)
-                    .is_ok_and(|ready| ready.contains("\"phase\": \"daemon\""))
-            },
-            "daemon ready file",
-        );
-
-        // Seed a batch of stable files and wait for them to land in changed/.
-        for index in 0..20 {
-            fs::write(
-                fixture.root.join(format!("etc/seed-{index}")),
-                format!("s{index}"),
-            )
-            .unwrap();
-        }
-        wait_for(
-            || fixture.paths.changed_dir.join("etc/seed-19").exists(),
-            "seeded changes persisted",
-        );
-
-        // Keep creating new files (not hammering one hot path, which the writer's
-        // copy-unstable requeue would just starve) while the snapshot runs.
-        let writer_root = fixture.root.clone();
-        let (churn_stop_tx, churn_stop_rx) = mpsc::channel::<()>();
-        let churn = thread::spawn(move || {
-            let mut n: u64 = 0;
-            while churn_stop_rx.try_recv().is_err() {
-                let _ = fs::write(
-                    writer_root.join(format!("etc/churn-{n}")),
-                    format!("c{n}"),
-                );
-                n += 1;
-                thread::sleep(Duration::from_millis(3));
-            }
-        });
-
-        let report: crate::snapshot::SnapshotReport =
-            control::request(&fixture.paths.control_socket, control::Command::Snapshot).unwrap();
-
-        churn_stop_tx.send(()).unwrap();
-        churn.join().unwrap();
-
-        // The frozen dir is internally consistent even though files churned the
-        // whole time: the manifest counts match the tree, and every changed
-        // entry is a readable file (no dangling hardlink to a renamed inode).
-        let dir = std::path::PathBuf::from(&report.path);
-        assert!(dir.join("manifest.json").exists());
-        let manifest: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(dir.join("manifest.json")).unwrap()).unwrap();
-        assert_eq!(manifest["version"], 1);
-        assert_eq!(count_files(&dir.join("changed")), report.changed);
-        assert_readable(&dir.join("changed"));
-
-        stop_tx.send(()).unwrap();
-        daemon.join().unwrap().unwrap();
-    }
-
-    fn count_files(dir: &std::path::Path) -> u64 {
-        let mut total = 0;
-        let Ok(entries) = fs::read_dir(dir) else {
-            return 0;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                total += count_files(&path);
-            } else {
-                total += 1;
-            }
-        }
-        total
-    }
-
-    fn assert_readable(dir: &std::path::Path) {
-        for entry in fs::read_dir(dir).unwrap().flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                assert_readable(&path);
-            } else {
-                fs::read(&path).unwrap_or_else(|error| panic!("read {path:?}: {error}"));
-            }
-        }
     }
 
     fn request(

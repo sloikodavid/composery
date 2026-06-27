@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::keystore::{self, KeyRecord};
 use crate::output;
 
-/// `composery api ...` - manage the box's automation API. A peer subsystem to
+/// `composery api ...` - manage Composery's automation API. A peer subsystem to
 /// `composery persistence`; today its only surface is key management.
 #[derive(Debug, Subcommand)]
 pub enum ApiCommand {
@@ -44,7 +44,7 @@ struct CreatedKey {
     name: String,
     prefix: String,
     created_at: u64,
-    /// Shown once; the only time the secret leaves the box.
+    /// Shown once; the only time the secret leaves the instance.
     secret: String,
 }
 

@@ -1,0 +1,11 @@
+# Opens the first instance and asserts the WebView is visible.
+# Precondition: at least one instance is present in the list.
+appId: host.exp.exponent
+---
+- launchApp
+- assertVisible:
+    id: "instance-item"
+- tapOn:
+    id: "instance-item"
+- assertVisible:
+    id: "instance-webview"

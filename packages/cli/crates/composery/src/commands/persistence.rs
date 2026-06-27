@@ -2,9 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 use persistence::paths::Paths;
-use persistence::{boot, control, daemon, doctor, prune, snapshot, status};
-
-use std::time::Duration;
+use persistence::{boot, control, daemon, doctor, prune, status};
 
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -24,8 +22,6 @@ pub enum PersistenceCommand {
     Doctor,
     /// Ask the daemon to remove stale public persistence data.
     Prune,
-    /// Capture a consistent point-in-time snapshot of persisted state.
-    Snapshot,
     /// Internal image-build command. Not part of the runtime command surface.
     #[cfg(unix)]
     #[command(name = "__generate-baseline", hide = true)]
@@ -56,15 +52,6 @@ pub fn run(command: PersistenceCommand, json: bool) -> Result<()> {
             &control::query::<prune::PruneReport>(&paths, control::Command::Prune)?,
             json,
             prune::print_human,
-        ),
-        PersistenceCommand::Snapshot => output::render(
-            &control::query_with_timeout::<snapshot::SnapshotReport>(
-                &paths,
-                control::Command::Snapshot,
-                Duration::from_secs(120),
-            )?,
-            json,
-            snapshot::print_human,
         ),
         #[cfg(unix)]
         PersistenceCommand::GenerateBaseline { root, output } => {

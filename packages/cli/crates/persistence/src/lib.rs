@@ -20,7 +20,6 @@ pub mod public;
 pub mod readiness;
 #[cfg(unix)]
 pub mod rootfs;
-pub mod snapshot;
 pub mod status;
 pub mod update;
 

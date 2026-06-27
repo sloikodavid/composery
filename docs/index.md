@@ -4,7 +4,7 @@ description: A Debian-style VPS in your browser - install packages, edit system 
 ---
 
 Composery feels like a small Debian-style VPS in a browser. You get a real Linux
-box: install packages, edit system files, build projects - and that state survives
+machine: install packages, edit system files, build projects - and that state survives
 restarts. The runtime is a container, so durable state comes from one volume mounted
 at `/data` (see [Persistence](persistence.md)).
 

@@ -2,7 +2,7 @@ packages:
   - packages/*
 
 patchedDependencies:
-  fumadocs-ui@16.10.4: patches/fumadocs-ui@16.10.4.patch
+  fumadocs-ui@16.10.4: packages/docs-website/patches/fumadocs-ui@16.10.4.patch
 
 allowBuilds:
   esbuild: true

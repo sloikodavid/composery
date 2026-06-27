@@ -69,7 +69,6 @@ packages/
           public.rs
           readiness.rs
           rootfs.rs
-          snapshot.rs
           status.rs
           update.rs
           watch.rs
@@ -79,6 +78,8 @@ packages/
     Cargo.lock
     Cargo.toml
   docs-website/
+    patches/
+      fumadocs-ui@16.10.4.patch
     src/
       app/
         (docs)/
@@ -237,9 +238,43 @@ packages/
     build.sh
     upstream
   mobile-app/
-    .gitkeep
-patches/
-  fumadocs-ui@16.10.4.patch
+    assets/
+      images/
+        android-icon-background.png
+        android-icon-foreground.png
+        android-icon-monochrome.png
+        favicon.png
+        icon.png
+        splash-icon.png
+    scripts/
+      generate-icons.mjs
+    src/
+      app/
+        instance/
+          [id].tsx
+        _layout.tsx
+        add-instance.tsx
+        index.tsx
+      lib/
+        id.ts
+        instance-store.test.ts
+        instance-store.ts
+        normalize-url.test.ts
+        normalize-url.ts
+        theme.test.ts
+        theme.ts
+        use-theme.ts
+      maestro/
+        add-instance.yml
+        e2e.yml
+        open-instance.yml
+        README.md
+    .gitignore
+    app.json
+    eslint.config.mjs
+    package.json
+    tsconfig.json
+    vitest.config.ts
 prompts/
   REFACTOR.md
   TREE.md
@@ -364,6 +399,7 @@ Dockerfile
 eslint.config.mjs
 LICENSE
 package.json
+PLAN.md
 pnpm-lock.yaml
 pnpm-workspace.yaml
 README.md

@@ -120,7 +120,6 @@ ENV PATH="/home/user/.local/bin:/home/user/bin:${PATH}"
 # update` refreshes them, and persistence persists any changes.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    age \
     bash \
     ca-certificates \
     cron \
@@ -148,8 +147,7 @@ RUN apt-get update \
     xdg-user-dirs \
     xdg-utils \
     xz-utils \
-    zip \
-    zstd
+    zip
 
 # cron's PAM stack fails `session required pam_loginuid.so` in an unprivileged
 # container (no writable /proc/self/loginuid), which silently stops cron jobs from

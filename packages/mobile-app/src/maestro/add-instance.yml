@@ -1,0 +1,18 @@
+# Adds an instance by URL and asserts it appears in the list.
+# Precondition: app loaded in Expo Go with a fresh AsyncStorage (empty list).
+appId: host.exp.exponent
+---
+- launchApp
+- assertVisible:
+    id: "add-instance-button"
+- tapOn:
+    id: "add-instance-button"
+- assertVisible:
+    id: "add-instance-url-input"
+- tapOn:
+    id: "add-instance-url-input"
+- inputText: "https://example.com"
+- tapOn:
+    id: "add-instance-submit"
+- assertVisible:
+    id: "instance-item"

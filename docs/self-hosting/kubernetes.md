@@ -50,7 +50,7 @@ cluster's classes with `kubectl get storageclass`:
   on the PVC, or leave it unset to use the cluster default.
 - **AKS** - `managed-csi` (Azure Disk, RWO). The `default` class also works.
 - **EKS** - install the [Amazon EBS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html)
-  and create a `gp3` StorageClass; EKS has no dynamic default class out of the box.
+  and create a `gp3` StorageClass; EKS does not provide a dynamic default StorageClass.
 
 All three back the PVC with block storage, which is `ReadWriteOnce` - the right fit for
 Composery's single writer. For the edge, use each provider's ingress controller or a

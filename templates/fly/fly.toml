@@ -13,7 +13,7 @@ primary_region = "iad"
 [http_service]
   internal_port = 8080
   force_https = true
-  # Keep the box running; this is an interactive workspace, not a burst worker.
+  # Keep the instance running; it is long-lived and interactive, not a burst worker.
   auto_stop_machines = "off"
   min_machines_running = 1
 

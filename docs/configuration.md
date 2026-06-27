@@ -59,4 +59,4 @@ These tune the API; defaults are sane and never trip on normal use.
 | `COMPOSERY_API_AUTH_FAIL_PER_MIN` | Failed-auth attempts per minute per IP before throttling. Defaults to `20`.                                   |
 
 Rate limits are abuse rails, not DDoS defense - that is handled by the platform in front
-of the box.
+of the instance.

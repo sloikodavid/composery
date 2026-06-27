@@ -3,7 +3,7 @@ set -euo pipefail
 
 /opt/composery/bin/composery persistence apply
 
-# A stable machine-id makes the box behave like a real host (dbus and friends
+# A stable machine-id makes the instance behave like a real host (dbus and friends
 # expect one). systemd would generate one, but supervisor mode would not, so do
 # it for both. persistence persists /etc/machine-id, so it stays stable on restart.
 if [ ! -s /etc/machine-id ]; then

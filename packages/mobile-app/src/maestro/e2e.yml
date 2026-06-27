@@ -1,0 +1,26 @@
+# End-to-end: launch -> empty list -> add an instance by URL -> it appears in
+# the list -> tap it -> the instance WebView is visible.
+#
+# Maestro cannot see inside a WebView, so it only asserts the native WebView view
+# (testID "instance-webview") is visible, not the web content. See README.md for
+# run steps and preconditions.
+appId: host.exp.exponent
+---
+- launchApp
+- assertVisible:
+    id: "add-instance-button"
+- tapOn:
+    id: "add-instance-button"
+- assertVisible:
+    id: "add-instance-url-input"
+- tapOn:
+    id: "add-instance-url-input"
+- inputText: "https://example.com"
+- tapOn:
+    id: "add-instance-submit"
+- assertVisible:
+    id: "instance-item"
+- tapOn:
+    id: "instance-item"
+- assertVisible:
+    id: "instance-webview"
