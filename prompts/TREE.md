@@ -286,6 +286,7 @@ packages/
     tsconfig.json
     vitest.config.ts
 prompts/
+  IMPROVE.md
   REFACTOR.md
   TREE.md
 rootfs/
@@ -347,6 +348,7 @@ rootfs/
         composery-text-editor.desktop
         composery-url-handler.desktop
 scripts/
+  check-ide-overlay.mjs
   check-rust.mjs
   generate-icons.mjs
   setup.mjs

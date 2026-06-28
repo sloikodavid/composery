@@ -11,7 +11,7 @@ use std::{
 use crate::{
     baseline::{BaselineDb, BaselineRecord},
     config::Config,
-    metadata::{self, MetadataRecord},
+    metadata::{MetadataRecord, MetadataStore},
     paths::Paths,
     public::{self, PublicPath},
     rootfs::{self, FileKind, FsFacts},
@@ -34,11 +34,15 @@ pub enum UpdateOutcome {
 }
 
 pub fn update_path(ctx: &UpdateContext<'_>, path: &str) -> Result<UpdateOutcome> {
-    update_public_path(ctx, &PublicPath::parse(path)?)
+    let mut store = MetadataStore::load(&ctx.paths.metadata_file)?;
+    let outcome = update_public_path(ctx, &mut store, &PublicPath::parse(path)?)?;
+    store.flush()?;
+    Ok(outcome)
 }
 
 pub fn update_public_path(
     ctx: &UpdateContext<'_>,
+    store: &mut MetadataStore,
     public_path: &PublicPath,
 ) -> Result<UpdateOutcome> {
     if public::is_excluded(public_path, ctx.config) {
@@ -68,7 +72,7 @@ pub fn update_public_path(
     {
         remove_changed_tree(ctx.paths, public_path)?;
         remove_removed_marker(ctx.paths, public_path)?;
-        metadata::remove(&ctx.paths.metadata_file, public_path)?;
+        store.remove(public_path);
         return Ok(UpdateOutcome::Pruned);
     }
 
@@ -76,13 +80,13 @@ pub fn update_public_path(
         (None, Some(_)) => {
             remove_changed_tree(ctx.paths, public_path)?;
             write_removed_marker(ctx.paths, public_path)?;
-            metadata::remove_subtree(&ctx.paths.metadata_file, public_path)?;
+            store.remove_subtree(public_path);
             Ok(UpdateOutcome::PersistedRemoved)
         }
         (None, None) => {
             remove_changed_tree(ctx.paths, public_path)?;
             remove_removed_marker(ctx.paths, public_path)?;
-            metadata::remove_subtree(&ctx.paths.metadata_file, public_path)?;
+            store.remove_subtree(public_path);
             Ok(UpdateOutcome::Pruned)
         }
         (Some(live), Some(record)) => {
@@ -91,27 +95,25 @@ pub fn update_public_path(
                 DeltaDecision::Equal => {
                     remove_changed_entry(ctx.paths, public_path)?;
                     remove_removed_marker(ctx.paths, public_path)?;
-                    metadata::remove(&ctx.paths.metadata_file, public_path)?;
+                    store.remove(public_path);
                     Ok(UpdateOutcome::Pruned)
                 }
                 DeltaDecision::MetadataOnly => {
                     remove_changed_entry(ctx.paths, public_path)?;
                     remove_removed_marker(ctx.paths, public_path)?;
-                    metadata::upsert(
-                        &ctx.paths.metadata_file,
-                        metadata_record(public_path, &live)?,
-                    )?;
+                    store.upsert(metadata_record(public_path, &live)?)?;
                     Ok(UpdateOutcome::PersistedMetadata)
                 }
                 DeltaDecision::Changed => {
-                    let persisted = persist_changed(ctx.paths, public_path, &live_path, &live)?;
+                    let persisted =
+                        persist_changed(ctx.paths, store, public_path, &live_path, &live)?;
                     remove_removed_marker(ctx.paths, public_path)?;
                     Ok(persisted.outcome())
                 }
             }
         }
         (Some(live), None) => {
-            let persisted = persist_changed(ctx.paths, public_path, &live_path, &live)?;
+            let persisted = persist_changed(ctx.paths, store, public_path, &live_path, &live)?;
             remove_removed_marker(ctx.paths, public_path)?;
             Ok(persisted.outcome())
         }
@@ -257,6 +259,7 @@ impl PersistedDelta {
 
 fn persist_changed(
     paths: &Paths,
+    store: &mut MetadataStore,
     public_path: &PublicPath,
     live_path: &Path,
     live: &FsFacts,
@@ -271,11 +274,10 @@ fn persist_changed(
                 if is_symlink_ancestor_error(&error) {
                     return Err(error);
                 }
-                metadata::upsert(
-                    &paths.metadata_file,
-                    metadata_record(public_path, live)
-                        .with_context(|| format!("record fallback metadata for {}", public_path))?,
-                )?;
+                store
+                    .upsert(metadata_record(public_path, live).with_context(|| {
+                        format!("record fallback metadata for {}", public_path)
+                    })?)?;
                 tracing::warn!(
                     error = %error,
                     path = %public_path,
@@ -289,12 +291,9 @@ fn persist_changed(
                     if is_symlink_ancestor_error(&error) {
                         return Err(error);
                     }
-                    metadata::upsert(
-                        &paths.metadata_file,
-                        metadata_record(public_path, live).with_context(|| {
-                            format!("record fallback metadata for {}", public_path)
-                        })?,
-                    )?;
+                    store.upsert(metadata_record(public_path, live).with_context(|| {
+                        format!("record fallback metadata for {}", public_path)
+                    })?)?;
                     tracing::warn!(
                         error = %error,
                         path = %public_path,
@@ -310,12 +309,9 @@ fn persist_changed(
                 Ok(()) => {}
                 Err(error) if rootfs::is_xattr_error(&error) => {
                     rootfs::copy_entry_atomic_without_xattrs(live_path, &destination)?;
-                    metadata::upsert(
-                        &paths.metadata_file,
-                        metadata_record(public_path, live).with_context(|| {
-                            format!("record xattr fallback metadata for {}", public_path)
-                        })?,
-                    )?;
+                    store.upsert(metadata_record(public_path, live).with_context(|| {
+                        format!("record xattr fallback metadata for {}", public_path)
+                    })?)?;
                     tracing::warn!(
                         error = %error,
                         path = %public_path,
@@ -329,9 +325,9 @@ fn persist_changed(
     }
 
     if metadata_record_needed(live) {
-        metadata::upsert(&paths.metadata_file, metadata_record(public_path, live)?)?;
+        store.upsert(metadata_record(public_path, live)?)?;
     } else {
-        metadata::remove(&paths.metadata_file, public_path)?;
+        store.remove(public_path);
     }
     Ok(PersistedDelta::Changed)
 }
@@ -966,7 +962,9 @@ mod tests {
         fs::write(fixture.root.join(&name), "new").unwrap();
         let public_path = crate::public::PublicPath::from_absolute_bytes(b"/bad\xff").unwrap();
 
-        let outcome = super::update_public_path(&fixture.ctx(), &public_path).unwrap();
+        let mut store = crate::metadata::MetadataStore::load(&fixture.paths.metadata_file).unwrap();
+        let outcome = super::update_public_path(&fixture.ctx(), &mut store, &public_path).unwrap();
+        store.flush().unwrap();
 
         assert_eq!(outcome, UpdateOutcome::PersistedChanged);
         assert_eq!(

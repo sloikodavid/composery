@@ -230,8 +230,6 @@ pub fn copy_metadata(source: &Path, destination: &Path) -> Result<()> {
 }
 
 pub fn apply_facts(path: &Path, source: &FsFacts) -> Result<()> {
-    if let (Some(_), Some(_)) = (source.rdev_major, source.rdev_minor) {}
-
     lchown(path, source.uid, source.gid)?;
 
     let target_metadata =

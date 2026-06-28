@@ -48,8 +48,15 @@ fn public_truth_roundtrip_preserves_linux_filesystem_state() {
         update::update_path(&ctx, path).unwrap();
     }
     update::update_path(&ctx, "/etc/image").unwrap();
-    update::update_public_path(&ctx, &PublicPath::from_absolute_bytes(b"/non\xff").unwrap())
-        .unwrap();
+    let mut store =
+        persistence::metadata::MetadataStore::load(&fixture.paths.metadata_file).unwrap();
+    update::update_public_path(
+        &ctx,
+        &mut store,
+        &PublicPath::from_absolute_bytes(b"/non\xff").unwrap(),
+    )
+    .unwrap();
+    store.flush().unwrap();
 
     let target_root = fixture.fresh_image_root();
     apply::apply_public_truth(&target_root, &fixture.paths, &config).unwrap();

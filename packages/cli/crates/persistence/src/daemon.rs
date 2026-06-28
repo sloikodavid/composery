@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 
 #[cfg(unix)]
 use std::{
+    collections::BTreeSet,
     io::{BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::PathBuf,
@@ -37,7 +38,6 @@ struct WriterRuntime {
     baseline: BaselineDb,
     db: internal::StateDb,
     dirty_tx: dirty::DirtySender,
-    dirty_pending: Arc<AtomicU64>,
     watch_status: LifecycleStatus,
     audit_status: LifecycleStatus,
 }
@@ -117,7 +117,6 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
                     baseline,
                     db,
                     dirty_tx: writer_dirty_sender,
-                    dirty_pending: Arc::clone(&dirty_pending),
                     watch_status: writer_watch_status,
                     audit_status: writer_audit_status,
                 },
@@ -197,29 +196,60 @@ fn writer_loop(
     loop {
         let mut public_index_dirty = false;
         record_watch_errors(&runtime, &watch_error_rx);
-        let mut retry_paths = Vec::new();
+        let mut retry_paths = BTreeSet::new();
+        let mut batch_paths = Vec::new();
+        // Load the metadata working set once per tick (only when there are dirty
+        // paths to process) and flush a single atomic write after the batch,
+        // instead of a full read+reserialize+fsync per path.
+        let mut store = None;
         for _ in 0..256 {
             let Ok(public_path) = dirty_rx.try_recv() else {
                 break;
             };
-            match update::update_public_path(&update_context, &public_path) {
-                Ok(update::UpdateOutcome::Ignored) => {}
-                Ok(_) => {
-                    public_index_dirty = true;
-                }
-                Err(error) => {
-                    if rootfs::is_copy_unstable_error(&error) {
-                        tracing::warn!(error = %error, path = %public_path, "dirty path changed during copy; requeueing");
-                        retry_paths.push(public_path.clone());
-                    } else {
-                        tracing::warn!(error = %error, path = %public_path, "dirty path update failed");
+            batch_paths.push(public_path.clone());
+            if store.is_none() {
+                match crate::metadata::MetadataStore::load(&runtime.paths.metadata_file) {
+                    Ok(loaded) => store = Some(loaded),
+                    Err(error) => {
+                        tracing::warn!(error = %error, path = %public_path, "metadata working set load failed; requeueing dirty path");
                         let _ = runtime
                             .db
                             .record_phase_failure("update", &format!("{error:#}"));
+                        retry_paths.insert(public_path.clone());
+                        runtime.dirty_tx.mark_processed();
+                        break;
                     }
                 }
             }
-            dirty::mark_processed(&runtime.dirty_pending);
+            if let Some(store) = store.as_mut() {
+                match update::update_public_path(&update_context, store, &public_path) {
+                    Ok(update::UpdateOutcome::Ignored) => {}
+                    Ok(_) => {
+                        public_index_dirty = true;
+                    }
+                    Err(error) => {
+                        if rootfs::is_copy_unstable_error(&error) {
+                            tracing::warn!(error = %error, path = %public_path, "dirty path changed during copy; requeueing");
+                            retry_paths.insert(public_path.clone());
+                        } else {
+                            tracing::warn!(error = %error, path = %public_path, "dirty path update failed");
+                            let _ = runtime
+                                .db
+                                .record_phase_failure("update", &format!("{error:#}"));
+                        }
+                    }
+                }
+            }
+            runtime.dirty_tx.mark_processed();
+        }
+        if let Some(mut store) = store
+            && let Err(error) = store.flush()
+        {
+            tracing::warn!(error = %error, "metadata flush failed");
+            let _ = runtime
+                .db
+                .record_phase_failure("update", &format!("{error:#}"));
+            retry_paths.extend(batch_paths);
         }
         if !retry_paths.is_empty() {
             thread::sleep(Duration::from_millis(50));
@@ -236,7 +266,7 @@ fn writer_loop(
                 record_watch_errors(&runtime, &watch_error_rx);
                 match command {
                     WriterCommand::Status(response) => {
-                        let dirty_queue_size = dirty::pending_count(&runtime.dirty_pending);
+                        let dirty_queue_size = runtime.dirty_tx.pending_count();
                         let _ = response.send(
                             status::build_with_runtime(
                                 &runtime.paths,
@@ -437,7 +467,6 @@ mod tests {
                     baseline,
                     db,
                     dirty_tx: dirty_sender,
-                    dirty_pending,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
                 },
@@ -500,7 +529,6 @@ mod tests {
                     baseline,
                     db,
                     dirty_tx: dirty_sender,
-                    dirty_pending,
                     watch_status: writer_watch_status,
                     audit_status: writer_audit_status,
                 },
@@ -698,7 +726,6 @@ mod tests {
         let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
         let db = StateDb::open_or_rebuild(&paths).unwrap();
         let writer_dirty_sender = dirty_sender.clone();
-        let writer_pending = Arc::clone(&dirty_pending);
         let writer_thread = thread::spawn(move || {
             writer_loop(
                 WriterRuntime {
@@ -711,7 +738,6 @@ mod tests {
                     baseline,
                     db,
                     dirty_tx: writer_dirty_sender,
-                    dirty_pending: writer_pending,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
                 },

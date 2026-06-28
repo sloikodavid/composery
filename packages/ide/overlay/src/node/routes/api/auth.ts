@@ -32,7 +32,12 @@ export async function authenticate(req: express.Request): Promise<AuthResult> {
     return { status: 429, message: "Too many failed attempts" }
   }
   const secret = extractKey(req)
-  const id = secret ? await verifyKey(secret) : undefined
+  let id: string | undefined
+  try {
+    id = secret ? await verifyKey(secret) : undefined
+  } catch {
+    return { status: 503, message: "API key store unavailable" }
+  }
   if (!id) {
     authFail.record(ip)
     return { status: 401, message: "Invalid or missing API key" }

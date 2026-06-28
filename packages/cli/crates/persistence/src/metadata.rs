@@ -7,7 +7,7 @@ use std::{
     collections::BTreeMap,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 #[cfg(unix)]
@@ -87,30 +87,75 @@ pub fn compact(path: &Path) -> Result<Vec<MetadataRecord>> {
     Ok(records.into_values().collect())
 }
 
+/// In-memory working set over `metadata.jsonl`. The daemon writer loads it once
+/// per drain tick, applies every upsert/remove in memory, and `flush`es a single
+/// atomic write — instead of a full read+reserialize+fsync per dirty path.
+pub struct MetadataStore {
+    path: PathBuf,
+    records: BTreeMap<Vec<u8>, MetadataRecord>,
+    dirty: bool,
+}
+
+impl MetadataStore {
+    pub fn load(path: &Path) -> Result<Self> {
+        Ok(Self {
+            path: path.to_path_buf(),
+            records: load_compacted(path)?,
+            dirty: false,
+        })
+    }
+
+    pub fn upsert(&mut self, record: MetadataRecord) -> Result<()> {
+        self.records.insert(record.key()?, record);
+        self.dirty = true;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    pub fn remove(&mut self, public_path: &PublicPath) {
+        if self.records.remove(public_path.as_bytes()).is_some() {
+            self.dirty = true;
+        }
+    }
+
+    #[cfg(unix)]
+    pub fn remove_subtree(&mut self, public_path: &PublicPath) {
+        let before = self.records.len();
+        self.records
+            .retain(|key, _| !path_is_at_or_below(key, public_path.as_bytes()));
+        if self.records.len() != before {
+            self.dirty = true;
+        }
+    }
+
+    pub fn flush(&mut self) -> Result<()> {
+        if !self.dirty {
+            return Ok(());
+        }
+        write_records(&self.path, self.records.values())?;
+        self.dirty = false;
+        Ok(())
+    }
+}
+
 pub fn upsert(path: &Path, record: MetadataRecord) -> Result<()> {
-    let mut records = load_compacted(path)?;
-    records.insert(record.key()?, record);
-    write_records(path, records.values())
+    let mut store = MetadataStore::load(path)?;
+    store.upsert(record)?;
+    store.flush()
 }
 
 #[cfg(unix)]
 pub fn remove(path: &Path, public_path: &PublicPath) -> Result<()> {
-    let mut records = load_compacted(path)?;
-    if records.remove(public_path.as_bytes()).is_some() {
-        write_records(path, records.values())?;
-    }
-    Ok(())
+    let mut store = MetadataStore::load(path)?;
+    store.remove(public_path);
+    store.flush()
 }
 
 #[cfg(unix)]
 pub fn remove_subtree(path: &Path, public_path: &PublicPath) -> Result<()> {
-    let mut records = load_compacted(path)?;
-    let before = records.len();
-    records.retain(|key, _| !path_is_at_or_below(key, public_path.as_bytes()));
-    if records.len() != before {
-        write_records(path, records.values())?;
-    }
-    Ok(())
+    let mut store = MetadataStore::load(path)?;
+    store.remove_subtree(public_path);
+    store.flush()
 }
 
 #[cfg(not(unix))]
@@ -220,8 +265,60 @@ fn ensure_real_dir(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MetadataRecord, compact, load, remove, remove_subtree, upsert};
+    use super::{MetadataRecord, MetadataStore, compact, load, remove, remove_subtree, upsert};
     use std::{fs, os::unix::fs::symlink};
+
+    fn record(path: &str) -> MetadataRecord {
+        MetadataRecord {
+            version: 1,
+            path: path.into(),
+            path_bytes_b64: None,
+            kind: "file".into(),
+            mode: Some(0o644),
+            uid: Some(0),
+            gid: Some(0),
+            mtime_ns: Some(1),
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        }
+    }
+
+    #[test]
+    fn metadata_store_batches_mutations_and_gates_writes_on_dirty() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+
+        // An unchanged store must not create the file (dirty-gated flush).
+        let mut store = MetadataStore::load(&path).unwrap();
+        store.flush().unwrap();
+        assert!(!path.exists());
+
+        // Many mutations stay in memory until a single flush — the whole point of
+        // the per-tick batching (no per-path read/reserialize/fsync).
+        store.upsert(record("/a")).unwrap();
+        store.upsert(record("/b")).unwrap();
+        store.upsert(record("/c")).unwrap();
+        store.remove(&crate::public::PublicPath::parse("/a").unwrap());
+        assert!(!path.exists());
+
+        store.flush().unwrap();
+        let mut loaded = load(&path).unwrap();
+        loaded.sort_by(|l, r| l.path.cmp(&r.path));
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].path, "/b");
+        assert_eq!(loaded[1].path, "/c");
+
+        // A re-loaded, unmutated store flush is a no-op and leaves no temp file.
+        let mut store = MetadataStore::load(&path).unwrap();
+        store.flush().unwrap();
+        assert!(!path.with_extension("jsonl.tmp").exists());
+    }
 
     #[test]
     fn metadata_jsonl_compacts_to_latest_record_by_path() {

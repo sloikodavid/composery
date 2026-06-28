@@ -1,8 +1,8 @@
 # To-do
 
-- Refactor/rewrite EVERYTHING to be clean, high quality, and maintainable across updates. Make proper full E2E tests and ensure good testing throughout the project, and refresh CI.
+- Make sure that across clients, all the UI stuff, and other stuff like terminals are all working as anybody would expect.
 
-- Slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most tasks whenever possible, integrate AI into automations.
+- Icons bigger for the activity bar.
 
 - Enable rulesets on GitHub.
 
@@ -13,6 +13,8 @@
 - File router depending on host platform, possibly changing AGENTS.md instructions.
 
 - QR codes to scan from mobile to open Composery.
+
+- Slim down the codebase maintainment control surface/document maintaining/what things to keep updated, keep patches working, or detect when they don't, etc. Automate most tasks whenever possible, integrate AI into automations.
 
 - Turn the IDE into an actual OS.
 

@@ -65,10 +65,12 @@ curl -X POST https://<your-instance>/v1/exec \
 ```
 
 Fields: `command` (required), `cwd` (default `$HOME`), `env` (overlay), `timeout`
-(seconds). Output is capped and the request is time-bounded — these limits exist
-only because a synchronous request cannot stream forever. For long or interactive
-work, use the websocket below. An `Idempotency-Key` header makes a retried request
-return the first result instead of re-running.
+(seconds). Combined stdout/stderr output is capped and the request is
+time-bounded — these limits exist only because a synchronous request cannot stream
+forever. For long or interactive work, use the websocket below. An
+`Idempotency-Key` header makes a retried request return the first result instead
+of re-running; overlapping retries with the same key wait for the running
+command. Reusing a key for a different command payload returns `409`.
 
 ## Interactive terminal (websocket)
 
@@ -84,26 +86,33 @@ Query parameters: `cmd` (default the login shell), `cols`, `rows`, and `session`
 Add `?session=<name>` to make the terminal **detached**: it is backed by `tmux`,
 so it keeps running after you disconnect and reattaches when you reconnect with
 the same name. Detached sessions survive an editor restart (not a container
-reboot, which is a real reboot).
+reboot, which is a real reboot). Session names are 1-64 characters: letters,
+numbers, `.`, `_`, and `-`.
 
 ```
 GET    /v1/sessions          # list detached sessions
-DELETE /v1/sessions/:name    # kill one
+DELETE /v1/sessions/:name    # stop one
 ```
 
 ## Configuration
 
 All overridable via environment; defaults are sane and never bite real use.
 
-| Variable                          | Default    | Meaning                             |
-| --------------------------------- | ---------- | ----------------------------------- |
-| `COMPOSERY_API_ENABLED`           | `true`     | `false` hard-disables the API.      |
-| `COMPOSERY_API_EXEC_TIMEOUT`      | `60`       | One-shot default timeout (seconds). |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`   | `10485760` | One-shot output cap (bytes).        |
-| `COMPOSERY_API_RATE_RPS`          | `50`       | Per-key sustained requests/sec.     |
-| `COMPOSERY_API_RATE_BURST`        | `200`      | Per-key burst.                      |
-| `COMPOSERY_API_MAX_SESSIONS`      | `50`       | Concurrent sessions per key.        |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN` | `20`       | Failed-auth attempts/min/IP.        |
+| Variable                            | Default    | Meaning                             |
+| ----------------------------------- | ---------- | ----------------------------------- |
+| `COMPOSERY_API_ENABLED`             | `true`     | `false` hard-disables the API.      |
+| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | One-shot default timeout (seconds). |
+| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | One-shot stdout+stderr cap (bytes). |
+| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.  |
+| `COMPOSERY_API_RATE_RPS`            | `50`       | Per-key sustained requests/sec.     |
+| `COMPOSERY_API_RATE_BURST`          | `200`      | Per-key burst.                      |
+| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent sessions per key.        |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts/min/IP.        |
+
+Invalid numeric values fall back to the defaults. Extreme numeric values are
+clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,
+10000 burst, 128 concurrent one-shot execs, 500 interactive sessions, and 1000
+failed-auth attempts/min/IP.
 
 Rate limits are abuse/quota rails, not DDoS defense (that is handled by your
 platform in front of the instance). They never trip on normal automation.

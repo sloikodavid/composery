@@ -33,6 +33,10 @@ impl DirtySender {
     pub fn mark_processed(&self) {
         mark_processed(&self.pending);
     }
+
+    pub fn pending_count(&self) -> u64 {
+        pending_count(&self.pending)
+    }
 }
 
 pub fn pending_count(pending: &AtomicU64) -> u64 {

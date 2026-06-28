@@ -66,6 +66,7 @@ fn prune_baseline_equal_changed(
         config,
         baseline,
     };
+    let mut store = metadata::MetadataStore::load(&paths.metadata_file)?;
 
     for entry in public::list_public_entries(&paths.changed_dir)? {
         if public::is_excluded(&entry.path, config) {
@@ -73,7 +74,7 @@ fn prune_baseline_equal_changed(
             continue;
         }
         if matches!(
-            update::update_public_path(&ctx, &entry.path)?,
+            update::update_public_path(&ctx, &mut store, &entry.path)?,
             UpdateOutcome::Pruned
         ) {
             report
@@ -81,6 +82,7 @@ fn prune_baseline_equal_changed(
                 .push(format!("baseline-equal changed {}", entry.path));
         }
     }
+    store.flush()?;
     Ok(())
 }
 
@@ -119,6 +121,7 @@ fn prune_stale_metadata(
     report: &mut PruneReport,
 ) -> Result<()> {
     let mut kept = Vec::new();
+    let mut dropped = false;
     for record in metadata::load(&paths.metadata_file)? {
         let public_path = record.public_path()?;
         if public::is_excluded(&public_path, config) {
@@ -133,12 +136,15 @@ fn prune_stale_metadata(
             report
                 .removed
                 .push(format!("stale metadata {}", public_path));
+            dropped = true;
         } else {
             kept.push(record);
         }
     }
 
-    metadata::replace(&paths.metadata_file, &kept)?;
+    if dropped {
+        metadata::replace(&paths.metadata_file, &kept)?;
+    }
     Ok(())
 }
 

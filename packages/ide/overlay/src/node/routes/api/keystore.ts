@@ -21,18 +21,47 @@ function hashSecret(secret: string): string {
   return "sha256:" + crypto.createHash("sha256").update(secret).digest("hex")
 }
 
-let cache: { store: KeyStore; mtimeMs: number } | undefined
+let cache: { store: KeyStore; mtimeMs: number; size: number } | undefined
+
+function parseStore(contents: string): KeyStore {
+  const value = JSON.parse(contents) as unknown
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("key store must be an object")
+  }
+  const store = value as Partial<KeyStore>
+  if (typeof store.version !== "number" || !Array.isArray(store.keys)) {
+    throw new Error("key store has invalid shape")
+  }
+  for (const key of store.keys) {
+    if (
+      !key ||
+      typeof key !== "object" ||
+      Array.isArray(key) ||
+      typeof key.id !== "string" ||
+      typeof key.name !== "string" ||
+      typeof key.prefix !== "string" ||
+      typeof key.hash !== "string" ||
+      typeof key.created_at !== "number"
+    ) {
+      throw new Error("key store has invalid key record")
+    }
+  }
+  return store as KeyStore
+}
 
 async function readStore(): Promise<KeyStore> {
   const file = keysPath()
   try {
     const stat = await fs.stat(file)
-    if (cache && cache.mtimeMs === stat.mtimeMs) return cache.store
-    const store = JSON.parse(await fs.readFile(file, "utf8")) as KeyStore
-    cache = { store, mtimeMs: stat.mtimeMs }
+    if (cache && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size) return cache.store
+    const store = parseStore(await fs.readFile(file, "utf8"))
+    cache = { store, mtimeMs: stat.mtimeMs, size: stat.size }
     return store
   } catch (error: any) {
-    if (error.code === "ENOENT") return { version: 1, keys: [] }
+    if (error.code === "ENOENT") {
+      cache = undefined
+      return { version: 1, keys: [] }
+    }
     throw error
   }
 }

@@ -48,15 +48,21 @@ endpoint returns 401. The key store lives at `<volume>/api/keys.json`, on the pe
 volume shared with persistence (`/data` by default; see `COMPOSERY_DOCKER_VOLUME_PATH`).
 These tune the API; defaults are sane and never trip on normal use.
 
-| Variable                          | Use                                                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `COMPOSERY_API_ENABLED`           | Set to `false` to disable the API entirely (every endpoint returns 404). Defaults to `true`.                  |
-| `COMPOSERY_API_EXEC_TIMEOUT`      | Default timeout in seconds for one-shot `POST /v1/exec`. Defaults to `60`. The interactive socket is unbound. |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`   | Byte cap on one-shot exec output before truncation. Defaults to `10485760` (10 MiB).                          |
-| `COMPOSERY_API_RATE_RPS`          | Sustained requests per second per key. Defaults to `50`.                                                      |
-| `COMPOSERY_API_RATE_BURST`        | Burst request capacity per key. Defaults to `200`.                                                            |
-| `COMPOSERY_API_MAX_SESSIONS`      | Concurrent interactive sessions per key. Defaults to `50`.                                                    |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN` | Failed-auth attempts per minute per IP before throttling. Defaults to `20`.                                   |
+| Variable                            | Use                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `COMPOSERY_API_ENABLED`             | Set to `false` to disable the API entirely (every endpoint returns 404). Defaults to `true`.                  |
+| `COMPOSERY_API_EXEC_TIMEOUT`        | Default timeout in seconds for one-shot `POST /v1/exec`. Defaults to `60`. The interactive socket is unbound. |
+| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | Combined stdout/stderr byte cap on one-shot exec output before truncation. Defaults to `10485760` (10 MiB).   |
+| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | Concurrent one-shot exec requests. Defaults to `16`.                                                          |
+| `COMPOSERY_API_RATE_RPS`            | Sustained requests per second per key. Defaults to `50`.                                                      |
+| `COMPOSERY_API_RATE_BURST`          | Burst request capacity per key. Defaults to `200`.                                                            |
+| `COMPOSERY_API_MAX_SESSIONS`        | Concurrent interactive sessions per key. Defaults to `50`.                                                    |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | Failed-auth attempts per minute per IP before throttling. Defaults to `20`.                                   |
+
+Invalid numeric values fall back to the defaults. Extreme numeric values are
+clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,
+10000 burst, 128 concurrent one-shot execs, 500 interactive sessions, and 1000
+failed-auth attempts/min/IP.
 
 Rate limits are abuse rails, not DDoS defense - that is handled by the platform in front
 of the instance.
