@@ -1,12 +1,6 @@
 #!/bin/sh
-# Composery clipboard shim: xclip(1) backed by the browser clipboard.
-#
-# A headless server has no X11 clipboard, so terminal tools that shell out to
-# xclip (Claude Code, neovim, ...) would otherwise read an absent clipboard.
-# This forwards to the running Composery window via the `code` CLI pipe, so they
-# see the user's real (browser) clipboard. Only the subset real tools use is
-# implemented; unknown flags are accepted and ignored so callers behave as they
-# would against a local X server.
+# xclip(1) shim that forwards the headless server's clipboard to the browser via
+# the `code` CLI pipe. Only the subset real tools use is implemented.
 set -u
 
 mode=in
@@ -27,9 +21,7 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-# Outside an integrated terminal there is no CLI pipe and thus no browser
-# clipboard to reach; fail cleanly rather than letting `code` print pipe
-# diagnostics where callers expect clipboard data.
+# No integrated-terminal pipe means no browser clipboard to reach; fail cleanly.
 [ -n "${VSCODE_IPC_HOOK_CLI:-}" ] || exit 1
 
 if [ "$mode" = out ]; then
@@ -47,7 +39,6 @@ if [ "$mode" = out ]; then
 	exit 0
 fi
 
-# input: set the clipboard from files or stdin
 case "$target" in
 	image/*)
 		if [ $# -gt 0 ]; then cat "$@" | code --clipboard-image-in; else code --clipboard-image-in; fi

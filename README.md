@@ -30,7 +30,7 @@ For a host-integrated VPS with systemd inside the runtime container, use
 have ready-made templates: [templates/render](templates/render/),
 [templates/fly](templates/fly/), [templates/railway](templates/railway/), and
 [templates/kubernetes](templates/kubernetes/). The [templates/](templates/) index routes every
-target by host capability and TLS edge; [docs/self-hosting.md](docs/self-hosting.md)
+target by host capability and TLS edge; [docs/self-hosting/index.md](docs/self-hosting/index.md)
 covers deployment targets, operational notes, and the persistence contract.
 
 On first visit, the browser registration flow creates the initial password. If

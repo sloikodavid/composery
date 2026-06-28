@@ -230,9 +230,7 @@ pub fn copy_metadata(source: &Path, destination: &Path) -> Result<()> {
 }
 
 pub fn apply_facts(path: &Path, source: &FsFacts) -> Result<()> {
-    if let (Some(_), Some(_)) = (source.rdev_major, source.rdev_minor) {
-        // Device identity is handled at creation time.
-    }
+    if let (Some(_), Some(_)) = (source.rdev_major, source.rdev_minor) {}
 
     lchown(path, source.uid, source.gid)?;
 
@@ -618,11 +616,7 @@ fn read_xattrs(path: &Path) -> Result<Vec<XattrRecord>> {
             if matches!(
                 error.kind(),
                 std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
-            ) =>
-        {
-            // Some filesystems do not support listing, while direct reads of known
-            // Linux metadata xattrs may still tell us more below.
-        }
+            ) => {}
         Err(error) => return Err(error).with_context(|| format!("list xattrs {}", path.display())),
     }
 

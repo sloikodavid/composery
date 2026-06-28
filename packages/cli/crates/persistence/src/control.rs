@@ -82,10 +82,6 @@ pub fn request<T: DeserializeOwned>(socket: &Path, command: Command) -> Result<T
     }
 }
 
-/// Query the running daemon over the control socket, returning the typed report.
-///
-/// Reports a clear "daemon is not running" error when the control socket is
-/// missing or is not a socket, rather than a raw connection failure.
 pub fn query<T: DeserializeOwned>(paths: &Paths, command: Command) -> Result<T> {
     if !control_socket_available(paths) {
         bail!(

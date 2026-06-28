@@ -1,7 +1,5 @@
 #!/bin/sh
-# Composery clipboard shim: xsel(1) backed by the browser clipboard.
-# See xclip in this directory for the rationale. xsel is text-only; every
-# selection maps to the one system clipboard the browser exposes.
+# xsel(1) shim backed by the browser clipboard (see xclip for the rationale).
 set -u
 
 mode=out

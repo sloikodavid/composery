@@ -6,19 +6,16 @@ import { apiConfig } from "./config"
 import { nodePty } from "./pty"
 import { sessions } from "./ratelimit"
 
-// Mode 2: interactive terminal over a websocket (real PTY: stdin, live output,
-// resize). No timeout, no output cap. With ?session=<name> it is tmux-backed and
-// survives disconnect + a code-server restart (detached); without it, the shell
-// dies on disconnect (ephemeral).
-//
-// Framing: binary ws messages are raw PTY I/O both ways; text ws messages are
-// JSON control - currently {"resize":{"cols":N,"rows":N}}.
-
 export const wsRouter = WsRouter()
 export const httpRouter = express.Router()
 
 function endWithStatus(req: WebsocketRequest, status: number, message: string): void {
   req.ws.end(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`)
+}
+
+function clampDim(value: string | number | null | undefined, fallback: number): number {
+  const n = Math.floor(Number(value))
+  return n >= 1 && n <= 1000 ? n : fallback
 }
 
 wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
@@ -34,15 +31,14 @@ wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
   }
 
   const url = new URL(req.url || "/", "http://localhost")
-  const cols = parseInt(url.searchParams.get("cols") || "80", 10) || 80
-  const rows = parseInt(url.searchParams.get("rows") || "24", 10) || 24
+  const cols = clampDim(url.searchParams.get("cols"), 80)
+  const rows = clampDim(url.searchParams.get("rows"), 24)
   const sessionName = url.searchParams.get("session") || undefined
   const cmd = url.searchParams.get("cmd") || undefined
 
   let file: string
   let args: string[]
   if (sessionName) {
-    // tmux owns the session lifetime; -A attaches or creates.
     file = "tmux"
     args = ["new-session", "-A", "-s", sessionName]
     if (cmd) args.push(cmd)
@@ -77,17 +73,13 @@ wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
     term.onData((data: string) => {
       try {
         ws.send(Buffer.from(data, "utf8"))
-      } catch {
-        /* socket closing */
-      }
+      } catch {}
     })
     term.onExit(({ exitCode }: { exitCode: number }) => {
       try {
         ws.send(JSON.stringify({ exit: { code: exitCode } }))
         ws.close()
-      } catch {
-        /* already closed */
-      }
+      } catch {}
     })
 
     ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -99,32 +91,26 @@ wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
       try {
         const message = JSON.parse(text)
         if (message.resize) {
-          term.resize(Number(message.resize.cols) || cols, Number(message.resize.rows) || rows)
+          term.resize(clampDim(message.resize.cols, cols), clampDim(message.resize.rows, rows))
         } else if (message.input != null) {
           term.write(String(message.input))
         }
       } catch {
-        // Not JSON control - treat as input.
         term.write(text)
       }
     })
 
     ws.on("close", () => {
       release()
-      // Ephemeral: kills the shell. Detached: kills only our tmux attach client;
-      // the tmux server keeps the session alive for reattach.
       try {
         term.kill()
-      } catch {
-        /* already exited */
-      }
+      } catch {}
     })
 
     req.ws.resume()
   })
 })
 
-// List and kill detached (tmux) sessions.
 httpRouter.get("/sessions", (_req, res) => {
   const child = spawn("tmux", [
     "ls",

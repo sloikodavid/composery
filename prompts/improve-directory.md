@@ -1,0 +1,1 @@
+Take a look at every single, each and single one of the files in this directory. Read every single one, one by one, and really truly try to understand them. Find refactoring opportunities, stuff to clean up, and follow yakni principles in all edge cases so this directory can be shipped to production. 

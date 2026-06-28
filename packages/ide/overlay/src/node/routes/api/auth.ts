@@ -16,7 +16,6 @@ function clientIp(req: express.Request): string {
   return req.ip || req.socket.remoteAddress || "unknown"
 }
 
-// Accept `Authorization: Bearer <key>` (primary) or `X-API-Key: <key>` (fallback).
 function extractKey(req: express.Request): string | undefined {
   const authorization = req.headers["authorization"]
   if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
@@ -27,10 +26,6 @@ function extractKey(req: express.Request): string | undefined {
   return undefined
 }
 
-/**
- * Shared auth + rate-limit check used by both the HTTP middleware and the
- * websocket handler (which cannot use Express error flow cleanly).
- */
 export async function authenticate(req: express.Request): Promise<AuthResult> {
   const ip = clientIp(req)
   if (!authFail.allow(ip)) {
@@ -48,7 +43,6 @@ export async function authenticate(req: express.Request): Promise<AuthResult> {
   return { id }
 }
 
-/** Express middleware form for the HTTP routes. */
 export function httpAuth(): express.RequestHandler {
   return async (req, res, next) => {
     const result = await authenticate(req)

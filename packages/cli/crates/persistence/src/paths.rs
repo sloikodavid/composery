@@ -29,10 +29,7 @@ impl Default for Paths {
     }
 }
 
-/// The container's persistent volume root. `/data` by deployment contract;
-/// `COMPOSERY_DOCKER_VOLUME_PATH` overrides it (the mount target must match).
-/// Single source of truth for the volume root across persistence and the API
-/// key store - every path on the volume derives from here.
+// Volume root is `/data` by deployment contract; COMPOSERY_DOCKER_VOLUME_PATH overrides.
 pub fn volume_root() -> PathBuf {
     match std::env::var("COMPOSERY_DOCKER_VOLUME_PATH") {
         Ok(value) if !value.trim().is_empty() => PathBuf::from(value.trim()),
@@ -49,30 +46,26 @@ impl Paths {
         let opt_dir = opt_dir.into();
         let run_dir = run_dir.into();
         let data_dir = data_dir.into();
-        let internal_dir = join(&data_dir, ".internal");
+        let internal_dir = data_dir.join(".internal");
 
         Self {
-            baseline_db: join(&opt_dir, "baseline.sqlite"),
-            ready_file: join(&run_dir, "ready"),
-            config_file: join(&data_dir, "config.json"),
-            changed_dir: join(&data_dir, "changed"),
-            removed_dir: join(&data_dir, "removed"),
-            metadata_file: join(&data_dir, "metadata.jsonl"),
-            state_db: join(&internal_dir, "state.sqlite"),
-            lock_file: join(&internal_dir, "lock"),
-            control_socket: join(&internal_dir, "control.sock"),
-            apply_error_log: join(&internal_dir, "apply-error.log"),
-            watch_error_log: join(&internal_dir, "watch-error.log"),
+            baseline_db: opt_dir.join("baseline.sqlite"),
+            ready_file: run_dir.join("ready"),
+            config_file: data_dir.join("config.json"),
+            changed_dir: data_dir.join("changed"),
+            removed_dir: data_dir.join("removed"),
+            metadata_file: data_dir.join("metadata.jsonl"),
+            state_db: internal_dir.join("state.sqlite"),
+            lock_file: internal_dir.join("lock"),
+            control_socket: internal_dir.join("control.sock"),
+            apply_error_log: internal_dir.join("apply-error.log"),
+            watch_error_log: internal_dir.join("watch-error.log"),
             opt_dir,
             run_dir,
             data_dir,
             internal_dir,
         }
     }
-}
-
-fn join(base: &std::path::Path, child: &str) -> PathBuf {
-    base.join(child)
 }
 
 #[cfg(test)]

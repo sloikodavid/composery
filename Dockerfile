@@ -1,6 +1,5 @@
-# Node major is pinned by the IDE (engines + VS Code remote/.npmrc target), whose
-# native modules are built for this ABI. The builder and runtime must share it, so it
-# lives in one ARG; bump both together when the IDE moves to a new Node major.
+# Node major is pinned by the IDE (its native modules target this ABI). Builder and
+# runtime share this one ARG; bump both together when the IDE moves Node major.
 ARG NODE_IMAGE=node:22-trixie-slim@sha256:e637ac91fb4f2f40761d217c5d48c41a05edf0b65eb9c34e72c27cce55af9e65
 
 # Build the IDE from the in-repo hard fork of code-server.
@@ -27,18 +26,15 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-# The IDE build runs code-server's own toolchain (npm ci / npm run build) inside
-# the cloned upstream tree, so no pnpm or workspace root is needed here.
+# The IDE build uses code-server's own npm toolchain inside the cloned tree.
 WORKDIR /src
 
-# Copy the IDE package: overlay, patches, series, and build.sh.
 COPY packages/ide ./packages/ide
 
 WORKDIR /src/packages/ide
 
-# Clone pristine code-server at the pinned commit (the submodule .gitmodules is for
-# local dev; in Docker there's no git context after COPY, so fetch directly). It
-# brings its own VS Code submodule.
+# Clone pristine code-server at the pinned commit (no git context after COPY, so
+# fetch directly, not via the dev submodule); it brings its own VS Code submodule.
 # renovate: datasource=git-tags depName=coder/code-server versioning=semver
 ARG CODE_SERVER_COMMIT=871f1d904834ee78db1c4585e2f14f65c119374a
 RUN git init -q upstream \
@@ -102,22 +98,17 @@ ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
   LANG="C.UTF-8" \
   VISUAL="code --wait" \
   XDG_RUNTIME_DIR="/run/user/1000"
-# LANG gives a UTF-8 default; LC_ALL is intentionally not pinned so the user can
-# override the locale per session (a pinned LC_ALL overrides every LC_* and LANG,
-# which would prevent that). A deployment-provided LC_ALL is still honored.
+# LANG sets a UTF-8 default; LC_ALL is intentionally unpinned so the user can
+# override the locale per session (a deployment-provided LC_ALL is still honored).
 
-# Put the user's standard bin dirs on PATH at the process level, not just in
-# interactive shells, so binaries on ~/.local/bin work everywhere that inherits
-# this environment: integrated terminals, and shells an AI agent or task spawns
-# (including `bash -c`/sandboxed commands, which source no startup files and so
-# rely on inherited PATH). Interactive login shells layer rc-file PATH edits
-# (cargo, rustup, ...) on top of this.
+# Put the user's bin dirs on PATH at the process level (not just interactive shells)
+# so ~/.local/bin works everywhere that inherits this env: integrated terminals and
+# the no-startup-file `bash -c` shells an AI agent spawns. Login shells layer rc-file
+# PATH edits on top.
 ENV PATH="/home/user/.local/bin:/home/user/bin:${PATH}"
 
-# Apt packages are intentionally unpinned: the Debian suite comes from the base
-# image, and the image digest is the reproducibility boundary. APT lists are kept
-# so `sudo apt install` works out of the box in this VPS-like appliance; `apt
-# update` refreshes them, and persistence persists any changes.
+# Apt is unpinned (the base-image digest is the reproducibility boundary). APT lists
+# are kept so `sudo apt install` works out of the box; persistence persists changes.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     bash \
@@ -149,9 +140,8 @@ RUN apt-get update \
     xz-utils \
     zip
 
-# cron's PAM stack fails `session required pam_loginuid.so` in an unprivileged
-# container (no writable /proc/self/loginuid), which silently stops cron jobs from
-# running even though the daemon is up. Make it optional so `crontab` works.
+# cron's PAM stack fails `pam_loginuid.so` in an unprivileged container (no writable
+# /proc/self/loginuid), silently killing cron jobs. Make it optional so crontab works.
 RUN sed -i 's/session\s\+required\s\+pam_loginuid/session optional pam_loginuid/' /etc/pam.d/cron
 
 RUN npm install --global \
@@ -168,21 +158,17 @@ COPY --from=ide-builder /src/packages/ide/build/release /opt/code-server/current
 COPY --from=cli-builder /out/composery /opt/composery/bin/composery
 COPY rootfs/ /
 
-# Show only the working directory in the interactive prompt (~/Desktop, not
-# user@<container-id>:~/Desktop). The stock Debian skel ~/.bashrc (moved from
-# /home/node) sets the user@host prompt; the last PS1 assignment wins, so
-# appending here overrides it. Captured in the persistence baseline below.
+# Show only the working dir in the prompt, not user@host. The stock skel ~/.bashrc
+# sets user@host; the last PS1 wins, so appending here overrides it. In the baseline.
 RUN printf '%s\n' \
     '' \
     '# Composery: show only the working directory in the prompt.' \
     'PS1='\''${debian_chroot:+($debian_chroot)}\[\033[01;34m\]\w\[\033[00m\]\$ '\''' \
     >> /home/user/.bashrc
 
-# Final runtime wiring: create the user's standard bin dirs (so login shells add
-# them to PATH via the stock ~/.profile even before anything is installed), fix
-# ownership (home, and /usr/local so the user can install globally without sudo),
-# permissions, unit symlinks, and desktop/mime caches, then snapshot the baseline
-# persistence restores from.
+# Final runtime wiring: create the user's bin dirs (so ~/.profile adds them to PATH),
+# fix ownership (home + /usr/local for sudo-less global installs), permissions, unit
+# symlinks, and desktop/mime caches, then snapshot the persistence baseline.
 RUN find /home/user -name .gitkeep -type f -delete \
   && mkdir -p /data /etc/systemd/system/multi-user.target.wants \
   && mkdir -p /home/user/.local/bin /home/user/bin \

@@ -1,65 +1,71 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { openBrowserAsync } from "expo-web-browser";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	ActivityIndicator,
-	Alert,
-	BackHandler,
-	Pressable,
-	StyleSheet,
-	Text,
-	View
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { RotateCw } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BackHandler, Text, useColorScheme, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
 
-import {
-	createInstanceStore,
-	get,
-	remove,
-	type Instance
-} from "@/lib/instance-store";
+import { PressableScale } from "@/components/pressable-scale";
+import { Spinner } from "@/components/spinner";
+import { body, heading } from "@/lib/fonts";
+import { createInstanceStore, get, type Instance } from "@/lib/instance-store";
 import { useTheme } from "@/lib/use-theme";
+import { buildBeforeLoad, INSTALL_SCRIPT } from "@/web/back-button";
 
 const store = createInstanceStore(AsyncStorage);
+
+// Light vs dark status-bar icons for a given strip color (relative luminance).
+function isLight(color: string): boolean {
+	const rgb = color.match(/\d+(\.\d+)?/g);
+	if (!rgb || rgb.length < 3) return true;
+	const [r, g, b] = rgb.map(Number);
+	return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
 
 export default function InstanceScreen() {
 	const { id } = useLocalSearchParams<{ id: string }>();
 	const theme = useTheme();
+	const scheme = useColorScheme();
+	const insets = useSafeAreaInsets();
 	const [instance, setInstance] = useState<Instance | undefined>();
 	const [loading, setLoading] = useState(true);
+	const [webLoading, setWebLoading] = useState(true);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [reloadKey, setReloadKey] = useState(0);
 	const [canGoBack, setCanGoBack] = useState(false);
+	// Live title-bar background reported by the page, so the status-bar strip
+	// matches whatever IDE theme the user runs.
+	const [stripColor, setStripColor] = useState<string | null>(null);
 	const webviewRef = useRef<WebView>(null);
 
-	// Load the instance by id. The list touches lastOpenedAt on tap; this screen
-	// only reads (it does not own the open timestamp).
+	useFocusEffect(
+		useCallback(() => {
+			let active = true;
+			store.loadAll().then((list) => {
+				if (active) {
+					setInstance(get(list, id));
+					setLoading(false);
+				}
+			});
+			return () => {
+				active = false;
+			};
+		}, [id])
+	);
+
+	const messageBack = useCallback(() => {
+		if (canGoBack && webviewRef.current) {
+			webviewRef.current.goBack();
+		} else {
+			router.back();
+		}
+	}, [canGoBack]);
+
 	useEffect(() => {
-		let active = true;
-		store.loadAll().then((list) => {
-			if (active) {
-				setInstance(get(list, id));
-				setLoading(false);
-			}
-		});
-		return () => {
-			active = false;
-		};
-	}, [id]);
-
-	// The instance's own origin; cross-origin top-frame navigations are handed
-	// off to the system browser. Empty until the instance is loaded, in which
-	// case the WebView is not rendered yet anyway.
-	const instanceOrigin = instance ? new URL(instance.url).origin : "";
-
-	const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
-		setCanGoBack(nav.canGoBack);
-	}, []);
-
-	// Android hardware back: go back inside the WebView when possible, else pop
-	// to the list (return false lets the navigator handle it).
-	useEffect(() => {
-		const onBack = (): boolean => {
+		const onBack = () => {
 			if (canGoBack && webviewRef.current) {
 				webviewRef.current.goBack();
 				return true;
@@ -73,191 +79,239 @@ export default function InstanceScreen() {
 		return () => subscription.remove();
 	}, [canGoBack]);
 
-	const renderLoading = useCallback(
-		() => (
-			<View style={[styles.loading, { backgroundColor: theme.background }]}>
-				<ActivityIndicator color={theme.primary} size="large" />
-			</View>
-		),
-		[theme.background, theme.primary]
+	const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
+		setCanGoBack(nav.canGoBack);
+	}, []);
+
+	// When the system scheme flips while open, tell the page so code-server
+	// re-detects its theme without a reload.
+	useEffect(() => {
+		webviewRef.current?.injectJavaScript(
+			`window.__composerySetScheme && window.__composerySetScheme(${JSON.stringify(
+				scheme === "dark" ? "dark" : "light"
+			)}); true;`
+		);
+	}, [scheme]);
+
+	function retry() {
+		setLoadError(null);
+		setWebLoading(true);
+		setStripColor(null);
+		setReloadKey((k) => k + 1);
+	}
+
+	const beforeLoad = useMemo(
+		() => buildBeforeLoad(scheme === "dark" ? "dark" : "light"),
+		[scheme]
 	);
-
-	async function removeInstance() {
-		if (!id) return;
-		const list = await store.loadAll();
-		await store.persist(remove(list, id));
-		router.back();
-	}
-
-	function openMenu() {
-		if (!instance) return;
-		// Three buttons max — Android's Alert ignores a fourth.
-		Alert.alert(instance.label, undefined, [
-			{ text: "Reload", onPress: () => webviewRef.current?.reload() },
-			{
-				text: "Open in browser",
-				onPress: () => void openBrowserAsync(instance.url)
-			},
-			{
-				text: "Remove",
-				style: "destructive",
-				onPress: () => void removeInstance()
-			}
-		]);
-	}
+	const instanceOrigin = instance ? new URL(instance.url).origin : "";
+	const stripBg = stripColor ?? theme.background;
+	const statusStyle = stripColor
+		? isLight(stripColor)
+			? "dark"
+			: "light"
+		: scheme === "dark"
+			? "light"
+			: "dark";
 
 	return (
-		<SafeAreaView
-			edges={["top"]}
-			style={[styles.container, { backgroundColor: theme.background }]}
-		>
-			<View style={[styles.topbar, { borderBottomColor: theme.border }]}>
-				<Pressable
-					testID="instance-back"
-					onPress={() => router.back()}
-					hitSlop={12}
-					style={styles.topbarButton}
-				>
-					<Text style={[styles.topbarAction, { color: theme.primary }]}>←</Text>
-				</Pressable>
-				<Text
-					style={[styles.topbarTitle, { color: theme.foreground }]}
-					numberOfLines={1}
-				>
-					{instance?.label ?? "Instance"}
-				</Text>
-				<Pressable
-					testID="instance-menu"
-					onPress={openMenu}
-					hitSlop={12}
-					style={styles.topbarButton}
-					disabled={!instance}
-				>
-					<Text
-						style={[
-							styles.topbarAction,
-							{ color: instance ? theme.primary : theme.mutedForeground }
-						]}
-					>
-						⋯
-					</Text>
-				</Pressable>
-			</View>
+		<View style={{ flex: 1, backgroundColor: theme.background }}>
+			<StatusBar style={statusStyle} />
+			{/* Status-bar strip, tinted to the IDE title bar so the two read as one. */}
+			<View style={{ height: insets.top, backgroundColor: stripBg }} />
 
-			{loading ? (
-				<View style={styles.center}>
-					<ActivityIndicator color={theme.primary} size="large" />
-				</View>
-			) : !instance ? (
-				<View style={styles.center}>
-					<Text style={[styles.missing, { color: theme.foreground }]}>
-						Instance not found
-					</Text>
-					<Pressable
-						testID="instance-back-missing"
-						onPress={() => router.back()}
-						style={({ pressed }) => [
-							styles.missingBack,
-							{ opacity: pressed ? 0.5 : 1 }
-						]}
-					>
-						<Text style={{ color: theme.primary }}>Back to list</Text>
-					</Pressable>
+			{!instance && !loading ? (
+				<ErrorView
+					theme={theme}
+					title="Instance not found"
+					detail="It may have been removed."
+					onBack={() => router.back()}
+				/>
+			) : instance && loadError ? (
+				<ErrorView
+					theme={theme}
+					title="Couldn't load this instance"
+					detail={`${instance.url}\n${loadError}`}
+					onBack={() => router.back()}
+					onRetry={retry}
+				/>
+			) : instance ? (
+				<View style={{ flex: 1 }}>
+					<WebView
+						key={reloadKey}
+						ref={webviewRef}
+						source={{ uri: instance.url }}
+						// White (the browser's default canvas) so a transparent-body page —
+						// e.g. an upstream Cloudflare/origin error page — renders as it
+						// would in a desktop browser, not with the theme bleeding through.
+						// The load flash is hidden by the overlay below, not this colour.
+						style={{ flex: 1, backgroundColor: "#ffffff" }}
+						// iOS uses WKHTTPCookieStore, Android CookieManager.
+						sharedCookiesEnabled
+						thirdPartyCookiesEnabled
+						javaScriptEnabled
+						domStorageEnabled
+						injectedJavaScriptBeforeContentLoaded={beforeLoad}
+						injectedJavaScript={INSTALL_SCRIPT}
+						onMessage={(event) => {
+							const data = event.nativeEvent.data;
+							if (data === "composery:back") messageBack();
+							else if (data.startsWith("composery:bg:")) {
+								setStripColor(data.slice("composery:bg:".length));
+							}
+						}}
+						onLoadEnd={() => setWebLoading(false)}
+						onError={(event) =>
+							setLoadError(event.nativeEvent.description || "")
+						}
+						onNavigationStateChange={onNavigationStateChange}
+						onShouldStartLoadWithRequest={(request) => {
+							// Navigation guard (PLAN.md Wrinkle 6): 'other' covers the initial
+							// load and sub-frame/resource requests — allow all. Only
+							// user-driven top-frame nav to a different host opens the browser.
+							if (request.navigationType === "other") return true;
+							let parsed: URL;
+							try {
+								parsed = new URL(request.url);
+							} catch {
+								return true;
+							}
+							if (parsed.origin === instanceOrigin) return true;
+							if (request.isTopFrame === false) return true;
+							void openBrowserAsync(request.url);
+							return false;
+						}}
+						testID="instance-webview"
+					/>
+
+					{/* Loading overlay: absolute, so it never reflows the WebView. */}
+					{webLoading ? (
+						<View pointerEvents="none" style={styles_overlay(theme.background)}>
+							<Spinner color={theme.primary} size={32} />
+						</View>
+					) : null}
 				</View>
 			) : (
-				<WebView
-					ref={webviewRef}
-					source={{ uri: instance.url }}
-					// Cookie props: iOS uses WKHTTPCookieStore, Android uses CookieManager.
-					// Composery's `code-server-session` is a session cookie (no Max-Age), so
-					// Android persists it across app-kills but iOS drops it on a full kill —
-					// the user re-enters the password after an iOS hard kill. v1 accepts this
-					// (matches browser semantics); restoring it needs @react-native-cookies/
-					// cookies, which forces a dev build and is out of scope (PLAN.md).
-					sharedCookiesEnabled
-					thirdPartyCookiesEnabled
-					javaScriptEnabled
-					domStorageEnabled
-					startInLoadingState
-					renderLoading={renderLoading}
-					onShouldStartLoadWithRequest={(request) => {
-						// Navigation guard (PLAN.md Wrinkle 6). iOS fires this for the initial
-						// main-frame load too, so a naive "block anything off-host" guard
-						// blanks the first paint. navigationType 'other' covers the initial
-						// load AND sub-frame/resource requests (CDNs, fonts, iframes) — allow
-						// all of those. Only user-driven top-frame navigations to a different
-						// host are intercepted and sent to the system browser; Android's
-						// isTopFrame tells sub-frame clicks apart, iOS does not (a non-'other'
-						// navigation is a top-frame link there).
-						if (request.navigationType === "other") return true;
-						let parsed: URL;
-						try {
-							parsed = new URL(request.url);
-						} catch {
-							return true;
-						}
-						if (parsed.origin === instanceOrigin) return true;
-						if (request.isTopFrame === false) return true;
-						void openBrowserAsync(request.url);
-						return false;
-					}}
-					onNavigationStateChange={onNavigationStateChange}
-					testID="instance-webview"
-					style={styles.webview}
-				/>
+				<View style={styles_center}>
+					<Spinner color={theme.primary} size={32} />
+				</View>
 			)}
-		</SafeAreaView>
+		</View>
 	);
 }
 
-const styles = StyleSheet.create({
-	container: {
-		flex: 1
-	},
-	topbar: {
-		flexDirection: "row",
-		alignItems: "center",
-		height: 44,
-		paddingHorizontal: 8,
-		borderBottomWidth: 1
-	},
-	topbarButton: {
-		width: 40,
-		height: 40,
-		alignItems: "center",
-		justifyContent: "center"
-	},
-	topbarAction: {
-		fontSize: 22,
-		fontWeight: "500"
-	},
-	topbarTitle: {
-		flex: 1,
-		fontSize: 16,
-		fontWeight: "600",
-		textAlign: "center",
-		marginHorizontal: 4
-	},
-	center: {
-		flex: 1,
+function ErrorView({
+	theme,
+	title,
+	detail,
+	onBack,
+	onRetry
+}: {
+	theme: ReturnType<typeof useTheme>;
+	title: string;
+	detail: string;
+	onBack: () => void;
+	onRetry?: () => void;
+}) {
+	return (
+		<View
+			style={{
+				flex: 1,
+				alignItems: "center",
+				justifyContent: "center",
+				paddingHorizontal: 32
+			}}
+		>
+			<Text
+				style={[
+					heading("bold"),
+					{ fontSize: 20, color: theme.foreground, textAlign: "center" }
+				]}
+			>
+				{title}
+			</Text>
+			<Text
+				style={[
+					body(),
+					{
+						fontSize: 14,
+						lineHeight: 20,
+						textAlign: "center",
+						color: theme.mutedForeground,
+						marginTop: 8
+					}
+				]}
+			>
+				{detail}
+			</Text>
+			<View style={{ flexDirection: "row", gap: 12, marginTop: 24 }}>
+				<PressableScale
+					testID="instance-back-missing"
+					onPress={onBack}
+					style={{
+						paddingHorizontal: 18,
+						paddingVertical: 12,
+						borderRadius: 12,
+						borderWidth: 1,
+						borderColor: theme.border
+					}}
+				>
+					<Text
+						style={[
+							body("semibold"),
+							{ fontSize: 15, color: theme.foreground }
+						]}
+					>
+						Back
+					</Text>
+				</PressableScale>
+				{onRetry ? (
+					<PressableScale
+						onPress={onRetry}
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: 8,
+							paddingHorizontal: 18,
+							paddingVertical: 12,
+							borderRadius: 12,
+							backgroundColor: theme.primary
+						}}
+					>
+						<RotateCw
+							size={16}
+							color={theme.primaryForeground}
+							strokeWidth={2.4}
+						/>
+						<Text
+							style={[
+								body("semibold"),
+								{ fontSize: 15, color: theme.primaryForeground }
+							]}
+						>
+							Retry
+						</Text>
+					</PressableScale>
+				) : null}
+			</View>
+		</View>
+	);
+}
+
+const styles_center = {
+	flex: 1,
+	alignItems: "center",
+	justifyContent: "center"
+} as const;
+
+const styles_overlay = (backgroundColor: string) =>
+	({
+		position: "absolute",
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
 		alignItems: "center",
 		justifyContent: "center",
-		gap: 12
-	},
-	missing: {
-		fontSize: 16,
-		fontWeight: "600"
-	},
-	missingBack: {
-		paddingHorizontal: 16,
-		paddingVertical: 8
-	},
-	loading: {
-		flex: 1,
-		alignItems: "center",
-		justifyContent: "center"
-	},
-	webview: {
-		flex: 1
-	}
-});
+		backgroundColor
+	}) as const;

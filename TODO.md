@@ -12,8 +12,6 @@
 
 - File router depending on host platform, possibly changing AGENTS.md instructions.
 
-- Mobile app.
-
 - QR codes to scan from mobile to open Composery.
 
 - Turn the IDE into an actual OS.

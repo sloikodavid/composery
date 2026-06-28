@@ -9,9 +9,10 @@ WebView view is visible (`instance-webview`), not the web content.
 - `add-instance-button` — empty-state CTA and header add button
 - `add-instance-url-input` / `add-instance-label-input` — modal inputs
 - `add-instance-submit` / `add-instance-cancel` — modal actions
+- `add-instance-error` — modal validation error text
 - `instance-item` — a list row
 - `instance-webview` — the WebView on the instance screen
-- `instance-back` / `instance-menu` — the instance screen top bar
+- `instance-back-missing` — back action on the not-found / load-error view
 
 ## Running (Android via WSL)
 

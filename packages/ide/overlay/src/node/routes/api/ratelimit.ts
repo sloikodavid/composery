@@ -1,7 +1,5 @@
 import { apiConfig } from "./config"
 
-// In-memory, per-process, reset on restart. Safety rails, not DDoS defense.
-
 class TokenBucket {
   private tokens: number
   private last: number
@@ -40,7 +38,6 @@ class KeyedRateLimiter {
   }
 }
 
-// Failed-auth attempts per IP per minute (cheap guessing deterrent).
 class FailWindow {
   private readonly hits = new Map<string, number[]>()
   constructor(private readonly perMinute: number) {}
@@ -56,7 +53,6 @@ class FailWindow {
   }
 }
 
-// Concurrent interactive/detached sessions per key.
 class SessionCounter {
   private readonly counts = new Map<string, number>()
   constructor(private readonly max: number) {}

@@ -11,19 +11,7 @@ function readRepoFile(path: string): string {
 	return readFileSync(resolve(repoRoot, path), "utf8");
 }
 
-function parseDesktopEntry(content: string): Map<string, string> {
-	return new Map(
-		content
-			.split(/\r?\n/)
-			.filter((line) => line && !line.startsWith("["))
-			.map((line) => {
-				const separator = line.indexOf("=");
-				return [line.slice(0, separator), line.slice(separator + 1)];
-			})
-	);
-}
-
-function parseMimeDefaults(content: string): Map<string, string> {
+function parseIniEntries(content: string): Map<string, string> {
 	return new Map(
 		content
 			.split(/\r?\n/)
@@ -37,7 +25,7 @@ function parseMimeDefaults(content: string): Map<string, string> {
 
 describe("desktop URL and text editor integration", () => {
 	test("uses a dedicated URL handler for HTTP links", () => {
-		const entry = parseDesktopEntry(
+		const entry = parseIniEntries(
 			readRepoFile(
 				"rootfs/usr/share/applications/composery-url-handler.desktop"
 			)
@@ -60,7 +48,7 @@ describe("desktop URL and text editor integration", () => {
 			repoRoot,
 			"rootfs/usr/share/applications/composery-text-editor.desktop"
 		);
-		const entry = parseDesktopEntry(
+		const entry = parseIniEntries(
 			readRepoFile(
 				"rootfs/usr/share/applications/composery-text-editor.desktop"
 			)
@@ -73,7 +61,7 @@ describe("desktop URL and text editor integration", () => {
 	});
 
 	test("keeps MIME defaults split between URLs and text editing", () => {
-		const defaults = parseMimeDefaults(
+		const defaults = parseIniEntries(
 			readRepoFile("rootfs/etc/xdg/mimeapps.list")
 		);
 

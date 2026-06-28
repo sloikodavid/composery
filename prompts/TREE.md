@@ -255,7 +255,14 @@ packages/
         _layout.tsx
         add-instance.tsx
         index.tsx
+      components/
+        action-sheet.tsx
+        logo.tsx
+        pressable-scale.tsx
+        spinner.tsx
       lib/
+        fonts.ts
+        haptics.ts
         id.ts
         instance-store.test.ts
         instance-store.ts
@@ -269,6 +276,9 @@ packages/
         e2e.yml
         open-instance.yml
         README.md
+      web/
+        back-button.test.ts
+        back-button.ts
     .gitignore
     app.json
     eslint.config.mjs
@@ -382,7 +392,6 @@ tests/
   support/
     loopbackCallbackGuard.ts
   code-server-patches.test.ts
-  code-server.test.ts
   desktop-integration.test.ts
   loopback-callback-guard.test.ts
 .dockerignore
@@ -399,7 +408,6 @@ Dockerfile
 eslint.config.mjs
 LICENSE
 package.json
-PLAN.md
 pnpm-lock.yaml
 pnpm-workspace.yaml
 README.md

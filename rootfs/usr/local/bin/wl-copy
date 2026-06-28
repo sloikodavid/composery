@@ -1,6 +1,5 @@
 #!/bin/sh
-# Composery clipboard shim: wl-copy(1) backed by the browser clipboard.
-# See xclip in this directory for the rationale.
+# wl-copy(1) shim backed by the browser clipboard (see xclip for the rationale).
 set -u
 
 target=

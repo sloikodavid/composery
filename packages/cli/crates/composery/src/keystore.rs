@@ -1,9 +1,5 @@
-//! On-disk API key store: `/data/api/keys.json`.
-//!
-//! This is the cross-language contract. The code-server TypeScript route reads
-//! the same file and verifies a presented secret against `sha256(secret)`. The
-//! store path, the JSON shape, and the hex SHA-256 hashing MUST stay identical
-//! on both sides - do not change one without the other.
+//! Cross-language contract: the TS route reads this same `/data/api/keys.json`;
+//! store path, JSON shape, and hex SHA-256 hashing must stay identical both sides.
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
@@ -20,25 +16,21 @@ use std::{
 
 const KEY_PREFIX: &str = "csy_";
 
-/// The whole key store, as persisted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyStore {
     pub version: u32,
     pub keys: Vec<KeyRecord>,
 }
 
-/// One key. The secret itself is never stored - only its hash.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyRecord {
     pub id: String,
     pub name: String,
     pub prefix: String,
-    /// `"sha256:" + hex(sha256(secret))`.
     pub hash: String,
     pub created_at: u64,
 }
 
-/// A freshly created key: the one-time secret plus the record to persist.
 pub struct NewKey {
     pub secret: String,
     pub record: KeyRecord,
@@ -54,7 +46,6 @@ impl Default for KeyStore {
 }
 
 impl KeyStore {
-    /// Mint a new key and append it. Returns the one-time secret.
     pub fn create(&mut self, name: &str) -> Result<NewKey> {
         if name.trim().is_empty() {
             bail!("key name must not be empty");
@@ -64,7 +55,6 @@ impl KeyStore {
         Ok(new)
     }
 
-    /// Remove a key by id. Returns whether anything was removed.
     pub fn revoke(&mut self, id: &str) -> bool {
         let before = self.keys.len();
         self.keys.retain(|key| key.id != id);
@@ -72,14 +62,10 @@ impl KeyStore {
     }
 }
 
-/// Resolve the key store path. The persistent volume mounts at `/data` by
-/// deployment contract (overridable with `COMPOSERY_DOCKER_VOLUME_PATH`); derive
-/// from persistence's shared `volume_root` so there is one source of truth.
 pub fn store_path() -> PathBuf {
     volume_root().join("api").join("keys.json")
 }
 
-/// Load the store, or a fresh empty one if the file does not exist yet.
 pub fn load(path: &Path) -> Result<KeyStore> {
     match fs::read(path) {
         Ok(data) => {
@@ -90,8 +76,6 @@ pub fn load(path: &Path) -> Result<KeyStore> {
     }
 }
 
-/// Persist the store atomically (temp file + fsync + rename + dir fsync), with a
-/// `0600` file inside a `0700` dir. Mirrors `persistence::config`.
 pub fn save(path: &Path, store: &KeyStore) -> Result<()> {
     let parent = path
         .parent()
@@ -124,8 +108,6 @@ pub fn save(path: &Path, store: &KeyStore) -> Result<()> {
         .with_context(|| format!("fsync {}", parent.display()))
 }
 
-/// `"sha256:" + hex(sha256(secret))`. The exact format the TS reader compares
-/// against; keep them identical.
 pub fn hash_secret(secret: &str) -> String {
     format!("sha256:{}", hex_encode(&Sha256::digest(secret.as_bytes())))
 }
@@ -158,19 +140,7 @@ fn generate(name: &str) -> Result<NewKey> {
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(nibble(byte >> 4));
-        out.push(nibble(byte & 0x0f));
-    }
-    out
-}
-
-fn nibble(value: u8) -> char {
-    match value {
-        0..=9 => (b'0' + value) as char,
-        _ => (b'a' + value - 10) as char,
-    }
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn now_secs() -> u64 {
@@ -209,14 +179,10 @@ mod tests {
 
     #[test]
     fn hash_is_stable_known_vector() {
-        // Locks the cross-language contract: hex SHA-256 with a "sha256:" tag.
-        // The empty-string vector is universally known and easy to verify on the
-        // TS side (crypto.createHash("sha256").update("").digest("hex")).
         assert_eq!(
             hash_secret(""),
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
-        // And it is deterministic for a real key shape.
         assert_eq!(hash_secret("csy_abc"), hash_secret("csy_abc"));
     }
 

@@ -4,10 +4,6 @@ import tseslint from "typescript-eslint";
 
 const TS_FILES = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
-// The docs-website carries its own eslint.config.mjs (eslint-config-next) and
-// is linted by `pnpm --filter docs-website lint`, wired into the root `check`
-// script. It is ignored here so the root type-checked-TS config does not
-// double-lint it with the wrong rules.
 export default defineConfig(
 	globalIgnores([
 		"coverage/",

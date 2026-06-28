@@ -1,16 +1,7 @@
-/**
- * The instance list: pure reducers plus a thin AsyncStorage adapter.
- *
- * Pure: no React Native imports, so the reducers and the adapter run in Vitest
- * in plain Node. The AsyncStorage backend is injected as a `Storage` port —
- * production passes @react-native-async-storage/async-storage, tests pass an
- * in-memory fake. `id` and `now` are injected too, so reducers are deterministic
- * in tests.
- *
- * The store holds only URLs and labels — no secrets. Composery's session cookie
- * lives inside the WebView's own cookie store; the app never touches it. So
- * unencrypted AsyncStorage is correct here (PLAN.md: no expo-secure-store in v1).
- */
+// The instance list: pure reducers (id/now injected, so tests are deterministic)
+// plus a thin adapter over an injected Storage port. Holds only URLs and labels,
+// no secrets — the session cookie lives in the WebView's own cookie store — so
+// plain AsyncStorage is correct (PLAN.md: no expo-secure-store in v1).
 import { normalizeInstanceUrl } from "./normalize-url";
 import { createId } from "./id";
 
@@ -27,10 +18,7 @@ export type InstanceInput = {
 	label?: string;
 };
 
-/**
- * AsyncStorage-shaped port. The adapter takes this so this module has no React
- * Native imports.
- */
+// AsyncStorage-shaped port, so this module has no React Native imports.
 export type Storage = {
 	getItem(key: string): Promise<string | null>;
 	setItem(key: string, value: string): Promise<void>;
@@ -38,20 +26,9 @@ export type Storage = {
 
 const STORAGE_KEY = "composery.instances";
 
-/**
- * Builds a default label from the instance's host (with port), used when the
- * user does not supply one.
- */
-function hostLabel(url: string): string {
-	return new URL(url).host;
-}
-
-/**
- * Creates a new Instance from raw input. Normalizes the URL (throwing on
- * invalid), derives a label from the host when none is given, and throws if the
- * normalized URL is already in `list`. Returns the new instance — the caller
- * prepends it to the list and persists.
- */
+// Normalizes the URL (throws on invalid/duplicate). The label is never
+// backfilled from the host, so an unlabeled instance shows its URL as identity
+// and the two can't drift. Caller prepends the result and persists.
 export function add(
 	list: Instance[],
 	input: InstanceInput,
@@ -62,16 +39,30 @@ export function add(
 	if (list.some((instance) => instance.url === url)) {
 		throw new Error(`Instance already added: ${url}`);
 	}
-	const label = input.label?.trim() || hostLabel(url);
-	return { id: id(), label, url, createdAt: now() };
+	return { id: id(), label: input.label?.trim() ?? "", url, createdAt: now() };
 }
 
-/** Returns a new list without the instance with the given id. */
+// Re-normalizes the URL and rejects one already used by a *different* instance;
+// preserves createdAt/lastOpenedAt.
+export function update(
+	list: Instance[],
+	id: string,
+	input: InstanceInput
+): Instance[] {
+	const url = normalizeInstanceUrl(input.url).href;
+	if (list.some((instance) => instance.id !== id && instance.url === url)) {
+		throw new Error(`Instance already added: ${url}`);
+	}
+	const label = input.label?.trim() ?? "";
+	return list.map((instance) =>
+		instance.id === id ? { ...instance, url, label } : instance
+	);
+}
+
 export function remove(list: Instance[], id: string): Instance[] {
 	return list.filter((instance) => instance.id !== id);
 }
 
-/** Returns a new list with `lastOpenedAt` updated on the matching instance. */
 export function touch(
 	list: Instance[],
 	id: string,
@@ -82,16 +73,11 @@ export function touch(
 	);
 }
 
-/** Returns the instance with the given id, or undefined. */
 export function get(list: Instance[], id: string): Instance | undefined {
 	return list.find((instance) => instance.id === id);
 }
 
-/**
- * Thin persistence adapter over the injected `Storage` port. JSON-serializes the
- * list under the `composery.instances` key. `loadAll` tolerates a missing or
- * corrupt blob (returns []).
- */
+// JSON adapter over the Storage port; loadAll tolerates a missing/corrupt blob.
 export function createInstanceStore(storage: Storage) {
 	return {
 		async loadAll(): Promise<Instance[]> {

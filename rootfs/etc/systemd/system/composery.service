@@ -11,11 +11,9 @@ Environment=HOME=/home/user
 Environment=USER=user
 Environment=LOGNAME=user
 Environment=SHELL=/bin/bash
-# code-server settings, bridged from the container environment by entrypoint.sh
-# (systemd does not pass its own environment to services). Lives on tmpfs /run.
+# code-server settings bridged by entrypoint.sh (systemd starts services clean).
 EnvironmentFile=-/run/composery.env
-# Create the user's XDG_RUNTIME_DIR (no logind here to do it). '+' runs these as
-# root regardless of User=, since /run is root-owned.
+# '+' runs as root (despite User=) to create the user's XDG_RUNTIME_DIR.
 ExecStartPre=+/usr/bin/install -d -m 0755 /run/user
 ExecStartPre=+/usr/bin/install -d -m 0700 -o user -g user /run/user/1000
 ExecStart=/opt/composery/code-server.sh

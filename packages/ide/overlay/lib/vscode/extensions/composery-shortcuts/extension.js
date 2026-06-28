@@ -177,11 +177,8 @@ class ShortcutStorage {
 				return parsed.shortcuts.map(normalizeShortcut).filter(isRunnableShortcut);
 			}
 		} catch {
-			// Unparseable file - handled as unusable below.
 		}
 
-		// Corrupt or unknown-version contents: keep a backup so the data is never
-		// silently lost, then start from defaults instead of bricking the view.
 		await this.backup(bytes);
 		return DEFAULT_SHORTCUTS.map(normalizeShortcut);
 	}
@@ -190,7 +187,6 @@ class ShortcutStorage {
 		try {
 			await vscode.workspace.fs.writeFile(this.backupUri, bytes);
 		} catch {
-			// Best effort; never block startup on a failed backup.
 		}
 	}
 
@@ -201,8 +197,6 @@ class ShortcutStorage {
 			shortcuts: nextShortcuts.map(normalizeShortcut)
 		};
 		const bytes = new TextEncoder().encode(`${JSON.stringify(payload, null, "\t")}\n`);
-		// Write to a temp file and rename so an interrupted write can't truncate
-		// the real file into corruption.
 		await vscode.workspace.fs.writeFile(this.tempUri, bytes);
 		await vscode.workspace.fs.rename(this.tempUri, this.storageUri, { overwrite: true });
 	}
@@ -465,9 +459,6 @@ async function editTerminalShortcut(existing, now, canBackFromFirstStep) {
 			continue;
 		}
 
-		// step === 4: appearance hub (icon + color) with an explicit Save, so
-		// Escape cancels the edit here just like the earlier steps instead of
-		// silently committing.
 		const result = await pickAppearance(state);
 		if (result === undefined) return undefined;
 		if (result === BACK) {
@@ -808,7 +799,6 @@ function parseUriList(value) {
 		try {
 			uris.push(vscode.Uri.parse(trimmed, true));
 		} catch {
-			// Skip anything that isn't a parseable URI.
 		}
 	}
 	return uris;

@@ -1,12 +1,3 @@
-// Regenerates the code-server raster branding from the icon mark. The mark
-// vector lives in the favicon.svg next to the outputs; this script rasterizes it
-// so the PNG/ICO never drift from the source. Run `node scripts/generate-icons.mjs`
-// after the mark changes.
-//
-// Convention: the favicon (.ico) carries the bare mark; the installable PWA icons
-// carry the mark on a solid stone tile, since a launcher masks the image and a
-// transparent icon would look unfinished on the home screen. Maskable variants are
-// full-bleed with extra padding so the mark survives the launcher's safe-zone crop.
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -17,8 +8,8 @@ import sharp from "sharp";
 const mediaDir = join(
 	dirname(fileURLToPath(import.meta.url)),
 	"..",
-	"vendor",
-	"code-server",
+	"packages",
+	"ide",
 	"overlay",
 	"src",
 	"browser",
@@ -26,7 +17,7 @@ const mediaDir = join(
 );
 const TILE_BG = "#2c231c";
 
-// The mark, centered on a 256 viewBox. Keep in sync with media/favicon.svg.
+// Keep in sync with media/favicon.svg.
 const MARK = `
 	<defs>
 		<linearGradient id="s1" gradientUnits="userSpaceOnUse" x1="128" x2="128" y1="23" y2="233">
@@ -55,9 +46,7 @@ function tileSvg(size, { radius, scale }) {
 const png = (svg) => sharp(Buffer.from(svg)).png().toBuffer();
 const write = (name, buf) => writeFile(join(mediaDir, name), buf);
 
-// Standard PWA icons: gently rounded tile, mark near full size.
 const standard = { radius: 46, scale: 0.78 };
-// Maskable icons: full-bleed tile, mark pulled in to survive the safe-zone crop.
 const maskable = { radius: 0, scale: 0.62 };
 
 await write("pwa-icon-192.png", await png(tileSvg(192, standard)));
@@ -65,7 +54,6 @@ await write("pwa-icon-512.png", await png(tileSvg(512, standard)));
 await write("pwa-icon-maskable-192.png", await png(tileSvg(192, maskable)));
 await write("pwa-icon-maskable-512.png", await png(tileSvg(512, maskable)));
 
-// favicon.ico: bare mark at the classic legacy sizes.
 const icoSizes = await Promise.all([16, 32, 48].map((s) => png(bareSvg(s))));
 await write("favicon.ico", await pngToIco(icoSizes));
 

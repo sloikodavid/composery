@@ -20,9 +20,6 @@ function run(command, args, options = {}) {
 	if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-// code-server submodule + its nested lib/vscode (where our patches live).
-// build.sh inits these for Linux builds; this makes them available off-build
-// so patches can be authored/diffed on any platform.
 run("git", ["submodule", "update", "--init", "--recursive"]);
 
 if (!existsSync(join(UPSTREAM, "package.json"))) {

@@ -6,6 +6,7 @@ import {
 	get,
 	remove,
 	touch,
+	update,
 	type Instance,
 	type Storage
 } from "./instance-store";
@@ -29,20 +30,20 @@ describe("instance-store reducers", () => {
 		const instance = add([], { url: "mybox.com" }, fixedId, fixedNow);
 		expect(instance).toEqual({
 			id: "abc",
-			label: "mybox.com",
+			label: "",
 			url: "https://mybox.com/",
 			createdAt: 1000
 		});
 	});
 
-	test("add derives the label from host:port when omitted", () => {
+	test("add leaves the label empty when omitted (no host backfill)", () => {
 		const instance = add(
 			[],
 			{ url: "https://host:8443/code/" },
 			fixedId,
 			fixedNow
 		);
-		expect(instance.label).toBe("host:8443");
+		expect(instance.label).toBe("");
 		expect(instance.url).toBe("https://host:8443/code/");
 	});
 
@@ -105,6 +106,38 @@ describe("instance-store reducers", () => {
 		];
 		expect(get(list, "a")?.url).toBe("https://a/");
 		expect(get(list, "missing")).toBeUndefined();
+	});
+
+	test("update changes url + label, preserving createdAt/lastOpenedAt", () => {
+		const list: Instance[] = [
+			{
+				id: "a",
+				label: "old",
+				url: "https://a/",
+				createdAt: 1,
+				lastOpenedAt: 9
+			}
+		];
+		const next = update(list, "a", { url: "newbox.com", label: "  New  " });
+		expect(next[0]).toEqual({
+			id: "a",
+			label: "New",
+			url: "https://newbox.com/",
+			createdAt: 1,
+			lastOpenedAt: 9
+		});
+		// Does not mutate.
+		expect(list[0].url).toBe("https://a/");
+	});
+
+	test("update rejects a URL already used by a different instance", () => {
+		const list: Instance[] = [
+			{ id: "a", label: "a", url: "https://a/", createdAt: 0 },
+			{ id: "b", label: "b", url: "https://b/", createdAt: 0 }
+		];
+		expect(() => update(list, "a", { url: "https://b/" })).toThrow();
+		// Re-saving an instance's own URL is allowed.
+		expect(() => update(list, "a", { url: "https://a/" })).not.toThrow();
 	});
 });
 

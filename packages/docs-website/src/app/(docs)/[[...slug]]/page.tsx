@@ -37,7 +37,6 @@ export default async function Page(props: PageProps<"/[[...slug]]">) {
 			<DocsBody>
 				<MDX
 					components={getMDXComponents({
-						// this allows you to link to other pages with relative file paths
 						a: createRelativeLink(source, page)
 					})}
 				/>
@@ -57,8 +56,6 @@ export async function generateMetadata(
 	const page = source.getPage(params.slug);
 	if (!page) notFound();
 
-	// The home page (empty slug) is already titled "Composery", so bypass the
-	// "%s | Composery" template to avoid a doubled "Composery | Composery" tab.
 	const isHome = !params.slug?.length;
 
 	return {

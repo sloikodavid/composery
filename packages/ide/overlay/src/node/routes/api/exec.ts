@@ -2,9 +2,6 @@ import { spawn } from "child_process"
 import * as express from "express"
 import { apiConfig } from "./config"
 
-// Mode 1: one-shot exec. Synchronous, buffered, bounded. For "run a command,
-// give me the result." The unbounded path is the interactive websocket.
-
 export const router = express.Router()
 
 interface ExecBody {
@@ -22,10 +19,16 @@ interface ExecResult {
   truncated: boolean
 }
 
-// Minimal Idempotency-Key support: a repeat within a short window returns the
-// first stored result instead of re-running. In-memory, best-effort.
 const idempotency = new Map<string, { at: number; result: ExecResult }>()
 const IDEMPOTENCY_TTL_MS = 5 * 60_000
+
+function rememberResult(key: string, result: ExecResult): void {
+  const now = Date.now()
+  for (const [existing, entry] of idempotency) {
+    if (now - entry.at >= IDEMPOTENCY_TTL_MS) idempotency.delete(existing)
+  }
+  idempotency.set(key, { at: now, result })
+}
 
 router.post("/exec", async (req, res) => {
   const body = (req.body || {}) as ExecBody
@@ -46,8 +49,6 @@ router.post("/exec", async (req, res) => {
   const timeoutSec =
     typeof body.timeout === "number" && body.timeout > 0 ? body.timeout : apiConfig.execTimeoutSec
 
-  // Login shell as the code-server user => identical environment to the editor
-  // terminal (PATH, dotfiles, tools). No uid change: we already run as that user.
   const child = spawn(apiConfig.shell, ["-l", "-c", body.command], {
     cwd: body.cwd || apiConfig.home || process.cwd(),
     env: { ...process.env, ...(body.env || {}) },
@@ -82,9 +83,7 @@ router.post("/exec", async (req, res) => {
     setTimeout(() => {
       try {
         child.kill("SIGKILL")
-      } catch {
-        /* already gone */
-      }
+      } catch {}
     }, 2000).unref()
   }, timeoutSec * 1000)
 
@@ -107,7 +106,7 @@ router.post("/exec", async (req, res) => {
       truncated,
     }
     if (typeof idemKey === "string" && idemKey) {
-      idempotency.set(idemKey, { at: Date.now(), result })
+      rememberResult(idemKey, result)
     }
     res.json(result)
   })

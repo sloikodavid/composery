@@ -5,7 +5,6 @@ use std::path::Path;
 use crate::capabilities;
 use crate::{baseline::BaselineDb, config, internal, layout, metadata, paths::Paths};
 
-/// Apply persisted public truth to the live filesystem during boot.
 pub fn apply(paths: &Paths) -> Result<()> {
     apply_with_root(paths, Path::new("/"))
 }

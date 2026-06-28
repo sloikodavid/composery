@@ -45,7 +45,6 @@ describe("IDE patch stack", () => {
 		expect(touchEditorPatch).toContain(
 			"this.viewController.setSelection(nextSelection)"
 		);
-		// Touch gate owns the selection handles; narrow gate owns viewport vars + keyboard inset.
 		expect(touchCss).toContain(".composery-touch-selection-handle");
 		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
 		expect(narrowJs).toContain("updateViewportVars");
@@ -131,11 +130,9 @@ describe("composery agent setup", () => {
 	);
 	const welcome = readRepoFile("packages/ide/patches/welcome.diff");
 
-	// AGENTS entries in the extension: id: "claude"
 	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
 		(match) => match[1]
 	);
-	// Agent objects added to the welcome card: { id: 'claude', name: ...
 	const welcomeIds = [...welcome.matchAll(/\{\s*id:\s*'([a-z]+)'/g)].map(
 		(match) => match[1]
 	);
@@ -156,8 +153,6 @@ describe("composery agent setup", () => {
 	});
 
 	test("agent logos are accent-tinted via a CSS mask", () => {
-		// Each logo is a CSS mask filled with the theme accent, so it reads as one
-		// accent silhouette and adapts to light/dark through the variable.
 		expect(welcome).toContain(
 			"background-color: var(--vscode-textLink-foreground)"
 		);
@@ -167,8 +162,6 @@ describe("composery agent setup", () => {
 	});
 
 	test("welcome card dispatches installs through the composery-agents command", () => {
-		// Direct command dispatch, not a command: href (which the getting-started
-		// page lets the browser follow and break the workbench).
 		expect(welcome).not.toContain("command:composery");
 		expect(welcome).toContain(
 			"this.commandService.executeCommand('composery.installAgent'"
@@ -242,17 +235,12 @@ describe("composery shortcuts", () => {
 	});
 
 	test("persists storage without losing data", () => {
-		// Writes go through a temp file + rename so an interrupted write can't
-		// truncate the real file, and unreadable contents are backed up rather
-		// than crashing activation.
 		expect(extension).toContain(".rename(");
 		expect(extension).toContain(".bak");
 		expect(extension).toContain("await this.backup(");
 	});
 
 	test("creates file and folder shortcuts from dropped resources", () => {
-		// Dropping Explorer/OS items onto the view stats each resource and
-		// creates file/folder shortcuts.
 		expect(extension).toContain(
 			'this.dropMimeTypes = [TREE_MIME, "text/uri-list"]'
 		);

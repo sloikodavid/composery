@@ -22,9 +22,7 @@ const config = {
 	noCache: parseBoolean(process.env.SMOKE_NO_CACHE),
 	password: process.env.SMOKE_PASSWORD ?? "smoke-password",
 	port: parsePort(process.env.SMOKE_PORT ?? "18080"),
-	// The systemd path needs a privileged container with host cgroups; set
-	// SMOKE_SKIP_SYSTEMD=1 to skip it where that is unavailable (e.g. Docker
-	// Desktop). CI runs on Linux runners that support it.
+	// SMOKE_SKIP_SYSTEMD=1 skips the systemd path where host cgroups are unavailable (e.g. Docker Desktop).
 	skipSystemd: parseBoolean(process.env.SMOKE_SKIP_SYSTEMD),
 	volumeName: process.env.SMOKE_VOLUME_NAME ?? `composery-smoke-${RUN_ID}`
 };
@@ -140,10 +138,7 @@ async function assertSystemdEnvBridge() {
 
 	log("checking systemd init bridges deployment env to code-server");
 
-	// systemd (PID 1) starts services with a clean environment, so PASSWORD/PORT/
-	// COMPOSERY_* only reach code-server if entrypoint writes them to
-	// /run/composery.env and the unit loads it via EnvironmentFile. Prove the
-	// whole chain on a fresh container + volume.
+	// systemd (PID 1) gives services a clean env, so env reaches code-server only via /run/composery.env + the unit's EnvironmentFile.
 	cleanupResources();
 	docker(["volume", "create", config.volumeName], { quiet: true });
 	runSystemdContainer();
@@ -151,23 +146,17 @@ async function assertSystemdEnvBridge() {
 	await waitForExec('test "$(cat /proc/1/comm)" = systemd');
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 
-	// The bridge file exists and captured the injected settings, including a
-	// COMPOSERY_* knob (guards the entrypoint filter that forwards them).
 	await waitForContainerFile("/run/composery.env");
 	execSh("grep -q '^PASSWORD=' /run/composery.env");
 	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=1$' /run/composery.env");
 
-	// End to end: the injected password crossed into the systemd-managed
-	// code-server, so login succeeds and the app serves.
 	const cookies = new Map();
 	await login(cookies);
 	const rootPage = await fetchAuthedText("/", cookies);
 	assertContains("systemd root page", rootPage, "Composery");
 
-	// code-server runs as a first-class systemd unit, not a stray process.
 	execSh("systemctl is-active composery");
 
-	// cron is a first-class unit here too, and the user's XDG_RUNTIME_DIR exists.
 	execSh("systemctl is-active cron");
 	execSh("test -d /run/user/1000");
 }
@@ -198,35 +187,23 @@ function assertUserEnvironment() {
 	const hasLocalBin =
 		'case ":$PATH:" in *:/home/user/.local/bin:*) ;; *) exit 1 ;; esac';
 
-	// Non-login shells (what an AI agent's `bash -c`/sandboxed commands inherit,
-	// since they source no startup files) get ~/.local/bin from the inherited
-	// process environment.
 	userBash(false, hasLocalBin);
 
-	// Login shells (the interactive terminal) get it back via the stock ~/.profile
-	// after /etc/profile resets PATH; the dir is created at build so this holds
-	// even before the user installs anything.
 	userBash(true, hasLocalBin);
 
-	// The user owns /usr/local, so global installs (`npm i -g`, `make install`,
-	// curl|sh into /usr/local/bin) work without sudo and land on the default PATH.
 	userBash(
 		false,
 		"test -w /usr/local/bin && test -w /usr/local/lib/node_modules"
 	);
 
-	// XDG_RUNTIME_DIR points at a private 0700 dir the user owns, like a real
-	// login (gpg, dbus, podman, ... expect it).
 	userBash(
 		false,
 		'test "$XDG_RUNTIME_DIR" = /run/user/1000 && [ "$(stat -c "%U %a" "$XDG_RUNTIME_DIR")" = "user 700" ]'
 	);
 
-	// cron behaves like a real VPS: the daemon runs and crontab is available.
 	userBash(false, "command -v crontab >/dev/null");
 	execSh("pgrep -x cron >/dev/null");
 
-	// A stable machine-id was generated for hosts/dbus to key off.
 	execSh("test -s /etc/machine-id");
 }
 
@@ -248,21 +225,14 @@ function userBash(loginShell, script) {
 async function assertClipboardBridge() {
 	log("checking clipboard bridge shims and pipe commands");
 
-	// The xclip/xsel/wl-* shims must be installed and executable so terminal
-	// tools (Claude Code, neovim, ...) reach the browser clipboard.
 	execSh(
 		"for s in xclip xsel wl-paste wl-copy; do test -x /usr/local/bin/$s || exit 1; done"
 	);
 
-	// The read and write image commands must be compiled into the server bundle
-	// (the browser side of the pipe that reaches navigator.clipboard).
 	execSh(
 		"grep -q _remoteCLI.getClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js && grep -q _remoteCLI.setClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js"
 	);
 
-	// Without an integrated-terminal pipe there is no browser clipboard to
-	// reach; the shim must degrade cleanly (no output, non-zero) rather than
-	// leaking `code` diagnostics where callers expect clipboard data.
 	const shimResult = execSh(
 		"xclip -selection clipboard -t image/png -o; echo rc=$?",
 		{ capture: true, quiet: true }
@@ -284,12 +254,18 @@ async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
 	try {
 		execSh("rm -f /run/persistence/ready");
 
-		const health = await request("/healthz", { cookies });
-		if (health.statusCode !== 503) {
-			throw new Error(
-				`Expected /healthz to return 503 without persistence ready; got HTTP ${health.statusCode}.`
-			);
-		}
+		// Readiness gate caches state ~1s, so poll for the 503 instead of racing a still-warm cache.
+		const health = await retry(
+			"/healthz reports persistence not ready",
+			15,
+			async () => {
+				const response = await request("/healthz", { cookies });
+				if (response.statusCode !== 503) {
+					throw new Error(`/healthz still HTTP ${response.statusCode}`);
+				}
+				return response;
+			}
+		);
 		const healthJson = JSON.parse(health.body);
 		if (healthJson.persistence?.ready !== false) {
 			throw new Error("Expected /healthz to report persistence.ready=false.");
@@ -321,7 +297,6 @@ async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
 async function assertApiSmoke() {
 	log("checking the automation API: mint key, exec, headers, revoke");
 
-	// Mint a key as the editor user (the realistic path; that user owns /data/api).
 	const created = JSON.parse(
 		execSh("composery api key create --name smoke --json", {
 			capture: true,
@@ -336,7 +311,6 @@ async function assertApiSmoke() {
 	}
 	const key = created.secret;
 
-	// No key => 401.
 	const unauthorized = await request("/v1/exec", {
 		body: JSON.stringify({ command: "echo nope" }),
 		headers: { "content-type": "application/json" },
@@ -348,7 +322,6 @@ async function assertApiSmoke() {
 		);
 	}
 
-	// One-shot exec with a Bearer key runs as the editor user and returns output.
 	const marker = `composery-api-smoke-${RUN_ID}`;
 	const execResponse = await request("/v1/exec", {
 		body: JSON.stringify({ command: `echo ${marker}` }),
@@ -369,7 +342,6 @@ async function assertApiSmoke() {
 		throw new Error(`Expected exit_code 0, got ${result.exit_code}.`);
 	}
 
-	// The X-API-Key header is also accepted.
 	const viaApiKeyHeader = await request("/v1/exec", {
 		body: JSON.stringify({ command: "true" }),
 		headers: { "content-type": "application/json", "x-api-key": key },
@@ -381,7 +353,40 @@ async function assertApiSmoke() {
 		);
 	}
 
-	// Revoking the key stops it working.
+	const ptyMarker = `composery-pty-${RUN_ID}`;
+	const ptyOutput = await runPtyOverWebsocket(key, `echo ${ptyMarker}`);
+	assertContains("PTY websocket output", ptyOutput, ptyMarker);
+
+	const badKeyUpgrade = await ptyWebsocket("csy_not-a-real-key", "true");
+	if (badKeyUpgrade.status === 101) {
+		throw new Error("PTY websocket upgraded with an invalid key.");
+	}
+
+	const sessionName = `composery-session-${RUN_ID}`;
+	await openTmuxSession(key, sessionName);
+	await retry("detached session is listed", 20, async () => {
+		const names = await listApiSessions(key);
+		if (!names.includes(sessionName)) {
+			throw new Error(`session ${sessionName} not listed yet`);
+		}
+	});
+	const deleted = await apiRequest(
+		"DELETE",
+		`/v1/sessions/${sessionName}`,
+		key
+	);
+	if (deleted.statusCode !== 200 || JSON.parse(deleted.body).killed !== true) {
+		throw new Error(
+			`Expected DELETE /sessions to kill the session, got ${deleted.statusCode} ${deleted.body}.`
+		);
+	}
+	await retry("deleted session is gone", 20, async () => {
+		const names = await listApiSessions(key);
+		if (names.includes(sessionName)) {
+			throw new Error(`session ${sessionName} still listed after delete`);
+		}
+	});
+
 	execSh(`composery api key revoke ${created.id}`, { user: "user" });
 	const afterRevoke = await request("/v1/exec", {
 		body: JSON.stringify({ command: "true" }),
@@ -394,6 +399,29 @@ async function assertApiSmoke() {
 	if (afterRevoke.statusCode !== 401) {
 		throw new Error(
 			`Expected 401 after revoke, got ${afterRevoke.statusCode}.`
+		);
+	}
+
+	let throttled = false;
+	for (let attempt = 0; attempt < 40 && !throttled; attempt += 1) {
+		const response = await request("/v1/exec", {
+			body: JSON.stringify({ command: "true" }),
+			headers: {
+				authorization: "Bearer csy_definitely-not-a-real-key",
+				"content-type": "application/json"
+			},
+			method: "POST"
+		});
+		if (response.statusCode === 429) throttled = true;
+		else if (response.statusCode !== 401) {
+			throw new Error(
+				`Expected 401 or 429 from repeated bad-key attempts, got ${response.statusCode}.`
+			);
+		}
+	}
+	if (!throttled) {
+		throw new Error(
+			"Auth-fail rate limit never triggered after 40 bad-key attempts."
 		);
 	}
 
@@ -722,6 +750,160 @@ function parseHttpHeaders(response) {
 	return { headers, status: lines[0] ?? "" };
 }
 
+async function runPtyOverWebsocket(key, command) {
+	const { status, output } = await ptyWebsocket(key, command);
+	if (status !== 101) {
+		throw new Error(`Expected PTY websocket to upgrade (101), got ${status}.`);
+	}
+	return output;
+}
+
+// Minimal RFC 6455 client: manual frame decode of the server's unmasked text/binary frames.
+function ptyWebsocket(key, command) {
+	return new Promise((resolvePromise, reject) => {
+		const query = command ? `?cmd=${encodeURIComponent(command)}` : "";
+		const handshake = [
+			`GET /v1/exec${query} HTTP/1.1`,
+			`Host: 127.0.0.1:${config.port}`,
+			"Upgrade: websocket",
+			"Connection: Upgrade",
+			`Authorization: Bearer ${key}`,
+			`Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}`,
+			"Sec-WebSocket-Version: 13",
+			"",
+			""
+		].join("\r\n");
+
+		const socket = net.createConnection(
+			{ host: "127.0.0.1", port: config.port },
+			() => socket.write(handshake, "ascii")
+		);
+		socket.setTimeout(15_000);
+
+		let buffer = Buffer.alloc(0);
+		let upgraded = false;
+		let output = "";
+
+		const finish = (status) => {
+			socket.end();
+			resolvePromise({ status, output });
+		};
+
+		socket.on("data", (chunk) => {
+			buffer = Buffer.concat([buffer, chunk]);
+			if (!upgraded) {
+				const separator = buffer.indexOf("\r\n\r\n");
+				if (separator === -1) return;
+				const head = buffer.slice(0, separator).toString("latin1");
+				const status = Number(head.split(" ")[1]) || 0;
+				if (status !== 101) {
+					finish(status);
+					return;
+				}
+				upgraded = true;
+				buffer = buffer.slice(separator + 4);
+			}
+			while (buffer.length >= 2) {
+				const opcode = buffer[0] & 0x0f;
+				let length = buffer[1] & 0x7f;
+				let offset = 2;
+				if (length === 126) {
+					if (buffer.length < 4) break;
+					length = buffer.readUInt16BE(2);
+					offset = 4;
+				} else if (length === 127) {
+					if (buffer.length < 10) break;
+					length = Number(buffer.readBigUInt64BE(2));
+					offset = 10;
+				}
+				if (buffer.length < offset + length) break;
+				const payload = buffer.slice(offset, offset + length);
+				buffer = buffer.slice(offset + length);
+				if (opcode === 0x8) {
+					finish(101);
+					return;
+				}
+				output += payload.toString("utf8");
+				if (output.includes('"exit"')) {
+					finish(101);
+					return;
+				}
+			}
+		});
+
+		socket.on("error", reject);
+		socket.on("timeout", () => {
+			socket.destroy();
+			reject(new Error("PTY websocket timed out."));
+		});
+		socket.on("close", () =>
+			resolvePromise({ status: upgraded ? 101 : 0, output })
+		);
+	});
+}
+
+function apiRequest(method, path, key, body) {
+	return request(path, {
+		method,
+		headers: {
+			authorization: `Bearer ${key}`,
+			...(body ? { "content-type": "application/json" } : {})
+		},
+		body: body ? JSON.stringify(body) : undefined
+	});
+}
+
+async function listApiSessions(key) {
+	const response = await apiRequest("GET", "/v1/sessions", key);
+	if (response.statusCode !== 200) {
+		throw new Error(`GET /v1/sessions returned ${response.statusCode}.`);
+	}
+	return (JSON.parse(response.body).sessions || []).map(
+		(session) => session.name
+	);
+}
+
+function openTmuxSession(key, sessionName) {
+	return new Promise((resolvePromise, reject) => {
+		const handshake = [
+			`GET /v1/exec?session=${encodeURIComponent(sessionName)} HTTP/1.1`,
+			`Host: 127.0.0.1:${config.port}`,
+			"Upgrade: websocket",
+			"Connection: Upgrade",
+			`Authorization: Bearer ${key}`,
+			`Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}`,
+			"Sec-WebSocket-Version: 13",
+			"",
+			""
+		].join("\r\n");
+		const socket = net.createConnection(
+			{ host: "127.0.0.1", port: config.port },
+			() => socket.write(handshake, "ascii")
+		);
+		socket.setTimeout(15_000);
+		let head = "";
+		socket.on("data", async (chunk) => {
+			if (head.includes("\r\n\r\n")) return;
+			head += chunk.toString("latin1");
+			if (!head.includes("\r\n\r\n")) return;
+			const status = Number(head.split(" ")[1]) || 0;
+			if (status !== 101) {
+				socket.destroy();
+				reject(new Error(`tmux session upgrade failed: ${status}.`));
+				return;
+			}
+			await sleep(1500);
+			socket.end();
+			resolvePromise();
+		});
+		socket.on("error", reject);
+		socket.on("timeout", () => {
+			socket.destroy();
+			reject(new Error("tmux session websocket timed out."));
+		});
+	});
+}
+
 async function waitForExec(script, args = []) {
 	await retry(`exec ${script}`, DEFAULT_ATTEMPTS.exec, async () => {
 		const result = execSh(script, {
@@ -866,7 +1048,7 @@ function dumpContainerLogs() {
 		});
 		dumpPersistdDiagnostics();
 	} catch {
-		// The original error is more useful when Docker itself is unavailable.
+		// Keep the original error when Docker itself is unavailable.
 	}
 }
 

@@ -25,11 +25,8 @@ jobs:
           node-version: "24.14.1"
           cache: pnpm
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs quilt
-      # Cheaper early gate than the full image build: lay our VS Code-side
-      # patch stack over pristine code-server (submodule) and quilt-push with
-      # fuzz=0, exactly like packages/ide/build.sh does at build time. Our own
-      # src/node changes are overlay files (not patches), so this only exercises
-      # the lib/vscode patch stack.
+      # Cheap early gate: quilt-push our patch stack over pristine code-server with
+      # fuzz=0, like build.sh, to catch patch drift before the full image build.
       - name: Verify IDE patch stack applies
         working-directory: packages/ide
         env:

@@ -1,7 +1,5 @@
 #!/bin/sh
-# Composery clipboard shim: wl-paste(1) backed by the browser clipboard.
-# See xclip in this directory for the rationale. Wayland-flavoured front-end
-# over the same `code` CLI pipe; selections map to the one system clipboard.
+# wl-paste(1) shim backed by the browser clipboard (see xclip for the rationale).
 set -u
 
 list=0

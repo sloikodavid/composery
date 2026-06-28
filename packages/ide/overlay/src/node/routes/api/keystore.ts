@@ -2,9 +2,7 @@ import * as crypto from "crypto"
 import { promises as fs } from "fs"
 import { keysPath } from "./config"
 
-// Reader side of the cross-language key store contract. The Rust CLI
-// (`composery api key`) is the writer; we only read and verify. Path, JSON
-// shape, and "sha256:" + hex hashing must stay identical to keystore.rs.
+// Cross-language contract: path, JSON shape, and "sha256:" + hex hashing must stay identical to Rust keystore.rs.
 
 interface KeyRecord {
   id: string
@@ -23,8 +21,6 @@ function hashSecret(secret: string): string {
   return "sha256:" + crypto.createHash("sha256").update(secret).digest("hex")
 }
 
-// Tiny mtime-keyed cache so we do not re-read the file on every request, while
-// still picking up `composery api key create/revoke` without a restart.
 let cache: { store: KeyStore; mtimeMs: number } | undefined
 
 async function readStore(): Promise<KeyStore> {
@@ -48,10 +44,6 @@ function timingSafeEqualStr(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ab, bb)
 }
 
-/**
- * Verify a presented secret. Returns the matching key id, or undefined. The
- * comparison is constant-time; iterating reveals nothing.
- */
 export async function verifyKey(secret: string): Promise<string | undefined> {
   if (!secret) return undefined
   const presented = hashSecret(secret)

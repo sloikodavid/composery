@@ -1,9 +1,6 @@
 const vscode = require("vscode");
 
-// Single source of truth for each agent's official, documented setup command.
-// The welcome card (packages/ide/patches/welcome.diff) links here by id and
-// the command palette falls back to a picker, so the command lives in one place.
-// Keep these ids in sync with the ids and logos used by welcome.diff.
+// Keep these ids and logos in sync with welcome.diff.
 const AGENTS = [
 	{
 		id: "claude",
@@ -37,8 +34,6 @@ const AGENTS = [
 	}
 ];
 
-// Open a dedicated, visible terminal and run the agent's official command. The
-// user watches it run and handles any login/onboarding the agent prompts for.
 function run(agent) {
 	const terminal = vscode.window.createTerminal(`Set up ${agent.name}`);
 	terminal.show();

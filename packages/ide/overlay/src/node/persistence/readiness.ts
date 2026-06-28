@@ -9,10 +9,6 @@ type PersistdReadiness = {
 	updatedAt?: string;
 };
 
-// The gate runs on every request and ws upgrade, so cache the result briefly to
-// avoid a disk read per request. 1s TTL stays correct whether readiness is
-// monotonic or can revert (matches the Retry-After/poll cadence), and beats
-// re-reading tmpfs thousands of times under load.
 const cacheTtlMs = 1000;
 let cached: { value: PersistdReadiness; at: number } | undefined;
 
