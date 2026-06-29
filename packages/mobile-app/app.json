@@ -2,12 +2,19 @@
 	"expo": {
 		"name": "Composery",
 		"slug": "composery",
-		"version": "0.1.0",
+		"version": "1.0.0",
 		"orientation": "portrait",
 		"icon": "./assets/images/icon.png",
 		"scheme": "composery",
 		"userInterfaceStyle": "automatic",
+		"ios": {
+			"bundleIdentifier": "io.composery",
+			"config": {
+				"usesNonExemptEncryption": false
+			}
+		},
 		"android": {
+			"package": "io.composery",
 			"adaptiveIcon": {
 				"backgroundColor": "#2c231c",
 				"foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -25,7 +32,8 @@
 			[
 				"expo-camera",
 				{
-					"cameraPermission": "Allow Composery to use the camera to scan an instance QR code."
+					"cameraPermission": "Allow Composery to use the camera to scan an instance QR code.",
+					"recordAudioAndroid": false
 				}
 			],
 			[

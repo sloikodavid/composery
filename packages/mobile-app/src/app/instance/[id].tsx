@@ -12,12 +12,13 @@ import { BackButton } from "@/components/back-button";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
-import { createInstanceStore, get, type Instance } from "@/lib/instance-store";
+import { createInstanceStore, type Instance } from "@/lib/instance-store";
 import { probeComposery, type ProbeResult } from "@/lib/probe";
 import { useTheme } from "@/lib/use-theme";
 import { buildBeforeLoad, INSTALL_SCRIPT } from "@/web/back-button";
 
 const store = createInstanceStore(AsyncStorage);
+type FailedProbe = Extract<ProbeResult, { ok: false }>;
 
 // Light vs dark status-bar icons for a given strip color (relative luminance).
 function isLight(color: string): boolean {
@@ -34,6 +35,7 @@ export default function InstanceScreen() {
 	const insets = useSafeAreaInsets();
 	const [instance, setInstance] = useState<Instance | undefined>();
 	const [loading, setLoading] = useState(true);
+	const [storageError, setStorageError] = useState<string | null>(null);
 	// probeResult stores the result keyed by `${url}:${reloadKey}`. When the
 	// key doesn't match the current url+reloadKey, the probe is in-flight and
 	// the derived `probe` value reads as "probing" — no setState in the effect
@@ -51,19 +53,37 @@ export default function InstanceScreen() {
 	const [stripColor, setStripColor] = useState<string | null>(null);
 	const webviewRef = useRef<WebView>(null);
 
+	const loadInstance = useCallback(
+		(isActive: () => boolean = () => true) => {
+			setLoading(true);
+			setStorageError(null);
+			setInstance(undefined);
+			store
+				.get(id)
+				.then((instance) => {
+					if (!isActive()) return;
+					setInstance(instance);
+					setLoading(false);
+				})
+				.catch((err) => {
+					if (!isActive()) return;
+					setStorageError(
+						err instanceof Error ? err.message : "Could not load instances."
+					);
+					setLoading(false);
+				});
+		},
+		[id]
+	);
+
 	useFocusEffect(
 		useCallback(() => {
 			let active = true;
-			store.loadAll().then((list) => {
-				if (active) {
-					setInstance(get(list, id));
-					setLoading(false);
-				}
-			});
+			loadInstance(() => active);
 			return () => {
 				active = false;
 			};
-		}, [id])
+		}, [loadInstance])
 	);
 
 	// Probe the instance before mounting the WebView. A non-Composery URL is
@@ -133,9 +153,12 @@ export default function InstanceScreen() {
 		[scheme]
 	);
 	const instanceOrigin = instance ? new URL(instance.url).origin : "";
-	const probeKey = `${instanceOrigin}:${reloadKey}`;
+	const probeKey = instance ? `${instance.url}:${reloadKey}` : "";
 	const probe: ProbeResult | "probing" =
 		probeResult?.key === probeKey ? probeResult.result : "probing";
+	const failedProbe: FailedProbe | null =
+		probe !== "probing" && !probe.ok ? probe : null;
+	const probeOk = probe !== "probing" && probe.ok;
 	const stripBg = stripColor ?? theme.background;
 	const statusStyle = stripColor
 		? isLight(stripColor)
@@ -151,7 +174,15 @@ export default function InstanceScreen() {
 			{/* Status-bar strip, tinted to the IDE title bar so the two read as one. */}
 			<View style={{ height: insets.top, backgroundColor: stripBg }} />
 
-			{!instance && !loading ? (
+			{storageError && !loading ? (
+				<ErrorView
+					theme={theme}
+					title="Couldn't load instances"
+					detail={storageError}
+					onBack={() => router.back()}
+					onRetry={() => loadInstance()}
+				/>
+			) : !instance && !loading ? (
 				<ErrorView
 					theme={theme}
 					title="Instance not found"
@@ -162,23 +193,23 @@ export default function InstanceScreen() {
 				<View style={styles_center}>
 					<Spinner color={theme.primary} size={32} />
 				</View>
-			) : instance && probe && !probe.ok ? (
+			) : instance && failedProbe ? (
 				<ErrorView
 					theme={theme}
 					title={
-						probe.reason === "not-composery"
+						failedProbe.reason === "not-composery"
 							? "This isn't a Composery"
 							: "Couldn't reach this instance"
 					}
 					detail={
-						probe.reason === "not-composery"
+						failedProbe.reason === "not-composery"
 							? `${instance.url}\ndoesn't point to a Composery instance.`
-							: `${instance.url}\n${probe.message}`
+							: `${instance.url}\n${failedProbe.message}`
 					}
 					onBack={() => router.back()}
 					onRetry={retry}
 				/>
-			) : instance && probe?.ok && loadError ? (
+			) : instance && probeOk && loadError ? (
 				<ErrorView
 					theme={theme}
 					title="Couldn't load this instance"
@@ -186,7 +217,7 @@ export default function InstanceScreen() {
 					onBack={() => router.back()}
 					onRetry={retry}
 				/>
-			) : instance && probe?.ok ? (
+			) : instance && probeOk ? (
 				<View style={{ flex: 1 }}>
 					<WebView
 						key={reloadKey}

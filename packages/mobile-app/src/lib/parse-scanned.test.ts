@@ -33,6 +33,15 @@ describe("parseScannedInstance", () => {
 		);
 	});
 
+	test("extracts the url from a no-slashes composery deep link", () => {
+		const link =
+			"composery:add-instance?url=" +
+			encodeURIComponent("https://my-box.composery.cloud/code/");
+		expect(parseScannedInstance(link)).toBe(
+			"https://my-box.composery.cloud/code/"
+		);
+	});
+
 	test("returns null for other composery deep links", () => {
 		expect(
 			parseScannedInstance(

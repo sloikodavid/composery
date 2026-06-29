@@ -1,4 +1,4 @@
-import { promises as fs } from "fs";
+import { constants, promises as fs } from "fs";
 
 const persistenceRunDir = "/run/persistence";
 const readyPath = `${persistenceRunDir}/ready`;
@@ -24,7 +24,22 @@ export async function checkPersistdReadiness(): Promise<PersistdReadiness> {
 async function readPersistdReadiness(): Promise<PersistdReadiness> {
 	let data: string;
 	try {
-		data = await fs.readFile(readyPath, "utf8");
+		const file = await fs.open(
+			readyPath,
+			constants.O_RDONLY | constants.O_NOFOLLOW
+		);
+		try {
+			const metadata = await file.stat();
+			if (!metadata.isFile()) {
+				return {
+					ready: false,
+					message: "persistence ready file cannot be read"
+				};
+			}
+			data = await file.readFile("utf8");
+		} finally {
+			await file.close();
+		}
 	} catch (error: any) {
 		if (error?.code === "ENOENT") {
 			return { ready: false, message: "persistence is starting" };

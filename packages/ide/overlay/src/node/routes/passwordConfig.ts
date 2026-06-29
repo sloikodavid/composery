@@ -1,4 +1,4 @@
-import { promises as fs } from "fs";
+import { constants, promises as fs } from "fs";
 import { dump, load } from "js-yaml";
 import * as path from "path";
 import * as express from "express";
@@ -53,6 +53,33 @@ const readConfig = async (configPath: string): Promise<ConfigFile> => {
 	return config as ConfigFile;
 };
 
+const writeConfigAtomically = async (
+	configPath: string,
+	config: ConfigFile
+): Promise<void> => {
+	const tmpPath = `${configPath}.${process.pid}.tmp`;
+	let file: fs.FileHandle | undefined;
+	try {
+		file = await fs.open(
+			tmpPath,
+			constants.O_WRONLY |
+				constants.O_CREAT |
+				constants.O_EXCL |
+				constants.O_NOFOLLOW,
+			0o600
+		);
+		await file.writeFile(dump(config, { lineWidth: -1 }));
+		await file.sync();
+		await file.close();
+		file = undefined;
+		await fs.rename(tmpPath, configPath);
+	} catch (error) {
+		if (file) await file.close().catch(() => undefined);
+		await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+		throw error;
+	}
+};
+
 export const writeHashedPassword = async (
 	req: express.Request,
 	hashedPassword: string,
@@ -77,9 +104,7 @@ export const writeHashedPassword = async (
 		delete config.password;
 		config["hashed-password"] = hashedPassword;
 		// Write atomically so a crash mid-write can't corrupt the auth config.
-		const tmpPath = `${configPath}.${process.pid}.tmp`;
-		await fs.writeFile(tmpPath, dump(config, { lineWidth: -1 }));
-		await fs.rename(tmpPath, configPath);
+		await writeConfigAtomically(configPath, config);
 
 		req.args.password = undefined;
 		req.args["hashed-password"] = hashedPassword;

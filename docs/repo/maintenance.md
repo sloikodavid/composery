@@ -109,6 +109,30 @@ CI also runs an early gate that lays our patch stack over the submodule and runs
 broken patch application before the full image build, but it does not prove the
 patched app builds or behaves correctly.
 
+## Versioning and releases
+
+Three independent version surfaces. They do not share a number and nothing
+auto-syncs them - each is the source of truth for its own product.
+
+- **Appliance image** - root `/package.json` `version` (plain semver `X.Y.Z`).
+  `.github/workflows/release.yml` reads it (`node -p "require('./package.json').version"`)
+  and, on a stable run (workflow dispatched with `ref: main`, HEAD = origin/main),
+  turns that one number into the GHCR tags `:X.Y.Z` / `:X.Y` / `:latest` /
+  `:sha-<12>`, a git tag `vX.Y.Z` (the run fails if it already exists, forcing a
+  bump), a GitHub Release, and the image's `COMPOSERY_BUILD_VERSION`. To cut a
+  stable release: bump this number, merge to main, run the workflow. Any other
+  ref is a *preview* release - tagged `preview-<sha>`, version number ignored.
+- **Mobile app** - `packages/mobile-app/app.json` `version` (marketing version
+  the stores key on). Separate lifecycle, separate gate (store review). EAS
+  manages the build/version codes server-side (`appVersionSource: remote`), so
+  this is the only number you hand-edit. See [mobile-app](./mobile-app.md).
+- **docs-website** - unversioned. Auto-deploys to Vercel on push.
+
+The `version` fields in `packages/mobile-app/package.json` and
+`packages/docs-website/package.json` are npm metadata and are ignored by every
+release path. Dockerfile pins (`CODE_SERVER_COMMIT`, `NODE_IMAGE`, `BUN_VERSION`,
+etc.) are dependency inputs, not the product version - see Renovate below.
+
 ## Renovate
 
 Version updates are automated by `renovate.json`. It tracks:

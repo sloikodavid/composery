@@ -1,7 +1,6 @@
 "use client";
 
 import { useId, type ComponentProps } from "react";
-import { usePathname } from "next/navigation";
 import Link from "fumadocs-core/link";
 import { LOGO_INNER, LOGO_VIEWBOX } from "./logo-data";
 
@@ -22,9 +21,8 @@ export function LogoLockup({ className }: { className?: string }) {
 }
 
 export function NavLogoLink(props: ComponentProps<"a">) {
-	const onHome = usePathname() === "/";
 	return (
-		<Link {...props} href={onHome ? "https://www.composery.io" : "/"}>
+		<Link {...props} href="/">
 			<LogoLockup className="h-6 w-auto" />
 		</Link>
 	);

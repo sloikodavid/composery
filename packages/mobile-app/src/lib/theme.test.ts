@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { dark, light, type Palette } from "./theme";
+import { dark, light, themeForScheme, type Palette } from "./theme";
 
 const HEX = /^#[0-9a-f]{6}$/;
 const RGBA = /^rgba\(\d+,\s*\d+,\s*\d+,\s*0?\.\d+\)$/;
@@ -32,6 +32,13 @@ describe("theme palette", () => {
 
 	test("primary dark is the derived hex for oklch(0.6 0.14 64)", () => {
 		expect(dark.primary).toBe("#b86a00");
+	});
+
+	test("selects the palette for a React Native color scheme", () => {
+		expect(themeForScheme("dark")).toBe(dark);
+		expect(themeForScheme("light")).toBe(light);
+		expect(themeForScheme("unspecified")).toBe(light);
+		expect(themeForScheme(null)).toBe(light);
 	});
 
 	assertValidColors(light, "light");

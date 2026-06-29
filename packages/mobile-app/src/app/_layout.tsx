@@ -10,7 +10,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { FONT_MAP } from "@/lib/fonts";
-import { dark, light } from "@/lib/theme";
+import { themeForScheme } from "@/lib/theme";
 
 // Hold the splash until fonts load, so the first frame is the real UI in the
 // brand font — never a flash of fallback text.
@@ -18,7 +18,7 @@ void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
 	const scheme = useColorScheme();
-	const theme = scheme === "dark" ? dark : light;
+	const theme = themeForScheme(scheme);
 	const [fontsLoaded, fontError] = useFonts(FONT_MAP);
 
 	// Paint the native root view so transitions and any gap below the JS never

@@ -94,6 +94,14 @@ button:not(:disabled),
 	cursor: pointer;
 }
 
+/* Drop the full-screen backdrop-blur on dialog overlays (search, etc): it
+   recomposites every frame and tanks FPS while the modal is open. The
+   bg-fd-overlay dim already separates the modal from the page. */
+.bg-fd-overlay {
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
+}
+
 html > body[data-scroll-locked] {
 	margin-right: 0px !important;
 	--removed-body-scroll-bar-size: 0px !important;

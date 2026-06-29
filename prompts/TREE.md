@@ -184,7 +184,6 @@ packages/
             pwa-icon-512.png
             pwa-icon-maskable-192.png
             pwa-icon-maskable-512.png
-            templates.png
           pages/
             auth.js
             error.css
@@ -232,6 +231,7 @@ packages/
       narrow-fullscreen.diff
       narrow-gate.diff
       overlays.diff
+      qr-action.diff
       series
       shortcuts.diff
       tips.diff
@@ -278,6 +278,8 @@ packages/
         normalize-url.ts
         parse-scanned.test.ts
         parse-scanned.ts
+        probe.test.ts
+        probe.ts
         theme.test.ts
         theme.ts
         use-theme.ts
@@ -296,6 +298,7 @@ packages/
     tsconfig.json
     vitest.config.ts
 prompts/
+  BUZZWORDS.md
   IMPROVE.md
   REFACTOR.md
   TREE.md

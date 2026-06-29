@@ -139,6 +139,15 @@ describe("instance-store reducers", () => {
 		// Re-saving an instance's own URL is allowed.
 		expect(() => update(list, "a", { url: "https://a/" })).not.toThrow();
 	});
+
+	test("update rejects a missing id", () => {
+		const list: Instance[] = [
+			{ id: "a", label: "a", url: "https://a/", createdAt: 0 }
+		];
+		expect(() => update(list, "missing", { url: "https://b/" })).toThrow(
+			"Instance not found: missing"
+		);
+	});
 });
 
 describe("instance-store adapter", () => {
@@ -157,6 +166,123 @@ describe("instance-store adapter", () => {
 		expect(await store.loadAll()).toEqual(list);
 	});
 
+	test("create prepends a normalized instance and persists it", async () => {
+		const storage = fakeStorage();
+		const store = createInstanceStore(storage, {
+			id: fixedId,
+			now: fixedNow
+		});
+		const existing: Instance = {
+			id: "old",
+			label: "Old",
+			url: "https://old.com/",
+			createdAt: 1
+		};
+		await store.persist([existing]);
+
+		const instance = await store.create({
+			url: "new.com",
+			label: "  New  "
+		});
+
+		expect(instance).toEqual({
+			id: "abc",
+			label: "New",
+			url: "https://new.com/",
+			createdAt: 1000
+		});
+		expect(await store.loadAll()).toEqual([instance, existing]);
+	});
+
+	test("update persists changes through the store interface", async () => {
+		const storage = fakeStorage();
+		const store = createInstanceStore(storage);
+		await store.persist([
+			{
+				id: "a",
+				label: "Old",
+				url: "https://old.com/",
+				createdAt: 1,
+				lastOpenedAt: 2
+			}
+		]);
+
+		const instance = await store.update("a", {
+			url: "new.com",
+			label: "  New  "
+		});
+
+		expect(instance).toEqual({
+			id: "a",
+			label: "New",
+			url: "https://new.com/",
+			createdAt: 1,
+			lastOpenedAt: 2
+		});
+		expect(await store.loadAll()).toEqual([instance]);
+	});
+
+	test("concurrent creates serialize instead of overwriting each other", async () => {
+		const storage = fakeStorage();
+		let count = 0;
+		const store = createInstanceStore(storage, {
+			id: () => `id-${++count}`,
+			now: () => count
+		});
+
+		const [first, second] = await Promise.all([
+			store.create({ url: "first.com" }),
+			store.create({ url: "second.com" })
+		]);
+
+		expect(first.id).toBe("id-1");
+		expect(second.id).toBe("id-2");
+		expect(await store.loadAll()).toEqual([
+			{
+				id: "id-2",
+				label: "",
+				url: "https://second.com/",
+				createdAt: 2
+			},
+			{
+				id: "id-1",
+				label: "",
+				url: "https://first.com/",
+				createdAt: 1
+			}
+		]);
+	});
+
+	test("a rejected write does not block later writes", async () => {
+		const storage = fakeStorage();
+		let count = 0;
+		const store = createInstanceStore(storage, {
+			id: () => `id-${++count}`,
+			now: () => count
+		});
+
+		await store.create({ url: "first.com" });
+		await expect(store.create({ url: "first.com" })).rejects.toThrow(
+			"Instance already added: https://first.com/"
+		);
+		await store.create({ url: "second.com" });
+
+		expect(await store.loadAll()).toEqual([
+			{
+				id: "id-2",
+				label: "",
+				url: "https://second.com/",
+				createdAt: 2
+			},
+			{
+				id: "id-1",
+				label: "",
+				url: "https://first.com/",
+				createdAt: 1
+			}
+		]);
+	});
+
 	test("loadAll returns [] on corrupt JSON", async () => {
 		const storage = fakeStorage();
 		await storage.setItem("composery.instances", "{not json");
@@ -172,6 +298,50 @@ describe("instance-store adapter", () => {
 		);
 		const store = createInstanceStore(storage);
 		expect(await store.loadAll()).toEqual([]);
+	});
+
+	test("loadAll drops malformed rows and normalizes legacy URLs", async () => {
+		const storage = fakeStorage();
+		await storage.setItem(
+			"composery.instances",
+			JSON.stringify([
+				{
+					id: "a",
+					label: "A",
+					url: "mybox.com",
+					createdAt: 1,
+					lastOpenedAt: 2
+				},
+				{ id: "bad-url", label: "Bad", url: "ftp://example.com", createdAt: 3 },
+				{ id: "missing-url", label: "Missing", createdAt: 4 },
+				"not an instance"
+			])
+		);
+		const store = createInstanceStore(storage);
+		expect(await store.loadAll()).toEqual([
+			{
+				id: "a",
+				label: "A",
+				url: "https://mybox.com/",
+				createdAt: 1,
+				lastOpenedAt: 2
+			}
+		]);
+	});
+
+	test("loadAll keeps the first duplicate normalized URL", async () => {
+		const storage = fakeStorage();
+		await storage.setItem(
+			"composery.instances",
+			JSON.stringify([
+				{ id: "a", label: "A", url: "https://mybox.com/", createdAt: 1 },
+				{ id: "b", label: "B", url: "mybox.com", createdAt: 2 }
+			])
+		);
+		const store = createInstanceStore(storage);
+		expect(await store.loadAll()).toEqual([
+			{ id: "a", label: "A", url: "https://mybox.com/", createdAt: 1 }
+		]);
 	});
 
 	test("persist writes under the composery.instances key", async () => {

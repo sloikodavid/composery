@@ -2,8 +2,6 @@
 
 - Truly rehash and improve all the mobile support.
 
-- Make sure that across clients, all the UI stuff, and other stuff like terminals are all working as anybody would expect.
-
 - Icons bigger for the activity bar.
 
 - Enable rulesets on GitHub.

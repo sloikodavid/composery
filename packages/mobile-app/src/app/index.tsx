@@ -6,6 +6,7 @@ import {
 	ExternalLink,
 	Plus,
 	QrCode,
+	RotateCw,
 	SquarePen,
 	Trash2
 } from "lucide-react-native";
@@ -30,12 +31,7 @@ import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback } from "@/lib/haptics";
-import {
-	createInstanceStore,
-	remove,
-	touch,
-	type Instance
-} from "@/lib/instance-store";
+import { createInstanceStore, type Instance } from "@/lib/instance-store";
 import { useTheme, type Theme } from "@/lib/use-theme";
 
 const store = createInstanceStore(AsyncStorage);
@@ -44,6 +40,7 @@ export default function IndexScreen() {
 	const theme = useTheme();
 	const [instances, setInstances] = useState<Instance[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [loadError, setLoadError] = useState<string | null>(null);
 	const [menuFor, setMenuFor] = useState<Instance | null>(null);
 	const sheetRef = useRef<ActionSheetRef>(null);
 
@@ -61,26 +58,40 @@ export default function IndexScreen() {
 	}, [scrolled, sepOpacity]);
 	const sepStyle = useAnimatedStyle(() => ({ opacity: sepOpacity.get() }));
 
+	const loadInstances = useCallback((isActive: () => boolean = () => true) => {
+		setLoading(true);
+		setLoadError(null);
+		store
+			.loadAll()
+			.then((list) => {
+				if (!isActive()) return;
+				setInstances(list);
+				setLoading(false);
+			})
+			.catch((err) => {
+				if (!isActive()) return;
+				setLoadError(
+					err instanceof Error ? err.message : "Could not load instances."
+				);
+				setLoading(false);
+			});
+	}, []);
+
 	useFocusEffect(
 		useCallback(() => {
 			let active = true;
-			store.loadAll().then((list) => {
-				if (active) {
-					setInstances(list);
-					setLoading(false);
-				}
-			});
+			loadInstances(() => active);
 			return () => {
 				active = false;
 			};
-		}, [])
+		}, [loadInstances])
 	);
 
 	function openInstance(instance: Instance) {
-		// Optimistically record the open, then navigate; persist is fire-and-forget.
-		const updated = touch(instances, instance.id);
-		setInstances(updated);
-		void store.persist(updated);
+		void store
+			.touch(instance.id)
+			.then(setInstances)
+			.catch(() => undefined);
 		router.push({ pathname: "/instance/[id]", params: { id: instance.id } });
 	}
 
@@ -90,9 +101,13 @@ export default function IndexScreen() {
 
 	async function removeInstance(instance: Instance) {
 		errorFeedback();
-		const next = remove(instances, instance.id);
-		setInstances(next);
-		await store.persist(next);
+		try {
+			setInstances(await store.remove(instance.id));
+		} catch (err) {
+			setLoadError(
+				err instanceof Error ? err.message : "Could not remove instance."
+			);
+		}
 	}
 
 	const menuActions: SheetAction[] = menuFor
@@ -202,6 +217,13 @@ export default function IndexScreen() {
 				<View style={styles_center}>
 					<Spinner color={theme.primary} size={30} />
 				</View>
+			) : loadError ? (
+				<ErrorState
+					theme={theme}
+					title="Couldn't load instances"
+					detail={loadError}
+					onRetry={() => loadInstances()}
+				/>
 			) : empty ? (
 				<EmptyState
 					theme={theme}
@@ -234,6 +256,67 @@ export default function IndexScreen() {
 				onClose={() => setMenuFor(null)}
 			/>
 		</SafeAreaView>
+	);
+}
+
+function ErrorState({
+	theme,
+	title,
+	detail,
+	onRetry
+}: {
+	theme: Theme;
+	title: string;
+	detail: string;
+	onRetry: () => void;
+}) {
+	return (
+		<View style={styles_empty}>
+			<Text
+				style={[heading("bold"), { fontSize: 20, color: theme.foreground }]}
+			>
+				{title}
+			</Text>
+			<Text
+				style={[
+					body(),
+					{
+						fontSize: 14,
+						lineHeight: 20,
+						textAlign: "center",
+						color: theme.mutedForeground,
+						marginTop: 8
+					}
+				]}
+			>
+				{detail}
+			</Text>
+			<PressableScale
+				accessibilityRole="button"
+				accessibilityLabel="Retry"
+				onPress={onRetry}
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					gap: 8,
+					paddingHorizontal: 18,
+					paddingVertical: 12,
+					borderRadius: 12,
+					backgroundColor: theme.primary,
+					marginTop: 24
+				}}
+			>
+				<RotateCw size={16} color={theme.primaryForeground} strokeWidth={2.4} />
+				<Text
+					style={[
+						body("semibold"),
+						{ fontSize: 15, color: theme.primaryForeground }
+					]}
+				>
+					Retry
+				</Text>
+			</PressableScale>
+		</View>
 	);
 }
 

@@ -190,6 +190,7 @@ dependencies = [
  "base64",
  "clap",
  "getrandom 0.2.17",
+ "libc",
  "persistence",
  "serde",
  "serde_json",

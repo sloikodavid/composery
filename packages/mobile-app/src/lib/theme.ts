@@ -20,6 +20,8 @@ export type Palette = {
 	destructive: string;
 };
 
+export type ThemeScheme = "light" | "dark" | "unspecified" | null | undefined;
+
 export const light: Palette = {
 	background: "#fefdf9",
 	foreground: "#2d241e",
@@ -56,3 +58,7 @@ export const dark: Palette = {
 	ring: "#9a7144",
 	destructive: "#ff6467"
 };
+
+export function themeForScheme(scheme: ThemeScheme): Palette {
+	return scheme === "dark" ? dark : light;
+}

@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Flashlight } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, Linking, Text, View } from "react-native";
+import { Linking, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BackButton } from "@/components/back-button";
@@ -15,12 +15,13 @@ import { parseScannedInstance } from "@/lib/parse-scanned";
 import { useTheme } from "@/lib/use-theme";
 
 const SCRIM = "rgba(0,0,0,0.6)";
-const { width, height } = Dimensions.get("window");
-// A generous square that stays comfortably inside the narrowest screens.
-const FRAME = Math.min(width, height) * 0.7;
+const FRAME_SCALE = 0.7;
 
 export default function ScanScreen() {
 	const theme = useTheme();
+	const { width, height } = useWindowDimensions();
+	// A generous square that stays comfortably inside the narrowest screens.
+	const frame = Math.min(width, height) * FRAME_SCALE;
 	const [permission, requestPermission] = useCameraPermissions();
 	const [torch, setTorch] = useState(false);
 	const [hint, setHint] = useState<string | null>(null);
@@ -133,9 +134,9 @@ export default function ScanScreen() {
 			    equal, so the frame is vertically centered). */}
 			<View style={styles_fill} pointerEvents="box-none">
 				<View style={{ flex: 1, backgroundColor: SCRIM }} />
-				<View style={{ flexDirection: "row", height: FRAME }}>
+				<View style={{ flexDirection: "row", height: frame }}>
 					<View style={{ flex: 1, backgroundColor: SCRIM }} />
-					<View style={{ width: FRAME, height: FRAME }}>
+					<View style={{ width: frame, height: frame }}>
 						<Corner color={theme.primary} top left />
 						<Corner color={theme.primary} top right />
 						<Corner color={theme.primary} bottom left />

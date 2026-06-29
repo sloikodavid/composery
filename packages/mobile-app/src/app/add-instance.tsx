@@ -6,10 +6,9 @@ import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BackButton } from "@/components/back-button";
-import { createId } from "@/lib/id";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback, tapFeedback } from "@/lib/haptics";
-import { add, createInstanceStore, get, update } from "@/lib/instance-store";
+import { createInstanceStore } from "@/lib/instance-store";
 import { useTheme } from "@/lib/use-theme";
 
 const store = createInstanceStore(AsyncStorage);
@@ -17,6 +16,10 @@ const store = createInstanceStore(AsyncStorage);
 function firstParam(value: string | string[] | undefined) {
 	return Array.isArray(value) ? value[0] : value;
 }
+
+type EditLoadState =
+	| { id: string; type: "loaded" }
+	| { id: string; type: "failed"; message: string };
 
 export default function AddInstanceScreen() {
 	const theme = useTheme();
@@ -32,25 +35,57 @@ export default function AddInstanceScreen() {
 	const [url, setUrl] = useState(scannedUrl ?? "");
 	const [label, setLabel] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [editLoad, setEditLoad] = useState<EditLoadState | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 
 	// Edit mode: prefill from the stored instance.
 	useEffect(() => {
 		if (!instanceId) return;
 		let active = true;
-		store.loadAll().then((list) => {
-			const instance = get(list, instanceId);
-			if (active && instance) {
+		store
+			.get(instanceId)
+			.then((instance) => {
+				if (!active) return;
+				if (!instance) {
+					setEditLoad({
+						id: instanceId,
+						type: "failed",
+						message: "Instance not found."
+					});
+					return;
+				}
 				setUrl(instance.url);
 				setLabel(instance.label);
-			}
-		});
+				setError(null);
+				setEditLoad({ id: instanceId, type: "loaded" });
+			})
+			.catch((err) => {
+				if (!active) return;
+				setEditLoad({
+					id: instanceId,
+					type: "failed",
+					message:
+						err instanceof Error ? err.message : "Could not load instance."
+				});
+			});
 		return () => {
 			active = false;
 		};
 	}, [instanceId]);
 
+	const activeEditLoad =
+		editing && editLoad?.id === instanceId ? editLoad : null;
+	const loadErrorMessage =
+		activeEditLoad?.type === "failed" ? activeEditLoad.message : null;
+	const instanceLoaded = !editing || activeEditLoad?.type === "loaded";
+	const loadingInstance = editing && !instanceLoaded && !loadErrorMessage;
+	const displayError = loadingInstance ? null : (loadErrorMessage ?? error);
+	const formEditable = instanceLoaded && !loadingInstance && !submitting;
+	const displayedUrl = editing && !instanceLoaded ? "" : url;
+	const displayedLabel = editing && !instanceLoaded ? "" : label;
+
 	async function submit() {
+		if (!instanceLoaded || loadingInstance || submitting) return;
 		const trimmed = url.trim();
 		if (!trimmed) {
 			setError("Enter an instance URL.");
@@ -59,13 +94,10 @@ export default function AddInstanceScreen() {
 		setError(null);
 		setSubmitting(true);
 		try {
-			// add()/update() are synchronous and throw on an invalid URL or duplicate.
-			const list = await store.loadAll();
 			if (editing && instanceId) {
-				await store.persist(update(list, instanceId, { url: trimmed, label }));
+				await store.update(instanceId, { url: trimmed, label });
 			} else {
-				const instance = add(list, { url: trimmed, label }, createId);
-				await store.persist([instance, ...list]);
+				await store.create({ url: trimmed, label });
 			}
 			successFeedback();
 			Keyboard.dismiss();
@@ -78,7 +110,8 @@ export default function AddInstanceScreen() {
 		}
 	}
 
-	const canSubmit = url.trim().length > 0 && !submitting;
+	const canSubmit =
+		url.trim().length > 0 && instanceLoaded && !loadingInstance && !submitting;
 	const inputStyle = {
 		...body(),
 		backgroundColor: theme.muted,
@@ -127,7 +160,7 @@ export default function AddInstanceScreen() {
 					disabled={!canSubmit}
 					hitSlop={12}
 					style={({ pressed }) => ({
-						opacity: !canSubmit ? 0.35 : pressed ? 0.4 : 1
+						opacity: !canSubmit || loadingInstance ? 0.35 : pressed ? 0.4 : 1
 					})}
 				>
 					{/* Always primary tint; disabled reads as dimmed (iOS pattern). */}
@@ -150,7 +183,7 @@ export default function AddInstanceScreen() {
 				</Text>
 				<TextInput
 					testID="add-instance-url-input"
-					value={url}
+					value={displayedUrl}
 					onChangeText={setUrl}
 					placeholder="example.composery.cloud"
 					placeholderTextColor={theme.mutedForeground}
@@ -161,6 +194,7 @@ export default function AddInstanceScreen() {
 					keyboardType="url"
 					textContentType="URL"
 					enterKeyHint="next"
+					editable={formEditable}
 					style={inputStyle}
 				/>
 
@@ -177,17 +211,18 @@ export default function AddInstanceScreen() {
 				</Text>
 				<TextInput
 					testID="add-instance-label-input"
-					value={label}
+					value={displayedLabel}
 					onChangeText={setLabel}
 					placeholder="My Composery"
 					placeholderTextColor={theme.mutedForeground}
 					autoCapitalize="words"
 					enterKeyHint="done"
 					onSubmitEditing={() => void submit()}
+					editable={formEditable}
 					style={inputStyle}
 				/>
 
-				{error ? (
+				{displayError ? (
 					<Text
 						testID="add-instance-error"
 						style={[
@@ -195,7 +230,7 @@ export default function AddInstanceScreen() {
 							{ fontSize: 14, color: theme.destructive, marginTop: 8 }
 						]}
 					>
-						{error}
+						{displayError}
 					</Text>
 				) : null}
 

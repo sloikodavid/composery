@@ -1,5 +1,5 @@
 import * as crypto from "crypto"
-import { promises as fs } from "fs"
+import { constants, promises as fs } from "fs"
 import { keysPath } from "./config"
 
 // Cross-language contract: path, JSON shape, and "sha256:" + hex hashing must stay identical to Rust keystore.rs.
@@ -52,11 +52,19 @@ function parseStore(contents: string): KeyStore {
 async function readStore(): Promise<KeyStore> {
   const file = keysPath()
   try {
-    const stat = await fs.stat(file)
-    if (cache && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size) return cache.store
-    const store = parseStore(await fs.readFile(file, "utf8"))
-    cache = { store, mtimeMs: stat.mtimeMs, size: stat.size }
-    return store
+    const handle = await fs.open(file, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const stat = await handle.stat()
+      if (!stat.isFile()) throw new Error("key store must be a real file")
+      if (cache && cache.mtimeMs === stat.mtimeMs && cache.size === stat.size) {
+        return cache.store
+      }
+      const store = parseStore(await handle.readFile("utf8"))
+      cache = { store, mtimeMs: stat.mtimeMs, size: stat.size }
+      return store
+    } finally {
+      await handle.close()
+    }
   } catch (error: any) {
     if (error.code === "ENOENT") {
       cache = undefined

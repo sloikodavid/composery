@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -67,12 +67,15 @@ pub fn store_path() -> PathBuf {
 }
 
 pub fn load(path: &Path) -> Result<KeyStore> {
-    match fs::read(path) {
-        Ok(data) => {
+    match open_real_file(path) {
+        Ok(mut file) => {
+            let mut data = Vec::new();
+            file.read_to_end(&mut data)
+                .with_context(|| format!("read {}", path.display()))?;
             serde_json::from_slice(&data).with_context(|| format!("parse {}", path.display()))
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(KeyStore::default()),
-        Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
+        Err(error) => Err(error).with_context(|| format!("open {}", path.display())),
     }
 }
 
@@ -81,6 +84,8 @@ pub fn save(path: &Path, store: &KeyStore) -> Result<()> {
         .parent()
         .with_context(|| format!("store path has no parent: {}", path.display()))?;
     fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    ensure_real_dir(parent)?;
+    ensure_real_file_or_missing(path)?;
     fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
         .with_context(|| format!("chmod 0700 {}", parent.display()))?;
 
@@ -139,6 +144,38 @@ fn generate(name: &str) -> Result<NewKey> {
     })
 }
 
+fn open_real_file(path: &Path) -> std::io::Result<File> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.file_type().is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "key store must be a real file",
+        ));
+    }
+    Ok(file)
+}
+
+fn ensure_real_file_or_missing(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real file", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
+fn ensure_real_dir(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => anyhow::bail!("{} must be a real directory", path.display()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
+}
+
 fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -153,6 +190,7 @@ fn now_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
 
     #[test]
     fn create_list_revoke_round_trip() {
@@ -202,5 +240,48 @@ mod tests {
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn load_rejects_symlink_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("api/keys.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let outside = temp.path().join("outside.json");
+        fs::write(&outside, r#"{"version":1,"keys":[]}"#).unwrap();
+        symlink(&outside, &path).unwrap();
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.contains("open"));
+    }
+
+    #[test]
+    fn save_rejects_symlink_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("api/keys.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let outside = temp.path().join("outside.json");
+        fs::write(&outside, "outside").unwrap();
+        symlink(&outside, &path).unwrap();
+
+        let error = save(&path, &KeyStore::default()).unwrap_err().to_string();
+
+        assert!(error.contains("real file"));
+        assert_eq!(fs::read_to_string(outside).unwrap(), "outside");
+    }
+
+    #[test]
+    fn save_rejects_symlink_store_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("api/keys.json");
+        let outside = temp.path().join("outside-api");
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, path.parent().unwrap()).unwrap();
+
+        let error = save(&path, &KeyStore::default()).unwrap_err().to_string();
+
+        assert!(error.contains("real directory"));
+        assert!(!outside.join("keys.json").exists());
     }
 }
