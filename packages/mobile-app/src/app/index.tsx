@@ -1,10 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 import { openBrowserAsync } from "expo-web-browser";
-import { ExternalLink, Plus, SquarePen, Trash2 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import {
+	EllipsisVertical,
+	ExternalLink,
+	Plus,
+	QrCode,
+	SquarePen,
+	Trash2
+} from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Text, View } from "react-native";
 import Animated, {
 	FadeIn,
 	FadeInDown,
@@ -14,12 +20,16 @@ import Animated, {
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ActionSheet, type SheetAction } from "@/components/action-sheet";
+import {
+	ActionSheet,
+	type ActionSheetRef,
+	type SheetAction
+} from "@/components/action-sheet";
 import { Logo, LogoMark } from "@/components/logo";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
-import { errorFeedback, selectFeedback } from "@/lib/haptics";
+import { errorFeedback } from "@/lib/haptics";
 import {
 	createInstanceStore,
 	remove,
@@ -35,6 +45,14 @@ export default function IndexScreen() {
 	const [instances, setInstances] = useState<Instance[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [menuFor, setMenuFor] = useState<Instance | null>(null);
+	const sheetRef = useRef<ActionSheetRef>(null);
+
+	// Set the target, then open the sheet imperatively (the gorhom-supported path;
+	// a declarative visible-prop bridge races present() under React Compiler).
+	function openMenu(instance: Instance) {
+		setMenuFor(instance);
+		sheetRef.current?.present();
+	}
 	// A header separator fades in once the list is scrolled off the top.
 	const [scrolled, setScrolled] = useState(false);
 	const sepOpacity = useSharedValue(0);
@@ -121,30 +139,51 @@ export default function IndexScreen() {
 							accessibilityRole="link"
 							accessibilityLabel="Composery website"
 							scaleTo={0.96}
-							onPress={() => void openBrowserAsync("https://composery.io")}
+							onPress={() => void openBrowserAsync("https://www.composery.io")}
 						>
 							<Logo height={26} color={theme.foreground} />
 						</PressableScale>
-						<PressableScale
-							testID="add-instance-button"
-							accessibilityRole="button"
-							accessibilityLabel="Add instance"
-							onPress={() => router.push("/add-instance")}
-							style={{
-								width: 40,
-								height: 40,
-								borderRadius: 20,
-								backgroundColor: theme.primary,
-								alignItems: "center",
-								justifyContent: "center"
-							}}
+						<View
+							style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
 						>
-							<Plus
-								size={22}
-								color={theme.primaryForeground}
-								strokeWidth={2.4}
-							/>
-						</PressableScale>
+							<PressableScale
+								testID="scan-button"
+								accessibilityRole="button"
+								accessibilityLabel="Scan QR code"
+								onPress={() => router.push("/scan")}
+								style={{
+									width: 40,
+									height: 40,
+									borderRadius: 20,
+									borderWidth: 1,
+									borderColor: theme.border,
+									alignItems: "center",
+									justifyContent: "center"
+								}}
+							>
+								<QrCode size={20} color={theme.foreground} strokeWidth={2.2} />
+							</PressableScale>
+							<PressableScale
+								testID="add-instance-button"
+								accessibilityRole="button"
+								accessibilityLabel="Add instance"
+								onPress={() => router.push("/add-instance")}
+								style={{
+									width: 40,
+									height: 40,
+									borderRadius: 20,
+									backgroundColor: theme.primary,
+									alignItems: "center",
+									justifyContent: "center"
+								}}
+							>
+								<Plus
+									size={22}
+									color={theme.primaryForeground}
+									strokeWidth={2.4}
+								/>
+							</PressableScale>
+						</View>
 					</View>
 					<Animated.View
 						style={[
@@ -164,7 +203,11 @@ export default function IndexScreen() {
 					<Spinner color={theme.primary} size={30} />
 				</View>
 			) : empty ? (
-				<EmptyState theme={theme} onAdd={() => router.push("/add-instance")} />
+				<EmptyState
+					theme={theme}
+					onAdd={() => router.push("/add-instance")}
+					onScan={() => router.push("/scan")}
+				/>
 			) : (
 				<FlatList
 					data={instances}
@@ -178,16 +221,14 @@ export default function IndexScreen() {
 							index={index}
 							theme={theme}
 							onOpen={() => openInstance(item)}
-							onEdit={() => editInstance(item)}
-							onRemove={() => void removeInstance(item)}
-							onMenu={() => setMenuFor(item)}
+							onMenu={() => openMenu(item)}
 						/>
 					)}
 				/>
 			)}
 
 			<ActionSheet
-				visible={menuFor !== null}
+				ref={sheetRef}
 				title={menuFor?.label || menuFor?.url}
 				actions={menuActions}
 				onClose={() => setMenuFor(null)}
@@ -201,58 +242,28 @@ function InstanceRow({
 	index,
 	theme,
 	onOpen,
-	onEdit,
-	onRemove,
 	onMenu
 }: {
 	instance: Instance;
 	index: number;
 	theme: Theme;
 	onOpen: () => void;
-	onEdit: () => void;
-	onRemove: () => void;
 	onMenu: () => void;
 }) {
 	return (
 		<Animated.View
 			entering={FadeInDown.delay(Math.min(index, 8) * 40).duration(260)}
 		>
-			<ReanimatedSwipeable
-				friction={2}
-				rightThreshold={44}
-				overshootRight={false}
-				onSwipeableOpen={() => selectFeedback()}
-				renderRightActions={(_progress, _translation, methods) => (
-					<View style={{ flexDirection: "row" }}>
-						<SwipeAction
-							label="Edit"
-							icon={SquarePen}
-							background={SWIPE_EDIT_BG}
-							onPress={() => {
-								methods.close();
-								onEdit();
-							}}
-						/>
-						<SwipeAction
-							label="Remove"
-							icon={Trash2}
-							background={SWIPE_REMOVE_BG}
-							onPress={() => {
-								methods.close();
-								onRemove();
-							}}
-						/>
-					</View>
-				)}
-			>
+			<View style={{ flexDirection: "row", alignItems: "center" }}>
 				<PressableScale
 					testID="instance-item"
 					scaleTo={0.98}
 					onPress={onOpen}
 					onLongPress={onMenu}
 					style={{
+						flex: 1,
 						backgroundColor: theme.background,
-						paddingHorizontal: 16,
+						paddingLeft: 16,
 						paddingVertical: 16
 					}}
 				>
@@ -266,7 +277,28 @@ function InstanceRow({
 						{instance.label || instance.url}
 					</Text>
 				</PressableScale>
-			</ReanimatedSwipeable>
+				<PressableScale
+					testID="instance-menu-button"
+					accessibilityRole="button"
+					accessibilityLabel="Instance actions"
+					scaleTo={0.9}
+					onPress={onMenu}
+					hitSlop={6}
+					style={{
+						width: 44,
+						height: 44,
+						marginRight: 6,
+						alignItems: "center",
+						justifyContent: "center"
+					}}
+				>
+					<EllipsisVertical
+						size={20}
+						color={theme.mutedForeground}
+						strokeWidth={2}
+					/>
+				</PressableScale>
+			</View>
 			<View
 				style={{ height: 1, marginLeft: 16, backgroundColor: theme.border }}
 			/>
@@ -274,45 +306,15 @@ function InstanceRow({
 	);
 }
 
-// Fixed across light/dark, like iOS swipe actions: warm grey for Edit, red for
-// Remove. White content reads on both.
-const SWIPE_EDIT_BG = "#78716c";
-const SWIPE_REMOVE_BG = "#dc2626";
-
-function SwipeAction({
-	label,
-	icon: Icon,
-	background,
-	onPress
+function EmptyState({
+	theme,
+	onAdd,
+	onScan
 }: {
-	label: string;
-	icon: typeof SquarePen;
-	background: string;
-	onPress: () => void;
+	theme: Theme;
+	onAdd: () => void;
+	onScan: () => void;
 }) {
-	return (
-		<Pressable
-			accessibilityRole="button"
-			accessibilityLabel={label}
-			onPress={onPress}
-			style={({ pressed }) => ({
-				width: 78,
-				backgroundColor: background,
-				alignItems: "center",
-				justifyContent: "center",
-				gap: 5,
-				opacity: pressed ? 0.85 : 1
-			})}
-		>
-			<Icon size={20} color="#ffffff" strokeWidth={2} />
-			<Text style={[body("medium"), { fontSize: 13, color: "#ffffff" }]}>
-				{label}
-			</Text>
-		</Pressable>
-	);
-}
-
-function EmptyState({ theme, onAdd }: { theme: Theme; onAdd: () => void }) {
 	return (
 		<Animated.View entering={FadeIn.duration(300)} style={styles_empty}>
 			<LogoMark size={64} />
@@ -336,11 +338,12 @@ function EmptyState({ theme, onAdd }: { theme: Theme; onAdd: () => void }) {
 					}
 				]}
 			>
-				Add your Composery by URL — self-hosted or Cloud.
+				Add your Composery by URL - Cloud or self-hosted.
 			</Text>
 			<PressableScale
 				testID="add-instance-button"
 				accessibilityRole="button"
+				accessibilityLabel="Add instance"
 				onPress={onAdd}
 				style={{
 					flexDirection: "row",
@@ -361,6 +364,27 @@ function EmptyState({ theme, onAdd }: { theme: Theme; onAdd: () => void }) {
 					]}
 				>
 					Add instance
+				</Text>
+			</PressableScale>
+			<PressableScale
+				testID="scan-button"
+				accessibilityRole="button"
+				accessibilityLabel="Scan QR code"
+				onPress={onScan}
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					gap: 8,
+					paddingHorizontal: 20,
+					paddingVertical: 12,
+					marginTop: 4
+				}}
+			>
+				<QrCode size={18} color={theme.primary} strokeWidth={2.2} />
+				<Text
+					style={[body("semibold"), { fontSize: 15, color: theme.primary }]}
+				>
+					Scan QR code
 				</Text>
 			</PressableScale>
 		</Animated.View>

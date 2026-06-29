@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { BackButton } from "@/components/back-button";
 import { createId } from "@/lib/id";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback, tapFeedback } from "@/lib/haptics";
@@ -13,21 +14,32 @@ import { useTheme } from "@/lib/use-theme";
 
 const store = createInstanceStore(AsyncStorage);
 
+function firstParam(value: string | string[] | undefined) {
+	return Array.isArray(value) ? value[0] : value;
+}
+
 export default function AddInstanceScreen() {
 	const theme = useTheme();
-	const { id } = useLocalSearchParams<{ id?: string }>();
-	const editing = Boolean(id);
-	const [url, setUrl] = useState("");
+	// `url` arrives from a scan (router.replace) or the composery://add-instance
+	// deep link, prefilling a new instance; `id` means we're editing an existing one.
+	const { id, url: urlParam } = useLocalSearchParams<{
+		id?: string | string[];
+		url?: string | string[];
+	}>();
+	const instanceId = firstParam(id);
+	const scannedUrl = firstParam(urlParam);
+	const editing = Boolean(instanceId);
+	const [url, setUrl] = useState(scannedUrl ?? "");
 	const [label, setLabel] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 
 	// Edit mode: prefill from the stored instance.
 	useEffect(() => {
-		if (!id) return;
+		if (!instanceId) return;
 		let active = true;
 		store.loadAll().then((list) => {
-			const instance = get(list, id);
+			const instance = get(list, instanceId);
 			if (active && instance) {
 				setUrl(instance.url);
 				setLabel(instance.label);
@@ -36,7 +48,7 @@ export default function AddInstanceScreen() {
 		return () => {
 			active = false;
 		};
-	}, [id]);
+	}, [instanceId]);
 
 	async function submit() {
 		const trimmed = url.trim();
@@ -49,8 +61,8 @@ export default function AddInstanceScreen() {
 		try {
 			// add()/update() are synchronous and throw on an invalid URL or duplicate.
 			const list = await store.loadAll();
-			if (editing && id) {
-				await store.persist(update(list, id, { url: trimmed, label }));
+			if (editing && instanceId) {
+				await store.persist(update(list, instanceId, { url: trimmed, label }));
 			} else {
 				const instance = add(list, { url: trimmed, label }, createId);
 				await store.persist([instance, ...list]);
@@ -93,24 +105,11 @@ export default function AddInstanceScreen() {
 					paddingVertical: 12
 				}}
 			>
-				<Pressable
+				<BackButton
 					testID="add-instance-cancel"
-					onPress={() => {
-						tapFeedback();
-						router.dismiss();
-					}}
-					hitSlop={12}
+					onPress={() => router.dismiss()}
 					disabled={submitting}
-					style={({ pressed }) => ({
-						opacity: submitting ? 0.35 : pressed ? 0.4 : 1
-					})}
-				>
-					<Text
-						style={[body("medium"), { fontSize: 16, color: theme.primary }]}
-					>
-						Cancel
-					</Text>
-				</Pressable>
+				/>
 				<Text
 					style={[
 						heading("semibold"),
@@ -200,23 +199,10 @@ export default function AddInstanceScreen() {
 					</Text>
 				) : null}
 
-				<Text
-					style={[
-						body(),
-						{
-							fontSize: 13,
-							lineHeight: 19,
-							color: theme.mutedForeground,
-							marginTop: 12
-						}
-					]}
-				>
-					Self-hosted or Composery Cloud — you sign in on your instance.
-				</Text>
 				<Pressable
 					onPress={() => {
 						tapFeedback();
-						void openBrowserAsync("https://composery.io/pricing");
+						void openBrowserAsync("https://www.composery.io/pricing");
 					}}
 					hitSlop={8}
 					style={({ pressed }) => ({
@@ -229,7 +215,7 @@ export default function AddInstanceScreen() {
 					<Text
 						style={[body(), { fontSize: 13, color: theme.mutedForeground }]}
 					>
-						{"Don't have one? "}
+						{"Want a Composery? "}
 					</Text>
 					<Text
 						style={[body("semibold"), { fontSize: 13, color: theme.primary }]}

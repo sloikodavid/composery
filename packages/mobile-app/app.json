@@ -23,6 +23,12 @@
 		"plugins": [
 			"expo-router",
 			[
+				"expo-camera",
+				{
+					"cameraPermission": "Allow Composery to use the camera to scan an instance QR code."
+				}
+			],
+			[
 				"expo-splash-screen",
 				{
 					"backgroundColor": "#a1600d",

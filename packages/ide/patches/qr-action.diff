@@ -1,0 +1,47 @@
+diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -9,7 +9,9 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
++import { ICommandService } from '../../platform/commands/common/commands';
+ 
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
+ 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
++	static SHOW_QR_COMMAND_ID = 'code-server.showQr';
+ 
+ 	constructor (
+ 		@ILogService private logService: ILogService,
+@@ -95,6 +95,8 @@ 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
+ 			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
+ 		}
+ 
++		this.addShowQrCommand();
++
+ 		if (this.productService.serviceWorker) {
+ 			await this.registerServiceWorker(this.productService.serviceWorker);
+ 		}
+@@ -178,6 +178,24 @@ 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
+ 		}
+ 	}
+ 
++	private addShowQrCommand() {
++		CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor) => {
++			const targetWindow = window.top || window;
++			const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
++			accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);
++		});
++
++		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
++			MenuRegistry.appendMenuItem(menuId, {
++				command: {
++					id: CodeServerClient.SHOW_QR_COMMAND_ID,
++					title: localize('showQr', "Show QR Code"),
++				},
++				order: menuId === MenuId.MenubarHomeMenu ? -1 : undefined,
++			});
++		}
++	}
++
+ 	private addLogoutCommand(logoutEndpoint: string) {
+ 		CommandsRegistry.registerCommand(CodeServerClient.LOGOUT_COMMAND_ID, () => {
+ 			this.openAuthEndpoint(logoutEndpoint);

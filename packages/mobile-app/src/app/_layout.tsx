@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -37,20 +38,26 @@ export default function RootLayout() {
 			style={{ flex: 1, backgroundColor: theme.background }}
 		>
 			<SafeAreaProvider>
-				<StatusBar style={scheme === "dark" ? "light" : "dark"} />
-				<Stack
-					screenOptions={{
-						headerShown: false,
-						contentStyle: { backgroundColor: theme.background }
-					}}
-				>
-					<Stack.Screen name="index" />
-					<Stack.Screen
-						name="add-instance"
-						options={{ presentation: "modal" }}
-					/>
-					<Stack.Screen name="instance/[id]" />
-				</Stack>
+				<BottomSheetModalProvider>
+					<StatusBar style={scheme === "dark" ? "light" : "dark"} />
+					<Stack
+						screenOptions={{
+							headerShown: false,
+							contentStyle: { backgroundColor: theme.background }
+						}}
+					>
+						<Stack.Screen name="index" />
+						<Stack.Screen
+							name="add-instance"
+							options={{ presentation: "modal" }}
+						/>
+						<Stack.Screen
+							name="scan"
+							options={{ presentation: "fullScreenModal", animation: "fade" }}
+						/>
+						<Stack.Screen name="instance/[id]" />
+					</Stack>
+				</BottomSheetModalProvider>
 			</SafeAreaProvider>
 		</GestureHandlerRootView>
 	);

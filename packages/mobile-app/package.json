@@ -5,9 +5,11 @@
 	"dependencies": {
 		"@expo-google-fonts/bricolage-grotesque": "^0.4.1",
 		"@expo-google-fonts/inter": "^0.4.2",
+		"@gorhom/bottom-sheet": "^5.2.14",
 		"@react-native-async-storage/async-storage": "^2.2.0",
 		"expo": "~56.0.12",
 		"expo-blur": "~56.0.3",
+		"expo-camera": "~56.0.8",
 		"expo-constants": "~56.0.18",
 		"expo-device": "~56.0.4",
 		"expo-font": "~56.0.7",

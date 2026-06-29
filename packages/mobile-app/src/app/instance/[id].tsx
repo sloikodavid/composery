@@ -8,10 +8,12 @@ import { BackHandler, Text, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
 
+import { BackButton } from "@/components/back-button";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { createInstanceStore, get, type Instance } from "@/lib/instance-store";
+import { probeComposery, type ProbeResult } from "@/lib/probe";
 import { useTheme } from "@/lib/use-theme";
 import { buildBeforeLoad, INSTALL_SCRIPT } from "@/web/back-button";
 
@@ -32,6 +34,14 @@ export default function InstanceScreen() {
 	const insets = useSafeAreaInsets();
 	const [instance, setInstance] = useState<Instance | undefined>();
 	const [loading, setLoading] = useState(true);
+	// probeResult stores the result keyed by `${url}:${reloadKey}`. When the
+	// key doesn't match the current url+reloadKey, the probe is in-flight and
+	// the derived `probe` value reads as "probing" — no setState in the effect
+	// body, which the React Compiler / lint flags as a cascading render.
+	const [probeResult, setProbeResult] = useState<{
+		key: string;
+		result: ProbeResult;
+	} | null>(null);
 	const [webLoading, setWebLoading] = useState(true);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [reloadKey, setReloadKey] = useState(0);
@@ -55,6 +65,24 @@ export default function InstanceScreen() {
 			};
 		}, [id])
 	);
+
+	// Probe the instance before mounting the WebView. A non-Composery URL is
+	// rejected with an error screen instead of a blank embed. Re-runs on retry
+	// (reloadKey) and when switching to a different instance.
+	useEffect(() => {
+		const url = instance?.url;
+		if (!url) return;
+		let active = true;
+		const key = `${url}:${reloadKey}`;
+		void probeComposery(url).then((result) => {
+			if (!active) return;
+			setProbeResult({ key, result });
+			if (result.ok) setWebLoading(true);
+		});
+		return () => {
+			active = false;
+		};
+	}, [instance?.url, reloadKey]);
 
 	const messageBack = useCallback(() => {
 		if (canGoBack && webviewRef.current) {
@@ -105,6 +133,9 @@ export default function InstanceScreen() {
 		[scheme]
 	);
 	const instanceOrigin = instance ? new URL(instance.url).origin : "";
+	const probeKey = `${instanceOrigin}:${reloadKey}`;
+	const probe: ProbeResult | "probing" =
+		probeResult?.key === probeKey ? probeResult.result : "probing";
 	const stripBg = stripColor ?? theme.background;
 	const statusStyle = stripColor
 		? isLight(stripColor)
@@ -127,7 +158,27 @@ export default function InstanceScreen() {
 					detail="It may have been removed."
 					onBack={() => router.back()}
 				/>
-			) : instance && loadError ? (
+			) : instance && probe === "probing" ? (
+				<View style={styles_center}>
+					<Spinner color={theme.primary} size={32} />
+				</View>
+			) : instance && probe && !probe.ok ? (
+				<ErrorView
+					theme={theme}
+					title={
+						probe.reason === "not-composery"
+							? "This isn't a Composery"
+							: "Couldn't reach this instance"
+					}
+					detail={
+						probe.reason === "not-composery"
+							? `${instance.url}\ndoesn't point to a Composery instance.`
+							: `${instance.url}\n${probe.message}`
+					}
+					onBack={() => router.back()}
+					onRetry={retry}
+				/>
+			) : instance && probe?.ok && loadError ? (
 				<ErrorView
 					theme={theme}
 					title="Couldn't load this instance"
@@ -135,7 +186,7 @@ export default function InstanceScreen() {
 					onBack={() => router.back()}
 					onRetry={retry}
 				/>
-			) : instance ? (
+			) : instance && probe?.ok ? (
 				<View style={{ flex: 1 }}>
 					<WebView
 						key={reloadKey}
@@ -214,57 +265,42 @@ function ErrorView({
 	onRetry?: () => void;
 }) {
 	return (
-		<View
-			style={{
-				flex: 1,
-				alignItems: "center",
-				justifyContent: "center",
-				paddingHorizontal: 32
-			}}
-		>
-			<Text
-				style={[
-					heading("bold"),
-					{ fontSize: 20, color: theme.foreground, textAlign: "center" }
-				]}
+		<View style={{ flex: 1 }}>
+			{/* Back stays the shared top-left round button, like every other screen. */}
+			<View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+				<BackButton onPress={onBack} testID="instance-back-missing" />
+			</View>
+			<View
+				style={{
+					flex: 1,
+					alignItems: "center",
+					justifyContent: "center",
+					paddingHorizontal: 32,
+					paddingBottom: 64
+				}}
 			>
-				{title}
-			</Text>
-			<Text
-				style={[
-					body(),
-					{
-						fontSize: 14,
-						lineHeight: 20,
-						textAlign: "center",
-						color: theme.mutedForeground,
-						marginTop: 8
-					}
-				]}
-			>
-				{detail}
-			</Text>
-			<View style={{ flexDirection: "row", gap: 12, marginTop: 24 }}>
-				<PressableScale
-					testID="instance-back-missing"
-					onPress={onBack}
-					style={{
-						paddingHorizontal: 18,
-						paddingVertical: 12,
-						borderRadius: 12,
-						borderWidth: 1,
-						borderColor: theme.border
-					}}
+				<Text
+					style={[
+						heading("bold"),
+						{ fontSize: 20, color: theme.foreground, textAlign: "center" }
+					]}
 				>
-					<Text
-						style={[
-							body("semibold"),
-							{ fontSize: 15, color: theme.foreground }
-						]}
-					>
-						Back
-					</Text>
-				</PressableScale>
+					{title}
+				</Text>
+				<Text
+					style={[
+						body(),
+						{
+							fontSize: 14,
+							lineHeight: 20,
+							textAlign: "center",
+							color: theme.mutedForeground,
+							marginTop: 8
+						}
+					]}
+				>
+					{detail}
+				</Text>
 				{onRetry ? (
 					<PressableScale
 						onPress={onRetry}
@@ -275,7 +311,8 @@ function ErrorView({
 							paddingHorizontal: 18,
 							paddingVertical: 12,
 							borderRadius: 12,
-							backgroundColor: theme.primary
+							backgroundColor: theme.primary,
+							marginTop: 24
 						}}
 					>
 						<RotateCw

@@ -18,6 +18,7 @@
   settings.json
 docs/
   repo/
+    docs-website.md
     maintenance.md
   self-hosting/
     fly.md
@@ -125,6 +126,7 @@ packages/
     proxy.ts
     source.config.ts
     tsconfig.json
+    vercel.json
   ide/
     overlay/
       lib/
@@ -134,6 +136,10 @@ packages/
               extension.js
               package.json
               README.md
+            composery-qr/
+              extension.js
+              package.json
+              qrcode-generator.js
             composery-shortcuts/
               extension.js
               package.json
@@ -255,8 +261,10 @@ packages/
         _layout.tsx
         add-instance.tsx
         index.tsx
+        scan.tsx
       components/
         action-sheet.tsx
+        back-button.tsx
         logo.tsx
         pressable-scale.tsx
         spinner.tsx
@@ -268,6 +276,8 @@ packages/
         instance-store.ts
         normalize-url.test.ts
         normalize-url.ts
+        parse-scanned.test.ts
+        parse-scanned.ts
         theme.test.ts
         theme.ts
         use-theme.ts

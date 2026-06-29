@@ -43,21 +43,20 @@ index 96790a8..1ae3af8 100644
  			serviceWorker: {
  				scope: vscodeBase + '/',
 diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
-index 7948a7b..12989e4 100644
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
 @@ -9,6 +9,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
- 
+
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
 +	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
- 
+
  	constructor (
  		@ILogService private logService: ILogService,
 @@ -90,6 +91,10 @@ export class CodeServerClient extends Disposable {
  			this.addLogoutCommand(this.productService.logoutEndpoint);
  		}
- 
+
 +		if (this.productService.resetPasswordEndpoint) {
 +			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
 +		}

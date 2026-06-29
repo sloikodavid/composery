@@ -165,6 +165,19 @@ async function assertWebAppSmoke() {
 	log("checking web app startup, auth, and Composery");
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health);
 
+	const probe = await request("/__composery");
+	if (probe.statusCode !== 200) {
+		throw new Error(
+			`Expected /__composery to return 200, got ${probe.statusCode}.`
+		);
+	}
+	const probeJson = JSON.parse(probe.body);
+	if (probeJson.composery !== true) {
+		throw new Error(
+			`Expected /__composery to return {"composery":true}, got ${probe.body}.`
+		);
+	}
+
 	const cookies = new Map();
 	await login(cookies);
 	const rootPage = await fetchAuthedText("/", cookies);

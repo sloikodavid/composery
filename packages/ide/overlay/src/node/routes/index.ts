@@ -111,6 +111,13 @@ export const register = async (
     res.send(await fs.readFile(resourcePath))
   })
 
+  // Unauthenticated identification endpoint for the mobile app. Probed before
+  // loading the WebView so a non-Composery URL (e.g. youtube.com) is rejected
+  // with an error screen instead of a blank embed.
+  app.router.get("/__composery", (_, res) => {
+    res.json({ composery: true })
+  })
+
   app.router.use("/", domainProxy.router)
   app.wsRouter.use("/", domainProxy.wsRouter.router)
 

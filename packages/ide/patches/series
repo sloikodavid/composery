@@ -1,5 +1,6 @@
 asset-cache.diff
 auth-actions.diff
+qr-action.diff
 markdown-preview-loopback-callback-bridge.diff
 trusted-domains-loopback-callback-guard.diff
 overlays.diff
