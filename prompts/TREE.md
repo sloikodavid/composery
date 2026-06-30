@@ -17,7 +17,7 @@
   extensions.json
   settings.json
 docs/
-  repo/
+  developing/
     maintenance.md
     mobile.md
     web.md

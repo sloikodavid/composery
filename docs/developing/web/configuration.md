@@ -1,10 +1,13 @@
-# Maintenance
+---
+title: Maintenance
+description: Hardcoded scheduling constants and the cron schedule that drives periodic work.
+---
 
-A reference for what's hardcoded and why, and the cron schedule that drives
-the periodic work.
+A reference for what's hardcoded and why, and the cron schedule that drives the
+periodic work.
 
-Runtime-tunable settings — abuse thresholds, the auto-suspend toggle,
-snapshot policy, and the checkout toggle — live in the `settings` table and
+Runtime-tunable settings - abuse thresholds, the auto-suspend toggle,
+snapshot policy, and the checkout toggle - live in the `settings` table and
 are edited directly on the staff console at `/console`. This doc covers only
 what you can't change without a redeploy.
 
@@ -43,6 +46,8 @@ would invite misconfiguration without adding value.
 | `SNAPSHOT_POLL_FAST_WINDOW_MS`     | `60` seconds | Window before backing off to slow poll.                        |
 | `SNAPSHOT_CAPTURE_DEADLINE_MS`     | `1` hour     | Max time to wait for a Hetzner `create_image` to finish.       |
 
+Snapshots themselves are covered in [Hetzner](./hetzner.md#box-snapshots).
+
 ### Checkout reservation (`convex/checkout/checkoutIntents.ts`)
 
 | Constant                      | Value    | Why it's hardcoded                           |
@@ -66,8 +71,9 @@ Defined in `convex/crons.ts`. All times are UTC.
 
 `reconcileHetznerResources` is the backstop for leaked cloud resources: it
 deletes snapshot images that no longer have a `box_snapshots` row (pure cost,
-invisible in the UI) and logs Hetzner servers with no live box for staff
-review. A 2-hour grace window keeps it off anything still being created.
+invisible in the UI) and logs [Hetzner](./hetzner.md) servers with no live box
+for staff review. A 2-hour grace window keeps it off anything still being
+created.
 
 ## Stats overview (`convex/staff/stats.ts`)
 

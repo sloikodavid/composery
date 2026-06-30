@@ -4,6 +4,7 @@ qr-action.diff
 markdown-preview-loopback-callback-bridge.diff
 trusted-domains-loopback-callback-guard.diff
 overlays.diff
+webview-mobile.diff
 touch-editor.diff
 touch-gate.diff
 narrow-gate.diff

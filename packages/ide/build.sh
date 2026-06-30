@@ -52,5 +52,6 @@ echo "== 6. code-server's own build (npm: install -> server -> vscode -> release
 
 echo "== 7. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
 rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/lib/vscode/out/"
+rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
 
 echo "Release: $BUILD/release"

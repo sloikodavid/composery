@@ -87,7 +87,6 @@ function render(url) {
 	<body>
 		<div class="card">
 			<div class="frame">${svg}</div>
-			<p class="hint">Scan with the Composery app to add this instance.</p>
 			<p class="url">${escapeHtml(url)}</p>
 		</div>
 	</body>

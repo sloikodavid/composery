@@ -15,14 +15,11 @@
 - Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> move `components/<name>.tsx` into `components/icons/` -> normalize tabs and `initial="normal"` -> register in `components/animated-icon` (import, `AnimatedIconName` union, switch case).
 - Consistency within a set: prefer the animated icon in animated-leaning contexts; stay static where motion is meaningless. Matching an external design 1:1 overrides this.
 
-## Living Setup Doc
+## Living setup docs
 
-`docs/setup.md` and `.env.example.*` are the setup surfaces - keep them in lockstep with the code.
+`../../docs/developing/web/` and `.env.example.*` are the setup surfaces - keep them in lockstep with the code.
 
-- Update them in the same change that adds/renames/removes an env var, provider, component, or read site. A new `process.env`/`requiredEnv`/`optionalEnv` read isn't done until it appears in the right example file(s) and the doc.
-- Four files split by plane x env: `.env.example.convex.{dev,prod}` (vars read in `convex/`), `.env.example.next.{dev,prod}` (vars read by Next.js). A var goes in every file of its plane; dev/prod are key-identical, differing only in non-secret defaults. Secrets stay empty.
-- Order sections by dependency, not service: backends -> providers -> enter values -> deploy.
 - For each variable, state where it's read (file) and how to obtain the value (dashboard, scopes, object to create).
-- Never commit secrets or account-specific values - give keys, scopes, and sources only.
+- Trim info that can drift like dashboard click-paths to the setting's name and where it logically lives; the dashboards move faster than the doc does.
 - Ground every claim in the code; no guessed scopes, endpoints, or values.
 - OS-neutral: portable POSIX shell only (no PowerShell-only cmdlets, no backslash paths); label fences `bash`.

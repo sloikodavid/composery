@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/browser/touchGate.ts
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,41 @@
 +/*---------------------------------------------------------------------------------------------
 + * Composery: the canonical touch gate - the touch half of the two small-screen gates (the
 + * narrow-viewport half is a width breakpoint, local to narrow-fullscreen.diff). Used by
@@ -14,12 +14,27 @@
 +	return targetWindow.matchMedia(TOUCH_QUERY).matches;
 +}
 +
-+// Height in px the on-screen keyboard currently occupies, 0 when hidden. Prefers the Chromium
-+// VirtualKeyboard API (reliable on Android) and falls back to visualViewport (iOS Safari).
++function bottomKeyboardOverlap(targetWindow: Window, rect: DOMRect): number {
++	if (!rect.height) {
++		return 0;
++	}
++
++	const top = rect.y ?? rect.top ?? targetWindow.innerHeight;
++	const bottom = rect.bottom ?? top + rect.height;
++	if (bottom < targetWindow.innerHeight - 1) {
++		return 0;
++	}
++
++	return Math.max(0, Math.round(targetWindow.innerHeight - top));
++}
++
++// Height in px the on-screen keyboard currently occupies at the bottom edge, 0 when hidden or
++// floating. Prefers the Chromium VirtualKeyboard API (reliable on Android when overlaysContent is
++// active) and falls back to visualViewport (iOS Safari).
 +export function keyboardInset(targetWindow: Window): number {
-+	const virtualKeyboard = (targetWindow.navigator as { virtualKeyboard?: { boundingRect: DOMRect } }).virtualKeyboard;
-+	if (virtualKeyboard?.boundingRect) {
-+		return Math.round(virtualKeyboard.boundingRect.height);
++	const virtualKeyboard = (targetWindow.navigator as { virtualKeyboard?: { overlaysContent?: boolean; boundingRect?: DOMRect } }).virtualKeyboard;
++	if (virtualKeyboard?.overlaysContent && virtualKeyboard.boundingRect) {
++		return bottomKeyboardOverlap(targetWindow, virtualKeyboard.boundingRect);
 +	}
 +	const viewport = targetWindow.visualViewport;
 +	if (viewport) {

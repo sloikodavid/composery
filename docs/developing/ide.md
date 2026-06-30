@@ -1,12 +1,12 @@
 ---
-title: Maintenance
-description: Keep repo values, generated artifacts, and upstream patch machinery from drifting.
+title: IDE
+description: Brand palette and code-server / VS Code bump runbook for the editor fork in packages/ide.
 ---
 
-Runbook for values and generated artifacts in this repo that drift: things that
-are correct today only because something upstream has not moved yet. Keep one
-source of truth and derive the rest where practical, so maintenance is usually a
-generator or update PR, not hand-retyping values.
+Runbook for values and generated artifacts in `packages/ide/` that drift: things
+that are correct today only because something upstream has not moved yet. Keep
+one source of truth and derive the rest where practical, so maintenance is
+usually a generator or update PR, not hand-retyping values.
 
 Browser- and operator-facing names are Composery. Keep `code-server` only for
 upstream machinery: cloned source, patch coordinates, the CLI binary, direct
@@ -109,46 +109,4 @@ CI also runs an early gate that lays our patch stack over the submodule and runs
 broken patch application before the full image build, but it does not prove the
 patched app builds or behaves correctly.
 
-## Versioning and releases
-
-Three independent version surfaces. They do not share a number and nothing
-auto-syncs them - each is the source of truth for its own product.
-
-- **Appliance image** - root `/package.json` `version` (plain semver `X.Y.Z`).
-  `.github/workflows/release.yml` reads it (`node -p "require('./package.json').version"`)
-  and, on a stable run (workflow dispatched with `ref: main`, HEAD = origin/main),
-  turns that one number into the GHCR tags `:X.Y.Z` / `:X.Y` / `:latest` /
-  `:sha-<12>`, a git tag `vX.Y.Z` (the run fails if it already exists, forcing a
-  bump), a GitHub Release, and the image's `COMPOSERY_BUILD_VERSION`. To cut a
-  stable release: bump this number, merge to main, run the workflow. Any other
-  ref is a _preview_ release - tagged `preview-<sha>`, version number ignored.
-- **Mobile** - `packages/mobile/app.json` `version` (marketing version
-  the stores key on). Separate lifecycle, separate gate (store review). EAS
-  manages the build/version codes server-side (`appVersionSource: remote`), so
-  this is the only number you hand-edit. See [mobile](./mobile.md).
-- **web** - unversioned. Auto-deploys to Vercel on push.
-
-The `version` fields in `packages/mobile/package.json` and
-`packages/web/package.json` are npm metadata and are ignored by every
-release path. Dockerfile pins (`CODE_SERVER_COMMIT`, `NODE_IMAGE`, `BUN_VERSION`,
-etc.) are dependency inputs, not the product version - see Renovate below.
-
-## Renovate
-
-Version updates are automated by `renovate.json`. It tracks:
-
-- Docker base images in `Dockerfile`, with digests pinned.
-- The `# renovate:` Dockerfile ARGs.
-  Renovate tracks `bun`, `npm`, `pnpm`, and `cargo-chef`.
-- `coder/code-server`.
-  A custom GitHub-tags datasource keeps version and commit moving together.
-- npm, Cargo, and GitHub Actions dependencies from their normal manifests.
-
-Renovate intentionally does not track Debian apt package versions. Runtime apt
-packages stay unpinned and come from the Debian suite in the base image. That is
-the policy: Debian owns system-tooling freshness; this repo pins the image, not
-every package inside the suite.
-
-The config is conservative: no automerge, a 3-day minimum release age, majors
-gated behind the dependency dashboard, and Docker digests pinned. Review PRs
-normally. For a code-server PR, run the bump steps above before merging.
+Releases and dependency upgrades: see `.github/workflows/release.yml` and `renovate.json`.

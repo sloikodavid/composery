@@ -48,6 +48,7 @@ export default function InstanceScreen() {
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [reloadKey, setReloadKey] = useState(0);
 	const [canGoBack, setCanGoBack] = useState(false);
+	const [overlayBackActive, setOverlayBackActive] = useState(false);
 	// Live title-bar background reported by the page, so the status-bar strip
 	// matches whatever IDE theme the user runs.
 	const [stripColor, setStripColor] = useState<string | null>(null);
@@ -104,17 +105,19 @@ export default function InstanceScreen() {
 		};
 	}, [instance?.url, reloadKey]);
 
+	const webviewCanGoBack = canGoBack || overlayBackActive;
+
 	const messageBack = useCallback(() => {
-		if (canGoBack && webviewRef.current) {
+		if (webviewCanGoBack && webviewRef.current) {
 			webviewRef.current.goBack();
 		} else {
 			router.back();
 		}
-	}, [canGoBack]);
+	}, [webviewCanGoBack]);
 
 	useEffect(() => {
 		const onBack = () => {
-			if (canGoBack && webviewRef.current) {
+			if (webviewCanGoBack && webviewRef.current) {
 				webviewRef.current.goBack();
 				return true;
 			}
@@ -125,11 +128,24 @@ export default function InstanceScreen() {
 			onBack
 		);
 		return () => subscription.remove();
-	}, [canGoBack]);
+	}, [webviewCanGoBack]);
 
 	const onNavigationStateChange = useCallback((nav: WebViewNavigation) => {
 		setCanGoBack(nav.canGoBack);
 	}, []);
+
+	const resetTransientWebViewState = useCallback(() => {
+		setCanGoBack(false);
+		setOverlayBackActive(false);
+		setWebLoading(true);
+	}, []);
+
+	const recoverWebViewProcess = useCallback(() => {
+		setLoadError(null);
+		setStripColor(null);
+		resetTransientWebViewState();
+		setReloadKey((k) => k + 1);
+	}, [resetTransientWebViewState]);
 
 	// When the system scheme flips while open, tell the page so code-server
 	// re-detects its theme without a reload.
@@ -143,8 +159,8 @@ export default function InstanceScreen() {
 
 	function retry() {
 		setLoadError(null);
-		setWebLoading(true);
 		setStripColor(null);
+		resetTransientWebViewState();
 		setReloadKey((k) => k + 1);
 	}
 
@@ -228,6 +244,18 @@ export default function InstanceScreen() {
 						// would in a desktop browser, not with the theme bleeding through.
 						// The load flash is hidden by the overlay below, not this colour.
 						style={{ flex: 1, backgroundColor: "#ffffff" }}
+						automaticallyAdjustContentInsets={false}
+						automaticallyAdjustsScrollIndicatorInsets={false}
+						contentInsetAdjustmentBehavior="never"
+						bounces={false}
+						overScrollMode="never"
+						keyboardDisplayRequiresUserAction={false}
+						hideKeyboardAccessoryView
+						allowsBackForwardNavigationGestures={false}
+						allowsLinkPreview={false}
+						dataDetectorTypes="none"
+						contentMode="mobile"
+						setSupportMultipleWindows={false}
 						// iOS uses WKHTTPCookieStore, Android CookieManager.
 						sharedCookiesEnabled
 						thirdPartyCookiesEnabled
@@ -238,14 +266,24 @@ export default function InstanceScreen() {
 						onMessage={(event) => {
 							const data = event.nativeEvent.data;
 							if (data === "composery:back") messageBack();
-							else if (data.startsWith("composery:bg:")) {
+							else if (data === "composery:overlay-back:on") {
+								setOverlayBackActive(true);
+							} else if (data === "composery:overlay-back:off") {
+								setOverlayBackActive(false);
+							} else if (data.startsWith("composery:bg:")) {
 								setStripColor(data.slice("composery:bg:".length));
 							}
+						}}
+						onLoadStart={() => {
+							setOverlayBackActive(false);
+							setWebLoading(true);
 						}}
 						onLoadEnd={() => setWebLoading(false)}
 						onError={(event) =>
 							setLoadError(event.nativeEvent.description || "")
 						}
+						onContentProcessDidTerminate={recoverWebViewProcess}
+						onRenderProcessGone={recoverWebViewProcess}
 						onNavigationStateChange={onNavigationStateChange}
 						onShouldStartLoadWithRequest={(request) => {
 							// Navigation guard (PLAN.md Wrinkle 6): 'other' covers the initial

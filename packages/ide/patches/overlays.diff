@@ -1,6 +1,27 @@
+diff --git a/lib/vscode/src/vs/code/browser/workbench/callback.html b/lib/vscode/src/vs/code/browser/workbench/callback.html
+--- a/lib/vscode/src/vs/code/browser/workbench/callback.html
++++ b/lib/vscode/src/vs/code/browser/workbench/callback.html
+@@ -8,1 +8,1 @@
+-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
++		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
+--- a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
++++ b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
+@@ -17,1 +17,1 @@
+-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
++		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+@@ -31,0 +32,2 @@
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
+@@ -65,0 +68,2 @@
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
 diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench.html b/lib/vscode/src/vs/code/browser/workbench/workbench.html
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
 +++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+@@ -18,1 +18,1 @@
+-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
++		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 @@ -28,6 +28,8 @@
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />

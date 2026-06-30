@@ -75,13 +75,13 @@ export function renderStartupPage(healthUrl: string): string {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
 <title>Preparing workspace</title>
 <style>
 html,body{height:100%;overflow:hidden;width:100%}
 body{margin:0;background:#fefdf9;color:#2d241e;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;place-items:center}
-main{box-sizing:border-box;padding:2rem}
+main{box-sizing:border-box;padding:max(2rem,env(safe-area-inset-top,0px)) max(2rem,env(safe-area-inset-right,0px)) max(2rem,env(safe-area-inset-bottom,0px)) max(2rem,env(safe-area-inset-left,0px))}
 h1{font-size:1.25rem;font-weight:600;line-height:1.3;margin:0}
 @media (prefers-color-scheme:dark){body{background:#2c231c;color:#f5f1ea}}
 </style>

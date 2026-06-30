@@ -69,6 +69,8 @@ html,
 body {
 	height: 100%;
 	overflow: hidden;
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
 	width: 100%;
 }
 
@@ -84,8 +86,16 @@ body {
 }
 
 input,
-button {
+button,
+select,
+textarea {
 	font: inherit;
+}
+
+input:not([type="hidden"]),
+select,
+textarea {
+	font-size: max(16px, 1em);
 }
 
 a {
@@ -96,8 +106,13 @@ a {
 	box-sizing: border-box;
 	display: grid;
 	height: 100%;
+	overflow: auto;
 	place-items: center;
-	padding: 24px;
+	padding: max(24px, env(safe-area-inset-top, 0px))
+		max(24px, env(safe-area-inset-right, 0px))
+		max(24px, env(safe-area-inset-bottom, 0px))
+		max(24px, env(safe-area-inset-left, 0px));
+	-webkit-overflow-scrolling: touch;
 	width: 100%;
 }
 

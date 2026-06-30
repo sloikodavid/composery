@@ -37,7 +37,7 @@ export async function requireIdentity(ctx: ReaderCtx) {
 export function emailFromIdentity(identity: UserIdentity) {
 	if (!identity.email) {
 		throw new ConvexError(
-			"No email on the authenticated identity. Add an `email` claim to Clerk's session token (Configure -> Sessions -> Customize session token); see docs/setup.md."
+			"No email on the authenticated identity. Add an `email` claim to Clerk's session token (Configure -> Sessions -> Customize session token); see docs/developing/web/clerk.md."
 		);
 	}
 	return identity.email;

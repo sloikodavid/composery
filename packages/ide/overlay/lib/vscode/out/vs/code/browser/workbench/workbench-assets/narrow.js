@@ -10,6 +10,7 @@
 	const modalEditorNarrowAttribute = "data-composery-narrow-maximized";
 	const modalEditorMaximizePendingAttribute =
 		"data-composery-narrow-maximize-pending";
+	const keyboardInsetProbe = document.createElement("div");
 
 	const overlaySelectors = [
 		".monaco-menu-container",
@@ -32,13 +33,61 @@
 	const modalEditorMaximizeSelector =
 		".monaco-modal-editor-block .modal-editor-action-container .action-label.codicon-screen-full";
 
+	keyboardInsetProbe.style.cssText =
+		"position:fixed;left:-9999px;bottom:0;width:1px;height:env(keyboard-inset-height,0px);pointer-events:none;visibility:hidden;";
+	keyboardInsetProbe.setAttribute("aria-hidden", "true");
+
+	function ensureKeyboardInsetProbe() {
+		if (keyboardInsetProbe.isConnected) {
+			return;
+		}
+
+		(document.body || document.documentElement).appendChild(keyboardInsetProbe);
+	}
+
+	function envKeyboardInset() {
+		ensureKeyboardInsetProbe();
+		return keyboardInsetProbe.offsetHeight;
+	}
+
+	function bottomKeyboardOverlap(rect) {
+		if (!rect?.height) {
+			return 0;
+		}
+
+		const top = rect.y ?? rect.top ?? window.innerHeight;
+		const bottom = rect.bottom ?? top + rect.height;
+		if (bottom < window.innerHeight - 1) {
+			return 0;
+		}
+
+		return Math.max(0, Math.round(window.innerHeight - top));
+	}
+
+	function virtualKeyboardInset() {
+		const keyboard = navigator.virtualKeyboard;
+		if (!keyboard?.overlaysContent) {
+			return 0;
+		}
+
+		return bottomKeyboardOverlap(keyboard.boundingRect);
+	}
+
+	function visualViewportKeyboardInset(viewport) {
+		return viewport
+			? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+			: 0;
+	}
+
 	function updateViewportVars() {
 		const viewport = window.visualViewport;
 		const height = viewport?.height ?? window.innerHeight;
 		const width = viewport?.width ?? window.innerWidth;
-		const keyboardInsetBottom = viewport
-			? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-			: 0;
+		const keyboardInsetBottom = Math.max(
+			visualViewportKeyboardInset(viewport),
+			virtualKeyboardInset(),
+			envKeyboardInset(),
+		);
 		const rootStyle = document.documentElement.style;
 
 		rootStyle.setProperty(
@@ -100,11 +149,24 @@
 		target.dispatchEvent(new KeyboardEvent("keyup", eventInit));
 	}
 
+	function postNativeOverlayBackGuard(active) {
+		if (!window.__composeryNative || !window.ReactNativeWebView?.postMessage) {
+			return;
+		}
+
+		try {
+			window.ReactNativeWebView.postMessage(
+				`composery:overlay-back:${active ? "on" : "off"}`,
+			);
+		} catch {}
+	}
+
 	function updateOverlayBackGuard() {
 		const overlay = activeOverlay();
 		if (overlay && !overlayBackGuardArmed) {
 			overlayBackGuardArmed = true;
 			history.pushState({ composeryOverlayBackGuard: true }, "", location.href);
+			postNativeOverlayBackGuard(true);
 			return;
 		}
 
@@ -113,6 +175,7 @@
 		}
 
 		overlayBackGuardArmed = false;
+		postNativeOverlayBackGuard(false);
 		if (history.state?.composeryOverlayBackGuard) {
 			overlayBackGuardDisarming = true;
 			history.back();
@@ -130,6 +193,7 @@
 		}
 
 		overlayBackGuardArmed = false;
+		postNativeOverlayBackGuard(false);
 		if (activeOverlay()) {
 			dispatchEscape();
 			window.setTimeout(updateOverlayBackGuard, 100);
@@ -225,53 +289,10 @@
 	window.addEventListener("resize", schedule);
 	window.visualViewport?.addEventListener("resize", schedule);
 	window.visualViewport?.addEventListener("scroll", schedule);
+	navigator.virtualKeyboard?.addEventListener("geometrychange", schedule);
 	narrow.addEventListener("change", handleNarrowChange);
 
 	updateViewportVars();
 	window.setTimeout(schedule, 500);
 	window.setTimeout(schedule, 1500);
-})();
-
-(function () {
-	// TEMP Composery touch/keyboard diagnostic HUD. Remove after debugging. Pure read-only overlay
-	// (pointer-events:none) that surfaces the device-only viewport/keyboard/hit-test state so a bug
-	// that never reproduces in headless can be read straight off the phone screen.
-	const hud = document.createElement("div");
-	hud.style.cssText =
-		"position:fixed;top:0;left:0;right:0;z-index:2147483647;pointer-events:none;" +
-		"font:11px/1.35 monospace;color:#fff;background:rgba(0,0,0,.72);padding:3px 5px;white-space:pre-wrap;";
-	const probe = document.createElement("div");
-	probe.style.cssText =
-		"position:fixed;left:-9999px;bottom:0;width:1px;height:env(keyboard-inset-height,0px);";
-	function attach() {
-		document.body.appendChild(hud);
-		document.body.appendChild(probe);
-	}
-	if (document.body) attach();
-	else document.addEventListener("DOMContentLoaded", attach);
-
-	let lastX = -1, lastY = -1, minVV = 99999, maxOff = 0, maxEnv = 0;
-	function rec(e) {
-		const t = (e.touches && e.touches[0]) || e;
-		if (t && t.clientX != null) { lastX = Math.round(t.clientX); lastY = Math.round(t.clientY); }
-	}
-	document.addEventListener("touchstart", rec, { capture: true, passive: true });
-	document.addEventListener("pointerdown", rec, { capture: true, passive: true });
-	const desc = (el) => (el ? el.tagName + "." + ((el.className || "") + "").slice(0, 18) : "null");
-	function tick() {
-		const vv = window.visualViewport;
-		const env = probe.offsetHeight;
-		const vk = navigator.virtualKeyboard;
-		if (vv) { minVV = Math.min(minVV, Math.round(vv.height)); maxOff = Math.max(maxOff, Math.round(vv.offsetTop)); }
-		maxEnv = Math.max(maxEnv, env);
-		const hit = lastX >= 0 ? desc(document.elementFromPoint(lastX, lastY)) : "-";
-		hud.textContent =
-			"VK:" + ("virtualKeyboard" in navigator ? "y" : "n") + " ovl:" + (vk ? vk.overlaysContent : "-") +
-			" | iH:" + window.innerHeight + " vvH:" + (vv ? Math.round(vv.height) : "-") + "(min" + (minVV === 99999 ? "-" : minVV) + ")" +
-			" vvOff:" + (vv ? Math.round(vv.offsetTop) : "-") + "(max" + maxOff + ")" +
-			" env:" + env + "(max" + maxEnv + ")" +
-			"\nact:" + desc(document.activeElement) + " | tap:" + lastX + "," + lastY + " hit:" + hit;
-		requestAnimationFrame(tick);
-	}
-	requestAnimationFrame(tick);
 })();

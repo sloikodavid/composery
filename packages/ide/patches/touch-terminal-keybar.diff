@@ -7,7 +7,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
  import { RemoteTerminalBackendContribution } from './remoteTerminalBackend.js';
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalKeybar.contribution.ts
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,214 @@
 +/*---------------------------------------------------------------------------------------------
 + * Composery Mobile Keybar: a strip of control / modifier keys docked above the on-screen
 + * keyboard, since touch browsers expose no Esc / Ctrl / Alt / Tab / arrows. Terminal only -
@@ -106,7 +106,13 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +
 +		this._register(dom.addDisposableListener(mainWindow.document, 'beforeinput', e => this.onBeforeInput(e as InputEvent), true));
 +		this._register(this.terminalService.onDidChangeActiveInstance(() => this.bindFocus()));
-+		this._register(dom.addDisposableListener(mainWindow.visualViewport ?? mainWindow, 'resize', () => this.update()));
++		const visualViewport = mainWindow.visualViewport;
++		if (visualViewport) {
++			this._register(dom.addDisposableListener(visualViewport, 'resize', () => this.update()));
++			this._register(dom.addDisposableListener(visualViewport, 'scroll', () => this.update()));
++		} else {
++			this._register(dom.addDisposableListener(mainWindow, 'resize', () => this.update()));
++		}
 +
 +		const virtualKeyboard = (mainWindow.navigator as { virtualKeyboard?: { overlaysContent: boolean } & EventTarget }).virtualKeyboard;
 +		if (virtualKeyboard) {
@@ -230,7 +236,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +	position: fixed;
 +	left: 0;
 +	right: 0;
-+	bottom: max(env(keyboard-inset-height, 0px), var(--composery-touch-keyboard-inset, 0px));
++	bottom: max(env(keyboard-inset-height, 0px), var(--composery-touch-keyboard-inset, 0px), env(safe-area-inset-bottom, 0px));
 +	z-index: 2550;
 +	box-sizing: border-box;
 +	height: 40px;

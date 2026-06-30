@@ -8,7 +8,7 @@ native shell: scan or add an instance URL, probe it, render it in a WebView. It
 also emits a static web build (`web.output: static`), but the stores are the
 point.
 
-Unlike [the website](./web.md), there is no push-to-deploy. Two gates
+Unlike [the website](./web/index.md), there is no push-to-deploy. Two gates
 sit in the path that Vercel does not have: a signed native binary must be built,
 and Apple/Google must review it before users get it. [EAS](https://expo.dev)
 runs that pipeline; `eas.json` configures it.
