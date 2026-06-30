@@ -121,15 +121,15 @@ auto-syncs them - each is the source of truth for its own product.
   `:sha-<12>`, a git tag `vX.Y.Z` (the run fails if it already exists, forcing a
   bump), a GitHub Release, and the image's `COMPOSERY_BUILD_VERSION`. To cut a
   stable release: bump this number, merge to main, run the workflow. Any other
-  ref is a *preview* release - tagged `preview-<sha>`, version number ignored.
-- **Mobile app** - `packages/mobile-app/app.json` `version` (marketing version
+  ref is a _preview_ release - tagged `preview-<sha>`, version number ignored.
+- **Mobile** - `packages/mobile/app.json` `version` (marketing version
   the stores key on). Separate lifecycle, separate gate (store review). EAS
   manages the build/version codes server-side (`appVersionSource: remote`), so
-  this is the only number you hand-edit. See [mobile-app](./mobile-app.md).
-- **docs-website** - unversioned. Auto-deploys to Vercel on push.
+  this is the only number you hand-edit. See [mobile](./mobile.md).
+- **web** - unversioned. Auto-deploys to Vercel on push.
 
-The `version` fields in `packages/mobile-app/package.json` and
-`packages/docs-website/package.json` are npm metadata and are ignored by every
+The `version` fields in `packages/mobile/package.json` and
+`packages/web/package.json` are npm metadata and are ignored by every
 release path. Dockerfile pins (`CODE_SERVER_COMMIT`, `NODE_IMAGE`, `BUN_VERSION`,
 etc.) are dependency inputs, not the product version - see Renovate below.
 

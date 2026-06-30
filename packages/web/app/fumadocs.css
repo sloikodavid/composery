@@ -1,0 +1,92 @@
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* Remap fumadocs' fd-* tokens onto our palette. Must be plain (unlayered) rules,
+   not `@theme inline` - inline never emits the variables, so neutral.css's gray
+   defaults would win the cascade. */
+:root,
+.dark {
+	--color-fd-background: var(--background);
+	--color-fd-foreground: var(--foreground);
+	--color-fd-muted: var(--muted);
+	--color-fd-muted-foreground: var(--muted-foreground);
+	--color-fd-popover: var(--popover);
+	--color-fd-popover-foreground: var(--popover-foreground);
+	--color-fd-card: var(--card);
+	--color-fd-card-foreground: var(--card-foreground);
+	--color-fd-border: var(--border);
+	--color-fd-primary: var(--primary);
+	--color-fd-primary-foreground: var(--primary-foreground);
+	--color-fd-secondary: var(--secondary);
+	--color-fd-secondary-foreground: var(--secondary-foreground);
+	--color-fd-accent: var(--accent);
+	--color-fd-accent-foreground: var(--accent-foreground);
+	--color-fd-ring: var(--ring);
+	--color-fd-overlay: var(--overlay);
+	--color-fd-error: var(--destructive);
+	--color-fd-success: var(--success);
+	--color-fd-warning: var(--warning);
+}
+
+/* fumadocs' Button classes live in node_modules (unscanned); `invisible` must be
+   safelisted or the closed mobile drawer stays on screen. */
+@source "../node_modules/fumadocs-ui/dist/components/ui/button.js";
+@source inline("invisible");
+
+/* Vendored fumadocs sidebar-drawer keyframes. */
+@theme {
+	--animate-fd-fade-in: fd-fade-in 300ms ease;
+	--animate-fd-fade-out: fd-fade-out 300ms ease;
+	--animate-fd-sidebar-in: fd-sidebar-in 250ms ease;
+	--animate-fd-sidebar-out: fd-sidebar-out 250ms ease;
+
+	@keyframes fd-sidebar-in {
+		from {
+			transform: translateX(var(--fd-sidebar-drawer-offset));
+		}
+	}
+	@keyframes fd-sidebar-out {
+		to {
+			transform: translateX(var(--fd-sidebar-drawer-offset));
+		}
+	}
+	@keyframes fd-fade-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes fd-fade-out {
+		from {
+			opacity: 1;
+		}
+		to {
+			opacity: 0;
+		}
+	}
+}
+
+:root {
+	--fd-sidebar-drawer-offset: 100%;
+}
+
+/* Hover intensity isn't a fumadocs token; match its faint /50 sidebar hover to the
+   solid fd-accent our nav and buttons use (light only - dark keeps /50). */
+:root:not(.dark)
+	#nd-sidebar
+	[data-radix-scroll-area-viewport]
+	:is(a, button):not([data-active="true"]):hover {
+	background-color: var(--color-fd-accent);
+}
+
+/* Search trigger + sidebar islands: drop fumadocs' fd-secondary fill so they read
+   as our border-defined outline inputs. kbd badges use solid fd-secondary, not /50. */
+#nd-sidebar [class~="bg-fd-secondary/50"] {
+	background-color: transparent;
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--font-heading);
+}

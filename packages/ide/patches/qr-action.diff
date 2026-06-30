@@ -1,8 +1,9 @@
 diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -9,7 +9,9 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
-+import { ICommandService } from '../../platform/commands/common/commands';
+@@ -9,7 +9,10 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
++import { ICommandService } from '../../platform/commands/common/commands.js';
++import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
  
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
@@ -25,7 +26,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  	}
  
 +	private addShowQrCommand() {
-+		CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor) => {
++		CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor: ServicesAccessor) => {
 +			const targetWindow = window.top || window;
 +			const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
 +			accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);

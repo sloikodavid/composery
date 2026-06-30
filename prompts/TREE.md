@@ -18,8 +18,9 @@
   settings.json
 docs/
   repo/
-    docs-website.md
     maintenance.md
+    mobile.md
+    web.md
   self-hosting/
     fly.md
     index.md
@@ -78,55 +79,6 @@ packages/
         Cargo.toml
     Cargo.lock
     Cargo.toml
-  docs-website/
-    patches/
-      fumadocs-ui@16.10.4.patch
-    src/
-      app/
-        (docs)/
-          [[...slug]]/
-            page.tsx
-          layout.tsx
-        api/
-          search/
-            route.ts
-        fonts/
-          bricolage-grotesque-latin-wght-normal.woff2
-          inter-latin-wght-normal.woff2
-        llms-full.txt/
-          route.ts
-        llms.mdx/
-          docs/
-            [[...slug]]/
-              route.ts
-        llms.txt/
-          route.ts
-        og/
-          docs/
-            [...slug]/
-              route.tsx
-        fonts.ts
-        global.css
-        icon.svg
-        layout.tsx
-      components/
-        logo-data.ts
-        logo.tsx
-        mdx.tsx
-      lib/
-        cn.ts
-        layout.shared.tsx
-        shared.ts
-        source.ts
-    .gitignore
-    eslint.config.mjs
-    next.config.mjs
-    package.json
-    postcss.config.mjs
-    proxy.ts
-    source.config.ts
-    tsconfig.json
-    vercel.json
   ide/
     overlay/
       lib/
@@ -243,7 +195,7 @@ packages/
       welcome.diff
     build.sh
     upstream
-  mobile-app/
+  mobile/
     assets/
       images/
         android-icon-background.png
@@ -293,9 +245,232 @@ packages/
         back-button.ts
     .gitignore
     app.json
+    eas.json
     eslint.config.mjs
     package.json
     tsconfig.json
+    vitest.config.ts
+  web/
+    app/
+      (site)/
+        boxes/
+          _components/
+            box-table.tsx
+          [slug]/
+            _components/
+              box-actions.tsx
+              box-detail.tsx
+              box-snapshots.tsx
+            page.tsx
+          new/
+            _components/
+              new-box-form.tsx
+            page.tsx
+          error.tsx
+          page.tsx
+        console/
+          _components/
+            console-home.tsx
+            console-snapshot-policy.tsx
+            console-stats.tsx
+            console-thresholds.tsx
+          boxes/
+            [slug]/
+              _components/
+                console-box-actions.tsx
+                console-box-detail.tsx
+                console-box-links.tsx
+                console-box-snapshots.tsx
+              page.tsx
+          page.tsx
+        design/
+          _components/
+            design-demos.tsx
+            logo-export.tsx
+            logo-showcase.tsx
+            toast-demo.tsx
+          page.tsx
+        pricing/
+          page.tsx
+        sign-in/
+          [[...sign-in]]/
+            page.tsx
+        error.tsx
+        layout.tsx
+        not-found.tsx
+        page.tsx
+      api/
+        search/
+          route.ts
+      docs/
+        [[...slug]]/
+          page.tsx
+        layout.tsx
+      fonts/
+        bricolage-grotesque-latin-wght-normal.woff2
+        inter-latin-wght-normal.woff2
+      llms-full.txt/
+        route.ts
+      llms.mdx/
+        docs/
+          [[...slug]]/
+            route.ts
+      llms.txt/
+        route.ts
+      og/
+        docs/
+          [...slug]/
+            route.tsx
+      apple-icon.png
+      favicon.ico
+      fonts.ts
+      fumadocs.css
+      global-error.tsx
+      globals.css
+      icon.svg
+      layout.tsx
+      providers.tsx
+    components/
+      ... (50 items)
+    convex/
+      _generated/
+        api.d.ts
+        api.js
+        dataModel.d.ts
+        server.d.ts
+        server.js
+      billing/
+        polar.ts
+        reconciliation.ts
+        webhooks.ts
+      boxes/
+        infra/
+          cloudflareDns.test.ts
+          cloudflareDns.ts
+          hetznerVps.test.ts
+          hetznerVps.ts
+          runtimeArtifacts.test.ts
+          runtimeArtifacts.ts
+          runtimeImages.test.ts
+          runtimeImages.ts
+          ssh.ts
+          sshKeys.test.ts
+          sshKeys.ts
+        workflows/
+          boxWorkflow.ts
+          changeBoxPassword.ts
+          changeBoxSlug.ts
+          deleteBox.ts
+          provisionBox.ts
+          resetBox.ts
+          runtimeLifecycle.ts
+          snapshotWorkflows.ts
+          startBox.ts
+          stopBox.ts
+          suspendBox.ts
+          unsuspendBox.ts
+        boxEvents.ts
+        boxLogs.ts
+        boxMetrics.test.ts
+        boxMetrics.ts
+        boxMetricsPoll.ts
+        boxOperationRules.test.ts
+        boxOperationRules.ts
+        boxOperations.ts
+        boxPassword.test.ts
+        boxPassword.ts
+        boxQueries.ts
+        boxSnapshots.ts
+        boxStatus.ts
+        boxViews.test.ts
+        boxViews.ts
+        metricThresholds.test.ts
+        metricThresholds.ts
+        reconcile.test.ts
+        reconcile.ts
+        slugAvailability.ts
+        snapshotPolicy.test.ts
+        snapshotPolicy.ts
+      checkout/
+        checkoutConversion.ts
+        checkoutIntents.ts
+      staff/
+        boxes.ts
+        checkout.ts
+        metrics.ts
+        settings.ts
+        stats.ts
+        users.ts
+      user/
+        boxes.ts
+        checkout.ts
+      auth.config.ts
+      authorization.ts
+      convex.config.ts
+      crons.ts
+      env.test.ts
+      env.ts
+      http.ts
+      schema.ts
+      settings.ts
+      tsconfig.json
+      users.ts
+    docs/
+      maintenance.md
+      setup.md
+    hooks/
+      use-busy-action.ts
+      use-is-touch.ts
+      use-table-sort.ts
+    lib/
+      auth-routing.test.ts
+      auth-routing.ts
+      box-slug.test.ts
+      box-slug.ts
+      clerk-appearance.ts
+      convex-dashboard.ts
+      datetime.test.ts
+      datetime.ts
+      error-message.test.ts
+      error-message.ts
+      hetzner-dashboard.ts
+      highlight-logs.ts
+      layout.shared.tsx
+      polar-dashboard.test.ts
+      polar-dashboard.ts
+      route-guards.ts
+      shared.ts
+      source.ts
+      utils.ts
+      vercel-dashboard.ts
+    patches/
+      fumadocs-ui@16.10.4.patch
+    public/
+      robots.txt
+      showcase-dark.png
+      showcase-dark.psd
+      showcase.png
+      showcase.psd
+    scripts/
+      generate-icons.mjs
+      generate-logo.mjs
+    .env.example.convex.dev
+    .env.example.convex.prod
+    .env.example.next.dev
+    .env.example.next.prod
+    .gitignore
+    AGENTS.md
+    components.json
+    convex.json
+    eslint.config.mjs
+    next.config.ts
+    package.json
+    postcss.config.mjs
+    proxy.ts
+    source.config.ts
+    TODO.md
+    tsconfig.json
+    vercel.json
     vitest.config.ts
 prompts/
   BUZZWORDS.md
@@ -418,7 +593,7 @@ tests/
 AGENTS.md
 CHANGELOG.md
 CLAUDE.md
-compose.yml
+compose.dev.yml
 Dockerfile
 eslint.config.mjs
 LICENSE

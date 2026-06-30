@@ -44,3 +44,9 @@ jobs:
           workspaces: packages/cli
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      # Catches build/prerender errors tsc can't (e.g. ConvexReactClient's SSR
+      # URL validation). The website ships on Vercel, so this only builds, it
+      # doesn't deploy. No real secret needed: nothing here reads a runtime value.
+      - run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://convex.invalid

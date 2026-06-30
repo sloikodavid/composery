@@ -24,15 +24,15 @@ diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
 -    "reportIssueUrl": "https://github.com/coder/code-server/issues/new",
 -    "documentationUrl": "https://go.microsoft.com/fwlink/?LinkID=533484#vscode",
 +    "reportIssueUrl": "https://github.com/sloikodavid/composery/issues/new",
-+    "documentationUrl": "https://docs.composery.io",
++    "documentationUrl": "https://www.composery.io/docs",
      "keyboardShortcutsUrlMac": "https://go.microsoft.com/fwlink/?linkid=832143",
      "keyboardShortcutsUrlLinux": "https://go.microsoft.com/fwlink/?linkid=832144",
      "keyboardShortcutsUrlWin": "https://go.microsoft.com/fwlink/?linkid=832145",
 -    "introductoryVideosUrl": "https://go.microsoft.com/fwlink/?linkid=832146",
 -    "tipsAndTricksUrl": "https://go.microsoft.com/fwlink/?linkid=852118",
 -    "newsletterSignupUrl": "https://www.research.net/r/vsc-newsletter",
-+    "introductoryVideosUrl": "https://docs.composery.io",
-+    "tipsAndTricksUrl": "https://docs.composery.io",
++    "introductoryVideosUrl": "https://www.composery.io/docs",
++    "tipsAndTricksUrl": "https://www.composery.io/docs",
 +    "newsletterSignupUrl": "https://www.composery.io",
      "linkProtectionTrustedDomains": [
 -      "https://open-vsx.org"

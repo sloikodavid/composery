@@ -2,9 +2,27 @@ packages:
   - packages/*
 
 patchedDependencies:
-  fumadocs-ui@16.10.4: packages/docs-website/patches/fumadocs-ui@16.10.4.patch
+  fumadocs-ui@16.10.4: packages/web/patches/fumadocs-ui@16.10.4.patch
+
+# @clerk/nextjs@7.4.2 and @clerk/ui@1.14.0 are pinned, but their @clerk/* deps
+# float on caret ranges. A fresh resolve floats them past what @clerk/ui@1.14.0
+# was built against (it imports an internal hook @clerk/shared dropped after
+# 4.14.0). Pin the whole set to the versions the standalone website shipped with.
+overrides:
+  "@clerk/shared": 4.14.0
+  "@clerk/react": 6.7.2
+  "@clerk/backend": 3.4.14
+  "@clerk/localizations": 4.7.0
 
 allowBuilds:
+  "@clerk/shared": true
+  "@tailwindcss/oxide": true
+  cpu-features: true
   esbuild: true
   sharp: true
+  ssh2: true
   unrs-resolver: true
+  bufferutil: false
+  core-js: false
+  msw: false
+  utf-8-validate: false

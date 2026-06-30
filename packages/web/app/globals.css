@@ -1,0 +1,258 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+/* Base theme for Clerk's @clerk/ui components (lib/clerk-appearance.ts starts
+   from the `shadcn` theme); ships its compiled classes since they live in
+   node_modules and Tailwind won't scan them. */
+@import "@clerk/ui/themes/shadcn.css";
+/* All fumadocs-ui integration glue (token mapping, class scanning, animations)
+   is isolated in its own file so the rest of the app's styles stay free of it. */
+@import "./fumadocs.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, var(--font-inter), "Segoe UI", system-ui,
+		sans-serif;
+	--font-heading:
+		var(--font-bricolage), -apple-system, BlinkMacSystemFont, var(--font-inter),
+		"Segoe UI", system-ui, sans-serif;
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-overlay: var(--overlay);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+	--radius: 0.625rem;
+	--header-auth-animation: page-fade-in 180ms ease-out both;
+
+	--background: oklch(0.993 0.005 85);
+	--foreground: oklch(0.27 0.018 60);
+	--card: oklch(0.993 0.005 85);
+	--card-foreground: oklch(0.27 0.018 60);
+	--popover: oklch(0.993 0.005 85);
+	--popover-foreground: oklch(0.27 0.018 60);
+	--primary: oklch(0.55 0.12 64);
+	--primary-foreground: oklch(0.99 0.02 95);
+	--secondary: oklch(0.96 0.01 82);
+	--secondary-foreground: oklch(0.27 0.018 60);
+	--muted: oklch(0.96 0.01 82);
+	--muted-foreground: oklch(0.53 0.018 62);
+	--accent: oklch(0.96 0.01 82);
+	--accent-foreground: oklch(0.27 0.018 60);
+	--destructive: oklch(0.577 0.245 27.325);
+	--success: oklch(0.55 0.12 150);
+	--warning: oklch(0.78 0.15 98);
+	--border: oklch(0.905 0.012 75);
+	--input: oklch(0.905 0.012 75);
+	--ring: oklch(0.62 0.09 64);
+	/* Modal scrim, shared by our Dialog backdrop and fumadocs' overlay. */
+	--overlay: oklch(0 0 0 / 0.4);
+	--chart-1: var(--primary);
+	--chart-2: oklch(0.6 0.118 184.704);
+	--chart-3: oklch(0.398 0.07 227.392);
+	--chart-4: oklch(0.828 0.189 84.429);
+	--chart-5: oklch(0.769 0.188 70.08);
+	--sidebar: oklch(0.993 0.005 85);
+	--sidebar-foreground: oklch(0.27 0.018 60);
+	--sidebar-primary: oklch(0.55 0.12 64);
+	--sidebar-primary-foreground: oklch(0.99 0.02 95);
+	--sidebar-accent: oklch(0.96 0.01 82);
+	--sidebar-accent-foreground: oklch(0.27 0.018 60);
+	--sidebar-border: oklch(0.905 0.012 75);
+	--sidebar-ring: oklch(0.62 0.09 64);
+}
+
+.dark {
+	--background: oklch(0.265 0.018 62);
+	--foreground: oklch(0.96 0.01 85);
+	--card: oklch(0.265 0.018 62);
+	--card-foreground: oklch(0.96 0.01 85);
+	--popover: oklch(0.265 0.018 62);
+	--popover-foreground: oklch(0.96 0.01 85);
+	--primary: oklch(0.6 0.14 64);
+	--primary-foreground: oklch(0.99 0.02 95);
+	--secondary: oklch(0.325 0.02 62);
+	--secondary-foreground: oklch(0.96 0.01 85);
+	--muted: oklch(0.325 0.02 62);
+	--muted-foreground: oklch(0.77 0.022 70);
+	--accent: oklch(0.325 0.02 62);
+	--accent-foreground: oklch(0.96 0.01 85);
+	--destructive: oklch(0.704 0.191 22.216);
+	--success: oklch(0.68 0.14 150);
+	--warning: oklch(0.85 0.17 103);
+	--border: oklch(0.96 0.018 80 / 14%);
+	--input: oklch(0.96 0.018 80 / 16%);
+	--ring: oklch(0.58 0.08 68);
+	--chart-1: var(--primary);
+	--chart-2: oklch(0.696 0.17 162.48);
+	--chart-3: oklch(0.769 0.188 70.08);
+	--chart-4: oklch(0.627 0.265 303.9);
+	--chart-5: oklch(0.645 0.246 16.439);
+	--sidebar: oklch(0.265 0.018 62);
+	--sidebar-foreground: oklch(0.96 0.01 85);
+	--sidebar-primary: oklch(0.6 0.14 64);
+	--sidebar-primary-foreground: oklch(0.99 0.02 95);
+	--sidebar-accent: oklch(0.325 0.02 62);
+	--sidebar-accent-foreground: oklch(0.96 0.01 85);
+	--sidebar-border: oklch(0.96 0.018 80 / 14%);
+	--sidebar-ring: oklch(0.58 0.08 68);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+
+	html {
+		@apply font-sans;
+	}
+
+	body {
+		@apply bg-background text-foreground;
+		/* Always reserve the scrollbar so page width is consistent across routes.
+		   It lives on <body> (not <html>) so <html> stays overflow:visible and
+		   overflow propagation keeps working: when an overlay locks scroll via
+		   body{overflow:hidden} (Clerk/floating-ui), the root scrollbar is
+		   actually removed and its compensating padding refills the gap, so the
+		   page never shifts horizontally. */
+		overflow-y: scroll;
+	}
+
+	button:not(:disabled),
+	[role="button"]:not(:disabled) {
+		cursor: pointer;
+	}
+}
+
+/* Smooth underline for links: the underline grows from the center on hover
+   instead of appearing abruptly. Works on any element using the `link-underline`
+   class alongside `text-primary`. */
+.link-underline {
+	background-image: linear-gradient(currentColor, currentColor);
+	background-position: 0 100%;
+	background-repeat: no-repeat;
+	background-size: 0% 1px;
+	transition: background-size 200ms ease-out;
+}
+
+.link-underline:hover {
+	background-size: 100% 1px;
+}
+
+/* Content settles in with a clean fade instead of a layout-shifting skeleton. */
+.page-fade-in {
+	animation: page-fade-in 220ms ease-out both;
+}
+
+.header-auth-fade-in {
+	animation: var(--header-auth-animation);
+}
+
+@keyframes page-fade-in {
+	from {
+		opacity: 0;
+	}
+
+	to {
+		opacity: 1;
+	}
+}
+
+/* Shiki renders the box logs with a One Light / One Dark Pro pair. With
+   `defaultColor: false` each token carries both colours as CSS variables; swap
+   the text colours with the site theme and keep the background transparent so
+   the surrounding card surface shows through. */
+.shiki {
+	background-color: transparent !important;
+}
+
+.shiki,
+.shiki span {
+	color: var(--shiki-light);
+}
+
+.dark .shiki,
+.dark .shiki span {
+	color: var(--shiki-dark);
+}
+
+/* Sonner toast surface. The cn-toast class is set in components/sonner.tsx;
+   sonner ships its own slide+fade enter/exit and stacking, so here we only
+   layer on the product's surface tokens, spacing, lift, and per-variant icon
+   colors (the icons themselves are wired in components/sonner.tsx). */
+.cn-toast {
+	gap: 0.75rem;
+	padding: 0.75rem;
+	border-radius: var(--radius);
+	box-shadow: 0 6px 16px -4px oklch(0 0 0 / 0.12);
+	font-family: var(--font-sans);
+}
+
+.cn-toast [data-icon] {
+	align-self: flex-start;
+	margin-top: 1px;
+}
+
+.cn-toast [data-title] {
+	font-weight: 500;
+	color: var(--foreground);
+}
+
+.cn-toast [data-description] {
+	line-height: 1.25rem;
+	color: var(--muted-foreground);
+}
+
+.cn-toast[data-type="success"] [data-icon] {
+	color: var(--success);
+}
+
+.cn-toast[data-type="error"] [data-icon] {
+	color: var(--destructive);
+}
+
+.cn-toast[data-type="warning"] [data-icon] {
+	color: var(--warning);
+}
+
+.cn-toast[data-type="info"] [data-icon] {
+	color: var(--foreground);
+}
