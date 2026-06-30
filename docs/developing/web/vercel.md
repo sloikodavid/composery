@@ -28,6 +28,7 @@ Project settings:
   It deploys [Convex](./convex.md) first, injects the correct
   `NEXT_PUBLIC_CONVEX_URL` and Convex site URL into the Next.js build, then builds
   the frontend.
+
 - Project Settings -> Git: production branch = `main`.
 - Project Settings -> Build and Deployment -> Ignored Build Step = **Only build
   production**. There is no preview Convex backend, so a non-`main` branch deploy
@@ -42,13 +43,13 @@ Enabled, so the build can read `docs/` and the workspace manifests.
 
 Add these Vercel Production environment variables (frontend plane):
 
-| Variable                            | Production value                                                  |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `CONVEX_DEPLOY_KEY`                 | the `prod:` deploy key from the [Convex](./convex.md) step         |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Production [Clerk](./clerk.md) publishable key                     |
-| `CLERK_SECRET_KEY`                  | Production Clerk secret key                                       |
-| `NEXT_PUBLIC_CLERK_SIGN_IN_URL`     | `/sign-in`                                                        |
-| `CLERK_AUTHORIZED_PARTIES`          | `https://www.<website-domain>` (exact origins, comma separated)   |
+| Variable                            | Production value                                                |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `CONVEX_DEPLOY_KEY`                 | the `prod:` deploy key from the [Convex](./convex.md) step      |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Production [Clerk](./clerk.md) publishable key                  |
+| `CLERK_SECRET_KEY`                  | Production Clerk secret key                                     |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL`     | `/sign-in`                                                      |
+| `CLERK_AUTHORIZED_PARTIES`          | `https://www.<website-domain>` (exact origins, comma separated) |
 
 ```bash
 vercel env add CONVEX_DEPLOY_KEY production --sensitive

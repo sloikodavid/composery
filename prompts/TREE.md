@@ -18,9 +18,20 @@
   settings.json
 docs/
   developing/
-    maintenance.md
+    web/
+      clerk.md
+      cloudflare.md
+      configuration.md
+      convex.md
+      hetzner.md
+      index.md
+      meta.json
+      polar.md
+      resend.md
+      vercel.md
+    ide.md
+    meta.json
     mobile.md
-    web.md
   self-hosting/
     fly.md
     index.md
@@ -192,6 +203,7 @@ packages/
       touch-gate.diff
       touch-terminal-keybar.diff
       trusted-domains-loopback-callback-guard.diff
+      webview-mobile.diff
       welcome.diff
     build.sh
     upstream
@@ -415,9 +427,6 @@ packages/
       settings.ts
       tsconfig.json
       users.ts
-    docs/
-      maintenance.md
-      setup.md
     hooks/
       use-busy-action.ts
       use-is-touch.ts
@@ -468,7 +477,6 @@ packages/
     postcss.config.mjs
     proxy.ts
     source.config.ts
-    TODO.md
     tsconfig.json
     vercel.json
     vitest.config.ts
@@ -603,7 +611,6 @@ pnpm-workspace.yaml
 README.md
 renovate.json
 SECURITY.md
-TODO.md
 tsconfig.json
 vitest.config.ts
 ```

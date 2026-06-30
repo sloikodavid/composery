@@ -38,7 +38,6 @@ created once in the console and referenced by id.
    dedicated `-f` path so you do not overwrite your personal `id_ed25519`. This
    writes the private key to `~/.ssh/composery_ssh` and the public key to
    `~/.ssh/composery_ssh.pub`.
-
    - **Public key** -> add it as an SSH key in the Hetzner project (Project ->
      Security -> SSH Keys). Put that name or id in `HETZNER_SSH_KEY_IDS`
      (comma-separated for multiple); Hetzner injects it into every server it

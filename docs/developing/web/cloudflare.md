@@ -44,11 +44,11 @@ touches provisioning: the app manages per-slug `A`/`AAAA` records
 (`convex/boxes/infra/cloudflareDns.ts`), not the apex, `www`, `MX`, or these
 `TXT` records. End state - three `TXT` records, all anti-spoofing:
 
-| Name                          | Type  | Value                                            |
-| ----------------------------- | ----- | ------------------------------------------------ |
-| `@` (apex `<cloud-domain>`)   | `TXT` | `v=spf1 -all`                                    |
-| `_dmarc`                      | `TXT` | `v=DMARC1; p=reject; sp=reject; aspf=s; adkim=s` |
-| `*._domainkey`                | `TXT` | `v=DKIM1; p=`                                    |
+| Name                        | Type  | Value                                            |
+| --------------------------- | ----- | ------------------------------------------------ |
+| `@` (apex `<cloud-domain>`) | `TXT` | `v=spf1 -all`                                    |
+| `_dmarc`                    | `TXT` | `v=DMARC1; p=reject; sp=reject; aspf=s; adkim=s` |
+| `*._domainkey`              | `TXT` | `v=DKIM1; p=`                                    |
 
 `sp=reject` extends the policy to every `<slug>` subdomain, so neither the apex
 nor a box name can be spoofed. Skip a `rua=` reporting address; aggregate

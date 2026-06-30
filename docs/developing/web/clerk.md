@@ -14,7 +14,7 @@ keys and a production Frontend API URL.
 1. Enable the **Convex integration** in the Clerk dashboard
    (`dashboard.clerk.com/apps/setup/convex`) and Activate it. This provisions
    the JWT template named `convex` that the app depends on (`getToken({ template:
-   "convex" })`, and `applicationID: "convex"` in `convex/auth.config.ts`) and
+"convex" })`, and `applicationID: "convex"` in `convex/auth.config.ts`) and
    reveals the Frontend API URL used below. The integration adds `aud: "convex"`
    to the **default session token**, so `ConvexProviderWithClerk` sends that
    token directly and bypasses the `convex` JWT template on the browser path
@@ -53,12 +53,12 @@ Cloudflare `<cloud-domain>` zone in the [Cloudflare](./cloudflare.md) section;
 nothing about boxes touches `<website-domain>`. The records, host on the left:
 
 | Host (under `<website-domain>`) | Type    | Target                        |
-| -------------------------------- | ------- | ----------------------------- |
-| `clerk`                          | `CNAME` | `frontend-api.clerk.services` |
-| `accounts`                       | `CNAME` | `accounts.clerk.services`     |
-| `clkmail`                        | `CNAME` | `mail.<id>.clerk.services`    |
-| `clk._domainkey`                 | `CNAME` | `dkim1.<id>.clerk.services`   |
-| `clk2._domainkey`                | `CNAME` | `dkim2.<id>.clerk.services`   |
+| ------------------------------- | ------- | ----------------------------- |
+| `clerk`                         | `CNAME` | `frontend-api.clerk.services` |
+| `accounts`                      | `CNAME` | `accounts.clerk.services`     |
+| `clkmail`                       | `CNAME` | `mail.<id>.clerk.services`    |
+| `clk._domainkey`                | `CNAME` | `dkim1.<id>.clerk.services`   |
+| `clk2._domainkey`               | `CNAME` | `dkim2.<id>.clerk.services`   |
 
 `clerk` and `accounts` have stable targets; the `clkmail` and two `_domainkey`
 targets embed an instance-specific id (shown as `<id>`), so copy those three
