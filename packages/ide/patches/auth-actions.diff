@@ -49,7 +49,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
 
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
-+	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
++	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
 
  	constructor (
  		@ILogService private logService: ILogService,

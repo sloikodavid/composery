@@ -122,7 +122,7 @@ export const openInExistingInstance = async (args: DefaultedArgs, socketPath: st
 export const runCodeServer = async (
   args: DefaultedArgs,
 ): Promise<{ dispose: Disposable["dispose"]; server: http.Server }> => {
-  logger.info(`code-server ${version} ${commit}`)
+  logger.info(`Composery ${version} ${commit}`)
 
   // Load custom strings if provided
   if (args.i18n) {
@@ -221,7 +221,7 @@ export const runCodeServer = async (
     })
     // TODO: Could be nice to add wrapping to the logger?
     logger.info(
-      "  The code-server project does not provide stability guarantees or commit to fixing bugs relating to these experimental features. When filing bug reports, please ensure that you can reproduce the bug with all experimental features turned off.",
+      "  The Composery project does not provide stability guarantees or commit to fixing bugs relating to these experimental features. When filing bug reports, please ensure that you can reproduce the bug with all experimental features turned off.",
     )
   }
 

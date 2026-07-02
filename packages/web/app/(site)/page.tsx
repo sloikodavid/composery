@@ -5,25 +5,26 @@ import { buttonVariants } from "@/components/button";
 
 export default function Home() {
 	return (
-		<div className="mx-auto max-w-2xl">
-			<section className="space-y-6 py-8 sm:py-12">
+		<div className="space-y-10 sm:space-y-14">
+			<section className="space-y-6 pt-6 sm:pt-10">
 				<div className="space-y-4">
-					<h1 className="font-heading text-3xl font-semibold tracking-tight text-balance text-foreground sm:text-4xl">
-						Like VS Code, always on in the cloud.
+					<h1 className="font-heading text-4xl font-semibold tracking-tight text-balance text-foreground sm:text-5xl">
+						Like VS Code, but always on.
 					</h1>
-					<p className="max-w-xl text-base leading-7 text-muted-foreground">
-						A persistent cloud box you can reach from any browser or phone, made
-						for long-running AI agents.
+					<p className="max-w-xl text-lg leading-8 text-muted-foreground">
+						A secure cloud computer with a nice UI, usable from any phone or
+						browser.
 					</p>
 				</div>
-				<div className="grid grid-cols-2 gap-3 sm:flex sm:flex-row">
+				<div className="flex gap-3">
 					<AnimatedIconLink
 						className={buttonVariants({ size: "lg" })}
 						href="/boxes/new"
-						icon="arrow-right"
+						icon="plus"
+						iconPosition="start"
 						prefetch={false}
 					>
-						Get started
+						New box
 					</AnimatedIconLink>
 					<Link
 						className={buttonVariants({ size: "lg", variant: "outline" })}
@@ -35,12 +36,20 @@ export default function Home() {
 			</section>
 
 			<Image
-				alt="Code editor workspace preview"
-				className="block w-full rounded-2xl"
-				height={988}
+				alt="Composery editor workspace"
+				className="block w-full rounded-xl border border-border dark:hidden"
+				height={1079}
 				priority
-				src="/showcase.png"
-				width={1519}
+				src="/showcase-light.png"
+				width={1919}
+			/>
+			<Image
+				alt="Composery editor workspace"
+				className="hidden w-full rounded-xl border border-border dark:block"
+				height={1079}
+				priority
+				src="/showcase-dark.png"
+				width={1919}
 			/>
 		</div>
 	);

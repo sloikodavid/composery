@@ -7,10 +7,11 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
  import { RemoteTerminalBackendContribution } from './remoteTerminalBackend.js';
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalKeybar.contribution.ts
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,247 @@
 +/*---------------------------------------------------------------------------------------------
-+ * Composery Mobile Keybar: a strip of control / modifier keys docked above the on-screen
-+ * keyboard, since touch browsers expose no Esc / Ctrl / Alt / Tab / arrows. Terminal only -
++ * Composery Mobile Keybar: a strip of terminal control / modifier keys shown while a touch
++ * terminal is focused. Keyboard geometry is used only for placement because touch browsers
++ * report it inconsistently. Terminal only -
 + * dedicated keys send raw pty bytes via ITerminalInstance.sendText (the path Ctrl+C already
 + * uses), and sticky Ctrl/Alt rewrite the next typed character via beforeinput (robust on
 + * Android, where keydown reports keyCode 229). Loaded for side effects from
@@ -23,14 +24,12 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
 +import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 +import { WorkbenchPhase, registerWorkbenchContribution2, IWorkbenchContribution } from '../../../common/contributions.js';
-+import { isTouch, keyboardInset } from '../../../browser/touchGate.js';
++import { isTouch } from '../../../browser/touchGate.js';
 +import { ITerminalService } from './terminal.js';
 +
 +type Modifier = 'ctrl' | 'alt' | 'shift';
 +type ModifierState = 'off' | 'oneShot' | 'locked';
 +
-+// px of keyboard overlap below which we treat the keyboard as down (ignores URL-bar jitter).
-+const KEYBOARD_THRESHOLD = 80;
 +const DOUBLE_TAP_MS = 350;
 +
 +interface KeyDef {
@@ -65,6 +64,8 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +	{ id: 'shift', label: 'Shift' },
 +];
 +
++const keybarSpacerClass = 'composery-touch-keybar-spacer';
++
 +class TerminalKeybarContribution extends Disposable implements IWorkbenchContribution {
 +	static readonly ID = 'terminal.composeryMobileKeybar';
 +
@@ -73,6 +74,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +	private readonly modifiers = new Map<Modifier, ModifierState>();
 +	private readonly modifierElements = new Map<Modifier, HTMLElement>();
 +	private readonly lastTap = new Map<Modifier, number>();
++	private activeTerminalElement: HTMLElement | undefined;
 +
 +	constructor(
 +		@ITerminalService private readonly terminalService: ITerminalService,
@@ -99,9 +101,12 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +			this.modifierElements.set(mod.id, this.addKey(list, mod.label, mod.label, () => this.tapModifier(mod.id)));
 +		}
 +		layoutService.mainContainer.appendChild(this.container);
-+		this._register(toDisposable(() => this.container.remove()));
++		this._register(toDisposable(() => {
++			this.updateActiveTerminalElement(undefined);
++			this.container.remove();
++		}));
 +
-+		// Tapping the strip must not pull focus off the terminal (which would drop the keyboard).
++		// Tapping the strip must not pull focus off the terminal.
 +		this._register(dom.addDisposableListener(this.container, 'mousedown', e => e.preventDefault()));
 +
 +		this._register(dom.addDisposableListener(mainWindow.document, 'beforeinput', e => this.onBeforeInput(e as InputEvent), true));
@@ -213,23 +218,55 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +		this.update();
 +	}
 +
++	private updateActiveTerminalElement(element: HTMLElement | undefined): void {
++		if (this.activeTerminalElement === element) {
++			return;
++		}
++
++		this.activeTerminalElement?.classList.remove(keybarSpacerClass);
++		this.activeTerminalElement = element;
++		this.activeTerminalElement?.classList.add(keybarSpacerClass);
++	}
++
++	private relayoutTerminalForKeybar(): void {
++		const instance = this.terminalService.activeInstance;
++		const element = instance?.domElement;
++		if (!instance || !element?.isConnected) {
++			return;
++		}
++
++		const keybarHeight = this.container.classList.contains('visible')
++			? this.container.offsetHeight
++			: 0;
++		instance.layout({
++			width: element.clientWidth,
++			height: Math.max(0, element.clientHeight - keybarHeight),
++		});
++	}
++
 +	private update(): void {
++		const instance = this.terminalService.activeInstance;
 +		const show = isTouch(mainWindow)
-+			&& !!this.terminalService.activeInstance?.hasFocus
-+			&& keyboardInset(mainWindow) > KEYBOARD_THRESHOLD;
++			&& !!instance?.hasFocus;
 +		this.container.classList.toggle('visible', show);
++		this.updateActiveTerminalElement(show ? instance?.domElement : undefined);
++		this.relayoutTerminalForKeybar();
 +	}
 +}
 +
 +registerWorkbenchContribution2(TerminalKeybarContribution.ID, TerminalKeybarContribution, WorkbenchPhase.AfterRestored);
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminalKeybar.css
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,83 @@
 +/*---------------------------------------------------------------------------------------------
-+ * Composery Mobile Keybar - strip docked above the on-screen keyboard. See
-+ * terminalKeybar.contribution.ts. The keyboard inset comes from the Chromium VirtualKeyboard
-+ * API (env(keyboard-inset-height)) with the overlay's visualViewport var as the iOS fallback.
++ * Composery Mobile Keybar - terminal accessory strip for touch browsers. See
++ * terminalKeybar.contribution.ts. Keyboard insets only affect placement when the browser exposes
++ * them; the bar itself is visible whenever a touch terminal is focused.
 + *--------------------------------------------------------------------------------------------*/
++
++.monaco-workbench {
++	--composery-touch-keybar-height: 40px;
++}
 +
 +.monaco-workbench .composery-touch-keybar {
 +	display: none;
@@ -239,7 +276,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +	bottom: max(env(keyboard-inset-height, 0px), var(--composery-touch-keyboard-inset, 0px), env(safe-area-inset-bottom, 0px));
 +	z-index: 2550;
 +	box-sizing: border-box;
-+	height: 40px;
++	height: var(--composery-touch-keybar-height);
 +	padding: 0 4px;
 +	background-color: var(--vscode-editorWidget-background);
 +	border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
@@ -247,6 +284,10 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contr
 +	overflow-y: hidden;
 +	overscroll-behavior: contain;
 +	-webkit-overflow-scrolling: touch;
++}
++
++.monaco-workbench .terminal-wrapper.composery-touch-keybar-spacer:not(.fixed-dims) .xterm {
++	bottom: var(--composery-touch-keybar-height);
 +}
 +
 +.monaco-workbench .composery-touch-keybar.visible {

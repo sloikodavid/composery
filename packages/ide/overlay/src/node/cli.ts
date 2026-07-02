@@ -199,7 +199,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
   },
   "disable-getting-started-override": {
     type: "boolean",
-    description: "Disable the coder/coder override in the Help: Getting Started page.",
+    description: "Disable the Composery override in the Help: Getting Started page.",
   },
   "disable-proxy": {
     type: "boolean",
@@ -871,7 +871,7 @@ export const shouldOpenInExistingInstance = async (
     logger.debug("Found --reuse-window or --new-window")
     const socketPath = await client.getConnectedSocketPath(paths[0])
     if (!socketPath) {
-      throw new Error(`No opened code-server instances found to handle ${paths[0]}`)
+      throw new Error(`No running instances found to handle ${paths[0]}`)
     }
     return socketPath
   }

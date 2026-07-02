@@ -7,12 +7,12 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
- 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
-+	static SHOW_QR_COMMAND_ID = 'code-server.showQr';
+ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
++	static SHOW_QR_COMMAND_ID = 'composery.qr.show';
  
  	constructor (
  		@ILogService private logService: ILogService,
-@@ -95,6 +95,8 @@ 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
+@@ -95,6 +95,8 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
  			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
  		}
  
@@ -21,7 +21,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -178,6 +178,24 @@ 	static RESET_PASSWORD_COMMAND_ID = 'code-server.resetPassword';
+@@ -178,6 +178,24 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
  		}
  	}
  

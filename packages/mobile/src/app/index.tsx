@@ -288,6 +288,7 @@ function ErrorState({
 						marginTop: 8
 					}
 				]}
+				selectable
 			>
 				{detail}
 			</Text>

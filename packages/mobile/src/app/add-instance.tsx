@@ -225,6 +225,7 @@ export default function AddInstanceScreen() {
 				{displayError ? (
 					<Text
 						testID="add-instance-error"
+						selectable
 						style={[
 							body(),
 							{ fontSize: 14, color: theme.destructive, marginTop: 8 }

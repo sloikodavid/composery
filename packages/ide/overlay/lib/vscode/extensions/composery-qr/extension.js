@@ -78,9 +78,8 @@ function render(url) {
 			}
 			.url {
 				margin: 0;
-				font-size: 13px;
+				font-size: 14px;
 				word-break: break-all;
-				opacity: 0.55;
 			}
 		</style>
 	</head>

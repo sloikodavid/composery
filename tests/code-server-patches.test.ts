@@ -333,7 +333,7 @@ describe("IDE patch stack", () => {
 		expect(authCss).toContain("font-size: max(16px, 1em)");
 	});
 
-	test("keeps keyboard and safe-area insets shared across narrow overlays", () => {
+	test("keeps viewport insets and touch gates split across narrow overlays", () => {
 		const base =
 			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
 		const narrowJs = readRepoFile(`${base}/narrow.js`);
@@ -372,10 +372,15 @@ describe("IDE patch stack", () => {
 		expect(narrowCss).toContain("notification-toast-container");
 		expect(narrowCss).toContain(".notifications-center.top-right");
 		expect(narrowCss).toContain("monaco-scrollable-element");
-		expect(touchGatePatch).toContain("bottomKeyboardOverlap");
-		expect(touchGatePatch).toContain("overlaysContent");
+		expect(touchGatePatch).toContain("TOUCH_QUERY");
+		expect(touchGatePatch).toContain("isTouch(targetWindow: Window)");
+		expect(touchGatePatch).not.toContain("keyboardInset");
+		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
 		expect(keybarPatch).toContain("safe-area-inset-bottom");
 		expect(keybarPatch).toContain("'scroll', () => this.update()");
+		expect(keybarPatch).toContain("&& !!instance?.hasFocus");
+		expect(keybarPatch).toContain("composery-touch-keybar-spacer");
+		expect(keybarPatch).toContain("--composery-touch-keybar-height");
 	});
 
 	test("keeps terminal keybar added-file patch hunks from truncating", () => {
@@ -384,12 +389,11 @@ describe("IDE patch stack", () => {
 		);
 
 		expect(addedFileHunkCounts(keybarPatch)).toEqual([
-			{ actual: 214, declared: 214 },
-			{ actual: 75, declared: 75 }
+			{ actual: 247, declared: 247 },
+			{ actual: 83, declared: 83 }
 		]);
-		expect(keybarPatch).toContain(
-			"keyboardInset(mainWindow) > KEYBOARD_THRESHOLD;"
-		);
+		expect(keybarPatch).not.toContain("KEYBOARD_THRESHOLD");
+		expect(keybarPatch).not.toContain("keyboardInset(mainWindow)");
 		expect(keybarPatch).toContain(
 			"registerWorkbenchContribution2(TerminalKeybarContribution.ID"
 		);
@@ -443,7 +447,7 @@ describe("IDE patch stack", () => {
 			"allowsBackForwardNavigationGestures={false}"
 		);
 		expect(instanceScreen).toContain("allowsLinkPreview={false}");
-		expect(instanceScreen).toContain('dataDetectorTypes="none"');
+		expect(instanceScreen).toContain('dataDetectorTypes={["none"]}');
 		expect(instanceScreen).toContain('contentMode="mobile"');
 		expect(instanceScreen).toContain(
 			"const webviewCanGoBack = canGoBack || overlayBackActive"

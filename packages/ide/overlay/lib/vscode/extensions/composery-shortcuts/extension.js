@@ -40,7 +40,7 @@ async function activate(context) {
 	if (missing.length > 0) {
 		console.error(
 			`[composery-shortcuts] missing patched workbench commands: ${missing.join(", ")}. ` +
-				"Rebuild Composery with up-to-date code-server patches and clear the browser cache."
+				"Rebuild Composery with up-to-date patches and clear the browser cache."
 		);
 	}
 

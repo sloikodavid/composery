@@ -13,12 +13,40 @@ sit in the path that Vercel does not have: a signed native binary must be built,
 and Apple/Google must review it before users get it. [EAS](https://expo.dev)
 runs that pipeline; `eas.json` configures it.
 
+## Develop and test the app
+
+Day-to-day: `pnpm --filter mobile dev` (Expo Go + Metro). JS/asset edits
+hot-reload; this is the normal loop. An EAS **development build**
+(`eas build --profile development`, see `eas.json`) is only needed when you add
+a native module Expo Go doesn't bundle — not for everyday work.
+
+Two Windows gotchas, recorded so nobody re-walks them:
+
+- **Don't build natively on Windows.** `expo run:android` / `eas build --local`
+  fail here: the New Architecture compiles `react-native-worklets` and
+  `react-native-screens` C++ from source, and the object-file paths under
+  pnpm's `node_modules/.pnpm/<pkg>@<ver>_<hash>/…/.cxx/…` blow past CMake's
+  250-char limit, so ninja loops with
+  `manifest 'build.ninja' still dirty after 100 tries`. A short-path junction
+  doesn't help (CMake resolves the real path). Build in the cloud (EAS), or on
+  Linux/WSL/Mac.
+- **A native crash that quits the app never reaches Metro.** It's a signal in
+  the native layer, so the JS console shows nothing. Pull it from the device's
+  crash store instead — this beats racing a live `logcat`:
+  ```bash
+  adb shell dumpsys dropbox data_app_native_crash --print   # SIGABRT/SIGSEGV stack
+  adb shell dumpsys dropbox data_app_crash --print          # uncaught Java/Kotlin
+  ```
+  The abort message + top frames name the fault. (Example we hit: passing
+  `dataDetectorTypes="none"` as a string to the WebView made Fabric's props
+  parser abort casting it to a vector — fixed by passing `["none"]`.)
+
 ## What is already wired (committed)
 
-- `eas.json` — `preview` profile (internal APK / ad-hoc builds) and `production`
-  profile (store `.aab`/`.ipa`, auto-incrementing build numbers). Build numbers
-  are managed server-side (`appVersionSource: remote`), so they never drift in
-  git.
+- `eas.json` — `development` profile (dev-client APK for the loop above),
+  `preview` profile (internal APK / ad-hoc builds), and `production` profile
+  (store `.aab`/`.ipa`, auto-incrementing build numbers). Build numbers are
+  managed server-side (`appVersionSource: remote`), so they never drift in git.
 - `app.json` carries the store identity:
   - `ios.bundleIdentifier` / `android.package` = **`io.composery`** (the App
     Store / Play Store app ID; permanent once published, change it before first
@@ -57,7 +85,8 @@ npx eas-cli submit --platform android    # uploads to Play Console
 EAS manages signing credentials — do not hand-manage certs or keystores (the
 `.gitignore` already blocks `*.p8`/`*.p12`/`*.jks`/`*.mobileprovision`). The
 free EAS tier covers 30 low-priority builds/month, which is enough for our
-cadence; `--local` skips the queue entirely.
+cadence; `--local` skips the queue entirely but only on a Mac/Linux builder
+(not Windows — see [Develop and test the app](#develop-and-test-the-app)).
 
 For a quick sideloadable test build without the stores:
 `npx eas-cli build --platform android --profile preview` produces an APK.

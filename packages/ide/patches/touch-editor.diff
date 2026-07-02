@@ -11,7 +11,7 @@ index 4eb4ca92..1a426729 100644
  import * as platform from '../../../base/common/platform.js';
  import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
  import { NavigationCommandRevealType } from '../coreCommands.js';
-@@ -15,22 +15,69 @@ import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
+@@ -15,22 +15,86 @@ import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
  import { EditorMouseEvent, EditorPointerEventFactory } from '../editorDom.js';
  import { ViewController } from '../view/viewController.js';
  import { ViewContext } from '../../common/viewModel/viewContext.js';
@@ -21,7 +21,10 @@ index 4eb4ca92..1a426729 100644
 +import { Position } from '../../common/core/position.js';
 +
 +const TOUCH_SELECTION_THRESHOLD = 8;
++const TOUCH_SELECTION_HOLD_TIME = 450;
 +const TOUCH_INERTIA_SUPPRESSION_TIME = 350;
++const TOUCH_HANDLE_EDGE_SCROLL_ZONE = 44;
++const TOUCH_HANDLE_MAX_SCROLL_SPEED = 720;
 +
 +type TouchGestureType = 'pending' | 'selection';
 +type SelectionHandleType = 'caret' | 'start' | 'end';
@@ -32,6 +35,8 @@ index 4eb4ca92..1a426729 100644
 +	totalX: number;
 +	totalY: number;
 +	startTarget: IMouseTarget | null;
++	tapCount: number;
++	selectionTimer: number | undefined;
 +}
  
  /**
@@ -50,6 +55,12 @@ index 4eb4ca92..1a426729 100644
 +	private _activeHandle: SelectionHandleType | null;
 +	private _handleMoveListener: IDisposable | null;
 +	private _handleUpListener: IDisposable | null;
++	private _handleCancelListener: IDisposable | null;
++	private _handleAutoScrollFrame: number | undefined;
++	private _handleAutoScrollLastTime: number;
++	private _handleClientX: number;
++	private _handleClientY: number;
++	private _suppressNextTouchContextMenu: boolean;
 +
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super(context, viewController, viewHelper);
@@ -59,7 +70,8 @@ index 4eb4ca92..1a426729 100644
 +		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.End, (e) => this.onTouchEnd(e)));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
- 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
+-		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
++		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this.onContextMenu(e)));
  
  		this._lastPointerType = 'mouse';
 +		this._touchGesture = null;
@@ -69,6 +81,12 @@ index 4eb4ca92..1a426729 100644
 +		this._activeHandle = null;
 +		this._handleMoveListener = null;
 +		this._handleUpListener = null;
++		this._handleCancelListener = null;
++		this._handleAutoScrollFrame = undefined;
++		this._handleAutoScrollLastTime = 0;
++		this._handleClientX = 0;
++		this._handleClientY = 0;
++		this._suppressNextTouchContextMenu = false;
 +
 +		this._selectionHandleContainer = document.createElement('div');
 +		this._selectionHandleContainer.className = 'composery-touch-selection-handles';
@@ -81,12 +99,13 @@ index 4eb4ca92..1a426729 100644
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,6 +100,39 @@ export class PointerEventHandler extends MouseHandler {
+@@ -53,6 +117,72 @@ export class PointerEventHandler extends MouseHandler {
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
 +	public override dispose(): void {
 +		this._stopHandleDrag();
++		this._clearTouchSelectionTimer();
 +		this._selectionHandleContainer.remove();
 +		super.dispose();
 +	}
@@ -107,22 +126,64 @@ index 4eb4ca92..1a426729 100644
 +			startedOnText: startTarget.type === MouseTargetType.CONTENT_TEXT && !!startTarget.position,
 +			totalX: 0,
 +			totalY: 0,
-+			startTarget
++			startTarget,
++			tapCount: event.tapCount,
++			selectionTimer: startTarget.type === MouseTargetType.CONTENT_TEXT && !!startTarget.position
++				? mainWindow.setTimeout(() => this._startPendingTouchSelection(), TOUCH_SELECTION_HOLD_TIME)
++				: undefined
 +		};
 +	}
 +
 +	private onTouchEnd(_event: GestureEvent): void {
++		this._clearTouchSelectionTimer();
 +		if (this._touchGesture?.type === 'selection') {
 +			this._suppressTouchInertiaUntil = Date.now() + TOUCH_INERTIA_SUPPRESSION_TIME;
 +		}
 +		this._touchGesture = null;
 +	}
 +
++	private _clearTouchSelectionTimer(): void {
++		if (this._touchGesture?.selectionTimer !== undefined) {
++			mainWindow.clearTimeout(this._touchGesture.selectionTimer);
++			this._touchGesture.selectionTimer = undefined;
++		}
++	}
++
++	private _startPendingTouchSelection(): void {
++		const gesture = this._touchGesture;
++		if (!gesture || gesture.type !== 'pending' || !gesture.startedOnText) {
++			return;
++		}
++
++		gesture.selectionTimer = undefined;
++		gesture.type = 'selection';
++		this._suppressNextTouchContextMenu = true;
++		this.viewHelper.focusTextArea();
++		if (gesture.startTarget?.position) {
++			this._dispatchMouseTarget(gesture.startTarget, /*inSelectionMode*/false, gesture.tapCount);
++		}
++	}
++
  	private onTap(event: GestureEvent): void {
++		if (this._touchGesture?.type === 'selection') {
++			event.preventDefault();
++			return;
++		}
++
  		if (!event.initialTarget || !this.viewHelper.linesContentDomNode.contains(event.initialTarget as HTMLElement)) {
  			return;
-@@ -65,6 +145,31 @@ export class PointerEventHandler extends MouseHandler {
+@@ -65,6 +195,38 @@ export class PointerEventHandler extends MouseHandler {
  
++	private onContextMenu(event: MouseEvent): void {
++		if (this._suppressNextTouchContextMenu) {
++			this._suppressNextTouchContextMenu = false;
++			event.preventDefault();
++			return;
++		}
++
++		this._onContextMenu(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
++	}
++
  	private onChange(event: GestureEvent): void {
  		if (this._lastPointerType === 'touch') {
 +			if (!event.initialTarget && Date.now() < this._suppressTouchInertiaUntil) {
@@ -136,11 +197,8 @@ index 4eb4ca92..1a426729 100644
 +				if (this._touchGesture.type === 'pending') {
 +					const distance = Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY);
 +					if (distance >= TOUCH_SELECTION_THRESHOLD) {
-+						this._touchGesture.type = 'selection';
-+						this.viewHelper.focusTextArea();
-+						if (this._touchGesture.startTarget?.position) {
-+							this._dispatchMouseTarget(this._touchGesture.startTarget, /*inSelectionMode*/false, event.tapCount);
-+						}
++						this._clearTouchSelectionTimer();
++						this._touchGesture.startedOnText = false;
 +					}
 +				}
 +
@@ -153,7 +211,7 @@ index 4eb4ca92..1a426729 100644
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +179,17 @@ export class PointerEventHandler extends MouseHandler {
+@@ -74,13 +236,17 @@ export class PointerEventHandler extends MouseHandler {
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -172,7 +230,7 @@ index 4eb4ca92..1a426729 100644
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,6 +202,120 @@ export class PointerEventHandler extends MouseHandler {
+@@ -93,6 +259,185 @@ export class PointerEventHandler extends MouseHandler {
  		}
  	}
  
@@ -249,6 +307,7 @@ index 4eb4ca92..1a426729 100644
 +		const ownerDocument = this.viewHelper.viewDomNode.ownerDocument;
 +		this._handleMoveListener = dom.addDisposableListener(ownerDocument, 'pointermove', (moveEvent: PointerEvent) => this._onHandlePointerMove(moveEvent), { passive: false });
 +		this._handleUpListener = dom.addDisposableListener(ownerDocument, 'pointerup', (upEvent: PointerEvent) => this._onHandlePointerUp(upEvent), { passive: false });
++		this._handleCancelListener = dom.addDisposableListener(ownerDocument, 'pointercancel', (cancelEvent: PointerEvent) => this._onHandlePointerUp(cancelEvent), { passive: false });
 +	}
 +
 +	private _onHandlePointerMove(event: PointerEvent): void {
@@ -258,8 +317,20 @@ index 4eb4ca92..1a426729 100644
 +
 +		event.preventDefault();
 +		event.stopPropagation();
++		this._handleClientX = event.clientX;
++		this._handleClientY = event.clientY;
++		this._updateHandleAutoScroll(event.clientY);
++		this._setSelectionFromClientPoint(event.clientX, event.clientY);
++	}
 +
-+		const target = this.getTargetAtClientPoint(event.clientX, event.clientY);
++	private _setSelectionFromClientPoint(clientX: number, clientY: number): void {
++		if (!this._activeHandle || !this._primaryModelSelection) {
++			return;
++		}
++
++		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
++		const targetY = Math.max(rect.top + 1, Math.min(rect.bottom - 1, clientY));
++		const target = this.getTargetAtClientPoint(clientX, targetY);
 +		if (!target?.position) {
 +			return;
 +		}
@@ -276,6 +347,55 @@ index 4eb4ca92..1a426729 100644
 +		this.viewController.setSelection(nextSelection);
 +	}
 +
++	private _updateHandleAutoScroll(clientY: number): void {
++		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
++		const distanceAbove = rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - clientY;
++		const distanceBelow = clientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE);
++		if (distanceAbove <= 0 && distanceBelow <= 0) {
++			this._stopHandleAutoScroll();
++			return;
++		}
++
++		if (this._handleAutoScrollFrame !== undefined) {
++			return;
++		}
++
++		this._handleAutoScrollLastTime = Date.now();
++		this._handleAutoScrollFrame = mainWindow.requestAnimationFrame(() => this._runHandleAutoScroll());
++	}
++
++	private _runHandleAutoScroll(): void {
++		this._handleAutoScrollFrame = undefined;
++		if (!this._activeHandle || !this._primaryModelSelection) {
++			return;
++		}
++
++		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
++		const distanceAbove = Math.max(0, rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - this._handleClientY);
++		const distanceBelow = Math.max(0, this._handleClientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE));
++		const direction = distanceAbove > 0 ? -1 : distanceBelow > 0 ? 1 : 0;
++		if (direction === 0) {
++			return;
++		}
++
++		const edgeDistance = Math.min(TOUCH_HANDLE_EDGE_SCROLL_ZONE, Math.max(distanceAbove, distanceBelow));
++		const now = Date.now();
++		const elapsed = now - this._handleAutoScrollLastTime;
++		this._handleAutoScrollLastTime = now;
++		const speed = TOUCH_HANDLE_MAX_SCROLL_SPEED * Math.max(0.25, edgeDistance / TOUCH_HANDLE_EDGE_SCROLL_ZONE);
++		this._context.viewModel.viewLayout.deltaScrollNow(0, direction * speed * (elapsed / 1000));
++		this.viewHelper.renderNow();
++		this._setSelectionFromClientPoint(this._handleClientX, this._handleClientY);
++		this._handleAutoScrollFrame = mainWindow.requestAnimationFrame(() => this._runHandleAutoScroll());
++	}
++
++	private _stopHandleAutoScroll(): void {
++		if (this._handleAutoScrollFrame !== undefined) {
++			mainWindow.cancelAnimationFrame(this._handleAutoScrollFrame);
++			this._handleAutoScrollFrame = undefined;
++		}
++	}
++
 +	private _onHandlePointerUp(event: PointerEvent): void {
 +		event.preventDefault();
 +		event.stopPropagation();
@@ -283,11 +403,14 @@ index 4eb4ca92..1a426729 100644
 +	}
 +
 +	private _stopHandleDrag(): void {
++		this._stopHandleAutoScroll();
 +		this._activeHandle = null;
 +		this._handleMoveListener?.dispose();
 +		this._handleMoveListener = null;
 +		this._handleUpListener?.dispose();
 +		this._handleUpListener = null;
++		this._handleCancelListener?.dispose();
++		this._handleCancelListener = null;
 +	}
 +
  	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {

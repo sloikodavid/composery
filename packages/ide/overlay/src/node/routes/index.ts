@@ -63,7 +63,7 @@ export const register = async (
   app.wsRouter.use(cookieParser())
 
   const settings = new SettingsProvider<CoderSettings>(path.join(args["user-data-dir"], "coder.json"))
-  const updater = new UpdateProvider("https://api.github.com/repos/coder/code-server/releases/latest", settings)
+  const updater = new UpdateProvider("https://api.github.com/repos/sloikodavid/composery/releases/latest", settings)
 
   const cookieSessionName = getCookieSessionName(args["cookie-suffix"])
 

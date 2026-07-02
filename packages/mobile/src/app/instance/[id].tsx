@@ -2,8 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { openBrowserAsync } from "expo-web-browser";
-import { RotateCw } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExternalLink, RotateCw } from "lucide-react-native";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Text, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
@@ -14,7 +14,7 @@ import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { createInstanceStore, type Instance } from "@/lib/instance-store";
 import { probeComposery, type ProbeResult } from "@/lib/probe";
-import { useTheme } from "@/lib/use-theme";
+import { useTheme, type Theme } from "@/lib/use-theme";
 import { buildBeforeLoad, INSTALL_SCRIPT } from "@/web/back-button";
 
 const store = createInstanceStore(AsyncStorage);
@@ -36,13 +36,18 @@ export default function InstanceScreen() {
 	const [instance, setInstance] = useState<Instance | undefined>();
 	const [loading, setLoading] = useState(true);
 	const [storageError, setStorageError] = useState<string | null>(null);
-	// probeResult stores the result keyed by `${url}:${reloadKey}`. When the
-	// key doesn't match the current url+reloadKey, the probe is in-flight and
-	// the derived `probe` value reads as "probing" — no setState in the effect
-	// body, which the React Compiler / lint flags as a cascading render.
+	// probeResult holds the latest probe outcome keyed by `${url}:${reloadKey}`.
+	// While the key doesn't match the current url+reloadKey, the probe is in-flight
+	// (probing). lastFailure retains the previous failure for the same URL so a
+	// retry keeps the error on screen with a busy button instead of flickering to
+	// a blank spinner — only the initial probe (no prior failure) shows a spinner.
 	const [probeResult, setProbeResult] = useState<{
 		key: string;
 		result: ProbeResult;
+	} | null>(null);
+	const [lastFailure, setLastFailure] = useState<{
+		url: string;
+		result: FailedProbe;
 	} | null>(null);
 	const [webLoading, setWebLoading] = useState(true);
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -53,6 +58,10 @@ export default function InstanceScreen() {
 	// matches whatever IDE theme the user runs.
 	const [stripColor, setStripColor] = useState<string | null>(null);
 	const webviewRef = useRef<WebView>(null);
+	// Tracks whether the current webview load errored, so onLoadEnd can clear
+	// loadError only on a successful reload — keeping the error overlay mounted
+	// (and the Retry button busy) through the whole retry attempt, with no blink.
+	const errorThisLoad = useRef(false);
 
 	const loadInstance = useCallback(
 		(isActive: () => boolean = () => true) => {
@@ -98,6 +107,7 @@ export default function InstanceScreen() {
 		void probeComposery(url).then((result) => {
 			if (!active) return;
 			setProbeResult({ key, result });
+			if (!result.ok) setLastFailure({ url, result });
 			if (result.ok) setWebLoading(true);
 		});
 		return () => {
@@ -143,6 +153,7 @@ export default function InstanceScreen() {
 	const recoverWebViewProcess = useCallback(() => {
 		setLoadError(null);
 		setStripColor(null);
+		errorThisLoad.current = false;
 		resetTransientWebViewState();
 		setReloadKey((k) => k + 1);
 	}, [resetTransientWebViewState]);
@@ -157,9 +168,11 @@ export default function InstanceScreen() {
 		);
 	}, [scheme]);
 
+	// One retry path for both probe failures and webview load errors: bump
+	// reloadKey (re-probes and remounts the WebView). loadError is intentionally
+	// NOT cleared here — it's cleared on a successful reload (onLoadEnd), so the
+	// error overlay and its busy Retry button stay put through the attempt.
 	function retry() {
-		setLoadError(null);
-		setStripColor(null);
 		resetTransientWebViewState();
 		setReloadKey((k) => k + 1);
 	}
@@ -170,11 +183,22 @@ export default function InstanceScreen() {
 	);
 	const instanceOrigin = instance ? new URL(instance.url).origin : "";
 	const probeKey = instance ? `${instance.url}:${reloadKey}` : "";
-	const probe: ProbeResult | "probing" =
-		probeResult?.key === probeKey ? probeResult.result : "probing";
+	const probing = probeResult?.key !== probeKey;
+	const probeCurrent =
+		probeResult?.key === probeKey ? probeResult.result : null;
 	const failedProbe: FailedProbe | null =
-		probe !== "probing" && !probe.ok ? probe : null;
-	const probeOk = probe !== "probing" && probe.ok;
+		probeCurrent && !probeCurrent.ok ? probeCurrent : null;
+	const probeOk = probeCurrent?.ok === true;
+	// While a retry probes the same URL, keep the last failure on screen instead
+	// of swapping to a blank spinner.
+	const shownFailure: FailedProbe | null =
+		failedProbe ??
+		(probing &&
+		lastFailure !== null &&
+		lastFailure.url === instance?.url
+			? lastFailure.result
+			: null);
+	const webRetrying = loadError !== null && webLoading;
 	const stripBg = stripColor ?? theme.background;
 	const statusStyle = stripColor
 		? isLight(stripColor)
@@ -183,6 +207,7 @@ export default function InstanceScreen() {
 		: scheme === "dark"
 			? "light"
 			: "dark";
+	const goBack = () => router.back();
 
 	return (
 		<View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -190,50 +215,25 @@ export default function InstanceScreen() {
 			{/* Status-bar strip, tinted to the IDE title bar so the two read as one. */}
 			<View style={{ height: insets.top, backgroundColor: stripBg }} />
 
-			{storageError && !loading ? (
+			{loading ? (
+				<ChromeLoading theme={theme} onBack={goBack} />
+			) : storageError ? (
 				<ErrorView
 					theme={theme}
 					title="Couldn't load instances"
 					detail={storageError}
-					onBack={() => router.back()}
+					onBack={goBack}
 					onRetry={() => loadInstance()}
 				/>
-			) : !instance && !loading ? (
+			) : !instance ? (
 				<ErrorView
 					theme={theme}
 					title="Instance not found"
 					detail="It may have been removed."
-					onBack={() => router.back()}
+					onBack={goBack}
+					backTestID="instance-back-missing"
 				/>
-			) : instance && probe === "probing" ? (
-				<View style={styles_center}>
-					<Spinner color={theme.primary} size={32} />
-				</View>
-			) : instance && failedProbe ? (
-				<ErrorView
-					theme={theme}
-					title={
-						failedProbe.reason === "not-composery"
-							? "This isn't a Composery"
-							: "Couldn't reach this instance"
-					}
-					detail={
-						failedProbe.reason === "not-composery"
-							? `${instance.url}\ndoesn't point to a Composery instance.`
-							: `${instance.url}\n${failedProbe.message}`
-					}
-					onBack={() => router.back()}
-					onRetry={retry}
-				/>
-			) : instance && probeOk && loadError ? (
-				<ErrorView
-					theme={theme}
-					title="Couldn't load this instance"
-					detail={`${instance.url}\n${loadError}`}
-					onBack={() => router.back()}
-					onRetry={retry}
-				/>
-			) : instance && probeOk ? (
+			) : probeOk ? (
 				<View style={{ flex: 1 }}>
 					<WebView
 						key={reloadKey}
@@ -253,7 +253,11 @@ export default function InstanceScreen() {
 						hideKeyboardAccessoryView
 						allowsBackForwardNavigationGestures={false}
 						allowsLinkPreview={false}
-						dataDetectorTypes="none"
+						// Array, not the string "none": under the New Architecture the
+						// Fabric props parser casts dataDetectorTypes to a vector and a
+						// bare string fails an isObject() assertion → native SIGABRT the
+						// instant the WebView mounts (crashes the whole app on Android).
+						dataDetectorTypes={["none"]}
 						contentMode="mobile"
 						setSupportMultipleWindows={false}
 						// iOS uses WKHTTPCookieStore, Android CookieManager.
@@ -276,12 +280,17 @@ export default function InstanceScreen() {
 						}}
 						onLoadStart={() => {
 							setOverlayBackActive(false);
+							errorThisLoad.current = false;
 							setWebLoading(true);
 						}}
-						onLoadEnd={() => setWebLoading(false)}
-						onError={(event) =>
-							setLoadError(event.nativeEvent.description || "")
-						}
+						onLoadEnd={() => {
+							setWebLoading(false);
+							if (!errorThisLoad.current) setLoadError(null);
+						}}
+						onError={(event) => {
+							errorThisLoad.current = true;
+							setLoadError(event.nativeEvent.description || "");
+						}}
 						onContentProcessDidTerminate={recoverWebViewProcess}
 						onRenderProcessGone={recoverWebViewProcess}
 						onNavigationStateChange={onNavigationStateChange}
@@ -304,41 +313,149 @@ export default function InstanceScreen() {
 						testID="instance-webview"
 					/>
 
-					{/* Loading overlay: absolute, so it never reflows the WebView. */}
-					{webLoading ? (
+					{/* Webview load error: keep the error overlay mounted over the
+						reloading WebView so Retry stays put and the back button never
+						vanishes mid-attempt. Opaque, so it doubles as the load veil. */}
+					{loadError ? (
+						<View style={styles_overlay(theme.background)}>
+							<ErrorView
+								theme={theme}
+								title="Couldn't load this instance"
+								detail={
+									<InlineUrl theme={theme} url={instance.url} rest=" failed to load." />
+								}
+								note={loadError || undefined}
+								onBack={goBack}
+								onRetry={retry}
+								retrying={webRetrying}
+								onOpenInBrowser={() => void openBrowserAsync(instance.url)}
+							/>
+						</View>
+					) : webLoading ? (
 						<View pointerEvents="none" style={styles_overlay(theme.background)}>
 							<Spinner color={theme.primary} size={32} />
 						</View>
 					) : null}
 				</View>
+			) : shownFailure ? (
+				<ErrorView
+					theme={theme}
+					title={
+						shownFailure.reason === "not-composery"
+							? "This isn't a Composery"
+							: "Couldn't reach this instance"
+					}
+					detail={
+						shownFailure.reason === "not-composery" ? (
+							<InlineUrl
+								theme={theme}
+								url={instance.url}
+								rest=" doesn't point to a Composery instance."
+							/>
+						) : (
+							<InlineUrl theme={theme} url={instance.url} rest=" isn't responding." />
+						)
+					}
+					onBack={goBack}
+					onRetry={retry}
+					retrying={probing}
+					onOpenInBrowser={() => void openBrowserAsync(instance.url)}
+				/>
 			) : (
-				<View style={styles_center}>
-					<Spinner color={theme.primary} size={32} />
-				</View>
+				<ChromeLoading theme={theme} onBack={goBack} />
 			)}
 		</View>
 	);
 }
 
+// Top-left round back button in a fixed pad so it sits in the same spot across
+// every non-WebView state (loading, probing, error) — it never vanishes while
+// content is still loading.
+function ScreenHeader({
+	theme,
+	onBack,
+	testID
+}: {
+	theme: Theme;
+	onBack: () => void;
+	testID?: string;
+}) {
+	return (
+		<View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+			<BackButton onPress={onBack} testID={testID} />
+		</View>
+	);
+}
+
+function ChromeLoading({
+	theme,
+	onBack
+}: {
+	theme: Theme;
+	onBack: () => void;
+}) {
+	return (
+		<View style={{ flex: 1 }}>
+			<ScreenHeader theme={theme} onBack={onBack} />
+			<View style={styles_center}>
+				<Spinner color={theme.primary} size={32} />
+			</View>
+		</View>
+	);
+}
+
+// Inlines the URL in semibold foreground as the subject of an error sentence,
+// with `rest` trailing in the parent's mutedForeground — used as ErrorView's
+// selectable `detail` so the URL reads with hierarchy without a boxed chip.
+function InlineUrl({
+	theme,
+	url,
+	rest
+}: {
+	theme: Theme;
+	url: string;
+	rest: string;
+}) {
+	return (
+		<>
+			<Text style={[body("semibold"), { color: theme.foreground }]}>{url}</Text>
+			<Text>{rest}</Text>
+		</>
+	);
+}
+
+// The shared error layout: a bold title, then one selectable message line that
+// inlines the URL in bold (foreground) so it reads as the subject of the
+// sentence instead of a washed-out or boxed link. `note` is an optional
+// smaller line for technical detail (e.g. the webview load error). Open in
+// browser sits beside Retry for the URL-bearing failures; `retrying` swaps the
+// Retry icon for a spinner and locks the press so the attempt can't be
+// double-fired.
 function ErrorView({
 	theme,
 	title,
 	detail,
+	note,
 	onBack,
-	onRetry
+	onRetry,
+	retrying,
+	onOpenInBrowser,
+	backTestID
 }: {
-	theme: ReturnType<typeof useTheme>;
+	theme: Theme;
 	title: string;
-	detail: string;
+	detail: ReactNode;
+	note?: string;
 	onBack: () => void;
 	onRetry?: () => void;
+	retrying?: boolean;
+	onOpenInBrowser?: () => void;
+	backTestID?: string;
 }) {
+	const busy = Boolean(retrying);
 	return (
 		<View style={{ flex: 1 }}>
-			{/* Back stays the shared top-left round button, like every other screen. */}
-			<View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-				<BackButton onPress={onBack} testID="instance-back-missing" />
-			</View>
+			<ScreenHeader theme={theme} onBack={onBack} testID={backTestID} />
 			<View
 				style={{
 					flex: 1,
@@ -357,11 +474,12 @@ function ErrorView({
 					{title}
 				</Text>
 				<Text
+					selectable
 					style={[
 						body(),
 						{
-							fontSize: 14,
-							lineHeight: 20,
+							fontSize: 15,
+							lineHeight: 21,
 							textAlign: "center",
 							color: theme.mutedForeground,
 							marginTop: 8
@@ -370,34 +488,104 @@ function ErrorView({
 				>
 					{detail}
 				</Text>
-				{onRetry ? (
-					<PressableScale
-						onPress={onRetry}
+				{note ? (
+					<Text
+						selectable
+						numberOfLines={3}
+						style={[
+							body(),
+							{
+								fontSize: 13,
+								lineHeight: 18,
+								textAlign: "center",
+								color: theme.mutedForeground,
+								marginTop: 6
+							}
+						]}
+					>
+						{note}
+					</Text>
+				) : null}
+				{onRetry || onOpenInBrowser ? (
+					<View
 						style={{
 							flexDirection: "row",
+							flexWrap: "wrap",
 							alignItems: "center",
+							justifyContent: "center",
 							gap: 8,
-							paddingHorizontal: 18,
-							paddingVertical: 12,
-							borderRadius: 12,
-							backgroundColor: theme.primary,
 							marginTop: 24
 						}}
 					>
-						<RotateCw
-							size={16}
-							color={theme.primaryForeground}
-							strokeWidth={2.4}
-						/>
-						<Text
-							style={[
-								body("semibold"),
-								{ fontSize: 15, color: theme.primaryForeground }
-							]}
-						>
-							Retry
-						</Text>
-					</PressableScale>
+						{onRetry ? (
+							<PressableScale
+								accessibilityRole="button"
+								accessibilityLabel="Retry"
+								disabled={busy}
+								onPress={onRetry}
+								style={{
+									flexDirection: "row",
+									alignItems: "center",
+									gap: 8,
+									paddingHorizontal: 18,
+									paddingVertical: 12,
+									borderRadius: 12,
+									backgroundColor: theme.primary,
+									opacity: busy ? 0.7 : 1
+								}}
+							>
+								{busy ? (
+									<Spinner color={theme.primaryForeground} size={16} />
+								) : (
+									<RotateCw
+										size={16}
+										color={theme.primaryForeground}
+										strokeWidth={2.4}
+									/>
+								)}
+								<Text
+									style={[
+										body("semibold"),
+										{ fontSize: 15, color: theme.primaryForeground }
+									]}
+								>
+									Retry
+								</Text>
+							</PressableScale>
+						) : null}
+						{onOpenInBrowser ? (
+							<PressableScale
+								accessibilityRole="button"
+								accessibilityLabel="Open in browser"
+								onPress={onOpenInBrowser}
+								style={{
+									flexDirection: "row",
+									alignItems: "center",
+									gap: 8,
+									paddingHorizontal: 18,
+									paddingVertical: 12,
+									borderRadius: 12,
+									backgroundColor: theme.background,
+									borderWidth: 1,
+									borderColor: theme.border
+								}}
+							>
+								<ExternalLink
+									size={16}
+									color={theme.foreground}
+									strokeWidth={2.4}
+								/>
+								<Text
+									style={[
+										body("semibold"),
+										{ fontSize: 15, color: theme.foreground }
+									]}
+								>
+									Open in browser
+								</Text>
+							</PressableScale>
+						) : null}
+					</View>
 				) : null}
 			</View>
 		</View>

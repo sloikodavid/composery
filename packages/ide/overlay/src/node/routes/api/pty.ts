@@ -22,5 +22,5 @@ export function nodePty(): any {
     } catch {}
   }
 
-  throw new Error("node-pty not found; add it to the code-server build (see pty.ts)")
+  throw new Error("node-pty not found; add it to the editor build (see pty.ts)")
 }
