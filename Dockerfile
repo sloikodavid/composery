@@ -1,6 +1,6 @@
 # Node major is pinned by the IDE (its native modules target this ABI). Builder and
 # runtime share this one ARG; bump both together when the IDE moves Node major.
-ARG NODE_IMAGE=node:22-trixie-slim@sha256:e637ac91fb4f2f40761d217c5d48c41a05edf0b65eb9c34e72c27cce55af9e65
+ARG NODE_IMAGE=node:24-trixie-slim@sha256:402f5c39a024babff2f1c906adbc17d89a6de8ced72ee6ea612e4d2ba33d962f
 
 # Build the IDE from the in-repo hard fork of code-server.
 FROM ${NODE_IMAGE} AS ide-builder
@@ -35,8 +35,8 @@ WORKDIR /src/packages/ide
 
 # Clone pristine code-server at the pinned commit (no git context after COPY, so
 # fetch directly, not via the dev submodule); it brings its own VS Code submodule.
-# renovate: datasource=git-tags depName=coder/code-server versioning=semver
-ARG CODE_SERVER_COMMIT=871f1d904834ee78db1c4585e2f14f65c119374a
+# Must match the packages/ide/upstream submodule pin (tested in code-server-patches.test.ts).
+ARG CODE_SERVER_COMMIT=1e6ed874e3138141a5636f6e0dbe8570aa6cd001
 RUN git init -q upstream \
   && git -C upstream remote add origin https://github.com/coder/code-server.git \
   && git -C upstream fetch --depth 1 origin "${CODE_SERVER_COMMIT}" \
@@ -50,7 +50,7 @@ RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${CODE_SE
     > build/release/.composery-upstream
 
 # Build the Composery CLI. cargo-chef caches the dependency compile so source-only edits skip it.
-FROM rust:1.96.0-slim-trixie@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS cli-chef
+FROM rust:1.96.1-slim-trixie@sha256:31ee7fc65186be7e0e0ccb3f2ca305f14e4739e7642a1ae65753aa5d7b874523 AS cli-chef
 # renovate: datasource=crate depName=cargo-chef
 ARG CARGO_CHEF_VERSION=0.1.77
 RUN cargo install cargo-chef --version "${CARGO_CHEF_VERSION}" --locked

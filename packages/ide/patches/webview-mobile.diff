@@ -17,8 +17,8 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html 
  	<meta charset="UTF-8">
  
  	<meta http-equiv="Content-Security-Policy"
--		content="default-src 'none'; script-src 'sha256-m1DlJtsIJd46QuWYNcsaYIG1xI+9FyjKQu+cfp+zq5Q=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
-+		content="default-src 'none'; script-src 'sha256-QuKvm69B6hrBMqAqamLCTFil1rSacSLe4NEDTJs+FcQ=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+-		content="default-src 'none'; script-src 'sha256-A6/szVNdTzyi4hDa+9OLbzS8tSd2iUV4CqimLNWex2Y=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-ErN2jbpFa7K/mFrMDkoFz51dnxYcQ2vknetmCtkcToI=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
  
  	<!-- Disable pinch zooming -->
  	<meta name="viewport"
@@ -72,7 +72,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html 
  		/**
  		 * @param {boolean} allowMultipleAPIAcquire
  		 * @param {*} [state]
-@@ -842,6 +873,7 @@
+@@ -854,6 +885,7 @@
  			const options = data.options;
  			const text = data.contents;
  			const newDocument = new DOMParser().parseFromString(text, 'text/html');

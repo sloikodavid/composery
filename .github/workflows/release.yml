@@ -26,8 +26,6 @@ jobs:
     needs: smoke
     runs-on: ubuntu-26.04
     outputs:
-      amd64_tags: ${{ steps.plan.outputs.amd64_tags }}
-      arm64_tags: ${{ steps.plan.outputs.arm64_tags }}
       build_version: ${{ steps.plan.outputs.build_version }}
       cache_scope: ${{ steps.plan.outputs.cache_scope }}
       is_stable: ${{ steps.plan.outputs.is_stable }}
@@ -93,22 +91,9 @@ jobs:
             )
           fi
 
-          amd64_tags=()
-          arm64_tags=()
-          for image_tag in "${tags[@]}"; do
-            amd64_tags+=("$image_tag-amd64")
-            arm64_tags+=("$image_tag-arm64")
-          done
-
           {
             echo "tags<<EOF"
             printf '%s\n' "${tags[@]}"
-            echo "EOF"
-            echo "amd64_tags<<EOF"
-            printf '%s\n' "${amd64_tags[@]}"
-            echo "EOF"
-            echo "arm64_tags<<EOF"
-            printf '%s\n' "${arm64_tags[@]}"
             echo "EOF"
             echo "build_version=$build_version"
             echo "cache_scope=$cache_scope"
@@ -118,15 +103,19 @@ jobs:
             echo "version=$package_version"
           } >> "$GITHUB_OUTPUT"
 
-  build-amd64:
+  build:
     needs: plan
-    runs-on: ubuntu-26.04
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
           ref: ${{ inputs.ref }}
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -137,20 +126,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Suffix tags with the architecture
+        id: arch_tags
+        env:
+          TAGS: ${{ needs.plan.outputs.tags }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "$TAGS" | sed "s/\$/-$ARCH/"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Image labels come from the Dockerfile (fed by the build args below).
       - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        id: build
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           push: true
-          tags: ${{ needs.plan.outputs.amd64_tags }}
-          labels: |
-            org.opencontainers.image.title=Composery
-            org.opencontainers.image.description=A persistent VPS-like Linux appliance with code-server in the browser.
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ needs.plan.outputs.sha }}
-            org.opencontainers.image.version=${{ needs.plan.outputs.build_version }}
-            org.opencontainers.image.licenses=Apache-2.0
+          tags: ${{ steps.arch_tags.outputs.tags }}
           sbom: true
           provenance: true
           build-args: |
@@ -158,62 +152,17 @@ jobs:
             COMPOSERY_BUILD_REVISION=${{ needs.plan.outputs.sha }}
             COMPOSERY_BUILD_SOURCE=${{ github.server_url }}/${{ github.repository }}
           # Preview refs get per-commit caches so they cannot feed stable releases.
-          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-amd64
-          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-amd64
-
-  build-arm64:
-    needs: plan
-    runs-on: ubuntu-26.04-arm
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.ref }}
-
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-
-      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
-        id: build
-        with:
-          context: .
-          platforms: linux/arm64
-          push: true
-          tags: ${{ needs.plan.outputs.arm64_tags }}
-          labels: |
-            org.opencontainers.image.title=Composery
-            org.opencontainers.image.description=A persistent VPS-like Linux appliance with code-server in the browser.
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ needs.plan.outputs.sha }}
-            org.opencontainers.image.version=${{ needs.plan.outputs.build_version }}
-            org.opencontainers.image.licenses=Apache-2.0
-          sbom: true
-          provenance: true
-          build-args: |
-            COMPOSERY_BUILD_VERSION=${{ needs.plan.outputs.build_version }}
-            COMPOSERY_BUILD_REVISION=${{ needs.plan.outputs.sha }}
-            COMPOSERY_BUILD_SOURCE=${{ github.server_url }}/${{ github.repository }}
-          # Preview refs get per-commit caches so they cannot feed stable releases.
-          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-arm64
-          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-arm64
+          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-${{ matrix.arch }}
 
   publish:
     needs:
       - plan
-      - build-amd64
-      - build-arm64
+      - build
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
           ref: ${{ inputs.ref }}
 
       - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
@@ -227,47 +176,12 @@ jobs:
       - name: Create multi-platform manifest
         id: manifest
         env:
-          AMD64_DIGEST: ${{ needs.build-amd64.outputs.digest }}
-          AMD64_TAGS: ${{ needs.plan.outputs.amd64_tags }}
-          ARM64_DIGEST: ${{ needs.build-arm64.outputs.digest }}
-          ARM64_TAGS: ${{ needs.plan.outputs.arm64_tags }}
           TAGS: ${{ needs.plan.outputs.tags }}
         run: |
           set -euo pipefail
 
           mapfile -t tags <<< "$TAGS"
-          mapfile -t amd64_tags <<< "$AMD64_TAGS"
-          mapfile -t arm64_tags <<< "$ARM64_TAGS"
-
-          first_non_empty() {
-            local value
-            for value in "$@"; do
-              if [[ -n "$value" ]]; then
-                printf '%s\n' "$value"
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          source_ref() {
-            local tag="$1"
-            local digest="$2"
-            case "$digest" in
-              sha256:*) printf '%s@%s\n' "$tag" "$digest" ;;
-              *@sha256:*) printf '%s\n' "$digest" ;;
-              *)
-                echo "Unexpected Docker digest: $digest" >&2
-                return 1
-                ;;
-            esac
-          }
-
-          primary_tag="$(first_non_empty "${tags[@]}")"
-          amd64_tag="$(first_non_empty "${amd64_tags[@]}")"
-          arm64_tag="$(first_non_empty "${arm64_tags[@]}")"
-          amd64_ref="$(source_ref "$amd64_tag" "$AMD64_DIGEST")"
-          arm64_ref="$(source_ref "$arm64_tag" "$ARM64_DIGEST")"
+          primary_tag="${tags[0]}"
 
           args=()
           for image_tag in "${tags[@]}"; do
@@ -275,7 +189,8 @@ jobs:
             args+=("-t" "$image_tag")
           done
 
-          docker buildx imagetools create "${args[@]}" "$amd64_ref" "$arm64_ref"
+          docker buildx imagetools create "${args[@]}" \
+            "$primary_tag-amd64" "$primary_tag-arm64"
 
           docker buildx imagetools inspect "$primary_tag" --format '{{json .Manifest}}' > manifest.json
           digest="$(jq -r '.digest // empty' manifest.json)"

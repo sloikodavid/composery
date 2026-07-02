@@ -172,17 +172,9 @@ packages/
               pty.ts
               ratelimit.ts
               session.ts
-            health.ts
-            index.ts
-            login.ts
             passwordConfig.ts
             register.ts
             resetPassword.ts
-          cli.ts
-          http.ts
-          main.ts
-          util.ts
-          wrapper.ts
     patches/
       asset-cache.diff
       auth-actions.diff
@@ -199,6 +191,7 @@ packages/
       overlays.diff
       qr-action.diff
       series
+      server.diff
       shortcuts.diff
       tips.diff
       titlebar-logo.diff
@@ -547,7 +540,9 @@ rootfs/
 scripts/
   check-ide-overlay.mjs
   check-rust.mjs
+  check.mjs
   generate-icons.mjs
+  run.mjs
   setup.mjs
   smoke.mjs
   tree.mjs
@@ -589,7 +584,7 @@ tests/
     cert.pem
     key.pem
   support/
-    loopbackCallbackGuard.ts
+    patchSource.ts
   code-server-patches.test.ts
   desktop-integration.test.ts
   loopback-callback-guard.test.ts

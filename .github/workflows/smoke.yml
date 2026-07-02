@@ -40,10 +40,10 @@ jobs:
           - arch: arm64
             runner: ubuntu-26.04-arm
     env:
-      SMOKE_CONTAINER_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
-      SMOKE_IMAGE_TAG: composery:smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+      # Runners are ephemeral; the fixed tag only needs to be stable enough for
+      # the Trivy step below. smoke.mjs dumps diagnostics and cleans up itself.
+      SMOKE_IMAGE_TAG: composery:smoke
       SMOKE_NO_CACHE: ${{ inputs.no_cache || false }}
-      SMOKE_VOLUME_NAME: composery-smoke-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -73,16 +73,3 @@ jobs:
           (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         with:
           sarif_file: trivy-results.sarif
-      - name: Debug Docker state
-        if: failure()
-        run: |
-          docker ps -a || true
-          docker logs "$SMOKE_CONTAINER_NAME" || true
-          docker exec "$SMOKE_CONTAINER_NAME" composery persistence status --json || true
-          docker exec "$SMOKE_CONTAINER_NAME" sh -lc 'for file in /data/persistence/.internal/apply-error.log /data/persistence/.internal/watch-error.log; do if [ -f "$file" ]; then echo "== $file =="; cat "$file"; fi; done' || true
-      - name: Cleanup
-        if: always()
-        run: |
-          docker rm -f "$SMOKE_CONTAINER_NAME" || true
-          docker volume rm "$SMOKE_VOLUME_NAME" || true
-          docker image rm "$SMOKE_IMAGE_TAG" || true

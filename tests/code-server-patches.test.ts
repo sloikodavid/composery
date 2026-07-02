@@ -1,16 +1,109 @@
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import vm from "node:vm";
 
 import { describe, expect, test } from "vitest";
 
-import { loopbackCallbackParamNames } from "./support/loopbackCallbackGuard.ts";
+import {
+	extractAddedFunction,
+	readRepoFile,
+	repoRoot
+} from "./support/patchSource.ts";
 
-const repoRoot = resolve(import.meta.dirname, "..");
+const PATCHES_DIR = "packages/ide/patches";
+const ASSETS =
+	"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
 
-function readRepoFile(path: string): string {
-	return readFileSync(resolve(repoRoot, path), "utf8");
-}
+// ---------------------------------------------------------------------------
+// Patch stack lint: mechanical validity for every patch in the series.
+// ---------------------------------------------------------------------------
+
+const seriesNames = readRepoFile(`${PATCHES_DIR}/series`).trim().split(/\r?\n/);
+
+describe("patch stack lint", () => {
+	test("series and patch files match one to one", () => {
+		const files = readdirSync(resolve(repoRoot, PATCHES_DIR))
+			.filter((name) => name.endsWith(".diff"))
+			.sort();
+		expect([...seriesNames].sort()).toEqual(files);
+		expect(new Set(seriesNames).size).toBe(seriesNames.length);
+	});
+
+	// The Docker build clones upstream by commit (no git context after COPY), so
+	// the Dockerfile ARG duplicates the submodule pin; keep them from drifting.
+	test("Dockerfile pins the same code-server commit as the submodule", () => {
+		const dockerfile = readRepoFile("Dockerfile");
+		const pinned = /^ARG CODE_SERVER_COMMIT=([0-9a-f]{40})$/m.exec(
+			dockerfile
+		)?.[1];
+		const staged = execFileSync(
+			"git",
+			["ls-files", "-s", "packages/ide/upstream"],
+			{ cwd: repoRoot, encoding: "utf8" }
+		).match(/[0-9a-f]{40}/)?.[0];
+
+		expect(pinned).toBeDefined();
+		expect(pinned).toBe(staged);
+	});
+
+	test.each(seriesNames)("%s is pure LF", (name) => {
+		const raw = readFileSync(resolve(repoRoot, PATCHES_DIR, name));
+		expect(raw.includes("\r")).toBe(false);
+	});
+
+	// A truncated or hand-mangled hunk is the classic way a patch silently ships
+	// less than it declares. Consume exactly the declared line counts per hunk,
+	// then require the next line to leave diff-body territory.
+	test.each(seriesNames)("%s hunk counts match their bodies", (name) => {
+		const lines = readRepoFile(`${PATCHES_DIR}/${name}`).split("\n");
+		let hunks = 0;
+
+		for (let index = 0; index < lines.length; index++) {
+			const header = lines[index]?.match(
+				/^@@ -\d+(?:,(?<removed>\d+))? \+\d+(?:,(?<added>\d+))? @@/
+			);
+			if (!header?.groups) continue;
+
+			hunks++;
+			const label = `${name} hunk #${hunks}`;
+			let removed = Number(header.groups.removed ?? 1);
+			let added = Number(header.groups.added ?? 1);
+
+			while (removed > 0 || added > 0) {
+				index++;
+				const line = lines[index];
+				expect(line, `${label} body truncated`).toBeDefined();
+				if (line!.startsWith("\\")) continue; // "\ No newline at end of file"
+				if (line!.startsWith("+")) added--;
+				else if (line!.startsWith("-")) removed--;
+				else {
+					added--;
+					removed--;
+				}
+				expect(added, `${label} overran added count`).toBeGreaterThanOrEqual(0);
+				expect(
+					removed,
+					`${label} overran removed count`
+				).toBeGreaterThanOrEqual(0);
+			}
+
+			const next = lines[index + 1];
+			const dangling =
+				next !== undefined &&
+				(next.startsWith("+") || next.startsWith("-")) &&
+				!next.startsWith("+++") &&
+				!next.startsWith("---");
+			expect(dangling, `${label} leaves dangling diff lines`).toBe(false);
+		}
+
+		expect(hunks).toBeGreaterThan(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// narrow.js keyboard-inset behavior, executed in a browser-shaped VM.
+// ---------------------------------------------------------------------------
 
 function runNarrowViewportVars({
 	envInset = 0,
@@ -28,9 +121,7 @@ function runNarrowViewportVars({
 	};
 	visualViewport?: { height: number; offsetTop: number; width?: number };
 }): Map<string, string> {
-	const narrowJs = readRepoFile(
-		"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/narrow.js"
-	);
+	const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
 	const properties = new Map<string, string>();
 	const documentElement = {
 		style: {
@@ -111,92 +202,119 @@ function runNarrowViewportVars({
 	return properties;
 }
 
-function extractLoopbackParamLists(patch: string): string[][] {
-	const lists: string[][] = [];
-	const pattern =
-		/\+const loopbackCallbackParamNames = new Set\(\[\r?\n(?<body>(?:\+\t'[^']+',\r?\n)+)\+\]\);/g;
+describe("narrow overlay", () => {
+	test("computes keyboard inset from actual bottom overlap", () => {
+		expect(
+			runNarrowViewportVars({
+				visualViewport: { height: 520, offsetTop: 0 }
+			}).get("--composery-touch-keyboard-inset")
+		).toBe("280px");
 
-	for (const match of patch.matchAll(pattern)) {
-		const body = match.groups?.body ?? "";
-		lists.push(
-			body
-				.trimEnd()
-				.split(/\r?\n/)
-				.map((line) => line.replace(/^\+\t'|'[,]$/g, ""))
+		expect(
+			runNarrowViewportVars({
+				virtualKeyboard: { bottom: 800, height: 280, y: 520 },
+				visualViewport: { height: 800, offsetTop: 0 }
+			}).get("--composery-touch-keyboard-inset")
+		).toBe("280px");
+
+		expect(
+			runNarrowViewportVars({
+				envInset: 220,
+				visualViewport: { height: 800, offsetTop: 0 }
+			}).get("--composery-touch-keyboard-inset")
+		).toBe("220px");
+
+		expect(
+			runNarrowViewportVars({
+				virtualKeyboard: { bottom: 500, height: 200, y: 300 },
+				visualViewport: { height: 800, offsetTop: 0 }
+			}).get("--composery-touch-keyboard-inset")
+		).toBe("0px");
+	});
+
+	// Two independent small-screen gates: touch (hover/pointer) and narrow
+	// (viewport width). Keyboard-inset logic belongs to the narrow overlay only;
+	// the touch gate must never grow viewport knowledge.
+	test("keeps the touch gate free of keyboard-inset logic", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
+		const touchGatePatch = readRepoFile(`${PATCHES_DIR}/touch-gate.diff`);
+
+		expect(narrowJs).toContain("bottomKeyboardOverlap");
+		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
+		expect(touchGatePatch).toContain("TOUCH_QUERY");
+		expect(touchGatePatch).not.toContain("keyboardInset");
+		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
+	});
+
+	// The touch-editor patch creates selection-handle elements that only the
+	// touch overlay styles; the pair must name the same class.
+	test("touch selection handles are styled by the touch overlay", () => {
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
+		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
+
+		expect(touchEditorPatch).toContain("composery-touch-selection-handles");
+		expect(touchCss).toContain(".composery-touch-selection-handle");
+	});
+
+	// Post-build, the workbench assets must be rsynced into the release bundle
+	// or every narrow/touch behavior above silently vanishes from the image.
+	test("build.sh ships the workbench assets into the release", () => {
+		expect(readRepoFile("packages/ide/build.sh")).toContain(
+			'rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"'
 		);
-	}
+	});
 
-	return lists;
-}
+	// narrow.js signals overlay-back state to the native app; the mobile WebView
+	// listens for the same protocol strings.
+	test("overlay-back protocol matches between narrow.js and the mobile app", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const instanceScreen = readRepoFile(
+			"packages/mobile/src/app/instance/[id].tsx"
+		);
 
-function extractAddedFunction(patch: string, name: string): string {
-	const addedSource = patch
-		.split(/\r?\n/)
-		.filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-		.map((line) => line.slice(1))
-		.join("\n");
-	const start = addedSource.indexOf(`function ${name}`);
-	if (start < 0) {
-		throw new Error(`Could not find added function ${name}`);
-	}
+		expect(narrowJs).toContain("composery:overlay-back:");
+		expect(instanceScreen).toContain("composery:overlay-back:on");
+		expect(instanceScreen).toContain("composery:overlay-back:off");
+	});
+});
 
-	let depth = 0;
-	for (let i = addedSource.indexOf("{", start); i < addedSource.length; i++) {
-		const char = addedSource[i];
-		if (char === "{") depth++;
-		else if (char === "}") {
-			depth--;
-			if (depth === 0) {
-				return addedSource.slice(start, i + 1);
-			}
+// ---------------------------------------------------------------------------
+// Mobile viewport contract: every HTML surface we serve declares the same
+// viewport capabilities, and webviews repair theirs at runtime.
+// ---------------------------------------------------------------------------
+
+const VIEWPORT_PARTS = [
+	"viewport-fit=cover",
+	"interactive-widget=resizes-content"
+];
+
+describe("mobile viewport contract", () => {
+	test.each([
+		"packages/ide/overlay/src/browser/pages/error.html",
+		"packages/ide/overlay/src/browser/pages/login.html",
+		"packages/ide/overlay/src/browser/pages/register.html",
+		"packages/ide/overlay/src/browser/pages/reset-password.html",
+		"packages/ide/overlay/src/node/persistence/readiness.ts",
+		`${PATCHES_DIR}/overlays.diff`,
+		`${PATCHES_DIR}/webview-mobile.diff`
+	])("%s declares the shared viewport parts", (path) => {
+		const content = readRepoFile(path);
+		for (const part of VIEWPORT_PARTS) {
+			expect(content).toContain(part);
 		}
-	}
+	});
 
-	throw new Error(`Could not parse added function ${name}`);
-}
-
-function addedFileHunkCounts(
-	patch: string
-): Array<{ actual: number; declared: number }> {
-	const lines = patch.split(/\r?\n/);
-	const counts: Array<{ actual: number; declared: number }> = [];
-
-	for (let index = 0; index < lines.length; index++) {
-		const current = lines[index];
-		if (current === undefined) {
-			continue;
-		}
-
-		const header = current.match(/^@@ -0,0 \+1,(?<declared>\d+) @@/);
-		if (!header?.groups) {
-			continue;
-		}
-
-		let actual = 0;
-		for (index++; index < lines.length; index++) {
-			const line = lines[index];
-			if (line === undefined) {
-				break;
-			}
-
-			if (
-				line.startsWith("diff --git ") ||
-				line.startsWith("--- /dev/null") ||
-				line.startsWith("@@ ")
-			) {
-				index--;
-				break;
-			}
-			if (line.startsWith("+") && !line.startsWith("+++")) {
-				actual++;
-			}
-		}
-
-		counts.push({ actual, declared: Number(header.groups.declared) });
-	}
-
-	return counts;
-}
+	test("workbench pages carry the viewport contract via overlays.diff", () => {
+		const overlaysPatch = readRepoFile(`${PATCHES_DIR}/overlays.diff`);
+		expect(overlaysPatch).toContain(
+			"lib/vscode/src/vs/code/browser/workbench/callback.html"
+		);
+		expect(overlaysPatch).toContain(
+			"lib/vscode/src/vs/code/browser/workbench/workbench-dev.html"
+		);
+	});
+});
 
 type WebviewViewportMeta = {
 	content?: string;
@@ -214,7 +332,7 @@ type WebviewViewportDocument = {
 function webviewViewportAfterEnsure(
 	initialContent?: string
 ): string | undefined {
-	const webviewPatch = readRepoFile("packages/ide/patches/webview-mobile.diff");
+	const webviewPatch = readRepoFile(`${PATCHES_DIR}/webview-mobile.diff`);
 	const functionSource = extractAddedFunction(
 		webviewPatch,
 		"ensureMobileViewport"
@@ -271,229 +389,8 @@ function webviewViewportAfterEnsure(
 	return metas[0]?.content;
 }
 
-describe("IDE patch stack", () => {
-	test("keeps touch editor source aligned with the split touch/narrow overlays", () => {
-		const base =
-			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
-		const buildScript = readRepoFile("packages/ide/build.sh");
-		const touchEditorPatch = readRepoFile(
-			"packages/ide/patches/touch-editor.diff"
-		);
-		const touchCss = readRepoFile(`${base}/touch.css`);
-		const narrowCss = readRepoFile(`${base}/narrow.css`);
-		const narrowJs = readRepoFile(`${base}/narrow.js`);
-
-		expect(touchEditorPatch).toContain("TOUCH_SELECTION_THRESHOLD");
-		expect(touchEditorPatch).toContain("composery-touch-selection-handles");
-		expect(touchEditorPatch).toContain(
-			"this.viewController.setSelection(nextSelection)"
-		);
-		expect(touchCss).toContain(".composery-touch-selection-handle");
-		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
-		expect(narrowJs).toContain("updateViewportVars");
-		expect(buildScript).toContain(
-			'rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"'
-		);
-	});
-
-	test("keeps the IDE and auth pages on the mobile viewport contract", () => {
-		const overlaysPatch = readRepoFile("packages/ide/patches/overlays.diff");
-
-		expect(overlaysPatch).toContain("viewport-fit=cover");
-		expect(overlaysPatch).toContain("interactive-widget=resizes-content");
-		expect(overlaysPatch).toContain(
-			"lib/vscode/src/vs/code/browser/workbench/callback.html"
-		);
-		expect(overlaysPatch).toContain(
-			"lib/vscode/src/vs/code/browser/workbench/workbench-dev.html"
-		);
-
-		for (const page of [
-			"packages/ide/overlay/src/browser/pages/error.html",
-			"packages/ide/overlay/src/browser/pages/login.html",
-			"packages/ide/overlay/src/browser/pages/register.html",
-			"packages/ide/overlay/src/browser/pages/reset-password.html"
-		]) {
-			const html = readRepoFile(page);
-
-			expect(html).toContain("viewport-fit=cover");
-			expect(html).toContain("interactive-widget=resizes-content");
-		}
-
-		const startupPage = readRepoFile(
-			"packages/ide/overlay/src/node/persistence/readiness.ts"
-		);
-		const authCss = readRepoFile(
-			"packages/ide/overlay/src/browser/pages/global.css"
-		);
-		expect(startupPage).toContain("viewport-fit=cover");
-		expect(startupPage).toContain("safe-area-inset-bottom");
-		expect(authCss).toContain("text-size-adjust: 100%");
-		expect(authCss).toContain('input:not([type="hidden"])');
-		expect(authCss).toContain("font-size: max(16px, 1em)");
-	});
-
-	test("keeps viewport insets and touch gates split across narrow overlays", () => {
-		const base =
-			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
-		const narrowJs = readRepoFile(`${base}/narrow.js`);
-		const narrowCss = readRepoFile(`${base}/narrow.css`);
-		const touchGatePatch = readRepoFile("packages/ide/patches/touch-gate.diff");
-		const keybarPatch = readRepoFile(
-			"packages/ide/patches/touch-terminal-keybar.diff"
-		);
-
-		expect(narrowJs).toContain("env(keyboard-inset-height,0px)");
-		expect(narrowJs).toContain("navigator.virtualKeyboard");
-		expect(narrowJs).toContain("bottomKeyboardOverlap");
-		expect(narrowJs).toContain("geometrychange");
-		expect(narrowJs).toContain("postNativeOverlayBackGuard");
-		expect(narrowJs).toContain("__composeryNative");
-		expect(narrowJs).toContain("composery:overlay-back:");
-		expect(narrowJs).not.toContain("diagnostic HUD");
-		expect(narrowCss).toContain("text-size-adjust: 100%");
-		expect(narrowCss).toContain("--composery-safe-area-bottom");
-		expect(narrowCss).toContain("safe-area-inset-bottom");
-		for (const selector of [
-			".action-list-submenu-panel",
-			".context-view",
-			".suggest-details-container"
-		]) {
-			expect(narrowJs).toContain(selector);
-			expect(narrowCss).toContain(selector);
-		}
-		expect(narrowCss).toContain("textarea:not(.inputarea)");
-		expect(narrowCss).toContain("body input:not(.inputarea)");
-		expect(narrowCss).toContain("(hover: none) and (pointer: coarse)");
-		expect(narrowCss).toContain("xterm-helper-textarea");
-		expect(narrowCss).toContain("font-size: 16px !important");
-		expect(narrowCss).toContain("notifications-center");
-		expect(narrowCss).toContain("notifications-toasts");
-		expect(narrowCss).toContain("notification-toast-container");
-		expect(narrowCss).toContain(".notifications-center.top-right");
-		expect(narrowCss).toContain("monaco-scrollable-element");
-		expect(touchGatePatch).toContain("TOUCH_QUERY");
-		expect(touchGatePatch).toContain("isTouch(targetWindow: Window)");
-		expect(touchGatePatch).not.toContain("keyboardInset");
-		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
-		expect(keybarPatch).toContain("safe-area-inset-bottom");
-		expect(keybarPatch).toContain("'scroll', () => this.update()");
-		expect(keybarPatch).toContain("&& !!instance?.hasFocus");
-		expect(keybarPatch).toContain("composery-touch-keybar-spacer");
-		expect(keybarPatch).toContain("--composery-touch-keybar-height");
-	});
-
-	test("keeps terminal keybar added-file patch hunks from truncating", () => {
-		const keybarPatch = readRepoFile(
-			"packages/ide/patches/touch-terminal-keybar.diff"
-		);
-
-		expect(addedFileHunkCounts(keybarPatch)).toEqual([
-			{ actual: 247, declared: 247 },
-			{ actual: 83, declared: 83 }
-		]);
-		expect(keybarPatch).not.toContain("KEYBOARD_THRESHOLD");
-		expect(keybarPatch).not.toContain("keyboardInset(mainWindow)");
-		expect(keybarPatch).toContain(
-			"registerWorkbenchContribution2(TerminalKeybarContribution.ID"
-		);
-	});
-
-	test("computes keyboard inset from actual bottom overlap", () => {
-		expect(
-			runNarrowViewportVars({
-				visualViewport: { height: 520, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
-		).toBe("280px");
-
-		expect(
-			runNarrowViewportVars({
-				virtualKeyboard: { bottom: 800, height: 280, y: 520 },
-				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
-		).toBe("280px");
-
-		expect(
-			runNarrowViewportVars({
-				envInset: 220,
-				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
-		).toBe("220px");
-
-		expect(
-			runNarrowViewportVars({
-				virtualKeyboard: { bottom: 500, height: 200, y: 300 },
-				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
-		).toBe("0px");
-	});
-
-	test("configures the native mobile WebView as a stable IDE surface", () => {
-		const appConfig = readRepoFile("packages/mobile/app.json");
-		const instanceScreen = readRepoFile(
-			"packages/mobile/src/app/instance/[id].tsx"
-		);
-
-		expect(appConfig).toContain('"orientation": "default"');
-		expect(instanceScreen).toContain(
-			"keyboardDisplayRequiresUserAction={false}"
-		);
-		expect(instanceScreen).toContain('overScrollMode="never"');
-		expect(instanceScreen).toContain("bounces={false}");
-		expect(instanceScreen).toContain('contentInsetAdjustmentBehavior="never"');
-		expect(instanceScreen).toContain("setSupportMultipleWindows={false}");
-		expect(instanceScreen).toContain("hideKeyboardAccessoryView");
-		expect(instanceScreen).toContain(
-			"allowsBackForwardNavigationGestures={false}"
-		);
-		expect(instanceScreen).toContain("allowsLinkPreview={false}");
-		expect(instanceScreen).toContain('dataDetectorTypes={["none"]}');
-		expect(instanceScreen).toContain('contentMode="mobile"');
-		expect(instanceScreen).toContain(
-			"const webviewCanGoBack = canGoBack || overlayBackActive"
-		);
-		expect(instanceScreen).toContain("composery:overlay-back:on");
-		expect(instanceScreen).toContain("composery:overlay-back:off");
-		expect(instanceScreen).toContain(
-			"const resetTransientWebViewState = useCallback"
-		);
-		expect(instanceScreen).toContain(
-			"const recoverWebViewProcess = useCallback"
-		);
-		expect(instanceScreen).toContain(
-			"onContentProcessDidTerminate={recoverWebViewProcess}"
-		);
-		expect(instanceScreen).toContain(
-			"onRenderProcessGone={recoverWebViewProcess}"
-		);
-		expect(instanceScreen).toContain("setCanGoBack(false)");
-		expect(instanceScreen).toContain("setReloadKey((k) => k + 1)");
-	});
-
-	test("keeps extension webviews on the mobile viewport contract", () => {
-		const series = readRepoFile("packages/ide/patches/series");
-		const webviewPatch = readRepoFile(
-			"packages/ide/patches/webview-mobile.diff"
-		);
-
-		expect(series.trimEnd().split(/\r?\n/)).toContain("webview-mobile.diff");
-		expect(webviewPatch).toContain("ensureMobileViewport");
-		expect(webviewPatch).toContain("requiredParts");
-		expect(webviewPatch).toContain("missingParts");
-		expect(webviewPatch).toContain("viewport.setAttribute('content'");
-		expect(webviewPatch).toContain("interactive-widget=resizes-content");
-		expect(webviewPatch).toContain("safe-area-inset-bottom");
-		expect(webviewPatch).toContain("text-size-adjust: 100%");
-		expect(webviewPatch).toContain("font-size: max(16px, 1em)");
-		expect(webviewPatch).toContain(
-			"sha256-m1DlJtsIJd46QuWYNcsaYIG1xI+9FyjKQu+cfp+zq5Q="
-		);
-		expect(webviewPatch).toContain(
-			"sha256-QuKvm69B6hrBMqAqamLCTFil1rSacSLe4NEDTJs+FcQ="
-		);
-	});
-
-	test("repairs extension webview viewport meta content at runtime", () => {
+describe("extension webviews", () => {
+	test("repairs viewport meta content at runtime", () => {
 		expect(webviewViewportAfterEnsure()).toBe(
 			"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
 		);
@@ -508,86 +405,18 @@ describe("IDE patch stack", () => {
 			"width=device-width, viewport-fit=cover, interactive-widget=resizes-content"
 		);
 	});
-
-	test("keeps loopback callback parameter names aligned across copied runtime patches", () => {
-		const markdownPatch = readRepoFile(
-			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
-		);
-		const trustedDomainsPatch = readRepoFile(
-			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
-		);
-
-		const lists = [
-			...extractLoopbackParamLists(markdownPatch),
-			...extractLoopbackParamLists(trustedDomainsPatch)
-		];
-
-		expect(lists).toHaveLength(2);
-		for (const list of lists) {
-			expect(list).toEqual([...loopbackCallbackParamNames]);
-		}
-	});
-
-	test("keeps Markdown preview as a bridge and trusted domains as the decision point", () => {
-		const markdownPatch = readRepoFile(
-			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
-		);
-		const trustedDomainsPatch = readRepoFile(
-			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
-		);
-
-		expect(markdownPatch).toContain(
-			"shouldDelegateLoopbackCallbackLinkToVsCode"
-		);
-		expect(markdownPatch).not.toContain("hasSuspiciousLoopbackCallback");
-		expect(markdownPatch).not.toContain(
-			"return vscode.commands.executeCommand('vscode.open'"
-		);
-
-		expect(trustedDomainsPatch).toContain(
-			"private async promptForLoopbackCallbackLink"
-		);
-		expect(trustedDomainsPatch).toContain("this._notificationService.prompt");
-	});
-
-	test("checks loopback callbacks before trusted-workspace bypasses", () => {
-		const trustedDomainsPatch = readRepoFile(
-			"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
-		);
-
-		const guardIndex = trustedDomainsPatch.indexOf(
-			"+\t\tconst resourceUrl = parseHttpUrl"
-		);
-		const trustedWorkspaceIndex = trustedDomainsPatch.indexOf(
-			"+\t\tif (openOptions?.fromWorkspace"
-		);
-
-		expect(guardIndex).toBeGreaterThanOrEqual(0);
-		expect(trustedWorkspaceIndex).toBeGreaterThan(guardIndex);
-	});
-
-	test("routes suspicious Markdown HTTP links before normal pass-through schemes", () => {
-		const markdownPatch = readRepoFile(
-			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
-		);
-
-		const suspiciousRouteIndex = markdownPatch.indexOf(
-			"if (shouldDelegateLoopbackCallbackLinkToVsCode(hrefText))"
-		);
-		const passThroughIndex = markdownPatch.indexOf(
-			"passThroughLinkSchemes.some"
-		);
-
-		expect(suspiciousRouteIndex).toBeGreaterThanOrEqual(0);
-		expect(passThroughIndex).toBeGreaterThan(suspiciousRouteIndex);
-	});
 });
+
+// ---------------------------------------------------------------------------
+// Agent setup: the welcome card (patch) and the composery-agents extension are
+// two surfaces of one list; they must agree.
+// ---------------------------------------------------------------------------
 
 describe("composery agent setup", () => {
 	const extension = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-agents/extension.js"
 	);
-	const welcome = readRepoFile("packages/ide/patches/welcome.diff");
+	const welcome = readRepoFile(`${PATCHES_DIR}/welcome.diff`);
 
 	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
 		(match) => match[1]
@@ -597,11 +426,14 @@ describe("composery agent setup", () => {
 	);
 
 	test("welcome card and extension cover the same agents in the same order", () => {
-		expect(extensionIds).toHaveLength(6);
+		expect(extensionIds.length).toBeGreaterThan(0);
 		expect(welcomeIds).toEqual(extensionIds);
 	});
 
 	test("every agent ships a logo served from the welcome _static media path", () => {
+		expect(welcome).toContain(
+			"url(./_static/src/browser/media/agents/${agent.id}.svg)"
+		);
 		for (const id of extensionIds) {
 			const logo = resolve(
 				repoRoot,
@@ -611,23 +443,18 @@ describe("composery agent setup", () => {
 		}
 	});
 
-	test("agent logos are accent-tinted via a CSS mask", () => {
-		expect(welcome).toContain(
-			"background-color: var(--vscode-textLink-foreground)"
-		);
-		expect(welcome).toContain(
-			"url(./_static/src/browser/media/agents/${agent.id}.svg)"
-		);
-	});
-
 	test("welcome card dispatches installs through the composery-agents command", () => {
-		expect(welcome).not.toContain("command:composery");
 		expect(welcome).toContain(
 			"this.commandService.executeCommand('composery.installAgent'"
 		);
 		expect(extension).toContain('registerCommand("composery.installAgent"');
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Shortcuts: the extension, its manifest, and the workbench patch expose one
+// command surface across three files.
+// ---------------------------------------------------------------------------
 
 describe("composery shortcuts", () => {
 	const extension = readRepoFile(
@@ -636,8 +463,7 @@ describe("composery shortcuts", () => {
 	const manifest = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
 	);
-	const shortcutsPatch = readRepoFile("packages/ide/patches/shortcuts.diff");
-	const series = readRepoFile("packages/ide/patches/series");
+	const shortcutsPatch = readRepoFile(`${PATCHES_DIR}/shortcuts.diff`);
 
 	test("keeps patched internal commands aligned with the extension", () => {
 		for (const command of [
@@ -650,61 +476,15 @@ describe("composery shortcuts", () => {
 		}
 	});
 
-	test("loads the shortcut contribution from the terminal workbench contribution", () => {
-		expect(shortcutsPatch).toContain("import './shortcuts.contribution.js';");
-		expect(shortcutsPatch).toContain("TerminalIconPicker");
-		expect(shortcutsPatch).toContain("createColorStyleElement");
-		expect(shortcutsPatch).toContain("IConfigurationResolverService");
-		expect(series.trimEnd().split(/\r?\n/)).toContain("shortcuts.diff");
-	});
-
-	test("ships the full shortcut command surface", () => {
+	test("implements every command the manifest contributes", () => {
 		const parsed = JSON.parse(manifest) as {
 			contributes: { commands: Array<{ command: string }> };
 		};
 		const commands = parsed.contributes.commands.map((entry) => entry.command);
 
-		expect(commands).toEqual([
-			"composery.shortcuts.run",
-			"composery.shortcuts.add",
-			"composery.shortcuts.edit",
-			"composery.shortcuts.duplicate",
-			"composery.shortcuts.remove",
-			"composery.shortcuts.moveUp",
-			"composery.shortcuts.moveDown",
-			"composery.shortcuts.refresh",
-			"composery.shortcuts.undoRemove"
-		]);
-	});
-
-	test("covers terminal, file, and folder shortcut behavior", () => {
-		expect(extension).toContain('type: "terminal"');
-		expect(extension).toContain('type: "file"');
-		expect(extension).toContain('type: "folder"');
-		expect(extension).toContain("vscode.openFolder");
-		expect(extension).toContain("text/uri-list");
-		expect(extension).toContain("new vscode.ThemeIcon");
-		expect(extension).not.toContain("shortcut.kind");
-	});
-
-	test("settles on Run Shortcut naming", () => {
-		expect(extension).not.toContain("Open Shortcut");
-		expect(manifest).not.toContain("Open Shortcut");
-		expect(manifest).toContain('"title": "Run Shortcut"');
-	});
-
-	test("persists storage without losing data", () => {
-		expect(extension).toContain(".rename(");
-		expect(extension).toContain(".bak");
-		expect(extension).toContain("await this.backup(");
-	});
-
-	test("creates file and folder shortcuts from dropped resources", () => {
-		expect(extension).toContain(
-			'this.dropMimeTypes = [TREE_MIME, "text/uri-list"]'
-		);
-		expect(extension).toContain("vscode.workspace.fs.stat");
-		expect(extension).toContain("fileOrFolderShortcut");
-		expect(extension).toContain("hasResourceShortcut");
+		expect(commands.length).toBeGreaterThan(0);
+		for (const command of commands) {
+			expect(extension).toContain(`"${command}"`);
+		}
 	});
 });

@@ -1,84 +1,64 @@
-import { spawnSync } from "node:child_process";
-import {
-	cpSync,
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	rmSync,
-	statSync
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { REPO_ROOT, run } from "./run.mjs";
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Typecheck the IDE server tree exactly as build.sh assembles it: pristine
+// code-server src + patches/server.diff + overlay's new files. Sources come from
+// git blobs (always LF) so the patch applies on Windows working trees too.
 const UPSTREAM = join(REPO_ROOT, "packages/ide/upstream");
 const OVERLAY = join(REPO_ROOT, "packages/ide/overlay");
+const SERVER_DIFF = join(REPO_ROOT, "packages/ide/patches/server.diff");
 const SCRATCH = join(REPO_ROOT, "tmp/ide-overlay-typecheck");
 const isWindows = process.platform === "win32";
-const commandSuffix = isWindows ? ".cmd" : "";
 
-function run(command, args, options = {}) {
-	console.log(`\n$ ${[command, ...args].join(" ")}`);
-	const result = spawnSync(command, args, {
-		cwd: REPO_ROOT,
-		shell: isWindows,
-		stdio: "inherit",
-		...options
-	});
-	if (result.error) {
-		console.error(result.error.message);
-		process.exit(1);
-	}
-	if (result.status !== 0) process.exit(result.status ?? 1);
+if (!existsSync(join(UPSTREAM, "package.json"))) {
+	console.error(
+		"packages/ide/upstream is empty; run pnpm setup to init submodules."
+	);
+	process.exit(1);
 }
-
-function ensurePath(path, label) {
-	if (!existsSync(path)) {
-		console.error(`${label} is missing: ${path}`);
-		process.exit(1);
-	}
-}
-
-function copyContents(source, destination) {
-	mkdirSync(destination, { recursive: true });
-	for (const entry of readdirSync(source)) {
-		cpSync(join(source, entry), join(destination, entry), { recursive: true });
-	}
-}
-
-ensurePath(join(UPSTREAM, "package.json"), "code-server upstream package");
-ensurePath(
-	join(UPSTREAM, "package-lock.json"),
-	"code-server upstream lockfile"
-);
-ensurePath(join(UPSTREAM, "tsconfig.json"), "code-server upstream tsconfig");
-ensurePath(join(UPSTREAM, "src"), "code-server upstream source");
-ensurePath(join(OVERLAY, "src"), "IDE overlay source");
 
 rmSync(SCRATCH, { force: true, recursive: true });
-mkdirSync(join(SCRATCH, "src"), { recursive: true });
+mkdirSync(SCRATCH, { recursive: true });
 
-for (const file of ["package.json", "package-lock.json", "tsconfig.json"]) {
-	cpSync(join(UPSTREAM, file), join(SCRATCH, file));
-}
-
-copyContents(join(UPSTREAM, "src"), join(SCRATCH, "src"));
-copyContents(join(OVERLAY, "src"), join(SCRATCH, "src"));
-
-const typings = join(UPSTREAM, "typings");
-if (existsSync(typings) && statSync(typings).isDirectory()) {
-	cpSync(typings, join(SCRATCH, "typings"), { recursive: true });
-}
-
-run(
-	`npm${commandSuffix}`,
-	["ci", "--ignore-scripts", "--no-audit", "--no-fund"],
-	{
-		cwd: SCRATCH
-	}
+execFileSync(
+	"git",
+	[
+		"-C",
+		UPSTREAM,
+		"-c",
+		"core.autocrlf=false",
+		"archive",
+		"HEAD",
+		"package.json",
+		"package-lock.json",
+		"tsconfig.json",
+		"src",
+		"typings",
+		"-o",
+		join(SCRATCH, "upstream.tar")
+	],
+	{ stdio: "inherit" }
 );
-run(`npx${commandSuffix}`, ["tsc", "--noEmit", "--project", "tsconfig.json"], {
-	cwd: SCRATCH
+execFileSync("tar", ["-xf", "upstream.tar"], {
+	cwd: SCRATCH,
+	stdio: "inherit"
 });
+rmSync(join(SCRATCH, "upstream.tar"));
+
+execFileSync("git", ["-C", SCRATCH, "apply", "-p1", SERVER_DIFF], {
+	stdio: "inherit"
+});
+
+for (const entry of readdirSync(join(OVERLAY, "src"))) {
+	cpSync(join(OVERLAY, "src", entry), join(SCRATCH, "src", entry), {
+		recursive: true
+	});
+}
+
+const shell = { cwd: SCRATCH, shell: isWindows };
+run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], shell);
+run("npx", ["tsc", "--noEmit", "--project", "tsconfig.json"], shell);
 
 rmSync(SCRATCH, { force: true, recursive: true });

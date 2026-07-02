@@ -3,17 +3,15 @@
 # Composery = pristine code-server (submodule) + our overlay + our patches.
 #
 #   upstream/   code-server, pinned submodule (brings its own lib/vscode)
-#   overlay/    whole files we own, path-mirrored onto the tree. This includes
-#               the code-server src/node files we modify (cli, http, main, util,
-#               wrapper, routes/...). They are whole owned files, not patches -
-#               readable and diffable directly. The two env vars that cross into
-#               VS Code (CODE_SERVER_SESSION_SOCKET, CODE_SERVER_PARENT_PID) keep
-#               upstream's names so code-server's own integration.diff and
-#               store-socket.diff apply unmodified.
-#   patches/    series = our diffs; all apply -p1 from the code-server root. These
-#               are VS Code-side only (lib/vscode/*) - assets, welcome, touch/narrow,
-#               branding svgs, theme cache. code-server's own 25 patches (incl.
-#               integration.diff + store-socket.diff) apply unmodified from upstream.
+#   overlay/    files that do not exist upstream, path-mirrored onto the tree:
+#               new server routes (src/node/routes/api, register, ...), auth pages,
+#               media, bundled extensions, workbench assets. Never a modified copy
+#               of an upstream file - those are patches, so upstream bumps fail
+#               loudly instead of silently reverting.
+#   patches/    series = our diffs; all apply -p1 from the code-server root.
+#               server.diff carries every change to code-server's own src/node;
+#               the rest are VS Code-side (lib/vscode/*). code-server's own
+#               patches apply unmodified from upstream, before ours.
 #
 # The build itself (quilt + the code-server toolchain) is Linux-only.
 set -euo pipefail

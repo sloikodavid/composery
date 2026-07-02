@@ -20,6 +20,32 @@ hot-reload; this is the normal loop. An EAS **development build**
 (`eas build --profile development`, see `eas.json`) is only needed when you add
 a native module Expo Go doesn't bundle — not for everyday work.
 
+Three Expo Go gotchas, recorded so nobody re-walks them either:
+
+- **The store Expo Go is behind the SDK.** As of May 2026 the App Store / Play
+  Store ship Expo Go for **SDK 54**; this project is **SDK 56**. Running the
+  project in a store Expo Go is JS-against-wrong-natives — the crashes look
+  like random native SIGABRTs, not a clean error. Get the matching Expo Go
+  instead: on Android, press `a` in the Metro terminal and Expo CLI installs
+  the SDK 56 Expo Go on the connected device/emulator; on iOS it's the
+  TestFlight external beta (see the
+  [Expo Go / App Store notice](https://expo.dev/changelog/expo-go-and-app-store-may-2026)),
+  or fall back to a development build.
+- **`expo start` alone does not target Expo Go here.** Because
+  `expo-dev-client` is installed, plain `expo start` prints "using development
+  build" and its QR deep-links into the dev client, not Expo Go. The `dev` /
+  `start` / `android` / `ios` scripts pass `--go` for this reason; keep it (or
+  press `s` in the terminal to switch).
+- **Native-module versions must match Expo Go exactly.** Expo Go bundles fixed
+  native code, so a caret range on a native dep (`react-native-webview` was
+  `^13.16.1`) lets the JS drift ahead of the natives — that skew is the
+  `dataDetectorTypes` SIGABRT class above. Native deps stay pinned to what
+  `npx expo install --check` expects; run it (and `npx expo-doctor`) after any
+  dependency change. `@expo/dom-webview` + `@expo/metro-runtime` are direct
+  deps for the same reason: expo peers on them, and pnpm otherwise reuses a
+  stale transitive copy across SDK patch bumps
+  ([expo#47076](https://github.com/expo/expo/issues/47076)).
+
 Two Windows gotchas, recorded so nobody re-walks them:
 
 - **Don't build natively on Windows.** `expo run:android` / `eas build --local`

@@ -7,7 +7,7 @@
 
 ## IDE / code-server naming
 
-`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork; the overlay lives at `packages/ide/overlay/`. VS Code source sits at `packages/ide/{overlay,upstream}/lib/vscode/`.
+`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (`server.diff` for code-server's `src/node`, the rest for `lib/vscode/*`), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
 - `code-server` stays only for upstream machinery we haven't renamed: the CLI binary, build script names, env contracts the runtime image exposes (`PASSWORD`, `HASHED_PASSWORD`, `PORT`), `product.json` fields, patch names, artifact paths, and the VS Code subtree under.
   `lib/vscode/`.

@@ -1,23 +1,40 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { REPO_ROOT, run } from "./run.mjs";
 
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-
-function run(command, args, options = {}) {
-	console.log(`\n$ ${[command, ...args].join(" ")}`);
-	const result = spawnSync(command, args, {
-		cwd: REPO_ROOT,
-		stdio: "inherit",
-		...options
-	});
-	if (result.error) {
-		console.error(result.error.message);
-		process.exit(1);
-	}
-	if (result.status !== 0) process.exit(result.status ?? 1);
-}
+// fmt + clippy + test for the one Rust workspace (packages/cli). Native cargo on
+// Linux; elsewhere the same commands run in the Dockerfile's Rust image so the
+// toolchain matches CI and the shipped binary.
+const MANIFEST = "packages/cli/Cargo.toml";
+const COMMANDS = [
+	["cargo", ["fmt", "--all", "--manifest-path", MANIFEST, "--check"]],
+	[
+		"cargo",
+		[
+			"clippy",
+			"--manifest-path",
+			MANIFEST,
+			"--workspace",
+			"--all-targets",
+			"--all-features",
+			"--",
+			"-D",
+			"warnings"
+		]
+	],
+	[
+		"cargo",
+		[
+			"test",
+			"--manifest-path",
+			MANIFEST,
+			"--workspace",
+			"--all-targets",
+			"--all-features"
+		]
+	]
+];
 
 function canRun(command, args) {
 	const result = spawnSync(command, args, {
@@ -28,78 +45,9 @@ function canRun(command, args) {
 	return result.status === 0;
 }
 
-function shellQuote(value) {
-	return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function toRepoPath(file) {
-	return relative(REPO_ROOT, file).replaceAll("\\", "/");
-}
-
-function findCargoManifests() {
-	const output = execFileSync(
-		"git",
-		[
-			"ls-files",
-			"--cached",
-			"--others",
-			"--exclude-standard",
-			"-z",
-			"*Cargo.toml"
-		],
-		{ cwd: REPO_ROOT }
-	);
-	return output
-		.toString("utf8")
-		.split("\0")
-		.filter(Boolean)
-		.map((path) => join(REPO_ROOT, path))
-		.sort((left, right) => left.localeCompare(right));
-}
-
-function isWorkspaceManifest(manifest) {
-	const contents = readFileSync(manifest, "utf8");
-	return /^\s*\[workspace\]\s*$/m.test(contents);
-}
-
-function cargoTargets() {
-	const manifests = findCargoManifests();
-	if (manifests.length === 0) return [];
-
-	const workspace = manifests.find(isWorkspaceManifest);
-	if (workspace) {
-		return [{ all: true, manifest: toRepoPath(workspace) }];
-	}
-
-	return manifests.map((manifest) => ({
-		all: false,
-		manifest: toRepoPath(manifest)
-	}));
-}
-
-function cargoCommands(targets = cargoTargets()) {
-	return targets.flatMap((target) => {
-		const fmtArgs = ["fmt", "--manifest-path", target.manifest, "--check"];
-		if (target.all) fmtArgs.push("--all");
-		const commonArgs = [
-			"--manifest-path",
-			target.manifest,
-			target.all ? "--workspace" : undefined,
-			"--all-targets",
-			"--all-features"
-		].filter(Boolean);
-
-		return [
-			["cargo", fmtArgs],
-			["cargo", ["clippy", ...commonArgs, "--", "-D", "warnings"]],
-			["cargo", ["test", ...commonArgs]]
-		];
-	});
-}
-
 function rustImage() {
 	const dockerfile = readFileSync(join(REPO_ROOT, "Dockerfile"), "utf8");
-	const match = /^FROM\s+(rust:[^\s]+)\s+AS\s+cli-chef\s*$/m.exec(dockerfile);
+	const match = /^FROM\s+(rust:\S+)\s+AS\s+cli-chef\s*$/m.exec(dockerfile);
 	if (!match) {
 		console.error("Could not find the cli-chef Rust image in Dockerfile.");
 		process.exit(1);
@@ -107,11 +55,8 @@ function rustImage() {
 	return match[1];
 }
 
-const targets = cargoTargets();
-if (targets.length === 0) process.exit(0);
-
 if (process.platform === "linux" && canRun("cargo", ["--version"])) {
-	for (const [command, args] of cargoCommands(targets)) run(command, args);
+	for (const [command, args] of COMMANDS) run(command, args);
 	process.exit(0);
 }
 
@@ -122,12 +67,13 @@ if (!canRun("docker", ["version", "--format", "{{.Server.Version}}"])) {
 	process.exit(1);
 }
 
+const shellQuote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 const script = [
 	"set -e",
 	'export PATH="/usr/local/cargo/bin:${PATH}"',
 	"export CARGO_TARGET_DIR=/tmp/composery-cargo-target",
 	"rustup component add rustfmt clippy >/dev/null",
-	...cargoCommands(targets).map(([command, args]) =>
+	...COMMANDS.map(([command, args]) =>
 		[command, ...args.map(shellQuote)].join(" ")
 	)
 ].join(" && ");

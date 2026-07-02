@@ -1,7 +1,6 @@
-Index: work/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
-+++ work/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+diff --git a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+--- a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
++++ b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
 @@ -73,6 +73,14 @@ export class BrowserClipboardService ext
  		return new Uint8Array(0);
  	}
@@ -17,10 +16,9 @@ Index: work/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
  	private webKitPendingClipboardWritePromise: DeferredPromise<string> | undefined;
  
  	// In Safari, it has the following note:
-Index: work/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
-+++ work/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
+diff --git a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
+--- a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
++++ b/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
 @@ -64,4 +64,9 @@ export interface IClipboardService {
  	 * image, an empty buffer is returned.
  	 */
@@ -31,10 +29,9 @@ Index: work/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
 +	 */
 +	writeImage(buffer: Uint8Array, mimeType?: string): Promise<void>;
  }
-Index: work/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
-+++ work/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
+diff --git a/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts b/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
+--- a/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
++++ b/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
 @@ -11,6 +11,10 @@ export class TestClipboardService implem
  		throw new Error('Method not implemented.');
  	}
@@ -46,11 +43,10 @@ Index: work/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardServic
  	_serviceBrand: undefined;
  
  	private text: string | undefined = undefined;
-Index: work/lib/vscode/src/vs/platform/environment/common/argv.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/environment/common/argv.ts
-+++ work/lib/vscode/src/vs/platform/environment/common/argv.ts
-@@ -150,6 +150,9 @@ export interface NativeParsedArgs {
+diff --git a/lib/vscode/src/vs/platform/environment/common/argv.ts b/lib/vscode/src/vs/platform/environment/common/argv.ts
+--- a/lib/vscode/src/vs/platform/environment/common/argv.ts
++++ b/lib/vscode/src/vs/platform/environment/common/argv.ts
+@@ -147,6 +147,9 @@ export interface NativeParsedArgs {
  	sandbox?: boolean;
  	'enable-coi'?: boolean;
  	'stdin-to-clipboard'?: boolean;
@@ -60,10 +56,9 @@ Index: work/lib/vscode/src/vs/platform/environment/common/argv.ts
  	'unresponsive-sample-interval'?: string;
  	'unresponsive-sample-period'?: string;
  	'enable-rdp-display-tracking'?: boolean;
-Index: work/lib/vscode/src/vs/platform/environment/node/argv.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/environment/node/argv.ts
-+++ work/lib/vscode/src/vs/platform/environment/node/argv.ts
+diff --git a/lib/vscode/src/vs/platform/environment/node/argv.ts b/lib/vscode/src/vs/platform/environment/node/argv.ts
+--- a/lib/vscode/src/vs/platform/environment/node/argv.ts
++++ b/lib/vscode/src/vs/platform/environment/node/argv.ts
 @@ -116,6 +116,9 @@ export const OPTIONS: OptionDescriptions
  	'profile': { type: 'string', 'cat': 'o', args: 'profileName', description: localize('profileName', "Opens the provided folder or workspace with the given profile and associates the profile with the workspace. If the profile does not exist, a new empty one is created.") },
  	'help': { type: 'boolean', cat: 'o', alias: 'h', description: localize('help', "Print usage.") },
@@ -74,11 +69,10 @@ Index: work/lib/vscode/src/vs/platform/environment/node/argv.ts
  
  	'extensions-dir': { type: 'string', deprecates: ['extensionHomePath'], cat: 'e', args: 'dir', description: localize('extensionHomePath', "Set the root path for extensions.") },
  	'extensions-download-dir': { type: 'string' },
-Index: work/lib/vscode/src/vs/platform/native/common/native.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/native/common/native.ts
-+++ work/lib/vscode/src/vs/platform/native/common/native.ts
-@@ -218,6 +218,7 @@ export interface ICommonNativeHostServic
+diff --git a/lib/vscode/src/vs/platform/native/common/native.ts b/lib/vscode/src/vs/platform/native/common/native.ts
+--- a/lib/vscode/src/vs/platform/native/common/native.ts
++++ b/lib/vscode/src/vs/platform/native/common/native.ts
+@@ -225,6 +225,7 @@ export interface ICommonNativeHostServic
  	readClipboardBuffer(format: string): Promise<VSBuffer>;
  	hasClipboard(format: string, type?: 'selection' | 'clipboard'): Promise<boolean>;
  	readImage(): Promise<Uint8Array>;
@@ -86,20 +80,19 @@ Index: work/lib/vscode/src/vs/platform/native/common/native.ts
  
  	// macOS Touchbar
  	newWindowTab(): Promise<void>;
-Index: work/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
-+++ work/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
+diff --git a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts b/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
+--- a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
 @@ -5,7 +5,7 @@
  
  import * as fs from 'fs';
  import { exec } from 'child_process';
--import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, webContents } from 'electron';
-+import { app, BrowserWindow, clipboard, nativeImage, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, webContents } from 'electron';
+-import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
++import { app, BrowserWindow, clipboard, nativeImage, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
  import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
  import { promisify } from 'util';
  import { memoize } from '../../../base/common/decorators.js';
-@@ -931,6 +931,10 @@ export class NativeHostMainService exten
+@@ -990,6 +990,10 @@ export class NativeHostMainService exten
  		return clipboard.readImage().toPNG();
  	}
  
@@ -110,10 +103,9 @@ Index: work/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainServic
  	async writeClipboardText(windowId: number | undefined, text: string, type?: 'selection' | 'clipboard'): Promise<void> {
  		return clipboard.writeText(text, type);
  	}
-Index: work/lib/vscode/src/vs/server/node/server.cli.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/server/node/server.cli.ts
-+++ work/lib/vscode/src/vs/server/node/server.cli.ts
+diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/server/node/server.cli.ts
+--- a/lib/vscode/src/vs/server/node/server.cli.ts
++++ b/lib/vscode/src/vs/server/node/server.cli.ts
 @@ -78,6 +78,9 @@ const isSupportedForPipe = (optionId: ke
  		case 'remote':
  		case 'locate-shell-integration-path':
@@ -163,10 +155,9 @@ Index: work/lib/vscode/src/vs/server/node/server.cli.ts
  		if (parsedArgs['stdin-to-clipboard']) {
  			if(!hasStdinWithoutTty()) {
  				console.error("stdin has a tty.");
-Index: work/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
-+++ work/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
+diff --git a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts b/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
+--- a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
++++ b/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
 @@ -3,6 +3,7 @@
   *  Licensed under the MIT License. See License.txt in the project root for license information.
   *--------------------------------------------------------------------------------------------*/
@@ -197,10 +188,9 @@ Index: work/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
  class RemoteExtensionManagementCLI extends ExtensionManagementCLI {
  
  	private _location: string | undefined;
-Index: work/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
-+++ work/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
+diff --git a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts b/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
+--- a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
++++ b/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
 @@ -49,7 +49,20 @@ export interface ClipboardPipeArgs {
  	content: string;
  }
@@ -258,10 +248,9 @@ Index: work/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
  	dispose(): void {
  		this._disposed = true;
  		this._server?.close();
-Index: work/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
-+++ work/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 @@ -99,7 +99,7 @@ class RemoteTerminalBackend extends Base
  			}
  		}));
@@ -271,10 +260,9 @@ Index: work/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalB
  		this._register(this._remoteTerminalChannel.onExecuteCommand(async e => {
  			// Ensure this request for for this window
  			const pty = this._ptys.get(e.persistentProcessId);
-Index: work/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
-+++ work/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
+diff --git a/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts b/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
+--- a/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
++++ b/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
 @@ -31,6 +31,10 @@ export class NativeClipboardService impl
  		return this.nativeHostService.readImage();
  	}
@@ -286,11 +274,10 @@ Index: work/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clip
  	async writeText(text: string, type?: 'selection' | 'clipboard'): Promise<void> {
  		this.logService.trace('NativeClipboardService#writeText called with type:', type, ' with text.length:', text.length);
  		return this.nativeHostService.writeClipboardText(text, type);
-Index: work/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
-===================================================================
---- work.orig/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
-+++ work/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
-@@ -181,6 +181,7 @@ export class TestNativeHostService imple
+diff --git a/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+--- a/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
++++ b/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
+@@ -180,6 +180,7 @@ export class TestNativeHostService imple
  	async writeClipboardBuffer(format: string, buffer: VSBuffer, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
  	async triggerPaste(options?: INativeHostOptions): Promise<void> { }
  	async readImage(): Promise<Uint8Array> { return Uint8Array.from([]); }
