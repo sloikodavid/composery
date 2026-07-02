@@ -1,65 +1,63 @@
 {
-  "expo": {
-    "name": "Composery",
-    "slug": "composery",
-    "version": "1.0.0",
-    "orientation": "default",
-    "icon": "./assets/images/icon.png",
-    "scheme": "composery",
-    "userInterfaceStyle": "automatic",
-    "ios": {
-      "bundleIdentifier": "io.composery",
-      "config": {
-        "usesNonExemptEncryption": false
-      }
-    },
-    "android": {
-      "package": "io.composery",
-      "adaptiveIcon": {
-        "backgroundColor": "#2c231c",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
-    },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow Composery to use the camera to scan an instance QR code.",
-          "recordAudioAndroid": false
-        }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#a1600d",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "4229406d-ffc0-412c-b286-148b698dcf88"
-      }
-    },
-    "owner": "sloikodavid"
-  }
+	"expo": {
+		"name": "Composery",
+		"slug": "composery",
+		"version": "1.0.0",
+		"orientation": "default",
+		"icon": "./assets/images/icon.png",
+		"scheme": "composery",
+		"userInterfaceStyle": "automatic",
+		"ios": {
+			"bundleIdentifier": "io.composery",
+			"config": {
+				"usesNonExemptEncryption": false
+			}
+		},
+		"android": {
+			"package": "io.composery",
+			"adaptiveIcon": {
+				"backgroundColor": "#2c231c",
+				"foregroundImage": "./assets/images/android-icon-foreground.png",
+				"backgroundImage": "./assets/images/android-icon-background.png",
+				"monochromeImage": "./assets/images/android-icon-monochrome.png"
+			},
+			"predictiveBackGestureEnabled": false,
+			"permissions": ["android.permission.CAMERA"]
+		},
+		"web": {
+			"output": "static",
+			"favicon": "./assets/images/favicon.png"
+		},
+		"plugins": [
+			"expo-router",
+			[
+				"expo-camera",
+				{
+					"cameraPermission": "Allow Composery to use the camera to scan an instance QR code.",
+					"recordAudioAndroid": false
+				}
+			],
+			[
+				"expo-splash-screen",
+				{
+					"backgroundColor": "#a1600d",
+					"android": {
+						"image": "./assets/images/splash-icon.png",
+						"imageWidth": 76
+					}
+				}
+			]
+		],
+		"experiments": {
+			"typedRoutes": true,
+			"reactCompiler": true
+		},
+		"extra": {
+			"router": {},
+			"eas": {
+				"projectId": "4229406d-ffc0-412c-b286-148b698dcf88"
+			}
+		},
+		"owner": "sloikodavid"
+	}
 }

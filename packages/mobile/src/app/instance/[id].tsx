@@ -3,7 +3,14 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { openBrowserAsync } from "expo-web-browser";
 import { ExternalLink, RotateCw } from "lucide-react-native";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState
+} from "react";
 import { BackHandler, Text, useColorScheme, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
@@ -193,9 +200,7 @@ export default function InstanceScreen() {
 	// of swapping to a blank spinner.
 	const shownFailure: FailedProbe | null =
 		failedProbe ??
-		(probing &&
-		lastFailure !== null &&
-		lastFailure.url === instance?.url
+		(probing && lastFailure !== null && lastFailure.url === instance?.url
 			? lastFailure.result
 			: null);
 	const webRetrying = loadError !== null && webLoading;
@@ -322,7 +327,11 @@ export default function InstanceScreen() {
 								theme={theme}
 								title="Couldn't load this instance"
 								detail={
-									<InlineUrl theme={theme} url={instance.url} rest=" failed to load." />
+									<InlineUrl
+										theme={theme}
+										url={instance.url}
+										rest=" failed to load."
+									/>
 								}
 								note={loadError || undefined}
 								onBack={goBack}
@@ -353,7 +362,11 @@ export default function InstanceScreen() {
 								rest=" doesn't point to a Composery instance."
 							/>
 						) : (
-							<InlineUrl theme={theme} url={instance.url} rest=" isn't responding." />
+							<InlineUrl
+								theme={theme}
+								url={instance.url}
+								rest=" isn't responding."
+							/>
 						)
 					}
 					onBack={goBack}

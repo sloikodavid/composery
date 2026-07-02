@@ -113,6 +113,9 @@ packages/
               NOTICE
               package.json
               README.md
+            composery-updates/
+              extension.js
+              package.json
           out/
             vs/
               code/
@@ -457,9 +460,7 @@ packages/
     public/
       robots.txt
       showcase-dark.png
-      showcase-dark.psd
-      showcase.png
-      showcase.psd
+      showcase-light.png
     scripts/
       generate-icons.mjs
       generate-logo.mjs

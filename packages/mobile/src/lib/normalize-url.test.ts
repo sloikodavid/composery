@@ -104,7 +104,10 @@ describe("normalizeInstanceUrl", () => {
 			["169.254.1.1", "http://169.254.1.1/"],
 			["raspberrypi.local", "http://raspberrypi.local/"],
 			["nas", "http://nas/"],
-			["192.168.1.5:8080/code/?folder=/app", "http://192.168.1.5:8080/code/?folder=/app"]
+			[
+				"192.168.1.5:8080/code/?folder=/app",
+				"http://192.168.1.5:8080/code/?folder=/app"
+			]
 		])("%p -> %p", (input, expected) => {
 			expect(normalizeInstanceUrl(input).href).toBe(expected);
 		});
