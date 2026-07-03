@@ -2,6 +2,7 @@ packages:
   - packages/*
 
 patchedDependencies:
+  fumadocs-mdx@15.0.12: packages/web/patches/fumadocs-mdx@15.0.12.patch
   fumadocs-ui@16.10.4: packages/web/patches/fumadocs-ui@16.10.4.patch
 
 # @clerk/nextjs@7.4.2 and @clerk/ui@1.14.0 are pinned, but their @clerk/* deps

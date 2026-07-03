@@ -2,7 +2,6 @@ import { v } from "convex/values";
 import {
 	internalMutation,
 	internalQuery,
-	query,
 	type DatabaseReader,
 	type DatabaseWriter
 } from "./_generated/server";
@@ -70,13 +69,6 @@ async function patchGlobalSettings(
 		updated_by: updatedBy
 	});
 }
-
-export const get = query({
-	args: {},
-	handler: async (ctx) => {
-		return await readGlobalSettings(ctx);
-	}
-});
 
 export const readCheckoutEnabled = internalQuery({
 	args: {},

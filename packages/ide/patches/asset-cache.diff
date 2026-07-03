@@ -35,9 +35,9 @@
    # issues where the browser keeps using outdated code.
    export BUILD_SOURCEVERSION
 -  BUILD_SOURCEVERSION=$(git rev-parse HEAD)
-+  # Composery: the fork pins this repo commit, so it no longer moves when patches change;
-+  # build.sh exports a content stamp of patches+overlay instead (see asset-cache.diff).
-+  BUILD_SOURCEVERSION=${COMPOSERY_STATIC_STAMP:-$(git rev-parse HEAD)}
++  # Composery: the fork pins this repo commit, so it no longer moves when patches change
++  # and would freeze the browser cache key; build.sh must export a content stamp instead.
++  BUILD_SOURCEVERSION=${COMPOSERY_STATIC_STAMP:?composery build.sh must export the static content stamp}
  
    pushd lib/vscode
  

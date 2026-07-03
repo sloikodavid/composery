@@ -9,11 +9,21 @@ import { AnimatedIconButton } from "@/components/animated-icon";
 import { Input } from "@/components/input";
 import { Label } from "@/components/label";
 import { api } from "@/convex/_generated/api";
+import {
+	checkBoxPasswordStrength,
+	checkPwnedBoxPassword
+} from "@/lib/box-password-check";
 import { isValidSlug, sanitizeSlug } from "@/lib/box-slug";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
 type Step = "slug" | "password" | "confirm";
+
+type PasswordBreachCheck = {
+	count?: number;
+	password: string;
+	status: "idle" | "checking" | "clear" | "found" | "unavailable";
+};
 
 const stepCrumbs: { key: Exclude<Step, "slug">; label: string }[] = [
 	{ key: "password", label: "Password" },
@@ -30,6 +40,11 @@ export function NewBoxForm() {
 	const slugInputRef = useRef<HTMLInputElement>(null);
 	const passwordInputRef = useRef<HTMLInputElement>(null);
 	const confirmationInputRef = useRef<HTMLInputElement>(null);
+	const passwordBreachAbortRef = useRef<AbortController | null>(null);
+	const [breachCheck, setBreachCheck] = useState<PasswordBreachCheck>({
+		password: "",
+		status: "idle"
+	});
 	const normalizedSlug = sanitizeSlug(slug);
 	const slugLooksValid = isValidSlug(normalizedSlug);
 	const availability = useQuery(
@@ -46,10 +61,23 @@ export function NewBoxForm() {
 			: step === "password"
 				? [stepCrumbs[0]]
 				: [];
-	const canContinuePassword = password.length > 0;
+	const passwordStrength = checkBoxPasswordStrength(password);
+	const currentBreachCheck =
+		breachCheck.password === password
+			? breachCheck
+			: ({ password, status: "idle" } satisfies PasswordBreachCheck);
+	const checkingPasswordBreach = currentBreachCheck.status === "checking";
+	const passwordFoundInBreach = currentBreachCheck.status === "found";
+	// Breach check runs on submit, not while typing, so strength alone gates the
+	// button. A breach hit blocks inside handleSubmit instead of disabling here.
+	const canContinuePassword = passwordStrength.ok;
 	const canCheckout = canContinuePassword && confirmation === password;
 	const passwordsMismatch =
 		confirmation.length > 0 && password !== confirmation;
+
+	useEffect(() => {
+		return () => passwordBreachAbortRef.current?.abort();
+	}, []);
 
 	useEffect(() => {
 		if (step === "slug") {
@@ -76,6 +104,56 @@ export function NewBoxForm() {
 		if (canOpenStep(target)) setStep(target);
 	}
 
+	function handlePasswordChange(value: string) {
+		passwordBreachAbortRef.current?.abort();
+		setPassword(value);
+	}
+
+	async function runPasswordBreachCheck(value = password) {
+		const strength = checkBoxPasswordStrength(value);
+		if (!strength.ok) return false;
+
+		if (currentBreachCheck.password === value) {
+			if (currentBreachCheck.status === "clear") return true;
+			if (currentBreachCheck.status === "unavailable") return true;
+			if (currentBreachCheck.status === "found") {
+				toast.error("Choose a different password", {
+					description: "That password appears in known breach data."
+				});
+				return false;
+			}
+		}
+
+		passwordBreachAbortRef.current?.abort();
+		const controller = new AbortController();
+		passwordBreachAbortRef.current = controller;
+		setBreachCheck({ password: value, status: "checking" });
+
+		try {
+			const count = await checkPwnedBoxPassword(value, controller.signal);
+			if (controller.signal.aborted) return false;
+
+			const status = count > 0 ? "found" : "clear";
+			setBreachCheck({ count, password: value, status });
+
+			if (count > 0) {
+				toast.error("Choose a different password", {
+					description: "That password appears in known breach data."
+				});
+			}
+
+			return count === 0;
+		} catch {
+			if (controller.signal.aborted) return false;
+
+			setBreachCheck({ password: value, status: "unavailable" });
+			toast.warning("Breach check unavailable", {
+				description: "You can continue, but the password was not checked."
+			});
+			return true;
+		}
+	}
+
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 
@@ -86,7 +164,9 @@ export function NewBoxForm() {
 		}
 
 		if (step === "password") {
-			if (!canContinuePassword) return;
+			if (!passwordStrength.ok || checkingPasswordBreach) return;
+			const passwordClear = await runPasswordBreachCheck();
+			if (!passwordClear) return;
 			setStep("confirm");
 			return;
 		}
@@ -219,13 +299,34 @@ export function NewBoxForm() {
 								<Label className="text-[15px]" htmlFor="box-password">
 									Password
 								</Label>
+								<span
+									aria-live="polite"
+									className={cn(
+										"text-right text-xs font-medium leading-tight",
+										passwordToneClass(
+											password,
+											passwordStrength.ok,
+											currentBreachCheck
+										)
+									)}
+								>
+									{passwordMessage(
+										password,
+										passwordStrength.message,
+										currentBreachCheck
+									)}
+								</span>
 							</div>
 							<Input
+								aria-invalid={
+									password.length > 0 &&
+									(!passwordStrength.ok || passwordFoundInBreach)
+								}
 								autoComplete="new-password"
 								className="h-12 rounded-lg px-5 text-[15px]"
 								id="box-password"
 								name="password"
-								onChange={(event) => setPassword(event.target.value)}
+								onChange={(event) => handlePasswordChange(event.target.value)}
 								ref={passwordInputRef}
 								type="password"
 								value={password}
@@ -319,4 +420,37 @@ export function NewBoxForm() {
 			</div>
 		</div>
 	);
+}
+
+function passwordToneClass(
+	password: string,
+	strengthOk: boolean,
+	check: PasswordBreachCheck
+) {
+	if (!password) return "text-muted-foreground";
+	if (!strengthOk || check.status === "found") return "text-destructive";
+	if (check.status === "unavailable") return "text-warning";
+	if (check.status === "clear") return "text-success";
+	return "text-muted-foreground";
+}
+
+function passwordMessage(
+	password: string,
+	strengthMessage: string,
+	check: PasswordBreachCheck
+) {
+	if (!password) return "";
+	if (check.status === "checking") return "Checking known breaches.";
+	if (check.status === "found") {
+		return `Found in ${formatBreachCount(check.count)} breach records. Choose another password.`;
+	}
+	if (check.status === "clear") return "Not found in known breaches.";
+	if (check.status === "unavailable") {
+		return "Breach check unavailable. You can continue.";
+	}
+	return strengthMessage;
+}
+
+function formatBreachCount(count = 0) {
+	return new Intl.NumberFormat("en").format(count);
 }

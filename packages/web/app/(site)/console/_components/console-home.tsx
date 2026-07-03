@@ -81,8 +81,8 @@ function NeedsAttentionPanel() {
 					Needs attention
 				</span>
 				<span className="text-sm text-muted-foreground">
-					{failures.length} failed operation{failures.length === 1 ? "" : "s"} in
-					the last 7 days
+					{failures.length} failed operation{failures.length === 1 ? "" : "s"}{" "}
+					in the last 7 days
 				</span>
 			</div>
 			<Table className="table-fixed min-w-[40rem]">

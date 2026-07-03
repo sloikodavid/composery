@@ -38,7 +38,6 @@
 	},
 	"devDependencies": {
 		"@types/react": "~19.2.2",
-		"brand": "workspace:*",
 		"eslint": "9.39.4",
 		"eslint-config-expo": "~56.0.4",
 		"typescript": "~6.0.3"
@@ -50,8 +49,7 @@
 		"ios": "expo start --go --ios",
 		"web": "expo start --web",
 		"test": "vitest run",
-		"lint": "eslint .",
-		"icons": "node ./scripts/generate-icons.mjs"
+		"lint": "eslint ."
 	},
 	"private": true
 }

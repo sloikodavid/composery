@@ -70,7 +70,19 @@ export const createCheckout = action({
 			}
 		);
 
+		const runtimeAuthHash = await hashBoxPassword(args.password);
+
 		if (activeCheckout) {
+			// The reused checkout must carry the password from this attempt, not
+			// the one stored when the intent was first reserved.
+			await ctx.runMutation(
+				internal.checkout.checkoutIntents.refreshCheckoutIntentAuthHash,
+				{
+					intentId: activeCheckout.intentId,
+					runtimeAuthHash
+				}
+			);
+
 			return {
 				checkoutUrl: activeCheckout.checkoutUrl,
 				intentId: activeCheckout.intentId,
@@ -78,7 +90,6 @@ export const createCheckout = action({
 			};
 		}
 
-		const runtimeAuthHash = await hashBoxPassword(args.password);
 		let intentId: Id<"box_checkout_intents"> | undefined;
 
 		try {

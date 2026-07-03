@@ -11,8 +11,8 @@ export type NavLink = {
 };
 
 export const PUBLIC_NAV_LINKS: NavLink[] = [
-	{ href: "/docs", icon: "book-open", label: "Docs" },
-	{ href: "/pricing", icon: "wallet", label: "Pricing" }
+	{ href: "/pricing", icon: "wallet", label: "Pricing" },
+	{ href: "/docs", icon: "book-open", label: "Docs" }
 ];
 
 const USER_LINKS: NavLink[] = [

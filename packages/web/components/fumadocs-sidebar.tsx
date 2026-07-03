@@ -7,7 +7,8 @@ import {
 	SidebarDrawerContent,
 	SidebarDrawerOverlay,
 	SidebarProvider,
-	SidebarTrigger
+	SidebarTrigger,
+	SidebarViewport
 } from "fumadocs-ui/components/sidebar/base";
 import { buttonVariants as fdButtonVariants } from "fumadocs-ui/components/ui/button";
 import { SidebarIcon } from "lucide-react";
@@ -16,8 +17,8 @@ import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
-import { GITHUB_REPO_URL } from "@/components/github-stars-link";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { GITHUB_REPO_URL } from "@/lib/links";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,
@@ -48,11 +49,9 @@ export function FumadocsSidebar() {
 	// would behave differently here, and the docs sidebar has no icons).
 	const row = (link: NavLink) => (
 		<Link
+			data-active={pathname.startsWith(link.href)}
 			className={cn(
-				"flex items-center gap-2 rounded-lg p-2 text-[0.9375rem] transition-colors",
-				pathname.startsWith(link.href)
-					? "bg-primary/10 text-primary"
-					: "text-muted-foreground hover:bg-accent dark:hover:bg-accent/50 hover:text-accent-foreground"
+				"relative flex flex-row items-center gap-2 rounded-lg p-2 text-start text-fd-muted-foreground wrap-anywhere transition-colors hover:bg-fd-accent/50 hover:text-fd-accent-foreground/80 hover:transition-none data-[active=true]:bg-fd-primary/10 data-[active=true]:text-fd-primary data-[active=true]:hover:transition-colors"
 			)}
 			href={link.href}
 			key={link.href}
@@ -75,35 +74,37 @@ export function FumadocsSidebar() {
 					</SidebarTrigger>
 				</div>
 
-				<SidebarDrawerOverlay className="fixed inset-0 z-40 backdrop-blur-xs data-[state=open]:animate-fd-fade-in data-[state=closed]:animate-fd-fade-out" />
-				<SidebarDrawerContent className="fixed inset-y-0 end-0 z-40 flex w-[85%] max-w-[380px] flex-col border-s bg-fd-background text-[0.9375rem] shadow-lg data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
-					<div className="flex items-center gap-1.5 p-4 pb-2 text-muted-foreground">
-						<div className="flex flex-1">
-							<a
-								aria-label="Composery on GitHub"
+				<SidebarDrawerOverlay className="fixed z-40 inset-0 backdrop-blur-xs data-[state=open]:animate-fd-fade-in data-[state=closed]:animate-fd-fade-out" />
+				<SidebarDrawerContent className="fixed text-[0.9375rem] flex flex-col shadow-lg border-s inset-e-0 inset-y-0 w-[85%] max-w-[380px] z-40 bg-fd-background data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
+					<div className="flex flex-col gap-3 p-4 pb-2">
+						<div className="flex items-center gap-1.5 text-fd-muted-foreground">
+							<div className="flex flex-1">
+								<a
+									aria-label="Composery on GitHub"
+									className={FUMADOCS_GHOST_ICON}
+									href={GITHUB_REPO_URL}
+									rel="noreferrer"
+									target="_blank"
+								>
+									<GitHubIcon />
+								</a>
+							</div>
+							<FumadocsThemeToggle className="p-0" />
+							<SidebarTrigger
+								aria-label="Close menu"
 								className={FUMADOCS_GHOST_ICON}
-								href={GITHUB_REPO_URL}
-								rel="noreferrer"
-								target="_blank"
 							>
-								<GitHubIcon />
-							</a>
+								<SidebarIcon />
+							</SidebarTrigger>
 						</div>
-						<FumadocsThemeToggle className="p-0" />
-						<SidebarTrigger
-							aria-label="Close menu"
-							className={FUMADOCS_GHOST_ICON}
-						>
-							<SidebarIcon />
-						</SidebarTrigger>
 					</div>
 
-					<nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-4">
+					<SidebarViewport>
 						{PUBLIC_NAV_LINKS.map(row)}
 						<Authenticated>{authedLinks.map(row)}</Authenticated>
-					</nav>
+					</SidebarViewport>
 
-					<div className="flex flex-col items-start p-4">
+					<div className="flex flex-col items-start border-t p-4 pt-2 empty:hidden">
 						<Authenticated>
 							<UserButton appearance={clerkAppearance} />
 						</Authenticated>

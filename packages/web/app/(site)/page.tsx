@@ -11,7 +11,8 @@ export default function Home() {
 						Like VS Code, but always on.
 					</h1>
 					<p className="mx-auto max-w-[41rem] text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 sm:text-nowrap">
-						A secure cloud computer with a powerful UI, usable from any phone or browser.
+						A secure cloud computer with a powerful UI, usable from any phone or
+						browser.
 					</p>
 				</div>
 				<div className="flex flex-wrap justify-center gap-3">

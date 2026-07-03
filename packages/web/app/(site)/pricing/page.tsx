@@ -17,13 +17,12 @@ import { buttonVariants } from "@/components/button";
 import { Faq } from "@/components/faq";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { PageTemplate } from "@/components/page-template";
+import { GITHUB_REPO_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
 	title: "Pricing"
 };
-
-const GITHUB_REPO_URL = "https://github.com/sloikodavid/composery";
 
 type Feature = { icon: LucideIcon; text: string };
 

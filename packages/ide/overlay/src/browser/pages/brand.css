@@ -34,15 +34,15 @@
 		--vscode-editor-background: #0a0a0a;
 		--vscode-editorHoverWidget-background: #171717;
 		--vscode-editorHoverWidget-border: #ffffff1f;
-		--vscode-editorHoverWidget-foreground: #ffffff;
+		--vscode-editorHoverWidget-foreground: #fafafa;
 		--vscode-errorForeground: #f87171;
 		--auth-input-focus: #737373;
 		--auth-message-background: #171717;
 		--auth-message-border: #ffffff1f;
-		--vscode-foreground: #ffffff;
+		--vscode-foreground: #fafafa;
 		--vscode-input-background: #171717;
 		--vscode-input-border: #ffffff29;
-		--vscode-input-foreground: #ffffff;
+		--vscode-input-foreground: #fafafa;
 		--vscode-toolbar-activeBackground: #6c6f7050;
 		--vscode-toolbar-hoverBackground: #5a5d5e50;
 		--vscode-shadow-hover: 0 2px 8px #0000005c;

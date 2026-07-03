@@ -9,7 +9,7 @@ export const ICON_CROP_VIEWBOX = ICON_VIEWBOX;
 export const brandColors = {
 	icon: {
 		light: "#000000",
-		dark: "#ffffff",
+		dark: "#fafafa",
 		muted: "#737373",
 		tileStroke: "#ffffff"
 	},
@@ -19,7 +19,7 @@ export const brandColors = {
 		canvas: "#fafafa",
 		border: "#e5e5e5",
 		lightText: "#000000",
-		darkText: "#ffffff",
+		darkText: "#fafafa",
 		tile: "#0a0a0a",
 		splash: "#ffffff"
 	},
@@ -70,11 +70,11 @@ export const theme = {
 	},
 	dark: {
 		background: "#0a0a0a",
-		foreground: "#ffffff",
+		foreground: "#fafafa",
 		card: "#0a0a0a",
-		cardForeground: "#ffffff",
+		cardForeground: "#fafafa",
 		popover: "#0a0a0a",
-		popoverForeground: "#ffffff",
+		popoverForeground: "#fafafa",
 		primary: "#fafafa",
 		primaryForeground: "#0a0a0a",
 		secondary: "#171717",
@@ -96,7 +96,7 @@ export const theme = {
 		chart4: "#737373",
 		chart5: "#525252",
 		sidebar: "#0a0a0a",
-		sidebarForeground: "#ffffff",
+		sidebarForeground: "#fafafa",
 		sidebarPrimary: "#fafafa",
 		sidebarPrimaryForeground: "#0a0a0a",
 		sidebarAccent: "#171717",

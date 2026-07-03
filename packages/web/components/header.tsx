@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
 import { FumadocsSidebar } from "@/components/fumadocs-sidebar";
-import { GitHubStarsLink } from "@/components/github-stars-link";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,
@@ -28,7 +27,7 @@ export function Header() {
 				"flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
 				pathname.startsWith(link.href)
 					? "bg-primary/10 text-primary"
-					: "text-muted-foreground hover:bg-muted dark:hover:bg-muted/50 hover:text-foreground",
+					: "text-muted-foreground hover:bg-muted/50 dark:hover:bg-foreground/10 hover:text-foreground",
 				fade && "header-auth-fade-in"
 			)}
 			href={link.href}
@@ -55,7 +54,6 @@ export function Header() {
 				</div>
 
 				<div className="flex items-center gap-2">
-					<GitHubStarsLink />
 					<ThemeToggle />
 					<Authenticated>
 						{/* Fixed footprint so the row displaces once when auth resolves;

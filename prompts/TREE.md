@@ -49,6 +49,7 @@ packages/
   brand/
     icons.mjs
     index.mjs
+    logo.mjs
     package.json
     sync.mjs
   cli/
@@ -145,7 +146,6 @@ packages/
               openclaw.svg
               opencode.svg
               pi.svg
-            bricolage-grotesque.woff2
             composery-logo.svg
             favicon-dark-support.svg
             favicon.ico
@@ -219,8 +219,6 @@ packages/
         favicon.png
         icon.png
         splash-icon.png
-    scripts/
-      generate-icons.mjs
     src/
       app/
         instance/
@@ -323,7 +321,6 @@ packages/
           page.tsx
         layout.tsx
       fonts/
-        bricolage-grotesque-latin-wght-normal.woff2
         inter-latin-wght-normal.woff2
       llms-full.txt/
         route.ts
@@ -439,6 +436,8 @@ packages/
     lib/
       auth-routing.test.ts
       auth-routing.ts
+      box-password-check.test.ts
+      box-password-check.ts
       box-slug.test.ts
       box-slug.ts
       brand.ts
@@ -451,6 +450,7 @@ packages/
       hetzner-dashboard.ts
       highlight-logs.ts
       layout.shared.tsx
+      links.ts
       polar-dashboard.test.ts
       polar-dashboard.ts
       route-guards.ts
@@ -459,14 +459,10 @@ packages/
       utils.ts
       vercel-dashboard.ts
     patches/
+      fumadocs-mdx@15.0.12.patch
       fumadocs-ui@16.10.4.patch
     public/
       robots.txt
-      showcase-dark.png
-      showcase-light.png
-    scripts/
-      generate-icons.mjs
-      generate-logo.mjs
     .env.example.convex.dev
     .env.example.convex.prod
     .env.example.next.dev

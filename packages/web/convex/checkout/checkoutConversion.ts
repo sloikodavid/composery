@@ -18,13 +18,14 @@ export const convertCheckoutIntentToBox = internalMutation({
 		const intent = await ctx.db.get(args.intentId);
 		if (!intent) throw new ConvexError("Checkout intent not found.");
 
-		if (intent.status === "converted" && intent.box_id) {
+		if (intent.box_id) {
 			return { boxId: intent.box_id };
 		}
 
-		if (intent.status !== "active") {
-			throw new ConvexError("Checkout intent is not active.");
-		}
+		// This mutation only runs off subscription.active, which is proof of
+		// payment, so a lapsed reservation ("expired"/"released" without a box)
+		// still converts - refusing here would leave a paying customer with no
+		// box. Only the slug re-check below may refuse.
 
 		await assertSlugAvailable(ctx, intent.slug, undefined, intent._id);
 

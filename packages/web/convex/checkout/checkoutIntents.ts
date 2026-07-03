@@ -63,6 +63,26 @@ export const activeCheckoutIntentForUserSlug = internalQuery({
 	}
 });
 
+// When createCheckout reuses an existing active checkout, the password the
+// user just typed must win over the one stored when the intent was first
+// reserved - the box would otherwise provision with a password the user never
+// chose. No-op once the intent has converted or been released.
+export const refreshCheckoutIntentAuthHash = internalMutation({
+	args: {
+		intentId: v.id("box_checkout_intents"),
+		runtimeAuthHash: v.string()
+	},
+	handler: async (ctx, args) => {
+		const intent = await ctx.db.get(args.intentId);
+		if (!intent || intent.status !== "active" || intent.box_id) return;
+
+		await ctx.db.patch(intent._id, {
+			runtime_auth_hash: args.runtimeAuthHash,
+			updated_at: Date.now()
+		});
+	}
+});
+
 export const attachPolarCheckout = internalMutation({
 	args: {
 		checkoutId: v.string(),

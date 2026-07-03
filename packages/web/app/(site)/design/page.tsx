@@ -481,7 +481,6 @@ export default async function DesignPage() {
 						<Skeleton className="h-20 w-full" />
 					</div>
 				</Section>
-
 			</div>
 		</PageTemplate>
 	);
