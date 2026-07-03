@@ -24,7 +24,7 @@ export const clerkAppearance = {
 		spacing: "1rem",
 		fontSize: "0.875rem",
 		fontFamily:
-			"-apple-system, BlinkMacSystemFont, var(--font-inter), 'Segoe UI', system-ui, sans-serif"
+			"-apple-system, BlinkMacSystemFont, var(--font-inter), 'Inter Variable', Inter, 'Segoe UI', system-ui, sans-serif"
 	},
 	elements: {
 		rootBox: "w-full",

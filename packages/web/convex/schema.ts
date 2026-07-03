@@ -219,6 +219,7 @@ export default defineSchema({
 		.index("box_id_status", ["box_id", "status"])
 		.index("box_type_status", ["box_id", "type", "status"])
 		.index("box_id_type_created_at", ["box_id", "type", "created_at"])
+		.index("status_created_at", ["status", "created_at"])
 		.index("idempotency_key", ["idempotency_key"])
 		.index("idempotency_key_status", ["idempotency_key", "status"])
 		.index("reserved_slug_status", ["reserved_slug", "status"]),

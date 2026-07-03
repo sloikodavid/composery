@@ -1,22 +1,19 @@
-// Typography matched to the website: SF on iOS (its --font-sans leads with
-// -apple-system), Inter on Android/web, Bricolage Grotesque for headings.
-// Import per weight from subpaths, not the package index — the index re-exports
+// Typography matched to the website: Apple system fonts on iOS, Inter elsewhere,
+// with tighter, medium-weight headings for a Linear-ish feel.
+// Import per weight from subpaths, not the package index - the index re-exports
 // every weight + italic, bundling ~4MB of unused faces.
 import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
 import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
 import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
 import { Inter_700Bold } from "@expo-google-fonts/inter/700Bold";
-import { BricolageGrotesque_600SemiBold } from "@expo-google-fonts/bricolage-grotesque/600SemiBold";
-import { BricolageGrotesque_700Bold } from "@expo-google-fonts/bricolage-grotesque/700Bold";
-import { Platform, type TextStyle } from "react-native";
+import { Platform } from "react-native";
+import type { TextStyle } from "react-native";
 
 export const FONT_MAP = {
 	Inter_400Regular,
 	Inter_500Medium,
 	Inter_600SemiBold,
-	Inter_700Bold,
-	BricolageGrotesque_600SemiBold,
-	BricolageGrotesque_700Bold
+	Inter_700Bold
 };
 
 type BodyWeight = "regular" | "medium" | "semibold" | "bold";
@@ -35,19 +32,33 @@ const iosWeight: Record<BodyWeight, TextStyle["fontWeight"]> = {
 	bold: "700"
 };
 
-// iOS: system font via weight. Android/web: the weighted Inter family, which
-// carries its own weight (so we don't also set fontWeight).
+const bodyTracking: Record<BodyWeight, number> = {
+	regular: -0.12,
+	medium: -0.1,
+	semibold: -0.08,
+	bold: -0.06
+};
+
+const platformTextTrim: TextStyle =
+	Platform.OS === "android" ? { includeFontPadding: false } : {};
+
 export function body(weight: BodyWeight = "regular"): TextStyle {
 	return Platform.OS === "ios"
 		? { fontWeight: iosWeight[weight] }
-		: { fontFamily: interFamily[weight] };
+		: {
+				...platformTextTrim,
+				fontFamily: interFamily[weight],
+				letterSpacing: bodyTracking[weight]
+			};
 }
 
 export function heading(weight: "semibold" | "bold" = "bold"): TextStyle {
-	return {
-		fontFamily:
-			weight === "bold"
-				? "BricolageGrotesque_700Bold"
-				: "BricolageGrotesque_600SemiBold"
-	};
+	const resolvedWeight = weight === "bold" ? "semibold" : weight;
+	return Platform.OS === "ios"
+		? { fontWeight: iosWeight[resolvedWeight], letterSpacing: -0.45 }
+		: {
+				...platformTextTrim,
+				fontFamily: interFamily[resolvedWeight],
+				letterSpacing: -0.45
+			};
 }

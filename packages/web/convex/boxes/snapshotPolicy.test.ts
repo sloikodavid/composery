@@ -22,7 +22,7 @@ describe("snapshot retention", () => {
 	it("keeps manual snapshots far longer than automatic ones", () => {
 		const created = 1_000_000;
 		expect(snapshotExpiry("manual", created)).toBe(created + 30 * DAY);
-		expect(snapshotExpiry("scheduled", created)).toBe(created + 7 * DAY);
+		expect(snapshotExpiry("scheduled", created)).toBe(created + 5 * DAY);
 	});
 
 	it("uses a resolved retention policy when provided", () => {

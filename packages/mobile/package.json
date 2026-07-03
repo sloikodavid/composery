@@ -3,7 +3,6 @@
 	"main": "expo-router/entry",
 	"version": "1.0.0",
 	"dependencies": {
-		"@expo-google-fonts/bricolage-grotesque": "^0.4.1",
 		"@expo-google-fonts/inter": "^0.4.2",
 		"@expo/dom-webview": "~56.0.6",
 		"@expo/metro-runtime": "~56.0.16",
@@ -39,6 +38,7 @@
 	},
 	"devDependencies": {
 		"@types/react": "~19.2.2",
+		"brand": "workspace:*",
 		"eslint": "9.39.4",
 		"eslint-config-expo": "~56.0.4",
 		"typescript": "~6.0.3"

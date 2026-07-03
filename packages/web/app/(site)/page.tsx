@@ -1,22 +1,20 @@
-import Image from "next/image";
 import Link from "next/link";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
 
 export default function Home() {
 	return (
-		<div className="space-y-10 sm:space-y-14">
-			<section className="space-y-6 pt-6 sm:pt-10">
+		<div className="flex min-h-[calc(100svh-9rem)] items-center justify-center py-10 sm:py-14">
+			<section className="mx-auto w-full max-w-[44rem] space-y-6 text-center">
 				<div className="space-y-4">
-					<h1 className="font-heading text-4xl font-semibold tracking-tight text-balance text-foreground sm:text-5xl">
+					<h1 className="font-heading mx-auto text-4xl font-medium tracking-tight text-balance text-foreground sm:text-5xl sm:text-nowrap">
 						Like VS Code, but always on.
 					</h1>
-					<p className="max-w-xl text-lg leading-8 text-muted-foreground">
-						A secure cloud computer with a nice UI, usable from any phone or
-						browser.
+					<p className="mx-auto max-w-[41rem] text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 sm:text-nowrap">
+						A secure cloud computer with a powerful UI, usable from any phone or browser.
 					</p>
 				</div>
-				<div className="flex gap-3">
+				<div className="flex flex-wrap justify-center gap-3">
 					<AnimatedIconLink
 						className={buttonVariants({ size: "lg" })}
 						href="/boxes/new"
@@ -34,23 +32,6 @@ export default function Home() {
 					</Link>
 				</div>
 			</section>
-
-			<Image
-				alt="Composery editor workspace"
-				className="block w-full rounded-xl border border-border dark:hidden"
-				height={1079}
-				priority
-				src="/showcase-light.png"
-				width={1919}
-			/>
-			<Image
-				alt="Composery editor workspace"
-				className="hidden w-full rounded-xl border border-border dark:block"
-				height={1079}
-				priority
-				src="/showcase-dark.png"
-				width={1919}
-			/>
 		</div>
 	);
 }

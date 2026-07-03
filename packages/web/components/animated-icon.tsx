@@ -11,6 +11,7 @@ import type {
 } from "react";
 import { useRef } from "react";
 
+import { ArrowLeftIcon } from "@/components/icons/arrow-left";
 import { ArrowRightIcon } from "@/components/icons/arrow-right";
 import { ArrowUpRightIcon } from "@/components/icons/arrow-up-right";
 import { BookOpenIcon } from "@/components/icons/book-open";
@@ -45,6 +46,7 @@ export type AnimatedIconHandle = {
 };
 
 export type AnimatedIconName =
+	| "arrow-left"
 	| "arrow-right"
 	| "arrow-up-right"
 	| "book-open"
@@ -141,6 +143,8 @@ function AnimatedIconGlyph({
 	};
 
 	switch (icon) {
+		case "arrow-left":
+			return <ArrowLeftIcon {...iconProps} />;
 		case "arrow-right":
 			return <ArrowRightIcon {...iconProps} />;
 		case "arrow-up-right":

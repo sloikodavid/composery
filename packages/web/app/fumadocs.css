@@ -87,6 +87,14 @@
 	background-color: transparent;
 }
 
+/* Fumadocs' shared popover defaults to bg-fd-popover/60 + backdrop-blur-lg,
+   which makes the page-actions "Open" menu hard to read over document text. */
+.bg-fd-popover\/60.backdrop-blur-lg {
+	background-color: var(--color-fd-popover);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+
 .prose :is(h1, h2, h3, h4, h5, h6) {
 	font-family: var(--font-heading);
 }

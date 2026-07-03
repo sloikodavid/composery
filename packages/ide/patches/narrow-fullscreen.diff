@@ -81,7 +81,7 @@
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2225,20 @@ export abstract class Layout extends Dis
+@@ -2204,10 +2225,23 @@ export abstract class Layout extends Dis
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -94,16 +94,19 @@
  
  	toggleMaximizedPanel(): void {
 +		// Composery: on a narrow viewport a part is fullscreened by collapsing the editor in
-+		// applyFullscreen, which owns that state. Native panel maximize must stay out of it -
-+		// VS Code auto-fires it whenever the editor is hidden while editors exist (see the
-+		// onDidVisibleEditorsChange handler), which would re-enter and fight us into a layout storm.
++		// applyFullscreen, which owns that state. Native panel maximize must not touch the grid -
++		// but VS Code fires this as "reveal the editor" whenever an editor opens while the editor
++		// part is hidden (showEditorIfHidden / onDidVisibleEditorsChange). Translate that intent:
++		// an editor wants the screen, so exit fullscreen - close the open part and reveal it.
 +		if (this.isNarrowViewport) {
++			this.fullscreenPart = undefined;
++			this.scheduleFullscreen();
 +			return;
 +		}
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2333,115 @@ export abstract class Layout extends Dis
+@@ -2302,6 +2336,115 @@ export abstract class Layout extends Dis
  		}
  	}
  

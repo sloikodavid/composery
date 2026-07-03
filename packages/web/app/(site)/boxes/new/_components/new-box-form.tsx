@@ -1,32 +1,35 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
-import { CheckIcon, TriangleAlertIcon } from "lucide-react";
+import { WashingMachineIcon } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { Button } from "@/components/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle
-} from "@/components/card";
 import { Input } from "@/components/input";
 import { Label } from "@/components/label";
 import { api } from "@/convex/_generated/api";
 import { isValidSlug, sanitizeSlug } from "@/lib/box-slug";
 import { errorMessage } from "@/lib/error-message";
+import { cn } from "@/lib/utils";
+
+type Step = "slug" | "password" | "confirm";
+
+const stepCrumbs: { key: Exclude<Step, "slug">; label: string }[] = [
+	{ key: "password", label: "Password" },
+	{ key: "confirm", label: "Confirm password" }
+];
 
 export function NewBoxForm() {
 	const createCheckout = useAction(api.user.checkout.createCheckout);
 	const [slug, setSlug] = useState("");
 	const [password, setPassword] = useState("");
 	const [confirmation, setConfirmation] = useState("");
-	const [frame, setFrame] = useState<"slug" | "password">("slug");
+	const [step, setStep] = useState<Step>("slug");
 	const [submitting, setSubmitting] = useState(false);
-	const inputRef = useRef<HTMLInputElement>(null);
+	const slugInputRef = useRef<HTMLInputElement>(null);
+	const passwordInputRef = useRef<HTMLInputElement>(null);
+	const confirmationInputRef = useRef<HTMLInputElement>(null);
 	const normalizedSlug = sanitizeSlug(slug);
 	const slugLooksValid = isValidSlug(normalizedSlug);
 	const availability = useQuery(
@@ -34,24 +37,57 @@ export function NewBoxForm() {
 		slugLooksValid ? { slug: normalizedSlug } : "skip"
 	);
 	const slugAvailable = availability?.available ?? false;
+	const checkingSlug = slugLooksValid && availability == null;
 	const canContinueSlug = slugLooksValid && slugAvailable;
 	const slugTaken = slugLooksValid && availability != null && !slugAvailable;
-	const canCheckout =
-		password.length > 0 && confirmation.length > 0 && password === confirmation;
+	const visibleStepCrumbs =
+		step === "confirm"
+			? stepCrumbs
+			: step === "password"
+				? [stepCrumbs[0]]
+				: [];
+	const canContinuePassword = password.length > 0;
+	const canCheckout = canContinuePassword && confirmation === password;
 	const passwordsMismatch =
 		confirmation.length > 0 && password !== confirmation;
 
 	useEffect(() => {
-		inputRef.current?.focus();
-		inputRef.current?.select();
-	}, []);
+		if (step === "slug") {
+			slugInputRef.current?.focus();
+			slugInputRef.current?.select();
+			return;
+		}
+
+		if (step === "password") {
+			passwordInputRef.current?.focus();
+			return;
+		}
+
+		confirmationInputRef.current?.focus();
+	}, [step]);
+
+	function canOpenStep(target: Step) {
+		if (target === "slug") return true;
+		if (target === "password") return canContinueSlug;
+		return canContinueSlug && canContinuePassword;
+	}
+
+	function openStep(target: Step) {
+		if (canOpenStep(target)) setStep(target);
+	}
 
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 
-		if (frame === "slug") {
+		if (step === "slug") {
 			if (!canContinueSlug) return;
-			setFrame("password");
+			setStep("password");
+			return;
+		}
+
+		if (step === "password") {
+			if (!canContinuePassword) return;
+			setStep("confirm");
 			return;
 		}
 
@@ -73,138 +109,214 @@ export function NewBoxForm() {
 	}
 
 	return (
-		<div className="mx-auto w-full max-w-md">
-			<Card>
-				<CardHeader>
-					<CardTitle>
-						{frame === "slug" ? "Name your box" : "Set a password"}
-					</CardTitle>
-					<CardDescription>
-						{frame === "slug"
-							? "Pick a name for your box. Lowercase letters, numbers and dashes."
-							: "You'll use this password to access your box."}
-					</CardDescription>
-				</CardHeader>
+		<div className="mx-auto max-w-4xl space-y-4">
+			<nav className="flex min-h-8 flex-wrap items-center gap-1.5 text-lg font-medium text-foreground">
+				<Link
+					className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
+					href="/boxes"
+				>
+					<WashingMachineIcon className="size-5" />
+					Boxes
+				</Link>
+				<span aria-hidden className="text-muted-foreground">
+					/
+				</span>
+				<button
+					aria-current={step === "slug" ? "step" : undefined}
+					className={cn(
+						"transition-colors",
+						step === "slug"
+							? "text-foreground"
+							: "text-muted-foreground hover:text-foreground"
+					)}
+					onClick={() => setStep("slug")}
+					type="button"
+				>
+					New
+				</button>
+				{visibleStepCrumbs.map(({ key, label }) => (
+					<span className="contents" key={key}>
+						<span aria-hidden className="text-muted-foreground">
+							/
+						</span>
+						<button
+							aria-current={step === key ? "step" : undefined}
+							className={cn(
+								"transition-colors",
+								step === key
+									? "text-foreground"
+									: canOpenStep(key)
+										? "text-muted-foreground hover:text-foreground"
+										: "cursor-not-allowed text-muted-foreground/45"
+							)}
+							disabled={!canOpenStep(key)}
+							onClick={() => openStep(key)}
+							type="button"
+						>
+							{label}
+						</button>
+					</span>
+				))}
+			</nav>
 
-				<CardContent>
-					<form onSubmit={handleSubmit}>
-						{frame === "slug" ? (
-							<div className="space-y-2.5">
-								<div className="flex flex-col gap-2.5 sm:flex-row">
-									<Input
-										aria-invalid={slugTaken}
-										autoCapitalize="none"
-										autoComplete="off"
-										className="h-11 min-w-0 flex-1 px-4 text-base font-medium"
-										id="box-slug"
-										maxLength={63}
-										name="slug"
-										onChange={(event) =>
-											setSlug(sanitizeSlug(event.target.value))
-										}
-										pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
-										placeholder="my-box"
-										ref={inputRef}
-										spellCheck={false}
-										type="text"
-										value={slug}
-									/>
-
-									<AnimatedIconButton
-										className="h-11 w-full sm:w-auto"
-										disabled={!canContinueSlug}
-										icon="arrow-right"
-										size="lg"
-										type="submit"
-									>
-										Continue
-									</AnimatedIconButton>
-								</div>
-
-								{slugTaken ? (
-									<p
-										aria-live="polite"
-										className="inline-flex items-center gap-1.5 text-sm text-destructive"
-									>
-										<TriangleAlertIcon className="size-4" />
-										That name is taken.
-									</p>
-								) : canContinueSlug ? (
-									<p
-										aria-live="polite"
-										className="inline-flex items-center gap-1.5 text-sm text-success"
-									>
-										<CheckIcon className="size-4" />
-										Available.
-									</p>
-								) : null}
+			<div className="grid min-h-[calc(100svh-13rem)] place-items-center py-10">
+				<form className="w-full max-w-md space-y-8" onSubmit={handleSubmit}>
+					{step === "slug" ? (
+						<div className="space-y-2">
+							<div className="flex items-end justify-between gap-3">
+								<Label className="text-[15px]" htmlFor="box-slug">
+									Slug
+								</Label>
+								<span
+									aria-live="polite"
+									className={cn(
+										"text-xs font-medium",
+										slugTaken
+											? "text-destructive"
+											: canContinueSlug
+												? "text-success"
+												: "text-muted-foreground"
+									)}
+								>
+									{slugTaken
+										? "Taken"
+										: canContinueSlug
+											? "Available"
+											: checkingSlug
+												? "Checking"
+												: ""}
+								</span>
 							</div>
-						) : (
-							<div className="space-y-4">
-								<div className="space-y-1.5">
-									<Label htmlFor="box-password">Box password</Label>
-									<Input
-										autoComplete="new-password"
-										className="h-11"
-										id="box-password"
-										name="password"
-										onChange={(event) => setPassword(event.target.value)}
-										type="password"
-										value={password}
-									/>
-								</div>
-								<div className="space-y-1.5">
-									<Label htmlFor="box-password-confirm">Confirm password</Label>
-									<Input
-										aria-invalid={passwordsMismatch}
-										autoComplete="new-password"
-										className="h-11"
-										id="box-password-confirm"
-										name="confirmation"
-										onChange={(event) => setConfirmation(event.target.value)}
-										type="password"
-										value={confirmation}
-									/>
-									{passwordsMismatch ? (
-										<p className="inline-flex items-center gap-1.5 text-sm text-destructive">
-											<TriangleAlertIcon className="size-4" />
-											Passwords do not match.
-										</p>
-									) : null}
-								</div>
-
-								<div className="flex items-center justify-between border-t border-border pt-4 text-sm">
-									<span className="text-muted-foreground">
-										{normalizedSlug || "Box"}
-									</span>
-									<span className="font-medium text-foreground">
-										$25 / month
-									</span>
-								</div>
-
-								<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-									<Button
-										disabled={submitting}
-										onClick={() => setFrame("slug")}
-										type="button"
-										variant="outline"
-									>
-										Back
-									</Button>
-									<AnimatedIconButton
-										className="w-full sm:w-auto"
-										disabled={!canCheckout || submitting}
-										icon="arrow-right"
-										type="submit"
-									>
-										Continue to checkout
-									</AnimatedIconButton>
-								</div>
+							<Input
+								aria-invalid={slugTaken}
+								autoCapitalize="none"
+								autoComplete="off"
+								className="h-12 rounded-lg px-5 text-[15px]"
+								id="box-slug"
+								maxLength={63}
+								name="slug"
+								onChange={(event) => setSlug(sanitizeSlug(event.target.value))}
+								pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
+								placeholder="my-box"
+								ref={slugInputRef}
+								spellCheck={false}
+								type="text"
+								value={slug}
+							/>
+							<AnimatedIconButton
+								className="h-12 w-full rounded-lg text-[15px]"
+								disabled={!canContinueSlug}
+								icon="arrow-right"
+								size="lg"
+								type="submit"
+							>
+								Continue
+							</AnimatedIconButton>
+						</div>
+					) : step === "password" ? (
+						<div className="space-y-2">
+							<div className="flex items-end justify-between gap-3">
+								<Label className="text-[15px]" htmlFor="box-password">
+									Password
+								</Label>
 							</div>
-						)}
-					</form>
-				</CardContent>
-			</Card>
+							<Input
+								autoComplete="new-password"
+								className="h-12 rounded-lg px-5 text-[15px]"
+								id="box-password"
+								name="password"
+								onChange={(event) => setPassword(event.target.value)}
+								ref={passwordInputRef}
+								type="password"
+								value={password}
+							/>
+
+							<div className="flex flex-col-reverse gap-2 sm:flex-row">
+								<AnimatedIconButton
+									className="h-12 rounded-lg text-[15px] sm:flex-1"
+									icon="arrow-left"
+									iconPosition="start"
+									onClick={() => setStep("slug")}
+									size="lg"
+									type="button"
+									variant="outline"
+								>
+									Back
+								</AnimatedIconButton>
+								<AnimatedIconButton
+									className="h-12 rounded-lg text-[15px] sm:flex-1"
+									disabled={!canContinuePassword}
+									icon="arrow-right"
+									size="lg"
+									type="submit"
+								>
+									Continue
+								</AnimatedIconButton>
+							</div>
+						</div>
+					) : (
+						<div className="space-y-2">
+							<div className="flex items-end justify-between gap-3">
+								<Label className="text-[15px]" htmlFor="box-password-confirm">
+									Confirm password
+								</Label>
+								<span
+									aria-live="polite"
+									className={cn(
+										"text-xs font-medium",
+										passwordsMismatch
+											? "text-destructive"
+											: confirmation.length > 0
+												? "text-success"
+												: "text-muted-foreground"
+									)}
+								>
+									{passwordsMismatch
+										? "Does not match"
+										: confirmation.length > 0
+											? "Matches"
+											: ""}
+								</span>
+							</div>
+							<Input
+								aria-invalid={passwordsMismatch}
+								autoComplete="new-password"
+								className="h-12 rounded-lg px-5 text-[15px]"
+								id="box-password-confirm"
+								name="confirmation"
+								onChange={(event) => setConfirmation(event.target.value)}
+								ref={confirmationInputRef}
+								type="password"
+								value={confirmation}
+							/>
+
+							<div className="flex flex-col-reverse gap-2 sm:flex-row">
+								<AnimatedIconButton
+									className="h-12 rounded-lg text-[15px] sm:flex-1"
+									disabled={submitting}
+									icon="arrow-left"
+									iconPosition="start"
+									onClick={() => setStep("password")}
+									size="lg"
+									type="button"
+									variant="outline"
+								>
+									Back
+								</AnimatedIconButton>
+								<AnimatedIconButton
+									className="h-12 rounded-lg text-[15px] sm:flex-1"
+									disabled={!canCheckout || submitting}
+									icon="arrow-right"
+									size="lg"
+									type="submit"
+								>
+									Continue to checkout
+								</AnimatedIconButton>
+							</div>
+						</div>
+					)}
+				</form>
+			</div>
 		</div>
 	);
 }

@@ -14,11 +14,7 @@ import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import {
-	brandColors,
-	centeredIconSvg,
-	iconTileSvg
-} from "../../brand/index.mjs";
+import { brandColors, centeredIconSvg, iconTileSvg } from "brand";
 
 const outDir = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -41,7 +37,7 @@ await write(
 		iconTileSvg({
 			background: brandColors.surface.tile,
 			size: 1024,
-			scale: 0.78
+			scale: 0.687
 		})
 	)
 );
@@ -54,21 +50,21 @@ await write(
 	await png(
 		centeredIconSvg({
 			size: 1024,
-			scale: 0.62,
+			scale: 0.546,
 			fill: brandColors.icon.tileStroke
 		})
 	)
 );
 await write(
 	"android-icon-monochrome.png",
-	await png(centeredIconSvg({ size: 1024, scale: 0.62, fill: "#ffffff" }))
+	await png(centeredIconSvg({ size: 1024, scale: 0.546, fill: "#ffffff" }))
 );
 await write(
 	"splash-icon.png",
 	await png(
 		centeredIconSvg({
 			size: 384,
-			scale: 0.78,
+			scale: 0.687,
 			fill: brandColors.surface.ink
 		})
 	)
@@ -79,7 +75,7 @@ await write(
 		iconTileSvg({
 			background: brandColors.surface.tile,
 			size: 64,
-			scale: 0.78,
+			scale: 0.687,
 			radius: 56
 		})
 	)

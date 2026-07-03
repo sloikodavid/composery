@@ -49,7 +49,7 @@ values:
   (`CODE_SERVER_SESSION_SOCKET`, `CODE_SERVER_PARENT_PID`) keep upstream's names
   so code-server's own `integration.diff` and `store-socket.diff` apply unmodified.
 - **Welcome tiles**.
-  `scripts/generate-icons.mjs`, fed by `packages/brand/index.mjs`.
+  `packages/brand/icons.mjs`, fed by `packages/brand/index.mjs`.
 
 One place is generated, not hand-maintained: the `COLOR_THEME_*_INITIAL_COLORS`
 first-paint snapshot in `default-color-theme.diff`. Themes load asynchronously and

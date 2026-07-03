@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ConsoleStats } from "./console-stats";
@@ -62,6 +63,73 @@ const INTENT_SORT = {
 	expiresAt: (intent: CheckoutIntent) => intent.expiresAt ?? 0
 };
 
+type FailedOperation = NonNullable<
+	ReturnType<typeof useQuery<typeof api.staff.boxes.recentFailedOperations>>
+>[number];
+
+// Only renders when something is actually wrong, so a healthy console stays
+// clean and this reads as an alert rather than a permanent panel.
+function NeedsAttentionPanel() {
+	const failures = useQuery(api.staff.boxes.recentFailedOperations, {});
+	if (!failures || failures.length === 0) return null;
+
+	return (
+		<div className="overflow-hidden rounded-2xl border border-destructive/40 bg-card">
+			<div className="flex flex-wrap items-center gap-x-2 border-b border-border px-4 py-3">
+				<TriangleAlertIcon className="size-4 text-destructive" />
+				<span className="text-sm font-medium text-foreground">
+					Needs attention
+				</span>
+				<span className="text-sm text-muted-foreground">
+					{failures.length} failed operation{failures.length === 1 ? "" : "s"} in
+					the last 7 days
+				</span>
+			</div>
+			<Table className="table-fixed min-w-[40rem]">
+				<TableHeader>
+					<TableRow>
+						<TableHead className="pl-4">Operation</TableHead>
+						<TableHead className="w-40">Box</TableHead>
+						<TableHead className="w-36">When</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody className="page-fade-in">
+					{failures.map((failure: FailedOperation) => (
+						<TableRow
+							className={failure.lastError ? "[&>td]:align-top" : undefined}
+							key={failure.id}
+						>
+							<TableCell className="pl-4">
+								<div className="min-w-0">
+									<p className="font-medium text-foreground">{failure.type}</p>
+									{failure.lastError ? (
+										<p className="wrap-break-word whitespace-normal text-muted-foreground">
+											{failure.lastError}
+										</p>
+									) : null}
+								</div>
+							</TableCell>
+							<TableCell>
+								{failure.slug ? (
+									<Link
+										className="font-medium text-foreground hover:underline"
+										href={`/console/boxes/${failure.slug}`}
+									>
+										{failure.slug}
+									</Link>
+								) : (
+									<span className="text-muted-foreground">unknown</span>
+								)}
+							</TableCell>
+							<TableCell>{formatDateTime(failure.createdAt)}</TableCell>
+						</TableRow>
+					))}
+				</TableBody>
+			</Table>
+		</div>
+	);
+}
+
 // The all-boxes overlay: the top boxes ranked by the selected metric's latest
 // rolled-up hour, so a fleet of any size stays readable.
 function GlobalMetricsPanel() {
@@ -116,6 +184,8 @@ export function ConsoleHome() {
 	return (
 		<div className="space-y-6">
 			<ConsoleStats />
+
+			<NeedsAttentionPanel />
 
 			<div className="space-y-3">
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

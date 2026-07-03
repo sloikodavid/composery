@@ -1,3 +1,15 @@
+diff --git a/dist/components/ui/popover.js b/dist/components/ui/popover.js
+--- a/dist/components/ui/popover.js
++++ b/dist/components/ui/popover.js
+@@ -11,7 +11,7 @@ function PopoverContent({ className, align = "center", sideOffset = 4, ...props
+ 		align,
+ 		sideOffset,
+ 		side: "bottom",
+-		className: cn("z-50 origin-(--radix-popover-content-transform-origin) overflow-y-auto max-h-(--radix-popover-content-available-height) min-w-[240px] max-w-[98vw] rounded-xl border bg-fd-popover/60 backdrop-blur-lg p-2 text-sm text-fd-popover-foreground shadow-lg focus-visible:outline-none data-[state=closed]:animate-fd-popover-out data-[state=open]:animate-fd-popover-in", className),
++		className: cn("z-50 origin-(--radix-popover-content-transform-origin) overflow-y-auto max-h-(--radix-popover-content-available-height) min-w-[240px] max-w-[98vw] rounded-xl border bg-fd-popover p-2 text-sm text-fd-popover-foreground shadow-lg focus-visible:outline-none data-[state=closed]:animate-fd-popover-out data-[state=open]:animate-fd-popover-in", className),
+ 		...props
+ 	}) });
+ }
 diff --git a/dist/layouts/shared/page-actions.js b/dist/layouts/shared/page-actions.js
 index 74590d8..13efd3d 100644
 --- a/dist/layouts/shared/page-actions.js

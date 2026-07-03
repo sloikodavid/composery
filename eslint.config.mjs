@@ -44,7 +44,7 @@ export default defineConfig(
 		}
 	},
 	{
-		files: ["*.mjs", "scripts/**/*.mjs"],
+		files: ["*.mjs", "scripts/**/*.mjs", "packages/brand/**/*.mjs"],
 		languageOptions: {
 			globals: {
 				console: "readonly",

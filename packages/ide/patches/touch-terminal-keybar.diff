@@ -1,10 +1,11 @@
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminalKeybar.css
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,78 @@
 +/*---------------------------------------------------------------------------------------------
 + * Composery Mobile Keybar - docked at the bottom of the terminal view pane on touch devices.
 + * TerminalViewPane reserves its height in layoutBody (see terminalKeybar.ts), so the bar
-+ * occupies real layout space: nothing overlaps it and it overlaps nothing.
++ * occupies real layout space: nothing overlaps it and it overlaps nothing. Keys are drawn
++ * as native VS Code keycaps (the .monaco-keybinding-key / keybindingLabel palette).
 + *--------------------------------------------------------------------------------------------*/
 +
 +.monaco-workbench .integrated-terminal .composery-touch-keybar {
@@ -19,10 +20,7 @@
 +	padding: 0 4px;
 +	background-color: var(--vscode-editorWidget-background);
 +	border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
-+	overflow-x: auto;
-+	overflow-y: hidden;
-+	overscroll-behavior: contain;
-+	-webkit-overflow-scrolling: touch;
++	overflow: hidden;
 +}
 +
 +.monaco-workbench .integrated-terminal .composery-touch-keybar > .actions-container {
@@ -35,8 +33,12 @@
 +	list-style: none;
 +}
 +
++/* Full-height keys: the upstream action bar centers items and labels
++ * (.monaco-action-bar .action-item { align-items: center }), which would collapse the
++ * label to its line height - stretch both so the whole keycap is the touch target. */
 +.monaco-workbench .integrated-terminal .composery-touch-keybar .action-item {
 +	display: flex;
++	align-items: stretch;
 +	flex: 1 1 0;
 +	min-width: 0;
 +}
@@ -47,12 +49,14 @@
 +	align-items: center;
 +	justify-content: center;
 +	min-width: 0;
-+	padding: 0 4px;
-+	border-radius: 5px;
-+	color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-+	background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-+	font-size: 13px;
-+	line-height: 1;
++	padding: 0 2px;
++	border-radius: 3px;
++	background-color: var(--vscode-keybindingLabel-background);
++	color: var(--vscode-keybindingLabel-foreground);
++	border: 1px solid var(--vscode-keybindingLabel-border);
++	border-bottom-color: var(--vscode-keybindingLabel-bottomBorder);
++	box-shadow: inset 0 -1px 0 var(--vscode-widget-shadow);
++	font-size: 12px;
 +	white-space: nowrap;
 +	cursor: pointer;
 +	user-select: none;
@@ -67,7 +71,7 @@
 +.monaco-workbench .integrated-terminal .composery-touch-keybar .action-label.checked {
 +	color: var(--vscode-inputOption-activeForeground);
 +	background-color: var(--vscode-inputOption-activeBackground);
-+	box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
++	border-color: var(--vscode-inputOption-activeBorder, transparent);
 +}
 +
 +/* Locked (double-tapped) modifier - persists until tapped off; underline marks the difference. */
@@ -77,7 +81,7 @@
 +}
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalKeybar.ts
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,190 @@
 +/*---------------------------------------------------------------------------------------------
 + * Composery Mobile Keybar: a strip of terminal control / modifier keys docked beneath the
 + * panel terminal on touch devices. TerminalViewPane owns placement: it appends the bar in
@@ -85,12 +89,18 @@
 + * workbench's own layout - no overlays, no keyboard-geometry math, no manual terminal
 + * relayout. Dedicated keys send raw pty bytes via ITerminalInstance.sendText (the path
 + * Ctrl+C already uses), and sticky Ctrl/Alt rewrite the next typed character via
-+ * beforeinput (robust on Android, where keydown reports keyCode 229). Visual structure
-+ * reuses vscode's .monaco-action-bar styling so theme changes can't drift it.
++ * beforeinput (robust on Android, where keydown reports keyCode 229). The pane body is a
++ * Gesture target (viewPaneContainer.ts) and Gesture preventDefaults touchstart inside its
++ * targets, which suppresses the browser's synthesized click - so, exactly like the
++ * upstream action bar (actionViewItems.ts), every key is itself a Gesture target and
++ * activates on the Tap gesture event, with plain click kept for mouse. Keys never take
++ * focus: sendText talks straight to the pty, so tapping the bar neither steals the
++ * terminal's focus nor force-opens the on-screen keyboard.
 + *--------------------------------------------------------------------------------------------*/
 +
 +import './media/terminalKeybar.css';
 +import * as dom from '../../../../base/browser/dom.js';
++import { EventType as TouchEventType, Gesture } from '../../../../base/browser/touch.js';
 +import { Disposable } from '../../../../base/common/lifecycle.js';
 +import { isTouch } from '../../../browser/touchGate.js';
 +import { ITerminalService } from './terminal.js';
@@ -102,7 +112,9 @@
 +const KEYBAR_HEIGHT = 40;
 +
 +interface KeyDef {
-+	readonly label: string;
++	// Text label or codicon id - exactly one is set.
++	readonly label?: string;
++	readonly icon?: string;
 +	readonly title: string;
 +	// Bytes for the key; arrows honor sticky modifiers and DECCKM application mode.
 +	readonly bytes: (mods: ReadonlySet<Modifier>, applicationCursor: boolean) => string;
@@ -120,10 +132,10 @@
 +	{ label: 'Esc', title: 'Escape', bytes: () => '\x1b' },
 +	{ label: 'Tab', title: 'Tab', bytes: () => '\x09' },
 +	{ label: '^C', title: 'Ctrl+C (interrupt)', bytes: () => '\x03' },
-+	{ label: '←', title: 'Left', bytes: (mods, app) => csiArrow('D', mods, app) },
-+	{ label: '↓', title: 'Down', bytes: (mods, app) => csiArrow('B', mods, app) },
-+	{ label: '↑', title: 'Up', bytes: (mods, app) => csiArrow('A', mods, app) },
-+	{ label: '→', title: 'Right', bytes: (mods, app) => csiArrow('C', mods, app) },
++	{ icon: 'arrow-left', title: 'Left', bytes: (mods, app) => csiArrow('D', mods, app) },
++	{ icon: 'arrow-down', title: 'Down', bytes: (mods, app) => csiArrow('B', mods, app) },
++	{ icon: 'arrow-up', title: 'Up', bytes: (mods, app) => csiArrow('A', mods, app) },
++	{ icon: 'arrow-right', title: 'Right', bytes: (mods, app) => csiArrow('C', mods, app) },
 +];
 +
 +const MODIFIER_KEYS: { readonly id: Modifier; readonly label: string }[] = [
@@ -160,24 +172,31 @@
 +		bar.style.height = `${KEYBAR_HEIGHT}px`;
 +		const list = dom.append(bar, dom.$('ul.actions-container'));
 +		for (const key of CONTROL_KEYS) {
-+			this.addKey(list, key.label, key.title, () => this.pressControl(key));
++			this.addKey(list, key, () => this.pressControl(key));
 +		}
 +		for (const mod of MODIFIER_KEYS) {
-+			this.modifierElements.set(mod.id, this.addKey(list, mod.label, `Sticky ${mod.label} (double-tap to lock)`, () => this.tapModifier(mod.id)));
++			this.modifierElements.set(mod.id, this.addKey(list, { label: mod.label, title: `Sticky ${mod.label} (double-tap to lock)` }, () => this.tapModifier(mod.id)));
 +		}
 +
-+		// Tapping the strip must not pull focus off the terminal.
++		// A mouse press on the strip must not pull focus off the terminal (touch cannot:
++		// Gesture already preventDefaults touchstart inside the pane).
 +		this._register(dom.addDisposableListener(bar, 'mousedown', e => e.preventDefault()));
 +		this._register(dom.addDisposableListener(container.ownerDocument, 'beforeinput', e => this.onBeforeInput(e as InputEvent), true));
 +	}
 +
-+	private addKey(list: HTMLElement, label: string, title: string, run: () => void): HTMLElement {
++	private addKey(list: HTMLElement, key: Pick<KeyDef, 'label' | 'icon' | 'title'>, run: () => void): HTMLElement {
 +		const item = dom.append(list, dom.$('li.action-item'));
 +		const button = dom.append(item, dom.$('a.action-label'));
-+		button.textContent = label;
-+		button.title = title;
++		if (key.icon) {
++			dom.append(button, dom.$(`span.codicon.codicon-${key.icon}`));
++		} else {
++			button.textContent = key.label ?? '';
++		}
++		button.title = key.title;
 +		button.setAttribute('role', 'button');
 +		button.tabIndex = -1;
++		this._register(Gesture.addTarget(button));
++		this._register(dom.addDisposableListener(button, TouchEventType.Tap, () => run()));
 +		this._register(dom.addDisposableListener(button, 'click', () => run()));
 +		return button;
 +	}
@@ -198,7 +217,6 @@
 +		const applicationCursor = instance.xterm?.raw.modes.applicationCursorKeysMode === true;
 +		instance.sendText(key.bytes(this.activeModifiers(), applicationCursor), false);
 +		this.consumeOneShot();
-+		instance.focus();
 +	}
 +
 +	private tapModifier(id: Modifier): void {
@@ -216,7 +234,6 @@
 +			next = 'oneShot';
 +		}
 +		this.setModifier(id, next);
-+		this.terminalService.activeInstance?.focus();
 +	}
 +
 +	private setModifier(id: Modifier, state: ModifierState): void {

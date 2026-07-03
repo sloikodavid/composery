@@ -23,6 +23,8 @@ import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 const STAFF_BOX_LIST_LIMIT = 50;
 const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
 const STAFF_BOX_DETAIL_HISTORY_LIMIT = 100;
+const STAFF_FAILURE_FEED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const STAFF_FAILURE_FEED_LIMIT = 25;
 
 async function usersByClerkIds(ctx: QueryCtx, clerkUserIds: Iterable<string>) {
 	const users = new Map<string, Doc<"users">>();
@@ -120,6 +122,39 @@ export const searchBoxes = query({
 			.sort((first, second) => second.created_at - first.created_at)
 			.slice(0, STAFF_BOX_LIST_LIMIT)
 			.map((box) => staffBox(box, usersById.get(box.user_id)));
+	}
+});
+
+// Fleet-wide failed-operation feed for the console. Snapshot failures never flip
+// box status, so the status-based "failed boxes" count misses them - a full
+// Hetzner snapshot limit would fail every box's daily snapshot invisibly. This
+// surfaces those (and every other operation failure) with the error text staff
+// need to act on.
+export const recentFailedOperations = query({
+	args: {},
+	handler: async (ctx) => {
+		await requireStaff(ctx);
+		const since = Date.now() - STAFF_FAILURE_FEED_WINDOW_MS;
+		const operations = await ctx.db
+			.query("box_operations")
+			.withIndex("status_created_at", (builder) =>
+				builder.eq("status", "failed").gte("created_at", since)
+			)
+			.order("desc")
+			.take(STAFF_FAILURE_FEED_LIMIT);
+
+		const failures = [];
+		for (const operation of operations) {
+			const box = await ctx.db.get(operation.box_id);
+			failures.push({
+				id: operation._id,
+				type: operation.type,
+				slug: box?.slug ?? null,
+				lastError: operation.last_error ?? null,
+				createdAt: operation.created_at
+			});
+		}
+		return failures;
 	}
 });
 

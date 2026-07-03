@@ -80,10 +80,10 @@ export function renderStartupPage(healthUrl: string): string {
 <title>Preparing workspace</title>
 <style>
 html,body{height:100%;overflow:hidden;width:100%}
-body{margin:0;background:#ffffff;color:#0a0a0a;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;place-items:center}
+body{margin:0;background:#ffffff;color:#000000;font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",system-ui,sans-serif;display:grid;place-items:center}
 main{box-sizing:border-box;padding:max(2rem,env(safe-area-inset-top,0px)) max(2rem,env(safe-area-inset-right,0px)) max(2rem,env(safe-area-inset-bottom,0px)) max(2rem,env(safe-area-inset-left,0px))}
 h1{font-size:1.25rem;font-weight:600;line-height:1.3;margin:0}
-@media (prefers-color-scheme:dark){body{background:#0a0a0a;color:#fafafa}}
+@media (prefers-color-scheme:dark){body{background:#0a0a0a;color:#ffffff}}
 </style>
 </head>
 <body>

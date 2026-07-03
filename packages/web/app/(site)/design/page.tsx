@@ -43,31 +43,13 @@ import {
 	TableRow
 } from "@/components/table";
 import { Textarea } from "@/components/textarea";
-import { BRAND_COLORS, BRAND_THEME } from "@/lib/brand";
+import { BRAND_COLORS } from "@/lib/brand";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 
 export const metadata: Metadata = {
 	title: "Design",
 	robots: { index: false, follow: false }
 };
-
-// Theme tokens shown per scheme. Keyed by BRAND_THEME field (the single
-// generated source that also feeds brand.css), so the swatches can't drift.
-const themeTokens: [keyof (typeof BRAND_THEME)["light"], string][] = [
-	["background", "background"],
-	["foreground", "foreground"],
-	["card", "card"],
-	["primary", "primary"],
-	["secondary", "secondary"],
-	["muted", "muted"],
-	["mutedForeground", "muted-foreground"],
-	["accent", "accent"],
-	["border", "border"],
-	["ring", "ring"],
-	["success", "success"],
-	["warning", "warning"],
-	["destructive", "destructive"]
-];
 
 const brandColorGroups = [
 	{
@@ -500,33 +482,6 @@ export default async function DesignPage() {
 					</div>
 				</Section>
 
-				<Section
-					note="UI theme tokens in both schemes, from BRAND_THEME - the same generated source that produces the --token CSS variables in brand.css."
-					title="Color tokens"
-				>
-					<div className="grid gap-4 md:grid-cols-2">
-						{(["light", "dark"] as const).map((scheme) => (
-							<div className="space-y-2" key={scheme}>
-								<p className="text-xs font-medium capitalize text-foreground">
-									{scheme}
-								</p>
-								<div className="grid grid-cols-2 gap-2">
-									{themeTokens.map(([key, label]) => (
-										<div className="flex items-center gap-2" key={key}>
-											<span
-												className="inline-block size-5 shrink-0 rounded border border-border"
-												style={{ background: BRAND_THEME[scheme][key] }}
-											/>
-											<span className="text-xs text-muted-foreground">
-												{label}
-											</span>
-										</div>
-									))}
-								</div>
-							</div>
-						))}
-					</div>
-				</Section>
 			</div>
 		</PageTemplate>
 	);

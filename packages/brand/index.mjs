@@ -8,18 +8,18 @@ export const ICON_CROP_VIEWBOX = ICON_VIEWBOX;
 
 export const brandColors = {
 	icon: {
-		light: "#0a0a0a",
-		dark: "#fafafa",
+		light: "#000000",
+		dark: "#ffffff",
 		muted: "#737373",
 		tileStroke: "#ffffff"
 	},
 	surface: {
-		ink: "#0a0a0a",
+		ink: "#000000",
 		paper: "#ffffff",
 		canvas: "#fafafa",
 		border: "#e5e5e5",
-		lightText: "#0a0a0a",
-		darkText: "#fafafa",
+		lightText: "#000000",
+		darkText: "#ffffff",
 		tile: "#0a0a0a",
 		splash: "#ffffff"
 	},
@@ -34,11 +34,11 @@ export const brandColors = {
 export const theme = {
 	light: {
 		background: "#ffffff",
-		foreground: "#0a0a0a",
+		foreground: "#000000",
 		card: "#ffffff",
-		cardForeground: "#0a0a0a",
+		cardForeground: "#000000",
 		popover: "#ffffff",
-		popoverForeground: "#0a0a0a",
+		popoverForeground: "#000000",
 		primary: "#171717",
 		primaryForeground: "#fafafa",
 		secondary: "#f5f5f5",
@@ -60,7 +60,7 @@ export const theme = {
 		chart4: "#a3a3a3",
 		chart5: "#d4d4d4",
 		sidebar: "#ffffff",
-		sidebarForeground: "#0a0a0a",
+		sidebarForeground: "#000000",
 		sidebarPrimary: "#171717",
 		sidebarPrimaryForeground: "#fafafa",
 		sidebarAccent: "#f5f5f5",
@@ -70,11 +70,11 @@ export const theme = {
 	},
 	dark: {
 		background: "#0a0a0a",
-		foreground: "#fafafa",
+		foreground: "#ffffff",
 		card: "#0a0a0a",
-		cardForeground: "#fafafa",
+		cardForeground: "#ffffff",
 		popover: "#0a0a0a",
-		popoverForeground: "#fafafa",
+		popoverForeground: "#ffffff",
 		primary: "#fafafa",
 		primaryForeground: "#0a0a0a",
 		secondary: "#171717",
@@ -86,8 +86,8 @@ export const theme = {
 		destructive: "#f87171",
 		success: "#22c55e",
 		warning: "#f59e0b",
-		border: "rgba(255, 255, 255, 0.12)",
-		input: "rgba(255, 255, 255, 0.16)",
+		border: "#ffffff1f",
+		input: "#ffffff29",
 		ring: "#737373",
 		overlay: "rgba(0, 0, 0, 0.4)",
 		chart1: "#fafafa",
@@ -96,12 +96,12 @@ export const theme = {
 		chart4: "#737373",
 		chart5: "#525252",
 		sidebar: "#0a0a0a",
-		sidebarForeground: "#fafafa",
+		sidebarForeground: "#ffffff",
 		sidebarPrimary: "#fafafa",
 		sidebarPrimaryForeground: "#0a0a0a",
 		sidebarAccent: "#171717",
 		sidebarAccentForeground: "#fafafa",
-		sidebarBorder: "rgba(255, 255, 255, 0.12)",
+		sidebarBorder: "#ffffff1f",
 		sidebarRing: "#737373"
 	}
 };
@@ -111,11 +111,22 @@ const ICON_PATH =
 const ICON_SLIT_PATH = "M12 15.5 L12 3.6";
 const ICON_MASK_ID = "composery-icon-holes";
 
+// The raw shape is drawn in a 0..20 space then rotated 135deg about (12,12), which
+// leaves the ink off-center with uneven padding - it spans ~[0.62..18.23], not the
+// full box. This scales and re-centers the ink so the icon fills its 0..20 box flush,
+// with no dead space, in every consumer - without changing the design. Ink bounds
+// measured with tmp/measure-icon.mjs; update if ICON_PATH or the stroke width changes.
+const ICON_INK_MIN = 0.617;
+const ICON_INK_SIZE = 17.617;
+const ICON_FIT_SCALE = 20 / ICON_INK_SIZE;
+const ICON_FIT_SHIFT = -ICON_INK_MIN * ICON_FIT_SCALE;
+const ICON_FIT = `translate(${ICON_FIT_SHIFT} ${ICON_FIT_SHIFT}) scale(${ICON_FIT_SCALE}) rotate(135 12 12)`;
+
 export function iconInner({
 	fill = "currentColor",
 	maskId = ICON_MASK_ID
 } = {}) {
-	return `<g transform="rotate(135 12 12)"><mask id="${maskId}"><rect width="24" height="24" fill="#fff" stroke="none"/><circle cx="12" cy="15" r="3.6" fill="#000" stroke="none"/><path d="${ICON_SLIT_PATH}" stroke="#000" stroke-linecap="round" stroke-width="2.1"/></mask><path d="${ICON_PATH}" fill="${fill}" stroke="${fill}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" mask="url(#${maskId})"/></g>`;
+	return `<g transform="${ICON_FIT}"><mask id="${maskId}"><rect width="24" height="24" fill="#fff" stroke="none"/><circle cx="12" cy="15" r="3.6" fill="#000" stroke="none"/><path d="${ICON_SLIT_PATH}" stroke="#000" stroke-linecap="round" stroke-width="2.1"/></mask><path d="${ICON_PATH}" fill="${fill}" stroke="${fill}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" mask="url(#${maskId})"/></g>`;
 }
 
 export function iconSvg({
@@ -132,7 +143,7 @@ export function iconTileSvg({
 	background = brandColors.surface.tile,
 	fill = brandColors.icon.tileStroke,
 	radius = 0,
-	scale = 0.74,
+	scale = 0.652,
 	size = ICON_WIDTH
 } = {}) {
 	const iconScale = (256 / ICON_WIDTH) * scale;
@@ -145,7 +156,7 @@ export function iconTileSvg({
 export function centeredIconSvg({
 	color = brandColors.icon.light,
 	fill = "currentColor",
-	scale = 0.74,
+	scale = 0.652,
 	size = ICON_WIDTH
 } = {}) {
 	const iconScale = (256 / ICON_WIDTH) * scale;

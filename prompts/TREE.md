@@ -47,7 +47,10 @@ docs/
   persistence.md
 packages/
   brand/
+    icons.mjs
     index.mjs
+    package.json
+    sync.mjs
   cli/
     crates/
       composery/
@@ -345,7 +348,7 @@ packages/
       layout.tsx
       providers.tsx
     components/
-      ... (50 items)
+      ... (51 items)
     convex/
       _generated/
         api.d.ts
@@ -484,7 +487,6 @@ packages/
     vitest.config.ts
 prompts/
   BUZZWORDS.md
-  IMPROVE.md
   REFACTOR.md
   TREE.md
 rootfs/
@@ -549,11 +551,9 @@ scripts/
   check-ide-overlay.mjs
   check-rust.mjs
   check.mjs
-  generate-icons.mjs
   run.mjs
   setup.mjs
   smoke.mjs
-  sync-brand.mjs
   tree.mjs
 templates/
   fly/

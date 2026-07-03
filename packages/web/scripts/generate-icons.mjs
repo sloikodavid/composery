@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pngToIco from "png-to-ico";
 import sharp from "sharp";
-import { brandColors, iconSvg, iconTileSvg } from "../../brand/index.mjs";
+import { brandColors, iconSvg, iconTileSvg } from "brand";
 
 const appDir = join(dirname(fileURLToPath(import.meta.url)), "..", "app");
 

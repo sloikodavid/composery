@@ -4,7 +4,7 @@ import { SvgXml } from "react-native-svg";
 import { heading } from "@/lib/fonts";
 import { BRAND_COLORS, ICON_XML, LOGO_TEXT } from "@/lib/brand";
 
-export function LogoIcon({
+export function Icon({
 	color = BRAND_COLORS.surface.ink,
 	size = 28
 }: {
@@ -29,7 +29,7 @@ export function Logo({
 }) {
 	return (
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-			<LogoIcon color={color} size={height * 1.12} />
+			<Icon color={color} size={height * 1.12} />
 			<Text style={[heading("semibold"), { fontSize: height * 0.82, color }]}>
 				{LOGO_TEXT}
 			</Text>

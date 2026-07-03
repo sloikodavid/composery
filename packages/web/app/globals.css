@@ -13,12 +13,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-	--font-sans:
-		-apple-system, BlinkMacSystemFont, var(--font-inter), "Segoe UI", system-ui,
-		sans-serif;
-	--font-heading:
-		var(--font-bricolage), -apple-system, BlinkMacSystemFont, var(--font-inter),
-		"Segoe UI", system-ui, sans-serif;
+	--font-sans: var(--font-sf-like);
+	--font-heading: var(--font-sf-like);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
@@ -63,6 +59,23 @@
 :root {
 	--radius: 0.625rem;
 	--header-auth-animation: page-fade-in 180ms ease-out both;
+	--font-sf-like:
+		-apple-system, BlinkMacSystemFont, var(--font-inter), "InterVariable",
+		"Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
+	--inter-opsz-text: 17;
+	--inter-opsz-heading-sm: 24;
+	--inter-opsz-heading-md: 28;
+	--inter-opsz-heading-lg: 32;
+	--inter-tracking-text: -0.009em;
+	--inter-tracking-heading: -0.03em;
+}
+
+@supports (font-variation-settings: normal) {
+	:root {
+		--font-sf-like:
+			-apple-system, BlinkMacSystemFont, var(--font-inter), "InterVariable",
+			"Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
+	}
 }
 
 @layer base {
@@ -72,6 +85,12 @@
 
 	html {
 		@apply font-sans;
+		font-feature-settings:
+			"liga" 1,
+			"calt" 1;
+		font-optical-sizing: auto;
+		font-variation-settings: "opsz" var(--inter-opsz-text);
+		text-rendering: optimizeLegibility;
 	}
 
 	body {
@@ -83,11 +102,33 @@
 		   actually removed and its compensating padding refills the gap, so the
 		   page never shifts horizontally. */
 		overflow-y: scroll;
+		-webkit-font-smoothing: antialiased;
+		letter-spacing: var(--inter-tracking-text);
+		-moz-osx-font-smoothing: grayscale;
 	}
 
 	button:not(:disabled),
 	[role="button"]:not(:disabled) {
 		cursor: pointer;
+	}
+
+	h1,
+	h2,
+	h3 {
+		font-family: var(--font-heading);
+		font-optical-sizing: auto;
+		font-variation-settings: "opsz" var(--inter-opsz-heading-md);
+		font-weight: 500;
+		letter-spacing: var(--inter-tracking-heading);
+		line-height: 1.05;
+	}
+
+	h1 {
+		font-variation-settings: "opsz" var(--inter-opsz-heading-lg);
+	}
+
+	h3 {
+		font-variation-settings: "opsz" var(--inter-opsz-heading-sm);
 	}
 }
 

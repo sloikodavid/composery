@@ -44,6 +44,15 @@ cp -r "$HERE/overlay/src/." "$BUILD/src/"
 cp -r "$HERE/overlay/lib/vscode/extensions/." "$BUILD/lib/vscode/extensions/"
 
 echo "== 6. code-server's own build (npm: install -> server -> vscode -> release) =="
+# Static asset URLs are keyed by product.json's "commit" (/stable-<commit>/static/...) and
+# cached long-term by browsers. code-server stamps it with `git rev-parse HEAD`, assuming its
+# repo commit moves when patches change - our fork pins that commit forever, so every release
+# would ship different code under identical URLs and clients would keep stale caches. Stamp a
+# content hash of everything we lay on top instead (asset-cache.diff makes the build honor it):
+# same content = same URLs (caches stay valid), any change = new URLs everywhere.
+COMPOSERY_STATIC_STAMP=$( { (cd "$HERE" && find patches overlay -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$HERE/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
+export COMPOSERY_STATIC_STAMP
+echo "static stamp: $COMPOSERY_STATIC_STAMP"
 ( cd "$BUILD" \
   && CI=1 npm ci \
   && npm run build \

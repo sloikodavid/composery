@@ -172,10 +172,19 @@ async function hetznerRequest<T>(path: string, init?: RequestInit) {
 	});
 	const text = await response.text();
 	const body = text
-		? (JSON.parse(text) as T & { error?: { message?: string } })
-		: ({} as T & { error?: { message?: string } });
+		? (JSON.parse(text) as T & { error?: { code?: string; message?: string } })
+		: ({} as T & { error?: { code?: string; message?: string } });
 
 	if (!response.ok) {
+		if (body.error?.code === "resource_limit_exceeded") {
+			// Hetzner has no quota endpoint, so this 403 is the only signal that the
+			// project's server or snapshot limit is full. Log it loudly (the path
+			// says whether it was a server create or a create_image) so the limit
+			// gets raised; the caller still handles the throw as a normal failure.
+			console.warn(
+				`[hetzner] resource limit exceeded on ${path}: ${body.error.message ?? ""}`
+			);
+		}
 		throw new HetznerApiError(
 			body.error?.message ?? `Hetzner API ${response.status}.`,
 			response.status

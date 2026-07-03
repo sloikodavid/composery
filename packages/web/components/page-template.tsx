@@ -36,7 +36,7 @@ export function PageTemplate({
 			    pages without actions, so content starts at the same place on
 			    every page. */}
 			<div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
-				<h1 className="flex flex-wrap items-center gap-1.5 text-lg font-semibold text-foreground">
+				<h1 className="flex flex-wrap items-center gap-1.5 text-lg font-medium text-foreground">
 					{breadcrumbs.map((crumb, index) => {
 						const iconName =
 							typeof crumb.icon === "string" ? crumb.icon : undefined;

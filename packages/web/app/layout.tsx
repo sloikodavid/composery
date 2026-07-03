@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/sonner";
 import { cn } from "@/lib/utils";
-import { bricolage, inter } from "./fonts";
+import { inter } from "./fonts";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
 	return (
 		<html
-			className={cn("antialiased", inter.variable, bricolage.variable)}
+			className={cn("antialiased", inter.variable)}
 			lang="en"
 			suppressHydrationWarning
 		>
