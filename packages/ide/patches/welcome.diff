@@ -10,10 +10,9 @@ they read as one accent silhouette and adapt to light/dark. Keeps the existing
 isEnabledCoderGettingStarted gate, so COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE
 still turns the whole block off.
 
-diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
-@@ -927,66 +927,76 @@
+@@ -930,66 +930,76 @@ export class GettingStartedPage extends
  
  		let gettingStartedCoder: HTMLElement = $('.header', {});
  		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
@@ -146,11 +145,9 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/g
  				),
  			);
  		}
-
-diff --git a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
-@@ -1146,3 +1146,12 @@
+@@ -1147,3 +1147,12 @@
  .monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlide .getting-started-checkbox {
  	border-color: var(--vscode-checkbox-border) !important;
  }

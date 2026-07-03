@@ -2,9 +2,8 @@ import { Icon } from "@/components/icon";
 import { LogoLockup } from "@/components/logo";
 
 /*
- * The Composery logo: the icon on its own, and the full lockup (icon + wordmark).
- * Rendered on the live theme surface - the icon's amber is color-stable and the
- * wordmark follows the foreground, so both hold in light and dark.
+ * The Composery logo: the icon on its own, and the full logo (icon + styled
+ * text). Rendered on the live theme surface so both hold in light and dark.
  */
 export function LogoShowcase() {
 	return (

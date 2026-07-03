@@ -25,6 +25,21 @@ describe("back-button placement", () => {
 		// No Function#toString embed (Hermes wouldn't preserve the source).
 		expect(INSTALL_SCRIPT).not.toContain(".toString()");
 	});
+
+	// Titlebar-control parity: the states the IDE's own titlebar controls have.
+	test("the button covers inactive, focus and touch-hover states", () => {
+		expect(INSTALL_SCRIPT).toContain("titleBar-inactiveForeground");
+		expect(INSTALL_SCRIPT).toContain(":focus-visible");
+		expect(INSTALL_SCRIPT).toContain("focusBorder");
+		// Hover only where hover exists - no sticky hover wash after a tap.
+		expect(INSTALL_SCRIPT).toContain("@media (hover: hover)");
+		// Menubar token family: the button's siblings in .titlebar-left are
+		// menubar buttons, not toolbar buttons.
+		expect(INSTALL_SCRIPT).toContain("menubar-selectionBackground");
+		// Icon comes from the product's codicon font, not a pasted SVG.
+		expect(INSTALL_SCRIPT).toContain("codicon-arrow-left");
+		expect(INSTALL_SCRIPT).not.toContain("<svg");
+	});
 });
 
 describe("color-scheme override", () => {

@@ -17,7 +17,7 @@ import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
 import { GITHUB_REPO_URL } from "@/components/github-stars-link";
-import { GitHubMark } from "@/components/icons/github-mark";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,
@@ -86,7 +86,7 @@ export function FumadocsSidebar() {
 								rel="noreferrer"
 								target="_blank"
 							>
-								<GitHubMark />
+								<GitHubIcon />
 							</a>
 						</div>
 						<FumadocsThemeToggle className="p-0" />

@@ -4,7 +4,7 @@ import { Star } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@/components/button";
-import { GitHubMark } from "@/components/icons/github-mark";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { cn } from "@/lib/utils";
 
 export const GITHUB_REPO_URL = "https://github.com/sloikodavid/composery";
@@ -62,7 +62,7 @@ export function GitHubStarsLink() {
 			target="_blank"
 			transition={{ type: "spring", bounce: 0.45, duration: 0.6 }}
 		>
-			<GitHubMark className="size-4" />
+			<GitHubIcon className="size-4" />
 			<AnimatePresence>
 				{stars !== null && (
 					<motion.span

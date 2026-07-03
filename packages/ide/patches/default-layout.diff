@@ -1,7 +1,6 @@
-diff --git a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
 --- a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
 +++ b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
-@@ -23,6 +23,18 @@
+@@ -23,6 +23,18 @@ import { windowLogGroup } from '../../lo
  
  export function getViewsStateStorageId(viewContainerStorageId: string): string { return `${viewContainerStorageId}.hidden`; }
  
@@ -20,7 +19,7 @@ diff --git a/lib/vscode/src/vs/workbench/services/views/common/viewContainerMode
  interface IStoredWorkspaceViewState {
  	collapsed: boolean;
  	isHidden: boolean;
-@@ -503,23 +515,25 @@
+@@ -503,23 +515,25 @@ export class ViewContainerModel extends
  			}
  
  			let state = this.viewDescriptorsState.get(viewDescriptor.id);
@@ -51,10 +50,9 @@ diff --git a/lib/vscode/src/vs/workbench/services/views/common/viewContainerMode
  					collapsed: isUndefinedOrNull(addedViewDescriptorState.collapsed) ? !!viewDescriptor.collapsed : addedViewDescriptorState.collapsed,
  				};
  			}
-diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts b/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
 --- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
-@@ -32,6 +32,14 @@
+@@ -32,6 +32,14 @@ import { IPaneCompositePart } from './pa
  import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
  import { IViewsService } from '../../services/views/common/viewsService.js';
  
@@ -69,7 +67,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts b/lib
  interface IPlaceholderViewContainer {
  	readonly id: string;
  	readonly name?: string;
-@@ -431,6 +439,12 @@
+@@ -434,6 +442,12 @@ export class PaneCompositeBar extends Di
  		const viewContainer = isString(viewContainerOrId) ? this.getViewContainer(viewContainerOrId) : viewContainerOrId;
  		const viewContainerId = isString(viewContainerOrId) ? viewContainerOrId : viewContainerOrId.id;
  
@@ -82,10 +80,9 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts b/lib
  		if (viewContainer) {
  			if (viewContainer.hideIfEmpty) {
  				if (this.viewService.isViewContainerActive(viewContainerId)) {
-diff --git a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 --- a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 +++ b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
-@@ -722,7 +722,12 @@
+@@ -712,7 +712,12 @@ export class ViewDescriptorService exten
  		if (this.isSessionsWindow) {
  			return '{}';
  		}
@@ -99,10 +96,9 @@ diff --git a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorSe
  	}
  
  	private setStoredViewCustomizationsValue(value: string): void {
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
-@@ -445,7 +445,8 @@
+@@ -445,7 +445,8 @@ export function setupTerminalMenus(): vo
  					},
  					group: 'navigation',
  					order: 2,
@@ -112,10 +108,9 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.
  				}
  			},
  			{
-diff --git a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
 --- a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
-@@ -742,7 +742,8 @@
+@@ -742,7 +742,8 @@ function simpleActivityContextMenuAction
  }
  
  export function isAccountsActionVisible(storageService: IStorageService): boolean {

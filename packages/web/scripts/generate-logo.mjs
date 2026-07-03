@@ -1,12 +1,12 @@
-// Generates the Composery logo (icon + wordmark) as a self-contained, font-free
-// SVG, by outlining "Composery" from Bricolage Grotesque SemiBold to vector
-// paths. This is the way logo assets are actually shipped in the wild: no font
+// Generates the Composery logo (icon + styled text) as a self-contained,
+// font-free SVG, by outlining "Composery" from Bricolage Grotesque SemiBold to
+// vector paths. This is the way logo assets are actually shipped in the wild: no font
 // dependency, no @font-face embedding, renders identically everywhere, and
 // rasterizes reliably (unlike SVG-with-webfont, which canvas drops in Safari).
 //
-// The wordmark uses fill="currentColor" so a single lockup adapts to light/dark
+// The styled text uses fill="currentColor" so a single logo adapts to light/dark
 // (it follows the text color). The header, the design-page exporter, and the
-// code-server overlay all consume this one output, so the lockup's spacing is
+// code-server overlay all consume this one output, so the logo spacing is
 // defined here, once. Output: components/logo-data.ts.
 //
 // The variable woff2 the app ships defaults to weight 800 and fontkit can't read
@@ -17,17 +17,18 @@ import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fontkit from "fontkit";
+import {
+	ICON_VIEWBOX,
+	LOGO_TEXT,
+	brandColors,
+	iconInner
+} from "../../brand/index.mjs";
 
 const FONT_URL =
 	"https://cdn.jsdelivr.net/npm/@fontsource/bricolage-grotesque/files/bricolage-grotesque-latin-600-normal.woff2";
-const WORDMARK = "Composery";
-
-// The icon's defs + paths. Keep in sync with components/icon.tsx (ICON_SVG).
-const ICON = `<defs><linearGradient gradientUnits="userSpaceOnUse" id="icon-1" x1="128" x2="128" y1="23" y2="233"><stop stop-color="#F6C886"/><stop offset="1" stop-color="#9A5320"/></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="icon-2" x1="128" x2="128" y1="59" y2="197"><stop stop-color="#ECAE60"/><stop offset="1" stop-color="#8F4C1C"/></linearGradient><linearGradient gradientUnits="userSpaceOnUse" id="icon-3" x1="128" x2="128" y1="90" y2="160"><stop stop-color="#C97E3B"/><stop offset="1" stop-color="#6E3711"/></linearGradient></defs><path d="M200.5 71.4A92 92 0 1 0 200.5 184.6" stroke="url(#icon-1)" stroke-linecap="round" stroke-width="26"/><path d="M154.3 76.3A58 58 0 1 0 184.5 141" stroke="url(#icon-2)" stroke-linecap="round" stroke-width="22"/><path d="M130.4 101.1A27 27 0 1 0 154.1 121" stroke="url(#icon-3)" stroke-linecap="round" stroke-width="17"/>`;
-
 const HEIGHT = 40;
 const FONT_SIZE = 22;
-// How far the wordmark starts from the left, in viewBox units (icon box is HEIGHT).
+// How far the styled text starts from the left, in viewBox units (icon box is HEIGHT).
 const TEXT_X = 40;
 
 const response = await fetch(FONT_URL);
@@ -36,15 +37,17 @@ const scale = FONT_SIZE / font.unitsPerEm;
 const capPx = (font.capHeight ?? font.ascent * 0.7) * scale;
 const baseline = HEIGHT / 2 + capPx / 2; // center the cap height vertically
 
-const iconScale = HEIGHT / 256;
-// Icon ink extents in viewBox units. The outer ring (center 128, r 92, stroke
-// 26) governs left/top/bottom; its round-capped ends define the right.
-const iconLeft = 23 * iconScale;
-const iconTop = 23 * iconScale;
-const iconRight = 214 * iconScale;
-const iconBottom = 233 * iconScale;
+// The icon is rendered through its own viewport so the visible shape can be
+// centered and scaled without affecting the outlined styled text.
+const ICON_X = 0.5;
+const ICON_Y = 0.5;
+const ICON_SIZE = 38.5;
+const iconLeft = ICON_X;
+const iconTop = ICON_Y;
+const iconRight = ICON_X + ICON_SIZE;
+const iconBottom = ICON_Y + ICON_SIZE;
 
-const run = font.layout(WORDMARK);
+const run = font.layout(LOGO_TEXT);
 let cursor = 0;
 let wmMinX = Infinity;
 let wmMaxX = -Infinity;
@@ -63,10 +66,10 @@ const glyphs = run.glyphs
 	})
 	.join("");
 
-// Tight bounding box of all the ink (icon + wordmark), then a uniform clear-space
+// Tight bounding box of all the ink (icon + styled text), then a uniform clear-space
 // on every side - so the padding is even (not the lopsided icon-inset vs nothing
 // it had before) and no ink sits exactly on the edge, where anti-aliasing clips
-// it (the wordmark's trailing "y" especially).
+// it (the logo text's trailing "y" especially).
 const PAD = 2;
 const round = (n) => +n.toFixed(2);
 const inkLeft = Math.min(iconLeft, TEXT_X + wmMinX * scale);
@@ -78,7 +81,8 @@ const top = round(inkTop - PAD);
 const width = round(inkRight - inkLeft + 2 * PAD);
 const height = round(inkBottom - inkTop + 2 * PAD);
 const viewBox = `${left} ${top} ${width} ${height}`;
-const inner = `<g transform="scale(${iconScale})">${ICON}</g><g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
+const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ maskId: "composery-logo-icon-holes" })}</svg>`;
+const inner = `${icon}<g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
 
 const out = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -86,18 +90,33 @@ const out = join(
 	"components",
 	"logo-data.ts"
 );
+const overlayLogo = join(
+	dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"ide",
+	"overlay",
+	"src",
+	"browser",
+	"media",
+	"composery-logo.svg"
+);
 await writeFile(
 	out,
 	`// AUTO-GENERATED by scripts/generate-logo.mjs - do not edit by hand.
-// The Composery logo: the icon plus the wordmark outlined from Bricolage Grotesque
-// SemiBold, so the asset is self-contained and font-free. The wordmark is
+// The Composery logo: the icon plus styled text outlined from Bricolage Grotesque
+// SemiBold, so the asset is self-contained and font-free. The styled text is
 // fill="currentColor", so it follows the text color (dark on light, light on
-// dark). Regenerate after the icon or wordmark changes: \`pnpm logo\`.
+// dark). Regenerate after the icon or logo text changes: \`pnpm logo\`.
 export const LOGO_INNER = ${JSON.stringify(inner)};
 export const LOGO_VIEWBOX = ${JSON.stringify(viewBox)};
 export const LOGO_WIDTH = ${width};
 export const LOGO_HEIGHT = ${height};
 `
+);
+await writeFile(
+	overlayLogo,
+	`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" fill="none"><style>svg{color:${brandColors.surface.lightText}}@media (prefers-color-scheme:dark){svg{color:${brandColors.surface.darkText}}}</style>${inner}</svg>\n`
 );
 
 console.log(

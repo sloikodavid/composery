@@ -1,15 +1,16 @@
-diff --git a/lib/vscode/src/vs/platform/actions/common/actions.ts b/lib/vscode/src/vs/platform/actions/common/actions.ts
 --- a/lib/vscode/src/vs/platform/actions/common/actions.ts
 +++ b/lib/vscode/src/vs/platform/actions/common/actions.ts
-@@ -176,3 +176,4 @@
+@@ -177,6 +177,7 @@ export class MenuId {
+ 	static readonly TitleBarAdjacentCenter = new MenuId('TitleBarAdjacentCenter');
  	static readonly TitleBarContext = new MenuId('TitleBarContext');
  	static readonly TitleBarTitleContext = new MenuId('TitleBarTitleContext');
 +	static readonly TitleBarAppIconContext = new MenuId('TitleBarAppIconContext');
  	static readonly TunnelContext = new MenuId('TunnelContext');
-diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+ 	static readonly TunnelPrivacy = new MenuId('TunnelPrivacy');
+ 	static readonly TunnelProtocol = new MenuId('TunnelProtocol');
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-@@ -468,6 +468,11 @@
+@@ -473,6 +473,11 @@ export class BrowserTitlebarPart extends
  		// App Icon (Windows, Linux)
  		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
  			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
@@ -19,37 +20,33 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts 
 +			this.appIcon.setAttribute('rel', 'noopener');
 +			this.appIcon.setAttribute('aria-label', localize('composeryHome', "Composery"));
  		}
-
+ 
  		// Draggable region that we can manipulate for #52522
-@@ -553,12 +558,14 @@
- 			this._register(addDisposableListener(this.rootContainer, EventType.CONTEXT_MENU, e => {
+@@ -563,7 +568,9 @@ export class BrowserTitlebarPart extends
  				EventHelper.stop(e);
-
+ 
  				let targetMenu: MenuId;
 -				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
--					targetMenu = MenuId.TitleBarTitleContext;
--				} else {
--					targetMenu = MenuId.TitleBarContext;
--				}
 +				if (this.appIcon && isHTMLElement(e.target) && isAncestor(e.target, this.appIcon)) {
 +					targetMenu = MenuId.TitleBarAppIconContext;
 +				} else if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
-+					targetMenu = MenuId.TitleBarTitleContext;
-+				} else {
-+					targetMenu = MenuId.TitleBarContext;
-+				}
-
- 				this.onContextMenu(e, targetMenu);
- 			}));
-diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+ 					targetMenu = MenuId.TitleBarTitleContext;
+ 				} else {
+ 					targetMenu = MenuId.TitleBarContext;
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
-@@ -17,2 +17,4 @@
+@@ -15,6 +15,8 @@ import { IAction } from '../../../../bas
+ import { IsMainWindowFullscreenContext, IsCompactTitleBarContext, TitleBarStyleContext, TitleBarVisibleContext } from '../../../common/contextkeys.js';
+ import { CustomTitleBarVisibility, TitleBarSetting, TitlebarStyle } from '../../../../platform/window/common/window.js';
  import { NotificationsPosition, NotificationsSettings } from '../../../common/notifications.js';
 +import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 +import { IOpenerService } from '../../../../platform/opener/common/opener.js';
-
-@@ -293,1 +296,31 @@
+ 
+ /**
+  * Menu group for actions contributed to {@link MenuId.TitleBar} that should render
+@@ -291,3 +293,33 @@ export const GLOBAL_ACTIVITY_TITLE_ACTIO
+ 	enabled: true,
+ 	run: function (): void { }
  };
 +
 +// Composery: right-click menu for the logo link. Labels and ordering mirror the
@@ -81,13 +78,12 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.
 +		accessor.get(IClipboardService).writeText(COMPOSERY_URL);
 +	}
 +});
-diff --git a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 --- a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 +++ b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
-@@ -572,6 +572,10 @@
+@@ -579,6 +579,10 @@ export class WorkbenchThemeService exten
  		}
  		this.container.classList.add(...newTheme.classNames);
-
+ 
 +		// Composery: stamp a class when a theme from our composery-themes extension is active (by
 +		// extension id, covers all our themes and survives label renames), so the logo can go colour vs mono.
 +		this.container.classList.toggle('composery-theme', newTheme.extensionData?.extensionId?.toLowerCase() === 'composery.composery-themes');
@@ -95,7 +91,6 @@ diff --git a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeS
  		this.currentColorTheme.clearCaches();
  		this.currentColorTheme = newTheme;
  		if (!this.colorThemingParticipantChangeListener) {
-diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 @@ -293,7 +293,24 @@
@@ -114,13 +109,13 @@ diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpa
 +	background-color: var(--vscode-button-background, var(--vscode-activityBarBadge-background, var(--vscode-titleBar-activeForeground, var(--vscode-foreground))));
 +	-webkit-mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
 +	mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
- }
-
++}
++
 +/* Composery: subtle hover on the logo link. The titlebar's window-icons hover via a
-+   background-color tint, but the logo already uses background for the mark itself, so fade opacity instead. */
++   background-color tint, but the logo already uses background for the icon itself, so fade opacity instead. */
 +.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon):hover {
 +	opacity: 0.8;
 +	transition: opacity 0.1s;
-+}
-+
+ }
+ 
  .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {

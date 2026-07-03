@@ -1,8 +1,6 @@
-diff --git a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-index 4eb4ca92..1a426729 100644
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -7,7 +7,7 @@ import { BrowserFeatures } from '../../../base/browser/canIUse.js';
+@@ -7,7 +7,7 @@ import { BrowserFeatures } from '../../.
  import * as dom from '../../../base/browser/dom.js';
  import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
  import { mainWindow } from '../../../base/browser/window.js';
@@ -11,7 +9,7 @@ index 4eb4ca92..1a426729 100644
  import * as platform from '../../../base/common/platform.js';
  import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
  import { NavigationCommandRevealType } from '../coreCommands.js';
-@@ -15,22 +15,86 @@ import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
+@@ -15,22 +15,85 @@ import { IMouseTarget, MouseTargetType }
  import { EditorMouseEvent, EditorPointerEventFactory } from '../editorDom.js';
  import { ViewController } from '../view/viewController.js';
  import { ViewContext } from '../../common/viewModel/viewContext.js';
@@ -20,7 +18,7 @@ index 4eb4ca92..1a426729 100644
 +import { Selection } from '../../common/core/selection.js';
 +import { Position } from '../../common/core/position.js';
 +
-+const TOUCH_SELECTION_THRESHOLD = 8;
++const TOUCH_SELECTION_THRESHOLD = 16;
 +const TOUCH_SELECTION_HOLD_TIME = 450;
 +const TOUCH_INERTIA_SUPPRESSION_TIME = 350;
 +const TOUCH_HANDLE_EDGE_SCROLL_ZONE = 44;
@@ -35,7 +33,6 @@ index 4eb4ca92..1a426729 100644
 +	totalX: number;
 +	totalY: number;
 +	startTarget: IMouseTarget | null;
-+	tapCount: number;
 +	selectionTimer: number | undefined;
 +}
  
@@ -99,7 +96,7 @@ index 4eb4ca92..1a426729 100644
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,6 +117,72 @@ export class PointerEventHandler extends MouseHandler {
+@@ -53,7 +116,74 @@ export class PointerEventHandler extends
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -123,12 +120,12 @@ index 4eb4ca92..1a426729 100644
 +		const startTarget = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +		this._touchGesture = {
 +			type: 'pending',
-+			startedOnText: startTarget.type === MouseTargetType.CONTENT_TEXT && !!startTarget.position,
++			// Same acceptance as the tap path: any target that resolves to a position.
++			startedOnText: !!startTarget.position,
 +			totalX: 0,
 +			totalY: 0,
 +			startTarget,
-+			tapCount: event.tapCount,
-+			selectionTimer: startTarget.type === MouseTargetType.CONTENT_TEXT && !!startTarget.position
++			selectionTimer: startTarget.position
 +				? mainWindow.setTimeout(() => this._startPendingTouchSelection(), TOUCH_SELECTION_HOLD_TIME)
 +				: undefined
 +		};
@@ -160,7 +157,8 @@ index 4eb4ca92..1a426729 100644
 +		this._suppressNextTouchContextMenu = true;
 +		this.viewHelper.focusTextArea();
 +		if (gesture.startTarget?.position) {
-+			this._dispatchMouseTarget(gesture.startTarget, /*inSelectionMode*/false, gesture.tapCount);
++			// mouseDownCount 2 = select the word under the finger, as native long-press does.
++			this._dispatchMouseTarget(gesture.startTarget, /*inSelectionMode*/false, 2);
 +		}
 +	}
 +
@@ -172,7 +170,10 @@ index 4eb4ca92..1a426729 100644
 +
  		if (!event.initialTarget || !this.viewHelper.linesContentDomNode.contains(event.initialTarget as HTMLElement)) {
  			return;
-@@ -65,6 +195,38 @@ export class PointerEventHandler extends MouseHandler {
+ 		}
+@@ -63,8 +193,48 @@ export class PointerEventHandler extends
+ 		this._dispatchGesture(event, /*inSelectionMode*/false);
+ 	}
  
 +	private onContextMenu(event: MouseEvent): void {
 +		if (this._suppressNextTouchContextMenu) {
@@ -196,14 +197,22 @@ index 4eb4ca92..1a426729 100644
 +
 +				if (this._touchGesture.type === 'pending') {
 +					const distance = Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY);
-+					if (distance >= TOUCH_SELECTION_THRESHOLD) {
-+						this._clearTouchSelectionTimer();
-+						this._touchGesture.startedOnText = false;
++					if (distance < TOUCH_SELECTION_THRESHOLD) {
++						// Long-press arm window: finger jitter must not scroll the view.
++						return;
 +					}
++					this._clearTouchSelectionTimer();
++					this._touchGesture.startedOnText = false;
++					// A scroll after all - apply the pan accumulated during the arm window at once.
++					this._context.viewModel.viewLayout.deltaScrollNow(-this._touchGesture.totalX, -this._touchGesture.totalY);
++					return;
 +				}
 +
 +				if (this._touchGesture.type === 'selection') {
-+					this._dispatchGesture(event, /*inSelectionMode*/true);
++					// Word granularity (mouseDownCount 2), matching the hold that started it -
++					// the gesture's tapCount is 0 and would collapse the word selection.
++					const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
++					this._dispatchMouseTarget(target, /*inSelectionMode*/true, 2);
 +					return;
 +				}
 +			}
@@ -211,7 +220,7 @@ index 4eb4ca92..1a426729 100644
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +236,17 @@ export class PointerEventHandler extends MouseHandler {
+@@ -74,13 +244,17 @@ export class PointerEventHandler extends
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -230,7 +239,7 @@ index 4eb4ca92..1a426729 100644
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,6 +259,185 @@ export class PointerEventHandler extends MouseHandler {
+@@ -93,6 +267,185 @@ export class PointerEventHandler extends
  		}
  	}
  

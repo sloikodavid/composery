@@ -1,7 +1,6 @@
-diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/workbench/browser/layout.ts
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
-@@ -47,6 +47,7 @@
+@@ -47,6 +47,7 @@ import { AuxiliaryBarPart } from './part
  import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
  import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
  import { CodeWindow, mainWindow } from '../../base/browser/window.js';
@@ -9,7 +8,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  
  //#region Layout Implementation
  
-@@ -1361,7 +1362,8 @@
+@@ -1385,7 +1386,8 @@ export abstract class Layout extends Dis
  
  	private focusPanelOrEditor(): void {
  		const activePanel = this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel);
@@ -19,7 +18,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  			activePanel.focus(); // prefer panel if it has focus or editor is hidden
  		} else {
  			this.focus(); // otherwise focus editor
-@@ -1640,13 +1642,13 @@
+@@ -1664,13 +1666,13 @@ export abstract class Layout extends Dis
  
  		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
  			this._register(part.onDidVisibilityChange(visible => {
@@ -38,7 +37,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1664,6 +1666,16 @@
+@@ -1688,6 +1690,16 @@ export abstract class Layout extends Dis
  			}));
  		}
  
@@ -55,7 +54,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1713,6 +1725,13 @@
+@@ -1738,6 +1750,13 @@ export abstract class Layout extends Dis
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
@@ -69,7 +68,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  		}
  	}
  
-@@ -1862,8 +1881,10 @@
+@@ -1887,8 +1906,10 @@ export abstract class Layout extends Dis
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
@@ -82,7 +81,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2178,10 +2199,20 @@
+@@ -2204,10 +2225,20 @@ export abstract class Layout extends Dis
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -104,7 +103,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2276,6 +2307,115 @@
+@@ -2302,6 +2333,115 @@ export abstract class Layout extends Dis
  		}
  	}
  

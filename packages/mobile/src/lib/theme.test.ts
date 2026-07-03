@@ -26,12 +26,12 @@ describe("theme palette", () => {
 		expect(dark.primary).not.toBe(dark.primaryForeground);
 	});
 
-	test("primary light is the derived hex for oklch(0.55 0.12 64)", () => {
-		expect(light.primary).toBe("#a1600d");
+	test("primary light matches the shared brand palette", () => {
+		expect(light.primary).toBe("#171717");
 	});
 
-	test("primary dark is the derived hex for oklch(0.6 0.14 64)", () => {
-		expect(dark.primary).toBe("#b86a00");
+	test("primary dark matches the shared brand palette", () => {
+		expect(dark.primary).toBe("#fafafa");
 	});
 
 	test("selects the palette for a React Native color scheme", () => {

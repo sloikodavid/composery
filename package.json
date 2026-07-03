@@ -7,6 +7,7 @@
 	"packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
 	"scripts": {
 		"dev": "concurrently -k -n composery,web,mobile -c blue,magenta,cyan \"docker compose -f compose.dev.yml up --build\" \"pnpm --filter web dev\" \"pnpm --filter mobile dev\"",
+		"brand": "node scripts/sync-brand.mjs && pnpm --filter web logo && pnpm --filter web icons && pnpm icons && pnpm --filter mobile icons && prettier --write packages/web/lib/brand.ts packages/mobile/src/lib/brand.ts packages/web/app/brand.css packages/ide/overlay/src/browser/pages/brand.css packages/web/components/logo-data.ts packages/mobile/app.json",
 		"icons": "node scripts/generate-icons.mjs",
 		"setup": "node scripts/setup.mjs",
 		"smoke": "node scripts/smoke.mjs",

@@ -1,8 +1,6 @@
-diff --git a/lib/vscode/extensions/markdown-language-features/preview-src/index.ts b/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
-index d481bb24..e42deb3b 100644
 --- a/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
 +++ b/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
-@@ -338,6 +338,138 @@ document.addEventListener('dblclick', event => {
+@@ -653,6 +653,138 @@ document.addEventListener('dblclick', ev
  });
  
  const passThroughLinkSchemes = ['http:', 'https:', 'mailto:', 'vscode:', 'vscode-insiders:'];
@@ -141,7 +139,7 @@ index d481bb24..e42deb3b 100644
  
  document.addEventListener('click', event => {
  	if (!event) {
-@@ -354,7 +486,17 @@ document.addEventListener('click', event => {
+@@ -669,7 +801,17 @@ document.addEventListener('click', event
  			let hrefText = node.getAttribute('data-href');
  			if (!hrefText) {
  				hrefText = node.getAttribute('href');
@@ -160,11 +158,9 @@ index d481bb24..e42deb3b 100644
  				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
  					return;
  				}
-diff --git a/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts b/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
-index cb08beaa..fdd04639 100644
 --- a/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
 +++ b/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
-@@ -433,7 +433,7 @@ class MarkdownPreview extends Disposable implements WebviewResourceProvider {
+@@ -484,7 +484,7 @@ class MarkdownPreview extends Disposable
  		const openLinks = config.get<string>('preview.openMarkdownLinks', 'inPreview');
  		if (openLinks === 'inPreview') {
  			const resolved = await this.#opener.resolveDocumentLink(href, this.resource);

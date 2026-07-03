@@ -1,27 +1,54 @@
-diff --git a/lib/vscode/src/vs/code/browser/workbench/callback.html b/lib/vscode/src/vs/code/browser/workbench/callback.html
 --- a/lib/vscode/src/vs/code/browser/workbench/callback.html
 +++ b/lib/vscode/src/vs/code/browser/workbench/callback.html
-@@ -8,1 +8,1 @@
+@@ -5,7 +5,7 @@
+ 		<meta charset="utf-8" />
+ 
+ 		<!-- Disable pinch zooming -->
 -		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 +		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
+ 
+ 		<title>Visual Studio Code</title>
+ 
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
 +++ b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
-@@ -17,1 +17,1 @@
+@@ -15,7 +15,7 @@
+ 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
+ 
+ 		<!-- Disable pinch zooming -->
 -		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 +		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-@@ -31,0 +32,2 @@
+ 
+ 		<!-- Workbench Configuration -->
+ 		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
+@@ -30,6 +30,8 @@
+ 		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
+ 		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
+ 		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
-@@ -65,0 +68,2 @@
+ 		<style id="vscode-css-modules" type="text/css" media="screen"></style>
+ 
+ 	</head>
+@@ -64,6 +66,8 @@
+ 	</script>
+ 	<script>
+ 		performance.mark('code/willLoadWorkbenchMain');
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
-diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench.html b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+ 	</script>
+ 	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
+ </html>
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
 +++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
-@@ -18,1 +18,1 @@
+@@ -15,7 +15,7 @@
+ 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
+ 
+ 		<!-- Disable pinch zooming -->
 -		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
 +		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+ 
+ 		<!-- Workbench Configuration -->
+ 		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
 @@ -28,6 +28,8 @@
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
@@ -31,7 +58,7 @@ diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench.html b/lib/vscod
  
  	</head>
  
-@@ -46,5 +47,7 @@
+@@ -46,5 +48,7 @@
  	<script type="module" src="{{WORKBENCH_NLS_FALLBACK_URL}}"></script>
  	<!-- attempt to load NLS messages in case non-english -->
  	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>

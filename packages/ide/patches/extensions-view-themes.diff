@@ -1,7 +1,6 @@
-diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
 --- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
-@@ -1296,7 +1296,7 @@
+@@ -1296,7 +1296,7 @@ export class ExtensionsListView extends
  export class DefaultPopularExtensionsView extends ExtensionsListView {
  
  	override async show(): Promise<IPagedModel<IExtension>> {
@@ -10,10 +9,9 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsVi
  		return super.show(query);
  	}
  
-diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
 --- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
-@@ -257,7 +257,7 @@
+@@ -260,7 +260,7 @@ export class ExtensionsViewletViewsContr
  		 */
  		viewDescriptors.push({
  			id: 'workbench.views.extensions.popular',

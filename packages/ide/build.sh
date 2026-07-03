@@ -15,7 +15,6 @@
 #
 # The build itself (quilt + the code-server toolchain) is Linux-only.
 set -euo pipefail
-export QUILT_PUSH_ARGS="--fuzz=0"   # context drift = hard failure, never a silent mis-apply
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BUILD="${BUILD_DIR:-$HERE/build}"
@@ -35,7 +34,10 @@ while read -r p; do
 done < "$HERE/patches/series"
 
 echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches), -p1, fuzz=0 =="
-( cd "$BUILD" && QUILT_PATCHES=patches quilt push -a )
+# --fuzz=0 must be a flag: quilt only honors QUILT_PUSH_ARGS from quiltrc files,
+# so the env-var form silently applied with default fuzz. Context drift = hard
+# failure, never a silent mis-apply.
+( cd "$BUILD" && QUILT_PATCHES=patches quilt push -a --fuzz=0 )
 
 echo "== 5. overlay: our whole owned files, path-mirrored =="
 cp -r "$HERE/overlay/src/." "$BUILD/src/"

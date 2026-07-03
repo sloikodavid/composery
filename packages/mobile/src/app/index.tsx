@@ -26,7 +26,7 @@ import {
 	type ActionSheetRef,
 	type SheetAction
 } from "@/components/action-sheet";
-import { Logo, LogoMark } from "@/components/logo";
+import { Logo, LogoIcon } from "@/components/logo";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
@@ -401,7 +401,7 @@ function EmptyState({
 }) {
 	return (
 		<Animated.View entering={FadeIn.duration(300)} style={styles_empty}>
-			<LogoMark size={64} />
+			<LogoIcon color={theme.foreground} size={64} />
 			<Text
 				style={[
 					heading("bold"),

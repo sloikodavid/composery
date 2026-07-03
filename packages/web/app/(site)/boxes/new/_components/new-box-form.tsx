@@ -178,7 +178,7 @@ export function NewBoxForm() {
 										{normalizedSlug || "Box"}
 									</span>
 									<span className="font-medium text-foreground">
-										$20 / month
+										$25 / month
 									</span>
 								</div>
 

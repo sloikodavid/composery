@@ -9,28 +9,29 @@ import {
 	LOGO_VIEWBOX,
 	LOGO_WIDTH
 } from "@/components/logo-data";
+import { BRAND_COLORS } from "@/lib/brand";
 
 type Asset = { height: number; svg: string; width: number };
 
 const ICON: Asset = {
-	svg: `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">${ICON_SVG}</svg>`,
+	svg: `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">${ICON_SVG.replace(/currentColor/g, BRAND_COLORS.icon.light)}</svg>`,
 	width: 256,
 	height: 256
 };
 
-// The wordmark is fill="currentColor" in the source; materialize a concrete
+// The styled text is fill="currentColor" in the source; materialize a concrete
 // color per variant so the downloaded file is fixed (dark text for light
-// backgrounds, light text for dark). Foregrounds mirror the Umber theme.
+// backgrounds, light text for dark). Foregrounds mirror the brand theme.
 function logo(fill: string): Asset {
 	return {
-		svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" viewBox="${LOGO_VIEWBOX}" fill="none">${LOGO_INNER.replace("currentColor", fill)}</svg>`,
+		svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" viewBox="${LOGO_VIEWBOX}" fill="none">${LOGO_INNER.replace(/currentColor/g, fill)}</svg>`,
 		width: LOGO_WIDTH,
 		height: LOGO_HEIGHT
 	};
 }
 
-const LOGO_LIGHT = logo("#2d241e");
-const LOGO_DARK = logo("#f5f1ea");
+const LOGO_LIGHT = logo(BRAND_COLORS.surface.lightText);
+const LOGO_DARK = logo(BRAND_COLORS.surface.darkText);
 
 function save(href: string, name: string) {
 	const anchor = document.createElement("a");

@@ -6,14 +6,14 @@ import { LOGO_INNER, LOGO_VIEWBOX } from "@/components/logo-data";
 import { cn } from "@/lib/utils";
 
 export function LogoLockup({ className }: { className?: string }) {
-	const uid = useId().replace(/:/g, "");
-	const html = LOGO_INNER.replace(/icon-/g, `${uid}-icon-`);
+	const maskId = useId().replace(/[^A-Za-z0-9_-]/g, "");
+	const inner = LOGO_INNER.replaceAll("composery-logo-icon-holes", maskId);
 
 	return (
 		<svg
 			aria-hidden
 			className={className}
-			dangerouslySetInnerHTML={{ __html: html }}
+			dangerouslySetInnerHTML={{ __html: inner }}
 			fill="none"
 			viewBox={LOGO_VIEWBOX}
 			xmlns="http://www.w3.org/2000/svg"

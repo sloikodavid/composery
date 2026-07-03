@@ -1,7 +1,7 @@
 {
 	"name": "composery-themes",
 	"displayName": "Composery Themes",
-	"description": "Composery's light and dark color themes, matching the website's warm amber branding.",
+	"description": "Composery's light and dark color themes, matching the shared brand palette.",
 	"version": "0.1.0",
 	"publisher": "composery",
 	"license": "MIT",

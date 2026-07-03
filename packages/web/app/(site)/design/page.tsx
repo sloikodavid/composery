@@ -43,6 +43,7 @@ import {
 	TableRow
 } from "@/components/table";
 import { Textarea } from "@/components/textarea";
+import { BRAND_COLORS, BRAND_THEME } from "@/lib/brand";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 
 export const metadata: Metadata = {
@@ -50,19 +51,54 @@ export const metadata: Metadata = {
 	robots: { index: false, follow: false }
 };
 
-// Distinct theme surfaces and accents. The flat Umber theme collapses --card
-// onto --background and --accent/--secondary onto --muted, so those are omitted
-// here rather than shown as duplicate swatches.
-const colorTokens = [
-	"--background",
-	"--foreground",
-	"--muted",
-	"--border",
-	"--primary",
-	"--success",
-	"--warning",
-	"--destructive",
-	"--ring"
+// Theme tokens shown per scheme. Keyed by BRAND_THEME field (the single
+// generated source that also feeds brand.css), so the swatches can't drift.
+const themeTokens: [keyof (typeof BRAND_THEME)["light"], string][] = [
+	["background", "background"],
+	["foreground", "foreground"],
+	["card", "card"],
+	["primary", "primary"],
+	["secondary", "secondary"],
+	["muted", "muted"],
+	["mutedForeground", "muted-foreground"],
+	["accent", "accent"],
+	["border", "border"],
+	["ring", "ring"],
+	["success", "success"],
+	["warning", "warning"],
+	["destructive", "destructive"]
+];
+
+const brandColorGroups = [
+	{
+		label: "Icon",
+		swatches: [
+			["Light", BRAND_COLORS.icon.light],
+			["Dark", BRAND_COLORS.icon.dark],
+			["Muted", BRAND_COLORS.icon.muted],
+			["Tile stroke", BRAND_COLORS.icon.tileStroke]
+		]
+	},
+	{
+		label: "Surfaces",
+		swatches: [
+			["Ink", BRAND_COLORS.surface.ink],
+			["Paper", BRAND_COLORS.surface.paper],
+			["Canvas", BRAND_COLORS.surface.canvas],
+			["Border", BRAND_COLORS.surface.border],
+			["Tile", BRAND_COLORS.surface.tile],
+			["Splash", BRAND_COLORS.surface.splash]
+		]
+	},
+	{
+		label: "States",
+		swatches: [
+			["Success", BRAND_COLORS.state.success],
+			["Warning", BRAND_COLORS.state.warning],
+			["Destructive", BRAND_COLORS.state.destructive],
+			["Info", BRAND_COLORS.state.info]
+		]
+	}
 ];
 
 const icons = [
@@ -158,12 +194,43 @@ export default async function DesignPage() {
 		<PageTemplate breadcrumbs={[{ icon: PenToolIcon, label: "Design" }]}>
 			<div className="space-y-8">
 				<Section
-					note="The Composery logo: the icon mark with the Bricolage Grotesque font for the text."
+					note="The Composery logo pairs the standalone icon with styled text. The shared source lives in packages/brand/index.mjs and feeds web, mobile, and IDE assets."
 					title="Logo"
 				>
 					<div className="space-y-5">
 						<LogoShowcase />
 						<LogoExport />
+					</div>
+				</Section>
+
+				<Section
+					note="The project palette is defined once and then adapted to CSS variables, React Native theme values, generated app icons, favicons, IDE auth pages, and editor themes."
+					title="Brand colors"
+				>
+					<div className="grid gap-5 md:grid-cols-3">
+						{brandColorGroups.map((group) => (
+							<div className="space-y-2" key={group.label}>
+								<p className="text-xs font-medium text-foreground">
+									{group.label}
+								</p>
+								<div className="grid gap-2">
+									{group.swatches.map(([label, value]) => (
+										<div className="flex items-center gap-2" key={label}>
+											<span
+												className="inline-block size-6 shrink-0 rounded-md border border-border"
+												style={{ background: value }}
+											/>
+											<span className="min-w-0 text-xs text-muted-foreground">
+												{label}
+											</span>
+											<code className="ml-auto text-xs text-muted-foreground">
+												{value}
+											</code>
+										</div>
+									))}
+								</div>
+							</div>
+						))}
 					</div>
 				</Section>
 
@@ -374,7 +441,7 @@ export default async function DesignPage() {
 				</Section>
 
 				<Section
-					note="One design system for every status the UI can show: icon + colored text, no chip background. Tones: success (green), warning (amber), danger (red), neutral (gray). Spinning statuses animate their icon. Unknown statuses fall back to neutral."
+					note="One design system for every status the UI can show: icon + toned text, no chip background. Tones: success, warning, destructive, and neutral. Spinning statuses animate their icon. Unknown statuses fall back to neutral."
 					title="Status text"
 				>
 					<div className="space-y-4">
@@ -433,15 +500,29 @@ export default async function DesignPage() {
 					</div>
 				</Section>
 
-				<Section title="Color tokens">
-					<div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-						{colorTokens.map((token) => (
-							<div className="flex items-center gap-2" key={token}>
-								<span
-									className="inline-block size-6 shrink-0 rounded-md border border-border"
-									style={{ background: `var(${token})` }}
-								/>
-								<span className="text-xs text-muted-foreground">{token}</span>
+				<Section
+					note="UI theme tokens in both schemes, from BRAND_THEME - the same generated source that produces the --token CSS variables in brand.css."
+					title="Color tokens"
+				>
+					<div className="grid gap-4 md:grid-cols-2">
+						{(["light", "dark"] as const).map((scheme) => (
+							<div className="space-y-2" key={scheme}>
+								<p className="text-xs font-medium capitalize text-foreground">
+									{scheme}
+								</p>
+								<div className="grid grid-cols-2 gap-2">
+									{themeTokens.map(([key, label]) => (
+										<div className="flex items-center gap-2" key={key}>
+											<span
+												className="inline-block size-5 shrink-0 rounded border border-border"
+												style={{ background: BRAND_THEME[scheme][key] }}
+											/>
+											<span className="text-xs text-muted-foreground">
+												{label}
+											</span>
+										</div>
+									))}
+								</div>
 							</div>
 						))}
 					</div>

@@ -71,18 +71,27 @@ export const INSTALL_SCRIPT = `(function () {
 		if (document.getElementById(ID + "-style")) return;
 		var s = document.createElement("style");
 		s.id = ID + "-style";
-		// Matches .action-label.codicon: 16px icon, 22px box, 6px radius, toolbar
-		// hover/active bg. z-index clears the absolute .titlebar-drag-region; the
-		// tap-highlight resets kill the WebView's bluish press flash. The .menubar
-		// rules shrink the overflow hamburger to the same 22px box so they pair.
+		// The button's real siblings in .titlebar-left are MENUBAR buttons, so it
+		// uses the menubar token family (selectionBackground/Foreground, 5px radius
+		// like .menubar-menu-title), not toolbar tokens - plus the states the
+		// titlebar's own controls have: inactive-window foreground, focusBorder
+		// focus ring, and hover gated on (hover:hover) so a tap can't leave a
+		// stuck hover wash on touch. z-index clears the absolute
+		// .titlebar-drag-region; the tap-highlight resets kill the WebView's
+		// bluish press flash. The .menubar rules shrink the overflow hamburger to
+		// the same 22px box so they pair.
 		s.textContent =
 			"#" + ID + "{box-sizing:border-box;display:flex;align-items:center;justify-content:center;align-self:center;" +
-			"width:22px;height:22px;padding:3px;margin:0 2px 0 5px;border:0;border-radius:6px;background:transparent;" +
+			"width:22px;height:22px;padding:3px;margin:0 2px 0 5px;border:0;border-radius:5px;background:transparent;" +
 			"color:var(--vscode-titleBar-activeForeground,#888);cursor:pointer;-webkit-app-region:no-drag;position:relative;z-index:2500;" +
 			"outline:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none;}" +
-			"#" + ID + ":hover{background:var(--vscode-toolbar-hoverBackground,rgba(184,184,184,0.31));}" +
-			"#" + ID + ":active{background:var(--vscode-toolbar-activeBackground,rgba(166,166,166,0.31));}" +
-			"#" + ID + " svg{display:block;width:16px;height:16px;}" +
+			".part.titlebar.inactive #" + ID + "{color:var(--vscode-titleBar-inactiveForeground,#888);}" +
+			"@media (hover: hover){#" + ID + ":hover{" +
+			"background:var(--vscode-menubar-selectionBackground,var(--vscode-toolbar-hoverBackground,rgba(184,184,184,0.31)));" +
+			"color:var(--vscode-menubar-selectionForeground,var(--vscode-titleBar-activeForeground,#888));}}" +
+			"#" + ID + ":active{background:var(--vscode-menubar-selectionBackground,var(--vscode-toolbar-activeBackground,rgba(166,166,166,0.31)));}" +
+			"#" + ID + ":focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px;}" +
+			"#" + ID + " .codicon{font-size:16px;line-height:16px;}" +
 			".part.titlebar .titlebar-left .menubar{padding-left:0!important;padding-right:0!important;}" +
 			".part.titlebar .titlebar-left .menubar-menu-button{width:22px!important;min-width:22px!important;padding:0!important;}" +
 			".part.titlebar .titlebar-left .menubar-menu-button .menubar-menu-title{transform:translateY(1px);}";
@@ -95,8 +104,10 @@ export const INSTALL_SCRIPT = `(function () {
 		b.type = "button";
 		b.setAttribute("aria-label", "Back to instances");
 		b.setAttribute("title", "Back to instances");
-		// VS Code codicon arrow-left (fill currentColor).
-		b.innerHTML = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true"><path d="M13.5 8.00023H3.70701L7.85301 3.85423C8.04801 3.65923 8.04801 3.34223 7.85301 3.14723C7.65801 2.95223 7.34101 2.95223 7.14601 3.14723L2.14601 8.14723C1.95101 8.34223 1.95101 8.65923 2.14601 8.85423L7.14601 13.8542C7.24401 13.9522 7.37201 14.0002 7.50001 14.0002C7.62801 14.0002 7.75601 13.9512 7.85401 13.8542C8.04901 13.6592 8.04901 13.3422 7.85401 13.1472L3.70801 9.00123H13.501C13.777 9.00123 14.001 8.77723 14.001 8.50123C14.001 8.22523 13.777 8.00123 13.501 8.00123L13.5 8.00023Z"/></svg>';
+		// The workbench's own codicon font (placement only ever happens on the
+		// workbench page, where it's loaded) - glyph tracks the product, no
+		// pasted SVG to drift.
+		b.innerHTML = '<span class="codicon codicon-arrow-left" aria-hidden="true"></span>';
 		b.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); post("composery:back"); });
 		return b;
 	}

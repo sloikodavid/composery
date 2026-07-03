@@ -1,1 +1,1 @@
-C:/Users/sloik/Documents/Projects/composery/packages/website/AGENTS.md
+AGENTS.md

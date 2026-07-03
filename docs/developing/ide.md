@@ -14,31 +14,30 @@ exec paths, artifact paths, and env contracts.
 
 ## Brand palette
 
-The Composery palette (warm amber accent, warm surfaces and foregrounds) is the
-editor counterpart of the website brand. It is hardcoded as hex in several
-committed places, each hand-maintained. There is no shared token source, so a
-brand change means editing all of them together:
+The Composery palette is shared from `packages/brand/index.mjs`: neutral ink and
+paper surfaces, monochrome primary actions, and the same icon geometry across
+web, mobile, and the editor. Regenerate derived files instead of hand-copying brand
+values:
 
 - **Editor themes**.
   `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.
-  Self-contained builtin themes, VS Code Dark/Light Modern retinted to the amber
-  brand while syntax `tokenColors` stay Modern. The true editor default via
+  Self-contained builtin themes, VS Code Dark/Light Modern retinted to the
+  Composery brand while syntax `tokenColors` stay Modern. The true editor default via
   `packages/ide/patches/default-color-theme.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
-  symmetric: every chrome key one theme retints, the other should too, or one
-  theme leaks upstream's Modern blue.
+  symmetric: every chrome key one theme retints, the other should too.
 - **Auth pages**.
-  `packages/ide/overlay/src/browser/pages/global.css` (login, register,
-  reset, error).
+  `packages/ide/overlay/src/browser/pages/brand.css` feeds the variables used by
+  `global.css` for login, register, reset, and error pages.
 - **Startup page**.
   `packages/ide/overlay/src/node/persistence/readiness.ts` (`renderStartupPage`),
   the "Preparing workspace" page shown until the workspace is ready, wired in by
   our owned `packages/ide/overlay/src/node/routes/index.ts` (the `persistenceGate`).
-- **Logo and wordmark**.
+- **Logo**.
   `packages/ide/patches/branding.diff` and
-  `packages/ide/overlay/src/browser/media/composery-logo.svg` (amber
-  gradient and fill).
+  `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
+  and styled text fill).
 - **Auth backend (register / reset-password / login flow)**.
   `packages/ide/overlay/src/node/routes/{register,resetPassword,passwordConfig,login}.ts`
   and `packages/ide/overlay/src/node/{cli,http,main}.ts` - whole owned files, not
@@ -50,11 +49,11 @@ brand change means editing all of them together:
   (`CODE_SERVER_SESSION_SOCKET`, `CODE_SERVER_PARENT_PID`) keep upstream's names
   so code-server's own `integration.diff` and `store-socket.diff` apply unmodified.
 - **Welcome tiles**.
-  `scripts/generate-icons.mjs`, the `TILE_BG` constant.
+  `scripts/generate-icons.mjs`, fed by `packages/brand/index.mjs`.
 
 One place is generated, not hand-maintained: the `COLOR_THEME_*_INITIAL_COLORS`
 first-paint snapshot in `default-color-theme.diff`. Themes load asynchronously and
-frame 1 needs colors before the JSON parses, so VS Code keeps a synchronous
+frame one needs colors before the JSON parses, so VS Code keeps a synchronous
 snapshot; this is upstream's mechanism, not ours. It is generated from the theme
 JSON files and covers every key, so it cannot silently fall behind. Regenerate it
 when the themes change, never hand-edit the patch's color lines, and confirm no

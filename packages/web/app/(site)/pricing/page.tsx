@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
 import {
-	Angry,
+	AngryIcon,
 	HistoryIcon,
-	InfinityIcon,
+	FileSearchCornerIcon,
 	type LucideIcon,
 	RocketIcon,
-	ServerIcon,
+	ContainerIcon,
 	ShieldCheckIcon,
-	SmartphoneIcon,
-	UsersIcon,
+	EarthLockIcon,
+	MonitorCogIcon,
 	WalletIcon
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
-import { GitHubMark } from "@/components/icons/github-mark";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { PageTemplate } from "@/components/page-template";
 import { cn } from "@/lib/utils";
 
@@ -28,16 +28,16 @@ type Feature = { icon: LucideIcon; text: string };
 
 const MANAGED_FEATURES: Feature[] = [
 	{ icon: RocketIcon, text: "Ready in a minute" },
-	{ icon: ShieldCheckIcon, text: "Securely managed in Europe" },
-	{ icon: SmartphoneIcon, text: "Reachable from any phone or browser" },
-	{ icon: HistoryIcon, text: "Snapshot anytime" }
+	{ icon: ShieldCheckIcon, text: "Privately hosted in Europe" },
+	{ icon: EarthLockIcon, text: "Sub-domain, DNS, and TLS" },
+	{ icon: HistoryIcon, text: "Daily and manual snapshots" }
 ];
 
 const SELF_HOSTED_FEATURES: Feature[] = [
-	{ icon: ServerIcon, text: "Docker image, runs anywhere just like n8n" },
-	{ icon: InfinityIcon, text: "Fully open-source, no lock-in" },
-	{ icon: UsersIcon, text: "Platform-specific templates on GitHub" },
-	{ icon: Angry, text: "You might get a headache" }
+	{ icon: ContainerIcon, text: "Runs anywhere, just like n8n" },
+	{ icon: FileSearchCornerIcon, text: "Fully open-source, no lock-in" },
+	{ icon: MonitorCogIcon, text: "Platform-specific hosting templates" },
+	{ icon: AngryIcon, text: "You might just get a headache" }
 ];
 
 function FeatureList({ features }: { features: Feature[] }) {
@@ -99,10 +99,10 @@ export default function PricingPage() {
 			<div className="space-y-8">
 				<div className="max-w-xl space-y-3">
 					<h2 className="font-heading text-3xl font-semibold tracking-tight text-balance text-foreground">
-						Two ways to run a Composery.
+						Set-up your Composery.
 					</h2>
 					<p className="text-base leading-7 text-muted-foreground">
-						Whatever you pick, the editor is the same either way.
+						The editor is the same but the things around it aren&apos;t.
 					</p>
 				</div>
 
@@ -119,11 +119,11 @@ export default function PricingPage() {
 								New box
 							</AnimatedIconLink>
 						}
-						descriptor="Just pay, then open your cloud box."
+						descriptor="Create, then just open your box whenever."
 						features={MANAGED_FEATURES}
 						name="Composery Cloud"
 						period="/ month"
-						price="$20"
+						price="$25"
 					/>
 
 					<PlanCard
@@ -137,7 +137,7 @@ export default function PricingPage() {
 								rel="noreferrer"
 								target="_blank"
 							>
-								<GitHubMark className="size-4" />
+								<GitHubIcon className="size-4" />
 								Go to repo
 							</a>
 						}

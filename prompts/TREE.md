@@ -46,6 +46,8 @@ docs/
   meta.json
   persistence.md
 packages/
+  brand/
+    index.mjs
   cli/
     crates/
       composery/
@@ -152,6 +154,7 @@ packages/
             pwa-icon-maskable-512.png
           pages/
             auth.js
+            brand.css
             error.css
             error.html
             global.css
@@ -197,6 +200,7 @@ packages/
       titlebar-logo.diff
       touch-editor.diff
       touch-gate.diff
+      touch-terminal-hint.diff
       touch-terminal-keybar.diff
       trusted-domains-loopback-callback-guard.diff
       webview-mobile.diff
@@ -229,6 +233,7 @@ packages/
         pressable-scale.tsx
         spinner.tsx
       lib/
+        brand.ts
         fonts.ts
         haptics.ts
         id.ts
@@ -330,6 +335,7 @@ packages/
           [...slug]/
             route.tsx
       apple-icon.png
+      brand.css
       favicon.ico
       fonts.ts
       fumadocs.css
@@ -432,6 +438,7 @@ packages/
       auth-routing.ts
       box-slug.test.ts
       box-slug.ts
+      brand.ts
       clerk-appearance.ts
       convex-dashboard.ts
       datetime.test.ts
@@ -463,6 +470,7 @@ packages/
     .env.example.next.prod
     .gitignore
     AGENTS.md
+    CLAUDE.md
     components.json
     convex.json
     eslint.config.mjs
@@ -545,6 +553,7 @@ scripts/
   run.mjs
   setup.mjs
   smoke.mjs
+  sync-brand.mjs
   tree.mjs
 templates/
   fly/
