@@ -4,11 +4,13 @@ import * as path from "path";
 import { rootPath } from "../constants";
 import {
 	authenticated,
+	ensureOrigin,
 	getCookieOptions,
 	redirect,
 	replaceTemplates
 } from "../http";
 import { escapeHtml, hash, sanitizeString } from "../util";
+import { RateLimiter } from "./login";
 import {
 	hasPassword,
 	isEnvPasswordManaged,
@@ -26,6 +28,8 @@ const errorMessage = (error: unknown): string | undefined => {
 			return "Enter a new password";
 		case "mismatch":
 			return "Passwords do not match";
+		case "rate-limit":
+			return "Too many attempts. Try again later.";
 		default:
 			return undefined;
 	}
@@ -55,6 +59,11 @@ const getRoot = async (
 
 export const router = Router();
 
+// Reuses login's limiter shape (2/min + 12/hr, shared across sources): the
+// current-password check below is the same guessing oracle as /login, so it
+// must not be a way around login's rate limit.
+const limiter = new RateLimiter();
+
 router.use(async (req, res, next) => {
 	if (isEnvPasswordManaged(req)) {
 		res.status(404).send("Not found");
@@ -79,15 +88,21 @@ router.get("/", async (req, res) => {
 	res.send(await getRoot(req));
 });
 
-router.post("/", async (req, res) => {
+router.post("/", ensureOrigin, async (req, res) => {
 	const currentPassword = sanitizeString(req.body?.currentPassword);
 	const newPassword = sanitizeString(req.body?.newPassword);
 	const confirmPassword = sanitizeString(req.body?.confirmPassword);
+	if (!limiter.canTry()) {
+		return redirect(req, res, "reset-password", { error: "rate-limit" });
+	}
+
 	if (!currentPassword) {
 		return redirect(req, res, "reset-password", { error: "missing-current" });
 	}
 
 	if (!(await validateExistingPassword(req, currentPassword))) {
+		// Only failures consume a token, mirroring login.
+		limiter.removeToken();
 		return redirect(req, res, "reset-password", { error: "incorrect-current" });
 	}
 

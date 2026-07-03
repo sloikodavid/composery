@@ -2,7 +2,12 @@ import { Router } from "express";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { rootPath } from "../constants";
-import { getCookieOptions, redirect, replaceTemplates } from "../http";
+import {
+	ensureOrigin,
+	getCookieOptions,
+	redirect,
+	replaceTemplates
+} from "../http";
 import { escapeHtml, hash, sanitizeString } from "../util";
 import {
 	hasPassword,
@@ -59,7 +64,9 @@ router.get("/", async (req, res) => {
 	res.send(await getRoot(req));
 });
 
-router.post("/", async (req, res) => {
+// ensureOrigin: without it a malicious page can form-POST a drive-by
+// registration at an unclaimed workspace (worst on localhost binds).
+router.post("/", ensureOrigin, async (req, res) => {
 	const password = sanitizeString(req.body?.password);
 	const confirmPassword = sanitizeString(req.body?.confirmPassword);
 	if (!password) {

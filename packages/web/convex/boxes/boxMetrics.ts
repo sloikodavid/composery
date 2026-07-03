@@ -207,7 +207,11 @@ export async function boxMetricsSamples(
 	return samples.reverse().map(metricsSampleView);
 }
 
-async function emailStaff(ctx: MutationCtx, subject: string, text: string) {
+export async function emailStaff(
+	ctx: MutationCtx,
+	subject: string,
+	text: string
+) {
 	if (!optionalEnv("RESEND_API_KEY")) return;
 
 	const admins = await ctx.db

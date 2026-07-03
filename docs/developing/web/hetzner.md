@@ -74,11 +74,45 @@ created once in the console and referenced by id.
    Changing the Hetzner project key alone is not a rotation.
 
 3. **Firewall.** Create a firewall in the Hetzner project (Project -> Firewalls).
-   Add inbound rules allowing TCP **22**, **80**, and **443** from any IPv4 and
-   IPv6 (sources `0.0.0.0/0` and `::/0`); leave outbound open. Read the numeric
-   id from the firewall's URL -> `HETZNER_FIREWALL_ID`. Required: provisioning
-   fails fast (`requiredEnv` in `convex/boxes/infra/hetznerVps.ts`) rather than
-   create an unfirewalled, internet-exposed box.
+   Add inbound rules allowing TCP **22**, **80**, and **443** plus **ICMP**, all
+   from any IPv4 and IPv6 (sources `0.0.0.0/0` and `::/0`), and nothing else;
+   define **no outbound rules** (in Hetzner firewalls, zero outbound rules means
+   all outbound is allowed - adding any outbound rule flips outbound to
+   default-deny). Read the
+   numeric id from the firewall's URL -> `HETZNER_FIREWALL_ID`. Required:
+   provisioning fails fast (`requiredEnv` in `convex/boxes/infra/hetznerVps.ts`)
+   rather than create an unfirewalled, internet-exposed box.
+
+   This firewall is the box's real network boundary, so it must stay exactly
+   this shape:
+   - **It is enforced at the hypervisor, outside the VM.** The box owner has
+     root inside a privileged container (`privileged: true` in
+     `convex/boxes/infra/runtimeArtifacts.ts`) and is assumed to be able to
+     escape to the host OS. Anything host-side - `ufw`, `iptables`, sshd config,
+     Docker's port publishing - is theirs to change, so no host firewall counts.
+     Whatever they bind or publish, inbound traffic still only reaches TCP
+     22/80/443.
+   - **Port 22 must stay open to `0.0.0.0/0`/`::/0`.** The backend SSHes in from
+     Convex actions (`convex/boxes/infra/ssh.ts`) for the whole box lifecycle,
+     and Convex has no fixed egress IPs to allowlist. sshd is key-only
+     (cloud-init sets `ssh_pwauth: false`), so this is not password-guessable.
+   - **ICMP must stay allowed for path-MTU discovery.** Clients behind
+     smaller-MTU links (VPNs, PPPoE, IPv6 tunnels) depend on inbound
+     "fragmentation needed" / ICMPv6 "Packet Too Big" messages; dropping them
+     silently hangs large HTTPS responses, and IPv6 has no fragmentation
+     fallback at all. The only exposure is answering ping, which carries no
+     connections; floods are Hetzner's DDoS mitigation's problem.
+   - **Do not attach boxes to a shared private network.** Hetzner firewalls do
+     not filter private-network traffic, so boxes on one network (the optional
+     `HETZNER_NETWORK_ID` in `createServerPayload`) can reach each other
+     directly, root to root. Leave `HETZNER_NETWORK_ID` unset unless every box
+     gets its own network.
+   - Nothing pivotable lives behind the open outbound: the Hetzner API token and
+     Cloudflare token exist only on the Convex deployment, the runtime image is
+     pulled anonymously (no registry credentials on the host), snapshots are
+     taken hypervisor-side, and Hetzner's metadata service exposes no
+     credentials (the only `user_data` is the SSH **public** key). A box owner
+     with full root therefore controls exactly one VPS: their own.
 
 4. **Project id.** Read the numeric id from the project's console URL
    (`console.hetzner.cloud/projects/<id>/...`)
@@ -93,6 +127,12 @@ created once in the console and referenced by id.
 The provisioning code labels servers `product=composery-web` and
 `box_slug=<slug>`, creates public IPv4/IPv6, waits for running, then SSHes in and
 bootstraps Docker Compose.
+
+`HETZNER_BOX_SERVER_TYPES` and `HETZNER_BOX_LOCATIONS` are comma-separated,
+preference-ordered lists (e.g. `cx23,cx33` and `nbg1,fsn1,hel1`); provisioning
+tries every type x location combination in that order until one has capacity.
+Both are optional and restricted to the values allowed in `convex/schema.ts` -
+leaving them unset allows every supported type and location.
 
 `HETZNER_BOX_IMAGE` must be `docker-ce` - Hetzner's Docker CE app image
 (Ubuntu-based, Docker and the Compose plugin preinstalled), referenced by that

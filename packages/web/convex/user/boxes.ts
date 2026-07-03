@@ -27,6 +27,34 @@ import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 const CUSTOMER_PORTAL_BLOCKED_STATUSES = ["deleting", "deleted"] as const;
 const BOX_LIST_MAXIMUM_ROWS_READ = 200;
 
+// A slug change or reset forces a Let's Encrypt reissue, and every box shares
+// CLOUD_DOMAIN's weekly certificate budget (50/week per apex, 5/week per
+// repeated name), so the two reissuing operations share a per-box weekly cap.
+// The staff console bypasses this on purpose.
+const TLS_REISSUE_OPERATION_TYPES = ["reset", "change_slug"] as const;
+const TLS_REISSUE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const TLS_REISSUE_CAP_PER_WEEK = 5;
+
+async function assertTlsReissueBudget(ctx: QueryCtx, boxId: Id<"boxes">) {
+	const since = Date.now() - TLS_REISSUE_WEEK_MS;
+	let count = 0;
+	for (const type of TLS_REISSUE_OPERATION_TYPES) {
+		const rows = await ctx.db
+			.query("box_operations")
+			.withIndex("box_id_type_created_at", (builder) =>
+				builder.eq("box_id", boxId).eq("type", type).gte("created_at", since)
+			)
+			.take(TLS_REISSUE_CAP_PER_WEEK);
+		count += rows.length;
+	}
+
+	if (count >= TLS_REISSUE_CAP_PER_WEEK) {
+		throw new ConvexError(
+			"This box has changed its address or been reset too often this week. Try again later or contact support."
+		);
+	}
+}
+
 async function requireCurrentUserForBoxRead(ctx: QueryCtx) {
 	const identity = await requireIdentity(ctx);
 	const user = await getUserByClerkId(ctx, identity.subject);
@@ -264,6 +292,7 @@ export const reset = mutation({
 		if (args.confirmation !== box.slug) {
 			throw new ConvexError("Type the box slug to reset.");
 		}
+		await assertTlsReissueBudget(ctx, box._id);
 
 		await startBoxOperation(ctx, box._id, "reset", {
 			idempotencyKey: `reset:${box._id}`
@@ -282,6 +311,7 @@ export const changeSlug = mutation({
 		if (!isValidSlug(newSlug)) throw new ConvexError("Slug is unavailable.");
 
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		await assertTlsReissueBudget(ctx, box._id);
 
 		await startBoxOperation(ctx, box._id, "change_slug", {
 			idempotencyKey: `change_slug:${box._id}:${newSlug}`,

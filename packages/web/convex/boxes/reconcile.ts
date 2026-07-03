@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalAction, internalQuery } from "../_generated/server";
+import {
+	internalAction,
+	internalMutation,
+	internalQuery
+} from "../_generated/server";
+import { emailStaff } from "./boxMetrics";
 
 // Grace window before a Hetzner resource is eligible for reclaim. A snapshot
 // image exists for a few seconds before its row is patched with the id, and a
@@ -48,10 +53,34 @@ export const serverHasLiveBox = internalQuery({
 	}
 });
 
+// Orphaned servers are never deleted automatically - a tracking bug in the
+// DB-diff would destroy live boxes - so staff get an email and remove them by
+// hand in the Hetzner console. No-op without RESEND_API_KEY or admins.
+export const alertOrphanedServers = internalMutation({
+	args: {
+		servers: v.array(
+			v.object({
+				serverId: v.number(),
+				name: v.optional(v.string())
+			})
+		)
+	},
+	handler: async (ctx, args) => {
+		const lines = args.servers.map(
+			(server) =>
+				`- ${server.serverId}${server.name ? ` (${server.name})` : ""}`
+		);
+		await emailStaff(
+			ctx,
+			`${args.servers.length} orphaned Hetzner server(s) need review`,
+			`Daily reconciliation found Hetzner servers older than the grace window with no live box pointing at them. They are never removed automatically; review them in the Hetzner console and remove them by hand:\n\n${lines.join("\n")}\n\nhttps://console.hetzner.cloud/`
+		);
+	}
+});
+
 // Daily backstop for orphaned Hetzner resources. Snapshot images are deleted
 // outright (an unreferenced image is invisible in the UI and pure cost).
-// Orphaned servers are only logged - auto-deleting a server on a DB-diff is too
-// dangerous (a tracking bug would destroy a live box), so staff review the log.
+// Orphaned servers are only reported via alertOrphanedServers, never deleted.
 export const reconcileHetznerResources = internalAction({
 	args: {},
 	handler: async (ctx) => {
@@ -78,14 +107,14 @@ export const reconcileHetznerResources = internalAction({
 			internal.boxes.infra.hetznerVps.listProductServers,
 			{}
 		);
-		const orphanedServers: number[] = [];
+		const orphanedServers: { serverId: number; name?: string }[] = [];
 		for (const server of servers) {
 			const live = await ctx.runQuery(
 				internal.boxes.reconcile.serverHasLiveBox,
 				{ serverId: server.serverId }
 			);
 			if (!isReclaimable(server.createdAtMs, now, live)) continue;
-			orphanedServers.push(server.serverId);
+			orphanedServers.push({ serverId: server.serverId, name: server.name });
 		}
 
 		if (deletedImages > 0) {
@@ -95,8 +124,13 @@ export const reconcileHetznerResources = internalAction({
 		}
 		if (orphanedServers.length > 0) {
 			console.warn(
-				`[reconcile] orphaned Hetzner server(s), not auto-deleted: ${orphanedServers.join(", ")}`
+				`[reconcile] orphaned Hetzner server(s), not auto-deleted: ${orphanedServers
+					.map((server) => server.serverId)
+					.join(", ")}`
 			);
+			await ctx.runMutation(internal.boxes.reconcile.alertOrphanedServers, {
+				servers: orphanedServers
+			});
 		}
 	}
 });

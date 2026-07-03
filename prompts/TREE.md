@@ -590,6 +590,7 @@ tests/
     key.pem
   support/
     patchSource.ts
+  auth-routes.test.ts
   code-server-patches.test.ts
   desktop-integration.test.ts
   loopback-callback-guard.test.ts
