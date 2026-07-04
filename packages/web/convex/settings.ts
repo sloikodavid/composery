@@ -17,6 +17,11 @@ import {
 	type SnapshotPolicy
 } from "./boxes/snapshotPolicy";
 
+// Legit buyers rarely juggle more than a couple of pending purchases; the
+// default caps concurrent active checkout reservations so one account can't hog
+// slugs it never pays for. Staff-tunable via the console.
+export const DEFAULT_MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER = 3;
+
 async function globalSettings(ctx: { db: DatabaseReader }) {
 	return await ctx.db
 		.query("settings")
@@ -30,6 +35,9 @@ export async function readGlobalSettings(ctx: { db: DatabaseReader }) {
 	return {
 		checkoutEnabled: settings?.checkout_enabled ?? true,
 		autoSuspendEnabled: settings?.auto_suspend_enabled ?? false,
+		maxActiveCheckoutIntentsPerUser:
+			settings?.max_active_checkout_intents_per_user ??
+			DEFAULT_MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 		thresholds: resolveThresholds(settings?.thresholds),
 		snapshotPolicy: resolveSnapshotPolicy(settings?.snapshot_policy),
 		updatedAt: settings?.updated_at ?? null,
@@ -42,6 +50,7 @@ async function patchGlobalSettings(
 	patch: {
 		auto_suspend_enabled?: boolean;
 		checkout_enabled?: boolean;
+		max_active_checkout_intents_per_user?: number;
 		thresholds?: StoredThreshold[];
 		snapshot_policy?: StoredSnapshotPolicy;
 	},
@@ -100,6 +109,20 @@ export const setAutoSuspendEnabled = internalMutation({
 		await patchGlobalSettings(
 			ctx,
 			{ auto_suspend_enabled: args.autoSuspendEnabled },
+			args.updatedBy
+		);
+	}
+});
+
+export const setMaxActiveCheckoutIntentsPerUser = internalMutation({
+	args: {
+		max: v.number(),
+		updatedBy: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		await patchGlobalSettings(
+			ctx,
+			{ max_active_checkout_intents_per_user: args.max },
 			args.updatedBy
 		);
 	}

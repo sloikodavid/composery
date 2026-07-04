@@ -18,7 +18,7 @@ which has no attachable volumes.
    `docker compose up -d`.
 
 To skip the SSH step, paste
-[`templates/cloud-init/user-data.yaml`](https://github.com/sloikodavid/composery/tree/main/templates/cloud-init)
+[`templates/user-data/user-data.yaml`](https://github.com/sloikodavid/composery/tree/main/templates/user-data)
 into the Droplet's **user data** field at creation - it installs Docker and brings Composery
 up behind Caddy on first boot.
 

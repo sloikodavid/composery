@@ -1,11 +1,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const TREE_OUTPUT_FILE = "prompts/TREE.md";
+const TREE_OUTPUT_FILE = "AGENTS.md";
+const TREE_START = "<!-- repo-structure:start -->";
+const TREE_FINISH = "<!-- repo-structure:finish -->";
 const write = process.argv.includes("--write");
+const watch = process.argv.includes("--watch");
 
 function gitFiles() {
 	const output = execFileSync(
@@ -18,7 +22,7 @@ function gitFiles() {
 		.split("\0")
 		.filter(Boolean)
 		.filter(
-			(path) => path !== TREE_OUTPUT_FILE && existsSync(join(REPO_ROOT, path))
+			(path) => path !== "prompts/TREE.md" && existsSync(join(REPO_ROOT, path))
 		);
 }
 
@@ -61,27 +65,66 @@ function renderTree() {
 	}
 
 	return [
-		"# Tree",
+		TREE_START,
 		"",
-		"> Run `pnpm fix` to regenerate this file - do not edit manually.",
+		"> Live-updated by `scripts/tree.mjs` when `pnpm dev` is running. Manually update with `pnpm fix:tree`.",
 		"",
 		"```text",
 		...renderNode(root),
 		"```",
+		"",
+		TREE_FINISH,
 		""
 	].join("\n");
 }
 
-const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
-const expected = renderTree();
-const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+function renderAgentsFile(current, tree) {
+	const start = current.indexOf(TREE_START);
+	const finish = current.indexOf(TREE_FINISH);
 
-if (actual === expected) process.exit(0);
-if (write) {
-	mkdirSync(dirname(file), { recursive: true });
-	writeFileSync(file, expected);
-	process.exit(0);
+	if (start !== -1 && finish !== -1 && finish > start) {
+		const before = current.slice(0, start).trimEnd();
+		const after = current.slice(finish + TREE_FINISH.length).trimStart();
+		return [before, tree.trimEnd(), after].filter(Boolean).join("\n\n") + "\n";
+	}
+
+	return `${current.trimEnd()}\n\n${tree}`;
 }
 
-console.error(`${TREE_OUTPUT_FILE} is out of date. Run 'pnpm fix'.`);
-process.exit(1);
+function expectedAgentsFile() {
+	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const current = existsSync(file) ? readFileSync(file, "utf8") : "";
+	return renderAgentsFile(current, renderTree());
+}
+
+function syncTree({ quiet = false } = {}) {
+	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const expected = expectedAgentsFile();
+	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+
+	if (actual === expected) return false;
+
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, expected);
+	if (!quiet) console.log(`Updated ${TREE_OUTPUT_FILE}`);
+	return true;
+}
+
+if (watch) {
+	syncTree();
+	setInterval(() => syncTree({ quiet: true }), 1000);
+	process.stdin.resume();
+} else if (write) {
+	syncTree();
+} else {
+	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const expected = expectedAgentsFile();
+	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+
+	if (actual === expected) process.exit(0);
+
+	console.error(
+		`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix'.`
+	);
+	process.exit(1);
+}

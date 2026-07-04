@@ -171,6 +171,7 @@ export default defineSchema({
 		.index("status_created_at", ["status", "created_at"])
 		.index("polar_checkout_id", ["polar_checkout_id"])
 		.index("user_id", ["user_id"])
+		.index("user_id_status", ["user_id", "status"])
 		.index("user_id_slug_status", ["user_id", "slug", "status"])
 		.index("box_id", ["box_id"])
 		.index("created_at", ["created_at"]),
@@ -321,6 +322,7 @@ export default defineSchema({
 		key: v.literal("global"),
 		checkout_enabled: v.boolean(),
 		auto_suspend_enabled: v.optional(v.boolean()),
+		max_active_checkout_intents_per_user: v.optional(v.number()),
 		thresholds: v.optional(v.array(vThreshold)),
 		snapshot_policy: v.optional(vSnapshotPolicy),
 		updated_at: v.number(),

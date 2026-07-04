@@ -1,6 +1,7 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { assertSlugAvailable } from "../boxes/slugAvailability";
+import { readGlobalSettings } from "../settings";
 
 // Polar checkout metadata keys. Set when creating a checkout and read back from
 // the subscription webhook to reconnect a completed payment to the reserved
@@ -21,6 +22,23 @@ export const reserveCheckoutIntent = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		await assertSlugAvailable(ctx, args.slug);
+
+		// A user reserving a slug removes it from everyone else's namespace until
+		// the checkout converts or lapses, so one account holding many open
+		// checkouts hogs slugs nobody else can take. Cap concurrent active
+		// reservations (staff-tunable) to keep spam bounded.
+		const cap = (await readGlobalSettings(ctx)).maxActiveCheckoutIntentsPerUser;
+		const active = await ctx.db
+			.query("box_checkout_intents")
+			.withIndex("user_id_status", (query) =>
+				query.eq("user_id", args.userId).eq("status", "active")
+			)
+			.take(cap);
+		if (active.length >= cap) {
+			throw new ConvexError(
+				"Too many pending checkouts. Finish or cancel an existing one before reserving another box."
+			);
+		}
 
 		const timestamp = Date.now();
 		const intentId = await ctx.db.insert("box_checkout_intents", {

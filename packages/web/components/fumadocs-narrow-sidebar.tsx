@@ -24,7 +24,7 @@ import {
 	type NavLink,
 	PUBLIC_NAV_LINKS,
 	useAuthedNavLinks
-} from "@/components/nav-links";
+} from "@/lib/nav-links";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { cn } from "@/lib/utils";
 
@@ -40,8 +40,10 @@ const FUMADOCS_GHOST_ICON = fdButtonVariants({
 // the open state, the responsive drawer/full switch (collapses on resize to
 // desktop), and close-on-navigation; SidebarDrawerContent supplies the exact
 // slide/fade. NextProvider wires the framework hooks it needs. All fumadocs is
-// confined to this file so the rest of the app stays free of it.
-export function FumadocsSidebar() {
+// confined to this file so the rest of the app stays free of it. Narrow-gated
+// (md:hidden) to mirror the desktop pill's md:flex, matching the project's
+// narrow gate rather than a touch or "mobile" one.
+export function FumadocsNarrowSidebar() {
 	const pathname = usePathname();
 	const authedLinks = useAuthedNavLinks();
 

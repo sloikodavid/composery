@@ -243,46 +243,50 @@ export function NewBoxForm() {
 				<form className="w-full max-w-md space-y-8" onSubmit={handleSubmit}>
 					{step === "slug" ? (
 						<div className="space-y-2">
-							<div className="flex items-end justify-between gap-3">
-								<Label className="text-[15px]" htmlFor="box-slug">
-									Slug
-								</Label>
-								<span
-									aria-live="polite"
-									className={cn(
-										"text-xs font-medium",
-										slugTaken
-											? "text-destructive"
+							<div className="space-y-2">
+								<div className="flex items-end justify-between gap-3">
+									<Label className="text-[15px]" htmlFor="box-slug">
+										Slug
+									</Label>
+									<span
+										aria-live="polite"
+										className={cn(
+											"text-xs font-medium",
+											slugTaken
+												? "text-destructive"
+												: canContinueSlug
+													? "text-success"
+													: "text-muted-foreground"
+										)}
+									>
+										{slugTaken
+											? "Taken"
 											: canContinueSlug
-												? "text-success"
-												: "text-muted-foreground"
-									)}
-								>
-									{slugTaken
-										? "Taken"
-										: canContinueSlug
-											? "Available"
-											: checkingSlug
-												? "Checking"
-												: ""}
-								</span>
+												? "Available"
+												: checkingSlug
+													? "Checking"
+													: ""}
+									</span>
+								</div>
+								<Input
+									aria-invalid={slugTaken}
+									autoCapitalize="none"
+									autoComplete="off"
+									className="h-12 rounded-lg px-5 text-[15px]"
+									id="box-slug"
+									maxLength={63}
+									name="slug"
+									onChange={(event) =>
+										setSlug(sanitizeSlug(event.target.value))
+									}
+									pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
+									placeholder="my-box"
+									ref={slugInputRef}
+									spellCheck={false}
+									type="text"
+									value={slug}
+								/>
 							</div>
-							<Input
-								aria-invalid={slugTaken}
-								autoCapitalize="none"
-								autoComplete="off"
-								className="h-12 rounded-lg px-5 text-[15px]"
-								id="box-slug"
-								maxLength={63}
-								name="slug"
-								onChange={(event) => setSlug(sanitizeSlug(event.target.value))}
-								pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
-								placeholder="my-box"
-								ref={slugInputRef}
-								spellCheck={false}
-								type="text"
-								value={slug}
-							/>
 							<AnimatedIconButton
 								className="h-12 w-full rounded-lg text-[15px]"
 								disabled={!canContinueSlug}
@@ -295,43 +299,44 @@ export function NewBoxForm() {
 						</div>
 					) : step === "password" ? (
 						<div className="space-y-2">
-							<div className="flex items-end justify-between gap-3">
-								<Label className="text-[15px]" htmlFor="box-password">
-									Password
-								</Label>
-								<span
-									aria-live="polite"
-									className={cn(
-										"text-right text-xs font-medium leading-tight",
-										passwordToneClass(
+							<div className="space-y-2">
+								<div className="flex items-end justify-between gap-3">
+									<Label className="text-[15px]" htmlFor="box-password">
+										Password
+									</Label>
+									<span
+										aria-live="polite"
+										className={cn(
+											"text-right text-xs font-medium leading-tight",
+											passwordToneClass(
+												password,
+												passwordStrength.ok,
+												currentBreachCheck
+											)
+										)}
+									>
+										{passwordMessage(
 											password,
-											passwordStrength.ok,
+											passwordStrength.message,
 											currentBreachCheck
-										)
-									)}
-								>
-									{passwordMessage(
-										password,
-										passwordStrength.message,
-										currentBreachCheck
-									)}
-								</span>
+										)}
+									</span>
+								</div>
+								<Input
+									aria-invalid={
+										password.length > 0 &&
+										(!passwordStrength.ok || passwordFoundInBreach)
+									}
+									autoComplete="new-password"
+									className="h-12 rounded-lg px-5 text-[15px]"
+									id="box-password"
+									name="password"
+									onChange={(event) => handlePasswordChange(event.target.value)}
+									ref={passwordInputRef}
+									type="password"
+									value={password}
+								/>
 							</div>
-							<Input
-								aria-invalid={
-									password.length > 0 &&
-									(!passwordStrength.ok || passwordFoundInBreach)
-								}
-								autoComplete="new-password"
-								className="h-12 rounded-lg px-5 text-[15px]"
-								id="box-password"
-								name="password"
-								onChange={(event) => handlePasswordChange(event.target.value)}
-								ref={passwordInputRef}
-								type="password"
-								value={password}
-							/>
-
 							<div className="flex flex-col-reverse gap-2 sm:flex-row">
 								<AnimatedIconButton
 									className="h-12 rounded-lg text-[15px] sm:flex-1"
@@ -357,40 +362,41 @@ export function NewBoxForm() {
 						</div>
 					) : (
 						<div className="space-y-2">
-							<div className="flex items-end justify-between gap-3">
-								<Label className="text-[15px]" htmlFor="box-password-confirm">
-									Confirm password
-								</Label>
-								<span
-									aria-live="polite"
-									className={cn(
-										"text-xs font-medium",
-										passwordsMismatch
-											? "text-destructive"
+							<div className="space-y-2">
+								<div className="flex items-end justify-between gap-3">
+									<Label className="text-[15px]" htmlFor="box-password-confirm">
+										Confirm password
+									</Label>
+									<span
+										aria-live="polite"
+										className={cn(
+											"text-xs font-medium",
+											passwordsMismatch
+												? "text-destructive"
+												: confirmation.length > 0
+													? "text-success"
+													: "text-muted-foreground"
+										)}
+									>
+										{passwordsMismatch
+											? "Does not match"
 											: confirmation.length > 0
-												? "text-success"
-												: "text-muted-foreground"
-									)}
-								>
-									{passwordsMismatch
-										? "Does not match"
-										: confirmation.length > 0
-											? "Matches"
-											: ""}
-								</span>
+												? "Matches"
+												: ""}
+									</span>
+								</div>
+								<Input
+									aria-invalid={passwordsMismatch}
+									autoComplete="new-password"
+									className="h-12 rounded-lg px-5 text-[15px]"
+									id="box-password-confirm"
+									name="confirmation"
+									onChange={(event) => setConfirmation(event.target.value)}
+									ref={confirmationInputRef}
+									type="password"
+									value={confirmation}
+								/>
 							</div>
-							<Input
-								aria-invalid={passwordsMismatch}
-								autoComplete="new-password"
-								className="h-12 rounded-lg px-5 text-[15px]"
-								id="box-password-confirm"
-								name="confirmation"
-								onChange={(event) => setConfirmation(event.target.value)}
-								ref={confirmationInputRef}
-								type="password"
-								value={confirmation}
-							/>
-
 							<div className="flex flex-col-reverse gap-2 sm:flex-row">
 								<AnimatedIconButton
 									className="h-12 rounded-lg text-[15px] sm:flex-1"

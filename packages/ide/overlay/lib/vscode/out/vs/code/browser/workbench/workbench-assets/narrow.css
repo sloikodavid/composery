@@ -57,7 +57,6 @@
 		max-width: none !important;
 		max-height: calc(
 			var(--composery-viewport-height) -
-				var(--composery-touch-keyboard-inset) -
 				var(--composery-safe-area-top) -
 				var(--composery-safe-area-bottom) - 16px
 		) !important;
@@ -70,7 +69,6 @@
 		max-width: calc(100vw - 32px) !important;
 		max-height: calc(
 			var(--composery-viewport-height) -
-				var(--composery-touch-keyboard-inset) -
 				var(--composery-safe-area-top) -
 				var(--composery-safe-area-bottom) - 32px
 		) !important;
@@ -199,7 +197,6 @@
 		) !important;
 		max-height: calc(
 			var(--composery-viewport-height) -
-				var(--composery-touch-keyboard-inset) -
 				var(--composery-safe-area-top) -
 				var(--composery-safe-area-bottom) - 16px
 		) !important;
@@ -217,27 +214,20 @@
 		) !important;
 		max-height: calc(
 			var(--composery-viewport-height) -
-				var(--composery-touch-keyboard-inset) -
 				var(--composery-safe-area-top) -
 				var(--composery-safe-area-bottom) - 16px
 		) !important;
 	}
 
+	/* The workbench itself already sits above the on-screen keyboard and the edge-to-edge
+	 * bottom inset (touch-viewport-inset.diff), so a plain offset is enough here. */
 	.monaco-workbench > .notifications-center {
-		bottom: max(
-			8px,
-			var(--composery-safe-area-bottom),
-			var(--composery-touch-keyboard-inset)
-		) !important;
+		bottom: 8px !important;
 		top: auto !important;
 	}
 
 	.monaco-workbench > .notifications-toasts {
-		bottom: max(
-			8px,
-			var(--composery-safe-area-bottom),
-			var(--composery-touch-keyboard-inset)
-		) !important;
+		bottom: 8px !important;
 		top: auto !important;
 		overflow: hidden;
 	}

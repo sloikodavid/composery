@@ -25,7 +25,7 @@ export const brandColors = {
 	},
 	state: {
 		success: "#16a34a",
-		warning: "#d97706",
+		warning: "#dc8a06",
 		destructive: "#dc2626",
 		info: "#2563eb"
 	}
@@ -49,7 +49,7 @@ export const theme = {
 		accentForeground: "#171717",
 		destructive: "#dc2626",
 		success: "#16a34a",
-		warning: "#d97706",
+		warning: "#dc8a06",
 		border: "#e5e5e5",
 		input: "#e5e5e5",
 		ring: "#a3a3a3",
@@ -85,7 +85,7 @@ export const theme = {
 		accentForeground: "#fafafa",
 		destructive: "#f87171",
 		success: "#22c55e",
-		warning: "#f59e0b",
+		warning: "#f5a80b",
 		border: "#ffffff1f",
 		input: "#ffffff29",
 		ring: "#737373",

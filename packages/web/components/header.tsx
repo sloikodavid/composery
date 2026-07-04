@@ -5,13 +5,13 @@ import { Authenticated, Unauthenticated } from "convex/react";
 import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
-import { FumadocsSidebar } from "@/components/fumadocs-sidebar";
+import { FumadocsNarrowSidebar } from "@/components/fumadocs-narrow-sidebar";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,
 	PUBLIC_NAV_LINKS,
 	useAuthedNavLinks
-} from "@/components/nav-links";
+} from "@/lib/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { headerUserButtonAppearance } from "@/lib/clerk-appearance";
 import { cn } from "@/lib/utils";
@@ -76,7 +76,7 @@ export function Header() {
 			</div>
 
 			{/* Narrow screens: fumadocs' sidebar drawer, isolated in its own component. */}
-			<FumadocsSidebar />
+			<FumadocsNarrowSidebar />
 		</header>
 	);
 }

@@ -151,12 +151,12 @@ export function ConsoleStats() {
 						</SelectContent>
 					</Select>
 				</div>
-				{data === undefined ? (
-					<div className="flex h-56 items-center justify-center">
-						<LoaderIcon className="size-5 animate-spin text-muted-foreground" />
-					</div>
-				) : (
-					<div className="p-4 pt-12">
+				<div className="p-4 pt-12">
+					{data === undefined ? (
+						<div className="flex h-56 items-center justify-center">
+							<LoaderIcon className="size-5 animate-spin text-muted-foreground" />
+						</div>
+					) : (
 						<ChartContainer className="h-56 w-full" config={TREND_CONFIG}>
 							<LineChart
 								data={data.series}
@@ -199,8 +199,8 @@ export function ConsoleStats() {
 								))}
 							</LineChart>
 						</ChartContainer>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 		</div>
 	);

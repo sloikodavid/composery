@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { LogoExport } from "./_components/logo-export";
-import { LogoShowcase } from "./_components/logo-showcase";
+import { LogoExport } from "@/components/logo-export";
+import { LogoShowcase } from "@/components/logo-showcase";
 import {
 	AnimatedIconsDemo,
 	AnimatedIconOnlyDemo,

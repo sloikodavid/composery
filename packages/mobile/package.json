@@ -48,6 +48,8 @@
 		"android": "expo start --go --android",
 		"ios": "expo start --go --ios",
 		"web": "expo start --web",
+		"build": "expo export --platform android",
+		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"lint": "eslint ."
 	},

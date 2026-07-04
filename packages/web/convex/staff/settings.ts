@@ -47,6 +47,22 @@ export const setAutoSuspendEnabled = mutation({
 	}
 });
 
+export const setMaxActiveCheckoutIntentsPerUser = mutation({
+	args: {
+		max: v.number()
+	},
+	handler: async (ctx, args) => {
+		const staffUser = await requireStaff(ctx);
+		if (!Number.isInteger(args.max) || args.max < 1 || args.max > 50) {
+			throw new ConvexError("Limit must be a whole number between 1 and 50.");
+		}
+		await ctx.runMutation(
+			internal.settings.setMaxActiveCheckoutIntentsPerUser,
+			{ max: args.max, updatedBy: staffUser.clerk_user_id }
+		);
+	}
+});
+
 export const setThresholds = mutation({
 	args: {
 		thresholds: v.array(

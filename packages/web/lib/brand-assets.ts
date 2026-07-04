@@ -1,0 +1,92 @@
+import { toast } from "sonner";
+import { BRAND_COLORS, ICON_SVG } from "@/lib/brand";
+import {
+	LOGO_HEIGHT,
+	LOGO_INNER,
+	LOGO_VIEWBOX,
+	LOGO_WIDTH
+} from "@/lib/logo-data";
+
+// Concrete, font-free, self-contained SVGs of the Composery marks, shared by the
+// public /brand page export UI and the logo right-click menu. The on-page logo
+// is fill="currentColor"; downloadable/copyable assets materialize a fixed color
+// so the file looks right on its own (dark text on light, light text on dark).
+export type BrandAsset = { height: number; svg: string; width: number };
+
+function iconAsset(fill: string): BrandAsset {
+	return {
+		svg: `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">${ICON_SVG.replace(/currentColor/g, fill)}</svg>`,
+		width: 256,
+		height: 256
+	};
+}
+
+function logoAsset(fill: string): BrandAsset {
+	return {
+		svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" viewBox="${LOGO_VIEWBOX}" fill="none">${LOGO_INNER.replace(/currentColor/g, fill)}</svg>`,
+		width: LOGO_WIDTH,
+		height: LOGO_HEIGHT
+	};
+}
+
+// Two fills per mark: pure black for light backgrounds, pure white for dark
+// ones. The SVGs have no background - they download transparent.
+export const ICON_LIGHT_ASSET = iconAsset(BRAND_COLORS.surface.ink);
+export const ICON_DARK_ASSET = iconAsset(BRAND_COLORS.surface.paper);
+export const LOGO_LIGHT_ASSET = logoAsset(BRAND_COLORS.surface.ink);
+export const LOGO_DARK_ASSET = logoAsset(BRAND_COLORS.surface.paper);
+
+export async function copySvg(asset: BrandAsset) {
+	try {
+		await navigator.clipboard.writeText(asset.svg);
+		toast.success("SVG copied");
+	} catch {
+		toast.error("Couldn't copy SVG");
+	}
+}
+
+function save(href: string, name: string) {
+	const anchor = document.createElement("a");
+	anchor.href = href;
+	anchor.download = name;
+	anchor.click();
+}
+
+function saveBlob(blob: Blob, name: string) {
+	const url = URL.createObjectURL(blob);
+	save(url, name);
+	URL.revokeObjectURL(url);
+}
+
+export function downloadSvg(asset: BrandAsset, name: string) {
+	saveBlob(new Blob([asset.svg], { type: "image/svg+xml" }), `${name}.svg`);
+}
+
+// Rasterize the (font-free) asset SVG to a canvas at `scale`x its intrinsic size
+// and save the PNG. No webfont is involved, so this is reliable across browsers.
+export function downloadPng(
+	{ height, svg, width }: BrandAsset,
+	scale: number,
+	name: string
+) {
+	const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+	const image = new Image();
+	image.onload = () => {
+		const canvas = document.createElement("canvas");
+		canvas.width = Math.round(width * scale);
+		canvas.height = Math.round(height * scale);
+		canvas
+			.getContext("2d")
+			?.drawImage(image, 0, 0, canvas.width, canvas.height);
+		URL.revokeObjectURL(url);
+		canvas.toBlob((blob) => {
+			if (blob) saveBlob(blob, `${name}.png`);
+			else toast.error("Couldn't render PNG");
+		}, "image/png");
+	};
+	image.onerror = () => {
+		URL.revokeObjectURL(url);
+		toast.error("Couldn't render PNG");
+	};
+	image.src = url;
+}

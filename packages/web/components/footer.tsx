@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { GitHubIcon } from "@/components/icons/github-icon";
-import { LogoLockup } from "@/components/logo";
+import { Logo } from "@/components/logo";
 import { GITHUB_REPO_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 
@@ -11,7 +11,8 @@ const PRODUCT_LINKS = [
 
 const RESOURCE_LINKS = [
 	{ href: "/docs/self-hosting", label: "Self-hosting" },
-	{ href: "/docs/configuration", label: "Configuration" }
+	{ href: "/docs/configuration", label: "Configuration" },
+	{ href: "/brand", label: "Brand" }
 ];
 
 export function Footer() {
@@ -19,13 +20,7 @@ export function Footer() {
 		<footer className="border-t border-border bg-background">
 			<div className="mx-auto grid w-full max-w-5xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-16">
 				<div className="max-w-sm space-y-3">
-					<Link
-						aria-label="Composery"
-						className="inline-flex text-foreground transition-colors hover:text-foreground/80"
-						href="/"
-					>
-						<LogoLockup className="h-8 w-auto" />
-					</Link>
+					<Logo />
 					<p className="text-balance text-sm leading-6 text-muted-foreground">
 						A secure cloud computer with a powerful UI, usable from any phone or
 						browser.

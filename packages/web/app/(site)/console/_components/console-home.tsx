@@ -5,6 +5,7 @@ import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ConsoleStats } from "./console-stats";
+import { ConsoleCheckoutLimit } from "./console-checkout-limit";
 import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
 import { ConsoleThresholds } from "./console-thresholds";
 import { FlagsTable } from "@/components/flags-table";
@@ -324,6 +325,7 @@ export function ConsoleHome() {
 			</div>
 
 			<div className="grid gap-3">
+				<ConsoleCheckoutLimit max={settings?.maxActiveCheckoutIntentsPerUser} />
 				<ConsoleThresholds thresholds={settings?.thresholds} />
 				<ConsoleSnapshotPolicy policy={settings?.snapshotPolicy} />
 			</div>

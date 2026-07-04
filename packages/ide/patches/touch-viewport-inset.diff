@@ -1,0 +1,90 @@
+diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/workbench/browser/window.ts
+--- a/lib/vscode/src/vs/workbench/browser/window.ts
++++ b/lib/vscode/src/vs/workbench/browser/window.ts
+@@ -11,7 +11,7 @@
+ import { Event } from '../../base/common/event.js';
+ import { Disposable, IDisposable, dispose, toDisposable } from '../../base/common/lifecycle.js';
+ import { matchesScheme, Schemas } from '../../base/common/network.js';
+-import { isIOS, isMacintosh } from '../../base/common/platform.js';
++import { isAndroid, isIOS, isMacintosh } from '../../base/common/platform.js';
+ import Severity from '../../base/common/severity.js';
+ import { URI } from '../../base/common/uri.js';
+ import { localize } from '../../nls.js';
+@@ -259,12 +259,14 @@
+ 		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
+ 
+ 		// Layout
+-		const viewport = isIOS && mainWindow.visualViewport ? mainWindow.visualViewport /** Visual viewport */ : mainWindow /** Layout viewport */;
++		// Composery: Android mobile browsers resize only the visual viewport for the on-screen
++		// keyboard (and the dynamic browser UI), exactly like iOS - drive layout from it there too.
++		const viewport = (isIOS || isAndroid) && mainWindow.visualViewport ? mainWindow.visualViewport /** Visual viewport */ : mainWindow /** Layout viewport */;
+ 		this._register(addDisposableListener(viewport, EventType.RESIZE, () => {
+ 			this.layoutService.layout();
+ 
+ 			// Sometimes the keyboard appearing scrolls the whole workbench out of view, as a workaround scroll back into view #121206
+-			if (isIOS) {
++			if (isIOS || isAndroid) {
+ 				mainWindow.scrollTo(0, 0);
+ 			}
+ 		}));
+diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/workbench/browser/layout.ts
+--- a/lib/vscode/src/vs/workbench/browser/layout.ts
++++ b/lib/vscode/src/vs/workbench/browser/layout.ts
+@@ -7,7 +7,7 @@
+ import { Event, Emitter } from '../../base/common/event.js';
+ import { EventType, addDisposableListener, getClientArea, size, IDimension, isAncestorUsingFlowTo, computeScreenAwareSize, getActiveDocument, getWindows, getActiveWindow, isActiveDocument, getWindow, getWindowId, getActiveElement, Dimension } from '../../base/browser/dom.js';
+ import { onDidChangeFullscreen, isFullscreen, isWCOEnabled } from '../../base/browser/browser.js';
+-import { isWindows, isLinux, isMacintosh, isWeb, isIOS } from '../../base/common/platform.js';
++import { isWindows, isLinux, isMacintosh, isWeb, isIOS, isAndroid } from '../../base/common/platform.js';
+ import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
+ import { SidebarPart } from './parts/sidebar/sidebarPart.js';
+ import { PanelPart } from './parts/panel/panelPart.js';
+@@ -1740,6 +1740,21 @@
+ 				this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
+ 			);
+ 
++			// Composery: on a mobile browser the layout viewport is not what the user sees - fit the
++			// workbench to the visual viewport (which excludes the on-screen keyboard) and, with no
++			// keyboard up, keep it clear of the edge-to-edge bottom inset that viewport-fit=cover
++			// opts us into (Android gesture bar / iOS home indicator). The inset is read from
++			// --composery-safe-area-bottom (narrow.css), the one definition of env(safe-area-inset-bottom).
++			const viewport = mainWindow.visualViewport;
++			if ((isAndroid || isIOS) && viewport && viewport.scale === 1) {
++				const keyboardOverlap = Math.max(0, Math.round(mainWindow.innerHeight - viewport.height - viewport.offsetTop));
++				const safeAreaBottom = keyboardOverlap > 0 ? 0 : parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-safe-area-bottom'), 10) || 0;
++				const visibleHeight = Math.round(viewport.height) - safeAreaBottom;
++				if (visibleHeight < this._mainContainerDimension.height) {
++					this._mainContainerDimension = new Dimension(this._mainContainerDimension.width, visibleHeight);
++				}
++			}
++
+ 			this.logService.trace(`Layout#layout, height: ${this._mainContainerDimension.height}, width: ${this._mainContainerDimension.width}`);
+ 
+ 			size(this.mainContainer, this._mainContainerDimension.width, this._mainContainerDimension.height);
+diff --git a/lib/vscode/src/vs/workbench/browser/style.ts b/lib/vscode/src/vs/workbench/browser/style.ts
+--- a/lib/vscode/src/vs/workbench/browser/style.ts
++++ b/lib/vscode/src/vs/workbench/browser/style.ts
+@@ -6,9 +6,9 @@
+ import './media/style.css';
+ import { registerThemingParticipant } from '../../platform/theme/common/themeService.js';
+ import { WORKBENCH_BACKGROUND, TITLE_BAR_ACTIVE_BACKGROUND } from '../common/theme.js';
+-import { isWeb, isIOS } from '../../base/common/platform.js';
++import { isWeb, isIOS, isAndroid } from '../../base/common/platform.js';
+ import { createMetaElement } from '../../base/browser/dom.js';
+-import { isSafari, isStandalone } from '../../base/browser/browser.js';
++import { isSafari } from '../../base/browser/browser.js';
+ import { selectionBackground } from '../../platform/theme/common/colorRegistry.js';
+ import { mainWindow } from '../../base/browser/window.js';
+ 
+@@ -57,7 +57,10 @@
+ 	}
+ 
+ 	// Update body background color to ensure the home indicator area looks similar to the workbench
+-	if (isIOS && isStandalone()) {
++	// Composery: also paint the page canvas behind the edge-to-edge bottom inset the workbench
++	// keeps clear of on any mobile browser (touch-viewport-inset.diff layout fit), not just the
++	// standalone iOS home indicator.
++	if (isIOS || isAndroid) {
+ 		collector.addRule(`body { background-color: ${workbenchBackground}; }`);
+ 	}
+ });

@@ -32,7 +32,7 @@ allows privileged containers and host cgroups, otherwise **supervisor**.
 ## One-paste install (cloud-init)
 
 To skip the SSH steps entirely, paste
-[`templates/cloud-init/user-data.yaml`](https://github.com/sloikodavid/composery/tree/main/templates/cloud-init)
+[`templates/user-data/user-data.yaml`](https://github.com/sloikodavid/composery/tree/main/templates/user-data)
 into the server's **user data** field when you create it (DigitalOcean, Hetzner, Vultr,
 Linode, ...). Point DNS at the server and set your domain in the file first; the server
 boots with Composery behind Caddy over HTTPS. It installs Docker and runs the

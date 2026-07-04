@@ -16,13 +16,14 @@ type ButtonProps = ComponentProps<typeof Button>;
 // surrounding button size/variant.
 export function CopyLinkButton({
 	label = "Copy link",
+	message = "Link copied",
 	onBlur,
 	onFocus,
 	onMouseEnter,
 	onMouseLeave,
 	value,
 	...props
-}: { label?: string; value: string } & Omit<
+}: { label?: string; message?: string; value: string } & Omit<
 	ButtonProps,
 	"children" | "value" | "onClick"
 >) {
@@ -68,10 +69,10 @@ export function CopyLinkButton({
 				try {
 					await navigator.clipboard.writeText(value);
 					setCopied(true);
-					toast.success("Link copied");
+					toast.success(message);
 					setTimeout(() => setCopied(false), 1500);
 				} catch {
-					toast.error("Couldn't copy link");
+					toast.error("Couldn't copy");
 				}
 			}}
 			onFocus={handleFocus}

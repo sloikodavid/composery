@@ -3,7 +3,7 @@
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {
-		"dev": "concurrently --kill-others-on-fail -n convex,next -c magenta,cyan \"convex dev\" \"next dev\"",
+		"dev": "concurrently -n convex,next -c magenta,cyan \"convex dev\" \"next dev\"",
 		"dev:next": "next dev",
 		"dev:convex": "convex dev",
 		"build": "next build",
