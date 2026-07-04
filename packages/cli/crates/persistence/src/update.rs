@@ -105,6 +105,9 @@ pub fn update_public_path(
                     Ok(UpdateOutcome::PersistedMetadata)
                 }
                 DeltaDecision::Changed => {
+                    if changed_copy_is_current(ctx.paths, public_path, &live) {
+                        return Ok(UpdateOutcome::Ignored);
+                    }
                     let persisted =
                         persist_changed(ctx.paths, store, public_path, &live_path, &live)?;
                     remove_removed_marker(ctx.paths, public_path)?;
@@ -113,11 +116,42 @@ pub fn update_public_path(
             }
         }
         (Some(live), None) => {
+            if changed_copy_is_current(ctx.paths, public_path, &live) {
+                return Ok(UpdateOutcome::Ignored);
+            }
             let persisted = persist_changed(ctx.paths, store, public_path, &live_path, &live)?;
             remove_removed_marker(ctx.paths, public_path)?;
             Ok(persisted.outcome())
         }
     }
+}
+
+/// The audit re-flags every path that differs from the baseline on every
+/// pass, so persisting must be idempotent-cheap: when the copy already in
+/// changed/ still mirrors the live facts (copy_entry_atomic preserves them),
+/// skip the copy+hash+fsync entirely.
+/// ponytail: trusts kind/mode/owner/size/mtime/xattrs like the shallow audit;
+/// an edit forging all of those after a persist keeps a stale copy - hash the
+/// destination on deep audit passes if that ever matters.
+fn changed_copy_is_current(paths: &Paths, public_path: &PublicPath, live: &FsFacts) -> bool {
+    if live.nlink > 1 && matches!(live.kind, FileKind::File) {
+        // Hardlink topology lives in the metadata record, not the copy.
+        return false;
+    }
+    let destination = public_path.destination(&paths.changed_dir);
+    let Ok(copy) = rootfs::facts(&destination) else {
+        return false;
+    };
+    copy.kind == live.kind
+        && copy.mode == live.mode
+        && copy.uid == live.uid
+        && copy.gid == live.gid
+        && copy.size == live.size
+        && copy.mtime_ns == live.mtime_ns
+        && copy.symlink_target == live.symlink_target
+        && copy.rdev_major == live.rdev_major
+        && copy.rdev_minor == live.rdev_minor
+        && copy.xattrs == live.xattrs
 }
 
 enum DeltaDecision {
@@ -558,7 +592,14 @@ fn ancestor_non_directory_exists(root: &Path, target: &Path) -> Result<bool> {
 fn remove_removed_marker(paths: &Paths, public_path: &PublicPath) -> Result<()> {
     let path = public_path.destination(&paths.removed_dir);
     rootfs::ensure_safe_parent(&paths.removed_dir, &path)?;
-    public::remove_path(&path)
+    match fs::symlink_metadata(&path) {
+        // A directory here is only scaffolding for child tombstones, which
+        // record independent deletions that must survive a parent update.
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => public::remove_path(&path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("stat {}", path.display())),
+    }
 }
 
 #[cfg(test)]
@@ -592,6 +633,31 @@ mod tests {
             "changed"
         );
         assert!(!fixture.paths.removed_dir.join("etc/hello.txt").exists());
+    }
+
+    #[test]
+    fn repersist_of_already_captured_file_is_ignored_until_it_changes_again() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("etc/hello.txt"), "changed").unwrap();
+
+        assert_eq!(
+            update_path(&fixture.ctx(), "/etc/hello.txt").unwrap(),
+            UpdateOutcome::PersistedChanged
+        );
+        assert_eq!(
+            update_path(&fixture.ctx(), "/etc/hello.txt").unwrap(),
+            UpdateOutcome::Ignored
+        );
+        assert_eq!(
+            fs::read_to_string(fixture.paths.changed_dir.join("etc/hello.txt")).unwrap(),
+            "changed"
+        );
+
+        fs::write(fixture.root.join("etc/hello.txt"), "changed again").unwrap();
+        assert_eq!(
+            update_path(&fixture.ctx(), "/etc/hello.txt").unwrap(),
+            UpdateOutcome::PersistedChanged
+        );
     }
 
     #[test]
@@ -757,6 +823,21 @@ mod tests {
                 .join("home/user/Desktop/stale-child")
                 .exists()
         );
+    }
+
+    #[test]
+    fn parent_directory_update_keeps_child_tombstones() {
+        let fixture = Fixture::new();
+        fs::remove_file(fixture.root.join("etc/hello.txt")).unwrap();
+        update_path(&fixture.ctx(), "/etc/hello.txt").unwrap();
+        assert!(fixture.paths.removed_dir.join("etc/hello.txt").is_file());
+
+        // Deleting the child drifted /etc's mtime, so the audit emits /etc as a
+        // metadata-only update - it must not wipe tombstones beneath removed/etc.
+        let outcome = update_path(&fixture.ctx(), "/etc").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedMetadata);
+        assert!(fixture.paths.removed_dir.join("etc/hello.txt").is_file());
     }
 
     #[test]

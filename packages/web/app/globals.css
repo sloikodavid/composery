@@ -68,6 +68,13 @@
 	--inter-opsz-heading-lg: 32;
 	--inter-tracking-text: -0.009em;
 	--inter-tracking-heading: -0.03em;
+	--ghost-hover: color-mix(in oklab, var(--foreground) 4.5%, transparent);
+	--ghost-active: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.dark {
+	--ghost-hover: color-mix(in oklab, var(--foreground) 6.5%, transparent);
+	--ghost-active: color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 
 @supports (font-variation-settings: normal) {

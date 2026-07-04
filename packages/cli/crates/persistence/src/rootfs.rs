@@ -338,10 +338,11 @@ pub fn ensure_safe_existing_parent(root: &Path, target: &Path) -> Result<bool> {
 
 pub fn make_hardlink(source: &Path, target: &Path) -> Result<()> {
     public::ensure_parent(target)?;
-    public::remove_path(target)?;
-    fs::hard_link(source, target)
-        .with_context(|| format!("hardlink {} to {}", source.display(), target.display()))?;
-    fsync_parent(target)
+    let temp = public::temp_path(target);
+    let _ = public::remove_path(&temp);
+    fs::hard_link(source, &temp)
+        .with_context(|| format!("hardlink {} to {}", source.display(), temp.display()))?;
+    publish_temp(&temp, target)
 }
 
 pub fn fsync_parent(path: &Path) -> Result<()> {

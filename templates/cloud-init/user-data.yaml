@@ -1,0 +1,19 @@
+#cloud-config
+# Composery one-paste install for a fresh VPS (DigitalOcean, Hetzner, Vultr, Linode, ...).
+# Paste this into the provider's "user data" field when you create the server.
+#
+# Before you paste:
+#   1. Point an A/AAAA DNS record at the server's IP.
+#   2. In the sed line below, replace your-domain.example with that domain.
+#
+# Runs Composery behind Caddy (automatic HTTPS) with the supervisor init - the same as
+# templates/supervisor-caddy-compose. It fetches those files instead of duplicating them,
+# so there is nothing to keep in sync here.
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - install -d /opt/composery
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/supervisor-caddy-compose/compose.yml    -o /opt/composery/compose.yml
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/supervisor-caddy-compose/Caddyfile      -o /opt/composery/Caddyfile
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/supervisor-caddy-compose/composery.env  -o /opt/composery/composery.env
+  - sed -i 's/example\.com/your-domain.example/' /opt/composery/Caddyfile
+  - cd /opt/composery && docker compose up -d

@@ -108,12 +108,23 @@ fn run_loop(
         .into_iter()
         .map(|record| (record.path.clone(), record))
         .collect::<BTreeMap<_, _>>();
+    let interval = Duration::from_secs(config.audit.interval_secs.max(1));
+    // Frequent passes trust size+mtime; a deep pass re-hashes every file so
+    // mtime-preserving edits are still caught within one interval, without
+    // paying a full-rootfs hash every pass. The first pass stays shallow so
+    // startup stat-walks the rootfs instead of reading all of it.
+    let deep_interval = Duration::from_secs(config.audit.deep_hash_interval_secs.max(1));
+    let mut last_deep = Instant::now();
     while !stop.load(Ordering::Relaxed) {
-        if let Err(error) = run_once(&root, &baseline, &config, &dirty_tx, &stop) {
+        let deep = last_deep.elapsed() >= deep_interval;
+        if deep {
+            last_deep = Instant::now();
+        }
+        if let Err(error) = run_once(&root, &baseline, &config, &dirty_tx, &stop, deep) {
             lifecycle.set(LifecycleState::Degraded);
             tracing::warn!(error = %error, "rolling audit pass failed");
         }
-        sleep_interruptibly(Duration::from_secs(5), &stop);
+        sleep_interruptibly(interval, &stop);
     }
     Ok(())
 }
@@ -124,6 +135,7 @@ pub fn run_once(
     config: &Config,
     dirty_tx: &DirtySender,
     stop: &AtomicBool,
+    deep: bool,
 ) -> Result<()> {
     let mut seen = BTreeSet::new();
     let hardlink_groups = hardlink_groups(baseline);
@@ -157,6 +169,7 @@ pub fn run_once(
             baseline.get(&public),
             &hardlink_groups,
             config,
+            deep,
         )? {
             let _ = dirty_tx.send(public);
         }
@@ -177,6 +190,7 @@ pub fn run_once(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn candidate_needs_update(
     root: &Path,
     live_path: &Path,
@@ -185,6 +199,7 @@ fn candidate_needs_update(
     baseline: Option<&BaselineRecord>,
     hardlink_groups: &BTreeMap<String, Vec<PublicPath>>,
     config: &Config,
+    deep: bool,
 ) -> Result<bool> {
     let Some(record) = baseline else {
         return Ok(true);
@@ -204,9 +219,14 @@ fn candidate_needs_update(
             if live.size.map(|size| size as i64) != record.size {
                 return Ok(true);
             }
-            let live_hash = rootfs::hash_file(live_path)?;
-            if Some(live_hash) != record.content_hash {
-                return Ok(true);
+            // ponytail: shallow passes trust size+mtime; only the periodic
+            // deep pass hashes, so mtime-preserving edits surface within
+            // deep_hash_interval_secs instead of every pass.
+            if deep {
+                let live_hash = rootfs::hash_file(live_path)?;
+                if Some(live_hash) != record.content_hash {
+                    return Ok(true);
+                }
             }
         }
         FileKind::Symlink => {
@@ -357,6 +377,7 @@ mod tests {
             &Config::default(),
             &dirty_tx,
             &AtomicBool::new(false),
+            true,
         )
         .unwrap();
         drop(dirty_tx);
@@ -390,12 +411,47 @@ mod tests {
             &Config::default(),
             &dirty_tx,
             &AtomicBool::new(false),
+            true,
         )
         .unwrap();
         drop(dirty_tx);
 
         let candidates = rx.try_iter().map(|path| path.display()).collect::<Vec<_>>();
         assert!(candidates.contains(&"/etc/unchanged".into()));
+    }
+
+    #[test]
+    fn shallow_audit_trusts_matching_size_and_mtime_without_hashing() {
+        let fixture = Fixture::new();
+        let public_path = PublicPath::parse("/etc/unchanged").unwrap();
+        let record = fixture.baseline.get(&public_path).unwrap().unwrap();
+        fs::write(fixture.root.join("etc/unchanged"), "diff").unwrap();
+        filetime::set_file_mtime(
+            fixture.root.join("etc/unchanged"),
+            filetime::FileTime::from_unix_time(
+                record.mtime_ns.div_euclid(1_000_000_000),
+                record.mtime_ns.rem_euclid(1_000_000_000) as u32,
+            ),
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::channel();
+        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+
+        run_once(
+            &fixture.root,
+            &fixture.baseline_map(),
+            &Config::default(),
+            &dirty_tx,
+            &AtomicBool::new(false),
+            false,
+        )
+        .unwrap();
+        drop(dirty_tx);
+
+        // Known ceiling of shallow passes: an mtime-preserving edit is only
+        // caught by the periodic deep pass.
+        let candidates = rx.try_iter().map(|path| path.display()).collect::<Vec<_>>();
+        assert!(!candidates.contains(&"/etc/unchanged".into()));
     }
 
     #[test]
@@ -436,6 +492,7 @@ mod tests {
             &Config::default(),
             &dirty_tx,
             &AtomicBool::new(false),
+            true,
         )
         .unwrap();
         drop(dirty_tx);

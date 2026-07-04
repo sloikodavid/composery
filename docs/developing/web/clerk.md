@@ -33,6 +33,10 @@ keys and a production Frontend API URL.
      issuer that `convex/auth.config.ts` validates). It looks like
      `https://verb-noun-00.clerk.accounts.dev` in dev and
      `https://clerk.<website-domain>` in production.
+   - **Webhook signing secret** -> `CLERK_WEBHOOK_SIGNING_SECRET` (Convex plane;
+     read by `convex/http.ts`). Create a Clerk webhook endpoint whose URL is the
+     Convex deployment's HTTP Actions URL, ending in `/clerk/events`:
+     `<CONVEX_SITE_URL>/clerk/events`. Subscribe it to `user.deleted` only.
 
 3. `NEXT_PUBLIC_CLERK_SIGN_IN_URL` is `/sign-in` in both.
 
@@ -79,6 +83,35 @@ are not usable - so do this before you collect the production Clerk values above
 `CLERK_FRONTEND_API_URL` is the one Convex var required at deploy time (see
 [Convex](./convex.md) - "Set Convex environment variables"), so make sure you
 have it for each instance.
+
+## Account deletion webhook
+
+Keep Clerk's self-serve account deletion enabled. When a user deletes their
+Clerk account, Clerk sends `user.deleted` to `convex/http.ts` at
+`/clerk/events`. The handler checks the Svix signature with
+`CLERK_WEBHOOK_SIGNING_SECRET`, marks the Convex user row deletion-pending,
+revokes their Polar subscriptions, and directly starts the existing box delete
+workflow for each non-deleted box with the same `delete:<subscriptionId>`
+idempotency key used by the Polar webhook and reconciliation sweep.
+
+This webhook is load-bearing, not optional: with self-serve deletion enabled
+but no webhook endpoint (or a wrong/missing signing secret), a user who deletes
+their Clerk account keeps their subscription billing with no way to sign in and
+cancel. Set up the endpoint and secret on every instance before it serves real
+users, and verify the flow once with a throwaway account (delete it in Clerk,
+then confirm the Convex user row reaches `deletion_finished_at`).
+
+Erasure requests that arrive by email go through the staff mutation
+`staff.users.requestAccountDeletionByEmail`, which runs the same routine. When
+using it, also delete the user in the Clerk dashboard: the Convex scrub does
+not touch Clerk, and a still-alive Clerk account signing back in re-writes its
+email onto the scrubbed row via the lazy upsert.
+
+Local PII is not scrubbed immediately. `convex/accountDeletion.ts` waits until
+all of the user's boxes reach `deleted`, retrying busy boxes through scheduled
+finalizers and the hourly account deletion cron, then replaces the user email
+with a non-PII placeholder and scrubs the user's checkout intents. Polar keeps
+billing records for legal retention; Composery does not attempt to delete those.
 
 The local `.clerk/` directory is ignored and may hold keyless-mode secrets. Do
 not depend on it; use real keys and the `convex` JWT template for both instances.

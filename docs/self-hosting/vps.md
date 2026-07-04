@@ -3,8 +3,13 @@ title: Docker Compose on a VPS
 description: Self-host Composery on your own Linux server with Docker Compose.
 ---
 
-Run Composery on any Docker-capable Linux server. You choose two things: the **init**
-system, and whether Composery **owns its TLS edge**.
+Run Composery on any Docker-capable Linux server - Hetzner (cheapest), a DigitalOcean
+Droplet (the most common n8n choice), Hostinger, Vultr, Contabo, Linode, or your own box.
+Install Docker, then choose two things: the **init** system, and whether Composery **owns
+its TLS edge**.
+
+For a dashboard over Docker instead of raw Compose (Coolify, Dokploy, CapRover) or a fully
+managed VM (Elestio), see [Other PaaS & self-hosted platforms](paas.md).
 
 - **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a.
   privileged container with host cgroup access) or `supervisor` (works on any host,
@@ -23,6 +28,15 @@ That gives four recipes:
 
 If unsure: a VPS with a domain wants a **Caddy** variant; use **systemd** when the host
 allows privileged containers and host cgroups, otherwise **supervisor**.
+
+## One-paste install (cloud-init)
+
+To skip the SSH steps entirely, paste
+[`templates/cloud-init/user-data.yaml`](https://github.com/sloikodavid/composery/tree/main/templates/cloud-init)
+into the server's **user data** field when you create it (DigitalOcean, Hetzner, Vultr,
+Linode, ...). Point DNS at the server and set your domain in the file first; the server
+boots with Composery behind Caddy over HTTPS. It installs Docker and runs the
+`supervisor + Caddy` recipe on first boot.
 
 ## Deploy (Caddy variants)
 

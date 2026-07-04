@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const itemVariants = cva("size-6.5 p-1.5 text-fd-muted-foreground", {
 	variants: {
 		active: {
-			true: "bg-fd-accent text-fd-accent-foreground",
+			true: "bg-[var(--ghost-active)] text-fd-foreground",
 			false: "text-fd-muted-foreground"
 		}
 	}

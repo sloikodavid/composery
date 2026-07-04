@@ -1,10 +1,16 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { action, internalMutation, internalQuery } from "../_generated/server";
+import {
+	action,
+	internalMutation,
+	internalQuery,
+	mutation
+} from "../_generated/server";
 import {
 	getUserByClerkId,
 	isStaffUser,
+	requireStaff,
 	requireStaffInAction
 } from "../authorization";
 import { startBoxSuspension } from "../boxes/boxOperations";
@@ -117,5 +123,41 @@ export const setUserSuspended = action({
 				`User suspension updated, but ${failureCount} box action(s) failed: ${failures.join("; ")}${omitted > 0 ? `; ${omitted} more` : ""}`
 			);
 		}
+	}
+});
+
+export const requestAccountDeletionByEmail = mutation({
+	args: {
+		email: v.string()
+	},
+	handler: async (ctx, args): Promise<{ status: "missing" | "pending" }> => {
+		await requireStaff(ctx);
+
+		const user = await ctx.db
+			.query("users")
+			.withIndex("email", (query) => query.eq("email", args.email))
+			.first();
+		if (!user) throw new ConvexError("User not found.");
+
+		if (!user.deletion_pending && !user.deletion_finished_at) {
+			const timestamp = Date.now();
+			await ctx.db.patch(user._id, {
+				deletion_pending: true,
+				deletion_requested_at: timestamp,
+				deletion_requested_by: "staff",
+				updated_at: timestamp
+			});
+		}
+
+		await ctx.scheduler.runAfter(
+			0,
+			internal.accountDeletion.requestAccountDeletionForClerkUser,
+			{
+				clerkUserId: user.clerk_user_id,
+				trigger: "staff"
+			}
+		);
+
+		return { status: "pending" };
 	}
 });

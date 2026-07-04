@@ -3,13 +3,14 @@
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
+use fs2::FileExt as _;
 use persistence::paths::volume_root;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -66,6 +67,34 @@ pub fn store_path() -> PathBuf {
     volume_root().join("api").join("keys.json")
 }
 
+pub struct StoreLock {
+    _file: File,
+}
+
+/// Serialize load-modify-save mutations so two concurrent CLI invocations
+/// cannot silently drop each other's keys. Blocks until the peer finishes.
+pub fn lock_store(path: &Path) -> Result<StoreLock> {
+    let parent = path
+        .parent()
+        .with_context(|| format!("store path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    ensure_real_dir(parent)?;
+
+    let lock_path = path.with_extension("json.lock");
+    ensure_real_file_or_missing(&lock_path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .open(&lock_path)
+        .with_context(|| format!("open lock {}", lock_path.display()))?;
+    file.lock_exclusive()
+        .with_context(|| format!("acquire lock {}", lock_path.display()))?;
+    Ok(StoreLock { _file: file })
+}
+
 pub fn load(path: &Path) -> Result<KeyStore> {
     match open_real_file(path) {
         Ok(mut file) => {
@@ -103,6 +132,18 @@ pub fn save(path: &Path, store: &KeyStore) -> Result<()> {
             .with_context(|| format!("create {}", temp.display()))?;
         file.write_all(&data)
             .with_context(|| format!("write {}", temp.display()))?;
+        // Match the store's owner to its directory (the editor user) so a
+        // sudo-run CLI never leaves a root-owned store the server cannot
+        // read. Best effort: without privileges this is a no-op.
+        let parent_metadata =
+            fs::metadata(parent).with_context(|| format!("stat {}", parent.display()))?;
+        let _ = unsafe {
+            libc::fchown(
+                std::os::unix::io::AsRawFd::as_raw_fd(&file),
+                parent_metadata.uid(),
+                parent_metadata.gid(),
+            )
+        };
         file.sync_all()
             .with_context(|| format!("fsync {}", temp.display()))?;
     }
@@ -213,6 +254,29 @@ mod tests {
         assert!(!store.revoke("k_does_not_exist"));
         save(&path, &store).unwrap();
         assert!(load(&path).unwrap().keys.is_empty());
+    }
+
+    #[test]
+    fn locked_concurrent_creates_do_not_lose_keys() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("api/keys.json");
+
+        let threads: Vec<_> = (0..8)
+            .map(|index| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    let _lock = lock_store(&path).unwrap();
+                    let mut store = load(&path).unwrap();
+                    store.create(&format!("worker-{index}")).unwrap();
+                    save(&path, &store).unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        assert_eq!(load(&path).unwrap().keys.len(), 8);
     }
 
     #[test]

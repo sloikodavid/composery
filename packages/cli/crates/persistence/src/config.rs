@@ -17,6 +17,25 @@ pub struct Config {
 #[serde(rename_all = "camelCase")]
 pub struct AuditConfig {
     pub max_work_ms_per_tick: u64,
+    /// Pause between rolling audit passes. The inotify watcher catches changes
+    /// live; the audit only recovers missed events, so a full-rootfs walk does
+    /// not need to run back to back. Serde default keeps pre-existing
+    /// config.json files on deployed volumes parsing.
+    #[serde(default = "default_interval_secs")]
+    pub interval_secs: u64,
+    /// Frequent audit passes trust size+mtime; a deep pass re-hashes every file
+    /// to catch mtime-preserving edits. Serde default keeps pre-existing
+    /// config.json files on deployed volumes parsing.
+    #[serde(default = "default_deep_hash_interval_secs")]
+    pub deep_hash_interval_secs: u64,
+}
+
+fn default_interval_secs() -> u64 {
+    60
+}
+
+fn default_deep_hash_interval_secs() -> u64 {
+    3600
 }
 
 impl Default for Config {
@@ -40,6 +59,8 @@ impl Default for Config {
             ],
             audit: AuditConfig {
                 max_work_ms_per_tick: 10,
+                interval_secs: default_interval_secs(),
+                deep_hash_interval_secs: default_deep_hash_interval_secs(),
             },
         }
     }
@@ -157,6 +178,22 @@ mod tests {
         assert!(path.exists());
         let reparsed = load_or_create(&path).unwrap();
         assert_eq!(reparsed, Config::default());
+    }
+
+    #[test]
+    fn config_without_deep_hash_interval_parses_with_default() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"{"exclusions":["/data"],"audit":{"maxWorkMsPerTick":10}}"#,
+        )
+        .unwrap();
+
+        let config = load_or_create(&path).unwrap();
+
+        assert_eq!(config.audit.deep_hash_interval_secs, 3600);
     }
 
     #[test]

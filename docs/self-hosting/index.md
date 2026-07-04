@@ -16,10 +16,16 @@ Run on your own server, or on a managed platform that supplies the HTTPS edge an
 - **[Docker Compose on a VPS](vps.md)** - your own Linux server. Pick the init system.
   (`systemd` or `supervisor`) and whether Composery owns its TLS edge (bundled Caddy or
   your own proxy).
+- **[DigitalOcean](digitalocean.md)** - a Droplet with a compose recipe (the common n8n
+  path), or DOKS. Not App Platform.
 - **[Fly.io](fly.md)** - `fly.toml` with one volume.
 - **[Render](render.md)** - `render.yaml` Blueprint with a persistent disk.
 - **[Railway](railway.md)** - image service with a volume at `/data`.
+- **[Koyeb](koyeb.md)** - image service with a volume at `/data` (single-instance regions).
 - **[Kubernetes](kubernetes.md)** - one replica, a PVC at `/data`, Service, and Ingress.
+- **[Other PaaS & self-hosted platforms](paas.md)** - Coolify, Dokploy, CapRover, Northflank,
+  Sliplane, PikaPods, Elestio, and any host that runs a container image with a volume at
+  `/data`.
 
 ## Not viable
 
@@ -27,7 +33,8 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 **not** a fit for platforms whose container filesystem is ephemeral with no attachable disk:
 
 - **Heroku** - dynos cycle daily and lose the filesystem.
-- **DigitalOcean App Platform** - no volumes; local disk is ephemeral. Use a Droplet.
+- **DigitalOcean App Platform** - no volumes; local disk is ephemeral. Use a
+  [Droplet](vps.md) or [DOKS](kubernetes.md) instead.
 - **Google Cloud Run / App Engine** - stateless. Use a GCE VM.
 - **AWS App Runner / ECS Fargate (default)** - stateless without EFS. Use EC2, or mount.
   EFS at `/data` (advanced).

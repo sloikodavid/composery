@@ -19,7 +19,7 @@ import { buttonVariants } from "@/components/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GITHUB_REPO_URL } from "@/lib/links";
-import { Logo } from "@/components/logo";
+import { NavLogoLink } from "@/components/logo";
 import {
 	type NavLink,
 	PUBLIC_NAV_LINKS,
@@ -51,7 +51,7 @@ export function FumadocsSidebar() {
 		<Link
 			data-active={pathname.startsWith(link.href)}
 			className={cn(
-				"relative flex flex-row items-center gap-2 rounded-lg p-2 text-start text-fd-muted-foreground wrap-anywhere transition-colors hover:bg-fd-accent/50 hover:text-fd-accent-foreground/80 hover:transition-none data-[active=true]:bg-fd-primary/10 data-[active=true]:text-fd-primary data-[active=true]:hover:transition-colors"
+				"relative flex flex-row items-center gap-2 rounded-lg p-2 text-start text-fd-muted-foreground wrap-anywhere transition-colors hover:bg-[var(--ghost-hover)] hover:text-fd-foreground hover:transition-none data-[active=true]:bg-[var(--ghost-active)] data-[active=true]:text-fd-foreground data-[active=true]:hover:transition-colors"
 			)}
 			href={link.href}
 			key={link.href}
@@ -64,7 +64,7 @@ export function FumadocsSidebar() {
 		<NextProvider>
 			<SidebarProvider>
 				<div className="flex h-14 items-center border-b border-border bg-background/80 pe-2.5 ps-4 backdrop-blur-sm md:hidden">
-					<Logo />
+					<NavLogoLink />
 					<div className="flex-1" />
 					<SidebarTrigger
 						aria-label="Open menu"
@@ -104,7 +104,7 @@ export function FumadocsSidebar() {
 						<Authenticated>{authedLinks.map(row)}</Authenticated>
 					</SidebarViewport>
 
-					<div className="flex flex-col items-start border-t p-4 pt-2 empty:hidden">
+					<div className="flex flex-col items-start p-4 pt-2 empty:hidden">
 						<Authenticated>
 							<UserButton appearance={clerkAppearance} />
 						</Authenticated>

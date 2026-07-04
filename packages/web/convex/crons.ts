@@ -16,6 +16,12 @@ crons.hourly(
 	internal.billing.reconciliation.deleteBoxesWithoutActiveSubscriptions
 );
 
+crons.hourly(
+	"account deletion finalization",
+	{ minuteUTC: 19 },
+	internal.accountDeletion.sweepPendingAccountDeletions
+);
+
 crons.interval(
 	"poll box metrics",
 	{ minutes: METRICS_POLL_INTERVAL_MINUTES },

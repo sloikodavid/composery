@@ -26,7 +26,8 @@ which writes only your deltas to `/data`. Configure the runtime with
 
 ## Running Composery
 
-- **Self-host it** - [deployment guides](self-hosting/index.md) for a VPS (Docker.
-  Compose), Fly, Render, Railway, and Kubernetes.
+- **Self-host it** - [deployment guides](self-hosting/index.md) for a VPS (Docker
+  Compose), Fly, Render, Railway, Koyeb, Kubernetes, and other PaaS or self-hosted hosts
+  (Coolify, Dokploy, CapRover, Sliplane, Elestio, ...).
 - **Composery Cloud** - the hosted offering at.
   [composery.io](https://www.composery.io/pricing), running the same runtime.

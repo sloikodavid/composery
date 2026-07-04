@@ -11,6 +11,10 @@ export const httpRouter = express.Router()
 
 const TMUX_COMMAND_TIMEOUT_MS = 5000
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/
+// Above this much unsent output queued on the socket, pause the pty until the
+// client drains - otherwise a fast-spewing command with a slow client grows
+// the Node heap without bound.
+const MAX_WS_BUFFERED_BYTES = 4 * 1024 * 1024
 
 function endWithStatus(req: WebsocketRequest, status: number, message: string): void {
   req.ws.end(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`)
@@ -103,10 +107,23 @@ wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
 
   try {
     wss.handleUpgrade(req, req.ws, req.head, (ws) => {
+      let drainTimer: ReturnType<typeof setInterval> | undefined
+      const pauseUntilDrained = () => {
+        if (drainTimer || typeof term.pause !== "function") return
+        term.pause()
+        drainTimer = setInterval(() => {
+          if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES / 2 && ws.readyState === ws.OPEN) return
+          clearInterval(drainTimer)
+          drainTimer = undefined
+          if (!termExited) term.resume()
+        }, 50)
+        drainTimer.unref?.()
+      }
       term.onData((data: string) => {
         try {
           ws.send(Buffer.from(data, "utf8"))
         } catch {}
+        if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES) pauseUntilDrained()
       })
       term.onExit(({ exitCode }: { exitCode: number }) => {
         termExited = true

@@ -1,5 +1,5 @@
 import type { PolarWebhookEvent } from "@convex-dev/polar";
-import { httpRouter } from "convex/server";
+import type { HttpRouter } from "convex/server";
 import { components, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -7,8 +7,6 @@ import { startBoxOperation } from "../boxes/boxOperations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { polarServer } from "./polar";
-
-const http = httpRouter();
 
 type RouteCtx = Pick<ActionCtx, "runMutation" | "runQuery">;
 type PolarSubscription = Extract<
@@ -95,65 +93,65 @@ async function startDeleteWorkflow(
 	});
 }
 
-polarServer().registerRoutes(http, {
-	events: {
-		"subscription.active": async (ctx, event) => {
-			await syncSubscription(ctx, event.data);
+export function registerPolarWebhookRoutes(http: HttpRouter) {
+	polarServer().registerRoutes(http, {
+		events: {
+			"subscription.active": async (ctx, event) => {
+				await syncSubscription(ctx, event.data);
 
-			const intentId = await intentIdFromSubscription(ctx, event.data);
-			if (!intentId) return;
+				const intentId = await intentIdFromSubscription(ctx, event.data);
+				if (!intentId) return;
 
-			await ctx.runMutation(
-				internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
-				{
-					intentId,
-					polarCustomerId: event.data.customerId,
-					polarSubscriptionId: event.data.id,
-					runtimeImage: requiredEnv("RUNTIME_IMAGE")
+				await ctx.runMutation(
+					internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
+					{
+						intentId,
+						polarCustomerId: event.data.customerId,
+						polarSubscriptionId: event.data.id,
+						runtimeImage: requiredEnv("RUNTIME_IMAGE")
+					}
+				);
+			},
+			"subscription.revoked": async (ctx, event) => {
+				await syncSubscription(ctx, event.data);
+
+				const boxId = await ctx.runQuery(
+					internal.boxes.boxQueries.boxIdBySubscription,
+					{
+						subscriptionId: event.data.id
+					}
+				);
+				if (!boxId) return;
+
+				await startDeleteWorkflow(ctx, boxId, event.data.id);
+			},
+			"checkout.expired": async (ctx, event) => {
+				await ctx.runMutation(
+					internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
+					{
+						checkoutId: event.data.id,
+						polarCheckoutStatus: event.data.status,
+						reason: "checkout_expired"
+					}
+				);
+			},
+			"checkout.updated": async (ctx, event) => {
+				if (event.data.status !== "expired" && event.data.status !== "failed") {
+					return;
 				}
-			);
-		},
-		"subscription.revoked": async (ctx, event) => {
-			await syncSubscription(ctx, event.data);
 
-			const boxId = await ctx.runQuery(
-				internal.boxes.boxQueries.boxIdBySubscription,
-				{
-					subscriptionId: event.data.id
-				}
-			);
-			if (!boxId) return;
-
-			await startDeleteWorkflow(ctx, boxId, event.data.id);
-		},
-		"checkout.expired": async (ctx, event) => {
-			await ctx.runMutation(
-				internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
-				{
-					checkoutId: event.data.id,
-					polarCheckoutStatus: event.data.status,
-					reason: "checkout_expired"
-				}
-			);
-		},
-		"checkout.updated": async (ctx, event) => {
-			if (event.data.status !== "expired" && event.data.status !== "failed") {
-				return;
+				await ctx.runMutation(
+					internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
+					{
+						checkoutId: event.data.id,
+						polarCheckoutStatus: event.data.status,
+						reason:
+							event.data.status === "expired"
+								? "checkout_expired"
+								: "checkout_failed"
+					}
+				);
 			}
-
-			await ctx.runMutation(
-				internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
-				{
-					checkoutId: event.data.id,
-					polarCheckoutStatus: event.data.status,
-					reason:
-						event.data.status === "expired"
-							? "checkout_expired"
-							: "checkout_failed"
-				}
-			);
 		}
-	}
-});
-
-export default http;
+	});
+}

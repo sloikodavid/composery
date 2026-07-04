@@ -20,8 +20,10 @@
  
  		<!-- Workbench Configuration -->
  		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
-@@ -30,6 +30,8 @@
- 		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
+@@ -30,6 +30,9 @@
+-		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" media="(prefers-color-scheme: light)" type="image/svg+xml" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" media="(prefers-color-scheme: dark)" type="image/svg+xml" />
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
@@ -49,7 +51,10 @@
  
  		<!-- Workbench Configuration -->
  		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
-@@ -28,6 +28,8 @@
+@@ -27,7 +27,10 @@
+-		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" media="(prefers-color-scheme: light)" type="image/svg+xml" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" media="(prefers-color-scheme: dark)" type="image/svg+xml" />
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
  		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">

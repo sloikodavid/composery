@@ -8,20 +8,22 @@ const buttonVariants = cva(
 	{
 		variants: {
 			variant: {
-				default: "bg-primary text-primary-foreground hover:bg-primary/80",
+				default:
+					"bg-primary text-primary-foreground hover:bg-[color-mix(in_oklab,var(--primary)_88%,var(--background))] active:bg-[color-mix(in_oklab,var(--primary)_78%,var(--background))]",
 				outline:
-					"border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-input/30",
+					"border-border bg-background hover:bg-[color-mix(in_oklab,var(--foreground)_7%,transparent)] hover:text-foreground active:bg-[color-mix(in_oklab,var(--foreground)_8%,transparent)] aria-expanded:bg-[color-mix(in_oklab,var(--foreground)_8%,transparent)] aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)] dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)] dark:aria-expanded:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]",
 				secondary:
-					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklab,var(--secondary)_94%,var(--foreground))] active:bg-[color-mix(in_oklab,var(--secondary)_92%,var(--foreground))] aria-expanded:bg-[color-mix(in_oklab,var(--secondary)_92%,var(--foreground))] aria-expanded:text-secondary-foreground dark:hover:bg-[color-mix(in_oklab,var(--secondary)_88%,var(--foreground))] dark:active:bg-[color-mix(in_oklab,var(--secondary)_78%,var(--foreground))] dark:aria-expanded:bg-[color-mix(in_oklab,var(--secondary)_78%,var(--foreground))]",
 				ghost:
-					"hover:bg-muted/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-foreground/10",
+					"hover:bg-[var(--ghost-hover)] hover:text-foreground focus-visible:bg-[var(--ghost-active)] active:bg-[var(--ghost-active)] aria-expanded:bg-[var(--ghost-active)] aria-expanded:text-foreground",
 				destructive:
-					"bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+					"bg-destructive/10 text-destructive hover:bg-destructive/16 active:bg-destructive/24 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/18 dark:hover:bg-destructive/26 dark:active:bg-destructive/34 dark:focus-visible:ring-destructive/40",
 				link: "text-primary link-underline"
 			},
 			size: {
 				default:
 					"h-8 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2.5 has-data-[icon=inline-start]:pl-2.5",
+				nav: "h-8 gap-1.5 rounded-full px-3",
 				xs: "h-6 gap-1 px-2.5 text-xs has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-7 gap-1 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
 				lg: "h-9 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",

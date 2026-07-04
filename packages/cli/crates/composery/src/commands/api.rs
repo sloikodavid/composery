@@ -67,6 +67,7 @@ fn run_key(command: KeyCommand, json: bool) -> Result<()> {
     let path = keystore::store_path();
     match command {
         KeyCommand::Create { name } => {
+            let _lock = keystore::lock_store(&path)?;
             let mut store = keystore::load(&path)?;
             let new = store.create(&name)?;
             keystore::save(&path, &store)?;
@@ -93,6 +94,7 @@ fn run_key(command: KeyCommand, json: bool) -> Result<()> {
             output::render(&list, json, print_key_list)
         }
         KeyCommand::Revoke { id } => {
+            let _lock = keystore::lock_store(&path)?;
             let mut store = keystore::load(&path)?;
             let revoked = store.revoke(&id);
             if revoked {
@@ -127,7 +129,47 @@ fn print_key_list(list: &KeyList) {
     for key in &list.keys {
         println!(
             "{:<14}  {:<20}  {:<16}  {}",
-            key.id, key.name, key.prefix, key.created_at
+            key.id,
+            key.name,
+            key.prefix,
+            format_utc(key.created_at)
         );
+    }
+}
+
+// JSON keeps created_at as epoch seconds (the stored contract); only the human
+// table formats it. Hand-rolled to avoid a chrono dependency for one line.
+fn format_utc(secs: u64) -> String {
+    let (year, month, day) = civil_from_days((secs / 86_400) as i64);
+    let rem = secs % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60
+    )
+}
+
+// Howard Hinnant's civil_from_days: days since 1970-01-01 to (y, m, d).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year, month, day)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn format_utc_matches_known_vectors() {
+        assert_eq!(super::format_utc(0), "1970-01-01T00:00:00Z");
+        assert_eq!(super::format_utc(1_000_000_000), "2001-09-09T01:46:40Z");
+        assert_eq!(super::format_utc(1_772_064_000), "2026-02-26T00:00:00Z");
     }
 }

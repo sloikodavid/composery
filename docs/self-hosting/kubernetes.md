@@ -51,6 +51,9 @@ cluster's classes with `kubectl get storageclass`:
 - **AKS** - `managed-csi` (Azure Disk, RWO). The `default` class also works.
 - **EKS** - install the [Amazon EBS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html)
   and create a `gp3` StorageClass; EKS does not provide a dynamic default StorageClass.
+- **DOKS (DigitalOcean)** - default `do-block-storage` (RWO block). Leave the PVC class
+  unset to use it. This is the persistent-volume path on DigitalOcean; App Platform has no
+  volumes.
 
 All three back the PVC with block storage, which is `ReadWriteOnce` - the right fit for
 Composery's single writer. For the edge, use each provider's ingress controller or a

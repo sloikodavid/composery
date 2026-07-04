@@ -8,6 +8,10 @@ restarts. The `persistence` daemon compares the live root filesystem against an 
 baseline and writes only your deltas to `/data/persistence`. Mounting one durable volume
 at `/data` is the only hard requirement for [self-hosting](self-hosting/index.md).
 
+The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or a Docker
+named volume). Network filesystems such as NFS are not supported: persistence relies on
+file locking, atomic renames, and xattrs that NFS does not reliably provide.
+
 ## What persists
 
 Persisted:

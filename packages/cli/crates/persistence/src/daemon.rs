@@ -6,9 +6,13 @@ use std::{
     io::{BufRead, BufReader, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::PathBuf,
-    sync::{Arc, atomic::AtomicU64, mpsc},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{config, control, doctor, internal, layout, paths::Paths, prune, readiness, status};
@@ -43,7 +47,22 @@ struct WriterRuntime {
 }
 
 #[cfg(unix)]
+static STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
+
+#[cfg(unix)]
+extern "C" fn record_stop_signal(_signal: libc::c_int) {
+    STOP_SIGNAL.store(true, Ordering::SeqCst);
+}
+
+#[cfg(unix)]
 pub fn run(paths: &Paths) -> Result<()> {
+    // Stop gracefully on SIGTERM/SIGINT so the writer can drain queued dirty
+    // paths before the container filesystem disappears.
+    let handler = record_stop_signal as *const () as libc::sighandler_t;
+    unsafe {
+        libc::signal(libc::SIGTERM, handler);
+        libc::signal(libc::SIGINT, handler);
+    }
     run_inner(paths, PathBuf::from("/"), None)
 }
 
@@ -193,8 +212,9 @@ fn writer_loop(
         baseline: &runtime.baseline,
     };
 
+    let mut public_index_dirty = false;
+    let mut drain_deadline: Option<Instant> = None;
     loop {
-        let mut public_index_dirty = false;
         record_watch_errors(&runtime, &watch_error_rx);
         let mut retry_paths = BTreeSet::new();
         let mut batch_paths = Vec::new();
@@ -257,8 +277,18 @@ fn writer_loop(
                 let _ = runtime.dirty_tx.send(public_path);
             }
         }
-        if public_index_dirty {
+        // Rebuilding the index walks all of changed/, so defer it until the
+        // dirty queue is drained instead of paying a full walk per batch.
+        if public_index_dirty && runtime.dirty_tx.pending_count() == 0 {
             let _ = runtime.db.rebuild_public_index(&runtime.paths);
+            public_index_dirty = false;
+        }
+
+        if let Some(deadline) = drain_deadline {
+            if runtime.dirty_tx.pending_count() == 0 || Instant::now() >= deadline {
+                break;
+            }
+            continue;
         }
 
         match command_rx.recv_timeout(Duration::from_millis(100)) {
@@ -301,8 +331,16 @@ fn writer_loop(
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // Graceful stop: the daemon has already stopped the watcher and
+                // auditor, so drain what is queued (bounded to stay inside the
+                // container stop grace period), then exit.
+                drain_deadline = Some(Instant::now() + Duration::from_secs(5));
+            }
         }
+    }
+    if public_index_dirty {
+        let _ = runtime.db.rebuild_public_index(&runtime.paths);
     }
 }
 
@@ -342,6 +380,9 @@ impl Drop for RuntimeFilesGuard<'_> {
 
 #[cfg(unix)]
 fn should_stop(stop_rx: &mut Option<mpsc::Receiver<()>>) -> bool {
+    if STOP_SIGNAL.load(Ordering::SeqCst) {
+        return true;
+    }
     let Some(stop_rx) = stop_rx else {
         return false;
     };
@@ -707,6 +748,56 @@ mod tests {
         stop_tx.send(()).unwrap();
         daemon.join().unwrap().unwrap();
         assert!(!fixture.paths.ready_file.exists());
+    }
+
+    #[test]
+    fn writer_drains_queued_dirty_paths_on_graceful_stop() {
+        let fixture = Fixture::new();
+        let (writer_tx, writer_rx) = mpsc::channel();
+        let (dirty_tx, dirty_rx) = mpsc::channel();
+        let (_watch_error_tx, watch_error_rx) = mpsc::channel();
+        let dirty_pending = Arc::new(AtomicU64::new(0));
+        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+
+        // More than one 256-path batch, queued before the command channel is
+        // already gone - the writer must drain them all before exiting.
+        for index in 0..300 {
+            fs::write(fixture.root.join(format!("drain-{index}")), "queued").unwrap();
+            dirty_sender
+                .send(PublicPath::parse(&format!("/drain-{index}")).unwrap())
+                .unwrap();
+        }
+        drop(writer_tx);
+
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        let writer_dirty_sender = dirty_sender.clone();
+        let writer_thread = thread::spawn(move || {
+            writer_loop(
+                WriterRuntime {
+                    root,
+                    paths,
+                    config: Config::default(),
+                    baseline,
+                    db,
+                    dirty_tx: writer_dirty_sender,
+                    watch_status: LifecycleStatus::new(LifecycleState::Running),
+                    audit_status: LifecycleStatus::new(LifecycleState::Running),
+                },
+                writer_rx,
+                dirty_rx,
+                watch_error_rx,
+            );
+        });
+        writer_thread.join().unwrap();
+
+        assert_eq!(dirty_sender.pending_count(), 0);
+        assert_eq!(
+            fs::read_to_string(fixture.paths.changed_dir.join("drain-299")).unwrap(),
+            "queued"
+        );
     }
 
     #[test]

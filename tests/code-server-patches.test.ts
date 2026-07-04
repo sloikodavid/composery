@@ -488,3 +488,233 @@ describe("composery shortcuts", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Updates: the status bar extension is the user-visible update path for runtime
+// images, so exercise the shipped CommonJS extension with a mocked VS Code API.
+// ---------------------------------------------------------------------------
+
+type UpdatesRelease = {
+	html_url?: string;
+	prerelease?: boolean;
+	tag_name?: string;
+};
+
+type UpdatesHarness = {
+	commands: Map<string, () => void>;
+	fetchCalls: string[];
+	messages: string[];
+	opened: string[];
+	statusBar: {
+		command?: string;
+		showCalled: boolean;
+		text?: string;
+		tooltip?: string;
+	};
+};
+
+function loadUpdatesExtension({
+	action,
+	release,
+	source = "https://github.com/sloikodavid/composery.git",
+	version = "1.2.3"
+}: {
+	action?: string;
+	release?: UpdatesRelease;
+	source?: string;
+	version?: string;
+}): {
+	activate(context: { subscriptions: unknown[] }): void;
+	harness: UpdatesHarness;
+} {
+	const extension = readRepoFile(
+		"packages/ide/overlay/lib/vscode/extensions/composery-updates/extension.js"
+	);
+	const commands = new Map<string, () => void>();
+	const harness: UpdatesHarness = {
+		commands,
+		fetchCalls: [],
+		messages: [],
+		opened: [],
+		statusBar: {
+			showCalled: false
+		}
+	};
+	const vscode = {
+		StatusBarAlignment: { Right: 2 },
+		Uri: {
+			parse(value: string) {
+				return { toString: () => value };
+			}
+		},
+		commands: {
+			registerCommand(name: string, callback: () => void) {
+				commands.set(name, callback);
+				return { dispose() {} };
+			}
+		},
+		env: {
+			async openExternal(uri: { toString(): string }) {
+				harness.opened.push(uri.toString());
+			}
+		},
+		window: {
+			createStatusBarItem() {
+				return {
+					get command() {
+						return harness.statusBar.command;
+					},
+					set command(value: string | undefined) {
+						harness.statusBar.command = value;
+					},
+					show() {
+						harness.statusBar.showCalled = true;
+					},
+					get text() {
+						return harness.statusBar.text;
+					},
+					set text(value: string | undefined) {
+						harness.statusBar.text = value;
+					},
+					get tooltip() {
+						return harness.statusBar.tooltip;
+					},
+					set tooltip(value: string | undefined) {
+						harness.statusBar.tooltip = value;
+					}
+				};
+			},
+			async showInformationMessage(message: string) {
+				harness.messages.push(message);
+				return action;
+			}
+		}
+	};
+	const cjsModule: {
+		exports: {
+			activate?: (context: { subscriptions: unknown[] }) => void;
+		};
+	} = { exports: {} };
+	const context = vm.createContext({
+		AbortSignal: { timeout: () => ({}) },
+		fetch: async (url: string) => {
+			harness.fetchCalls.push(url);
+			return {
+				ok: release !== undefined,
+				async json() {
+					return release;
+				}
+			};
+		},
+		module: cjsModule,
+		process: {
+			env: {
+				COMPOSERY_BUILD_SOURCE: source,
+				COMPOSERY_BUILD_VERSION: version
+			}
+		},
+		require(name: string) {
+			if (name === "vscode") return vscode;
+			throw new Error(`Unexpected require: ${name}`);
+		}
+	});
+
+	vm.runInContext(extension, context);
+
+	expect(cjsModule.exports.activate).toBeDefined();
+	return {
+		activate: cjsModule.exports.activate!,
+		harness
+	};
+}
+
+async function flushUpdatesExtension(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe("composery updates", () => {
+	const extension = readRepoFile(
+		"packages/ide/overlay/lib/vscode/extensions/composery-updates/extension.js"
+	);
+	const manifest = JSON.parse(
+		readRepoFile(
+			"packages/ide/overlay/lib/vscode/extensions/composery-updates/package.json"
+		)
+	) as {
+		activationEvents: string[];
+		contributes: { commands: Array<{ command: string }> };
+		extensionKind: string[];
+	};
+
+	test("manifest and extension expose the check command on startup", () => {
+		expect(manifest.activationEvents).toContain("onStartupFinished");
+		expect(manifest.extensionKind).toContain("workspace");
+		expect(manifest.contributes.commands).toContainEqual(
+			expect.objectContaining({ command: "composery.checkForUpdates" })
+		);
+		expect(extension).toContain('registerCommand("composery.checkForUpdates"');
+	});
+
+	test("startup check announces a newer stable release and opens it", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			action: "View Release",
+			release: {
+				html_url:
+					"https://github.com/sloikodavid/composery/releases/tag/v1.3.0",
+				prerelease: false,
+				tag_name: "v1.3.0"
+			}
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+
+		expect(harness.statusBar.showCalled).toBe(true);
+		expect(harness.statusBar.text).toBe("$(arrow-up) 1.2.3");
+		expect(harness.statusBar.tooltip).toBe(
+			"Composery 1.3.0 is available - click to view the release"
+		);
+		expect(harness.fetchCalls).toEqual([
+			"https://api.github.com/repos/sloikodavid/composery/releases/latest"
+		]);
+		expect(harness.messages).toEqual(["Composery 1.3.0 is available."]);
+		expect(harness.opened).toEqual([
+			"https://github.com/sloikodavid/composery/releases/tag/v1.3.0"
+		]);
+	});
+
+	test("manual check reports when the stable build is already current", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			release: {
+				html_url:
+					"https://github.com/sloikodavid/composery/releases/tag/v1.2.3",
+				prerelease: false,
+				tag_name: "v1.2.3"
+			}
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.messages).toEqual(["Composery 1.2.3 is up to date."]);
+		expect(harness.opened).toEqual([]);
+	});
+
+	test("manual check stays local for preview builds", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			version: "preview-abc123"
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.fetchCalls).toEqual([]);
+		expect(harness.messages).toEqual([
+			"Composery preview-abc123 - update checks run on stable releases only."
+		]);
+	});
+});

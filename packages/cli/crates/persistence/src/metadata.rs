@@ -106,8 +106,13 @@ impl MetadataStore {
     }
 
     pub fn upsert(&mut self, record: MetadataRecord) -> Result<()> {
-        self.records.insert(record.key()?, record);
-        self.dirty = true;
+        let key = record.key()?;
+        // Audit passes re-emit unchanged records; only an actual difference
+        // should trigger a rewrite+fsync of metadata.jsonl on flush.
+        if self.records.get(&key) != Some(&record) {
+            self.records.insert(key, record);
+            self.dirty = true;
+        }
         Ok(())
     }
 

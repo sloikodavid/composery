@@ -51,7 +51,10 @@ impl Watcher {
         error_tx: mpsc::Sender<String>,
     ) -> Result<Self> {
         lifecycle.set(LifecycleState::Initializing);
-        initialize(&root, &config)?;
+        // Fail fast on a bad root; the full watch registration happens once in
+        // run_loop (a second registration pass here would stat-walk the whole
+        // rootfs twice at startup).
+        ensure_real_root(&root)?;
 
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
@@ -77,8 +80,11 @@ impl Watcher {
                 }
             })
             .context("spawn watcher thread")?;
+        // Registration walks every directory under the root; give large
+        // rootfs trees more than a token amount of time. Errors still return
+        // immediately because the ready sender is dropped with the thread.
         ready_rx
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(Duration::from_secs(60))
             .context("watcher did not initialize")?;
 
         Ok(Self {
@@ -95,14 +101,6 @@ impl Drop for Watcher {
             let _ = thread.join();
         }
     }
-}
-
-fn initialize(root: &Path, config: &Config) -> Result<()> {
-    ensure_real_root(root)?;
-    let mut inotify = Inotify::init().context("initialize inotify")?;
-    let mut watches = HashMap::new();
-    register_existing_dirs(&mut inotify, &mut watches, root, root, config)?;
-    Ok(())
 }
 
 fn run_loop(runtime: WatchRuntime) -> Result<()> {

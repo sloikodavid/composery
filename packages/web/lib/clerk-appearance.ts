@@ -36,7 +36,7 @@ export const clerkAppearance = {
 		userButtonPopoverCard:
 			"rounded-[min(var(--radius-4xl),24px)] border border-border shadow-lg!",
 		modalContent:
-			"rounded-[min(var(--radius-4xl),24px)] border border-border shadow-lg!",
+			"rounded-[min(var(--radius-4xl),24px)] border-0! bg-transparent! shadow-none!",
 		headerTitle: "font-heading text-base font-medium text-foreground",
 		headerSubtitle: "text-sm text-muted-foreground",
 		button: "rounded-2xl font-medium transition-all active:translate-y-px",

@@ -48,6 +48,9 @@ export const createCheckout = action({
 			email: emailFromIdentity(identity)
 		});
 		if (user.suspended) throw new ConvexError("User is suspended.");
+		if (user.deletion_pending) {
+			throw new ConvexError("Account deletion is already in progress.");
+		}
 
 		const checkoutEnabled = await ctx.runQuery(
 			internal.settings.readCheckoutEnabled,

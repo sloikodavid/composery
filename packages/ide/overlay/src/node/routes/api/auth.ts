@@ -28,9 +28,6 @@ function extractKey(req: express.Request): string | undefined {
 
 export async function authenticate(req: express.Request): Promise<AuthResult> {
   const ip = clientIp(req)
-  if (!authFail.allow(ip)) {
-    return { status: 429, message: "Too many failed attempts" }
-  }
   const secret = extractKey(req)
   let id: string | undefined
   try {
@@ -39,6 +36,11 @@ export async function authenticate(req: express.Request): Promise<AuthResult> {
     return { status: 503, message: "API key store unavailable" }
   }
   if (!id) {
+    // Gate after verification: behind a reverse proxy every client shares one
+    // IP, so a pre-verify gate would let bad-key floods lock out valid keys.
+    if (!authFail.allow(ip)) {
+      return { status: 429, message: "Too many failed attempts" }
+    }
     authFail.record(ip)
     return { status: 401, message: "Invalid or missing API key" }
   }

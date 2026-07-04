@@ -72,13 +72,12 @@
 	--fd-sidebar-drawer-offset: 100%;
 }
 
-/* Hover intensity isn't a fumadocs token; match its faint /50 sidebar hover to the
-   solid fd-accent our nav and buttons use (light only - dark keeps /50). */
-:root:not(.dark)
-	#nd-sidebar
+/* Hover intensity isn't a fumadocs token; route sidebar hover through the same
+   transparent ghost state used by icon buttons and nav pills. */
+#nd-sidebar
 	[data-radix-scroll-area-viewport]
 	:is(a, button):not([data-active="true"]):hover {
-	background-color: var(--color-fd-accent);
+	background-color: var(--ghost-hover);
 }
 
 /* Search trigger + sidebar islands: drop fumadocs' fd-secondary fill so they read

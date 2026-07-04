@@ -10,7 +10,7 @@ export default function Home() {
 					<h1 className="font-heading mx-auto text-4xl font-medium tracking-tight text-balance text-foreground sm:text-5xl sm:text-nowrap">
 						Like VS Code, but always on.
 					</h1>
-					<p className="mx-auto max-w-[41rem] text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 sm:text-nowrap">
+					<p className="mx-auto max-w-[41rem] text-balance text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 sm:text-nowrap">
 						A secure cloud computer with a powerful UI, usable from any phone or
 						browser.
 					</p>
@@ -26,7 +26,7 @@ export default function Home() {
 						New box
 					</AnimatedIconLink>
 					<Link
-						className={buttonVariants({ size: "lg", variant: "outline" })}
+						className={buttonVariants({ size: "lg", variant: "ghost" })}
 						href="/pricing"
 					>
 						See pricing

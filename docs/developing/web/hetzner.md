@@ -4,9 +4,13 @@ description: Provision and reset boxes on Hetzner Cloud, plus per-box snapshots 
 ---
 
 Everything below is in the Hetzner Console (`console.hetzner.cloud`), inside the
-project for this environment. Use separate projects for dev and production if
-possible. The code manages servers (create, get, list, rebuild, delete, power
-on/off) and deletes the Primary IPs attached to deleted boxes
+project for this environment. Every Convex deployment **must** get its own
+Hetzner project: the daily reconciliation cron (`convex/boxes/reconcile.ts`)
+assumes it owns everything labeled `product=composery-web` in its project and
+auto-deletes snapshot images it finds no `box_snapshots` row for, so a prod and
+dev deployment sharing one project would destroy each other's snapshots. The
+code manages servers (create, get, list, rebuild, delete, power on/off) and
+deletes the Primary IPs attached to deleted boxes
 (`convex/boxes/infra/hetznerVps.ts`); the API token, SSH key, and firewall are
 created once in the console and referenced by id.
 

@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as accountDeletion from "../accountDeletion.js";
+import type * as accountDeletionLogic from "../accountDeletionLogic.js";
 import type * as authorization from "../authorization.js";
 import type * as billing_polar from "../billing/polar.js";
 import type * as billing_reconciliation from "../billing/reconciliation.js";
@@ -68,6 +70,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accountDeletion: typeof accountDeletion;
+  accountDeletionLogic: typeof accountDeletionLogic;
   authorization: typeof authorization;
   "billing/polar": typeof billing_polar;
   "billing/reconciliation": typeof billing_reconciliation;

@@ -404,17 +404,17 @@ await writeFile(
 );
 
 // Browser favicon that follows the OS/browser colour scheme (like github.com and
-// polar.sh): a dark mark on a light UI, a light mark on a dark UI. The embedded
-// <style> media query is honoured when the SVG is used as a favicon.
+// polar.sh): a dark mark on a light UI, a light mark on a dark UI.
 const adaptiveFavicon = ({ width = 256, height = 256 } = {}) =>
 	`<svg width="${width}" height="${height}" viewBox="${ICON_VIEWBOX}" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:${brandColors.icon.light}}@media (prefers-color-scheme:dark){svg{color:${brandColors.icon.dark}}}</style>${iconInner()}</svg>`;
+const staticFavicon = (color, { width = "100%", height = "100%" } = {}) =>
+	`<svg width="${width}" height="${height}" viewBox="${ICON_VIEWBOX}" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:${color}}</style>${iconInner()}</svg>`;
 
 await writeFile(
 	join(root, "packages", "web", "app", "icon.svg"),
 	`${adaptiveFavicon()}\n`
 );
 
-const favicon = `${adaptiveFavicon({ height: "100%", width: "100%" })}\n`;
 await writeFile(
 	join(
 		root,
@@ -426,7 +426,7 @@ await writeFile(
 		"media",
 		"favicon.svg"
 	),
-	favicon
+	`${staticFavicon(brandColors.icon.light)}\n`
 );
 await writeFile(
 	join(
@@ -439,7 +439,7 @@ await writeFile(
 		"media",
 		"favicon-dark-support.svg"
 	),
-	favicon
+	`${staticFavicon(brandColors.icon.dark)}\n`
 );
 
 const appJsonPath = join(root, "packages", "mobile", "app.json");

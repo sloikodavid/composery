@@ -8,6 +8,10 @@ edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0"
 
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
 [workspace.dependencies]
 anyhow = "1.0.102"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -19,3 +23,5 @@ tempfile = "3.27.0"
 sha2 = "0.10.9"
 base64 = "0.22.1"
 getrandom = "0.2.16"
+fs2 = "0.4.3"
+libc = "0.2.186"

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Balancer from "react-wrap-balancer";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { LogoLockup } from "@/components/logo";
 import { GITHUB_REPO_URL } from "@/lib/links";
@@ -27,11 +26,9 @@ export function Footer() {
 					>
 						<LogoLockup className="h-8 w-auto" />
 					</Link>
-					<p className="text-sm leading-6 text-muted-foreground">
-						<Balancer>
-							A secure cloud computer with a powerful UI, usable from any phone
-							or browser.
-						</Balancer>
+					<p className="text-balance text-sm leading-6 text-muted-foreground">
+						A secure cloud computer with a powerful UI, usable from any phone or
+						browser.
 					</p>
 				</div>
 

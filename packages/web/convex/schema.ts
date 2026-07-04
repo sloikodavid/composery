@@ -135,12 +135,17 @@ export default defineSchema({
 		suspended: v.boolean(),
 		suspended_reason: v.optional(v.string()),
 		suspended_at: v.optional(v.number()),
+		deletion_pending: v.optional(v.boolean()),
+		deletion_requested_at: v.optional(v.number()),
+		deletion_requested_by: v.optional(v.string()),
+		deletion_finished_at: v.optional(v.number()),
 		created_at: v.number(),
 		updated_at: v.number()
 	})
 		.index("clerk_user_id", ["clerk_user_id"])
 		.index("email", ["email"])
 		.index("role", ["role"])
+		.index("deletion_pending", ["deletion_pending"])
 		.index("created_at", ["created_at"]),
 
 	box_checkout_intents: defineTable({

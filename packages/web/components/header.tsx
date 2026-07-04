@@ -24,10 +24,10 @@ export function Header() {
 	const pill = (link: NavLink, fade: boolean) => (
 		<AnimatedIconLink
 			className={cn(
-				"flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+				buttonVariants({ size: "nav", variant: "ghost" }),
 				pathname.startsWith(link.href)
-					? "bg-primary/10 text-primary"
-					: "text-muted-foreground hover:bg-muted/50 dark:hover:bg-foreground/10 hover:text-foreground",
+					? "bg-[var(--ghost-active)] text-foreground"
+					: "text-muted-foreground",
 				fade && "header-auth-fade-in"
 			)}
 			href={link.href}
