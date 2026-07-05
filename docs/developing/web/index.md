@@ -77,7 +77,7 @@ different things, not two spellings of one domain.
 
 ## Prerequisites
 
-- Node.js `>=20.9.0` (Node 22 LTS is fine), pnpm, Vercel CLI.
+- The Node.js version pinned in `.nvmrc`, pnpm through Corepack, and Vercel CLI.
 - Access to the Vercel team/project, Convex team/project, Clerk apps, Polar
   organization, Hetzner Cloud project, Cloudflare zone, and container registry.
 

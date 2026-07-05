@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import { dark, light, themeForScheme, type Palette } from "./theme";
 
-const HEX = /^#[0-9a-f]{6}$/;
+// #rrggbb or #rrggbbaa — React Native parses both; the palette uses the alpha
+// form for translucent borders/inputs (e.g. #ffffff1f).
+const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/;
 const RGBA = /^rgba\(\d+,\s*\d+,\s*\d+,\s*0?\.\d+\)$/;
 
 function assertValidColors(palette: Palette, label: string) {

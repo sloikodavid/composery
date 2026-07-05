@@ -1,4 +1,5 @@
 server.diff
+node-engine.diff
 asset-cache.diff
 auth-actions.diff
 qr-action.diff
@@ -7,6 +8,7 @@ trusted-domains-loopback-callback-guard.diff
 overlays.diff
 webview-mobile.diff
 touch-editor.diff
+touch-menu.diff
 touch-gate.diff
 narrow-gate.diff
 narrow-fullscreen.diff
@@ -14,7 +16,6 @@ branding.diff
 welcome.diff
 clipboard-osc52.diff
 clipboard-ipc.diff
-fonts.diff
 tips.diff
 extensions-view-themes.diff
 default-layout.diff

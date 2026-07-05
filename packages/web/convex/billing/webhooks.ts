@@ -2,13 +2,12 @@ import type { PolarWebhookEvent } from "@convex-dev/polar";
 import type { HttpRouter } from "convex/server";
 import { components, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import type { ActionCtx } from "../_generated/server";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { polarServer } from "./polar";
 
-type RouteCtx = Pick<ActionCtx, "runMutation" | "runQuery">;
+type RouteCtx = Parameters<typeof startBoxOperation>[0];
 type PolarSubscription = Extract<
 	PolarWebhookEvent,
 	{ type: "subscription.active" }
@@ -127,7 +126,8 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 			},
 			"checkout.expired": async (ctx, event) => {
 				await ctx.runMutation(
-					internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
+					internal.checkout.checkoutIntents
+						.releaseCheckoutIntentByPolarCheckout,
 					{
 						checkoutId: event.data.id,
 						polarCheckoutStatus: event.data.status,
@@ -141,7 +141,8 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 				}
 
 				await ctx.runMutation(
-					internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
+					internal.checkout.checkoutIntents
+						.releaseCheckoutIntentByPolarCheckout,
 					{
 						checkoutId: event.data.id,
 						polarCheckoutStatus: event.data.status,

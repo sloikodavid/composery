@@ -7,6 +7,12 @@
 		".": "./index.mjs"
 	},
 	"scripts": {
-		"build": "node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs"
+		"build": "node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs",
+		"check": "node scripts/sync.mjs --check"
+	},
+	"devDependencies": {
+		"fontkit": "^2.0.4",
+		"png-to-ico": "^3.0.1",
+		"sharp": "^0.35.0"
 	}
 }

@@ -170,7 +170,6 @@ packages/
               opencode.svg
               pi.svg
             composery-logo.svg
-            favicon-dark-support.svg
             favicon.ico
             favicon.svg
             inter.woff2
@@ -213,10 +212,10 @@ packages/
       default-color-theme.diff
       default-layout.diff
       extensions-view-themes.diff
-      fonts.diff
       markdown-preview-loopback-callback-bridge.diff
       narrow-fullscreen.diff
       narrow-gate.diff
+      node-engine.diff
       overlays.diff
       qr-action.diff
       series
@@ -226,6 +225,7 @@ packages/
       titlebar-logo.diff
       touch-editor.diff
       touch-gate.diff
+      touch-menu.diff
       touch-terminal-hint.diff
       touch-terminal-keybar.diff
       touch-viewport-inset.diff
@@ -236,6 +236,7 @@ packages/
       build.sh
       rebrand.mjs
       types.mjs
+    build
     package.json
     upstream
   mobile/
@@ -289,6 +290,7 @@ packages/
     app.json
     eas.json
     eslint.config.mjs
+    metro.config.js
     package.json
     tsconfig.json
     vitest.config.ts
@@ -582,6 +584,7 @@ scripts/
   setup.mjs
   smoke.mjs
   tree.mjs
+  write-formatted.mjs
 templates/
   fly/
     fly.toml
@@ -628,11 +631,13 @@ tests/
   code-server-patches.test.ts
   desktop-integration.test.ts
   loopback-callback-guard.test.ts
+  toolchain-pins.test.ts
 .dockerignore
 .editorconfig
 .gitattributes
 .gitignore
 .gitmodules
+.nvmrc
 .prettierignore
 AGENTS.md
 CHANGELOG.md

@@ -10,9 +10,13 @@
  	static readonly TunnelProtocol = new MenuId('TunnelProtocol');
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-@@ -473,6 +473,11 @@ export class BrowserTitlebarPart extends
+@@ -473,6 +473,14 @@ export class BrowserTitlebarPart extends
  		// App Icon (Windows, Linux)
- 		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
+-		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
++		// Composery: also render in the web custom titlebar on every platform (the
++		// mobile WebView reads as Macintosh), so the logo is a universal brand +
++		// Home affordance; the native app rewires its click to go home.
++		if ((isWeb || isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
  			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
 +			// Composery: make the title-bar logo a link to the website (new tab).
 +			this.appIcon.setAttribute('href', 'https://www.composery.io');

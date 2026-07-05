@@ -124,14 +124,6 @@ export default function InstanceScreen() {
 
 	const webviewCanGoBack = canGoBack || overlayBackActive;
 
-	const messageBack = useCallback(() => {
-		if (webviewCanGoBack && webviewRef.current) {
-			webviewRef.current.goBack();
-		} else {
-			router.back();
-		}
-	}, [webviewCanGoBack]);
-
 	useEffect(() => {
 		const onBack = () => {
 			if (webviewCanGoBack && webviewRef.current) {
@@ -274,7 +266,10 @@ export default function InstanceScreen() {
 						injectedJavaScript={INSTALL_SCRIPT}
 						onMessage={(event) => {
 							const data = event.nativeEvent.data;
-							if (data === "composery:back") messageBack();
+							// The titlebar back button is always "go home" — it pops straight
+							// to the instances list, never walking the webview's own history
+							// (that's the hardware/gesture back's job).
+							if (data === "composery:back") goBack();
 							else if (data === "composery:overlay-back:on") {
 								setOverlayBackActive(true);
 							} else if (data === "composery:overlay-back:off") {
@@ -341,8 +336,17 @@ export default function InstanceScreen() {
 							/>
 						</View>
 					) : webLoading ? (
-						<View pointerEvents="none" style={styles_overlay(theme.background)}>
-							<Spinner color={theme.primary} size={32} />
+						// Loading veil over the booting WebView. Carries the same back
+						// button as every other state so you can leave mid-load instead of
+						// being stuck on a spinner. (The white-on-first-paint blink is
+						// fixed at the source in the IDE, not hidden here.)
+						<View
+							style={[
+								styles_overlay(theme.background),
+								{ alignItems: "stretch", justifyContent: "flex-start" }
+							]}
+						>
+							<ChromeLoading theme={theme} onBack={goBack} />
 						</View>
 					) : null}
 				</View>

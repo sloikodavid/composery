@@ -22,9 +22,7 @@
 				"monochromeImage": "./assets/images/android-icon-monochrome.png"
 			},
 			"predictiveBackGestureEnabled": false,
-			"permissions": [
-				"android.permission.CAMERA"
-			]
+			"permissions": ["android.permission.CAMERA"]
 		},
 		"web": {
 			"output": "static",
@@ -43,6 +41,9 @@
 				"expo-splash-screen",
 				{
 					"backgroundColor": "#ffffff",
+					"dark": {
+						"backgroundColor": "#0a0a0a"
+					},
 					"android": {
 						"image": "./assets/images/splash-icon.png",
 						"imageWidth": 76

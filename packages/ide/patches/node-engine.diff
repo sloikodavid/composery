@@ -1,0 +1,7 @@
+--- a/package.json
++++ b/package.json
+@@ -106,3 +106,3 @@
+   "engines": {
+-    "node": "22"
++    "node": ">=24.15.0 <25"
+   },

@@ -29,6 +29,11 @@
 			"pinDigests": true
 		},
 		{
+			"description": "Group Node runtime pins so .nvmrc, package engines, and the Docker base image move together.",
+			"matchPackageNames": ["node", "library/node"],
+			"groupName": "node runtime"
+		},
+		{
 			"description": "Automerge low-risk updates once CI + smoke pass.",
 			"matchUpdateTypes": ["patch", "pin", "digest"],
 			"automerge": true

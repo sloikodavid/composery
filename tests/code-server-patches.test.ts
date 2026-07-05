@@ -506,10 +506,10 @@ type UpdatesHarness = {
 	messages: string[];
 	opened: string[];
 	statusBar: {
-		command?: string;
+		command?: string | undefined;
 		showCalled: boolean;
-		text?: string;
-		tooltip?: string;
+		text?: string | undefined;
+		tooltip?: string | undefined;
 	};
 };
 

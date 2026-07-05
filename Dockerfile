@@ -1,6 +1,6 @@
 # Node major is pinned by the IDE (its native modules target this ABI). Builder and
 # runtime share this one ARG; bump both together when the IDE moves Node major.
-ARG NODE_IMAGE=node:24-trixie-slim@sha256:402f5c39a024babff2f1c906adbc17d89a6de8ced72ee6ea612e4d2ba33d962f
+ARG NODE_IMAGE=node:24.18.0-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
 
 # Build the IDE from the in-repo hard fork.
 FROM ${NODE_IMAGE} AS ide-builder
@@ -44,7 +44,7 @@ RUN git init -q upstream \
   && git -C upstream submodule update --init --recursive --depth 1
 
 # Lay our overlay + patches over pristine upstream and build the release.
-RUN ./scripts/build.sh
+RUN npm run build
 
 RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
     > build/release/.composery-upstream

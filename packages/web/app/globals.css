@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "../node_modules/shadcn/dist/tailwind.css";
 /* Base theme for Clerk's @clerk/ui components (lib/clerk-appearance.ts starts
    from the `shadcn` theme); ships its compiled classes since they live in
    node_modules and Tailwind won't scan them. */

@@ -22,22 +22,21 @@
  		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
 @@ -30,6 +30,9 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" media="(prefers-color-scheme: light)" type="image/svg+xml" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" media="(prefers-color-scheme: dark)" type="image/svg+xml" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" />
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/fonts.css">
  		<style id="vscode-css-modules" type="text/css" media="screen"></style>
  
  	</head>
-@@ -64,6 +66,8 @@
- 	</script>
+@@ -65,5 +66,7 @@
  	<script>
  		performance.mark('code/willLoadWorkbenchMain');
+ 	</script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
- 	</script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
@@ -51,19 +50,24 @@
  
  		<!-- Workbench Configuration -->
  		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
-@@ -27,7 +27,10 @@
+@@ -27,7 +27,15 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" media="(prefers-color-scheme: light)" type="image/svg+xml" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" media="(prefers-color-scheme: dark)" type="image/svg+xml" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" />
  		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
  		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/fonts.css">
++		<!-- First paint: paint the brand background so the workbench never flashes white before its theme applies. Colours are the brand light/dark backgrounds. -->
++		<style>
++			html, body { background-color: #ffffff; }
++			@media (prefers-color-scheme: dark) { html, body { background-color: #0a0a0a; } }
++		</style>
  
  	</head>
  
-@@ -46,5 +48,7 @@
+@@ -46,5 +53,7 @@
  	<script type="module" src="{{WORKBENCH_NLS_FALLBACK_URL}}"></script>
  	<!-- attempt to load NLS messages in case non-english -->
  	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>
