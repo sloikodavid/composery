@@ -15,7 +15,8 @@ does not need one - give the platform these five things and it works:
 | Persistent volume | mounted at `/data`                         |
 | Instances         | **one** (`persistence` is a single writer) |
 
-Register the password on first visit, or set `PASSWORD` / `HASHED_PASSWORD`
+Register the password on first visit, or set `COMPOSERY_PASSWORD` /
+`COMPOSERY_HASHED_PASSWORD`
 (see [Configuration](../configuration.md)).
 
 Everything below runs Composery's default `supervisor` init. `systemd` mode (closest to

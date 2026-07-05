@@ -1,4 +1,4 @@
-# Composery - user-data install
+# Composery - user-data
 
 Optional. Only for people who want a hands-off install - if you pick any other method, you
 do not need this.

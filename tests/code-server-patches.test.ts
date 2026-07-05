@@ -32,9 +32,9 @@ describe("patch stack lint", () => {
 
 	// The Docker build clones upstream by commit (no git context after COPY), so
 	// the Dockerfile ARG duplicates the submodule pin; keep them from drifting.
-	test("Dockerfile pins the same code-server commit as the submodule", () => {
+	test("Dockerfile pins the same IDE upstream commit as the submodule", () => {
 		const dockerfile = readRepoFile("Dockerfile");
-		const pinned = /^ARG CODE_SERVER_COMMIT=([0-9a-f]{40})$/m.exec(
+		const pinned = /^ARG COMPOSERY_IDE_UPSTREAM_COMMIT=([0-9a-f]{40})$/m.exec(
 			dockerfile
 		)?.[1];
 		const staged = execFileSync(
@@ -260,8 +260,8 @@ describe("narrow overlay", () => {
 	// Post-build, the workbench assets must be rsynced into the release bundle
 	// or every narrow/touch behavior above silently vanishes from the image.
 	test("build.sh ships the workbench assets into the release", () => {
-		expect(readRepoFile("packages/ide/build.sh")).toContain(
-			'rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"'
+		expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
+			'rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"'
 		);
 	});
 

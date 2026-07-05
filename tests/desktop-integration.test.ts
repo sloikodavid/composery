@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const browserHelper =
-	"/opt/code-server/current/lib/vscode/bin/helpers/browser.sh";
+	"/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh";
 
 function readRepoFile(path: string): string {
 	return readFileSync(resolve(repoRoot, path), "utf8");

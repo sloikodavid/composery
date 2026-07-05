@@ -22,7 +22,7 @@ Open `https://composery.fly.dev`. Register the initial password in the browser, 
 as a secret:
 
 ```bash
-fly secrets set PASSWORD=example
+fly secrets set COMPOSERY_PASSWORD=example
 ```
 
 ## Notes

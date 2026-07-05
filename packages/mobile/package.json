@@ -44,14 +44,15 @@
 	},
 	"scripts": {
 		"dev": "expo start --go",
-		"start": "expo start --go",
-		"android": "expo start --go --android",
-		"ios": "expo start --go --ios",
-		"web": "expo start --web",
-		"build": "expo export --platform android",
-		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
-		"lint": "eslint ."
+		"dev:android": "expo start --go --android",
+		"dev:ios": "expo start --go --ios",
+		"dev:web": "expo start --web",
+		"check": "pnpm check:types && pnpm check:lint && pnpm check:test",
+		"check:types": "tsc --noEmit",
+		"check:lint": "eslint .",
+		"check:test": "vitest run",
+		"fix:lint": "eslint . --fix",
+		"build": "expo export --platform android"
 	},
 	"private": true
 }

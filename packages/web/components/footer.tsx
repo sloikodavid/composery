@@ -10,8 +10,8 @@ const PRODUCT_LINKS = [
 ];
 
 const RESOURCE_LINKS = [
-	{ href: "/docs/self-hosting", label: "Self-hosting" },
 	{ href: "/docs/configuration", label: "Configuration" },
+	{ href: "/docs/self-hosting", label: "Self-hosting" },
 	{ href: "/brand", label: "Brand" }
 ];
 

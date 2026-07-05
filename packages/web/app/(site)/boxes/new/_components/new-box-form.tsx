@@ -37,6 +37,11 @@ export function NewBoxForm() {
 	const [confirmation, setConfirmation] = useState("");
 	const [step, setStep] = useState<Step>("slug");
 	const [submitting, setSubmitting] = useState(false);
+	// A weak or breached password is allowed, but only through an escalating
+	// confirm: pwStage counts how many warnings the user has clicked past, and
+	// passwordCleared marks the password step as passed.
+	const [pwStage, setPwStage] = useState(0);
+	const [passwordCleared, setPasswordCleared] = useState(false);
 	const slugInputRef = useRef<HTMLInputElement>(null);
 	const passwordInputRef = useRef<HTMLInputElement>(null);
 	const confirmationInputRef = useRef<HTMLInputElement>(null);
@@ -68,10 +73,15 @@ export function NewBoxForm() {
 			: ({ password, status: "idle" } satisfies PasswordBreachCheck);
 	const checkingPasswordBreach = currentBreachCheck.status === "checking";
 	const passwordFoundInBreach = currentBreachCheck.status === "found";
-	// Breach check runs on submit, not while typing, so strength alone gates the
-	// button. A breach hit blocks inside handleSubmit instead of disabling here.
-	const canContinuePassword = passwordStrength.ok;
-	const canCheckout = canContinuePassword && confirmation === password;
+	// Weak/breached passwords are gated by an escalating confirm, not blocked.
+	// The active stage drives the submit button's label and colour.
+	const confirmStages =
+		password.length > 0
+			? passwordConfirmStages(passwordStrength.ok, currentBreachCheck.status)
+			: [];
+	const activeStage = confirmStages[pwStage];
+	const canContinuePassword = passwordCleared;
+	const canCheckout = passwordCleared && confirmation === password;
 	const passwordsMismatch =
 		confirmation.length > 0 && password !== confirmation;
 
@@ -106,22 +116,18 @@ export function NewBoxForm() {
 
 	function handlePasswordChange(value: string) {
 		passwordBreachAbortRef.current?.abort();
+		setPwStage(0);
+		setPasswordCleared(false);
 		setPassword(value);
 	}
 
-	async function runPasswordBreachCheck(value = password) {
-		const strength = checkBoxPasswordStrength(value);
-		if (!strength.ok) return false;
-
+	async function ensureBreachChecked(
+		value: string
+	): Promise<PasswordBreachCheck["status"]> {
 		if (currentBreachCheck.password === value) {
-			if (currentBreachCheck.status === "clear") return true;
-			if (currentBreachCheck.status === "unavailable") return true;
-			if (currentBreachCheck.status === "found") {
-				toast.error("Choose a different password", {
-					description: "That password appears in known breach data."
-				});
-				return false;
-			}
+			if (currentBreachCheck.status === "clear") return "clear";
+			if (currentBreachCheck.status === "found") return "found";
+			if (currentBreachCheck.status === "unavailable") return "unavailable";
 		}
 
 		passwordBreachAbortRef.current?.abort();
@@ -131,26 +137,19 @@ export function NewBoxForm() {
 
 		try {
 			const count = await checkPwnedBoxPassword(value, controller.signal);
-			if (controller.signal.aborted) return false;
+			if (controller.signal.aborted) return "unavailable";
 
 			const status = count > 0 ? "found" : "clear";
 			setBreachCheck({ count, password: value, status });
-
-			if (count > 0) {
-				toast.error("Choose a different password", {
-					description: "That password appears in known breach data."
-				});
-			}
-
-			return count === 0;
+			return status;
 		} catch {
-			if (controller.signal.aborted) return false;
+			if (controller.signal.aborted) return "unavailable";
 
 			setBreachCheck({ password: value, status: "unavailable" });
 			toast.warning("Breach check unavailable", {
 				description: "You can continue, but the password was not checked."
 			});
-			return true;
+			return "unavailable";
 		}
 	}
 
@@ -164,9 +163,27 @@ export function NewBoxForm() {
 		}
 
 		if (step === "password") {
-			if (!passwordStrength.ok || checkingPasswordBreach) return;
-			const passwordClear = await runPasswordBreachCheck();
-			if (!passwordClear) return;
+			if (password.length === 0 || checkingPasswordBreach) return;
+
+			const alreadyBreached = currentBreachCheck.status === "found";
+			const breach = await ensureBreachChecked(password);
+			const stages = passwordConfirmStages(passwordStrength.ok, breach);
+
+			// A newly discovered breach reveals its first (amber) warning without
+			// spending a confirmation, so the user still gets the amber-then-red
+			// escalation rather than jumping straight to red.
+			if (breach === "found" && !alreadyBreached) {
+				setPwStage(0);
+				return;
+			}
+
+			// Each remaining click escalates one stage; the last click proceeds.
+			if (pwStage < stages.length - 1) {
+				setPwStage(pwStage + 1);
+				return;
+			}
+
+			setPasswordCleared(true);
 			setStep("confirm");
 			return;
 		}
@@ -323,10 +340,7 @@ export function NewBoxForm() {
 									</span>
 								</div>
 								<Input
-									aria-invalid={
-										password.length > 0 &&
-										(!passwordStrength.ok || passwordFoundInBreach)
-									}
+									aria-invalid={password.length > 0 && passwordFoundInBreach}
 									autoComplete="new-password"
 									className="h-12 rounded-lg px-5 text-[15px]"
 									id="box-password"
@@ -351,12 +365,13 @@ export function NewBoxForm() {
 								</AnimatedIconButton>
 								<AnimatedIconButton
 									className="h-12 rounded-lg text-[15px] sm:flex-1"
-									disabled={!canContinuePassword}
+									disabled={password.length === 0 || checkingPasswordBreach}
 									icon="arrow-right"
 									size="lg"
 									type="submit"
+									variant={activeStage?.variant ?? "default"}
 								>
-									Continue
+									{activeStage?.text ?? "Continue"}
 								</AnimatedIconButton>
 							</div>
 						</div>
@@ -428,13 +443,32 @@ export function NewBoxForm() {
 	);
 }
 
+type ConfirmStage = { text: string; variant: "warning" | "destructive" };
+
+// The confirmation a password needs before checkout: weak -> one amber "Use
+// anyway?", breached -> one red one. Empty means it's ready to go.
+function passwordConfirmStages(
+	strengthOk: boolean,
+	breachStatus: PasswordBreachCheck["status"]
+): ConfirmStage[] {
+	if (breachStatus === "found") {
+		return [{ text: "Use anyway?", variant: "destructive" }];
+	}
+	if (!strengthOk) {
+		return [{ text: "Use anyway?", variant: "warning" }];
+	}
+	return [];
+}
+
 function passwordToneClass(
 	password: string,
 	strengthOk: boolean,
 	check: PasswordBreachCheck
 ) {
 	if (!password) return "text-muted-foreground";
-	if (!strengthOk || check.status === "found") return "text-destructive";
+	if (check.status === "found") return "text-destructive";
+	// Weak is allowed with a confirm, so it reads as a caution, not an error.
+	if (!strengthOk) return "text-warning";
 	if (check.status === "unavailable") return "text-warning";
 	if (check.status === "clear") return "text-success";
 	return "text-muted-foreground";
@@ -448,7 +482,7 @@ function passwordMessage(
 	if (!password) return "";
 	if (check.status === "checking") return "Checking known breaches.";
 	if (check.status === "found") {
-		return `Found in ${formatBreachCount(check.count)} breach records. Choose another password.`;
+		return `Found in ${formatBreachCount(check.count)} breach records. Not recommended.`;
 	}
 	if (check.status === "clear") return "Not found in known breaches.";
 	if (check.status === "unavailable") {

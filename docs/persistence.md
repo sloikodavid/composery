@@ -60,8 +60,8 @@ sudo composery persistence prune
 
 ## Readiness
 
-Readiness is exposed through `/run/persistence/ready` and code-server's `/healthz` route.
-If `composery persistence apply` fails during boot, code-server does not become ready.
+Readiness is exposed through `/run/persistence/ready` and the IDE's `/healthz` route.
+If `composery persistence apply` fails during boot, the IDE does not become ready.
 
 ## Hostname
 

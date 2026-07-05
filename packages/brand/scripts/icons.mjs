@@ -1,5 +1,5 @@
 // Rasterizes the Composery icon into every platform's PNG/ICO assets. Vector
-// source: index.mjs. One home for all raster brand icons - the editor overlay,
+// source: packages/brand/index.mjs. One home for all raster brand icons - the editor overlay,
 // web, and the mobile app - so a size or padding change happens in a single file.
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
@@ -12,9 +12,9 @@ import {
 	centeredIconSvg,
 	iconSvg,
 	iconTileSvg
-} from "./index.mjs";
+} from "../index.mjs";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const ideMedia = join(
 	root,
 	"packages",

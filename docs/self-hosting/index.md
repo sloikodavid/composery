@@ -46,7 +46,8 @@ Whatever target you pick, treat the browser password and reverse proxy as the se
 boundary - Composery is intentionally root-capable inside the container:
 
 - use HTTPS;
-- register a strong password, or set `PASSWORD` / `HASHED_PASSWORD`.
+- register a strong password, or set `COMPOSERY_PASSWORD` /
+  `COMPOSERY_HASHED_PASSWORD`.
   (see [Configuration](../configuration.md));
 - keep the image updated;
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;

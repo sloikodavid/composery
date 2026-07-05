@@ -16,7 +16,7 @@ Recipe: [templates/render](https://github.com/sloikodavid/composery/tree/main/te
 3. Render reads `render.yaml`, creates the web service, and attaches the disk.
 
 Open the service URL Render assigns. Register the initial password in the browser, or set
-`PASSWORD` / `HASHED_PASSWORD` as a service environment variable.
+`COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` as a service environment variable.
 
 ## Notes
 

@@ -57,6 +57,8 @@ importers:
 
   packages/brand: {}
 
+  packages/ide: {}
+
   packages/mobile:
     dependencies:
       '@expo-google-fonts/inter':

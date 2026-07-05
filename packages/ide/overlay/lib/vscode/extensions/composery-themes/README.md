@@ -3,7 +3,7 @@
 Composery Light and Composery Dark color themes match the shared brand palette
 in `packages/brand/index.mjs`.
 
-This ships as a builtin extension inside Composery's code-server release. The
+This ships as a builtin extension inside the Composery IDE release. The
 path (`packages/ide/overlay/lib/vscode/extensions/`) is copied straight into the
 release tree during the build, so the themes are available with no Dockerfile or
 `product.json` changes.

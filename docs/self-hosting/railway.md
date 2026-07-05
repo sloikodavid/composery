@@ -19,7 +19,7 @@ Recipe: [templates/railway](https://github.com/sloikodavid/composery/tree/main/t
    `ghcr.io/sloikodavid/composery:latest`.
 2. Right-click the service -> **Attach Volume**, mount path `/data`.
 3. Set service variables: `PORT=8080` (register the password in the browser, or set.
-   `PASSWORD` / `HASHED_PASSWORD`).
+   `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD`).
 4. **Settings -> Networking -> Generate Domain**, target port `8080`.
 
 ## Notes

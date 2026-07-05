@@ -83,7 +83,7 @@ function runDefaultContainer() {
 			"-e",
 			`PORT=${config.port}`,
 			"-e",
-			`PASSWORD=${config.password}`,
+			`COMPOSERY_PASSWORD=${config.password}`,
 			"-v",
 			`${config.volumeName}:/data`,
 			config.imageTag
@@ -119,7 +119,7 @@ function runSystemdContainer() {
 			"-e",
 			`PORT=${config.port}`,
 			"-e",
-			`PASSWORD=${config.password}`,
+			`COMPOSERY_PASSWORD=${config.password}`,
 			"-e",
 			"COMPOSERY_DISABLE_FILE_DOWNLOADS=1",
 			"-v",
@@ -136,9 +136,9 @@ async function assertSystemdEnvBridge() {
 		return;
 	}
 
-	log("checking systemd init bridges deployment env to code-server");
+	log("checking systemd init bridges deployment env to the IDE");
 
-	// systemd (PID 1) gives services a clean env, so env reaches code-server only via /run/composery.env + the unit's EnvironmentFile.
+	// systemd (PID 1) gives services a clean env, so env reaches the IDE only via /run/composery.env + the unit's EnvironmentFile.
 	cleanupResources();
 	docker(["volume", "create", config.volumeName], { quiet: true });
 	runSystemdContainer();
@@ -147,7 +147,7 @@ async function assertSystemdEnvBridge() {
 	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
 
 	await waitForContainerFile("/run/composery.env");
-	execSh("grep -q '^PASSWORD=' /run/composery.env");
+	execSh("grep -q '^COMPOSERY_PASSWORD=' /run/composery.env");
 	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=1$' /run/composery.env");
 
 	const cookies = new Map();
@@ -184,7 +184,7 @@ async function assertWebAppSmoke() {
 	assertContains("default root page", rootPage, "Composery");
 
 	await assertWebsocketUpgrade(cookies);
-	await assertCodeServerGatesWhenPersistdNotReady(cookies);
+	await assertIdeGatesWhenPersistdNotReady(cookies);
 	dockerExec(["sudo", "-u", "user", "sudo", "-n", "true"]);
 	dockerExec(["sudo", "-u", "user", "code", "--version"], {
 		capture: true,
@@ -243,7 +243,7 @@ async function assertClipboardBridge() {
 	);
 
 	execSh(
-		"grep -q _remoteCLI.getClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js && grep -q _remoteCLI.setClipboardImage /opt/code-server/current/lib/vscode/out/server-main.js"
+		"grep -q _remoteCLI.getClipboardImage /opt/composery/ide/current/lib/vscode/out/server-main.js && grep -q _remoteCLI.setClipboardImage /opt/composery/ide/current/lib/vscode/out/server-main.js"
 	);
 
 	const shimResult = execSh(
@@ -257,8 +257,8 @@ async function assertClipboardBridge() {
 	}
 }
 
-async function assertCodeServerGatesWhenPersistdNotReady(cookies) {
-	log("checking code-server gates requests while persistence is not ready");
+async function assertIdeGatesWhenPersistdNotReady(cookies) {
+	log("checking IDE gates requests while persistence is not ready");
 	const readyFile = execSh("cat /run/persistence/ready", {
 		capture: true,
 		quiet: true
@@ -532,7 +532,7 @@ async function assertPersistdAppliesChanges() {
 
 	log("checking touched large baseline file does not create changed payload");
 	const large = execSh(
-		"find /opt/code-server/current -xdev -type f -size +1M | head -n1",
+		"find /opt/composery/ide/current -xdev -type f -size +1M | head -n1",
 		{ capture: true, quiet: true }
 	).stdout.trim();
 	if (!large) throw new Error("No large baseline file found for smoke check.");

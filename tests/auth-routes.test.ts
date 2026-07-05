@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { readRepoFile } from "./support/patchSource.ts";
 
-// Overlay route files compile with code-server's tsconfig, so they cannot be
+// Overlay route files compile with the upstream IDE tsconfig, so they cannot be
 // imported here (see tests/support and the overlay typecheck script); their
 // behavior is exercised by the smoke. These tests pin the security wiring of
 // the register / reset-password flows at the source level so a refactor

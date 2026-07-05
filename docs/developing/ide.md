@@ -1,6 +1,6 @@
 ---
 title: IDE
-description: Brand palette and code-server / VS Code bump runbook for the editor fork in packages/ide.
+description: Brand palette and upstream / VS Code bump runbook for the editor fork in packages/ide.
 ---
 
 Runbook for values and generated artifacts in `packages/ide/` that drift: things
@@ -8,9 +8,11 @@ that are correct today only because something upstream has not moved yet. Keep
 one source of truth and derive the rest where practical, so maintenance is
 usually a generator or update PR, not hand-retyping values.
 
-Browser- and operator-facing names are Composery. Keep `code-server` only for
-upstream machinery: cloned source, patch coordinates, the CLI binary, direct
-exec paths, artifact paths, and env contracts.
+Browser-, operator-, and runtime-facing names are Composery. Repo package names
+stay domain nouns (`ide`, `web`, `mobile`, `brand`, `cli`), while shipped binaries,
+paths, product metadata, settings files, cookies, sockets, and product-specific
+environment variables use Composery names. `code-server` stays only as upstream
+provenance: the submodule source, patch coordinates, and source URL metadata.
 
 ## Brand palette
 
@@ -42,14 +44,18 @@ values:
   `packages/ide/overlay/src/node/routes/{register,resetPassword,passwordConfig,login}.ts`
   and `packages/ide/overlay/src/node/{cli,http,main}.ts` - whole owned files, not
   patches. Readable and editable directly.
-- **code-server src/node customizations** (env-var rename to `COMPOSERY_*`, paths,
-  `toLocalBrowserAddress`, no-generated-password, `reset-password` CLI flag).
+- **Upstream server customizations** (`toLocalBrowserAddress`,
+  no-generated-password, `reset-password` CLI flag, auth routes).
   `packages/ide/overlay/src/node/{cli,http,main,util,wrapper,routes/...}.ts` -
-  whole owned files. The two env vars that cross into VS Code
-  (`CODE_SERVER_SESSION_SOCKET`, `CODE_SERVER_PARENT_PID`) keep upstream's names
-  so code-server's own `integration.diff` and `store-socket.diff` apply unmodified.
+  whole owned files.
+- **Product rebrand**.
+  `packages/ide/scripts/rebrand.mjs` runs after quilt and overlay, before the upstream
+  build. It rewrites the assembled tree from upstream product names to Composery
+  names and fails if live product code still contains old `code-server`, `Coder`,
+  `CODE_SERVER_*`, or `CS_*` surfaces. This keeps broad rename rules generated
+  and bump-friendly instead of spreading fragile hunks across every upstream file.
 - **Welcome tiles**.
-  `packages/brand/icons.mjs`, fed by `packages/brand/index.mjs`.
+  `packages/brand/scripts/icons.mjs`, fed by `packages/brand/index.mjs`.
 
 One place is generated, not hand-maintained: the `COLOR_THEME_*_INITIAL_COLORS`
 first-paint snapshot in `default-color-theme.diff`. Themes load asynchronously and
@@ -59,46 +65,56 @@ JSON files and covers every key, so it cannot silently fall behind. Regenerate i
 when the themes change, never hand-edit the patch's color lines, and confirm no
 `#0078D4` dark or `#005FB8` light survives.
 
-## code-server / VS Code Bumps
+## Upstream / VS Code Bumps
 
-The editor is built from pristine code-server (the `packages/ide/upstream/`
+The editor is built from pristine upstream (the `packages/ide/upstream/`
 submodule, pinned in `.gitmodules`) plus our overlay and patch stack. It is not a
-hard fork: `src/` is never checked in. `packages/ide/build.sh` copies the
+hard fork: `src/` is never checked in. `packages/ide/scripts/build.sh` copies the
 submodule into a scratch `build/` tree, appends our `patches/series` to
-code-server's, `quilt push -a` (fuzz=0), path-mirrors `overlay/` onto the tree,
-then runs code-server's `npm ci` / build / release.
+upstream's, `quilt push -a` (fuzz=0), path-mirrors `overlay/` onto the tree,
+runs `packages/ide/scripts/rebrand.mjs`, then runs the upstream `npm ci` / build /
+release.
 
 There are two kinds of customization, kept deliberately separate:
 
 - **Patches** (`packages/ide/patches/`) are VS Code-side only (`lib/vscode/*`):
   brand svgs, welcome, touch/narrow, theme cache, clipboard, etc. These must be
   patches because the VS Code build minifies/relocates the source, so a whole
-  owned file would not survive the build. code-server's own 25 patches (including
-  `integration.diff` and `store-socket.diff`) apply **unmodified** - we do not
+  owned file would not survive the build. Upstream's own patches apply
+  **unmodified** - we do not
   fork them.
 - **Overlay** (`packages/ide/overlay/`) is whole owned files, path-mirrored onto.
-  the tree after quilt push. This carries all our code-server `src/node/*`
+  the tree after quilt push. This carries our owned upstream-server `src/node/*`
   customizations (cli, http, main, util, wrapper, routes, persistence, the auth
   backend) and all browser assets/pages/extensions. Whole files, not diffs -
   readable and diffable directly.
+- **Rebrand** (`packages/ide/scripts/rebrand.mjs`) is a generated transformation over the
+  assembled tree. It owns systematic product names and product-specific env vars:
+  `COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`,
+  `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`,
+  `COMPOSERY_GITHUB_TOKEN`, and the narrower `COMPOSERY_*` toggles.
 
-This is intentionally source-build territory. A code-server bump is never just
+This is intentionally source-build territory. An upstream bump is never just
 the submodule pointer: the patch stack is applied against that source at build
 time, and the overlay files must be re-merged against the new upstream `src/node`
 versions. On each bump:
 
 - Sync the patch base.
-  Check out the new code-server commit in `packages/ide/upstream` (and its
+  Check out the new upstream commit in `packages/ide/upstream` (and its
   nested `lib/vscode` submodule). That tree is the authoring/check base, not a
   guess from memory.
 - Re-check every patch.
   Patches can fail loudly or silently no-op if upstream moved the code they
-  target. The authoring recipe is in `packages/ide/build.sh`; do not duplicate
+  target. The authoring recipe is in `packages/ide/scripts/build.sh`; do not duplicate
   it here.
 - Re-merge the overlay `src/node` files.
   Diff each owned file against the new upstream version and re-apply our changes.
   Easier than patches: you see the whole file, and `git diff` against the new
   upstream shows exactly what moved.
+- Re-run the rebrand check.
+  `pnpm check:ide` assembles the server tree, runs `rebrand.mjs`, and typechecks
+  it. If upstream introduces new live product names, add an explicit replacement
+  or a narrow allowlist only for real VS Code internals.
 - Re-flatten the themes.
   Use the new Dark/Light Modern base, then regenerate the first-paint maps.
 

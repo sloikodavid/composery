@@ -16,10 +16,10 @@ case "${COMPOSERY_INIT:-supervisor}" in
     exec /opt/composery/init/supervisor.sh
     ;;
   systemd)
-    # systemd (PID 1) starts services with a clean env, so bridge code-server's
+    # systemd (PID 1) starts services with a clean env, so bridge the IDE's
     # settings through a file its unit reads (/run is tmpfs, never persisted).
     ( umask 077
-      env | grep -E '^(PASSWORD|HASHED_PASSWORD|PORT|VSCODE_PROXY_URI|EXTENSIONS_GALLERY|LOG_LEVEL|GITHUB_TOKEN|BROWSER|EDITOR|VISUAL|GIT_EDITOR|KUBE_EDITOR|LANG|LC_ALL|PATH|XDG_RUNTIME_DIR|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
+      env | grep -E '^(PORT|BROWSER|EDITOR|VISUAL|GIT_EDITOR|KUBE_EDITOR|LANG|LC_ALL|PATH|XDG_RUNTIME_DIR|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
     exec /opt/composery/init/systemd.sh
     ;;
   *)

@@ -39,7 +39,7 @@ spec:
             - name: PORT
               value: "8080"
             # Register the first password in the browser, or supply one from a Secret:
-            # - name: PASSWORD
+            # - name: COMPOSERY_PASSWORD
             #   valueFrom:
             #     secretKeyRef:
             #       name: composery

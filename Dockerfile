@@ -2,7 +2,7 @@
 # runtime share this one ARG; bump both together when the IDE moves Node major.
 ARG NODE_IMAGE=node:24-trixie-slim@sha256:402f5c39a024babff2f1c906adbc17d89a6de8ced72ee6ea612e4d2ba33d962f
 
-# Build the IDE from the in-repo hard fork of code-server.
+# Build the IDE from the in-repo hard fork.
 FROM ${NODE_IMAGE} AS ide-builder
 
 # Apt packages are intentionally unpinned: the Debian suite comes from the base
@@ -26,27 +26,27 @@ RUN apt-get update \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
-# The IDE build uses code-server's own npm toolchain inside the cloned tree.
+# The IDE build uses the upstream npm toolchain inside the cloned tree.
 WORKDIR /src
 
 COPY packages/ide ./packages/ide
 
 WORKDIR /src/packages/ide
 
-# Clone pristine code-server at the pinned commit (no git context after COPY, so
+# Clone pristine upstream at the pinned commit (no git context after COPY, so
 # fetch directly, not via the dev submodule); it brings its own VS Code submodule.
-# Must match the packages/ide/upstream submodule pin (tested in code-server-patches.test.ts).
-ARG CODE_SERVER_COMMIT=1e6ed874e3138141a5636f6e0dbe8570aa6cd001
+# Must match the packages/ide/upstream submodule pin (tested in IDE patch tests).
+ARG COMPOSERY_IDE_UPSTREAM_COMMIT=1e6ed874e3138141a5636f6e0dbe8570aa6cd001
 RUN git init -q upstream \
   && git -C upstream remote add origin https://github.com/coder/code-server.git \
-  && git -C upstream fetch --depth 1 origin "${CODE_SERVER_COMMIT}" \
+  && git -C upstream fetch --depth 1 origin "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
   && git -C upstream checkout -q FETCH_HEAD \
   && git -C upstream submodule update --init --recursive --depth 1
 
-# Lay our overlay + patches over pristine code-server and build the release.
-RUN ./build.sh
+# Lay our overlay + patches over pristine upstream and build the release.
+RUN ./scripts/build.sh
 
-RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${CODE_SERVER_COMMIT}" \
+RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
     > build/release/.composery-upstream
 
 # Build the Composery CLI. cargo-chef caches the dependency compile so source-only edits skip it.
@@ -75,7 +75,7 @@ ARG COMPOSERY_BUILD_REVISION=unknown
 ARG COMPOSERY_BUILD_SOURCE=https://github.com/sloikodavid/composery
 
 LABEL org.opencontainers.image.title="Composery" \
-  org.opencontainers.image.description="A persistent VPS-like Linux appliance with code-server in the browser." \
+  org.opencontainers.image.description="A persistent VPS-like Linux appliance with Composery in the browser." \
   org.opencontainers.image.source="${COMPOSERY_BUILD_SOURCE}" \
   org.opencontainers.image.revision="${COMPOSERY_BUILD_REVISION}" \
   org.opencontainers.image.version="${COMPOSERY_BUILD_VERSION}" \
@@ -91,7 +91,7 @@ ARG PNPM_VERSION=11.7.0
 ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
   COMPOSERY_BUILD_REVISION="${COMPOSERY_BUILD_REVISION}" \
   COMPOSERY_BUILD_SOURCE="${COMPOSERY_BUILD_SOURCE}" \
-  BROWSER="/opt/code-server/current/lib/vscode/bin/helpers/browser.sh" \
+  BROWSER="/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh" \
   EDITOR="code --wait" \
   GIT_EDITOR="code --wait" \
   KUBE_EDITOR="code --wait" \
@@ -154,7 +154,7 @@ RUN groupmod --new-name user node \
   && usermod --login user --home /home/user --move-home node \
   && mkdir -p /home/user
 
-COPY --from=ide-builder /src/packages/ide/build/release /opt/code-server/current
+COPY --from=ide-builder /src/packages/ide/build/release /opt/composery/ide/current
 COPY --from=cli-builder /out/composery /opt/composery/bin/composery
 COPY rootfs/ /
 
@@ -177,15 +177,15 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && chown -R user:user /home/user \
   && chmod 0440 /etc/sudoers.d/user \
   && chmod +x /opt/composery/entrypoint.sh \
-  && chmod +x /opt/composery/code-server.sh \
+  && chmod +x /opt/composery/ide.sh \
   && chmod +x /opt/composery/init/*.sh \
   && chmod +x /usr/local/bin/xclip /usr/local/bin/xsel /usr/local/bin/wl-paste /usr/local/bin/wl-copy \
   && rm -f /etc/systemd/system/multi-user.target.wants/supervisor.service \
   && ln -sf /dev/null /etc/systemd/system/systemd-modules-load.service \
   && ln -sf ../persistence.service /etc/systemd/system/multi-user.target.wants/persistence.service \
   && ln -sf ../composery.service /etc/systemd/system/multi-user.target.wants/composery.service \
-  && ln -sf /opt/code-server/current/lib/vscode/bin/remote-cli/code-server /usr/local/bin/code \
-  && ln -sf /opt/code-server/current/bin/code-server /usr/local/bin/code-server \
+  && ln -sf /opt/composery/ide/current/lib/vscode/bin/remote-cli/ide /usr/local/bin/code \
+  && ln -sf /opt/composery/ide/current/bin/ide /usr/local/bin/ide \
   && ln -sf /opt/composery/bin/composery /usr/local/bin/composery \
   && update-desktop-database /usr/share/applications \
   && update-mime-database /usr/share/mime \
@@ -193,10 +193,10 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && /opt/composery/bin/composery persistence __generate-baseline --root / --output /opt/persistence/baseline.sqlite
 
 # No USER directive: persistence needs root to rebuild the filesystem on boot; supervisor
-# drops to the unprivileged `user` for code-server. Root is intentional.
+# drops to the unprivileged `user` for the IDE. Root is intentional.
 EXPOSE 8080
 
-# Liveness against code-server's auth-exempt /healthz; PORT comes from the container env.
+# Liveness against the IDE's auth-exempt /healthz; PORT comes from the container env.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
 

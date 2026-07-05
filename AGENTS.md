@@ -5,12 +5,13 @@
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
 - Collapse flashy or out-of-place words for consistency: Delete/Erase->Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
 
-## IDE / code-server naming
+## IDE / upstream naming
 
 `packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (`server.diff` for code-server's `src/node`, the rest for `lib/vscode/*`), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
-- `code-server` stays only for upstream machinery we haven't renamed: the CLI binary, build script names, env contracts the runtime image exposes (`PASSWORD`, `HASHED_PASSWORD`, `PORT`), `product.json` fields, patch names, artifact paths, and the VS Code subtree under.
-  `lib/vscode/`.
+- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `brand`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars use Composery names (`COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`, `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`, `COMPOSERY_GITHUB_TOKEN`, plus the narrower `COMPOSERY_*` toggles). `PORT` stays generic.
+- Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
+- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. Put systematic product renames there so bumps fail loudly and do not scatter broad rename hunks across upstream files.
 - No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
 - The `composery` prefix is namespacing, not decoration: use `composery`/`composery-` only for identifiers injected into a shared upstream namespace (CSS classes, custom properties, DOM attributes, command/setting/contribution/extension IDs). Never on things we own outright - TS files, symbols, types, or patch filenames.
 
@@ -68,11 +69,12 @@ docs/
   persistence.md
 packages/
   brand/
-    icons.mjs
+    scripts/
+      icons.mjs
+      logo.mjs
+      sync.mjs
     index.mjs
-    logo.mjs
     package.json
-    sync.mjs
   cli/
     crates/
       composery/
@@ -230,7 +232,11 @@ packages/
       trusted-domains-loopback-callback-guard.diff
       webview-mobile.diff
       welcome.diff
-    build.sh
+    scripts/
+      build.sh
+      rebrand.mjs
+      types.mjs
+    package.json
     upstream
   mobile/
     assets/
@@ -558,8 +564,8 @@ rootfs/
       init/
         supervisor.sh
         systemd.sh
-      code-server.sh
       entrypoint.sh
+      ide.sh
   usr/
     local/
       bin/
@@ -572,9 +578,7 @@ rootfs/
         composery-text-editor.desktop
         composery-url-handler.desktop
 scripts/
-  check-ide-overlay.mjs
-  check-rust.mjs
-  run.mjs
+  cli.mjs
   setup.mjs
   smoke.mjs
   tree.mjs
@@ -640,7 +644,6 @@ LICENSE
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
-README.md
 renovate.json
 SECURITY.md
 tsconfig.json

@@ -70,8 +70,9 @@ docker run -d --name composery -p 8080:8080 -v composery_data:/data \
 - systemd variants require a privileged container with host cgroup access.
 - State is stored in the `composery_data` Docker volume; Caddy certificate state in.
   `caddy_data`.
-- Register the initial password in the browser on first visit, or set `PASSWORD` /.
-  `HASHED_PASSWORD` in `composery.env` (single-quote values containing `$`). See
+- Register the initial password in the browser on first visit, or set
+  `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` in `composery.env`
+  (single-quote values containing `$`). See
   [Configuration](../configuration.md).
 - Upgrade with `docker compose pull && docker compose up -d`. Back up `composery_data`.
   before major upgrades.

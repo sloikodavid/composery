@@ -26,7 +26,7 @@ kubectl rollout status deploy/composery
 ```
 
 Browse to the Ingress host. Register the initial password in the browser, or provide it
-from a Secret (see the commented `PASSWORD` block in `composery.yaml`):
+from a Secret (see the commented `COMPOSERY_PASSWORD` block in `composery.yaml`):
 
 ```bash
 kubectl create secret generic composery --from-literal=password=example

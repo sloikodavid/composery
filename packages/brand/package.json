@@ -7,6 +7,6 @@
 		".": "./index.mjs"
 	},
 	"scripts": {
-		"build": "node sync.mjs && node icons.mjs && node logo.mjs"
+		"build": "node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs"
 	}
 }

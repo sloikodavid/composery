@@ -25,7 +25,27 @@ export const slugAvailability = query({
 		if (!identity) return { available: false };
 
 		const slug = sanitizeSlug(args.slug);
-		return { available: await isSlugAvailable(ctx, slug), slug };
+
+		// The caller's own active reservation isn't "taken" from their point of
+		// view - createCheckout reuses it. Ignore it here so a returning user can
+		// resume their checkout, and so pressing "Continue to checkout" (which
+		// creates the reservation) doesn't flip the slug to unavailable mid-flow.
+		const ownIntent = await ctx.db
+			.query("box_checkout_intents")
+			.withIndex("user_id_slug_status", (query) =>
+				query
+					.eq("user_id", identity.subject)
+					.eq("slug", slug)
+					.eq("status", "active")
+			)
+			.first();
+
+		return {
+			available: await isSlugAvailable(ctx, slug, {
+				intentId: ownIntent?._id
+			}),
+			slug
+		};
 	}
 });
 

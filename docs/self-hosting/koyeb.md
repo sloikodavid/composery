@@ -45,7 +45,8 @@ The same fields are available in the control panel (Docker image, port `8080`, a
 health check on `/healthz`, and the volume at `/data`).
 
 Open the `.koyeb.app` URL Koyeb assigns. Register the initial password in the browser, or
-set `PASSWORD` / `HASHED_PASSWORD` with another `--env` flag (or in the control panel).
+set `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` with another `--env` flag (or in the
+control panel).
 
 ## Notes
 

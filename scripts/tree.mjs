@@ -124,7 +124,7 @@ if (watch) {
 	if (actual === expected) process.exit(0);
 
 	console.error(
-		`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix'.`
+		`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
 	);
 	process.exit(1);
 }

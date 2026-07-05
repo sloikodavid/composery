@@ -17,21 +17,22 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BUILD="${BUILD_DIR:-$HERE/build}"
+PACKAGE_ROOT="$(cd "$HERE/.." && pwd)"
+BUILD="${BUILD_DIR:-$PACKAGE_ROOT/build}"
 
 echo "== 1. ensure code-server (+ its nested VS Code) is present at the pinned commit =="
 # Local dev uses the submodule; Docker pre-clones upstream/ (no git context after COPY).
-if [ ! -e "$HERE/upstream/package.json" ]; then
-  git -C "$HERE" submodule update --init --recursive upstream
+if [ ! -e "$PACKAGE_ROOT/upstream/package.json" ]; then
+  git -C "$PACKAGE_ROOT" submodule update --init --recursive upstream
 fi
 
 echo "== 2. scratch build tree = pristine code-server (submodule stays clean) =="
-rm -rf "$BUILD"; cp -r "$HERE/upstream" "$BUILD"
+rm -rf "$BUILD"; cp -r "$PACKAGE_ROOT/upstream" "$BUILD"
 
 echo "== 3. add our VS Code-side patches to code-server's series (upstream's own apply unmodified) =="
 while read -r p; do
-  [ -z "$p" ] || { cp "$HERE/patches/$p" "$BUILD/patches/$p"; printf '%s\n' "$p" >> "$BUILD/patches/series"; }
-done < "$HERE/patches/series"
+  [ -z "$p" ] || { cp "$PACKAGE_ROOT/patches/$p" "$BUILD/patches/$p"; printf '%s\n' "$p" >> "$BUILD/patches/series"; }
+done < "$PACKAGE_ROOT/patches/series"
 
 echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches), -p1, fuzz=0 =="
 # --fuzz=0 must be a flag: quilt only honors QUILT_PUSH_ARGS from quiltrc files,
@@ -40,17 +41,20 @@ echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches)
 ( cd "$BUILD" && QUILT_PATCHES=patches quilt push -a --fuzz=0 )
 
 echo "== 5. overlay: our whole owned files, path-mirrored =="
-cp -r "$HERE/overlay/src/." "$BUILD/src/"
-cp -r "$HERE/overlay/lib/vscode/extensions/." "$BUILD/lib/vscode/extensions/"
+cp -r "$PACKAGE_ROOT/overlay/src/." "$BUILD/src/"
+cp -r "$PACKAGE_ROOT/overlay/lib/vscode/extensions/." "$BUILD/lib/vscode/extensions/"
 
-echo "== 6. code-server's own build (npm: install -> server -> vscode -> release) =="
+echo "== 6. rebrand the assembled IDE tree and fail on old live product names =="
+node "$PACKAGE_ROOT/scripts/rebrand.mjs" "$BUILD"
+
+echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # Static asset URLs are keyed by product.json's "commit" (/stable-<commit>/static/...) and
 # cached long-term by browsers. code-server stamps it with `git rev-parse HEAD`, assuming its
 # repo commit moves when patches change - our fork pins that commit forever, so every release
 # would ship different code under identical URLs and clients would keep stale caches. Stamp a
 # content hash of everything we lay on top instead (asset-cache.diff makes the build honor it):
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
-COMPOSERY_STATIC_STAMP=$( { (cd "$HERE" && find patches overlay -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$HERE/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
+COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
 export COMPOSERY_STATIC_STAMP
 echo "static stamp: $COMPOSERY_STATIC_STAMP"
 ( cd "$BUILD" \
@@ -59,8 +63,8 @@ echo "static stamp: $COMPOSERY_STATIC_STAMP"
   && VERSION="${VERSION:-0.0.0}" npm run build:vscode \
   && KEEP_MODULES=1 npm run release )
 
-echo "== 7. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
-rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/lib/vscode/out/"
-rsync -a "$HERE/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
+echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
+rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/lib/vscode/out/"
+rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
 
 echo "Release: $BUILD/release"
