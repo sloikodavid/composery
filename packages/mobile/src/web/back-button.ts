@@ -24,15 +24,30 @@ export function choosePlacement(state: {
 // listens for 'change', so the synthetic media query stores listeners and
 // exposes __composerySetScheme to fire them on a live theme flip (no reload).
 // Non-color queries pass through, so the narrow/touch gates are untouched.
-export function buildBeforeLoad(scheme: "light" | "dark"): string {
+export function buildBeforeLoad(scheme: "light" | "dark", dev = false): string {
 	return `
 window.__composeryNative = true;
+window.__composeryDev = ${dev};
 window.__composeryScheme = ${JSON.stringify(scheme)};
 (function () {
 	if (!window.matchMedia || window.__composeryMatchMediaPatched) return;
 	window.__composeryMatchMediaPatched = true;
 	var real = window.matchMedia.bind(window);
+	// The WebView's own scheme, kept for diagnostics - it diverges from the
+	// app scheme on Android, which is why the shim and data-scheme exist.
+	window.__composeryNativeDark = real("(prefers-color-scheme: dark)").matches;
 	var listeners = [];
+	// CSS media queries can't be shimmed like matchMedia, and the WebView's
+	// native prefers-color-scheme tracks the Android activity theme, not the
+	// system. Pages key their scheme CSS on data-scheme as the app override
+	// (auth pages via brand.css, workbench first-paint via overlays.diff).
+	function stampScheme() {
+		if (document.documentElement) {
+			document.documentElement.dataset.scheme = window.__composeryScheme;
+		}
+	}
+	stampScheme();
+	document.addEventListener("DOMContentLoaded", stampScheme);
 	window.matchMedia = function (query) {
 		if (!/prefers-color-scheme/i.test(query)) return real(query);
 		return {
@@ -47,6 +62,7 @@ window.__composeryScheme = ${JSON.stringify(scheme)};
 	};
 	window.__composerySetScheme = function (s) {
 		window.__composeryScheme = s === "dark" ? "dark" : "light";
+		stampScheme();
 		var ev = { matches: window.__composeryScheme === "dark", media: "(prefers-color-scheme: dark)" };
 		listeners.slice().forEach(function (cb) { try { cb.call(null, ev); } catch (e) {} });
 	};
@@ -93,8 +109,12 @@ export const INSTALL_SCRIPT = `(function () {
 			"#" + ID + ":focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px;}" +
 			"#" + ID + " .codicon{font-size:16px;line-height:16px;}" +
 			".part.titlebar .titlebar-left .menubar{padding-left:0!important;padding-right:0!important;}" +
-			".part.titlebar .titlebar-left .menubar-menu-button{width:22px!important;min-width:22px!important;padding:0!important;}" +
-			".part.titlebar .titlebar-left .menubar-menu-button .menubar-menu-title{transform:translateY(1px);}";
+			// Only the overflow (hamburger) button gets the 22px pairing box. A bare
+			// .menubar-menu-button selector would force File/Edit/... to 22px too,
+			// which also poisons the menubar's own overflow measurement (it reads
+			// offsetWidth), so no label ever moves into the overflow menu.
+			".part.titlebar .titlebar-left .menubar-menu-button:has(.toolbar-toggle-more){width:22px!important;min-width:22px!important;padding:0!important;}" +
+			".part.titlebar .titlebar-left .menubar-menu-button .menubar-menu-title.toolbar-toggle-more{transform:translateY(1px);}";
 		(document.head || document.documentElement).appendChild(s);
 	}
 
@@ -146,6 +166,27 @@ export const INSTALL_SCRIPT = `(function () {
 		}
 	}
 
+	// One-shot layout facts for the Metro console - the WebView can't be
+	// eyeballed like a browser tab, and it has behaved differently before
+	// (native scheme, menubar overflow), so keep the evidence one repro away.
+	function diag() {
+		try {
+			var mb = document.querySelector(".menubar");
+			var btns = mb ? [].slice.call(mb.querySelectorAll(".menubar-menu-button")) : [];
+			post("composery:diag:" + JSON.stringify({
+				ua: navigator.userAgent,
+				w: window.innerWidth,
+				dpr: window.devicePixelRatio,
+				nativeDark: !!window.__composeryNativeDark,
+				scheme: window.__composeryScheme || null,
+				menubarW: mb ? mb.offsetWidth : null,
+				menubarFlex: mb ? getComputedStyle(mb).flex : null,
+				visibleMenus: btns.filter(function (b) { return b.style.visibility !== "hidden"; }).length,
+				totalMenus: btns.length
+			}));
+		} catch (e) {}
+	}
+
 	var scheduled = false;
 	function schedule() {
 		if (scheduled) return;
@@ -153,6 +194,11 @@ export const INSTALL_SCRIPT = `(function () {
 		requestAnimationFrame(function () { scheduled = false; placeTitlebar(); readBg(); });
 	}
 
+	// Dev only: production would compute and post a message nobody logs.
+	if (window.__composeryDev) {
+		diag();
+		setTimeout(diag, 6000);
+	}
 	schedule();
 	new MutationObserver(schedule).observe(document.documentElement, {
 		attributes: true, childList: true, subtree: true

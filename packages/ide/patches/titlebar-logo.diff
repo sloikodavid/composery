@@ -1,6 +1,26 @@
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-@@ -473,6 +473,12 @@ export class BrowserTitlebarPart extends
+@@ -10,6 +10,7 @@
+ import { getWCOTitlebarAreaRect, getZoomFactor, isWCOEnabled } from '../../../../base/browser/browser.js';
+ import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTitlebar, hasNativeTitlebar, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, getWindowControlsStyle, WindowControlsStyle, TitlebarStyle, MenuSettings, hasNativeMenu } from '../../../../platform/window/common/window.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
++import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+ import { DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+@@ -37,7 +38,7 @@
+ import { AccountsActivityActionViewItem, isAccountsActionVisible, SimpleAccountActivityActionViewItem, SimpleGlobalActivityActionViewItem } from '../globalCompositeBar.js';
+ import { HoverPosition } from '../../../../base/browser/ui/hover/hoverWidget.js';
+ import { IEditorGroupsContainer, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+-import { ActionRunner, IAction, Separator } from '../../../../base/common/actions.js';
++import { ActionRunner, IAction, Separator, toAction } from '../../../../base/common/actions.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { ActionsOrientation, IActionViewItem, prepareActions } from '../../../../base/browser/ui/actionbar/actionbar.js';
+ import { EDITOR_CORE_NAVIGATION_COMMANDS } from '../editor/editorCommands.js';
+@@ -470,9 +471,15 @@
+ 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
+ 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
+ 
 -		// App Icon (Windows, Linux)
 -		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
 +		// App Icon
@@ -15,24 +35,31 @@
  		}
  
  		// Draggable region that we can manipulate for #52522
-@@ -562,7 +565,12 @@ export class BrowserTitlebarPart extends
+@@ -562,6 +569,21 @@
  			this._register(addDisposableListener(this.rootContainer, EventType.CONTEXT_MENU, e => {
--				EventHelper.stop(e);
--
-+				// Let the browser provide the normal link context menu for the logo anchor.
-+				if (this.appIcon && isHTMLElement(e.target) && isAncestor(e.target, this.appIcon)) {
+ 				EventHelper.stop(e);
+ 
++				// Composery: the logo is a link, so give it a browser-style link context menu -
++				// rendered with the workbench context menu so it matches the File > ... menus.
++				const logoHref = this.appIcon?.getAttribute('href');
++				if (logoHref && isHTMLElement(e.target) && isAncestor(e.target, this.appIcon!)) {
++					const anchor = new StandardMouseEvent(getWindow(this.element), e);
++					this.contextMenuService.showContextMenu({
++						getAnchor: () => anchor,
++						getActions: () => [
++							toAction({ id: 'composery.logo.openInNewTab', label: localize('composeryLogoOpenInNewTab', "Open Link in New Tab"), run: () => getWindow(this.element).open(logoHref, '_blank', 'noopener') }),
++							toAction({ id: 'composery.logo.copyLinkAddress', label: localize('composeryLogoCopyLinkAddress', "Copy Link Address"), run: () => this.instantiationService.invokeFunction(accessor => accessor.get(IClipboardService).writeText(logoHref)) })
++						]
++					});
 +					return;
 +				}
-+
-+				EventHelper.stop(e);
 +
  				let targetMenu: MenuId;
  				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
  					targetMenu = MenuId.TitleBarTitleContext;
- 				} else {
 --- a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 +++ b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
-@@ -579,6 +579,10 @@ export class WorkbenchThemeService exten
+@@ -572,6 +572,10 @@
  		}
  		this.container.classList.add(...newTheme.classNames);
  
@@ -45,7 +72,7 @@
  		if (!this.colorThemingParticipantChangeListener) {
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-@@ -293,9 +293,26 @@
+@@ -293,7 +293,24 @@
  	background-image: url('../../../media/code-icon.svg');
  	background-repeat: no-repeat;
  	background-position: center center;
@@ -71,5 +98,3 @@
  }
  
  .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
- 	line-height: 30px;
- }

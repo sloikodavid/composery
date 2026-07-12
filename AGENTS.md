@@ -214,6 +214,7 @@ packages/
       default-layout.diff
       extensions-view-themes.diff
       markdown-preview-loopback-callback-bridge.diff
+      menu-home-actions.diff
       narrow-fullscreen.diff
       narrow-gate.diff
       node-engine.diff
@@ -226,6 +227,7 @@ packages/
       titlebar-logo.diff
       titlebar-menubar-overflow.diff
       touch-context-menu.diff
+      touch-editor-scroll-release.diff
       touch-editor.diff
       touch-gate.diff
       touch-menu.diff

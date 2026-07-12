@@ -12,23 +12,43 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  
  	constructor (
  		@ILogService private logService: ILogService,
-@@ -95,6 +95,8 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
+@@ -95,6 +95,16 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
  			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
  		}
  
++		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
++			command: {
++				id: 'composery.checkForUpdates',
++				title: localize('checkForUpdates', "Check for Updates"),
++			},
++			order: -2,
++		});
++
 +		this.addShowQrCommand();
 +
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -178,6 +178,24 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
+@@ -178,6 +178,36 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
  		}
  	}
  
 +	private addShowQrCommand() {
++		const targetWindow = window.top || window;
++		const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
++		const { hostname, protocol } = new URL(instanceUrl);
++		const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
++		const isLoopback = normalizedHostname === 'localhost'
++			|| normalizedHostname.endsWith('.localhost')
++			|| normalizedHostname.startsWith('127.')
++			|| normalizedHostname === '[::1]';
++		const isUnspecified = normalizedHostname === '0.0.0.0'
++			|| normalizedHostname === '[::]';
++		if (!['http:', 'https:'].includes(protocol) || isLoopback || isUnspecified) {
++			return;
++		}
++
 +		CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor: ServicesAccessor) => {
-+			const targetWindow = window.top || window;
-+			const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
 +			accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);
 +		});
 +

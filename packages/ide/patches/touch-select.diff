@@ -21,3 +21,22 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts b/lib/vsco
  			this.selectBoxDelegate = new SelectBoxNative(options, selected, styles, selectBoxOptions);
  		} else {
  			this.selectBoxDelegate = new SelectBoxList(options, selected, contextViewProvider, styles, selectBoxOptions);
+diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
+--- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
++++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
+@@ -6,3 +6,2 @@
+ import * as dom from '../../dom.js';
+-import { EventType, Gesture } from '../../touch.js';
+ import { ISelectBoxDelegate, ISelectBoxOptions, ISelectBoxStyles, ISelectData, ISelectOptionItem } from './selectBox.js';
+@@ -49,11 +48,4 @@ export class SelectBoxNative extends Disposable implements ISelectBoxDelegate {
+ 	private registerListeners() {
+-		this._register(Gesture.addTarget(this.selectElement));
+-		[EventType.Tap].forEach(eventType => {
+-			this._register(dom.addDisposableListener(this.selectElement, eventType, (e) => {
+-				this.selectElement.focus();
+-			}));
+-		});
+-
+ 		this._register(dom.addStandardDisposableListener(this.selectElement, 'click', (e) => {
+ 			dom.EventHelper.stop(e, true);
+ 		}));

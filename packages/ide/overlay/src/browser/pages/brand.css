@@ -5,12 +5,12 @@
 	--vscode-button-background: #171717;
 	--vscode-button-foreground: #fafafa;
 	--vscode-button-hoverBackground: #404040;
+	--vscode-focusBorder: #a3a3a3;
 	--vscode-editor-background: #ffffff;
-	--vscode-errorForeground: #dc2626;
 	--vscode-editorHoverWidget-background: #ffffff;
 	--vscode-editorHoverWidget-border: #e5e5e5;
 	--vscode-editorHoverWidget-foreground: #000000;
-	--vscode-focusBorder: #a3a3a3;
+	--vscode-errorForeground: #dc2626;
 	--auth-input-focus: #a3a3a3;
 	--auth-message-background: #f5f5f5;
 	--auth-message-border: #e5e5e5;
@@ -18,11 +18,11 @@
 	--vscode-input-background: #ffffff;
 	--vscode-input-border: #d4d4d4;
 	--vscode-input-foreground: #000000;
-	--vscode-cornerRadius-medium: 6px;
 	--vscode-toolbar-activeBackground: #a6a6a650;
 	--vscode-toolbar-hoverBackground: #b8b8b850;
-	--vscode-toolbar-hoverOutline: transparent;
 	--vscode-shadow-hover: 0 2px 8px #00000026;
+	--vscode-cornerRadius-medium: 6px;
+	--vscode-toolbar-hoverOutline: transparent;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,4 +47,49 @@
 		--vscode-toolbar-hoverBackground: #5a5d5e50;
 		--vscode-shadow-hover: 0 2px 8px #0000005c;
 	}
+}
+
+/* App override: the mobile app stamps data-scheme with the app scheme. */
+:root[data-scheme="light"] {
+	--vscode-button-background: #171717;
+	--vscode-button-foreground: #fafafa;
+	--vscode-button-hoverBackground: #404040;
+	--vscode-focusBorder: #a3a3a3;
+	--vscode-editor-background: #ffffff;
+	--vscode-editorHoverWidget-background: #ffffff;
+	--vscode-editorHoverWidget-border: #e5e5e5;
+	--vscode-editorHoverWidget-foreground: #000000;
+	--vscode-errorForeground: #dc2626;
+	--auth-input-focus: #a3a3a3;
+	--auth-message-background: #f5f5f5;
+	--auth-message-border: #e5e5e5;
+	--vscode-foreground: #000000;
+	--vscode-input-background: #ffffff;
+	--vscode-input-border: #d4d4d4;
+	--vscode-input-foreground: #000000;
+	--vscode-toolbar-activeBackground: #a6a6a650;
+	--vscode-toolbar-hoverBackground: #b8b8b850;
+	--vscode-shadow-hover: 0 2px 8px #00000026;
+}
+
+:root[data-scheme="dark"] {
+	--vscode-button-background: #fafafa;
+	--vscode-button-foreground: #0a0a0a;
+	--vscode-button-hoverBackground: #e5e5e5;
+	--vscode-focusBorder: #737373;
+	--vscode-editor-background: #0a0a0a;
+	--vscode-editorHoverWidget-background: #171717;
+	--vscode-editorHoverWidget-border: #ffffff1f;
+	--vscode-editorHoverWidget-foreground: #fafafa;
+	--vscode-errorForeground: #f87171;
+	--auth-input-focus: #737373;
+	--auth-message-background: #171717;
+	--auth-message-border: #ffffff1f;
+	--vscode-foreground: #fafafa;
+	--vscode-input-background: #171717;
+	--vscode-input-border: #ffffff29;
+	--vscode-input-foreground: #fafafa;
+	--vscode-toolbar-activeBackground: #6c6f7050;
+	--vscode-toolbar-hoverBackground: #5a5d5e50;
+	--vscode-shadow-hover: 0 2px 8px #0000005c;
 }

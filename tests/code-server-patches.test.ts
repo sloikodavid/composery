@@ -102,6 +102,34 @@ describe("patch stack lint", () => {
 	});
 });
 
+describe("QR action", () => {
+	test("is unavailable for addresses another device cannot reach", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
+
+		expect(source).toContain("normalizedHostname.endsWith('.localhost')");
+		expect(source).toContain("normalizedHostname.startsWith('127.')");
+		expect(source).toContain("normalizedHostname === '[::1]'");
+		expect(source).toContain("normalizedHostname === '0.0.0.0'");
+		expect(source).toContain("normalizedHostname === '[::]'");
+		expect(
+			source.indexOf("if (!['http:', 'https:'].includes(protocol)")
+		).toBeLessThan(source.indexOf("CommandsRegistry.registerCommand"));
+	});
+
+	test("fits the QR card within narrow and short webviews", () => {
+		const extension = readRepoFile(
+			"packages/ide/overlay/lib/vscode/extensions/composery-qr/extension.js"
+		);
+
+		expect(extension).toContain("width: min(288px, 100%);");
+		expect(extension).toContain(
+			"@media (max-width: 335px), (max-height: 430px)"
+		);
+		expect(extension).toContain("calc(100vh - 98px)");
+		expect(extension).toContain("overflow: auto;");
+	});
+});
+
 // ---------------------------------------------------------------------------
 // narrow.js keyboard-inset behavior, executed in a browser-shaped VM.
 // ---------------------------------------------------------------------------
@@ -341,14 +369,19 @@ describe("narrow overlay", () => {
 	// constructor, where touch overrides even an explicit useCustomDrawn - so no
 	// call-site override can quietly bring the custom-drawn list back.
 	test("touch-select patch keys the native-select decision off the touch gate", () => {
-		const selectPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-select.diff`)
-		);
+		const rawPatch = readRepoFile(`${PATCHES_DIR}/touch-select.diff`);
+		const selectPatch = addedLines(rawPatch);
 
 		expect(selectPatch).toContain(
 			"isTouch(mainWindow) || (isMacintosh && !selectBoxOptions?.useCustomDrawn)"
 		);
 		expect(selectPatch).not.toContain("useCustomDrawn:");
+		// A native select must receive the untouched browser touchstart. Registering
+		// it with Gesture causes preventDefault(), which suppresses the OS picker.
+		expect(rawPatch).toContain(
+			"-\t\tthis._register(Gesture.addTarget(this.selectElement));"
+		);
+		expect(selectPatch).not.toContain("Gesture.addTarget(this.selectElement)");
 	});
 
 	// The editor's own selection long-press must arm before Gesture's during-hold
@@ -725,8 +758,7 @@ describe("composery shortcuts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Updates: the status bar extension is the user-visible update path for runtime
-// images, so exercise the shipped CommonJS extension with a mocked VS Code API.
+// Updates: exercise the shipped CommonJS extension with a mocked VS Code API.
 // ---------------------------------------------------------------------------
 
 type UpdatesRelease = {
@@ -740,12 +772,6 @@ type UpdatesHarness = {
 	fetchCalls: string[];
 	messages: string[];
 	opened: string[];
-	statusBar: {
-		command?: string | undefined;
-		showCalled: boolean;
-		text?: string | undefined;
-		tooltip?: string | undefined;
-	};
 };
 
 function loadUpdatesExtension({
@@ -770,10 +796,7 @@ function loadUpdatesExtension({
 		commands,
 		fetchCalls: [],
 		messages: [],
-		opened: [],
-		statusBar: {
-			showCalled: false
-		}
+		opened: []
 	};
 	const vscode = {
 		StatusBarAlignment: { Right: 2 },
@@ -794,34 +817,12 @@ function loadUpdatesExtension({
 			}
 		},
 		window: {
-			createStatusBarItem() {
-				return {
-					get command() {
-						return harness.statusBar.command;
-					},
-					set command(value: string | undefined) {
-						harness.statusBar.command = value;
-					},
-					show() {
-						harness.statusBar.showCalled = true;
-					},
-					get text() {
-						return harness.statusBar.text;
-					},
-					set text(value: string | undefined) {
-						harness.statusBar.text = value;
-					},
-					get tooltip() {
-						return harness.statusBar.tooltip;
-					},
-					set tooltip(value: string | undefined) {
-						harness.statusBar.tooltip = value;
-					}
-				};
-			},
 			async showInformationMessage(message: string) {
 				harness.messages.push(message);
 				return action;
+			},
+			async showWarningMessage(message: string) {
+				harness.messages.push(message);
 			}
 		}
 	};
@@ -888,6 +889,10 @@ describe("composery updates", () => {
 			expect.objectContaining({ command: "composery.checkForUpdates" })
 		);
 		expect(extension).toContain('registerCommand("composery.checkForUpdates"');
+		expect(extension).not.toContain("createStatusBarItem");
+		const qrAction = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
+		expect(qrAction).toContain("id: 'composery.checkForUpdates'");
+		expect(qrAction).toContain("order: -2");
 	});
 
 	test("startup check announces a newer stable release and opens it", async () => {
@@ -904,15 +909,12 @@ describe("composery updates", () => {
 		activate({ subscriptions: [] });
 		await flushUpdatesExtension();
 
-		expect(harness.statusBar.showCalled).toBe(true);
-		expect(harness.statusBar.text).toBe("$(arrow-up) 1.2.3");
-		expect(harness.statusBar.tooltip).toBe(
-			"Composery 1.3.0 is available - click to view the release"
-		);
 		expect(harness.fetchCalls).toEqual([
 			"https://api.github.com/repos/sloikodavid/composery/releases/latest"
 		]);
-		expect(harness.messages).toEqual(["Composery 1.3.0 is available."]);
+		expect(harness.messages).toEqual([
+			"Composery 1.3.0 is available. You have 1.2.3."
+		]);
 		expect(harness.opened).toEqual([
 			"https://github.com/sloikodavid/composery/releases/tag/v1.3.0"
 		]);
@@ -949,7 +951,34 @@ describe("composery updates", () => {
 
 		expect(harness.fetchCalls).toEqual([]);
 		expect(harness.messages).toEqual([
-			"Composery preview-abc123 - update checks run on stable releases only."
+			"You have development build preview-abc123. Updates are checked automatically in stable releases."
+		]);
+	});
+
+	test("manual check explains an unversioned development build", async () => {
+		const { activate, harness } = loadUpdatesExtension({ version: "unknown" });
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.fetchCalls).toEqual([]);
+		expect(harness.messages).toEqual([
+			"This development build has no release version. Updates are checked automatically in stable releases."
+		]);
+	});
+
+	test("manual check distinguishes a failed stable-release check", async () => {
+		const { activate, harness } = loadUpdatesExtension({});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.messages).toEqual([
+			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
 		]);
 	});
 });

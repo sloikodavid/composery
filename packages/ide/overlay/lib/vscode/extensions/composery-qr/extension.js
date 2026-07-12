@@ -36,17 +36,20 @@ function render(url) {
 			content="default-src 'none'; style-src 'unsafe-inline';"
 		/>
 		<style>
+			* {
+				box-sizing: border-box;
+			}
 			html,
 			body {
-				height: 100%;
+				min-height: 100%;
 				margin: 0;
 			}
 			body {
 				display: flex;
 				align-items: center;
 				justify-content: center;
-				box-sizing: border-box;
 				padding: 24px;
+				overflow: auto;
 				font-family: var(--vscode-font-family);
 				color: var(--vscode-foreground);
 			}
@@ -55,13 +58,13 @@ function render(url) {
 				flex-direction: column;
 				align-items: center;
 				gap: 20px;
+				width: 100%;
 				max-width: 360px;
 				text-align: center;
 			}
 			.frame {
-				box-sizing: content-box;
-				width: 248px;
-				height: 248px;
+				width: min(288px, 100%);
+				aspect-ratio: 1;
 				padding: 20px;
 				background: #ffffff;
 				border-radius: 16px;
@@ -70,6 +73,18 @@ function render(url) {
 				display: block;
 				width: 100%;
 				height: 100%;
+			}
+			@media (max-width: 335px), (max-height: 430px) {
+				body {
+					padding: 12px;
+				}
+				.card {
+					gap: 12px;
+				}
+				.frame {
+					width: min(288px, 100%, calc(100vh - 98px));
+					padding: 12px;
+				}
 			}
 			.hint {
 				margin: 0;

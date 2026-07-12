@@ -56,4 +56,30 @@ describe("color-scheme override", () => {
 		expect(script).toContain("return real(query)");
 		expect(script).toContain("__composerySetScheme");
 	});
+
+	// CSS media queries can't be shimmed, so pages key scheme CSS on the
+	// data-scheme attribute the app stamps (and restamps on live flips).
+	test("stamps data-scheme for CSS and restamps on scheme flips", () => {
+		const script = buildBeforeLoad("dark");
+		expect(script).toContain("dataset.scheme");
+		// The live-flip path restamps: stampScheme() is called inside setScheme.
+		const setScheme = script.slice(script.indexOf("__composerySetScheme"));
+		expect(setScheme).toContain("stampScheme()");
+	});
+});
+
+describe("menubar pairing CSS", () => {
+	// A bare .menubar-menu-button width rule would force File/Edit/... to 22px
+	// and poison the menubar's overflow measurement (it reads offsetWidth), so
+	// labels smush instead of collapsing into the overflow menu.
+	test("22px box applies to the overflow button only", () => {
+		for (const line of INSTALL_SCRIPT.split("\n")) {
+			if (line.includes("width:22px") && line.includes("menubar-menu-button")) {
+				expect(line).toContain(":has(.toolbar-toggle-more)");
+			}
+		}
+		expect(INSTALL_SCRIPT).toContain(
+			".menubar-menu-button:has(.toolbar-toggle-more)"
+		);
+	});
 });

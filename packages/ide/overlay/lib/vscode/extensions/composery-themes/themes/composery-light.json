@@ -85,7 +85,7 @@
 		"keybindingLabel.foreground": "#3B3B3B",
 		"list.activeSelectionBackground": "#f5f5f5",
 		"list.activeSelectionForeground": "#000000",
-		"menu.selectionBackground": "#ebebeb",
+		"menu.selectionBackground": "#00000014",
 		"menu.selectionForeground": "#000000",
 		"notificationCenterHeader.background": "#ffffff",
 		"notificationCenterHeader.foreground": "#3B3B3B",

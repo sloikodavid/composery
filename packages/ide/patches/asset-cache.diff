@@ -20,7 +20,7 @@
  		return void res.end(data);
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -171,11 +171,49 @@
+@@ -171,11 +171,48 @@
  			try {
  				await navigator.serviceWorker.register(serviceWorker.path, {
  					scope: serviceWorker.scope,
@@ -30,11 +30,10 @@
  			} catch (error: any) {
  				this.logService.error('[Service Worker] registration', error as Error);
  			}
-+			try {
-+				await this.purgeStaleClientCaches();
-+			} catch (error: any) {
++			// Fire-and-forget: housekeeping must never gate workbench startup.
++			this.purgeStaleClientCaches().catch((error: any) => {
 +				this.logService.error('[Service Worker] stale cache purge', error as Error);
-+			}
++			});
 +		}
 +	}
 +

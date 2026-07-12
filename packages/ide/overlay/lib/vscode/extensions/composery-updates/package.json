@@ -1,7 +1,7 @@
 {
 	"name": "composery-updates",
 	"displayName": "Composery Updates",
-	"description": "Shows the running Composery version and notifies you when a newer release is available.",
+	"description": "Checks for Composery updates and notifies you when a newer release is available.",
 	"version": "0.1.0",
 	"publisher": "composery",
 	"license": "Apache-2.0",

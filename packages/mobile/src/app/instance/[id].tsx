@@ -213,7 +213,7 @@ export default function InstanceScreen() {
 	}
 
 	const beforeLoad = useMemo(
-		() => buildBeforeLoad(scheme === "dark" ? "dark" : "light"),
+		() => buildBeforeLoad(scheme === "dark" ? "dark" : "light", __DEV__),
 		[scheme]
 	);
 	const instanceOrigin = instance ? new URL(instance.url).origin : "";
@@ -298,6 +298,7 @@ export default function InstanceScreen() {
 						thirdPartyCookiesEnabled
 						javaScriptEnabled
 						domStorageEnabled
+						webviewDebuggingEnabled={__DEV__}
 						injectedJavaScriptBeforeContentLoaded={beforeLoad}
 						injectedJavaScript={INSTALL_SCRIPT}
 						onMessage={(event) => {
@@ -312,6 +313,13 @@ export default function InstanceScreen() {
 								setOverlayBackActive(false);
 							} else if (data.startsWith("composery:bg:")) {
 								setStripColor(data.slice("composery:bg:".length));
+							} else if (data.startsWith("composery:diag:")) {
+								// WebView layout facts (see back-button.ts diag; dev-only sender) -
+								// the WebView can't be inspected like a browser tab, so Metro logs them.
+								console.log(
+									"[instance-webview]",
+									data.slice("composery:diag:".length)
+								);
 							}
 						}}
 						onLoadStart={() => {

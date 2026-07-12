@@ -29,20 +29,35 @@ export function versionUrl(instanceUrl: string): string {
 	return endpointUrl(instanceUrl, "/version");
 }
 
+type FetchOptions = { timeoutMs?: number; fetchImpl?: ProbeFetch };
+
+// Shared timeout scaffolding for the instance endpoints: abort after
+// timeoutMs, always clear the timer.
+async function fetchWithTimeout(
+	url: string,
+	init: RequestInit,
+	options: FetchOptions
+): Promise<Response> {
+	const fetchImpl = options.fetchImpl ?? fetch;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 5000);
+	try {
+		return await fetchImpl(url, { ...init, signal: controller.signal });
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 export async function probeComposery(
 	instanceUrl: string,
-	options: { timeoutMs?: number; fetchImpl?: ProbeFetch } = {}
+	options: FetchOptions = {}
 ): Promise<ProbeResult> {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const timeoutMs = options.timeoutMs ?? 5000;
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const response = await fetchImpl(probeUrl(instanceUrl), {
-			signal: controller.signal,
-			redirect: "follow",
-			headers: { accept: "application/json" }
-		});
+		const response = await fetchWithTimeout(
+			probeUrl(instanceUrl),
+			{ redirect: "follow", headers: { accept: "application/json" } },
+			options
+		);
 		if (!response.ok) return { ok: false, reason: "not-composery" };
 		let body: unknown;
 		try {
@@ -64,8 +79,6 @@ export async function probeComposery(
 			reason: "unreachable",
 			message: "Couldn't reach the server"
 		};
-	} finally {
-		clearTimeout(timer);
 	}
 }
 
@@ -76,24 +89,18 @@ export async function probeComposery(
 // non-stamp response) skips the check.
 export async function fetchServerStamp(
 	instanceUrl: string,
-	options: { timeoutMs?: number; fetchImpl?: ProbeFetch } = {}
+	options: FetchOptions = {}
 ): Promise<string | null> {
-	const fetchImpl = options.fetchImpl ?? fetch;
-	const timeoutMs = options.timeoutMs ?? 5000;
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
-		const response = await fetchImpl(versionUrl(instanceUrl), {
-			signal: controller.signal,
-			credentials: "include",
-			headers: { accept: "text/plain" }
-		});
+		const response = await fetchWithTimeout(
+			versionUrl(instanceUrl),
+			{ credentials: "include", headers: { accept: "text/plain" } },
+			options
+		);
 		if (!response.ok) return null;
 		const text = (await response.text()).trim();
 		return /^[0-9a-f]{7,64}$/i.test(text) ? text : null;
 	} catch {
 		return null;
-	} finally {
-		clearTimeout(timer);
 	}
 }

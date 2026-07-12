@@ -23,11 +23,9 @@ function isNewer(latest, current) {
 	return c > z;
 }
 
-// Returns the release { version, url } when a newer stable exists, "up-to-date"
-// when the check ran and nothing is newer, or null when it was skipped/failed
-// (preview build, no repo, network error) - callers stay silent on null.
 async function checkForUpdates() {
-	if (!REPO || !STABLE.test(CURRENT_VERSION)) return null;
+	if (!STABLE.test(CURRENT_VERSION)) return { type: "development" };
+	if (!REPO) return { type: "unavailable" };
 	try {
 		const response = await fetch(
 			`https://api.github.com/repos/${REPO}/releases/latest`,
@@ -39,47 +37,54 @@ async function checkForUpdates() {
 				signal: AbortSignal.timeout(10_000)
 			}
 		);
-		if (!response.ok) return null;
+		if (!response.ok) return { type: "unavailable" };
 
 		const release = await response.json();
 		const tag = String(release.tag_name || "").replace(/^v/, "");
 		if (!STABLE.test(tag) || release.prerelease || !release.html_url) {
-			return null;
+			return { type: "unavailable" };
 		}
 		return isNewer(tag, CURRENT_VERSION)
-			? { version: tag, url: release.html_url }
-			: "up-to-date";
+			? { type: "available", version: tag, url: release.html_url }
+			: { type: "current" };
 	} catch {
-		return null;
+		return { type: "unavailable" };
 	}
 }
 
 let checking = false;
 
-async function runCheck(statusBar, manual) {
+async function runCheck(manual) {
 	if (checking) return;
 	checking = true;
 	try {
 		const result = await checkForUpdates();
 
-		if (result && result !== "up-to-date") {
-			statusBar.text = `$(arrow-up) ${CURRENT_VERSION}`;
-			statusBar.tooltip = `Composery ${result.version} is available - click to view the release`;
-
+		if (result.type === "available") {
 			const action = await vscode.window.showInformationMessage(
-				`Composery ${result.version} is available.`,
+				`Composery ${result.version} is available. You have ${CURRENT_VERSION}.`,
 				"View Release"
 			);
 			if (action === "View Release") {
 				await vscode.env.openExternal(vscode.Uri.parse(result.url));
 			}
 		} else if (manual) {
-			// Only speak up for a manual check; the startup check stays quiet.
-			await vscode.window.showInformationMessage(
-				result === "up-to-date"
-					? `Composery ${CURRENT_VERSION} is up to date.`
-					: `Composery ${CURRENT_VERSION} - update checks run on stable releases only.`
-			);
+			if (result.type === "current") {
+				await vscode.window.showInformationMessage(
+					`Composery ${CURRENT_VERSION} is up to date.`
+				);
+			} else if (result.type === "development") {
+				const version = CURRENT_VERSION === "unknown"
+					? "This development build has no release version."
+					: `You have development build ${CURRENT_VERSION}.`;
+				await vscode.window.showInformationMessage(
+					`${version} Updates are checked automatically in stable releases.`
+				);
+			} else {
+				await vscode.window.showWarningMessage(
+					`Couldn't check for updates. You have Composery ${CURRENT_VERSION}. Try again later.`
+				);
+			}
 		}
 	} finally {
 		checking = false;
@@ -87,23 +92,13 @@ async function runCheck(statusBar, manual) {
 }
 
 function activate(context) {
-	const statusBar = vscode.window.createStatusBarItem(
-		vscode.StatusBarAlignment.Right,
-		1
-	);
-	statusBar.text = CURRENT_VERSION;
-	statusBar.tooltip = "Check for Updates";
-	statusBar.command = "composery.checkForUpdates";
-	statusBar.show();
-
 	context.subscriptions.push(
-		statusBar,
 		vscode.commands.registerCommand("composery.checkForUpdates", () => {
-			void runCheck(statusBar, true);
+			void runCheck(true);
 		})
 	);
 
-	void runCheck(statusBar, false);
+	void runCheck(false);
 }
 
 function deactivate() {}
