@@ -21,17 +21,22 @@ function run(command, args, options = {}) {
 }
 
 // Typecheck the IDE server tree exactly as build.sh assembles it: pristine
-// upstream src + patches/server.diff + overlay's new files. Sources come from
+// upstream src + the server and Node engine patches + overlay's new files. Sources come from
 // git blobs (always LF) so the patch applies on Windows working trees too.
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
 const SERVER_DIFF = join(PACKAGE_ROOT, "patches/server.diff");
+const NODE_ENGINE_DIFF = join(PACKAGE_ROOT, "patches/node-engine.diff");
 const SCRATCH = join(
 	REPO_ROOT,
 	"tmp",
 	`ide-overlay-typecheck-${Date.now()}-${process.pid}`
 );
 const isWindows = process.platform === "win32";
+const NPM_CLI = join(
+	dirname(process.execPath),
+	"node_modules/npm/bin/npm-cli.js"
+);
 
 if (!existsSync(join(UPSTREAM, "package.json"))) {
 	console.error(
@@ -71,6 +76,9 @@ rmSync(join(SCRATCH, "upstream.tar"));
 execFileSync("git", ["-C", SCRATCH, "apply", "-p1", SERVER_DIFF], {
 	stdio: "inherit"
 });
+execFileSync("git", ["-C", SCRATCH, "apply", "-p1", NODE_ENGINE_DIFF], {
+	stdio: "inherit"
+});
 
 for (const entry of readdirSync(join(OVERLAY, "src"))) {
 	cpSync(join(OVERLAY, "src", entry), join(SCRATCH, "src", entry), {
@@ -80,8 +88,27 @@ for (const entry of readdirSync(join(OVERLAY, "src"))) {
 
 run("node", [join(PACKAGE_ROOT, "scripts/rebrand.mjs"), SCRATCH]);
 
-const shell = { cwd: SCRATCH, shell: isWindows };
-run("npm", ["ci", "--ignore-scripts", "--no-audit", "--no-fund"], shell);
-run("npx", ["tsc", "--noEmit", "--project", "tsconfig.json"], shell);
+const scratch = { cwd: SCRATCH };
+run(
+	isWindows ? process.execPath : "npm",
+	[
+		...(isWindows ? [NPM_CLI] : []),
+		"ci",
+		"--ignore-scripts",
+		"--no-audit",
+		"--no-fund"
+	],
+	scratch
+);
+run(
+	process.execPath,
+	[
+		join(SCRATCH, "node_modules/typescript/bin/tsc"),
+		"--noEmit",
+		"--project",
+		"tsconfig.json"
+	],
+	scratch
+);
 
 rmSync(SCRATCH, { force: true, recursive: true });

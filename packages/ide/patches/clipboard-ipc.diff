@@ -1,20 +1,16 @@
 diff --git a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
 --- a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
 +++ b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
-@@ -73,6 +73,14 @@ export class BrowserClipboardService ext
+@@ -73,6 +73,10 @@ export class BrowserClipboardService ext
  		return new Uint8Array(0);
  	}
- 
+
 +	async writeImage(buffer: Uint8Array, mimeType: string = 'image/png'): Promise<void> {
-+		try {
-+			await getActiveWindow().navigator.clipboard.write([new ClipboardItem({ [mimeType]: new Blob([buffer as Uint8Array<ArrayBuffer>], { type: mimeType }) })]);
-+		} catch (error) {
-+			console.error('Error writing image to clipboard:', error);
-+		}
++		await getActiveWindow().navigator.clipboard.write([new ClipboardItem({ [mimeType]: new Blob([buffer as Uint8Array<ArrayBuffer>], { type: mimeType }) })]);
 +	}
 +
  	private webKitPendingClipboardWritePromise: DeferredPromise<string> | undefined;
- 
+
  	// In Safari, it has the following note:
 diff --git a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
 --- a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
@@ -116,27 +112,21 @@ diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/ser
  			return true;
  		default:
  			return false;
-@@ -301,6 +304,38 @@ export async function main(desc: Product
+@@ -301,6 +304,30 @@ export async function main(desc: Product
  			}
  		}
  	} else {
 +		if (parsedArgs['clipboard-out']) {
-+			await sendToPipe({ type: 'clipboard-read' }, verbose).then((res: string) => {
-+				process.stdout.write(res ?? '');
-+			}).catch(e => {
-+				console.error('Error when reading the clipboard:', e);
-+			});
++			const result = await sendToPipe({ type: 'clipboard-read' }, verbose);
++			process.stdout.write(result ?? '');
 +			return;
 +		}
 +
 +		if (parsedArgs['clipboard-image-out']) {
-+			await sendToPipe({ type: 'clipboard-image-read' }, verbose).then((res: string) => {
-+				if (res) {
-+					process.stdout.write(Buffer.from(res, 'base64'));
-+				}
-+			}).catch(e => {
-+				console.error('Error when reading the clipboard image:', e);
-+			});
++			const result = await sendToPipe({ type: 'clipboard-image-read' }, verbose);
++			if (result) {
++				process.stdout.write(Buffer.from(result, 'base64'));
++			}
 +			return;
 +		}
 +
@@ -146,9 +136,7 @@ diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/ser
 +				return;
 +			}
 +			const stdinBuffer = fs.readFileSync(0);
-+			await sendToPipe({ type: 'clipboard-image-write', content: stdinBuffer.toString('base64') }, verbose).catch(e => {
-+				console.error('Error when writing the clipboard image:', e);
-+			});
++			await sendToPipe({ type: 'clipboard-image-write', content: stdinBuffer.toString('base64') }, verbose);
 +			return;
 +		}
 +
@@ -234,15 +222,15 @@ diff --git a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts b/lib/vsco
  	}
  
 +	private async clipboardRead(): Promise<string | undefined> {
-+		return await this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboard');
++		return this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboard');
 +	}
 +
 +	private async clipboardImageRead(): Promise<string | undefined> {
-+		return await this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboardImage');
++		return this._commands.executeCommand<string | undefined>('_remoteCLI.getClipboardImage');
 +	}
 +
 +	private async clipboardImageWrite(data: ClipboardImageWritePipeArgs): Promise<undefined> {
-+		return await this._commands.executeCommand('_remoteCLI.setClipboardImage', data.content);
++		return this._commands.executeCommand('_remoteCLI.setClipboardImage', data.content);
 +	}
 +
  	dispose(): void {

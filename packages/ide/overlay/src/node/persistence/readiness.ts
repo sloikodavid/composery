@@ -3,25 +3,25 @@ import { constants, promises as fs } from "fs";
 const persistenceRunDir = "/run/persistence";
 const readyPath = `${persistenceRunDir}/ready`;
 
-type PersistdReadiness = {
+type PersistenceReadiness = {
 	ready: boolean;
 	message: string;
 	updatedAt?: string;
 };
 
 const cacheTtlMs = 1000;
-let cached: { value: PersistdReadiness; at: number } | undefined;
+let cached: { value: PersistenceReadiness; at: number } | undefined;
 
-export async function checkPersistdReadiness(): Promise<PersistdReadiness> {
+export async function checkPersistenceReadiness(): Promise<PersistenceReadiness> {
 	if (cached && Date.now() - cached.at < cacheTtlMs) {
 		return cached.value;
 	}
-	const value = await readPersistdReadiness();
+	const value = await readPersistenceReadiness();
 	cached = { value, at: Date.now() };
 	return value;
 }
 
-async function readPersistdReadiness(): Promise<PersistdReadiness> {
+async function readPersistenceReadiness(): Promise<PersistenceReadiness> {
 	let data: string;
 	try {
 		const file = await fs.open(

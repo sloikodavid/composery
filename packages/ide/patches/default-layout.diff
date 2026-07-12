@@ -82,17 +82,25 @@
  				if (this.viewService.isViewContainerActive(viewContainerId)) {
 --- a/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 +++ b/lib/vscode/src/vs/workbench/services/views/browser/viewDescriptorService.ts
-@@ -712,7 +712,12 @@ export class ViewDescriptorService exten
+@@ -712,7 +712,20 @@ export class ViewDescriptorService exten
  		if (this.isSessionsWindow) {
  			return '{}';
  		}
 -		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, '{}');
-+		// Composery: default container locations for fresh profiles. Source Control stays in the
-+		// primary side bar, Problems stays in the bottom panel, and Extensions and Terminal move to
-+		// the secondary side bar. ViewContainerLocation.Sidebar === 0, Panel === 1, AuxiliaryBar === 2. Overridden the
-+		// moment the user moves a container.
-+		const defaultCustomizations = '{"viewContainerLocations":{"workbench.view.scm":0,"workbench.panel.markers":1,"workbench.view.extensions":2,"terminal":2},"viewLocations":{},"viewContainerBadgeEnablementStates":{}}';
-+		return this.storageService.get(ViewDescriptorService.VIEWS_CUSTOMIZATIONS, StorageScope.PROFILE, defaultCustomizations);
++		return this.storageService.get(
++			ViewDescriptorService.VIEWS_CUSTOMIZATIONS,
++			StorageScope.PROFILE,
++			JSON.stringify({
++				viewContainerLocations: {
++					'workbench.view.scm': ViewContainerLocation.Sidebar,
++					'workbench.panel.markers': ViewContainerLocation.Panel,
++					'workbench.view.extensions': ViewContainerLocation.AuxiliaryBar,
++					terminal: ViewContainerLocation.AuxiliaryBar
++				},
++				viewLocations: {},
++				viewContainerBadgeEnablementStates: {}
++			} satisfies IViewsCustomizations)
++		);
  	}
  
  	private setStoredViewCustomizationsValue(value: string): void {
@@ -110,7 +118,7 @@
  			{
 --- a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
-@@ -742,7 +742,8 @@ function simpleActivityContextMenuAction
+@@ -742,8 +742,9 @@ function simpleActivityContextMenuAction
  }
  
  export function isAccountsActionVisible(storageService: IStorageService): boolean {
@@ -120,3 +128,4 @@
  }
  
  function setAccountsActionVisible(storageService: IStorageService, visible: boolean) {
+ 	storageService.store(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, visible, StorageScope.PROFILE, StorageTarget.USER);

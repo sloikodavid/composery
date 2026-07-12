@@ -37,6 +37,7 @@ export function NewBoxForm() {
 	const [confirmation, setConfirmation] = useState("");
 	const [step, setStep] = useState<Step>("slug");
 	const [submitting, setSubmitting] = useState(false);
+	const [termsAccepted, setTermsAccepted] = useState(false);
 	// A weak or breached password is allowed, but only through an escalating
 	// confirm: pwStage counts how many warnings the user has clicked past, and
 	// passwordCleared marks the password step as passed.
@@ -81,7 +82,8 @@ export function NewBoxForm() {
 			: [];
 	const activeStage = confirmStages[pwStage];
 	const canContinuePassword = passwordCleared;
-	const canCheckout = passwordCleared && confirmation === password;
+	const canCheckout =
+		passwordCleared && confirmation === password && termsAccepted;
 	const passwordsMismatch =
 		confirmation.length > 0 && password !== confirmation;
 
@@ -193,6 +195,7 @@ export function NewBoxForm() {
 		setSubmitting(true);
 		try {
 			const checkout = await createCheckout({
+				legalAccepted: termsAccepted,
 				slug: normalizedSlug,
 				password
 			});
@@ -412,6 +415,28 @@ export function NewBoxForm() {
 									value={confirmation}
 								/>
 							</div>
+							<label className="flex cursor-pointer items-start gap-3 py-2 text-sm leading-5 text-muted-foreground">
+								<input
+									checked={termsAccepted}
+									className="mt-0.5 size-4 rounded border-border accent-primary"
+									onChange={(event) => setTermsAccepted(event.target.checked)}
+									type="checkbox"
+								/>
+								<span>
+									I agree to the{" "}
+									<Link
+										className="text-foreground underline underline-offset-4"
+										href="/terms"
+										target="_blank"
+									>
+										Terms of Service
+									</Link>{" "}
+									and request that Composery Cloud start immediately. I
+									understand this is a recurring subscription and that I may owe
+									a proportionate amount for service supplied if I withdraw
+									within 14 days.
+								</span>
+							</label>
 							<div className="flex flex-col-reverse gap-2 sm:flex-row">
 								<AnimatedIconButton
 									className="h-12 rounded-lg text-[15px] sm:flex-1"

@@ -1,87 +1,35 @@
---- a/lib/vscode/src/vs/platform/actions/common/actions.ts
-+++ b/lib/vscode/src/vs/platform/actions/common/actions.ts
-@@ -177,6 +177,7 @@ export class MenuId {
- 	static readonly TitleBarAdjacentCenter = new MenuId('TitleBarAdjacentCenter');
- 	static readonly TitleBarContext = new MenuId('TitleBarContext');
- 	static readonly TitleBarTitleContext = new MenuId('TitleBarTitleContext');
-+	static readonly TitleBarAppIconContext = new MenuId('TitleBarAppIconContext');
- 	static readonly TunnelContext = new MenuId('TunnelContext');
- 	static readonly TunnelPrivacy = new MenuId('TunnelPrivacy');
- 	static readonly TunnelProtocol = new MenuId('TunnelProtocol');
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-@@ -473,6 +473,14 @@ export class BrowserTitlebarPart extends
- 		// App Icon (Windows, Linux)
+@@ -473,6 +473,12 @@ export class BrowserTitlebarPart extends
+-		// App Icon (Windows, Linux)
 -		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
-+		// Composery: also render in the web custom titlebar on every platform (the
-+		// mobile WebView reads as Macintosh), so the logo is a universal brand +
-+		// Home affordance; the native app rewires its click to go home.
-+		if ((isWeb || isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
++		// App Icon
++		// Composery: the custom titlebar is our branded browser chrome on every
++		// platform. Upstream only shows the icon on Windows/Linux to mirror native
++		// desktop conventions; we show it whenever there is no native titlebar.
++		if (!hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
  			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
-+			// Composery: make the title-bar logo a link to the website (new tab).
++			// Composery: website logos conventionally link to the site's root in the same tab.
 +			this.appIcon.setAttribute('href', 'https://www.composery.io');
-+			this.appIcon.setAttribute('target', '_blank');
-+			this.appIcon.setAttribute('rel', 'noopener');
-+			this.appIcon.setAttribute('aria-label', localize('composeryHome', "Composery"));
++			this.appIcon.setAttribute('aria-label', localize('composeryWebsite', "Composery"));
  		}
  
  		// Draggable region that we can manipulate for #52522
-@@ -563,7 +568,9 @@ export class BrowserTitlebarPart extends
- 				EventHelper.stop(e);
- 
- 				let targetMenu: MenuId;
--				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
+@@ -562,7 +565,12 @@ export class BrowserTitlebarPart extends
+ 			this._register(addDisposableListener(this.rootContainer, EventType.CONTEXT_MENU, e => {
+-				EventHelper.stop(e);
+-
++				// Let the browser provide the normal link context menu for the logo anchor.
 +				if (this.appIcon && isHTMLElement(e.target) && isAncestor(e.target, this.appIcon)) {
-+					targetMenu = MenuId.TitleBarAppIconContext;
-+				} else if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
++					return;
++				}
++
++				EventHelper.stop(e);
++
+ 				let targetMenu: MenuId;
+ 				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
  					targetMenu = MenuId.TitleBarTitleContext;
  				} else {
- 					targetMenu = MenuId.TitleBarContext;
---- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
-+++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
-@@ -15,6 +15,8 @@ import { IAction } from '../../../../bas
- import { IsMainWindowFullscreenContext, IsCompactTitleBarContext, TitleBarStyleContext, TitleBarVisibleContext } from '../../../common/contextkeys.js';
- import { CustomTitleBarVisibility, TitleBarSetting, TitlebarStyle } from '../../../../platform/window/common/window.js';
- import { NotificationsPosition, NotificationsSettings } from '../../../common/notifications.js';
-+import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
-+import { IOpenerService } from '../../../../platform/opener/common/opener.js';
- 
- /**
-  * Menu group for actions contributed to {@link MenuId.TitleBar} that should render
-@@ -291,3 +293,33 @@ export const GLOBAL_ACTIVITY_TITLE_ACTIO
- 	enabled: true,
- 	run: function (): void { }
- };
-+
-+// Composery: right-click menu for the logo link. Labels and ordering mirror the
-+// upstream link context menu in browserViewMainService.ts ("Open Link in New Tab", "Copy Link").
-+const COMPOSERY_URL = 'https://www.composery.io';
-+
-+registerAction2(class extends Action2 {
-+	constructor() {
-+		super({
-+			id: 'composery.openLinkInNewTab',
-+			title: localize('composery.openLinkInNewTab', 'Open Link in New Tab'),
-+			menu: [{ id: MenuId.TitleBarAppIconContext, order: 1, group: '1_link' }]
-+		});
-+	}
-+	override run(accessor: ServicesAccessor): void {
-+		accessor.get(IOpenerService).open(COMPOSERY_URL, { openExternal: true });
-+	}
-+});
-+
-+registerAction2(class extends Action2 {
-+	constructor() {
-+		super({
-+			id: 'composery.copyLink',
-+			title: localize('composery.copyLink', 'Copy Link'),
-+			menu: [{ id: MenuId.TitleBarAppIconContext, order: 2, group: '1_link' }]
-+		});
-+	}
-+	override run(accessor: ServicesAccessor): void {
-+		accessor.get(IClipboardService).writeText(COMPOSERY_URL);
-+	}
-+});
 --- a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 +++ b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 @@ -579,6 +579,10 @@ export class WorkbenchThemeService exten
@@ -97,7 +45,7 @@
  		if (!this.colorThemingParticipantChangeListener) {
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-@@ -293,7 +293,24 @@
+@@ -293,9 +293,26 @@
  	background-image: url('../../../media/code-icon.svg');
  	background-repeat: no-repeat;
  	background-position: center center;
@@ -123,3 +71,5 @@
  }
  
  .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
+ 	line-height: 30px;
+ }

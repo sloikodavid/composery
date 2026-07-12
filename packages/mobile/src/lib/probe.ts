@@ -9,16 +9,24 @@ export type ProbeResult =
 
 export type ProbeFetch = typeof fetch;
 
-// Builds the probe URL relative to the instance URL's pathname, so a
+// Builds an endpoint URL relative to the instance URL's pathname, so a
 // subpath-mounted Composery (e.g. https://host/my-cs/) probes
 // /my-cs/__composery, not /__composery. Strips query/hash.
-export function probeUrl(instanceUrl: string): string {
+function endpointUrl(instanceUrl: string, endpoint: string): string {
 	const url = new URL(instanceUrl);
 	const path = url.pathname.replace(/\/+$/, "");
-	url.pathname = path + "/__composery";
+	url.pathname = path + endpoint;
 	url.search = "";
 	url.hash = "";
 	return url.href;
+}
+
+export function probeUrl(instanceUrl: string): string {
+	return endpointUrl(instanceUrl, "/__composery");
+}
+
+export function versionUrl(instanceUrl: string): string {
+	return endpointUrl(instanceUrl, "/version");
 }
 
 export async function probeComposery(
@@ -56,6 +64,35 @@ export async function probeComposery(
 			reason: "unreachable",
 			message: "Couldn't reach the server"
 		};
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+// Fetches the server's build stamp from GET /version (authenticated through
+// the WebView's shared session cookie). A stamp change between two fetches
+// means the instance was updated while the WebView kept the old session
+// alive — the caller reloads it. Null (signed out, unreachable, or a
+// non-stamp response) skips the check.
+export async function fetchServerStamp(
+	instanceUrl: string,
+	options: { timeoutMs?: number; fetchImpl?: ProbeFetch } = {}
+): Promise<string | null> {
+	const fetchImpl = options.fetchImpl ?? fetch;
+	const timeoutMs = options.timeoutMs ?? 5000;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const response = await fetchImpl(versionUrl(instanceUrl), {
+			signal: controller.signal,
+			credentials: "include",
+			headers: { accept: "text/plain" }
+		});
+		if (!response.ok) return null;
+		const text = (await response.text()).trim();
+		return /^[0-9a-f]{7,64}$/i.test(text) ? text : null;
+	} catch {
+		return null;
 	} finally {
 		clearTimeout(timer);
 	}

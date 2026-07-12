@@ -26,8 +26,7 @@ Project settings:
   ```
 
   It deploys [Convex](./convex.md) first, injects the correct
-  `NEXT_PUBLIC_CONVEX_URL` and Convex site URL into the Next.js build, then builds
-  the frontend.
+  `NEXT_PUBLIC_CONVEX_URL` into the Next.js build, then builds the frontend.
 
 - Project Settings -> Git: production branch = `main`.
 - Project Settings -> Build and Deployment -> Ignored Build Step = **Only build
@@ -38,6 +37,15 @@ Plus the two project-level settings `packages/web/vercel.json` cannot encode
 (covered in [index](./index.md#deploy)): **Root Directory** = `packages/web`, and
 **Include source files outside of the Root Directory in the Build Step** =
 Enabled, so the build can read `docs/` and the workspace manifests.
+
+## Domains
+
+Add both `composery.io` and `www.composery.io` to the project and make
+`www.composery.io` canonical. Run `vercel domains inspect` for each, then
+create the exact records it reports in the `composery.io` Cloudflare zone.
+Cloudflare is external DNS, so do not use `vercel dns add`. Verify the apex
+redirect, `www` TLS certificate, and that no `vercel.app` preview origin is
+listed in `CLERK_AUTHORIZED_PARTIES`.
 
 ## Production environment variables
 
@@ -91,15 +99,19 @@ Two planes of observability, no third-party tracker and no new env vars:
   trailing window via the `created_at` indexes, so cost tracks recent volume, not
   total table size.
 
-**Cookies / GDPR.** Vercel Web Analytics and Speed Insights are cookieless and
-do not collect personal data, so **no consent banner is required**. The only
-cookies the site sets are [Clerk](./clerk.md)'s strictly-necessary authentication
-cookies, which are exempt from consent under the ePrivacy Directive. Adding any
-cookie-based or cross-site tracker later would change this - add a consent banner
-then, not before.
+**Cookies / privacy.** Vercel says Web Analytics stores anonymized data without
+cookies and resets its request-derived visitor hash daily; Speed Insights is not
+tied to a visitor or IP address. The only cookies are Clerk's necessary
+authentication cookies, so there is no optional-storage consent banner. Adding
+cross-site or cookie-based tracking changes that decision: update the legal
+pages and add controls before enabling it. Clerk's Legal setting must point to
+the Terms and Privacy pages and require express consent in both instances.
 
 ## References
 
-- Vercel environment variables: https://vercel.com/docs/environment-variables.
-- Vercel env CLI: https://vercel.com/docs/cli/env.
-- Next.js environment variables: https://nextjs.org/docs/app/guides/environment-variables.
+- Vercel environment variables: https://vercel.com/docs/environment-variables
+- Vercel env CLI: https://vercel.com/docs/cli/env
+- Vercel custom domains: https://vercel.com/docs/domains/set-up-custom-domain
+- Next.js environment variables: https://nextjs.org/docs/app/guides/environment-variables
+- Vercel Web Analytics privacy: https://vercel.com/docs/analytics
+- Vercel Speed Insights privacy: https://vercel.com/docs/speed-insights/privacy-policy

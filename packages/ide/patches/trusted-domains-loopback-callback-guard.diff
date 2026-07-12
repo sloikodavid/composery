@@ -73,7 +73,7 @@ index 575d1ddc..3ef8d891 100644
 +		|| normalized === 'localhost.'
 +		|| normalized.endsWith('.localhost')
 +		|| normalized.endsWith('.localhost.')
-+		|| normalized.startsWith('127.')
++		|| /^127(?:\.\d{1,3}){3}$/.test(normalized)
 +		|| normalized === '0.0.0.0'
 +		|| normalized === '::1'
 +		|| normalized === '[::1]'

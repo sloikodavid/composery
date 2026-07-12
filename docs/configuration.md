@@ -9,27 +9,23 @@ into the container (`env_file`). Other hosting providers use their own environme
 UI.
 
 The init system is selected by `COMPOSERY_INIT`, set in the compose service's
-`environment:` block (not in `composery.env`). The default is `supervisor`, or `systemd`
-on hosts with privileged containers and host cgroups.
+`environment:` block (not in `composery.env`). The default is `supervisor`; use `systemd`
+on hosts that allow privileged containers and host cgroups.
 
-## Common variables
-
-| Variable                           | Use                                                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `COMPOSERY_PASSWORD`               | Sets a plaintext IDE password and skips first-visit registration.                                                                     |
-| `COMPOSERY_HASHED_PASSWORD`        | Sets an argon2 hashed password and takes precedence over `COMPOSERY_PASSWORD`. Single-quote values containing `$` in `composery.env`. |
-| `PORT`                             | Changes the IDE listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.            |
-| `COMPOSERY_PROXY_URI`              | Controls links in the Ports panel, e.g. `https://{{port}}.dev.example.com`. The default path proxy works without setting this.        |
-| `COMPOSERY_DISABLE_FILE_DOWNLOADS` | Set to `1` or `true` to block browser file downloads.                                                                                 |
-| `COMPOSERY_DISABLE_PROXY`          | Set to `1` or `true` to disable the IDE's port proxy routes.                                                                          |
-| `COMPOSERY_EXTENSIONS_GALLERY`     | Points the IDE at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                     |
-| `COMPOSERY_LOG_LEVEL`              | Sets IDE logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                     |
-| `COMPOSERY_GITHUB_TOKEN`           | Supplies the IDE's GitHub auth token. Treat it as a secret; the IDE removes it from the child-process environment at start.           |
-
-## Less common
+## Variables
 
 | Variable                                                 | Use                                                                                                                                           |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COMPOSERY_PASSWORD`                                     | Sets a plaintext IDE password and skips first-visit registration.                                                                             |
+| `COMPOSERY_HASHED_PASSWORD`                              | Sets an argon2 hashed password and takes precedence over `COMPOSERY_PASSWORD`. Single-quote values containing `$` in `composery.env`.         |
+| `PORT`                                                   | Changes the IDE listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.                    |
+| `COMPOSERY_PROXY_URI`                                    | Controls links in the Ports panel, e.g. `https://{{port}}.dev.example.com`. The default path proxy works without setting this.                |
+| `COMPOSERY_DISABLE_FILE_DOWNLOADS`                       | Set to `1` or `true` to block browser file downloads.                                                                                         |
+| `COMPOSERY_DISABLE_FILE_UPLOADS`                         | Set to `1` or `true` to block browser file uploads.                                                                                           |
+| `COMPOSERY_DISABLE_PROXY`                                | Set to `1` or `true` to disable the IDE's port proxy routes.                                                                                  |
+| `COMPOSERY_EXTENSIONS_GALLERY`                           | Points the IDE at a custom VS Code Extension Gallery API using the JSON shape expected by VS Code `product.json`.                             |
+| `COMPOSERY_LOG_LEVEL`                                    | Sets IDE logging to `trace`, `debug`, `info`, `warn`, or `error`.                                                                             |
+| `COMPOSERY_GITHUB_TOKEN`                                 | Supplies the IDE's GitHub auth token. Treat it as a secret; the IDE removes it from the child-process environment at start.                   |
 | `COMPOSERY_CONFIG`                                       | Overrides the IDE YAML config path.                                                                                                           |
 | `COMPOSERY_DOCKER_VOLUME_PATH`                           | Overrides the persistent volume root (default `/data`). If you change it, the volume mount target in your compose/platform config must match. |
 | `COMPOSERY_HOST`                                         | Overrides the bind host. Avoid setting this unless you understand the container networking impact.                                            |
@@ -46,18 +42,17 @@ Composery serves a small [automation API](api.md) on the same port. It is off in
 practice until you mint a key with `composery api key create`; with no keys, every
 endpoint returns 401. The key store lives at `<volume>/api/keys.json`, on the persistent
 volume shared with persistence (`/data` by default; see `COMPOSERY_DOCKER_VOLUME_PATH`).
-These tune the API; defaults are sane and never trip on normal use.
 
-| Variable                            | Use                                                                                                           |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `COMPOSERY_API_ENABLED`             | Set to `false` to disable the API entirely (every endpoint returns 404). Defaults to `true`.                  |
-| `COMPOSERY_API_EXEC_TIMEOUT`        | Default timeout in seconds for one-shot `POST /v1/exec`. Defaults to `60`. The interactive socket is unbound. |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | Combined stdout/stderr byte cap on one-shot exec output before truncation. Defaults to `10485760` (10 MiB).   |
-| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | Concurrent one-shot exec requests. Defaults to `16`.                                                          |
-| `COMPOSERY_API_RATE_RPS`            | Sustained requests per second per key. Defaults to `50`.                                                      |
-| `COMPOSERY_API_RATE_BURST`          | Burst request capacity per key. Defaults to `200`.                                                            |
-| `COMPOSERY_API_MAX_SESSIONS`        | Concurrent interactive sessions per key. Defaults to `50`.                                                    |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | Failed-auth attempts per minute per IP before throttling. Defaults to `20`.                                   |
+| Variable                            | Default    | Use                                                                                 |
+| ----------------------------------- | ---------- | ----------------------------------------------------------------------------------- |
+| `COMPOSERY_API_ENABLED`             | `true`     | `false` disables the API entirely (every endpoint returns 404).                     |
+| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | Default timeout in seconds for one-shot `POST /v1/exec`. The websocket is unbound.  |
+| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | Combined stdout/stderr byte cap on one-shot exec output before truncation (10 MiB). |
+| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.                                                  |
+| `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                              |
+| `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                     |
+| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent interactive sessions per key.                                            |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                           |
 
 Invalid numeric values fall back to the defaults. Extreme numeric values are
 clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,

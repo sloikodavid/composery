@@ -18,6 +18,7 @@ const MOVE_UP_COMMAND = "composery.shortcuts.moveUp";
 const MOVE_DOWN_COMMAND = "composery.shortcuts.moveDown";
 const REFRESH_COMMAND = "composery.shortcuts.refresh";
 const UNDO_REMOVE_COMMAND = "composery.shortcuts.undoRemove";
+const CAN_UNDO_REMOVE_CONTEXT = "composery.shortcuts.canUndoRemove";
 
 const INTERNAL_PICK_ICON_COMMAND = "composery.shortcuts.pickIcon";
 const INTERNAL_PICK_COLOR_COMMAND = "composery.shortcuts.pickColor";
@@ -59,12 +60,14 @@ async function activate(context) {
 
 	async function load() {
 		lastRemoved = undefined;
+		await vscode.commands.executeCommand("setContext", CAN_UNDO_REMOVE_CONTEXT, false);
 		shortcuts = await storage.read();
 		tree.setShortcuts(shortcuts);
 	}
 
 	async function save(nextShortcuts) {
 		lastRemoved = undefined;
+		await vscode.commands.executeCommand("setContext", CAN_UNDO_REMOVE_CONTEXT, false);
 		shortcuts = nextShortcuts;
 		await storage.write(shortcuts);
 		tree.setShortcuts(shortcuts);
@@ -126,6 +129,7 @@ async function activate(context) {
 				const index = shortcuts.findIndex((candidate) => candidate.id === shortcut.id);
 				await save(shortcuts.filter((candidate) => candidate.id !== shortcut.id));
 				lastRemoved = { shortcut, index: Math.max(index, 0) };
+				await vscode.commands.executeCommand("setContext", CAN_UNDO_REMOVE_CONTEXT, true);
 			}
 		}),
 		vscode.commands.registerCommand(UNDO_REMOVE_COMMAND, async () => {

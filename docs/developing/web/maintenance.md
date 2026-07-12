@@ -50,9 +50,10 @@ Snapshots themselves are covered in [Hetzner](./hetzner.md#box-snapshots).
 
 ### Checkout reservation (`convex/checkout/checkoutIntents.ts`)
 
-| Constant                      | Value    | Why it's hardcoded                           |
-| ----------------------------- | -------- | -------------------------------------------- |
-| `CHECKOUT_RESERVATION_TTL_MS` | `1` hour | How long a slug is reserved during checkout. |
+| Constant                      | Value       | Why it's hardcoded                               |
+| ----------------------------- | ----------- | ------------------------------------------------ |
+| `CHECKOUT_RESERVATION_TTL_MS` | `1` hour    | How long a slug is reserved during checkout.     |
+| `CLOUD_TERMS_VERSION`         | Date string | Legal version recorded with checkout acceptance. |
 
 ## Cron schedule
 
@@ -62,6 +63,7 @@ Defined in `convex/crons.ts`. All times are UTC.
 | --------------------------- | ---------------- | -------------------------------------------------------------- |
 | Release expired intents     | Every 15 minutes | `checkout.checkoutIntents.releaseExpiredCheckoutIntents`       |
 | Subscription reconciliation | Hourly at :11    | `billing.reconciliation.deleteBoxesWithoutActiveSubscriptions` |
+| Finish account deletion     | Hourly at :19    | `accountDeletion.sweepPendingAccountDeletions`                 |
 | Poll box metrics            | Every 10 minutes | `boxes.boxMetricsPoll.pollBoxMetrics`                          |
 | Roll up hourly metrics      | Hourly at :04    | `boxes.boxMetrics.rollupHourlyMetrics`                         |
 | Delete old metrics          | Daily at 04:23   | `boxes.boxMetrics.deleteOldSamples`                            |

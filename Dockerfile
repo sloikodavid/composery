@@ -3,7 +3,7 @@
 ARG NODE_IMAGE=node:24.18.0-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
 
 # Build the IDE from the in-repo hard fork.
-FROM ${NODE_IMAGE} AS ide-builder
+FROM ${NODE_IMAGE} AS ide-base
 
 # Apt packages are intentionally unpinned: the Debian suite comes from the base
 # image, and the image digest is the reproducibility boundary.
@@ -29,22 +29,32 @@ RUN apt-get update \
 # The IDE build uses the upstream npm toolchain inside the cloned tree.
 WORKDIR /src
 
-COPY packages/ide ./packages/ide
+# Clone pristine upstream at the pinned commit (no git context after COPY, so
+# fetch directly, not via the dev submodule); it brings its own VS Code submodule.
+# This intentionally happens before any local IDE files are copied, so normal
+# patch and overlay edits reuse the large checkout. Must match the
+# packages/ide/upstream submodule pin (tested in IDE patch tests).
+ARG COMPOSERY_IDE_UPSTREAM_COMMIT=1e6ed874e3138141a5636f6e0dbe8570aa6cd001
+RUN git init -q packages/ide/upstream \
+  && git -C packages/ide/upstream remote add origin https://github.com/coder/code-server.git \
+  && git -C packages/ide/upstream fetch --depth 1 origin "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
+  && git -C packages/ide/upstream checkout -q FETCH_HEAD \
+  && git -C packages/ide/upstream submodule update --init --recursive --depth 1
+
+FROM ide-base AS ide-builder
+
+COPY packages/ide/package.json ./packages/ide/package.json
+COPY packages/ide/overlay ./packages/ide/overlay
+COPY packages/ide/patches ./packages/ide/patches
+COPY packages/ide/scripts ./packages/ide/scripts
 
 WORKDIR /src/packages/ide
 
-# Clone pristine upstream at the pinned commit (no git context after COPY, so
-# fetch directly, not via the dev submodule); it brings its own VS Code submodule.
-# Must match the packages/ide/upstream submodule pin (tested in IDE patch tests).
-ARG COMPOSERY_IDE_UPSTREAM_COMMIT=1e6ed874e3138141a5636f6e0dbe8570aa6cd001
-RUN git init -q upstream \
-  && git -C upstream remote add origin https://github.com/coder/code-server.git \
-  && git -C upstream fetch --depth 1 origin "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
-  && git -C upstream checkout -q FETCH_HEAD \
-  && git -C upstream submodule update --init --recursive --depth 1
-
-# Lay our overlay + patches over pristine upstream and build the release.
-RUN npm run build
+# Lay our overlay + patches over pristine upstream and build the release. The
+# npm download cache remains useful even when local IDE sources invalidate this
+# layer; node_modules still live only in the disposable build tree.
+RUN --mount=type=cache,id=composery-ide-npm,target=/root/.npm,sharing=locked \
+  npm run build
 
 RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${COMPOSERY_IDE_UPSTREAM_COMMIT}" \
     > build/release/.composery-upstream
@@ -62,24 +72,17 @@ RUN cargo chef prepare --recipe-path /recipe.json
 
 FROM cli-chef AS cli-builder
 COPY --from=cli-planner /recipe.json /recipe.json
-RUN cargo chef cook --release --recipe-path /recipe.json
+RUN --mount=type=cache,id=composery-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+  --mount=type=cache,id=composery-cli-target,target=/src/cli/target,sharing=locked \
+  cargo chef cook --release --recipe-path /recipe.json
 COPY packages/cli/ .
-RUN cargo build --release --locked --bin composery \
+RUN --mount=type=cache,id=composery-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+  --mount=type=cache,id=composery-cli-target,target=/src/cli/target,sharing=locked \
+  cargo build --release --locked --bin composery \
   && install -D target/release/composery /out/composery
 
 # Assemble the runtime image.
 FROM ${NODE_IMAGE} AS runtime
-
-ARG COMPOSERY_BUILD_VERSION=unknown
-ARG COMPOSERY_BUILD_REVISION=unknown
-ARG COMPOSERY_BUILD_SOURCE=https://github.com/sloikodavid/composery
-
-LABEL org.opencontainers.image.title="Composery" \
-  org.opencontainers.image.description="A persistent VPS-like Linux appliance with Composery in the browser." \
-  org.opencontainers.image.source="${COMPOSERY_BUILD_SOURCE}" \
-  org.opencontainers.image.revision="${COMPOSERY_BUILD_REVISION}" \
-  org.opencontainers.image.version="${COMPOSERY_BUILD_VERSION}" \
-  org.opencontainers.image.licenses="Apache-2.0"
 
 # renovate: datasource=npm depName=bun
 ARG BUN_VERSION=1.3.14
@@ -88,10 +91,7 @@ ARG NPM_VERSION=11.17.0
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=11.7.0
 
-ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
-  COMPOSERY_BUILD_REVISION="${COMPOSERY_BUILD_REVISION}" \
-  COMPOSERY_BUILD_SOURCE="${COMPOSERY_BUILD_SOURCE}" \
-  BROWSER="/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh" \
+ENV BROWSER="/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh" \
   EDITOR="code --wait" \
   GIT_EDITOR="code --wait" \
   KUBE_EDITOR="code --wait" \
@@ -191,6 +191,23 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && update-mime-database /usr/share/mime \
   && chown -R user:user /usr/local \
   && /opt/composery/bin/composery persistence __generate-baseline --root / --output /opt/persistence/baseline.sqlite
+
+# Volatile release metadata belongs after every expensive filesystem layer.
+# A new commit SHA should only create a tiny config layer, not reinstall the OS.
+ARG COMPOSERY_BUILD_VERSION=unknown
+ARG COMPOSERY_BUILD_REVISION=unknown
+ARG COMPOSERY_BUILD_SOURCE=https://github.com/sloikodavid/composery
+
+LABEL org.opencontainers.image.title="Composery" \
+  org.opencontainers.image.description="A persistent VPS-like Linux appliance with Composery in the browser." \
+  org.opencontainers.image.source="${COMPOSERY_BUILD_SOURCE}" \
+  org.opencontainers.image.revision="${COMPOSERY_BUILD_REVISION}" \
+  org.opencontainers.image.version="${COMPOSERY_BUILD_VERSION}" \
+  org.opencontainers.image.licenses="Apache-2.0"
+
+ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
+  COMPOSERY_BUILD_REVISION="${COMPOSERY_BUILD_REVISION}" \
+  COMPOSERY_BUILD_SOURCE="${COMPOSERY_BUILD_SOURCE}"
 
 # No USER directive: persistence needs root to rebuild the filesystem on boot; supervisor
 # drops to the unprivileged `user` for the IDE. Root is intentional.

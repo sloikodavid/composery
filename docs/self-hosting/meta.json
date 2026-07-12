@@ -1,3 +1,13 @@
 {
-	"pages": ["index", "vps", "digitalocean", "fly", "render", "railway", "koyeb", "kubernetes", "paas"]
+	"pages": [
+		"index",
+		"vps",
+		"digitalocean",
+		"fly",
+		"render",
+		"railway",
+		"koyeb",
+		"kubernetes",
+		"paas"
+	]
 }

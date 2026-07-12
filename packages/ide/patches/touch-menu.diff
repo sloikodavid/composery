@@ -2,29 +2,47 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/menu/menu.ts b/lib/vscode/src/vs/
 index 18a647cee1c..9c3c5eec749 100644
 --- a/lib/vscode/src/vs/base/browser/ui/menu/menu.ts
 +++ b/lib/vscode/src/vs/base/browser/ui/menu/menu.ts
-@@ -532,6 +532,12 @@ class BaseMenuActionViewItem extends BaseActionViewItem {
+@@ -259,1 +259,8 @@ export class Menu extends ActionBar {
++			// Gesture dispatches to every registered ancestor target. A submenu drag must not also
++			// scroll its parent: parent scrolling intentionally dismisses the open submenu.
++			const targetMenu = (e.initialTarget as Element | null)?.closest?.('.monaco-menu');
++			if (targetMenu && targetMenu !== this.menuElement) {
++				return;
++			}
++
+ 			EventHelper.stop(e, true);
+@@ -532,6 +539,10 @@ class BaseMenuActionViewItem extends BaseActionViewItem {
  
  		this.container = container;
  
-+		// Composery: a long-press (>= Gesture.HOLD_DELAY) fires a touch Contextmenu, not a Tap, and
-+		// prevents the synthetic click - so without this the item sticks in its highlight and the
-+		// action never runs. Inside an open menu a press-and-release should activate like a tap
-+		// (native menu behavior); this is touch-only since the Gesture never fires for a mouse.
++		// Gesture reports a long touch as Contextmenu on release instead of Tap. Menu items are
++		// button-like, so both durations activate on release, matching an ordinary web control.
 +		this._register(addDisposableListener(this.element, TouchEventType.Contextmenu, e => this.onClick(e, true)));
 +
  		this.item = append(this.element, $('a.action-menu-item'));
  		if (this._action.id === Separator.ID) {
  			// A separator is a presentation item
-@@ -833,7 +839,11 @@ class SubmenuMenuActionViewItem extends BaseMenuActionViewItem {
+@@ -809,6 +820,10 @@ class SubmenuMenuActionViewItem extends BaseMenuActionViewItem {
+ 			}
+ 		}));
+ 
++		// Focus-out can be transient while a deeper submenu takes focus. Once focus lands anywhere
++		// in this submenu branch, a pending delayed cleanup no longer applies.
++		this._register(addDisposableListener(this.element, EventType.FOCUS_IN, () => this.hideScheduler.cancel()));
++
+ 		this._register(this.parentData.parent.onScroll(() => {
+ 			if (this.parentData.submenu === this.mysubmenu) {
+ 				this.parentData.parent.focus(false);
+@@ -833,8 +848,11 @@ class SubmenuMenuActionViewItem extends BaseMenuActionViewItem {
  		EventHelper.stop(e, true);
  
  		this.cleanupExistingSubmenu(false);
 -		this.createSubmenu(true);
-+		// Composery: touch has no hover, so a tapped submenu must not pre-select its first item -
-+		// that phantom selection lands under the finger and reads as a stuck hover. Mirrors
-+		// touchGate.ts TOUCH_QUERY (base cannot import workbench); keep the query in sync.
-+		const touch = !!this.element && getWindow(this.element).matchMedia('(hover: none), (any-pointer: coarse)').matches;
-+		this.createSubmenu(!touch);
++		// Pointer activation should not synthesize keyboard focus inside the submenu. Derive that
++		// from the event instead of guessing the user's current input from a media query.
++		const eventType = (e as { type?: string }).type;
++		this.createSubmenu(eventType !== TouchEventType.Tap && eventType !== TouchEventType.Contextmenu);
  	}
  
  	private cleanupExistingSubmenu(force: boolean): void {
+ 		if (this.parentData.submenu && (force || (this.parentData.submenu !== this.mysubmenu))) {

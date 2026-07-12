@@ -1,0 +1,23 @@
+diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
+--- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
++++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
+@@ -6,6 +6,8 @@
+ import { Event } from '../../../common/event.js';
+ import { IDisposable } from '../../../common/lifecycle.js';
+ import { isMacintosh } from '../../../common/platform.js';
++import { isTouch } from '../../touchGate.js';
++import { mainWindow } from '../../window.js';
+ import { MarkdownActionHandler } from '../../markdownRenderer.js';
+ import { IContextViewProvider } from '../contextview/contextview.js';
+ import { IListStyles, unthemedListStyles } from '../list/listWidget.js';
+@@ -93,7 +95,9 @@
+ 		super();
+ 
+ 		// Default to native SelectBox for OSX unless overridden
+-		if (isMacintosh && !selectBoxOptions?.useCustomDrawn) {
++		// Composery: on touch the native select always wins - the platform picker beats any
++		// custom-drawn list under a finger - so touch overrides even an explicit useCustomDrawn.
++		if (isTouch(mainWindow) || (isMacintosh && !selectBoxOptions?.useCustomDrawn)) {
+ 			this.selectBoxDelegate = new SelectBoxNative(options, selected, styles, selectBoxOptions);
+ 		} else {
+ 			this.selectBoxDelegate = new SelectBoxList(options, selected, contextViewProvider, styles, selectBoxOptions);

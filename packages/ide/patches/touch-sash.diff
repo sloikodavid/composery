@@ -1,0 +1,26 @@
+--- a/lib/vscode/src/vs/workbench/contrib/sash/browser/sash.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/sash/browser/sash.contribution.ts
+@@ -3,10 +3,11 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { isIOS } from '../../../../base/common/platform.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { localize } from '../../../../nls.js';
+ import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
+ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+ import { SashSettingsController } from './sash.js';
+@@ -21,7 +22,9 @@
+ 		properties: {
+ 			'workbench.sash.size': {
+ 				type: 'number',
+-				default: isIOS ? 20 : 4,
++				// Composery: upstream widens the grab area on iOS only; every coarse-pointer
++				// device needs it (Android included), so key off the canonical touch gate.
++				default: isTouch(mainWindow) ? 20 : 4,
+ 				minimum: 1,
+ 				maximum: 20,
+ 				description: localize('sashSize', "Controls the feedback area size in pixels of the dragging area in between views/editors. Set it to a larger value if you feel it's hard to resize views using the mouse.")

@@ -1,26 +1,37 @@
 ---
 title: Resend
-description: Optional abuse-alert emails to staff, sent via Resend.
+description: Send optional abuse alerts to staff.
 ---
 
-Resend delivers the abuse alert emails that box metrics flags send to staff
-(`convex/boxes/boxMetrics.ts`). Alerts are optional: with `RESEND_API_KEY`
-unset, flags are still recorded and visible in the console - only the emails
-are skipped.
+Resend is used only by `convex/boxes/boxMetrics.ts` for staff abuse alerts.
+Without `RESEND_API_KEY`, flags still appear in the staff console and email is
+skipped.
 
-1. **Create an account** at `resend.com`. Sign up with the address that should
-   receive alerts: an account with no verified domain may send only **to the
-   account owner's own email**, which is exactly the solo-operator setup.
-2. **API key.** Create an API key in the Resend dashboard (API Keys -> Create
-   API Key) with **Sending access** permission - the code only sends
-   (`convex/boxes/boxMetrics.ts`); it registers no webhooks. Copy the key ->
-   `RESEND_API_KEY`.
-3. **From address.** Keep `ALERT_EMAIL_FROM=Composery <onboarding@resend.dev>`,
-   Resend's shared address for accounts without a verified domain.
-4. **More recipients (later).** Alerts go to every non-suspended `admin` user.
-   Deliverability beyond the account owner requires verifying a domain: in the
-   Resend dashboard, add a domain (Domains -> Add Domain), publish the DNS
-   records Resend shows, then point `ALERT_EMAIL_FROM` at that domain. Verify the
-   website domain (`<website-domain>`) or a subdomain of it - never `CLOUD_DOMAIN`,
-   whose [Cloudflare](./cloudflare.md) zone is deliberately locked to "sends no
-   mail".
+## Setup
+
+1. Create a Resend API key with **Sending access** and store it as
+   `RESEND_API_KEY` in each Convex deployment that should send alerts.
+2. For initial testing, `Composery <onboarding@resend.dev>` can send only to
+   the Resend account owner's address.
+3. Before alerts must reach other admins, add `alerts.composery.io` as a
+   sending domain. Add the exact SPF, DKIM, and return-path records Resend shows
+   to the `composery.io` Cloudflare zone, then wait for **Verified**.
+4. Set `ALERT_EMAIL_FROM=Composery <alerts@alerts.composery.io>`.
+
+Use the subdomain so Resend's sending reputation and SPF records do not interfere
+with Cloudflare Email Routing on `hello@composery.io`. Never use
+`composery.cloud`, which intentionally sends no mail.
+
+Alerts go to every non-suspended admin user's Clerk email, capped by the code.
+No Resend webhook is used.
+
+## Check
+
+- Trigger a development flag and confirm it appears in the console.
+- With Resend configured, confirm the owner receives the message.
+- After domain verification, test a second recipient.
+
+## References
+
+- Resend domains: https://resend.com/docs/dashboard/domains/introduction
+- Resend API keys: https://resend.com/docs/dashboard/api-keys/introduction

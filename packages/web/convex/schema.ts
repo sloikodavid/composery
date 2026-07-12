@@ -159,6 +159,8 @@ export default defineSchema({
 		polar_customer_id: v.optional(v.string()),
 		polar_subscription_id: v.optional(v.string()),
 		runtime_auth_hash: v.string(),
+		terms_accepted_at: v.optional(v.number()),
+		terms_version: v.optional(v.string()),
 		created_at: v.number(),
 		updated_at: v.number(),
 		converted_at: v.optional(v.number()),

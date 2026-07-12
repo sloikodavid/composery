@@ -6,7 +6,10 @@ import { emailFromIdentity } from "../authorization";
 import { polarServer } from "../billing/polar";
 import { hashBoxPassword } from "../boxes/boxPassword";
 import { isSlugAvailable } from "../boxes/slugAvailability";
-import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
+import {
+	CHECKOUT_INTENT_METADATA_KEYS,
+	CLOUD_TERMS_VERSION
+} from "../checkout/checkoutIntents";
 import { requiredEnv, websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
@@ -51,6 +54,7 @@ export const slugAvailability = query({
 
 export const createCheckout = action({
 	args: {
+		legalAccepted: v.boolean(),
 		password: v.string(),
 		slug: v.string()
 	},
@@ -62,6 +66,10 @@ export const createCheckout = action({
 	handler: async (ctx, args): Promise<CheckoutResult> => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throw new ConvexError("Authentication required.");
+		if (!args.legalAccepted) {
+			throw new ConvexError("Accept the Terms of Service to continue.");
+		}
+		const termsAcceptedAt = Date.now();
 
 		const user = await ctx.runMutation(internal.users.ensureUserForIdentity, {
 			clerkUserId: identity.subject,
@@ -102,7 +110,9 @@ export const createCheckout = action({
 				internal.checkout.checkoutIntents.refreshCheckoutIntentAuthHash,
 				{
 					intentId: activeCheckout.intentId,
-					runtimeAuthHash
+					runtimeAuthHash,
+					termsAcceptedAt,
+					termsVersion: CLOUD_TERMS_VERSION
 				}
 			);
 
@@ -122,7 +132,9 @@ export const createCheckout = action({
 					{
 						userId: identity.subject,
 						slug,
-						runtimeAuthHash
+						runtimeAuthHash,
+						termsAcceptedAt,
+						termsVersion: CLOUD_TERMS_VERSION
 					}
 				);
 			intentId = reservedIntentId;

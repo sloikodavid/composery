@@ -83,7 +83,7 @@ There are two kinds of customization, kept deliberately separate:
   owned file would not survive the build. Upstream's own patches apply
   **unmodified** - we do not
   fork them.
-- **Overlay** (`packages/ide/overlay/`) is whole owned files, path-mirrored onto.
+- **Overlay** (`packages/ide/overlay/`) is whole owned files, path-mirrored onto
   the tree after quilt push. This carries our owned upstream-server `src/node/*`
   customizations (cli, http, main, util, wrapper, routes, persistence, the auth
   backend) and all browser assets/pages/extensions. Whole files, not diffs -

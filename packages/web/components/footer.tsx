@@ -15,6 +15,13 @@ const RESOURCE_LINKS = [
 	{ href: "/brand", label: "Brand" }
 ];
 
+const LEGAL_LINKS = [
+	{ href: "/privacy", label: "Privacy" },
+	{ href: "/terms", label: "Terms" },
+	{ href: "/cookies", label: "Cookies" },
+	{ href: "/licenses", label: "Licences" }
+];
+
 export function Footer() {
 	return (
 		<footer className="border-t border-border bg-background">
@@ -27,7 +34,7 @@ export function Footer() {
 					</p>
 				</div>
 
-				<div className="grid gap-8 sm:grid-cols-2 sm:gap-14 md:justify-self-end md:gap-16">
+				<div className="grid gap-8 sm:grid-cols-3 sm:gap-14 md:justify-self-end md:gap-16">
 					<FooterLinkGroup
 						className="md:text-right"
 						links={PRODUCT_LINKS}
@@ -37,6 +44,11 @@ export function Footer() {
 						className="md:text-right"
 						links={RESOURCE_LINKS}
 						title="Resources"
+					/>
+					<FooterLinkGroup
+						className="md:text-right"
+						links={LEGAL_LINKS}
+						title="Legal"
 					/>
 				</div>
 

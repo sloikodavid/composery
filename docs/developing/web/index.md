@@ -13,6 +13,8 @@ Stack: Next.js on Vercel, Convex (functions, database, HTTP actions, crons, auth
 config, `@convex-dev/polar`, `@convex-dev/workflow`), Clerk, Polar, Hetzner Cloud
 (per-box VPS), Cloudflare DNS (per-box `A`/`AAAA`), a public runtime container
 image, Caddy in each box for HTTPS, and Hetzner snapshots for restore points.
+Namecheap remains the registrar; Cloudflare is authoritative DNS for both
+`composery.io` and `composery.cloud` and forwards `hello@composery.io`.
 Periodic work is handled by Convex crons - no separate Layer, Headless, or Poller
 service.
 
@@ -29,13 +31,12 @@ This is a solo project with two long-lived backends and no preview/staging tier:
 
 - _Frontend env_ is read by Next.js. It lives in `.env.local` (local) and Vercel
   Production:
-  - `CONVEX_DEPLOYMENT` (Convex CLI only), `NEXT_PUBLIC_CONVEX_URL`,
-    `NEXT_PUBLIC_CONVEX_SITE_URL`.
+  - `CONVEX_DEPLOYMENT` (Convex CLI only), `NEXT_PUBLIC_CONVEX_URL`.
   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_CLERK_SIGN_IN_URL`,
     `CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES` (`proxy.ts`).
   - `NEXT_PUBLIC_POLAR_ENVIRONMENT`, `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`
     (`lib/polar-dashboard.ts`), `NEXT_PUBLIC_HETZNER_PROJECT_ID`
-    (`lib/hetzner-dashboard.ts`).
+    (`lib/hetzner-dashboard.ts`), `NEXT_PUBLIC_VERCEL_PROJECT_URL` (`lib/vercel-dashboard.ts`).
 - _Convex deployment env_ is read by Convex functions/actions/auth/crons. A
   human sets it per deployment in the Convex dashboard (Deployment Settings ->
   Environment Variables); it lives on the deployment, not on your machine:
@@ -65,14 +66,16 @@ different things, not two spellings of one domain.
 
 ## Order of operations
 
-1. Create the [Convex](./convex.md) deployments - their URLs must exist first
+1. Delegate both domains from Namecheap and configure the website, email, and
+   runtime zones in [Cloudflare](./cloudflare.md).
+2. Create the [Convex](./convex.md) deployments - their URLs must exist first
    (Polar webhook target `CONVEX_SITE_URL`, Clerk JWT issuer).
-2. Set up each provider ([Clerk](./clerk.md), [Polar](./polar.md),
+3. Set up each provider ([Clerk](./clerk.md), [Polar](./polar.md),
    [Hetzner](./hetzner.md), [Cloudflare](./cloudflare.md)). Each page names the
    value/variable it produces; some need the Convex URLs from step 1.
-3. Enter the collected values into the Convex deployment env per deployment
+4. Enter the collected values into the Convex deployment env per deployment
    ([Convex](./convex.md) - "Set Convex environment variables").
-4. Configure [Vercel](./vercel.md) (frontend env, prod deploy key, build
+5. Configure [Vercel](./vercel.md) (frontend env, prod deploy key, build
    settings) and deploy.
 
 ## Prerequisites

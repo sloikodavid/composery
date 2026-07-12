@@ -8,11 +8,57 @@ command service, which runs that agent's official setup command in a new termina
 Logos are CSS-masked and filled with the theme accent (textLink.foreground), so
 they read as one accent silhouette and adapt to light/dark. Keeps the existing
 isEnabledCoderGettingStarted gate, so COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE
-still turns the whole block off.
+still turns the whole block off. Also wires the Welcome page's custom Monaco
+scrollables to the same setScrollPosition path used by upstream touch-aware
+DomScrollableElement surfaces: outer overflow stays hidden, and finger movement
+is translated into scrollbar state instead of relying on body/workbench scrolling.
 
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
-@@ -930,66 +930,76 @@ export class GettingStartedPage extends
+@@ -5,6 +5,7 @@
+
+ import { $, Dimension, addDisposableListener, append, clearNode, reset, prepend } from '../../../../base/browser/dom.js';
++import { EventType as TouchEventType, Gesture } from '../../../../base/browser/touch.js';
+ import { renderFormattedText } from '../../../../base/browser/formattedTextRenderer.js';
+ import { status } from '../../../../base/browser/ui/aria/aria.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+ import { Button } from '../../../../base/browser/ui/button/button.js';
+@@ -864,6 +865,22 @@ export class GettingStartedPage extends
+ 		this.detailsScrollbar.value?.scanDomNode();
+ 	}
+
++	private registerTouchScroll(element: HTMLElement, getScrollbar: () => DomScrollableElement | undefined) {
++		const disposables = new DisposableStore();
++		disposables.add(Gesture.addTarget(element));
++		disposables.add(addDisposableListener(element, TouchEventType.Change, event => {
++			event.preventDefault();
++			event.stopPropagation();
++			const scrollbar = getScrollbar();
++			if (!scrollbar) {
++				return;
++			}
++			const scrollPosition = scrollbar.getScrollPosition();
++			scrollbar.setScrollPosition({ scrollLeft: scrollPosition.scrollLeft - event.translationX, scrollTop: scrollPosition.scrollTop - event.translationY });
++		}));
++		return disposables;
++	}
++
+ 	private updateMediaSourceForColorMode(element: HTMLImageElement, sources: { hcDark: URI; hcLight: URI; dark: URI; light: URI }) {
+ 		const themeType = this.themeService.getColorTheme().type;
+ 		const src = sources[themeType].toString(true).replace(/ /g, '%20');
+@@ -882,8 +944,10 @@ export class GettingStartedPage extends
+ 		this.detailsPageScrollbar = this._register(new DomScrollableElement(this.stepsContent, { className: 'full-height-scrollable', vertical: ScrollbarVisibility.Hidden }));
+ 		this.categoriesPageScrollbar = this._register(new DomScrollableElement(this.categoriesSlide, { className: 'full-height-scrollable categoriesScrollbar', vertical: ScrollbarVisibility.Hidden }));
+ 
++		this._register(this.registerTouchScroll(this.categoriesSlide, () => this.categoriesPageScrollbar));
++		this._register(this.registerTouchScroll(this.stepsContent, () => this.detailsPageScrollbar));
++
+ 		this.stepsSlide.appendChild(this.detailsPageScrollbar.getDomNode());
+-
+ 		const gettingStartedPage = $('.gettingStarted', {}, this.categoriesPageScrollbar.getDomNode(), this.stepsSlide);
+ 		this.container.appendChild(gettingStartedPage);
+ 
+@@ -930,66 +994,76 @@ export class GettingStartedPage extends
  
  		let gettingStartedCoder: HTMLElement = $('.header', {});
  		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
@@ -24,7 +70,8 @@ still turns the whole block off.
 +				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
 +				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
 +			];
- 			gettingStartedCoder = $('.gettingStartedCategory', {},
+-			gettingStartedCoder = $('.gettingStartedCategory', {},
++			gettingStartedCoder = $('.gettingStartedCategory.composery-agent-category', {},
  				$('h2', {
 -					style: 'margin-bottom: 12px',
 -				}, 'Next Up'),
@@ -145,9 +192,17 @@ still turns the whole block off.
  				),
  			);
  		}
+@@ -1635,6 +1709,7 @@ export class GettingStartedPage extends
+ 		);
+ 		this.detailsScrollbar.value = new DomScrollableElement(stepsContainer, { className: 'steps-container' });
+ 		const stepListComponent = this.detailsScrollbar.value.getDomNode();
++		this.detailsPageDisposables.add(this.registerTouchScroll(stepsContainer, () => this.detailsScrollbar.value));
+ 
+ 		const categoryFooter = $('.getting-started-footer');
+ 		if (this.editorInput.showTelemetryNotice && getTelemetryLevel(this.configurationService) !== TelemetryLevel.NONE && this.productService.enableTelemetry) {
 --- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
 +++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
-@@ -1147,3 +1147,12 @@
+@@ -1147,3 +1147,24 @@
  .monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlide .getting-started-checkbox {
  	border-color: var(--vscode-checkbox-border) !important;
  }
@@ -159,4 +214,16 @@ still turns the whole block off.
 +
 +.composery-agent:hover {
 +	background-color: var(--vscode-list-hoverBackground);
++}
++
++/* Composery: code-server's custom card is prepended into an upstream grid column that is normally
++ * clipped to the editor height. When the agent setup card is present, let that grid grow so the
++ * page-level DomScrollableElement gets a real scroll range for wheel, scrollbar and touch input. */
++.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlideCategories > .gettingStartedCategoriesContainer:has(.composery-agent-category) {
++	height: auto;
++	min-height: 100%;
++}
++
++.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlideCategories > .gettingStartedCategoriesContainer:has(.composery-agent-category) > .categories-column {
++	overflow: visible;
 +}

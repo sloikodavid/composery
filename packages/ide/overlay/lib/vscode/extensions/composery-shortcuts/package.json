@@ -86,7 +86,7 @@
 				"command": "composery.shortcuts.undoRemove",
 				"key": "ctrl+z",
 				"mac": "cmd+z",
-				"when": "focusedView == composery.shortcuts.view"
+				"when": "focusedView == composery.shortcuts.view && composery.shortcuts.canUndoRemove"
 			}
 		],
 		"menus": {

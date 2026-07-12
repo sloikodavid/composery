@@ -13,7 +13,7 @@ ephemeral filesystem and no attachable disk are [not viable](#not-viable).
 
 Run on your own server, or on a managed platform that supplies the HTTPS edge and a disk:
 
-- **[Docker Compose on a VPS](vps.md)** - your own Linux server. Pick the init system.
+- **[Docker Compose on a VPS](vps.md)** - your own Linux server. Pick the init system
   (`systemd` or `supervisor`) and whether Composery owns its TLS edge (bundled Caddy or
   your own proxy).
 - **[DigitalOcean](digitalocean.md)** - a Droplet with a compose recipe (the common n8n
@@ -36,7 +36,7 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 - **DigitalOcean App Platform** - no volumes; local disk is ephemeral. Use a
   [Droplet](vps.md) or [DOKS](kubernetes.md) instead.
 - **Google Cloud Run / App Engine** - stateless. Use a GCE VM.
-- **AWS App Runner / ECS Fargate (default)** - stateless without EFS. Use EC2, or mount.
+- **AWS App Runner / ECS Fargate (default)** - stateless without EFS. Use EC2, or mount
   EFS at `/data` (advanced).
 - **Azure Container Apps** - needs an Azure Files share mounted at `/data`, or use a VM.
 
@@ -47,7 +47,7 @@ boundary - Composery is intentionally root-capable inside the container:
 
 - use HTTPS;
 - register a strong password, or set `COMPOSERY_PASSWORD` /
-  `COMPOSERY_HASHED_PASSWORD`.
+  `COMPOSERY_HASHED_PASSWORD`
   (see [Configuration](../configuration.md));
 - keep the image updated;
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;

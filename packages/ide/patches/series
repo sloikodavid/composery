@@ -7,9 +7,15 @@ markdown-preview-loopback-callback-bridge.diff
 trusted-domains-loopback-callback-guard.diff
 overlays.diff
 webview-mobile.diff
+window-focus-resample.diff
 touch-editor.diff
+touch-editor-scroll-release.diff
+touch-reveal-guard.diff
 touch-menu.diff
+touch-context-menu.diff
 touch-gate.diff
+touch-sash.diff
+touch-select.diff
 narrow-gate.diff
 narrow-fullscreen.diff
 branding.diff
@@ -19,7 +25,9 @@ clipboard-ipc.diff
 tips.diff
 extensions-view-themes.diff
 default-layout.diff
+menu-home-actions.diff
 titlebar-logo.diff
+titlebar-menubar-overflow.diff
 default-color-theme.diff
 shortcuts.diff
 touch-terminal-keybar.diff

@@ -1,6 +1,14 @@
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
-@@ -47,6 +47,7 @@ import { AuxiliaryBarPart } from './part
+@@ -40,13 +40,14 @@
+ import { mark } from '../../base/common/performance.js';
+ import { IExtensionService } from '../services/extensions/common/extensions.js';
+ import { ILogService } from '../../platform/log/common/log.js';
+-import { DeferredPromise, Promises } from '../../base/common/async.js';
++import { DeferredPromise, Promises, RunOnceScheduler } from '../../base/common/async.js';
+ import { IBannerService } from '../services/banner/browser/bannerService.js';
+ import { IPaneCompositePartService } from '../services/panecomposite/browser/panecomposite.js';
+ import { AuxiliaryBarPart } from './parts/auxiliarybar/auxiliaryBarPart.js';
  import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
  import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
  import { CodeWindow, mainWindow } from '../../base/browser/window.js';
@@ -8,22 +16,22 @@
  
  //#region Layout Implementation
  
-@@ -1385,7 +1386,8 @@ export abstract class Layout extends Dis
+@@ -1385,7 +1386,8 @@
  
  	private focusPanelOrEditor(): void {
  		const activePanel = this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel);
 -		if ((this.hasFocus(Parts.PANEL_PART) || !this.isVisible(Parts.EDITOR_PART)) && activePanel) {
 +		// Composery: don't pull the panel up just because the editor is collapsed for narrow-viewport fullscreen.
-+		if ((this.hasFocus(Parts.PANEL_PART) || (!this.isVisible(Parts.EDITOR_PART) && !this.editorHiddenForFullscreen)) && activePanel) {
++		if ((this.hasFocus(Parts.PANEL_PART) || (!this.isVisible(Parts.EDITOR_PART) && !this.editorHiddenForNarrowPart)) && activePanel) {
  			activePanel.focus(); // prefer panel if it has focus or editor is hidden
  		} else {
  			this.focus(); // otherwise focus editor
-@@ -1664,13 +1666,13 @@ export abstract class Layout extends Dis
+@@ -1664,13 +1666,13 @@
  
  		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
  			this._register(part.onDidVisibilityChange(visible => {
 -				if (!this.inMaximizedAuxiliaryBarTransition) {
-+				if (!this.inMaximizedAuxiliaryBarTransition && !this.inFullscreenTransition) {
++				if (!this.inMaximizedAuxiliaryBarTransition && !this.inNarrowPartTransition) {
  
  					// skip reacting when we are transitioning
 -					// in or out of maximised auxiliary bar to prevent
@@ -37,51 +45,61 @@
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1688,6 +1690,16 @@ export abstract class Layout extends Dis
+@@ -1688,6 +1690,26 @@
  			}));
  		}
  
 +		// Composery: on a narrow touch viewport keep exactly one of the side bar / panel / secondary
 +		// side bar open at a time and let it fill the screen by collapsing the editor (see
-+		// applyFullscreen). Record which part the user last opened as the intent, then apply.
++		// applyNarrowLayout). Record which part the user last opened as the intent, then apply.
 +		this._register(this.onDidChangePartVisibility(({ partId, visible }) => {
-+			if (Layout.NARROW_CONTENT_PARTS.includes(partId as Parts)) {
++			if (Layout.NARROW_PARTS.includes(partId as Parts)) {
 +				this.onContentPartVisibility(partId as Parts, visible);
 +			}
 +		}));
-+		this._register(addDisposableListener(mainWindow.matchMedia(NARROW_QUERY), 'change', () => this.scheduleFullscreen()));
++		this._register(addDisposableListener(mainWindow.matchMedia(NARROW_QUERY), 'change', () => this.scheduleNarrowLayout()));
++
++		// Composery: the overlay back guard (narrow.js) translates a browser/hardware back into this
++		// event while a narrow-fullscreen part is open. Close the part - back dismisses the top
++		// layer instead of leaving the page.
++		this._register(addDisposableListener(mainWindow, 'composery-narrow-close-part', () => {
++			if (this.isNarrowViewport) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
++		}));
 +
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1738,6 +1750,13 @@ export abstract class Layout extends Dis
+@@ -1738,6 +1760,13 @@
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
 +
 +			// Composery: fullscreen the open part once the real viewport is known at boot (parts
 +			// already visible at init fire no visibility event).
-+			if (!this.fullscreenInitialized) {
-+				this.fullscreenInitialized = true;
-+				this.scheduleFullscreen();
++			if (!this.narrowLayoutInitialized) {
++				this.narrowLayoutInitialized = true;
++				this.scheduleNarrowLayout();
 +			}
  		}
  	}
  
-@@ -1887,8 +1906,10 @@ export abstract class Layout extends Dis
+@@ -1887,8 +1916,10 @@
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
 -		// unless we have a maximized auxiliary bar
 -		if (hidden && !this.isVisible(Parts.PANEL_PART) && !this.isAuxiliaryBarMaximized()) {
 +		// unless we have a maximized auxiliary bar (or a part is fullscreened on a narrow viewport, which
-+		// deliberately collapses the editor; editorHiddenForFullscreen stays set the whole time so the
++		// deliberately collapses the editor; editorHiddenForNarrowPart stays set the whole time so the
 +		// panel can't silently reappear behind the open part).
-+		if (hidden && !this.isVisible(Parts.PANEL_PART) && !this.isAuxiliaryBarMaximized() && !this.editorHiddenForFullscreen) {
++		if (hidden && !this.isVisible(Parts.PANEL_PART) && !this.isAuxiliaryBarMaximized() && !this.editorHiddenForNarrowPart) {
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2225,23 @@ export abstract class Layout extends Dis
+@@ -2204,10 +2235,23 @@
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -89,24 +107,24 @@
 +		) && !this.isVisible(Parts.EDITOR_PART, mainWindow) && !this.isAuxiliaryBarMaximized()
 +			// Composery: while we collapse the editor for narrow-viewport fullscreen the panel is not "maximized"
 +			// - whichever part is the open one - so the native panel-maximize machinery stays out of it.
-+			&& !this.editorHiddenForFullscreen;
++			&& !this.editorHiddenForNarrowPart;
  	}
  
  	toggleMaximizedPanel(): void {
 +		// Composery: on a narrow viewport a part is fullscreened by collapsing the editor in
-+		// applyFullscreen, which owns that state. Native panel maximize must not touch the grid -
++		// applyNarrowLayout, which owns that state. Native panel maximize must not touch the grid -
 +		// but VS Code fires this as "reveal the editor" whenever an editor opens while the editor
 +		// part is hidden (showEditorIfHidden / onDidVisibleEditorsChange). Translate that intent:
 +		// an editor wants the screen, so exit fullscreen - close the open part and reveal it.
 +		if (this.isNarrowViewport) {
-+			this.fullscreenPart = undefined;
-+			this.scheduleFullscreen();
++			this.narrowPart = undefined;
++			this.scheduleNarrowLayout();
 +			return;
 +		}
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2336,115 @@ export abstract class Layout extends Dis
+@@ -2302,6 +2346,119 @@
  		}
  	}
  
@@ -115,22 +133,23 @@
 +	// On a narrow touch viewport exactly one of the side bar / panel / secondary side bar is open at
 +	// a time and fills the screen by collapsing the editor beneath it - the setEditorHidden(true)
 +	// trick native panel/aux maximize uses, so it reads as a true 1:1 fullscreen with no grid-resize
-+	// math; closing the open part reveals the editor again. editorHiddenForFullscreen records that WE
++	// math; closing the open part reveals the editor again. editorHiddenForNarrowPart records that WE
 +	// collapsed the editor: it relaxes the editor/panel "both hidden" invariant in setEditorHidden and
 +	// keeps isPanelMaximized()/focusPanelOrEditor() from treating the hidden editor as a maximized panel.
 +	//
 +	// Modeled on native maximize (setAuxiliaryBarMaximized): every part mutation happens synchronously
-+	// inside inFullscreenTransition, which the part-visibility relay skips reacting to, so there is no
-+	// re-entrant cascade. The open part is tracked as explicit intent (fullscreenPart), not
++	// inside inNarrowPartTransition, which the part-visibility relay skips reacting to, so there is no
++	// re-entrant cascade. The open part is tracked as explicit intent (narrowPart), not
 +	// re-read from transient visibility - so when queued visibility events drain after the transition,
-+	// applyFullscreen sees the same intent, finds the state already correct, and converges instead
++	// applyNarrowLayout sees the same intent, finds the state already correct, and converges instead
 +	// of oscillating.
-+	private static readonly NARROW_CONTENT_PARTS = [Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART];
-+	private inFullscreenTransition = false;
-+	private editorHiddenForFullscreen = false;
-+	private fullscreenPart: Parts | undefined;
-+	private fullscreenInitialized = false;
-+	private fullscreenScheduled = false;
++	private static readonly NARROW_PARTS = [Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART];
++	private inNarrowPartTransition = false;
++	private editorHiddenForNarrowPart = false;
++	private narrowPart: Parts | undefined;
++	private narrowLayoutInitialized = false;
++	private readonly narrowLayoutScheduler = this._register(new RunOnceScheduler(() => this.applyNarrowLayout(), 0));
++	private desktopPartVisibility: Set<Parts> | undefined;
 +
 +	private get isNarrowViewport(): boolean {
 +		return isNarrow(mainWindow);
@@ -140,46 +159,38 @@
 +	// way re-apply, so opening any part also closes the previous one and collapses the editor.
 +	private onContentPartVisibility(part: Parts, visible: boolean): void {
 +		if (visible) {
-+			this.fullscreenPart = part;
-+		} else if (part === this.fullscreenPart) {
-+			this.fullscreenPart = undefined;
++			this.narrowPart = part;
++		} else if (part === this.narrowPart) {
++			this.narrowPart = undefined;
 +		}
-+		this.scheduleFullscreen();
++		this.scheduleNarrowLayout();
 +	}
 +
-+	// We are invoked from inside a part-visibility event delivery, so applying immediately would queue
-+	// our own part mutations and let the relay react to them once inFullscreenTransition has cleared (a
-+	// cascade). Defer to a microtask so the apply runs at top level - synchronous mutations whose events
-+	// deliver inside inFullscreenTransition, which the relay then skips, exactly like native maximize. One
-+	// microtask coalesces the burst of visibility events a single toggle produces.
-+	private scheduleFullscreen(): void {
-+		if (this.fullscreenScheduled) {
-+			return;
-+		}
-+		this.fullscreenScheduled = true;
-+		queueMicrotask(() => {
-+			this.fullscreenScheduled = false;
-+			this.applyFullscreen();
-+		});
++	private scheduleNarrowLayout(): void {
++		this.narrowLayoutScheduler.schedule();
 +	}
 +
-+	private applyFullscreen(): void {
-+		if (!this.workbenchGrid || this.inFullscreenTransition || this.inMaximizedAuxiliaryBarTransition) {
++	private applyNarrowLayout(): void {
++		if (!this.workbenchGrid) {
 +			return;
 +		}
-+		this.inFullscreenTransition = true;
++		if (this.inNarrowPartTransition || this.inMaximizedAuxiliaryBarTransition) {
++			this.scheduleNarrowLayout();
++			return;
++		}
++		this.inNarrowPartTransition = true;
 +		try {
-+			// Off a narrow viewport there is no exclusivity or fullscreen - just undo any we applied.
 +			if (!this.isNarrowViewport) {
-+				this.revealEditorFromFullscreen();
++				this.restoreDesktopPartVisibility();
 +				return;
 +			}
-+			const keep = (this.fullscreenPart !== undefined && this.isVisible(this.fullscreenPart))
-+				? this.fullscreenPart
++			this.desktopPartVisibility ??= new Set(Layout.NARROW_PARTS.filter(part => this.isVisible(part)));
++			const keep = (this.narrowPart !== undefined && this.isVisible(this.narrowPart))
++				? this.narrowPart
 +				: undefined;
 +			// Exclusivity: at most one content part stays open.
 +			let changed = false;
-+			for (const part of Layout.NARROW_CONTENT_PARTS) {
++			for (const part of Layout.NARROW_PARTS) {
 +				if (part !== keep && this.isVisible(part)) {
 +					this.setPartHidden(true, part);
 +					changed = true;
@@ -187,7 +198,7 @@
 +			}
 +			// Fullscreen: collapse the editor beneath the open part, or reveal it once none is open.
 +			if (keep !== undefined) {
-+				this.editorHiddenForFullscreen = true;
++				this.editorHiddenForNarrowPart = true;
 +				if (this.isVisible(Parts.EDITOR_PART)) {
 +					this.setEditorHidden(true);
 +					changed = true;
@@ -196,25 +207,36 @@
 +				// fullscreened part (e.g. the terminal) unfocused - so on touch the on-screen keyboard
 +				// never opens. Re-focus the open part, exactly as native maximize does (setAuxiliaryBarMaximized).
 +				if (changed) {
-+					// keep is always one of NARROW_CONTENT_PARTS (side bar / panel / secondary side bar),
++					// keep is always one of NARROW_PARTS (side bar / panel / secondary side bar),
 +					// all single-window parts - same cast VS Code uses on this trio elsewhere.
 +					this.focusPart(keep as SINGLE_WINDOW_PARTS);
 +				}
 +			} else {
-+				this.revealEditorFromFullscreen();
++				this.revealEditorFromNarrowPart();
 +			}
 +		} finally {
-+			this.inFullscreenTransition = false;
++			this.inNarrowPartTransition = false;
 +		}
 +	}
 +
-+	private revealEditorFromFullscreen(): void {
-+		if (this.editorHiddenForFullscreen) {
-+			this.editorHiddenForFullscreen = false;
++	private revealEditorFromNarrowPart(): void {
++		if (this.editorHiddenForNarrowPart) {
++			this.editorHiddenForNarrowPart = false;
 +			if (!this.isVisible(Parts.EDITOR_PART)) {
 +				this.setEditorHidden(false);
 +			}
 +		}
++	}
++
++	private restoreDesktopPartVisibility(): void {
++		this.revealEditorFromNarrowPart();
++		if (!this.desktopPartVisibility) {
++			return;
++		}
++		for (const part of Layout.NARROW_PARTS) {
++			this.setPartHidden(!this.desktopPartVisibility.has(part), part);
++		}
++		this.desktopPartVisibility = undefined;
 +	}
 +
 +	//#endregion

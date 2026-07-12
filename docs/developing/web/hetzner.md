@@ -61,21 +61,12 @@ created once in the console and referenced by id.
    backend uses this key for the whole box lifecycle (create, reset rebuild,
    bootstrap, password change, slug change), not just first setup.
 
-   When rotating the key for an existing box, do it in this order so you do not
-   lock the backend out of the VPS:
-   1. Add the new public key to `/root/.ssh/authorized_keys` on every existing
-      server while the old key still works.
-   2. Test `ssh -i ~/.ssh/composery_ssh root@<server-ip>` from your machine.
-   3. Replace `SSH_PRIVATE_KEY` in the matching [Convex](./convex.md) deployment
-      with the new private key, and point `HETZNER_SSH_KEY_IDS` at the matching
-      Hetzner project key for future servers.
-   4. Only after the new login works, remove the old public key from
-      `/root/.ssh/authorized_keys` and delete the old local keypair.
-
    `HETZNER_SSH_KEY_IDS` only affects Hetzner's create-time injection. Existing
    running servers keep whatever was written into `authorized_keys`, while reset
    rebuilds install the public key derived from the current `SSH_PRIVATE_KEY`.
-   Changing the Hetzner project key alone is not a rotation.
+   During rotation, install and test the new public key on existing servers
+   before replacing the Convex secret; changing the project key alone affects
+   only new servers.
 
 3. **Firewall.** Create a firewall in the Hetzner project (Project -> Firewalls).
    Add inbound rules allowing TCP **22**, **80**, and **443** plus **ICMP**, all
@@ -87,36 +78,12 @@ created once in the console and referenced by id.
    provisioning fails fast (`requiredEnv` in `convex/boxes/infra/hetznerVps.ts`)
    rather than create an unfirewalled, internet-exposed box.
 
-   This firewall is the box's real network boundary, so it must stay exactly
-   this shape:
-   - **It is enforced at the hypervisor, outside the VM.** The box owner has
-     root inside a privileged container (`privileged: true` in
-     `convex/boxes/infra/runtimeArtifacts.ts`) and is assumed to be able to
-     escape to the host OS. Anything host-side - `ufw`, `iptables`, sshd config,
-     Docker's port publishing - is theirs to change, so no host firewall counts.
-     Whatever they bind or publish, inbound traffic still only reaches TCP
-     22/80/443.
-   - **Port 22 must stay open to `0.0.0.0/0`/`::/0`.** The backend SSHes in from
-     Convex actions (`convex/boxes/infra/ssh.ts`) for the whole box lifecycle,
-     and Convex has no fixed egress IPs to allowlist. sshd is key-only
-     (cloud-init sets `ssh_pwauth: false`), so this is not password-guessable.
-   - **ICMP must stay allowed for path-MTU discovery.** Clients behind
-     smaller-MTU links (VPNs, PPPoE, IPv6 tunnels) depend on inbound
-     "fragmentation needed" / ICMPv6 "Packet Too Big" messages; dropping them
-     silently hangs large HTTPS responses, and IPv6 has no fragmentation
-     fallback at all. The only exposure is answering ping, which carries no
-     connections; floods are Hetzner's DDoS mitigation's problem.
-   - **Do not attach boxes to a shared private network.** Hetzner firewalls do
-     not filter private-network traffic, so boxes on one network (the optional
-     `HETZNER_NETWORK_ID` in `createServerPayload`) can reach each other
-     directly, root to root. Leave `HETZNER_NETWORK_ID` unset unless every box
-     gets its own network.
-   - Nothing pivotable lives behind the open outbound: the Hetzner API token and
-     Cloudflare token exist only on the Convex deployment, the runtime image is
-     pulled anonymously (no registry credentials on the host), snapshots are
-     taken hypervisor-side, and Hetzner's metadata service exposes no
-     credentials (the only `user_data` is the SSH **public** key). A box owner
-     with full root therefore controls exactly one VPS: their own.
+   This firewall is the real boundary because box owners effectively control
+   their host. Port 22 remains public because Convex has no fixed egress IP;
+   cloud-init disables SSH passwords. ICMP is needed for path-MTU discovery.
+   Leave `HETZNER_NETWORK_ID` empty: Hetzner firewalls do not filter private
+   network traffic, so a shared network would let customer boxes bypass this
+   isolation.
 
 4. **Project id.** Read the numeric id from the project's console URL
    (`console.hetzner.cloud/projects/<id>/...`)
@@ -174,26 +141,23 @@ There are **no new environment variables.** Snapshots reuse the existing
 - **Retention is automatic.** The daily `deleteExpiredSnapshots` cron deletes
   each snapshot's Hetzner image **and** its Convex record together once it passes
   the per-class retention in `convex/boxes/snapshotPolicy.ts`: automatic
-  snapshots, taken once a day, kept 7 days (~7 automatic images per box); manual
-  snapshots kept 30 days; failed/stuck captures 1 day. A per-box hard cap (15)
-  evicts the oldest automatic snapshot when a new one would exceed it - never a
-  manual one - so image count stays bounded.
-- **Operational prerequisite - the per-project snapshot limit.** Hetzner caps
-  the number of snapshots per project (Console -> project -> **Limits** tab ->
-  **Request change**, reviewed manually). With a fleet this binds fast: roughly
-  `max_boxes × per-box cap` images. **Before enabling fleet-wide automatic
-  snapshots, request a snapshot-limit increase sized to that product.** If
-  Hetzner will not grant enough, the fallback is Hetzner _Backups_
-  (`enable_backup`, 7 per server, not project-capped) - a different feature with
-  a flat 20%-of-server-price cost and "backup" terminology, not implemented here.
+  snapshots, taken once a day, kept 5 days; manual snapshots kept 30 days;
+  failed/stuck captures 1 day. The default caps are 5 automatic plus 5 manual
+  snapshots per box.
+- **Account snapshot limit.** Hetzner's default is 30 snapshots across all
+  projects, not per project. Before the fleet can exceed that, request an
+  account limit increase sized to roughly `box count × 10`. Hetzner Backups
+  are a separate seven-slot-per-server product and are not implemented here.
 - The runtime image needs nothing special for snapshots (no
   `age`/`zstd`/`curl` snapshot pipeline); it only needs what the lifecycle
   already requires.
 
-See [configuration](./configuration.md) for the cron schedule and snapshot polling
+See [Maintenance](./maintenance.md) for the cron schedule and snapshot polling
 constants.
 
 ## References
 
-- Hetzner Cloud API: https://docs.hetzner.cloud/reference/cloud.
-- Hetzner API tokens: https://docs.hetzner.com/cloud/api/getting-started/generating-api-token.
+- Hetzner Cloud API: https://docs.hetzner.cloud/reference/cloud
+- Hetzner API tokens: https://docs.hetzner.com/cloud/api/getting-started/generating-api-token
+- Hetzner firewalls: https://docs.hetzner.com/cloud/firewalls/faq/
+- Hetzner backups and snapshots: https://docs.hetzner.com/cloud/servers/backups-snapshots/overview/

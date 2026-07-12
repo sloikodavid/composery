@@ -1,7 +1,7 @@
 diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/workbench/browser/window.ts
 --- a/lib/vscode/src/vs/workbench/browser/window.ts
 +++ b/lib/vscode/src/vs/workbench/browser/window.ts
-@@ -11,7 +11,7 @@
+@@ -11,7 +11,7 @@ import { timeout } from '../../base/common/async.js';
  import { Event } from '../../base/common/event.js';
  import { Disposable, IDisposable, dispose, toDisposable } from '../../base/common/lifecycle.js';
  import { matchesScheme, Schemas } from '../../base/common/network.js';
@@ -10,7 +10,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
  import Severity from '../../base/common/severity.js';
  import { URI } from '../../base/common/uri.js';
  import { localize } from '../../nls.js';
-@@ -259,12 +259,14 @@
+@@ -259,15 +259,27 @@ export class BrowserWindow extends BaseWindow {
  		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
  
  		// Layout
@@ -27,10 +27,23 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
  				mainWindow.scrollTo(0, 0);
  			}
  		}));
++		// Composery: the same keyboard reveal can scroll the document without a resize
++		// (visualViewport fires only 'scroll') - the workbench slides up leaving blank
++		// canvas below. Undo it; guard on scale so pinch-zoom panning is left alone.
++		if ((isIOS || isAndroid) && mainWindow.visualViewport) {
++			this._register(addDisposableListener(mainWindow.visualViewport, EventType.SCROLL, () => {
++				if (mainWindow.visualViewport!.scale === 1 && (mainWindow.scrollX !== 0 || mainWindow.scrollY !== 0)) {
++					mainWindow.scrollTo(0, 0);
++				}
++			}));
++		}
+ 
+ 		// Prevent the back/forward gestures in macOS
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.WHEEL, e => e.preventDefault(), { passive: false }));
 diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/workbench/browser/layout.ts
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
-@@ -7,7 +7,7 @@
+@@ -7,7 +7,7 @@ import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable }
  import { Event, Emitter } from '../../base/common/event.js';
  import { EventType, addDisposableListener, getClientArea, size, IDimension, isAncestorUsingFlowTo, computeScreenAwareSize, getActiveDocument, getWindows, getActiveWindow, isActiveDocument, getWindow, getWindowId, getActiveElement, Dimension } from '../../base/browser/dom.js';
  import { onDidChangeFullscreen, isFullscreen, isWCOEnabled } from '../../base/browser/browser.js';
@@ -39,7 +52,20 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
  import { SidebarPart } from './parts/sidebar/sidebarPart.js';
  import { PanelPart } from './parts/panel/panelPart.js';
-@@ -1740,6 +1740,21 @@
+@@ -464,7 +464,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		this._register(this.editorGroupService.mainPart.onDidChangeGroupMaximized(() => this.centerMainEditorLayout(this.stateModel.getRuntimeValue(LayoutStateKeys.MAIN_EDITOR_CENTERED))));
+ 
+ 		// Prevent workbench from scrolling #55456
+-		this._register(addDisposableListener(this.mainContainer, EventType.SCROLL, () => this.mainContainer.scrollTop = 0));
++		this._register(addDisposableListener(this.mainContainer, EventType.SCROLL, () => {
++			this.mainContainer.scrollTop = 0;
++			// Composery: the browser's focus/selection reveal scrolls horizontally too.
++			this.mainContainer.scrollLeft = 0;
++		}));
+ 
+ 		// Menubar visibility changes
+ 		const showingCustomMenu = (isWindows || isLinux || isWeb) && !hasNativeTitlebar(this.configurationService);
+@@ -1728,6 +1732,21 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  				this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
  			);
  
@@ -76,7 +102,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/style.ts b/lib/vscode/src/vs/wo
  import { selectionBackground } from '../../platform/theme/common/colorRegistry.js';
  import { mainWindow } from '../../base/browser/window.js';
  
-@@ -57,7 +57,10 @@
+@@ -57,7 +57,10 @@ registerThemingParticipant((theme, collector) => {
  	}
  
  	// Update body background color to ensure the home indicator area looks similar to the workbench

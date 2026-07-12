@@ -5,7 +5,7 @@ description: Run commands against a running Composery from anywhere, authenticat
 
 Every Composery serves a small automation API on its own URL, in-process with the
 editor, on the same single port. It lets you run commands against the instance from
-outside the editor — `curl`, CI, a script, your laptop — using API keys you mint
+outside the editor - `curl`, CI, a script, your laptop - using API keys you mint
 on the instance. It is the same instance you already have root in; the API just makes that
 shell programmatic and remote.
 
@@ -20,7 +20,7 @@ The API is on by default but **auto-gated**: with no keys, every endpoint return
 
 ## API keys
 
-Keys are created, listed, and revoked **on the instance** with the `composery` CLI —
+Keys are created, listed, and revoked **on the instance** with the `composery` CLI -
 local shell access is the authorization. You cannot mint a key remotely without
 already being able to log in, which is the intended boundary.
 
@@ -30,7 +30,7 @@ composery api key list
 composery api key revoke <id>
 ```
 
-The secret (`csy_...`) is shown once at creation and never again — only its
+The secret (`csy_...`) is shown once at creation and never again - only its
 SHA-256 hash is stored, in `<volume>/api/keys.json` (`0600`, on the persistent
 volume so keys survive a redeploy; `/data` by default). Add `--json` to any command for
 machine-readable output.
@@ -44,8 +44,8 @@ X-API-Key: csy_...
 
 ## Run a command (one-shot)
 
-`POST /v1/exec` runs a command in a login shell as the editor user — the same
-environment your editor terminal has — and returns the result.
+`POST /v1/exec` runs a command in a login shell as the editor user - the same
+environment your editor terminal has - and returns the result.
 
 ```bash
 curl -X POST https://<your-instance>/v1/exec \
@@ -66,7 +66,7 @@ curl -X POST https://<your-instance>/v1/exec \
 
 Fields: `command` (required), `cwd` (default `$HOME`), `env` (overlay), `timeout`
 (seconds). Combined stdout/stderr output is capped and the request is
-time-bounded — these limits exist only because a synchronous request cannot stream
+time-bounded - these limits exist only because a synchronous request cannot stream
 forever. For long or interactive work, use the websocket below. An
 `Idempotency-Key` header makes a retried request return the first result instead
 of re-running; overlapping retries with the same key wait for the running
@@ -75,7 +75,7 @@ command. Reusing a key for a different command payload returns `409`.
 ## Interactive terminal (websocket)
 
 `WS /v1/exec` is a real terminal: a server-side PTY with stdin, live output, and
-resize. No timeout, no output cap — it runs until the process exits or you
+resize. No timeout, no output cap - it runs until the process exits or you
 disconnect. Binary websocket messages are raw terminal I/O both ways; text
 messages are JSON control, currently `{"resize":{"cols":N,"rows":N}}`.
 
@@ -96,23 +96,6 @@ DELETE /v1/sessions/:name    # stop one
 
 ## Configuration
 
-All overridable via environment; defaults are sane and never bite real use.
-
-| Variable                            | Default    | Meaning                             |
-| ----------------------------------- | ---------- | ----------------------------------- |
-| `COMPOSERY_API_ENABLED`             | `true`     | `false` hard-disables the API.      |
-| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | One-shot default timeout (seconds). |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | One-shot stdout+stderr cap (bytes). |
-| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.  |
-| `COMPOSERY_API_RATE_RPS`            | `50`       | Per-key sustained requests/sec.     |
-| `COMPOSERY_API_RATE_BURST`          | `200`      | Per-key burst.                      |
-| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent sessions per key.        |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts/min/IP.        |
-
-Invalid numeric values fall back to the defaults. Extreme numeric values are
-clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,
-10000 burst, 128 concurrent one-shot execs, 500 interactive sessions, and 1000
-failed-auth attempts/min/IP.
-
-Rate limits are abuse/quota rails, not DDoS defense (that is handled by your
-platform in front of the instance). They never trip on normal automation.
+Timeouts, output caps, and rate limits are overridable through `COMPOSERY_API_*`
+environment variables, listed with their defaults in
+[Configuration - API](configuration.md#api).

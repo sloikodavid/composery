@@ -1,0 +1,113 @@
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContext.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContext.ts
+@@ -238,12 +238,12 @@ export class NativeEditContext extends AbstractEditContext {
+ 		this._register(IME.onDidChange(() => {
+ 			if (IME.enabled && reenableTracking) {
+ 				this._focusTracker.resume();
+-				this.domNode.focus();
++				this.domNode.domNode.focus({ preventScroll: true });
+ 				reenableTracking = false;
+ 			}
+ 			if (!IME.enabled && this.isFocused()) {
+ 				this._focusTracker.pause();
+-				this._imeTextArea.focus();
++				this._imeTextArea.domNode.focus({ preventScroll: true });
+ 				reenableTracking = true;
+ 			}
+ 		}));
+@@ -569,7 +569,16 @@ export class NativeEditContext extends AbstractEditContext {
+ 			width = parentBounds.width - contentLeft;
+ 		}
+ 
+-		const selectionBounds = new DOMRect(left, top, width, height);
++		// Clamp to the editor's box: the browser reveals these bounds when the on-screen
++		// keyboard shows, and an off-viewport rect (multi-line selections span their full
++		// height; a horizontally scrolled-out caret keeps a stale left) makes it scroll
++		// overflow:hidden ancestors and pan the visual viewport - the workbench slides
++		// off screen.
++		const boundsLeft = Math.min(Math.max(left, parentBounds.left), parentBounds.right);
++		const boundsTop = Math.min(Math.max(top, parentBounds.top), parentBounds.bottom);
++		const boundsRight = Math.min(Math.max(left + width, parentBounds.left), parentBounds.right);
++		const boundsBottom = Math.min(Math.max(top + height, parentBounds.top), parentBounds.bottom);
++		const selectionBounds = new DOMRect(boundsLeft, boundsTop, boundsRight - boundsLeft, boundsBottom - boundsTop);
+ 		this._editContext.updateSelectionBounds(selectionBounds);
+ 		this._editContext.updateControlBounds(selectionBounds);
+ 	}
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContextUtils.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContextUtils.ts
+@@ -61,7 +61,9 @@ export class FocusTracker extends Disposable {
+ 	}
+ 
+ 	public focus(): void {
+-		this._domNode.focus();
++		// The editor does its own revealing; the browser's focus reveal scrolls
++		// overflow:hidden workbench ancestors and, on mobile, pans the visual viewport.
++		this._domNode.focus({ preventScroll: true });
+ 		this.refreshFocusState();
+ 	}
+ 
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/textArea/textAreaEditContextInput.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/textArea/textAreaEditContextInput.ts
+@@ -772,11 +772,19 @@ export class TextAreaWrapper extends Disposable implements ICompleteTextAreaWrap
+ 		// console.log('reason: ' + reason + ', setSelectionRange: ' + selectionStart + ' -> ' + selectionEnd);
+ 
+ 		if (currentIsFocused) {
+-			// No need to focus, only need to change the selection range
+-			this.setIgnoreSelectionChangeTime('setSelectionRange');
+-			textArea.setSelectionRange(selectionStart, selectionEnd);
++			// No need to focus, only need to change the selection range - but Safari also
++			// reveals the in-textarea caret of a focused textarea, scrolling overflow:hidden
++			// ancestors; undo that reveal like the unfocused path below does.
++			try {
++				const scrollState = this._saveParentsScroll(textArea);
++				this.setIgnoreSelectionChangeTime('setSelectionRange');
++				textArea.setSelectionRange(selectionStart, selectionEnd);
++				this._restoreParentsScroll(textArea, scrollState);
++			} catch (e) {
++				// Sometimes IE throws when setting selection (e.g. textarea is off-DOM)
++			}
+ 			if (browser.isFirefox && activeWindow.parent !== activeWindow) {
+-				textArea.focus();
++				textArea.focus({ preventScroll: true });
+ 			}
+ 			return;
+ 		}
+@@ -784,13 +792,35 @@ export class TextAreaWrapper extends Disposable implements ICompleteTextAreaWrap
+ 		// If the focus is outside the textarea, browsers will try really hard to reveal the textarea.
+ 		// Here, we try to undo the browser's desperate reveal.
+ 		try {
+-			const scrollState = dom.saveParentsScrollTop(textArea);
++			const scrollState = this._saveParentsScroll(textArea);
+ 			this.setIgnoreSelectionChangeTime('setSelectionRange');
+-			textArea.focus();
++			textArea.focus({ preventScroll: true });
+ 			textArea.setSelectionRange(selectionStart, selectionEnd);
+-			dom.restoreParentsScrollTop(textArea, scrollState);
++			this._restoreParentsScroll(textArea, scrollState);
+ 		} catch (e) {
+ 			// Sometimes IE throws when setting selection (e.g. textarea is off-DOM)
+ 		}
+ 	}
++
++	// dom.saveParentsScrollTop/restoreParentsScrollTop cover only the vertical axis; the
++	// browser's reveal also scrolls ancestors horizontally (wide unwrapped lines).
++	private _saveParentsScroll(node: Element): { top: number; left: number }[] {
++		const state: { top: number; left: number }[] = [];
++		for (let el: Element | null = node; el && el.nodeType === el.ELEMENT_NODE; el = el.parentElement) {
++			state.push({ top: el.scrollTop, left: el.scrollLeft });
++		}
++		return state;
++	}
++
++	private _restoreParentsScroll(node: Element, state: { top: number; left: number }[]): void {
++		let i = 0;
++		for (let el: Element | null = node; el && el.nodeType === el.ELEMENT_NODE && i < state.length; el = el.parentElement, i++) {
++			if (el.scrollTop !== state[i].top) {
++				el.scrollTop = state[i].top;
++			}
++			if (el.scrollLeft !== state[i].left) {
++				el.scrollLeft = state[i].left;
++			}
++		}
++	}
+ }

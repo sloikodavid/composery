@@ -34,7 +34,7 @@ kubectl create secret generic composery --from-literal=password=example
 
 ## Notes
 
-- The `PersistentVolumeClaim` uses `ReadWriteOnce` and the default StorageClass. Set.
+- The `PersistentVolumeClaim` uses `ReadWriteOnce` and the default StorageClass. Set
   `spec.storageClassName` if your cluster needs a specific class.
 - Keep `replicas: 1`. Do not scale Composery against the same PVC.
 - `ingress.yaml` assumes ingress-nginx and cert-manager - adjust the ingress class,
@@ -46,7 +46,7 @@ kubectl create secret generic composery --from-literal=password=example
 The manifests are provider-neutral. Only the StorageClass and the edge differ - confirm your
 cluster's classes with `kubectl get storageclass`:
 
-- **GKE** - default `standard-rwo` (balanced PD). Set `spec.storageClassName: standard-rwo`.
+- **GKE** - default `standard-rwo` (balanced PD). Set `spec.storageClassName: standard-rwo`
   on the PVC, or leave it unset to use the cluster default.
 - **AKS** - `managed-csi` (Azure Disk, RWO). The `default` class also works.
 - **EKS** - install the [Amazon EBS CSI driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html)

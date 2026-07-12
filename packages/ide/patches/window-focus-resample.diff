@@ -1,0 +1,40 @@
+--- a/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
++++ b/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
+@@ -161,10 +161,37 @@
+ 			const focusTracker = disposables.add(trackFocus(window));
+ 			const visibilityTracker = disposables.add(new DomEmitter(window.document, 'visibilitychange'));
+ 
++			// Composery: a mobile WebView can restore document focus without dispatching any
++			// of the events sampled below - resume fires visibilitychange before native focus
++			// lands, and the late focus arrives silently - so the latched value wedges stale
++			// (gray titlebar, and element focus() never raises the on-screen keyboard).
++			// Interaction proves focus, so re-sample on pointerdown; and after becoming
++			// visible without focus, poll briefly for it to arrive, exactly as
++			// onDidChangeActiveWindow already does for auxiliary windows.
++			const interactionTracker = disposables.add(new DomEmitter(window, 'pointerdown'));
++			const lateFocus = disposables.add(new Emitter<void>());
++			let visiblePoll: ReturnType<typeof disposableWindowInterval> | undefined;
++			disposables.add(toDisposable(() => visiblePoll?.dispose()));
++			disposables.add(visibilityTracker.event(() => {
++				visiblePoll?.dispose();
++				visiblePoll = undefined;
++				if (window.document.visibilityState === 'visible' && !window.document.hasFocus()) {
++					visiblePoll = disposableWindowInterval(window, () => {
++						const hasFocus = window.document.hasFocus();
++						if (hasFocus) {
++							lateFocus.fire();
++						}
++						return hasFocus;
++					}, 100, 20);
++				}
++			}));
++
+ 			Event.any(
+ 				Event.map(focusTracker.onDidFocus, () => this.hasFocus, disposables),
+ 				Event.map(focusTracker.onDidBlur, () => this.hasFocus, disposables),
+ 				Event.map(visibilityTracker.event, () => this.hasFocus, disposables),
++				Event.map(interactionTracker.event, () => this.hasFocus, disposables),
++				Event.map(lateFocus.event, () => this.hasFocus, disposables),
+ 				Event.map(this.onDidChangeActiveWindow, () => this.hasFocus, disposables),
+ 			)(focus => emitter.fire(focus), undefined, disposables);
+ 		}, { window: mainWindow, disposables: this._store }));

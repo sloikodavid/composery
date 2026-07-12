@@ -160,3 +160,20 @@
 		transition: none !important;
 	}
 }
+
+/*
+ * Native-feel chrome under a finger: no WebView tap flash (the workbench draws its own pressed
+ * states) and no iOS long-press callout - both inherit from the root, with callout re-allowed
+ * only where Safari text selection deliberately is (editor lines, see upstream style.ts).
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-workbench {
+		-webkit-tap-highlight-color: transparent;
+		-webkit-touch-callout: none;
+	}
+
+	.monaco-workbench .monaco-editor .view-lines {
+		-webkit-touch-callout: default;
+	}
+
+}

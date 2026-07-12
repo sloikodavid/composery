@@ -40,15 +40,16 @@ docs/
     web/
       clerk.md
       cloudflare.md
-      configuration.md
       convex.md
       hetzner.md
       index.md
+      maintenance.md
       meta.json
       polar.md
       resend.md
       vercel.md
     ide.md
+    index.md
     meta.json
     mobile.md
   self-hosting/
@@ -223,20 +224,25 @@ packages/
       shortcuts.diff
       tips.diff
       titlebar-logo.diff
+      titlebar-menubar-overflow.diff
+      touch-context-menu.diff
       touch-editor.diff
       touch-gate.diff
       touch-menu.diff
+      touch-reveal-guard.diff
+      touch-sash.diff
+      touch-select.diff
       touch-terminal-hint.diff
       touch-terminal-keybar.diff
       touch-viewport-inset.diff
       trusted-domains-loopback-callback-guard.diff
       webview-mobile.diff
       welcome.diff
+      window-focus-resample.diff
     scripts/
       build.sh
       rebrand.mjs
       types.mjs
-    build
     package.json
     upstream
   mobile/
@@ -330,16 +336,24 @@ packages/
                 console-box-snapshots.tsx
               page.tsx
           page.tsx
+        cookies/
+          page.tsx
         design/
           _components/
             design-demos.tsx
             toast-demo.tsx
           page.tsx
+        licenses/
+          page.tsx
         pricing/
+          page.tsx
+        privacy/
           page.tsx
         sign-in/
           [[...sign-in]]/
             page.tsx
+        terms/
+          page.tsx
         error.tsx
         layout.tsx
         not-found.tsx
@@ -376,7 +390,7 @@ packages/
       layout.tsx
       providers.tsx
     components/
-      ... (52 items)
+      ... (53 items)
     convex/
       _generated/
         api.d.ts
@@ -649,6 +663,7 @@ LICENSE
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
+README.md
 renovate.json
 SECURITY.md
 tsconfig.json

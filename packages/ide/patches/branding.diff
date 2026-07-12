@@ -63,7 +63,8 @@ patches. This patch covers:
   reloadCurrentColorTheme() after init so a rebuilt Composery theme overrides the
   colours VS Code persists in browser IndexedDB.
 - client identity (lib/vscode .../workbench/browser/client.ts): the insecure-context
-  warning names "Composery" instead of "code-server"; the upstream code-server
+  warning names "Composery" instead of "code-server" and offers the standard
+  persistent "Don't Show Again" action; the upstream code-server
   release notifier is removed entirely (the composery-updates builtin extension is
   the single, properly-branded update notifier, so the upstream one was a duplicate
   that branded the product "code-server" and linked to cdr/code-server); and the
@@ -249,6 +250,15 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  				),
  				actions: {
  					primary: [
+@@ -81,4 +79,8 @@
+ 					],
+ 				},
++				neverShowAgain: {
++					id: 'composery.insecureContextNotification',
++					isSecondary: false,
++				},
+ 			});
+ 		}
 @@ -86,9 +84,9 @@
  			});
  		}

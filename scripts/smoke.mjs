@@ -50,7 +50,7 @@ async function main() {
 	runDefaultContainer();
 	await assertWebAppSmoke();
 	await assertApiSmoke();
-	await assertPersistdAppliesChanges();
+	await assertPersistenceAppliesChanges();
 	await assertSystemdEnvBridge();
 }
 
@@ -184,7 +184,7 @@ async function assertWebAppSmoke() {
 	assertContains("default root page", rootPage, "Composery");
 
 	await assertWebsocketUpgrade(cookies);
-	await assertIdeGatesWhenPersistdNotReady(cookies);
+	await assertIdeGatesWhenPersistenceNotReady(cookies);
 	dockerExec(["sudo", "-u", "user", "sudo", "-n", "true"]);
 	dockerExec(["sudo", "-u", "user", "code", "--version"], {
 		capture: true,
@@ -257,7 +257,7 @@ async function assertClipboardBridge() {
 	}
 }
 
-async function assertIdeGatesWhenPersistdNotReady(cookies) {
+async function assertIdeGatesWhenPersistenceNotReady(cookies) {
 	log("checking IDE gates requests while persistence is not ready");
 	const readyFile = execSh("cat /run/persistence/ready", {
 		capture: true,
@@ -441,7 +441,7 @@ async function assertApiSmoke() {
 	log("API smoke passed");
 }
 
-async function assertPersistdAppliesChanges() {
+async function assertPersistenceAppliesChanges() {
 	log("checking persistence applies filesystem changes");
 
 	log("checking persistence layout and command surface");
@@ -1059,13 +1059,13 @@ function dumpContainerLogs() {
 			check: false,
 			quiet: true
 		});
-		dumpPersistdDiagnostics();
+		dumpPersistenceDiagnostics();
 	} catch {
 		// Keep the original error when Docker itself is unavailable.
 	}
 }
 
-function dumpPersistdDiagnostics() {
+function dumpPersistenceDiagnostics() {
 	dockerExec(["composery", "persistence", "status", "--json"], {
 		check: false
 	});

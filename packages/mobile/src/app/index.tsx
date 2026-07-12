@@ -11,7 +11,7 @@ import {
 	Trash2
 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import Animated, {
 	FadeIn,
 	FadeInDown,
@@ -30,7 +30,7 @@ import { Icon, Logo } from "@/components/logo";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
-import { errorFeedback } from "@/lib/haptics";
+import { errorFeedback, tapFeedback } from "@/lib/haptics";
 import { createInstanceStore, type Instance } from "@/lib/instance-store";
 import { useTheme, type Theme } from "@/lib/use-theme";
 
@@ -401,11 +401,11 @@ function EmptyState({
 }) {
 	return (
 		<Animated.View entering={FadeIn.duration(300)} style={styles_empty}>
-			<Icon color={theme.foreground} size={64} />
+			<Icon color={theme.foreground} size={56} />
 			<Text
 				style={[
 					heading("bold"),
-					{ fontSize: 24, color: theme.foreground, marginTop: 16 }
+					{ fontSize: 24, color: theme.foreground, marginTop: 20 }
 				]}
 			>
 				No instances yet
@@ -422,55 +422,85 @@ function EmptyState({
 					}
 				]}
 			>
-				Add your Composery by URL - Cloud or self-hosted.
+				Add your Composery by URL to get started
 			</Text>
-			<PressableScale
-				testID="add-instance-button"
-				accessibilityRole="button"
-				accessibilityLabel="Add instance"
-				onPress={onAdd}
-				style={{
+			<View style={{ width: "100%", maxWidth: 280, marginTop: 28, gap: 10 }}>
+				<PressableScale
+					testID="add-instance-button"
+					accessibilityRole="button"
+					accessibilityLabel="Add instance"
+					onPress={onAdd}
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						justifyContent: "center",
+						gap: 8,
+						backgroundColor: theme.primary,
+						paddingVertical: 14,
+						borderRadius: 12
+					}}
+				>
+					<Plus size={18} color={theme.primaryForeground} strokeWidth={2.4} />
+					<Text
+						style={[
+							body("semibold"),
+							{ fontSize: 16, color: theme.primaryForeground }
+						]}
+					>
+						Add instance
+					</Text>
+				</PressableScale>
+				<PressableScale
+					testID="scan-button"
+					accessibilityRole="button"
+					accessibilityLabel="Scan QR code"
+					onPress={onScan}
+					style={{
+						flexDirection: "row",
+						alignItems: "center",
+						justifyContent: "center",
+						gap: 8,
+						borderWidth: 1,
+						borderColor: theme.border,
+						paddingVertical: 13,
+						borderRadius: 12
+					}}
+				>
+					<QrCode size={18} color={theme.foreground} strokeWidth={2.2} />
+					<Text
+						style={[
+							body("semibold"),
+							{ fontSize: 15, color: theme.foreground }
+						]}
+					>
+						Scan QR code
+					</Text>
+				</PressableScale>
+			</View>
+			<Pressable
+				accessibilityRole="link"
+				accessibilityLabel="Get a Composery"
+				onPress={() => {
+					tapFeedback();
+					void openBrowserAsync("https://www.composery.io/pricing");
+				}}
+				hitSlop={8}
+				style={({ pressed }) => ({
 					flexDirection: "row",
 					alignItems: "center",
-					gap: 8,
-					backgroundColor: theme.primary,
-					paddingHorizontal: 20,
-					paddingVertical: 13,
-					borderRadius: 12,
-					marginTop: 24
-				}}
+					marginTop: 20,
+					opacity: pressed ? 0.5 : 1
+				})}
 			>
-				<Plus size={18} color={theme.primaryForeground} strokeWidth={2.4} />
-				<Text
-					style={[
-						body("semibold"),
-						{ fontSize: 16, color: theme.primaryForeground }
-					]}
-				>
-					Add instance
+				<Text style={[body(), { fontSize: 13, color: theme.mutedForeground }]}>
+					{"Want a Composery? "}
 				</Text>
-			</PressableScale>
-			<PressableScale
-				testID="scan-button"
-				accessibilityRole="button"
-				accessibilityLabel="Scan QR code"
-				onPress={onScan}
-				style={{
-					flexDirection: "row",
-					alignItems: "center",
-					gap: 8,
-					paddingHorizontal: 20,
-					paddingVertical: 12,
-					marginTop: 4
-				}}
-			>
-				<QrCode size={18} color={theme.primary} strokeWidth={2.2} />
 				<Text
-					style={[body("semibold"), { fontSize: 15, color: theme.primary }]}
+					style={[body("semibold"), { fontSize: 13, color: theme.primary }]}
 				>
-					Scan QR code
+					Get one →
 				</Text>
-			</PressableScale>
+			</Pressable>
 		</Animated.View>
 	);
 }

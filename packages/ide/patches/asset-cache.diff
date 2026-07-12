@@ -20,7 +20,7 @@
  		return void res.end(data);
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -171,6 +171,7 @@ export class CodeServerClient extends Di
+@@ -171,11 +171,49 @@
  			try {
  				await navigator.serviceWorker.register(serviceWorker.path, {
  					scope: serviceWorker.scope,
@@ -28,6 +28,48 @@
  				});
  				this.logService.info('[Service Worker] registered');
  			} catch (error: any) {
+ 				this.logService.error('[Service Worker] registration', error as Error);
+ 			}
++			try {
++				await this.purgeStaleClientCaches();
++			} catch (error: any) {
++				this.logService.error('[Service Worker] stale cache purge', error as Error);
++			}
++		}
++	}
++
++	// Composery: each update moves the stable-<stamp> URL prefix, stranding the
++	// webview service workers and resource-cache entries registered under old
++	// stamps. Nothing references them again - purge them so they don't pile up
++	// forever in storage the user has no way to clear (e.g. a mobile WebView).
++	private async purgeStaleClientCaches() {
++		const stamp = this.productService.commit;
++		if (!stamp) {
++			return;
++		}
++		for (const registration of await navigator.serviceWorker.getRegistrations()) {
++			const scope = new URL(registration.scope).pathname;
++			if (scope.includes('stable-') && !scope.includes(stamp)) {
++				await registration.unregister();
++			}
++		}
++		if (typeof caches === 'undefined') {
++			return;
++		}
++		for (const name of await caches.keys()) {
++			if (!name.startsWith('vscode-resource-cache')) {
++				continue;
++			}
++			const cache = await caches.open(name);
++			for (const request of await cache.keys()) {
++				const path = new URL(request.url).pathname;
++				if (path.includes('stable-') && !path.includes(stamp)) {
++					await cache.delete(request);
++				}
++			}
+ 		}
+ 	}
+ }
 --- a/ci/build/build-vscode.sh
 +++ b/ci/build/build-vscode.sh
 @@ -47,7 +47,9 @@ main() {

@@ -11,10 +11,10 @@ its TLS edge**.
 For a dashboard over Docker instead of raw Compose (Coolify, Dokploy, CapRover) or a fully
 managed VM (Elestio), see [Other PaaS & self-hosted platforms](paas.md).
 
-- **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a.
+- **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a
   privileged container with host cgroup access) or `supervisor` (works on any host,
   including rootless or locked-down ones). Selected by `COMPOSERY_INIT` in `compose.yml`.
-- **TLS** - bundle **Caddy** for automatic HTTPS when Composery owns the domain, or run.
+- **TLS** - bundle **Caddy** for automatic HTTPS when Composery owns the domain, or run
   with **no proxy** when your own reverse proxy or a platform terminates TLS.
 
 That gives four recipes:
@@ -68,11 +68,11 @@ docker run -d --name composery -p 8080:8080 -v composery_data:/data \
 ## Notes
 
 - systemd variants require a privileged container with host cgroup access.
-- State is stored in the `composery_data` Docker volume; Caddy certificate state in.
+- State is stored in the `composery_data` Docker volume; Caddy certificate state in
   `caddy_data`.
 - Register the initial password in the browser on first visit, or set
   `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` in `composery.env`
   (single-quote values containing `$`). See
   [Configuration](../configuration.md).
-- Upgrade with `docker compose pull && docker compose up -d`. Back up `composery_data`.
+- Upgrade with `docker compose pull && docker compose up -d`. Back up `composery_data`
   before major upgrades.

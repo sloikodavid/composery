@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { probeComposery, probeUrl, type ProbeFetch } from "./probe";
+import {
+	fetchServerStamp,
+	probeComposery,
+	probeUrl,
+	versionUrl,
+	type ProbeFetch
+} from "./probe";
 
 function mockFetch(response: Response | Error): ProbeFetch {
 	if (response instanceof Error) {
@@ -120,5 +126,54 @@ describe("probeComposery", () => {
 		});
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.reason).toBe("unreachable");
+	});
+});
+
+describe("versionUrl", () => {
+	test("version at root", () => {
+		expect(versionUrl("https://my-box.composery.cloud/")).toBe(
+			"https://my-box.composery.cloud/version"
+		);
+	});
+
+	test("version at subpath, strips query", () => {
+		expect(versionUrl("https://example.com/my-cs/?folder=/app")).toBe(
+			"https://example.com/my-cs/version"
+		);
+	});
+});
+
+describe("fetchServerStamp", () => {
+	test("returns the stamp for a hex commit response", async () => {
+		const stamp = "3d4ae873b92e13bd3aeab5591d7d32b375f4f3a3";
+		const fetchImpl = mockFetch(new Response(stamp, { status: 200 }));
+		expect(await fetchServerStamp("https://example.com/", { fetchImpl })).toBe(
+			stamp
+		);
+	});
+
+	test("returns null when signed out (401)", async () => {
+		const fetchImpl = mockFetch(
+			new Response('{"error":"Unauthorized"}', { status: 401 })
+		);
+		expect(
+			await fetchServerStamp("https://example.com/", { fetchImpl })
+		).toBeNull();
+	});
+
+	test("returns null for a non-stamp body (login HTML)", async () => {
+		const fetchImpl = mockFetch(
+			new Response("<!doctype html>...", { status: 200 })
+		);
+		expect(
+			await fetchServerStamp("https://example.com/", { fetchImpl })
+		).toBeNull();
+	});
+
+	test("returns null on network error", async () => {
+		const fetchImpl = mockFetch(new Error("Network request failed"));
+		expect(
+			await fetchServerStamp("https://example.com/", { fetchImpl })
+		).toBeNull();
 	});
 });

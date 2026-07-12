@@ -13,11 +13,14 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 } as const;
 
 export const CHECKOUT_RESERVATION_TTL_MS = 60 * 60 * 1000;
+export const CLOUD_TERMS_VERSION = "2026-07-11";
 
 export const reserveCheckoutIntent = internalMutation({
 	args: {
 		runtimeAuthHash: v.string(),
 		slug: v.string(),
+		termsAcceptedAt: v.number(),
+		termsVersion: v.string(),
 		userId: v.string()
 	},
 	handler: async (ctx, args) => {
@@ -46,6 +49,8 @@ export const reserveCheckoutIntent = internalMutation({
 			slug: args.slug,
 			status: "active",
 			runtime_auth_hash: args.runtimeAuthHash,
+			terms_accepted_at: args.termsAcceptedAt,
+			terms_version: args.termsVersion,
 			polar_checkout_expires_at: timestamp + CHECKOUT_RESERVATION_TTL_MS,
 			created_at: timestamp,
 			updated_at: timestamp
@@ -88,7 +93,9 @@ export const activeCheckoutIntentForUserSlug = internalQuery({
 export const refreshCheckoutIntentAuthHash = internalMutation({
 	args: {
 		intentId: v.id("box_checkout_intents"),
-		runtimeAuthHash: v.string()
+		runtimeAuthHash: v.string(),
+		termsAcceptedAt: v.number(),
+		termsVersion: v.string()
 	},
 	handler: async (ctx, args) => {
 		const intent = await ctx.db.get(args.intentId);
@@ -96,6 +103,8 @@ export const refreshCheckoutIntentAuthHash = internalMutation({
 
 		await ctx.db.patch(intent._id, {
 			runtime_auth_hash: args.runtimeAuthHash,
+			terms_accepted_at: args.termsAcceptedAt,
+			terms_version: args.termsVersion,
 			updated_at: Date.now()
 		});
 	}

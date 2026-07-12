@@ -1,0 +1,62 @@
+# Composery
+
+A Debian-style VPS in your browser: a full VS Code-based IDE on top of a real
+Linux machine. Install packages, edit system files, build projects, run
+agents - and keep that state across restarts.
+
+- You log in as `user` with passwordless `sudo`, not into a locked-down shell.
+- The [persistence](docs/persistence.md) daemon writes your root-filesystem
+  deltas to one volume at `/data`, so the container restarts like a machine
+  rebooting, not like a container resetting.
+- A small [automation API](docs/api.md) runs commands on the instance from
+  `curl`, CI, or scripts, authenticated by keys you mint on the instance.
+
+## Try it
+
+```bash
+docker run -d --name composery -p 8080:8080 -v composery_data:/data \
+  ghcr.io/sloikodavid/composery:latest
+```
+
+Open `http://localhost:8080` and register a password. For anything
+internet-facing, put TLS in front - start at
+[Self-Hosting](docs/self-hosting/index.md).
+
+## Documentation
+
+Rendered at [composery.io/docs](https://www.composery.io/docs), source in
+[`docs/`](docs/index.md):
+
+- [Self-Hosting](docs/self-hosting/index.md) - VPS with Docker Compose,
+  DigitalOcean, Fly.io, Render, Railway, Koyeb, Kubernetes, and other
+  container hosts.
+- [Configuration](docs/configuration.md) - runtime environment variables.
+- [Persistence](docs/persistence.md) - what survives a restart and how.
+- [API](docs/api.md) - run commands against an instance remotely.
+
+## Composery Cloud
+
+The hosted offering at [composery.io](https://www.composery.io) runs the same
+runtime image on a dedicated VPS per box, with HTTPS, snapshots, and lifecycle
+management handled for you.
+
+## Repository
+
+| Path              | Contents                                                       |
+| ----------------- | -------------------------------------------------------------- |
+| `packages/ide`    | The editor: upstream code-server + our patch stack and overlay |
+| `packages/cli`    | The `composery` CLI and `persistence` daemon (Rust)            |
+| `packages/web`    | Website, docs site, and cloud backend (Next.js, Convex)        |
+| `packages/mobile` | iOS/Android companion app (Expo)                               |
+| `rootfs/`         | Files baked into the runtime image                             |
+| `templates/`      | Ready-to-use deployment recipes for the self-hosting guides    |
+| `docs/`           | The documentation rendered at composery.io/docs                |
+
+Developing: see [docs/developing](docs/developing/index.md). Releases:
+[changelog](https://github.com/sloikodavid/composery/releases). Security:
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[Apache-2.0](LICENSE). Contributions are covered by the
+[CLA](.github/CLA.md).

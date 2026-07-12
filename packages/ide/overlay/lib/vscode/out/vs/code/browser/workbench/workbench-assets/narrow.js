@@ -5,11 +5,15 @@
 	const narrow = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
 	let pending = false;
 	let latePasses = [];
-	let overlayBackGuardArmed = false;
-	let overlayBackGuardDisarming = false;
+	let backGuardArmed = false;
+	let backGuardDisarming = false;
 	const modalEditorNarrowAttribute = "data-composery-narrow-maximized";
 	const modalEditorMaximizePendingAttribute =
 		"data-composery-narrow-maximize-pending";
+	// Mirrors (cannot import) the listener in narrow-fullscreen.diff; keep in sync.
+	const narrowClosePartEvent = "composery-narrow-close-part";
+	// Mirror of layout.ts part-hidden workbench classes; their absence means the part is open.
+	const partHiddenClasses = ["nosidebar", "nopanel", "noauxiliarybar"];
 	const keyboardInsetProbe = document.createElement("div");
 
 	const overlaySelectors = [
@@ -131,6 +135,36 @@
 		return null;
 	}
 
+	// A narrow-fullscreen part (side bar / panel / secondary side bar, kept exclusive by
+	// narrow-fullscreen.diff) counts as a back-dismissible layer too - below every transient
+	// overlay, so back peels the stack: menu first, then the open part, then the page.
+	function narrowPartOpen() {
+		if (!narrow.matches) {
+			return false;
+		}
+
+		const workbench = document.querySelector(".monaco-workbench");
+		if (!(workbench instanceof HTMLElement)) {
+			return false;
+		}
+
+		return partHiddenClasses.some(
+			(hiddenClass) => !workbench.classList.contains(hiddenClass),
+		);
+	}
+
+	function activeBackTarget() {
+		if (activeOverlay()) {
+			return "overlay";
+		}
+
+		if (narrowPartOpen()) {
+			return "part";
+		}
+
+		return null;
+	}
+
 	function dispatchEscape() {
 		const target =
 			document.activeElement instanceof HTMLElement
@@ -149,7 +183,7 @@
 		target.dispatchEvent(new KeyboardEvent("keyup", eventInit));
 	}
 
-	function postNativeOverlayBackGuard(active) {
+	function postNativeBackGuard(active) {
 		if (!window.__composeryNative || !window.ReactNativeWebView?.postMessage) {
 			return;
 		}
@@ -161,42 +195,53 @@
 		} catch {}
 	}
 
-	function updateOverlayBackGuard() {
-		const overlay = activeOverlay();
-		if (overlay && !overlayBackGuardArmed) {
-			overlayBackGuardArmed = true;
-			history.pushState({ composeryOverlayBackGuard: true }, "", location.href);
-			postNativeOverlayBackGuard(true);
+	function updateBackGuard() {
+		const target = activeBackTarget();
+		if (target && !backGuardArmed) {
+			backGuardArmed = true;
+			// A reload (or a restored WebView) keeps session history, so a previous
+			// sentinel can already be the current entry - adopt it instead of stacking
+			// a second one, or back presses accumulate across reloads.
+			if (!history.state?.composeryBackGuard) {
+				history.pushState({ composeryBackGuard: true }, "", location.href);
+			}
+			postNativeBackGuard(true);
 			return;
 		}
 
-		if (overlay || !overlayBackGuardArmed) {
+		if (target || !backGuardArmed) {
 			return;
 		}
 
-		overlayBackGuardArmed = false;
-		postNativeOverlayBackGuard(false);
-		if (history.state?.composeryOverlayBackGuard) {
-			overlayBackGuardDisarming = true;
+		backGuardArmed = false;
+		postNativeBackGuard(false);
+		if (history.state?.composeryBackGuard) {
+			backGuardDisarming = true;
 			history.back();
 		}
 	}
 
-	function handleOverlayBack() {
-		if (overlayBackGuardDisarming) {
-			overlayBackGuardDisarming = false;
+	function handleBackGuardPop() {
+		if (backGuardDisarming) {
+			backGuardDisarming = false;
 			return;
 		}
 
-		if (!overlayBackGuardArmed) {
+		if (!backGuardArmed) {
 			return;
 		}
 
-		overlayBackGuardArmed = false;
-		postNativeOverlayBackGuard(false);
-		if (activeOverlay()) {
+		backGuardArmed = false;
+		postNativeBackGuard(false);
+		const target = activeBackTarget();
+		if (target === "overlay") {
 			dispatchEscape();
-			window.setTimeout(updateOverlayBackGuard, 100);
+		} else if (target === "part") {
+			window.dispatchEvent(new Event(narrowClosePartEvent));
+		}
+
+		if (target) {
+			window.setTimeout(updateBackGuard, 100);
 		}
 	}
 
@@ -248,7 +293,7 @@
 	function enforce() {
 		pending = false;
 		updateViewportVars();
-		updateOverlayBackGuard();
+		updateBackGuard();
 		updateModalEditorNarrowState();
 	}
 
@@ -285,7 +330,10 @@
 
 	document.addEventListener("click", scheduleAfterInteraction, true);
 	document.addEventListener("dblclick", blockNarrowModalEditorRestore, true);
-	window.addEventListener("popstate", handleOverlayBack);
+	// Re-evaluate viewport vars and the back guard when the app/tab returns to the
+	// foreground - the OS may have closed the keyboard or resized while backgrounded.
+	document.addEventListener("visibilitychange", schedule);
+	window.addEventListener("popstate", handleBackGuardPop);
 	window.addEventListener("resize", schedule);
 	window.visualViewport?.addEventListener("resize", schedule);
 	window.visualViewport?.addEventListener("scroll", schedule);

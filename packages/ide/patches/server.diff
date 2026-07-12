@@ -285,7 +285,7 @@ diff --git a/src/node/routes/health.ts b/src/node/routes/health.ts
 +++ b/src/node/routes/health.ts
 @@ -1,12 +1,15 @@
  import { Router } from "express"
-+import { checkPersistdReadiness } from "../persistence/readiness"
++import { checkPersistenceReadiness } from "../persistence/readiness"
  import { wss, Router as WsRouter } from "../wsRouter"
  
  export const router = Router()
@@ -293,7 +293,7 @@ diff --git a/src/node/routes/health.ts b/src/node/routes/health.ts
 -router.get("/", (req, res) => {
 -  res.json({
 +router.get("/", async (req, res) => {
-+  const persistence = await checkPersistdReadiness()
++  const persistence = await checkPersistenceReadiness()
 +  res.status(persistence.ready ? 200 : 503).json({
      status: req.heart.alive() ? "alive" : "expired",
      lastHeartbeat: req.heart.lastHeartbeat,
@@ -309,7 +309,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
  import { commit, rootPath } from "../constants"
  import { Heart } from "../heart"
 -import { redirect } from "../http"
-+import { checkPersistdReadiness, renderStartupPage } from "../persistence/readiness"
++import { checkPersistenceReadiness, renderStartupPage } from "../persistence/readiness"
 +import { constructRedirectPath, redirect } from "../http"
  import { CoderSettings, SettingsProvider } from "../settings"
  import { UpdateProvider } from "../update"
@@ -358,7 +358,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
 +      return next()
 +    }
 +
-+    const persistence = await checkPersistdReadiness()
++    const persistence = await checkPersistenceReadiness()
 +    if (persistence.ready) {
 +      return next()
 +    }
@@ -381,7 +381,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
 +      return next()
 +    }
 +
-+    const persistence = await checkPersistdReadiness()
++    const persistence = await checkPersistenceReadiness()
 +    if (persistence.ready) {
 +      return next()
 +    }

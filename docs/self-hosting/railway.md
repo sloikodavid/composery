@@ -15,15 +15,15 @@ Recipe: [templates/railway](https://github.com/sloikodavid/composery/tree/main/t
 
 ## Deploy from the image
 
-1. **New Project -> Deploy from Docker Image** and enter.
+1. **New Project -> Deploy from Docker Image** and enter
    `ghcr.io/sloikodavid/composery:latest`.
 2. Right-click the service -> **Attach Volume**, mount path `/data`.
-3. Set service variables: `PORT=8080` (register the password in the browser, or set.
+3. Set service variables: `PORT=8080` (register the password in the browser, or set
    `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD`).
 4. **Settings -> Networking -> Generate Domain**, target port `8080`.
 
 ## Notes
 
 - Run a single replica; `persistence` is a single writer for one `/data` volume.
-- Railway volumes are attached at runtime - after first boot, confirm persistence with.
+- Railway volumes are attached at runtime - after first boot, confirm persistence with
   `composery persistence status --json` in the service shell.

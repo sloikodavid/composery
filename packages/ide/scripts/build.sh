@@ -54,7 +54,9 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # would ship different code under identical URLs and clients would keep stale caches. Stamp a
 # content hash of everything we lay on top instead (asset-cache.diff makes the build honor it):
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
-COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
+# scripts/ is hashed too: rebrand.mjs rewrites the assembled tree, so a rename
+# rule change alters shipped code without touching patches or overlay.
+COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay scripts -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
 export COMPOSERY_STATIC_STAMP
 echo "static stamp: $COMPOSERY_STATIC_STAMP"
 ( cd "$BUILD" \
@@ -66,5 +68,8 @@ echo "static stamp: $COMPOSERY_STATIC_STAMP"
 echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
 rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/lib/vscode/out/"
 rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
+# Upstream's release step ships only pages *.html/*.css - carry our pages JS
+# (login auth.js) too, from the rebranded build tree, or the login page 404s it.
+cp "$BUILD/src/browser/pages/"*.js "$BUILD/release/src/browser/pages/"
 
 echo "Release: $BUILD/release"

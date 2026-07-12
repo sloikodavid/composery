@@ -83,12 +83,12 @@ describe("staffBox", () => {
 			_id: "users:1" as never,
 			_creationTime: 1,
 			clerk_user_id: "user_1",
-			email: "owner@example.com",
+			email: "name@example.com",
 			role: "user",
 			suspended: false,
 			created_at: 0,
 			updated_at: 0
 		} as Doc<"users">);
-		expect(view.userEmail).toBe("owner@example.com");
+		expect(view.userEmail).toBe("name@example.com");
 	});
 });

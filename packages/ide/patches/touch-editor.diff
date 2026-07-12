@@ -1,15 +1,6 @@
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -7,7 +7,7 @@ import { BrowserFeatures } from '../../.
- import * as dom from '../../../base/browser/dom.js';
- import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
- import { mainWindow } from '../../../base/browser/window.js';
--import { Disposable } from '../../../base/common/lifecycle.js';
-+import { Disposable, IDisposable } from '../../../base/common/lifecycle.js';
- import * as platform from '../../../base/common/platform.js';
- import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
- import { NavigationCommandRevealType } from '../coreCommands.js';
-@@ -15,22 +15,85 @@ import { IMouseTarget, MouseTargetType }
+@@ -15,22 +15,83 @@
  import { EditorMouseEvent, EditorPointerEventFactory } from '../editorDom.js';
  import { ViewController } from '../view/viewController.js';
  import { ViewContext } from '../../common/viewModel/viewContext.js';
@@ -30,6 +21,7 @@
 +interface TouchGestureState {
 +	type: TouchGestureType;
 +	startedOnText: boolean;
++	panned: boolean;
 +	totalX: number;
 +	totalY: number;
 +	startTarget: IMouseTarget | null;
@@ -49,10 +41,7 @@
 +	private readonly _caretHandle: HTMLElement;
 +	private readonly _startHandle: HTMLElement;
 +	private readonly _endHandle: HTMLElement;
-+	private _activeHandle: SelectionHandleType | null;
-+	private _handleMoveListener: IDisposable | null;
-+	private _handleUpListener: IDisposable | null;
-+	private _handleCancelListener: IDisposable | null;
++	private _activeHandle: { element: HTMLElement; pointerId: number; type: SelectionHandleType } | null;
 +	private _handleAutoScrollFrame: number | undefined;
 +	private _handleAutoScrollLastTime: number;
 +	private _handleClientX: number;
@@ -76,16 +65,13 @@
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
 +		this._activeHandle = null;
-+		this._handleMoveListener = null;
-+		this._handleUpListener = null;
-+		this._handleCancelListener = null;
 +		this._handleAutoScrollFrame = undefined;
 +		this._handleAutoScrollLastTime = 0;
 +		this._handleClientX = 0;
 +		this._handleClientY = 0;
 +		this._suppressNextTouchContextMenu = false;
 +
-+		this._selectionHandleContainer = document.createElement('div');
++		this._selectionHandleContainer = this.viewHelper.viewDomNode.ownerDocument.createElement('div');
 +		this._selectionHandleContainer.className = 'composery-touch-selection-handles';
 +		this._selectionHandleContainer.setAttribute('aria-hidden', 'true');
 +		this._caretHandle = this._createSelectionHandle('caret');
@@ -93,10 +79,13 @@
 +		this._endHandle = this._createSelectionHandle('end');
 +		this._selectionHandleContainer.append(this._caretHandle, this._startHandle, this._endHandle);
 +		this.viewHelper.linesContentDomNode.appendChild(this._selectionHandleContainer);
++		// Handles drag via pointer events; without this the same touches also reach the
++		// Gesture singleton and pan the editor 1:1 with every handle drag.
++		this._register(Gesture.ignoreTarget(this._selectionHandleContainer));
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,7 +116,74 @@ export class PointerEventHandler extends
+@@ -53,18 +114,156 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -108,10 +97,12 @@
 +	}
 +
 +	private _createSelectionHandle(type: SelectionHandleType): HTMLElement {
-+		const handle = document.createElement('div');
++		const handle = this.viewHelper.viewDomNode.ownerDocument.createElement('div');
 +		handle.className = `composery-touch-selection-handle composery-touch-selection-handle-${type}`;
-+		handle.dataset.handleType = type;
 +		this._register(dom.addDisposableListener(handle, 'pointerdown', (event: PointerEvent) => this._onHandlePointerDown(event, type), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointermove', (event: PointerEvent) => this._onHandlePointerMove(event), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointerup', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointercancel', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
 +		return handle;
 +	}
 +
@@ -122,11 +113,12 @@
 +			type: 'pending',
 +			// Same acceptance as the tap path: any target that resolves to a position.
 +			startedOnText: !!startTarget.position,
++			panned: false,
 +			totalX: 0,
 +			totalY: 0,
 +			startTarget,
 +			selectionTimer: startTarget.position
-+				? mainWindow.setTimeout(() => this._startPendingTouchSelection(), TOUCH_SELECTION_HOLD_TIME)
++				? dom.getWindow(this.viewHelper.viewDomNode).setTimeout(() => this._startPendingTouchSelection(), TOUCH_SELECTION_HOLD_TIME)
 +				: undefined
 +		};
 +	}
@@ -135,13 +127,15 @@
 +		this._clearTouchSelectionTimer();
 +		if (this._touchGesture?.type === 'selection') {
 +			this._suppressTouchInertiaUntil = Date.now() + TOUCH_INERTIA_SUPPRESSION_TIME;
++			this._stopHandleAutoScroll();
 +		}
 +		this._touchGesture = null;
++		this._suppressNextTouchContextMenu = false;
 +	}
 +
 +	private _clearTouchSelectionTimer(): void {
 +		if (this._touchGesture?.selectionTimer !== undefined) {
-+			mainWindow.clearTimeout(this._touchGesture.selectionTimer);
++			dom.getWindow(this.viewHelper.viewDomNode).clearTimeout(this._touchGesture.selectionTimer);
 +			this._touchGesture.selectionTimer = undefined;
 +		}
 +	}
@@ -153,6 +147,13 @@
 +		}
 +
 +		gesture.selectionTimer = undefined;
++		const pressPosition = gesture.startTarget?.position;
++		if (pressPosition && this._primarySelection && !this._primarySelection.isEmpty() && this._primarySelection.containsPosition(pressPosition)) {
++			// Long-press inside the existing selection asks for actions on it, not a
++			// re-select: leave the gesture pending so Gesture's during-hold Contextmenu
++			// reaches onContextMenu unsuppressed and the full menu opens at the finger.
++			return;
++		}
 +		gesture.type = 'selection';
 +		this._suppressNextTouchContextMenu = true;
 +		this.viewHelper.focusTextArea();
@@ -163,7 +164,9 @@
 +	}
 +
  	private onTap(event: GestureEvent): void {
-+		if (this._touchGesture?.type === 'selection') {
++		// A gesture that selected or panned is not a tap, even when it stays inside
++		// Gesture's own 30px tap slop (our pan threshold is tighter).
++		if (this._touchGesture?.type === 'selection' || this._touchGesture?.panned) {
 +			event.preventDefault();
 +			return;
 +		}
@@ -171,12 +174,26 @@
  		if (!event.initialTarget || !this.viewHelper.linesContentDomNode.contains(event.initialTarget as HTMLElement)) {
  			return;
  		}
-@@ -63,8 +193,48 @@ export class PointerEventHandler extends
+ 
+ 		event.preventDefault();
++		// focus() on an already-focused hidden input does not re-open a dismissed mobile
++		// keyboard. Only cycle focus when the keyboard is actually down: cycling it while
++		// visible produces two viewport resizes and makes the editor jump on every tap.
++		const active = dom.getActiveElement();
++		const targetWindow = dom.getWindow(this.viewHelper.viewDomNode);
++		const viewport = targetWindow.visualViewport;
++		const keyboardVisible = !!viewport && targetWindow.innerHeight - viewport.height - viewport.offsetTop > 100;
++		if (!keyboardVisible && active instanceof HTMLElement && dom.isAncestor(active, this.viewHelper.viewDomNode)) {
++			active.blur();
++		}
+ 		this.viewHelper.focusTextArea();
  		this._dispatchGesture(event, /*inSelectionMode*/false);
  	}
  
 +	private onContextMenu(event: MouseEvent): void {
-+		if (this._suppressNextTouchContextMenu) {
++		// A gesture that panned (16-30px drags stay inside Gesture's slop) is a scroll,
++		// and a selection long-press already spent the hold - neither shows the menu.
++		if (this._suppressNextTouchContextMenu || this._touchGesture?.panned) {
 +			this._suppressNextTouchContextMenu = false;
 +			event.preventDefault();
 +			return;
@@ -191,17 +208,22 @@
 +				return;
 +			}
 +
-+			if (this._touchGesture?.startedOnText) {
++			if (this._touchGesture) {
 +				this._touchGesture.totalX += event.translationX;
 +				this._touchGesture.totalY += event.translationY;
++				if (Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_SELECTION_THRESHOLD) {
++					this._touchGesture.panned = true;
++					this._clearTouchSelectionTimer();
++				}
++			}
 +
++			if (this._touchGesture?.startedOnText) {
 +				if (this._touchGesture.type === 'pending') {
 +					const distance = Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY);
 +					if (distance < TOUCH_SELECTION_THRESHOLD) {
 +						// Long-press arm window: finger jitter must not scroll the view.
 +						return;
 +					}
-+					this._clearTouchSelectionTimer();
 +					this._touchGesture.startedOnText = false;
 +					// A scroll after all - apply the pan accumulated during the arm window at once.
 +					this._context.viewModel.viewLayout.deltaScrollNow(-this._touchGesture.totalX, -this._touchGesture.totalY);
@@ -209,10 +231,10 @@
 +				}
 +
 +				if (this._touchGesture.type === 'selection') {
-+					// Word granularity (mouseDownCount 2), matching the hold that started it -
-+					// the gesture's tapCount is 0 and would collapse the word selection.
-+					const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
-+					this._dispatchMouseTarget(target, /*inSelectionMode*/true, 2);
++					this._handleClientX = event.pageX;
++					this._handleClientY = event.pageY;
++					this._updateHandleAutoScroll(event.pageY);
++					this._extendTouchSelectionFromClientPoint(event.pageX, event.pageY);
 +					return;
 +				}
 +			}
@@ -220,7 +242,7 @@
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +244,17 @@ export class PointerEventHandler extends
+@@ -74,13 +273,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -233,13 +255,17 @@
  				position: target.position,
  				mouseColumn: target.position.column,
  				startedOnLineNumbers: false,
- 				revealType: NavigationCommandRevealType.Minimal,
+-				revealType: NavigationCommandRevealType.Minimal,
 -				mouseDownCount: event.tapCount,
++				// Native textarea parity: the finger defines the spot, so touch never needs a
++				// cursor reveal - reveals here scroll the editor mid-selection at viewport
++				// edges (vertically and, for word selects past the right edge, horizontally).
++				revealType: NavigationCommandRevealType.None,
 +				mouseDownCount,
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,6 +267,185 @@ export class PointerEventHandler extends
+@@ -93,6 +299,203 @@
  		}
  	}
  
@@ -264,7 +290,7 @@
 +
 +	private _updateSelectionHandles(): void {
 +		const selection = this._primarySelection;
-+		if (!selection || !Gesture.isTouchDevice()) {
++		if (!selection || this._lastPointerType !== 'touch' || !Gesture.isTouchDevice()) {
 +			this._hideSelectionHandles();
 +			return;
 +		}
@@ -289,7 +315,7 @@
 +		}
 +
 +		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
-+		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) + lineHeight;
++		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + lineHeight;
 +		handle.style.display = 'block';
 +		handle.style.transform = `translate(${Math.round(visibleRange.left)}px, ${Math.round(top)}px)`;
 +	}
@@ -311,16 +337,13 @@
 +
 +		event.preventDefault();
 +		event.stopPropagation();
-+		this._activeHandle = type;
++		this._activeHandle = { element: event.currentTarget as HTMLElement, pointerId: event.pointerId, type };
++		this._activeHandle.element.setPointerCapture(event.pointerId);
 +		this.viewHelper.focusTextArea();
-+		const ownerDocument = this.viewHelper.viewDomNode.ownerDocument;
-+		this._handleMoveListener = dom.addDisposableListener(ownerDocument, 'pointermove', (moveEvent: PointerEvent) => this._onHandlePointerMove(moveEvent), { passive: false });
-+		this._handleUpListener = dom.addDisposableListener(ownerDocument, 'pointerup', (upEvent: PointerEvent) => this._onHandlePointerUp(upEvent), { passive: false });
-+		this._handleCancelListener = dom.addDisposableListener(ownerDocument, 'pointercancel', (cancelEvent: PointerEvent) => this._onHandlePointerUp(cancelEvent), { passive: false });
 +	}
 +
 +	private _onHandlePointerMove(event: PointerEvent): void {
-+		if (!this._activeHandle || !this._primaryModelSelection) {
++		if (!this._activeHandle || event.pointerId !== this._activeHandle.pointerId || !this._primaryModelSelection) {
 +			return;
 +		}
 +
@@ -332,23 +355,35 @@
 +		this._setSelectionFromClientPoint(event.clientX, event.clientY);
 +	}
 +
++	private _extendTouchSelectionFromClientPoint(clientX: number, clientY: number): void {
++		const target = this.getTargetAtClientPoint(clientX, this._clampClientYToView(clientY));
++		if (target?.position) {
++			// Word granularity (mouseDownCount 2), matching the hold that started it -
++			// the gesture's tapCount is 0 and would collapse the word selection.
++			this._dispatchMouseTarget(target, /*inSelectionMode*/true, 2);
++		}
++	}
++
++	private _clampClientYToView(clientY: number): number {
++		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
++		return Math.max(rect.top + 1, Math.min(rect.bottom - 1, clientY));
++	}
++
 +	private _setSelectionFromClientPoint(clientX: number, clientY: number): void {
 +		if (!this._activeHandle || !this._primaryModelSelection) {
 +			return;
 +		}
 +
-+		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		const targetY = Math.max(rect.top + 1, Math.min(rect.bottom - 1, clientY));
-+		const target = this.getTargetAtClientPoint(clientX, targetY);
++		const target = this.getTargetAtClientPoint(clientX, this._clampClientYToView(clientY));
 +		if (!target?.position) {
 +			return;
 +		}
 +
 +		const modelPosition = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
 +		let nextSelection: Selection;
-+		if (this._activeHandle === 'caret') {
++		if (this._activeHandle.type === 'caret') {
 +			nextSelection = Selection.fromPositions(modelPosition);
-+		} else if (this._activeHandle === 'start') {
++		} else if (this._activeHandle.type === 'start') {
 +			nextSelection = this._primaryModelSelection.setStartPosition(modelPosition.lineNumber, modelPosition.column);
 +		} else {
 +			nextSelection = this._primaryModelSelection.setEndPosition(modelPosition.lineNumber, modelPosition.column);
@@ -370,12 +405,12 @@
 +		}
 +
 +		this._handleAutoScrollLastTime = Date.now();
-+		this._handleAutoScrollFrame = mainWindow.requestAnimationFrame(() => this._runHandleAutoScroll());
++		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
 +	}
 +
 +	private _runHandleAutoScroll(): void {
 +		this._handleAutoScrollFrame = undefined;
-+		if (!this._activeHandle || !this._primaryModelSelection) {
++		if ((!this._activeHandle && this._touchGesture?.type !== 'selection') || !this._primaryModelSelection) {
 +			return;
 +		}
 +
@@ -394,18 +429,25 @@
 +		const speed = TOUCH_HANDLE_MAX_SCROLL_SPEED * Math.max(0.25, edgeDistance / TOUCH_HANDLE_EDGE_SCROLL_ZONE);
 +		this._context.viewModel.viewLayout.deltaScrollNow(0, direction * speed * (elapsed / 1000));
 +		this.viewHelper.renderNow();
-+		this._setSelectionFromClientPoint(this._handleClientX, this._handleClientY);
-+		this._handleAutoScrollFrame = mainWindow.requestAnimationFrame(() => this._runHandleAutoScroll());
++		if (this._activeHandle) {
++			this._setSelectionFromClientPoint(this._handleClientX, this._handleClientY);
++		} else {
++			this._extendTouchSelectionFromClientPoint(this._handleClientX, this._handleClientY);
++		}
++		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
 +	}
 +
 +	private _stopHandleAutoScroll(): void {
 +		if (this._handleAutoScrollFrame !== undefined) {
-+			mainWindow.cancelAnimationFrame(this._handleAutoScrollFrame);
++			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._handleAutoScrollFrame);
 +			this._handleAutoScrollFrame = undefined;
 +		}
 +	}
 +
 +	private _onHandlePointerUp(event: PointerEvent): void {
++		if (!this._activeHandle || event.pointerId !== this._activeHandle.pointerId) {
++			return;
++		}
 +		event.preventDefault();
 +		event.stopPropagation();
 +		this._stopHandleDrag();
@@ -413,13 +455,15 @@
 +
 +	private _stopHandleDrag(): void {
 +		this._stopHandleAutoScroll();
++		if (this._activeHandle) {
++			if (this._activeHandle.element.hasPointerCapture(this._activeHandle.pointerId)) {
++				this._activeHandle.element.releasePointerCapture(this._activeHandle.pointerId);
++			}
++			// Gesture ignores handle touches for dispatch but still tracks them for inertia
++			// (the inertia dispatch list skips the ignore check) - keep the flick out.
++			this._suppressTouchInertiaUntil = Date.now() + TOUCH_INERTIA_SUPPRESSION_TIME;
++		}
 +		this._activeHandle = null;
-+		this._handleMoveListener?.dispose();
-+		this._handleMoveListener = null;
-+		this._handleUpListener?.dispose();
-+		this._handleUpListener = null;
-+		this._handleCancelListener?.dispose();
-+		this._handleCancelListener = null;
 +	}
 +
  	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {

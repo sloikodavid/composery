@@ -20,8 +20,7 @@ may warn that env vars are unset - expected; you set them in
 
 Note each deployment's two URLs (Convex dashboard -> the deployment -> Settings):
 
-- `CONVEX_CLOUD_URL` - client URL, same as `NEXT_PUBLIC_CONVEX_URL`. Also goes in
-  `.env.local` as `NEXT_PUBLIC_CONVEX_SITE_URL`'s sibling for reference.
+- `CONVEX_CLOUD_URL` - client URL, same as `NEXT_PUBLIC_CONVEX_URL`.
 - `CONVEX_SITE_URL` - HTTP Actions URL, e.g. `https://<name>.convex.site`. You
   need it for the [Polar](./polar.md) webhook (`<CONVEX_SITE_URL>/polar/events`).
 
@@ -29,9 +28,9 @@ Note each deployment's two URLs (Convex dashboard -> the deployment -> Settings)
 
 In the Convex dashboard, generate a production deploy key for the production
 deployment (Deployment Settings -> production deployment -> Generate Production
-Deploy Key). It starts with `prod:`; you paste it into Vercel later. You do not
-need a deploy key locally (`convex dev` uses your CLI login), and you do not need
-a preview deploy key.
+Deploy Key). Grant only `deployment:deploy`. It starts with `prod:`; you paste
+it into Vercel later. You do not need a deploy key locally (`convex dev` uses
+your CLI login), and you do not need a preview deploy key.
 
 ## Set Convex environment variables
 
@@ -43,7 +42,7 @@ committed and not read from `.env.local`.
 
 Use `packages/web/.env.example.convex.dev` and `packages/web/.env.example.convex.prod`
 as the checklist of which keys each deployment needs and their non-secret
-defaults. The keys are `CLERK_FRONTEND_API_URL`, `WEBSITE_ORIGIN`, `CLOUD_DOMAIN`,
+defaults. The keys are `CLERK_FRONTEND_API_URL`, `CLERK_WEBHOOK_SIGNING_SECRET`, `WEBSITE_ORIGIN`, `CLOUD_DOMAIN`,
 the `POLAR_*`, `HETZNER_*`, `CLOUDFLARE_*` groups, plus `RUNTIME_IMAGE`,
 `RUNTIME_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, `RESEND_API_KEY`, `ALERT_EMAIL_FROM`.
 Do not put frontend-plane vars (`CONVEX_DEPLOYMENT`, `NEXT_PUBLIC_*`,
@@ -54,8 +53,8 @@ Only `CLERK_FRONTEND_API_URL` is required at deploy time. Convex evaluates
 `requiredEnv("CLERK_FRONTEND_API_URL")`, so a deployment with that var unset fails
 the deploy with `Missing Convex environment variable: CLERK_FRONTEND_API_URL`.
 Every other backend var is read inside functions at runtime, so a missing one
-only breaks the feature that needs it, not the deploy (see `convex/billing/polar.ts`,
-which reads its env tolerantly for exactly this reason).
+breaks only the feature that first reads it. The environment examples are the
+source-of-truth checklist; keep optional keys present with an empty value.
 
 For a one-off from the CLI, `convex env set NAME value` (dev) or
 `convex env set --prod NAME value` works too. Check what is set with
@@ -68,7 +67,7 @@ pnpm exec convex dev --once
 
 ## References
 
-- Convex Vercel hosting: https://docs.convex.dev/production/hosting/vercel.
-- Convex deploy CLI: https://docs.convex.dev/cli/reference/deploy.
-- Convex deploy keys: https://docs.convex.dev/cli/deploy-key-types.
-- Convex environment variables: https://docs.convex.dev/production/environment-variables.
+- Convex Vercel hosting: https://docs.convex.dev/production/hosting/vercel
+- Convex deploy CLI: https://docs.convex.dev/cli/reference/deploy
+- Convex deploy keys: https://docs.convex.dev/cli/deploy-key-types
+- Convex environment variables: https://docs.convex.dev/production/environment-variables

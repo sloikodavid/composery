@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminalKeybar.css
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,83 @@
 +/*---------------------------------------------------------------------------------------------
 + * Composery Mobile Keybar - docked at the bottom of the terminal view pane on touch devices.
 + * TerminalViewPane reserves its height in layoutBody (see terminalKeybar.ts), so the bar
@@ -27,6 +27,9 @@
 +	display: flex;
 +	align-items: stretch;
 +	gap: 4px;
++	/* The upstream ul is content-box: without this, height + padding overflows the
++	 * 40px bar and overflow:hidden clips the bottom of the keycaps. */
++	box-sizing: border-box;
 +	height: 100%;
 +	margin: 0;
 +	padding: 4px 0;
@@ -58,6 +61,8 @@
 +	box-shadow: inset 0 -1px 0 var(--vscode-widget-shadow);
 +	font-size: 12px;
 +	white-space: nowrap;
++	/* Keys flex-shrink below label width in a narrow pane - clip instead of spilling out. */
++	overflow: hidden;
 +	cursor: pointer;
 +	user-select: none;
 +	-webkit-user-select: none;
@@ -102,7 +107,7 @@
 +import * as dom from '../../../../base/browser/dom.js';
 +import { EventType as TouchEventType, Gesture } from '../../../../base/browser/touch.js';
 +import { Disposable } from '../../../../base/common/lifecycle.js';
-+import { isTouch } from '../../../browser/touchGate.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
 +import { ITerminalService } from './terminal.js';
 +
 +type Modifier = 'ctrl' | 'alt';

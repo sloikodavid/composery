@@ -1,0 +1,231 @@
+diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/browser/touch.ts
+--- a/lib/vscode/src/vs/base/browser/touch.ts
++++ b/lib/vscode/src/vs/base/browser/touch.ts
+@@ -27,6 +27,9 @@
+ 	rollingTimestamps: number[];
+ 	rollingPageX: number[];
+ 	rollingPageY: number[];
++	contextMenuTimer: number | undefined;
++	contextMenuFired: boolean;
++	tapCancelled: boolean;
+ }
+ 
+ export interface GestureEvent extends MouseEvent {
+@@ -95,6 +98,7 @@
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
++			disposables.add(DomUtils.addDisposableListener(window.document, 'touchcancel', (e: TouchEvent) => this.onTouchCancel(e)));
+ 		}, { window: mainWindow, disposables: this._store }));
+ 	}
+ 
+@@ -157,10 +161,15 @@
+ 			this.handle = null;
+ 		}
+ 
++		// Composery: long-presses are single-finger - a second touch cancels any pending timer.
++		for (const id in this.activeTouches) {
++			this.clearContextMenuTimer(this.activeTouches[Number(id)]);
++		}
++
+ 		for (let i = 0, len = e.targetTouches.length; i < len; i++) {
+ 			const touch = e.targetTouches.item(i);
+ 
+-			this.activeTouches[touch.identifier] = {
++			const data: TouchData = this.activeTouches[touch.identifier] = {
+ 				id: touch.identifier,
+ 				initialTarget: touch.target,
+ 				initialTimeStamp: timestamp,
+@@ -168,9 +177,28 @@
+ 				initialPageY: touch.pageY,
+ 				rollingTimestamps: [timestamp],
+ 				rollingPageX: [touch.pageX],
+-				rollingPageY: [touch.pageY]
++				rollingPageY: [touch.pageY],
++				contextMenuTimer: undefined,
++				contextMenuFired: false,
++				tapCancelled: false
+ 			};
+ 
++			// Composery: fire the long-press context menu DURING the hold, as native platforms
++			// do - the release-time branch below stays as a fallback. This touchstart's
++			// preventDefault suppresses the browser's own contextmenu event for gesture
++			// targets, so this timer is the only during-hold path on Android or iOS.
++			if (len === 1 && Object.keys(this.activeTouches).length === 1) {
++				data.contextMenuTimer = mainWindow.setTimeout(() => {
++					data.contextMenuTimer = undefined;
++					data.contextMenuFired = true;
++					const holdEvt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
++					holdEvt.pageX = data.rollingPageX.at(-1)!;
++					holdEvt.pageY = data.rollingPageY.at(-1)!;
++					this.dispatchEvent(holdEvt);
++					this.dispatched = false;
++				}, Gesture.HOLD_DELAY);
++			}
++
+ 			const evt = this.newGestureEvent(EventType.Start, touch.target);
+ 			evt.pageX = touch.pageX;
+ 			evt.pageY = touch.pageY;
+@@ -201,7 +229,16 @@
+ 			const data = this.activeTouches[touch.identifier],
+ 				holdTime = Date.now() - data.initialTimeStamp;
+ 
+-			if (holdTime < Gesture.HOLD_DELAY
++			this.clearContextMenuTimer(data);
++			if (data.contextMenuFired) {
++				// Composery: the long-press already fired during the hold - the release must
++				// not also tap, re-fire the menu, or start an inertia fling.
++				this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
++				delete this.activeTouches[touch.identifier];
++				continue;
++			}
++
++			if (!data.tapCancelled && holdTime < Gesture.HOLD_DELAY
+ 				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
+ 				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
+ 
+@@ -210,7 +247,7 @@
+ 				evt.pageY = data.rollingPageY.at(-1)!;
+ 				this.dispatchEvent(evt);
+ 
+-			} else if (holdTime >= Gesture.HOLD_DELAY
++			} else if (!data.tapCancelled && holdTime >= Gesture.HOLD_DELAY
+ 				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
+ 				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
+ 
+@@ -235,7 +272,8 @@
+ 					finalX,											// x now
+ 					Math.abs(deltaY) / deltaT,  					// y speed
+ 					deltaY > 0 ? 1 : -1,							// y direction
+-					finalY											// y now
++					finalY,											// y now
++					data.initialTarget								// gesture owner
+ 				);
+ 			}
+ 
+@@ -252,6 +290,30 @@
+ 		}
+ 	}
+ 
++	private onTouchCancel(e: TouchEvent): void {
++		// Composery: the OS interrupts touches (app switch mid-touch, incoming call, palm
++		// rejection) with touchcancel, which was never handled - the stale activeTouches
++		// entries then fail every single-touch check (inertia, the long-press timer) forever.
++		for (let i = 0, len = e.changedTouches.length; i < len; i++) {
++			const touch = e.changedTouches.item(i);
++			const data = this.activeTouches[touch.identifier];
++			if (!data) {
++				continue;
++			}
++			this.clearContextMenuTimer(data);
++			this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
++			delete this.activeTouches[touch.identifier];
++		}
++		this.dispatched = false;
++	}
++
++	private clearContextMenuTimer(data: TouchData): void {
++		if (data.contextMenuTimer !== undefined) {
++			mainWindow.clearTimeout(data.contextMenuTimer);
++			data.contextMenuTimer = undefined;
++		}
++	}
++
+ 	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
+ 		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
+ 		event.initEvent(type, false, true);
+@@ -306,7 +368,7 @@
+ 		}
+ 	}
+ 
+-	private inertia(targetWindow: Window, dispatchTo: readonly EventTarget[], t1: number, vX: number, dirX: number, x: number, vY: number, dirY: number, y: number): void {
++	private inertia(targetWindow: Window, dispatchTo: readonly EventTarget[], t1: number, vX: number, dirX: number, x: number, vY: number, dirY: number, y: number, initialTarget?: EventTarget): void {
+ 		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
+ 			const now = Date.now();
+ 
+@@ -329,13 +391,13 @@
+ 			}
+ 
+ 			// dispatch translation event
+-			const evt = this.newGestureEvent(EventType.Change);
++			const evt = this.newGestureEvent(EventType.Change, initialTarget);
+ 			evt.translationX = delta_pos_x;
+ 			evt.translationY = delta_pos_y;
+ 			dispatchTo.forEach(d => d.dispatchEvent(evt));
+ 
+ 			if (!stopped) {
+-				this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y);
++				this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y, initialTarget);
+ 			}
+ 		});
+ 	}
+@@ -354,6 +416,16 @@
+ 
+ 			const data = this.activeTouches[touch.identifier];
+ 
++			// Composery: after the during-hold menu fired the touch is spent - no more panning.
++			// Once movement becomes a pan, release must not synthesize a tap or long press.
++			if (data.contextMenuFired) {
++				continue;
++			}
++			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
++				data.tapCancelled = true;
++				this.clearContextMenuTimer(data);
++			}
++
+ 			const evt = this.newGestureEvent(EventType.Change, data.initialTarget);
+ 			evt.translationX = touch.pageX - data.rollingPageX.at(-1)!;
+ 			evt.translationY = touch.pageY - data.rollingPageY.at(-1)!;
+diff --git a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
+--- a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
++++ b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
+@@ -12,7 +12,8 @@
+ import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+ import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
+ import { DisposableStore } from '../../../../base/common/lifecycle.js';
+-import { isIOS } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from '../../../browser/editorBrowser.js';
+ import { EditorAction, EditorContributionInstantiation, registerEditorAction, registerEditorContribution, ServicesAccessor } from '../../../browser/editorExtensions.js';
+ import { EditorOption } from '../../../common/config/editorOptions.js';
+@@ -212,7 +213,7 @@
+ 			anchor = { x: posx, y: posy };
+ 		}
+ 
+-		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
++		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
+ 
+ 		// Show menu
+ 		this._contextMenuIsBeingShownCount++;
+@@ -362,7 +363,7 @@
+ 			}]
+ 		));
+ 
+-		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
++		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
+ 		this._contextMenuIsBeingShownCount++;
+ 		this._contextMenuService.showContextMenu({
+ 			domForShadowRoot: useShadowDOM ? this._editor.getDomNode() : undefined,
+diff --git a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts b/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
+--- a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
++++ b/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
+@@ -7,7 +7,8 @@
+ import { Action } from '../../../../../../base/common/actions.js';
+ import { Codicon } from '../../../../../../base/common/codicons.js';
+ import { Disposable } from '../../../../../../base/common/lifecycle.js';
+-import { isIOS } from '../../../../../../base/common/platform.js';
++import { isTouch } from '../../../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../../../base/browser/window.js';
+ import { ThemeIcon } from '../../../../../../base/common/themables.js';
+ import { IEditorMouseEvent, MouseTargetType } from '../../../../editorBrowser.js';
+ import { CodeEditorWidget } from '../../../codeEditor/codeEditorWidget.js';
+@@ -66,7 +67,7 @@
+ 
+ 		let currentLineNumberOffset = 0;
+ 
+-		const useShadowDOM = _modifiedEditor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
++		const useShadowDOM = _modifiedEditor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
+ 		const showContextMenu = (anchor: { x: number; y: number }, baseActions?: Action[], onHide?: () => void) => {
+ 			this._contextMenuService.showContextMenu({
+ 				domForShadowRoot: useShadowDOM ? _modifiedEditor.getDomNode() ?? undefined : undefined,

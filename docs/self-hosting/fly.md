@@ -27,9 +27,9 @@ fly secrets set COMPOSERY_PASSWORD=example
 
 ## Notes
 
-- A Fly Volume is pinned to a single Machine. Run **one** Machine - do not scale this app.
+- A Fly Volume is pinned to a single Machine. Run **one** Machine - do not scale this app
   horizontally against the same volume (`persistence` is a single writer).
-- `auto_stop_machines` is `off` so an idle editor session is not stopped mid-use. Set it to.
+- `auto_stop_machines` is `off` so an idle editor session is not stopped mid-use. Set it to
   `"stop"` with `min_machines_running = 0` if you prefer scale-to-zero and accept cold starts.
 - The volume and `app` name must match what you create; edit `fly.toml` if you rename either.
 - Take a volume snapshot before major image upgrades.

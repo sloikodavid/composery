@@ -1,166 +1,32 @@
+Route Markdown web links through the workbench opener
+
+Absolute HTTP links normally bypass the Markdown extension and navigate directly
+inside the preview webview. Route them through the existing openLink message so
+the workbench applies trusted-domain and loopback-callback handling in one place.
+
 --- a/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
 +++ b/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
-@@ -653,6 +653,138 @@ document.addEventListener('dblclick', ev
- });
- 
- const passThroughLinkSchemes = ['http:', 'https:', 'mailto:', 'vscode:', 'vscode-insiders:'];
-+const loopbackCallbackParamNames = new Set([
-+	'callback',
-+	'callbackto',
-+	'callbackuri',
-+	'callbackurl',
-+	'continue',
-+	'continueto',
-+	'continueuri',
-+	'continueurl',
-+	'destination',
-+	'destinationuri',
-+	'destinationurl',
-+	'next',
-+	'nexturi',
-+	'nexturl',
-+	'postlogoutredirecturi',
-+	'postlogoutredirecturl',
-+	'redirect',
-+	'redirectto',
-+	'redirecturi',
-+	'redirecturl',
-+	'return',
-+	'returnto',
-+	'returnuri',
-+	'returnurl',
-+	'targetlinkuri',
-+]);
-+
-+function normalizeLoopbackCallbackParamName(name: string): string {
-+	return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-+}
-+
-+function parseHttpUrl(value: string | null): URL | undefined {
-+	if (typeof value !== 'string' || !value.trim()) {
-+		return undefined;
-+	}
-+
-+	try {
-+		const parsed = new URL(value);
-+		return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed : undefined;
-+	} catch {
-+		return undefined;
-+	}
-+}
-+
-+function isLoopbackHost(hostname: string): boolean {
-+	const normalized = hostname.trim().toLowerCase();
-+	return normalized === 'localhost'
-+		|| normalized === 'localhost.'
-+		|| normalized.endsWith('.localhost')
-+		|| normalized.endsWith('.localhost.')
-+		|| normalized.startsWith('127.')
-+		|| normalized === '0.0.0.0'
-+		|| normalized === '::1'
-+		|| normalized === '[::1]'
-+		|| normalized === '::'
-+		|| normalized === '[::]'
-+		|| isIpv4MappedLoopbackHost(normalized);
-+}
-+
-+function isIpv4MappedLoopbackHost(normalized: string): boolean {
-+	const match = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(normalized);
-+	if (!match) {
-+		return false;
-+	}
-+
-+	const highBits = parseInt(match[1]!, 16);
-+	return highBits >= 0x7f00 && highBits <= 0x7fff;
-+}
-+
-+function getQueryLikeParams(url: URL): URLSearchParams[] {
-+	const params = [url.searchParams];
-+	const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
-+	if (!hash) {
-+		return params;
-+	}
-+
-+	const hashQueryIndex = hash.indexOf('?');
-+	if (hashQueryIndex >= 0 && hashQueryIndex < hash.length - 1) {
-+		params.push(new URLSearchParams(hash.slice(hashQueryIndex + 1)));
-+		return params;
-+	}
-+
-+	if (hash.includes('=')) {
-+		params.push(new URLSearchParams(hash));
-+	}
-+
-+	return params;
-+}
-+
-+function findLoopbackCallbackTarget(url: URL, depth = 0): URL | undefined {
-+	if (depth > 2) {
-+		return undefined;
-+	}
-+
-+	for (const params of getQueryLikeParams(url)) {
-+		for (const [key, value] of params) {
-+			if (!loopbackCallbackParamNames.has(normalizeLoopbackCallbackParamName(key))) {
-+				continue;
-+			}
-+
-+			const parsedValue = parseHttpUrl(value);
-+			if (!parsedValue) {
-+				continue;
-+			}
-+
-+			if (isLoopbackHost(parsedValue.hostname)) {
-+				return parsedValue;
-+			}
-+
-+			const nestedTarget = findLoopbackCallbackTarget(parsedValue, depth + 1);
-+			if (nestedTarget) {
-+				return nestedTarget;
-+			}
-+		}
-+	}
-+
-+	return undefined;
-+}
-+
-+function shouldDelegateLoopbackCallbackLinkToVsCode(hrefText: string | null): boolean {
-+	if (!hrefText || !/^(?:https?):/i.test(hrefText)) {
-+		return false;
-+	}
-+
-+	const parsed = parseHttpUrl(hrefText);
-+	if (!parsed || isLoopbackHost(parsed.hostname)) {
-+		return false;
-+	}
-+
-+	return !!findLoopbackCallbackTarget(parsed);
-+}
- 
- document.addEventListener('click', event => {
- 	if (!event) {
-@@ -669,7 +801,17 @@ document.addEventListener('click', event
+@@ -669,8 +669,15 @@ document.addEventListener('click', event
  			let hrefText = node.getAttribute('data-href');
  			if (!hrefText) {
  				hrefText = node.getAttribute('href');
 -				// Pass through known schemes
-+			}
+-				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
++				if (hrefText && /^(?:https?):/i.test(hrefText)) {
++					messaging.postMessage('openLink', { href: hrefText });
++					event.preventDefault();
++					event.stopPropagation();
++					return;
++				}
 +
-+			if (shouldDelegateLoopbackCallbackLinkToVsCode(hrefText)) {
-+				messaging.postMessage('openLink', { href: hrefText });
-+				event.preventDefault();
-+				event.stopPropagation();
-+				return;
-+			}
-+
-+			if (!node.getAttribute('data-href')) {
-+				// Pass through known schemes unless we need the workbench guard to inspect them first.
- 				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
++				// Schemes that do not need workbench validation retain their native behavior.
++				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
  					return;
  				}
+ 			}
 --- a/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
 +++ b/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
-@@ -484,7 +484,7 @@ class MarkdownPreview extends Disposable
+@@ -484,8 +484,8 @@ class MarkdownPreview extends Disposable
  		const openLinks = config.get<string>('preview.openMarkdownLinks', 'inPreview');
  		if (openLinks === 'inPreview') {
  			const resolved = await this.#opener.resolveDocumentLink(href, this.resource);
@@ -169,3 +35,4 @@
  				try {
  					const doc = await vscode.workspace.openTextDocument(vscode.Uri.from(resolved.uri));
  					if (isMarkdownFile(doc)) {
+ 						return this.#delegate.openPreviewLinkToMarkdownFile(doc.uri, resolved.fragment ? decodeURIComponent(resolved.fragment) : undefined);

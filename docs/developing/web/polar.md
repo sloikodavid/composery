@@ -8,6 +8,10 @@ Use the Polar sandbox (`sandbox.polar.sh`) for development and Polar production
 dev [Convex](./convex.md) deployment, production values on the prod deployment.
 
 1. Create or select the organization.
+   In production, complete Polar's account review and enter the real supplier
+   identity and support contact: David Sloiko, trading as Composery, and
+   `hello@composery.io`. Polar is the merchant of record and reseller, but
+   Composery remains the supplier under the Terms.
 2. Create an Organization Access Token (Settings -> Developers -> New Token) with
    these scopes (required by `@convex-dev/polar`):
    - `products:read`, `products:write`.
@@ -24,7 +28,8 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    (`convex/billing/polar.ts`).
 
 3. Create the Box product (Products -> Create Product). Give it a name, add a
-   recurring **monthly** price, and save. Open the product and copy its **Product
+   recurring **monthly $25** price, describe the hosted box accurately, link the
+   Terms and Privacy Policy, and save. Open the product and copy its **Product
    ID** (not the price ID) -> `POLAR_BOX_PRODUCT_ID`. The code keys off the
    product id (`products.box` in `convex/billing/polar.ts`). This is a
    per-deployment env var, not a hardcoded id, because the sandbox and production
@@ -54,5 +59,6 @@ test checkout.
 
 ## References
 
-- Polar API overview: https://polar.sh/docs/docs/api/sdk.
-- Polar webhook events: https://polar.sh/docs/integrate/webhooks/events.
+- Polar merchant of record: https://polar.sh/docs/merchant-of-record/introduction
+- Polar account review: https://polar.sh/docs/merchant-of-record/account-reviews
+- Polar webhook events: https://polar.sh/docs/integrate/webhooks/events

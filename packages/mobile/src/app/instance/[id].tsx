@@ -11,7 +11,13 @@ import {
 	useRef,
 	useState
 } from "react";
-import { BackHandler, Text, useColorScheme, View } from "react-native";
+import {
+	AppState,
+	BackHandler,
+	Text,
+	useColorScheme,
+	View
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
 
@@ -20,7 +26,11 @@ import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { createInstanceStore, type Instance } from "@/lib/instance-store";
-import { probeComposery, type ProbeResult } from "@/lib/probe";
+import {
+	fetchServerStamp,
+	probeComposery,
+	type ProbeResult
+} from "@/lib/probe";
 import { useTheme, type Theme } from "@/lib/use-theme";
 import { buildBeforeLoad, INSTALL_SCRIPT } from "@/web/back-button";
 
@@ -69,6 +79,10 @@ export default function InstanceScreen() {
 	// loadError only on a successful reload — keeping the error overlay mounted
 	// (and the Retry button busy) through the whole retry attempt, with no blink.
 	const errorThisLoad = useRef(false);
+	// Server build stamp captured after a successful load; compared on
+	// app-foreground so a WebView that outlived a Composery update reloads
+	// instead of running the old client against the new server.
+	const serverStamp = useRef<string | null>(null);
 
 	const loadInstance = useCallback(
 		(isActive: () => boolean = () => true) => {
@@ -156,6 +170,28 @@ export default function InstanceScreen() {
 		resetTransientWebViewState();
 		setReloadKey((k) => k + 1);
 	}, [resetTransientWebViewState]);
+
+	// Android can foreground the app without the WebView re-gaining native focus;
+	// grant it back so the IDE's own focus tracking (window-focus-resample.diff)
+	// sees document focus return and the IME can open again. Also re-check the
+	// server's build stamp: a backgrounded WebView can outlive a Composery
+	// update, and its workbench would keep running the old client forever.
+	useEffect(() => {
+		const url = instance?.url;
+		const subscription = AppState.addEventListener("change", (state) => {
+			if (state !== "active") return;
+			webviewRef.current?.requestFocus();
+			const loadedStamp = serverStamp.current;
+			if (!url || !loadedStamp) return;
+			void fetchServerStamp(url).then((stamp) => {
+				if (stamp && stamp !== loadedStamp) {
+					serverStamp.current = null;
+					recoverWebViewProcess();
+				}
+			});
+		});
+		return () => subscription.remove();
+	}, [instance?.url, recoverWebViewProcess]);
 
 	// When the system scheme flips while open, tell the page so code-server
 	// re-detects its theme without a reload.
@@ -285,7 +321,12 @@ export default function InstanceScreen() {
 						}}
 						onLoadEnd={() => {
 							setWebLoading(false);
-							if (!errorThisLoad.current) setLoadError(null);
+							if (!errorThisLoad.current) {
+								setLoadError(null);
+								void fetchServerStamp(instance.url).then((stamp) => {
+									serverStamp.current = stamp;
+								});
+							}
 						}}
 						onError={(event) => {
 							errorThisLoad.current = true;

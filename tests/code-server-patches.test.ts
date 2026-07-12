@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { posix, resolve } from "node:path";
 import vm from "node:vm";
 
 import { describe, expect, test } from "vitest";
 
 import {
+	addedLines,
 	extractAddedFunction,
 	readRepoFile,
 	repoRoot
@@ -257,6 +258,28 @@ describe("narrow overlay", () => {
 		expect(touchCss).toContain(".composery-touch-selection-handle");
 	});
 
+	// A pan can start on editor padding as well as rendered text. It must be
+	// classified before the synthetic tap path focuses the hidden editor input,
+	// and keyboard-driven layout changes must preserve the current scroll.
+	test("touch editor scrolling does not focus or reveal on keyboard resize", () => {
+		const touchEditorPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		);
+		const scrollReleasePatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor-scroll-release.diff`)
+		);
+
+		expect(touchEditorPatch).toContain(
+			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_SELECTION_THRESHOLD"
+		);
+		expect(touchEditorPatch).toContain("this._touchGesture.panned = true");
+		expect(scrollReleasePatch).toContain(
+			"Once scrolling is applied, release must not also focus as a tap"
+		);
+		expect(touchEditorPatch).toContain("if (!keyboardVisible");
+		expect(touchEditorPatch).not.toContain("revealAllCursors");
+	});
+
 	// Post-build, the workbench assets must be rsynced into the release bundle
 	// or every narrow/touch behavior above silently vanishes from the image.
 	test("build.sh ships the workbench assets into the release", () => {
@@ -276,6 +299,198 @@ describe("narrow overlay", () => {
 		expect(narrowJs).toContain("composery:overlay-back:");
 		expect(instanceScreen).toContain("composery:overlay-back:on");
 		expect(instanceScreen).toContain("composery:overlay-back:off");
+	});
+
+	// A back gesture with a narrow-fullscreen part open must close the part, not
+	// leave the page: narrow.js dispatches the close event and the layout patch
+	// listens for it - same literal on both sides or back exits the IDE.
+	test("narrow close-part event matches between narrow.js and the layout patch", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const layoutPatch = readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`);
+
+		expect(narrowJs).toContain('"composery-narrow-close-part"');
+		expect(addedLines(layoutPatch)).toContain("'composery-narrow-close-part'");
+	});
+
+	// narrow.js detects an open part via the workbench part-hidden classes; those
+	// literals belong to upstream layout.ts and must survive upstream bumps.
+	test("narrow.js part-hidden classes exist upstream", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const layoutTs = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/browser/layout.ts"
+		);
+
+		for (const hiddenClass of ["nosidebar", "nopanel", "noauxiliarybar"]) {
+			expect(narrowJs).toContain(`"${hiddenClass}"`);
+			expect(layoutTs).toContain(`'${hiddenClass}'`);
+		}
+	});
+
+	// The sash grab-area default must key off the canonical touch gate (not a
+	// second hardcoded query, and not iOS-only like upstream).
+	test("touch-sash patch keys the sash size default off the touch gate", () => {
+		const sashPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-sash.diff`)
+		);
+
+		expect(sashPatch).toContain("touchGate.js");
+		expect(sashPatch).toContain("isTouch(mainWindow) ? 20 : 4");
+	});
+
+	// Native selects on touch have exactly one decision point - the SelectBox
+	// constructor, where touch overrides even an explicit useCustomDrawn - so no
+	// call-site override can quietly bring the custom-drawn list back.
+	test("touch-select patch keys the native-select decision off the touch gate", () => {
+		const selectPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-select.diff`)
+		);
+
+		expect(selectPatch).toContain(
+			"isTouch(mainWindow) || (isMacintosh && !selectBoxOptions?.useCustomDrawn)"
+		);
+		expect(selectPatch).not.toContain("useCustomDrawn:");
+	});
+
+	// The editor's own selection long-press must arm before Gesture's during-hold
+	// context menu fires, or a long-press would open the menu instead of
+	// selecting the word under the finger.
+	test("editor selection hold time stays below the gesture hold delay", () => {
+		const selectionHold = Number(
+			/TOUCH_SELECTION_HOLD_TIME = (\d+)/.exec(
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
+			)?.[1]
+		);
+		const gestureHold = Number(
+			/HOLD_DELAY = (\d+)/.exec(
+				readRepoFile(
+					"packages/ide/upstream/lib/vscode/src/vs/base/browser/touch.ts"
+				)
+			)?.[1]
+		);
+
+		expect(selectionHold).toBeGreaterThan(0);
+		expect(gestureHold).toBeGreaterThan(0);
+		expect(selectionHold).toBeLessThan(gestureHold);
+	});
+
+	// Long-press menus fire during the hold (Gesture timer), and editor context
+	// menus render in the light DOM on touch, where the overlay touch styling
+	// cannot pierce a shadow root. A pan remains a pan through release and inertia;
+	// it must never fall back into the synthetic tap path or reach ancestor menus.
+	test("touch-context-menu patch fires during the hold and widens the shadow gate", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
+		);
+
+		expect(patch).toContain("contextMenuTimer");
+		expect(patch).toContain("tapCancelled");
+		expect(patch).toContain("!data.tapCancelled && holdTime");
+		expect(patch).toContain(
+			"this.newGestureEvent(EventType.Change, initialTarget)"
+		);
+		expect(patch).toContain(
+			"EditorOption.useShadowDOM) && !isTouch(mainWindow)"
+		);
+		// The OS cancels touches on app switch; without touchcancel cleanup the
+		// stale entries kill the single-touch checks (long-press, inertia) forever.
+		expect(patch).toContain("'touchcancel'");
+	});
+
+	test("nested menus retain focus and home actions stay at the File root", () => {
+		const touchMenu = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-menu.diff`)
+		);
+		const homeActions = addedLines(
+			readRepoFile(`${PATCHES_DIR}/menu-home-actions.diff`)
+		);
+
+		expect(touchMenu).toContain("EventType.FOCUS_IN");
+		expect(touchMenu).toContain("this.hideScheduler.cancel()");
+		expect(homeActions).toContain("includeWebNavigation = true");
+		expect(homeActions).toContain(
+			"updateActions(menuItem.actions, submenuActions, topLevelTitle, store, false)"
+		);
+	});
+
+	// Upstream's focus tracking samples document.hasFocus() only on four events
+	// and latches the value; a WebView resume restores focus without any of them,
+	// wedging the workbench inactive (gray title bar, IME suppressed). The
+	// resample patch must keep both healing sources: interaction, and the
+	// visible-poll upstream itself uses for auxiliary windows.
+	test("window-focus-resample patch samples interaction and late focus", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/window-focus-resample.diff`)
+		);
+
+		expect(patch).toContain("'pointerdown'");
+		expect(patch).toContain("disposableWindowInterval");
+	});
+
+	// The two gates are defined once in the gate patches but mirrored - CSS and
+	// overlay JS cannot import TS - in touch.css/.js, narrow.css/.js, and the
+	// webview iframe CSS. Extract the canonical values from the gate patches and
+	// require every mirror to match, so a query or breakpoint tweak cannot drift.
+	test("overlay assets and patches mirror the canonical gate queries", () => {
+		const touchQuery = /TOUCH_QUERY = '([^']+)'/.exec(
+			readRepoFile(`${PATCHES_DIR}/touch-gate.diff`)
+		)?.[1];
+		const narrowWidth = /NARROW_MAX_WIDTH = (\d+)/.exec(
+			readRepoFile(`${PATCHES_DIR}/narrow-gate.diff`)
+		)?.[1];
+		expect(touchQuery).toBeDefined();
+		expect(narrowWidth).toBeDefined();
+
+		const touchMedia = readRepoFile(`${ASSETS}/touch.css`)
+			.split("\n")
+			.filter((line) => line.startsWith("@media"));
+		expect(touchMedia.length).toBeGreaterThan(0);
+		for (const line of touchMedia) {
+			expect(line).toBe(`@media ${touchQuery} {`);
+		}
+		expect(readRepoFile(`${ASSETS}/touch.js`)).toContain(`"${touchQuery}"`);
+
+		const narrowMedia = readRepoFile(`${ASSETS}/narrow.css`)
+			.split("\n")
+			.filter((line) => line.startsWith("@media"));
+		expect(narrowMedia.length).toBeGreaterThan(0);
+		for (const line of narrowMedia) {
+			expect(line).toBe(`@media (max-width: ${narrowWidth}px) {`);
+		}
+		expect(readRepoFile(`${ASSETS}/narrow.js`)).toContain(
+			`NARROW_MAX_WIDTH = ${narrowWidth}`
+		);
+		expect(readRepoFile(`${PATCHES_DIR}/webview-mobile.diff`)).toContain(
+			`@media (max-width: ${narrowWidth}px)`
+		);
+	});
+
+	// A wrong relative import path in a patch (or a stale one after the gate file
+	// moves) only explodes at Docker-build time. Resolve every touchGate import
+	// the stack adds against the file the gate patch actually creates.
+	test("every patched touchGate import resolves to the gate file", () => {
+		const gateFile = "lib/vscode/src/vs/base/browser/touchGate.ts";
+		expect(readRepoFile(`${PATCHES_DIR}/touch-gate.diff`)).toContain(
+			`+++ b/${gateFile}`
+		);
+
+		let imports = 0;
+		for (const name of seriesNames) {
+			let target = "";
+			for (const line of readRepoFile(`${PATCHES_DIR}/${name}`).split("\n")) {
+				const file = /^\+\+\+ b\/(.+)$/.exec(line);
+				if (file) target = file[1];
+
+				const imported = /^\+import .* from '(\S*touchGate\.js)';$/.exec(line);
+				if (!imported) continue;
+
+				imports++;
+				expect(
+					posix.join(posix.dirname(target), imported[1]),
+					`${name} imports touchGate from ${target}`
+				).toBe(gateFile.replace(/\.ts$/, ".js"));
+			}
+		}
+		expect(imports).toBeGreaterThan(0);
 	});
 });
 
@@ -486,6 +701,26 @@ describe("composery shortcuts", () => {
 		for (const command of commands) {
 			expect(extension).toContain(`"${command}"`);
 		}
+	});
+
+	test("only overrides undo when the shortcuts view has a removal to restore", () => {
+		const parsed = JSON.parse(manifest) as {
+			contributes: {
+				keybindings: Array<{ command: string; key: string; when: string }>;
+			};
+		};
+		const undo = parsed.contributes.keybindings.find(
+			(entry) => entry.command === "composery.shortcuts.undoRemove"
+		);
+
+		expect(undo).toEqual(
+			expect.objectContaining({
+				key: "ctrl+z",
+				when: "focusedView == composery.shortcuts.view && composery.shortcuts.canUndoRemove"
+			})
+		);
+		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, true');
+		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, false');
 	});
 });
 
