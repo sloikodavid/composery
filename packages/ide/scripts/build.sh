@@ -59,14 +59,16 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay scripts -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
 export COMPOSERY_STATIC_STAMP
 echo "static stamp: $COMPOSERY_STATIC_STAMP"
+# npm ci is skipped when node_modules came with the tree: the Docker ide-base
+# layer pre-installs it in pristine upstream (keyed by the upstream commit) so
+# overlay/patch edits do not recompile the native modules every build.
 ( cd "$BUILD" \
-  && CI=1 npm ci \
+  && { [ -d node_modules ] || CI=1 npm ci; } \
   && npm run build \
   && VERSION="${VERSION:-0.0.0}" npm run build:vscode \
   && KEEP_MODULES=1 npm run release )
 
 echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
-rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/lib/vscode/out/"
 rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
 # Upstream's release step ships only pages *.html/*.css - carry our pages JS
 # (login auth.js) too, from the rebranded build tree, or the login page 404s it.

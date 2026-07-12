@@ -1,15 +1,12 @@
 import { Router } from "express";
-import { promises as fs } from "fs";
-import * as path from "path";
-import { rootPath } from "../constants";
 import {
 	authenticated,
 	ensureOrigin,
 	getCookieOptions,
-	redirect,
-	replaceTemplates
+	redirect
 } from "../http";
-import { escapeHtml, hash, sanitizeString } from "../util";
+import { hash, sanitizeString } from "../util";
+import { renderAuthPage } from "./authPage";
 import { RateLimiter } from "./login";
 import {
 	hasPassword,
@@ -33,28 +30,6 @@ const errorMessage = (error: unknown): string | undefined => {
 		default:
 			return undefined;
 	}
-};
-
-const getRoot = async (
-	req: Parameters<typeof replaceTemplates>[0]
-): Promise<string> => {
-	const content = await fs.readFile(
-		path.join(rootPath, "src/browser/pages/reset-password.html"),
-		"utf8"
-	);
-	const error =
-		typeof req.query.error === "string"
-			? errorMessage(req.query.error)
-			: undefined;
-	return replaceTemplates(
-		req,
-		content.replace(
-			/{{ERROR}}/,
-			error
-				? `<span class="error" role="alert">${escapeHtml(error)}</span>`
-				: ""
-		)
-	);
 };
 
 export const router = Router();
@@ -85,7 +60,11 @@ router.use(async (req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-	res.send(await getRoot(req));
+	const error =
+		typeof req.query.error === "string"
+			? errorMessage(req.query.error)
+			: undefined;
+	res.send(await renderAuthPage(req, "reset-password.html", error));
 });
 
 router.post("/", ensureOrigin, async (req, res) => {

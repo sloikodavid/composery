@@ -1,29 +1,19 @@
 diff --git a/ci/build/build-vscode.sh b/ci/build/build-vscode.sh
 --- a/ci/build/build-vscode.sh
 +++ b/ci/build/build-vscode.sh
-@@ -72,28 +72,30 @@
-     "enableTelemetry": true,
-     "quality": "stable",
-     "codeServerVersion": "$VERSION",
--    "nameShort": "code-server",
--    "nameLong": "code-server",
-+    "nameShort": "Composery",
-+    "nameLong": "Composery",
+@@ -78,6 +78,7 @@
+     "nameLong": "code-server",
      "applicationName": "code-server",
      "dataFolderName": ".code-server",
 +    "serverDataFolderName": ".composery-server",
      "win32MutexName": "codeserver",
--    "licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE",
-+    "licenseUrl": "https://github.com/sloikodavid/composery/blob/main/LICENSE",
+     "licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE",
      "win32DirName": "code-server",
-     "win32NameVersion": "code-server",
-     "win32AppUserModelId": "coder.code-server",
-     "win32ShellNameShort": "c&ode-server",
+@@ -87,15 +88,16 @@
      "darwinBundleIdentifier": "com.coder.code.server",
      "linuxIconName": "com.coder.code.server",
--    "reportIssueUrl": "https://github.com/coder/code-server/issues/new",
+     "reportIssueUrl": "https://github.com/coder/code-server/issues/new",
 -    "documentationUrl": "https://go.microsoft.com/fwlink/?LinkID=533484#vscode",
-+    "reportIssueUrl": "https://github.com/sloikodavid/composery/issues/new",
 +    "documentationUrl": "https://www.composery.io/docs",
      "keyboardShortcutsUrlMac": "https://go.microsoft.com/fwlink/?linkid=832143",
      "keyboardShortcutsUrlLinux": "https://go.microsoft.com/fwlink/?linkid=832144",
@@ -50,12 +40,15 @@ renames (CODE_SERVER_*/CS_* -> COMPOSERY_*, code-server -> composery paths,
 {{CS_STATIC_BASE}} -> {{COMPOSERY_STATIC_BASE}}) live in the src-node-*.diff
 patches. This patch covers:
 
-- product.json identity and links (ci/build/build-vscode.sh): nameShort/nameLong
-  -> "Composery" (tab, window, About), serverDataFolderName -> ".composery-server",
-  and report-issue/docs/license/tips/videos/newsletter links -> Composery, plus
-  https://www.composery.io added to linkProtectionTrustedDomains so opening the
-  brand link (e.g. the title-bar logo's "Open Link in New Tab") never prompts.
-  Internal ids (applicationName, win32/darwin, keyboard-shortcut PDFs) stay code-server.
+- product.json identity and links (ci/build/build-vscode.sh): adds
+  serverDataFolderName -> ".composery-server", repoints the Microsoft docs/tips/
+  videos/newsletter links to composery.io, and adds https://www.composery.io to
+  linkProtectionTrustedDomains so opening the brand link (e.g. the title-bar
+  logo's "Open Link in New Tab") never prompts. nameShort/nameLong and the
+  license/report-issue URLs are left as upstream context: rebrand.mjs already
+  rewrites them (code-server -> Composery, coder GitHub URLs -> sloikodavid),
+  so patching them here would double-maintain the same rename. Internal ids
+  (applicationName, win32/darwin, keyboard-shortcut PDFs) stay code-server.
 - product logo and letterpress (lib/vscode .../code-icon.svg + editor/sessions
   letterpress svgs): VS Code icon and empty-editor/sessions watermarks -> Composery
   icon. Patched in source, not overlaid, because the minified build relocates them.

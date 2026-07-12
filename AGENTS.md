@@ -22,6 +22,16 @@
 > Live-updated by `scripts/tree.mjs` when `pnpm dev` is running. Manually update with `pnpm fix:tree`.
 
 ```text
+.agents/
+  skills/
+    android-live-test/
+      agents/
+        openai.yaml
+      scripts/
+        android.mjs
+      SKILL.md
+.claude/
+  skills
 .github/
   workflows/
     ci.yml
@@ -201,6 +211,7 @@ packages/
               pty.ts
               ratelimit.ts
               session.ts
+            authPage.ts
             passwordConfig.ts
             register.ts
             resetPassword.ts
@@ -535,8 +546,8 @@ packages/
     vercel.json
     vitest.config.ts
 prompts/
-  BUZZWORDS.md
-  REFACTOR.md
+  refactor.md
+  senior-buzzwords.md
 rootfs/
   etc/
     sudoers.d/
@@ -599,6 +610,7 @@ scripts/
   cli.mjs
   setup.mjs
   smoke.mjs
+  tree.d.mts
   tree.mjs
   write-formatted.mjs
 templates/
@@ -648,6 +660,7 @@ tests/
   desktop-integration.test.ts
   loopback-callback-guard.test.ts
   toolchain-pins.test.ts
+  tree-script.test.ts
 .dockerignore
 .editorconfig
 .gitattributes

@@ -406,6 +406,25 @@ describe("narrow overlay", () => {
 		expect(selectionHold).toBeLessThan(gestureHold);
 	});
 
+	// Both patches encode the same device-verified "finger moved enough that this
+	// is a pan, not a tap" magnitude: the editor's selection threshold and the
+	// gesture tap-cancel slop. They live in different files, so pin them together.
+	test("editor selection threshold matches the gesture tap-cancel slop", () => {
+		const selectionThreshold = Number(
+			/TOUCH_SELECTION_THRESHOLD = (\d+)/.exec(
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
+			)?.[1]
+		);
+		const tapCancelSlop = Number(
+			/data\.initialPageY - touch\.pageY\) >= (\d+)/.exec(
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`))
+			)?.[1]
+		);
+
+		expect(selectionThreshold).toBeGreaterThan(0);
+		expect(selectionThreshold).toBe(tapCancelSlop);
+	});
+
 	// Long-press menus fire during the hold (Gesture timer), and editor context
 	// menus render in the light DOM on touch, where the overlay touch styling
 	// cannot pierce a shadow root. A pan remains a pan through release and inertia;

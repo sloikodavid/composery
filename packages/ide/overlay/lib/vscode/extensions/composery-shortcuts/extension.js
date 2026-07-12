@@ -26,8 +26,6 @@ const INTERNAL_RESOLVE_VARIABLES_COMMAND = "composery.shortcuts.resolveVariables
 
 const BACK = Symbol("back");
 
-const DEFAULT_SHORTCUTS = [];
-
 let shortcuts = [];
 let lastRemoved;
 
@@ -170,7 +168,7 @@ class ShortcutStorage {
 			bytes = await vscode.workspace.fs.readFile(this.storageUri);
 		} catch (error) {
 			if (isFileNotFound(error)) {
-				return DEFAULT_SHORTCUTS.map(normalizeShortcut);
+				return [];
 			}
 			throw error;
 		}
@@ -184,7 +182,7 @@ class ShortcutStorage {
 		}
 
 		await this.backup(bytes);
-		return DEFAULT_SHORTCUTS.map(normalizeShortcut);
+		return [];
 	}
 
 	async backup(bytes) {

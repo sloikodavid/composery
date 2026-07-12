@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	writeFileSync
+} from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
@@ -11,19 +17,57 @@ const TREE_FINISH = "<!-- repo-structure:finish -->";
 const write = process.argv.includes("--write");
 const watch = process.argv.includes("--watch");
 
+function caseKey(value) {
+	return value.normalize("NFC").toLowerCase();
+}
+
+export function canonicalPath(root, path, readDirectory = readdirSync) {
+	const canonical = [];
+
+	for (const part of path.split("/").filter(Boolean)) {
+		let entries;
+		try {
+			entries = readDirectory(join(root, ...canonical));
+		} catch (error) {
+			if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return;
+			throw error;
+		}
+
+		const exact = entries.find((entry) => entry === part);
+		const matches = exact
+			? [exact]
+			: entries.filter((entry) => caseKey(entry) === caseKey(part));
+		if (matches.length !== 1) return;
+		canonical.push(matches[0]);
+	}
+
+	return canonical.join("/");
+}
+
+export function canonicalPaths(root, paths, readDirectory = readdirSync) {
+	return [
+		...new Set(
+			paths
+				.map((path) => canonicalPath(root, path, readDirectory))
+				.filter(Boolean)
+		)
+	];
+}
+
 function gitFiles() {
 	const output = execFileSync(
 		"git",
 		["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
 		{ cwd: REPO_ROOT }
 	);
-	return output
-		.toString("utf8")
-		.split("\0")
-		.filter(Boolean)
-		.filter(
-			(path) => path !== "prompts/TREE.md" && existsSync(join(REPO_ROOT, path))
-		);
+	return canonicalPaths(
+		REPO_ROOT,
+		output
+			.toString("utf8")
+			.split("\0")
+			.filter(Boolean)
+			.filter((path) => path !== "prompts/TREE.md")
+	);
 }
 
 function renderTree() {
@@ -110,21 +154,26 @@ function syncTree({ quiet = false } = {}) {
 	return true;
 }
 
-if (watch) {
-	syncTree();
-	setInterval(() => syncTree({ quiet: true }), 1000);
-	process.stdin.resume();
-} else if (write) {
-	syncTree();
-} else {
-	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
-	const expected = expectedAgentsFile();
-	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+if (
+	process.argv[1] &&
+	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+	if (watch) {
+		syncTree();
+		setInterval(() => syncTree({ quiet: true }), 1000);
+		process.stdin.resume();
+	} else if (write) {
+		syncTree();
+	} else {
+		const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+		const expected = expectedAgentsFile();
+		const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 
-	if (actual === expected) process.exit(0);
-
-	console.error(
-		`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
-	);
-	process.exit(1);
+		if (actual !== expected) {
+			console.error(
+				`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
+			);
+			process.exitCode = 1;
+		}
+	}
 }

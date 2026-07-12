@@ -1,6 +1,6 @@
 --- a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
 +++ b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
-@@ -23,6 +23,18 @@ import { windowLogGroup } from '../../lo
+@@ -23,6 +23,17 @@ import { windowLogGroup } from '../../lo
  
  export function getViewsStateStorageId(viewContainerStorageId: string): string { return `${viewContainerStorageId}.hidden`; }
  
@@ -10,7 +10,6 @@
 +const COMPOSERY_DEFAULT_HIDDEN_VIEW_IDS = new Set<string>([
 +	'outline',
 +	'timeline',
-+	'workbench.explorer.openEditorsView',
 +	'npm',
 +	'workbench.scm.repositories',
 +	'extensions.recommendedList',

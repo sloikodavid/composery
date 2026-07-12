@@ -41,6 +41,13 @@ RUN git init -q packages/ide/upstream \
   && git -C packages/ide/upstream checkout -q FETCH_HEAD \
   && git -C packages/ide/upstream submodule update --init --recursive --depth 1
 
+# Pre-install upstream's npm dependencies (the root postinstall fans out to
+# lib/vscode) in this layer, keyed only by the upstream commit: native module
+# compiles are the expensive part and must not rerun on every overlay/patch
+# edit. build.sh reuses the node_modules copied with the tree and skips npm ci.
+RUN --mount=type=cache,id=composery-ide-npm,target=/root/.npm,sharing=locked \
+  cd packages/ide/upstream && CI=1 npm ci
+
 FROM ide-base AS ide-builder
 
 COPY packages/ide/package.json ./packages/ide/package.json

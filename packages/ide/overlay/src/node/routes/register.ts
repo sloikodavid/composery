@@ -1,14 +1,7 @@
 import { Router } from "express";
-import { promises as fs } from "fs";
-import * as path from "path";
-import { rootPath } from "../constants";
-import {
-	ensureOrigin,
-	getCookieOptions,
-	redirect,
-	replaceTemplates
-} from "../http";
-import { escapeHtml, hash, sanitizeString } from "../util";
+import { ensureOrigin, getCookieOptions, redirect } from "../http";
+import { hash, sanitizeString } from "../util";
+import { renderAuthPage } from "./authPage";
 import {
 	hasPassword,
 	isEnvPasswordManaged,
@@ -28,28 +21,6 @@ const errorMessage = (error: unknown): string | undefined => {
 	}
 };
 
-const getRoot = async (
-	req: Parameters<typeof replaceTemplates>[0]
-): Promise<string> => {
-	const content = await fs.readFile(
-		path.join(rootPath, "src/browser/pages/register.html"),
-		"utf8"
-	);
-	const error =
-		typeof req.query.error === "string"
-			? errorMessage(req.query.error)
-			: undefined;
-	return replaceTemplates(
-		req,
-		content.replace(
-			/{{ERROR}}/,
-			error
-				? `<span class="error" role="alert">${escapeHtml(error)}</span>`
-				: ""
-		)
-	);
-};
-
 export const router = Router();
 
 router.use((req, res, next) => {
@@ -61,7 +32,11 @@ router.use((req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-	res.send(await getRoot(req));
+	const error =
+		typeof req.query.error === "string"
+			? errorMessage(req.query.error)
+			: undefined;
+	res.send(await renderAuthPage(req, "register.html", error));
 });
 
 // ensureOrigin: without it a malicious page can form-POST a drive-by
