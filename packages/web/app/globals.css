@@ -139,19 +139,21 @@
 	}
 }
 
-/* Smooth underline for links: the underline grows from the center on hover
-   instead of appearing abruptly. Works on any element using the `link-underline`
-   class alongside `text-primary`. */
-.link-underline {
-	background-image: linear-gradient(currentColor, currentColor);
-	background-position: 0 100%;
-	background-repeat: no-repeat;
-	background-size: 0% 1px;
-	transition: background-size 200ms ease-out;
+/* Inline content links: the same treatment fumadocs gives prose links in the
+   docs (foreground text, primary-coloured underline, fade on hover), so a link
+   in a page reads the same as a link in a doc. */
+.link {
+	color: var(--foreground);
+	font-weight: 500;
+	text-decoration: underline;
+	text-decoration-color: var(--primary);
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 3.5px;
+	transition: opacity 200ms ease-out;
 }
 
-.link-underline:hover {
-	background-size: 100% 1px;
+.link:hover {
+	opacity: 0.8;
 }
 
 /* Content settles in with a clean fade instead of a layout-shifting skeleton. */

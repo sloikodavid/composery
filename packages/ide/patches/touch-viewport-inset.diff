@@ -10,7 +10,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
  import Severity from '../../base/common/severity.js';
  import { URI } from '../../base/common/uri.js';
  import { localize } from '../../nls.js';
-@@ -259,15 +259,27 @@ export class BrowserWindow extends BaseWindow {
+@@ -259,15 +259,33 @@ export class BrowserWindow extends BaseWindow {
  		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
  
  		// Layout
@@ -37,6 +37,12 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
 +				}
 +			}));
 +		}
++		// Composery Mobile reports native IME geometry when an edge-to-edge WebView
++		// leaves both innerHeight and visualViewport unchanged. Re-run the same layout
++		// path so bottom panels and the terminal keybar stay above the keyboard.
++		this._register(addDisposableListener(mainWindow, 'composery-native-keyboard-change', () => {
++			this.layoutService.layout();
++		}));
  
  		// Prevent the back/forward gestures in macOS
  		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.WHEEL, e => e.preventDefault(), { passive: false }));
@@ -65,7 +71,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  
  		// Menubar visibility changes
  		const showingCustomMenu = (isWindows || isLinux || isWeb) && !hasNativeTitlebar(this.configurationService);
-@@ -1728,6 +1732,21 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -1728,6 +1732,26 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  				this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
  			);
  
@@ -76,9 +82,14 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
 +			// --composery-safe-area-bottom (narrow.css), the one definition of env(safe-area-inset-bottom).
 +			const viewport = mainWindow.visualViewport;
 +			if ((isAndroid || isIOS) && viewport && viewport.scale === 1) {
-+				const keyboardOverlap = Math.max(0, Math.round(mainWindow.innerHeight - viewport.height - viewport.offsetTop));
-+				const safeAreaBottom = keyboardOverlap > 0 ? 0 : parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-safe-area-bottom'), 10) || 0;
-+				const visibleHeight = Math.round(viewport.height) - safeAreaBottom;
++				const viewportKeyboardOverlap = Math.max(0, Math.round(mainWindow.innerHeight - viewport.height - viewport.offsetTop));
++				const nativeKeyboardOverlap = parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-touch-keyboard-inset'), 10) || 0;
++				// A resized visual viewport already excludes the IME. Only subtract the native
++				// overlap on WebViews where the viewport stays at its pre-keyboard height.
++				const nativeOnlyKeyboardOverlap = viewportKeyboardOverlap > 0 ? 0 : nativeKeyboardOverlap;
++				const hasKeyboard = Math.max(viewportKeyboardOverlap, nativeKeyboardOverlap) > 0;
++				const safeAreaBottom = hasKeyboard ? 0 : parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-safe-area-bottom'), 10) || 0;
++				const visibleHeight = Math.round(viewport.height) - nativeOnlyKeyboardOverlap - safeAreaBottom;
 +				if (visibleHeight < this._mainContainerDimension.height) {
 +					this._mainContainerDimension = new Dimension(this._mainContainerDimension.width, visibleHeight);
 +				}

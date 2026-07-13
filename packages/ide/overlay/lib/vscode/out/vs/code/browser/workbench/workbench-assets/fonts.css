@@ -1,12 +1,4 @@
 @font-face {
-	font-family: "InterVariable";
-	src: url("./inter.woff2") format("woff2");
-	font-weight: 100 900;
-	font-style: normal;
-	font-display: swap;
-}
-
-@font-face {
 	font-family: "Inter";
 	src: url("./inter.woff2") format("woff2");
 	font-weight: 100 900;
@@ -28,7 +20,7 @@
 .monaco-workbench.windows,
 .monaco-workbench.linux {
 	font-family:
-		-apple-system, BlinkMacSystemFont, "InterVariable", "Inter", "Segoe UI",
+		-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
 		system-ui, sans-serif;
 	font-feature-settings:
 		"liga" 1,

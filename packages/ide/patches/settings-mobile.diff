@@ -1,0 +1,14 @@
+diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
+@@ -1073,7 +1073,9 @@ export class SettingsEditor2 extends EditorPane {
+ 		this.splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: this.settingsTreeContainer,
+-			minimumSize: SettingsEditor2.EDITOR_MIN_WIDTH,
++			// Composery: the narrow editor already hides the table of contents, so
++			// allow its remaining pane to fit phone viewports without clipping text.
++			minimumSize: 240,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				this.settingsTreeContainer.style.width = `${width}px`;

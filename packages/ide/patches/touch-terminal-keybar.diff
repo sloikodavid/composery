@@ -295,13 +295,18 @@
  	get terminalTabbedView(): TerminalTabbedView | undefined { return this._terminalTabbedView; }
  	private _isInitialized: boolean = false;
  	/**
-@@ -194,6 +196,10 @@ export class TerminalViewPane extends Vi
+@@ -194,6 +196,15 @@ export class TerminalViewPane extends Vi
  		}
  		this._parentDomElement = container;
  		this._parentDomElement.classList.add('integrated-terminal');
 +		// Composery: touch keybar, docked in this pane; layoutBody reserves its height.
 +		if (!this._keybar) {
 +			this._keybar = this._register(this._instantiationService.createInstance(TerminalKeybar, this._parentDomElement));
++		}
++		// The upstream 120px pane minimum puts the keybar below the visual viewport
++		// when a landscape phone keyboard leaves only a few rows of workbench.
++		if (this._keybar.height > 0) {
++			this.minimumBodySize = this._keybar.height;
 +		}
  		domStylesheetsJs.createStyleSheet(this._parentDomElement);
  		this._instantiationService.createInstance(TerminalThemeIconStyle, this._parentDomElement);

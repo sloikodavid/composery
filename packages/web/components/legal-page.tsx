@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ScaleIcon } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/card";
 import { PageTemplate } from "@/components/page-template";
 
 export const LEGAL_UPDATED = "11 July 2026";
@@ -13,8 +14,8 @@ export function LegalPage({
 }) {
 	return (
 		<PageTemplate breadcrumbs={[{ icon: ScaleIcon, label: title }]}>
-			<article className="mx-auto max-w-3xl space-y-8 text-[15px] leading-7 text-muted-foreground">
-				<p className="text-sm">Last updated: {LEGAL_UPDATED}</p>
+			<article className="space-y-4 text-sm leading-6 text-muted-foreground">
+				<p>Last updated: {LEGAL_UPDATED}</p>
 				{children}
 			</article>
 		</PageTemplate>
@@ -29,14 +30,13 @@ export function LegalSection({
 	children: ReactNode;
 }) {
 	return (
-		<section className="space-y-3">
-			<h2 className="font-heading text-xl font-medium tracking-tight text-foreground">
-				{title}
-			</h2>
-			{children}
-		</section>
+		<Card>
+			<CardHeader>
+				<CardTitle>{title}</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-3 leading-6 text-muted-foreground">
+				{children}
+			</CardContent>
+		</Card>
 	);
 }
-
-export const legalLinkClass =
-	"text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground";

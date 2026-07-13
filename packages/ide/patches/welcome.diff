@@ -23,7 +23,7 @@ is translated into scrollbar state instead of relying on body/workbench scrollin
  import { status } from '../../../../base/browser/ui/aria/aria.js';
  import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
  import { Button } from '../../../../base/browser/ui/button/button.js';
-@@ -864,6 +865,22 @@ export class GettingStartedPage extends
+@@ -864,6 +865,25 @@ export class GettingStartedPage extends
  		this.detailsScrollbar.value?.scanDomNode();
  	}
 
@@ -38,7 +38,10 @@ is translated into scrollbar state instead of relying on body/workbench scrollin
 +				return;
 +			}
 +			const scrollPosition = scrollbar.getScrollPosition();
-+			scrollbar.setScrollPosition({ scrollLeft: scrollPosition.scrollLeft - event.translationX, scrollTop: scrollPosition.scrollTop - event.translationY });
++			// The categories and details slides intentionally sit side-by-side inside a
++			// double-width container. Finger scrolling is vertical here; forwarding X
++			// movement exposes the inactive slide as a blank horizontal canvas.
++			scrollbar.setScrollPosition({ scrollTop: scrollPosition.scrollTop - event.translationY });
 +		}));
 +		return disposables;
 +	}

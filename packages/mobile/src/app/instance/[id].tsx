@@ -14,6 +14,10 @@ import {
 import {
 	AppState,
 	BackHandler,
+	Dimensions,
+	Keyboard,
+	type KeyboardEvent,
+	Platform,
 	Text,
 	useColorScheme,
 	View
@@ -203,6 +207,39 @@ export default function InstanceScreen() {
 		);
 	}, [scheme]);
 
+	// Android WebView in edge-to-edge Expo activities can leave innerHeight and
+	// visualViewport unchanged while the IME overlays the lower half of the page.
+	// WKWebView has also had keyboard/visual-viewport regressions on iOS 26. Send
+	// the native, docked keyboard overlap to the IDE so its own layout can keep the
+	// terminal keybar and bottom panels above the keyboard on both platforms.
+	useEffect(() => {
+		const applyInset = (inset: number) => {
+			webviewRef.current?.injectJavaScript(
+				`document.documentElement.style.setProperty("--composery-touch-keyboard-inset", ${JSON.stringify(
+					`${Math.max(0, Math.round(inset))}px`
+				)}); window.dispatchEvent(new Event("composery-native-keyboard-change")); true;`
+			);
+		};
+		const onFrame = (event: KeyboardEvent) => {
+			if (Platform.OS === "android") {
+				applyInset(event.endCoordinates.height);
+				return;
+			}
+			const screenHeight = Dimensions.get("screen").height;
+			const { height, screenY } = event.endCoordinates;
+			const docked = screenY + height >= screenHeight - 2;
+			applyInset(docked ? screenHeight - screenY : 0);
+		};
+		const subscriptions = [
+			Keyboard.addListener(
+				Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow",
+				onFrame
+			),
+			Keyboard.addListener("keyboardDidHide", () => applyInset(0))
+		];
+		return () => subscriptions.forEach((subscription) => subscription.remove());
+	}, []);
+
 	// One retry path for both probe failures and webview load errors: bump
 	// reloadKey (re-probes and remounts the WebView). loadError is intentionally
 	// NOT cleared here — it's cleared on a successful reload (onLoadEnd), so the
@@ -267,7 +304,18 @@ export default function InstanceScreen() {
 					backTestID="instance-back-missing"
 				/>
 			) : probeOk ? (
-				<View style={{ flex: 1 }}>
+				<View
+					style={{
+						flex: 1,
+						// iOS 26 WKWebView can report stale or missing safe-area geometry,
+						// especially after rotation. Keep the native view itself clear of
+						// the home indicator and landscape sensor housing; the dedicated
+						// status-bar strip above already owns the top inset.
+						paddingLeft: Platform.OS === "ios" ? insets.left : 0,
+						paddingRight: Platform.OS === "ios" ? insets.right : 0,
+						paddingBottom: Platform.OS === "ios" ? insets.bottom : 0
+					}}
+				>
 					<WebView
 						key={reloadKey}
 						ref={webviewRef}
@@ -328,6 +376,7 @@ export default function InstanceScreen() {
 							setWebLoading(true);
 						}}
 						onLoadEnd={() => {
+							webviewRef.current?.requestFocus();
 							setWebLoading(false);
 							if (!errorThisLoad.current) {
 								setLoadError(null);

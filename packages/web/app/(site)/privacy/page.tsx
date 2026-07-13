@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-	LegalPage,
-	LegalSection,
-	legalLinkClass
-} from "@/components/legal-page";
+import { LegalPage, LegalSection } from "@/components/legal-page";
 
 export const metadata: Metadata = {
 	title: "Privacy Policy",
@@ -79,14 +75,15 @@ export default function PrivacyPage() {
 			<LegalSection title="Retention and deletion">
 				<p>
 					We retain live account and service records while your account or a box
-					is active. Raw metrics are kept for 2 days and hourly metric rollups
-					for 30 days. Operational events are kept while needed to run, secure,
-					and diagnose the service; snapshots expire under the displayed
-					retention schedule. Deleting your Clerk account cancels subscriptions,
-					deletes boxes and snapshots, removes checkout secrets and URLs, and
-					replaces the email in our application database with a non-identifying
-					placeholder. Providers may retain limited backups, fraud, transaction,
-					and statutory records for their applicable retention periods.
+					is active. Metrics, operational events, and other diagnostic records
+					are kept only as long as needed to run, secure, and diagnose the
+					service, and are then removed or aggregated; snapshots expire under
+					the retention schedule shown in the app. Deleting your Clerk account
+					cancels subscriptions, deletes boxes and snapshots, removes checkout
+					secrets and URLs, and replaces the email in our application database
+					with a non-identifying placeholder. Providers may retain limited
+					backups, fraud, transaction, and statutory records for their
+					applicable retention periods.
 				</p>
 			</LegalSection>
 			<LegalSection title="Your rights">
@@ -95,7 +92,7 @@ export default function PrivacyPage() {
 					deletion, restriction, portability, or an objection to processing. You
 					may complain to the Irish Data Protection Commission or your local
 					supervisory authority. Email{" "}
-					<a className={legalLinkClass} href="mailto:hello@composery.io">
+					<a className="link" href="mailto:hello@composery.io">
 						hello@composery.io
 					</a>{" "}
 					to exercise a right. We may need to check your identity. You can also
@@ -105,7 +102,7 @@ export default function PrivacyPage() {
 			<LegalSection title="Cookies and changes">
 				<p>
 					See our{" "}
-					<Link className={legalLinkClass} href="/cookies">
+					<Link className="link" href="/cookies">
 						Cookie Notice
 					</Link>
 					. We will update this notice when our processing changes and show the

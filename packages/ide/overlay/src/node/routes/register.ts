@@ -36,7 +36,14 @@ router.get("/", async (req, res) => {
 		typeof req.query.error === "string"
 			? errorMessage(req.query.error)
 			: undefined;
-	res.send(await renderAuthPage(req, "register.html", error));
+	res.send(
+		await renderAuthPage(req, {
+			page: "register",
+			title: "Register",
+			formLabel: "Register",
+			error
+		})
+	);
 });
 
 // ensureOrigin: without it a malicious page can form-POST a drive-by

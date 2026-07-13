@@ -124,7 +124,7 @@
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2346,119 @@
+@@ -2302,6 +2346,129 @@
  		}
  	}
  
@@ -158,6 +158,10 @@
 +	// A content part opened -> it becomes the fullscreen one; the open part closing -> none is. Either
 +	// way re-apply, so opening any part also closes the previous one and collapses the editor.
 +	private onContentPartVisibility(part: Parts, visible: boolean): void {
++		if (this.inNarrowPartTransition) {
++			return;
++		}
++
 +		if (visible) {
 +			this.narrowPart = part;
 +		} else if (part === this.narrowPart) {
@@ -233,8 +237,14 @@
 +		if (!this.desktopPartVisibility) {
 +			return;
 +		}
++		// Preserve the part the user selected while narrow when rotating wide; the snapshot restores
++		// the surrounding desktop layout, while the selected part remains the user's current context.
++		const desktopPartVisibility = new Set(this.desktopPartVisibility);
++		if (this.narrowPart !== undefined) {
++			desktopPartVisibility.add(this.narrowPart);
++		}
 +		for (const part of Layout.NARROW_PARTS) {
-+			this.setPartHidden(!this.desktopPartVisibility.has(part), part);
++			this.setPartHidden(!desktopPartVisibility.has(part), part);
 +		}
 +		this.desktopPartVisibility = undefined;
 +	}

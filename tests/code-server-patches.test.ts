@@ -261,6 +261,21 @@ describe("narrow overlay", () => {
 		).toBe("0px");
 	});
 
+	// Android may resize visualViewport and report the same keyboard through the
+	// native bridge. The layout must consume one signal, never subtract both.
+	test("does not double-subtract a resized viewport and native keyboard inset", () => {
+		const viewportPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-viewport-inset.diff`)
+		);
+
+		expect(viewportPatch).toContain(
+			"const nativeOnlyKeyboardOverlap = viewportKeyboardOverlap > 0 ? 0 : nativeKeyboardOverlap"
+		);
+		expect(viewportPatch).toContain(
+			"Math.round(viewport.height) - nativeOnlyKeyboardOverlap - safeAreaBottom"
+		);
+	});
+
 	// Two independent small-screen gates: touch (hover/pointer) and narrow
 	// (viewport width). Keyboard-inset logic belongs to the narrow overlay only;
 	// the touch gate must never grow viewport knowledge.
@@ -293,19 +308,19 @@ describe("narrow overlay", () => {
 		const touchEditorPatch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
 		);
-		const scrollReleasePatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor-scroll-release.diff`)
-		);
 
 		expect(touchEditorPatch).toContain(
 			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_SELECTION_THRESHOLD"
 		);
 		expect(touchEditorPatch).toContain("this._touchGesture.panned = true");
-		expect(scrollReleasePatch).toContain(
+		expect(touchEditorPatch).toContain(
 			"Once scrolling is applied, release must not also focus as a tap"
 		);
 		expect(touchEditorPatch).toContain("if (!keyboardVisible");
 		expect(touchEditorPatch).not.toContain("revealAllCursors");
+		// One definition of "touch" in the editor: the per-interaction pointer
+		// type. A second device-level gate here was redundant with it.
+		expect(touchEditorPatch).not.toContain("isTouchDevice");
 	});
 
 	// Post-build, the workbench assets must be rsynced into the release bundle
@@ -329,6 +344,17 @@ describe("narrow overlay", () => {
 		expect(instanceScreen).toContain("composery:overlay-back:off");
 	});
 
+	// Rotation can make a phone wider than the narrow layout breakpoint while
+	// Android hardware Back still needs to dismiss dialogs and menus in the IDE.
+	test("overlay back guards survive wide coarse-pointer orientation", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+
+		expect(narrowJs).toContain('window.matchMedia("(pointer: coarse)")');
+		expect(narrowJs).toContain(
+			"if (!narrow.matches && !coarsePointer.matches)"
+		);
+	});
+
 	// A back gesture with a narrow-fullscreen part open must close the part, not
 	// leave the page: narrow.js dispatches the close event and the layout patch
 	// listens for it - same literal on both sides or back exits the IDE.
@@ -338,6 +364,53 @@ describe("narrow overlay", () => {
 
 		expect(narrowJs).toContain('"composery-narrow-close-part"');
 		expect(addedLines(layoutPatch)).toContain("'composery-narrow-close-part'");
+	});
+
+	test("narrow rotation preserves the part selected on mobile", () => {
+		const layoutPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
+		);
+
+		expect(layoutPatch).toContain("if (this.inNarrowPartTransition)");
+		expect(layoutPatch).toContain("desktopPartVisibility.add(this.narrowPart)");
+	});
+
+	test("mobile extension features keep wide table columns reachable", () => {
+		const extensionsPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/extensions-mobile.diff`)
+		);
+		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
+
+		expect(extensionsPatch).toContain("select.composery-feature-picker");
+		expect(extensionsPatch).toContain(
+			"{ horizontal: ScrollbarVisibility.Auto }"
+		);
+		expect(narrowCss).toContain(".extension-editor .feature-body-content");
+		expect(narrowCss).toMatch(
+			/\.composery-feature-picker \{[\s\S]*?display: none;[\s\S]*?\}\s*\.composery-feature-picker\.visible \{\s*display: block;/
+		);
+		expect(narrowCss).toContain("overflow-x: auto !important");
+		expect(narrowCss).toContain("touch-action: pan-x pan-y !important");
+		expect(narrowCss).toMatch(
+			/> \.titlebar-left \{[\s\S]*?min-width: 55px !important;[\s\S]*?> \.menubar\.overflow-menu-only \{[\s\S]*?min-width: 22px !important;/
+		);
+	});
+
+	test("short touch layouts keep the terminal keybar inside the viewport", () => {
+		const compactFooterPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-compact-footer.diff`)
+		);
+		const keybarPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-terminal-keybar.diff`)
+		);
+		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
+
+		expect(compactFooterPatch).toContain(
+			"isTouch(getWindow(this.contentArea))"
+		);
+		expect(compactFooterPatch).toContain("composery-compact-footer");
+		expect(keybarPatch).toContain("this.minimumBodySize = this._keybar.height");
+		expect(narrowCss).toContain(".part.composery-compact-footer > .footer");
 	});
 
 	// narrow.js detects an open part via the workbench part-hidden classes; those
@@ -559,9 +632,7 @@ const VIEWPORT_PARTS = [
 describe("mobile viewport contract", () => {
 	test.each([
 		"packages/ide/overlay/src/browser/pages/error.html",
-		"packages/ide/overlay/src/browser/pages/login.html",
-		"packages/ide/overlay/src/browser/pages/register.html",
-		"packages/ide/overlay/src/browser/pages/reset-password.html",
+		"packages/ide/overlay/src/browser/pages/auth.html",
 		"packages/ide/overlay/src/node/persistence/readiness.ts",
 		`${PATCHES_DIR}/overlays.diff`,
 		`${PATCHES_DIR}/webview-mobile.diff`

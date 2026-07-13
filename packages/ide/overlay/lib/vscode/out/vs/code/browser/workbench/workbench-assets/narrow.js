@@ -3,6 +3,7 @@
 	// narrow.css. Mirrors (cannot import) narrowGate.ts NARROW_QUERY; keep the breakpoint in sync.
 	const NARROW_MAX_WIDTH = 768;
 	const narrow = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
+	const coarsePointer = window.matchMedia("(pointer: coarse)");
 	let pending = false;
 	let latePasses = [];
 	let backGuardArmed = false;
@@ -109,7 +110,11 @@
 	}
 
 	function activeOverlay() {
-		if (!narrow.matches) {
+		// A rotated phone can exceed the narrow layout breakpoint while still using
+		// Android hardware Back. Keep transient IDE layers in the WebView history
+		// on coarse-pointer devices at every orientation; full-screen workbench
+		// parts below remain narrow-specific.
+		if (!narrow.matches && !coarsePointer.matches) {
 			return null;
 		}
 

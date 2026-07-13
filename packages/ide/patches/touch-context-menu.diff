@@ -134,7 +134,17 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
  		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
  		event.initEvent(type, false, true);
-@@ -306,7 +368,7 @@
+@@ -302,4 +364,9 @@
+ 			for (const [_, target] of targets) {
+ 				target.dispatchEvent(event);
++				// Composery: continue past gesture-only wrappers, then stop once a
++				// semantic owner explicitly consumes the context event.
++				if (event.type === EventType.Contextmenu && event.defaultPrevented) {
++					break;
++				}
+ 				this.dispatched = true;
+ 			}
+@@ -306,7 +373,7 @@
  		}
  	}
  
@@ -143,7 +153,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -329,13 +391,13 @@
+@@ -329,13 +396,13 @@
  			}
  
  			// dispatch translation event
@@ -159,7 +169,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  			}
  		});
  	}
-@@ -354,6 +416,16 @@
+@@ -354,6 +421,16 @@
  
  			const data = this.activeTouches[touch.identifier];
  
@@ -176,6 +186,21 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  			const evt = this.newGestureEvent(EventType.Change, data.initialTarget);
  			evt.translationX = touch.pageX - data.rollingPageX.at(-1)!;
  			evt.translationY = touch.pageY - data.rollingPageY.at(-1)!;
+diff --git a/lib/vscode/src/vs/base/browser/ui/list/listView.ts b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
+--- a/lib/vscode/src/vs/base/browser/ui/list/listView.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
+@@ -1147,5 +1147,11 @@ export class ListView<T> implements ISpliceable<T>, IDisposable {
+	private toGestureEvent(browserEvent: GestureEvent): IListGestureEvent<T> {
++		// Composery: a list is the semantic owner of its gesture context event.
++		// Consume it before the gesture dispatcher reaches an enclosing view pane.
++		if (browserEvent.type === TouchEventType.Contextmenu) {
++			browserEvent.preventDefault();
++		}
++
+ 		const index = this.getItemIndexFromEventTarget(browserEvent.initialTarget || null);
+ 		const item = typeof index === 'undefined' ? undefined : this.items[index];
+ 		const element = item && item.element;
+ 		return { browserEvent, index, element };
 diff --git a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
 --- a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
 +++ b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts

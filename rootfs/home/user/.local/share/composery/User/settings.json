@@ -41,7 +41,7 @@
 	"editor.lineHeight": 1.6,
 	"editor.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
 	"terminal.integrated.fontSize": 15,
-	"terminal.integrated.lineHeight": 1.35,
+	"terminal.integrated.lineHeight": 1,
 	"terminal.integrated.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
 	"chat.editor.fontSize": 15,
 	"chat.fontSize": 15,

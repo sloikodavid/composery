@@ -1,20 +1,20 @@
-.login-form {
+.auth-form {
 	display: grid;
 	justify-items: center;
 	width: min(100%, 420px);
 }
 
-.login-logo-link {
+.auth-logo-link {
 	display: block;
 	margin: 0 auto 14px;
 }
 
-.login-logo-link:hover {
+.auth-logo-link:hover {
 	opacity: 0.8;
 	transition: opacity 0.1s;
 }
 
-.login-logo {
+.auth-logo {
 	display: block;
 	height: clamp(40px, 9vw, 52px);
 	max-width: 100%;
@@ -120,7 +120,7 @@
 	width: 18px;
 }
 
-.login-message {
+.auth-message {
 	align-items: center;
 	color: var(--vscode-errorForeground);
 	display: flex;
@@ -132,7 +132,7 @@
 	width: 100%;
 }
 
-.login-message > .error {
+.auth-message > .error {
 	color: var(--vscode-errorForeground);
 	display: inline-flex;
 	align-items: center;
@@ -141,7 +141,7 @@
 	width: 100%;
 }
 
-.login-message > .error::before {
+.auth-message > .error::before {
 	content: "";
 	display: block;
 	flex: none;

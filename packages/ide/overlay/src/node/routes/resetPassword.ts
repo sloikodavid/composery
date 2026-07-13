@@ -64,7 +64,14 @@ router.get("/", async (req, res) => {
 		typeof req.query.error === "string"
 			? errorMessage(req.query.error)
 			: undefined;
-	res.send(await renderAuthPage(req, "reset-password.html", error));
+	res.send(
+		await renderAuthPage(req, {
+			page: "reset-password",
+			title: "Reset password",
+			formLabel: "Reset password",
+			error
+		})
+	);
 });
 
 router.post("/", ensureOrigin, async (req, res) => {

@@ -4,25 +4,36 @@ import { rootPath } from "../constants";
 import { replaceTemplates } from "../http";
 import { escapeHtml } from "../util";
 
-// Shared shell for the auth pages (register, reset-password): read the page,
-// inject the optional error into {{ERROR}}, and run the standard template
-// replacements. Keeps the error markup in one place so it cannot drift.
+export interface AuthPage {
+	/** Basename of the `<page>-fields.html` fragment (fields + submit button). */
+	page: "login" | "register" | "reset-password";
+	title: string;
+	formLabel: string;
+	error?: string;
+}
+
+// Every auth page is the same shell (head, CSP, logo, hidden inputs, error
+// slot, auth.js) around a per-page fields fragment. The shell, the error
+// markup, and the template pass live here so the routes cannot drift.
 export const renderAuthPage = async (
 	req: Parameters<typeof replaceTemplates>[0],
-	page: string,
-	error: string | undefined
+	{ page, title, formLabel, error }: AuthPage
 ): Promise<string> => {
-	const content = await fs.readFile(
-		path.join(rootPath, "src/browser/pages", page),
-		"utf8"
-	);
+	const pages = path.join(rootPath, "src/browser/pages");
+	const [shell, fields] = await Promise.all([
+		fs.readFile(path.join(pages, "auth.html"), "utf8"),
+		fs.readFile(path.join(pages, `${page}-fields.html`), "utf8")
+	]);
 	return replaceTemplates(
 		req,
-		content.replace(
-			/{{ERROR}}/,
-			error
-				? `<span class="error" role="alert">${escapeHtml(error)}</span>`
-				: ""
-		)
+		shell
+			.replace(/{{TITLE}}/, () => escapeHtml(title))
+			.replace(/{{FORM_LABEL}}/, () => escapeHtml(formLabel))
+			.replace(/{{FIELDS}}/, () => fields)
+			.replace(/{{ERROR}}/, () =>
+				error
+					? `<span class="error" role="alert">${escapeHtml(error)}</span>`
+					: ""
+			)
 	);
 };

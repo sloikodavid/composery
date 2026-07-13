@@ -63,6 +63,7 @@
 		"eslint": "catalog:",
 		"eslint-config-next": "16.2.6",
 		"eslint-config-prettier": "10.1.8",
+		"playwright": "^1.61.1",
 		"tailwindcss": "^4",
 		"typescript": "catalog:",
 		"vitest": "catalog:"

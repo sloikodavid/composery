@@ -9,11 +9,11 @@ overlays.diff
 webview-mobile.diff
 window-focus-resample.diff
 touch-editor.diff
-touch-editor-scroll-release.diff
 touch-reveal-guard.diff
 touch-menu.diff
 touch-context-menu.diff
 touch-gate.diff
+touch-compact-footer.diff
 touch-sash.diff
 touch-select.diff
 narrow-gate.diff
@@ -33,3 +33,5 @@ shortcuts.diff
 touch-terminal-keybar.diff
 touch-terminal-hint.diff
 touch-viewport-inset.diff
+settings-mobile.diff
+extensions-mobile.diff

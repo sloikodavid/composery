@@ -1,9 +1,5 @@
 import type { Metadata } from "next";
-import {
-	LegalPage,
-	LegalSection,
-	legalLinkClass
-} from "@/components/legal-page";
+import { LegalPage, LegalSection } from "@/components/legal-page";
 import { GITHUB_REPO_URL } from "@/lib/links";
 
 export const metadata: Metadata = { title: "Licences" };
@@ -17,7 +13,7 @@ export default function LicensesPage() {
 					License, Version 2.0. The full licence and copyright notice are
 					included in the{" "}
 					<a
-						className={legalLinkClass}
+						className="link"
 						href={GITHUB_REPO_URL + "/blob/main/LICENSE"}
 						rel="noreferrer"
 						target="_blank"
@@ -30,12 +26,19 @@ export default function LicensesPage() {
 			</LegalSection>
 			<LegalSection title="Upstream and third-party software">
 				<p>
-					The self-hosted distribution includes a fork of code-server, Visual
-					Studio Code components, fonts, libraries, and extensions under their
-					respective licences and notices. Those upstream terms continue to
-					apply to their components. Source distributions retain the applicable
-					licence and NOTICE files; bundled notices accompany release artifacts
-					where required.
+					The distribution builds on upstream and third-party software that
+					stays under its own licences and notices. Rather than restate them
+					here, where they would fall out of date, the authoritative list
+					travels with the code: the licence and NOTICE files in the{" "}
+					<a
+						className="link"
+						href={GITHUB_REPO_URL}
+						rel="noreferrer"
+						target="_blank"
+					>
+						repository
+					</a>{" "}
+					and in each release artifact.
 				</p>
 			</LegalSection>
 			<LegalSection title="Hosted service">

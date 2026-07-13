@@ -85,7 +85,7 @@
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +114,156 @@
+@@ -53,18 +114,163 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -155,7 +155,9 @@
 +			return;
 +		}
 +		gesture.type = 'selection';
-+		this._suppressNextTouchContextMenu = true;
++		// Let Gesture's matching context-menu event through after the synchronous word
++		// selection. Native editors select and expose Cut/Copy actions in the same hold;
++		// requiring a second long-press is both surprising and needlessly slow.
 +		this.viewHelper.focusTextArea();
 +		if (gesture.startTarget?.position) {
 +			// mouseDownCount 2 = select the word under the finger, as native long-press does.
@@ -191,8 +193,7 @@
  	}
  
 +	private onContextMenu(event: MouseEvent): void {
-+		// A gesture that panned (16-30px drags stay inside Gesture's slop) is a scroll,
-+		// and a selection long-press already spent the hold - neither shows the menu.
++		// A gesture that panned (16-30px drags stay inside Gesture's slop) is a scroll.
 +		if (this._suppressNextTouchContextMenu || this._touchGesture?.panned) {
 +			this._suppressNextTouchContextMenu = false;
 +			event.preventDefault();
@@ -239,10 +240,16 @@
 +				}
 +			}
 +
++			if (this._touchGesture) {
++				// Non-text editor chrome scrolls immediately rather than waiting for the selection
++				// threshold. Once scrolling is applied, release must not also focus as a tap.
++				this._touchGesture.panned = true;
++				this._clearTouchSelectionTimer();
++			}
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +273,20 @@
+@@ -74,13 +280,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -265,7 +272,7 @@
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,6 +299,203 @@
+@@ -93,6 +306,203 @@
  		}
  	}
  
@@ -290,7 +297,7 @@
 +
 +	private _updateSelectionHandles(): void {
 +		const selection = this._primarySelection;
-+		if (!selection || this._lastPointerType !== 'touch' || !Gesture.isTouchDevice()) {
++		if (!selection || this._lastPointerType !== 'touch') {
 +			this._hideSelectionHandles();
 +			return;
 +		}

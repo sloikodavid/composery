@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-	LegalPage,
-	LegalSection,
-	legalLinkClass
-} from "@/components/legal-page";
+import { LegalPage, LegalSection } from "@/components/legal-page";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
@@ -123,13 +119,13 @@ export default function TermsPage() {
 					<br />
 					20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland
 					<br />
-					<a className={legalLinkClass} href="mailto:hello@composery.io">
+					<a className="link" href="mailto:hello@composery.io">
 						hello@composery.io
 					</a>
 				</address>
 				<p>
 					Our{" "}
-					<Link className={legalLinkClass} href="/privacy">
+					<Link className="link" href="/privacy">
 						Privacy Policy
 					</Link>{" "}
 					explains how we handle personal data.

@@ -4,12 +4,29 @@ A Debian-style VPS in your browser: a full VS Code-based IDE on top of a real
 Linux machine. Install packages, edit system files, build projects, run
 agents - and keep that state across restarts.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="packages/web/public/marketing/composery-ide-dark.png">
+    <img src="packages/web/public/marketing/composery-ide-light.png" alt="Claude Code working inside Composery: a morning brief open in the editor while the agent writes a new automation in the terminal" width="100%">
+  </picture>
+</p>
+
 - You log in as `user` with passwordless `sudo`, not into a locked-down shell.
 - The [persistence](docs/persistence.md) daemon writes your root-filesystem
   deltas to one volume at `/data`, so the container restarts like a machine
   rebooting, not like a container resetting.
 - A small [automation API](docs/api.md) runs commands on the instance from
   `curl`, CI, or scripts, authenticated by keys you mint on the instance.
+- The IDE is a self-hostable hard fork of
+  [code-server](https://github.com/coder/code-server), reworked for phones,
+  tablets, and long-running AI coding agents.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="packages/web/public/marketing/composery-mobile-dark.png">
+    <img src="packages/web/public/marketing/composery-mobile-light.png" alt="The same Composery instance on a phone: the welcome screen, Claude Code running in the terminal, and the morning brief" width="100%">
+  </picture>
+</p>
 
 ## Try it
 

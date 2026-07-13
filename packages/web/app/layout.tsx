@@ -4,19 +4,25 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/sonner";
+import { appDescription, siteUrl } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 import { inter } from "./fonts";
 import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-	metadataBase: new URL("https://www.composery.io"),
+	metadataBase: new URL(siteUrl),
 	title: {
-		default: "Composery",
+		default: "Composery - like VS Code, but always on",
 		template: "%s | Composery"
 	},
-	description:
-		"Like VS Code, yet always on in the cloud, usable from any browser or phone, and made for long-running AI agents."
+	description: appDescription,
+	alternates: { canonical: "./" },
+	openGraph: {
+		siteName: "Composery",
+		type: "website",
+		url: "./"
+	}
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

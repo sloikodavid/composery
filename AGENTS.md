@@ -189,15 +189,15 @@ packages/
             pwa-icon-maskable-192.png
             pwa-icon-maskable-512.png
           pages/
+            auth.css
+            auth.html
             auth.js
             brand.css
-            error.css
             error.html
             global.css
-            login.css
-            login.html
-            register.html
-            reset-password.html
+            login-fields.html
+            register-fields.html
+            reset-password-fields.html
         node/
           persistence/
             readiness.ts
@@ -223,6 +223,7 @@ packages/
       clipboard-osc52.diff
       default-color-theme.diff
       default-layout.diff
+      extensions-mobile.diff
       extensions-view-themes.diff
       markdown-preview-loopback-callback-bridge.diff
       menu-home-actions.diff
@@ -233,12 +234,13 @@ packages/
       qr-action.diff
       series
       server.diff
+      settings-mobile.diff
       shortcuts.diff
       tips.diff
       titlebar-logo.diff
       titlebar-menubar-overflow.diff
+      touch-compact-footer.diff
       touch-context-menu.diff
-      touch-editor-scroll-release.diff
       touch-editor.diff
       touch-gate.diff
       touch-menu.diff
@@ -402,8 +404,9 @@ packages/
       icon.svg
       layout.tsx
       providers.tsx
+      sitemap.ts
     components/
-      ... (53 items)
+      ... (54 items)
     convex/
       _generated/
         api.d.ts
@@ -526,7 +529,31 @@ packages/
       fumadocs-mdx@15.0.12.patch
       fumadocs-ui@16.10.4.patch
     public/
+      marketing/
+        composery-editor-dark.png
+        composery-editor-light.png
+        composery-ide-dark.png
+        composery-ide-light.png
+        composery-mobile-dark.png
+        composery-mobile-light.png
+        composery-welcome-dark.png
+        composery-welcome-light.png
       robots.txt
+    scripts/
+      screenshots/
+        demo/
+          prepare.sh
+          reset.sh
+          workspace.sh
+        .gitignore
+        capture-desktop.mjs
+        capture-mobile.mjs
+        finalize.py
+        fonts.sh
+        frame.py
+        lib.mjs
+        README.md
+        run.sh
     .env.example.convex.dev
     .env.example.convex.prod
     .env.example.next.dev

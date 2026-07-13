@@ -1,0 +1,6 @@
+# Apple-licensed fonts, fetched on demand by fonts.sh
+fonts/
+# intermediate captures and framed output; the final assets live in
+# packages/web/public/marketing/
+raw/
+out/

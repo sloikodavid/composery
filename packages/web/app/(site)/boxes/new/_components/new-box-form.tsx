@@ -424,11 +424,7 @@ export function NewBoxForm() {
 								/>
 								<span>
 									I agree to the{" "}
-									<Link
-										className="text-foreground underline underline-offset-4"
-										href="/terms"
-										target="_blank"
-									>
+									<Link className="link" href="/terms" target="_blank">
 										Terms of Service
 									</Link>{" "}
 									and request that Composery Cloud start immediately. I
