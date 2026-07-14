@@ -603,7 +603,7 @@ def iphone(name, scheme, s=3, final_w=780):
 
 if __name__ == "__main__":
     for scheme in ("dark", "light"):
-        for n in ("editor-terminal", "welcome", "editor"):
+        for n in ("ide", "welcome", "editor"):
             macbook(n, scheme)
         for n in ("mobile-welcome", "mobile-editor", "mobile-terminal"):
             iphone(n, scheme)

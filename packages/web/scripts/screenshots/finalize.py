@@ -24,7 +24,7 @@ def trio(scheme):
         canvas.alpha_composite(phones[i], (xs[i], 0))
     fw = 2000
     canvas = canvas.resize((fw, round(ph * fw / W)), Image.LANCZOS)
-    canvas.save(f"{OUT}/{scheme}/mobile-trio.png")
+    canvas.save(f"{OUT}/{scheme}/mobile.png")
     return canvas.size
 
 
@@ -32,11 +32,12 @@ def trio(scheme):
 for f in glob.glob(f"{DEST}/composery-*.png"):
     os.remove(f)
 
+# out/ name -> shipped composery-<name> base
 FINAL = {
-    "editor-terminal": "composery-ide",
+    "ide": "composery-ide",
     "welcome": "composery-welcome",
     "editor": "composery-editor",
-    "mobile-trio": "composery-mobile",
+    "mobile": "composery-mobile",
 }
 for scheme in ("dark", "light"):
     print("trio", scheme, trio(scheme))

@@ -77,7 +77,7 @@ await page.keyboard.type(
 await page.waitForTimeout(1200);
 await page.keyboard.press("Enter");
 await page.waitForTimeout(30000);
-await shot("editor-terminal");
+await shot("ide");
 
 console.log(`desktop ${scheme} shots done`);
 await browser.close();
