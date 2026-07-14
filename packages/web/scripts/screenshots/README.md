@@ -3,12 +3,14 @@
 Generates the product shots in
 [`../../public/marketing/`](../../public/marketing) - used by the homepage and
 the repo README. Each is captured from a real, running Composery instance, then
-framed in a faithful **macOS Safari** (desktop) or **iPhone 17 Pro** (mobile)
-window and written out in a light and a dark UI variant.
+framed on a faithful **14" MacBook Pro** (desktop) or **iPhone 17 Pro** (mobile)
+glass front and written out in a light and a dark UI variant.
 
 ```
 composery-ide-{dark,light}.png       hero: morning brief + Claude Code working
-composery-mobile-{dark,light}.png    phone trio: welcome, agent, a document
+composery-mobile-{dark,light}.png    phone trio: welcome, Claude Code being
+                                     typed to over the iOS keyboard, the
+                                     overnight results brief
 composery-welcome-{dark,light}.png   the branded welcome / agent picker
 composery-editor-{dark,light}.png    a real automation open in the editor
 ```
@@ -18,32 +20,38 @@ composery-editor-{dark,light}.png    a real automation open in the editor
 1. **Capture** ([`capture-desktop.mjs`](capture-desktop.mjs),
    [`capture-mobile.mjs`](capture-mobile.mjs)) drive the instance with Playwright
    and screenshot the raw workbench into `raw/<theme>/`.
-2. **Frame** ([`frame.py`](frame.py)) wraps each capture in a device window. The
-   chrome is drawn from Apple's own screenshots and specs - real SF Pro text,
-   real SF Symbols glyphs, iPhone 17 Pro geometry (434x906 pt body, 62 pt
-   continuous display corners, Dynamic Island), continuous (squircle) corners.
+2. **Frame** ([`frame.py`](frame.py)) wraps each capture in a device front. All
+   geometry is measured off Apple's own screenshots and specs - real SF Pro
+   text, real SF Symbols glyphs. Desktop: a 14" MacBook Pro display (1512x982
+   pt, notch, transparent Tahoe menu bar, the real Tahoe wallpaper) with the
+   capture in a faithful Safari 26 window. Mobile: an iPhone 17 Pro (402x874 pt
+   display, 62 pt corners, 1.44 mm bezel, Dynamic Island); the terminal shot
+   adds the iOS 26 keyboard, measured key-by-key from Apple's own screenshot,
+   below the keyboard-height viewport it was captured at.
 3. **Finalize** ([`finalize.py`](finalize.py)) builds the phone trios and copies
    the eight named assets into `../../public/marketing/`.
 
-`raw/`, `out/` and `fonts/` are gitignored; only the final PNGs are committed.
+`raw/`, `out/`, `fonts/` and `wallpapers/` are gitignored; only the final PNGs
+are committed.
 
 Paths are resolved relative to this folder, so the commands below work from any
-directory. They assume the Composery IDE is on `http://localhost:8080` (override
-with `COMPOSERY_URL`).
+directory. They assume the capture instance is on `http://localhost:9911`
+(override with `COMPOSERY_URL`) - its own port, so `pnpm dev:docker` (8080) and
+Expo (8081) can keep running.
 
 ## One-time setup
 
-- **Fonts.** `bash fonts.sh` fetches SF Pro + SF Symbols from Apple into `fonts/`
+- **Fonts + wallpapers.** `bash fonts.sh` fetches SF Pro + SF Symbols from
+  Apple into `fonts/` and the Tahoe wallpaper into `wallpapers/`
   (Apple-licensed, so never committed). Needs 7-Zip.
 - **Python.** `pip install Pillow`.
 - **Playwright** browsers come with the repo's dev deps (`pnpm install`).
-- **A demo instance** on `:8080` with a fresh volume (stop `pnpm dev:docker`
-  first if it holds the port):
+- **A demo instance** on `:9911` with a fresh volume:
   ```bash
-  docker run -d --name composery-shots -p 8080:8080 \
+  docker run -d --name composery-shots -p 9911:8080 \
     -v composery_shots_data:/data composery-composery:latest
   ```
-  Open http://localhost:8080, register the password (`example123`, or set
+  Open http://localhost:9911, register the password (`example123`, or set
   `COMPOSERY_PASSWORD`), then, from this folder:
   ```bash
   export MSYS_NO_PATHCONV=1   # git-bash only

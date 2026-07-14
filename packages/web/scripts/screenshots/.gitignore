@@ -1,6 +1,9 @@
-# Apple-licensed fonts, fetched on demand by fonts.sh
+# Apple-licensed fonts and wallpapers, fetched on demand by fonts.sh
 fonts/
+wallpapers/
 # intermediate captures and framed output; the final assets live in
 # packages/web/public/marketing/
 raw/
 out/
+# import-time cache from frame.py
+__pycache__/

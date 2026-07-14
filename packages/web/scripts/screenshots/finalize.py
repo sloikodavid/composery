@@ -1,6 +1,7 @@
 """Build the iPhone trio per theme and copy final, theme-suffixed assets into
-the web public marketing dir. `-dark` = dark UI (for light pages), `-light` =
-light UI (for dark pages)."""
+the web public marketing dir. The suffix is the UI theme and it matches the
+page: `-light` shows on light pages, `-dark` on dark pages (the dark variants
+carry a faint rim-light so they keep a silhouette there)."""
 import glob, os, shutil
 from PIL import Image
 

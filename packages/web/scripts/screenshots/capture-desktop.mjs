@@ -28,8 +28,8 @@ async function open(query) {
 await page.waitForTimeout(1500);
 await shot("welcome");
 
-// 2) Editor: a real automation. This frame exists to show breadth - the box is a
-//    cloud computer, so a whisper+ffmpeg video pipeline is as ordinary as a CSV.
+// 2) Editor: a real automation. This frame exists to show breadth - the instance
+//    is a full computer, so a whisper+ffmpeg video pipeline is as ordinary as a CSV.
 await open("clips.py");
 await page.keyboard.press("Escape");
 await shot("editor");

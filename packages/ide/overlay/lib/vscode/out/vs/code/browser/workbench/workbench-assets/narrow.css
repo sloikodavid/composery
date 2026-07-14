@@ -118,9 +118,11 @@
 		grid-template-rows: auto min-content minmax(min-content, auto) min-content !important;
 		grid-template-areas: "header" "left-column" "right-column" "footer" !important;
 		max-width: 100%;
-		/* Top padding so the "Composery" header is not jammed against the title
-		 * bar on a phone; the roomy desktop layout never hits this narrow gate. */
-		padding: 32px 20px 0;
+		/* Breathing room around the whole column on a phone: the header needs to
+		 * clear the tab bar rather than start against it, and the last card needs
+		 * somewhere to land at the end of the scroll. The roomy desktop layout
+		 * never hits this narrow gate. */
+		padding: 56px 20px;
 	}
 
 	.monaco-workbench

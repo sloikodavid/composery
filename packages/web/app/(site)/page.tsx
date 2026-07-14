@@ -68,7 +68,7 @@ export default function Home() {
 					alt="Claude Code working inside Composery: a morning brief open in the editor while the agent writes a new automation in the terminal."
 					base="composery-ide"
 					className="h-auto w-full"
-					height={1808}
+					height={1855}
 					priority
 					sizes="(max-width: 1024px) 100vw, 1024px"
 					width={2600}
@@ -87,7 +87,7 @@ export default function Home() {
 					alt="The same Composery instance on a phone: the welcome screen, Claude Code running in the terminal, and the morning brief."
 					base="composery-mobile"
 					className="mt-8 h-auto w-full"
-					height={1424}
+					height={1435}
 					sizes="(max-width: 768px) 100vw, 768px"
 					width={2000}
 				/>

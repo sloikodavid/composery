@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Fetch the real Apple system fonts the framing uses, into ./fonts/ (gitignored).
-# They are Apple-licensed and large (~700 MB of installers), so they are never
-# committed - the frame draws with the genuine SF Pro text and SF Symbols glyphs.
+# Fetch the Apple-licensed assets the framing uses, into ./fonts/ and
+# ./wallpapers/ (both gitignored, never committed): the real SF Pro text and
+# SF Symbols glyphs, and the macOS Tahoe default wallpaper the MacBook frame
+# puts behind the Safari window.
 #
 # Needs 7-Zip (to crack the .dmg -> .pkg -> cpio payloads). On Windows:
 #   winget install -e --id 7zip.7zip
 # Then: bash screenshots/fonts.sh
 set -e
 cd "$(dirname "$0")"
-mkdir -p fonts
+mkdir -p fonts wallpapers
+
+# macOS Tahoe default wallpaper, light + dark (6K originals).
+WP="https://raw.githubusercontent.com/LAYTAT/macOS-Wallpapers/master"
+[ -f wallpapers/tahoe-light.png ] || curl -sL -o wallpapers/tahoe-light.png "$WP/26-Tahoe-Light-6K.png"
+[ -f wallpapers/tahoe-dark.png ] || curl -sL -o wallpapers/tahoe-dark.png "$WP/26-Tahoe-Dark-6K.png"
 
 SZ="$(command -v 7z || command -v 7za || echo '/c/Program Files/7-Zip/7z.exe')"
 [ -x "$SZ" ] || { echo "7-Zip not found. Install it, then re-run."; exit 1; }

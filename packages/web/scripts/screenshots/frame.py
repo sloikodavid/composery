@@ -1,15 +1,68 @@
 """Frame raw Composery captures into realistic macOS/iOS marketing PNGs.
 
-Desktop -> a macOS Safari window (light/dark), continuous (squircle) corners.
-Mobile  -> an iPhone 17 Pro: 402x874 pt, 62 pt continuous display corners,
-           62 pt status bar with iOS glyphs, 125x37.33 pt Dynamic Island,
-           thin uniform bezel, home indicator. Specs researched, not guessed.
+Desktop -> a 14" MacBook Pro (M5) glass front: 1512x982 pt display on the real
+           macOS Tahoe wallpaper, transparent Tahoe menu bar wrapping the
+           208x37 pt notch, and our capture inside a faithful Safari 26 window
+           (Liquid Glass toolbar, 22 pt corners) floating on that desktop.
+Mobile  -> an iPhone 17 Pro glass front: 402x874 pt display, 62 pt corners, a
+           1.44 mm black bezel and nothing else, 62 pt status bar with iOS
+           glyphs, 125x37.33 pt Dynamic Island, home indicator.
 
-Both output transparent PNGs with a baked soft shadow so they float anywhere.
+Every number here was measured or taken from Apple, not guessed. Corners are
+CIRCULAR everywhere: superellipse fits against Apple's own renders (iPhone 17
+Pro, Safari window, MacBook display corner) all land on exponent 2.0. A
+squircle reads as a brick.
+
+Output is transparent PNGs with a light baked shadow, so they float on any page.
 """
-import math
 import os
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+
+# Drop shadows. Set False for flat frames with nothing but their own edge.
+SHADOW = True
+
+# Tuned per object, because they are not the same object. Sizes are in points
+# (scaled by s), alpha is 0-255. Both frames end as a hard black border on the
+# page, so both want a tight-ish grounding shadow rather than a halo - the lid
+# is 2.4x the phone's width, so its shadow is broader and softer in absolute
+# terms while staying proportionally tighter.
+MACBOOK_SHADOW = {"pad": 56, "blur": 30, "dy": 12, "alpha": 48}
+PHONE_SHADOW = {"pad": 52, "blur": 22, "dy": 12, "alpha": 55}
+
+# macOS window corner, measured off Apple's own Safari screenshot using the
+# traffic lights (12 pt each) as the ruler: circular, r = 22.5 pt. Tahoe's
+# windows are much rounder than the old 10-12 pt.
+WINDOW_R = 22
+
+# 14" MacBook Pro, in points (@2x, 254 ppi: 1 pt = 0.2 mm). Display and notch
+# geometry measured off Apple's straight-on macOS Tahoe lock-screen render
+# (the notch is the same physical size on the 14" and 16", so the 16" render
+# measures transfer 1:1 in points). The lid is drawn like the iPhone: display
+# + black glass border only, no aluminium body, no hinge.
+#
+#   display        3024x1964 px = 1512x982 pt, top corners r 20.5 pt (fit rms
+#                  0.43 px, circular), bottom corners square
+#   menu bar band  37 pt - the area beside the notch; below it is exact 16:10
+#   notch          208x37 pt, bottom corners r 9 pt, top square into the bezel
+#   bezel          3.5 mm = 17.5 pt, Apple's own keynote figure for sides and
+#                  top. The full display-to-body border is 5.1 mm, but 1.6 mm
+#                  of that is aluminium rim - not drawn, like the iPhone rail.
+#   chin           60 pt. The render measures 70 pt of dark, but the same
+#                  render over-measures the side bezel by ~9 pt (edge blur +
+#                  the rim reading dark), so the chin gets the same correction.
+#   lid corner     concentric with the display corner: 20.5 + 17.5 = 38 pt
+MBP_W, MBP_H = 1512, 982
+MENU = 37
+MBP_DISPLAY_R = 20.5
+MBP_BEZEL = 17.5
+MBP_CHIN = 60
+LID_R = MBP_DISPLAY_R + MBP_BEZEL
+NOTCH_W, NOTCH_R = 208, 9
+
+# What a real 14" desktop shows: the Safari window floats over the wallpaper
+# with macOS's big soft window shadow (this one is baked into the screen, not
+# the page shadow around the lid).
+DESKTOP_WINDOW = {"content_w": 1248, "blur": 26, "dy": 10, "alpha": 105}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAW = os.path.join(HERE, "raw")
@@ -22,6 +75,18 @@ SF_SYM = os.path.join(HERE, "fonts", "SF-Symbols.otf")
 
 LIGHTS = [(255, 95, 87), (254, 188, 46), (40, 200, 64)]
 LIGHT_RING = [(224, 70, 62), (222, 160, 25), (26, 170, 45)]
+
+# iPhone 17 Pro, in points (@3x). We draw the glass front only - the display and
+# its black bezel - with no aluminium shell around it.
+#
+# Apple's full body border is 16 pt ((71.9 - 66.59 mm)/2), but only 1.44 mm of
+# that is the black bezel; the rest is the metal rail. Drawing the rail is what
+# made it look like a phone-shaped brick, so the bezel alone is the border here.
+# DISPLAY_R is the OS-reported display corner radius; BODY_R is concentric.
+# Corners are circular - fitting Apple's own 17 Pro render gives exponent 2.0.
+DISPLAY_R = 62
+BEZEL = 8.7  # 1.44 mm, Apple's published iPhone 17 Pro bezel
+BODY_R = DISPLAY_R + BEZEL  # 70.7
 
 # Real SF Symbols, addressed by their private-use codepoints in Apple's symbol
 # font (identified by rendering + visual confirmation; Apple ships no name map).
@@ -39,7 +104,16 @@ SYM = {
     "chevron.down": 0x100188,
     "arrow.clockwise": 0x10037F,
     "shield.fill": 0x100667,
+    "magnifyingglass": 0x1002AB,
+    "switch.2": 0x10070A,
+    "shift": 0x10019D,
+    "delete.left": 0x10019B,
+    "return": 0x100147,
+    "mic": 0x1002B0,
 }
+
+# The Apple menu logo is regular Unicode PUA in every Apple text font.
+APPLE_LOGO = chr(0xF8FF)
 
 
 def sym(d, name, xy, size, fill, anchor="mm"):
@@ -64,55 +138,59 @@ SAFARI = {
 }
 
 
-def squircle_points(w, h, r, n=5.0, steps=28):
-    def corner(cx, cy, a0, a1):
-        out = []
-        for i in range(steps + 1):
-            t = math.radians(a0 + (a1 - a0) * i / steps)
-            ct, st = math.cos(t), math.sin(t)
-            out.append((cx + r * math.copysign(abs(ct) ** (2 / n), ct),
-                        cy + r * math.copysign(abs(st) ** (2 / n), st)))
-        return out
-    pts = []
-    pts += corner(w - r, r, -90, 0)
-    pts += corner(w - r, h - r, 0, 90)
-    pts += corner(r, h - r, 90, 180)
-    pts += corner(r, r, 180, 270)
-    return pts
-
-
-def squircle_mask(size, r, n=5.0, ssf=2):
+def rounded_mask(size, r, ssf=2):
+    """Circular rounded rect, supersampled - PIL's own corners are not antialiased."""
     w, h = size
     big = Image.new("L", (w * ssf, h * ssf), 0)
-    ImageDraw.Draw(big).polygon(squircle_points(w * ssf, h * ssf, r * ssf, n), fill=255)
+    ImageDraw.Draw(big).rounded_rectangle(
+        [0, 0, w * ssf - 1, h * ssf - 1], r * ssf, fill=255)
     return big.resize((w, h), Image.LANCZOS)
 
 
-def rounded_mask(size, r):
-    m = Image.new("L", size, 0)
-    ImageDraw.Draw(m).rounded_rectangle([0, 0, size[0] - 1, size[1] - 1], r, fill=255)
-    return m
+def shadow(win, s, cfg, mask):
+    """Place the frame on a transparent canvas, with or without a drop shadow.
 
-
-def vgrad(w, h, top, bot):
-    base = Image.new("RGB", (1, h))
-    for y in range(h):
-        t = y / max(1, h - 1)
-        base.putpixel((0, y), tuple(round(top[i] + (bot[i] - top[i]) * t) for i in range(3)))
-    return base.resize((w, h))
-
-
-def shadow(win, pad, blur, dy, alpha, mask):
+    The padding is kept either way, so the phone trio spaces itself the same.
+    """
+    pad, blur, dy = (round(cfg[k] * s) for k in ("pad", "blur", "dy"))
+    alpha = cfg["alpha"]
     w, h = win.size
     cw, ch = w + pad * 2, h + pad * 2 + dy
     canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-    sh = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-    silhouette = Image.new("RGBA", win.size, (0, 0, 0, alpha))
-    silhouette.putalpha(Image.eval(mask, lambda a: a * alpha // 255))
-    sh.alpha_composite(silhouette, (pad, pad + dy))
-    canvas = Image.alpha_composite(canvas, sh.filter(ImageFilter.GaussianBlur(blur)))
+    if SHADOW:
+        sh = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+        silhouette = Image.new("RGBA", win.size, (0, 0, 0, alpha))
+        silhouette.putalpha(Image.eval(mask, lambda a: a * alpha // 255))
+        sh.alpha_composite(silhouette, (pad, pad + dy))
+        canvas = Image.alpha_composite(canvas, sh.filter(ImageFilter.GaussianBlur(blur)))
     canvas.alpha_composite(win, (pad, pad))
     return canvas
+
+
+def edge(size, r, w):
+    """An antialiased hairline ring just inside a circular rounded rect."""
+    outer = rounded_mask(size, r)
+    inner = Image.new("L", size, 0)
+    inner.paste(rounded_mask((size[0] - 2 * w, size[1] - 2 * w), max(0, r - w)), (w, w))
+    return ImageChops.subtract(outer, inner)
+
+
+def rim(img, r, s, dark):
+    """A faint top-lit rim highlight on the frame's outer edge, dark UI only.
+
+    The dark shots sit on near-black pages where a black bezel has no
+    silhouette and a drop shadow does nothing - the same reason Apple's own
+    dark-background renders carry an edge highlight. Light shots skip it; the
+    shadow does the separating there.
+    """
+    if not dark:
+        return img
+    w, h = img.size
+    ring = edge((w, h), r, max(1, round(0.8 * s)))
+    grad = Image.linear_gradient("L").resize((w, h)).point(lambda v: 64 - 46 * v // 255)
+    lay = Image.new("RGBA", (w, h), (255, 255, 255, 0))
+    lay.putalpha(ImageChops.multiply(ring, grad))
+    return Image.alpha_composite(img, lay)
 
 
 def fit(img, final_w):
@@ -122,12 +200,20 @@ def fit(img, final_w):
 
 
 # ---------------------------------------------------------------- desktop Safari
-def safari(name, scheme, host="dave.composery.cloud", s=2, final_w=2600):
-    """A macOS Tahoe Safari 26 window, rebuilt against Apple's own screenshots."""
+def safari_window(name, scheme, host="dave.composery.cloud", s=2, content_w=None):
+    """A macOS Tahoe Safari 26 window, rebuilt against Apple's own screenshots.
+
+    Returns the finished window and its alpha mask; macbook() puts it on the
+    desktop. The capture is scaled to content_w pt first, while all the chrome
+    stays at true point size, exactly like a real window on a 14" display.
+    """
     c = SAFARI[scheme]
     src = Image.open(f"{RAW}/{scheme}/{name}.png").convert("RGBA")
+    if content_w:
+        cw = round(content_w * s)
+        src = src.resize((cw, round(src.size[1] * cw / src.size[0])), Image.LANCZOS)
     w, h = src.size
-    bar, r = 56 * s, 12 * s
+    bar, r = 56 * s, round(WINDOW_R * s)
     win = Image.new("RGBA", (w, h + bar), c["bar"] + (255,))
     win.paste(src, (0, bar))
     ov = Image.new("RGBA", win.size, (0, 0, 0, 0))   # alpha-capable overlay
@@ -181,14 +267,129 @@ def safari(name, scheme, host="dave.composery.cloud", s=2, final_w=2600):
     sym(d, "square.on.square", (rx0 + 98 * s, cy), isz, icon)
 
     win = Image.alpha_composite(win, ov)
-    m = squircle_mask(win.size, r)
+
+    # Blend the hairline edge into the window, then round it off. Circular, not a
+    # squircle - macOS windows fit a plain arc (see WINDOW_R).
+    br, bgc, bbl, ba = c["border"]
+    ring = Image.new("RGBA", win.size, (br, bgc, bbl, 0))
+    ring.putalpha(Image.eval(edge(win.size, r, max(1, s)), lambda v: v * ba // 255))
+    win = Image.alpha_composite(win, ring)
+
+    m = rounded_mask(win.size, r)
     win.putalpha(m)
-    pts = squircle_points(*win.size, r)
-    ImageDraw.Draw(win).line(pts + [pts[0]], fill=c["border"], width=max(1, s), joint="curve")
-    out = fit(shadow(win, 60 * s, 32 * s, 20 * s, 110, m), final_w)
+    return win, m
+
+
+# ---------------------------------------------------------------- macOS desktop
+_WALLPAPER = {}
+
+
+def wallpaper(scheme, size):
+    """The real macOS Tahoe default wallpaper (fetched by fonts.sh, like the
+    Apple fonts), center-cropped the way macOS fills the display from the
+    square original."""
+    if (scheme, size) not in _WALLPAPER:
+        src = Image.open(os.path.join(HERE, "wallpapers", f"tahoe-{scheme}.png"))
+        w, h = src.size
+        ch = round(w * size[1] / size[0])
+        top = (h - ch) // 2
+        _WALLPAPER[(scheme, size)] = (
+            src.crop((0, top, w, top + ch)).resize(size, Image.LANCZOS).convert("RGBA"))
+    return _WALLPAPER[(scheme, size)].copy()
+
+
+def menu_bar(s):
+    """The Tahoe menu bar: no background at all, white SF Pro text and real SF
+    Symbols straight on the wallpaper, with the soft legibility shadow macOS
+    puts under them. Layout gaps measured off Apple's Control Center shot."""
+    w, h = round(MBP_W * s), round(MENU * s)
+    glyphs = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(glyphs)
+    cy = h // 2
+    white = (255, 255, 255, 242)
+
+    f13, fsb = ImageFont.truetype(SF_RG, round(13 * s)), ImageFont.truetype(SF_SB, round(13 * s))
+    x = round(16 * s)
+    d.text((x, cy), APPLE_LOGO, font=ImageFont.truetype(SF_RG, round(14 * s)),
+           fill=white, anchor="lm")
+    x += d.textlength(APPLE_LOGO, font=ImageFont.truetype(SF_RG, round(14 * s))) + round(21 * s)
+    for i, item in enumerate(("Safari", "File", "Edit", "View", "History",
+                              "Bookmarks", "Window", "Help")):
+        f = fsb if i == 0 else f13
+        d.text((x, cy), item, font=f, fill=white, anchor="lm")
+        x += d.textlength(item, font=f) + round(21 * s)
+
+    # Status items, right-to-left: clock, Control Center, Spotlight, Wi-Fi,
+    # battery - the stock Tahoe set, in Apple's own order.
+    x = w - round(16 * s)
+    clock = "Tue Jul 14  9:41 AM"
+    d.text((x, cy), clock, font=f13, fill=white, anchor="rm")
+    x -= d.textlength(clock, font=f13) + round(22 * s)
+    for name, size in (("switch.2", 16), ("magnifyingglass", 15),
+                       ("wifi", 16), ("battery.100", 21)):
+        f = ImageFont.truetype(SF_SYM, round(size * s))
+        g = chr(SYM[name])
+        d.text((x, cy), g, font=f, fill=white, anchor="rm")
+        x -= d.textlength(g, font=f) + round(22 * s)
+
+    ov = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    sh = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    sh.putalpha(Image.eval(glyphs.getchannel("A"), lambda a: a * 90 // 255))
+    ov.alpha_composite(sh.filter(ImageFilter.GaussianBlur(round(1.5 * s))), (0, round(0.5 * s)))
+    ov.alpha_composite(glyphs)
+    return ov
+
+
+def macbook(name, scheme, s=2, final_w=2600):
+    """The full 14" MacBook Pro glass front around a Tahoe desktop."""
+    sw, sh = round(MBP_W * s), round(MBP_H * s)
+    screen = wallpaper(scheme, (sw, sh))
+
+    # Safari floating on the desktop, with macOS's own big soft window shadow.
+    win, wmask = safari_window(name, scheme, s=s, content_w=DESKTOP_WINDOW["content_w"])
+    wx = (sw - win.size[0]) // 2
+    wy = round(MENU * s) + (sh - round(MENU * s) - win.size[1]) // 2
+    lay = Image.new("RGBA", screen.size, (0, 0, 0, 0))
+    sil = Image.new("RGBA", win.size, (0, 0, 0, 0))
+    sil.putalpha(Image.eval(wmask, lambda a: a * DESKTOP_WINDOW["alpha"] // 255))
+    lay.alpha_composite(sil, (wx, wy + round(DESKTOP_WINDOW["dy"] * s)))
+    screen.alpha_composite(lay.filter(ImageFilter.GaussianBlur(round(DESKTOP_WINDOW["blur"] * s))))
+    screen.alpha_composite(win, (wx, wy))
+    screen.alpha_composite(menu_bar(s))
+
+    # The notch: square into the bezel on top, 9 pt rounded corners into the
+    # menu bar band, camera as a barely-there darker disc.
+    nw, nh, nr = round(NOTCH_W * s), round(MENU * s), NOTCH_R * s
+    nx = (sw - nw) // 2
+    notch = Image.new("RGBA", (nw, nh), (10, 10, 12, 255))
+    nm = Image.new("L", (nw * 2, nh * 2), 0)
+    ImageDraw.Draw(nm).rounded_rectangle([0, 0, nw * 2 - 1, nh * 2 - 1], nr * 2,
+                                         fill=255, corners=(False, False, True, True))
+    notch.putalpha(nm.resize((nw, nh), Image.LANCZOS))
+    screen.alpha_composite(notch, (nx, 0))
+    dd = ImageDraw.Draw(screen)
+    ccx, ccy, cr = sw // 2, round(18.5 * s), round(4.5 * s)
+    dd.ellipse([ccx - cr, ccy - cr, ccx + cr, ccy + cr], fill=(17, 17, 20))
+
+    # Display corners: round on top, square at the bottom - mask a taller
+    # rounded rect and crop the bottom rounding away.
+    dr = round(MBP_DISPLAY_R * s)
+    screen.putalpha(rounded_mask((sw, sh + dr), dr).crop((0, 0, sw, sh)))
+
+    # The lid: one black glass border, thin around the display, tall at the
+    # chin, nothing else - same treatment as the iPhone.
+    bez, chin = round(MBP_BEZEL * s), round(MBP_CHIN * s)
+    lw, lh = sw + bez * 2, sh + bez + chin
+    lid = Image.new("RGBA", (lw, lh), (10, 10, 12, 255))
+    lm = rounded_mask((lw, lh), round(LID_R * s))
+    lid.putalpha(lm)
+    lid.alpha_composite(screen, (bez, bez))
+    lid = rim(lid, round(LID_R * s), s, scheme == "dark")
+
+    out = fit(shadow(lid, s, MACBOOK_SHADOW, lm), final_w)
     os.makedirs(f"{OUT}/{scheme}", exist_ok=True)
     out.save(f"{OUT}/{scheme}/{name}.png")
-    print("safari", scheme, name, out.size)
+    print("macbook", scheme, name, out.size)
 
 
 # ------------------------------------------------------------------ iOS statusbar
@@ -213,6 +414,133 @@ def status_bar(w, s, txt):
     return ov
 
 
+# ------------------------------------------------------------------ iOS keyboard
+# The iOS 26 keyboard, measured off Apple's own Live Translation press shot
+# (iPhone 16 Pro - the same 402x874 pt canvas as the 17 Pro, so everything
+# transfers 1:1):
+#
+#   panel        top at 535 pt (339 pt tall), flat fill, 1 pt bright top
+#                hairline, ~26 pt rounded top corners, 1.5 pt side inset
+#   strip        57 pt QuickType bar, empty (a terminal has no predictions),
+#                dividers at thirds
+#   letter keys  33x41.8 pt, corner r 8.75 (fit), 6.5 pt gaps, 7.7 pt margins,
+#                rows at 592.1 / 647.1 / 702.1 / 757 pt, 13.2 pt between rows
+#   modifiers    shift + backspace 44.1 pt; 123 / space / return are
+#                91.6 / 190.1 / 91.6 pt - the space bar is unlabeled in 26,
+#                return is a glyph, and every key is the same material
+#   below panel  emoji + mic glyphs centred 49.5 pt from each edge, y 830
+#
+# All glyphs are the real SF Symbols (matched from the same shot); the emoji
+# key's grinning face is UIKit artwork with no SF Symbol, so it is drawn to
+# match. Light colors are sampled from Apple's shot. Apple publishes no dark
+# keyboard screenshot, so dark keeps the measured geometry with the standard
+# iOS dark key material (unchanged since iOS 13) composited over our app.
+KB_H = 339
+KB = {
+    "light": {"bg": (242, 242, 242), "key": (255, 255, 255), "ink": (10, 10, 11),
+              "icon": (70, 70, 70), "div": (0, 0, 0, 30), "rim": (255, 255, 255, 200),
+              "shadow": (0, 0, 0, 34)},
+    "dark": {"bg": (33, 33, 36), "key": (104, 104, 108), "ink": (249, 249, 251),
+             "icon": (196, 196, 201), "div": (255, 255, 255, 28), "rim": (255, 255, 255, 26),
+             "shadow": (0, 0, 0, 80)},
+}
+
+
+def kb_smiley(d, cx, cy, S, ink):
+    """The keyboard's grinning emoji face (UIKit artwork, not an SF Symbol)."""
+    r, t = 11.1 * S, round(2.2 * S)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=ink, width=t)
+    er = 1.7 * S
+    for dx in (-4.3, 4.3):
+        ex = cx + dx * S
+        d.ellipse([ex - er, cy - 3.4 * S - er, ex + er, cy - 3.4 * S + er], fill=ink)
+    # open smile: dark mouth, white teeth band across its top
+    mw, mtop, mbot = 6.4 * S, cy + 0.4 * S, cy + 8.6 * S
+    d.pieslice([cx - mw, mtop - (mbot - mtop), cx + mw, mbot], 0, 180, fill=ink)
+    tw = 4.6 * S
+    d.pieslice([cx - tw, mtop + 1.2 * S - (mbot - mtop) * 0.55, cx + tw,
+                mtop + 1.2 * S + (mbot - mtop) * 0.55], 0, 180, fill=(255, 255, 255, 255))
+    d.pieslice([cx - tw, mtop + 3.4 * S - (mbot - mtop) * 0.45, cx + tw,
+                mtop + 3.4 * S + (mbot - mtop) * 0.45], 0, 180, fill=ink)
+
+
+def keyboard(s, scheme):
+    """Render the keyboard panel, supersampled 2x for the key corners."""
+    c = KB[scheme]
+    ss = 2
+    S = s * ss
+    w, h = round(402 * S), round(KB_H * S)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    ink = c["ink"] + (255,)
+
+    # Panel: rounded top corners, bottom bleeds off the canvas, a bright
+    # hairline along the top edge (the Liquid Glass rim).
+    inset, pr = round(1.5 * S), round(26 * S)
+    panel = [inset, 0, w - 1 - inset, h - 1 + pr]
+    d.rounded_rectangle(panel, pr, fill=c["bg"] + (255,))
+    rim_lay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ImageDraw.Draw(rim_lay).rounded_rectangle(panel, pr, outline=c["rim"], width=max(1, S // 2))
+    fade = Image.linear_gradient("L").resize(img.size).point(lambda v: max(0, 255 - v * 5))
+    rim_lay.putalpha(ImageChops.multiply(rim_lay.getchannel("A"), fade))
+    img = Image.alpha_composite(img, rim_lay)
+    d = ImageDraw.Draw(img)
+
+    # Empty QuickType strip with its thirds dividers.
+    for xd in (134, 268):
+        d.rectangle([round(xd * S), round(14 * S), round(xd * S) + max(1, S // 2),
+                     round(43 * S)], fill=c["div"])
+
+    def key(x, y, kw, kh=41.8):
+        sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        ImageDraw.Draw(sh).rounded_rectangle(
+            [round(x * S), round((y + 1) * S), round((x + kw) * S), round((y + kh + 1) * S)],
+            round(8.75 * S), fill=c["shadow"])
+        img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(S // 2)))
+        d.rounded_rectangle(
+            [round(x * S), round(y * S), round((x + kw) * S), round((y + kh) * S)],
+            round(8.75 * S), fill=c["key"] + (255,))
+        return x + kw / 2, y + kh / 2
+
+    m, g, kw = 7.7, 6.5, (402 - 2 * 7.7 - 9 * 6.5) / 10
+    rows_y = [57.1, 112.1, 167.1, 222.0]   # panel-relative (592.1 - 535, ...)
+    letter_f = ImageFont.truetype(SF_RG, round(23.5 * S))
+
+    for i, ch in enumerate("qwertyuiop"):
+        cx, cy = key(m + i * (kw + g), rows_y[0], kw)
+        d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
+    for i, ch in enumerate("asdfghjkl"):
+        cx, cy = key(m + (kw + g) / 2 + i * (kw + g), rows_y[1], kw)
+        d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
+    for i, ch in enumerate("zxcvbnm"):
+        cx, cy = key(67.0 + i * (kw + g), rows_y[2], kw)
+        d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
+
+    def glyph(name, cx, cy, size):
+        d.text((cx * S, cy * S), chr(SYM[name]),
+               font=ImageFont.truetype(SF_SYM, round(size * S)), fill=ink, anchor="mm")
+
+    cx, cy = key(m, rows_y[2], 44.1)
+    glyph("shift", cx, cy, 25)
+    cx, cy = key(402 - m - 44.1, rows_y[2], 44.1)
+    glyph("delete.left", cx, cy, 25)
+
+    cx, cy = key(m, rows_y[3], 91.6)
+    d.text((cx * S, cy * S), "123", font=ImageFont.truetype(SF_RG, round(17 * S)),
+           fill=ink, anchor="mm")
+    key(105.9, rows_y[3], 190.1)                 # space: unlabeled in iOS 26
+    cx, cy = key(302.9, rows_y[3], 91.6)
+    glyph("return", cx, cy, 25)
+
+    # Below the panel: emoji + mic, no keys.
+    icon = c["icon"] + (255,)
+    kb_smiley(d, round(49.5 * S), round(295 * S), S, icon)
+    d.text((round(352.5 * S), round(295 * S)), chr(SYM["mic"]),
+           font=ImageFont.truetype(SF_SYM, round(27 * S)), fill=icon, anchor="mm")
+
+    return img.resize((round(402 * s), round(KB_H * s)), Image.LANCZOS)
+
+
 def iphone(name, scheme, s=3, final_w=780):
     src = Image.open(f"{RAW}/{scheme}/{name}.png").convert("RGBA")
     w, hh = src.size
@@ -220,9 +548,18 @@ def iphone(name, scheme, s=3, final_w=780):
     txt = (255, 255, 255) if dark else (22, 22, 24)
     app_bg = src.getpixel((4, 4))[:3]
 
+    # The terminal shot is captured at the keyboard-open viewport (473 pt) and
+    # gets the measured iOS 26 keyboard composited below it, exactly where iOS
+    # puts it. The other shots keep the 34 pt bottom safe area.
     SB, BOTTOM = round(62 * s), round(34 * s)
-    screen = Image.new("RGBA", (w, SB + hh + BOTTOM), app_bg + (255,))
-    screen.paste(src, (0, SB))
+    if name == "mobile-terminal":
+        kb = keyboard(s, scheme)
+        screen = Image.new("RGBA", (w, SB + hh + kb.size[1]), app_bg + (255,))
+        screen.paste(src, (0, SB))
+        screen.alpha_composite(kb, (0, SB + hh))
+    else:
+        screen = Image.new("RGBA", (w, SB + hh + BOTTOM), app_bg + (255,))
+        screen.paste(src, (0, SB))
     screen.alpha_composite(status_bar(w, s, txt), (0, 0))
     d = ImageDraw.Draw(screen)
 
@@ -239,45 +576,26 @@ def iphone(name, scheme, s=3, final_w=780):
     ImageDraw.Draw(ov).rounded_rectangle([hix, hiy, hix + hiw, hiy + hih], hih // 2,
                                          fill=(255, 255, 255, 150) if dark else (0, 0, 0, 140))
     screen = Image.alpha_composite(screen, ov)
-    screen.putalpha(squircle_mask(screen.size, round(62 * s)))
+    screen.putalpha(rounded_mask(screen.size, round(DISPLAY_R * s)))
 
-    # Border geometry, all from Apple's published numbers. At 460ppi the
-    # 1206x2622 active area is 66.59x144.78mm inside a 71.9x150.0mm body, so the
-    # uniform border is 2.63mm = 15.9pt. Apple's accessory guidelines put the
-    # iPhone 17 Pro *bezel* at 1.44mm (8.7pt); the remaining 1.19mm (7.2pt) is
-    # the aluminium rail, which reads as metal head-on, not black. Corners are
-    # concentric: rail 78pt -> bezel 69.3pt -> display 62pt.
-    RAIL, BEZ = round(7.2 * s), round(8.7 * s)
-    bez = RAIL + BEZ                                     # 15.9pt total inset
+    # One uniform black bezel - nothing else. On a black iPhone the aluminium
+    # rail is black too, so the border reads as a single band; drawing a separate
+    # tinted rail just looks like a second frame.
+    #
+    # Geometry is Apple's own: at 460 ppi the 1206x2622 active area is
+    # 66.59 x 144.78 mm inside a 71.9 x 150.0 mm body, so the border is
+    # 2.63 mm = 16 pt, uniform. Corners are concentric and CIRCULAR: fitting a
+    # superellipse to Apple's own iPhone 17 Pro render lands on n = 2.0 (a plain
+    # circular arc) - a squircle here reads as a brick.
+    bez = round(BEZEL * s)
     bw2, bh2 = w + bez * 2, screen.size[1] + bez * 2
 
-    body = Image.new("RGBA", (bw2, bh2), (0, 0, 0, 0))
-    # Black. The rail and the bezel read as one thin dark edge - no tint, no
-    # chrome band, just the phone.
-    rail = Image.new("RGBA", (bw2, bh2), (26, 26, 28, 255))
-    rail.putalpha(squircle_mask((bw2, bh2), round(78 * s)))
-    body = Image.alpha_composite(body, rail)
-    # the faintest edge highlight so the silhouette reads on a dark page
-    hl = Image.new("RGBA", (bw2, bh2), (0, 0, 0, 0))
-    ImageDraw.Draw(hl).line(squircle_points(bw2, bh2, round(78 * s)) + [squircle_points(bw2, bh2, round(78 * s))[0]],
-                            fill=(120, 120, 126, 90), width=max(1, s), joint="curve")
-    body = Image.alpha_composite(body, hl)
-    # black bezel under the glass
-    fw3, fh3 = bw2 - RAIL * 2, bh2 - RAIL * 2
-    face = Image.new("RGBA", (fw3, fh3), (9, 9, 11, 255))
-    face.putalpha(squircle_mask((fw3, fh3), round(78 * s) - RAIL))
-    body.alpha_composite(face, (RAIL, RAIL))
-
-    # side buttons, sitting on the rail
-    bd = ImageDraw.Draw(body)
-    btn = (44, 44, 47)
-    for y0, y1 in ((116, 150), (170, 206), (218, 254)):        # action, volume up/down
-        bd.rounded_rectangle([-round(1.5 * s), round(y0 * s), round(2 * s), round(y1 * s)], round(1.5 * s), fill=btn)
-    bd.rounded_rectangle([bw2 - round(2 * s), round(188 * s), bw2 + round(1.5 * s), round(258 * s)], round(1.5 * s), fill=btn)
-
+    body = Image.new("RGBA", (bw2, bh2), (10, 10, 12, 255))
+    body.putalpha(rounded_mask((bw2, bh2), round(BODY_R * s)))
     body.alpha_composite(screen, (bez, bez))
-    m = squircle_mask(body.size, round(78 * s))
-    out = fit(shadow(body, 52 * s, 30 * s, 18 * s, 120, m), final_w)
+    body = rim(body, round(BODY_R * s), s, dark)
+    m = rounded_mask(body.size, round(BODY_R * s))
+    out = fit(shadow(body, s, PHONE_SHADOW, m), final_w)
     os.makedirs(f"{OUT}/{scheme}", exist_ok=True)
     out.save(f"{OUT}/{scheme}/{name}.png")
     print("iphone", scheme, name, out.size)
@@ -286,7 +604,7 @@ def iphone(name, scheme, s=3, final_w=780):
 if __name__ == "__main__":
     for scheme in ("dark", "light"):
         for n in ("editor-terminal", "welcome", "editor"):
-            safari(n, scheme)
+            macbook(n, scheme)
         for n in ("mobile-welcome", "mobile-editor", "mobile-terminal"):
             iphone(n, scheme)
     print("done")

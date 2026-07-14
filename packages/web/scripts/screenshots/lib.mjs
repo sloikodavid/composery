@@ -3,7 +3,9 @@ import path from "node:path";
 import { chromium } from "playwright";
 
 export const RAW = path.join(import.meta.dirname, "raw");
-export const BASE = process.env.COMPOSERY_URL ?? "http://localhost:8080";
+// 9911 by default: the dev IDE owns 8080 and Expo owns 8081, so the capture
+// instance gets its own port and both can run at once.
+export const BASE = process.env.COMPOSERY_URL ?? "http://localhost:9911";
 export const PASSWORD = process.env.COMPOSERY_PASSWORD ?? "example123";
 export const FOLDER = "/home/user/workspace";
 

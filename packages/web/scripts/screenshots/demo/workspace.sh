@@ -59,6 +59,19 @@ still sitting on $1,800, now six days late.
 **Today** Two calls, both after 14:00. Your morning is clear.
 EOF
 
+cat > brief/overnight.md <<'EOF'
+# While you slept
+
+Five automations ran. Nothing needs fixing.
+
+- **Acme paid.** The $1,800 landed at 2:14 - the polite chase worked.
+- **14 new leads** scored, 3 hot. Intro drafts are waiting in `drafts/`.
+- **7 shorts** cut from Monday's stream, queued for your review.
+- **Figma renews Thursday**, $240. One word and it's cancelled.
+
+First call at 14:00. Your morning is clear.
+EOF
+
 cat > data/invoices.csv <<'EOF'
 number,client,amount,issued,due,status
 2026-039,Acme,1200.00,2026-05-30,2026-06-16,paid
@@ -201,7 +214,7 @@ EOF
 cat > automations/clips.py <<'EOF'
 """Turn one long video into a week of vertical shorts, overnight.
 
-Runs on the box at 02:00. Nothing here needs my laptop to be awake: the
+Runs on the server at 02:00. Nothing here needs my laptop to be awake: the
 transcription, the scoring and the ffmpeg render all happen on the instance.
 """
 import json
@@ -227,7 +240,7 @@ class Moment:
 
 
 def transcribe(video: Path) -> list[dict]:
-    """Word-level transcript, straight off the box's own GPU-less CPU."""
+    """Word-level transcript, straight off the instance's own GPU-less CPU."""
     out = subprocess.run(
         ["whisper-cli", "-m", "models/base.en.bin", "-f", str(video), "-oj"],
         capture_output=True, text=True, check=True,
