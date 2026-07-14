@@ -55,7 +55,7 @@ export function Footer() {
 				<div className="flex flex-col items-start gap-4 border-t border-border pt-6 text-sm text-muted-foreground md:col-span-2 md:flex-row md:items-center md:justify-between">
 					<p>&copy; {new Date().getFullYear()} Composery</p>
 					<a
-						className="inline-flex items-center gap-2 transition-colors hover:text-foreground"
+						className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
 						href={GITHUB_REPO_URL}
 						rel="noreferrer"
 						target="_blank"
