@@ -19,12 +19,17 @@ const FAQ: { question: string; answer: string }[] = [
 	{
 		question: "How much control do I get over the machine?",
 		answer:
-			"Full control. It's a real Linux system with sudo, so you can install anything, edit any files, and run background jobs."
+			"Full control. It's a Debian system with passwordless sudo and systemd, so you can apt install packages, edit any file, and run services and cron jobs - and it all survives restarts. It runs as a container, so a custom kernel or kernel modules are the one thing you can't do."
+	},
+	{
+		question: "Can I run a dev server and open it in the browser?",
+		answer:
+			"Yes. Anything you run on a port shows up in the Ports panel and opens at your box URL under /proxy/3000/ - signed in as you, not open to the world. Direct ports aren't reachable from the internet: the box only accepts HTTPS on its own domain."
 	},
 	{
 		question: "What does it take to self-host?",
 		answer:
-			"Not much - a machine that runs Docker and a volume to keep your data on. The repo ships ready-made setups for a VPS, Fly, Render, Railway, and Kubernetes."
+			"Not much - a machine that runs Docker and a volume to keep your data on. The repo ships ready-made setups for Fly, Render, Railway, Kubernetes, and any VPS, with even more platforms documented."
 	}
 ];
 
