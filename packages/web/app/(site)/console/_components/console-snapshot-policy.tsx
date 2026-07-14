@@ -104,15 +104,6 @@ export function ConsoleSnapshotPolicy({ policy }: { policy?: SnapshotPolicy }) {
 				<h2 className="text-sm font-medium">Snapshot policy</h2>
 				<div className="flex gap-2">
 					<AnimatedIconButton
-						disabled={!dirty || busy !== null}
-						icon="check"
-						iconPosition="start"
-						onClick={save}
-						size="sm"
-					>
-						Save
-					</AnimatedIconButton>
-					<AnimatedIconButton
 						disabled={busy !== null}
 						icon="rotate-cw"
 						iconPosition="start"
@@ -121,6 +112,15 @@ export function ConsoleSnapshotPolicy({ policy }: { policy?: SnapshotPolicy }) {
 						variant="outline"
 					>
 						Reset
+					</AnimatedIconButton>
+					<AnimatedIconButton
+						disabled={!dirty || busy !== null}
+						icon="check"
+						iconPosition="start"
+						onClick={save}
+						size="sm"
+					>
+						Save
 					</AnimatedIconButton>
 				</div>
 			</div>
