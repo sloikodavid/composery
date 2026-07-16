@@ -7,7 +7,7 @@
 
 ## IDE / upstream naming
 
-`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (`server.diff` for code-server's `src/node`, the rest for `lib/vscode/*`), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
+`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
 - Repo packages stay domain nouns (`ide`, `web`, `mobile`, `brand`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars use Composery names (`COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`, `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`, `COMPOSERY_GITHUB_TOKEN`, plus the narrower `COMPOSERY_*` toggles). `PORT` stays generic.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
@@ -193,11 +193,13 @@ packages/
             auth.html
             auth.js
             brand.css
+            change-password-fields.html
+            cloud-error-fields.html
             error.html
             global.css
             login-fields.html
+            password-check.js
             register-fields.html
-            reset-password-fields.html
         node/
           persistence/
             readiness.ts
@@ -205,6 +207,7 @@ packages/
             api/
               auth.ts
               config.ts
+              constants.ts
               exec.ts
               index.ts
               keystore.ts
@@ -212,12 +215,16 @@ packages/
               ratelimit.ts
               session.ts
             authPage.ts
+            changePassword.ts
+            cloudAuth.ts
+            loginRateLimit.ts
             passwordConfig.ts
             register.ts
-            resetPassword.ts
     patches/
+      api.diff
       asset-cache.diff
       auth-actions.diff
+      auth.diff
       branding.diff
       clipboard-ipc.diff
       clipboard-osc52.diff
@@ -225,15 +232,18 @@ packages/
       default-layout.diff
       extensions-mobile.diff
       extensions-view-themes.diff
+      hardening.diff
+      local-address.diff
       markdown-preview-loopback-callback-bridge.diff
       menu-home-actions.diff
+      naming.diff
       narrow-fullscreen.diff
       narrow-gate.diff
       node-engine.diff
       overlays.diff
       qr-action.diff
+      readiness.diff
       series
-      server.diff
       settings-mobile.diff
       shortcuts.diff
       tips.diff
@@ -251,6 +261,7 @@ packages/
       touch-terminal-keybar.diff
       touch-viewport-inset.diff
       trusted-domains-loopback-callback-guard.diff
+      updates.diff
       webview-mobile.diff
       welcome.diff
       window-focus-resample.diff
@@ -321,7 +332,8 @@ packages/
         boxes/
           _components/
             box-table.tsx
-          [slug]/
+            checkout-redirect.tsx
+          [id]/
             _components/
               box-actions.tsx
               box-detail.tsx
@@ -343,7 +355,7 @@ packages/
             console-stats.tsx
             console-thresholds.tsx
           boxes/
-            [slug]/
+            [id]/
               _components/
                 console-box-actions.tsx
                 console-box-detail.tsx
@@ -374,7 +386,16 @@ packages/
         not-found.tsx
         page.tsx
       api/
+        cloud/
+          auth/
+            exchange/
+              route.ts
+            password/
+              route.ts
         search/
+          route.ts
+      boxes/
+        authorize/
           route.ts
       docs/
         [[...slug]]/
@@ -406,7 +427,92 @@ packages/
       providers.tsx
       sitemap.ts
     components/
-      ... (54 items)
+      icons/
+        arrow-left.tsx
+        arrow-right.tsx
+        arrow-up-right.tsx
+        book-open.tsx
+        check.tsx
+        construction.tsx
+        convex.tsx
+        copy.tsx
+        credit-card.tsx
+        delete.tsx
+        download.tsx
+        github-icon.tsx
+        github.tsx
+        hetzner.tsx
+        layout-grid.tsx
+        lock.tsx
+        login.tsx
+        pen-tool.tsx
+        play.tsx
+        plug-zap.tsx
+        plus.tsx
+        polar.tsx
+        rotate-cw.tsx
+        square-pen.tsx
+        sun-moon.tsx
+        vercel.tsx
+        wallet.tsx
+        washing-machine.tsx
+        wrench.tsx
+        x.tsx
+      animated-icon.tsx
+      badge.tsx
+      box-actions-bar.tsx
+      box-qr-dialog.tsx
+      box-status-action.tsx
+      brand-kit.tsx
+      button.tsx
+      card.tsx
+      change-slug-dialog.tsx
+      chart.tsx
+      confirm-dialog.tsx
+      copy-link-button.tsx
+      dialog.tsx
+      dismiss-button.tsx
+      dropdown-menu.tsx
+      faq.tsx
+      flags-table.tsx
+      footer.tsx
+      fumadocs-narrow-sidebar.tsx
+      fumadocs-theme-toggle.tsx
+      header.tsx
+      icon.tsx
+      input.tsx
+      label.tsx
+      legal-page.tsx
+      logo-export.tsx
+      logo-showcase.tsx
+      logo.tsx
+      mdx.tsx
+      metrics-chart.tsx
+      monitor-card.tsx
+      open-in-convex.tsx
+      open-in-dashboard.tsx
+      open-in-hetzner.tsx
+      open-in-polar.tsx
+      open-in-vercel.tsx
+      page-template.tsx
+      recovery-dialog.tsx
+      running-indicator.tsx
+      runtime-health-notice.tsx
+      scan-text.tsx
+      select.tsx
+      separator.tsx
+      skeleton.tsx
+      snapshots-dialog.tsx
+      sonner.tsx
+      sort-header.tsx
+      status-button.tsx
+      status-text.tsx
+      suspend-dialog.tsx
+      table.tsx
+      textarea.tsx
+      theme-provider.tsx
+      theme-toggle.tsx
+      themed-shot.tsx
     convex/
       _generated/
         api.d.ts
@@ -428,6 +534,7 @@ packages/
           runtimeArtifacts.ts
           runtimeImages.test.ts
           runtimeImages.ts
+          ssh.test.ts
           ssh.ts
           sshKeys.test.ts
           sshKeys.ts
@@ -437,6 +544,7 @@ packages/
           changeBoxSlug.ts
           deleteBox.ts
           provisionBox.ts
+          recoverBox.ts
           resetBox.ts
           runtimeLifecycle.ts
           snapshotWorkflows.ts
@@ -444,7 +552,12 @@ packages/
           stopBox.ts
           suspendBox.ts
           unsuspendBox.ts
+        boxAccess.test.ts
+        boxAccess.ts
+        boxAuth.ts
+        boxCleanup.ts
         boxEvents.ts
+        boxHealth.ts
         boxLogs.ts
         boxMetrics.test.ts
         boxMetrics.ts
@@ -452,9 +565,12 @@ packages/
         boxOperationRules.test.ts
         boxOperationRules.ts
         boxOperations.ts
-        boxPassword.test.ts
-        boxPassword.ts
+        boxQueries.test.ts
         boxQueries.ts
+        boxRecovery.ts
+        boxRecoveryTypes.ts
+        boxRetention.test.ts
+        boxRetention.ts
         boxSnapshots.ts
         boxStatus.ts
         boxViews.test.ts
@@ -463,6 +579,7 @@ packages/
         metricThresholds.ts
         reconcile.test.ts
         reconcile.ts
+        slugAvailability.test.ts
         slugAvailability.ts
         snapshotPolicy.test.ts
         snapshotPolicy.ts
@@ -500,8 +617,8 @@ packages/
     lib/
       auth-routing.test.ts
       auth-routing.ts
-      box-password-check.test.ts
-      box-password-check.ts
+      box-route.test.ts
+      box-route.ts
       box-slug.test.ts
       box-slug.ts
       brand-assets.ts
@@ -577,16 +694,14 @@ prompts/
   senior-buzzwords.md
 rootfs/
   etc/
+    caddy/
+      Caddyfile
     sudoers.d/
       user
     supervisor/
       conf.d/
         composery.conf
       supervisord.conf
-    systemd/
-      system/
-        composery.service
-        persistence.service
     xdg/
       mimeapps.list
     mailcap
@@ -623,6 +738,12 @@ rootfs/
       entrypoint.sh
       ide.sh
   usr/
+    lib/
+      systemd/
+        system/
+          caddy.service
+          ide.service
+          persistence.service
     local/
       bin/
         wl-copy
@@ -686,6 +807,8 @@ tests/
   code-server-patches.test.ts
   desktop-integration.test.ts
   loopback-callback-guard.test.ts
+  password-check.test.ts
+  runtime-init.test.ts
   toolchain-pins.test.ts
   tree-script.test.ts
 .dockerignore

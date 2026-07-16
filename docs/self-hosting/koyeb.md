@@ -37,12 +37,12 @@ koyeb service create composery \
   --scale 1 \
   --port 8080:http \
   --env PORT=8080 \
-  --checks 8080:http:/healthz \
+  --checks 8080:http:/_composery/healthz \
   --volumes composery-data:/data
 ```
 
 The same fields are available in the control panel (Docker image, port `8080`, an HTTP
-health check on `/healthz`, and the volume at `/data`).
+health check on `/_composery/healthz`, and the volume at `/data`).
 
 Open the `.koyeb.app` URL Koyeb assigns. Register the initial password in the browser, or
 set `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` with another `--env` flag (or in the

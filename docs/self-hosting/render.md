@@ -24,5 +24,5 @@ Open the service URL Render assigns. Register the initial password in the browse
   filesystem, so Composery state would not survive a redeploy.
 - A service with a disk cannot be scaled past one instance - which matches Composery's
   single-writer `persistence` model.
-- `PORT` is set to `8080`; Render routes to it and health-checks `/healthz`.
+- `PORT` is set to `8080`; Render routes to it and health-checks `/_composery/healthz`.
 - Back up the disk before major image upgrades.

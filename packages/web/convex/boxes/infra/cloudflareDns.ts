@@ -41,9 +41,16 @@ async function cloudflareRequest<T>(path: string, init?: RequestInit) {
 		}
 	});
 	const text = await response.text();
-	const body = text
-		? (JSON.parse(text) as CloudflareResponse<T>)
-		: ({ success: response.ok } as CloudflareResponse<T>);
+	let body: CloudflareResponse<T>;
+	try {
+		body = text
+			? (JSON.parse(text) as CloudflareResponse<T>)
+			: ({ success: response.ok } as CloudflareResponse<T>);
+	} catch {
+		// Gateways can answer with non-JSON (HTML error pages); keep the status
+		// instead of surfacing a bare SyntaxError.
+		body = { success: response.ok };
+	}
 
 	if (!response.ok || body.success === false) {
 		throw new CloudflareApiError(

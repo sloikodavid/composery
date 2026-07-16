@@ -13,8 +13,8 @@ import "./globals.css";
 export const metadata: Metadata = {
 	metadataBase: new URL(siteUrl),
 	title: {
-		default: "Composery - like VS Code, but always on",
-		template: "%s | Composery"
+		default: "Composery: like VS Code, but always on",
+		template: "%s - Composery"
 	},
 	description: appDescription,
 	alternates: { canonical: "./" },

@@ -1,4 +1,5 @@
 .auth-form {
+	animation: auth-page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 	display: grid;
 	justify-items: center;
 	width: min(100%, 420px);
@@ -7,11 +8,17 @@
 .auth-logo-link {
 	display: block;
 	margin: 0 auto 14px;
+	transition:
+		opacity 120ms ease,
+		transform 120ms ease;
 }
 
 .auth-logo-link:hover {
 	opacity: 0.8;
-	transition: opacity 0.1s;
+}
+
+.auth-logo-link:active {
+	transform: scale(0.98);
 }
 
 .auth-logo {
@@ -97,15 +104,71 @@
 	min-height: 50px;
 	padding: 0 18px;
 	text-align: center;
+	transition:
+		background-color 120ms ease,
+		border-color 120ms ease,
+		opacity 120ms ease,
+		transform 80ms ease;
 	width: 100%;
 }
 
-.submit-button:hover {
+.submit-button:hover:not(:disabled) {
 	background: var(--vscode-button-hoverBackground);
+}
+
+.submit-button:disabled {
+	cursor: default;
+	opacity: 0.55;
+}
+
+.submit-button.secondary {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.submit-button.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.submit-button.warning {
+	background: var(
+		--vscode-inputValidation-warningBackground,
+		var(--vscode-button-background)
+	);
+	border-color: var(--vscode-inputValidation-warningBorder, transparent);
+	color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+}
+
+.submit-button.destructive {
+	background: var(
+		--vscode-inputValidation-errorBackground,
+		var(--vscode-button-background)
+	);
+	border-color: var(--vscode-inputValidation-errorBorder, transparent);
+	color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
 }
 
 .submit-button:active {
 	transform: translateY(1px);
+}
+
+.auth-link {
+	color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+	font-size: 12px;
+	margin-top: 14px;
+	text-align: center;
+	text-decoration: none;
+}
+
+.auth-link:hover,
+.auth-link:focus {
+	color: var(--vscode-foreground);
+	text-decoration: underline;
+}
+
+.auth-link:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
 }
 
 .submit-button:focus {
@@ -118,6 +181,26 @@
 	flex: none;
 	height: 18px;
 	width: 18px;
+}
+
+.password-status {
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	line-height: 18px;
+	min-height: 18px;
+	text-align: center;
+}
+
+.password-status.success {
+	color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+}
+
+.password-status.warning {
+	color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+.password-status.destructive {
+	color: var(--vscode-list-errorForeground, var(--vscode-editorError-foreground));
 }
 
 .auth-message {
@@ -133,12 +216,46 @@
 }
 
 .auth-message > .error {
+	animation: auth-message-enter 160ms ease-out both;
 	color: var(--vscode-errorForeground);
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
 	justify-content: center;
 	width: 100%;
+}
+
+@keyframes auth-page-enter {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes auth-message-enter {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.auth-form,
+	.auth-message > .error {
+		animation: none;
+	}
+
+	.auth-logo-link,
+	.monaco-inputbox,
+	.submit-button {
+		transition: none;
+	}
 }
 
 .auth-message > .error::before {
@@ -155,7 +272,11 @@
 }
 
 .username {
-	display: none;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+	position: absolute;
+	width: 1px;
 }
 
 .sr-only {

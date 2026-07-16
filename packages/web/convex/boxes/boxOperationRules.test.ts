@@ -25,7 +25,8 @@ describe("OPERATION_ALLOWED_STATUSES", () => {
 				"suspend",
 				"unsuspend",
 				"restore",
-				"snapshot"
+				"snapshot",
+				"recover"
 			].sort()
 		);
 	});
@@ -87,6 +88,15 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 		expect(isOperationAllowed("provisioning", "provision")).toBe(true);
 		expect(isOperationAllowed("provisioning_failed", "provision")).toBe(true);
 		expect(isOperationAllowed("running", "provision")).toBe(false);
+	});
+
+	it("allows recovery from usable and failed boxes, but not suspended boxes", () => {
+		expect(isOperationAllowed("running", "recover")).toBe(true);
+		expect(isOperationAllowed("stopped", "recover")).toBe(true);
+		expect(isOperationAllowed("provisioning_failed", "recover")).toBe(true);
+		expect(isOperationAllowed("reset_failed", "recover")).toBe(true);
+		expect(isOperationAllowed("restore_failed", "recover")).toBe(true);
+		expect(isOperationAllowed("suspended", "recover")).toBe(false);
 	});
 
 	it("allows deleting from every live state except deleting/deleted", () => {

@@ -1,0 +1,42 @@
+Composery server endpoints: the automation API (/_composery/api/v1/..., API-key auth, in-process on the single port) and the unauthenticated /_composery identification probe the mobile app uses to validate a URL before embedding it.
+
+diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -27,6 +27,7 @@
+ import * as cloudAuthRoute from "./cloudAuth"
+ import * as pathProxy from "./pathProxy"
+ import * as update from "./update"
++import * as api from "./api"
+ import * as vscode from "./vscode"
+ 
+ /**
+@@ -111,6 +112,13 @@
+     res.send(await fs.readFile(resourcePath))
+   })
+ 
++  // Unauthenticated identification endpoint for the mobile app. Probed before
++  // loading the WebView so a non-Composery URL (e.g. youtube.com) is rejected
++  // with an error screen instead of a blank embed.
++  app.router.get("/_composery", (_, res) => {
++    res.json({ composery: true })
++  })
++
+   app.router.use("/", domainProxy.router)
+   app.wsRouter.use("/", domainProxy.wsRouter.router)
+ 
+@@ -211,6 +219,14 @@
+ 
+   app.router.use("/update", update.router)
+ 
++  // The Composery automation API (/_composery/api/v1/...). API-key auth, served
++  // in-process on the single port. Mounted before the VS Code catch-all so it is
++  // not swallowed; gated by the persistence-readiness middleware above.
++  app.router.use(api.router)
++  if (api.enabled) {
++    app.wsRouter.use(api.wsRouter.router)
++  }
++
+   // For historic reasons we also load at /vscode because the root was replaced
+   // by a plugin in v1 of Coder.  The plugin system (which was for internal use
+   // only) has been removed, but leave the additional route for now.

@@ -2,6 +2,9 @@
 # runtime share this one ARG; bump both together when the IDE moves Node major.
 ARG NODE_IMAGE=node:24.18.0-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
 
+# Keep the exact Caddy release aligned with the outer-edge Compose recipes.
+FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS caddy-bin
+
 # Build the IDE from the in-repo hard fork.
 FROM ${NODE_IMAGE} AS ide-base
 
@@ -163,6 +166,7 @@ RUN groupmod --new-name user node \
 
 COPY --from=ide-builder /src/packages/ide/build/release /opt/composery/ide/current
 COPY --from=cli-builder /out/composery /opt/composery/bin/composery
+COPY --from=caddy-bin /usr/bin/caddy /usr/local/bin/caddy
 COPY rootfs/ /
 
 # Show only the working dir in the prompt, not user@host. The stock skel ~/.bashrc
@@ -189,8 +193,9 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && chmod +x /usr/local/bin/xclip /usr/local/bin/xsel /usr/local/bin/wl-paste /usr/local/bin/wl-copy \
   && rm -f /etc/systemd/system/multi-user.target.wants/supervisor.service \
   && ln -sf /dev/null /etc/systemd/system/systemd-modules-load.service \
-  && ln -sf ../persistence.service /etc/systemd/system/multi-user.target.wants/persistence.service \
-  && ln -sf ../composery.service /etc/systemd/system/multi-user.target.wants/composery.service \
+  && ln -sf /usr/lib/systemd/system/persistence.service /etc/systemd/system/multi-user.target.wants/persistence.service \
+  && ln -sf /usr/lib/systemd/system/ide.service /etc/systemd/system/multi-user.target.wants/ide.service \
+  && ln -sf /usr/lib/systemd/system/caddy.service /etc/systemd/system/multi-user.target.wants/caddy.service \
   && ln -sf /opt/composery/ide/current/lib/vscode/bin/remote-cli/ide /usr/local/bin/code \
   && ln -sf /opt/composery/ide/current/bin/ide /usr/local/bin/ide \
   && ln -sf /opt/composery/bin/composery /usr/local/bin/composery \
@@ -220,8 +225,8 @@ ENV COMPOSERY_BUILD_VERSION="${COMPOSERY_BUILD_VERSION}" \
 # drops to the unprivileged `user` for the IDE. Root is intentional.
 EXPOSE 8080
 
-# Liveness against the IDE's auth-exempt /healthz; PORT comes from the container env.
+# Liveness through the internal ingress to the IDE's reserved health route.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD curl -fsS "http://localhost:${PORT:-8080}/healthz" > /dev/null || exit 1
+  CMD curl -fsS "http://localhost:${PORT:-8080}/_composery/healthz" > /dev/null || exit 1
 
 ENTRYPOINT ["/opt/composery/entrypoint.sh"]

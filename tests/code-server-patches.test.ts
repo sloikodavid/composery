@@ -130,6 +130,53 @@ describe("QR action", () => {
 	});
 });
 
+describe("cloud password setup", () => {
+	test("keeps self-hosted registration and gates cloud registration", () => {
+		const authPatch = readRepoFile(`${PATCHES_DIR}/auth.diff`);
+		const register = readRepoFile(
+			"packages/ide/overlay/src/node/routes/register.ts"
+		);
+
+		expect(authPatch).toContain(
+			'app.router.use("/_composery/cloud", cloudAuthRoute.router)'
+		);
+		expect(authPatch).toContain(
+			'cloudConfig ? "_composery/cloud/authorize" : "register"'
+		);
+		expect(register).toContain("cloudConfig && hasCloudSetupGrant(req)");
+		expect(register).toContain("await installCloudPassword");
+	});
+
+	test("binds the cloud callback with PKCE and restricted cookies", () => {
+		const cloudAuth = readRepoFile(
+			"packages/ide/overlay/src/node/routes/cloudAuth.ts"
+		);
+
+		expect(cloudAuth).toContain('createHash("sha256")');
+		expect(cloudAuth).toContain('searchParams.set("code_challenge"');
+		expect(cloudAuth).toContain('searchParams.set("state"');
+		expect(cloudAuth).toContain("httpOnly: true");
+		expect(cloudAuth).toContain("secure: true");
+		expect(cloudAuth).toContain('sameSite: "lax"');
+		expect(cloudAuth).toContain("/api/cloud/auth/exchange");
+	});
+
+	test("renders authorization failures through the shared auth error slot", () => {
+		const cloudAuth = readRepoFile(
+			"packages/ide/overlay/src/node/routes/cloudAuth.ts"
+		);
+		const fields = readRepoFile(
+			"packages/ide/overlay/src/browser/pages/cloud-error-fields.html"
+		);
+
+		expect(cloudAuth).toContain(
+			'error: "Cloud authorization could not finish."'
+		);
+		expect(fields).not.toContain("auth-message");
+		expect(fields).toContain('class="submit-button"');
+	});
+});
+
 // ---------------------------------------------------------------------------
 // narrow.js keyboard-inset behavior, executed in a browser-shaped VM.
 // ---------------------------------------------------------------------------
@@ -603,14 +650,15 @@ describe("narrow overlay", () => {
 			let target = "";
 			for (const line of readRepoFile(`${PATCHES_DIR}/${name}`).split("\n")) {
 				const file = /^\+\+\+ b\/(.+)$/.exec(line);
-				if (file) target = file[1];
+				if (file?.[1]) target = file[1];
 
 				const imported = /^\+import .* from '(\S*touchGate\.js)';$/.exec(line);
-				if (!imported) continue;
+				const importPath = imported?.[1];
+				if (!importPath) continue;
 
 				imports++;
 				expect(
-					posix.join(posix.dirname(target), imported[1]),
+					posix.join(posix.dirname(target), importPath),
 					`${name} imports touchGate from ${target}`
 				).toBe(gateFile.replace(/\.ts$/, ".js"));
 			}
@@ -651,6 +699,32 @@ describe("mobile viewport contract", () => {
 		expect(overlaysPatch).toContain(
 			"lib/vscode/src/vs/code/browser/workbench/workbench-dev.html"
 		);
+	});
+});
+
+describe("adaptive favicon", () => {
+	test.each([
+		"packages/ide/overlay/src/browser/pages/auth.html",
+		"packages/ide/overlay/src/browser/pages/error.html",
+		`${PATCHES_DIR}/overlays.diff`
+	])("%s ships only the adaptive SVG favicon", (path) => {
+		const raw = readRepoFile(path);
+		const content = path.endsWith(".diff") ? addedLines(raw) : raw;
+
+		expect(content).toContain("favicon.svg");
+		expect(content).not.toContain("favicon.ico");
+		expect(content).toContain('type="image/svg+xml"');
+		expect(content).not.toContain("alternate icon");
+	});
+
+	test("generated adaptive favicon uses an internal color-scheme media query", () => {
+		const favicon = readRepoFile(
+			"packages/ide/overlay/src/browser/media/favicon.svg"
+		);
+
+		expect(favicon).toContain("@media (prefers-color-scheme:dark)");
+		expect(favicon).toContain("currentColor");
+		expect(favicon).not.toContain('media="(prefers-color-scheme');
 	});
 });
 
@@ -875,7 +949,7 @@ function loadUpdatesExtension({
 	source?: string;
 	version?: string;
 }): {
-	activate(context: { subscriptions: unknown[] }): void;
+	activate: (context: { subscriptions: unknown[] }) => void;
 	harness: UpdatesHarness;
 } {
 	const extension = readRepoFile(
@@ -902,17 +976,19 @@ function loadUpdatesExtension({
 			}
 		},
 		env: {
-			async openExternal(uri: { toString(): string }) {
+			openExternal(uri: { toString(): string }) {
 				harness.opened.push(uri.toString());
+				return Promise.resolve(true);
 			}
 		},
 		window: {
-			async showInformationMessage(message: string) {
+			showInformationMessage(message: string) {
 				harness.messages.push(message);
-				return action;
+				return Promise.resolve(action);
 			},
-			async showWarningMessage(message: string) {
+			showWarningMessage(message: string) {
 				harness.messages.push(message);
+				return Promise.resolve(undefined);
 			}
 		}
 	};
@@ -923,14 +999,14 @@ function loadUpdatesExtension({
 	} = { exports: {} };
 	const context = vm.createContext({
 		AbortSignal: { timeout: () => ({}) },
-		fetch: async (url: string) => {
+		fetch: (url: string) => {
 			harness.fetchCalls.push(url);
-			return {
+			return Promise.resolve({
 				ok: release !== undefined,
-				async json() {
-					return release;
+				json() {
+					return Promise.resolve(release);
 				}
-			};
+			});
 		},
 		module: cjsModule,
 		process: {
@@ -949,7 +1025,7 @@ function loadUpdatesExtension({
 
 	expect(cjsModule.exports.activate).toBeDefined();
 	return {
-		activate: cjsModule.exports.activate!,
+		activate: (context) => cjsModule.exports.activate!(context),
 		harness
 	};
 }
@@ -980,9 +1056,20 @@ describe("composery updates", () => {
 		);
 		expect(extension).toContain('registerCommand("composery.checkForUpdates"');
 		expect(extension).not.toContain("createStatusBarItem");
-		const qrAction = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
-		expect(qrAction).toContain("id: 'composery.checkForUpdates'");
-		expect(qrAction).toContain("order: -2");
+		// updates.diff owns the whole update surface: the File-menu item firing
+		// the extension command, and the removal of code-server's own notifier
+		// (no second update mechanism may survive anywhere in the stack).
+		const updates = readRepoFile(`${PATCHES_DIR}/updates.diff`);
+		const updatesAdded = addedLines(updates);
+		expect(updatesAdded).toContain("id: 'composery.checkForUpdates'");
+		expect(updatesAdded).toContain("order: -2");
+		expect(updates).toContain("-\t\tif (this.productService.updateEndpoint) {");
+		expect(updatesAdded).not.toContain("updateEndpoint");
+		const qrAction = readRepoFile(`${PATCHES_DIR}/qr-action.diff`);
+		expect(qrAction).not.toContain("checkForUpdates");
+		expect(readRepoFile(`${PATCHES_DIR}/branding.diff`)).not.toContain(
+			"checkUpdates"
+		);
 	});
 
 	test("startup check announces a newer stable release and opens it", async () => {

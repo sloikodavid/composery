@@ -1,7 +1,10 @@
 "use client";
 
+import { useMutation } from "convex/react";
 import Link from "next/link";
+import { DismissButton } from "@/components/dismiss-button";
 import { OpenInConvex } from "@/components/open-in-convex";
+import { OpenInHetzner } from "@/components/open-in-hetzner";
 import { SortHeader } from "@/components/sort-header";
 import {
 	Table,
@@ -15,11 +18,18 @@ import {
 } from "@/components/table";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
+import { consoleBoxPath } from "@/lib/box-route";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useBusyAction } from "@/hooks/use-busy-action";
 
 export type FlagRow = {
 	autoSuspended: boolean;
+	boxId: Id<"boxes">;
 	createdAt: number;
-	id: string;
+	dismissedAt: number | null;
+	hetznerServerId: number | null;
+	id: Id<"box_flags">;
 	message: string;
 	signal: string;
 	slug: string;
@@ -43,18 +53,24 @@ const FLAG_SORT = {
 // Abuse threshold crossings as a standalone panel; `showBox` adds the box
 // column for the cross-box list on the console home.
 export function FlagsTable({
+	boxId,
 	flags,
 	showBox
 }: {
+	boxId?: Id<"boxes">;
 	flags?: FlagRow[];
 	showBox?: boolean;
 }) {
+	const dismissFlag = useMutation(api.staff.metrics.dismissFlag);
+	const dismissAllFlags = useMutation(api.staff.metrics.dismissAllFlags);
+	const { busy, run } = useBusyAction();
 	const { sort, sortedRows } = useTableSort(flags ?? [], FLAG_SORT);
 	const span = showBox ? 4 : 3;
+	const hasCurrentFlags = flags?.some((flag) => !flag.dismissedAt) ?? false;
 
 	return (
 		<div className="overflow-hidden rounded-2xl border border-border bg-card">
-			<Table className="table-fixed min-w-[37rem]">
+			<Table className="table-fixed min-w-[43rem]">
 				<TableHeader>
 					<TableRow>
 						<TableHead className="pl-4">
@@ -65,11 +81,24 @@ export function FlagsTable({
 								<SortHeader label="Box" sort={sort} sortKey="slug" />
 							</TableHead>
 						) : null}
-						<TableHead className="w-36">
+						<TableHead className="w-48">
 							<SortHeader label="Created" sort={sort} sortKey="createdAt" />
 						</TableHead>
-						<TableHead className="w-14 pr-2 text-right">
-							<OpenInConvex iconOnly table="box_flags" />
+						<TableHead className="w-64 pr-4 text-right">
+							<div className="flex items-center justify-end gap-1">
+								{hasCurrentFlags ? (
+									<DismissButton
+										disabled={busy !== null}
+										onClick={() =>
+											run("dismiss-all-flags", "Flags dismissed", () =>
+												dismissAllFlags({ boxId })
+											)
+										}
+									/>
+								) : null}
+								<OpenInHetzner iconOnly label="Open servers in Hetzner" />
+								<OpenInConvex iconOnly table="box_flags" />
+							</div>
 						</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -100,20 +129,41 @@ export function FlagsTable({
 										<Link
 											className="absolute inset-0 flex items-center px-2 text-foreground"
 											data-link
-											href={`/console/boxes/${flag.slug}`}
+											href={consoleBoxPath(flag.boxId)}
 										>
 											<span className="truncate">{flag.slug}</span>
 										</Link>
 									</TableCell>
 								) : null}
 								<TableCell>{formatDateTime(flag.createdAt)}</TableCell>
-								<TableCell className="pr-2 text-right">
-									<OpenInConvex
-										iconOnly
-										label={`Open ${flag.slug} flag in Convex`}
-										table="box_flags"
-										value={flag.id}
-									/>
+								<TableCell className="pr-4 text-right">
+									<div className="flex items-center justify-end gap-1">
+										{flag.dismissedAt ? (
+											<span className="text-xs text-muted-foreground">
+												Dismissed {formatDateTime(flag.dismissedAt)}
+											</span>
+										) : (
+											<DismissButton
+												disabled={busy !== null}
+												onClick={() =>
+													run(`dismiss-flag-${flag.id}`, "Flag dismissed", () =>
+														dismissFlag({ flagId: flag.id })
+													)
+												}
+											/>
+										)}
+										<OpenInHetzner
+											iconOnly
+											label={`Open ${flag.slug} server in Hetzner`}
+											serverId={flag.hetznerServerId}
+										/>
+										<OpenInConvex
+											iconOnly
+											label={`Open ${flag.slug} flag in Convex`}
+											table="box_flags"
+											value={flag.id}
+										/>
+									</div>
 								</TableCell>
 							</TableRow>
 						))}

@@ -5,6 +5,7 @@ import { internalAction } from "../../_generated/server";
 import {
 	SERVER_LOCATIONS,
 	SERVER_TYPES,
+	vSnapshotClass,
 	type ServerLocation,
 	type ServerType
 } from "../../schema";
@@ -171,9 +172,15 @@ async function hetznerRequest<T>(path: string, init?: RequestInit) {
 		}
 	});
 	const text = await response.text();
-	const body = text
-		? (JSON.parse(text) as T & { error?: { code?: string; message?: string } })
-		: ({} as T & { error?: { code?: string; message?: string } });
+	type ResponseBody = T & { error?: { code?: string; message?: string } };
+	let body: ResponseBody;
+	try {
+		body = text ? (JSON.parse(text) as ResponseBody) : ({} as ResponseBody);
+	} catch {
+		// Gateways can answer with non-JSON (HTML error pages); keep the status
+		// instead of surfacing a bare SyntaxError.
+		body = {} as ResponseBody;
+	}
 
 	if (!response.ok) {
 		if (body.error?.code === "resource_limit_exceeded") {
@@ -199,6 +206,13 @@ function isNotFound(error: unknown) {
 }
 
 export { isNotFound as isHetznerNotFound };
+
+function isInvalidInput(error: unknown) {
+	return (
+		error instanceof HetznerApiError &&
+		(error.status === 400 || error.status === 422)
+	);
+}
 
 function normalizeIpv6ForDns(ip: string) {
 	return ip.split("/")[0];
@@ -257,6 +271,13 @@ export function createServerPayload(
 			product: "composery-web",
 			box_slug: slug
 		}
+	};
+}
+
+export function rebuildServerPayload(image: number | string) {
+	return {
+		image,
+		user_data: renderCloudInitUserData()
 	};
 }
 
@@ -501,20 +522,16 @@ export const rebuildServer = internalAction({
 			throw new Error("Box has no Hetzner server to rebuild.");
 		}
 
-		// Rebuild from the base image re-runs cloud-init to re-inject the SSH key
-		// (Hetzner's rebuild action does not accept ssh_keys). Rebuild from a
-		// snapshot image restores the disk as captured, so no user_data is sent.
 		const image = args.image ?? requiredEnv("HETZNER_BOX_IMAGE");
-		const body: Record<string, unknown> = { image };
-		if (args.image === undefined) {
-			body.user_data = renderCloudInitUserData();
-		}
 
 		const response = await hetznerRequest<HetznerRebuildResponse>(
 			`/servers/${args.serverId}/actions/rebuild`,
 			{
 				method: "POST",
-				body: JSON.stringify(body)
+				// Always send the current key. Hetzner supports user_data on rebuilds,
+				// including snapshot restores; relying only on the key selected when the
+				// server was created would make credential rotation ineffective here.
+				body: JSON.stringify(rebuildServerPayload(image))
 			}
 		);
 
@@ -567,11 +584,21 @@ export function primaryIpMatchesAddress(
 	);
 }
 
-async function findPrimaryIpByAddress(ip: string) {
+export async function findPrimaryIpByAddress(ip: string) {
 	for (const address of primaryIpLookupAddresses(ip)) {
-		const response = await hetznerRequest<HetznerPrimaryIpsResponse>(
-			primaryIpListPath(address)
-		);
+		let response: HetznerPrimaryIpsResponse;
+		try {
+			response = await hetznerRequest<HetznerPrimaryIpsResponse>(
+				primaryIpListPath(address)
+			);
+		} catch (error) {
+			// Hetzner rejects some lookup forms with "invalid input in field 'ip'"
+			// (seen with the `<address>/64` IPv6 form). A value the API cannot
+			// parse cannot name an existing Primary IP, so skip it - throwing here
+			// wedged box deletion permanently, retried by every hourly sweep.
+			if (isInvalidInput(error)) continue;
+			throw error;
+		}
 		const primaryIp = (response.primary_ips ?? []).find((candidate) =>
 			primaryIpMatchesAddress(candidate, ip)
 		);
@@ -703,6 +730,31 @@ export const powerOnServer = internalAction({
 	}
 });
 
+export const rebootServer = internalAction({
+	args: {
+		serverId: v.number()
+	},
+	handler: async (_ctx, args) => {
+		if ((await serverStatus(args.serverId)) === "off") {
+			const response = await hetznerRequest<HetznerActionResponse>(
+				`/servers/${args.serverId}/actions/poweron`,
+				{ method: "POST" }
+			);
+			if (!response.action)
+				throw new Error("Hetzner did not return an action.");
+			await waitForActionSuccess(response.action.id);
+			return;
+		}
+
+		const response = await hetznerRequest<HetznerActionResponse>(
+			`/servers/${args.serverId}/actions/reboot`,
+			{ method: "POST" }
+		);
+		if (!response.action) throw new Error("Hetzner did not return an action.");
+		await waitForActionSuccess(response.action.id);
+	}
+});
+
 export function snapshotImageListPath(slug: string) {
 	const params = new URLSearchParams({
 		type: "snapshot",
@@ -763,7 +815,7 @@ export const createSnapshotImage = internalAction({
 	args: {
 		serverId: v.optional(v.number()),
 		slug: v.string(),
-		description: v.string()
+		snapshotClass: vSnapshotClass
 	},
 	returns: v.object({
 		actionId: v.number(),
@@ -774,13 +826,14 @@ export const createSnapshotImage = internalAction({
 			throw new Error("Box has no Hetzner server to snapshot.");
 		}
 
+		// The timestamped description is built here rather than in the workflow
+		// handler, which must stay deterministic across replays.
+		const description = `composery-web ${args.slug} ${args.snapshotClass} ${new Date().toISOString()}`;
 		const response = await hetznerRequest<HetznerCreateImageResponse>(
 			`/servers/${args.serverId}/actions/create_image`,
 			{
 				method: "POST",
-				body: JSON.stringify(
-					createSnapshotImagePayload(args.slug, args.description)
-				)
+				body: JSON.stringify(createSnapshotImagePayload(args.slug, description))
 			}
 		);
 

@@ -1,7 +1,15 @@
 import { ConvexError, v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { components, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { action, mutation, query, type QueryCtx } from "../_generated/server";
+import {
+	action,
+	internalMutation,
+	mutation,
+	query,
+	type MutationCtx,
+	type QueryCtx
+} from "../_generated/server";
 import {
 	getUserByClerkId,
 	publicUser,
@@ -9,9 +17,14 @@ import {
 	requireStaffInAction
 } from "../authorization";
 import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
+import {
+	vRecoveryStatus,
+	vRecoveryType,
+	type RecoveryStatus,
+	type RecoveryType
+} from "../boxes/boxRecoveryTypes";
 import { startBoxOperation, startBoxSuspension } from "../boxes/boxOperations";
-import { hashBoxPassword } from "../boxes/boxPassword";
-import { findBoxBySlug, latestSuspensionReason } from "../boxes/boxQueries";
+import { currentSuspensionReason } from "../boxes/boxQueries";
 import { staffBox } from "../boxes/boxViews";
 import {
 	markSnapshotDeleting,
@@ -22,9 +35,9 @@ import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
 const STAFF_BOX_LIST_LIMIT = 50;
 const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
-const STAFF_BOX_DETAIL_HISTORY_LIMIT = 100;
 const STAFF_FAILURE_FEED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const STAFF_FAILURE_FEED_LIMIT = 25;
+const STAFF_FAILURE_DISMISS_BATCH = 100;
 
 async function usersByClerkIds(ctx: QueryCtx, clerkUserIds: Iterable<string>) {
 	const users = new Map<string, Doc<"users">>();
@@ -41,6 +54,7 @@ function boxMatchesSearch(
 	term: string
 ) {
 	return (
+		box._id.toLowerCase().includes(term) ||
 		box.slug.includes(term) ||
 		box.user_id.toLowerCase().includes(term) ||
 		(user?.email ?? "").toLowerCase().includes(term) ||
@@ -76,9 +90,16 @@ export const searchBoxes = query({
 		for (const box of recentBoxes) addBoxCandidate(candidates, box);
 
 		if (term) {
+			const boxId = ctx.db.normalizeId("boxes", rawTerm);
+			if (boxId) addBoxCandidate(candidates, await ctx.db.get(boxId));
+
 			const slug = sanitizeSlug(rawTerm);
 			if (isValidSlug(slug)) {
-				addBoxCandidate(candidates, await findBoxBySlug(ctx, slug));
+				const slugBoxes = await ctx.db
+					.query("boxes")
+					.withIndex("slug", (query) => query.eq("slug", slug))
+					.collect();
+				for (const box of slugBoxes) addBoxCandidate(candidates, box);
 			}
 
 			addBoxCandidate(
@@ -137,8 +158,11 @@ export const recentFailedOperations = query({
 		const since = Date.now() - STAFF_FAILURE_FEED_WINDOW_MS;
 		const operations = await ctx.db
 			.query("box_operations")
-			.withIndex("status_created_at", (builder) =>
-				builder.eq("status", "failed").gte("created_at", since)
+			.withIndex("status_dismissed_created_at", (builder) =>
+				builder
+					.eq("status", "failed")
+					.eq("dismissed_at", undefined)
+					.gte("created_at", since)
 			)
 			.order("desc")
 			.take(STAFF_FAILURE_FEED_LIMIT);
@@ -146,10 +170,12 @@ export const recentFailedOperations = query({
 		const failures = [];
 		for (const operation of operations) {
 			const box = await ctx.db.get(operation.box_id);
+			if (!box) continue;
 			failures.push({
 				id: operation._id,
+				boxId: box._id,
 				type: operation.type,
-				slug: box?.slug ?? null,
+				slug: box.slug,
 				lastError: operation.last_error ?? null,
 				createdAt: operation.created_at
 			});
@@ -158,28 +184,97 @@ export const recentFailedOperations = query({
 	}
 });
 
+export const dismissFailedOperation = mutation({
+	args: {
+		operationId: v.id("box_operations")
+	},
+	handler: async (ctx, args) => {
+		const staffUser = await requireStaff(ctx);
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation || operation.status !== "failed" || operation.dismissed_at) {
+			return;
+		}
+
+		await ctx.db.patch(operation._id, {
+			dismissed_at: Date.now(),
+			dismissed_by: staffUser.clerk_user_id
+		});
+	}
+});
+
+async function dismissFailedOperationBatch(
+	ctx: MutationCtx,
+	dismissedBy: string,
+	since: number
+) {
+	const operations = await ctx.db
+		.query("box_operations")
+		.withIndex("status_dismissed_created_at", (query) =>
+			query
+				.eq("status", "failed")
+				.eq("dismissed_at", undefined)
+				.gte("created_at", since)
+		)
+		.take(STAFF_FAILURE_DISMISS_BATCH);
+	const timestamp = Date.now();
+	for (const operation of operations) {
+		await ctx.db.patch(operation._id, {
+			dismissed_at: timestamp,
+			dismissed_by: dismissedBy
+		});
+	}
+	return operations.length === STAFF_FAILURE_DISMISS_BATCH;
+}
+
+export const dismissAllFailedOperations = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const staffUser = await requireStaff(ctx);
+		const since = Date.now() - STAFF_FAILURE_FEED_WINDOW_MS;
+		const hasMore = await dismissFailedOperationBatch(
+			ctx,
+			staffUser.clerk_user_id,
+			since
+		);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.staff.boxes.dismissAllFailedOperationsBatch,
+				{ dismissedBy: staffUser.clerk_user_id, since }
+			);
+		}
+	}
+});
+
+export const dismissAllFailedOperationsBatch = internalMutation({
+	args: { dismissedBy: v.string(), since: v.number() },
+	handler: async (ctx, args) => {
+		const hasMore = await dismissFailedOperationBatch(
+			ctx,
+			args.dismissedBy,
+			args.since
+		);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.staff.boxes.dismissAllFailedOperationsBatch,
+				args
+			);
+		}
+	}
+});
+
 export const boxDetail = query({
 	args: {
-		slug: v.string()
+		boxId: v.string()
 	},
 	handler: async (ctx, args) => {
 		await requireStaff(ctx);
-		const box = await findBoxBySlug(ctx, args.slug);
+		const boxId = ctx.db.normalizeId("boxes", args.boxId);
+		const box = boxId ? await ctx.db.get(boxId) : null;
 		if (!box) return null;
 
 		const user = await getUserByClerkId(ctx, box.user_id);
-		const operations = await ctx.db
-			.query("box_operations")
-			.withIndex("box_id", (builder) => builder.eq("box_id", box._id))
-			.order("desc")
-			.take(STAFF_BOX_DETAIL_HISTORY_LIMIT);
-		const events = await ctx.db
-			.query("box_events")
-			.withIndex("box_id_created_at", (builder) =>
-				builder.eq("box_id", box._id)
-			)
-			.order("desc")
-			.take(STAFF_BOX_DETAIL_HISTORY_LIMIT);
 		const subscription = await ctx.runQuery(
 			components.polar.lib.getSubscription,
 			{
@@ -187,19 +282,44 @@ export const boxDetail = query({
 			}
 		);
 
-		const suspendedReason =
-			box.status === "suspended" || box.status === "suspending"
-				? await latestSuspensionReason(ctx, box._id)
-				: null;
+		const suspendedReason = await currentSuspensionReason(ctx, box);
 
 		return {
 			box: staffBox(box, user),
 			user: user ? publicUser(user) : null,
-			operations,
-			events,
 			subscription,
 			suspendedReason
 		};
+	}
+});
+
+export const auditOperations = query({
+	args: {
+		boxId: v.id("boxes"),
+		paginationOpts: paginationOptsValidator
+	},
+	handler: async (ctx, args) => {
+		await requireStaff(ctx);
+		return await ctx.db
+			.query("box_operations")
+			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.order("desc")
+			.paginate(args.paginationOpts);
+	}
+});
+
+export const auditEvents = query({
+	args: {
+		boxId: v.id("boxes"),
+		paginationOpts: paginationOptsValidator
+	},
+	handler: async (ctx, args) => {
+		await requireStaff(ctx);
+		return await ctx.db
+			.query("box_events")
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
+			.order("desc")
+			.paginate(args.paginationOpts);
 	}
 });
 
@@ -270,32 +390,9 @@ export const startBox = mutation({
 	}
 });
 
-export const changeBoxPassword = action({
-	args: {
-		boxId: v.id("boxes"),
-		password: v.string()
-	},
-	handler: async (ctx, args) => {
-		await requireStaffInAction(ctx);
-
-		const runtimeAuthHash = await hashBoxPassword(args.password);
-		const operationId = await startBoxOperation(
-			ctx,
-			args.boxId,
-			"change_password",
-			{
-				idempotencyKey: `staff-change-password:${args.boxId}`,
-				workflowArgs: { runtimeAuthHash }
-			}
-		);
-		if (!operationId)
-			throw new ConvexError("Password change is already in progress.");
-	}
-});
-
 export const runtimeLogs = action({
 	args: {
-		slug: v.string()
+		boxId: v.id("boxes")
 	},
 	returns: v.object({
 		logs: v.union(v.string(), v.null())
@@ -303,13 +400,68 @@ export const runtimeLogs = action({
 	handler: async (ctx, args): Promise<{ logs: string | null }> => {
 		await requireStaffInAction(ctx);
 
-		const box = await ctx.runQuery(internal.boxes.boxQueries.boxBySlug, {
-			slug: sanitizeSlug(args.slug)
-		});
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
 		if (!box) throw new ConvexError("Box not found.");
 		if (box.status !== "running") return { logs: null };
 
 		return await fetchRuntimeLogsSafely(ctx, box._id);
+	}
+});
+
+export const runtimeHealth = action({
+	args: {
+		boxId: v.id("boxes")
+	},
+	returns: v.object({
+		reachable: v.boolean()
+	}),
+	handler: async (ctx, args): Promise<{ reachable: boolean }> => {
+		await requireStaffInAction(ctx);
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		if (!box) throw new ConvexError("Box not found.");
+
+		return await ctx.runAction(internal.boxes.boxHealth.probeRuntime, {
+			boxId: box._id
+		});
+	}
+});
+
+export const recoveryStatus = action({
+	args: { boxId: v.id("boxes") },
+	returns: vRecoveryStatus,
+	handler: async (ctx, args): Promise<RecoveryStatus> => {
+		await requireStaffInAction(ctx);
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		if (!box) throw new ConvexError("Box not found.");
+		return await ctx.runAction(internal.boxes.boxRecovery.status, {
+			boxId: box._id
+		});
+	}
+});
+
+export const recover = action({
+	args: { boxId: v.id("boxes"), type: vRecoveryType },
+	handler: async (ctx, args): Promise<void> => {
+		await requireStaffInAction(ctx);
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		if (!box) throw new ConvexError("Box not found.");
+		await startBoxOperation(ctx, box._id, "recover", {
+			idempotencyKey: `staff-recover:${box._id}:${args.type}`,
+			metadata: { type: args.type },
+			workflowArgs: { type: args.type as RecoveryType }
+		});
 	}
 });
 

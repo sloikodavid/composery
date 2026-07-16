@@ -18,7 +18,7 @@ on hosts that allow privileged containers and host cgroups.
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COMPOSERY_PASSWORD`                                     | Sets a plaintext IDE password and skips first-visit registration.                                                                             |
 | `COMPOSERY_HASHED_PASSWORD`                              | Sets an argon2 hashed password and takes precedence over `COMPOSERY_PASSWORD`. Single-quote values containing `$` in `composery.env`.         |
-| `PORT`                                                   | Changes the IDE listen port. Also update Caddy, `expose`, health checks, or platform routing if you change it from `8080`.                    |
+| `PORT`                                                   | Changes the container's HTTP port (default `8080`). Also update `expose`, health checks, or platform routing when you change it.              |
 | `COMPOSERY_PROXY_URI`                                    | Controls links in the Ports panel, e.g. `https://{{port}}.dev.example.com`. The default path proxy works without setting this.                |
 | `COMPOSERY_DISABLE_FILE_DOWNLOADS`                       | Set to `1` or `true` to block browser file downloads.                                                                                         |
 | `COMPOSERY_DISABLE_FILE_UPLOADS`                         | Set to `1` or `true` to block browser file uploads.                                                                                           |
@@ -28,7 +28,6 @@ on hosts that allow privileged containers and host cgroups.
 | `COMPOSERY_GITHUB_TOKEN`                                 | Supplies the IDE's GitHub auth token. Treat it as a secret; the IDE removes it from the child-process environment at start.                   |
 | `COMPOSERY_CONFIG`                                       | Overrides the IDE YAML config path.                                                                                                           |
 | `COMPOSERY_DOCKER_VOLUME_PATH`                           | Overrides the persistent volume root (default `/data`). If you change it, the volume mount target in your compose/platform config must match. |
-| `COMPOSERY_HOST`                                         | Overrides the bind host. Avoid setting this unless you understand the container networking impact.                                            |
 | `COMPOSERY_COOKIE_SUFFIX`                                | Adds a cookie suffix, useful when sharing a parent domain across multiple Composery instances.                                                |
 | `COMPOSERY_RECONNECTION_GRACE_TIME`                      | Overrides reconnection grace time in seconds.                                                                                                 |
 | `COMPOSERY_IDLE_TIMEOUT_SECONDS`                         | Asks the IDE to exit after an idle period. Supervisor restarts it, so use with care.                                                          |
@@ -43,16 +42,16 @@ practice until you mint a key with `composery api key create`; with no keys, eve
 endpoint returns 401. The key store lives at `<volume>/api/keys.json`, on the persistent
 volume shared with persistence (`/data` by default; see `COMPOSERY_DOCKER_VOLUME_PATH`).
 
-| Variable                            | Default    | Use                                                                                 |
-| ----------------------------------- | ---------- | ----------------------------------------------------------------------------------- |
-| `COMPOSERY_API_ENABLED`             | `true`     | `false` disables the API entirely (every endpoint returns 404).                     |
-| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | Default timeout in seconds for one-shot `POST /v1/exec`. The websocket is unbound.  |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | Combined stdout/stderr byte cap on one-shot exec output before truncation (10 MiB). |
-| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.                                                  |
-| `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                              |
-| `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                     |
-| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent interactive sessions per key.                                            |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                           |
+| Variable                            | Default    | Use                                                                                               |
+| ----------------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `COMPOSERY_API_ENABLED`             | `true`     | `false` disables the API entirely (every endpoint returns 404).                                   |
+| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | Default timeout in seconds for one-shot `POST /_composery/api/v1/exec`. The websocket is unbound. |
+| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | Combined stdout/stderr byte cap on one-shot exec output before truncation (10 MiB).               |
+| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.                                                                |
+| `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                                            |
+| `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                                   |
+| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent interactive sessions per key.                                                          |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                                         |
 
 Invalid numeric values fall back to the defaults. Extreme numeric values are
 clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,
@@ -61,3 +60,33 @@ failed-auth attempts/min/IP.
 
 Rate limits are abuse rails, not DDoS defense - that is handled by the platform in front
 of the instance.
+
+## HTTP routes
+
+The container includes Caddy as its single HTTP entrypoint. `/etc/caddy/Caddyfile` is its
+complete, persistent configuration; it is not a generated file or a Composery-specific
+fragment. The initial configuration keeps Composery's `/_composery` routes ahead of user
+application routes and sends everything else to the IDE.
+
+Add an application handler above the final IDE handler:
+
+```text
+handle /hooks/linear* {
+	reverse_proxy 127.0.0.1:3000
+}
+```
+
+Use Caddy's standard commands to check and apply changes in either runtime profile:
+
+```sh
+caddy validate --config /etc/caddy/Caddyfile
+caddy reload --config /etc/caddy/Caddyfile
+```
+
+An invalid reload leaves the running configuration in place. An invalid configuration
+at cold start prevents Caddy from starting, just as it would on a VPS. Composery never
+replaces the file automatically.
+
+This internal Caddy does not require Caddy at the outer edge. A VPS, ingress controller,
+load balancer, tunnel, or another reverse proxy can publish port `8080` directly. The
+Compose recipes that include a second Caddy use it only for public TLS and domains.

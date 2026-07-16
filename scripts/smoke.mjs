@@ -144,7 +144,7 @@ async function assertSystemdEnvBridge() {
 	runSystemdContainer();
 
 	await waitForExec('test "$(cat /proc/1/comm)" = systemd');
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 
 	await waitForContainerFile("/run/composery.env");
 	execSh("grep -q '^COMPOSERY_PASSWORD=' /run/composery.env");
@@ -155,7 +155,7 @@ async function assertSystemdEnvBridge() {
 	const rootPage = await fetchAuthedText("/", cookies);
 	assertContains("systemd root page", rootPage, "Composery");
 
-	execSh("systemctl is-active composery");
+	execSh("systemctl is-active ide");
 
 	execSh("systemctl is-active cron");
 	execSh("test -d /run/user/1000");
@@ -163,18 +163,18 @@ async function assertSystemdEnvBridge() {
 
 async function assertWebAppSmoke() {
 	log("checking web app startup, auth, and Composery");
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.health);
 
-	const probe = await request("/__composery");
+	const probe = await request("/_composery");
 	if (probe.statusCode !== 200) {
 		throw new Error(
-			`Expected /__composery to return 200, got ${probe.statusCode}.`
+			`Expected /_composery to return 200, got ${probe.statusCode}.`
 		);
 	}
 	const probeJson = JSON.parse(probe.body);
 	if (probeJson.composery !== true) {
 		throw new Error(
-			`Expected /__composery to return {"composery":true}, got ${probe.body}.`
+			`Expected /_composery to return {"composery":true}, got ${probe.body}.`
 		);
 	}
 
@@ -269,19 +269,23 @@ async function assertIdeGatesWhenPersistenceNotReady(cookies) {
 
 		// Readiness gate caches state ~1s, so poll for the 503 instead of racing a still-warm cache.
 		const health = await retry(
-			"/healthz reports persistence not ready",
+			"/_composery/healthz reports persistence not ready",
 			15,
 			async () => {
-				const response = await request("/healthz", { cookies });
+				const response = await request("/_composery/healthz", { cookies });
 				if (response.statusCode !== 503) {
-					throw new Error(`/healthz still HTTP ${response.statusCode}`);
+					throw new Error(
+						`/_composery/healthz still HTTP ${response.statusCode}`
+					);
 				}
 				return response;
 			}
 		);
 		const healthJson = JSON.parse(health.body);
 		if (healthJson.persistence?.ready !== false) {
-			throw new Error("Expected /healthz to report persistence.ready=false.");
+			throw new Error(
+				"Expected /_composery/healthz to report persistence.ready=false."
+			);
 		}
 
 		const startup = await request("/", {
@@ -303,7 +307,9 @@ async function assertIdeGatesWhenPersistenceNotReady(cookies) {
 		});
 	}
 
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.health, { cookies });
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.health, {
+		cookies
+	});
 	await assertWebsocketUpgrade(cookies);
 }
 
@@ -324,7 +330,7 @@ async function assertApiSmoke() {
 	}
 	const key = created.secret;
 
-	const unauthorized = await request("/v1/exec", {
+	const unauthorized = await request("/_composery/api/v1/exec", {
 		body: JSON.stringify({ command: "echo nope" }),
 		headers: { "content-type": "application/json" },
 		method: "POST"
@@ -336,7 +342,7 @@ async function assertApiSmoke() {
 	}
 
 	const marker = `composery-api-smoke-${RUN_ID}`;
-	const execResponse = await request("/v1/exec", {
+	const execResponse = await request("/_composery/api/v1/exec", {
 		body: JSON.stringify({ command: `echo ${marker}` }),
 		headers: {
 			authorization: `Bearer ${key}`,
@@ -346,7 +352,7 @@ async function assertApiSmoke() {
 	});
 	if (execResponse.statusCode !== 200) {
 		throw new Error(
-			`Expected 200 from /v1/exec, got ${execResponse.statusCode}.`
+			`Expected 200 from /_composery/api/v1/exec, got ${execResponse.statusCode}.`
 		);
 	}
 	const result = JSON.parse(execResponse.body);
@@ -355,7 +361,7 @@ async function assertApiSmoke() {
 		throw new Error(`Expected exit_code 0, got ${result.exit_code}.`);
 	}
 
-	const viaApiKeyHeader = await request("/v1/exec", {
+	const viaApiKeyHeader = await request("/_composery/api/v1/exec", {
 		body: JSON.stringify({ command: "true" }),
 		headers: { "content-type": "application/json", "x-api-key": key },
 		method: "POST"
@@ -385,7 +391,7 @@ async function assertApiSmoke() {
 	});
 	const deleted = await apiRequest(
 		"DELETE",
-		`/v1/sessions/${sessionName}`,
+		`/_composery/api/v1/sessions/${sessionName}`,
 		key
 	);
 	if (deleted.statusCode !== 200 || JSON.parse(deleted.body).killed !== true) {
@@ -401,7 +407,7 @@ async function assertApiSmoke() {
 	});
 
 	execSh(`composery api key revoke ${created.id}`, { user: "user" });
-	const afterRevoke = await request("/v1/exec", {
+	const afterRevoke = await request("/_composery/api/v1/exec", {
 		body: JSON.stringify({ command: "true" }),
 		headers: {
 			authorization: `Bearer ${key}`,
@@ -417,7 +423,7 @@ async function assertApiSmoke() {
 
 	let throttled = false;
 	for (let attempt = 0; attempt < 40 && !throttled; attempt += 1) {
-		const response = await request("/v1/exec", {
+		const response = await request("/_composery/api/v1/exec", {
 			body: JSON.stringify({ command: "true" }),
 			headers: {
 				authorization: "Bearer csy_definitely-not-a-real-key",
@@ -483,7 +489,7 @@ async function assertPersistenceAppliesChanges() {
 
 	log("restarting container and checking changed files are applied");
 	restartContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh('test "$(cat /home/user/Desktop/smoke.txt)" = hello');
 	execSh('test "$(cat /custom-restore)" = restored');
 	execSh("test -d /foo123");
@@ -493,7 +499,7 @@ async function assertPersistenceAppliesChanges() {
 	execSh("rm /custom-restore");
 	await waitForContainerPathAbsent("/data/persistence/changed/custom-restore");
 	restartContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test ! -e /custom-restore");
 
 	log(
@@ -501,7 +507,7 @@ async function assertPersistenceAppliesChanges() {
 	);
 	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runDefaultContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh('test "$(cat /home/user/Desktop/smoke.txt)" = hello');
 	execSh("test -d /foo123");
 
@@ -512,14 +518,14 @@ async function assertPersistenceAppliesChanges() {
 	);
 	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runDefaultContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test ! -e /usr/share/applications/composery-text-editor.desktop");
 	docker(["rm", "-f", config.containerName], { capture: true, quiet: true });
 	runWithDataVolume(
 		"rm -f /data/persistence/removed/usr/share/applications/composery-text-editor.desktop"
 	);
 	runDefaultContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("test -f /usr/share/applications/composery-text-editor.desktop");
 
 	log("checking baseline-equal changes do not remain in changed");
@@ -547,7 +553,7 @@ async function assertPersistenceAppliesChanges() {
 		'tmp="$(mktemp)"; jq \'.exclusions += ["/excluded-smoke"]\' /data/persistence/config.json > "$tmp"; mv "$tmp" /data/persistence/config.json'
 	);
 	restartContainer();
-	await waitForHttp("/healthz", DEFAULT_ATTEMPTS.readiness);
+	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);
 	execSh("mkdir -p /excluded-smoke && printf ignored > /excluded-smoke/file");
 	await assertContainerPathStaysAbsent(
 		"/data/persistence/changed/excluded-smoke/file",
@@ -776,7 +782,7 @@ function ptyWebsocket(key, command) {
 	return new Promise((resolvePromise, reject) => {
 		const query = command ? `?cmd=${encodeURIComponent(command)}` : "";
 		const handshake = [
-			`GET /v1/exec${query} HTTP/1.1`,
+			`GET /_composery/api/v1/exec${query} HTTP/1.1`,
 			`Host: 127.0.0.1:${config.port}`,
 			"Upgrade: websocket",
 			"Connection: Upgrade",
@@ -867,9 +873,11 @@ function apiRequest(method, path, key, body) {
 }
 
 async function listApiSessions(key) {
-	const response = await apiRequest("GET", "/v1/sessions", key);
+	const response = await apiRequest("GET", "/_composery/api/v1/sessions", key);
 	if (response.statusCode !== 200) {
-		throw new Error(`GET /v1/sessions returned ${response.statusCode}.`);
+		throw new Error(
+			`GET /_composery/api/v1/sessions returned ${response.statusCode}.`
+		);
 	}
 	return (JSON.parse(response.body).sessions || []).map(
 		(session) => session.name
@@ -879,7 +887,7 @@ async function listApiSessions(key) {
 function openTmuxSession(key, sessionName) {
 	return new Promise((resolvePromise, reject) => {
 		const handshake = [
-			`GET /v1/exec?session=${encodeURIComponent(sessionName)} HTTP/1.1`,
+			`GET /_composery/api/v1/exec?session=${encodeURIComponent(sessionName)} HTTP/1.1`,
 			`Host: 127.0.0.1:${config.port}`,
 			"Upgrade: websocket",
 			"Connection: Upgrade",

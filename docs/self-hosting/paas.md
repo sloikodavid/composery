@@ -11,7 +11,7 @@ does not need one - give the platform these five things and it works:
 | ----------------- | ------------------------------------------ |
 | Image             | `ghcr.io/sloikodavid/composery:latest`     |
 | Port              | `8080` (set `PORT` if you change it)       |
-| Health check      | HTTP `GET /healthz`                        |
+| Health check      | HTTP `GET /_composery/healthz`             |
 | Persistent volume | mounted at `/data`                         |
 | Instances         | **one** (`persistence` is a single writer) |
 

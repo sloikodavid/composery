@@ -14,7 +14,7 @@ config, `@convex-dev/polar`, `@convex-dev/workflow`), Clerk, Polar, Hetzner Clou
 (per-box VPS), Cloudflare DNS (per-box `A`/`AAAA`), a public runtime container
 image, Caddy in each box for HTTPS, and Hetzner snapshots for restore points.
 Namecheap remains the registrar; Cloudflare is authoritative DNS for both
-`composery.io` and `composery.cloud` and forwards `hello@composery.io`.
+`composery.io` and `composery.cloud`.
 Periodic work is handled by Convex crons - no separate Layer, Headless, or Poller
 service.
 
@@ -66,8 +66,8 @@ different things, not two spellings of one domain.
 
 ## Order of operations
 
-1. Delegate both domains from Namecheap and configure the website, email, and
-   runtime zones in [Cloudflare](./cloudflare.md).
+1. Delegate both domains from Namecheap and configure the website and runtime
+   zones in [Cloudflare](./cloudflare.md).
 2. Create the [Convex](./convex.md) deployments - their URLs must exist first
    (Polar webhook target `CONVEX_SITE_URL`, Clerk JWT issuer).
 3. Set up each provider ([Clerk](./clerk.md), [Polar](./polar.md),

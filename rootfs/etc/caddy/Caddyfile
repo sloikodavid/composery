@@ -1,0 +1,21 @@
+{
+	admin 127.0.0.1:2019
+	auto_https off
+	persist_config off
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
+:{$PORT:8080} {
+	# Keep Composery's machine endpoints ahead of user application routes.
+	handle /_composery* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	# Add application handlers above this final IDE handler.
+	handle {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+}

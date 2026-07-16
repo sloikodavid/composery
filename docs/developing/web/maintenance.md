@@ -55,6 +55,24 @@ Snapshots themselves are covered in [Hetzner](./hetzner.md#box-snapshots).
 | `CHECKOUT_RESERVATION_TTL_MS` | `1` hour    | How long a slug is reserved during checkout.     |
 | `CLOUD_TERMS_VERSION`         | Date string | Legal version recorded with checkout acceptance. |
 
+### Deleted records (`convex/boxes/boxRetention.ts`)
+
+Deletion separates customer state from records that have a continuing,
+documented purpose. Secrets, snapshots, infrastructure references, and metrics
+are removed immediately. A minimized box tombstone plus lifecycle summaries and
+abuse flags remains visible to staff by immutable box ID for 180 days, then the
+entire graph is purged. Account deletion pseudonymizes its retained box and event
+links. Unpaid checkout records remain for 30 days; paid billing records remain
+for six calendar years after the box ends. The pseudonymous account tombstone is
+removed after that same period once no retained records refer to it. `retain_until` postpones a billing
+purge only for a specific audit, dispute, or legal hold.
+
+| Constant                         | Value     | Purpose                                      |
+| -------------------------------- | --------- | -------------------------------------------- |
+| `DELETED_BOX_RETENTION_DAYS`     | `180`     | Support, security, abuse, and claim evidence |
+| `UNPAID_CHECKOUT_RETENTION_DAYS` | `30`      | Short reconciliation window without payment  |
+| `BILLING_RECORD_RETENTION_YEARS` | `6` years | Irish tax and accounting records             |
+
 ## Cron schedule
 
 Defined in `convex/crons.ts`. All times are UTC.
@@ -62,11 +80,16 @@ Defined in `convex/crons.ts`. All times are UTC.
 | Schedule                    | When             | Function                                                       |
 | --------------------------- | ---------------- | -------------------------------------------------------------- |
 | Release expired intents     | Every 15 minutes | `checkout.checkoutIntents.releaseExpiredCheckoutIntents`       |
+| Delete expired box auth     | Every 15 minutes | `boxes.boxAuth.deleteExpiredAuthRecords`                       |
 | Subscription reconciliation | Hourly at :11    | `billing.reconciliation.deleteBoxesWithoutActiveSubscriptions` |
 | Finish account deletion     | Hourly at :19    | `accountDeletion.sweepPendingAccountDeletions`                 |
 | Poll box metrics            | Every 10 minutes | `boxes.boxMetricsPoll.pollBoxMetrics`                          |
 | Roll up hourly metrics      | Hourly at :04    | `boxes.boxMetrics.rollupHourlyMetrics`                         |
 | Delete old metrics          | Daily at 04:23   | `boxes.boxMetrics.deleteOldSamples`                            |
+| Normalize deleted boxes     | Daily at 04:29   | `boxes.boxCleanup.normalizeDeletedBoxes`                       |
+| Purge deleted boxes         | Daily at 04:31   | `boxes.boxCleanup.scheduleExpiredBoxPurges`                    |
+| Purge checkout records      | Daily at 04:37   | `boxes.boxCleanup.purgeExpiredCheckoutRecords`                 |
+| Purge deleted accounts      | Daily at 04:39   | `accountDeletion.purgeExpiredDeletedAccounts`                  |
 | Snapshot running boxes      | Daily at 03:07   | `boxes.boxSnapshots.scheduleAutomaticSnapshots`                |
 | Delete expired snapshots    | Daily at 04:41   | `boxes.boxSnapshots.deleteExpiredSnapshots`                    |
 | Reconcile Hetzner resources | Daily at 05:17   | `boxes.reconcile.reconcileHetznerResources`                    |

@@ -1,7 +1,5 @@
 "use client";
 
-import { useAction } from "convex/react";
-import type { FunctionReference } from "convex/server";
 import {
 	ConstructionIcon,
 	LoaderIcon,
@@ -30,13 +28,6 @@ import { errorMessage } from "@/lib/error-message";
 import { highlightLogs } from "@/lib/highlight-logs";
 
 const REFRESH_INTERVAL = 5000;
-
-type LogsAction = FunctionReference<
-	"action",
-	"public",
-	{ slug: string },
-	{ logs: string | null }
->;
 
 type View = "metrics" | "logs";
 
@@ -92,25 +83,22 @@ function notRunningMessage(status: string, note?: string) {
 }
 
 export function MonitorCard({
-	action,
 	className,
+	loadLogs,
 	note,
 	onRangeChange,
 	range,
 	series,
-	slug,
 	status
 }: {
-	action: LogsAction;
 	className?: string;
+	loadLogs: () => Promise<{ logs: string | null }>;
 	note?: string;
 	onRangeChange: (range: MetricsRange) => void;
 	range: MetricsRange;
 	series?: MetricsSeries[];
-	slug: string;
 	status: string;
 }) {
-	const runtimeLogs = useAction(action);
 	const [choice, setChoice] = useState<View | null>(null);
 	const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
 	const [html, setHtml] = useState<string | null>(null);
@@ -134,7 +122,7 @@ export function MonitorCard({
 		if (inFlight.current) return;
 		inFlight.current = true;
 		try {
-			const result = await runtimeLogs({ slug });
+			const result = await loadLogs();
 			if (result.logs === null) {
 				setUnavailable(true);
 				return;
@@ -147,7 +135,7 @@ export function MonitorCard({
 		} finally {
 			inFlight.current = false;
 		}
-	}, [runtimeLogs, slug]);
+	}, [loadLogs]);
 
 	useEffect(() => {
 		if (!running || view !== "logs") return;

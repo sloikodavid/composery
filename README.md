@@ -53,7 +53,7 @@ Rendered at [composery.io/docs](https://www.composery.io/docs), source in
 
 ## Composery Cloud
 
-The hosted offering at [composery.io](https://www.composery.io) runs the same
+The hosted offering at [composery.io](https://www.composery.io/pricing) runs the same
 runtime image on a dedicated VPS per box, with HTTPS, snapshots, and lifecycle
 management handled for you.
 

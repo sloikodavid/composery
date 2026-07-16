@@ -23,6 +23,16 @@ describe("formatDate / formatDateTime", () => {
 		expect(formatDateTime(iso)).toBe(formatDateTime(ms));
 	});
 
+	it("includes the year only outside the current year", () => {
+		const currentYear = new Date().getFullYear();
+		const current = new Date(currentYear, 5, 4, 9, 30).getTime();
+		const previous = new Date(currentYear - 1, 5, 4, 9, 30).getTime();
+		expect(formatDate(current)).not.toContain(String(currentYear));
+		expect(formatDateTime(current)).not.toContain(String(currentYear));
+		expect(formatDate(previous)).toContain(String(currentYear - 1));
+		expect(formatDateTime(previous)).toContain(String(currentYear - 1));
+	});
+
 	it("falls back to a string for unparseable input rather than throwing", () => {
 		const result = formatDate("not-a-date");
 		expect(typeof result).toBe("string");

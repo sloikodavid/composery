@@ -1,6 +1,6 @@
 services:
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     restart: unless-stopped
     ports:
       - "80:80"
@@ -10,7 +10,7 @@ services:
       - caddy_data:/data
     depends_on:
       composery:
-        condition: service_healthy
+        condition: service_started
 
   composery:
     image: ghcr.io/sloikodavid/composery:latest

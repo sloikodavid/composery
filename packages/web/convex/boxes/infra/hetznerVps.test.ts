@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ssh2 from "ssh2";
 import {
 	HetznerApiError,
@@ -7,6 +7,7 @@ import {
 	composeryServerListPath,
 	createServerPayload,
 	createSnapshotImagePayload,
+	findPrimaryIpByAddress,
 	isHetznerNotFound,
 	parseActionStatus,
 	parseCreateImageResponse,
@@ -17,6 +18,7 @@ import {
 	primaryIpLookupAddresses,
 	primaryIpMatchesAddress,
 	primaryIpListPath,
+	rebuildServerPayload,
 	snapshotImageListPath
 } from "./hetznerVps";
 import { authorizedPublicKey } from "./sshKeys";
@@ -25,6 +27,7 @@ const { utils } = ssh2;
 
 const envNames = [
 	"HETZNER_BOX_IMAGE",
+	"HETZNER_CLOUD_TOKEN",
 	"HETZNER_FIREWALL_ID",
 	"HETZNER_NETWORK_ID",
 	"HETZNER_SSH_KEY_IDS",
@@ -34,6 +37,7 @@ const envNames = [
 const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
 
 afterEach(() => {
+	vi.unstubAllGlobals();
 	for (const name of envNames) {
 		const value = previousEnv.get(name);
 		if (value === undefined) delete process.env[name];
@@ -77,6 +81,19 @@ describe("vps request contracts", () => {
 		expect(payload.user_data).toContain(authorizedPublicKey());
 	});
 
+	it("sends the current SSH public key when rebuilding any image", () => {
+		const keyPair = utils.generateKeyPairSync("ed25519", {
+			comment: "composery-test"
+		});
+		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
+		process.env.SSH_USER = "root";
+
+		expect(rebuildServerPayload(123)).toEqual({
+			image: 123,
+			user_data: expect.stringContaining(authorizedPublicKey())
+		});
+	});
+
 	it("looks up orphaned Primary IPs by exact address before deletion", () => {
 		const path = primaryIpListPath("203.0.113.10");
 		const query = new URLSearchParams(path.split("?")[1]);
@@ -98,6 +115,51 @@ describe("vps request contracts", () => {
 		const path = primaryIpListPath("2001:db8::1/64");
 		const query = new URLSearchParams(path.split("?")[1]);
 		expect(query.get("ip")).toBe("2001:db8::1/64");
+	});
+
+	// The production incident this guards against: Hetzner answers the
+	// `<address>/64` lookup form with 422 "invalid input in field 'ip'", which
+	// used to throw and wedge box deletion in an hourly retry loop forever.
+	it("treats a lookup form Hetzner rejects as no match instead of failing", async () => {
+		process.env.HETZNER_CLOUD_TOKEN = "test-token";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string | URL) => {
+				if (String(url).includes("%2F64")) {
+					return new Response(
+						JSON.stringify({
+							error: {
+								code: "invalid_input",
+								message: "invalid input in field 'ip'"
+							}
+						}),
+						{ status: 422 }
+					);
+				}
+				return new Response(JSON.stringify({ primary_ips: [] }), {
+					status: 200
+				});
+			})
+		);
+
+		await expect(findPrimaryIpByAddress("2001:db8::")).resolves.toBeUndefined();
+	});
+
+	it("still surfaces non-input Hetzner errors from the lookup", async () => {
+		process.env.HETZNER_CLOUD_TOKEN = "test-token";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ error: { message: "boom" } }), {
+						status: 500
+					})
+			)
+		);
+
+		await expect(findPrimaryIpByAddress("203.0.113.10")).rejects.toThrow(
+			HetznerApiError
+		);
 	});
 
 	it("matches IPv6 Primary IPs with or without the network suffix", () => {

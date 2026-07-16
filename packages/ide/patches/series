@@ -1,4 +1,9 @@
-server.diff
+naming.diff
+local-address.diff
+hardening.diff
+auth.diff
+readiness.diff
+api.diff
 node-engine.diff
 asset-cache.diff
 auth-actions.diff
@@ -19,6 +24,7 @@ touch-select.diff
 narrow-gate.diff
 narrow-fullscreen.diff
 branding.diff
+updates.diff
 welcome.diff
 clipboard-osc52.diff
 clipboard-ipc.diff

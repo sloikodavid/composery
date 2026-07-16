@@ -1,38 +1,34 @@
 diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -9,7 +9,10 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
+@@ -6,10 +6,13 @@
+ import { INotificationService, Severity } from '../../platform/notification/common/notification.js';
+ import { IProductService } from '../../platform/product/common/productService.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
 +import { ICommandService } from '../../platform/commands/common/commands.js';
 +import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
- 
+
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
- 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
+ 	static CHANGE_PASSWORD_COMMAND_ID = 'composery.changePassword';
 +	static SHOW_QR_COMMAND_ID = 'composery.qr.show';
  
  	constructor (
  		@ILogService private logService: ILogService,
-@@ -95,6 +95,16 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
- 			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
+@@ -95,6 +98,8 @@
+ 			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
  		}
  
-+		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
-+			command: {
-+				id: 'composery.checkForUpdates',
-+				title: localize('checkForUpdates', "Check for Updates"),
-+			},
-+			order: -2,
-+		});
-+
 +		this.addShowQrCommand();
 +
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -178,6 +178,36 @@ 	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
+@@ -177,6 +182,36 @@
+ 			});
  		}
  	}
- 
++
 +	private addShowQrCommand() {
 +		const targetWindow = window.top || window;
 +		const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
@@ -62,7 +58,6 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
 +			});
 +		}
 +	}
-+
+ 
  	private addLogoutCommand(logoutEndpoint: string) {
  		CommandsRegistry.registerCommand(CodeServerClient.LOGOUT_COMMAND_ID, () => {
- 			this.openAuthEndpoint(logoutEndpoint);

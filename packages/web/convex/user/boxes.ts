@@ -10,11 +10,17 @@ import {
 	requireIdentity
 } from "../authorization";
 import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
+import {
+	vRecoveryStatus,
+	vRecoveryType,
+	type RecoveryStatus,
+	type RecoveryType
+} from "../boxes/boxRecoveryTypes";
 import { boxMetricsSamples, vMetricsRange } from "../boxes/boxMetrics";
-import { hashBoxPassword } from "../boxes/boxPassword";
 import { startBoxOperation } from "../boxes/boxOperations";
-import { findBoxBySlug, latestSuspensionReason } from "../boxes/boxQueries";
+import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
 import { safeBox } from "../boxes/boxViews";
+import { ownerCanReadBox } from "../boxes/boxAccess";
 import {
 	markSnapshotDeleting,
 	snapshotView,
@@ -22,6 +28,7 @@ import {
 } from "../boxes/boxSnapshots";
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
+import { boxPath } from "../../lib/box-route";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
 const CUSTOMER_PORTAL_BLOCKED_STATUSES = ["deleting", "deleted"] as const;
@@ -131,15 +138,18 @@ export const list = query({
 	}
 });
 
-export const getBySlug = query({
+export const getById = query({
 	args: {
-		slug: v.string()
+		boxId: v.string()
 	},
 	handler: async (ctx, args) => {
 		const { identity } = await requireCurrentUserForBoxRead(ctx);
-		const box = await findBoxBySlug(ctx, args.slug);
+		const boxId = ctx.db.normalizeId("boxes", args.boxId);
+		const box = boxId ? await ctx.db.get(boxId) : null;
 
-		if (!box || box.user_id !== identity.subject) return null;
+		if (!ownerCanReadBox(box, identity.subject)) {
+			return null;
+		}
 
 		const subscription = await ctx.runQuery(
 			components.polar.lib.getSubscription,
@@ -148,10 +158,7 @@ export const getBySlug = query({
 			}
 		);
 
-		const suspendedReason =
-			box.status === "suspended" || box.status === "suspending"
-				? await latestSuspensionReason(ctx, box._id)
-				: null;
+		const suspendedReason = await currentSuspensionReason(ctx, box);
 
 		return {
 			box: safeBox(box),
@@ -210,7 +217,7 @@ export const customerPortalUrl = action({
 
 		return await polar.createCustomerPortalSession(polarCtx, {
 			userId: user.clerk_user_id,
-			returnUrl: `${origin}/boxes/${box.slug}`
+			returnUrl: `${origin}${boxPath(box._id)}`
 		});
 	}
 });
@@ -236,6 +243,60 @@ export const runtimeLogs = action({
 		if (box.status !== "running") return { logs: null };
 
 		return await fetchRuntimeLogsSafely(ctx, box._id);
+	}
+});
+
+export const runtimeHealth = action({
+	args: {
+		slug: v.string()
+	},
+	returns: v.object({
+		reachable: v.boolean()
+	}),
+	handler: async (ctx, args): Promise<{ reachable: boolean }> => {
+		const user = await requireActiveUserInAction(ctx);
+		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+			userId: user.clerk_user_id,
+			slug: sanitizeSlug(args.slug)
+		});
+		if (!box) throw new ConvexError("Box not found.");
+
+		return await ctx.runAction(internal.boxes.boxHealth.probeRuntime, {
+			boxId: box._id
+		});
+	}
+});
+
+export const recoveryStatus = action({
+	args: { slug: v.string() },
+	returns: vRecoveryStatus,
+	handler: async (ctx, args): Promise<RecoveryStatus> => {
+		const user = await requireActiveUserInAction(ctx);
+		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+			userId: user.clerk_user_id,
+			slug: sanitizeSlug(args.slug)
+		});
+		if (!box) throw new ConvexError("Box not found.");
+		return await ctx.runAction(internal.boxes.boxRecovery.status, {
+			boxId: box._id
+		});
+	}
+});
+
+export const recover = action({
+	args: { slug: v.string(), type: vRecoveryType },
+	handler: async (ctx, args): Promise<void> => {
+		const user = await requireActiveUserInAction(ctx);
+		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+			userId: user.clerk_user_id,
+			slug: sanitizeSlug(args.slug)
+		});
+		if (!box) throw new ConvexError("Box not found.");
+		await startBoxOperation(ctx, box._id, "recover", {
+			idempotencyKey: `recover:${box._id}:${args.type}`,
+			metadata: { type: args.type },
+			workflowArgs: { type: args.type as RecoveryType }
+		});
 	}
 });
 
@@ -321,35 +382,6 @@ export const changeSlug = mutation({
 		});
 
 		return { slug: newSlug };
-	}
-});
-
-export const changePassword = action({
-	args: {
-		password: v.string(),
-		slug: v.string()
-	},
-	handler: async (ctx, args) => {
-		const user = await requireActiveUserInAction(ctx);
-
-		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
-			userId: user.clerk_user_id,
-			slug: sanitizeSlug(args.slug)
-		});
-		if (!box) throw new ConvexError("Box not found.");
-
-		const runtimeAuthHash = await hashBoxPassword(args.password);
-		const operationId = await startBoxOperation(
-			ctx,
-			box._id,
-			"change_password",
-			{
-				idempotencyKey: `change_password:${box._id}`,
-				workflowArgs: { runtimeAuthHash }
-			}
-		);
-		if (!operationId)
-			throw new ConvexError("Password change is already in progress.");
 	}
 });
 

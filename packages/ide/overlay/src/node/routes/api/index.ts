@@ -1,6 +1,7 @@
 import * as express from "express"
 import { httpAuth } from "./auth"
 import { apiConfig } from "./config"
+import { apiBasePath } from "./constants"
 import { router as execRouter } from "./exec"
 import { httpRouter as sessionHttpRouter, wsRouter as sessionWsRouter } from "./session"
 
@@ -13,9 +14,9 @@ if (apiConfig.enabled) {
   v1.use(httpAuth())
   v1.use(execRouter)
   v1.use(sessionHttpRouter)
-  router.use("/v1", v1)
+  router.use(apiBasePath, v1)
 } else {
-  router.use("/v1", (_req, res) => {
+  router.use(apiBasePath, (_req, res) => {
     res.status(404).json({ message: "API disabled" })
   })
 }

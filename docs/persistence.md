@@ -8,6 +8,13 @@ restarts. The `persistence` daemon compares the live root filesystem against an 
 baseline and writes only your deltas to `/data/persistence`. Mounting one durable volume
 at `/data` is the only hard requirement for [self-hosting](self-hosting/index.md).
 
+`/data` is owned by the normal `user` account and is the direct durable disk. Put
+databases, object stores, large build artifacts, and other high-volume state there. Files
+under `/data` occupy the volume once. Files elsewhere still behave like ordinary machine
+files, but a changed file occupies both the container's writable layer and its durable
+delta copy; a 10 GB changed file outside `/data` therefore consumes roughly 20 GB of the
+host disk. `df -h /data` shows the durable disk's ordinary filesystem usage.
+
 The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or a Docker
 named volume). Network filesystems such as NFS are not supported: persistence relies on
 file locking, atomic renames, and xattrs that NFS does not reliably provide.
@@ -24,13 +31,17 @@ Persisted:
 - FIFOs and device-node metadata, when supported by the mounted filesystem and container privileges;
 - package manager state under paths such as `/usr`, `/etc`, and `/var/lib/dpkg`.
 
-Excluded by default:
+Always excluded because they are runtime state, container-managed files, or the
+update-owned Composery implementation:
 
 - `/data`;
 - `/run`, `/var/run`, `/proc`, `/sys`, `/dev`, and `/tmp`;
-- `/var/cache` (regenerable caches such as downloaded apt archives);
 - `/opt/persistence` and `/opt/composery`;
 - resolver and hostname files: `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`.
+
+`/var/cache` is also excluded by default because it contains regenerable caches such as
+downloaded apt archives. Unlike the integrity exclusions above, this is an ordinary
+user-configurable exclusion.
 
 For the systemd profile, keep `/etc/systemd`, `/var/lib/systemd`, and `/etc/machine-id`
 persisted. Those paths store enabled units, service state, and machine identity; excluding
@@ -44,8 +55,13 @@ mode, owner, mtime, or xattrs - Composery stores the metadata delta without copy
 full file into `changed/`. This keeps a touched large image file from ballooning the
 `/data` volume.
 
-The active config lives at `/data/persistence/config.json`. Self-hosters may edit the
-exclusion list; invalid exclusion paths are rejected at startup.
+The active config lives at `/data/persistence/config.json`. Its `exclusions` array adds
+paths to the built-in boundary above; a new config contains only `/var/cache`, so it does
+not repeat settings that cannot be changed. If the file is malformed or contains an
+invalid value, it is preserved beside the original as `config.invalid-N.json` and replaced
+with safe defaults. A configuration typo therefore cannot prevent the IDE from starting.
+Storage or filesystem-integrity failures still stop boot rather than pretending the
+durable state was applied.
 
 ## Commands
 
@@ -60,7 +76,7 @@ sudo composery persistence prune
 
 ## Readiness
 
-Readiness is exposed through `/run/persistence/ready` and the IDE's `/healthz` route.
+Readiness is exposed through `/run/persistence/ready` and `/_composery/healthz`.
 If `composery persistence apply` fails during boot, the IDE does not become ready.
 
 ## Hostname

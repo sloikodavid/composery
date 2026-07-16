@@ -1,6 +1,9 @@
 export const COMPOSERY_COMPOSE_PATH = "/opt/composery-web/compose.yml";
 export const COMPOSERY_ENV_PATH = "/opt/composery-web/composery.env";
 export const COMPOSERY_CADDYFILE_PATH = "/opt/composery-web/Caddyfile";
+// renovate: datasource=docker depName=caddy
+export const CADDY_IMAGE =
+	"caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648";
 
 export type RuntimeArtifacts = {
 	caddyfile: string;
@@ -16,9 +19,32 @@ export function renderCaddyfile(domain: string, runtimePort: number) {
 `;
 }
 
-export function renderComposeryEnv(runtimeAuthHash: string) {
-	return `HASHED_PASSWORD=${quoteEnvFileValue(runtimeAuthHash)}
-`;
+export function renderComposeryEnv({
+	cloudBoxId,
+	cloudOrigin,
+	runtimeAuthHash
+}: {
+	cloudBoxId?: string;
+	cloudOrigin?: string;
+	runtimeAuthHash?: string;
+}) {
+	if (Boolean(cloudBoxId) !== Boolean(cloudOrigin)) {
+		throw new Error("Cloud box id and origin must be configured together.");
+	}
+	return [
+		runtimeAuthHash
+			? `HASHED_PASSWORD=${quoteEnvFileValue(runtimeAuthHash)}`
+			: undefined,
+		cloudBoxId
+			? `COMPOSERY_CLOUD_BOX_ID=${quoteEnvFileValue(cloudBoxId)}`
+			: undefined,
+		cloudOrigin
+			? `COMPOSERY_CLOUD_ORIGIN=${quoteEnvFileValue(cloudOrigin)}`
+			: undefined
+	]
+		.filter(Boolean)
+		.join("\n")
+		.concat("\n");
 }
 
 function quoteEnvFileValue(value: string) {
@@ -31,7 +57,7 @@ function quoteEnvFileValue(value: string) {
 export function renderCompose(runtimeImage: string, runtimePort: number) {
 	return `services:
   caddy:
-    image: caddy:2-alpine
+    image: ${CADDY_IMAGE}
     container_name: caddy
     restart: unless-stopped
     ports:
@@ -77,19 +103,23 @@ volumes:
 }
 
 export function renderRuntimeArtifacts({
+	cloudBoxId,
+	cloudOrigin,
 	domain,
 	runtimeAuthHash,
 	runtimeImage,
 	runtimePort
 }: {
+	cloudBoxId?: string;
+	cloudOrigin?: string;
 	domain: string;
-	runtimeAuthHash: string;
+	runtimeAuthHash?: string;
 	runtimeImage: string;
 	runtimePort: number;
 }): RuntimeArtifacts {
 	return {
 		caddyfile: renderCaddyfile(domain, runtimePort),
 		compose: renderCompose(runtimeImage, runtimePort),
-		env: renderComposeryEnv(runtimeAuthHash)
+		env: renderComposeryEnv({ cloudBoxId, cloudOrigin, runtimeAuthHash })
 	};
 }

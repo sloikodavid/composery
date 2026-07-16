@@ -30,10 +30,13 @@ export const captureSnapshot = defineBoxWorkflow({
 		);
 
 		try {
-			const description = `composery-web ${box.slug} ${args.class} ${new Date().toISOString()}`;
 			const { imageId, actionId } = await step.runAction(
 				internal.boxes.infra.hetznerVps.createSnapshotImage,
-				{ serverId: box.hetzner_server_id, slug: box.slug, description },
+				{
+					serverId: box.hetzner_server_id,
+					slug: box.slug,
+					snapshotClass: args.class
+				},
 				{ retry: true }
 			);
 			await step.runMutation(internal.boxes.boxSnapshots.markCreating, {
@@ -119,7 +122,6 @@ export const restoreBox = defineBoxWorkflow({
 			{ boxId: args.boxId },
 			{ retry: true }
 		);
-
 		await step.runMutation(internal.boxes.boxSnapshots.markRestoreSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId,

@@ -131,13 +131,23 @@ export const requestAccountDeletionByEmail = mutation({
 		email: v.string()
 	},
 	handler: async (ctx, args): Promise<{ status: "missing" | "pending" }> => {
-		await requireStaff(ctx);
+		const staffUser = await requireStaff(ctx);
 
 		const user = await ctx.db
 			.query("users")
 			.withIndex("email", (query) => query.eq("email", args.email))
 			.first();
 		if (!user) throw new ConvexError("User not found.");
+		if (user._id === staffUser._id) {
+			throw new ConvexError(
+				"You cannot delete your own account from staff tools."
+			);
+		}
+		if (user.role !== "user") {
+			throw new ConvexError(
+				"Staff accounts cannot be deleted from staff tools."
+			);
+		}
 
 		if (!user.deletion_pending && !user.deletion_finished_at) {
 			const timestamp = Date.now();
@@ -145,6 +155,9 @@ export const requestAccountDeletionByEmail = mutation({
 				deletion_pending: true,
 				deletion_requested_at: timestamp,
 				deletion_requested_by: "staff",
+				suspended: true,
+				suspended_at: timestamp,
+				suspended_reason: "Account deletion pending",
 				updated_at: timestamp
 			});
 		}

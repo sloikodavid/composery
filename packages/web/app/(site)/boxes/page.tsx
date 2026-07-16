@@ -1,6 +1,7 @@
 import { WashingMachineIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { BoxTable } from "./_components/box-table";
+import { CheckoutRedirect } from "./_components/checkout-redirect";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { PageTemplate } from "@/components/page-template";
 import { buttonVariants } from "@/components/button";
@@ -13,8 +14,13 @@ export const metadata: Metadata = {
 	title: "Boxes"
 };
 
-export default async function BoxesPage() {
+export default async function BoxesPage({
+	searchParams
+}: {
+	searchParams: Promise<{ checkout_id?: string }>;
+}) {
 	await redirectIfSignedOut("/boxes");
+	const { checkout_id: checkoutId } = await searchParams;
 
 	return (
 		<PageTemplate
@@ -31,6 +37,7 @@ export default async function BoxesPage() {
 			}
 			breadcrumbs={[{ icon: WashingMachineIcon, label: "Boxes" }]}
 		>
+			<CheckoutRedirect checkoutId={checkoutId} />
 			<BoxTable />
 		</PageTemplate>
 	);

@@ -92,9 +92,9 @@ describe("loopback callback guard", () => {
 
 	test("does not warn for ordinary, top-level loopback, or non-http links", () => {
 		expect(hasLoopbackCallbackTarget("https://example.com/docs")).toBe(false);
-		expect(
-			hasLoopbackCallbackTarget("http://127.0.0.1:3000/signin")
-		).toBe(false);
+		expect(hasLoopbackCallbackTarget("http://127.0.0.1:3000/signin")).toBe(
+			false
+		);
 		expect(
 			hasLoopbackCallbackTarget(
 				"https://example.com/cb?redirect_uri=vscode%3A%2F%2Fauth"

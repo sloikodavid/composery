@@ -9,6 +9,7 @@ import { ConsoleCheckoutLimit } from "./console-checkout-limit";
 import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
 import { ConsoleThresholds } from "./console-thresholds";
 import { FlagsTable } from "@/components/flags-table";
+import { DismissButton } from "@/components/dismiss-button";
 import {
 	DEFAULT_METRIC,
 	DEFAULT_RANGE,
@@ -40,6 +41,7 @@ import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDate, formatDateTime } from "@/lib/datetime";
+import { consoleBoxPath } from "@/lib/box-route";
 
 type ConsoleBox = NonNullable<
 	ReturnType<typeof useQuery<typeof api.staff.boxes.searchBoxes>>
@@ -72,6 +74,11 @@ type FailedOperation = NonNullable<
 // clean and this reads as an alert rather than a permanent panel.
 function NeedsAttentionPanel() {
 	const failures = useQuery(api.staff.boxes.recentFailedOperations, {});
+	const dismissFailure = useMutation(api.staff.boxes.dismissFailedOperation);
+	const dismissAllFailures = useMutation(
+		api.staff.boxes.dismissAllFailedOperations
+	);
+	const { busy, run } = useBusyAction();
 	if (!failures || failures.length === 0) return null;
 
 	return (
@@ -86,12 +93,30 @@ function NeedsAttentionPanel() {
 					in the last 7 days
 				</span>
 			</div>
-			<Table className="table-fixed min-w-[40rem]">
+			<Table className="table-fixed min-w-[44rem]">
 				<TableHeader>
 					<TableRow>
 						<TableHead className="pl-4">Operation</TableHead>
 						<TableHead className="w-40">Box</TableHead>
-						<TableHead className="w-36">When</TableHead>
+						<TableHead className="w-48">When</TableHead>
+						<TableHead className="w-48 pr-4 text-right">
+							<div className="flex items-center justify-end gap-1">
+								<DismissButton
+									disabled={busy !== null}
+									onClick={() =>
+										run("dismiss-all-failures", "Messages dismissed", () =>
+											dismissAllFailures({})
+										)
+									}
+								/>
+								<OpenInConvex
+									field="status"
+									iconOnly
+									table="box_operations"
+									value="failed"
+								/>
+							</div>
+						</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody className="page-fade-in">
@@ -114,7 +139,7 @@ function NeedsAttentionPanel() {
 								{failure.slug ? (
 									<Link
 										className="font-medium text-foreground hover:underline"
-										href={`/console/boxes/${failure.slug}`}
+										href={consoleBoxPath(failure.boxId)}
 									>
 										{failure.slug}
 									</Link>
@@ -123,6 +148,29 @@ function NeedsAttentionPanel() {
 								)}
 							</TableCell>
 							<TableCell>{formatDateTime(failure.createdAt)}</TableCell>
+							<TableCell className="pr-4 text-right">
+								<div className="flex items-center justify-end gap-1">
+									<DismissButton
+										disabled={busy !== null}
+										onClick={() =>
+											run(
+												`dismiss-failure-${failure.id}`,
+												"Message dismissed",
+												() =>
+													dismissFailure({
+														operationId: failure.id
+													})
+											)
+										}
+									/>
+									<OpenInConvex
+										iconOnly
+										label={`Open ${failure.type} operation in Convex`}
+										table="box_operations"
+										value={failure.id}
+									/>
+								</div>
+							</TableCell>
 						</TableRow>
 					))}
 				</TableBody>
@@ -193,7 +241,7 @@ export function ConsoleHome() {
 					<Input
 						className="sm:max-w-sm"
 						onChange={(event) => setQuery(event.target.value)}
-						placeholder="Search slug, user, subscription"
+						placeholder="Search ID, slug, user, subscription"
 						value={query}
 					/>
 					<div className="grid grid-cols-2 gap-2 sm:flex">
@@ -235,7 +283,7 @@ export function ConsoleHome() {
 				</div>
 
 				<div className="overflow-hidden rounded-2xl border border-border bg-card">
-					<Table className="table-fixed min-w-[46rem]">
+					<Table className="table-fixed min-w-[48rem]">
 						<TableHeader>
 							<TableRow>
 								<TableHead className="pl-4">
@@ -244,7 +292,7 @@ export function ConsoleHome() {
 								<TableHead className="w-48">
 									<SortHeader label="User" sort={boxSort} sortKey="user" />
 								</TableHead>
-								<TableHead className="w-28">
+								<TableHead className="w-32">
 									<SortHeader
 										label="Created"
 										sort={boxSort}
@@ -254,7 +302,7 @@ export function ConsoleHome() {
 								<TableHead className="w-36">
 									<SortHeader label="Status" sort={boxSort} sortKey="status" />
 								</TableHead>
-								<TableHead className="w-28 pr-2 text-right">
+								<TableHead className="w-28 pr-4 text-right">
 									<div className="flex items-center justify-end gap-1">
 										<OpenInHetzner iconOnly label="Open servers in Hetzner" />
 										<OpenInPolar iconOnly label="Open customers in Polar" />
@@ -276,12 +324,15 @@ export function ConsoleHome() {
 									>
 										<TableCell className="relative p-0">
 											<Link
-												className="absolute inset-0 flex items-center pl-4"
+												className="absolute inset-0 flex flex-col items-start justify-center pl-4"
 												data-link
-												href={`/console/boxes/${box.slug}`}
+												href={consoleBoxPath(box.id)}
 											>
 												<span className="truncate font-medium text-foreground">
 													{box.slug}
+												</span>
+												<span className="truncate text-xs text-muted-foreground">
+													{box.id}
 												</span>
 											</Link>
 										</TableCell>
@@ -292,7 +343,7 @@ export function ConsoleHome() {
 										<TableCell>
 											<StatusText status={box.status} />
 										</TableCell>
-										<TableCell className="pr-2">
+										<TableCell className="pr-4">
 											<div className="flex items-center justify-end gap-1">
 												<OpenInHetzner
 													iconOnly
@@ -331,7 +382,7 @@ export function ConsoleHome() {
 			</div>
 
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[52rem]">
+				<Table className="table-fixed min-w-[56rem]">
 					<TableHeader>
 						<TableRow>
 							<TableHead className="pl-4">
@@ -340,14 +391,14 @@ export function ConsoleHome() {
 							<TableHead className="w-48">
 								<SortHeader label="User" sort={intentSort} sortKey="user" />
 							</TableHead>
-							<TableHead className="w-28">
+							<TableHead className="w-32">
 								<SortHeader
 									label="Created"
 									sort={intentSort}
 									sortKey="createdAt"
 								/>
 							</TableHead>
-							<TableHead className="w-36">
+							<TableHead className="w-48">
 								<SortHeader
 									label="Expires"
 									sort={intentSort}
@@ -357,7 +408,7 @@ export function ConsoleHome() {
 							<TableHead className="w-36">
 								<SortHeader label="Status" sort={intentSort} sortKey="status" />
 							</TableHead>
-							<TableHead className="w-14 pr-2 text-right">
+							<TableHead className="w-14 pr-4 text-right">
 								<OpenInConvex iconOnly table="box_checkout_intents" />
 							</TableHead>
 						</TableRow>
@@ -390,7 +441,7 @@ export function ConsoleHome() {
 											status={intent.polarCheckoutStatus ?? "active"}
 										/>
 									</TableCell>
-									<TableCell className="pr-2">
+									<TableCell className="pr-4">
 										<div className="flex items-center justify-end gap-1">
 											<Button
 												onClick={() =>

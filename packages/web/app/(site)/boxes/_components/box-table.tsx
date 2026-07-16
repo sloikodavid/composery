@@ -19,6 +19,7 @@ import {
 } from "@/components/table";
 import { api } from "@/convex/_generated/api";
 import { formatDate } from "@/lib/datetime";
+import { boxPath } from "@/lib/box-route";
 
 const BOX_PAGE_SIZE = 25;
 
@@ -39,13 +40,13 @@ export function BoxTable() {
 	return (
 		<div className="space-y-3">
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[30rem]">
+				<Table className="table-fixed min-w-[32rem]">
 					<TableHeader>
 						<TableRow>
 							<TableHead className="pl-4">Slug</TableHead>
-							<TableHead className="w-28">Created</TableHead>
+							<TableHead className="w-32">Created</TableHead>
 							<TableHead className="w-36">Status</TableHead>
-							<TableHead className="w-14 pr-2">
+							<TableHead className="w-14 pr-4">
 								<span className="sr-only">Actions</span>
 							</TableHead>
 						</TableRow>
@@ -73,7 +74,7 @@ export function BoxTable() {
 										<Link
 											className="absolute inset-0 flex items-center pl-4"
 											data-link
-											href={`/boxes/${box.slug}`}
+											href={boxPath(box.id)}
 											prefetch={false}
 										>
 											<span className="truncate font-medium text-foreground">
@@ -85,7 +86,7 @@ export function BoxTable() {
 									<TableCell>
 										<StatusText status={box.status} />
 									</TableCell>
-									<TableCell className="pr-2 text-right">
+									<TableCell className="pr-4 text-right">
 										<AnimatedIconAnchor
 											aria-label={`Open ${box.slug}`}
 											className={buttonVariants({

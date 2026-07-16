@@ -4,7 +4,7 @@
  	readonly rootEndpoint?: string
  	readonly updateEndpoint?: string
  	readonly logoutEndpoint?: string
-+	readonly resetPasswordEndpoint?: string
++	readonly changePasswordEndpoint?: string
  	readonly proxyEndpointTemplate?: string
  	readonly serviceWorker?: {
  		readonly path: string;
@@ -14,7 +14,7 @@
  	/* ----- code-server ----- */
  	'disable-update-check': { type: 'boolean' },
  	'auth': { type: 'string' },
-+	'reset-password': { type: 'boolean' },
++	'change-password': { type: 'boolean' },
  	'disable-file-downloads': { type: 'boolean' },
  	'disable-file-uploads': { type: 'boolean' },
  	'disable-getting-started-override': { type: 'boolean' },
@@ -22,7 +22,7 @@
  	/* ----- code-server ----- */
  	'disable-update-check'?: boolean;
  	'auth'?: string;
-+	'reset-password'?: boolean;
++	'change-password'?: boolean;
  	'disable-file-downloads'?: boolean;
  	'disable-file-uploads'?: boolean;
  	'disable-getting-started-override'?: boolean,
@@ -32,7 +32,7 @@
  			rootEndpoint: rootBase,
  			updateEndpoint: !this._environmentService.args['disable-update-check'] ? rootBase + '/update/check' : undefined,
  			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,
-+			resetPasswordEndpoint: this._environmentService.args['reset-password'] ? rootBase + '/reset-password' : undefined,
++			changePasswordEndpoint: this._environmentService.args['change-password'] ? rootBase + '/change-password' : undefined,
  			proxyEndpointTemplate: process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
  			serviceWorker: {
  				scope: vscodeBase + '/',
@@ -42,7 +42,7 @@
  
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
-+	static RESET_PASSWORD_COMMAND_ID = 'composery.resetPassword';
++	static CHANGE_PASSWORD_COMMAND_ID = 'composery.changePassword';
  
  	constructor (
  		@ILogService private logService: ILogService,
@@ -50,8 +50,8 @@
  			this.addLogoutCommand(this.productService.logoutEndpoint);
  		}
  
-+		if (this.productService.resetPasswordEndpoint) {
-+			this.addResetPasswordCommand(this.productService.resetPasswordEndpoint);
++		if (this.productService.changePasswordEndpoint) {
++			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
 +		}
 +
  		if (this.productService.serviceWorker) {
@@ -74,16 +74,16 @@
 +		targetWindow.location.assign(authUrl);
 +	}
 +
-+	private addResetPasswordCommand(resetPasswordEndpoint: string) {
-+		CommandsRegistry.registerCommand(CodeServerClient.RESET_PASSWORD_COMMAND_ID, () => {
-+			this.openAuthEndpoint(resetPasswordEndpoint);
++	private addChangePasswordCommand(changePasswordEndpoint: string) {
++		CommandsRegistry.registerCommand(CodeServerClient.CHANGE_PASSWORD_COMMAND_ID, () => {
++			this.openAuthEndpoint(changePasswordEndpoint);
 +		});
 +
 +		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
 +			MenuRegistry.appendMenuItem(menuId, {
 +				command: {
-+					id: CodeServerClient.RESET_PASSWORD_COMMAND_ID,
-+					title: localize('resetPassword', "Reset Password"),
++					id: CodeServerClient.CHANGE_PASSWORD_COMMAND_ID,
++					title: localize('changePassword', "Change Password"),
 +				},
 +			});
 +		}

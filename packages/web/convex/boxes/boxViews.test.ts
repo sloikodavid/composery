@@ -50,6 +50,7 @@ describe("safeBox", () => {
 		expect(view.provisionedAt).toBe(1_500);
 		expect(view.deletedAt).toBe(9_000);
 		expect(view.status).toBe("deleted");
+		expect(staffBox(box({ status: "deleted" })).runtimeUrl).toBeNull();
 	});
 });
 

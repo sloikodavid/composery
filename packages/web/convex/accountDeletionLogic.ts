@@ -20,3 +20,7 @@ export function accountDeletionReady(boxes: readonly BoxDeletionStatus[]) {
 export function scrubbedAccountEmail(userId: string) {
 	return `deleted-user-${userId.replace(/[^a-zA-Z0-9_-]/g, "-")}@deleted.invalid`;
 }
+
+export function scrubbedUserId(userId: string) {
+	return `deleted:${userId}`;
+}

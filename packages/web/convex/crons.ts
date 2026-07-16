@@ -10,6 +10,12 @@ crons.interval(
 	internal.checkout.checkoutIntents.releaseExpiredCheckoutIntents
 );
 
+crons.interval(
+	"delete expired box authorization records",
+	{ minutes: 15 },
+	internal.boxes.boxAuth.deleteExpiredAuthRecords
+);
+
 crons.hourly(
 	"subscription deletion reconciliation",
 	{ minuteUTC: 11 },
@@ -39,6 +45,34 @@ crons.daily(
 	"delete old box metrics",
 	{ hourUTC: 4, minuteUTC: 23 },
 	internal.boxes.boxMetrics.deleteOldSamples
+);
+
+crons.daily(
+	"normalize deleted boxes",
+	{ hourUTC: 4, minuteUTC: 29 },
+	internal.boxes.boxCleanup.normalizeDeletedBoxes,
+	{}
+);
+
+crons.daily(
+	"purge expired deleted boxes",
+	{ hourUTC: 4, minuteUTC: 31 },
+	internal.boxes.boxCleanup.scheduleExpiredBoxPurges,
+	{}
+);
+
+crons.daily(
+	"purge expired checkout records",
+	{ hourUTC: 4, minuteUTC: 37 },
+	internal.boxes.boxCleanup.purgeExpiredCheckoutRecords,
+	{}
+);
+
+crons.daily(
+	"purge expired deleted accounts",
+	{ hourUTC: 4, minuteUTC: 39 },
+	internal.accountDeletion.purgeExpiredDeletedAccounts,
+	{}
 );
 
 crons.daily(

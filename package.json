@@ -13,7 +13,7 @@
 		"dev:next": "pnpm --filter web dev:next",
 		"dev:convex": "pnpm --filter web dev:convex",
 		"dev:mobile": "pnpm --filter mobile dev",
-		"dev:docker": "docker compose -f compose.dev.yml up --build",
+		"dev:docker": "docker compose --progress=plain -f compose.dev.yml up --build",
 		"dev:tree": "node scripts/tree.mjs --watch",
 		"check": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:renovate && pnpm check:ide && pnpm check:cli && pnpm check:brand",
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",
@@ -33,7 +33,7 @@
 		"build": "pnpm build:web && pnpm build:mobile && pnpm build:docker",
 		"build:web": "pnpm --filter web build",
 		"build:mobile": "pnpm --filter mobile build",
-		"build:docker": "docker compose -f compose.dev.yml build",
+		"build:docker": "docker compose --progress=plain -f compose.dev.yml build",
 		"smoke": "node scripts/smoke.mjs",
 		"brand": "pnpm --filter brand build",
 		"setup": "node scripts/setup.mjs"

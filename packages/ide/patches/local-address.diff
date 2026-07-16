@@ -1,0 +1,57 @@
+Log a browser-usable local address at startup: 0.0.0.0 binds are unreachable as URLs, so toLocalBrowserAddress (shared with open()) maps them to localhost.
+
+diff --git a/src/node/main.ts b/src/node/main.ts
+--- a/src/node/main.ts
++++ b/src/node/main.ts
+@@ -10,7 +10,7 @@
+ import { loadCustomStrings } from "./i18n"
+ import { register } from "./routes"
+ import { VSCodeModule } from "./routes/vscode"
+-import { isDirectory, open } from "./util"
++import { isDirectory, open, toLocalBrowserAddress } from "./util"
+ import { wrapper } from "./wrapper"
+ 
+ /**
+@@ -146,6 +146,9 @@
+ 
+   logger.info(`Using config file ${args.config}`)
+   logger.info(`${protocol.toUpperCase()} server listening on ${serverAddress.toString()}`)
++  if (typeof serverAddress !== "string") {
++    logger.info(`Open locally: ${toLocalBrowserAddress(serverAddress).toString()}`)
++  }
+   if (args.auth === AuthType.Password) {
+     logger.info("  - Authentication is enabled")
+     if (args.usingEnvPassword) {
+diff --git a/src/node/util.ts b/src/node/util.ts
+--- a/src/node/util.ts
++++ b/src/node/util.ts
+@@ -420,18 +420,24 @@
+   }
+ }
+ 
+-/**
+- * Try opening an address using whatever the system has set for opening URLs.
+- */
+-export const open = async (address: URL | string): Promise<void> => {
++export const toLocalBrowserAddress = (address: URL | string): URL => {
+   if (typeof address === "string") {
+     throw new Error("Cannot open socket paths")
+   }
+-  // Web sockets do not seem to work if browsing with 0.0.0.0.
++
+   const url = new URL(address)
+   if (url.hostname === "0.0.0.0") {
+     url.hostname = "localhost"
+   }
++
++  return url
++}
++
++/**
++ * Try opening an address using whatever the system has set for opening URLs.
++ */
++export const open = async (address: URL | string): Promise<void> => {
++  const url = toLocalBrowserAddress(address)
+   const platform = (await isWsl(process.platform, os.release(), "/proc/version")) ? "wsl" : process.platform
+   const { command, args, urlSearch } = constructOpenOptions(platform, url.search)
+   url.search = urlSearch

@@ -13,14 +13,14 @@ skipped.
    `RESEND_API_KEY` in each Convex deployment that should send alerts.
 2. For initial testing, `Composery <onboarding@resend.dev>` can send only to
    the Resend account owner's address.
-3. Before alerts must reach other admins, add `alerts.composery.io` as a
-   sending domain. Add the exact SPF, DKIM, and return-path records Resend shows
-   to the `composery.io` Cloudflare zone, then wait for **Verified**.
-4. Set `ALERT_EMAIL_FROM=Composery <alerts@alerts.composery.io>`.
+3. Before alerts must reach other admins, add a verified sender identity in
+   Resend. If that identity is a domain, add the exact SPF, DKIM, and
+   return-path records Resend shows to its DNS zone, then wait for **Verified**.
+4. Set `ALERT_EMAIL_FROM` to the verified sender identity.
 
-Use the subdomain so Resend's sending reputation and SPF records do not interfere
-with Cloudflare Email Routing on `hello@composery.io`. Never use
-`composery.cloud`, which intentionally sends no mail.
+If you verify a domain, prefer a dedicated alert subdomain so operational alert
+sending stays isolated from the website apex. Never use `composery.cloud`, which
+intentionally sends no mail.
 
 Alerts go to every non-suspended admin user's Clerk email, capped by the code.
 No Resend webhook is used.

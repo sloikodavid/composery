@@ -7,21 +7,26 @@ import {
 	internalQuery,
 	type ActionCtx
 } from "./_generated/server";
+import { revokePolarSubscription } from "./billing/polar";
 import { startBoxOperation } from "./boxes/boxOperations";
-import { requiredEnv } from "./env";
+import {
+	billingRecordPurgeAt,
+	deletedCheckoutSlug,
+	terminalCheckoutSecretPatch,
+	unpaidCheckoutPurgeAt
+} from "./boxes/boxRetention";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
 	deletionIdempotencyKey,
-	scrubbedAccountEmail
+	scrubbedAccountEmail,
+	scrubbedUserId
 } from "./accountDeletionLogic";
+import { requiredEnv } from "./env";
 
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * 60 * 1000;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
-const POLAR_API_HOSTS = {
-	production: "https://api.polar.sh",
-	sandbox: "https://sandbox-api.polar.sh"
-} as const;
+const ACCOUNT_PURGE_RETRY_MS = 24 * 60 * 60 * 1000;
 
 type DeletionTrigger = "clerk_webhook" | "staff";
 type AccountDeletionResult = { status: "missing" | "pending" };
@@ -30,37 +35,19 @@ type DeletionState = {
 	user: Doc<"users"> | null;
 };
 
-function polarApiBaseUrl() {
-	const environment = process.env.POLAR_ENVIRONMENT ?? "sandbox";
-	if (environment !== "sandbox" && environment !== "production") {
-		throw new Error("POLAR_ENVIRONMENT must be sandbox or production.");
-	}
-	return POLAR_API_HOSTS[environment];
-}
-
-async function revokePolarSubscription(subscriptionId: string) {
+async function deleteClerkUser(clerkUserId: string) {
 	const response = await fetch(
-		`${polarApiBaseUrl()}/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+		`https://api.clerk.com/v1/users/${encodeURIComponent(clerkUserId)}`,
 		{
 			method: "DELETE",
 			headers: {
-				Authorization: `Bearer ${requiredEnv("POLAR_ORGANIZATION_TOKEN")}`
+				Authorization: `Bearer ${requiredEnv("CLERK_SECRET_KEY")}`,
+				"Content-Type": "application/json"
 			}
 		}
 	);
-
 	if (response.ok || response.status === 404) return;
-
-	// The finalizer re-runs this for every not-yet-deleted box, so a
-	// subscription revoked on an earlier pass answers
-	// AlreadyCanceledSubscription. That is success - throwing here would block
-	// the box-delete retry behind it forever.
-	const body = await response.text().catch(() => "");
-	if (body.includes("AlreadyCanceledSubscription")) return;
-
-	throw new Error(
-		`Polar subscription revoke failed for ${subscriptionId}: ${response.status} ${body}`
-	);
+	throw new Error(`Clerk user deletion failed with HTTP ${response.status}.`);
 }
 
 async function stateForClerkUser(
@@ -91,10 +78,13 @@ async function scheduleFinalizer(
 	clerkUserId: string,
 	delayMs = ACCOUNT_DELETION_FINALIZER_DELAY_MS
 ) {
-	await ctx.runMutation(internal.accountDeletion.scheduleAccountDeletionFinalizer, {
-		clerkUserId,
-		delayMs
-	});
+	await ctx.runMutation(
+		internal.accountDeletion.scheduleAccountDeletionFinalizer,
+		{
+			clerkUserId,
+			delayMs
+		}
+	);
 }
 
 async function runAccountDeletion(
@@ -186,9 +176,7 @@ export const markAccountDeletionPending = internalMutation({
 		// account, and the slug should free up immediately.
 		const intents = await ctx.db
 			.query("box_checkout_intents")
-			.withIndex("user_id", (query) =>
-				query.eq("user_id", args.clerkUserId)
-			)
+			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
 			.collect();
 		for (const intent of intents) {
 			if (intent.status !== "active" || intent.box_id) continue;
@@ -196,6 +184,8 @@ export const markAccountDeletionPending = internalMutation({
 				status: "released",
 				released_at: timestamp,
 				release_reason: "account_deleted",
+				purge_at: unpaidCheckoutPurgeAt(timestamp),
+				...terminalCheckoutSecretPatch(),
 				updated_at: timestamp
 			});
 		}
@@ -232,6 +222,7 @@ export const finishAccountDeletion = internalMutation({
 		if (!user || !user.deletion_pending || user.deletion_finished_at) return;
 
 		const timestamp = Date.now();
+		const deletedUserId = scrubbedUserId(user._id);
 		const intents = await ctx.db
 			.query("box_checkout_intents")
 			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
@@ -239,20 +230,117 @@ export const finishAccountDeletion = internalMutation({
 
 		for (const intent of intents) {
 			await ctx.db.patch(intent._id, {
-				user_id: `deleted:${user._id}`,
-				slug: `deleted-${intent._id}`,
-				polar_checkout_url: undefined,
-				runtime_auth_hash: "",
+				user_id: deletedUserId,
+				slug: deletedCheckoutSlug(intent._id),
+				...terminalCheckoutSecretPatch(),
 				updated_at: timestamp
 			});
 		}
+		await ctx.scheduler.runAfter(
+			0,
+			internal.accountDeletion.pseudonymizeDeletedAccountRecords,
+			{
+				deletedUserId,
+				clerkUserId: args.clerkUserId
+			}
+		);
 
 		await ctx.db.patch(user._id, {
+			clerk_user_id: deletedUserId,
 			email: scrubbedAccountEmail(user._id),
+			role: "user",
+			suspended: true,
+			suspended_reason: undefined,
 			deletion_pending: false,
 			deletion_finished_at: timestamp,
+			purge_at: billingRecordPurgeAt(timestamp),
 			updated_at: timestamp
 		});
+	}
+});
+
+export const purgeExpiredDeletedAccounts = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const timestamp = Date.now();
+		const users = await ctx.db
+			.query("users")
+			.withIndex("purge_at", (query) => query.lte("purge_at", timestamp))
+			.take(ACCOUNT_DELETION_PAGE_SIZE);
+
+		for (const user of users) {
+			const [box, intent, event] = await Promise.all([
+				ctx.db
+					.query("boxes")
+					.withIndex("user_id", (query) =>
+						query.eq("user_id", user.clerk_user_id)
+					)
+					.first(),
+				ctx.db
+					.query("box_checkout_intents")
+					.withIndex("user_id", (query) =>
+						query.eq("user_id", user.clerk_user_id)
+					)
+					.first(),
+				ctx.db
+					.query("box_events")
+					.withIndex("user_id", (query) =>
+						query.eq("user_id", user.clerk_user_id)
+					)
+					.first()
+			]);
+
+			if (box || intent || event) {
+				await ctx.db.patch(user._id, {
+					purge_at: timestamp + ACCOUNT_PURGE_RETRY_MS
+				});
+				continue;
+			}
+			await ctx.db.delete(user._id);
+		}
+
+		if (users.length === ACCOUNT_DELETION_PAGE_SIZE) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.accountDeletion.purgeExpiredDeletedAccounts,
+				{}
+			);
+		}
+	}
+});
+
+export const pseudonymizeDeletedAccountRecords = internalMutation({
+	args: {
+		clerkUserId: v.string(),
+		deletedUserId: v.string()
+	},
+	handler: async (ctx, args) => {
+		const boxes = await ctx.db
+			.query("boxes")
+			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.take(ACCOUNT_DELETION_PAGE_SIZE);
+		const events = await ctx.db
+			.query("box_events")
+			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.take(ACCOUNT_DELETION_PAGE_SIZE);
+
+		for (const box of boxes) {
+			await ctx.db.patch(box._id, { user_id: args.deletedUserId });
+		}
+		for (const event of events) {
+			await ctx.db.patch(event._id, { user_id: args.deletedUserId });
+		}
+
+		if (
+			boxes.length === ACCOUNT_DELETION_PAGE_SIZE ||
+			events.length === ACCOUNT_DELETION_PAGE_SIZE
+		) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.accountDeletion.pseudonymizeDeletedAccountRecords,
+				args
+			);
+		}
 	}
 });
 
@@ -262,6 +350,9 @@ export const requestAccountDeletionForClerkUser = internalAction({
 		trigger: v.union(v.literal("clerk_webhook"), v.literal("staff"))
 	},
 	handler: async (ctx, args): Promise<AccountDeletionResult> => {
+		// Staff deletion owns the whole identity lifecycle. Clerk-originated
+		// deletion already happened and arrives here through its signed webhook.
+		if (args.trigger === "staff") await deleteClerkUser(args.clerkUserId);
 		return await runAccountDeletion(ctx, args);
 	}
 });
@@ -272,7 +363,8 @@ export const finalizeAccountDeletion = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const state = await stateForClerkUser(ctx, args.clerkUserId);
-		if (!state.user?.deletion_pending || state.user.deletion_finished_at) return;
+		if (!state.user?.deletion_pending || state.user.deletion_finished_at)
+			return;
 
 		await startDeletionWorkflows(ctx, state.boxes);
 

@@ -11,7 +11,7 @@
 		"enabled": true
 	},
 	"docker-compose": {
-		"enabled": false
+		"enabled": true
 	},
 	"git-submodules": {
 		"enabled": true
@@ -26,6 +26,12 @@
 		{
 			"description": "Pin Dockerfile base image digests.",
 			"matchManagers": ["dockerfile"],
+			"pinDigests": true
+		},
+		{
+			"description": "Move the internal binary and every outer Caddy edge together.",
+			"matchPackageNames": ["caddy", "library/caddy"],
+			"groupName": "caddy",
 			"pinDigests": true
 		},
 		{
@@ -76,6 +82,15 @@
 			"managerFilePatterns": ["/^Dockerfile$/"],
 			"matchStrings": [
 				"#\\s*renovate:\\s*datasource=(?<datasource>npm|crate)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*ARG\\s+\\S+=(?<currentValue>\\S+)"
+			]
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": [
+				"/^packages/web/convex/boxes/infra/runtimeArtifacts\\.ts$/"
+			],
+			"matchStrings": [
+				"//\\s*renovate:\\s*datasource=(?<datasource>docker)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*export const CADDY_IMAGE =\\s*\\n\\s*\"caddy:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
 			]
 		}
 	]

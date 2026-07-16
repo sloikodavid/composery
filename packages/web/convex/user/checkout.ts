@@ -4,7 +4,6 @@ import type { Id } from "../_generated/dataModel";
 import { action, query } from "../_generated/server";
 import { emailFromIdentity } from "../authorization";
 import { polarServer } from "../billing/polar";
-import { hashBoxPassword } from "../boxes/boxPassword";
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import {
 	CHECKOUT_INTENT_METADATA_KEYS,
@@ -52,10 +51,25 @@ export const slugAvailability = query({
 	}
 });
 
+export const completedCheckout = query({
+	args: { checkoutId: v.string() },
+	handler: async (ctx, args) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return null;
+		const intent = await ctx.db
+			.query("box_checkout_intents")
+			.withIndex("polar_checkout_id", (query) =>
+				query.eq("polar_checkout_id", args.checkoutId)
+			)
+			.first();
+		if (!intent || intent.user_id !== identity.subject) return null;
+		return { boxId: intent.box_id ?? null, status: intent.status };
+	}
+});
+
 export const createCheckout = action({
 	args: {
 		legalAccepted: v.boolean(),
-		password: v.string(),
 		slug: v.string()
 	},
 	returns: v.object({
@@ -101,16 +115,11 @@ export const createCheckout = action({
 			}
 		);
 
-		const runtimeAuthHash = await hashBoxPassword(args.password);
-
 		if (activeCheckout) {
-			// The reused checkout must carry the password from this attempt, not
-			// the one stored when the intent was first reserved.
 			await ctx.runMutation(
-				internal.checkout.checkoutIntents.refreshCheckoutIntentAuthHash,
+				internal.checkout.checkoutIntents.refreshCheckoutIntentTerms,
 				{
 					intentId: activeCheckout.intentId,
-					runtimeAuthHash,
 					termsAcceptedAt,
 					termsVersion: CLOUD_TERMS_VERSION
 				}
@@ -132,7 +141,6 @@ export const createCheckout = action({
 					{
 						userId: identity.subject,
 						slug,
-						runtimeAuthHash,
 						termsAcceptedAt,
 						termsVersion: CLOUD_TERMS_VERSION
 					}
@@ -145,7 +153,7 @@ export const createCheckout = action({
 				email: user.email,
 				productIds: [requiredEnv("POLAR_BOX_PRODUCT_ID")],
 				origin,
-				successUrl: `${origin}/boxes/${slug}?checkout_id={CHECKOUT_ID}`,
+				successUrl: `${origin}/boxes?checkout_id={CHECKOUT_ID}`,
 				metadata: {
 					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reservedIntentId,
 					[CHECKOUT_INTENT_METADATA_KEYS.slug]: slug,

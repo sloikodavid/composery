@@ -7,7 +7,7 @@ services:
     plan: starter
     image:
       url: ghcr.io/sloikodavid/composery:latest
-    healthCheckPath: /healthz
+    healthCheckPath: /_composery/healthz
     disk:
       name: composery-data
       mountPath: /data

@@ -37,7 +37,7 @@ export default function PrivacyPage() {
 						Security data: IP address and request information may appear in
 						provider security logs. Password breach checks send only the first
 						five characters of a SHA-1 hash to Have I Been Pwned. Box passwords
-						are sent to Composery to create the service but are stored only as a
+						are hashed on the box; Composery Cloud receives and stores only the
 						one-way hash.
 					</li>
 					<li>
@@ -73,18 +73,41 @@ export default function PrivacyPage() {
 				</p>
 			</LegalSection>
 			<LegalSection title="Retention and deletion">
-				<p>
-					We retain live account and service records while your account or a box
-					is active. Metrics, operational events, and other diagnostic records
-					are kept only as long as needed to run, secure, and diagnose the
-					service, and are then removed or aggregated; snapshots expire under
-					the retention schedule shown in the app. Deleting your Clerk account
-					cancels subscriptions, deletes boxes and snapshots, removes checkout
-					secrets and URLs, and replaces the email in our application database
-					with a non-identifying placeholder. Providers may retain limited
-					backups, fraud, transaction, and statutory records for their
-					applicable retention periods.
-				</p>
+				<ul className="list-disc space-y-2 pl-5">
+					<li>
+						While a box is active, we retain the account, service, billing, and
+						operational data needed to provide it. Raw metrics are kept for two
+						days and hourly metric summaries for 30 days.
+					</li>
+					<li>
+						When a box is deleted, its server, DNS records, snapshots, password
+						hash, temporary authorization records, infrastructure identifiers,
+						and metrics are removed. We retain a minimized box record, lifecycle
+						timestamps, operation and event summaries, and abuse flags for 180
+						days for support, abuse prevention, security investigation, and the
+						establishment or defence of legal claims. The record is then
+						automatically purged.
+					</li>
+					<li>
+						Unpaid checkout records are removed after 30 days. Records needed to
+						support billing, tax, refunds, or transaction disputes are retained
+						for six years after the related box ends. A record may be retained
+						longer only while a specific legal hold, audit, or dispute requires
+						it.
+					</li>
+					<li>
+						Deleting your account cancels its subscriptions and starts the same
+						box deletion process. We remove checkout secrets and URLs, replace
+						the email and external identity with non-identifying internal
+						values, and pseudonymize retained box and event records. The
+						pseudonymous account record is removed after the six-year billing
+						retention period once no retained records refer to it.
+					</li>
+					<li>
+						Providers may retain limited backups, fraud, transaction, and
+						statutory records for their applicable retention periods.
+					</li>
+				</ul>
 			</LegalSection>
 			<LegalSection title="Your rights">
 				<p>
@@ -92,8 +115,8 @@ export default function PrivacyPage() {
 					deletion, restriction, portability, or an objection to processing. You
 					may complain to the Irish Data Protection Commission or your local
 					supervisory authority. Email{" "}
-					<a className="link" href="mailto:hello@composery.io">
-						hello@composery.io
+					<a className="link" href="mailto:sloikodavid@gmail.com">
+						sloikodavid@gmail.com
 					</a>{" "}
 					to exercise a right. We may need to check your identity. You can also
 					manage or delete your account from the Clerk user menu.

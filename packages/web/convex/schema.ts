@@ -65,7 +65,8 @@ export const vBoxOperationType = v.union(
 	v.literal("suspend"),
 	v.literal("unsuspend"),
 	v.literal("restore"),
-	v.literal("snapshot")
+	v.literal("snapshot"),
+	v.literal("recover")
 );
 
 export const vBoxOperationStatus = v.union(
@@ -139,6 +140,7 @@ export default defineSchema({
 		deletion_requested_at: v.optional(v.number()),
 		deletion_requested_by: v.optional(v.string()),
 		deletion_finished_at: v.optional(v.number()),
+		purge_at: v.optional(v.number()),
 		created_at: v.number(),
 		updated_at: v.number()
 	})
@@ -146,6 +148,7 @@ export default defineSchema({
 		.index("email", ["email"])
 		.index("role", ["role"])
 		.index("deletion_pending", ["deletion_pending"])
+		.index("purge_at", ["purge_at"])
 		.index("created_at", ["created_at"]),
 
 	box_checkout_intents: defineTable({
@@ -158,7 +161,9 @@ export default defineSchema({
 		polar_checkout_expires_at: v.optional(v.number()),
 		polar_customer_id: v.optional(v.string()),
 		polar_subscription_id: v.optional(v.string()),
-		runtime_auth_hash: v.string(),
+		// Unwritten since passwords moved out of checkout; kept only so rows
+		// created before that validate. Drop once those intents purge.
+		runtime_auth_hash: v.optional(v.string()),
 		terms_accepted_at: v.optional(v.number()),
 		terms_version: v.optional(v.string()),
 		created_at: v.number(),
@@ -166,6 +171,8 @@ export default defineSchema({
 		converted_at: v.optional(v.number()),
 		released_at: v.optional(v.number()),
 		release_reason: v.optional(v.string()),
+		purge_at: v.optional(v.number()),
+		retain_until: v.optional(v.number()),
 		box_id: v.optional(v.id("boxes"))
 	})
 		.index("slug_status", ["slug", "status"])
@@ -176,6 +183,7 @@ export default defineSchema({
 		.index("user_id_status", ["user_id", "status"])
 		.index("user_id_slug_status", ["user_id", "slug", "status"])
 		.index("box_id", ["box_id"])
+		.index("purge_at", ["purge_at"])
 		.index("created_at", ["created_at"]),
 
 	boxes: defineTable({
@@ -184,8 +192,9 @@ export default defineSchema({
 		status: vBoxStatus,
 		polar_customer_id: v.string(),
 		polar_subscription_id: v.string(),
-		runtime_image: v.string(),
-		runtime_auth_hash: v.string(),
+		runtime_image: v.optional(v.string()),
+		runtime_auth_hash: v.optional(v.string()),
+		password_setup_pending_at: v.optional(v.number()),
 		hetzner_server_id: v.optional(v.number()),
 		hetzner_server_type: v.optional(vServerType),
 		hetzner_location: v.optional(vServerLocation),
@@ -198,17 +207,44 @@ export default defineSchema({
 		created_at: v.number(),
 		updated_at: v.number(),
 		provisioned_at: v.optional(v.number()),
-		deleted_at: v.optional(v.number())
+		deleted_at: v.optional(v.number()),
+		purge_at: v.optional(v.number())
 	})
 		.index("slug", ["slug"])
 		.index("slug_status", ["slug", "status"])
 		.index("status", ["status"])
+		.index("status_purge_at", ["status", "purge_at"])
 		.index("created_at", ["created_at"])
 		.index("user_id", ["user_id"])
 		.index("user_id_created_at", ["user_id", "created_at"])
 		.index("user_id_status", ["user_id", "status"])
 		.index("polar_subscription_id", ["polar_subscription_id"])
 		.index("hetzner_server_id", ["hetzner_server_id"]),
+
+	box_auth_codes: defineTable({
+		box_id: v.id("boxes"),
+		code_hash: v.string(),
+		code_challenge: v.string(),
+		redirect_uri: v.string(),
+		expires_at: v.number(),
+		consumed_at: v.optional(v.number()),
+		created_at: v.number()
+	})
+		.index("code_hash", ["code_hash"])
+		.index("expires_at", ["expires_at"])
+		.index("box_id", ["box_id"]),
+
+	box_auth_grants: defineTable({
+		box_id: v.id("boxes"),
+		token_hash: v.string(),
+		expires_at: v.number(),
+		consumed_at: v.optional(v.number()),
+		runtime_auth_hash: v.optional(v.string()),
+		created_at: v.number()
+	})
+		.index("token_hash", ["token_hash"])
+		.index("expires_at", ["expires_at"])
+		.index("box_id", ["box_id"]),
 
 	box_operations: defineTable({
 		box_id: v.id("boxes"),
@@ -219,6 +255,8 @@ export default defineSchema({
 		started_at: v.optional(v.number()),
 		finished_at: v.optional(v.number()),
 		last_error: v.optional(v.string()),
+		dismissed_at: v.optional(v.number()),
+		dismissed_by: v.optional(v.string()),
 		metadata: vMetadata,
 		created_at: v.number(),
 		updated_at: v.number()
@@ -228,6 +266,11 @@ export default defineSchema({
 		.index("box_type_status", ["box_id", "type", "status"])
 		.index("box_id_type_created_at", ["box_id", "type", "created_at"])
 		.index("status_created_at", ["status", "created_at"])
+		.index("status_dismissed_created_at", [
+			"status",
+			"dismissed_at",
+			"created_at"
+		])
 		.index("idempotency_key", ["idempotency_key"])
 		.index("idempotency_key_status", ["idempotency_key", "status"])
 		.index("reserved_slug_status", ["reserved_slug", "status"]),
@@ -288,10 +331,18 @@ export default defineSchema({
 		value: v.number(),
 		threshold: v.number(),
 		auto_suspended: v.boolean(),
+		dismissed_at: v.optional(v.number()),
+		dismissed_by: v.optional(v.string()),
 		created_at: v.number()
 	})
 		.index("box_id", ["box_id"])
-		.index("box_id_signal", ["box_id", "signal"]),
+		.index("box_id_signal", ["box_id", "signal"])
+		.index("dismissed_created_at", ["dismissed_at", "created_at"])
+		.index("box_id_dismissed_created_at", [
+			"box_id",
+			"dismissed_at",
+			"created_at"
+		]),
 
 	box_snapshots: defineTable({
 		box_id: v.id("boxes"),

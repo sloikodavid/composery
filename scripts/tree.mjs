@@ -99,7 +99,7 @@ function renderTree() {
 			});
 		});
 
-		if (depth > 0 && entries.length > 40)
+		if (depth > 0 && entries.length > 80)
 			return [`${"  ".repeat(depth)}... (${entries.length} items)`];
 
 		return entries.flatMap((entry) => [

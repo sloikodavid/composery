@@ -30,4 +30,3 @@ Use `node .agents/skills/android-live-test/scripts/android.mjs <command>` from t
 - Do not clear app data, uninstall apps, or reset a physical phone unless the user explicitly requests it.
 - Do not commit screenshots, recordings, dumps, or logs; keep them under `tmp/`.
 - Never assume a lone device. `status` shows serials; pass `--serial <serial>` when multiple devices are attached.
-

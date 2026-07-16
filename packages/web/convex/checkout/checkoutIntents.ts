@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { assertSlugAvailable } from "../boxes/slugAvailability";
+import {
+	terminalCheckoutSecretPatch,
+	unpaidCheckoutPurgeAt
+} from "../boxes/boxRetention";
 import { readGlobalSettings } from "../settings";
 
 // Polar checkout metadata keys. Set when creating a checkout and read back from
@@ -17,7 +21,6 @@ export const CLOUD_TERMS_VERSION = "2026-07-11";
 
 export const reserveCheckoutIntent = internalMutation({
 	args: {
-		runtimeAuthHash: v.string(),
 		slug: v.string(),
 		termsAcceptedAt: v.number(),
 		termsVersion: v.string(),
@@ -48,7 +51,6 @@ export const reserveCheckoutIntent = internalMutation({
 			user_id: args.userId,
 			slug: args.slug,
 			status: "active",
-			runtime_auth_hash: args.runtimeAuthHash,
 			terms_accepted_at: args.termsAcceptedAt,
 			terms_version: args.termsVersion,
 			polar_checkout_expires_at: timestamp + CHECKOUT_RESERVATION_TTL_MS,
@@ -86,14 +88,11 @@ export const activeCheckoutIntentForUserSlug = internalQuery({
 	}
 });
 
-// When createCheckout reuses an existing active checkout, the password the
-// user just typed must win over the one stored when the intent was first
-// reserved - the box would otherwise provision with a password the user never
-// chose. No-op once the intent has converted or been released.
-export const refreshCheckoutIntentAuthHash = internalMutation({
+// A resumed checkout records the latest legal acceptance. No-op once the
+// reservation has converted or been released.
+export const refreshCheckoutIntentTerms = internalMutation({
 	args: {
 		intentId: v.id("box_checkout_intents"),
-		runtimeAuthHash: v.string(),
 		termsAcceptedAt: v.number(),
 		termsVersion: v.string()
 	},
@@ -102,7 +101,6 @@ export const refreshCheckoutIntentAuthHash = internalMutation({
 		if (!intent || intent.status !== "active" || intent.box_id) return;
 
 		await ctx.db.patch(intent._id, {
-			runtime_auth_hash: args.runtimeAuthHash,
 			terms_accepted_at: args.termsAcceptedAt,
 			terms_version: args.termsVersion,
 			updated_at: Date.now()
@@ -147,6 +145,8 @@ export const releaseCheckoutIntent = internalMutation({
 			polar_checkout_status: args.polarCheckoutStatus,
 			released_at: timestamp,
 			release_reason: args.reason,
+			purge_at: unpaidCheckoutPurgeAt(timestamp),
+			...terminalCheckoutSecretPatch(),
 			updated_at: timestamp
 		});
 
@@ -176,6 +176,8 @@ export const releaseCheckoutIntentByPolarCheckout = internalMutation({
 			polar_checkout_status: args.polarCheckoutStatus,
 			released_at: timestamp,
 			release_reason: args.reason,
+			purge_at: unpaidCheckoutPurgeAt(timestamp),
+			...terminalCheckoutSecretPatch(),
 			updated_at: timestamp
 		});
 
@@ -199,6 +201,20 @@ export const checkoutIntentIdByPolarCheckout = internalQuery({
 	}
 });
 
+// Polar webhook metadata comes back as loose strings. A value that is not a
+// real intent id must resolve to null rather than crash the webhook handler
+// with a validation error Polar would retry forever.
+export const checkoutIntentIdFromString = internalQuery({
+	args: {
+		intentId: v.string()
+	},
+	handler: async (ctx, args) => {
+		const intentId = ctx.db.normalizeId("box_checkout_intents", args.intentId);
+		if (!intentId) return null;
+		return (await ctx.db.get(intentId)) ? intentId : null;
+	}
+});
+
 export const releaseExpiredCheckoutIntents = internalMutation({
 	args: {},
 	handler: async (ctx) => {
@@ -218,6 +234,8 @@ export const releaseExpiredCheckoutIntents = internalMutation({
 				status: "expired",
 				released_at: timestamp,
 				release_reason: "checkout_expired_sweep",
+				purge_at: unpaidCheckoutPurgeAt(timestamp),
+				...terminalCheckoutSecretPatch(),
 				updated_at: timestamp
 			});
 		}

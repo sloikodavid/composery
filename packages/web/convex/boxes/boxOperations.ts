@@ -182,6 +182,9 @@ const BOX_OPERATION_PLANS = {
 	},
 	snapshot: {
 		workflow: internal.boxes.workflows.snapshotWorkflows.captureSnapshot
+	},
+	recover: {
+		workflow: internal.boxes.workflows.recoverBox.recoverBox
 	}
 } satisfies Record<
 	OperationType,

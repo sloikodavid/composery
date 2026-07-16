@@ -12,6 +12,7 @@ import { isStaffUser } from "../authorization";
 import { optionalEnv, requiredEnv, websiteOrigin } from "../env";
 import type { BoxFlagSignal, BoxStatus } from "../schema";
 import { readGlobalSettings } from "../settings";
+import { consoleBoxPath } from "../../lib/box-route";
 import {
 	crossedValue,
 	isEnabled,
@@ -355,7 +356,7 @@ export const recordSample = internalMutation({
 				`Box ${box.slug} flagged: ${threshold.label}`,
 				`${message}\n\n${
 					autoSuspend ? "The box was automatically suspended.\n\n" : ""
-				}${websiteOrigin()}/console/boxes/${box.slug}`
+				}${websiteOrigin()}${consoleBoxPath(box._id)}`
 			);
 		}
 

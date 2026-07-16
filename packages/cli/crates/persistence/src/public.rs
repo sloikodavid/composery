@@ -273,7 +273,8 @@ fn fsync_parent(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::PublicPath;
+    use super::{PublicPath, is_excluded};
+    use crate::config::Config;
     use std::{
         ffi::OsString,
         os::unix::ffi::{OsStrExt, OsStringExt},
@@ -315,6 +316,29 @@ mod tests {
         assert!(PublicPath::parse("relative").is_err());
         assert!(PublicPath::parse("/a/../b").is_err());
         assert!(PublicPath::from_absolute_bytes(b"/a\0b").is_err());
+    }
+
+    #[test]
+    fn effective_default_excludes_integrity_paths() {
+        let config = Config::default();
+
+        for path in [
+            "/data/project",
+            "/opt/composery/ide/current",
+            "/opt/persistence/baseline.sqlite",
+            "/proc/self/status",
+            "/tmp/socket",
+            "/etc/resolv.conf",
+        ] {
+            assert!(
+                is_excluded(&PublicPath::parse(path).unwrap(), &config),
+                "{path}"
+            );
+        }
+        assert!(!is_excluded(
+            &PublicPath::parse("/home/user/project").unwrap(),
+            &config
+        ));
     }
 
     #[test]

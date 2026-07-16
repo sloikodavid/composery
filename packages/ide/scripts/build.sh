@@ -9,8 +9,9 @@
 #               of an upstream file - those are patches, so upstream bumps fail
 #               loudly instead of silently reverting.
 #   patches/    series = our diffs; all apply -p1 from the code-server root.
-#               server.diff carries every change to code-server's own src/node;
-#               the rest are VS Code-side (lib/vscode/*). code-server's own
+#               One concern per patch (a hunk belongs in the patch whose name
+#               describes it); a patch may span code-server's src/ and
+#               lib/vscode/* when they are one concern. code-server's own
 #               patches apply unmodified from upstream, before ours.
 #
 # The build itself (quilt + the code-server toolchain) is Linux-only.

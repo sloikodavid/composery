@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { renderRuntimeArtifacts } from "./runtimeArtifacts";
+import { CADDY_IMAGE, renderRuntimeArtifacts } from "./runtimeArtifacts";
 
 describe("runtime artifacts", () => {
 	it("renders Caddy, compose, and env with the plan's runtime contract", () => {
 		const artifacts = renderRuntimeArtifacts({
+			cloudBoxId: "box_123",
+			cloudOrigin: "https://www.composery.io",
 			domain: "my-box.composery.cloud",
 			runtimeAuthHash: "$argon2id$v=19$m=1,t=1,p=1$salt$hash",
 			runtimeImage: "ghcr.io/sloikodavid/composery@sha256:abc",
@@ -12,7 +14,7 @@ describe("runtime artifacts", () => {
 
 		expect(artifacts.caddyfile).toContain("my-box.composery.cloud");
 		expect(artifacts.caddyfile).toContain("reverse_proxy composery:8080");
-		expect(artifacts.compose).toContain("caddy:2-alpine");
+		expect(artifacts.compose).toContain(`image: ${CADDY_IMAGE}`);
 		expect(artifacts.compose).toContain(
 			"ghcr.io/sloikodavid/composery@sha256:abc"
 		);
@@ -33,5 +35,22 @@ describe("runtime artifacts", () => {
 		expect(artifacts.env).toContain(
 			"HASHED_PASSWORD='$argon2id$v=19$m=1,t=1,p=1$salt$hash'"
 		);
+		expect(artifacts.env).toContain("COMPOSERY_CLOUD_BOX_ID='box_123'");
+		expect(artifacts.env).toContain(
+			"COMPOSERY_CLOUD_ORIGIN='https://www.composery.io'"
+		);
+	});
+
+	it("renders a locked cloud runtime without a bootstrap password", () => {
+		const artifacts = renderRuntimeArtifacts({
+			cloudBoxId: "box_123",
+			cloudOrigin: "https://www.composery.io",
+			domain: "my-box.composery.cloud",
+			runtimeImage: "ghcr.io/sloikodavid/composery@sha256:abc",
+			runtimePort: 8080
+		});
+
+		expect(artifacts.env).not.toContain("HASHED_PASSWORD");
+		expect(artifacts.env).toContain("COMPOSERY_CLOUD_BOX_ID='box_123'");
 	});
 });

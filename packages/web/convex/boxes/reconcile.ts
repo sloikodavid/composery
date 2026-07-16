@@ -47,8 +47,8 @@ export const serverHasLiveBox = internalQuery({
 				q.eq("hetzner_server_id", args.serverId)
 			)
 			.first();
-		// A deleted box keeps its server id, so a server still pointing at a deleted
-		// box is a leak (its delete never finished), not a live box.
+		// Legacy tombstones can still carry a server id. Either way, only a
+		// non-deleted row proves that the Hetzner server is owned by a live box.
 		return box !== null && box.status !== "deleted";
 	}
 });

@@ -12,6 +12,9 @@ export const provisionBox = defineBoxWorkflow({
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
+		if (!box.runtime_image) {
+			throw new Error("Box has no runtime image to provision.");
+		}
 
 		const runtimeImage = await step.runAction(
 			internal.boxes.infra.runtimeImages.resolveRuntimeImage,

@@ -7,7 +7,7 @@ type ReadCtx = { db: DatabaseReader };
 
 // "deleted" is the only status excluded, so a slug frees up once its box is
 // gone but stays reserved through every active, failed, or suspended state.
-const SLUG_OCCUPYING_STATUSES: readonly Doc<"boxes">["status"][] = [
+export const SLUG_OCCUPYING_STATUSES: readonly Doc<"boxes">["status"][] = [
 	"provisioning",
 	"running",
 	"provisioning_failed",

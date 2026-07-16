@@ -7,9 +7,13 @@ if [ ! -s /etc/machine-id ]; then
   tr -d '-' < /proc/sys/kernel/random/uuid > /etc/machine-id
 fi
 
-# /data is root-owned (persistence runs as root); carve out a user-owned api dir
-# so the editor user can mint and read API keys.
-install -d -m 0700 -o user -g user "${COMPOSERY_DOCKER_VOLUME_PATH:-/data}/api"
+# The durable volume is a normal user-owned disk. Persistence keeps its own
+# root-owned subdirectory, while applications can place large state directly
+# on the volume without duplicating it into the rootfs delta store.
+volume_root="${COMPOSERY_DOCKER_VOLUME_PATH:-/data}"
+chown user:user "$volume_root"
+chmod 0755 "$volume_root"
+install -d -m 0700 -o user -g user "$volume_root/api"
 
 case "${COMPOSERY_INIT:-supervisor}" in
   supervisor)
@@ -19,7 +23,7 @@ case "${COMPOSERY_INIT:-supervisor}" in
     # systemd (PID 1) starts services with a clean env, so bridge the IDE's
     # settings through a file its unit reads (/run is tmpfs, never persisted).
     ( umask 077
-      env | grep -E '^(PORT|BROWSER|EDITOR|VISUAL|GIT_EDITOR|KUBE_EDITOR|LANG|LC_ALL|PATH|XDG_RUNTIME_DIR|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
+      env | grep -E '^(PORT|HASHED_PASSWORD|BROWSER|EDITOR|VISUAL|GIT_EDITOR|KUBE_EDITOR|LANG|LC_ALL|PATH|XDG_RUNTIME_DIR|HTTPS?_PROXY|https?_proxy)=|^COMPOSERY_' > /run/composery.env ) || true
     exec /opt/composery/init/systemd.sh
     ;;
   *)

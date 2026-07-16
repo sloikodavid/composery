@@ -40,12 +40,12 @@ values:
   `packages/ide/patches/branding.diff` and
   `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
   and styled text fill).
-- **Auth backend (register / reset-password / login flow)**.
-  `packages/ide/overlay/src/node/routes/{register,resetPassword,passwordConfig,login}.ts`
+- **Auth backend (register / change-password / login flow)**.
+  `packages/ide/overlay/src/node/routes/{register,changePassword,passwordConfig,login}.ts`
   and `packages/ide/overlay/src/node/{cli,http,main}.ts` - whole owned files, not
   patches. Readable and editable directly.
 - **Upstream server customizations** (`toLocalBrowserAddress`,
-  no-generated-password, `reset-password` CLI flag, auth routes).
+  no-generated-password, `change-password` CLI flag, auth routes).
   `packages/ide/overlay/src/node/{cli,http,main,util,wrapper,routes/...}.ts` -
   whole owned files.
 - **Product rebrand**.

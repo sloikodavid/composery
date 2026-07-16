@@ -1,0 +1,50 @@
+Input trust hardening: getHost() only trusts the Host header (Forwarded/X-Forwarded-Host are client-controlled without an explicit trusted-proxy boundary; Composery's supported edges preserve Host), and an invalid COMPOSERY_IDLE_TIMEOUT_SECONDS fails startup instead of being logged and ignored.
+
+diff --git a/src/node/cli.ts b/src/node/cli.ts
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -645,7 +645,7 @@
+ 
+   if (process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) {
+     if (isNaN(Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS))) {
+-      logger.info("COMPOSERY_IDLE_TIMEOUT_SECONDS must be a number")
++      throw new Error("COMPOSERY_IDLE_TIMEOUT_SECONDS must be a number")
+     }
+     if (Number(process.env.COMPOSERY_IDLE_TIMEOUT_SECONDS) <= 60) {
+       throw new Error("--idle-timeout-seconds must be greater than 60 seconds.")
+diff --git a/src/node/http.ts b/src/node/http.ts
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -412,28 +412,9 @@
+  * Get the host from headers.  It will be trimmed and lowercased.
+  */
+ export function getHost(req: express.Request): string | undefined {
+-  // Honor Forwarded if present.
+-  const forwardedRaw = getFirstHeader(req, "forwarded")
+-  if (forwardedRaw) {
+-    const parts = forwardedRaw.split(/[;,]/)
+-    for (let i = 0; i < parts.length; ++i) {
+-      const [key, value] = splitOnFirstEquals(parts[i])
+-      if (key.trim().toLowerCase() === "host" && value) {
+-        return value.trim().toLowerCase()
+-      }
+-    }
+-  }
+-
+-  // Honor X-Forwarded-Host if present.  Some reverse proxies will set multiple
+-  // comma-separated hosts.
+-  const xHost = getFirstHeader(req, "x-forwarded-host")
+-  if (xHost) {
+-    const firstXHost = xHost.split(",")[0]
+-    if (firstXHost) {
+-      return firstXHost.trim().toLowerCase()
+-    }
+-  }
+-
+-  const host = getFirstHeader(req, "host")
++  // Forwarded host headers are client-controlled unless the application has
++  // an explicit trusted-proxy boundary. Composery's supported edges preserve
++  // Host, so use it directly for origin checks and port-domain routing.
++  const [host] = splitOnFirstEquals(getFirstHeader(req, "host") || "")
+   return host ? host.trim().toLowerCase() : undefined
+ }

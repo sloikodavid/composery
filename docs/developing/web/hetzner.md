@@ -46,9 +46,10 @@ created once in the console and referenced by id.
      Security -> SSH Keys). Put that name or id in `HETZNER_SSH_KEY_IDS`
      (comma-separated for multiple); Hetzner injects it into every server it
      creates in this project. The backend also derives this same public key from
-     `SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create
-     and rebuild, so reset keeps SSH access even though Hetzner's rebuild action
-     does not accept `ssh_keys`.
+     `SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create,
+     reset, and snapshot restore. Hetzner added `user_data` to its rebuild API;
+     sending the current value on every rebuild keeps control-plane access from
+     depending only on the key selected when the server was first created.
    - **Private key** -> `SSH_PRIVATE_KEY`, as a single line with each newline
      escaped as `\n` (the code reverses this with `.replace(/\\n/g, "\n")`).
      Produce that exact value and paste it into the Convex dashboard:
@@ -58,15 +59,21 @@ created once in the console and referenced by id.
      ```
 
    Keep `SSH_USER=root` unless the image's default login user differs. The
-   backend uses this key for the whole box lifecycle (create, reset rebuild,
-   bootstrap, password change, slug change), not just first setup.
+   backend uses this key for the whole box lifecycle and recovery channel, not
+   as customer-facing SSH access. The private key and `HETZNER_CLOUD_TOKEN` are
+   both Convex deployment secrets; that deployment is therefore the fleet trust
+   root. A box only receives the public key, and SSH agent forwarding is not
+   used.
 
    `HETZNER_SSH_KEY_IDS` only affects Hetzner's create-time injection. Existing
    running servers keep whatever was written into `authorized_keys`, while reset
    rebuilds install the public key derived from the current `SSH_PRIVATE_KEY`.
    During rotation, install and test the new public key on existing servers
-   before replacing the Convex secret; changing the project key alone affects
-   only new servers.
+   before replacing the Convex secret, update `HETZNER_SSH_KEY_IDS` for new
+   servers, and treat revocation of a compromised key as fleet maintenance.
+   Hetzner remembers keys selected at server creation and can inject them again
+   during a rebuild, so replacing a Convex secret alone does not prove the old
+   key has been removed from every existing server.
 
 3. **Firewall.** Create a firewall in the Hetzner project (Project -> Firewalls).
    Add inbound rules allowing TCP **22**, **80**, and **443** plus **ICMP**, all
@@ -123,6 +130,17 @@ bootstrap, so a rebuilt box uses the runtime release configured on the active
 [Convex](./convex.md) deployment. Box deletion deletes the server and then
 explicitly deletes the recorded Primary IPs, with IP-string lookup as a fallback
 for older boxes that do not yet have Primary IP IDs stored.
+
+The owner and staff box pages share one Recovery dialog. Its checks cover the
+public URL, the internal SSH control channel, host disk and Docker, both Caddy
+layers, the Composery container, persistence, and `ide.service`. Its
+non-destructive actions restart inner services, recreate containers from the
+current host configuration, reboot the VPS, or restore the Composery-managed
+files in `/opt/composery-web` from Convex state before recreating containers.
+That last action reuses the same artifact renderers as provisioning; there is no
+separate recovery seed to drift. All four retain the named Docker volumes. Full
+reset remains the final, explicitly destructive option and does not delete
+existing snapshots.
 
 ## Box snapshots
 

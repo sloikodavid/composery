@@ -20,10 +20,10 @@ describe("toolchain pins", () => {
 	});
 
 	test("package engines match the pinned Node version", () => {
-		const [nodeMajor] = nodeVersion.split(".");
+		const nodeMajor = Number(nodeVersion.split(".")[0]);
 
 		expect(rootPackage.engines?.node).toBe(
-			`>=${nodeVersion} <${+nodeMajor + 1}`
+			`>=${nodeVersion} <${nodeMajor + 1}`
 		);
 		expect(rootPackage.engines).not.toHaveProperty("pnpm");
 	});
@@ -49,11 +49,11 @@ describe("toolchain pins", () => {
 	});
 
 	test("IDE engine patch rejects the old upstream Node major", () => {
-		const [nodeMajor] = nodeVersion.split(".");
+		const nodeMajor = Number(nodeVersion.split(".")[0]);
 		const patch = readRepoFile("packages/ide/patches/node-engine.diff");
 
 		expect(patch).toContain('-    "node": "22"');
-		expect(patch).toContain(`+    "node": ">=24.15.0 <${+nodeMajor + 1}"`);
+		expect(patch).toContain(`+    "node": ">=24.15.0 <${nodeMajor + 1}"`);
 	});
 
 	test.each(workflows)("%s reads Node from .nvmrc, not a literal", (path) => {

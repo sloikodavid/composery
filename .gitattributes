@@ -1,2 +1,2 @@
 * text=auto eol=lf
-packages/ide/patches/*.diff whitespace=-space-before-tab,-blank-at-eof
+packages/ide/patches/*.diff whitespace=-space-before-tab,-blank-at-eof,-blank-at-eol

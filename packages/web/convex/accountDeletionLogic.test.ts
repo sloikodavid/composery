@@ -3,7 +3,8 @@ import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
 	deletionIdempotencyKey,
-	scrubbedAccountEmail
+	scrubbedAccountEmail,
+	scrubbedUserId
 } from "./accountDeletionLogic";
 
 describe("accountDeletionBoxTargets", () => {
@@ -58,5 +59,11 @@ describe("scrubbedAccountEmail", () => {
 		expect(scrubbedAccountEmail("users:abc123")).toBe(
 			"deleted-user-users-abc123@deleted.invalid"
 		);
+	});
+});
+
+describe("scrubbedUserId", () => {
+	it("replaces the external identity with an internal pseudonym", () => {
+		expect(scrubbedUserId("users:abc123")).toBe("deleted:users:abc123");
 	});
 });

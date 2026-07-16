@@ -3,6 +3,7 @@ import { internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
 import { appendBoxEvent } from "./boxEvents";
+import { deletedBoxDataPatch } from "./boxRetention";
 import { assertSlugAvailable } from "./slugAvailability";
 
 export const markOperationRunning = internalMutation({
@@ -224,10 +225,15 @@ export const updateRuntimeAuthHash = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
+		const operation = await ctx.db.get(args.operationId);
+		if (!operation || operation.box_id !== box._id) {
+			throw new ConvexError("Box operation not found.");
+		}
 
 		const timestamp = Date.now();
 		await ctx.db.patch(args.boxId, {
 			runtime_auth_hash: args.runtimeAuthHash,
+			password_setup_pending_at: undefined,
 			updated_at: timestamp
 		});
 		await ctx.db.patch(args.operationId, {
@@ -311,8 +317,7 @@ export const markDeleted = internalMutation({
 
 		const timestamp = Date.now();
 		await ctx.db.patch(args.boxId, {
-			status: "deleted",
-			deleted_at: timestamp,
+			...deletedBoxDataPatch(timestamp),
 			updated_at: timestamp
 		});
 		await ctx.db.patch(args.operationId, {
@@ -321,6 +326,31 @@ export const markDeleted = internalMutation({
 			updated_at: timestamp
 		});
 		await appendBoxEvent(ctx, box, "box.deleted");
+		await ctx.scheduler.runAfter(
+			0,
+			internal.boxes.boxCleanup.deleteRuntimeData,
+			{
+				boxId: box._id
+			}
+		);
+		await ctx.scheduler.runAfter(
+			0,
+			internal.boxes.boxCleanup.sanitizeOperations,
+			{
+				boxId: box._id
+			}
+		);
+		await ctx.scheduler.runAfter(0, internal.boxes.boxCleanup.sanitizeEvents, {
+			boxId: box._id
+		});
+		await ctx.scheduler.runAfter(
+			0,
+			internal.boxes.boxCleanup.startCheckoutRetention,
+			{
+				boxId: box._id,
+				deletedAt: timestamp
+			}
+		);
 
 		// Snapshot images survive server deletion, so drop them now rather than
 		// letting them linger and bill.

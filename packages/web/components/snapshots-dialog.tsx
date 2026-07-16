@@ -107,7 +107,7 @@ export function SnapshotsDialog({
 					</div>
 
 					<div className="overflow-hidden rounded-2xl border border-border bg-card">
-						<Table className="table-fixed min-w-[40rem]">
+						<Table className="table-fixed min-w-[42rem]">
 							<TableHeader>
 								<TableRow>
 									<TableHead className="pl-4">
@@ -122,7 +122,7 @@ export function SnapshotsDialog({
 									<TableHead className="w-32">
 										<SortHeader label="Status" sort={sort} sortKey="status" />
 									</TableHead>
-									<TableHead className="w-20 pr-2 text-right">
+									<TableHead className="w-20 pr-4 text-right">
 										<span className="sr-only">Actions</span>
 									</TableHead>
 								</TableRow>
@@ -163,7 +163,7 @@ export function SnapshotsDialog({
 													<TableCell>
 														<StatusText status={snapshot.status} />
 													</TableCell>
-													<TableCell className="pr-2 text-right">
+													<TableCell className="pr-4 text-right">
 														<div className="flex items-center justify-end gap-1">
 															<ConfirmDialog
 																confirmLabel="Restore"

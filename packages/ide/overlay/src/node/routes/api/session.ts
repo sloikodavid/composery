@@ -3,6 +3,7 @@ import * as express from "express"
 import { wss, Router as WsRouter, type WebsocketRequest } from "../../wsRouter"
 import { authenticate } from "./auth"
 import { apiConfig } from "./config"
+import { apiBasePath } from "./constants"
 import { nodePty } from "./pty"
 import { sessions } from "./ratelimit"
 
@@ -35,7 +36,7 @@ function stopChild(child: ChildProcessWithoutNullStreams): void {
   } catch {}
 }
 
-wsRouter.ws("/v1/exec", async (req: WebsocketRequest) => {
+wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
   const auth = await authenticate(req)
   if (!auth.id) {
     endWithStatus(req, auth.status ?? 401, auth.message ?? "Unauthorized")

@@ -1,5 +1,5 @@
 // Probes a URL to verify it's a Composery before loading it in the WebView.
-// The server exposes GET /__composery → {"composery":true} for this. A
+// The server exposes GET /_composery → {"composery":true} for this. A
 // non-Composery site (or one that's unreachable) is rejected before the
 // WebView tries to embed it — avoiding the blank-screen failure mode.
 export type ProbeResult =
@@ -11,7 +11,7 @@ export type ProbeFetch = typeof fetch;
 
 // Builds an endpoint URL relative to the instance URL's pathname, so a
 // subpath-mounted Composery (e.g. https://host/my-cs/) probes
-// /my-cs/__composery, not /__composery. Strips query/hash.
+// /my-cs/_composery, not /_composery. Strips query/hash.
 function endpointUrl(instanceUrl: string, endpoint: string): string {
 	const url = new URL(instanceUrl);
 	const path = url.pathname.replace(/\/+$/, "");
@@ -22,7 +22,7 @@ function endpointUrl(instanceUrl: string, endpoint: string): string {
 }
 
 export function probeUrl(instanceUrl: string): string {
-	return endpointUrl(instanceUrl, "/__composery");
+	return endpointUrl(instanceUrl, "/_composery");
 }
 
 export function versionUrl(instanceUrl: string): string {

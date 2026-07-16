@@ -10,7 +10,7 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 1. Create or select the organization.
    In production, complete Polar's account review and enter the real supplier
    identity and support contact: David Sloiko, trading as Composery, and
-   `hello@composery.io`. Polar is the merchant of record and reseller, but
+   `sloikodavid@gmail.com`. Polar is the merchant of record and reseller, but
    Composery remains the supplier under the Terms.
 2. Create an Organization Access Token (Settings -> Developers -> New Token) with
    these scopes (required by `@convex-dev/polar`):

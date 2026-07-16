@@ -11,6 +11,7 @@ export function safeBox(box: Doc<"boxes">) {
 		updatedAt: box.updated_at,
 		provisionedAt: box.provisioned_at,
 		deletedAt: box.deleted_at,
+		purgeAt: box.purge_at,
 		polarSubscriptionId: box.polar_subscription_id
 	};
 }
@@ -18,6 +19,7 @@ export function safeBox(box: Doc<"boxes">) {
 export function staffBox(box: Doc<"boxes">, user?: Doc<"users"> | null) {
 	return {
 		...safeBox(box),
+		runtimeUrl: box.status === "deleted" ? null : cloudUrl(box.slug),
 		userId: box.user_id,
 		userEmail: user?.email ?? "",
 		polarCustomerId: box.polar_customer_id,

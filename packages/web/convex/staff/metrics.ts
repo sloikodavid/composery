@@ -1,6 +1,13 @@
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { query, type QueryCtx } from "../_generated/server";
+import {
+	internalMutation,
+	mutation,
+	query,
+	type MutationCtx,
+	type QueryCtx
+} from "../_generated/server";
 import { requireStaff } from "../authorization";
 import {
 	boxMetricsSamples,
@@ -9,20 +16,20 @@ import {
 	vRolledMetric,
 	type RolledMetric
 } from "../boxes/boxMetrics";
-import { findBoxBySlug } from "../boxes/boxQueries";
 
 const FLAG_LIST_LIMIT = 50;
+const FLAG_DISMISS_BATCH = 100;
 const TOP_BOXES = 8;
 const RAW_RANK_DOCUMENT_LIMIT = 8000;
 
-async function slugsById(ctx: QueryCtx, boxIds: Iterable<Id<"boxes">>) {
-	const slugs = new Map<Id<"boxes">, string>();
+async function boxesById(ctx: QueryCtx, boxIds: Iterable<Id<"boxes">>) {
+	const boxes = new Map<Id<"boxes">, Doc<"boxes"> | null>();
 	for (const boxId of boxIds) {
-		if (slugs.has(boxId)) continue;
+		if (boxes.has(boxId)) continue;
 		const box = await ctx.db.get(boxId);
-		slugs.set(boxId, box?.slug ?? "deleted");
+		boxes.set(boxId, box);
 	}
-	return slugs;
+	return boxes;
 }
 
 async function topBoxIds(ctx: QueryCtx, metric: RolledMetric) {
@@ -129,16 +136,16 @@ async function topHourlyBoxIds(
 
 export const series = query({
 	args: {
+		boxId: v.optional(v.id("boxes")),
 		metric: v.optional(vRolledMetric),
-		range: v.optional(vMetricsRange),
-		slug: v.optional(v.string())
+		range: v.optional(vMetricsRange)
 	},
 	handler: async (ctx, args) => {
 		await requireStaff(ctx);
 		const range: MetricsRange = args.range ?? "24h";
 
-		if (args.slug) {
-			const box = await findBoxBySlug(ctx, args.slug);
+		if (args.boxId) {
+			const box = await ctx.db.get(args.boxId);
 			if (!box) return [];
 			return [
 				{
@@ -149,12 +156,14 @@ export const series = query({
 		}
 
 		const boxIds = await topBoxIds(ctx, args.metric ?? "cpu_percent");
-		const slugs = await slugsById(ctx, boxIds);
+		const boxes = await boxesById(ctx, boxIds);
 
 		const series = [];
 		for (const boxId of boxIds) {
+			const box = boxes.get(boxId);
+			if (!box) continue;
 			series.push({
-				slug: slugs.get(boxId) ?? "deleted",
+				slug: box.slug,
 				samples: await boxMetricsSamples(ctx, boxId, range)
 			});
 		}
@@ -166,14 +175,14 @@ export const series = query({
 
 export const flags = query({
 	args: {
-		slug: v.optional(v.string())
+		boxId: v.optional(v.id("boxes"))
 	},
 	handler: async (ctx, args) => {
 		await requireStaff(ctx);
 
 		let flags: Doc<"box_flags">[];
-		if (args.slug) {
-			const box = await findBoxBySlug(ctx, args.slug);
+		if (args.boxId) {
+			const box = await ctx.db.get(args.boxId);
 			if (!box) return [];
 			flags = await ctx.db
 				.query("box_flags")
@@ -183,22 +192,120 @@ export const flags = query({
 		} else {
 			flags = await ctx.db
 				.query("box_flags")
+				.withIndex("dismissed_created_at", (builder) =>
+					builder.eq("dismissed_at", undefined)
+				)
 				.order("desc")
 				.take(FLAG_LIST_LIMIT);
 		}
-		const slugs = await slugsById(
+		const boxes = await boxesById(
 			ctx,
 			flags.map((flag) => flag.box_id)
 		);
 
-		return flags.map((flag) => ({
-			id: flag._id,
-			slug: slugs.get(flag.box_id) ?? "deleted",
-			signal: flag.signal,
-			message: flag.message,
-			value: flag.value,
-			autoSuspended: flag.auto_suspended,
-			createdAt: flag.created_at
-		}));
+		return flags.flatMap((flag) => {
+			const box = boxes.get(flag.box_id);
+			if (!box) return [];
+			return [
+				{
+					id: flag._id,
+					boxId: box._id,
+					slug: box.slug,
+					hetznerServerId: box.hetzner_server_id ?? null,
+					signal: flag.signal,
+					message: flag.message,
+					value: flag.value,
+					autoSuspended: flag.auto_suspended,
+					createdAt: flag.created_at,
+					dismissedAt: flag.dismissed_at ?? null
+				}
+			];
+		});
+	}
+});
+
+export const dismissFlag = mutation({
+	args: {
+		flagId: v.id("box_flags")
+	},
+	handler: async (ctx, args) => {
+		const staffUser = await requireStaff(ctx);
+		const flag = await ctx.db.get(args.flagId);
+		if (!flag || flag.dismissed_at) return;
+
+		await ctx.db.patch(flag._id, {
+			dismissed_at: Date.now(),
+			dismissed_by: staffUser.clerk_user_id
+		});
+	}
+});
+
+async function dismissFlagBatch(
+	ctx: MutationCtx,
+	boxId: Id<"boxes"> | undefined,
+	dismissedBy: string
+) {
+	const flags = boxId
+		? await ctx.db
+				.query("box_flags")
+				.withIndex("box_id_dismissed_created_at", (query) =>
+					query.eq("box_id", boxId).eq("dismissed_at", undefined)
+				)
+				.take(FLAG_DISMISS_BATCH)
+		: await ctx.db
+				.query("box_flags")
+				.withIndex("dismissed_created_at", (query) =>
+					query.eq("dismissed_at", undefined)
+				)
+				.take(FLAG_DISMISS_BATCH);
+	const timestamp = Date.now();
+	for (const flag of flags) {
+		await ctx.db.patch(flag._id, {
+			dismissed_at: timestamp,
+			dismissed_by: dismissedBy
+		});
+	}
+	return flags.length === FLAG_DISMISS_BATCH;
+}
+
+export const dismissAllFlags = mutation({
+	args: { boxId: v.optional(v.id("boxes")) },
+	handler: async (ctx, args) => {
+		const staffUser = await requireStaff(ctx);
+		const hasMore = await dismissFlagBatch(
+			ctx,
+			args.boxId,
+			staffUser.clerk_user_id
+		);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.staff.metrics.dismissAllFlagsBatch,
+				{
+					boxId: args.boxId,
+					dismissedBy: staffUser.clerk_user_id
+				}
+			);
+		}
+	}
+});
+
+export const dismissAllFlagsBatch = internalMutation({
+	args: {
+		boxId: v.optional(v.id("boxes")),
+		dismissedBy: v.string()
+	},
+	handler: async (ctx, args) => {
+		const hasMore = await dismissFlagBatch(ctx, args.boxId, args.dismissedBy);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.staff.metrics.dismissAllFlagsBatch,
+				{
+					boxId: args.boxId,
+					dismissedBy: args.dismissedBy
+				}
+			);
+		}
 	}
 });

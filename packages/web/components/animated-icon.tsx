@@ -37,6 +37,8 @@ import { SunMoonIcon } from "@/components/icons/sun-moon";
 import { VercelIcon } from "@/components/icons/vercel";
 import { WalletIcon } from "@/components/icons/wallet";
 import { WashingMachineIcon } from "@/components/icons/washing-machine";
+import { WrenchIcon } from "@/components/icons/wrench";
+import { XIcon } from "@/components/icons/x";
 import { Button } from "@/components/button";
 import { cn } from "@/lib/utils";
 
@@ -71,7 +73,9 @@ export type AnimatedIconName =
 	| "sun-moon"
 	| "vercel"
 	| "wallet"
-	| "washing-machine";
+	| "washing-machine"
+	| "wrench"
+	| "x";
 
 type AnimatedIconPosition = "start" | "end" | "only";
 
@@ -195,6 +199,10 @@ function AnimatedIconGlyph({
 			return <WalletIcon {...iconProps} />;
 		case "washing-machine":
 			return <WashingMachineIcon {...iconProps} />;
+		case "wrench":
+			return <WrenchIcon {...iconProps} />;
+		case "x":
+			return <XIcon {...iconProps} />;
 	}
 }
 

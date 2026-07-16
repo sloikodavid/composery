@@ -9,6 +9,7 @@ export async function findBoxBySlug(ctx: QueryCtx, slug: string) {
 	return await ctx.db
 		.query("boxes")
 		.withIndex("slug", (query) => query.eq("slug", sanitizeSlug(slug)))
+		.filter((query) => query.neq(query.field("status"), "deleted"))
 		.first();
 }
 
@@ -38,14 +39,19 @@ const USER_SUSPENSION_BOX_PAGE_SIZE = 100;
 // The reason recorded on a box's most recent suspend operation (box-level
 // suspension keeps it in the operation metadata, not on the box row). Shared by
 // the owner and staff box-detail queries.
-export async function latestSuspensionReason(
+export function hasCurrentSuspension(status: string) {
+	return status === "suspending" || status === "suspended";
+}
+
+export async function currentSuspensionReason(
 	ctx: QueryCtx,
-	boxId: Id<"boxes">
+	box: { _id: Id<"boxes">; status: string }
 ) {
+	if (!hasCurrentSuspension(box.status)) return null;
 	const operations = await ctx.db
 		.query("box_operations")
 		.withIndex("box_id_type_created_at", (builder) =>
-			builder.eq("box_id", boxId).eq("type", "suspend")
+			builder.eq("box_id", box._id).eq("type", "suspend")
 		)
 		.order("desc")
 		.first();
@@ -77,10 +83,7 @@ export const boxBySlug = internalQuery({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("boxes")
-			.withIndex("slug", (query) => query.eq("slug", args.slug))
-			.first();
+		return await findBoxBySlug(ctx, args.slug);
 	}
 });
 
@@ -90,10 +93,7 @@ export const boxByOwnerSlug = internalQuery({
 		userId: v.string()
 	},
 	handler: async (ctx, args) => {
-		const box = await ctx.db
-			.query("boxes")
-			.withIndex("slug", (query) => query.eq("slug", args.slug))
-			.first();
+		const box = await findBoxBySlug(ctx, args.slug);
 
 		if (!box || box.user_id !== args.userId) return null;
 		return box;

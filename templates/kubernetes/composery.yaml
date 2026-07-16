@@ -46,18 +46,18 @@ spec:
             #       key: password
           startupProbe:
             httpGet:
-              path: /healthz
+              path: /_composery/healthz
               port: 8080
             failureThreshold: 30
             periodSeconds: 5
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /_composery/healthz
               port: 8080
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /_composery/healthz
               port: 8080
             periodSeconds: 30
           volumeMounts:

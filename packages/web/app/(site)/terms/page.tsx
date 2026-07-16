@@ -55,7 +55,7 @@ export default function TermsPage() {
 						If you are an EEA or UK consumer, you generally have 14 days from
 						the contract date to withdraw. If you ask us to start during that
 						period, you must pay a proportionate amount for service already
-						supplied. To withdraw, email hello@composery.io with your name,
+						supplied. To withdraw, email sloikodavid@gmail.com with your name,
 						account email, order, and a clear statement that you withdraw. You
 						may use those details as the model withdrawal form, but do not have
 						to.
@@ -101,11 +101,13 @@ export default function TermsPage() {
 				<p>
 					You may stop using the site at any time and can delete your account
 					from the user menu. Account deletion cancels subscriptions and
-					permanently deletes boxes and snapshots. We may end access for a
-					material or repeated breach, non-payment, legal requirement, or
-					serious security risk. Terms which by nature survive termination,
-					including payment, ownership, disclaimers, and liability terms, remain
-					effective.
+					permanently removes box contents, servers, credentials, and snapshots.
+					Minimized security, lifecycle, and billing records remain only for the
+					periods and purposes described in the Privacy Policy. We may end
+					access for a material or repeated breach, non-payment, legal
+					requirement, or serious security risk. Terms which by nature survive
+					termination, including payment, ownership, disclaimers, and liability
+					terms, remain effective.
 				</p>
 			</LegalSection>
 			<LegalSection title="Law and contact">
@@ -119,8 +121,8 @@ export default function TermsPage() {
 					<br />
 					20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland
 					<br />
-					<a className="link" href="mailto:hello@composery.io">
-						hello@composery.io
+					<a className="link" href="mailto:sloikodavid@gmail.com">
+						sloikodavid@gmail.com
 					</a>
 				</address>
 				<p>

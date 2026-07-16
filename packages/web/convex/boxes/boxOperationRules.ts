@@ -37,7 +37,14 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	suspend: ["running", "stopped"],
 	unsuspend: ["suspended"],
 	restore: ["running", "restore_failed"],
-	snapshot: ["running"]
+	snapshot: ["running"],
+	recover: [
+		"running",
+		"stopped",
+		"provisioning_failed",
+		"reset_failed",
+		"restore_failed"
+	]
 };
 
 export const ACTIVE_OPERATION_STATUSES = [

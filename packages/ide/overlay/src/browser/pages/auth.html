@@ -8,12 +8,11 @@
 		/>
 		<meta
 			http-equiv="Content-Security-Policy"
-			content="style-src 'self'; script-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
+			content="style-src 'self'; script-src 'self'; connect-src 'self' https://api.pwnedpasswords.com; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>{{TITLE}}</title>
 		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg" type="image/svg+xml" />
-		<link rel="alternate icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" type="image/x-icon" />
 		<link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
 		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
 		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/auth.css" rel="stylesheet" />
@@ -37,8 +36,13 @@
 				</a>
 				<input
 					class="username"
+					name="username"
 					type="text"
 					autocomplete="username"
+					value="user"
+					readonly
+					tabindex="-1"
+					aria-hidden="true"
 				/>
 				<input id="base" type="hidden" name="base" value="{{BASE}}" />
 				<input id="href" type="hidden" name="href" value="" />
@@ -46,6 +50,7 @@
 				<div class="auth-message" aria-live="polite">{{ERROR}}</div>
 			</form>
 		</main>
+		{{PASSWORD_CHECK_SCRIPT}}
 		<script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/auth.js"></script>
 	</body>
 </html>

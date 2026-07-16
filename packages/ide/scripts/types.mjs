@@ -21,12 +21,22 @@ function run(command, args, options = {}) {
 }
 
 // Typecheck the IDE server tree exactly as build.sh assembles it: pristine
-// upstream src + the server and Node engine patches + overlay's new files. Sources come from
-// git blobs (always LF) so the patch applies on Windows working trees too.
+// upstream src + every code-server-side patch + overlay's new files. Sources
+// come from git blobs (always LF) so the patches apply on Windows working
+// trees too. updates.diff spans src/ and lib/vscode; only its src/ sections
+// apply here (lib/vscode is not part of this tree).
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
-const SERVER_DIFF = join(PACKAGE_ROOT, "patches/server.diff");
-const NODE_ENGINE_DIFF = join(PACKAGE_ROOT, "patches/node-engine.diff");
+const SERVER_PATCHES = [
+	"naming.diff",
+	"local-address.diff",
+	"hardening.diff",
+	"auth.diff",
+	"readiness.diff",
+	"api.diff",
+	"node-engine.diff"
+];
+const UPDATES_DIFF = join(PACKAGE_ROOT, "patches/updates.diff");
 const SCRATCH = join(
 	REPO_ROOT,
 	"tmp",
@@ -73,12 +83,18 @@ execFileSync("tar", ["-xf", "upstream.tar"], {
 });
 rmSync(join(SCRATCH, "upstream.tar"));
 
-execFileSync("git", ["-C", SCRATCH, "apply", "-p1", SERVER_DIFF], {
-	stdio: "inherit"
-});
-execFileSync("git", ["-C", SCRATCH, "apply", "-p1", NODE_ENGINE_DIFF], {
-	stdio: "inherit"
-});
+for (const name of SERVER_PATCHES) {
+	execFileSync(
+		"git",
+		["-C", SCRATCH, "apply", "-p1", join(PACKAGE_ROOT, "patches", name)],
+		{ stdio: "inherit" }
+	);
+}
+execFileSync(
+	"git",
+	["-C", SCRATCH, "apply", "-p1", "--include=src/**", UPDATES_DIFF],
+	{ stdio: "inherit" }
+);
 
 for (const entry of readdirSync(join(OVERLAY, "src"))) {
 	cpSync(join(OVERLAY, "src", entry), join(SCRATCH, "src", entry), {

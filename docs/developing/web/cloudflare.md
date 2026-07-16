@@ -1,17 +1,15 @@
 ---
 title: Cloudflare
-description: Delegate both domains from Namecheap, serve the website, route email, and automate box DNS.
+description: Delegate both domains from Namecheap, serve the website, and automate box DNS.
 ---
 
 Namecheap remains the registrar. Cloudflare becomes the authoritative DNS
 provider for both domains:
 
-- `composery.io`: Vercel website, Clerk records, Resend sending records, and
-  inbound email routing.
+- `composery.io`: Vercel website, Clerk records, and Resend sending records.
 - `composery.cloud`: DNS-only records for hosted boxes.
 
-Keeping DNS in one provider avoids editing records in the wrong dashboard and
-lets `hello@composery.io` forward to the existing Gmail inbox at no cost.
+Keeping DNS in one provider avoids editing records in the wrong dashboard.
 
 ## Delegate the domains from Namecheap
 
@@ -40,22 +38,6 @@ instructions explicitly say otherwise. Configure the apex to redirect to
 Clerk, Resend, and any Vercel ownership checks also publish records in this
 zone. Copy their generated values exactly; do not reuse examples from this
 repository because provider-specific targets can change.
-
-### Receive hello@composery.io
-
-In Cloudflare **Email Routing**:
-
-1. Add and verify `name@example.com` as a destination.
-2. Enable Email Routing for `composery.io`; allow Cloudflare to add its MX and
-   SPF records.
-3. Add `hello@composery.io` -> `name@example.com`.
-4. Test from a different mailbox. Sending a test from the destination Gmail
-   account itself can be discarded as a loop.
-
-This is forwarding, not a mailbox: incoming messages arrive in Gmail, while
-replies come from Gmail. Move to a hosted mailbox later only if replies must
-come from `hello@composery.io`. Do not enable Namecheap email forwarding too;
-one domain must have one intentional MX setup.
 
 ## Runtime zone: composery.cloud
 
@@ -92,13 +74,11 @@ does not need an application API token.
 - Both Cloudflare zones are Active.
 - `www.composery.io` serves Vercel and the apex redirects to it.
 - Clerk's five production records verify.
-- Mail to `hello@composery.io` reaches Gmail.
 - Runtime A/AAAA records are DNS-only and dev uses the `dev` subdomain.
 
 ## References
 
 - Cloudflare domain onboarding: https://developers.cloudflare.com/fundamentals/manage-domains/add-site/
-- Cloudflare Email Routing: https://developers.cloudflare.com/email-service/get-started/route-emails/
 - Cloudflare DNS records: https://developers.cloudflare.com/dns/manage-dns-records/
 - Cloudflare API tokens: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/
 - Vercel external DNS: https://vercel.com/docs/domains/set-up-custom-domain

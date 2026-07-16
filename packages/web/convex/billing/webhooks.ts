@@ -68,8 +68,12 @@ async function intentIdFromSubscription(
 		metadata.intentId ??
 		metadata.checkout_intent_id;
 
-	if (typeof metadataIntentId === "string") {
-		return metadataIntentId as Id<"box_checkout_intents">;
+	if (typeof metadataIntentId === "string" && metadataIntentId) {
+		const intentId = await ctx.runQuery(
+			internal.checkout.checkoutIntents.checkoutIntentIdFromString,
+			{ intentId: metadataIntentId }
+		);
+		if (intentId) return intentId;
 	}
 
 	if (!subscription.checkoutId) return null;

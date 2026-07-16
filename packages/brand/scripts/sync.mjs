@@ -461,7 +461,8 @@ if (CHECK) {
 
 	// One adaptive favicon, not two static ones behind link media="" attributes:
 	// Chromium ignores media="" on <link rel="icon">, so the two-file approach
-	// only switched in Firefox. The internal @media query switches everywhere.
+	// only switched in Firefox. Use this SVG directly in HTML so there is no
+	// second favicon candidate for browsers to pick instead.
 	await writeFile(
 		join(
 			root,
