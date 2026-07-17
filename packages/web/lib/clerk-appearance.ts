@@ -1,4 +1,4 @@
-import { shadcn } from "@clerk/ui/themes";
+﻿import { shadcn } from "@clerk/ui/themes";
 
 // `!` beats @clerk/ui's emotion styles drawn in @layer components; our Tailwind
 // strings append in @layer utilities, which outranks it, so the theme's own
@@ -20,7 +20,7 @@ export const clerkAppearance = {
 		colorRing: "color-mix(in oklab, var(--ring) 30%, transparent)",
 		colorShimmer: "var(--muted)",
 		colorModalBackdrop: "rgba(0, 0, 0, 0.4)",
-		// Form controls match the full-page auth form (new-box-form): rounded-lg
+		// Form controls match the full-page auth form (new-box): rounded-lg
 		// (var(--radius)), 15px text. Card/popover radius is overridden per-element
 		// to the 24px card curve below.
 		borderRadius: "var(--radius)",
@@ -44,7 +44,7 @@ export const clerkAppearance = {
 		headerSubtitle: "text-[15px] text-muted-foreground",
 		// Primary/outline buttons mirror components/button.tsx (default + outline
 		// variants): color-mix hovers rather than opacity, ring-3 focus, the
-		// active nudge. Sized like new-box-form's h-12 rounded-lg controls.
+		// active nudge. Sized like new-box's h-12 rounded-lg controls.
 		button:
 			"rounded-lg font-medium transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px",
 		formButtonPrimary:
@@ -60,7 +60,7 @@ export const clerkAppearance = {
 		socialButtonsBlockButtonText: "text-[15px] font-medium text-foreground!",
 		socialButtonsIconButton:
 			"h-12 rounded-lg border border-border bg-background transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
-		// Inputs mirror components/input.tsx (outline variant) at new-box-form's
+		// Inputs mirror components/input.tsx (outline variant) at new-box's
 		// h-12 rounded-lg px-5 scale, with the ring-3 focus treatment.
 		input:
 			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 dark:bg-input/30!",

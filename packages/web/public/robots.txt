@@ -1,8 +1,0 @@
-# allow crawling everything by default; keep auth-gated app surfaces out
-User-agent: *
-Disallow: /boxes
-Disallow: /console
-Disallow: /sign-in
-Disallow: /api/
-
-Sitemap: https://www.composery.io/sitemap.xml

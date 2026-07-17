@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
-import { requireStaff } from "../authorization";
+import { requireCapability } from "../authorization";
 import type { BoxStatus } from "../schema";
+import { CAPACITY_BOX_STATUSES } from "../boxes/boxCapacity";
 
 const COUNT_CAP = 1_000;
 const DAILY_COUNT_CAP = 1_000;
@@ -27,24 +28,6 @@ type CappedCount = {
 	capped: boolean;
 	value: number;
 };
-
-const ACTIVE_STATUSES: BoxStatus[] = [
-	"provisioning",
-	"running",
-	"provisioning_failed",
-	"stopping",
-	"stopped",
-	"starting",
-	"resetting",
-	"reset_failed",
-	"restoring",
-	"restore_failed",
-	"suspending",
-	"suspended",
-	"unsuspending",
-	"deleting",
-	"delete_failed"
-];
 
 const FAILED_STATUSES: BoxStatus[] = [
 	"provisioning_failed",
@@ -129,7 +112,7 @@ export const overview = query({
 		range: v.optional(vStatsRange)
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 
 		const windowDays = RANGE_DAYS[args.range ?? "30d"];
 		const now = Date.now();
@@ -137,11 +120,11 @@ export const overview = query({
 		const today = Math.floor(now / DAY_MS) * DAY_MS;
 
 		const statusCounts = {} as Record<BoxStatus, CappedCount>;
-		for (const status of ACTIVE_STATUSES) {
+		for (const status of CAPACITY_BOX_STATUSES) {
 			statusCounts[status] = await countByStatus(ctx, status);
 		}
 		const activeBoxes = sumCapped(
-			ACTIVE_STATUSES.map((status) => statusCounts[status])
+			CAPACITY_BOX_STATUSES.map((status) => statusCounts[status])
 		);
 		const failedBoxes = sumCapped(
 			FAILED_STATUSES.map((status) => statusCounts[status])

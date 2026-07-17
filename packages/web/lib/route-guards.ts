@@ -33,7 +33,11 @@ export async function notFoundIfNotStaff() {
 		notFound();
 	}
 
-	const isStaff = await fetchQuery(api.users.isCurrentUserStaff, {}, { token });
+	const isStaff = await fetchQuery(
+		api.users.canAccessStaffConsole,
+		{},
+		{ token }
+	);
 
 	if (!isStaff) {
 		notFound();

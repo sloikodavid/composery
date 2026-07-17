@@ -5,13 +5,19 @@ import type { Id } from "../_generated/dataModel";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
-import { polarServer } from "./polar";
+import { TERMS_FIELD_SLUG } from "../../lib/cloud-legal";
+import {
+	polarServer,
+	revokeAndRefundPolarOrder,
+	revokePolarSubscription
+} from "./polar";
 
 type RouteCtx = Parameters<typeof startBoxOperation>[0];
 type PolarSubscription = Extract<
 	PolarWebhookEvent,
 	{ type: "subscription.active" }
 >["data"];
+type PolarOrder = Extract<PolarWebhookEvent, { type: "order.paid" }>["data"];
 
 function date(value: Date | null | undefined) {
 	return value ? value.toISOString() : null;
@@ -58,11 +64,11 @@ async function syncSubscription(
 	});
 }
 
-async function intentIdFromSubscription(
+async function intentIdFromCheckoutMetadata(
 	ctx: RouteCtx,
-	subscription: PolarSubscription
+	metadata: Record<string, unknown>,
+	checkoutId: string | null | undefined
 ) {
-	const metadata = subscription.metadata ?? {};
 	const metadataIntentId =
 		metadata[CHECKOUT_INTENT_METADATA_KEYS.intentId] ??
 		metadata.intentId ??
@@ -76,14 +82,29 @@ async function intentIdFromSubscription(
 		if (intentId) return intentId;
 	}
 
-	if (!subscription.checkoutId) return null;
+	if (!checkoutId) return null;
 
 	return await ctx.runQuery(
 		internal.checkout.checkoutIntents.checkoutIntentIdByPolarCheckout,
 		{
-			checkoutId: subscription.checkoutId
+			checkoutId
 		}
 	);
+}
+
+async function intentIdFromOrder(ctx: RouteCtx, order: PolarOrder) {
+	return await intentIdFromCheckoutMetadata(
+		ctx,
+		order.metadata,
+		order.checkoutId
+	);
+}
+
+function checkedCustomField(
+	customFieldData: Record<string, unknown> | undefined,
+	slug: string
+) {
+	return customFieldData?.[slug] === true;
 }
 
 async function startDeleteWorkflow(
@@ -101,19 +122,131 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 		events: {
 			"subscription.active": async (ctx, event) => {
 				await syncSubscription(ctx, event.data);
+			},
+			"order.paid": async (ctx, event) => {
+				const order = event.data;
+				if (order.productId !== requiredEnv("POLAR_BOX_PRODUCT_ID")) return;
+				if (
+					order.billingReason !== "subscription_create" ||
+					!order.subscription ||
+					!order.checkoutId
+				) {
+					return;
+				}
+				const intentId = await intentIdFromOrder(ctx, order);
+				if (!intentId) {
+					await ctx.runMutation(internal.staffAlerts.raise, {
+						key: `paid-order-without-intent:${order.id}`,
+						severity: "critical",
+						subject: "Paid Polar order is not linked to a checkout",
+						text: `Polar order ${order.id} completed for customer ${order.customerId} and subscription ${order.subscription.id}, but no Composery checkout intent matched checkout ${order.checkoutId}. Fulfillment did not start. Review the order and webhook metadata in Polar immediately.`
+					});
+					await revokeAndRefundPolarOrder({
+						comment:
+							"The paid order could not be linked to a Composery checkout intent.",
+						idempotencyKey: `unmatched-checkout:${order.id}`,
+						orderId: order.id,
+						reason: "other",
+						subscriptionId: order.subscription.id
+					});
+					return;
+				}
+				const termsAccepted = checkedCustomField(
+					order.customFieldData,
+					TERMS_FIELD_SLUG
+				);
+				if (!termsAccepted) {
+					await ctx.runMutation(internal.staffAlerts.raise, {
+						key: `paid-order-missing-terms:${order.id}`,
+						severity: "critical",
+						subject: "Paid Polar order is missing Terms acceptance",
+						text: `Polar order ${order.id} completed for checkout intent ${intentId}, but the required supplier Terms checkbox was not present. The subscription is being revoked and the order refunded automatically.`
+					});
+					await revokeAndRefundPolarOrder({
+						comment: "Required supplier Terms acceptance was missing.",
+						idempotencyKey: `invalid-checkout:${order.id}`,
+						orderId: order.id,
+						reason: "other",
+						subscriptionId: order.subscription.id
+					});
+					return;
+				}
 
-				const intentId = await intentIdFromSubscription(ctx, event.data);
-				if (!intentId) return;
+				const recorded = await ctx.runMutation(
+					internal.checkout.checkoutIntents.recordInitialPaidOrder,
+					{
+						checkoutId: order.checkoutId,
+						customerId: order.customerId,
+						intentId,
+						orderId: order.id,
+						subscriptionId: order.subscription.id,
+						termsAccepted,
+						termsAcceptedAt: order.createdAt.getTime()
+					}
+				);
+				if (
+					recorded === "missing" ||
+					recorded === "checkout_mismatch" ||
+					recorded === "order_mismatch"
+				) {
+					await ctx.runMutation(internal.staffAlerts.raise, {
+						key: `paid-order-intent-mismatch:${order.id}`,
+						severity: "critical",
+						subject: "Paid Polar order does not match its checkout intent",
+						text: `Polar order ${order.id} could not be recorded on checkout intent ${intentId} (${recorded}). Fulfillment did not start. The subscription is being revoked and the order refunded automatically.`
+					});
+					await revokeAndRefundPolarOrder({
+						comment: `The paid order did not match its Composery checkout intent (${recorded}).`,
+						idempotencyKey: `checkout-intent-mismatch:${order.id}`,
+						orderId: order.id,
+						reason: "other",
+						subscriptionId: order.subscription.id
+					});
+					return;
+				}
 
-				await ctx.runMutation(
+				const conversion = await ctx.runMutation(
 					internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
 					{
 						intentId,
-						polarCustomerId: event.data.customerId,
-						polarSubscriptionId: event.data.id,
+						polarCustomerId: order.customerId,
+						polarOrderId: order.id,
+						polarSubscriptionId: order.subscription.id,
 						runtimeImage: requiredEnv("RUNTIME_IMAGE")
 					}
 				);
+				if (conversion.unfulfilled) {
+					await revokeAndRefundPolarOrder({
+						...conversion.unfulfilled
+					});
+				}
+			},
+			"order.refunded": async (ctx, event) => {
+				const order = event.data;
+				if (order.refundableAmount !== 0 || !order.subscriptionId) {
+					return;
+				}
+
+				const intentId = await intentIdFromOrder(ctx, order);
+				const boxId = await ctx.runQuery(
+					internal.boxes.boxQueries.boxIdBySubscription,
+					{ subscriptionId: order.subscriptionId }
+				);
+				if (!intentId && !boxId) return;
+				if (intentId) {
+					await ctx.runMutation(
+						internal.checkout.checkoutIntents.releaseCheckoutIntent,
+						{
+							intentId,
+							polarCheckoutStatus: "refunded",
+							reason: "order_fully_refunded"
+						}
+					);
+				}
+
+				// Polar refunds and subscriptions are independent. A full cumulative
+				// refund must not leave the box running or able to renew.
+				await revokePolarSubscription(order.subscriptionId);
 			},
 			"subscription.revoked": async (ctx, event) => {
 				await syncSubscription(ctx, event.data);

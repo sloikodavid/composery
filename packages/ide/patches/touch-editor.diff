@@ -1,5 +1,14 @@
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
+@@ -8,7 +8,7 @@
+ import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
+ import { mainWindow } from '../../../base/browser/window.js';
+ import { Disposable } from '../../../base/common/lifecycle.js';
+-import * as platform from '../../../base/common/platform.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
+ import { NavigationCommandRevealType } from '../coreCommands.js';
+ import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
 @@ -15,22 +15,83 @@
  import { EditorMouseEvent, EditorPointerEventFactory } from '../editorDom.js';
  import { ViewController } from '../view/viewController.js';
@@ -85,7 +94,7 @@
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +114,163 @@
+@@ -53,18 +114,168 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -205,7 +214,12 @@
 +
  	private onChange(event: GestureEvent): void {
  		if (this._lastPointerType === 'touch') {
-+			if (!event.initialTarget && Date.now() < this._suppressTouchInertiaUntil) {
++			// Inertia after a selection or handle drag must not fling the view. Inertia
++			// Change events are the ones with no live gesture: Gesture has already sent
++			// End (which nulls _touchGesture), while real finger moves always follow a
++			// Start. (initialTarget can't identify them - inertia events carry the
++			// gesture owner too, see touch.ts.)
++			if (!this._touchGesture && Date.now() < this._suppressTouchInertiaUntil) {
 +				return;
 +			}
 +
@@ -249,7 +263,7 @@
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +280,20 @@
+@@ -74,13 +285,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -272,7 +286,7 @@
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,6 +306,203 @@
+@@ -93,6 +311,203 @@
  		}
  	}
  
@@ -476,3 +490,38 @@
  	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {
  		if ((e.browserEvent as PointerEvent).pointerType === 'touch') {
  			return;
+@@ -99,4 +514,13 @@
+ 		}
+ 
++		if ((e.browserEvent as PointerEvent).pointerType === 'mouse' && e.browserEvent.type === 'pointerdown') {
++			// Composery: handling the mouse press here preventDefaults the pointerdown, which
++			// suppresses the compat mousedown that carries the browser click count - double
++			// and triple click would never see count 2/3. The base MouseHandler already
++			// listens for that mousedown (it reaches this same method with a MouseEvent);
++			// let mouse presses take that path, exactly like the plain MouseHandler.
++			return;
++		}
++
+ 		super._onMouseDown(e, pointerId);
+ 	}
+@@ -139,14 +563,18 @@
+ export class PointerHandler extends Disposable {
+ 	private readonly handler: MouseHandler;
+ 
+ 	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
+ 		super();
+-		const isPhone = platform.isIOS || (platform.isAndroid && platform.isMobile);
+-		if (isPhone && BrowserFeatures.pointerEvents) {
++		// Composery: gate on the canonical touch gate, not the phone UA. Upstream's isPhone
++		// (isIOS || isAndroid+isMobile) leaves Android tablets (no "Mobi" UA token) and touch
++		// laptops on the legacy TouchHandler, which has none of the touch selection, handle
++		// and context-menu support above. Mouse input is unaffected: PointerEventHandler
++		// extends MouseHandler and only adds gesture handling.
++		if (isTouch(mainWindow) && BrowserFeatures.pointerEvents) {
+ 			this.handler = this._register(new PointerEventHandler(context, viewController, viewHelper));
+ 		} else if (mainWindow.TouchEvent) {
+ 			this.handler = this._register(new TouchHandler(context, viewController, viewHelper));
+ 		} else {
+ 			this.handler = this._register(new MouseHandler(context, viewController, viewHelper));
+ 		}
+ 	}

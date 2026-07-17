@@ -100,31 +100,31 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 	return (
 		<>
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[38rem]">
+				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="pl-4">
+							<TableHead className="w-full min-w-48 pl-4">
 								<SortHeader
 									label="Operation"
 									sort={operationSort}
 									sortKey="type"
 								/>
 							</TableHead>
-							<TableHead className="w-48">
+							<TableHead>
 								<SortHeader
 									label="Created"
 									sort={operationSort}
 									sortKey="created_at"
 								/>
 							</TableHead>
-							<TableHead className="w-36">
+							<TableHead>
 								<SortHeader
 									label="Status"
 									sort={operationSort}
 									sortKey="status"
 								/>
 							</TableHead>
-							<TableHead className="w-14 pr-4 text-right">
+							<TableHead className="pr-4 text-right">
 								<OpenInConvex
 									iconOnly
 									field="box_id"
@@ -145,7 +145,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 										className={detail ? "[&>td]:align-top" : undefined}
 										key={operation._id}
 									>
-										<TableCell className="pl-4">
+										<TableCell className="max-w-0 pl-4">
 											<div className="min-w-0">
 												<p className="font-medium wrap-break-word text-foreground">
 													{operation.type}
@@ -198,20 +198,20 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 			) : null}
 
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[32rem]">
+				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="pl-4">
+							<TableHead className="w-full min-w-48 pl-4">
 								<SortHeader label="Event" sort={eventSort} sortKey="type" />
 							</TableHead>
-							<TableHead className="w-48">
+							<TableHead>
 								<SortHeader
 									label="Created"
 									sort={eventSort}
 									sortKey="created_at"
 								/>
 							</TableHead>
-							<TableHead className="w-14 pr-4 text-right">
+							<TableHead className="pr-4 text-right">
 								<OpenInConvex
 									iconOnly
 									field="box_id"
@@ -230,7 +230,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 									className={event.message ? "[&>td]:align-top" : undefined}
 									key={event._id}
 								>
-									<TableCell className="pl-4">
+									<TableCell className="max-w-0 pl-4">
 										<div className="min-w-0">
 											<p className="font-medium wrap-break-word text-foreground">
 												{event.type}

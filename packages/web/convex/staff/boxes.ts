@@ -13,8 +13,8 @@ import {
 import {
 	getUserByClerkId,
 	publicUser,
-	requireStaff,
-	requireStaffInAction
+	requireCapability,
+	requireCapabilityInAction
 } from "../authorization";
 import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
 import {
@@ -74,7 +74,7 @@ export const searchBoxes = query({
 		query: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const rawTerm = (args.query ?? "").trim();
 		const term = rawTerm.toLowerCase();
 
@@ -154,7 +154,7 @@ export const searchBoxes = query({
 export const recentFailedOperations = query({
 	args: {},
 	handler: async (ctx) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const since = Date.now() - STAFF_FAILURE_FEED_WINDOW_MS;
 		const operations = await ctx.db
 			.query("box_operations")
@@ -189,7 +189,7 @@ export const dismissFailedOperation = mutation({
 		operationId: v.id("box_operations")
 	},
 	handler: async (ctx, args) => {
-		const staffUser = await requireStaff(ctx);
+		const staffUser = await requireCapability(ctx, "box_operations");
 		const operation = await ctx.db.get(args.operationId);
 		if (!operation || operation.status !== "failed" || operation.dismissed_at) {
 			return;
@@ -229,7 +229,7 @@ async function dismissFailedOperationBatch(
 export const dismissAllFailedOperations = mutation({
 	args: {},
 	handler: async (ctx) => {
-		const staffUser = await requireStaff(ctx);
+		const staffUser = await requireCapability(ctx, "box_operations");
 		const since = Date.now() - STAFF_FAILURE_FEED_WINDOW_MS;
 		const hasMore = await dismissFailedOperationBatch(
 			ctx,
@@ -269,7 +269,7 @@ export const boxDetail = query({
 		boxId: v.string()
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const boxId = ctx.db.normalizeId("boxes", args.boxId);
 		const box = boxId ? await ctx.db.get(boxId) : null;
 		if (!box) return null;
@@ -299,7 +299,7 @@ export const auditOperations = query({
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		return await ctx.db
 			.query("box_operations")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
@@ -314,7 +314,7 @@ export const auditEvents = query({
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		return await ctx.db
 			.query("box_events")
 			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
@@ -328,7 +328,7 @@ export const retryProvisionBox = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "provision", {
 			idempotencyKey: `staff-provision:${args.boxId}`
 		});
@@ -340,7 +340,7 @@ export const resetBox = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "reset", {
 			idempotencyKey: `staff-reset:${args.boxId}`
 		});
@@ -353,7 +353,7 @@ export const changeBoxSlug = mutation({
 		newSlug: v.string()
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		const newSlug = sanitizeSlug(args.newSlug);
 		if (!isValidSlug(newSlug)) throw new ConvexError("Slug is unavailable.");
 
@@ -371,7 +371,7 @@ export const stopBox = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "stop", {
 			idempotencyKey: `staff-stop:${args.boxId}`
 		});
@@ -383,7 +383,7 @@ export const startBox = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "start", {
 			idempotencyKey: `staff-start:${args.boxId}`
 		});
@@ -398,7 +398,7 @@ export const runtimeLogs = action({
 		logs: v.union(v.string(), v.null())
 	}),
 	handler: async (ctx, args): Promise<{ logs: string | null }> => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 
 		const box = await ctx.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
@@ -419,7 +419,7 @@ export const runtimeHealth = action({
 		reachable: v.boolean()
 	}),
 	handler: async (ctx, args): Promise<{ reachable: boolean }> => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
@@ -436,7 +436,7 @@ export const recoveryStatus = action({
 	args: { boxId: v.id("boxes") },
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
@@ -451,7 +451,7 @@ export const recoveryStatus = action({
 export const recover = action({
 	args: { boxId: v.id("boxes"), type: vRecoveryType },
 	handler: async (ctx, args): Promise<void> => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
@@ -471,7 +471,7 @@ export const suspendBox = action({
 		reason: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 		await startBoxSuspension(ctx, {
 			boxId: args.boxId,
 			idempotencyKeyPrefix: "staff-suspend",
@@ -486,7 +486,7 @@ export const unsuspendBox = action({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaffInAction(ctx);
+		await requireCapabilityInAction(ctx, "box_operations");
 		await startBoxSuspension(ctx, {
 			boxId: args.boxId,
 			idempotencyKeyPrefix: "staff-unsuspend",
@@ -500,7 +500,7 @@ export const boxSnapshots = query({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const rows = await ctx.db
 			.query("box_snapshots")
 			.withIndex("box_id_created_at", (builder) =>
@@ -518,7 +518,7 @@ export const createBoxSnapshot = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
 		await startManualSnapshot(ctx, box, "staff-snapshot");
@@ -530,7 +530,7 @@ export const restoreSnapshot = mutation({
 		snapshotId: v.id("box_snapshots")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) throw new ConvexError("Snapshot not found.");
 		if (snapshot.status !== "complete") {
@@ -553,7 +553,7 @@ export const deleteSnapshot = mutation({
 		snapshotId: v.id("box_snapshots")
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "box_operations");
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) throw new ConvexError("Snapshot not found.");
 		await markSnapshotDeleting(ctx, args.snapshotId);

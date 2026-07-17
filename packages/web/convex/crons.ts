@@ -16,6 +16,18 @@ crons.interval(
 	internal.boxes.boxAuth.deleteExpiredAuthRecords
 );
 
+crons.interval(
+	"reconcile capacity alerts",
+	{ minutes: 15 },
+	internal.boxes.capacityAlerts.reconcile
+);
+
+crons.interval(
+	"retry staff alerts",
+	{ minutes: 15 },
+	internal.staffAlerts.retryPending
+);
+
 crons.hourly(
 	"subscription deletion reconciliation",
 	{ minuteUTC: 11 },
@@ -72,6 +84,13 @@ crons.daily(
 	"purge expired deleted accounts",
 	{ hourUTC: 4, minuteUTC: 39 },
 	internal.accountDeletion.purgeExpiredDeletedAccounts,
+	{}
+);
+
+crons.daily(
+	"purge expired staff alerts",
+	{ hourUTC: 4, minuteUTC: 43 },
+	internal.staffAlerts.purgeExpired,
 	{}
 );
 

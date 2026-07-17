@@ -289,7 +289,7 @@ mod tests {
         fs::write(paths.removed_dir.join("nested/deleted"), "").unwrap();
         fs::write(
             &paths.metadata_file,
-            "{\"path\":\"/etc/hosts\",\"kind\":\"file\"}\n\n",
+            "{\"version\":1,\"path\":\"/etc/hosts\",\"pathBytesB64\":\"L2V0Yy9ob3N0cw==\",\"kind\":\"file\"}\n\n",
         )
         .unwrap();
 

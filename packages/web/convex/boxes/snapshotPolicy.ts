@@ -11,10 +11,11 @@ export type SnapshotPolicy = {
 	automaticRetentionDays: number;
 };
 
-// Caps sum to 10 snapshots/box, and one box is one Hetzner server, so the fleet
-// never needs more than 10x the server count in the project's snapshot limit.
-// Automatic snapshots are rolling disaster recovery (retention matches the cap
-// so they never outlive it); manual ones are user checkpoints kept far longer.
+// The default caps sum to 10 snapshots per box. Capacity admission reserves the
+// current configured sum—not this default—for every live box and active
+// checkout. Automatic snapshots are rolling disaster recovery (retention
+// matches the default cap so they do not outlive it); manual ones are user
+// checkpoints kept far longer.
 export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicy = {
 	manualCap: 5,
 	automaticCap: 5,

@@ -4,8 +4,9 @@ import type { ComponentProps } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
 
 export function DismissButton({
+	children = "Dismiss",
 	...props
-}: Omit<ComponentProps<typeof AnimatedIconButton>, "children" | "icon">) {
+}: Omit<ComponentProps<typeof AnimatedIconButton>, "icon">) {
 	return (
 		<AnimatedIconButton
 			{...props}
@@ -14,7 +15,7 @@ export function DismissButton({
 			size="sm"
 			variant="ghost"
 		>
-			Dismiss
+			{children}
 		</AnimatedIconButton>
 	);
 }

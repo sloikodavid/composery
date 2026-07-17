@@ -10,7 +10,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
  import Severity from '../../base/common/severity.js';
  import { URI } from '../../base/common/uri.js';
  import { localize } from '../../nls.js';
-@@ -259,15 +259,33 @@ export class BrowserWindow extends BaseWindow {
+@@ -259,15 +259,44 @@ export class BrowserWindow extends BaseWindow {
  		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
  
  		// Layout
@@ -27,6 +27,17 @@ diff --git a/lib/vscode/src/vs/workbench/browser/window.ts b/lib/vscode/src/vs/w
  				mainWindow.scrollTo(0, 0);
  			}
  		}));
++		// Composery: with interactive-widget=resizes-content the keyboard also resizes the
++		// LAYOUT viewport, and its final at-rest geometry can arrive as a window resize
++		// after the last visualViewport event of the animation - with only the
++		// visualViewport listener above, that last layout() runs on transitional geometry
++		// and the workbench stays wedged at the keyboard-open height. Listen to both.
++		if (viewport !== mainWindow) {
++			this._register(addDisposableListener(mainWindow, EventType.RESIZE, () => {
++				this.layoutService.layout();
++				mainWindow.scrollTo(0, 0);
++			}));
++		}
 +		// Composery: the same keyboard reveal can scroll the document without a resize
 +		// (visualViewport fires only 'scroll') - the workbench slides up leaving blank
 +		// canvas below. Undo it; guard on scale so pinch-zoom panning is left alone.

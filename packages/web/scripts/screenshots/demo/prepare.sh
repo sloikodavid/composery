@@ -38,6 +38,8 @@ s["autoConnectIde"] = False
 s["autoInstallIdeExtension"] = False   # keep Claude in the terminal, not the editor
 s["diffTool"] = "terminal"
 s.setdefault("env", {})["CLAUDE_CODE_AUTO_CONNECT_IDE"] = "0"
+# No fetched startup announcements (usage-limit promos crowd the phone shot).
+s["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
 s.setdefault("permissions", {})["allow"] = [
     "Read(//home/user/workspace/**)",
     "Write(//home/user/workspace/**)",

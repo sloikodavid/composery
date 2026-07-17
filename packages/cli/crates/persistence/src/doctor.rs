@@ -142,7 +142,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: None,
             uid: None,
@@ -238,8 +238,8 @@ mod tests {
         fs::write(paths.changed_dir.join("etc/hello"), "changed").unwrap();
         fs::write(
             &paths.metadata_file,
-            r#"{"path":"/a","kind":"file","mode":420}
-{"path":"/a","kind":"file","mode":384}
+            r#"{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"file","mode":420}
+{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"file","mode":384}
 "#,
         )
         .unwrap();
@@ -274,7 +274,7 @@ mod tests {
         .unwrap();
         layout::ensure(&paths).unwrap();
         let db = StateDb::open_or_rebuild(&paths).unwrap();
-        let invalid_metadata = r#"{"path":"/../escape","kind":"file"}
+        let invalid_metadata = r#"{"version":1,"path":"/../escape","pathBytesB64":"Ly4uL2VzY2FwZQ==","kind":"file"}
 "#;
         fs::write(&paths.metadata_file, invalid_metadata).unwrap();
 

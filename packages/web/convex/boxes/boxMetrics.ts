@@ -1,17 +1,14 @@
-import { Resend } from "@convex-dev/resend";
 import { v } from "convex/values";
-import { components, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
 	internalMutation,
 	internalQuery,
-	type DatabaseReader,
-	type MutationCtx
+	type DatabaseReader
 } from "../_generated/server";
-import { isStaffUser } from "../authorization";
-import { optionalEnv, requiredEnv, websiteOrigin } from "../env";
 import type { BoxFlagSignal, BoxStatus } from "../schema";
 import { readGlobalSettings } from "../settings";
+import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import { consoleBoxPath } from "../../lib/box-route";
 import {
 	crossedValue,
@@ -32,7 +29,6 @@ const ROLLUP_SAMPLE_LIMIT = Math.ceil(HOUR_MS / METRICS_POLL_INTERVAL_MS) + 18;
 const FLAG_COOLOFF_MS = 6 * 60 * 60 * 1000;
 const RETENTION_DELETE_BATCH = 1000;
 const POLL_TARGET_PAGE_SIZE = 200;
-const STAFF_ALERT_RECIPIENT_LIMIT = 50;
 
 function formatMbit(bps: number) {
 	return `${Math.round((bps * 8) / 1_000_000)} Mbit/s`;
@@ -73,8 +69,6 @@ function presentThresholds(
 		...THRESHOLD_PRESENTATION[threshold.signal]
 	}));
 }
-
-const resend = new Resend(components.resend, { testMode: false });
 
 export const POLLED_STATUSES = ["running", "stopped", "suspended"] as const;
 
@@ -208,28 +202,6 @@ export async function boxMetricsSamples(
 	return samples.reverse().map(metricsSampleView);
 }
 
-export async function emailStaff(
-	ctx: MutationCtx,
-	subject: string,
-	text: string
-) {
-	if (!optionalEnv("RESEND_API_KEY")) return;
-
-	const admins = await ctx.db
-		.query("users")
-		.withIndex("role", (query) => query.eq("role", "admin"))
-		.take(STAFF_ALERT_RECIPIENT_LIMIT);
-	const recipients = admins.filter(isStaffUser).map((user) => user.email);
-	if (recipients.length === 0) return;
-
-	await resend.sendEmail(ctx, {
-		from: requiredEnv("ALERT_EMAIL_FROM"),
-		to: recipients,
-		subject,
-		text
-	});
-}
-
 export const pollTargetsPage = internalQuery({
 	args: {
 		cursor: v.union(v.string(), v.null()),
@@ -351,13 +323,14 @@ export const recordSample = internalMutation({
 				suspendReason = `Automatic suspension: ${message}`;
 			}
 
-			await emailStaff(
-				ctx,
-				`Box ${box.slug} flagged: ${threshold.label}`,
-				`${message}\n\n${
+			await sendStaffAlert(ctx, {
+				key: `box-flag:${flagId}`,
+				severity: autoSuspend ? "critical" : "warning",
+				subject: `Box ${box.slug} flagged: ${threshold.label}`,
+				text: `${message}\n\n${
 					autoSuspend ? "The box was automatically suspended.\n\n" : ""
-				}${websiteOrigin()}${consoleBoxPath(box._id)}`
-			);
+				}${staffConsoleUrl(consoleBoxPath(box._id))}`
+			});
 		}
 
 		return { suspendFlagId, suspendReason };

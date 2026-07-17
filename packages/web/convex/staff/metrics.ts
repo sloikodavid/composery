@@ -8,7 +8,7 @@ import {
 	type MutationCtx,
 	type QueryCtx
 } from "../_generated/server";
-import { requireStaff } from "../authorization";
+import { requireCapability } from "../authorization";
 import {
 	boxMetricsSamples,
 	vMetricsRange,
@@ -141,7 +141,7 @@ export const series = query({
 		range: v.optional(vMetricsRange)
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const range: MetricsRange = args.range ?? "24h";
 
 		if (args.boxId) {
@@ -178,7 +178,7 @@ export const flags = query({
 		boxId: v.optional(v.id("boxes"))
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 
 		let flags: Doc<"box_flags">[];
 		if (args.boxId) {
@@ -229,7 +229,7 @@ export const dismissFlag = mutation({
 		flagId: v.id("box_flags")
 	},
 	handler: async (ctx, args) => {
-		const staffUser = await requireStaff(ctx);
+		const staffUser = await requireCapability(ctx, "box_operations");
 		const flag = await ctx.db.get(args.flagId);
 		if (!flag || flag.dismissed_at) return;
 
@@ -271,7 +271,7 @@ async function dismissFlagBatch(
 export const dismissAllFlags = mutation({
 	args: { boxId: v.optional(v.id("boxes")) },
 	handler: async (ctx, args) => {
-		const staffUser = await requireStaff(ctx);
+		const staffUser = await requireCapability(ctx, "box_operations");
 		const hasMore = await dismissFlagBatch(
 			ctx,
 			args.boxId,

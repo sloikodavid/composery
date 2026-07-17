@@ -40,13 +40,13 @@ export function BoxTable() {
 	return (
 		<div className="space-y-3">
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[32rem]">
+				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="pl-4">Slug</TableHead>
-							<TableHead className="w-32">Created</TableHead>
-							<TableHead className="w-36">Status</TableHead>
-							<TableHead className="w-14 pr-4">
+							<TableHead className="w-full min-w-48 pl-4">Slug</TableHead>
+							<TableHead>Created</TableHead>
+							<TableHead>Status</TableHead>
+							<TableHead className="pr-4">
 								<span className="sr-only">Actions</span>
 							</TableHead>
 						</TableRow>
@@ -70,7 +70,7 @@ export function BoxTable() {
 									className="h-14 has-[[data-link]:hover]:bg-muted/50"
 									key={box.id}
 								>
-									<TableCell className="relative p-0">
+									<TableCell className="relative max-w-0 p-0">
 										<Link
 											className="absolute inset-0 flex items-center pl-4"
 											data-link

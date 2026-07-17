@@ -5,12 +5,11 @@ import { action, query } from "../_generated/server";
 import { emailFromIdentity } from "../authorization";
 import { polarServer } from "../billing/polar";
 import { isSlugAvailable } from "../boxes/slugAvailability";
-import {
-	CHECKOUT_INTENT_METADATA_KEYS,
-	CLOUD_TERMS_VERSION
-} from "../checkout/checkoutIntents";
+import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv, websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { readGlobalSettings } from "../settings";
 
 type CheckoutResult = {
 	checkoutUrl: string;
@@ -46,6 +45,7 @@ export const slugAvailability = query({
 			available: await isSlugAvailable(ctx, slug, {
 				intentId: ownIntent?._id
 			}),
+			resumable: Boolean(ownIntent?.polar_checkout_url),
 			slug
 		};
 	}
@@ -67,9 +67,22 @@ export const completedCheckout = query({
 	}
 });
 
+export const availability = query({
+	args: {},
+	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return { available: false, message: null };
+		const settings = await readGlobalSettings(ctx);
+		const capacity = await readCapacityUsage(ctx, settings);
+		return {
+			available: capacity.checkoutAvailable,
+			message: capacityBlockMessage(capacity.blockReason)
+		};
+	}
+});
+
 export const createCheckout = action({
 	args: {
-		legalAccepted: v.boolean(),
 		slug: v.string()
 	},
 	returns: v.object({
@@ -80,10 +93,6 @@ export const createCheckout = action({
 	handler: async (ctx, args): Promise<CheckoutResult> => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throw new ConvexError("Authentication required.");
-		if (!args.legalAccepted) {
-			throw new ConvexError("Accept the Terms of Service to continue.");
-		}
-		const termsAcceptedAt = Date.now();
 
 		const user = await ctx.runMutation(internal.users.ensureUserForIdentity, {
 			clerkUserId: identity.subject,
@@ -92,14 +101,6 @@ export const createCheckout = action({
 		if (user.suspended) throw new ConvexError("User is suspended.");
 		if (user.deletion_pending) {
 			throw new ConvexError("Account deletion is already in progress.");
-		}
-
-		const checkoutEnabled = await ctx.runQuery(
-			internal.settings.readCheckoutEnabled,
-			{}
-		);
-		if (!checkoutEnabled) {
-			throw new ConvexError("New box checkout is temporarily disabled.");
 		}
 
 		const slug = sanitizeSlug(args.slug);
@@ -116,15 +117,6 @@ export const createCheckout = action({
 		);
 
 		if (activeCheckout) {
-			await ctx.runMutation(
-				internal.checkout.checkoutIntents.refreshCheckoutIntentTerms,
-				{
-					intentId: activeCheckout.intentId,
-					termsAcceptedAt,
-					termsVersion: CLOUD_TERMS_VERSION
-				}
-			);
-
 			return {
 				checkoutUrl: activeCheckout.checkoutUrl,
 				intentId: activeCheckout.intentId,
@@ -140,9 +132,7 @@ export const createCheckout = action({
 					internal.checkout.checkoutIntents.reserveCheckoutIntent,
 					{
 						userId: identity.subject,
-						slug,
-						termsAcceptedAt,
-						termsVersion: CLOUD_TERMS_VERSION
+						slug
 					}
 				);
 			intentId = reservedIntentId;

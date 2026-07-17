@@ -8,9 +8,10 @@ import {
 import {
 	ensureUserRecord,
 	publicUser,
-	requireStaff,
+	requireCapability,
 	upsertUser
 } from "./authorization";
+import { capabilitiesForRole } from "./roles";
 
 export const ensureCurrentUser = mutation({
 	args: {},
@@ -29,15 +30,31 @@ export const ensureUserForIdentity = internalMutation({
 	}
 });
 
-export const isCurrentUserStaff = query({
+export const canAccessStaffConsole = query({
 	args: {},
 	handler: async (ctx) => {
 		try {
-			await requireStaff(ctx);
+			await requireCapability(ctx, "staff_console");
 			return true;
 		} catch {
 			return false;
 		}
+	}
+});
+
+export const currentUserCapabilities = query({
+	args: {},
+	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return [];
+		const user = await ctx.db
+			.query("users")
+			.withIndex("clerk_user_id", (query) =>
+				query.eq("clerk_user_id", identity.subject)
+			)
+			.first();
+		if (!user || user.suspended) return [];
+		return capabilitiesForRole(user.role);
 	}
 });
 

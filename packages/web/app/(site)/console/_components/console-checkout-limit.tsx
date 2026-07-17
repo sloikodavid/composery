@@ -45,7 +45,7 @@ export function ConsoleCheckoutLimit({ max }: { max?: number }) {
 				</AnimatedIconButton>
 			</div>
 			<div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
-				<span className="text-sm text-muted-foreground">
+				<span className="text-sm text-pretty text-muted-foreground">
 					Max concurrent pending checkouts per user
 				</span>
 				<div className="flex items-center gap-1.5">

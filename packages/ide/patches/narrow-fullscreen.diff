@@ -1,14 +1,6 @@
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
-@@ -40,13 +40,14 @@
- import { mark } from '../../base/common/performance.js';
- import { IExtensionService } from '../services/extensions/common/extensions.js';
- import { ILogService } from '../../platform/log/common/log.js';
--import { DeferredPromise, Promises } from '../../base/common/async.js';
-+import { DeferredPromise, Promises, RunOnceScheduler } from '../../base/common/async.js';
- import { IBannerService } from '../services/banner/browser/bannerService.js';
- import { IPaneCompositePartService } from '../services/panecomposite/browser/panecomposite.js';
- import { AuxiliaryBarPart } from './parts/auxiliarybar/auxiliaryBarPart.js';
+@@ -47,6 +47,7 @@
  import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
  import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
  import { CodeWindow, mainWindow } from '../../base/browser/window.js';
@@ -72,21 +64,23 @@
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1738,6 +1760,13 @@
+@@ -1738,6 +1760,15 @@
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
 +
 +			// Composery: fullscreen the open part once the real viewport is known at boot (parts
-+			// already visible at init fire no visibility event).
++			// already visible at init fire no visibility event). Seed the intent from the restored
++			// layout, or the boot pass reads "no intent" and closes the part the user left open.
 +			if (!this.narrowLayoutInitialized) {
 +				this.narrowLayoutInitialized = true;
++				this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part));
 +				this.scheduleNarrowLayout();
 +			}
  		}
  	}
  
-@@ -1887,8 +1916,10 @@
+@@ -1887,8 +1918,10 @@
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
@@ -99,7 +93,7 @@
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2235,23 @@
+@@ -2204,10 +2237,28 @@
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -117,14 +111,19 @@
 +		// part is hidden (showEditorIfHidden / onDidVisibleEditorsChange). Translate that intent:
 +		// an editor wants the screen, so exit fullscreen - close the open part and reveal it.
 +		if (this.isNarrowViewport) {
-+			this.narrowPart = undefined;
-+			this.scheduleNarrowLayout();
++			// Ignore reveals our own transition provoked: hiding a sibling part (setPanelHidden's
++			// focusEditor) routes focus to the editor group, which re-fires this mid-pass and would
++			// close the part the user just opened. Only an outside signal exits fullscreen.
++			if (!this.inNarrowPartTransition) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
 +			return;
 +		}
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2346,129 @@
+@@ -2302,6 +2353,137 @@
  		}
  	}
  
@@ -148,7 +147,7 @@
 +	private editorHiddenForNarrowPart = false;
 +	private narrowPart: Parts | undefined;
 +	private narrowLayoutInitialized = false;
-+	private readonly narrowLayoutScheduler = this._register(new RunOnceScheduler(() => this.applyNarrowLayout(), 0));
++	private narrowLayoutScheduled = false;
 +	private desktopPartVisibility: Set<Parts> | undefined;
 +
 +	private get isNarrowViewport(): boolean {
@@ -170,16 +169,24 @@
 +		this.scheduleNarrowLayout();
 +	}
 +
++	// Invoked from inside a part-visibility event delivery, so applying immediately would queue our
++	// own part mutations and let the relay react to them once inNarrowPartTransition has cleared (a
++	// cascade). Defer to a microtask: it runs at top level but still BEFORE the browser paints, so a
++	// switch between parts settles atomically - no intermediate both-parts-squeezed frame - and one
++	// microtask coalesces the burst of visibility events a single toggle produces.
 +	private scheduleNarrowLayout(): void {
-+		this.narrowLayoutScheduler.schedule();
++		if (this.narrowLayoutScheduled) {
++			return;
++		}
++		this.narrowLayoutScheduled = true;
++		queueMicrotask(() => {
++			this.narrowLayoutScheduled = false;
++			this.applyNarrowLayout();
++		});
 +	}
 +
 +	private applyNarrowLayout(): void {
-+		if (!this.workbenchGrid) {
-+			return;
-+		}
-+		if (this.inNarrowPartTransition || this.inMaximizedAuxiliaryBarTransition) {
-+			this.scheduleNarrowLayout();
++		if (!this.workbenchGrid || this.inNarrowPartTransition || this.inMaximizedAuxiliaryBarTransition) {
 +			return;
 +		}
 +		this.inNarrowPartTransition = true;

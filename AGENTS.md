@@ -33,6 +33,9 @@
 .claude/
   skills
 .github/
+  ISSUE_TEMPLATE/
+    bug.yml
+    config.yml
   workflows/
     ci.yml
     cla.yml
@@ -47,21 +50,30 @@
   settings.json
 docs/
   developing/
+    services/
+      github.md
+      index.md
+      meta.json
     web/
-      clerk.md
-      cloudflare.md
-      convex.md
-      hetzner.md
+      services/
+        clerk.md
+        cloudflare.md
+        convex.md
+        hetzner.md
+        index.md
+        meta.json
+        polar.md
+        resend.md
+        vercel.md
       index.md
       maintenance.md
       meta.json
-      polar.md
-      resend.md
-      vercel.md
+      operations.md
     ide.md
     index.md
     meta.json
     mobile.md
+    repository.md
   self-hosting/
     digitalocean.md
     fly.md
@@ -341,7 +353,7 @@ packages/
             page.tsx
           new/
             _components/
-              new-box-form.tsx
+              new-box.tsx
             page.tsx
           error.tsx
           page.tsx
@@ -349,6 +361,7 @@ packages/
           page.tsx
         console/
           _components/
+            console-capacity.tsx
             console-checkout-limit.tsx
             console-home.tsx
             console-snapshot-policy.tsx
@@ -425,6 +438,7 @@ packages/
       icon.svg
       layout.tsx
       providers.tsx
+      robots.ts
       sitemap.ts
     components/
       icons/
@@ -440,7 +454,6 @@ packages/
         delete.tsx
         download.tsx
         github-icon.tsx
-        github.tsx
         hetzner.tsx
         layout-grid.tsx
         lock.tsx
@@ -457,6 +470,7 @@ packages/
         wallet.tsx
         washing-machine.tsx
         wrench.tsx
+        x-icon.tsx
         x.tsx
       animated-icon.tsx
       badge.tsx
@@ -469,6 +483,7 @@ packages/
       change-slug-dialog.tsx
       chart.tsx
       confirm-dialog.tsx
+      copy-email.tsx
       copy-link-button.tsx
       dialog.tsx
       dismiss-button.tsx
@@ -521,6 +536,7 @@ packages/
         server.d.ts
         server.js
       billing/
+        polar.test.ts
         polar.ts
         reconciliation.ts
         webhooks.ts
@@ -555,6 +571,8 @@ packages/
         boxAccess.test.ts
         boxAccess.ts
         boxAuth.ts
+        boxCapacity.test.ts
+        boxCapacity.ts
         boxCleanup.ts
         boxEvents.ts
         boxHealth.ts
@@ -575,6 +593,8 @@ packages/
         boxStatus.ts
         boxViews.test.ts
         boxViews.ts
+        capacityAlerts.test.ts
+        capacityAlerts.ts
         metricThresholds.test.ts
         metricThresholds.ts
         reconcile.test.ts
@@ -585,8 +605,10 @@ packages/
         snapshotPolicy.ts
       checkout/
         checkoutConversion.ts
+        checkoutIntents.test.ts
         checkoutIntents.ts
       staff/
+        alerts.ts
         boxes.ts
         checkout.ts
         metrics.ts
@@ -606,8 +628,11 @@ packages/
       env.test.ts
       env.ts
       http.ts
+      roles.test.ts
+      roles.ts
       schema.ts
       settings.ts
+      staffAlerts.ts
       tsconfig.json
       users.ts
     hooks/
@@ -624,6 +649,7 @@ packages/
       brand-assets.ts
       brand.ts
       clerk-appearance.ts
+      cloud-legal.ts
       convex-dashboard.ts
       datetime.test.ts
       datetime.ts
@@ -655,7 +681,6 @@ packages/
         composery-mobile-light.png
         composery-welcome-dark.png
         composery-welcome-light.png
-      robots.txt
     scripts/
       screenshots/
         demo/

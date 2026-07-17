@@ -1,21 +1,41 @@
 import Link from "next/link";
+import { CopyEmail } from "@/components/copy-email";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { XIcon } from "@/components/icons/x-icon";
 import { Logo } from "@/components/logo";
-import { GITHUB_REPO_URL } from "@/lib/links";
-import { cn } from "@/lib/utils";
+import {
+	GITHUB_ADVISORY_URL,
+	GITHUB_BUG_URL,
+	GITHUB_IDEAS_URL,
+	GITHUB_REPO_URL,
+	X_URL
+} from "@/lib/links";
 
-const PRODUCT_LINKS = [
+type FooterLink =
+	| { href: string; label: string }
+	| { copyEmail: true; label: string };
+
+const PRODUCT_LINKS: FooterLink[] = [
+	{ href: "/boxes", label: "Boxes" },
 	{ href: "/pricing", label: "Pricing" },
 	{ href: "/docs", label: "Docs" }
 ];
 
-const RESOURCE_LINKS = [
+const RESOURCE_LINKS: FooterLink[] = [
 	{ href: "/docs/configuration", label: "Configuration" },
 	{ href: "/docs/self-hosting", label: "Self-hosting" },
+	{ href: "/docs/api", label: "API" },
 	{ href: "/brand", label: "Brand" }
 ];
 
-const LEGAL_LINKS = [
+const COMMUNITY_LINKS: FooterLink[] = [
+	{ href: GITHUB_BUG_URL, label: "Submit an issue" },
+	{ href: GITHUB_IDEAS_URL, label: "Request a feature" },
+	{ href: GITHUB_ADVISORY_URL, label: "Report a vulnerability" },
+	{ copyEmail: true, label: "Support email" }
+];
+
+const LEGAL_LINKS: FooterLink[] = [
 	{ href: "/privacy", label: "Privacy" },
 	{ href: "/terms", label: "Terms" },
 	{ href: "/cookies", label: "Cookies" },
@@ -25,7 +45,7 @@ const LEGAL_LINKS = [
 export function Footer() {
 	return (
 		<footer className="border-t border-border bg-background">
-			<div className="mx-auto grid w-full max-w-5xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-16">
+			<div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
 				<div className="max-w-sm space-y-3">
 					<Logo />
 					<p className="text-balance text-sm leading-6 text-muted-foreground">
@@ -34,62 +54,80 @@ export function Footer() {
 					</p>
 				</div>
 
-				<div className="grid gap-8 sm:grid-cols-3 sm:gap-14 md:justify-self-end md:gap-16">
-					<FooterLinkGroup
-						className="md:text-right"
-						links={PRODUCT_LINKS}
-						title="Product"
-					/>
-					<FooterLinkGroup
-						className="md:text-right"
-						links={RESOURCE_LINKS}
-						title="Resources"
-					/>
-					<FooterLinkGroup
-						className="md:text-right"
-						links={LEGAL_LINKS}
-						title="Legal"
-					/>
+				<div className="grid grid-cols-2 gap-8 sm:grid-cols-4 md:grid-cols-[repeat(4,max-content)] md:justify-self-end md:gap-10">
+					<FooterLinkGroup links={PRODUCT_LINKS} title="Product" />
+					<FooterLinkGroup links={RESOURCE_LINKS} title="Resources" />
+					<FooterLinkGroup links={COMMUNITY_LINKS} title="Community" />
+					<FooterLinkGroup links={LEGAL_LINKS} title="Legal" />
 				</div>
 
 				<div className="flex flex-col items-start gap-4 border-t border-border pt-6 text-sm text-muted-foreground md:col-span-2 md:flex-row md:items-center md:justify-between">
 					<p>&copy; {new Date().getFullYear()} Composery</p>
-					<a
-						className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
-						href={GITHUB_REPO_URL}
-						rel="noreferrer"
-						target="_blank"
-					>
-						<GitHubIcon className="size-4" />
-						GitHub
-					</a>
+					<div className="flex items-center gap-5">
+						<a
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							href={X_URL}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<XIcon className="size-4" />X
+						</a>
+						<a
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							href={GITHUB_REPO_URL}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<GitHubIcon className="size-4" />
+							GitHub
+						</a>
+					</div>
 				</div>
 			</div>
 		</footer>
 	);
 }
 
+const FOOTER_LINK_CLASSES =
+	"text-sm text-muted-foreground transition-colors hover:text-foreground";
+
+// ponytail: label length proxies rendered width; measure text if fonts make it lie
+const byLabelLength = (a: FooterLink, b: FooterLink) =>
+	a.label.length - b.label.length;
+
 function FooterLinkGroup({
-	className,
 	links,
 	title
 }: {
-	className?: string;
-	links: Array<{ href: string; label: string }>;
+	links: FooterLink[];
 	title: string;
 }) {
 	return (
-		<nav className={cn("space-y-3", className)} aria-label={title}>
+		<nav className="space-y-3" aria-label={title}>
 			<p className="text-sm font-medium text-foreground">{title}</p>
 			<ul className="space-y-2">
-				{links.map((link) => (
-					<li key={link.href}>
-						<Link
-							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-							href={link.href}
-						>
-							{link.label}
-						</Link>
+				{links.toSorted(byLabelLength).map((link) => (
+					<li key={link.label}>
+						{"copyEmail" in link ? (
+							<CopyEmail
+								className={FOOTER_LINK_CLASSES}
+								label={link.label}
+								message="Support email copied"
+							/>
+						) : link.href.startsWith("/") ? (
+							<Link className={FOOTER_LINK_CLASSES} href={link.href}>
+								{link.label}
+							</Link>
+						) : (
+							<a
+								className={FOOTER_LINK_CLASSES}
+								href={link.href}
+								rel="noreferrer"
+								target="_blank"
+							>
+								{link.label}
+							</a>
+						)}
 					</li>
 				))}
 			</ul>

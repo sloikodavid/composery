@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v, type Infer } from "convex/values";
 
 export const vUserRole = v.union(v.literal("user"), v.literal("admin"));
+export type UserRole = Infer<typeof vUserRole>;
 
 export const vCheckoutIntentStatus = v.union(
 	v.literal("active"),
@@ -126,6 +127,19 @@ export const vSnapshotStatus = v.union(
 	v.literal("deleting")
 );
 
+export const vStaffAlertSeverity = v.union(
+	v.literal("warning"),
+	v.literal("critical"),
+	v.literal("resolved")
+);
+export const vStaffAlertQueueStatus = v.union(
+	v.literal("pending"),
+	v.literal("disabled"),
+	v.literal("no_recipients"),
+	v.literal("queued"),
+	v.literal("queue_failed")
+);
+
 const vMetadata = v.optional(v.record(v.string(), v.any()));
 
 export default defineSchema({
@@ -161,6 +175,7 @@ export default defineSchema({
 		polar_checkout_expires_at: v.optional(v.number()),
 		polar_customer_id: v.optional(v.string()),
 		polar_subscription_id: v.optional(v.string()),
+		polar_initial_order_id: v.optional(v.string()),
 		// Unwritten since passwords moved out of checkout; kept only so rows
 		// created before that validate. Drop once those intents purge.
 		runtime_auth_hash: v.optional(v.string()),
@@ -371,13 +386,39 @@ export default defineSchema({
 		.index("expires_at", ["expires_at"])
 		.index("hetzner_image_id", ["hetzner_image_id"]),
 
+	staff_alerts: defineTable({
+		key: v.string(),
+		severity: vStaffAlertSeverity,
+		subject: v.string(),
+		text: v.string(),
+		queue_status: vStaffAlertQueueStatus,
+		recipient_count: v.number(),
+		email_id: v.optional(v.string()),
+		last_email_event: v.optional(v.string()),
+		delivery_error: v.optional(v.string()),
+		created_at: v.number(),
+		updated_at: v.number(),
+		purge_at: v.number()
+	})
+		.index("key", ["key"])
+		.index("queue_status_created_at", ["queue_status", "created_at"])
+		.index("email_id", ["email_id"])
+		.index("purge_at", ["purge_at"])
+		.index("created_at", ["created_at"]),
+
 	settings: defineTable({
 		key: v.literal("global"),
 		checkout_enabled: v.boolean(),
+		hetzner_server_limit: v.optional(v.number()),
+		hetzner_snapshot_limit: v.optional(v.number()),
 		auto_suspend_enabled: v.optional(v.boolean()),
 		max_active_checkout_intents_per_user: v.optional(v.number()),
 		thresholds: v.optional(v.array(vThreshold)),
 		snapshot_policy: v.optional(vSnapshotPolicy),
+		capacity_alert_reason: v.optional(
+			v.union(v.literal("server_limit"), v.literal("snapshot_limit"))
+		),
+		capacity_alert_started_at: v.optional(v.number()),
 		updated_at: v.number(),
 		updated_by: v.optional(v.string())
 	}).index("key", ["key"])

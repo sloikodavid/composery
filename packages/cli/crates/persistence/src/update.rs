@@ -395,7 +395,7 @@ fn metadata_record(public_path: &PublicPath, live: &FsFacts) -> Result<MetadataR
     let mut record = MetadataRecord {
         version: 1,
         path: String::new(),
-        path_bytes_b64: None,
+        path_bytes_b64: String::new(),
         kind: live.kind.as_str().to_string(),
         mode: Some(live.mode),
         uid: Some(live.uid),
@@ -669,7 +669,7 @@ mod tests {
         fs::write(fixture.paths.removed_dir.join("etc/hello.txt"), "").unwrap();
         fs::write(
             &fixture.paths.metadata_file,
-            r#"{"path":"/etc/hello.txt","kind":"file"}"#,
+            r#"{"version":1,"path":"/etc/hello.txt","pathBytesB64":"L2V0Yy9oZWxsby50eHQ=","kind":"file"}"#,
         )
         .unwrap();
 
@@ -1299,7 +1299,7 @@ mod tests {
         let mut record = crate::metadata::MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: kind.into(),
             mode: None,
             uid: None,

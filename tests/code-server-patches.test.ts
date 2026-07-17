@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { posix, resolve } from "node:path";
 import vm from "node:vm";
 
@@ -100,6 +109,71 @@ describe("patch stack lint", () => {
 
 		expect(hunks).toBeGreaterThan(0);
 	});
+
+	// Count lints cannot catch a hunk GNU patch refuses at fuzz=0 (context
+	// drift, parser quirks) - only real application can, and the Docker build is
+	// a slow place to find out. Rehearse the exact stack the build applies:
+	// code-server's own series, then ours, in order, on a shadow tree fed from
+	// the pristine upstream working copy.
+	test(
+		"the full patch stack applies with GNU patch at fuzz=0",
+		{ timeout: 60_000 },
+		() => {
+			const upstream = resolve(repoRoot, "packages/ide/upstream");
+			const shadow = mkdtempSync(resolve(tmpdir(), "composery-stack-"));
+
+			const filesTouched = (patchText: string): string[] => {
+				const files = new Set<string>();
+				for (const line of patchText.split("\n")) {
+					const header = /^(?:---|\+\+\+) (\S+)/.exec(line)?.[1];
+					if (!header || header === "/dev/null") continue;
+					// mimic -p1: strip the first path component (a/, code-server/, ...)
+					const rel = header.split("/").slice(1).join("/");
+					if (rel) files.add(rel);
+				}
+				return [...files];
+			};
+
+			const applySeries = (seriesDir: string) => {
+				const series = readFileSync(resolve(seriesDir, "series"), "utf8")
+					.trim()
+					.split(/\r?\n/)
+					.filter((line) => line && !line.startsWith("#"));
+				for (const name of series) {
+					const patchFile = resolve(seriesDir, name);
+					for (const rel of filesTouched(readFileSync(patchFile, "utf8"))) {
+						const dst = resolve(shadow, rel);
+						const src = resolve(upstream, rel);
+						if (!existsSync(dst) && existsSync(src)) {
+							mkdirSync(posix.dirname(dst.replaceAll("\\", "/")), {
+								recursive: true
+							});
+							copyFileSync(src, dst);
+						}
+					}
+					try {
+						execFileSync("patch", ["-p1", "--fuzz=0", "-i", patchFile], {
+							cwd: shadow,
+							encoding: "utf8",
+							stdio: ["ignore", "pipe", "pipe"]
+						});
+					} catch (error) {
+						const output = error as { stdout?: string; stderr?: string };
+						expect.fail(
+							`${name} does not apply at fuzz=0:\n${output.stdout ?? ""}${output.stderr ?? ""}`
+						);
+					}
+				}
+			};
+
+			try {
+				applySeries(resolve(upstream, "patches"));
+				applySeries(resolve(repoRoot, PATCHES_DIR));
+			} finally {
+				rmSync(shadow, { recursive: true, force: true });
+			}
+		}
+	);
 });
 
 describe("QR action", () => {
@@ -196,9 +270,24 @@ function runNarrowViewportVars({
 		y: number;
 	};
 	visualViewport?: { height: number; offsetTop: number; width?: number };
-}): Map<string, string> {
+}): {
+	properties: Map<string, string>;
+	setVisualViewportHeight(height: number): void;
+	fireVisualViewportResize(): void;
+} {
 	const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
 	const properties = new Map<string, string>();
+	const visualViewportListeners: { type: string; listener: () => void }[] = [];
+	const viewportObject = visualViewport
+		? {
+				addEventListener(type: string, listener: () => void) {
+					visualViewportListeners.push({ type, listener });
+				},
+				height: visualViewport.height,
+				offsetTop: visualViewport.offsetTop,
+				width: visualViewport.width ?? 390
+			}
+		: undefined;
 	const documentElement = {
 		style: {
 			setProperty(name: string, value: string) {
@@ -263,19 +352,26 @@ function runNarrowViewportVars({
 			}),
 			requestAnimationFrame() {},
 			setTimeout() {},
-			visualViewport: visualViewport
-				? {
-						addEventListener() {},
-						height: visualViewport.height,
-						offsetTop: visualViewport.offsetTop,
-						width: visualViewport.width ?? 390
-					}
-				: undefined
+			visualViewport: viewportObject
 		}
 	});
 	vm.runInContext(narrowJs, context);
 
-	return properties;
+	return {
+		properties,
+		setVisualViewportHeight(height: number) {
+			if (viewportObject) {
+				viewportObject.height = height;
+			}
+		},
+		fireVisualViewportResize() {
+			for (const { type, listener } of visualViewportListeners) {
+				if (type === "resize") {
+					listener();
+				}
+			}
+		}
+	};
 }
 
 describe("narrow overlay", () => {
@@ -283,29 +379,70 @@ describe("narrow overlay", () => {
 		expect(
 			runNarrowViewportVars({
 				visualViewport: { height: 520, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
+			}).properties.get("--composery-touch-keyboard-inset")
 		).toBe("280px");
 
 		expect(
 			runNarrowViewportVars({
 				virtualKeyboard: { bottom: 800, height: 280, y: 520 },
 				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
+			}).properties.get("--composery-touch-keyboard-inset")
 		).toBe("280px");
 
 		expect(
 			runNarrowViewportVars({
 				envInset: 220,
 				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
+			}).properties.get("--composery-touch-keyboard-inset")
 		).toBe("220px");
 
 		expect(
 			runNarrowViewportVars({
 				virtualKeyboard: { bottom: 500, height: 200, y: 300 },
 				visualViewport: { height: 800, offsetTop: 0 }
-			}).get("--composery-touch-keyboard-inset")
+			}).properties.get("--composery-touch-keyboard-inset")
 		).toBe("0px");
+	});
+
+	// The workbench layout listener (touch-viewport-inset.diff) registers after
+	// narrow.js on the same visualViewport and reads
+	// --composery-touch-keyboard-inset within the same resize delivery. The vars
+	// must update synchronously in narrow.js's geometry listeners: an
+	// animation-frame update hands the layout a stale keyboard inset and wedges
+	// the workbench at the keyboard-open height after the keyboard closes. The
+	// harness stubs requestAnimationFrame as a no-op, so only the sync path can
+	// pass this test.
+	test("viewport vars update synchronously within the resize delivery", () => {
+		const run = runNarrowViewportVars({
+			visualViewport: { height: 800, offsetTop: 0 }
+		});
+		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe("0px");
+
+		run.setVisualViewportHeight(520);
+		run.fireVisualViewportResize();
+		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe(
+			"280px"
+		);
+
+		run.setVisualViewportHeight(800);
+		run.fireVisualViewportResize();
+		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe("0px");
+	});
+
+	// With interactive-widget=resizes-content the keyboard also resizes the layout
+	// viewport, and its final at-rest geometry can arrive as a window resize after
+	// the last visualViewport event of the animation. Listening only to
+	// visualViewport leaves the workbench wedged at the keyboard-open height
+	// (verified live on Android Chrome); both viewports must drive layout().
+	test("keyboard layout listens to the layout viewport as well", () => {
+		const viewportPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-viewport-inset.diff`)
+		);
+
+		expect(viewportPatch).toContain("if (viewport !== mainWindow) {");
+		expect(viewportPatch).toContain(
+			"this._register(addDisposableListener(mainWindow, EventType.RESIZE, () => {"
+		);
 	});
 
 	// Android may resize visualViewport and report the same keyboard through the
@@ -368,6 +505,69 @@ describe("narrow overlay", () => {
 		// One definition of "touch" in the editor: the per-interaction pointer
 		// type. A second device-level gate here was redundant with it.
 		expect(touchEditorPatch).not.toContain("isTouchDevice");
+	});
+
+	// Inertia Change events carry the gesture owner (touch-context-menu.diff gives
+	// them an initialTarget so submenu flicks stop at their own menu), so the
+	// editor cannot identify them by a missing initialTarget. The live-gesture
+	// check is the one that works: Gesture dispatches End (which nulls
+	// _touchGesture) before any inertia frame, while real finger moves always
+	// follow a Start. Keying on initialTarget made the suppression dead code and
+	// a fast selection or handle-drag release flung the editor.
+	test("editor inertia suppression keys on the live gesture, not initialTarget", () => {
+		const touchEditorPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		);
+
+		expect(touchEditorPatch).toContain(
+			"if (!this._touchGesture && Date.now() < this._suppressTouchInertiaUntil)"
+		);
+		expect(touchEditorPatch).not.toContain(
+			"!event.initialTarget && Date.now() < this._suppressTouchInertiaUntil"
+		);
+	});
+
+	// Upstream picks PointerEventHandler only for phone UAs (isIOS, or isAndroid
+	// with the "Mobi" token). Android tablets and touch laptops then fall back to
+	// the legacy TouchHandler, which has none of the touch selection, handle and
+	// context-menu support - so the gate must be the canonical touch gate.
+	test("PointerEventHandler is gated on the touch gate, not the phone UA", () => {
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
+
+		expect(addedLines(touchEditorPatch)).toContain(
+			"if (isTouch(mainWindow) && BrowserFeatures.pointerEvents)"
+		);
+		expect(touchEditorPatch).toContain(
+			"-\t\tconst isPhone = platform.isIOS || (platform.isAndroid && platform.isMobile);"
+		);
+	});
+
+	// PointerEventHandler handles presses from pointerdown, whose preventDefault
+	// suppresses the compat mousedown that carries the browser's click count -
+	// double/triple-click word and line select would never see count 2/3. Mouse
+	// presses must fall through to the base MouseHandler's mousedown flow.
+	test("mouse presses skip the pointerdown path so click counts survive", () => {
+		const touchEditorPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		);
+
+		expect(touchEditorPatch).toContain(
+			"if ((e.browserEvent as PointerEvent).pointerType === 'mouse' && e.browserEvent.type === 'pointerdown')"
+		);
+	});
+
+	// Parts restored visible at boot fire no visibility event, so the first
+	// narrow layout pass sees no intent. Without seeding it from the restored
+	// layout, that pass closes the part the user left open - and a reviving
+	// background view (the reattaching terminal) can then steal the fullscreen.
+	test("narrow-fullscreen boot pass seeds intent from the restored layout", () => {
+		const layoutPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
+		);
+
+		expect(layoutPatch).toContain(
+			"this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part))"
+		);
 	});
 
 	// Post-build, the workbench assets must be rsynced into the release bundle
@@ -438,9 +638,15 @@ describe("narrow overlay", () => {
 		);
 		expect(narrowCss).toContain("overflow-x: auto !important");
 		expect(narrowCss).toContain("touch-action: pan-x pan-y !important");
+		// The left region must fit the logo + menubar margin + the real 38px
+		// overflow button; anything less spills the button under the command
+		// center. The menubar itself must stay the zero-basis flexer from
+		// titlebar-menubar-overflow.diff (its allocated width is what triggers
+		// overflow mode), so narrow.css must not width-force it.
 		expect(narrowCss).toMatch(
-			/> \.titlebar-left \{[\s\S]*?min-width: 55px !important;[\s\S]*?> \.menubar\.overflow-menu-only \{[\s\S]*?min-width: 22px !important;/
+			/> \.titlebar-left \{[\s\S]*?min-width: 77px !important;/
 		);
+		expect(narrowCss).not.toContain(".menubar.overflow-menu-only");
 	});
 
 	test("short touch layouts keep the terminal keybar inside the viewport", () => {
@@ -566,6 +772,12 @@ describe("narrow overlay", () => {
 		// The OS cancels touches on app switch; without touchcancel cleanup the
 		// stale entries kill the single-touch checks (long-press, inertia) forever.
 		expect(patch).toContain("'touchcancel'");
+		// The hold itself can re-render the pressed DOM (the editor word-selects
+		// mid-hold) and detach initialTarget; dispatch then finds no containing
+		// Gesture target and silently drops the menu. The timer must re-resolve
+		// the live element under the finger.
+		expect(patch).toContain("!data.initialTarget.isConnected");
+		expect(patch).toContain("elementFromPoint");
 	});
 
 	test("nested menus retain focus and home actions stay at the File root", () => {
@@ -707,15 +919,22 @@ describe("adaptive favicon", () => {
 		"packages/ide/overlay/src/browser/pages/auth.html",
 		"packages/ide/overlay/src/browser/pages/error.html",
 		`${PATCHES_DIR}/overlays.diff`
-	])("%s ships only the adaptive SVG favicon", (path) => {
-		const raw = readRepoFile(path);
-		const content = path.endsWith(".diff") ? addedLines(raw) : raw;
+	])(
+		"%s ships the adaptive SVG favicon with the classic ICO alternate",
+		(path) => {
+			const raw = readRepoFile(path);
+			const content = path.endsWith(".diff") ? addedLines(raw) : raw;
 
-		expect(content).toContain("favicon.svg");
-		expect(content).not.toContain("favicon.ico");
-		expect(content).toContain('type="image/svg+xml"');
-		expect(content).not.toContain("alternate icon");
-	});
+			expect(content).toContain("favicon.svg");
+			expect(content).toContain('type="image/svg+xml"');
+			// Same convention as the web app (favicon.ico + icon.svg): browsers,
+			// webviews and bookmark/crawler services without SVG-favicon support
+			// fall back to the ICO that brand icons.mjs already generates.
+			expect(content).toContain("alternate icon");
+			expect(content).toContain("favicon.ico");
+			expect(content).toContain('type="image/x-icon"');
+		}
+	);
 
 	test("generated adaptive favicon uses an internal color-scheme media query", () => {
 		const favicon = readRepoFile(

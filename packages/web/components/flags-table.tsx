@@ -70,21 +70,21 @@ export function FlagsTable({
 
 	return (
 		<div className="overflow-hidden rounded-2xl border border-border bg-card">
-			<Table className="table-fixed min-w-[43rem]">
+			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="pl-4">
+						<TableHead className="w-full min-w-48 pl-4">
 							<SortHeader label="Flag" sort={sort} sortKey="flag" />
 						</TableHead>
 						{showBox ? (
-							<TableHead className="w-48">
+							<TableHead>
 								<SortHeader label="Box" sort={sort} sortKey="slug" />
 							</TableHead>
 						) : null}
-						<TableHead className="w-48">
+						<TableHead>
 							<SortHeader label="Created" sort={sort} sortKey="createdAt" />
 						</TableHead>
-						<TableHead className="w-64 pr-4 text-right">
+						<TableHead className="pr-4 text-right">
 							<div className="flex items-center justify-end gap-1">
 								{hasCurrentFlags ? (
 									<DismissButton
@@ -113,7 +113,7 @@ export function FlagsTable({
 								className="[&>td]:align-top has-[[data-link]:hover]:bg-muted/50"
 								key={flag.id}
 							>
-								<TableCell className="pl-4">
+								<TableCell className="max-w-0 pl-4">
 									<div className="min-w-0">
 										<p className="font-medium wrap-break-word text-foreground">
 											{signalLabel(flag)}
@@ -125,13 +125,15 @@ export function FlagsTable({
 									</div>
 								</TableCell>
 								{showBox ? (
-									<TableCell className="relative p-0">
+									// In-flow link (not absolute-fill) so auto layout can size
+									// this column to the slug.
+									<TableCell className="p-0">
 										<Link
-											className="absolute inset-0 flex items-center px-2 text-foreground"
+											className="block px-2 py-2 text-foreground"
 											data-link
 											href={consoleBoxPath(flag.boxId)}
 										>
-											<span className="truncate">{flag.slug}</span>
+											{flag.slug}
 										</Link>
 									</TableCell>
 								) : null}

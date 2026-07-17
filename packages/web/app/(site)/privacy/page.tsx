@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { SUPPORT_EMAIL } from "@/lib/links";
 
 export const metadata: Metadata = {
 	title: "Privacy Policy",
@@ -65,11 +67,11 @@ export default function PrivacyPage() {
 					(application backend), Polar (merchant of record and billing), Hetzner
 					(European cloud infrastructure and snapshots), Cloudflare (DNS and
 					network services), Vercel (website hosting and cookieless
-					measurements), Resend (operational email), and Have I Been Pwned
-					(k-anonymous password checks). These providers process data under
-					their own terms and/or our processor agreements. Where data leaves the
-					EEA or UK, we rely on an adequacy decision or appropriate contractual
-					safeguards supplied by the provider.
+					measurements), Resend (staff-only security and operational alerts),
+					and Have I Been Pwned (k-anonymous password checks). These providers
+					process data under their own terms and/or our processor agreements.
+					Where data leaves the EEA or UK, we rely on an adequacy decision or
+					appropriate contractual safeguards supplied by the provider.
 				</p>
 			</LegalSection>
 			<LegalSection title="Retention and deletion">
@@ -96,12 +98,16 @@ export default function PrivacyPage() {
 						it.
 					</li>
 					<li>
-						Deleting your account cancels its subscriptions and starts the same
-						box deletion process. We remove checkout secrets and URLs, replace
-						the email and external identity with non-identifying internal
-						values, and pseudonymize retained box and event records. The
-						pseudonymous account record is removed after the six-year billing
-						retention period once no retained records refer to it.
+						Staff-only operational alert records, including their delivery state
+						and incident context, are removed after 180 days.
+					</li>
+					<li>
+						Deleting your account immediately revokes its subscriptions and
+						starts the same box deletion process. We remove checkout secrets and
+						URLs, replace the email and external identity with non-identifying
+						internal values, and pseudonymize retained box and event records.
+						The pseudonymous account record is removed after the six-year
+						billing retention period once no retained records refer to it.
 					</li>
 					<li>
 						Providers may retain limited backups, fraud, transaction, and
@@ -115,9 +121,7 @@ export default function PrivacyPage() {
 					deletion, restriction, portability, or an objection to processing. You
 					may complain to the Irish Data Protection Commission or your local
 					supervisory authority. Email{" "}
-					<a className="link" href="mailto:sloikodavid@gmail.com">
-						sloikodavid@gmail.com
-					</a>{" "}
+					<CopyEmail className="link" />{" "}
 					to exercise a right. We may need to check your identity. You can also
 					manage or delete your account from the Clerk user menu.
 				</p>

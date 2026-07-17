@@ -7,7 +7,9 @@ description: Next.js app, providers, and the per-step setup runbook for a fresh 
 marketing pages, the boxes dashboard, the staff console, and the Fumadocs-rendered
 documentation at `/docs` (this repo's `docs/` directory). It has a backend -
 Convex, Clerk auth, and Polar billing - all configured through environment
-variables in `packages/web/.env.example.*` and the per-provider pages here.
+variables in `packages/web/.env.example.*` and the nested [Services](./services/index.md)
+runbooks. This page assumes none of those accounts or resources exist yet and
+is the end-to-end setup path from source checkout to a working deployment.
 
 Stack: Next.js on Vercel, Convex (functions, database, HTTP actions, crons, auth
 config, `@convex-dev/polar`, `@convex-dev/workflow`), Clerk, Polar, Hetzner Cloud
@@ -44,6 +46,8 @@ This is a solo project with two long-lived backends and no preview/staging tier:
   - `WEBSITE_ORIGIN`, `CLOUD_DOMAIN` (`convex/env.ts`).
   - `POLAR_*` (`convex/billing/polar.ts`), `HETZNER_*` and `SSH_*`
     (`convex/boxes/infra/`), `CLOUDFLARE_*`, `RUNTIME_IMAGE`, `RUNTIME_PORT`.
+  - `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and `ALERT_EMAIL_FROM` for
+    production staff-only operational alerts (`convex/staffAlerts.ts`).
 
 Putting a Convex deployment var in `.env.local` does nothing at runtime - it
 takes effect only on the deployment.
@@ -57,7 +61,7 @@ Domain split:
 - Production runtime boxes: `https://<slug>.<cloud-domain>`.
 - Development website: `http://localhost:3000`.
 - Development runtime boxes: `https://<slug>.dev.<cloud-domain>` (only if you
-  provision in dev; see [Cloudflare](./cloudflare.md)).
+  provision in dev; see [Cloudflare](./services/cloudflare.md)).
 
 `WEBSITE_ORIGIN` is a full origin (scheme + host, plus a port in dev) because it
 builds website URLs and dev runs on `http://localhost:3000`. `CLOUD_DOMAIN` is a
@@ -67,16 +71,22 @@ different things, not two spellings of one domain.
 ## Order of operations
 
 1. Delegate both domains from Namecheap and configure the website and runtime
-   zones in [Cloudflare](./cloudflare.md).
-2. Create the [Convex](./convex.md) deployments - their URLs must exist first
+   zones in [Cloudflare](./services/cloudflare.md).
+2. Create the [Convex](./services/convex.md) deployments - their URLs must exist first
    (Polar webhook target `CONVEX_SITE_URL`, Clerk JWT issuer).
-3. Set up each provider ([Clerk](./clerk.md), [Polar](./polar.md),
-   [Hetzner](./hetzner.md), [Cloudflare](./cloudflare.md)). Each page names the
+3. Set up each provider ([Clerk](./services/clerk.md), [Polar](./services/polar.md),
+   [Hetzner](./services/hetzner.md), [Cloudflare](./services/cloudflare.md)). Each page names the
    value/variable it produces; some need the Convex URLs from step 1.
-4. Enter the collected values into the Convex deployment env per deployment
-   ([Convex](./convex.md) - "Set Convex environment variables").
-5. Configure [Vercel](./vercel.md) (frontend env, prod deploy key, build
+4. Configure [Resend](./services/resend.md) and its delivery webhook for
+   production staff alerts. Polar, not Resend, sends customer billing email.
+5. Enter the collected values into the Convex deployment env per deployment
+   ([Convex](./services/convex.md) - "Set Convex environment variables").
+6. Configure [Vercel](./services/vercel.md) (frontend env, prod deploy key, build
    settings) and deploy.
+7. Sign in once, bootstrap the first application administrator, configure the
+   deployment's Hetzner allocations, and complete the launch checks in
+   [Operations](./operations.md). Checkout deliberately remains unavailable
+   until both allocations are set.
 
 ## Prerequisites
 
@@ -97,9 +107,9 @@ cp packages/web/.env.example.next.dev packages/web/.env.local
 ## Local development
 
 `.env.local` holds frontend-plane values only; it is your copy of
-`packages/web/.env.example.next.dev`. `convex dev` writes the [Convex](./convex.md)
-identifiers; you fill the dev [Clerk](./clerk.md) keys. The Convex-plane values
-live on the dev deployment (set them in [Convex](./convex.md) - "Set Convex
+`packages/web/.env.example.next.dev`. `convex dev` writes the [Convex](./services/convex.md)
+identifiers; you fill the dev [Clerk](./services/clerk.md) keys. The Convex-plane values
+live on the dev deployment (set them in [Convex](./services/convex.md) - "Set Convex
 environment variables"), not in `.env.local`.
 
 ```bash
@@ -108,14 +118,14 @@ pnpm run dev
 
 This runs `convex dev` (pushing functions and schema to the dev deployment) and
 `next dev` together. Open `http://localhost:3000`. Local UI work runs without
-real [Polar](./polar.md)/[Hetzner](./hetzner.md)/[Cloudflare](./cloudflare.md)
+real [Polar](./services/polar.md)/[Hetzner](./services/hetzner.md)/[Cloudflare](./services/cloudflare.md)
 credentials until you test checkout or provisioning.
 
 ## Production deploy
 
 `packages/web/vercel.json` pins the framework preset and the install command
 (`pnpm install` from the repo root, so the workspace resolves). The full Vercel
-project, env-var, and build-command setup is in [Vercel](./vercel.md); the short
+project, env-var, and build-command setup is in [Vercel](./services/vercel.md); the short
 version:
 
 1. From `packages/web` run `vercel link`. Set the two project-level settings
@@ -126,6 +136,6 @@ version:
      `pnpm-workspace.yaml`, all outside the package.
 2. Add `www.<website-domain>` under Settings -> Domains. The documentation is
    served at `/docs` on that same origin - there is no separate docs subdomain.
-3. Push to `main`. Confirmed production [Convex](./convex.md) env (at least
+3. Push to `main`. Confirmed production [Convex](./services/convex.md) env (at least
    `CLERK_FRONTEND_API_URL`) and Vercel Production env vars must be in place
-   first; see [Vercel](./vercel.md) for the checklist.
+   first; see [Vercel](./services/vercel.md) for the checklist.

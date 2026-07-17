@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+	APPICON_SELECTOR,
 	buildBeforeLoad,
 	choosePlacement,
 	INSTALL_SCRIPT,
@@ -8,14 +9,14 @@ import {
 } from "./back-button";
 
 describe("back-button placement", () => {
-	test("places into the title bar when its left slot exists", () => {
-		expect(choosePlacement({ hasTitlebarLeft: true })).toBe("titlebar");
+	test("rewires the logo when it exists", () => {
+		expect(choosePlacement({ hasAppicon: true })).toBe("titlebar");
 	});
 
-	// No fallback: until the title bar exists we wait (the observer retries) -
-	// we never inject anything elsewhere.
-	test("waits when the title bar isn't present yet", () => {
-		expect(choosePlacement({ hasTitlebarLeft: false })).toBe("wait");
+	// No fallback: until the logo exists we wait (the observer retries) - we
+	// never inject anything elsewhere.
+	test("waits when the logo isn't present yet", () => {
+		expect(choosePlacement({ hasAppicon: false })).toBe("wait");
 	});
 
 	test("the injected script targets the real selector and never floats", () => {
@@ -27,24 +28,29 @@ describe("back-button placement", () => {
 		expect(INSTALL_SCRIPT).not.toContain(".toString()");
 	});
 
-	// Titlebar-control parity: the states the IDE's own titlebar controls have.
-	test("the button covers inactive, focus and touch-hover states", () => {
-		expect(INSTALL_SCRIPT).toContain("titleBar-inactiveForeground");
-		expect(INSTALL_SCRIPT).toContain(":focus-visible");
-		expect(INSTALL_SCRIPT).toContain("focusBorder");
-		// Hover only where hover exists - no sticky hover wash after a tap.
-		expect(INSTALL_SCRIPT).toContain("@media (hover: hover)");
-		// Menubar token family: the button's siblings in .titlebar-left are
-		// menubar buttons, not toolbar buttons.
-		expect(INSTALL_SCRIPT).toContain("menubar-selectionBackground");
-		expect(INSTALL_SCRIPT).toContain("translateY(1px)");
+	// The control is the IDE's own title-bar logo, rewired - never a lookalike
+	// button, so its size/icon/theming can't drift from the IDE's CSS.
+	test("rewires the appicon instead of building a replacement", () => {
+		expect(INSTALL_SCRIPT).toContain(APPICON_SELECTOR);
+		// The href would navigate the WebView to the website and trigger the
+		// logo's link context menu on long-press.
+		expect(INSTALL_SCRIPT).toContain('removeAttribute("href")');
+		expect(INSTALL_SCRIPT).toContain('"role", "button"');
+		// Anchors without href have no native keyboard activation.
+		expect(INSTALL_SCRIPT).toContain("keydown");
+		// No lookalike and no layout overrides: the IDE's own CSS owns the
+		// logo's look and the titlebar's sizing.
+		expect(INSTALL_SCRIPT).not.toContain("codicon-arrow-left");
+		expect(INSTALL_SCRIPT).not.toContain("<svg");
+		expect(INSTALL_SCRIPT).not.toContain('createElement("a")');
+		expect(INSTALL_SCRIPT).not.toContain("titlebar-left{");
 	});
 
-	test("uses the IDE back arrow codicon", () => {
-		expect(INSTALL_SCRIPT).toContain("codicon-arrow-left");
-		expect(INSTALL_SCRIPT).toContain('#" + ID + " .codicon');
-		expect(INSTALL_SCRIPT).not.toContain("<svg");
-		expect(INSTALL_SCRIPT).not.toContain("composery-icon-holes");
+	test("the appicon is touch- and keyboard-usable", () => {
+		// No sticky hover wash after a tap on touch screens.
+		expect(INSTALL_SCRIPT).toContain("@media (hover: none)");
+		expect(INSTALL_SCRIPT).toContain(":focus-visible");
+		expect(INSTALL_SCRIPT).toContain("focusBorder");
 	});
 });
 
@@ -68,18 +74,13 @@ describe("color-scheme override", () => {
 	});
 });
 
-describe("menubar pairing CSS", () => {
-	// A bare .menubar-menu-button width rule would force File/Edit/... to 22px
-	// and poison the menubar's overflow measurement (it reads offsetWidth), so
-	// labels smush instead of collapsing into the overflow menu.
-	test("22px box applies to the overflow button only", () => {
-		for (const line of INSTALL_SCRIPT.split("\n")) {
-			if (line.includes("width:22px") && line.includes("menubar-menu-button")) {
-				expect(line).toContain(":has(.toolbar-toggle-more)");
-			}
-		}
-		expect(INSTALL_SCRIPT).toContain(
-			".menubar-menu-button:has(.toolbar-toggle-more)"
-		);
+describe("menubar", () => {
+	// The old lookalike button shrank the overflow hamburger to pair with its
+	// 22px box; the native 35px appicon pairs with the native menubar as-is, so
+	// the script must not touch menubar sizing (a bare .menubar-menu-button
+	// width rule would poison the menubar's own overflow measurement).
+	test("the script leaves menubar sizing alone", () => {
+		expect(INSTALL_SCRIPT).not.toContain("width:22px");
+		expect(INSTALL_SCRIPT).not.toContain("toolbar-toggle-more");
 	});
 });

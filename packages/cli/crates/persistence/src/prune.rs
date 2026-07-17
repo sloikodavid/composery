@@ -502,7 +502,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: kind.into(),
             mode: None,
             uid: None,

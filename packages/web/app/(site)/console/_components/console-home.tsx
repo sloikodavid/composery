@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ConsoleStats } from "./console-stats";
 import { ConsoleCheckoutLimit } from "./console-checkout-limit";
+import { ConsoleCapacity } from "./console-capacity";
 import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
 import { ConsoleThresholds } from "./console-thresholds";
 import { FlagsTable } from "@/components/flags-table";
@@ -25,7 +26,6 @@ import { OpenInPolar } from "@/components/open-in-polar";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/status-text";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { Button } from "@/components/button";
 import { Input } from "@/components/input";
 import {
 	Table,
@@ -70,6 +70,45 @@ type FailedOperation = NonNullable<
 	ReturnType<typeof useQuery<typeof api.staff.boxes.recentFailedOperations>>
 >[number];
 
+function AlertDeliveryPanel() {
+	const health = useQuery(api.staff.alerts.health, {});
+	if (!health) return null;
+	const configurationIssues = [
+		!health.sendingConfigured ? "Resend sending is not configured" : null,
+		health.recipientCount === 0 ? "no alert recipient is configured" : null,
+		!health.deliveryTrackingConfigured
+			? "Resend delivery tracking is not configured"
+			: null
+	].filter(Boolean);
+	if (configurationIssues.length === 0 && health.recentIssues.length === 0) {
+		return null;
+	}
+
+	return (
+		<div className="rounded-2xl border border-destructive/40 bg-card px-4 py-3">
+			<div className="flex items-start gap-2">
+				<TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+				<div className="min-w-0 text-sm">
+					<p className="font-medium text-foreground">Staff alert delivery</p>
+					{configurationIssues.length > 0 ? (
+						<p className="text-muted-foreground">
+							{configurationIssues.join("; ")}.
+						</p>
+					) : null}
+					{health.recentIssues.length > 0 ? (
+						<p className="text-muted-foreground">
+							{health.recentIssues.length} recent alert
+							{health.recentIssues.length === 1 ? " has" : "s have"} a queue or
+							delivery issue. Review the <code>staff_alerts</code> table and
+							Resend.
+						</p>
+					) : null}
+				</div>
+			</div>
+		</div>
+	);
+}
+
 // Only renders when something is actually wrong, so a healthy console stays
 // clean and this reads as an alert rather than a permanent panel.
 function NeedsAttentionPanel() {
@@ -93,13 +132,13 @@ function NeedsAttentionPanel() {
 					in the last 7 days
 				</span>
 			</div>
-			<Table className="table-fixed min-w-[44rem]">
+			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="pl-4">Operation</TableHead>
-						<TableHead className="w-40">Box</TableHead>
-						<TableHead className="w-48">When</TableHead>
-						<TableHead className="w-48 pr-4 text-right">
+						<TableHead className="w-full min-w-48 pl-4">Operation</TableHead>
+						<TableHead>Box</TableHead>
+						<TableHead>When</TableHead>
+						<TableHead className="pr-4 text-right">
 							<div className="flex items-center justify-end gap-1">
 								<DismissButton
 									disabled={busy !== null}
@@ -125,7 +164,7 @@ function NeedsAttentionPanel() {
 							className={failure.lastError ? "[&>td]:align-top" : undefined}
 							key={failure.id}
 						>
-							<TableCell className="pl-4">
+							<TableCell className="max-w-0 pl-4">
 								<div className="min-w-0">
 									<p className="font-medium text-foreground">{failure.type}</p>
 									{failure.lastError ? (
@@ -235,6 +274,7 @@ export function ConsoleHome() {
 			<ConsoleStats />
 
 			<NeedsAttentionPanel />
+			<AlertDeliveryPanel />
 
 			<div className="space-y-3">
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -283,26 +323,26 @@ export function ConsoleHome() {
 				</div>
 
 				<div className="overflow-hidden rounded-2xl border border-border bg-card">
-					<Table className="table-fixed min-w-[48rem]">
+					<Table>
 						<TableHeader>
 							<TableRow>
-								<TableHead className="pl-4">
+								<TableHead className="w-full min-w-48 pl-4">
 									<SortHeader label="Box" sort={boxSort} sortKey="slug" />
 								</TableHead>
-								<TableHead className="w-48">
+								<TableHead>
 									<SortHeader label="User" sort={boxSort} sortKey="user" />
 								</TableHead>
-								<TableHead className="w-32">
+								<TableHead>
 									<SortHeader
 										label="Created"
 										sort={boxSort}
 										sortKey="createdAt"
 									/>
 								</TableHead>
-								<TableHead className="w-36">
+								<TableHead>
 									<SortHeader label="Status" sort={boxSort} sortKey="status" />
 								</TableHead>
-								<TableHead className="w-28 pr-4 text-right">
+								<TableHead className="pr-4 text-right">
 									<div className="flex items-center justify-end gap-1">
 										<OpenInHetzner iconOnly label="Open servers in Hetzner" />
 										<OpenInPolar iconOnly label="Open customers in Polar" />
@@ -322,7 +362,7 @@ export function ConsoleHome() {
 										className="h-14 has-[[data-link]:hover]:bg-muted/50"
 										key={box.id}
 									>
-										<TableCell className="relative p-0">
+										<TableCell className="relative max-w-0 p-0">
 											<Link
 												className="absolute inset-0 flex flex-col items-start justify-center pl-4"
 												data-link
@@ -336,9 +376,7 @@ export function ConsoleHome() {
 												</span>
 											</Link>
 										</TableCell>
-										<TableCell className="truncate">
-											{box.userEmail || box.userId}
-										</TableCell>
+										<TableCell>{box.userEmail || box.userId}</TableCell>
 										<TableCell>{formatDate(box.createdAt)}</TableCell>
 										<TableCell>
 											<StatusText status={box.status} />
@@ -376,39 +414,46 @@ export function ConsoleHome() {
 			</div>
 
 			<div className="grid gap-3">
+				{settings ? (
+					<ConsoleCapacity
+						capacity={settings.capacity}
+						serverLimit={settings.hetznerServerLimit}
+						snapshotLimit={settings.hetznerSnapshotLimit}
+					/>
+				) : null}
 				<ConsoleCheckoutLimit max={settings?.maxActiveCheckoutIntentsPerUser} />
 				<ConsoleThresholds thresholds={settings?.thresholds} />
 				<ConsoleSnapshotPolicy policy={settings?.snapshotPolicy} />
 			</div>
 
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table className="table-fixed min-w-[56rem]">
+				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="pl-4">
+							<TableHead className="w-full min-w-48 pl-4">
 								<SortHeader label="Intent" sort={intentSort} sortKey="slug" />
 							</TableHead>
-							<TableHead className="w-48">
+							<TableHead>
 								<SortHeader label="User" sort={intentSort} sortKey="user" />
 							</TableHead>
-							<TableHead className="w-32">
+							<TableHead>
 								<SortHeader
 									label="Created"
 									sort={intentSort}
 									sortKey="createdAt"
 								/>
 							</TableHead>
-							<TableHead className="w-48">
+							<TableHead>
 								<SortHeader
 									label="Expires"
 									sort={intentSort}
 									sortKey="expiresAt"
 								/>
 							</TableHead>
-							<TableHead className="w-36">
+							<TableHead>
 								<SortHeader label="Status" sort={intentSort} sortKey="status" />
 							</TableHead>
-							<TableHead className="w-14 pr-4 text-right">
+							<TableHead className="pr-4 text-right">
 								<OpenInConvex iconOnly table="box_checkout_intents" />
 							</TableHead>
 						</TableRow>
@@ -421,7 +466,7 @@ export function ConsoleHome() {
 						<TableBody className="page-fade-in">
 							{sortedIntents.map((intent: CheckoutIntent) => (
 								<TableRow key={intent.id}>
-									<TableCell className="pl-4">
+									<TableCell className="max-w-0 pl-4">
 										<div className="min-w-0">
 											<span className="block truncate font-medium text-foreground">
 												{intent.slug}
@@ -431,9 +476,7 @@ export function ConsoleHome() {
 											</span>
 										</div>
 									</TableCell>
-									<TableCell className="truncate">
-										{intent.userEmail || intent.userId}
-									</TableCell>
+									<TableCell>{intent.userEmail || intent.userId}</TableCell>
 									<TableCell>{formatDate(intent.createdAt)}</TableCell>
 									<TableCell>{formatDateTime(intent.expiresAt)}</TableCell>
 									<TableCell>
@@ -443,7 +486,7 @@ export function ConsoleHome() {
 									</TableCell>
 									<TableCell className="pr-4">
 										<div className="flex items-center justify-end gap-1">
-											<Button
+											<DismissButton
 												onClick={() =>
 													run("release", "Checkout released", () =>
 														releaseIntent({
@@ -452,11 +495,9 @@ export function ConsoleHome() {
 														})
 													)
 												}
-												size="sm"
-												variant="outline"
 											>
 												Release
-											</Button>
+											</DismissButton>
 											<OpenInConvex
 												iconOnly
 												label={`Open ${intent.slug} intent in Convex`}

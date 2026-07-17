@@ -2,7 +2,10 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
+import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { consoleBoxPath } from "../../lib/box-route";
 import { appendBoxEvent } from "./boxEvents";
+import { reconcileCapacityAlert } from "./capacityAlerts";
 import { deletedBoxDataPatch } from "./boxRetention";
 import { assertSlugAvailable } from "./slugAvailability";
 
@@ -195,6 +198,7 @@ export const markOperationFailed = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
+		const operation = await ctx.db.get(args.operationId);
 		const timestamp = Date.now();
 
 		if (args.targetBoxStatus) {
@@ -212,6 +216,21 @@ export const markOperationFailed = internalMutation({
 		});
 		await appendBoxEvent(ctx, box, args.eventType, {
 			message: args.error
+		});
+
+		const operationType = operation?.type ?? "unknown";
+		const critical = new Set([
+			"provision",
+			"delete",
+			"reset",
+			"restore",
+			"recover"
+		]).has(operationType);
+		await sendStaffAlert(ctx, {
+			key: `box-operation-failed:${args.operationId}`,
+			severity: critical ? "critical" : "warning",
+			subject: `Box ${box.slug}: ${operationType} failed`,
+			text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${args.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
 		});
 	}
 });
@@ -358,6 +377,7 @@ export const markDeleted = internalMutation({
 			internal.boxes.boxSnapshots.cascadeDeleteBoxSnapshots,
 			{ boxId: box._id }
 		);
+		await reconcileCapacityAlert(ctx);
 	}
 });
 

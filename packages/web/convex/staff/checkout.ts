@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { mutation, query, type QueryCtx } from "../_generated/server";
-import { getUserByClerkId, requireStaff } from "../authorization";
+import { getUserByClerkId, requireCapability } from "../authorization";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
 const STAFF_INTENT_LIST_LIMIT = 50;
@@ -45,7 +45,7 @@ export const activeCheckoutIntents = query({
 		query: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "staff_console");
 		const rawTerm = (args.query ?? "").trim();
 		const term = rawTerm.toLowerCase();
 		const candidates = new Map<
@@ -138,7 +138,7 @@ export const releaseCheckoutIntent = mutation({
 		reason: v.string()
 	},
 	handler: async (ctx, args) => {
-		await requireStaff(ctx);
+		await requireCapability(ctx, "checkout_management");
 		await ctx.runMutation(
 			internal.checkout.checkoutIntents.releaseCheckoutIntent,
 			{

@@ -1,6 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
 	SERVER_LOCATIONS,
@@ -138,7 +139,8 @@ type HetznerPrimaryIpsResponse = {
 export class HetznerApiError extends Error {
 	constructor(
 		message: string,
-		public readonly status: number
+		public readonly status: number,
+		public readonly code?: string
 	) {
 		super(message);
 		this.name = "HetznerApiError";
@@ -194,7 +196,8 @@ async function hetznerRequest<T>(path: string, init?: RequestInit) {
 		}
 		throw new HetznerApiError(
 			body.error?.message ?? `Hetzner API ${response.status}.`,
-			response.status
+			response.status,
+			body.error?.code
 		);
 	}
 
@@ -480,7 +483,7 @@ export const createServer = internalAction({
 		boxId: v.id("boxes"),
 		slug: v.string()
 	},
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
 		const serverTypes = parseServerTypes(process.env.HETZNER_BOX_SERVER_TYPES);
 		const locations = parseLocations(process.env.HETZNER_BOX_LOCATIONS);
 		const candidates = placementCandidates(serverTypes, locations);
@@ -501,6 +504,23 @@ export const createServer = internalAction({
 				if (error instanceof HetznerServerCreatedButNotReadyError) {
 					throw error;
 				}
+				// Account quota is independent of server type and location. Trying the
+				// full placement matrix cannot make it pass; let the workflow retry and
+				// eventually apply the paid-but-unfulfilled refund path.
+				if (
+					error instanceof HetznerApiError &&
+					error.code === "resource_limit_exceeded"
+				) {
+					// The provider has authoritatively said another server cannot be
+					// created. Stop new payable checkouts so repeated purchases do not
+					// become repeated refunds and non-refundable Polar fees. Staff can
+					// request the Hetzner increase and re-enable checkout in the console.
+					await ctx.runMutation(internal.settings.setCheckoutEnabled, {
+						checkoutEnabled: false,
+						updatedBy: "system:hetzner_resource_limit_exceeded"
+					});
+					throw error;
+				}
 
 				const recovered = await existingCreatedServer(args.slug, candidate);
 				if (recovered) return recovered;
@@ -517,7 +537,7 @@ export const rebuildServer = internalAction({
 		serverId: v.optional(v.number()),
 		image: v.optional(v.union(v.number(), v.string()))
 	},
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
 		if (!args.serverId) {
 			throw new Error("Box has no Hetzner server to rebuild.");
 		}
@@ -821,7 +841,7 @@ export const createSnapshotImage = internalAction({
 		actionId: v.number(),
 		imageId: v.number()
 	}),
-	handler: async (_ctx, args) => {
+	handler: async (ctx, args) => {
 		if (!args.serverId) {
 			throw new Error("Box has no Hetzner server to snapshot.");
 		}
@@ -829,13 +849,29 @@ export const createSnapshotImage = internalAction({
 		// The timestamped description is built here rather than in the workflow
 		// handler, which must stay deterministic across replays.
 		const description = `composery-web ${args.slug} ${args.snapshotClass} ${new Date().toISOString()}`;
-		const response = await hetznerRequest<HetznerCreateImageResponse>(
-			`/servers/${args.serverId}/actions/create_image`,
-			{
-				method: "POST",
-				body: JSON.stringify(createSnapshotImagePayload(args.slug, description))
+		let response: HetznerCreateImageResponse;
+		try {
+			response = await hetznerRequest<HetznerCreateImageResponse>(
+				`/servers/${args.serverId}/actions/create_image`,
+				{
+					method: "POST",
+					body: JSON.stringify(
+						createSnapshotImagePayload(args.slug, description)
+					)
+				}
+			);
+		} catch (error) {
+			if (
+				error instanceof HetznerApiError &&
+				error.code === "resource_limit_exceeded"
+			) {
+				await ctx.runMutation(internal.settings.setCheckoutEnabled, {
+					checkoutEnabled: false,
+					updatedBy: "system:hetzner_snapshot_resource_limit_exceeded"
+				});
 			}
-		);
+			throw error;
+		}
 
 		return parseCreateImageResponse(response);
 	}

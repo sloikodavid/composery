@@ -71,7 +71,11 @@ management handled for you.
 
 Developing: see [docs/developing](docs/developing/index.md). Releases:
 [changelog](https://github.com/sloikodavid/composery/releases). Security:
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](SECURITY.md). Bugs in any part of the product - image, cloud,
+IDE, app, or site - go to
+[issues](https://github.com/sloikodavid/composery/issues); feature requests
+and questions live in
+[discussions](https://github.com/sloikodavid/composery/discussions).
 
 ## License
 

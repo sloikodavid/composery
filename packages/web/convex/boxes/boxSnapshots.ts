@@ -11,6 +11,7 @@ import { vSnapshotClass } from "../schema";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
 import { appendBoxEvent } from "./boxEvents";
+import { reconcileCapacityAlert } from "./capacityAlerts";
 import { startBoxOperation } from "./boxOperations";
 import {
 	SNAPSHOT_INCOMPLETE_RETENTION_MS,
@@ -410,6 +411,7 @@ export const removeSnapshotRow = internalMutation({
 		const snapshot = await ctx.db.get(args.snapshotRowId);
 		if (!snapshot) return;
 		await ctx.db.delete(args.snapshotRowId);
+		await reconcileCapacityAlert(ctx);
 	}
 });
 

@@ -1,117 +1,93 @@
 ---
 title: Maintenance
-description: Hardcoded scheduling constants and the cron schedule that drives periodic work.
+description: Runtime settings, fixed retention windows, and scheduled backend work.
 ---
 
-A reference for what's hardcoded and why, and the cron schedule that drives the
-periodic work.
+This page contains operational timing and retention behavior that matters when
+running the hosted product. Implementation batch sizes and internal helper
+constants are deliberately omitted; the code is the source of truth for those
+and duplicating them here adds maintenance without helping an operator.
 
-Runtime-tunable settings - abuse thresholds, the auto-suspend toggle,
-snapshot policy, and the checkout toggle - live in the `settings` table and
-are edited directly on the staff console at `/console`. This doc covers only
-what you can't change without a redeploy.
+## Runtime settings
 
-Grounded in the code at the time of writing. When a value moves between
-hardcoded and console-configurable, update this file in the same change.
+The staff console at **/console** owns the values that should change without a
+deployment:
 
-## Hardcoded in code
+- checkout enabled/disabled;
+- the Hetzner server and snapshot allocations assigned to this deployment;
+- per-user concurrent unpaid checkout reservations;
+- snapshot caps, minimum interval, and retention;
+- abuse/resource thresholds; and
+- automatic suspension enabled/disabled.
 
-These are internal scheduling, cleanup, and infrastructure concerns. They
-don't change at runtime without a redeploy, and exposing them to operators
-would invite misconfiguration without adding value.
+Checkout fails closed until both Hetzner allocations are configured. Read
+[Operations](./operations.md) before changing allocations or destructive
+behavior.
 
-### Metrics polling (`convex/boxes/boxMetrics.ts`)
+## Fixed windows
 
-| Constant                        | Value     | Why it's hardcoded                                                                              |
-| ------------------------------- | --------- | ----------------------------------------------------------------------------------------------- |
-| `METRICS_POLL_INTERVAL_MINUTES` | `10`      | Drives the cron schedule in `convex/crons.ts`. Convex crons are fixed at deploy time.           |
-| `RAW_RETENTION_MS`              | `2` days  | How long raw per-poll samples live before the daily sweep.                                      |
-| `ROLLUP_RETENTION_MS`           | `30` days | How long hourly rollups live.                                                                   |
-| `FLAG_COOLOFF_MS`               | `6` hours | Per-signal-per-box cooloff to prevent flag spam.                                                |
-| `POLL_TARGET_PAGE_SIZE`         | `200`     | Pagination batch for the fleet poll.                                                            |
-| `POLL_CONCURRENCY`              | `10`      | Hetzner metrics calls fired in parallel per batch (`boxMetricsPoll.ts`). Lower if rate-limited. |
-| `RETENTION_DELETE_BATCH`        | `1000`    | Delete batch for the retention sweep.                                                           |
-| `ROLLUP_BOX_BATCH`              | `200`     | Pagination batch for the hourly rollup.                                                         |
-| `STAFF_ALERT_RECIPIENT_LIMIT`   | `50`      | Max admin users to email per alert.                                                             |
+These values intentionally require a code change and deployment because they
+define evidence retention, retry cadence, or background workload:
 
-### Snapshot internals (`convex/boxes/snapshotPolicy.ts`)
+| Behavior                           | Window                              |
+| ---------------------------------- | ----------------------------------- |
+| Unpaid checkout reservation        | 1 hour                              |
+| Metrics polling                    | 10 minutes                          |
+| Raw metrics retention              | 2 days                              |
+| Hourly metrics retention           | 30 days                             |
+| Repeat flag cooloff per box/signal | 6 hours                             |
+| Staff-alert retry                  | 15 minutes                          |
+| Staff-alert record retention       | 180 days                            |
+| Stuck account-deletion alert       | After 24 hours                      |
+| Incomplete snapshot-row retention  | 24 hours                            |
+| Snapshot capture deadline          | 1 hour                              |
+| Deleted box/support evidence       | 180 days                            |
+| Unpaid checkout record             | 30 days                             |
+| Paid billing record                | 6 calendar years after the box ends |
 
-| Constant                           | Value        | Why it's hardcoded                                             |
-| ---------------------------------- | ------------ | -------------------------------------------------------------- |
-| `SNAPSHOT_SCHEDULE_STAGGER_MS`     | `20` seconds | Stagger between automatic snapshots across the fleet.          |
-| `SNAPSHOT_INCOMPLETE_RETENTION_MS` | `24` hours   | How long a failed/in-flight snapshot row lives before cleanup. |
-| `SNAPSHOT_RETENTION_SWEEP_BATCH`   | `200`        | Delete batch for the expired-snapshot sweep.                   |
-| `SNAPSHOT_POLL_FAST_MS`            | `10` seconds | Fast poll interval for snapshot action status.                 |
-| `SNAPSHOT_POLL_SLOW_MS`            | `30` seconds | Slow poll interval after the opening window.                   |
-| `SNAPSHOT_POLL_FAST_WINDOW_MS`     | `60` seconds | Window before backing off to slow poll.                        |
-| `SNAPSHOT_CAPTURE_DEADLINE_MS`     | `1` hour     | Max time to wait for a Hetzner `create_image` to finish.       |
+Paid initial-fulfillment failure, provider cleanup, capacity admission, and
+refund behavior are specified once in [Operations](./operations.md),
+[Polar](./services/polar.md), and [Hetzner](./services/hetzner.md).
 
-Snapshots themselves are covered in [Hetzner](./hetzner.md#box-snapshots).
+## Scheduled work
 
-### Checkout reservation (`convex/checkout/checkoutIntents.ts`)
+Convex owns every periodic backend job; no separate worker service is required.
+All fixed times are UTC.
 
-| Constant                      | Value       | Why it's hardcoded                               |
-| ----------------------------- | ----------- | ------------------------------------------------ |
-| `CHECKOUT_RESERVATION_TTL_MS` | `1` hour    | How long a slug is reserved during checkout.     |
-| `CLOUD_TERMS_VERSION`         | Date string | Legal version recorded with checkout acceptance. |
+| Job                                       | Schedule         |
+| ----------------------------------------- | ---------------- |
+| Release expired checkout intents          | Every 15 minutes |
+| Delete expired box authorization          | Every 15 minutes |
+| Reconcile calculated capacity-alert state | Every 15 minutes |
+| Retry unsent staff alerts                 | Every 15 minutes |
+| Poll box metrics                          | Every 10 minutes |
+| Reconcile Polar subscriptions             | Hourly at :11    |
+| Continue pending account deletion         | Hourly at :19    |
+| Roll up hourly metrics                    | Hourly at :04    |
+| Snapshot running boxes                    | Daily at 03:07   |
+| Delete old metrics                        | Daily at 04:23   |
+| Normalize deleted boxes                   | Daily at 04:29   |
+| Purge deleted boxes                       | Daily at 04:31   |
+| Purge checkout records                    | Daily at 04:37   |
+| Purge deleted accounts                    | Daily at 04:39   |
+| Delete expired snapshots                  | Daily at 04:41   |
+| Purge staff-alert records                 | Daily at 04:43   |
+| Reconcile Hetzner resources               | Daily at 05:17   |
 
-### Deleted records (`convex/boxes/boxRetention.ts`)
+The schedule is defined in **packages/web/convex/crons.ts**. A schedule change
+must update this table in the same commit because the table is the operator's
+UTC runbook, not an implementation inventory.
 
-Deletion separates customer state from records that have a continuing,
-documented purpose. Secrets, snapshots, infrastructure references, and metrics
-are removed immediately. A minimized box tombstone plus lifecycle summaries and
-abuse flags remains visible to staff by immutable box ID for 180 days, then the
-entire graph is purged. Account deletion pseudonymizes its retained box and event
-links. Unpaid checkout records remain for 30 days; paid billing records remain
-for six calendar years after the box ends. The pseudonymous account tombstone is
-removed after that same period once no retained records refer to it. `retain_until` postpones a billing
-purge only for a specific audit, dispute, or legal hold.
+Hetzner reconciliation deletes untracked product snapshot images only after a
+two-hour grace period. It never deletes an untracked server automatically; it
+records and alerts on the server for manual review. Polar and Hetzner
+reconciliation failures also create rate-limited staff alerts.
 
-| Constant                         | Value     | Purpose                                      |
-| -------------------------------- | --------- | -------------------------------------------- |
-| `DELETED_BOX_RETENTION_DAYS`     | `180`     | Support, security, abuse, and claim evidence |
-| `UNPAID_CHECKOUT_RETENTION_DAYS` | `30`      | Short reconciliation window without payment  |
-| `BILLING_RECORD_RETENTION_YEARS` | `6` years | Irish tax and accounting records             |
+## Retained deleted data
 
-## Cron schedule
-
-Defined in `convex/crons.ts`. All times are UTC.
-
-| Schedule                    | When             | Function                                                       |
-| --------------------------- | ---------------- | -------------------------------------------------------------- |
-| Release expired intents     | Every 15 minutes | `checkout.checkoutIntents.releaseExpiredCheckoutIntents`       |
-| Delete expired box auth     | Every 15 minutes | `boxes.boxAuth.deleteExpiredAuthRecords`                       |
-| Subscription reconciliation | Hourly at :11    | `billing.reconciliation.deleteBoxesWithoutActiveSubscriptions` |
-| Finish account deletion     | Hourly at :19    | `accountDeletion.sweepPendingAccountDeletions`                 |
-| Poll box metrics            | Every 10 minutes | `boxes.boxMetricsPoll.pollBoxMetrics`                          |
-| Roll up hourly metrics      | Hourly at :04    | `boxes.boxMetrics.rollupHourlyMetrics`                         |
-| Delete old metrics          | Daily at 04:23   | `boxes.boxMetrics.deleteOldSamples`                            |
-| Normalize deleted boxes     | Daily at 04:29   | `boxes.boxCleanup.normalizeDeletedBoxes`                       |
-| Purge deleted boxes         | Daily at 04:31   | `boxes.boxCleanup.scheduleExpiredBoxPurges`                    |
-| Purge checkout records      | Daily at 04:37   | `boxes.boxCleanup.purgeExpiredCheckoutRecords`                 |
-| Purge deleted accounts      | Daily at 04:39   | `accountDeletion.purgeExpiredDeletedAccounts`                  |
-| Snapshot running boxes      | Daily at 03:07   | `boxes.boxSnapshots.scheduleAutomaticSnapshots`                |
-| Delete expired snapshots    | Daily at 04:41   | `boxes.boxSnapshots.deleteExpiredSnapshots`                    |
-| Reconcile Hetzner resources | Daily at 05:17   | `boxes.reconcile.reconcileHetznerResources`                    |
-
-`reconcileHetznerResources` is the backstop for leaked cloud resources: it
-deletes snapshot images that no longer have a `box_snapshots` row (pure cost,
-invisible in the UI) and logs [Hetzner](./hetzner.md) servers with no live box
-for staff review. A 2-hour grace window keeps it off anything still being
-created.
-
-## Stats overview (`convex/staff/stats.ts`)
-
-The console home tiles ("Active boxes", "Needs attention", etc.) count boxes
-by status via indexed queries, capped at 1,000 per status. At the current
-scale this is fine; if a single status ever exceeds 1,000, the count shows a
-`+` suffix. A denormalized counter table would be the fix at scale.
-
-| Tile             | What it counts                                                                         |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| Active boxes     | Every box not `deleted` (15 statuses summed)                                           |
-| Suspended        | Boxes with status `suspended`                                                          |
-| Needs attention  | Boxes with `provisioning_failed`, `reset_failed`, `restore_failed`, or `delete_failed` |
-| Signups / 7d     | Users created in the last 7 days                                                       |
-| New boxes / 7d   | Boxes created in the last 7 days                                                       |
-| Conversion / 30d | Converted checkout intents / total intents over 30 days                                |
+Deletion removes secrets, live infrastructure references, snapshots, and
+metrics. A minimized box tombstone, lifecycle summaries, and abuse flags remain
+for 180 days for support, security, and claim handling. Paid billing evidence
+remains for six calendar years for accounting; a specific dispute or legal hold
+may extend one record. Account deletion pseudonymizes retained links and removes
+the account tombstone once no retained record still refers to it.

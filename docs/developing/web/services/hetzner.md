@@ -112,6 +112,53 @@ tries every type x location combination in that order until one has capacity.
 Both are optional and restricted to the values allowed in `convex/schema.ts` -
 leaving them unset allows every supported type and location.
 
+### Resource limits and paid checkout
+
+Hetzner's published values such as 5 servers and 30 snapshots are **starting
+defaults, not fixed product ceilings and not this deployment's capacity**. The
+approved limits for the account are shown on the Hetzner Console **Limits** tab
+and can be increased by `Request change` -> `Limit increase`. Never copy either
+published default into application code.
+
+The documented project API can list resources but does not expose the account's
+approved maximums. Some limits also span projects. In `/console`, an admin must
+therefore enter the server and snapshot **allocation for this deployment**. If
+dev and prod share one Hetzner account, their allocations must sum to no more
+than the account's approved limits. Checkout fails closed until both values are
+set. See [Operations](../operations.md#capacity-and-paid-checkout) for the exact
+commitment math and incident procedure.
+
+The allocation prevents locally known commitments from exceeding the operator's
+plan; it cannot promise that Hetzner will accept a create. Hetzner's response is
+authoritative:
+
+- `403 resource_limit_exceeded` means the approved account quantity was reached.
+- `412 resource_unavailable` and action failures cover dynamic plan/location
+  availability. Hetzner documents that a best-effort availability check can
+  still be followed by a failed allocation.
+- Composery tries alternative configured type/location candidates for dynamic
+  capacity failures. An account-level quota failure skips the pointless
+  placement loop and switches the separate global checkout toggle off so later
+  customers cannot pay while the provider is known to reject resources. The
+  workflow for the already-paid order still retries before declaring
+  provisioning terminal.
+
+A customer can still finish Polar checkout just before provider capacity
+disappears. Every active checkout reserves a complete package in Composery's
+local accounting—one server plus the configured per-box snapshot entitlement—but
+it does not create or hold a Hetzner resource before payment. If initial
+provisioning still fails, Composery revokes the Polar subscription, refunds the
+full remaining refundable amount of the paid order, and runs normal box
+deletion. A partially created VPS is included in that cleanup. See
+[Polar](./polar.md#billing-and-box-lifecycle).
+
+Operationally, check the Limits tab and request increases with lead time; Hetzner
+says requests are manually reviewed during business hours. After an increase,
+verify it, update the deployment allocation(s), and re-enable checkout if the
+circuit breaker paused it. Raising only the Composery number does not raise the
+provider limit. Dynamic location/plan unavailability does not trip this switch;
+Composery continues through the configured placement candidates instead.
+
 `HETZNER_BOX_IMAGE` must be `docker-ce` - Hetzner's Docker CE app image
 (Ubuntu-based, Docker and the Compose plugin preinstalled), referenced by that
 name on server create. Bootstrap relies on Docker already being present (it goes
@@ -130,6 +177,13 @@ bootstrap, so a rebuilt box uses the runtime release configured on the active
 [Convex](./convex.md) deployment. Box deletion deletes the server and then
 explicitly deletes the recorded Primary IPs, with IP-string lookup as a fallback
 for older boxes that do not yet have Primary IP IDs stored.
+
+Daily reconciliation automatically deletes untracked Composery snapshot images
+after a 2-hour grace period. It deliberately does **not** auto-delete an
+untracked server: a database tracking bug could otherwise destroy a live box.
+It logs the server and sends a deduplicated Resend staff alert for review. Normal
+subscription/account deletion and failed-initial-delivery cleanup use the
+tracked delete workflow and do remove the server automatically.
 
 The owner and staff box pages share one Recovery dialog. Its checks cover the
 public URL, the internal SSH control channel, host disk and Docker, both Caddy
@@ -162,20 +216,27 @@ There are **no new environment variables.** Snapshots reuse the existing
   snapshots, taken once a day, kept 5 days; manual snapshots kept 30 days;
   failed/stuck captures 1 day. The default caps are 5 automatic plus 5 manual
   snapshots per box.
-- **Account snapshot limit.** Hetzner's default is 30 snapshots across all
-  projects, not per project. Before the fleet can exceed that, request an
-  account limit increase sized to roughly `box count × 10`. Hetzner Backups
-  are a separate seven-slot-per-server product and are not implemented here.
+- **Provider snapshot quota.** The active approved value is whatever the
+  Hetzner Limits tab says, not the published 30 starting default. The deployment
+  allocation reserves every live box's full manual plus automatic entitlement,
+  including unused slots, before admitting new checkout. The API can still
+  report `resource_limit_exceeded`; that snapshot operation fails, checkout is
+  paused as a circuit breaker, and staff reconcile the allocation/provider
+  limit before retrying. It does not cancel the running box or refund its
+  subscription. Hetzner Backups are a separate seven-slot-per-server product
+  and are not implemented here.
 - The runtime image needs nothing special for snapshots (no
   `age`/`zstd`/`curl` snapshot pipeline); it only needs what the lifecycle
   already requires.
 
-See [Maintenance](./maintenance.md) for the cron schedule and snapshot polling
+See [Maintenance](../maintenance.md) for the cron schedule and snapshot polling
 constants.
 
 ## References
 
 - Hetzner Cloud API: https://docs.hetzner.cloud/reference/cloud
+- Hetzner resource limits and increase requests: https://docs.hetzner.com/cloud/general/faq/#are-there-limits-to-the-number-of-resources-i-can-get
+- Hetzner server allocation and limits: https://docs.hetzner.com/cloud/servers/faq/#how-many-servers-can-i-create
 - Hetzner API tokens: https://docs.hetzner.com/cloud/api/getting-started/generating-api-token
 - Hetzner firewalls: https://docs.hetzner.com/cloud/firewalls/faq/
 - Hetzner backups and snapshots: https://docs.hetzner.com/cloud/servers/backups-snapshots/overview/

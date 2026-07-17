@@ -1,10 +1,10 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { NavLogoLink } from "@/components/logo";
-import { gitConfig } from "./shared";
+import { GITHUB_REPO_URL } from "./links";
 
 export function baseOptions(): BaseLayoutProps {
 	return {
 		slots: { navTitle: NavLogoLink },
-		githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`
+		githubUrl: GITHUB_REPO_URL
 	};
 }

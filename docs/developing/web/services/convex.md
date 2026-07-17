@@ -44,7 +44,9 @@ Use `packages/web/.env.example.convex.dev` and `packages/web/.env.example.convex
 as the checklist of which keys each deployment needs and their non-secret
 defaults. The keys are `CLERK_FRONTEND_API_URL`, `CLERK_WEBHOOK_SIGNING_SECRET`, `WEBSITE_ORIGIN`, `CLOUD_DOMAIN`,
 the `POLAR_*`, `HETZNER_*`, `CLOUDFLARE_*` groups, plus `RUNTIME_IMAGE`,
-`RUNTIME_PORT`, `SSH_USER`, `SSH_PRIVATE_KEY`, `RESEND_API_KEY`, `ALERT_EMAIL_FROM`.
+`RUNTIME_PORT`, `SSH_USER`, and `SSH_PRIVATE_KEY`. Production staff alert
+delivery also requires `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and
+`ALERT_EMAIL_FROM`; see [Resend](./resend.md).
 Do not put frontend-plane vars (`CONVEX_DEPLOYMENT`, `NEXT_PUBLIC_*`,
 `CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES`) on the deployment.
 

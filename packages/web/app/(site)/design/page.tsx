@@ -353,23 +353,23 @@ export default async function DesignPage() {
 				</Section>
 
 				<Section
-					note="Card-table pattern used on every data page: rounded-2xl border bg-card container, table-fixed with min-w, h-14 rows, loading and empty states."
+					note="Card-table pattern used on every data page: rounded-2xl border bg-card container, content-sized columns with one flexible column (head w-full min-w-48, cells max-w-0), h-14 rows, loading and empty states."
 					title="Table"
 				>
 					<div className="space-y-4">
 						<div className="overflow-hidden rounded-2xl border border-border bg-card">
-							<Table className="table-fixed min-w-[28rem]">
+							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead className="pl-4">Name</TableHead>
-										<TableHead className="w-32">Status</TableHead>
-										<TableHead className="w-28">Created</TableHead>
+										<TableHead className="w-full min-w-48 pl-4">Name</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead>Created</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
 									{TABLE_ROWS.map((row) => (
 										<TableRow className="h-14" key={row.name}>
-											<TableCell className="pl-4 font-medium text-foreground">
+											<TableCell className="max-w-0 pl-4 font-medium text-foreground">
 												{row.name}
 											</TableCell>
 											<TableCell>
@@ -387,12 +387,14 @@ export default async function DesignPage() {
 						<div className="space-y-1.5">
 							<p className="text-xs text-muted-foreground">Loading state</p>
 							<div className="overflow-hidden rounded-2xl border border-border bg-card">
-								<Table className="table-fixed min-w-[28rem]">
+								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead className="pl-4">Name</TableHead>
-											<TableHead className="w-32">Status</TableHead>
-											<TableHead className="w-28">Created</TableHead>
+											<TableHead className="w-full min-w-48 pl-4">
+												Name
+											</TableHead>
+											<TableHead>Status</TableHead>
+											<TableHead>Created</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -405,12 +407,14 @@ export default async function DesignPage() {
 						<div className="space-y-1.5">
 							<p className="text-xs text-muted-foreground">Empty state</p>
 							<div className="overflow-hidden rounded-2xl border border-border bg-card">
-								<Table className="table-fixed min-w-[28rem]">
+								<Table>
 									<TableHeader>
 										<TableRow>
-											<TableHead className="pl-4">Name</TableHead>
-											<TableHead className="w-32">Status</TableHead>
-											<TableHead className="w-28">Created</TableHead>
+											<TableHead className="w-full min-w-48 pl-4">
+												Name
+											</TableHead>
+											<TableHead>Status</TableHead>
+											<TableHead>Created</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>

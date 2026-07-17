@@ -36,7 +36,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +177,28 @@
+@@ -168,9 +177,38 @@
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -55,6 +55,16 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +				data.contextMenuTimer = mainWindow.setTimeout(() => {
 +					data.contextMenuTimer = undefined;
 +					data.contextMenuFired = true;
++					// The hold itself can re-render the pressed DOM (the editor word-selects
++					// mid-hold) and detach initialTarget, which no Gesture target contains any
++					// more - dispatch would silently drop the menu. Re-resolve the live element
++					// under the finger; updating data also fixes the release's End dispatch.
++					if (data.initialTarget instanceof Node && !data.initialTarget.isConnected) {
++						const live = mainWindow.document.elementFromPoint(data.rollingPageX.at(-1)! - mainWindow.scrollX, data.rollingPageY.at(-1)! - mainWindow.scrollY);
++						if (live) {
++							data.initialTarget = live;
++						}
++					}
 +					const holdEvt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
 +					holdEvt.pageX = data.rollingPageX.at(-1)!;
 +					holdEvt.pageY = data.rollingPageY.at(-1)!;
@@ -66,7 +76,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  			const evt = this.newGestureEvent(EventType.Start, touch.target);
  			evt.pageX = touch.pageX;
  			evt.pageY = touch.pageY;
-@@ -201,7 +229,16 @@
+@@ -201,7 +239,16 @@
  			const data = this.activeTouches[touch.identifier],
  				holdTime = Date.now() - data.initialTimeStamp;
  
@@ -84,7 +94,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-@@ -210,7 +247,7 @@
+@@ -210,7 +257,7 @@
  				evt.pageY = data.rollingPageY.at(-1)!;
  				this.dispatchEvent(evt);
  
@@ -93,7 +103,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-@@ -235,7 +272,8 @@
+@@ -235,7 +282,8 @@
  					finalX,											// x now
  					Math.abs(deltaY) / deltaT,  					// y speed
  					deltaY > 0 ? 1 : -1,							// y direction
@@ -103,7 +113,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				);
  			}
  
-@@ -252,6 +290,30 @@
+@@ -252,6 +300,30 @@
  		}
  	}
  

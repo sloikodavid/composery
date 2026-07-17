@@ -39,37 +39,23 @@
 }
 
 @media (max-width: 768px) {
-	/* The title-bar logo is desktop chrome. The narrow titlebar's left region is
-	 * only wide enough for the Back control and the overflow menu, so the logo
-	 * either crowds them or strands itself far from the menu. Drop it. */
-	.monaco-workbench
-		.part.titlebar
-		> .titlebar-container
-		> .titlebar-left
-		> .window-appicon {
-		display: none !important;
-	}
-
-	/* The native Back control shares the narrow titlebar's left region with VS
-	 * Code's overflow menu. Preserve both touch targets when display scaling
-	 * leaves less than the titlebar's normal minimum width. */
+	/* The narrow titlebar's left region holds exactly the logo (in the native
+	 * app doubling as the Back control) and the menubar's overflow button.
+	 * Upstream sizes the region as a 20% grow-2 flex band; pin it instead so
+	 * the command center can't crowd the two controls. The width cannot be
+	 * content-derived: the menubar is a zero-basis flexer whose allocated
+	 * width is what tells MenuBar to collapse into the overflow button
+	 * (titlebar-menubar-overflow.diff), so it must stay extrinsically sized.
+	 * 77px = 35px logo + 4px menubar margin + the 38px overflow button
+	 * (16px codicon + upstream's 8px menubar-item side paddings + border) -
+	 * anything less spills the button under the command center. */
 	.monaco-workbench
 		.part.titlebar
 		> .titlebar-container.has-center
 		> .titlebar-left {
-		width: 55px !important;
-		min-width: 55px !important;
-		flex: 0 0 55px !important;
-	}
-
-	.monaco-workbench
-		.part.titlebar
-		> .titlebar-container
-		> .titlebar-left
-		> .menubar.overflow-menu-only {
-		width: 22px !important;
-		min-width: 22px !important;
-		flex: 0 0 22px !important;
+		width: 77px !important;
+		min-width: 77px !important;
+		flex: 0 0 77px !important;
 	}
 
 	/* VS Code's custom horizontal scrollbar responds to wheels but its hidden

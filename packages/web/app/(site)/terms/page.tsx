@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { SUPPORT_EMAIL } from "@/lib/links";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
@@ -37,30 +39,29 @@ export default function TermsPage() {
 					your use.
 				</p>
 			</LegalSection>
-			<LegalSection title="Prices, renewal, and cancellation">
-				<ul className="list-disc space-y-2 pl-5">
-					<li>
-						The price and billing interval shown at checkout include any
-						applicable tax treatment shown by Polar. Polar is the merchant of
-						record and handles payment, invoices, refunds, and payment
-						credentials.
-					</li>
-					<li>
-						Each box is a recurring subscription. It renews until cancelled. You
-						can cancel through the billing portal or by deleting the box; access
-						continues as indicated during cancellation unless deletion is
-						requested immediately.
-					</li>
-					<li>
-						If you are an EEA or UK consumer, you generally have 14 days from
-						the contract date to withdraw. If you ask us to start during that
-						period, you must pay a proportionate amount for service already
-						supplied. To withdraw, email sloikodavid@gmail.com with your name,
-						account email, order, and a clear statement that you withdraw. You
-						may use those details as the model withdrawal form, but do not have
-						to.
-					</li>
-				</ul>
+			<LegalSection title="Billing and cancellation">
+				<p>
+					Polar is the merchant of record and authorised reseller. You buy the
+					subscription from Polar and license the service from Composery under
+					these Terms. Polar checkout shows the price, taxes, billing interval,
+					renewal terms, and its buyer terms before payment. Each box renews
+					until cancelled.
+				</p>
+				<p>
+					Normal cancellation through Polar stops renewal and keeps the box
+					available until the end of the period already paid for. It does not
+					automatically refund that period. An immediate revocation stops access
+					now and is also separate from any refund. Refund and cancellation
+					requests are handled through Polar, subject to Polar’s buyer terms,
+					applicable law, and protections against fraud, abuse, and misuse.
+				</p>
+				<p>
+					If Composery cannot complete initial delivery of a paid box, we revoke
+					the subscription and ask Polar to refund the full remaining refundable
+					amount of that order. A full refund ends access to the corresponding
+					box; a partial refund alone does not. Nothing here limits a mandatory
+					consumer right or remedy.
+				</p>
 			</LegalSection>
 			<LegalSection title="Acceptable use">
 				<p>
@@ -100,8 +101,10 @@ export default function TermsPage() {
 			<LegalSection title="Ending the agreement">
 				<p>
 					You may stop using the site at any time and can delete your account
-					from the user menu. Account deletion cancels subscriptions and
-					permanently removes box contents, servers, credentials, and snapshots.
+					from the user menu. Account deletion immediately revokes subscriptions
+					and does not itself refund unused time. It permanently removes box
+					contents, servers, credentials, and snapshots. Any refund still
+					required by applicable law or agreed through Polar remains unaffected.
 					Minimized security, lifecycle, and billing records remain only for the
 					periods and purposes described in the Privacy Policy. We may end
 					access for a material or repeated breach, non-payment, legal
@@ -121,9 +124,7 @@ export default function TermsPage() {
 					<br />
 					20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland
 					<br />
-					<a className="link" href="mailto:sloikodavid@gmail.com">
-						sloikodavid@gmail.com
-					</a>
+					<CopyEmail className="link" />
 				</address>
 				<p>
 					Our{" "}

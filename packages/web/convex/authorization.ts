@@ -3,6 +3,7 @@ import type { UserIdentity } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+import { userHasCapability, type UserCapability } from "./roles";
 
 type ReaderCtx = Pick<QueryCtx, "auth" | "db">;
 type WriterCtx = Pick<MutationCtx, "auth" | "db">;
@@ -37,7 +38,7 @@ export async function requireIdentity(ctx: ReaderCtx) {
 export function emailFromIdentity(identity: UserIdentity) {
 	if (!identity.email) {
 		throw new ConvexError(
-			"No email on the authenticated identity. Add an `email` claim to Clerk's session token (Configure -> Sessions -> Customize session token); see docs/developing/web/clerk.md."
+			"No email on the authenticated identity. Add an `email` claim to Clerk's session token (Configure -> Sessions -> Customize session token); see docs/developing/web/services/clerk.md."
 		);
 	}
 	return identity.email;
@@ -127,18 +128,14 @@ export async function requireActiveUserForRead(
 	};
 }
 
-// A non-default role that isn't suspended. Shared by every staff guard.
-export function isStaffUser(
-	user: Doc<"users"> | null | undefined
-): user is Doc<"users"> {
-	return !!user && user.role !== "user" && !user.suspended;
-}
-
-export async function requireStaff(ctx: ReaderCtx) {
+export async function requireCapability(
+	ctx: ReaderCtx,
+	capability: UserCapability
+) {
 	const identity = await requireIdentity(ctx);
 	const user = await getUserByClerkId(ctx, identity.subject);
 
-	if (!isStaffUser(user)) {
+	if (!userHasCapability(user, capability)) {
 		throw new ConvexError("Staff access required.");
 	}
 
@@ -158,17 +155,19 @@ export async function requireActiveUserInAction(ctx: ActionAuthCtx) {
 	return user;
 }
 
-export async function requireStaffInAction(ctx: ActionAuthCtx) {
+export async function requireCapabilityInAction(
+	ctx: ActionAuthCtx,
+	capability: UserCapability
+) {
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) throw new ConvexError("Staff access required.");
 
-	const staffUser = await ctx.runQuery(
-		internal.staff.users.staffUserByClerkId,
-		{
-			clerkUserId: identity.subject
-		}
-	);
-	if (!staffUser) throw new ConvexError("Staff access required.");
+	const user = await ctx.runQuery(internal.users.activeUserByClerkId, {
+		clerkUserId: identity.subject
+	});
+	if (!userHasCapability(user, capability)) {
+		throw new ConvexError("Staff access required.");
+	}
 
-	return staffUser;
+	return user;
 }

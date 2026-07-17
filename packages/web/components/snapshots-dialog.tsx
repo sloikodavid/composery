@@ -107,22 +107,22 @@ export function SnapshotsDialog({
 					</div>
 
 					<div className="overflow-hidden rounded-2xl border border-border bg-card">
-						<Table className="table-fixed min-w-[42rem]">
+						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead className="pl-4">
+									<TableHead className="w-full min-w-48 pl-4">
 										<SortHeader label="Created" sort={sort} sortKey="created" />
 									</TableHead>
-									<TableHead className="w-28">
+									<TableHead>
 										<SortHeader label="Type" sort={sort} sortKey="type" />
 									</TableHead>
-									<TableHead className="w-24">
+									<TableHead>
 										<SortHeader label="Size" sort={sort} sortKey="size" />
 									</TableHead>
-									<TableHead className="w-32">
+									<TableHead>
 										<SortHeader label="Status" sort={sort} sortKey="status" />
 									</TableHead>
-									<TableHead className="w-20 pr-4 text-right">
+									<TableHead className="pr-4 text-right">
 										<span className="sr-only">Actions</span>
 									</TableHead>
 								</TableRow>
@@ -142,7 +142,7 @@ export function SnapshotsDialog({
 													className="h-14 [&>td]:align-top"
 													key={snapshot.id}
 												>
-													<TableCell className="pl-4">
+													<TableCell className="max-w-0 pl-4">
 														<div className="min-w-0">
 															<p className="font-medium text-foreground">
 																{formatDateTime(snapshot.createdAt)}

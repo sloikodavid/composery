@@ -1,19 +1,18 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
-import { WashingMachineIcon } from "lucide-react";
-import Link from "next/link";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { Input } from "@/components/input";
 import { Label } from "@/components/label";
+import { PageTemplate } from "@/components/page-template";
 import { api } from "@/convex/_generated/api";
 import { isValidSlug, sanitizeSlug } from "@/lib/box-slug";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
-export function NewBoxForm() {
+export function NewBox() {
 	const createCheckout = useAction(api.user.checkout.createCheckout);
 	const [slug, setSlug] = useState("");
 	const [submitting, setSubmitting] = useState(false);
@@ -24,10 +23,15 @@ export function NewBoxForm() {
 		api.user.checkout.slugAvailability,
 		slugLooksValid ? { slug: normalizedSlug } : "skip"
 	);
+	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
 	const slugAvailable = availability?.available ?? false;
 	const checkingSlug = slugLooksValid && availability == null;
 	const slugTaken = slugLooksValid && availability != null && !slugAvailable;
-	const canCheckout = slugLooksValid && slugAvailable;
+	const canCheckout =
+		slugLooksValid &&
+		slugAvailable &&
+		(checkoutAvailability?.available === true ||
+			availability?.resumable === true);
 
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -35,11 +39,7 @@ export function NewBoxForm() {
 
 		setSubmitting(true);
 		try {
-			// Consent is bound to the submit button: the caption directly below
-			// it states the terms agreement and the express request for
-			// immediate performance, so continuing is the express act.
 			const checkout = await createCheckout({
-				legalAccepted: true,
 				slug: normalizedSlug
 			});
 			window.location.assign(checkout.checkoutUrl);
@@ -52,23 +52,14 @@ export function NewBoxForm() {
 	}
 
 	return (
-		<div className="mx-auto max-w-4xl space-y-4">
-			<nav className="flex min-h-8 flex-wrap items-center gap-1.5 text-lg font-medium text-foreground">
-				<Link
-					className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground"
-					href="/boxes"
-				>
-					<WashingMachineIcon className="size-5" />
-					Boxes
-				</Link>
-				<span aria-hidden className="text-muted-foreground">
-					/
-				</span>
-				<span>New</span>
-			</nav>
-
+		<PageTemplate
+			breadcrumbs={[
+				{ href: "/boxes", icon: "washing-machine", label: "Boxes" },
+				{ label: "New" }
+			]}
+		>
 			<div className="grid min-h-[calc(100svh-13rem)] place-items-center py-10">
-				<form className="w-full max-w-md space-y-4" onSubmit={handleSubmit}>
+				<form className="w-full max-w-md space-y-2" onSubmit={handleSubmit}>
 					<div className="space-y-2">
 						<div className="flex items-end justify-between gap-3">
 							<Label className="text-[15px]" htmlFor="box-slug">
@@ -121,18 +112,19 @@ export function NewBoxForm() {
 					>
 						Continue to checkout
 					</AnimatedIconButton>
-
-					<p className="text-xs leading-5 text-muted-foreground">
-						By continuing, you agree to the{" "}
-						<Link className="link" href="/terms" target="_blank">
-							Terms of Service
-						</Link>{" "}
-						and request that this recurring subscription start immediately; if
-						you withdraw within 14 days you may owe a proportionate amount for
-						service supplied.
+					{/* Always-rendered fixed-height slot so the centered form doesn't
+					    re-center (shifting the fields above) when the message appears. */}
+					<p
+						aria-live="polite"
+						className="min-h-8 text-center text-xs text-muted-foreground"
+					>
+						{checkoutAvailability?.available === false &&
+						!availability?.resumable
+							? checkoutAvailability.message
+							: null}
 					</p>
 				</form>
 			</div>
-		</div>
+		</PageTemplate>
 	);
 }

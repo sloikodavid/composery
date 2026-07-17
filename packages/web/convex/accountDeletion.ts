@@ -9,6 +9,7 @@ import {
 } from "./_generated/server";
 import { revokePolarSubscription } from "./billing/polar";
 import { startBoxOperation } from "./boxes/boxOperations";
+import { reconcileCapacityAlert } from "./boxes/capacityAlerts";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
@@ -27,6 +28,7 @@ import { requiredEnv } from "./env";
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * 60 * 1000;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
 const ACCOUNT_PURGE_RETRY_MS = 24 * 60 * 60 * 1000;
+const ACCOUNT_DELETION_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
 
 type DeletionTrigger = "clerk_webhook" | "staff";
 type AccountDeletionResult = { status: "missing" | "pending" };
@@ -189,6 +191,7 @@ export const markAccountDeletionPending = internalMutation({
 				updated_at: timestamp
 			});
 		}
+		await reconcileCapacityAlert(ctx);
 
 		return user._id;
 	}
@@ -365,6 +368,18 @@ export const finalizeAccountDeletion = internalAction({
 		const state = await stateForClerkUser(ctx, args.clerkUserId);
 		if (!state.user?.deletion_pending || state.user.deletion_finished_at)
 			return;
+		const requestedAt = state.user.deletion_requested_at;
+		if (
+			requestedAt &&
+			Date.now() - requestedAt >= ACCOUNT_DELETION_ALERT_AFTER_MS
+		) {
+			await ctx.runMutation(internal.staffAlerts.raise, {
+				key: `account-deletion-stuck:${state.user._id}:${requestedAt}`,
+				severity: "critical",
+				subject: "Account deletion has been pending for over 24 hours",
+				text: `Account deletion for ${state.user.email} (${state.user.clerk_user_id}) has not finished after 24 hours. Review its box delete operations, Polar subscriptions, and provider cleanup in the staff console.`
+			});
+		}
 
 		await startDeletionWorkflows(ctx, state.boxes);
 

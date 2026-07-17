@@ -1,13 +1,3 @@
 {
-	"pages": [
-		"index",
-		"convex",
-		"clerk",
-		"polar",
-		"hetzner",
-		"cloudflare",
-		"resend",
-		"vercel",
-		"maintenance"
-	]
+	"pages": ["index", "operations", "maintenance", "services"]
 }

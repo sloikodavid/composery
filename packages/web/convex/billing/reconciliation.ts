@@ -21,6 +21,7 @@ async function reconcileBoxSubscription(ctx: ActionCtx, box: Doc<"boxes">) {
 
 	const now = new Date().toISOString();
 	const revoked =
+		subscription.status === "canceled" ||
 		subscription.status === "revoked" ||
 		subscription.status === "unpaid" ||
 		(subscription.endedAt !== null && subscription.endedAt <= now);
@@ -39,21 +40,33 @@ async function reconcileBoxSubscription(ctx: ActionCtx, box: Doc<"boxes">) {
 export const deleteBoxesWithoutActiveSubscriptions = internalAction({
 	args: {},
 	handler: async (ctx) => {
-		for (const status of SUBSCRIPTION_RECONCILIATION_STATUSES) {
-			let cursor: string | null = null;
+		try {
+			for (const status of SUBSCRIPTION_RECONCILIATION_STATUSES) {
+				let cursor: string | null = null;
 
-			for (;;) {
-				const page: ReconciliationPage = await ctx.runQuery(
-					internal.boxes.boxQueries.boxesForSubscriptionReconciliationPage,
-					{ cursor, status }
-				);
-				for (const box of page.page) {
-					await reconcileBoxSubscription(ctx, box);
+				for (;;) {
+					const page: ReconciliationPage = await ctx.runQuery(
+						internal.boxes.boxQueries.boxesForSubscriptionReconciliationPage,
+						{ cursor, status }
+					);
+					for (const box of page.page) {
+						await reconcileBoxSubscription(ctx, box);
+					}
+
+					if (page.isDone) break;
+					cursor = page.continueCursor;
 				}
-
-				if (page.isDone) break;
-				cursor = page.continueCursor;
 			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const sixHourWindow = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
+			await ctx.runMutation(internal.staffAlerts.raise, {
+				key: `subscription-reconciliation-failed:${sixHourWindow}`,
+				severity: "critical",
+				subject: "Polar subscription reconciliation failed",
+				text: `The hourly subscription reconciliation stopped before it could check every box.\n\n${message}\n\nReview the Convex action logs and Polar subscription state.`
+			});
+			throw error;
 		}
 	}
 });

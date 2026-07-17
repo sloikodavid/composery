@@ -3,6 +3,7 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { registerPolarWebhookRoutes } from "./billing/webhooks";
+import { resend } from "./staffAlerts";
 
 type ClerkUserDeletedPayload = {
 	data?: {
@@ -27,6 +28,14 @@ function svixHeaders(request: Request) {
 }
 
 registerPolarWebhookRoutes(http);
+
+http.route({
+	path: "/resend/events",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		return await resend.handleResendEventWebhook(ctx, request);
+	})
+});
 
 http.route({
 	path: "/clerk/events",

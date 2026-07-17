@@ -22,7 +22,6 @@ import { CopyIcon } from "@/components/icons/copy";
 import { CreditCardIcon } from "@/components/icons/credit-card";
 import { DeleteIcon } from "@/components/icons/delete";
 import { DownloadIcon } from "@/components/icons/download";
-import { GithubIcon } from "@/components/icons/github";
 import { HetznerIcon } from "@/components/icons/hetzner";
 import { LayoutGridIcon } from "@/components/icons/layout-grid";
 import { LockIcon } from "@/components/icons/lock";
@@ -59,7 +58,6 @@ export type AnimatedIconName =
 	| "credit-card"
 	| "delete"
 	| "download"
-	| "github"
 	| "hetzner"
 	| "layout-grid"
 	| "lock"
@@ -169,8 +167,6 @@ function AnimatedIconGlyph({
 			return <DeleteIcon {...iconProps} />;
 		case "download":
 			return <DownloadIcon {...iconProps} />;
-		case "github":
-			return <GithubIcon {...iconProps} />;
 		case "hetzner":
 			return <HetznerIcon {...iconProps} />;
 		case "layout-grid":

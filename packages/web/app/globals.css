@@ -137,6 +137,30 @@
 	h3 {
 		font-variation-settings: "opsz" var(--inter-opsz-heading-sm);
 	}
+
+	/* Site-wide line wrapping: headings balance across lines, running text
+	   avoids orphans (a lone word on the last line). Covers every heading and
+	   paragraph, including docs prose and dialog descriptions. */
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		text-wrap: balance;
+	}
+
+	p {
+		text-wrap: pretty;
+	}
+
+	/* Centered text is short by design and ragged on both ends, so equal
+	   lines read better than a full line plus a stub. Centering (own or
+	   inherited from a text-center container) opts a paragraph into balance. */
+	p.text-center,
+	.text-center p {
+		text-wrap: balance;
+	}
 }
 
 /* Inline content links: the same treatment fumadocs gives prose links in the
@@ -213,11 +237,13 @@
 .cn-toast [data-title] {
 	font-weight: 500;
 	color: var(--foreground);
+	text-wrap: pretty;
 }
 
 .cn-toast [data-description] {
 	line-height: 1.25rem;
 	color: var(--muted-foreground);
+	text-wrap: pretty;
 }
 
 .cn-toast[data-type="success"] [data-icon] {

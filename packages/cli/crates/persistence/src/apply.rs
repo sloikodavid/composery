@@ -488,7 +488,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "dir".into(),
             mode: Some(0o700),
             uid: None,
@@ -559,7 +559,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o600),
             uid: None,
@@ -611,7 +611,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o600),
             uid: None,
@@ -675,7 +675,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: None,
             uid: None,
@@ -832,7 +832,7 @@ mod tests {
             let mut record = MetadataRecord {
                 version: 1,
                 path: String::new(),
-                path_bytes_b64: None,
+                path_bytes_b64: String::new(),
                 kind: "file".into(),
                 mode: None,
                 uid: None,
@@ -867,7 +867,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "fifo".into(),
             mode: Some(0o600),
             uid: None,
@@ -899,7 +899,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "char_device".into(),
             mode: Some(0o666),
             uid: None,
@@ -950,7 +950,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o600),
             uid: None,
@@ -1038,7 +1038,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o600),
             uid: None,
@@ -1107,7 +1107,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: kind.into(),
             mode,
             uid: None,

@@ -24,6 +24,7 @@ const STAFF_LINKS: NavLink[] = [
 ];
 
 export function useAuthedNavLinks(): NavLink[] {
-	const isStaff = useQuery(api.users.isCurrentUserStaff) ?? false;
+	const capabilities = useQuery(api.users.currentUserCapabilities) ?? [];
+	const isStaff = capabilities.includes("staff_console");
 	return [...USER_LINKS, ...(isStaff ? STAFF_LINKS : [])];
 }

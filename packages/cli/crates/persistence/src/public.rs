@@ -80,10 +80,6 @@ impl PublicPath {
         Self::from_absolute_bytes(&bytes)
     }
 
-    pub fn from_legacy_display(display: &str) -> Result<Self> {
-        Self::parse(display)
-    }
-
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }

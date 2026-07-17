@@ -16,11 +16,9 @@ use crate::{public::PublicPath, rootfs::XattrRecord};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataRecord {
-    #[serde(default = "metadata_schema_version")]
     pub version: u8,
     pub path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path_bytes_b64: Option<String>,
+    pub path_bytes_b64: String,
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<u32>,
@@ -48,26 +46,19 @@ pub struct MetadataRecord {
     pub capability: Option<Value>,
 }
 
-fn metadata_schema_version() -> u8 {
-    1
-}
-
 impl MetadataRecord {
     #[cfg(unix)]
     pub fn public_path(&self) -> Result<PublicPath> {
-        if let Some(path_bytes_b64) = &self.path_bytes_b64 {
-            return PublicPath::from_encoded(&crate::public::EncodedPath {
-                display: self.path.clone(),
-                bytes_b64: path_bytes_b64.clone(),
-            });
-        }
-        PublicPath::from_legacy_display(&self.path)
+        PublicPath::from_encoded(&crate::public::EncodedPath {
+            display: self.path.clone(),
+            bytes_b64: self.path_bytes_b64.clone(),
+        })
     }
 
     #[cfg(unix)]
     pub fn set_public_path(&mut self, public_path: &PublicPath) {
         self.path = public_path.display();
-        self.path_bytes_b64 = Some(public_path.bytes_b64());
+        self.path_bytes_b64 = public_path.bytes_b64();
     }
 
     #[cfg(unix)]
@@ -274,10 +265,10 @@ mod tests {
     use std::{fs, os::unix::fs::symlink};
 
     fn record(path: &str) -> MetadataRecord {
-        MetadataRecord {
+        let mut record = MetadataRecord {
             version: 1,
-            path: path.into(),
-            path_bytes_b64: None,
+            path: String::new(),
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o644),
             uid: Some(0),
@@ -291,7 +282,9 @@ mod tests {
             xattrs: None,
             acl: None,
             capability: None,
-        }
+        };
+        record.set_public_path(&crate::public::PublicPath::parse(path).unwrap());
+        record
     }
 
     #[test]
@@ -331,9 +324,9 @@ mod tests {
         let path = temp.path().join("metadata.jsonl");
         fs::write(
             &path,
-            r#"{"path":"/a","kind":"file","mode":420}
-{"path":"/a","kind":"file","mode":384}
-{"path":"/b","kind":"dir"}
+            r#"{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"file","mode":420}
+{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"file","mode":384}
+{"version":1,"path":"/b","pathBytesB64":"L2I=","kind":"dir"}
 "#,
         )
         .unwrap();
@@ -356,7 +349,7 @@ mod tests {
             MetadataRecord {
                 version: 1,
                 path: "/a".into(),
-                path_bytes_b64: None,
+                path_bytes_b64: "L2E=".into(),
                 kind: "file".into(),
                 mode: Some(0o644),
                 uid: Some(0),
@@ -384,9 +377,9 @@ mod tests {
         let path = temp.path().join("metadata.jsonl");
         fs::write(
             &path,
-            r#"{"path":"/a","kind":"dir"}
-{"path":"/a/b","kind":"file"}
-{"path":"/ab","kind":"file"}
+            r#"{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"dir"}
+{"version":1,"path":"/a/b","pathBytesB64":"L2EvYg==","kind":"file"}
+{"version":1,"path":"/ab","pathBytesB64":"L2Fi","kind":"file"}
 "#,
         )
         .unwrap();
@@ -406,7 +399,7 @@ mod tests {
         let mut record = MetadataRecord {
             version: 1,
             path: String::new(),
-            path_bytes_b64: None,
+            path_bytes_b64: String::new(),
             kind: "file".into(),
             mode: Some(0o644),
             uid: None,
@@ -443,7 +436,7 @@ mod tests {
             MetadataRecord {
                 version: 1,
                 path: "/a".into(),
-                path_bytes_b64: None,
+                path_bytes_b64: "L2E=".into(),
                 kind: "file".into(),
                 mode: None,
                 uid: None,
@@ -486,13 +479,13 @@ mod tests {
         let leftover = path.with_extension("jsonl.tmp");
         fs::write(
             &path,
-            r#"{"path":"/kept","kind":"file"}
+            r#"{"version":1,"path":"/kept","pathBytesB64":"L2tlcHQ=","kind":"file"}
 "#,
         )
         .unwrap();
         fs::write(
             &leftover,
-            r#"{"path":"/partial","kind":"file"}
+            r#"{"version":1,"path":"/partial","pathBytesB64":"L3BhcnRpYWw=","kind":"file"}
 "#,
         )
         .unwrap();
@@ -507,7 +500,7 @@ mod tests {
             MetadataRecord {
                 version: 1,
                 path: "/new".into(),
-                path_bytes_b64: None,
+                path_bytes_b64: "L25ldw==".into(),
                 kind: "file".into(),
                 mode: None,
                 uid: None,

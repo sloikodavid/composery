@@ -5,6 +5,11 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+// Column convention: auto layout sizes every column to its content (cells are
+// nowrap), so no column ever hoards dead space. Each table marks exactly one
+// flexible column — head `w-full min-w-48`, cells `max-w-0` — which absorbs
+// the leftover width and truncates/wraps its content. When even the content
+// widths don't fit, the container scrolls instead of squishing a column.
 function Table({ className, ...props }: React.ComponentProps<"table">) {
 	return (
 		<div

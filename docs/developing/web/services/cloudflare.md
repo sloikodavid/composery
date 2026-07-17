@@ -6,7 +6,8 @@ description: Delegate both domains from Namecheap, serve the website, and automa
 Namecheap remains the registrar. Cloudflare becomes the authoritative DNS
 provider for both domains:
 
-- `composery.io`: Vercel website, Clerk records, and Resend sending records.
+- `composery.io`: Vercel website, Clerk records, and Resend staff-alert
+  sending records.
 - `composery.cloud`: DNS-only records for hosted boxes.
 
 Keeping DNS in one provider avoids editing records in the wrong dashboard.
@@ -35,9 +36,10 @@ shows in Cloudflare. Keep the Vercel records **DNS only** unless Vercel's curren
 instructions explicitly say otherwise. Configure the apex to redirect to
 `https://www.composery.io` in Vercel so there is one canonical origin.
 
-Clerk, Resend, and any Vercel ownership checks also publish records in this
-zone. Copy their generated values exactly; do not reuse examples from this
-repository because provider-specific targets can change.
+Clerk and any Vercel ownership checks also publish records in this zone. If the
+optional staff-alert email path is enabled, Resend publishes its sending records
+here too. Copy provider-generated values exactly; do not reuse examples from
+this repository because provider-specific targets can change.
 
 ## Runtime zone: composery.cloud
 

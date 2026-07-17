@@ -5,7 +5,6 @@
 	const narrow = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
 	const coarsePointer = window.matchMedia("(pointer: coarse)");
 	let pending = false;
-	let latePasses = [];
 	let backGuardArmed = false;
 	let backGuardDisarming = false;
 	const modalEditorNarrowAttribute = "data-composery-narrow-maximized";
@@ -309,18 +308,6 @@
 		}
 	}
 
-	function scheduleAfterInteraction() {
-		for (const pass of latePasses) {
-			window.clearTimeout(pass);
-		}
-		latePasses = [];
-
-		schedule();
-		window.requestAnimationFrame(schedule);
-		latePasses.push(window.setTimeout(schedule, 120));
-		latePasses.push(window.setTimeout(schedule, 360));
-	}
-
 	function handleNarrowChange() {
 		updateViewportVars();
 		updateModalEditorNarrowState();
@@ -333,16 +320,26 @@
 		subtree: true,
 	});
 
-	document.addEventListener("click", scheduleAfterInteraction, true);
+	// Geometry listeners refresh the viewport vars SYNCHRONOUSLY: this script loads
+	// before workbench.js, so its listeners run first within the same resize event,
+	// and the workbench layout fit (touch-viewport-inset.diff) reads
+	// --composery-touch-keyboard-inset in its own listener - an async (rAF) update
+	// would leave it a stale keyboard inset and wedge the workbench at the
+	// keyboard-open height after the keyboard closes.
+	function handleViewportGeometry() {
+		updateViewportVars();
+		schedule();
+	}
+
 	document.addEventListener("dblclick", blockNarrowModalEditorRestore, true);
 	// Re-evaluate viewport vars and the back guard when the app/tab returns to the
 	// foreground - the OS may have closed the keyboard or resized while backgrounded.
-	document.addEventListener("visibilitychange", schedule);
+	document.addEventListener("visibilitychange", handleViewportGeometry);
 	window.addEventListener("popstate", handleBackGuardPop);
-	window.addEventListener("resize", schedule);
-	window.visualViewport?.addEventListener("resize", schedule);
-	window.visualViewport?.addEventListener("scroll", schedule);
-	navigator.virtualKeyboard?.addEventListener("geometrychange", schedule);
+	window.addEventListener("resize", handleViewportGeometry);
+	window.visualViewport?.addEventListener("resize", handleViewportGeometry);
+	window.visualViewport?.addEventListener("scroll", handleViewportGeometry);
+	navigator.virtualKeyboard?.addEventListener("geometrychange", handleViewportGeometry);
 	narrow.addEventListener("change", handleNarrowChange);
 
 	updateViewportVars();

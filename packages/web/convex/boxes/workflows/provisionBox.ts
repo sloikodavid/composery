@@ -8,30 +8,54 @@ export const provisionBox = defineBoxWorkflow({
 		targetBoxStatus: "provisioning_failed"
 	},
 	run: async (step, args) => {
-		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box.runtime_image) {
-			throw new Error("Box has no runtime image to provision.");
+		try {
+			const box = await step.runQuery(
+				internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+				{ boxId: args.boxId }
+			);
+			if (!box.runtime_image) {
+				throw new Error("Box has no runtime image to provision.");
+			}
+
+			const runtimeImage = await step.runAction(
+				internal.boxes.infra.runtimeImages.resolveRuntimeImage,
+				{ image: box.runtime_image },
+				{ retry: true }
+			);
+
+			await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
+				boxId: args.boxId,
+				runtimeImage
+			});
+
+			await createRuntime(step, args.boxId, box.slug);
+
+			await step.runMutation(internal.boxes.boxStatus.markProvisionSucceeded, {
+				boxId: args.boxId,
+				operationId: args.operationId
+			});
+		} catch (provisionError) {
+			const paidOrder = await step.runQuery(
+				internal.checkout.checkoutIntents.paidOrderForBox,
+				{ boxId: args.boxId }
+			);
+			if (!paidOrder) {
+				throw new Error(
+					`Initial provisioning failed and its paid Polar order could not be found: ${provisionError instanceof Error ? provisionError.message : String(provisionError)}`
+				);
+			}
+
+			await step.runAction(
+				internal.billing.polar.revokeAndRefundOrder,
+				{
+					comment: "Composery could not complete initial service delivery.",
+					idempotencyKey: `fulfillment-failure:${args.boxId}`,
+					orderId: paidOrder.orderId,
+					subscriptionId: paidOrder.subscriptionId
+				},
+				{ retry: true }
+			);
+			throw provisionError;
 		}
-
-		const runtimeImage = await step.runAction(
-			internal.boxes.infra.runtimeImages.resolveRuntimeImage,
-			{ image: box.runtime_image },
-			{ retry: true }
-		);
-
-		await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
-			boxId: args.boxId,
-			runtimeImage
-		});
-
-		await createRuntime(step, args.boxId, box.slug);
-
-		await step.runMutation(internal.boxes.boxStatus.markProvisionSucceeded, {
-			boxId: args.boxId,
-			operationId: args.operationId
-		});
 	}
 });

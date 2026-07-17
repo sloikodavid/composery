@@ -1,31 +1,12 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import {
-	action,
-	internalMutation,
-	internalQuery,
-	mutation
-} from "../_generated/server";
-import {
-	getUserByClerkId,
-	isStaffUser,
-	requireStaff,
-	requireStaffInAction
-} from "../authorization";
+import { action, internalMutation, mutation } from "../_generated/server";
+import { requireCapability, requireCapabilityInAction } from "../authorization";
 import { startBoxSuspension } from "../boxes/boxOperations";
+import { isInternalRole } from "../roles";
 
 const USER_BOX_ACTION_FAILURE_EXAMPLES = 5;
-
-export const staffUserByClerkId = internalQuery({
-	args: {
-		clerkUserId: v.string()
-	},
-	handler: async (ctx, args) => {
-		const user = await getUserByClerkId(ctx, args.clerkUserId);
-		return isStaffUser(user) ? user : null;
-	}
-});
 
 export const setUserSuspension = internalMutation({
 	args: {
@@ -50,7 +31,7 @@ export const setUserSuspension = internalMutation({
 			if (user.clerk_user_id === args.callerClerkUserId) {
 				throw new ConvexError("You cannot suspend your own account.");
 			}
-			if (user.role !== "user") {
+			if (isInternalRole(user.role)) {
 				throw new ConvexError("Staff accounts cannot be suspended.");
 			}
 		}
@@ -71,7 +52,7 @@ export const setUserSuspended = action({
 		suspended: v.boolean()
 	},
 	handler: async (ctx, args) => {
-		const staffUser = await requireStaffInAction(ctx);
+		const staffUser = await requireCapabilityInAction(ctx, "user_moderation");
 		await ctx.runMutation(internal.staff.users.setUserSuspension, {
 			callerClerkUserId: staffUser.clerk_user_id,
 			clerkUserId: args.clerkUserId,
@@ -131,7 +112,7 @@ export const requestAccountDeletionByEmail = mutation({
 		email: v.string()
 	},
 	handler: async (ctx, args): Promise<{ status: "missing" | "pending" }> => {
-		const staffUser = await requireStaff(ctx);
+		const staffUser = await requireCapability(ctx, "user_moderation");
 
 		const user = await ctx.db
 			.query("users")
@@ -143,7 +124,7 @@ export const requestAccountDeletionByEmail = mutation({
 				"You cannot delete your own account from staff tools."
 			);
 		}
-		if (user.role !== "user") {
+		if (isInternalRole(user.role)) {
 			throw new ConvexError(
 				"Staff accounts cannot be deleted from staff tools."
 			);

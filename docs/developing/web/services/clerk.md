@@ -87,7 +87,7 @@ Create a Clerk webhook endpoint:
 ```
 
 Subscribe only to `user.deleted` and put its signing secret in the matching
-Convex deployment. The handler verifies the signature, cancels Polar
+Convex deployment. The handler verifies the signature, immediately revokes Polar
 subscriptions, deletes boxes and snapshots, releases pending checkouts, and
 scrubs the application email. A scheduled retry finishes boxes that are busy.
 Staff-triggered deletion first removes the Clerk identity through its Backend

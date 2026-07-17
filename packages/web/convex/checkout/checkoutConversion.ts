@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 import { appendBoxEvent } from "../boxes/boxEvents";
-import { emailStaff } from "../boxes/boxMetrics";
+import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { beginBoxOperationRecord } from "../boxes/boxOperations";
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import {
@@ -11,11 +11,15 @@ import {
 } from "../boxes/boxRetention";
 import { startWorkflow } from "../boxes/workflows/boxWorkflow";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "./checkoutIntents";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { readGlobalSettings } from "../settings";
+import { sendStaffAlert } from "../staffAlerts";
 
 export const convertCheckoutIntentToBox = internalMutation({
 	args: {
 		intentId: v.id("box_checkout_intents"),
 		polarCustomerId: v.string(),
+		polarOrderId: v.string(),
 		polarSubscriptionId: v.string(),
 		runtimeImage: v.string()
 	},
@@ -24,22 +28,94 @@ export const convertCheckoutIntentToBox = internalMutation({
 		if (!intent) throw new ConvexError("Checkout intent not found.");
 
 		if (intent.box_id) {
-			return { boxId: intent.box_id };
+			return { boxId: intent.box_id, unfulfilled: null };
 		}
 
-		// A slug conflict below already revoked this subscription; a re-delivered
-		// subscription.active must not resurrect the sale once the slug frees up.
+		// Terminal releases must never be resurrected by a re-delivered webhook.
 		if (intent.release_reason === "slug_conflict") {
-			return { boxId: null };
+			return {
+				boxId: null,
+				unfulfilled: {
+					comment: "The selected Composery box slug was no longer available.",
+					idempotencyKey: `slug-conflict:${intent._id}`,
+					orderId: args.polarOrderId,
+					subscriptionId: args.polarSubscriptionId
+				}
+			};
+		}
+		if (intent.release_reason === "account_deleted") {
+			return {
+				boxId: null,
+				unfulfilled: {
+					comment:
+						"The Composery account was deleted before fulfillment finished.",
+					idempotencyKey: `account-deleted:${intent._id}`,
+					orderId: args.polarOrderId,
+					subscriptionId: args.polarSubscriptionId
+				}
+			};
+		}
+		if (intent.release_reason === "order_fully_refunded") {
+			return { boxId: null, unfulfilled: null };
+		}
+		if (intent.release_reason === "capacity_unavailable") {
+			return {
+				boxId: null,
+				unfulfilled: {
+					comment:
+						"Composery infrastructure capacity was no longer available when the paid checkout arrived.",
+					idempotencyKey: `capacity-unavailable:${intent._id}`,
+					orderId: args.polarOrderId,
+					subscriptionId: args.polarSubscriptionId
+				}
+			};
 		}
 
-		// This mutation only runs off subscription.active, which is proof of
-		// payment, so a lapsed reservation ("expired"/"released" without a box)
+		// An active intent already owns one server and its full snapshot allowance.
+		// A late paid event for an expired/released intent has lost that reservation,
+		// so it must atomically reacquire capacity before becoming a box.
+		if (intent.status !== "active") {
+			const settings = await readGlobalSettings(ctx);
+			const capacity = await readCapacityUsage(ctx, settings);
+			if (!capacity.checkoutAvailable) {
+				const timestamp = Date.now();
+				await ctx.db.patch(intent._id, {
+					status: "released",
+					release_reason: "capacity_unavailable",
+					released_at: timestamp,
+					purge_at: billingRecordPurgeAt(timestamp),
+					...terminalCheckoutSecretPatch(),
+					polar_customer_id: args.polarCustomerId,
+					polar_subscription_id: args.polarSubscriptionId,
+					updated_at: timestamp
+				});
+				await sendStaffAlert(ctx, {
+					key: `paid-checkout-capacity:${intent._id}`,
+					severity: "critical",
+					subject: `Paid checkout for "${intent.slug}" exceeded capacity`,
+					text: `A late payment completed for checkout intent ${intent._id} after its capacity reservation ended. ${capacityBlockMessage(capacity.blockReason) ?? "No capacity remained."} Subscription ${args.polarSubscriptionId} is being revoked and its order refunded automatically in Polar.`
+				});
+				await reconcileCapacityAlert(ctx);
+				return {
+					boxId: null,
+					unfulfilled: {
+						comment:
+							"Composery infrastructure capacity was no longer available when the paid checkout arrived.",
+						idempotencyKey: `capacity-unavailable:${intent._id}`,
+						orderId: args.polarOrderId,
+						subscriptionId: args.polarSubscriptionId
+					}
+				};
+			}
+		}
+
+		// This mutation only runs off order.paid, which is proof of payment, so a
+		// lapsed reservation ("expired"/"released" without a box)
 		// still converts. The slug is the product's identity: if it was taken
 		// while the payment completed, the sale fails - the subscription is
 		// revoked and staff refund the charge - rather than creating a box under
-		// a name the customer didn't choose. Terminal either way, never a
-		// webhook retry loop.
+		// a name the customer didn't choose. Revoke and refund automatically;
+		// this is another initial-fulfillment failure, not a support TODO.
 		if (!(await isSlugAvailable(ctx, intent.slug, { intentId: intent._id }))) {
 			const timestamp = Date.now();
 			await ctx.db.patch(intent._id, {
@@ -52,19 +128,21 @@ export const convertCheckoutIntentToBox = internalMutation({
 				polar_subscription_id: args.polarSubscriptionId,
 				updated_at: timestamp
 			});
-			await ctx.scheduler.runAfter(
-				0,
-				internal.billing.polar.revokeSubscription,
-				{
+			await sendStaffAlert(ctx, {
+				key: `paid-checkout-slug:${intent._id}`,
+				severity: "critical",
+				subject: `Checkout for slug "${intent.slug}" could not be fulfilled`,
+				text: `A payment completed for checkout intent ${intent._id} (user ${intent.user_id}), but slug "${intent.slug}" was taken before fulfillment. Subscription ${args.polarSubscriptionId} is being revoked and its order refunded automatically in Polar.`
+			});
+			return {
+				boxId: null,
+				unfulfilled: {
+					comment: "The selected Composery box slug was no longer available.",
+					idempotencyKey: `slug-conflict:${intent._id}`,
+					orderId: args.polarOrderId,
 					subscriptionId: args.polarSubscriptionId
 				}
-			);
-			await emailStaff(
-				ctx,
-				`Checkout for slug "${intent.slug}" revoked: slug taken`,
-				`A payment completed for checkout intent ${intent._id} (user ${intent.user_id}), but slug "${intent.slug}" was taken before the subscription activated. The subscription ${args.polarSubscriptionId} has been revoked automatically - refund the charge in the Polar dashboard and let the customer know.`
-			);
-			return { boxId: null };
+			};
 		}
 
 		const timestamp = Date.now();
@@ -85,9 +163,11 @@ export const convertCheckoutIntentToBox = internalMutation({
 			polar_subscription_id: args.polarSubscriptionId,
 			converted_at: timestamp,
 			box_id: boxId,
+			purge_at: billingRecordPurgeAt(timestamp),
 			...terminalCheckoutSecretPatch(),
 			updated_at: timestamp
 		});
+		await reconcileCapacityAlert(ctx);
 
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
@@ -116,6 +196,6 @@ export const convertCheckoutIntentToBox = internalMutation({
 			}
 		);
 
-		return { boxId };
+		return { boxId, unfulfilled: null };
 	}
 });
