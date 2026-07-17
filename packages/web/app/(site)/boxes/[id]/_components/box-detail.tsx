@@ -100,20 +100,31 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 							run("stop", "Stopping box", () => stopBox({ slug: box.slug }))
 					}}
 				/>
-				<AnimatedIconButton
-					disabled={busy === "portal"}
-					icon="credit-card"
-					iconPosition="start"
-					onClick={() =>
-						run("portal", null, async () => {
-							const portal = await customerPortalUrl({ slug: box.slug });
-							window.location.assign(portal.url);
-						})
-					}
-					variant="outline"
-				>
-					{billingLine}
-				</AnimatedIconButton>
+				{box.comp ? (
+					<AnimatedIconButton
+						disabled
+						icon="credit-card"
+						iconPosition="start"
+						variant="outline"
+					>
+						Comped plan
+					</AnimatedIconButton>
+				) : (
+					<AnimatedIconButton
+						disabled={busy === "portal"}
+						icon="credit-card"
+						iconPosition="start"
+						onClick={() =>
+							run("portal", null, async () => {
+								const portal = await customerPortalUrl({ slug: box.slug });
+								window.location.assign(portal.url);
+							})
+						}
+						variant="outline"
+					>
+						{billingLine}
+					</AnimatedIconButton>
+				)}
 				<AnimatedIconAnchor
 					className={buttonVariants({ variant: "outline" })}
 					href={new URL("/change-password", box.runtimeUrl).toString()}

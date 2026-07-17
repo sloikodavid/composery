@@ -80,6 +80,7 @@
 	background-color: var(--ghost-hover);
 }
 
+
 /* Search trigger + sidebar islands: drop fumadocs' fd-secondary fill so they read
    as our border-defined outline inputs. kbd badges use solid fd-secondary, not /50. */
 #nd-sidebar [class~="bg-fd-secondary/50"] {

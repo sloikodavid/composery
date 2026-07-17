@@ -1,0 +1,21 @@
+diff --git a/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts b/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
+--- a/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
+@@ -742,7 +742,16 @@
+ 			return;
+ 		}
+ 
+-		if (getActiveElement() !== e.browserEvent.target) {
++		// Composery: a touch here may be the start of a scroll - stealing focus at touchstart
++		// would close the on-screen keyboard mid-typing (the quick input filter, search
++		// inputs, the editor under the suggest widget) for a gesture that never meant to
++		// leave the field. A tap still activates the row through onViewPointer.
++		const active = getActiveElement();
++		if (e.browserEvent.type === 'touchstart' && active && isEditableElement(active)) {
++			return;
++		}
++
++		if (active !== e.browserEvent.target) {
+ 			this.list.domFocus();
+ 		}
+ 	}

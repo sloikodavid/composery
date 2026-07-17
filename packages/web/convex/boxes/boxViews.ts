@@ -12,7 +12,8 @@ export function safeBox(box: Doc<"boxes">) {
 		provisionedAt: box.provisioned_at,
 		deletedAt: box.deleted_at,
 		purgeAt: box.purge_at,
-		polarSubscriptionId: box.polar_subscription_id
+		polarSubscriptionId: box.polar_subscription_id ?? null,
+		comp: box.comped_at !== undefined
 	};
 }
 
@@ -22,7 +23,9 @@ export function staffBox(box: Doc<"boxes">, user?: Doc<"users"> | null) {
 		runtimeUrl: box.status === "deleted" ? null : cloudUrl(box.slug),
 		userId: box.user_id,
 		userEmail: user?.email ?? "",
-		polarCustomerId: box.polar_customer_id,
+		polarCustomerId: box.polar_customer_id ?? null,
+		compedBy: box.comped_by ?? null,
+		compReason: box.comp_reason ?? null,
 		runtimeImage: box.runtime_image,
 		hetznerServerId: box.hetzner_server_id,
 		hetznerServerType: box.hetzner_server_type,

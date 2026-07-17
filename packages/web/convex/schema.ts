@@ -205,8 +205,15 @@ export default defineSchema({
 		user_id: v.string(),
 		slug: v.string(),
 		status: vBoxStatus,
-		polar_customer_id: v.string(),
-		polar_subscription_id: v.string(),
+		// A box is backed by EITHER a paid Polar subscription (these two set) OR a
+		// staff comp (comped_at set, these absent). Never both, never neither. The
+		// subscription-coupled paths (reconciliation, revoke, account deletion,
+		// billing views) branch on which is present.
+		polar_customer_id: v.optional(v.string()),
+		polar_subscription_id: v.optional(v.string()),
+		comped_by: v.optional(v.string()),
+		comped_at: v.optional(v.number()),
+		comp_reason: v.optional(v.string()),
 		runtime_image: v.optional(v.string()),
 		runtime_auth_hash: v.optional(v.string()),
 		password_setup_pending_at: v.optional(v.number()),

@@ -16,6 +16,7 @@ import { describe, expect, test } from "vitest";
 
 import {
 	addedLines,
+	evaluatePatchSnippets,
 	extractAddedFunction,
 	readRepoFile,
 	repoRoot
@@ -849,6 +850,75 @@ describe("narrow overlay", () => {
 		// the live element under the finger.
 		expect(patch).toContain("!data.initialTarget.isConnected");
 		expect(patch).toContain("elementFromPoint");
+	});
+
+	// Most workbench surfaces (the terminal, the titlebar, empty editor groups) open
+	// their menus from native contextmenu listeners that a long-press never reaches:
+	// Gesture targets preventDefault the touchstart and iOS synthesizes no contextmenu
+	// at all. An unconsumed gesture context event must be re-fired as a real bubbling
+	// contextmenu from the touched element - and the semantic owners that do consume
+	// must open their own menus.
+	test("long-press falls back to a native contextmenu when no gesture owner consumes", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
+		);
+
+		// touch.ts: the fallback fires only for unconsumed gesture context events...
+		expect(patch).toContain("if (!holdEvt.defaultPrevented) {");
+		expect(patch).toContain("if (!evt.defaultPrevented) {");
+		expect(patch).toContain(
+			"new MouseEvent('contextmenu', { bubbles: true, cancelable: true"
+		);
+		// ...never for editable fields (the OS selection toolbar owns those)...
+		expect(patch).toContain("DomUtils.isEditableElement(target)");
+		// ...and a release-time native echo (Windows fires its contextmenu on
+		// finger-up) must not double the menu, while a during-hold native one
+		// (Android outside Gesture targets) stands the timer down instead.
+		expect(patch).toContain("suppressNativeContextMenuUntil");
+		expect(patch).toContain("e.stopImmediatePropagation()");
+
+		// The terminal tab list consumes the gesture event (listView is the semantic
+		// owner), so the fallback cannot reach the tab container's native-only
+		// listener - the same menu must open from the list's own context menu event.
+		expect(patch).toContain("this._tabList.onContextMenu(e => {");
+		expect(patch).toContain(
+			"e.browserEvent.type === TouchEventType.Contextmenu"
+		);
+
+		// Gesture listeners that open a menu must consume the event; the view pane
+		// container must instead step aside for pane-owned touches so the fallback
+		// can reach the pane's own handlers (terminal viewport, section headers).
+		expect(patch).toContain(
+			"paneItem.pane.element.contains(e.initialTarget as Node)"
+		);
+		expect(patch).toContain("EventHelper.stop(e, true);");
+	});
+
+	// window.ts blocks native contextmenus AND TextInputActionsProvider shows a themed input
+	// menu - together they suppress the OS text-selection toolbar (Cut/Copy/Paste/Select all +
+	// Web search/Look up/Open in...) on touch, where it is the better fit for a plain field and
+	// is what iOS shows anyway. Both must step aside for a real editable control on touch; the
+	// code editor keeps its gesture menu (hidden input excluded, rendered text is a non-editable
+	// span), and mouse/desktop keeps the themed menu.
+	test("touch routes real editable controls to the native selection toolbar", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-input-context-menu.diff`)
+		);
+
+		// window.ts: don't block the native contextmenu for an editable control on touch...
+		expect(patch).toContain(
+			"isTouch(getWindow(this.layoutService.mainContainer))"
+		);
+		expect(patch).toContain("isEditableElement(target)");
+		// ...but keep the editor's own hidden input on the gesture menu.
+		expect(patch).toContain("!target.classList.contains('inputarea')");
+		expect(patch).toContain(
+			"!target.classList.contains('native-edit-context')"
+		);
+		// TextInputActionsProvider: step aside on touch so it doesn't preventDefault + take over.
+		expect(patch).toContain("if (isTouch(targetWindow)) {");
+		// Non-editable / mouse paths still get the blocked-native + themed-menu behavior.
+		expect(patch).toContain("EventHelper.stop(e, true)");
 	});
 
 	test("nested menus retain focus and home actions stay at the File root", () => {
@@ -1821,5 +1891,131 @@ describe("default color theme", () => {
 		expect(colors["button.foreground"]).toBe(brand["primary-foreground"]);
 		expect(colors["activityBar.background"]).toBe(brand["background"]);
 		expect(colors["editorGroup.border"]).toBe(brand["border"]);
+	});
+});
+
+describe("terminal touch anchoring", () => {
+	const patch = readRepoFile(`${PATCHES_DIR}/touch-terminal-anchor.diff`);
+
+	// The patch's premise: upstream bottom-aligns the panel/editor terminal, so
+	// short buffers sit under a pane-height-dependent top gap and jump when the
+	// on-screen keyboard toggles the pane height. If an upstream bump changes
+	// that alignment, the override must be revisited, not silently stacked.
+	test("upstream still bottom-aligns the terminal grid", () => {
+		const css = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css"
+		);
+		expect(css).toMatch(
+			/\.monaco-workbench \.terminal-editor \.xterm,\r?\n\.monaco-workbench \.pane-body\.integrated-terminal \.xterm \{[^}]*position: absolute;[^}]*bottom: 0;/
+		);
+	});
+
+	test("CSS override and class toggle share one class name", () => {
+		const added = addedLines(patch);
+		expect(added).toContain(
+			".terminal-wrapper.composery-terminal-top-anchor .xterm"
+		);
+		expect(added).toContain("classList.toggle('composery-terminal-top-anchor'");
+		expect(added).toContain("top: 0;");
+		expect(added).toContain("bottom: auto;");
+	});
+
+	test("terminalInstance wires the tracker after xterm attaches", () => {
+		expect(addedLines(patch)).toContain(
+			"this._register(trackTerminalTopAnchor(xterm.raw, this._wrapperElement));"
+		);
+	});
+
+	const fakeXterm = () => {
+		const listeners: (() => void)[] = [];
+		const on = (listener: () => void) => {
+			listeners.push(listener);
+			return { dispose() {} };
+		};
+		const active: { type: string; baseY: number; cursorY: number } = {
+			type: "normal",
+			baseY: 0,
+			cursorY: 0
+		};
+		const raw = {
+			rows: 18,
+			buffer: {
+				active,
+				onBufferChange: on
+			},
+			onWriteParsed: on,
+			onResize: on
+		};
+		return { raw, listeners, fire: () => listeners.forEach((l) => l()) };
+	};
+
+	const fakeWrapper = () => {
+		const classes = new Set<string>();
+		return {
+			classes,
+			wrapper: {
+				classList: {
+					toggle(name: string, force: boolean) {
+						if (force) classes.add(name);
+						else classes.delete(name);
+					}
+				}
+			}
+		};
+	};
+
+	const tracker = (touch: boolean) =>
+		evaluatePatchSnippets<{
+			trackTerminalTopAnchor: (
+				raw: unknown,
+				wrapperElement: unknown
+			) => { dispose(): void };
+		}>(
+			[
+				`const isTouch = () => ${touch};`,
+				"const getWindow = () => ({});",
+				"class DisposableStore { add() {} dispose() {} }",
+				extractAddedFunction(patch, "trackTerminalTopAnchor")
+			],
+			["trackTerminalTopAnchor"]
+		).trackTerminalTopAnchor;
+
+	// Run the shipped tracker against a scripted xterm: only buffers that have
+	// not reached the bottom row pin to the pane top; filling the viewport,
+	// scrollback, and the alternate screen return to upstream bottom alignment.
+	test("tracker pins short buffers only", () => {
+		const { raw, fire } = fakeXterm();
+		const { classes, wrapper } = fakeWrapper();
+		tracker(true)(raw, wrapper);
+
+		const anchored = () => classes.has("composery-terminal-top-anchor");
+		expect(anchored()).toBe(true);
+
+		raw.buffer.active.cursorY = raw.rows - 1;
+		fire();
+		expect(anchored()).toBe(false);
+
+		raw.buffer.active.cursorY = 0;
+		raw.buffer.active.baseY = 3;
+		fire();
+		expect(anchored()).toBe(false);
+
+		raw.buffer.active.baseY = 0;
+		raw.buffer.active.type = "alternate";
+		fire();
+		expect(anchored()).toBe(false);
+
+		raw.buffer.active.type = "normal";
+		fire();
+		expect(anchored()).toBe(true);
+	});
+
+	test("tracker is inert without touch", () => {
+		const { raw, listeners } = fakeXterm();
+		const { classes, wrapper } = fakeWrapper();
+		tracker(false)(raw, wrapper);
+
+		expect(classes.size).toBe(0);
+		expect(listeners.length).toBe(0);
 	});
 });

@@ -1,25 +1,38 @@
 diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/browser/touch.ts
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -27,6 +27,9 @@
+@@ -27,6 +27,10 @@ interface TouchData {
  	rollingTimestamps: number[];
  	rollingPageX: number[];
  	rollingPageY: number[];
 +	contextMenuTimer: number | undefined;
 +	contextMenuFired: boolean;
 +	tapCancelled: boolean;
++	syntheticContextMenu: boolean;
  }
  
  export interface GestureEvent extends MouseEvent {
-@@ -95,6 +98,7 @@
+@@ -81,6 +85,10 @@ export class Gesture extends Disposable {
+ 
+ 	private _lastSetTapCountTime: number;
+ 
++	// Composery: while set, a trusted contextmenu is the release echo of a long-press whose
++	// menu the fallback already opened (Windows fires its native one only on finger-up).
++	private suppressNativeContextMenuUntil = 0;
++
+ 	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
+ 
+ 
+@@ -95,6 +103,8 @@ export class Gesture extends Disposable {
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
 +			disposables.add(DomUtils.addDisposableListener(window.document, 'touchcancel', (e: TouchEvent) => this.onTouchCancel(e)));
++			disposables.add(DomUtils.addDisposableListener(window.document, 'contextmenu', (e: MouseEvent) => this.onNativeContextMenu(e), true));
  		}, { window: mainWindow, disposables: this._store }));
  	}
  
-@@ -157,10 +161,15 @@
+@@ -157,10 +167,15 @@ export class Gesture extends Disposable {
  			this.handle = null;
  		}
  
@@ -36,7 +49,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +177,38 @@
+@@ -168,9 +183,42 @@ export class Gesture extends Disposable {
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -44,7 +57,8 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +				rollingPageY: [touch.pageY],
 +				contextMenuTimer: undefined,
 +				contextMenuFired: false,
-+				tapCancelled: false
++				tapCancelled: false,
++				syntheticContextMenu: false
  			};
  
 +			// Composery: fire the long-press context menu DURING the hold, as native platforms
@@ -70,13 +84,16 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +					holdEvt.pageY = data.rollingPageY.at(-1)!;
 +					this.dispatchEvent(holdEvt);
 +					this.dispatched = false;
++					if (!holdEvt.defaultPrevented) {
++						this.fireFallbackContextMenu(data);
++					}
 +				}, Gesture.HOLD_DELAY);
 +			}
 +
  			const evt = this.newGestureEvent(EventType.Start, touch.target);
  			evt.pageX = touch.pageX;
  			evt.pageY = touch.pageY;
-@@ -201,7 +239,16 @@
+@@ -201,7 +249,21 @@ export class Gesture extends Disposable {
  			const data = this.activeTouches[touch.identifier],
  				holdTime = Date.now() - data.initialTimeStamp;
  
@@ -85,6 +102,11 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +			if (data.contextMenuFired) {
 +				// Composery: the long-press already fired during the hold - the release must
 +				// not also tap, re-fire the menu, or start an inertia fling.
++				if (data.syntheticContextMenu) {
++					// Windows-style browsers fire their native contextmenu only on finger-up;
++					// with the fallback menu already open, that echo must be swallowed.
++					this.suppressNativeContextMenuUntil = Date.now() + 500;
++				}
 +				this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
 +				delete this.activeTouches[touch.identifier];
 +				continue;
@@ -94,7 +116,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-@@ -210,7 +257,7 @@
+@@ -210,7 +272,7 @@ export class Gesture extends Disposable {
  				evt.pageY = data.rollingPageY.at(-1)!;
  				this.dispatchEvent(evt);
  
@@ -103,7 +125,17 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-@@ -235,7 +282,8 @@
+@@ -218,6 +280,9 @@ export class Gesture extends Disposable {
+ 				evt.pageX = data.rollingPageX.at(-1)!;
+ 				evt.pageY = data.rollingPageY.at(-1)!;
+ 				this.dispatchEvent(evt);
++				if (!evt.defaultPrevented) {
++					this.fireFallbackContextMenu(data);
++				}
+ 
+ 			} else if (activeTouchCount === 1) {
+ 				const finalX = data.rollingPageX.at(-1)!;
+@@ -235,7 +300,8 @@ export class Gesture extends Disposable {
  					finalX,											// x now
  					Math.abs(deltaY) / deltaT,  					// y speed
  					deltaY > 0 ? 1 : -1,							// y direction
@@ -113,7 +145,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				);
  			}
  
-@@ -252,6 +300,30 @@
+@@ -252,6 +318,73 @@ export class Gesture extends Disposable {
  		}
  	}
  
@@ -141,10 +173,54 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +		}
 +	}
 +
++	private onNativeContextMenu(e: MouseEvent): void {
++		if (e.isTrusted && Date.now() < this.suppressNativeContextMenuUntil) {
++			// Composery: the release echo of a long-press whose menu the fallback already
++			// opened during the hold - a second menu must not fire.
++			e.preventDefault();
++			e.stopImmediatePropagation();
++			return;
++		}
++		// Composery: the browser produced its own contextmenu for this touch (a long-press
++		// outside every Gesture target, or an editable field) - the during-hold timer and
++		// the release-time branch must stand down or the menu doubles, and the release must
++		// not read as a tap.
++		for (const id in this.activeTouches) {
++			const data = this.activeTouches[Number(id)];
++			this.clearContextMenuTimer(data);
++			data.contextMenuFired = true;
++		}
++	}
++
++	private fireFallbackContextMenu(data: TouchData): void {
++		// Composery: nothing consumed the gesture context event, yet most workbench surfaces
++		// (the terminal, the titlebar, empty editor groups) open their menus from a native
++		// contextmenu listener - which a long-press never reaches: Gesture targets
++		// preventDefault the touchstart and iOS synthesizes no contextmenu at all. Re-fire
++		// the long-press as a real bubbling contextmenu from the touched element, exactly
++		// what a right-click there would produce; window.ts's mainContainer listener still
++		// stops whatever no one handles.
++		const pageX = data.rollingPageX.at(-1)!;
++		const pageY = data.rollingPageY.at(-1)!;
++		const clientX = pageX - mainWindow.scrollX;
++		const clientY = pageY - mainWindow.scrollY;
++		let target: Element | null = data.initialTarget instanceof Element && data.initialTarget.isConnected ? data.initialTarget : null;
++		if (!target) {
++			target = mainWindow.document.elementFromPoint(clientX, clientY);
++		}
++		if (!target || DomUtils.isEditableElement(target)) {
++			return; // editable fields belong to the OS text-selection toolbar
++		}
++		data.syntheticContextMenu = true;
++		this.suppressNativeContextMenuUntil = Date.now() + 500;
++		target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, view: mainWindow, clientX, clientY }));
++	}
++
  	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
  		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
  		event.initEvent(type, false, true);
-@@ -302,4 +364,9 @@
+@@ -301,12 +434,17 @@ export class Gesture extends Disposable {
+ 
  			for (const [_, target] of targets) {
  				target.dispatchEvent(event);
 +				// Composery: continue past gesture-only wrappers, then stop once a
@@ -154,7 +230,6 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 +				}
  				this.dispatched = true;
  			}
-@@ -306,7 +373,7 @@
  		}
  	}
  
@@ -163,7 +238,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -329,13 +396,13 @@
+@@ -329,13 +467,13 @@ export class Gesture extends Disposable {
  			}
  
  			// dispatch translation event
@@ -179,7 +254,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  			}
  		});
  	}
-@@ -354,6 +421,16 @@
+@@ -354,6 +492,16 @@ export class Gesture extends Disposable {
  
  			const data = this.activeTouches[touch.identifier];
  
@@ -199,8 +274,10 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
 diff --git a/lib/vscode/src/vs/base/browser/ui/list/listView.ts b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
 --- a/lib/vscode/src/vs/base/browser/ui/list/listView.ts
 +++ b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
-@@ -1147,5 +1147,11 @@ export class ListView<T> implements ISpliceable<T>, IDisposable {
-	private toGestureEvent(browserEvent: GestureEvent): IListGestureEvent<T> {
+@@ -1145,6 +1145,12 @@ export class ListView<T> implements IListView<T> {
+ 	}
+ 
+ 	private toGestureEvent(browserEvent: GestureEvent): IListGestureEvent<T> {
 +		// Composery: a list is the semantic owner of its gesture context event.
 +		// Consume it before the gesture dispatcher reaches an enclosing view pane.
 +		if (browserEvent.type === TouchEventType.Contextmenu) {
@@ -210,42 +287,10 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/list/listView.ts b/lib/vscode/src
  		const index = this.getItemIndexFromEventTarget(browserEvent.initialTarget || null);
  		const item = typeof index === 'undefined' ? undefined : this.items[index];
  		const element = item && item.element;
- 		return { browserEvent, index, element };
-diff --git a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
---- a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
-+++ b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
-@@ -12,7 +12,8 @@
- import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
- import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
- import { DisposableStore } from '../../../../base/common/lifecycle.js';
--import { isIOS } from '../../../../base/common/platform.js';
-+import { isTouch } from '../../../../base/browser/touchGate.js';
-+import { mainWindow } from '../../../../base/browser/window.js';
- import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from '../../../browser/editorBrowser.js';
- import { EditorAction, EditorContributionInstantiation, registerEditorAction, registerEditorContribution, ServicesAccessor } from '../../../browser/editorExtensions.js';
- import { EditorOption } from '../../../common/config/editorOptions.js';
-@@ -212,7 +213,7 @@
- 			anchor = { x: posx, y: posy };
- 		}
- 
--		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
-+		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
- 
- 		// Show menu
- 		this._contextMenuIsBeingShownCount++;
-@@ -362,7 +363,7 @@
- 			}]
- 		));
- 
--		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
-+		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
- 		this._contextMenuIsBeingShownCount++;
- 		this._contextMenuService.showContextMenu({
- 			domForShadowRoot: useShadowDOM ? this._editor.getDomNode() : undefined,
 diff --git a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts b/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
 --- a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
 +++ b/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
-@@ -7,7 +7,8 @@
+@@ -7,7 +7,8 @@ import { addStandardDisposableListener, getDomNodePagePosition } from '../../../
  import { Action } from '../../../../../../base/common/actions.js';
  import { Codicon } from '../../../../../../base/common/codicons.js';
  import { Disposable } from '../../../../../../base/common/lifecycle.js';
@@ -255,7 +300,7 @@ diff --git a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffE
  import { ThemeIcon } from '../../../../../../base/common/themables.js';
  import { IEditorMouseEvent, MouseTargetType } from '../../../../editorBrowser.js';
  import { CodeEditorWidget } from '../../../codeEditor/codeEditorWidget.js';
-@@ -66,7 +67,7 @@
+@@ -66,7 +67,7 @@ export class InlineDiffDeletedCodeMargin extends Disposable {
  
  		let currentLineNumberOffset = 0;
  
@@ -264,3 +309,125 @@ diff --git a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffE
  		const showContextMenu = (anchor: { x: number; y: number }, baseActions?: Action[], onHide?: () => void) => {
  			this._contextMenuService.showContextMenu({
  				domForShadowRoot: useShadowDOM ? _modifiedEditor.getDomNode() ?? undefined : undefined,
+diff --git a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
+--- a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
++++ b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
+@@ -12,7 +12,8 @@ import { IAction, Separator, SubmenuAction } from '../../../../base/common/actio
+ import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+ import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
+ import { DisposableStore } from '../../../../base/common/lifecycle.js';
+-import { isIOS } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from '../../../browser/editorBrowser.js';
+ import { EditorAction, EditorContributionInstantiation, registerEditorAction, registerEditorContribution, ServicesAccessor } from '../../../browser/editorExtensions.js';
+ import { EditorOption } from '../../../common/config/editorOptions.js';
+@@ -212,7 +213,7 @@ export class ContextMenuController implements IEditorContribution {
+ 			anchor = { x: posx, y: posy };
+ 		}
+ 
+-		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
++		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
+ 
+ 		// Show menu
+ 		this._contextMenuIsBeingShownCount++;
+@@ -362,7 +363,7 @@ export class ContextMenuController implements IEditorContribution {
+ 			}]
+ 		));
+ 
+-		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
++		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
+ 		this._contextMenuIsBeingShownCount++;
+ 		this._contextMenuService.showContextMenu({
+ 			domForShadowRoot: useShadowDOM ? this._editor.getDomNode() : undefined,
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts b/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
+@@ -340,6 +340,9 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
+ 		}));
+ 		this._register(Gesture.addTarget(titleArea));
+ 		this._register(addDisposableListener(titleArea, GestureEventType.Contextmenu, e => {
++			// Composery: consume the gesture event, or Gesture re-fires it as a native
++			// contextmenu and the listener above opens this menu a second time.
++			EventHelper.stop(e, true);
+ 			this.onTitleAreaContextMenu(new StandardMouseEvent(getWindow(titleArea), e));
+ 		}));
+ 
+@@ -466,6 +469,9 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
+ 		}));
+ 		this.headerFooterCompositeBarDispoables.add(Gesture.addTarget(area));
+ 		this.headerFooterCompositeBarDispoables.add(addDisposableListener(area, GestureEventType.Contextmenu, e => {
++			// Composery: consume the gesture event, or Gesture re-fires it as a native
++			// contextmenu and the listener above opens this menu a second time.
++			EventHelper.stop(e, true);
+ 			this.onCompositeBarAreaContextMenu(new StandardMouseEvent(getWindow(area), e));
+ 		}));
+ 
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts b/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts
+@@ -5,7 +5,7 @@
+ 
+ import { $, addDisposableListener, Dimension, DragAndDropObserver, EventType, getWindow, isAncestor } from '../../../../base/browser/dom.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+-import { EventType as TouchEventType, Gesture } from '../../../../base/browser/touch.js';
++import { EventType as TouchEventType, Gesture, GestureEvent } from '../../../../base/browser/touch.js';
+ import { IActionViewItem } from '../../../../base/browser/ui/actionbar/actionbar.js';
+ import { IBoundarySashes, Orientation } from '../../../../base/browser/ui/sash/sash.js';
+ import { IPaneViewOptions, PaneView } from '../../../../base/browser/ui/splitview/paneview.js';
+@@ -394,7 +394,17 @@ export class ViewPaneContainer<MementoType extends object = object> extends Comp
+ 		this._register(this.paneview.onDidSashReset((index) => this.onDidSashReset(index)));
+ 		this._register(addDisposableListener(parent, EventType.CONTEXT_MENU, (e: MouseEvent) => this.showContextMenu(new StandardMouseEvent(getWindow(parent), e))));
+ 		this._register(Gesture.addTarget(parent));
+-		this._register(addDisposableListener(parent, TouchEventType.Contextmenu, (e: MouseEvent) => this.showContextMenu(new StandardMouseEvent(getWindow(parent), e))));
++		this._register(addDisposableListener(parent, TouchEventType.Contextmenu, (e: GestureEvent) => {
++			// Composery: this gesture event is dispatched on the container itself, so
++			// showContextMenu's e.target check cannot see what was actually pressed - test
++			// the touched element here and leave pane-owned long-presses unconsumed, so
++			// Gesture re-fires them as a native contextmenu from the touched element for
++			// the pane's own handlers (the terminal, section headers).
++			if (e.initialTarget instanceof Node && this.paneItems.some(paneItem => paneItem.pane.element.contains(e.initialTarget as Node))) {
++				return;
++			}
++			this.showContextMenu(new StandardMouseEvent(getWindow(parent), e));
++		}));
+ 
+ 		this._menuActions = this._register(this.instantiationService.createInstance(ViewContainerMenuActions, this.paneview.element, this.viewContainer, undefined));
+ 		this._register(this._menuActions.onDidChange(() => this.updateTitleArea()));
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { LayoutPriority, Orientation, Sizing, SplitView } from '../../../../base/browser/ui/splitview/splitview.js';
++import { EventType as TouchEventType } from '../../../../base/browser/touch.js';
+ import { Disposable, dispose, IDisposable } from '../../../../base/common/lifecycle.js';
+ import { Event } from '../../../../base/common/event.js';
+ import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+@@ -429,7 +430,7 @@ export class TerminalTabbedView extends Disposable {
+ 			event.stopImmediatePropagation();
+ 			this._cancelContextMenu = false;
+ 		}));
+-		this._register(dom.addDisposableListener(this._tabContainer, 'contextmenu', (event: MouseEvent) => {
++		const openTabsContextMenu = (event: MouseEvent) => {
+ 			const rightClickBehavior = this._terminalConfigurationService.config.rightClickBehavior;
+ 			if (rightClickBehavior === 'nothing' && !event.shiftKey) {
+ 				this._cancelContextMenu = true;
+@@ -453,6 +454,16 @@ export class TerminalTabbedView extends Disposable {
+ 			event.preventDefault();
+ 			event.stopImmediatePropagation();
+ 			this._cancelContextMenu = false;
++		};
++		this._register(dom.addDisposableListener(this._tabContainer, 'contextmenu', (event: MouseEvent) => openTabsContextMenu(event)));
++		// Composery: a long-press reaches the tab list as a gesture context event that the
++		// list consumes (so Gesture's native contextmenu re-fire never happens) while this
++		// view's menu-opening code above listens for native contextmenu only - the touch
++		// path must open the same menu through the list's own context menu event.
++		this._register(this._tabList.onContextMenu(e => {
++			if (e.browserEvent.type === TouchEventType.Contextmenu) {
++				openTabsContextMenu(e.browserEvent as MouseEvent);
++			}
+ 		}));
+ 		this._register(dom.addDisposableListener(terminalContainer.ownerDocument, 'keydown', (event: KeyboardEvent) => {
+ 			terminalContainer.classList.toggle('alt-active', !!event.altKey);

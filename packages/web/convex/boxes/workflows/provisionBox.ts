@@ -35,6 +35,14 @@ export const provisionBox = defineBoxWorkflow({
 				operationId: args.operationId
 			});
 		} catch (provisionError) {
+			const failedBox = await step.runQuery(
+				internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+				{ boxId: args.boxId }
+			);
+			// A comp was never paid for, so there is nothing to refund - let it fail
+			// to provisioning_failed for a staff retry.
+			if (failedBox.comped_at !== undefined) throw provisionError;
+
 			const paidOrder = await step.runQuery(
 				internal.checkout.checkoutIntents.paidOrderForBox,
 				{ boxId: args.boxId }

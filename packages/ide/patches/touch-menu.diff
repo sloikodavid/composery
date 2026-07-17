@@ -46,3 +46,66 @@ index 18a647cee1c..9c3c5eec749 100644
  
  	private cleanupExistingSubmenu(force: boolean): void {
  		if (this.parentData.submenu && (force || (this.parentData.submenu !== this.mysubmenu))) {
+diff --git a/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts b/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts
+--- a/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts
++++ b/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts
+@@ -3,12 +3,11 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { BrowserFeatures } from '../../canIUse.js';
+ import * as DOM from '../../dom.js';
+ import { StandardMouseEvent } from '../../mouseEvent.js';
++import { isTouch } from '../../touchGate.js';
+ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../common/lifecycle.js';
+ import { AnchorAlignment, AnchorAxisAlignment, AnchorPosition, IRect, layout2d } from '../../../common/layout.js';
+-import * as platform from '../../../common/platform.js';
+ import { OmitOptional } from '../../../common/types.js';
+ import './contextview.css';
+ 
+@@ -217,7 +216,12 @@
+ 			return;
+ 		}
+ 
+-		if (this.delegate!.canRelayout === false && !(platform.isIOS && BrowserFeatures.pointerEvents)) {
++		// Composery: a menu taking focus from an editor or terminal hides the on-screen
++		// keyboard, which resizes the workbench (interactive-widget=resizes-content) - hiding
++		// here would dismiss the just-opened menu, and its focus restore would then pop the
++		// keyboard (and this resize) right back. iOS was already exempt upstream for its soft
++		// keyboard; gate every touch device.
++		if (this.delegate!.canRelayout === false && !isTouch(DOM.getWindow(this.view))) {
+ 			this.hide();
+ 			return;
+ 		}
+diff --git a/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts b/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
+@@ -11,7 +11,8 @@
+ import { IAction, Action, SubmenuAction, Separator, IActionRunner, ActionRunner, WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification, toAction } from '../../../../base/common/actions.js';
+ import { addDisposableListener, Dimension, EventType } from '../../../../base/browser/dom.js';
+ import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
+-import { isMacintosh, isWeb, isIOS, isNative } from '../../../../base/common/platform.js';
++import { isMacintosh, isWeb, isNative } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+ import { Event, Emitter } from '../../../../base/common/event.js';
+ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+@@ -30,7 +31,6 @@
+ import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
+ import { isFullscreen, onDidChangeFullscreen } from '../../../../base/browser/browser.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+-import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+ import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+ import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
+ import { IsWebContext } from '../../../../platform/contextkey/common/contextkeys.js';
+@@ -731,7 +731,9 @@
+ 		super.registerListeners();
+ 
+ 		this._register(addDisposableListener(mainWindow, EventType.RESIZE, () => {
+-			if (this.menubar && !(isIOS && BrowserFeatures.pointerEvents)) {
++			// Composery: same soft-keyboard resize as contextview.ts layout() - blurring here
++			// would close the menu the keyboard hid for. iOS was already exempt; gate all touch.
++			if (this.menubar && !isTouch(mainWindow)) {
+ 				this.menubar.blur();
+ 			}
+ 		}));

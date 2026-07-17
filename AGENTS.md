@@ -269,10 +269,13 @@ packages/
       touch-context-menu.diff
       touch-editor.diff
       touch-gate.diff
+      touch-input-context-menu.diff
+      touch-list-focus.diff
       touch-menu.diff
       touch-reveal-guard.diff
       touch-sash.diff
       touch-select.diff
+      touch-terminal-anchor.diff
       touch-terminal-hint.diff
       touch-terminal-keybar.diff
       touch-viewport-inset.diff
@@ -367,6 +370,7 @@ packages/
           _components/
             console-capacity.tsx
             console-checkout-limit.tsx
+            console-grant-box.tsx
             console-home.tsx
             console-snapshot-policy.tsx
             console-stats.tsx

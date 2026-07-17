@@ -151,12 +151,11 @@ export const getById = query({
 			return null;
 		}
 
-		const subscription = await ctx.runQuery(
-			components.polar.lib.getSubscription,
-			{
-				id: box.polar_subscription_id
-			}
-		);
+		const subscription = box.polar_subscription_id
+			? await ctx.runQuery(components.polar.lib.getSubscription, {
+					id: box.polar_subscription_id
+				})
+			: null;
 
 		const suspendedReason = await currentSuspensionReason(ctx, box);
 

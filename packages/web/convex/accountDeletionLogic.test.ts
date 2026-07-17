@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
+	boxDeletionIdempotencyKey,
 	deletionIdempotencyKey,
 	scrubbedAccountEmail,
 	scrubbedUserId
@@ -27,6 +28,23 @@ describe("accountDeletionBoxTargets", () => {
 describe("deletionIdempotencyKey", () => {
 	it("matches the subscription deletion key used by webhooks and sweeps", () => {
 		expect(deletionIdempotencyKey("sub_123")).toBe("delete:sub_123");
+	});
+});
+
+describe("boxDeletionIdempotencyKey", () => {
+	it("keys a paid box on its subscription", () => {
+		expect(
+			boxDeletionIdempotencyKey({
+				_id: "boxes:1",
+				polar_subscription_id: "sub_123"
+			})
+		).toBe("delete:sub_123");
+	});
+
+	it("keys a comp box on its id, since it has no subscription", () => {
+		expect(boxDeletionIdempotencyKey({ _id: "boxes:9" })).toBe(
+			"delete:boxes:9"
+		);
 	});
 });
 

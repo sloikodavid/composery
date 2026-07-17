@@ -7,6 +7,7 @@ import { useState } from "react";
 import { ConsoleStats } from "./console-stats";
 import { ConsoleCheckoutLimit } from "./console-checkout-limit";
 import { ConsoleCapacity } from "./console-capacity";
+import { ConsoleGrantBox } from "./console-grant-box";
 import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
 import { ConsoleThresholds } from "./console-thresholds";
 import { FlagsTable } from "@/components/flags-table";
@@ -421,6 +422,7 @@ export function ConsoleHome() {
 						snapshotLimit={settings.hetznerSnapshotLimit}
 					/>
 				) : null}
+				<ConsoleGrantBox />
 				<ConsoleCheckoutLimit max={settings?.maxActiveCheckoutIntentsPerUser} />
 				<ConsoleThresholds thresholds={settings?.thresholds} />
 				<ConsoleSnapshotPolicy policy={settings?.snapshotPolicy} />

@@ -1,3 +1,3 @@
 {
-	"pages": ["index", "repository", "services", "web", "ide", "mobile"]
+	"pages": ["repository", "services", "web", "ide", "mobile"]
 }

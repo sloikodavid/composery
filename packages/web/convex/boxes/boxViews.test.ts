@@ -38,8 +38,27 @@ describe("safeBox", () => {
 			updatedAt: 2_000,
 			provisionedAt: undefined,
 			deletedAt: undefined,
-			polarSubscriptionId: "sub_1"
+			polarSubscriptionId: "sub_1",
+			comp: false
 		});
+	});
+
+	it("marks a comp box and nulls its absent subscription", () => {
+		process.env.CLOUD_DOMAIN = "composery.cloud";
+		const overrides = {
+			polar_customer_id: undefined,
+			polar_subscription_id: undefined,
+			comped_by: "user_staff",
+			comped_at: 5_000,
+			comp_reason: "beta tester"
+		};
+		const view = safeBox(box(overrides));
+		expect(view.comp).toBe(true);
+		expect(view.polarSubscriptionId).toBeNull();
+		const staff = staffBox(box(overrides));
+		expect(staff.polarCustomerId).toBeNull();
+		expect(staff.compedBy).toBe("user_staff");
+		expect(staff.compReason).toBe("beta tester");
 	});
 
 	it("surfaces provisioned/deleted timestamps when present", () => {

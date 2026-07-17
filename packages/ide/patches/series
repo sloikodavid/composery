@@ -17,6 +17,7 @@ touch-editor.diff
 touch-reveal-guard.diff
 touch-menu.diff
 touch-context-menu.diff
+touch-list-focus.diff
 touch-gate.diff
 touch-compact-footer.diff
 touch-sash.diff
@@ -37,8 +38,10 @@ titlebar-menubar-overflow.diff
 default-color-theme.diff
 shortcuts.diff
 touch-terminal-keybar.diff
+touch-terminal-anchor.diff
 touch-terminal-hint.diff
 touch-viewport-inset.diff
+touch-input-context-menu.diff
 settings-mobile.diff
 extensions-mobile.diff
 api-keys-action.diff

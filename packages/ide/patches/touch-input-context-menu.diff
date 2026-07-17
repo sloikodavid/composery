@@ -1,0 +1,59 @@
+--- a/lib/vscode/src/vs/workbench/browser/window.ts
++++ b/lib/vscode/src/vs/workbench/browser/window.ts
+@@ -4,7 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { isSafari, setFullscreen } from '../../base/browser/browser.js';
+-import { addDisposableListener, EventHelper, EventType, getWindow, getWindowById, getWindows, getWindowsCount, hasAppFocus, windowOpenNoOpener, windowOpenPopup, windowOpenWithSuccess } from '../../base/browser/dom.js';
++import { addDisposableListener, EventHelper, EventType, getWindow, getWindowById, getWindows, getWindowsCount, hasAppFocus, isEditableElement, windowOpenNoOpener, windowOpenPopup, windowOpenWithSuccess } from '../../base/browser/dom.js';
++import { isTouch } from '../../base/browser/touchGate.js';
+ import { DomEmitter } from '../../base/browser/event.js';
+ import { HidDeviceData, requestHidDevice, requestSerialPort, requestUsbDevice, SerialPortData, UsbDeviceData } from '../../base/browser/deviceAccess.js';
+ import { timeout } from '../../base/common/async.js';
+@@ -272,8 +273,19 @@
+ 		// Prevent the back/forward gestures in macOS
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.WHEEL, e => e.preventDefault(), { passive: false }));
+ 
+-		// Prevent native context menus in web
+-		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.CONTEXT_MENU, e => EventHelper.stop(e, true)));
++		// Prevent native context menus in web - except, on touch, over a real editable control
++		// (input/textarea). There the OS's own text-selection toolbar (Cut/Copy/Paste/Select all
++		// plus Web search/Look up/Open in...) is the better fit for a plain field and is what iOS
++		// shows anyway, so we let it through - TextInputActionsProvider steps aside on touch too.
++		// The code editor is unaffected: its target is a non-editable lines <div>, and its hidden
++		// input (inputarea / native-edit-context) is excluded here.
++		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.CONTEXT_MENU, e => {
++			const target = e.target;
++			if (isTouch(getWindow(this.layoutService.mainContainer)) && target instanceof HTMLElement && isEditableElement(target) && !target.classList.contains('inputarea') && !target.classList.contains('native-edit-context')) {
++				return;
++			}
++			EventHelper.stop(e, true);
++		}));
+ 
+ 		// Prevent default navigation on drop
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.DROP, e => EventHelper.stop(e, true)));
+--- a/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
++++ b/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
+@@ -9,6 +9,7 @@
+ import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+ import { Disposable } from '../../../base/common/lifecycle.js';
+ import { EventHelper, addDisposableListener, getActiveDocument, getWindow, isHTMLInputElement, isHTMLTextAreaElement } from '../../../base/browser/dom.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../common/contributions.js';
+ import { IClipboardService } from '../../../platform/clipboard/common/clipboardService.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+@@ -91,6 +92,14 @@
+ 			return; // only for inputs or textareas
+ 		}
+ 
++		// Composery: on touch, leave the field to the OS text-selection toolbar (which rides on
++		// the selection and carries Select all + Web search/Look up/Open in... that this menu
++		// cannot) instead of taking over the contextmenu with a themed menu. iOS already behaves
++		// this way; this makes touch consistent. Mouse/desktop still gets the menu below.
++		if (isTouch(targetWindow)) {
++			return;
++		}
++
+ 		EventHelper.stop(e, true);
+ 
+ 		const event = new StandardMouseEvent(targetWindow, e);

@@ -1,6 +1,5 @@
 {
 	"pages": [
-		"index",
 		"cloudflare",
 		"convex",
 		"clerk",

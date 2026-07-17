@@ -11,6 +11,10 @@ type ReconciliationPage = {
 };
 
 async function reconcileBoxSubscription(ctx: ActionCtx, box: Doc<"boxes">) {
+	// Comp boxes are not backed by a subscription, so there is nothing to
+	// reconcile - and no subscription-gone signal should ever tear one down.
+	if (!box.polar_subscription_id) return;
+
 	const subscription = await ctx.runQuery(
 		components.polar.lib.getSubscription,
 		{

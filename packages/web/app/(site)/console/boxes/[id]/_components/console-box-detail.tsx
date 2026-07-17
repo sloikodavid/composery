@@ -288,6 +288,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 		detail ? { boxId: detail.box.id } : "skip"
 	);
 	const retryProvision = useMutation(api.staff.boxes.retryProvisionBox);
+	const revokeComp = useMutation(api.staff.boxes.revokeComp);
 	const resetBox = useMutation(api.staff.boxes.resetBox);
 	const stopBox = useMutation(api.staff.boxes.stopBox);
 	const startBox = useMutation(api.staff.boxes.startBox);
@@ -373,6 +374,12 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 				key="customer"
 			/>
 		],
+		...(box.comp
+			? ([
+					["Comped by", box.compedBy ?? ""],
+					["Comp reason", box.compReason ?? ""]
+				] as Array<[string, string | number | null | undefined, ReactNode?]>)
+			: []),
 		...(box.status !== "deleted"
 			? ([
 					[
@@ -526,6 +533,21 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 											</AnimatedIconButton>
 										)}
 									</SuspendDialog>
+								) : null}
+								{box.comp ? (
+									<AnimatedIconButton
+										disabled={busy === "revoke-comp"}
+										icon="delete"
+										iconPosition="start"
+										onClick={() =>
+											run("revoke-comp", "Comp revoked", () =>
+												revokeComp({ boxId: box.id })
+											)
+										}
+										variant="outline"
+									>
+										Revoke comp
+									</AnimatedIconButton>
 								) : null}
 								<ConsoleBoxSnapshots boxId={box.id} status={box.status} />
 								<RecoveryDialog

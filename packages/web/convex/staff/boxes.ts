@@ -23,8 +23,20 @@ import {
 	type RecoveryStatus,
 	type RecoveryType
 } from "../boxes/boxRecoveryTypes";
-import { startBoxOperation, startBoxSuspension } from "../boxes/boxOperations";
+import {
+	beginBoxOperationRecord,
+	startBoxOperation,
+	startBoxSuspension
+} from "../boxes/boxOperations";
 import { currentSuspensionReason } from "../boxes/boxQueries";
+import { appendBoxEvent } from "../boxes/boxEvents";
+import { assertSlugAvailable } from "../boxes/slugAvailability";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+import { readGlobalSettings } from "../settings";
+import { startWorkflow } from "../boxes/workflows/boxWorkflow";
+import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
+import { requiredEnv } from "../env";
 import { staffBox } from "../boxes/boxViews";
 import {
 	markSnapshotDeleting,
@@ -58,7 +70,7 @@ function boxMatchesSearch(
 		box.slug.includes(term) ||
 		box.user_id.toLowerCase().includes(term) ||
 		(user?.email ?? "").toLowerCase().includes(term) ||
-		box.polar_subscription_id.toLowerCase().includes(term)
+		(box.polar_subscription_id ?? "").toLowerCase().includes(term)
 	);
 }
 
@@ -275,12 +287,11 @@ export const boxDetail = query({
 		if (!box) return null;
 
 		const user = await getUserByClerkId(ctx, box.user_id);
-		const subscription = await ctx.runQuery(
-			components.polar.lib.getSubscription,
-			{
-				id: box.polar_subscription_id
-			}
-		);
+		const subscription = box.polar_subscription_id
+			? await ctx.runQuery(components.polar.lib.getSubscription, {
+					id: box.polar_subscription_id
+				})
+			: null;
 
 		const suspendedReason = await currentSuspensionReason(ctx, box);
 
@@ -331,6 +342,108 @@ export const retryProvisionBox = mutation({
 		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "provision", {
 			idempotencyKey: `staff-provision:${args.boxId}`
+		});
+	}
+});
+
+// Provision a box for a user without a paid checkout - a staff comp. It reuses
+// every guard a paid box gets (slug identity, live capacity budget) and is fully
+// audited (comped_by on the box, box event, provision operation). A comp burns
+// real infrastructure, so it counts against capacity and is gated behind its own
+// capability rather than ordinary box/checkout powers.
+export const grantComp = mutation({
+	args: {
+		email: v.string(),
+		slug: v.string(),
+		reason: v.string()
+	},
+	handler: async (ctx, args) => {
+		const staffUser = await requireCapability(ctx, "box_comp");
+
+		const reason = args.reason.trim();
+		if (!reason) throw new ConvexError("A comp reason is required.");
+
+		const targetUser = await ctx.db
+			.query("users")
+			.withIndex("email", (query) =>
+				query.eq("email", args.email.trim().toLowerCase())
+			)
+			.first();
+		if (!targetUser) throw new ConvexError("User not found.");
+		if (targetUser.suspended) throw new ConvexError("User is suspended.");
+		if (targetUser.deletion_pending) {
+			throw new ConvexError("Account deletion is in progress for this user.");
+		}
+
+		const slug = sanitizeSlug(args.slug);
+		if (!isValidSlug(slug)) throw new ConvexError("Slug is unavailable.");
+		await assertSlugAvailable(ctx, slug);
+
+		const settings = await readGlobalSettings(ctx);
+		const capacity = await readCapacityUsage(ctx, settings);
+		if (!capacity.checkoutAvailable) {
+			throw new ConvexError(
+				capacityBlockMessage(capacity.blockReason) ??
+					"Infrastructure capacity is unavailable."
+			);
+		}
+
+		const timestamp = Date.now();
+		const boxId = await ctx.db.insert("boxes", {
+			user_id: targetUser.clerk_user_id,
+			slug,
+			status: "provisioning",
+			runtime_image: requiredEnv("RUNTIME_IMAGE"),
+			comped_by: staffUser.clerk_user_id,
+			comped_at: timestamp,
+			comp_reason: reason,
+			created_at: timestamp,
+			updated_at: timestamp
+		});
+		await reconcileCapacityAlert(ctx);
+
+		const box = await ctx.db.get(boxId);
+		if (!box) throw new ConvexError("Box creation failed.");
+
+		const operationId = await beginBoxOperationRecord(ctx, box, {
+			type: "provision",
+			idempotencyKey: `provision:${boxId}`,
+			targetStatus: "provisioning",
+			metadata: { compedBy: staffUser.clerk_user_id, reason }
+		});
+		if (!operationId)
+			throw new ConvexError("Provision operation already exists.");
+
+		await appendBoxEvent(ctx, box, "box.provisioning_started", {
+			message: `Comped by ${staffUser.email}: ${reason}`,
+			metadata: { operationId, compedBy: staffUser.clerk_user_id }
+		});
+
+		await startWorkflow(
+			ctx,
+			internal.boxes.workflows.provisionBox.provisionBox,
+			{ boxId, operationId }
+		);
+
+		return { boxId };
+	}
+});
+
+// Take back a comp. Paid boxes end by revoking their Polar subscription; a comp
+// has none, so this is the only teardown lever for one.
+export const revokeComp = mutation({
+	args: {
+		boxId: v.id("boxes")
+	},
+	handler: async (ctx, args) => {
+		await requireCapability(ctx, "box_comp");
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+		if (box.comped_at === undefined) {
+			throw new ConvexError("This box is not a comp.");
+		}
+		await startBoxOperation(ctx, box._id, "delete", {
+			idempotencyKey: boxDeletionIdempotencyKey(box)
 		});
 	}
 });

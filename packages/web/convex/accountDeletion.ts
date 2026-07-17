@@ -19,7 +19,7 @@ import {
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
-	deletionIdempotencyKey,
+	boxDeletionIdempotencyKey,
 	scrubbedAccountEmail,
 	scrubbedUserId
 } from "./accountDeletionLogic";
@@ -63,11 +63,15 @@ async function stateForClerkUser(
 
 async function startDeletionWorkflows(ctx: ActionCtx, boxes: Doc<"boxes">[]) {
 	for (const box of accountDeletionBoxTargets(boxes)) {
-		await revokePolarSubscription(box.polar_subscription_id);
+		// Comp boxes have no subscription to revoke; deletion still tears down the
+		// server.
+		if (box.polar_subscription_id) {
+			await revokePolarSubscription(box.polar_subscription_id);
+		}
 
 		try {
 			await startBoxOperation(ctx, box._id, "delete", {
-				idempotencyKey: deletionIdempotencyKey(box.polar_subscription_id)
+				idempotencyKey: boxDeletionIdempotencyKey(box)
 			});
 		} catch {
 			// The finalizer retries busy boxes until the normal operation gate opens.
