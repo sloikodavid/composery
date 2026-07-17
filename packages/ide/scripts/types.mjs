@@ -29,7 +29,6 @@ const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
 const SERVER_PATCHES = [
 	"naming.diff",
-	"local-address.diff",
 	"hardening.diff",
 	"auth.diff",
 	"readiness.diff",

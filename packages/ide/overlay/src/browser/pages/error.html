@@ -12,15 +12,20 @@
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>{{ERROR_TITLE}} - {{APP_NAME}}</title>
+		<!-- ICO first with explicit sizes, adaptive SVG last with sizes="any":
+		     Chromium picks an unsized or later-listed ICO over the SVG and the
+		     tab icon stops following the colour scheme. -->
+		<link
+			rel="icon"
+			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico"
+			type="image/x-icon"
+			sizes="32x32"
+		/>
 		<link
 			rel="icon"
 			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg"
 			type="image/svg+xml"
-		/>
-		<link
-			rel="alternate icon"
-			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico"
-			type="image/x-icon"
+			sizes="any"
 		/>
 		<link
 			rel="manifest"
@@ -38,7 +43,7 @@
 			<section class="stack" aria-labelledby="error-title">
 				<h1 id="error-title">{{ERROR_HEADER}}</h1>
 				<p>{{ERROR_BODY}}</p>
-				<a href="{{BASE}}{{TO}}">Go home</a>
+				<a class="link" href="{{BASE}}{{TO}}">Go home</a>
 			</section>
 		</main>
 	</body>

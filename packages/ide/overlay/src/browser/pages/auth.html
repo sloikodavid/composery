@@ -12,8 +12,11 @@
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>{{TITLE}}</title>
-		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg" type="image/svg+xml" />
-		<link rel="alternate icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" type="image/x-icon" />
+		<!-- ICO first with explicit sizes, adaptive SVG last with sizes="any":
+		     Chromium picks an unsized or later-listed ICO over the SVG and the
+		     tab icon stops following the colour scheme. -->
+		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
+		<link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" />
 		<link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
 		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
 		<link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/auth.css" rel="stylesheet" />

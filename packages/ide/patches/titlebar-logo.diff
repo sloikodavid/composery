@@ -57,56 +57,40 @@
  				let targetMenu: MenuId;
  				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
  					targetMenu = MenuId.TitleBarTitleContext;
---- a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
-+++ b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
-@@ -572,6 +572,10 @@
- 		}
- 		this.container.classList.add(...newTheme.classNames);
- 
-+		// Composery: stamp a class when a theme from our composery-themes extension is active (by
-+		// extension id, covers all our themes and survives label renames), so the logo can go colour vs mono.
-+		this.container.classList.toggle('composery-theme', newTheme.extensionData?.extensionId?.toLowerCase() === 'composery.composery-themes');
-+
- 		this.currentColorTheme.clearCaches();
- 		this.currentColorTheme = newTheme;
- 		if (!this.colorThemingParticipantChangeListener) {
 --- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 +++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-@@ -293,17 +293,32 @@
- 	background-image: url('../../../media/code-icon.svg');
- 	background-repeat: no-repeat;
- 	background-position: center center;
+@@ -292,16 +292,26 @@
+ .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon) {
+-	background-image: url('../../../media/code-icon.svg');
+-	background-repeat: no-repeat;
+-	background-position: center center;
 -	background-size: 16px;
-+	/* Composery: bump from the upstream 16px so the logo reads at a comfortable size. */
-+	background-size: 20px;
- }
- 
--.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
--	line-height: 30px;
-+/* Composery: outside our own themes, render the title-bar logo monochrome in the theme's
-+   button accent colour (via mask) so it doesn't clash with third-party themes. */
-+.monaco-workbench:not(.composery-theme) .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon) {
-+	background-image: none;
-+	background-color: var(--vscode-button-background, var(--vscode-activityBarBadge-background, var(--vscode-titleBar-activeForeground, var(--vscode-foreground))));
++	/* Composery: as a plain background-image the logo SVG self-colours from the BROWSER
++	   scheme (prefers-color-scheme inside the SVG), which neither the active IDE theme nor
++	   an app WebView reliably matches - a light theme in a dark browser got a near-white
++	   logo on a white titlebar, and the mobile WebView an invisible one. Paint it as a mask
++	   filled with the titlebar's own foreground so it always contrasts, under every theme,
++	   scheme and surface. Sized up from upstream's 16px so the logo reads comfortably. */
++	background-color: var(--vscode-titleBar-activeForeground);
 +	-webkit-mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
 +	mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
++}
++
++/* Composery: subtle hover on the logo link. The titlebar's window-icons hover via a
++   background-color tint, but the logo uses background-color as its mask fill, so fade opacity instead. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon):hover {
++	opacity: 0.8;
++	transition: opacity 0.1s;
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
+ 	line-height: 30px;
  }
  
 -.monaco-workbench.fullscreen .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon {
 -	display: none;
-+/* Composery: subtle hover on the logo link. The titlebar's window-icons hover via a
-+   background-color tint, but the logo already uses background for the icon itself, so fade opacity instead. */
-+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon):hover {
-+	opacity: 0.8;
-+	transition: opacity 0.1s;
-+}
-+
-+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
-+	line-height: 30px;
- }
- 
+-}
+-
 +/* Composery: upstream hides the app icon in fullscreen (desktop convention);
 +   our logo is browser chrome that stays visible on every surface. */
  /* Window Controls Container */
- .monaco-workbench .part.titlebar .window-controls-container {
- 	display: flex;

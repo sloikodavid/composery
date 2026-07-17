@@ -98,12 +98,14 @@
 	color: var(--vscode-button-foreground);
 	cursor: pointer;
 	display: inline-flex;
+	font-weight: 500;
 	gap: 8px;
 	justify-content: center;
 	margin-top: 12px;
 	min-height: 50px;
 	padding: 0 18px;
 	text-align: center;
+	text-decoration: none;
 	transition:
 		background-color 120ms ease,
 		border-color 120ms ease,
@@ -131,44 +133,32 @@
 }
 
 .submit-button.warning {
-	background: var(
-		--vscode-inputValidation-warningBackground,
-		var(--vscode-button-background)
-	);
-	border-color: var(--vscode-inputValidation-warningBorder, transparent);
-	color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+	background: var(--auth-warning);
+	color: #ffffff;
+}
+
+.submit-button.warning:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--auth-warning) 90%, transparent);
 }
 
 .submit-button.destructive {
-	background: var(
-		--vscode-inputValidation-errorBackground,
-		var(--vscode-button-background)
-	);
-	border-color: var(--vscode-inputValidation-errorBorder, transparent);
-	color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+	background: var(--vscode-errorForeground);
+	color: #ffffff;
+}
+
+.submit-button.destructive:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--vscode-errorForeground) 90%, transparent);
 }
 
 .submit-button:active {
 	transform: translateY(1px);
 }
 
+/* Visuals come from .link (global.css); this only places it in the form. */
 .auth-link {
-	color: var(--vscode-descriptionForeground, var(--vscode-foreground));
-	font-size: 12px;
-	margin-top: 14px;
+	font-size: 13px;
+	margin-top: 16px;
 	text-align: center;
-	text-decoration: none;
-}
-
-.auth-link:hover,
-.auth-link:focus {
-	color: var(--vscode-foreground);
-	text-decoration: underline;
-}
-
-.auth-link:focus-visible {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
 }
 
 .submit-button:focus {
@@ -183,24 +173,30 @@
 	width: 18px;
 }
 
+/* Field hints, styled like the website's form messages: small, muted,
+   left-aligned under their input, taking no space while empty. */
 .password-status {
 	color: var(--vscode-descriptionForeground);
 	font-size: 12px;
-	line-height: 18px;
-	min-height: 18px;
-	text-align: center;
+	line-height: 16px;
+	padding: 0 2px;
+	text-align: left;
+}
+
+.password-status:empty {
+	display: none;
 }
 
 .password-status.success {
-	color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+	color: var(--auth-success);
 }
 
 .password-status.warning {
-	color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+	color: var(--auth-warning);
 }
 
 .password-status.destructive {
-	color: var(--vscode-list-errorForeground, var(--vscode-editorError-foreground));
+	color: var(--vscode-errorForeground);
 }
 
 .auth-message {
@@ -209,10 +205,13 @@
 	display: flex;
 	justify-content: center;
 	line-height: 20px;
-	margin-top: 8px;
-	min-height: 28px;
+	margin-top: 14px;
 	text-align: center;
 	width: 100%;
+}
+
+.auth-message:empty {
+	display: none;
 }
 
 .auth-message > .error {

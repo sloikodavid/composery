@@ -58,6 +58,19 @@
 		flex: 0 0 77px !important;
 	}
 
+	/* Upstream swaps the menubar's 4px margin for `padding: 4px 5px` in fullscreen -
+	 * and a phone browser is detected as fullscreen essentially always - which shifts
+	 * the 38px overflow button 5px right and clips it against the 77px pin above.
+	 * Normalize to the non-fullscreen geometry so the pin's math holds in both states. */
+	.monaco-workbench.fullscreen
+		.part.titlebar
+		> .titlebar-container.has-center
+		> .titlebar-left
+		> .menubar:not(.compact) {
+		margin-left: 4px;
+		padding: 0;
+	}
+
 	/* VS Code's custom horizontal scrollbar responds to wheels but its hidden
 	 * content node never receives a native finger pan. Feature tables can be
 	 * wider than a phone, so let the browser own that axis on narrow screens. */
@@ -66,6 +79,17 @@
 		-webkit-overflow-scrolling: touch;
 		overscroll-behavior-x: contain;
 		touch-action: pan-x pan-y !important;
+	}
+
+	/* The extension header's name row is a nowrap flex line upstream; a long name
+	 * plus badges just clips at the header's hidden overflow on a phone. Wrap it. */
+	.extension-editor > .header > .details > .title {
+		flex-wrap: wrap;
+	}
+
+	.extension-editor > .header > .details > .title > .name {
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 
 	html,
@@ -118,6 +142,19 @@
 		.composery-agent-grid {
 		grid-template-columns: minmax(0, 1fr) !important;
 		max-width: 100% !important;
+	}
+
+	/* Upstream hides the whole welcome header (product name + subtitle) once
+	 * width-constrained. The narrow grid above allocates a header row on purpose:
+	 * branding stays visible on a phone. */
+	.monaco-workbench
+		.part.editor
+		> .content
+		.gettingStartedContainer
+		.gettingStartedSlideCategories
+		> .gettingStartedCategoriesContainer
+		> .header {
+		display: block !important;
 	}
 
 	.quick-input-widget {

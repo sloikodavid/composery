@@ -151,6 +151,9 @@ packages/
               extension.js
               package.json
               README.md
+            composery-api/
+              extension.js
+              package.json
             composery-qr/
               extension.js
               package.json
@@ -233,6 +236,7 @@ packages/
             passwordConfig.ts
             register.ts
     patches/
+      api-keys-action.diff
       api.diff
       asset-cache.diff
       auth-actions.diff
@@ -242,10 +246,10 @@ packages/
       clipboard-osc52.diff
       default-color-theme.diff
       default-layout.diff
+      editcontext-android.diff
       extensions-mobile.diff
       extensions-view-themes.diff
       hardening.diff
-      local-address.diff
       markdown-preview-loopback-callback-bridge.diff
       menu-home-actions.diff
       naming.diff

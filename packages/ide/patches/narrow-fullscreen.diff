@@ -37,10 +37,10 @@
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1688,6 +1690,26 @@
+@@ -1688,6 +1690,38 @@
  			}));
  		}
- 
+
 +		// Composery: on a narrow touch viewport keep exactly one of the side bar / panel / secondary
 +		// side bar open at a time and let it fill the screen by collapsing the editor (see
 +		// applyNarrowLayout). Record which part the user last opened as the intent, then apply.
@@ -50,6 +50,18 @@
 +			}
 +		}));
 +		this._register(addDisposableListener(mainWindow.matchMedia(NARROW_QUERY), 'change', () => this.scheduleNarrowLayout()));
++
++		// Composery: an editor open REQUEST while a part is fullscreen means the editor wants the
++		// screen - exit fullscreen and reveal it. showEditorIfHidden covers most of these via
++		// toggleMaximizedPanel, but not re-opening the already-visible editor (tapping the same
++		// extension in the marketplace list fires no visible-editors change), which then reads
++		// as a dead tap. Will-open fires for every request, deduped or not.
++		this._register(this.mainPartEditorService.onWillOpenEditor(() => {
++			if (this.isNarrowViewport && this.editorHiddenForNarrowPart && !this.inNarrowPartTransition) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
++		}));
 +
 +		// Composery: the overlay back guard (narrow.js) translates a browser/hardware back into this
 +		// event while a narrow-fullscreen part is open. Close the part - back dismisses the top

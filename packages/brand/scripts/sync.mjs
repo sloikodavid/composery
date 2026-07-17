@@ -1,6 +1,4 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,10 +18,11 @@ import { formatContent } from "../../../scripts/write-formatted.mjs";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 // `--check` verifies the committed adapters still match index.mjs (drift guard,
-// wired into `pnpm check`) instead of writing. Only the deterministic,
-// index.mjs-pure outputs are checked; the font/sharp-derived assets (logo.mjs,
-// icons.mjs) and the submodule-derived theme patch are not hermetic, so they
-// stay write-only.
+// wired into `pnpm check`) instead of writing. Every output of this script is
+// deterministic from index.mjs, so the check covers all of them; the font- and
+// sharp-derived assets (logo.mjs, icons.mjs) are not hermetic and stay outside
+// this script. The IDE color themes are hand-authored files, not generated -
+// tests/code-server-patches.test.ts guards their overlap with the brand palette.
 const CHECK = process.argv.includes("--check");
 const stale = [];
 
@@ -81,6 +80,9 @@ function idePageSchemeVars(c, dark) {
 		"--vscode-editorHoverWidget-border": c.border,
 		"--vscode-editorHoverWidget-foreground": c.popoverForeground,
 		"--vscode-errorForeground": c.destructive,
+		"--vscode-descriptionForeground": c.mutedForeground,
+		"--auth-success": c.success,
+		"--auth-warning": c.warning,
 		"--auth-input-focus": c.ring,
 		"--auth-message-background": dark ? c.secondary : c.muted,
 		"--auth-message-border": c.border,
@@ -130,273 +132,14 @@ ${cssVars(darkVars, "\t")}
 `;
 }
 
-function applyIdeColorRoles(colors, scheme) {
-	const light = scheme === "light";
-	const active = light ? theme.light : theme.dark;
-	const subtle = light ? "#00000014" : "#ffffff1f";
-	const softer = light ? "#0000000f" : "#ffffff14";
-	const strong = light ? "#00000026" : "#ffffff26";
-	const ruler = light ? "#00000033" : "#ffffff33";
-	const hover = active.muted;
-	const muted = active.mutedForeground;
-	const bg = active.background;
-	const fg = active.foreground;
-	const border = active.border;
-	const primary = active.primary;
-	const primaryForeground = active.primaryForeground;
-	const link = light ? active.foreground : "#d4d4d4";
-
-	Object.assign(colors, {
-		"activityBar.activeBorder": primary,
-		"activityBar.background": bg,
-		"activityBar.border": border,
-		"activityBar.foreground": fg,
-		"activityBar.inactiveForeground": muted,
-		"activityBarBadge.background": primary,
-		"activityBarBadge.foreground": primaryForeground,
-		"badge.background": hover,
-		"badge.foreground": fg,
-		"button.background": primary,
-		"button.foreground": primaryForeground,
-		"button.hoverBackground": light ? "#404040" : "#e5e5e5",
-		"button.secondaryBackground": hover,
-		"button.secondaryForeground": fg,
-		"button.secondaryHoverBackground": light ? "#fafafa" : "#262626",
-		"chat.slashCommandBackground": strong,
-		"chat.slashCommandForeground": fg,
-		"checkbox.background": hover,
-		"checkbox.border": border,
-		"dropdown.background": hover,
-		"dropdown.border": border,
-		"editor.background": bg,
-		"editor.findMatchBackground": strong,
-		"editor.foreground": fg,
-		"editor.inactiveSelectionBackground": hover,
-		"editor.selectionBackground": light ? "#0000001f" : "#262626",
-		"editor.selectionHighlightBackground": softer,
-		"editor.wordHighlightBackground": softer,
-		"editor.wordHighlightStrongBackground": strong,
-		"editor.findMatchHighlightBackground": strong,
-		"editor.foldBackground": strong,
-		"editor.hoverHighlightBackground": strong,
-		"editorHoverWidget.highlightForeground": strong,
-		"editorGroup.border": border,
-		"editorGroupHeader.tabsBackground": bg,
-		"editorGroupHeader.tabsBorder": border,
-		"editorGutter.modifiedBackground": link,
-		"editorLineNumber.activeForeground": fg,
-		"editorOverviewRuler.border": light ? "#0000001f" : "#ffffff12",
-		"editorOverviewRuler.findMatchForeground": ruler,
-		"editorOverviewRuler.infoForeground": muted,
-		"editorOverviewRuler.selectionHighlightForeground": ruler,
-		"editorWidget.background": bg,
-		"editorWidget.border": border,
-		"editorHoverWidget.background": bg,
-		"editorHoverWidget.border": border,
-		"editorSuggestWidget.background": bg,
-		"editorSuggestWidget.border": border,
-		"editorSuggestWidget.selectedBackground": hover,
-		"editorSuggestWidget.highlightForeground": link,
-		"editorSuggestWidget.focusHighlightForeground": link,
-		focusBorder: primary,
-		"input.background": light ? "#ffffff" : bg,
-		"input.border": border,
-		"inputOption.activeBackground": subtle,
-		"inputOption.activeBorder": primary,
-		"inputOption.activeForeground": fg,
-		"list.activeSelectionBackground": hover,
-		"list.activeSelectionForeground": fg,
-		"list.focusAndSelectionOutline": primary,
-		"list.focusHighlightForeground": link,
-		"list.focusOutline": primary,
-		"list.highlightForeground": link,
-		"list.hoverBackground": hover,
-		"list.inactiveSelectionBackground": hover,
-		"list.dropBackground": subtle,
-		"menu.background": bg,
-		"menu.border": border,
-		"menu.selectionBackground": subtle,
-		"menu.selectionForeground": fg,
-		"notificationCenterHeader.background": bg,
-		"notifications.background": bg,
-		"notifications.border": border,
-		"notebook.selectedCellBackground": strong,
-		"panel.background": bg,
-		"panel.border": border,
-		"panelSectionHeader.background": bg,
-		"panelTitle.activeBorder": primary,
-		"peekView.border": primary,
-		"peekViewEditor.background": bg,
-		"peekViewEditor.matchHighlightBackground": strong,
-		"peekViewResult.background": bg,
-		"peekViewResult.matchHighlightBackground": strong,
-		"peekViewResult.selectionBackground": hover,
-		"peekViewTitle.background": bg,
-		"pickerGroup.border": border,
-		"pickerGroup.foreground": link,
-		"progressBar.background": primary,
-		"quickInput.background": bg,
-		"quickInputList.focusBackground": hover,
-		"settings.focusedRowBorder": strong,
-		"settings.headerForeground": fg,
-		"settings.modifiedItemIndicator": primary,
-		"sideBar.background": bg,
-		"sideBar.border": border,
-		"sideBarSectionHeader.background": bg,
-		"sideBarSectionHeader.border": border,
-		"sideBarTitle.foreground": muted,
-		"statusBar.background": bg,
-		"statusBar.border": border,
-		"statusBar.debuggingBackground": primary,
-		"statusBar.debuggingForeground": primaryForeground,
-		"statusBar.focusBorder": primary,
-		"statusBar.foreground": muted,
-		"statusBar.noFolderBackground": bg,
-		"statusBarItem.focusBorder": primary,
-		"statusBarItem.remoteBackground": primary,
-		"statusBarItem.remoteForeground": primaryForeground,
-		"scrollbarSlider.background": light ? "#0000001f" : "#ffffff17",
-		"scrollbarSlider.hoverBackground": light ? "#0000002e" : "#ffffff26",
-		"scrollbarSlider.activeBackground": light ? "#00000040" : "#ffffff33",
-		"tab.activeBackground": bg,
-		"tab.activeBorder": bg,
-		"tab.activeBorderTop": primary,
-		"tab.activeForeground": fg,
-		"tab.border": border,
-		"tab.hoverBackground": hover,
-		"tab.inactiveBackground": bg,
-		"tab.inactiveForeground": muted,
-		"tab.selectedBorderTop": primary,
-		"tab.unfocusedActiveModifiedBorder": light ? "#00000040" : "#ffffff40",
-		"terminal.background": bg,
-		"terminal.inactiveSelectionBackground": subtle,
-		"terminal.tab.activeBorder": primary,
-		"terminalCursor.foreground": link,
-		"terminalCommandDecoration.successBackground": subtle,
-		"textLink.activeForeground": link,
-		"textLink.foreground": link,
-		"textPreformat.foreground": link,
-		"titleBar.activeBackground": bg,
-		"titleBar.activeForeground": fg,
-		"titleBar.border": border,
-		"titleBar.inactiveBackground": bg,
-		"welcomePage.progress.background": light ? "#0000001f" : "#ffffff17",
-		"welcomePage.tileBackground": hover,
-		"widget.border": border,
-		"agentsUpdateButton.downloadingBackground": strong,
-		"agentsUpdateButton.downloadedBackground": light ? "#00000040" : "#ffffff40"
-	});
-}
-
-async function syncIdeTheme(name, scheme) {
-	const path = join(
-		root,
-		"packages",
-		"ide",
-		"overlay",
-		"lib",
-		"vscode",
-		"extensions",
-		"composery-themes",
-		"themes",
-		`${name}.json`
-	);
-	const themeJson = JSON.parse(await readFile(path, "utf8"));
-	themeJson["//"] =
-		`${themeJson.name}, the default ${scheme} theme (see ThemeSettingDefaults in workbenchThemeService.ts). Neutral retint of VS Code ${scheme === "dark" ? "Dark" : "Light"} Modern using the shared brand palette. Syntax (tokenColors) stays Modern for readability.`;
-	applyIdeColorRoles(themeJson.colors, scheme);
-	await writeFile(path, `${json(themeJson)}\n`);
-	return themeJson;
-}
-
-function replaceTsObject(source, objectName, colors) {
-	const entries = Object.entries(colors)
-		.map(([key, value]) => `\t'${key}': '${value}'`)
-		.join(",\n");
-	const replacement = `export const ${objectName} = {\n${entries}\n};`;
-	const pattern = new RegExp(
-		`export const ${objectName} = \\{[\\s\\S]*?\\n\\};`
-	);
-	return source.replace(pattern, replacement);
-}
-
-function gitDiff(basePath, modifiedPath, label) {
-	return new Promise((resolve, reject) => {
-		const child = spawn(
-			"git",
-			["diff", "--no-index", "--no-ext-diff", "--text", basePath, modifiedPath],
-			{ cwd: root }
-		);
-		let stdout = "";
-		let stderr = "";
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
-		});
-		child.on("error", reject);
-		child.on("close", (code) => {
-			if (code === 0 || code === 1) {
-				const body = stdout
-					.split(/\r?\n/)
-					.filter(
-						(line) =>
-							!line.startsWith("diff --git ") &&
-							!line.startsWith("index ") &&
-							!line.startsWith("--- ") &&
-							!line.startsWith("+++ ")
-					)
-					.join("\n");
-				resolve(
-					`diff --git a/${label} b/${label}\n--- a/${label}\n+++ b/${label}\n${body}`
-				);
-				return;
-			}
-			reject(new Error(stderr || `git diff exited with ${code}`));
-		});
-	});
-}
-
-async function syncDefaultColorThemePatch({ darkTheme, lightTheme }) {
-	const label =
-		"lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts";
-	const upstream = join(root, "packages", "ide", "upstream", label);
-	let modified = await readFile(upstream, "utf8");
-	modified = modified
-		.replace(
-			"export const COLOR_THEME_DARK = 'Dark 2026';",
-			"export const COLOR_THEME_DARK = 'Composery Dark';"
-		)
-		.replace(
-			"export const COLOR_THEME_LIGHT = 'Light 2026';",
-			"export const COLOR_THEME_LIGHT = 'Composery Light';"
-		);
-	modified = replaceTsObject(
-		modified,
-		"COLOR_THEME_DARK_INITIAL_COLORS",
-		darkTheme.colors
-	);
-	modified = replaceTsObject(
-		modified,
-		"COLOR_THEME_LIGHT_INITIAL_COLORS",
-		lightTheme.colors
-	);
-
-	const dir = await mkdtemp(join(tmpdir(), "composery-brand-"));
-	try {
-		const basePath = join(dir, "base.ts");
-		const modifiedPath = join(dir, "modified.ts");
-		await writeFile(basePath, await readFile(upstream, "utf8"));
-		await writeFile(modifiedPath, modified);
-		await writeFile(
-			join(root, "packages", "ide", "patches", "default-color-theme.diff"),
-			await gitDiff(basePath, modifiedPath, label)
-		);
-	} finally {
-		await rm(dir, { recursive: true, force: true });
-	}
-}
+// Browser favicon that follows the OS/browser colour scheme (like github.com
+// and polar.sh): a dark mark on a light UI, a light mark on a dark UI.
+// Pages must declare the .ico fallback FIRST with an explicit sizes attribute
+// and this SVG LAST with sizes="any" - Chromium picks an unsized (or
+// later-listed) ICO over the SVG and the tab icon stops following the colour
+// scheme.
+const adaptiveFavicon = ({ width = 256, height = 256 } = {}) =>
+	`<svg width="${width}" height="${height}" viewBox="${ICON_VIEWBOX}" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:${brandColors.icon.light}}@media (prefers-color-scheme:dark){svg{color:${brandColors.icon.dark}}}</style>${iconInner()}</svg>`;
 
 await emit(
 	join(root, "packages", "web", "lib", "brand.ts"),
@@ -413,6 +156,39 @@ await emit(
 );
 
 await emit(join(root, "packages", "web", "app", "brand.css"), webThemeCss());
+
+await emit(
+	join(
+		root,
+		"packages",
+		"ide",
+		"overlay",
+		"src",
+		"browser",
+		"pages",
+		"brand.css"
+	),
+	idePageThemeCss()
+);
+
+await emit(
+	join(root, "packages", "web", "app", "icon.svg"),
+	`${adaptiveFavicon()}\n`
+);
+
+await emit(
+	join(
+		root,
+		"packages",
+		"ide",
+		"overlay",
+		"src",
+		"browser",
+		"media",
+		"favicon.svg"
+	),
+	`${adaptiveFavicon({ width: "100%", height: "100%" })}\n`
+);
 
 const appJson = JSON.parse(
 	await readFile(join(root, "packages", "mobile", "app.json"), "utf8")
@@ -435,53 +211,5 @@ if (CHECK) {
 	}
 	console.log("Brand adapters are up to date.");
 } else {
-	await writeFile(
-		join(
-			root,
-			"packages",
-			"ide",
-			"overlay",
-			"src",
-			"browser",
-			"pages",
-			"brand.css"
-		),
-		idePageThemeCss()
-	);
-
-	// Browser favicon that follows the OS/browser colour scheme (like github.com
-	// and polar.sh): a dark mark on a light UI, a light mark on a dark UI.
-	const adaptiveFavicon = ({ width = 256, height = 256 } = {}) =>
-		`<svg width="${width}" height="${height}" viewBox="${ICON_VIEWBOX}" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:${brandColors.icon.light}}@media (prefers-color-scheme:dark){svg{color:${brandColors.icon.dark}}}</style>${iconInner()}</svg>`;
-
-	await writeFile(
-		join(root, "packages", "web", "app", "icon.svg"),
-		`${adaptiveFavicon()}\n`
-	);
-
-	// One adaptive favicon, not two static ones behind link media="" attributes:
-	// Chromium ignores media="" on <link rel="icon">, so the two-file approach
-	// only switched in Firefox. Use this SVG directly in HTML so there is no
-	// second favicon candidate for browsers to pick instead.
-	await writeFile(
-		join(
-			root,
-			"packages",
-			"ide",
-			"overlay",
-			"src",
-			"browser",
-			"media",
-			"favicon.svg"
-		),
-		`${adaptiveFavicon({ width: "100%", height: "100%" })}\n`
-	);
-
-	const darkTheme = await syncIdeTheme("composery-dark", "dark");
-	const lightTheme = await syncIdeTheme("composery-light", "light");
-	await syncDefaultColorThemePatch({ darkTheme, lightTheme });
-
-	console.log(
-		"Synced generated brand adapters, CSS, IDE theme data, and static SVGs."
-	);
+	console.log("Synced generated brand adapters, CSS, and SVGs.");
 }

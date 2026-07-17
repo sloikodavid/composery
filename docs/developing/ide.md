@@ -23,8 +23,12 @@ values:
 
 - **Editor themes**.
   `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.
-  Self-contained builtin themes, VS Code Dark/Light Modern retinted to the
-  Composery brand while syntax `tokenColors` stay Modern. The true editor default via
+  Hand-authored builtin themes, VS Code Dark/Light Modern retinted to the
+  Composery brand while syntax `tokenColors` stay Modern. Not generated: the
+  brand palette is a reference, and the "default color theme" tests in
+  `tests/code-server-patches.test.ts` assert the handful of genuinely shared
+  keys (backgrounds, foregrounds, buttons, borders) still match
+  `packages/brand/index.mjs`. The true editor default via
   `packages/ide/patches/default-color-theme.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
@@ -57,13 +61,16 @@ values:
 - **Welcome tiles**.
   `packages/brand/scripts/icons.mjs`, fed by `packages/brand/index.mjs`.
 
-One place is generated, not hand-maintained: the `COLOR_THEME_*_INITIAL_COLORS`
-first-paint snapshot in `default-color-theme.diff`. Themes load asynchronously and
-frame one needs colors before the JSON parses, so VS Code keeps a synchronous
-snapshot; this is upstream's mechanism, not ours. It is generated from the theme
-JSON files and covers every key, so it cannot silently fall behind. Regenerate it
-when the themes change, never hand-edit the patch's color lines, and confirm no
-`#0078D4` dark or `#005FB8` light survives.
+The `COLOR_THEME_*_INITIAL_COLORS` first-paint snapshot also lives in
+`default-color-theme.diff`, hand-maintained like every other patch. Themes load
+asynchronously and frame one needs colors before the JSON parses, so VS Code
+keeps a synchronous snapshot; this is upstream's mechanism, not ours. The patch
+retints upstream's snapshot values with the theme JSONs' values (keys the
+themes do not define keep upstream's line), and the "default color theme" tests
+in `tests/code-server-patches.test.ts` apply the patch and fail on any key that
+drifts from the theme JSONs - so it cannot silently fall behind. When the
+themes change, update the patch's color lines too, and confirm no `#0078D4`
+dark or `#005FB8` light survives.
 
 ## Upstream / VS Code Bumps
 

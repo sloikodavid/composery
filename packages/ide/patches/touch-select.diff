@@ -24,11 +24,12 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts b/lib/vsco
 diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
 --- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
 +++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
-@@ -6,3 +6,2 @@
+@@ -6,3 +6,3 @@
  import * as dom from '../../dom.js';
 -import { EventType, Gesture } from '../../touch.js';
++import { Gesture } from '../../touch.js';
  import { ISelectBoxDelegate, ISelectBoxOptions, ISelectBoxStyles, ISelectData, ISelectOptionItem } from './selectBox.js';
-@@ -49,11 +48,4 @@ export class SelectBoxNative extends Disposable implements ISelectBoxDelegate {
+@@ -49,11 +49,10 @@ export class SelectBoxNative extends Disposable implements ISelectBoxDelegate {
  	private registerListeners() {
 -		this._register(Gesture.addTarget(this.selectElement));
 -		[EventType.Tap].forEach(eventType => {
@@ -37,6 +38,12 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts b/li
 -			}));
 -		});
 -
++		// Composery: only the untouched native activation opens the OS picker - no JS can
++		// substitute for it. A Gesture target's touchend is preventDefault()ed (killing the
++		// synthesized click), and an ancestor target - e.g. the panel title area hosting the
++		// terminal switcher - does the same, so opt this element out of Gesture entirely.
++		this._register(Gesture.ignoreTarget(this.selectElement));
++
  		this._register(dom.addStandardDisposableListener(this.selectElement, 'click', (e) => {
  			dom.EventHelper.stop(e, true);
  		}));

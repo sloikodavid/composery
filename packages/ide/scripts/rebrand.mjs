@@ -409,43 +409,6 @@ function assertBuildScriptSurvived() {
 	);
 }
 
-function syncInitialColorThemes() {
-	const themeServicePath = join(
-		target,
-		"lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts"
-	);
-	if (!existsSync(themeServicePath)) return;
-	let source = readFileSync(themeServicePath, "utf8");
-
-	for (const [constant, themeFile] of [
-		["COLOR_THEME_DARK_INITIAL_COLORS", "composery-dark.json"],
-		["COLOR_THEME_LIGHT_INITIAL_COLORS", "composery-light.json"]
-	]) {
-		const theme = JSON.parse(
-			readFileSync(
-				join(
-					PACKAGE_ROOT,
-					"overlay/lib/vscode/extensions/composery-themes/themes",
-					themeFile
-				),
-				"utf8"
-			)
-		);
-		const entries = Object.entries(theme.colors).map(
-			([key, value]) => `\t'${key}': '${value}',`
-		);
-		const replacement = `export const ${constant} = {\n${entries.join("\n")}\n};`;
-		const pattern = new RegExp(
-			`export const ${constant} = \\{[\\s\\S]*?\\n\\};`
-		);
-
-		assert(pattern.test(source), `Missing initial color constant: ${constant}`);
-		source = source.replace(pattern, replacement);
-	}
-
-	writeFileSync(themeServicePath, source);
-}
-
 if (check) {
 	prepareCheckTarget();
 } else if (!target || !existsSync(join(target, "package.json"))) {
@@ -511,8 +474,6 @@ for (const root of roots) {
 		if (after !== before) writeFileSync(file, after);
 	}
 }
-
-syncInitialColorThemes();
 
 rewriteJson(join(target, "lib/vscode/product.json"), (json) => {
 	Object.assign(json, productJsonReplacements);

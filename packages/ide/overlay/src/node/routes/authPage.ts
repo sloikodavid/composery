@@ -34,7 +34,7 @@ export const renderAuthPage = async (
 	// grant flow, so it doubles as forgotten-password recovery).
 	const changePasswordLink =
 		isCloudBox || !isEnvPasswordManaged(req)
-			? '<a class="auth-link" href="{{BASE}}/change-password">Change password</a>'
+			? '<a class="link auth-link" href="{{BASE}}/change-password">Change password</a>'
 			: "";
 	return replaceTemplates(
 		req,

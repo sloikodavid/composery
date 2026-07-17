@@ -135,7 +135,7 @@ diff --git a/src/node/main.ts b/src/node/main.ts
    const app = await createApp(args)
    const protocol = args.cert ? "https" : "http"
    const serverAddress = ensureAddress(app.server, protocol)
-@@ -155,6 +149,8 @@
+@@ -152,6 +146,8 @@
        logger.info("    - Using password from $PASSWORD")
      } else if (args.usingEnvHashedPassword) {
        logger.info("    - Using password from $HASHED_PASSWORD")

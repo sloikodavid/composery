@@ -708,6 +708,77 @@ describe("narrow overlay", () => {
 			"-\t\tthis._register(Gesture.addTarget(this.selectElement));"
 		);
 		expect(selectPatch).not.toContain("Gesture.addTarget(this.selectElement)");
+		// Removing our own target is not enough: an ANCESTOR Gesture target (the
+		// panel title area hosting the terminal switcher) also preventDefault()s the
+		// touch, so the select must be a Gesture ignore-target to open at all.
+		expect(selectPatch).toContain("Gesture.ignoreTarget(this.selectElement)");
+	});
+
+	// The welcome page wires everything through plain click listeners upstream, and
+	// a Gesture target's touchend preventDefault() suppresses the synthesized click
+	// for the whole subtree - Gesture-targeting the slides made the entire page
+	// tap-dead. Touch scrolling is native overflow instead, mirrored back into the
+	// DomScrollableElement so wheel scrolling stays consistent.
+	test("welcome page scrolls natively on touch and stays clickable", () => {
+		const welcome = readRepoFile(`${PATCHES_DIR}/welcome.diff`);
+		const welcomeAdded = addedLines(welcome);
+
+		expect(welcomeAdded).not.toContain("Gesture.addTarget");
+		expect(welcomeAdded).toContain("overflow-y: auto !important;");
+		expect(welcomeAdded).toContain(
+			"getScrollbar()?.setScrollPosition({ scrollTop: element.scrollTop, scrollLeft: element.scrollLeft })"
+		);
+		// The narrow layout allocates a welcome header row; upstream's
+		// width-constrained display:none must not win or the branding vanishes.
+		expect(readRepoFile(`${ASSETS}/narrow.css`)).toMatch(
+			/> \.header \{\s*display: block !important;/
+		);
+	});
+
+	// The logo SVG colours itself from the browser scheme (prefers-color-scheme in
+	// the SVG), which the IDE theme does not control and app WebViews report
+	// wrongly - the titlebar icon must be a mask filled from a titlebar theme
+	// colour, with no theme-class fork left behind.
+	test("titlebar logo is masked with the titlebar foreground for every theme", () => {
+		const logoPatch = readRepoFile(`${PATCHES_DIR}/titlebar-logo.diff`);
+		const logoAdded = addedLines(logoPatch);
+
+		expect(logoAdded).toContain(
+			"background-color: var(--vscode-titleBar-activeForeground);"
+		);
+		expect(logoAdded).toContain(
+			"mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;"
+		);
+		expect(logoPatch).not.toContain("composery-theme");
+		expect(logoAdded).not.toContain("background-size: 20px");
+	});
+
+	// Phone browsers are detected as fullscreen, where upstream pads the menubar
+	// (4px 5px) instead of its 4px margin - shifting the overflow button 5px right
+	// and clipping it against the 77px titlebar-left pin. narrow.css must normalize
+	// the fullscreen geometry back to the pinned math.
+	test("narrow titlebar pin holds in fullscreen", () => {
+		expect(readRepoFile(`${ASSETS}/narrow.css`)).toMatch(
+			/\.monaco-workbench\.fullscreen[\s\S]*?> \.menubar:not\(\.compact\) \{\s*margin-left: 4px;\s*padding: 0;/
+		);
+	});
+
+	// Re-opening the already-visible editor (tapping the same extension in the
+	// marketplace) fires no visible-editors change, so upstream's showEditorIfHidden
+	// never runs and the fullscreen part reads as tap-dead. The will-open event
+	// fires for every request, deduped or not.
+	test("narrow fullscreen exits on any editor open request", () => {
+		expect(
+			addedLines(readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`))
+		).toContain("this.mainPartEditorService.onWillOpenEditor(() => {");
+	});
+
+	// The extension editor header is a nowrap flex row upstream; long names clipped
+	// at the header's hidden overflow on phones instead of wrapping.
+	test("extension editor header wraps on narrow viewports", () => {
+		expect(readRepoFile(`${ASSETS}/narrow.css`)).toMatch(
+			/> \.title \{\s*flex-wrap: wrap;/
+		);
 	});
 
 	// The editor's own selection long-press must arm before Gesture's during-hold
@@ -920,19 +991,25 @@ describe("adaptive favicon", () => {
 		"packages/ide/overlay/src/browser/pages/error.html",
 		`${PATCHES_DIR}/overlays.diff`
 	])(
-		"%s ships the adaptive SVG favicon with the classic ICO alternate",
+		"%s declares the sized ICO fallback before the adaptive SVG favicon",
 		(path) => {
 			const raw = readRepoFile(path);
 			const content = path.endsWith(".diff") ? addedLines(raw) : raw;
 
-			expect(content).toContain("favicon.svg");
-			expect(content).toContain('type="image/svg+xml"');
-			// Same convention as the web app (favicon.ico + icon.svg): browsers,
-			// webviews and bookmark/crawler services without SVG-favicon support
-			// fall back to the ICO that brand icons.mjs already generates.
-			expect(content).toContain("alternate icon");
-			expect(content).toContain("favicon.ico");
+			// ICO first with an explicit sizes attribute, adaptive SVG last with
+			// sizes="any": Chromium picks an unsized or later-listed ICO over the
+			// SVG and the tab icon stops following the colour scheme. The ICO
+			// stays declared for browsers, webviews and bookmark/crawler services
+			// without SVG-favicon support.
+			const ico = content.indexOf("favicon.ico");
+			const svg = content.indexOf("favicon.svg");
+			expect(ico).toBeGreaterThan(-1);
+			expect(svg).toBeGreaterThan(ico);
 			expect(content).toContain('type="image/x-icon"');
+			expect(content).toContain('sizes="32x32"');
+			expect(content).toContain('type="image/svg+xml"');
+			expect(content).toContain('sizes="any"');
+			expect(content).not.toContain("alternate icon");
 		}
 	);
 
@@ -1137,6 +1214,264 @@ describe("composery shortcuts", () => {
 		);
 		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, true');
 		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, false');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// API keys: exercise the shipped CommonJS extension with a mocked VS Code API
+// and a mocked composery CLI.
+// ---------------------------------------------------------------------------
+
+type ApiKeysHarness = {
+	clipboard: string[];
+	commands: Map<string, () => Promise<void>>;
+	errors: string[];
+	execCalls: string[][];
+	warnings: string[];
+};
+
+function loadApiKeysExtension({
+	env = {},
+	inputText,
+	modalAction,
+	picks = [],
+	responses = []
+}: {
+	env?: Record<string, string>;
+	inputText?: string;
+	modalAction?: string;
+	picks?: string[];
+	responses?: unknown[];
+}): { run: () => Promise<void>; harness: ApiKeysHarness } {
+	const extension = readRepoFile(
+		"packages/ide/overlay/lib/vscode/extensions/composery-api/extension.js"
+	);
+	const harness: ApiKeysHarness = {
+		clipboard: [],
+		commands: new Map(),
+		errors: [],
+		execCalls: [],
+		warnings: []
+	};
+	const vscode = {
+		commands: {
+			registerCommand(name: string, callback: () => Promise<void>) {
+				harness.commands.set(name, callback);
+				return { dispose() {} };
+			}
+		},
+		env: {
+			clipboard: {
+				writeText(text: string) {
+					harness.clipboard.push(text);
+					return Promise.resolve();
+				}
+			}
+		},
+		window: {
+			showErrorMessage(message: string) {
+				harness.errors.push(message);
+				return Promise.resolve(undefined);
+			},
+			showInformationMessage() {
+				return Promise.resolve(modalAction);
+			},
+			showInputBox() {
+				return Promise.resolve(inputText);
+			},
+			showQuickPick(items: Array<{ label: string }>) {
+				const pick = picks.shift();
+				return Promise.resolve(
+					pick === undefined
+						? undefined
+						: items.find((item) => item.label === pick)
+				);
+			},
+			showWarningMessage(message: string) {
+				harness.warnings.push(message);
+				return Promise.resolve(modalAction);
+			}
+		}
+	};
+	const cjsModule: {
+		exports: { activate?: (context: { subscriptions: unknown[] }) => void };
+	} = { exports: {} };
+	const context = vm.createContext({
+		module: cjsModule,
+		process: { env },
+		require(name: string) {
+			if (name === "vscode") return vscode;
+			if (name === "child_process") {
+				return {
+					execFile(
+						command: string,
+						args: string[],
+						options: unknown,
+						callback: (error: null, stdout: string, stderr: string) => void
+					) {
+						harness.execCalls.push([command, ...args]);
+						callback(null, JSON.stringify(responses.shift()), "");
+					}
+				};
+			}
+			throw new Error(`Unexpected require: ${name}`);
+		}
+	});
+
+	vm.runInContext(extension, context);
+
+	expect(cjsModule.exports.activate).toBeDefined();
+	cjsModule.exports.activate!({ subscriptions: [] });
+	const command = harness.commands.get("composery.manageApiKeys");
+	expect(command).toBeDefined();
+	return { harness, run: () => command!() };
+}
+
+describe("composery api keys", () => {
+	const extension = readRepoFile(
+		"packages/ide/overlay/lib/vscode/extensions/composery-api/extension.js"
+	);
+	const manifest = JSON.parse(
+		readRepoFile(
+			"packages/ide/overlay/lib/vscode/extensions/composery-api/package.json"
+		)
+	) as {
+		activationEvents: string[];
+		contributes: { commands: Array<{ command: string }> };
+		extensionKind: string[];
+	};
+
+	test("manifest, extension, and home-menu patch expose one command surface", () => {
+		expect(manifest.extensionKind).toContain("workspace");
+		expect(manifest.activationEvents).toContain(
+			"onCommand:composery.manageApiKeys"
+		);
+		expect(manifest.contributes.commands).toContainEqual(
+			expect.objectContaining({ command: "composery.manageApiKeys" })
+		);
+		expect(extension).toContain('"composery.manageApiKeys"');
+		expect(
+			addedLines(readRepoFile(`${PATCHES_DIR}/api-keys-action.diff`))
+		).toContain("id: 'composery.manageApiKeys'");
+	});
+
+	test("creating a key runs the CLI and copies the secret on request", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			inputText: "ci",
+			modalAction: "Copy Key",
+			picks: ["$(add) Create API Key"],
+			responses: [
+				{ keys: [] },
+				{
+					created_at: 1752710400,
+					id: "k1",
+					name: "ci",
+					prefix: "csy_abcd1234",
+					secret: "csy_secret"
+				},
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "csy_abcd1234"
+						}
+					]
+				}
+			]
+		});
+
+		await run();
+
+		expect(harness.execCalls).toEqual([
+			["composery", "api", "key", "list", "--json"],
+			["composery", "api", "key", "create", "--name", "ci", "--json"],
+			["composery", "api", "key", "list", "--json"]
+		]);
+		expect(harness.clipboard).toEqual(["csy_secret"]);
+		expect(harness.errors).toEqual([]);
+	});
+
+	test("revoking asks first and passes the picked key id", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			modalAction: "Revoke",
+			picks: ["ci"],
+			responses: [
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "csy_abcd1234"
+						}
+					]
+				},
+				{ id: "k1", revoked: true },
+				{ keys: [] }
+			]
+		});
+
+		await run();
+
+		expect(harness.warnings[0]).toBe('Revoke API key "ci"?');
+		expect(harness.execCalls[1]).toEqual([
+			"composery",
+			"api",
+			"key",
+			"revoke",
+			"k1",
+			"--json"
+		]);
+	});
+
+	test("a dismissed confirmation revokes nothing", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			picks: ["ci"],
+			responses: [
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "csy_abcd1234"
+						}
+					]
+				},
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "csy_abcd1234"
+						}
+					]
+				}
+			]
+		});
+
+		await run();
+
+		expect(harness.execCalls.map((call) => call[3])).toEqual(["list", "list"]);
+	});
+
+	test("warns when the API is disabled, with the server's flag literal", async () => {
+		expect(
+			readRepoFile("packages/ide/overlay/src/node/routes/api/config.ts")
+		).toContain("COMPOSERY_API_ENABLED");
+		expect(extension).toContain("COMPOSERY_API_ENABLED");
+
+		const { harness, run } = loadApiKeysExtension({
+			env: { COMPOSERY_API_ENABLED: "false" },
+			responses: [{ keys: [] }]
+		});
+
+		await run();
+
+		expect(harness.warnings[0]).toContain("COMPOSERY_API_ENABLED=false");
 	});
 });
 
@@ -1376,5 +1711,115 @@ describe("composery updates", () => {
 		expect(harness.messages).toEqual([
 			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
 		]);
+	});
+});
+
+describe("default color theme", () => {
+	const themeServiceRel =
+		"lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts";
+
+	const themeColors = (file: string): Record<string, string> =>
+		(
+			JSON.parse(
+				readRepoFile(
+					`packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/${file}`
+				)
+			) as { colors: Record<string, string> }
+		).colors;
+
+	// Apply the patch alone onto the pristine upstream file, so the assertions
+	// run against exactly what the build tree contains after quilt.
+	const patchedThemeService = (): string => {
+		const shadow = mkdtempSync(resolve(tmpdir(), "composery-theme-"));
+		try {
+			const dst = resolve(shadow, themeServiceRel);
+			mkdirSync(posix.dirname(dst.replaceAll("\\", "/")), { recursive: true });
+			copyFileSync(
+				resolve(repoRoot, "packages/ide/upstream", themeServiceRel),
+				dst
+			);
+			execFileSync(
+				"patch",
+				[
+					"-p1",
+					"--fuzz=0",
+					"-i",
+					resolve(repoRoot, PATCHES_DIR, "default-color-theme.diff")
+				],
+				{ cwd: shadow, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+			);
+			return readFileSync(dst, "utf8").replaceAll("\r\n", "\n");
+		} finally {
+			rmSync(shadow, { recursive: true, force: true });
+		}
+	};
+
+	const patched = patchedThemeService();
+
+	test("Composery themes are the ThemeSettingDefaults", () => {
+		expect(patched).toContain(
+			"export const COLOR_THEME_DARK = 'Composery Dark';"
+		);
+		expect(patched).toContain(
+			"export const COLOR_THEME_LIGHT = 'Composery Light';"
+		);
+	});
+
+	// The INITIAL_COLORS blocks are upstream's synchronous first-paint snapshot
+	// of the default themes (themes load async from extension JSON). The patch
+	// retints them by hand; this keeps the retint honest against the theme
+	// JSONs. Keys the themes do not define keep upstream's values.
+	test.each([
+		["COLOR_THEME_DARK_INITIAL_COLORS", "composery-dark.json"],
+		["COLOR_THEME_LIGHT_INITIAL_COLORS", "composery-light.json"]
+	])("%s first paint agrees with %s", (constant, themeFile) => {
+		const block = new RegExp(
+			`export const ${constant} = \\{\\n([\\s\\S]*?)\\n\\};`
+		).exec(patched)?.[1];
+		expect(block).toBeDefined();
+
+		const colors = themeColors(themeFile);
+		let compared = 0;
+		for (const line of block!.split("\n")) {
+			const entry = /^\t'([^']+)': '([^']*)',?$/.exec(line);
+			if (!entry) continue;
+			const key = entry[1]!;
+			if (!(key in colors)) continue;
+			compared++;
+			expect(entry[2], key).toBe(colors[key]);
+		}
+		expect(compared).toBeGreaterThan(100);
+	});
+
+	// The theme JSONs are hand-authored; only where they genuinely share the
+	// brand palette must they match it (a check instead of a generator). The
+	// palette is read from the generated web brand.css, which sync.mjs --check
+	// pins to packages/brand/index.mjs.
+	const brandTokens = (selector: string): Record<string, string> => {
+		const block = new RegExp(`${selector} \\{([\\s\\S]*?)\\}`).exec(
+			readRepoFile("packages/web/app/brand.css")
+		)?.[1];
+		expect(block).toBeDefined();
+		return Object.fromEntries(
+			[...block!.matchAll(/--([\w-]+): ([^;]+);/g)].map((entry) => [
+				entry[1]!,
+				entry[2]!
+			])
+		);
+	};
+
+	test.each([
+		["composery-dark.json", "\\.dark"],
+		["composery-light.json", ":root"]
+	])("%s matches the brand palette where they overlap", (file, selector) => {
+		const colors = themeColors(file);
+		const brand = brandTokens(selector);
+
+		expect(colors["editor.background"]).toBe(brand["background"]);
+		expect(colors["editor.foreground"]).toBe(brand["foreground"]);
+		expect(colors["button.background"]).toBe(brand["primary"]);
+		expect(colors["button.foreground"]).toBe(brand["primary-foreground"]);
+		expect(colors["activityBar.background"]).toBe(brand["background"]);
+		expect(colors["editorGroup.border"]).toBe(brand["border"]);
 	});
 });

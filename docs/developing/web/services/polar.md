@@ -39,7 +39,7 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 
 4. Create one organization custom field (Settings -> Custom Fields), attach it
    to the Box product, and make it a **required checkbox**:
-   - Slug `composery_terms_v1`.
+   - Slug `composery-terms-v1`.
    - Label `I agree to the Composery Terms of Service.`
    - Help text linking to `https://www.composery.io/terms`.
 

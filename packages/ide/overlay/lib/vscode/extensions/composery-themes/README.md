@@ -12,12 +12,15 @@ release tree during the build, so the themes are available with no Dockerfile or
 
 - `themes/composery-dark.json`, `themes/composery-light.json` - VS Code
   Dark/Light Modern retints with Composery-specific workbench colors. Syntax
-  `tokenColors` stay Modern for readability.
+  `tokenColors` stay Modern for readability. Hand-authored; the "default color
+  theme" tests in `tests/code-server-patches.test.ts` guard their overlap with
+  the brand palette.
 - The theme colors should stay symmetric: every chrome key one theme retints,
   the other should too.
 - The first-paint color snapshot in
-  `packages/ide/patches/default-color-theme.diff` is generated from these theme
-  files so browser startup does not flash stale colors.
+  `packages/ide/patches/default-color-theme.diff` mirrors these theme files so
+  browser startup does not flash stale colors; the same tests fail if the
+  patch and the themes drift apart, so update both together.
 
 ## Local Testing
 

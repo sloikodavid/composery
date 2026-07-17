@@ -23,8 +23,8 @@
 @@ -30,6 +30,9 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
 -		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" />
-+		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
@@ -54,8 +54,8 @@
 @@ -27,7 +27,18 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
 -		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" />
-+		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
  		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">

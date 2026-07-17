@@ -20,9 +20,15 @@ The API is on by default but **auto-gated**: with no keys, every endpoint return
 
 ## API keys
 
-Keys are created, listed, and revoked **on the instance** with the `composery` CLI -
-local shell access is the authorization. You cannot mint a key remotely without
-already being able to log in, which is the intended boundary.
+Keys are created, listed, and revoked **on the instance** - being able to open the
+editor is the authorization. You cannot mint a key remotely without already being
+able to log in, which is the intended boundary.
+
+In the editor, open the **File** menu and choose **Manage API Keys**. It lists the
+instance's keys, creates new ones, and revokes the one you pick; a new key's secret
+appears once, with a button to copy it.
+
+In a terminal, the `composery` CLI does the same:
 
 ```bash
 composery api key create --name ci      # prints the secret ONCE
