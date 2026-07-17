@@ -456,6 +456,7 @@ packages/
         github-icon.tsx
         hetzner.tsx
         layout-grid.tsx
+        linkedin-icon.tsx
         lock.tsx
         login.tsx
         pen-tool.tsx

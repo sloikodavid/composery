@@ -1,6 +1,5 @@
 // The official GitHub icon, filled with currentColor so it tracks the theme.
-// Static on purpose: this is the brand icon used in the header and on /pricing,
-// distinct from the animated `github` glyph in ./github.tsx used for buttons.
+// Static on purpose, like the other brand marks in this directory.
 export function GitHubIcon({ className }: { className?: string }) {
 	return (
 		<svg

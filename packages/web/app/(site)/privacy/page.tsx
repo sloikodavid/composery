@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
-import { SUPPORT_EMAIL } from "@/lib/links";
 
 export const metadata: Metadata = {
 	title: "Privacy Policy",
@@ -120,9 +119,8 @@ export default function PrivacyPage() {
 					Depending on where you live, you may ask for access, correction,
 					deletion, restriction, portability, or an objection to processing. You
 					may complain to the Irish Data Protection Commission or your local
-					supervisory authority. Email{" "}
-					<CopyEmail className="link" />{" "}
-					to exercise a right. We may need to check your identity. You can also
+					supervisory authority. Email <CopyEmail className="link" /> to
+					exercise a right. We may need to check your identity. You can also
 					manage or delete your account from the Clerk user menu.
 				</p>
 			</LegalSection>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { GitHubIcon } from "@/components/icons/github-icon";
+import { LinkedInIcon } from "@/components/icons/linkedin-icon";
 import { XIcon } from "@/components/icons/x-icon";
 import { Logo } from "@/components/logo";
 import {
@@ -8,6 +9,7 @@ import {
 	GITHUB_BUG_URL,
 	GITHUB_IDEAS_URL,
 	GITHUB_REPO_URL,
+	LINKEDIN_URL,
 	X_URL
 } from "@/lib/links";
 
@@ -71,6 +73,15 @@ export function Footer() {
 							target="_blank"
 						>
 							<XIcon className="size-4" />X
+						</a>
+						<a
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							href={LINKEDIN_URL}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<LinkedInIcon className="size-4" />
+							LinkedIn
 						</a>
 						<a
 							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"

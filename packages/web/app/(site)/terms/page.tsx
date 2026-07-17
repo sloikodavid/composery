@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
-import { SUPPORT_EMAIL } from "@/lib/links";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
