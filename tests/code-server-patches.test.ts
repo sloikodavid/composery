@@ -16,6 +16,7 @@ import { describe, expect, test } from "vitest";
 
 import {
 	addedLines,
+	applyPatch,
 	evaluatePatchSnippets,
 	extractAddedFunction,
 	readRepoFile,
@@ -153,11 +154,7 @@ describe("patch stack lint", () => {
 						}
 					}
 					try {
-						execFileSync("patch", ["-p1", "--fuzz=0", "-i", patchFile], {
-							cwd: shadow,
-							encoding: "utf8",
-							stdio: ["ignore", "pipe", "pipe"]
-						});
+						applyPatch(patchFile, shadow);
 					} catch (error) {
 						const output = error as { stdout?: string; stderr?: string };
 						expect.fail(
@@ -2043,15 +2040,9 @@ describe("default color theme", () => {
 				resolve(repoRoot, "packages/ide/upstream", themeServiceRel),
 				dst
 			);
-			execFileSync(
-				"patch",
-				[
-					"-p1",
-					"--fuzz=0",
-					"-i",
-					resolve(repoRoot, PATCHES_DIR, "default-color-theme.diff")
-				],
-				{ cwd: shadow, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+			applyPatch(
+				resolve(repoRoot, PATCHES_DIR, "default-color-theme.diff"),
+				shadow
 			);
 			return readFileSync(dst, "utf8").replaceAll("\r\n", "\n");
 		} finally {

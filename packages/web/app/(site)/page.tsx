@@ -80,8 +80,8 @@ export default function Home() {
 					Check on your agents from anywhere.
 				</h2>
 				<p className="mx-auto mt-3 max-w-[36rem] text-muted-foreground">
-					Your agents keep working with your laptop closed. Open your Composery to see
-					what they did, and tell them what is next.
+					Your agents keep working with your laptop closed. Open your Composery
+					to see what they did, and tell them what is next.
 				</p>
 				<ThemedShot
 					alt="The same Composery instance on a phone: the welcome screen, Claude Code running in the terminal, and the morning brief."

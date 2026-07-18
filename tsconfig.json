@@ -13,9 +13,5 @@
 		"types": ["node"],
 		"verbatimModuleSyntax": true
 	},
-	"include": [
-		"rootfs/opt/composery/**/*.ts",
-		"tests/**/*.ts",
-		"vitest.config.ts"
-	]
+	"include": ["packages/shared/index.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

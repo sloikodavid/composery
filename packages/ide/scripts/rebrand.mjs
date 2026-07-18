@@ -17,7 +17,7 @@ import {
 	REPO,
 	WEBSITE_DOMAIN,
 	WEBSITE_ORIGIN
-} from "../../constants/index.mjs";
+} from "../../shared/index.ts";
 
 // The Composery-side coordinates the upstream (coder) strings rewrite to. All
 // derive from the shared identity constants so a fork repoints in one place.
@@ -308,7 +308,15 @@ function archive(sourceRepo, archivePath, paths) {
 }
 
 function extract(archivePath, destination) {
-	run("tar", ["-xf", archivePath, "-C", destination]);
+	// Colon-free relative paths keep both tars happy: MSYS/GNU tar (git-bash)
+	// reads the ":" in an absolute C:\ path as a remote-host prefix.
+	run(
+		"tar",
+		["-xf", relative(destination, archivePath).replaceAll("\\", "/")],
+		{
+			cwd: destination
+		}
+	);
 	rmSync(archivePath, { force: true });
 }
 

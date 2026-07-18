@@ -63,7 +63,9 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
-          # Non-blocking here; release.yml is the blocking vulnerability gate.
+          # Informational: findings surface as SARIF code-scanning alerts here and
+          # in release.yml (which rescans the exact published digest); neither scan
+          # blocks, since unfixed base-image CVEs would brick every PR and release.
           exit-code: "0"
       - uses: github/codeql-action/upload-sarif@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
         if: >-

@@ -1,10 +1,44 @@
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import vm from "node:vm";
 
 import ts from "typescript";
 
 export const repoRoot = resolve(import.meta.dirname, "..", "..");
+
+// GNU patch is on PATH on Linux/CI; Windows shells usually miss it, but Git
+// for Windows ships it in <git>/usr/bin. Resolving it here keeps the suite
+// running identically on both, so a local pass predicts a CI pass.
+export const patchBin = (() => {
+	if (spawnSync("patch", ["--version"], { stdio: "ignore" }).status === 0) {
+		return "patch";
+	}
+	if (process.platform === "win32") {
+		const gitCore = execFileSync("git", ["--exec-path"], {
+			encoding: "utf8"
+		}).trim();
+		const bundled = resolve(
+			gitCore,
+			"..",
+			"..",
+			"..",
+			"usr",
+			"bin",
+			"patch.exe"
+		);
+		if (existsSync(bundled)) return bundled;
+	}
+	throw new Error("GNU patch not found; the patch-stack tests need it.");
+})();
+
+export function applyPatch(patchFile: string, cwd: string): void {
+	execFileSync(patchBin, ["-p1", "--fuzz=0", "-i", patchFile], {
+		cwd,
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"]
+	});
+}
 
 export function readRepoFile(path: string): string {
 	return readFileSync(resolve(repoRoot, path), "utf8");

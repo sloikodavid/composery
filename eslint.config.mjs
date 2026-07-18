@@ -6,7 +6,6 @@ const TS_FILES = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 
 export default defineConfig(
 	globalIgnores([
-		"coverage/",
 		"tmp/",
 		"vendor/",
 		"**/.next/**",

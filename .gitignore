@@ -1,6 +1,5 @@
 tmp/
 node_modules/
-coverage/
 .cache/
 .env
 .env.*
