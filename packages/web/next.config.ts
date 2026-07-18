@@ -10,7 +10,10 @@ const nextConfig: NextConfig = {
 	// workspace lockfile instead of inferring a root from this package.
 	turbopack: {
 		root: join(import.meta.dirname, "..", "..")
-	}
+	},
+	// The `shared` package ships raw .ts (imported directly, no build step), so
+	// transpile it like first-party source.
+	transpilePackages: ["shared"]
 };
 
 export default withMDX(nextConfig);

@@ -9,7 +9,7 @@
 
 `packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
-- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `brand`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars use Composery names (`COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`, `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`, `COMPOSERY_GITHUB_TOKEN`, plus the narrower `COMPOSERY_*` toggles). `PORT` stays generic.
+- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars use Composery names (`COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`, `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`, `COMPOSERY_GITHUB_TOKEN`, plus the narrower `COMPOSERY_*` toggles). `PORT` stays generic.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
 - `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. Put systematic product renames there so bumps fail loudly and do not scatter broad rename hunks across upstream files.
 - No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
@@ -91,13 +91,6 @@ docs/
   meta.json
   persistence.md
 packages/
-  brand/
-    scripts/
-      icons.mjs
-      logo.mjs
-      sync.mjs
-    index.mjs
-    package.json
   cli/
     crates/
       composery/
@@ -250,6 +243,7 @@ packages/
       extensions-mobile.diff
       extensions-view-themes.diff
       hardening.diff
+      local-media-preview.diff
       markdown-preview-loopback-callback-bridge.diff
       menu-home-actions.diff
       naming.diff
@@ -257,6 +251,7 @@ packages/
       narrow-gate.diff
       node-engine.diff
       overlays.diff
+      product-icon-themes.diff
       qr-action.diff
       readiness.diff
       series
@@ -273,10 +268,12 @@ packages/
       touch-enter.diff
       touch-fling-catch.diff
       touch-gate.diff
+      touch-inline-actions.diff
       touch-input-context-menu.diff
       touch-list-focus.diff
       touch-markdown-links.diff
       touch-menu.diff
+      touch-native-selection.diff
       touch-reveal-guard.diff
       touch-sash.diff
       touch-select.diff
@@ -321,7 +318,6 @@ packages/
         pressable-scale.tsx
         spinner.tsx
       lib/
-        brand.ts
         fonts.ts
         haptics.ts
         id.ts
@@ -352,6 +348,13 @@ packages/
     package.json
     tsconfig.json
     vitest.config.ts
+  shared/
+    scripts/
+      icons.mjs
+      logo.mjs
+      sync.mjs
+    index.ts
+    package.json
   web/
     app/
       (site)/
@@ -663,7 +666,7 @@ packages/
       box-slug.test.ts
       box-slug.ts
       brand-assets.ts
-      brand.ts
+      clerk-appearance.test.ts
       clerk-appearance.ts
       cloud-legal.ts
       convex-dashboard.ts

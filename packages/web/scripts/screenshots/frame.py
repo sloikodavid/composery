@@ -200,7 +200,7 @@ def fit(img, final_w):
 
 
 # ---------------------------------------------------------------- desktop Safari
-def safari_window(name, scheme, host="dave.composery.cloud", s=2, content_w=None):
+def safari_window(name, scheme, host="my-box.composery.cloud", s=2, content_w=None):
     """A macOS Tahoe Safari 26 window, rebuilt against Apple's own screenshots.
 
     Returns the finished window and its alpha mask; macbook() puts it on the

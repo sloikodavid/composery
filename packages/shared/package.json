@@ -1,10 +1,10 @@
 {
-	"name": "brand",
+	"name": "shared",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./index.mjs"
+		".": "./index.ts"
 	},
 	"scripts": {
 		"build": "node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs",

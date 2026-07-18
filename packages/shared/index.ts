@@ -1,3 +1,16 @@
+// The single source of truth for who/what this project is: brand, identity, and
+// the pure (zero-dependency) icon-SVG builders derived from them. Everything here
+// is plain data or pure string functions, so every surface imports it DIRECTLY -
+// web, mobile, the IDE build scripts, and rebrand.mjs - with no generated copies
+// and no drift. Node imports it via type-stripping; bundlers transpile it.
+//
+// Files that cannot import TS (Dockerfile, compose, templates/, .env.example.*,
+// CI, Markdown) duplicate these values by hand; CONTAINER_IMAGE and REPO below are
+// the canonical copy to sync them to. CSS variables and raster/logo picture assets
+// are derived from this file by the generator scripts in ./scripts.
+
+// --- Brand -----------------------------------------------------------------
+
 export const BRAND_NAME = "Composery";
 export const LOGO_TEXT = "Composery";
 
@@ -29,7 +42,7 @@ export const brandColors = {
 		destructive: "#dc2626",
 		info: "#2563eb"
 	}
-};
+} as const;
 
 export const theme = {
 	light: {
@@ -104,18 +117,23 @@ export const theme = {
 		sidebarBorder: "#ffffff1f",
 		sidebarRing: "#737373"
 	}
-};
+} as const;
 
-const ICON_PATH =
-	"M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z";
-const ICON_SLIT_PATH = "M12 15.5 L12 3.6";
-const ICON_MASK_ID = "composery-icon-holes";
+// SCREAMING_CASE aliases: the app-facing name for the palette/theme.
+export const BRAND_COLORS = brandColors;
+export const BRAND_THEME = theme;
+
+// --- Icon SVG builders (pure, zero-dep) ------------------------------------
 
 // The raw shape is drawn in a 0..20 space then rotated 135deg about (12,12), which
 // leaves the ink off-center with uneven padding - it spans ~[0.62..18.23], not the
 // full box. This scales and re-centers the ink so the icon fills its 0..20 box flush,
 // with no dead space, in every consumer - without changing the design. Ink bounds
 // measured with tmp/measure-icon.mjs; update if ICON_PATH or the stroke width changes.
+const ICON_PATH =
+	"M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z";
+const ICON_SLIT_PATH = "M12 15.5 L12 3.6";
+const ICON_MASK_ID = "composery-icon-holes";
 const ICON_INK_MIN = 0.617;
 const ICON_INK_SIZE = 17.617;
 const ICON_FIT_SCALE = 20 / ICON_INK_SIZE;
@@ -163,3 +181,46 @@ export function centeredIconSvg({
 	const transform = `translate(128 128) scale(${iconScale}) translate(-10 -10)`;
 	return `<svg width="${size}" height="${size}" viewBox="0 0 256 256" fill="none" color="${color}" xmlns="http://www.w3.org/2000/svg"><g transform="${transform}">${iconInner({ fill })}</g></svg>`;
 }
+
+// Pre-rendered icon strings the apps embed directly.
+export const ICON_SVG = iconInner();
+export const ICON_XML = iconSvg({ viewBox: ICON_CROP_VIEWBOX });
+
+// --- Identity --------------------------------------------------------------
+
+// The legal person behind Composery Cloud. Shown on the Terms and Privacy pages
+// and used as the merchant/support identity. The address is a legal requirement
+// for the terms; swap all four fields to re-owner the hosted service.
+export const OWNER = {
+	legalName: "David Sloiko",
+	tradingName: "Composery",
+	jurisdiction: "Ireland",
+	address: "20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland",
+	email: "sloikodavid@gmail.com"
+} as const;
+
+// GitHub coordinates. A fork repoints these once and every derived URL follows.
+export const REPO = {
+	owner: "sloikodavid",
+	name: "composery",
+	branch: "main"
+} as const;
+
+// Social handles: x.com/<x>, linkedin.com/company/<linkedin>.
+export const SOCIAL = {
+	x: "sloikodavid",
+	linkedin: "composery"
+} as const;
+
+// Marketing site. The hosted cloud's own domains are env-driven at runtime
+// (CLOUD_DOMAIN / WEBSITE_ORIGIN, see packages/web/convex/env.ts); these are the
+// build-time defaults for static site copy and links.
+export const WEBSITE_DOMAIN = "composery.io";
+export const WEBSITE_ORIGIN = "https://www.composery.io";
+
+// Published runtime image on GHCR. Infra files that can't import TS (Dockerfile,
+// compose, templates/, .env.example.*) hardcode this same string - keep in sync.
+export const CONTAINER_IMAGE = "ghcr.io/sloikodavid/composery";
+
+export const APP_DESCRIPTION =
+	"Composery is an always-on cloud IDE: VS Code in the browser or on your phone, self-hosted on your own server or managed in Composery Cloud, and made for long-running AI agents.";

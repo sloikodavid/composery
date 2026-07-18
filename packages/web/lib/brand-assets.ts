@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { BRAND_COLORS, ICON_SVG } from "@/lib/brand";
+import { BRAND_COLORS, ICON_SVG } from "shared";
 import {
 	LOGO_HEIGHT,
 	LOGO_INNER,

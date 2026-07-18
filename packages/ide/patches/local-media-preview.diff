@@ -1,0 +1,55 @@
+Open local media selections without corrupting their bytes: browsers without
+the File System Access API fall back to a FileReader upload, but the upstream
+path always turns its buffer into a string-backed untitled editor. Media
+previews need a readable binary resource, so retain media bytes in the existing
+temporary filesystem and open that resource directly. Text files keep the
+upstream untitled-editor behavior.
+
+--- a/lib/vscode/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
++++ b/lib/vscode/src/vs/workbench/services/dialogs/browser/fileDialogService.ts
+@@ -11,11 +11,12 @@
+ import { memoize } from '../../../../base/common/decorators.js';
+ import { HTMLFileSystemProvider } from '../../../../platform/files/browser/htmlFileSystemProvider.js';
+ import { localize } from '../../../../nls.js';
+-import { getMediaOrTextMime } from '../../../../base/common/mime.js';
++import { getMediaMime, getMediaOrTextMime } from '../../../../base/common/mime.js';
+ import { basename } from '../../../../base/common/resources.js';
+ import { getActiveWindow, triggerDownload, triggerUpload } from '../../../../base/browser/dom.js';
+ import Severity from '../../../../base/common/severity.js';
+ import { VSBuffer } from '../../../../base/common/buffer.js';
++import { generateUuid } from '../../../../base/common/uuid.js';
+ import { extractFileListData } from '../../../../platform/dnd/browser/dnd.js';
+ import { Iterable } from '../../../../base/common/iterator.js';
+ import { WebFileSystemAccess } from '../../../../platform/files/browser/webFileSystemAccess.js';
+@@ -248,13 +249,28 @@
+ 					if (files) {
+ 						const filesData = (await this.instantiationService.invokeFunction(accessor => extractFileListData(accessor, files))).filter(fileData => !fileData.isDirectory);
+ 						if (filesData.length > 0) {
+-							this.editorService.openEditors(filesData.map(fileData => {
++							const editors = await Promise.all(filesData.map(async fileData => {
++								let resource = fileData.resource;
++								let contents = fileData.contents;
++
++								// Composery: an untitled editor turns binary data into text before media
++								// preview extensions can read it. Keep local media byte-exact in the
++								// temporary filesystem without adding it to the workspace.
++								if (contents && getMediaMime(resource.path)) {
++									const folder = URI.from({ scheme: Schemas.tmp, path: `/external/${generateUuid()}` });
++									await this.fileService.createFolder(folder);
++									resource = URI.joinPath(folder, basename(resource));
++									await this.fileService.writeFile(resource, contents);
++									contents = undefined;
++								}
++
+ 								return {
+-									resource: fileData.resource,
+-									contents: fileData.contents?.toString(),
++									resource,
++									contents: contents?.toString(),
+ 									options: { pinned: true }
+ 								};
+ 							}));
++							await this.editorService.openEditors(editors);
+ 						}
+ 					}
+ 				}

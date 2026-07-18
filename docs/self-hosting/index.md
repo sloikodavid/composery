@@ -40,6 +40,41 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
   EFS at `/data` (advanced).
 - **Azure Container Apps** - needs an Azure Files share mounted at `/data`, or use a VM.
 
+## Updating
+
+Composery ships as a single rolling image; there is no migration step to run on upgrade.
+The [persistence](../persistence.md) daemon re-applies your saved deltas over each new
+image's baseline on boot, so an upgrade keeps your state:
+
+- your `/data` volume is never touched by an upgrade;
+- files you changed keep your version;
+- files you removed stay removed;
+- every system file you never touched moves to the new image's version automatically.
+
+Upgrade by pulling the new image and recreating the container from the same volume. With
+Docker Compose:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Other targets do the same thing their own way: redeploy or restart the service so it pulls
+the new image while keeping the `/data` volume attached.
+
+Choose how eagerly you take upgrades with the image tag:
+
+- `ghcr.io/sloikodavid/composery:latest` - always the newest stable release (the default in
+  every recipe here);
+- `ghcr.io/sloikodavid/composery:0.1` - the latest patch of one minor line, with no surprise
+  minor or major jumps;
+- `ghcr.io/sloikodavid/composery:0.1.0` - an exact build that changes only when you change
+  the tag.
+
+Back up the `/data` volume before a major upgrade. Your changes are stored as deltas against
+the image baseline, so a volume backup is the clean way back if a major jump does not suit
+you.
+
 ## Hardening
 
 Whatever target you pick, treat the browser password and reverse proxy as the security
@@ -49,6 +84,6 @@ boundary - Composery is intentionally root-capable inside the container:
 - register a strong password, or set `COMPOSERY_PASSWORD` /
   `COMPOSERY_HASHED_PASSWORD`
   (see [Configuration](../configuration.md));
-- keep the image updated;
+- keep the image [updated](#updating);
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;
 - back up the named Docker volume or the mounted `/data` disk before major upgrades.

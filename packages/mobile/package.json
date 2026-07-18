@@ -3,6 +3,7 @@
 	"main": "expo-router/entry",
 	"version": "1.0.0",
 	"dependencies": {
+		"shared": "workspace:*",
 		"@expo-google-fonts/inter": "^0.4.2",
 		"@expo/dom-webview": "~56.0.6",
 		"@expo/metro-runtime": "~56.0.16",

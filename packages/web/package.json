@@ -23,6 +23,7 @@
 		"@base-ui/react": "^1.5.0",
 		"@clerk/nextjs": "7.4.2",
 		"@clerk/ui": "1.14.0",
+		"shared": "workspace:*",
 		"@convex-dev/polar": "0.9.2",
 		"@convex-dev/resend": "^0.2.4",
 		"@convex-dev/workflow": "0.4.4",

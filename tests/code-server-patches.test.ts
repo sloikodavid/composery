@@ -177,6 +177,22 @@ describe("patch stack lint", () => {
 	);
 });
 
+describe("local media preview", () => {
+	test("keeps uploaded media binary and outside the workspace", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/local-media-preview.diff`)
+		);
+
+		expect(source).toContain("if (contents && getMediaMime(resource.path))");
+		expect(source).toContain("scheme: Schemas.tmp");
+		expect(source).toContain(
+			"await this.fileService.writeFile(resource, contents)"
+		);
+		expect(source).toContain("contents = undefined");
+		expect(source).toContain("await this.editorService.openEditors(editors)");
+	});
+});
+
 describe("QR action", () => {
 	test("is unavailable for addresses another device cannot reach", () => {
 		const source = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
@@ -291,6 +307,14 @@ describe("soft-keyboard enter", () => {
 			" \t\t\tthis.input.type = this.options.type || 'text';"
 		);
 	});
+
+	test("quick input text prompts get a tap path that bypasses the IME", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch-enter.diff`));
+
+		// The OK button feeds the same accept emitter Enter does; showing it on
+		// touch guarantees submission even when the IME emits no event at all.
+		expect(source).toContain("ok: isTouch(dom.getWindow(this.ui.container)),");
+	});
 });
 
 describe("touch link activation", () => {
@@ -345,6 +369,40 @@ describe("touch link activation", () => {
 		expect(source).toContain("TouchEventType.Tap");
 		// Tap resolves the anchor from the touched node, not the dispatch target.
 		expect(source).toContain("DOM.isHTMLElement(e.initialTarget)");
+	});
+});
+
+describe("touch inline actions", () => {
+	test("lists, tables and trees stand down on taps consumed by inline controls", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-inline-actions.diff`)
+		);
+
+		const guards = source.match(
+			/e\.browserEvent\.type === TouchEventType\.Tap && e\.browserEvent\.defaultPrevented/g
+		);
+		// onViewPointer + onDoubleClick in listWidget, onViewPointer in abstractTree.
+		expect(guards).toHaveLength(3);
+	});
+
+	test("hover-revealed action bars stay visible on touch", () => {
+		const css = readRepoFile(`${ASSETS}/touch.css`);
+
+		for (const surface of [
+			".quick-input-list-entry-action-bar",
+			".pane-header.expanded > .actions",
+			".custom-view-tree-node-item",
+			".scm-view",
+			".open-editors",
+			".debug-pane",
+			".markers-panel",
+			".comments-panel",
+			".keybindings-table-container",
+			".setting-toolbar-container"
+		]) {
+			expect(css).toContain(surface);
+		}
+		expect(css).toContain(".tabs-list .actions");
 	});
 });
 
@@ -572,14 +630,77 @@ describe("narrow overlay", () => {
 		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
 	});
 
-	// The touch-editor patch creates selection-handle elements that only the
-	// touch overlay styles; the pair must name the same class.
-	test("touch selection handles are styled by the touch overlay", () => {
+	// The touch-editor patch creates the caret drag handle that only the touch
+	// overlay styles; the pair must name the same class. Range selection handles
+	// are the browser's own (native selection) and must not come back as custom
+	// elements.
+	test("touch caret handle is styled by the touch overlay", () => {
 		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
-		expect(touchEditorPatch).toContain("composery-touch-selection-handles");
-		expect(touchCss).toContain(".composery-touch-selection-handle");
+		expect(touchEditorPatch).toContain("composery-touch-caret-handle");
+		expect(touchCss).toContain(".composery-touch-caret-handle");
+		expect(touchEditorPatch).not.toContain("composery-touch-selection-handle");
+		expect(touchCss).not.toContain("composery-touch-selection-handle");
+	});
+
+	// Native mobile text selection: the browser creates it (long-press on now-
+	// selectable lines), the editor mirrors it into the model, and the clipboard
+	// payload comes from the model - rendered spans use no-break spaces and stop
+	// at the rendered viewport, so a DOM copy would corrupt the text.
+	test("native selection is unblocked, synced, and clipboard-owned", () => {
+		const gesturePatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-native-selection.diff`)
+		);
+		const touchEditorPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		);
+		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
+
+		// Gesture stands down from preventDefault inside the zone (start, and moves
+		// still inside the tap-cancel slop); everywhere else keeps it.
+		expect(gesturePatch).toContain(
+			"public static nativeSelectionZone(element: HTMLElement): IDisposable"
+		);
+		expect(gesturePatch).toContain("if (!allNativeZone) {");
+		expect(gesturePatch).toContain(
+			"nativeStationary = nativeStationary && !!data && data.nativeZone && !data.tapCancelled;"
+		);
+
+		// The editor registers the zone, mirrors selectionchange into the model and
+		// owns the copy payload.
+		expect(touchEditorPatch).toContain(
+			"Gesture.nativeSelectionZone(this.viewHelper.linesContentDomNode)"
+		);
+		expect(touchEditorPatch).toContain("'selectionchange'");
+		expect(touchEditorPatch).toContain("generateDataToCopyAndStoreInMemory");
+
+		// Chromium only selects what user-select allows, and Monaco stays the single
+		// selection painter - the browser's own highlight is made transparent.
+		expect(touchCss).toContain("user-select: text !important");
+		expect(touchCss).toContain(
+			".monaco-workbench .monaco-editor .view-lines ::selection"
+		);
+	});
+
+	// Android fires a real contextmenu while its long-press starts the native
+	// selection and again when a handle drag ends; neither may open the IDE menu.
+	// The IDE menu on touch comes from the in-selection hold timer instead - armed
+	// on Start and surviving the browser's touchcancel takeover.
+	test("IDE context menu is arbitrated around the native selection", () => {
+		const touchEditorPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		);
+
+		expect(touchEditorPatch).toContain(
+			"if (isAndroid && this._lastPointerType === 'touch'"
+		);
+		expect(touchEditorPatch).toContain(
+			"gesture.startedOnText && !gesture.startedInSelection"
+		);
+		expect(touchEditorPatch).toContain(
+			"if (gesture.canceled && gesture.menuTimer !== undefined)"
+		);
 	});
 
 	// A pan can start on editor padding as well as rendered text. It must be
@@ -591,11 +712,11 @@ describe("narrow overlay", () => {
 		);
 
 		expect(touchEditorPatch).toContain(
-			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_SELECTION_THRESHOLD"
+			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_PAN_THRESHOLD"
 		);
 		expect(touchEditorPatch).toContain("this._touchGesture.panned = true");
 		expect(touchEditorPatch).toContain(
-			"Once scrolling is applied, release must not also focus as a tap"
+			"if (this._touchGesture?.panned || this._touchGesture?.menuOpened)"
 		);
 		expect(touchEditorPatch).toContain("if (!keyboardVisible");
 		expect(touchEditorPatch).not.toContain("revealAllCursors");
@@ -878,12 +999,12 @@ describe("narrow overlay", () => {
 		);
 	});
 
-	// The editor's own selection long-press must arm before Gesture's during-hold
-	// context menu fires, or a long-press would open the menu instead of
-	// selecting the word under the finger.
-	test("editor selection hold time stays below the gesture hold delay", () => {
+	// The editor's in-selection menu hold must fire before Gesture's during-hold
+	// fallback, or the fallback would dispatch a second context menu for the same
+	// press before the editor marks the gesture as consumed.
+	test("editor menu hold time stays below the gesture hold delay", () => {
 		const selectionHold = Number(
-			/TOUCH_SELECTION_HOLD_TIME = (\d+)/.exec(
+			/TOUCH_SELECTION_MENU_HOLD_TIME = (\d+)/.exec(
 				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
 			)?.[1]
 		);
@@ -901,11 +1022,13 @@ describe("narrow overlay", () => {
 	});
 
 	// Both patches encode the same device-verified "finger moved enough that this
-	// is a pan, not a tap" magnitude: the editor's selection threshold and the
-	// gesture tap-cancel slop. They live in different files, so pin them together.
-	test("editor selection threshold matches the gesture tap-cancel slop", () => {
+	// is a pan, not a tap" magnitude: the editor's pan threshold and the gesture
+	// tap-cancel slop. The native-selection move exemption keys on the same slop,
+	// so a drift would let stationary-window moves reach the browser after the
+	// editor already started panning. They live in different files - pin them.
+	test("editor pan threshold matches the gesture tap-cancel slop", () => {
 		const selectionThreshold = Number(
-			/TOUCH_SELECTION_THRESHOLD = (\d+)/.exec(
+			/TOUCH_PAN_THRESHOLD = (\d+)/.exec(
 				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
 			)?.[1]
 		);
@@ -1001,29 +1124,24 @@ describe("narrow overlay", () => {
 	});
 
 	// window.ts blocks native contextmenus AND TextInputActionsProvider shows a themed input
-	// menu - together they suppress the OS text-selection toolbar (Cut/Copy/Paste/Select all +
-	// Web search/Look up/Open in...) on touch, where it is the better fit for a plain field and
-	// is what iOS shows anyway. Both must step aside for a real editable control on touch; the
-	// code editor keeps its gesture menu (hidden input excluded, rendered text is a non-editable
-	// span), and mouse/desktop keeps the themed menu.
+	// menu - together they suppress the OS text-selection toolbar on touch, where it is the
+	// better fit for a plain field and is what iOS shows anyway. Both must step aside for a real
+	// editable control on touch; the code editor keeps its gesture menu (hidden input excluded),
+	// and mouse/desktop keeps the themed menu.
 	test("touch routes real editable controls to the native selection toolbar", () => {
 		const patch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/touch-input-context-menu.diff`)
 		);
 
-		// window.ts: don't block the native contextmenu for an editable control on touch...
 		expect(patch).toContain(
 			"isTouch(getWindow(this.layoutService.mainContainer))"
 		);
 		expect(patch).toContain("isEditableElement(target)");
-		// ...but keep the editor's own hidden input on the gesture menu.
 		expect(patch).toContain("!target.classList.contains('inputarea')");
 		expect(patch).toContain(
 			"!target.classList.contains('native-edit-context')"
 		);
-		// TextInputActionsProvider: step aside on touch so it doesn't preventDefault + take over.
 		expect(patch).toContain("if (isTouch(targetWindow)) {");
-		// Non-editable / mouse paths still get the blocked-native + themed-menu behavior.
 		expect(patch).toContain("EventHelper.stop(e, true)");
 	});
 
@@ -1890,6 +2008,17 @@ describe("composery updates", () => {
 	});
 });
 
+describe("product icon themes", () => {
+	test("late-loaded fonts repaint product icons on Android Chromium", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/product-icon-themes.diff`)
+		);
+
+		expect(source).toContain("font-display: swap");
+		expect(source).not.toContain("font-display: block");
+	});
+});
+
 describe("default color theme", () => {
 	const themeServiceRel =
 		"lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts";
@@ -1970,7 +2099,7 @@ describe("default color theme", () => {
 	// The theme JSONs are hand-authored; only where they genuinely share the
 	// brand palette must they match it (a check instead of a generator). The
 	// palette is read from the generated web brand.css, which sync.mjs --check
-	// pins to packages/brand/index.mjs.
+	// pins to packages/shared/index.ts.
 	const brandTokens = (selector: string): Record<string, string> => {
 		const block = new RegExp(`${selector} \\{([\\s\\S]*?)\\}`).exec(
 			readRepoFile("packages/web/app/brand.css")

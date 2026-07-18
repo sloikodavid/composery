@@ -1,4 +1,4 @@
-import { BRAND_THEME } from "@/lib/brand";
+import { BRAND_THEME } from "shared";
 
 export type Palette = {
 	background: string;

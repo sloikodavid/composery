@@ -2,192 +2,212 @@
 	const href = document.getElementById("href")
 	if (href) href.value = location.href
 
-	for (const input of document.querySelectorAll(
-		".monaco-inputbox > .ibwrapper > .input"
-	)) {
-		const inputBox = input.closest(".monaco-inputbox")
-		input.classList.toggle("empty", !input.value)
-		input.addEventListener("focus", () =>
-			inputBox?.classList.add("synthetic-focus")
-		)
-		input.addEventListener("blur", () =>
-			inputBox?.classList.remove("synthetic-focus")
-		)
-		input.addEventListener("input", () =>
-			input.classList.toggle("empty", !input.value)
-		)
-		if (!input.closest("[data-password-flow]")) {
-			input.addEventListener("keydown", (event) => {
-				if (event.key === "Enter") {
-					event.preventDefault()
-					input.form?.requestSubmit()
-				}
-			})
-		}
-	}
+	// Staged single-input flow: every auth page is a list of [data-stage]
+	// sections showing one input at a time, with the crumb row as both label
+	// and back-navigation and one fixed status line under the input. The same
+	// engine runs one-stage pages (login) and multi-stage ones (register,
+	// change-password); the cloud error page has no stages and no form logic.
+	const form = document.querySelector(".auth-form")
+	const stages = form ? Array.from(form.querySelectorAll("[data-stage]")) : []
+	const status = form ? form.querySelector("[data-status]") : null
+	const submit = form ? form.querySelector('.submit-button[type="submit"]') : null
+	const submitText = submit ? submit.querySelector("span") : null
+	if (!form || !stages.length || !status || !submit || !submitText) return
 
-	const flow = document.querySelector("[data-password-flow]")
-	if (!flow || !window.composeryPasswordCheck) return
+	const crumbs = Array.from(form.querySelectorAll("[data-crumb]"))
+	const inputs = stages.map((stage) => stage.querySelector("input"))
+	const passwordIndex = inputs.findIndex((input) =>
+		input?.hasAttribute("data-password-input")
+	)
+	const confirmIndex = inputs.findIndex((input) =>
+		input?.hasAttribute("data-password-confirm")
+	)
+	const passwordCheck =
+		passwordIndex >= 0 ? window.composeryPasswordCheck : undefined
 
-	const form = flow.closest("form")
-	const passwordInput = flow.querySelector("[data-password-input]")
-	const confirmInput = flow.querySelector("[data-password-confirm]")
-	const passwordStatus = flow.querySelector("[data-password-status]")
-	const confirmStatus = flow.querySelector("[data-confirm-status]")
-	const submitButton = form?.querySelector("[data-password-submit]")
-	const submitText = submitButton?.querySelector("span")
-	if (
-		!form ||
-		!passwordInput ||
-		!confirmInput ||
-		!passwordStatus ||
-		!confirmStatus ||
-		!submitButton ||
-		!submitText
-	) {
-		return
-	}
-
-	const submitLabel = submitButton.dataset.submitLabel
+	let current = 0
 	let readyToSubmit = false
-	let breachController
+	// The server-rendered error (wrong password, rate limit) owns the status
+	// line until the user interacts; then the stage messaging takes over.
+	let serverError = !!status.textContent.trim()
 	let breach = { password: "", status: "idle" }
-
-	function setStatus(element, message, tone) {
-		element.textContent = message
-		element.classList.remove("success", "warning", "destructive")
-		if (tone) element.classList.add(tone)
-	}
+	let breachController
 
 	function currentBreach() {
-		return breach.password === passwordInput.value
+		return passwordIndex >= 0 && breach.password === inputs[passwordIndex].value
 			? breach
-			: { password: passwordInput.value, status: "idle" }
+			: { password: inputs[passwordIndex]?.value ?? "", status: "idle" }
 	}
 
-	function renderPassword() {
-		const password = passwordInput.value
-		const strength = window.composeryPasswordCheck.checkStrength(password)
+	function setStatus(message, tone) {
+		status.textContent = message
+		status.classList.remove("success", "warning", "destructive")
+		if (tone) status.classList.add(tone)
+	}
+
+	function renderStatus() {
+		if (serverError) return
+		if (current === passwordIndex && passwordCheck) {
+			const input = inputs[passwordIndex]
+			const check = currentBreach()
+			if (check.status === "checking") {
+				setStatus("Checking known breaches.")
+			} else if (check.status === "found") {
+				setStatus(
+					`Found in ${new Intl.NumberFormat("en").format(check.count)} breach records.`,
+					"destructive"
+				)
+			} else if (input.value) {
+				setStatus(passwordCheck.checkStrength(input.value).message)
+			} else {
+				setStatus("")
+			}
+			input.setAttribute(
+				"aria-invalid",
+				check.status === "found" ? "true" : "false"
+			)
+		} else if (current === confirmIndex) {
+			const input = inputs[confirmIndex]
+			if (!input.value) {
+				input.removeAttribute("aria-invalid")
+				setStatus("")
+				return
+			}
+			const matches = input.value === inputs[passwordIndex]?.value
+			input.setAttribute("aria-invalid", matches ? "false" : "true")
+			setStatus(
+				matches ? "Matches" : "Does not match",
+				matches ? "success" : "destructive"
+			)
+		} else {
+			setStatus("")
+		}
+	}
+
+	function renderSubmit() {
 		const check = currentBreach()
-		let message = password ? strength.message : ""
-		let tone = password && !strength.ok ? "warning" : undefined
-		let label = password && !strength.ok ? "Use anyway?" : submitLabel
-		let variant = password && !strength.ok ? "warning" : undefined
-
-		if (check.status === "checking") {
-			message = "Checking known breaches."
-			tone = undefined
-		} else if (check.status === "found") {
-			message = `Found in ${new Intl.NumberFormat("en").format(check.count)} breach records. Not recommended.`
-			tone = "destructive"
-			label = "Use anyway?"
-			variant = "destructive"
-		} else if (check.status === "clear") {
-			message = "Not found in known breaches."
-			tone = "success"
-		} else if (check.status === "unavailable") {
-			message = "Breach check unavailable. You can continue."
-			tone = "warning"
+		let label = stages[current].dataset.button
+		let variant
+		if (current === passwordIndex && passwordCheck) {
+			const value = inputs[passwordIndex].value
+			if (check.status === "found") {
+				label = "Use anyway?"
+				variant = "destructive"
+			} else if (value && !passwordCheck.checkStrength(value).ok) {
+				label = "Use anyway?"
+				variant = "warning"
+			}
 		}
-
-		setStatus(passwordStatus, message, tone)
-		passwordInput.setAttribute(
-			"aria-invalid",
-			check.status === "found" ? "true" : "false"
-		)
 		submitText.textContent = label
-		submitButton.classList.remove("warning", "destructive")
-		if (variant) submitButton.classList.add(variant)
-		submitButton.disabled = check.status === "checking"
-		submitButton.setAttribute(
-			"aria-busy",
-			check.status === "checking" ? "true" : "false"
-		)
+		submit.classList.remove("warning", "destructive")
+		if (variant) submit.classList.add(variant)
+		const checking = current === passwordIndex && check.status === "checking"
+		submit.disabled = checking
+		submit.setAttribute("aria-busy", checking ? "true" : "false")
 	}
 
-	function renderConfirmation() {
-		if (!confirmInput.value) {
-			confirmInput.removeAttribute("aria-invalid")
-			setStatus(confirmStatus, "")
-			return
-		}
-		const matches = confirmInput.value === passwordInput.value
-		confirmInput.setAttribute("aria-invalid", matches ? "false" : "true")
-		setStatus(
-			confirmStatus,
-			matches ? "Matches" : "Does not match",
-			matches ? "success" : "destructive"
+	function render() {
+		stages.forEach((stage, index) =>
+			stage.toggleAttribute("hidden", index !== current)
 		)
+		for (const crumb of crumbs) {
+			const index = Number(crumb.dataset.crumb)
+			crumb.toggleAttribute("hidden", index > current)
+			if (crumb.matches("button")) {
+				if (index === current) crumb.setAttribute("aria-current", "step")
+				else crumb.removeAttribute("aria-current")
+			}
+		}
+		renderStatus()
+		renderSubmit()
+	}
+
+	function setStage(index) {
+		current = index
+		render()
+		inputs[index]?.focus()
 	}
 
 	async function checkBreach(password) {
 		const existing = currentBreach()
-		if (existing.status === "checking") return "checking"
-		if (["clear", "found", "unavailable"].includes(existing.status)) {
-			return existing.status
-		}
-
+		if (existing.status !== "idle") return existing.status
 		breachController?.abort()
 		breachController = new AbortController()
 		breach = { password, status: "checking" }
-		renderPassword()
+		render()
 		try {
-			const count = await window.composeryPasswordCheck.checkPwned(
+			const count = await passwordCheck.checkPwned(
 				password,
 				breachController.signal
 			)
-			if (passwordInput.value !== password) return "unavailable"
-			breach = {
-				count,
-				password,
-				status: count > 0 ? "found" : "clear"
-			}
+			if (inputs[passwordIndex].value !== password) return "unavailable"
+			breach = { count, password, status: count > 0 ? "found" : "clear" }
 		} catch {
-			if (passwordInput.value !== password) return "unavailable"
+			if (inputs[passwordIndex].value !== password) return "unavailable"
 			breach = { password, status: "unavailable" }
 		}
-		renderPassword()
+		render()
 		return breach.status
 	}
 
-	async function checkAndSubmit() {
-		if (!form.checkValidity()) {
-			form.reportValidity()
+	async function advance() {
+		const input = inputs[current]
+		if (input && !input.reportValidity()) return
+		if (current === passwordIndex && passwordCheck) {
+			const password = input.value
+			// A breach found by this click only reveals its red state; using the
+			// password anyway takes a second, informed click. An unavailable
+			// check never blocks - it just proceeds unchecked.
+			const alreadyBreached = currentBreach().status === "found"
+			const result = await checkBreach(password)
+			if (inputs[passwordIndex].value !== password) return
+			if (result === "checking") return
+			if (result === "found" && !alreadyBreached) return
+		}
+		if (current === confirmIndex && input.value !== inputs[passwordIndex]?.value) {
+			serverError = false
+			renderStatus()
+			input.focus()
 			return
 		}
-		if (passwordInput.value !== confirmInput.value) {
-			renderConfirmation()
-			confirmInput.focus()
+		if (current < stages.length - 1) {
+			serverError = false
+			setStage(current + 1)
 			return
 		}
-
-		const password = passwordInput.value
-		const alreadyBreached = currentBreach().status === "found"
-		const result = await checkBreach(password)
-		if (passwordInput.value !== password || result === "checking") return
-		if (result === "found" && !alreadyBreached) return
-
 		readyToSubmit = true
-		form.requestSubmit(submitButton)
+		form.requestSubmit(submit)
 	}
 
-	passwordInput.addEventListener("input", () => {
-		breachController?.abort()
-		readyToSubmit = false
-		breach = { password: "", status: "idle" }
-		renderPassword()
-		renderConfirmation()
+	inputs.forEach((input, index) => {
+		input?.addEventListener("input", () => {
+			serverError = false
+			readyToSubmit = false
+			if (index === passwordIndex) {
+				breachController?.abort()
+				breach = { password: "", status: "idle" }
+			}
+			renderStatus()
+			renderSubmit()
+		})
 	})
-	confirmInput.addEventListener("input", () => {
-		readyToSubmit = false
-		renderConfirmation()
-	})
+
+	for (const crumb of crumbs) {
+		if (!crumb.matches("button")) continue
+		crumb.addEventListener("click", () => {
+			const index = Number(crumb.dataset.crumb)
+			if (index >= current) return
+			serverError = false
+			readyToSubmit = false
+			setStage(index)
+		})
+	}
+
 	form.addEventListener("submit", (event) => {
 		if (readyToSubmit) return
 		event.preventDefault()
-		void checkAndSubmit()
+		void advance()
 	})
 
-	renderPassword()
-	renderConfirmation()
+	render()
 })()

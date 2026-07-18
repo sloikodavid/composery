@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { OWNER, WEBSITE_DOMAIN } from "shared";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
@@ -12,10 +13,11 @@ export default function TermsPage() {
 	return (
 		<LegalPage title="Terms of Service">
 			<p>
-				These terms are an agreement between you and David Sloiko, trading as
-				Composery in Ireland (“Composery”), for composery.io and Composery
-				Cloud. They do not replace the Apache 2.0 licence governing the
-				separately distributed open-source software.
+				These terms are an agreement between you and {OWNER.legalName}, trading
+				as
+				{OWNER.tradingName} in {OWNER.jurisdiction} (“{OWNER.tradingName}”), for{" "}
+				{WEBSITE_DOMAIN} and Composery Cloud. They do not replace the Apache 2.0
+				licence governing the separately distributed open-source software.
 			</p>
 			<LegalSection title="Eligibility and accounts">
 				<p>
@@ -119,9 +121,9 @@ export default function TermsPage() {
 					available in their home country.
 				</p>
 				<address className="not-italic">
-					David Sloiko, trading as Composery
+					{OWNER.legalName}, trading as {OWNER.tradingName}
 					<br />
-					20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland
+					{OWNER.address}
 					<br />
 					<CopyEmail className="link" />
 				</address>

@@ -43,7 +43,7 @@ import {
 	TableRow
 } from "@/components/table";
 import { Textarea } from "@/components/textarea";
-import { BRAND_COLORS } from "@/lib/brand";
+import { BRAND_COLORS } from "shared";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 
 export const metadata: Metadata = {
@@ -176,7 +176,7 @@ export default async function DesignPage() {
 		<PageTemplate breadcrumbs={[{ icon: PenToolIcon, label: "Design" }]}>
 			<div className="space-y-8">
 				<Section
-					note="The Composery logo pairs the standalone icon with styled text. The shared source lives in packages/brand/index.mjs and feeds web, mobile, and IDE assets."
+					note="The Composery logo pairs the standalone icon with styled text. The shared source lives in packages/shared/index.ts and feeds web, mobile, and IDE assets."
 					title="Logo"
 				>
 					<div className="space-y-5">

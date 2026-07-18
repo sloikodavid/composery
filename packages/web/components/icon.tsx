@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { ICON_SVG, ICON_VIEWBOX } from "@/lib/brand";
+import { ICON_SVG, ICON_VIEWBOX } from "shared";
 
 export { ICON_SVG };
 

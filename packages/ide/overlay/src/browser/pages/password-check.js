@@ -12,13 +12,6 @@
 	]
 
 	function checkStrength(password) {
-		if (!password) {
-			return {
-				ok: false,
-				message: "Choose a password for this box."
-			}
-		}
-
 		const normalized = password.toLowerCase()
 		const categories = [
 			/[a-z]/.test(password),
@@ -40,14 +33,6 @@
 			return { ok: false, message: "Avoid repeated characters." }
 		}
 
-		const score = [
-			password.length >= 14,
-			password.length >= 18,
-			password.length >= 24,
-			categories >= 2,
-			categories >= 3,
-			uniqueCharacters >= Math.min(password.length, 10)
-		].filter(Boolean).length
 		const ok =
 			password.length >= 20 ||
 			(password.length >= 14 && categories >= 2) ||
@@ -55,23 +40,85 @@
 
 		return {
 			ok,
-			message: ok
-				? score >= 5
-					? "Looks strong. We will check breaches before continuing."
-					: "Looks okay. A longer passphrase would be stronger."
-				: "Use a longer passphrase or mix in another character type."
+			message: ok ? "" : "Use a longer passphrase or another character type."
 		}
 	}
 
-	async function checkPwned(password, signal) {
-		const digest = await crypto.subtle.digest(
-			"SHA-1",
-			new TextEncoder().encode(password)
-		)
-		const hash = Array.from(new Uint8Array(digest))
+	function hex(bytes) {
+		return Array.from(bytes)
 			.map((byte) => byte.toString(16).padStart(2, "0"))
 			.join("")
 			.toUpperCase()
+	}
+
+	// SHA-1 per FIPS 180-4, used only to derive the k-anonymity prefix for the
+	// Pwned Passwords range API. crypto.subtle exists only in secure contexts,
+	// so boxes reached over plain HTTP (LAN IPs, TLS-less self-hosting) need
+	// this fallback for the breach check to work at all.
+	function sha1HexFallback(bytes) {
+		const length = bytes.length
+		const padded = new Uint8Array((((length + 8) >> 6) + 1) << 6)
+		padded.set(bytes)
+		padded[length] = 0x80
+		const view = new DataView(padded.buffer)
+		view.setUint32(padded.length - 8, length >>> 29)
+		view.setUint32(padded.length - 4, (length << 3) >>> 0)
+
+		const state = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0]
+		const words = new Uint32Array(80)
+		for (let block = 0; block < padded.length; block += 64) {
+			for (let i = 0; i < 16; i++) words[i] = view.getUint32(block + i * 4)
+			for (let i = 16; i < 80; i++) {
+				const word =
+					words[i - 3] ^ words[i - 8] ^ words[i - 14] ^ words[i - 16]
+				words[i] = (word << 1) | (word >>> 31)
+			}
+			let [a, b, c, d, e] = state
+			for (let i = 0; i < 80; i++) {
+				const f =
+					i < 20
+						? (b & c) | (~b & d)
+						: i < 40
+							? b ^ c ^ d
+							: i < 60
+								? (b & c) | (b & d) | (c & d)
+								: b ^ c ^ d
+				const k =
+					i < 20
+						? 0x5a827999
+						: i < 40
+							? 0x6ed9eba1
+							: i < 60
+								? 0x8f1bbcdc
+								: 0xca62c1d6
+				const next = (((a << 5) | (a >>> 27)) + f + e + k + words[i]) >>> 0
+				e = d
+				d = c
+				c = ((b << 30) | (b >>> 2)) >>> 0
+				b = a
+				a = next
+			}
+			state[0] = (state[0] + a) >>> 0
+			state[1] = (state[1] + b) >>> 0
+			state[2] = (state[2] + c) >>> 0
+			state[3] = (state[3] + d) >>> 0
+			state[4] = (state[4] + e) >>> 0
+		}
+		return state
+			.map((word) => word.toString(16).padStart(8, "0"))
+			.join("")
+			.toUpperCase()
+	}
+
+	async function sha1Hex(bytes) {
+		if (typeof crypto !== "undefined" && crypto.subtle) {
+			return hex(new Uint8Array(await crypto.subtle.digest("SHA-1", bytes)))
+		}
+		return sha1HexFallback(bytes)
+	}
+
+	async function checkPwned(password, signal) {
+		const hash = await sha1Hex(new TextEncoder().encode(password))
 		const prefix = hash.slice(0, 5)
 		const suffix = hash.slice(5)
 		const response = await fetch(

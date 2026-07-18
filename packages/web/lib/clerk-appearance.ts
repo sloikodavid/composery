@@ -30,16 +30,10 @@ export const clerkAppearance = {
 			"-apple-system, BlinkMacSystemFont, var(--font-inter), 'Inter Variable', Inter, 'Segoe UI', system-ui, sans-serif"
 	},
 	elements: {
-		rootBox: "w-full",
-		cardBox:
-			"w-full rounded-[min(var(--radius-4xl),24px)] border border-border shadow-none!",
-		card: "bg-transparent! shadow-none!",
 		popoverBox:
 			"rounded-[min(var(--radius-4xl),24px)] border border-border shadow-lg!",
 		userButtonPopoverCard:
 			"rounded-[min(var(--radius-4xl),24px)] border border-border shadow-lg!",
-		modalContent:
-			"rounded-[min(var(--radius-4xl),24px)] border-0! bg-transparent! shadow-none!",
 		headerTitle: "font-heading text-lg font-medium text-foreground",
 		headerSubtitle: "text-[15px] text-muted-foreground",
 		// Primary/outline buttons mirror components/button.tsx (default + outline
@@ -71,7 +65,6 @@ export const clerkAppearance = {
 			"rounded-lg border border-border focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25",
 		dividerLine: "bg-border",
 		dividerText: "text-[15px] text-muted-foreground",
-		footer: "bg-transparent! text-muted-foreground",
 		footerActionLink:
 			"text-primary transition-colors hover:text-[color-mix(in_oklab,var(--primary)_80%,var(--background))]",
 		badge: "rounded-lg text-xs font-medium",
@@ -86,6 +79,19 @@ export const clerkAppearance = {
 			},
 			"&:focus": { opacity: 1, backgroundColor: "transparent" }
 		}
+	}
+} as const;
+
+// The route embeds SignIn directly in the page, so its outer card should sit
+// flush with the page. Keep that choice component-local: Clerk deliberately
+// renders modal flows as raised even when an embedded component is flush.
+export const signInAppearance = {
+	...clerkAppearance,
+	options: { elevation: "flush" },
+	elements: {
+		...clerkAppearance.elements,
+		rootBox: "w-full",
+		cardBox: "w-full"
 	}
 } as const;
 

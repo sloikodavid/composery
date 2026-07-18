@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
+import { OWNER, WEBSITE_DOMAIN } from "shared";
 
 export const metadata: Metadata = {
 	title: "Privacy Policy",
@@ -12,11 +13,11 @@ export default function PrivacyPage() {
 	return (
 		<LegalPage title="Privacy Policy">
 			<p>
-				This policy applies to composery.io and the hosted Composery Cloud
-				service. David Sloiko, trading as Composery in Ireland, is the data
-				controller for that service. A person or organisation running the
-				open-source software themselves is responsible for their own deployment
-				and is a separate controller.
+				This policy applies to {WEBSITE_DOMAIN} and the hosted Composery Cloud
+				service. {OWNER.legalName}, trading as {OWNER.tradingName} in{" "}
+				{OWNER.jurisdiction}, is the data controller for that service. A person
+				or organisation running the open-source software themselves is
+				responsible for their own deployment and is a separate controller.
 			</p>
 			<LegalSection title="What we collect">
 				<ul className="list-disc space-y-2 pl-5">

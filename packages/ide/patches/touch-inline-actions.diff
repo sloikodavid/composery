@@ -1,0 +1,73 @@
+Inline row/header actions (SCM stage/discard, quick pick item buttons, custom
+tree actions, open editors close, markers quick fix, settings gear, ...) are
+hover-revealed upstream and therefore unreachable on touch; touch.css keeps
+them visible there. That exposes a Gesture hazard this patch closes: taps are
+dispatched to every registered ancestor in turn rather than bubbled, so an
+action item's Tap handler cannot stop the list's the way its click handler
+stops a click's propagation - but its preventDefault survives the redispatch
+(paneview already relies on exactly that). Lists, tables and trees now stand
+down on consumed taps instead of also selecting, activating, or toggling the
+row underneath the button.
+
+--- a/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
+@@ -9,7 +9,7 @@
+ import { asCssValueWithDefault } from '../../cssValue.js';
+ import { DomEmitter } from '../../event.js';
+ import { IKeyboardEvent, StandardKeyboardEvent } from '../../keyboardEvent.js';
+-import { Gesture } from '../../touch.js';
++import { EventType as TouchEventType, Gesture } from '../../touch.js';
+ import { alert, AriaRole } from '../aria/aria.js';
+ import { CombinedSpliceable } from './splice.js';
+ import { ScrollableElementChangeOptions } from '../scrollbar/scrollableElementOptions.js';
+@@ -774,6 +774,14 @@
+ 			return;
+ 		}
+ 
++		// Composery: Gesture taps are dispatched to every registered ancestor in turn
++		// rather than bubbled, so an inline control's Tap handler cannot stop this one
++		// the way its click handler stops a click's propagation - but its preventDefault
++		// does survive the redispatch. A consumed tap is not the row's to handle.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (e.browserEvent.isHandledByList) {
+ 			return;
+ 		}
+@@ -811,6 +819,11 @@
+ 			return;
+ 		}
+ 
++		// Composery: see onViewPointer - a tap consumed by an inline control stays consumed.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (this.isSelectionChangeEvent(e)) {
+ 			return;
+ 		}
+--- a/lib/vscode/src/vs/base/browser/ui/tree/abstractTree.ts
++++ b/lib/vscode/src/vs/base/browser/ui/tree/abstractTree.ts
+@@ -9,6 +9,7 @@
+ import { asCssValueWithDefault } from '../../cssValue.js';
+ import { DomEmitter } from '../../event.js';
+ import { StandardKeyboardEvent } from '../../keyboardEvent.js';
++import { EventType as TouchEventType } from '../../touch.js';
+ import { ActionBar } from '../actionbar/actionbar.js';
+ import { IContextViewProvider } from '../contextview/contextview.js';
+ import { FindInput } from '../findinput/findInput.js';
+@@ -2379,6 +2380,13 @@
+ 			return;
+ 		}
+ 
++		// Composery: a tap consumed by an inline control (its Tap handler preventDefaults)
++		// must not toggle or activate the node - Gesture redispatches the same event to
++		// every registered ancestor, so stopPropagation alone cannot protect the row.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (e.browserEvent.isHandledByList) {
+ 			return;
+ 		}

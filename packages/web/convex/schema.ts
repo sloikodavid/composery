@@ -176,9 +176,6 @@ export default defineSchema({
 		polar_customer_id: v.optional(v.string()),
 		polar_subscription_id: v.optional(v.string()),
 		polar_initial_order_id: v.optional(v.string()),
-		// Unwritten since passwords moved out of checkout; kept only so rows
-		// created before that validate. Drop once those intents purge.
-		runtime_auth_hash: v.optional(v.string()),
 		terms_accepted_at: v.optional(v.number()),
 		terms_version: v.optional(v.string()),
 		created_at: v.number(),

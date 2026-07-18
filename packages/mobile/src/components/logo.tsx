@@ -2,7 +2,7 @@ import { Text, View } from "react-native";
 import { SvgXml } from "react-native-svg";
 
 import { heading } from "@/lib/fonts";
-import { BRAND_COLORS, ICON_XML, LOGO_TEXT } from "@/lib/brand";
+import { BRAND_COLORS, ICON_XML, LOGO_TEXT } from "shared";
 
 export function Icon({
 	color = BRAND_COLORS.surface.ink,

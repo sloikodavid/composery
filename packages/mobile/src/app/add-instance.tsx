@@ -8,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BackButton } from "@/components/back-button";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback, tapFeedback } from "@/lib/haptics";
+import { WEBSITE_ORIGIN } from "shared";
 import { createInstanceStore } from "@/lib/instance-store";
 import { useTheme } from "@/lib/use-theme";
 
@@ -238,7 +239,7 @@ export default function AddInstanceScreen() {
 				<Pressable
 					onPress={() => {
 						tapFeedback();
-						void openBrowserAsync("https://www.composery.io/pricing");
+						void openBrowserAsync(`${WEBSITE_ORIGIN}/pricing`);
 					}}
 					hitSlop={8}
 					style={({ pressed }) => ({

@@ -8,6 +8,10 @@ restarts. The `persistence` daemon compares the live root filesystem against an 
 baseline and writes only your deltas to `/data/persistence`. Mounting one durable volume
 at `/data` is the only hard requirement for [self-hosting](self-hosting/index.md).
 
+The same delta model is what makes image upgrades safe: a new image ships a new baseline,
+your deltas re-apply on top, and every file you never touched moves to the new version. See
+[Updating](self-hosting/index.md#updating) for the procedure.
+
 `/data` is owned by the normal `user` account and is the direct durable disk. Put
 databases, object stores, large build artifacts, and other high-volume state there. Files
 under `/data` occupy the volume once. Files elsewhere still behave like ordinary machine

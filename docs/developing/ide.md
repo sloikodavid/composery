@@ -16,7 +16,7 @@ provenance: the submodule source, patch coordinates, and source URL metadata.
 
 ## Brand palette
 
-The Composery palette is shared from `packages/brand/index.mjs`: neutral ink and
+The Composery palette is shared from `packages/shared/index.ts`: neutral ink and
 paper surfaces, monochrome primary actions, and the same icon geometry across
 web, mobile, and the editor. Regenerate derived files instead of hand-copying brand
 values:
@@ -28,7 +28,7 @@ values:
   brand palette is a reference, and the "default color theme" tests in
   `tests/code-server-patches.test.ts` assert the handful of genuinely shared
   keys (backgrounds, foregrounds, buttons, borders) still match
-  `packages/brand/index.mjs`. The true editor default via
+  `packages/shared/index.ts`. The true editor default via
   `packages/ide/patches/default-color-theme.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
@@ -59,7 +59,7 @@ values:
   `CODE_SERVER_*`, or `CS_*` surfaces. This keeps broad rename rules generated
   and bump-friendly instead of spreading fragile hunks across every upstream file.
 - **Welcome tiles**.
-  `packages/brand/scripts/icons.mjs`, fed by `packages/brand/index.mjs`.
+  `packages/shared/scripts/icons.mjs`, fed by `packages/shared/index.ts`.
 
 The `COLOR_THEME_*_INITIAL_COLORS` first-paint snapshot also lives in
 `default-color-theme.diff`, hand-maintained like every other patch. Themes load

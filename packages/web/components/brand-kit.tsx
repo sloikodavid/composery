@@ -14,7 +14,7 @@ import {
 	LOGO_DARK_ASSET,
 	LOGO_LIGHT_ASSET
 } from "@/lib/brand-assets";
-import { BRAND_COLORS } from "@/lib/brand";
+import { BRAND_COLORS } from "shared";
 
 // Checkerboard preview surfaces so it's clear the downloaded SVG/PNG are
 // transparent - the background isn't part of the file. A light and a dark board

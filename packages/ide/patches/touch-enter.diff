@@ -1,10 +1,13 @@
 Soft-keyboard Enter everywhere: mobile IMEs commit their action key as a
-beforeinput line break (with keyCode 229 keydowns while composing), leaving
-every Enter-only flow - quick input accept, inline rename, suggest accept,
-chat/REPL submit - unreachable on touch. ImeEnterFallback replays those
-commits as cancelable synthetic Enter keydowns; InputBox also asks soft
-keyboards for a committing "go" action instead of the focus-hopping arrow
-some IMEs default to on bare single-line inputs.
+beforeinput line break (with keyCode 229 keydowns while composing) or, worse,
+as a bare focus-move that emits nothing at all - leaving every Enter-only flow
+(quick input accept, inline rename, suggest accept, chat/REPL submit)
+unreachable on touch. Three layers, from keyboard to guaranteed:
+ImeEnterFallback replays line-break commits as cancelable synthetic Enter
+keydowns; InputBox asks soft keyboards for a committing "go" action instead of
+the focus-hopping arrow some IMEs default to on bare single-line inputs; and
+the quick input text prompt shows its OK button on touch, a tap path into the
+same accept emitter that does not depend on the IME emitting anything.
 
 --- /dev/null
 +++ b/lib/vscode/src/vs/base/browser/imeEnter.ts
@@ -83,6 +86,27 @@ some IMEs default to on bare single-line inputs.
  		}
  
  		if (this.ariaLabel) {
+--- a/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
++++ b/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
+@@ -5,6 +5,7 @@
+ 
+ import * as dom from '../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../base/browser/keyboardEvent.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { ToolBar } from '../../../base/browser/ui/toolbar/toolbar.js';
+ import { Button, IButtonStyles } from '../../../base/browser/ui/button/button.js';
+ import { CountBadge, ICountBadgeStyles } from '../../../base/browser/ui/countBadge/countBadge.js';
+@@ -1288,6 +1289,10 @@
+ 			title: !!this.title || !!this.step || !!this.titleButtons.length,
+ 			description: !!this.description || !!this.step,
+ 			inputBox: true,
++			// Composery: Enter is this prompt's only accept path and mobile IMEs cannot
++			// be trusted to deliver one - on touch, the OK button is the guaranteed tap
++			// path (its click feeds the same accept emitter Enter does).
++			ok: isTouch(dom.getWindow(this.ui.container)),
+ 			message: true,
+ 			progressBar: true
+ 		};
 --- a/lib/vscode/src/vs/workbench/browser/window.ts
 +++ b/lib/vscode/src/vs/workbench/browser/window.ts
 @@ -6,6 +6,7 @@

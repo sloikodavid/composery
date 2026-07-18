@@ -1,49 +1,47 @@
-<div class="auth-fields password-flow" data-password-flow>
-	<label class="sr-only" for="password">Password</label>
-	<div class="monaco-inputbox idle">
-		<div class="ibwrapper">
-			<input
-				class="input empty"
-				id="password"
-				name="password"
-				type="password"
-				placeholder="Password"
-				autocomplete="new-password"
-				autocorrect="off"
-				autocapitalize="off"
-				spellcheck="false"
-				data-password-input
-				autofocus
-				required
-			/>
-		</div>
-	</div>
-	<div class="password-status" data-password-status aria-live="polite"></div>
-	<label class="sr-only" for="confirm-password">Confirm password</label>
-	<div class="monaco-inputbox idle">
-		<div class="ibwrapper">
-			<input
-				class="input empty"
-				id="confirm-password"
-				name="confirmPassword"
-				type="password"
-				placeholder="Confirm password"
-				autocomplete="new-password"
-				autocorrect="off"
-				autocapitalize="off"
-				spellcheck="false"
-				data-password-confirm
-				required
-			/>
-		</div>
-	</div>
-	<div class="password-status" data-confirm-status aria-live="polite"></div>
+<div class="auth-crumbs">
+	<button class="crumb" data-crumb="0" type="button">Password</button>
+	<span class="crumb-separator" data-crumb="1" aria-hidden="true" hidden>/</span>
+	<button class="crumb" data-crumb="1" type="button" hidden>
+		Confirm password
+	</button>
 </div>
-<button
-	class="submit-button"
-	data-password-submit
-	data-submit-label="Set Password"
-	type="submit"
->
-	<span>Set Password</span>
+<div class="auth-fields">
+	<div class="auth-stage" data-stage data-button="Continue">
+		<label class="sr-only" for="password">Password</label>
+		<input
+			class="auth-input"
+			id="password"
+			name="password"
+			type="password"
+			placeholder="Password"
+			autocomplete="new-password"
+			autocorrect="off"
+			autocapitalize="off"
+			spellcheck="false"
+			data-password-input
+			autofocus
+			required
+		/>
+	</div>
+	<div class="auth-stage" data-stage data-button="Set password" hidden>
+		<label class="sr-only" for="confirm-password">Confirm password</label>
+		<input
+			class="auth-input"
+			id="confirm-password"
+			name="confirmPassword"
+			type="password"
+			placeholder="Confirm password"
+			autocomplete="new-password"
+			autocorrect="off"
+			autocapitalize="off"
+			spellcheck="false"
+			data-password-confirm
+			required
+		/>
+	</div>
+</div>
+<div class="auth-status" data-status aria-live="polite">{{ERROR}}</div>
+<button class="submit-button" type="submit">
+	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+	<span>Continue</span>
 </button>

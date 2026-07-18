@@ -18,6 +18,7 @@ touch-reveal-guard.diff
 touch-menu.diff
 touch-context-menu.diff
 touch-fling-catch.diff
+touch-native-selection.diff
 touch-list-focus.diff
 touch-terminal-focus.diff
 touch-gate.diff
@@ -52,3 +53,6 @@ touch-enter.diff
 touch-markdown-links.diff
 touch-editor-links.diff
 touch-terminal-links.diff
+touch-inline-actions.diff
+local-media-preview.diff
+product-icon-themes.diff

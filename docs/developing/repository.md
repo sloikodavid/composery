@@ -41,7 +41,7 @@ them through pnpm so the manifest and lockfile move together.
 | `packages/ide`      | Owned hard fork of code-server, assembled from the upstream submodule, Quilt patches, and overlay   |
 | `packages/mobile`   | Expo mobile client and Maestro flows                                                                |
 | `packages/cli`      | Rust CLI and persistence service                                                                    |
-| `packages/brand`    | Generated brand assets shared by product surfaces                                                   |
+| `packages/shared`   | Brand and identity constants imported directly, plus the build-time CSS/asset generator             |
 | `rootfs`            | Files installed into the shipped runtime image                                                      |
 | `templates`         | Self-hosting templates                                                                              |
 | `tests`             | Cross-package integration and patch-stack tests                                                     |

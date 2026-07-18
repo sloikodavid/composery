@@ -1,0 +1,18 @@
+Let dynamically loaded product icon fonts paint as soon as they arrive. Android
+Chromium can download and parse a product theme's font while leaving pseudo-
+elements blank indefinitely when the late-added face uses font-display:block.
+swap invalidates those glyphs when the face becomes available, matching the
+immediate rendering desktop VS Code users get.
+
+diff --git a/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts b/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts
+--- a/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts
++++ b/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts
+@@ -63,7 +63,7 @@ export function getIconsStyleSheet(themeService: IThemeService | undefined): IIc
+ 				for (const l of definition.src) {
+ 					src.push(css.inline`${css.asCSSUrl(l.location)} format(${css.stringValue(l.format)})`);
+ 				}
+-				rules.push(css.inline`@font-face { src: ${src.join(', ')}; font-family: ${css.stringValue(id)};${fontWeight}${fontStyle} font-display: block; }`);
++				rules.push(css.inline`@font-face { src: ${src.join(', ')}; font-family: ${css.stringValue(id)};${fontWeight}${fontStyle} font-display: swap; }`);
+ 			}
+ 
+ 			rules.push(css.inline`:root { ${rootAttribs.join(' ')} }`);

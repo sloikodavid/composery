@@ -1,5 +1,41 @@
+/* The website's design language (packages/web components) hand-written for
+   these dependency-free pages: 10px radii, soft 3px focus rings, tinted
+   warning/destructive button states, 200ms ease-out transitions, fade-only
+   page enter. Colours come from brand.css variables so a brand change
+   propagates here without touching this file. */
+
+/* Tint strength for the warning/destructive submit states: the website's
+   bg-warning/10 -> /16 -> /24 scale, raised in dark where tints need more
+   presence (dark:bg-warning/18 -> /26 -> /34). data-scheme mirrors brand.css:
+   the mobile app stamps the app scheme on :root. */
+:root {
+	--auth-tint: 10%;
+	--auth-tint-hover: 16%;
+	--auth-tint-active: 24%;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--auth-tint: 18%;
+		--auth-tint-hover: 26%;
+		--auth-tint-active: 34%;
+	}
+}
+
+:root[data-scheme="light"] {
+	--auth-tint: 10%;
+	--auth-tint-hover: 16%;
+	--auth-tint-active: 24%;
+}
+
+:root[data-scheme="dark"] {
+	--auth-tint: 18%;
+	--auth-tint-hover: 26%;
+	--auth-tint-active: 34%;
+}
+
 .auth-form {
-	animation: auth-page-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	animation: page-fade-in 220ms ease-out both;
 	display: grid;
 	justify-items: center;
 	width: min(100%, 420px);
@@ -7,10 +43,10 @@
 
 .auth-logo-link {
 	display: block;
-	margin: 0 auto 14px;
+	margin: 0 auto 18px;
 	transition:
-		opacity 120ms ease,
-		transform 120ms ease;
+		opacity 200ms ease-out,
+		transform 80ms ease;
 }
 
 .auth-logo-link:hover {
@@ -28,130 +64,261 @@
 	width: auto;
 }
 
-.auth-fields,
-.password-fields {
-	display: grid;
-	gap: 10px;
+/* Stage crumbs double as the input's label row: the website's page-template
+   breadcrumbs, miniaturized. Past stages are muted and clickable to go back,
+   the current stage reads as the label. Fixed height, never wraps. */
+.auth-crumbs {
+	align-items: center;
+	box-sizing: border-box;
+	color: var(--vscode-descriptionForeground);
+	display: flex;
+	font-size: 13px;
+	font-weight: 500;
+	gap: 6px;
+	line-height: 20px;
+	margin-bottom: 8px;
+	min-height: 20px;
+	overflow: hidden;
+	padding: 0 2px;
+	white-space: nowrap;
 	width: 100%;
 }
 
-.monaco-inputbox {
+.crumb {
+	appearance: none;
+	background: none;
+	border: 0;
+	border-radius: 4px;
+	color: inherit;
+	font: inherit;
+	letter-spacing: inherit;
+	padding: 0;
+	transition: color 200ms ease-out;
+}
+
+button.crumb {
+	cursor: pointer;
+}
+
+button.crumb:hover {
+	color: var(--vscode-foreground);
+}
+
+.crumb[aria-current="step"] {
+	color: var(--vscode-foreground);
+	cursor: default;
+}
+
+.crumb:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+.crumb[hidden],
+.crumb-separator[hidden],
+.auth-stage[hidden] {
+	display: none;
+}
+
+.auth-fields {
+	width: 100%;
+}
+
+.auth-input {
 	background-color: var(--vscode-input-background);
 	border: 1px solid var(--vscode-input-border, transparent);
-	border-radius: 12px;
+	border-radius: 10px;
 	box-sizing: border-box;
 	color: var(--vscode-input-foreground);
 	display: block;
-	font-size: inherit;
-	min-width: 0;
-	padding: 0;
-	position: relative;
-	transition:
-		border-color 120ms ease,
-		box-shadow 120ms ease;
-	width: 100%;
-}
-
-.monaco-inputbox.synthetic-focus {
-	border-color: var(--auth-input-focus);
-	box-shadow: 0 0 0 1px var(--auth-input-focus);
-}
-
-.monaco-inputbox > .ibwrapper {
-	border-radius: inherit;
-	position: relative;
-	width: 100%;
-}
-
-.monaco-inputbox > .ibwrapper > .input {
-	background-color: inherit;
-	border: none;
-	box-sizing: border-box;
-	color: inherit;
-	display: inline-block;
 	font-family: inherit;
-	font-size: inherit;
-	height: 100%;
-	line-height: inherit;
-	min-height: 50px;
-	padding: 14px 16px;
-	border-radius: inherit;
-	resize: none;
+	font-size: 15px;
+	height: 48px;
+	letter-spacing: inherit;
+	outline: none;
+	padding: 0 16px;
+	text-overflow: ellipsis;
+	transition:
+		border-color 200ms ease-out,
+		box-shadow 200ms ease-out;
 	width: 100%;
 }
 
-.monaco-inputbox > .ibwrapper > input {
-	text-overflow: ellipsis;
+.auth-input::placeholder {
+	color: var(--vscode-descriptionForeground);
 }
 
-.monaco-inputbox > .ibwrapper > .input:focus {
-	outline: none;
+.auth-input:focus {
+	border-color: var(--auth-input-focus);
+	box-shadow: 0 0 0 3px
+		color-mix(in oklab, var(--auth-input-focus) 25%, transparent);
+}
+
+.auth-input[aria-invalid="true"] {
+	border-color: var(--vscode-errorForeground);
+	box-shadow: 0 0 0 3px
+		color-mix(in oklab, var(--vscode-errorForeground) 20%, transparent);
+}
+
+/* One status line per page, under the input: fixed height whether empty or
+   full, one line only - messages change in place and can never displace the
+   button below. Server-rendered errors (the .error span) land here too. */
+.auth-status {
+	box-sizing: border-box;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 16px;
+	margin-top: 8px;
+	min-height: 16px;
+	overflow: hidden;
+	padding: 0 2px;
+	text-align: left;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	width: 100%;
+}
+
+.auth-status.success {
+	color: var(--auth-success);
+}
+
+.auth-status.warning {
+	color: var(--auth-warning);
+}
+
+.auth-status.destructive,
+.auth-status .error {
+	color: var(--vscode-errorForeground);
 }
 
 .submit-button {
-	appearance: none;
 	align-items: center;
+	appearance: none;
 	background: var(--vscode-button-background);
 	border: 1px solid transparent;
-	border-radius: 12px;
+	border-radius: 10px;
 	box-sizing: border-box;
 	color: var(--vscode-button-foreground);
 	cursor: pointer;
 	display: inline-flex;
+	font-size: 15px;
 	font-weight: 500;
 	gap: 8px;
+	height: 48px;
 	justify-content: center;
 	margin-top: 12px;
-	min-height: 50px;
-	padding: 0 18px;
+	outline: none;
+	padding: 0 20px;
 	text-align: center;
 	text-decoration: none;
 	transition:
-		background-color 120ms ease,
-		border-color 120ms ease,
-		opacity 120ms ease,
+		background-color 200ms ease-out,
+		border-color 200ms ease-out,
+		box-shadow 200ms ease-out,
+		color 200ms ease-out,
+		opacity 200ms ease-out,
 		transform 80ms ease;
+	user-select: none;
 	width: 100%;
 }
 
 .submit-button:hover:not(:disabled) {
-	background: var(--vscode-button-hoverBackground);
+	background: color-mix(
+		in oklab,
+		var(--vscode-button-background) 88%,
+		var(--vscode-editor-background)
+	);
+}
+
+.submit-button:active:not(:disabled) {
+	background: color-mix(
+		in oklab,
+		var(--vscode-button-background) 78%,
+		var(--vscode-editor-background)
+	);
+	transform: translateY(1px);
+}
+
+.submit-button:focus-visible {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 0 0 3px
+		color-mix(in oklab, var(--vscode-focusBorder) 30%, transparent);
 }
 
 .submit-button:disabled {
 	cursor: default;
-	opacity: 0.55;
+	opacity: 0.5;
 }
 
-.submit-button.secondary {
-	background: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
-}
-
-.submit-button.secondary:hover {
-	background: var(--vscode-button-secondaryHoverBackground);
-}
-
+/* Tinted, not solid: the website's soft warning/destructive buttons. */
 .submit-button.warning {
-	background: var(--auth-warning);
-	color: #ffffff;
+	background: color-mix(in oklab, var(--auth-warning) var(--auth-tint), transparent);
+	color: var(--auth-warning);
 }
 
 .submit-button.warning:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--auth-warning) 90%, transparent);
+	background: color-mix(
+		in oklab,
+		var(--auth-warning) var(--auth-tint-hover),
+		transparent
+	);
+}
+
+.submit-button.warning:active:not(:disabled) {
+	background: color-mix(
+		in oklab,
+		var(--auth-warning) var(--auth-tint-active),
+		transparent
+	);
+}
+
+.submit-button.warning:focus-visible {
+	border-color: color-mix(in oklab, var(--auth-warning) 40%, transparent);
+	box-shadow: 0 0 0 3px
+		color-mix(in oklab, var(--auth-warning) 20%, transparent);
 }
 
 .submit-button.destructive {
-	background: var(--vscode-errorForeground);
-	color: #ffffff;
+	background: color-mix(
+		in oklab,
+		var(--vscode-errorForeground) var(--auth-tint),
+		transparent
+	);
+	color: var(--vscode-errorForeground);
 }
 
 .submit-button.destructive:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--vscode-errorForeground) 90%, transparent);
+	background: color-mix(
+		in oklab,
+		var(--vscode-errorForeground) var(--auth-tint-hover),
+		transparent
+	);
 }
 
-.submit-button:active {
-	transform: translateY(1px);
+.submit-button.destructive:active:not(:disabled) {
+	background: color-mix(
+		in oklab,
+		var(--vscode-errorForeground) var(--auth-tint-active),
+		transparent
+	);
+}
+
+.submit-button.destructive:focus-visible {
+	border-color: color-mix(
+		in oklab,
+		var(--vscode-errorForeground) 40%,
+		transparent
+	);
+	box-shadow: 0 0 0 3px
+		color-mix(in oklab, var(--vscode-errorForeground) 20%, transparent);
+}
+
+.submit-button svg {
+	display: block;
+	flex: none;
+	height: 16px;
+	width: 16px;
 }
 
 /* Visuals come from .link (global.css); this only places it in the form. */
@@ -159,115 +326,6 @@
 	font-size: 13px;
 	margin-top: 16px;
 	text-align: center;
-}
-
-.submit-button:focus {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
-}
-
-.submit-button svg {
-	display: block;
-	flex: none;
-	height: 18px;
-	width: 18px;
-}
-
-/* Field hints, styled like the website's form messages: small, muted,
-   left-aligned under their input, taking no space while empty. */
-.password-status {
-	color: var(--vscode-descriptionForeground);
-	font-size: 12px;
-	line-height: 16px;
-	padding: 0 2px;
-	text-align: left;
-}
-
-.password-status:empty {
-	display: none;
-}
-
-.password-status.success {
-	color: var(--auth-success);
-}
-
-.password-status.warning {
-	color: var(--auth-warning);
-}
-
-.password-status.destructive {
-	color: var(--vscode-errorForeground);
-}
-
-.auth-message {
-	align-items: center;
-	color: var(--vscode-errorForeground);
-	display: flex;
-	justify-content: center;
-	line-height: 20px;
-	margin-top: 14px;
-	text-align: center;
-	width: 100%;
-}
-
-.auth-message:empty {
-	display: none;
-}
-
-.auth-message > .error {
-	animation: auth-message-enter 160ms ease-out both;
-	color: var(--vscode-errorForeground);
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	justify-content: center;
-	width: 100%;
-}
-
-@keyframes auth-page-enter {
-	from {
-		opacity: 0;
-		transform: translateY(8px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
-@keyframes auth-message-enter {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.auth-form,
-	.auth-message > .error {
-		animation: none;
-	}
-
-	.auth-logo-link,
-	.monaco-inputbox,
-	.submit-button {
-		transition: none;
-	}
-}
-
-.auth-message > .error::before {
-	content: "";
-	display: block;
-	flex: none;
-	height: 16px;
-	width: 16px;
-	background-color: currentColor;
-	-webkit-mask-image: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg' fill='currentColor'%3E%3Cpath d='M14.831 11.965L9.206 1.714C8.965 1.274 8.503 1 8 1C7.497 1 7.035 1.274 6.794 1.714L1.169 11.965C1.059 12.167 1 12.395 1 12.625C1 13.383 1.617 14 2.375 14H13.625C14.383 14 15 13.383 15 12.625C15 12.395 14.941 12.167 14.831 11.965ZM13.625 13H2.375C2.168 13 2 12.832 2 12.625C2 12.561 2.016 12.5 2.046 12.445L7.671 2.195C7.736 2.075 7.863 2 8 2C8.137 2 8.264 2.075 8.329 2.195L13.954 12.445C13.984 12.501 14 12.561 14 12.625C14 12.832 13.832 13 13.625 13ZM8.75 11.25C8.75 11.664 8.414 12 8 12C7.586 12 7.25 11.664 7.25 11.25C7.25 10.836 7.586 10.5 8 10.5C8.414 10.5 8.75 10.836 8.75 11.25ZM7.5 9V5.5C7.5 5.224 7.724 5 8 5C8.276 5 8.5 5.224 8.5 5.5V9C8.5 9.276 8.276 9.5 8 9.5C7.724 9.5 7.5 9.276 7.5 9Z'/%3E%3C/svg%3E");
-	mask-image: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' xmlns='http://www.w3.org/2000/svg' fill='currentColor'%3E%3Cpath d='M14.831 11.965L9.206 1.714C8.965 1.274 8.503 1 8 1C7.497 1 7.035 1.274 6.794 1.714L1.169 11.965C1.059 12.167 1 12.395 1 12.625C1 13.383 1.617 14 2.375 14H13.625C14.383 14 15 13.383 15 12.625C15 12.395 14.941 12.167 14.831 11.965ZM13.625 13H2.375C2.168 13 2 12.832 2 12.625C2 12.561 2.016 12.5 2.046 12.445L7.671 2.195C7.736 2.075 7.863 2 8 2C8.137 2 8.264 2.075 8.329 2.195L13.954 12.445C13.984 12.501 14 12.561 14 12.625C14 12.832 13.832 13 13.625 13ZM8.75 11.25C8.75 11.664 8.414 12 8 12C7.586 12 7.25 11.664 7.25 11.25C7.25 10.836 7.586 10.5 8 10.5C8.414 10.5 8.75 10.836 8.75 11.25ZM7.5 9V5.5C7.5 5.224 7.724 5 8 5C8.276 5 8.5 5.224 8.5 5.5V9C8.5 9.276 8.276 9.5 8 9.5C7.724 9.5 7.5 9.276 7.5 9Z'/%3E%3C/svg%3E");
-	-webkit-mask-repeat: no-repeat;
-	mask-repeat: no-repeat;
 }
 
 .username {
@@ -287,4 +345,17 @@
 	position: absolute;
 	white-space: nowrap;
 	width: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.auth-form {
+		animation: none;
+	}
+
+	.auth-logo-link,
+	.crumb,
+	.auth-input,
+	.submit-button {
+		transition: none;
+	}
 }

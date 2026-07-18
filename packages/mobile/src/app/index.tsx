@@ -32,6 +32,7 @@ import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, tapFeedback } from "@/lib/haptics";
 import { createInstanceStore, type Instance } from "@/lib/instance-store";
+import { WEBSITE_ORIGIN } from "shared";
 import { useTheme, type Theme } from "@/lib/use-theme";
 
 const store = createInstanceStore(AsyncStorage);
@@ -154,7 +155,7 @@ export default function IndexScreen() {
 							accessibilityRole="link"
 							accessibilityLabel="Composery website"
 							scaleTo={0.96}
-							onPress={() => void openBrowserAsync("https://www.composery.io")}
+							onPress={() => void openBrowserAsync(WEBSITE_ORIGIN)}
 						>
 							<Logo height={26} color={theme.foreground} />
 						</PressableScale>
@@ -482,7 +483,7 @@ function EmptyState({
 				accessibilityLabel="Get a Composery"
 				onPress={() => {
 					tapFeedback();
-					void openBrowserAsync("https://www.composery.io/pricing");
+					void openBrowserAsync(`${WEBSITE_ORIGIN}/pricing`);
 				}}
 				hitSlop={8}
 				style={({ pressed }) => ({

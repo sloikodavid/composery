@@ -8,32 +8,31 @@
 	position: relative;
 }
 
-.composery-touch-selection-handles {
-	display: none;
-	left: 0;
-	pointer-events: none;
-	position: absolute;
-	top: 0;
-	z-index: 50;
-}
-
-.composery-touch-selection-handle {
+/*
+ * The collapsed-cursor drag handle (touch-editor.diff). Range selection is native (browser
+ * handles + OS toolbar), but no browser offers a caret handle in non-editable content, so
+ * precise cursor placement keeps this custom one. Visibility is driven from JS, which only
+ * shows it for touch pointers.
+ */
+.composery-touch-caret-handle {
 	background: var(--vscode-editorCursor-foreground);
 	border: 2px solid var(--vscode-editor-background);
 	border-radius: 999px;
 	box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
 	box-sizing: border-box;
-	display: none;
 	height: 22px;
 	left: 0;
+	margin-left: -10px;
+	margin-top: -2px;
 	pointer-events: auto;
 	position: absolute;
 	top: 0;
 	touch-action: none;
 	width: 22px;
+	z-index: 50;
 }
 
-.composery-touch-selection-handle::before {
+.composery-touch-caret-handle::before {
 	background: var(--vscode-editorCursor-foreground);
 	bottom: 18px;
 	content: "";
@@ -43,20 +42,35 @@
 	width: 2px;
 }
 
-.composery-touch-selection-handle-caret,
-.composery-touch-selection-handle-end {
-	margin-left: -10px;
-	margin-top: -2px;
-}
-
-.composery-touch-selection-handle-start {
-	margin-left: -10px;
-	margin-top: -2px;
-}
-
+/*
+ * Native text selection in the code editor (touch-editor.diff + touch-native-selection.diff).
+ * The lines must be selectable for the browser's long-press selection to exist at all -
+ * upstream only allows that on Safari/WebKit (enable-user-select), Chromium gets
+ * no-user-select. The margin stays unselectable so line numbers never join a selection.
+ * The browser's own selection paint is disabled: the model selection is synced from it and
+ * Monaco already paints that one - two highlights in two colors would stack otherwise.
+ * touch-action: none keeps the un-prevented initial touch (touch-native-selection.diff)
+ * out of the browser's pan/zoom gestures without disturbing its long-press selection.
+ * !important: this sheet is a head <link>, workbench styles inject later and win ties.
+ */
 @media (hover: none), (any-pointer: coarse) {
-	.composery-touch-selection-handles {
-		display: block;
+	.monaco-workbench .monaco-editor .view-line,
+	.monaco-workbench .monaco-editor .view-lines {
+		user-select: text !important;
+		-webkit-user-select: text !important;
+	}
+
+	.monaco-workbench .monaco-editor .margin {
+		user-select: none !important;
+		-webkit-user-select: none !important;
+	}
+
+	.monaco-workbench .monaco-editor .lines-content {
+		touch-action: none;
+	}
+
+	.monaco-workbench .monaco-editor .view-lines ::selection {
+		background: transparent;
 	}
 }
 
@@ -176,4 +190,136 @@
 		-webkit-touch-callout: default;
 	}
 
+}
+
+/*
+ * Inline actions a mouse reveals on hover that a finger never can - row and header action
+ * bars, quick pick item buttons, the settings gear - stay visible on touch. Their Tap
+ * handlers preventDefault and the list/tree widgets stand down on consumed taps
+ * (touch-inline-actions.diff), so a tap on a button never also runs the row. !important:
+ * this sheet is a head <link> and the workbench injects its own styles later, so ties lose.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	/* Quick pick item buttons (Open to Side, remove from history, ...) */
+	.quick-input-list
+		.quick-input-list-entry
+		.quick-input-list-entry-action-bar
+		.action-label,
+	.quick-input-list
+		.quick-input-list-entry
+		.quick-input-list-entry-action-bar
+		.monaco-custom-toggle,
+	.quick-input-tree
+		.quick-input-tree-entry
+		.quick-input-tree-entry-action-bar
+		.action-label,
+	.quick-input-tree
+		.quick-input-tree-entry
+		.quick-input-tree-entry-action-bar
+		.monaco-custom-toggle {
+		display: flex !important;
+	}
+
+	/* View pane headers (collapse all, new file, ...) - collapsed panes keep them
+	 * hidden, matching the upstream hover reveal. */
+	.monaco-pane-view .pane > .pane-header.expanded > .actions {
+		display: initial !important;
+	}
+
+	/* Sidebar composite headers */
+	.monaco-workbench .viewlet .split-view-view > .header .actions {
+		width: initial !important;
+		flex: 1 !important;
+	}
+
+	/* Extension-contributed tree views (custom inline actions) */
+	.customview-tree
+		.monaco-list
+		.monaco-list-row
+		.custom-view-tree-node-item
+		.actions {
+		display: block !important;
+	}
+
+	.customview-tree
+		.monaco-list.horizontal-scrolling
+		.monaco-list-row:has(.actions .action-item)
+		.custom-view-tree-node-item
+		.actions {
+		position: relative;
+		right: var(--list-scroll-right-offset, 0px);
+		background-color: var(--vscode-list-hoverBackground);
+		padding-left: 4px;
+	}
+
+	/* Source control rows (stage, discard, ...) */
+	.scm-view .monaco-list .monaco-list-row .resource-group > .actions,
+	.scm-view
+		.monaco-list
+		.monaco-list-row
+		.resource
+		> .name
+		> .monaco-icon-label
+		> .actions,
+	.scm-view .monaco-list .monaco-list-row .history-item > .actions,
+	.scm-view
+		.monaco-list
+		.monaco-list-row
+		.history-item-change
+		> .label-container
+		> .monaco-icon-label
+		> .actions {
+		display: block !important;
+	}
+
+	/* Open editors close buttons */
+	.open-editors .monaco-list .monaco-list-row > .monaco-action-bar {
+		visibility: visible !important;
+	}
+
+	/* Debug panes (restart frame, remove watch expression, ...) */
+	.debug-pane .monaco-list-row .monaco-action-bar {
+		display: initial !important;
+	}
+
+	/* Markers quick fix - the action bar replaces the lightbulb marker icon, as it
+	 * does on hover. */
+	.markers-panel .monaco-tl-contents .actions .monaco-action-bar {
+		display: block !important;
+	}
+
+	.markers-panel .monaco-list-row .monaco-tl-contents > .marker-icon.quickFix {
+		display: none !important;
+	}
+
+	/* Comments panel */
+	.comments-panel .comments-panel-container .actions {
+		display: block !important;
+	}
+
+	/* Keybindings editor row actions (edit, reset, ...) */
+	.keybindings-editor
+		> .keybindings-body
+		> .keybindings-table-container
+		.monaco-table-tr
+		.monaco-table-td
+		.actions
+		.monaco-action-bar {
+		display: flex !important;
+	}
+
+	/* Terminal tabs (split, kill) */
+	.monaco-workbench .pane-body.integrated-terminal .tabs-list .actions {
+		display: block !important;
+	}
+
+	/* Settings gear (reset, copy setting ID, ...) */
+	.settings-editor
+		> .settings-body
+		.settings-tree-container
+		.setting-toolbar-container
+		> .monaco-toolbar
+		.codicon {
+		opacity: 1 !important;
+	}
 }

@@ -12,6 +12,16 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	OWNER,
+	REPO,
+	WEBSITE_DOMAIN,
+	WEBSITE_ORIGIN
+} from "../../constants/index.mjs";
+
+// The Composery-side coordinates the upstream (coder) strings rewrite to. All
+// derive from the shared identity constants so a fork repoints in one place.
+const GITHUB_URL = `https://github.com/${REPO.owner}/${REPO.name}`;
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = resolve(SCRIPT_DIR, "..");
@@ -155,20 +165,14 @@ const replacements = [
 	["Code Server", "Composery"],
 	["codeserver", "composery"],
 	["coder.code-server", "io.composery.ide"],
-	[
-		"https://github.com/coder/Composery",
-		"https://github.com/sloikodavid/composery"
-	],
-	[
-		"https://github.com/cdr/Composery",
-		"https://github.com/sloikodavid/composery"
-	],
-	["https://cdr.co/Composery-to-coder", "https://www.composery.io"],
-	["https://coder.com", "https://www.composery.io"],
-	["https://www.coder.com", "https://www.composery.io"],
-	["test.coder.com", "test.composery.io"],
-	["coder.com", "composery.io"],
-	["security@coder.com", "sloikodavid@gmail.com"],
+	["https://github.com/coder/Composery", GITHUB_URL],
+	["https://github.com/cdr/Composery", GITHUB_URL],
+	["https://cdr.co/Composery-to-coder", WEBSITE_ORIGIN],
+	["https://coder.com", WEBSITE_ORIGIN],
+	["https://www.coder.com", WEBSITE_ORIGIN],
+	["test.coder.com", `test.${WEBSITE_DOMAIN}`],
+	["coder.com", WEBSITE_DOMAIN],
+	["security@coder.com", OWNER.email],
 	["Coder Technologies Inc.", "Composery"],
 	["Coder Technologies", "Composery"],
 	["Coder", "Composery"],
@@ -208,8 +212,8 @@ const productJsonReplacements = {
 	win32AppId: "{{B1B83327-44A6-41DA-8AD9-811763DCA6AE}",
 	darwinBundleIdentifier: "io.composery.ide",
 	linuxIconName: "io.composery.ide",
-	licenseUrl: "https://github.com/sloikodavid/composery/blob/main/LICENSE",
-	reportIssueUrl: "https://github.com/sloikodavid/composery/issues/new"
+	licenseUrl: `${GITHUB_URL}/blob/${REPO.branch}/LICENSE`,
+	reportIssueUrl: `${GITHUB_URL}/issues/new`
 };
 
 const manifestReplacements = {
@@ -374,7 +378,7 @@ function assertSentinelSurvived() {
 		"textDecoder.decode",
 		"stdoutDecoder.decode",
 		"stderrDecoder.decode",
-		"composery.io"
+		WEBSITE_DOMAIN
 	];
 	const forbidden = ["encomposery", "decomposery"];
 
@@ -422,14 +426,14 @@ if (check) {
 rewriteJson(join(target, "package.json"), (json) => {
 	json.name = "ide";
 	json.description = "Run the Composery IDE on a remote server.";
-	json.homepage = "https://github.com/sloikodavid/composery";
+	json.homepage = GITHUB_URL;
 	json.repository = {
 		type: "git",
-		url: "https://github.com/sloikodavid/composery.git",
+		url: `${GITHUB_URL}.git`,
 		directory: "packages/ide"
 	};
 	json.bugs = {
-		url: "https://github.com/sloikodavid/composery/issues"
+		url: `${GITHUB_URL}/issues`
 	};
 	json.bin = {
 		ide: "out/node/entry.js"
