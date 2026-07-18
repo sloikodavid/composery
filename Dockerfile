@@ -1,6 +1,6 @@
 # Node major is pinned by the IDE (its native modules target this ABI). Builder and
 # runtime share this one ARG; bump both together when the IDE moves Node major.
-ARG NODE_IMAGE=node:22-trixie-slim@sha256:e637ac91fb4f2f40761d217c5d48c41a05edf0b65eb9c34e72c27cce55af9e65
+ARG NODE_IMAGE=node:22-trixie-slim@sha256:e6d9a389d34ff9678438af985c9913fbd1eb6ed36e80fea56644f4b4f6dd70ba
 
 # Build the IDE from the in-repo hard fork of code-server.
 FROM ${NODE_IMAGE} AS ide-builder
