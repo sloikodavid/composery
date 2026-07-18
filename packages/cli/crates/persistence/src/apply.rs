@@ -2,7 +2,12 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result, bail};
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use crate::{
     config::Config,
@@ -40,11 +45,17 @@ fn apply_changed(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
     let mut entries = public::list_public_entries(&paths.changed_dir)?;
     entries.sort_by_key(|entry| entry.path.depth());
 
-    for entry in entries {
+    let total = entries.len();
+    let mut last_progress = Instant::now();
+    for (index, entry) in entries.iter().enumerate() {
         if public::is_excluded(&entry.path, config) {
             continue;
         }
         apply_changed_entry(root, &entry.path, &entry.full_path)?;
+        if last_progress.elapsed() >= Duration::from_secs(5) {
+            tracing::info!(restored = index + 1, total, "persistence apply progress");
+            last_progress = Instant::now();
+        }
     }
     Ok(())
 }
@@ -97,7 +108,21 @@ fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Pat
             Err(error) => return Err(error).with_context(|| format!("stat {}", target.display())),
         }
     } else {
-        rootfs::copy_entry_atomic(changed_path, &target)?;
+        // ponytail: a destination whose facts already match was restored by an
+        // earlier boot of this same container; skip the copy so warm restarts
+        // stay near-instant. Stale destination xattrs are the accepted ceiling.
+        if let Some(dest_facts) = facts_if_exists(&target)?
+            && dest_facts.kind == source_facts.kind
+            && dest_facts.size == source_facts.size
+            && dest_facts.mtime_ns == source_facts.mtime_ns
+            && dest_facts.mode == source_facts.mode
+            && dest_facts.uid == source_facts.uid
+            && dest_facts.gid == source_facts.gid
+            && dest_facts.symlink_target == source_facts.symlink_target
+        {
+            return Ok(());
+        }
+        rootfs::restore_entry(changed_path, &target)?;
     }
     Ok(())
 }

@@ -1,0 +1,50 @@
+Rendered-markdown links (notifications, settings descriptions, debug console,
+tree/list rows) activate on plain click, but inside a Gesture target the
+touchstart is preventDefaulted and the browser never synthesizes one - links
+were tap-dead on touch. Register the rendered block as a Gesture target and
+activate links on Tap.
+
+--- a/lib/vscode/src/vs/base/browser/markdownRenderer.ts
++++ b/lib/vscode/src/vs/base/browser/markdownRenderer.ts
+@@ -22,6 +22,8 @@
+ import { convertTagToPlaintext } from './domSanitize.js';
+ import { StandardKeyboardEvent } from './keyboardEvent.js';
+ import { StandardMouseEvent } from './mouseEvent.js';
++import { EventType as TouchEventType, Gesture, GestureEvent } from './touch.js';
++import { isTouch } from './touchGate.js';
+ import { renderIcon, renderLabelWithIcons } from './ui/iconLabel/iconLabels.js';
+ 
+ export type MarkdownActionHandler = (linkContent: string, mdStr: IMarkdownString) => void;
+@@ -314,6 +316,23 @@
+ 			}
+ 			activateLink(markdown, options, keyboardEvent);
+ 		}));
++
++		// Composery: inside a Gesture target (list rows, trees, menus) touchstart is
++		// preventDefaulted and the browser never synthesizes a click, so rendered links
++		// are tap-dead. Becoming a Gesture target ourselves is what routes Tap here;
++		// the suppressed click keeps activation single-fire everywhere else.
++		if (isTouch(DOM.getWindow(outElement))) {
++			disposables.add(Gesture.addTarget(outElement));
++			disposables.add(DOM.addDisposableListener(outElement, TouchEventType.Tap, (e: GestureEvent) => {
++				if (DOM.isHTMLElement(e.initialTarget)) {
++					activateLink(markdown, options, {
++						target: e.initialTarget,
++						preventDefault: () => e.preventDefault(),
++						stopPropagation: () => e.stopPropagation()
++					});
++				}
++			}));
++		}
+ 	}
+ 
+ 	// Remove/disable inputs
+@@ -448,7 +467,7 @@
+ 	return value;
+ }
+ 
+-function activateLink(mdStr: IMarkdownString, options: MarkdownRenderOptions, event: StandardMouseEvent | StandardKeyboardEvent): void {
++function activateLink(mdStr: IMarkdownString, options: MarkdownRenderOptions, event: Pick<StandardMouseEvent, 'target' | 'preventDefault' | 'stopPropagation'>): void {
+ 	const target = event.target.closest('a[data-href]');
+ 	if (!DOM.isHTMLElement(target)) {
+ 		return;

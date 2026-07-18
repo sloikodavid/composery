@@ -262,22 +262,29 @@ packages/
       series
       settings-mobile.diff
       shortcuts.diff
+      terminal-padding.diff
       tips.diff
       titlebar-logo.diff
       titlebar-menubar-overflow.diff
       touch-compact-footer.diff
       touch-context-menu.diff
+      touch-editor-links.diff
       touch-editor.diff
+      touch-enter.diff
+      touch-fling-catch.diff
       touch-gate.diff
       touch-input-context-menu.diff
       touch-list-focus.diff
+      touch-markdown-links.diff
       touch-menu.diff
       touch-reveal-guard.diff
       touch-sash.diff
       touch-select.diff
       touch-terminal-anchor.diff
+      touch-terminal-focus.diff
       touch-terminal-hint.diff
       touch-terminal-keybar.diff
+      touch-terminal-links.diff
       touch-viewport-inset.diff
       trusted-domains-loopback-callback-guard.diff
       updates.diff

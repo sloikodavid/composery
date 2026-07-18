@@ -68,6 +68,7 @@ pub fn run(paths: &Paths) -> Result<()> {
 
 #[cfg(unix)]
 fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()>>) -> Result<()> {
+    tracing::info!("persistence daemon starting");
     layout::ensure(paths)?;
     let _lock = internal::WriterLock::acquire(paths)?;
     layout::remove_ready(paths)?;
@@ -285,7 +286,15 @@ fn writer_loop(
         }
 
         if let Some(deadline) = drain_deadline {
-            if runtime.dirty_tx.pending_count() == 0 || Instant::now() >= deadline {
+            let pending = runtime.dirty_tx.pending_count();
+            if pending == 0 {
+                break;
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!(
+                    pending,
+                    "stop drain deadline reached with unsynced paths; the restart audit will recover them"
+                );
                 break;
             }
             continue;

@@ -10,6 +10,8 @@ pub fn apply(paths: &Paths) -> Result<()> {
 }
 
 fn apply_with_root(paths: &Paths, root: &Path) -> Result<()> {
+    tracing::info!("persistence apply starting");
+    let started = std::time::Instant::now();
     layout::ensure(paths)?;
     let _lock = internal::WriterLock::acquire(paths)?;
     layout::remove_ready(paths)?;
@@ -17,7 +19,10 @@ fn apply_with_root(paths: &Paths, root: &Path) -> Result<()> {
     match apply_inner(paths, root, &db) {
         Ok(()) => {
             db.record_phase_success("apply")?;
-            tracing::info!("persistence apply completed");
+            tracing::info!(
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "persistence apply completed"
+            );
             Ok(())
         }
         Err(error) => {

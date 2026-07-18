@@ -148,11 +148,19 @@ pub fn hash_file(path: &Path) -> Result<String> {
 }
 
 pub fn copy_entry_atomic(source: &Path, destination: &Path) -> Result<()> {
-    copy_entry_atomic_inner(source, destination, true)
+    copy_entry_atomic_inner(source, destination, true, true)
 }
 
 pub fn copy_entry_atomic_without_xattrs(source: &Path, destination: &Path) -> Result<()> {
-    copy_entry_atomic_inner(source, destination, false)
+    copy_entry_atomic_inner(source, destination, false, true)
+}
+
+/// Boot-time restore onto the ephemeral container rootfs. The writer lock is
+/// held and the daemon is down, so the source delta store is quiescent, and a
+/// crash before ready simply re-runs apply — skip the stable-copy verification
+/// passes and every fsync that the persist direction needs for durability.
+pub fn restore_entry(source: &Path, destination: &Path) -> Result<()> {
+    copy_entry_atomic_inner(source, destination, true, false)
 }
 
 pub fn is_xattr_error(error: &anyhow::Error) -> bool {
@@ -189,13 +197,22 @@ fn copy_unstable_error(source: &Path) -> anyhow::Error {
     })
 }
 
-fn copy_entry_atomic_inner(source: &Path, destination: &Path, apply_xattrs: bool) -> Result<()> {
+fn copy_entry_atomic_inner(
+    source: &Path,
+    destination: &Path,
+    apply_xattrs: bool,
+    durable: bool,
+) -> Result<()> {
     let mut source_facts = facts(source)?;
     public::ensure_parent(destination)?;
 
     match source_facts.kind {
         FileKind::File => {
-            source_facts = copy_regular_stable(source, destination)?;
+            source_facts = if durable {
+                copy_regular_stable(source, destination)?
+            } else {
+                copy_regular_restore(source, destination)?
+            };
         }
         FileKind::Dir => ensure_directory_destination(destination)?,
         FileKind::Symlink => {
@@ -203,11 +220,11 @@ fn copy_entry_atomic_inner(source: &Path, destination: &Path, apply_xattrs: bool
                 .symlink_target
                 .as_ref()
                 .context("symlink missing target")?;
-            symlink_atomic(OsStr::from_bytes(target), destination)?;
+            symlink_atomic(OsStr::from_bytes(target), destination, durable)?;
         }
-        FileKind::Fifo => make_fifo_atomic(destination, source_facts.mode)?,
+        FileKind::Fifo => make_fifo_atomic(destination, source_facts.mode, durable)?,
         FileKind::CharDevice | FileKind::BlockDevice => {
-            make_device_atomic(destination, &source_facts)?;
+            make_device_atomic(destination, &source_facts, durable)?;
         }
         FileKind::Socket => bail!("refusing to persist live socket {}", source.display()),
         FileKind::Unknown => bail!("unsupported file type at {}", source.display()),
@@ -216,11 +233,15 @@ fn copy_entry_atomic_inner(source: &Path, destination: &Path, apply_xattrs: bool
     if apply_xattrs {
         apply_facts(destination, &source_facts)?;
     } else {
-        let mut facts_without_xattrs = source_facts;
+        let mut facts_without_xattrs = source_facts.clone();
         facts_without_xattrs.xattrs.clear();
         apply_facts(destination, &facts_without_xattrs)?;
     }
-    fsync_parent(destination)?;
+    // publish_temp already fsynced the parent for published kinds; directories
+    // are the only kind that still needs it.
+    if durable && matches!(source_facts.kind, FileKind::Dir) {
+        fsync_parent(destination)?;
+    }
     Ok(())
 }
 
@@ -358,14 +379,14 @@ fn copy_regular_stable(source: &Path, destination: &Path) -> Result<FsFacts> {
     let mut last_error = None;
     for _ in 0..3 {
         let before = facts(source).with_context(|| format!("stat {}", source.display()))?;
-        let temp = copy_regular_to_temp(source, destination)?;
+        let temp = copy_regular_to_temp(source, destination, true)?;
         let after_copy = facts(source).with_context(|| format!("stat {}", source.display()))?;
         if facts_match_for_stable_copy(&before, &after_copy) {
             let temp_hash = hash_file(&temp)?;
             let source_hash = hash_file(source)?;
             let after_hash = facts(source).with_context(|| format!("stat {}", source.display()))?;
             if facts_match_for_stable_copy(&after_copy, &after_hash) && temp_hash == source_hash {
-                publish_temp(&temp, destination)?;
+                publish_temp_inner(&temp, destination, true)?;
                 return Ok(after_hash);
             }
         }
@@ -373,6 +394,13 @@ fn copy_regular_stable(source: &Path, destination: &Path) -> Result<FsFacts> {
         last_error = Some(copy_unstable_error(source));
     }
     Err(last_error.unwrap_or_else(|| anyhow::anyhow!("copy retry failed")))
+}
+
+fn copy_regular_restore(source: &Path, destination: &Path) -> Result<FsFacts> {
+    let source_facts = facts(source).with_context(|| format!("stat {}", source.display()))?;
+    let temp = copy_regular_to_temp(source, destination, false)?;
+    publish_temp_inner(&temp, destination, false)?;
+    Ok(source_facts)
 }
 
 fn facts_match_for_stable_copy(left: &FsFacts, right: &FsFacts) -> bool {
@@ -389,7 +417,11 @@ fn facts_match_for_stable_copy(left: &FsFacts, right: &FsFacts) -> bool {
         && left.xattrs == right.xattrs
 }
 
-fn copy_regular_to_temp(source: &Path, destination: &Path) -> Result<std::path::PathBuf> {
+fn copy_regular_to_temp(
+    source: &Path,
+    destination: &Path,
+    durable: bool,
+) -> Result<std::path::PathBuf> {
     let temp = public::temp_path(destination);
     let _ = public::remove_path(&temp);
     {
@@ -401,9 +433,11 @@ fn copy_regular_to_temp(source: &Path, destination: &Path) -> Result<std::path::
             .with_context(|| format!("create {}", temp.display()))?;
         copy_sparse(&mut input, &mut output)
             .with_context(|| format!("copy {} to {}", source.display(), temp.display()))?;
-        output
-            .sync_all()
-            .with_context(|| format!("fsync {}", temp.display()))?;
+        if durable {
+            output
+                .sync_all()
+                .with_context(|| format!("fsync {}", temp.display()))?;
+        }
     }
     Ok(temp)
 }
@@ -468,11 +502,11 @@ fn copy_range(input: &mut File, output: &mut File, start: u64, len: u64) -> Resu
     Ok(())
 }
 
-fn symlink_atomic(target: &OsStr, destination: &Path) -> Result<()> {
+fn symlink_atomic(target: &OsStr, destination: &Path, durable: bool) -> Result<()> {
     let temp = public::temp_path(destination);
     let _ = public::remove_path(&temp);
     symlink(target, &temp).with_context(|| format!("symlink {}", temp.display()))?;
-    publish_temp(&temp, destination)
+    publish_temp_inner(&temp, destination, durable)
 }
 
 fn ensure_directory_destination(destination: &Path) -> Result<()> {
@@ -491,25 +525,32 @@ fn ensure_directory_destination(destination: &Path) -> Result<()> {
     }
 }
 
-fn make_fifo_atomic(destination: &Path, mode: u32) -> Result<()> {
+fn make_fifo_atomic(destination: &Path, mode: u32, durable: bool) -> Result<()> {
     let temp = public::temp_path(destination);
     let _ = public::remove_path(&temp);
     make_fifo(&temp, mode)?;
-    publish_temp(&temp, destination)
+    publish_temp_inner(&temp, destination, durable)
 }
 
-fn make_device_atomic(destination: &Path, facts: &FsFacts) -> Result<()> {
+fn make_device_atomic(destination: &Path, facts: &FsFacts, durable: bool) -> Result<()> {
     let temp = public::temp_path(destination);
     let _ = public::remove_path(&temp);
     make_device(&temp, facts)?;
-    publish_temp(&temp, destination)
+    publish_temp_inner(&temp, destination, durable)
 }
 
 fn publish_temp(temp: &Path, destination: &Path) -> Result<()> {
+    publish_temp_inner(temp, destination, true)
+}
+
+fn publish_temp_inner(temp: &Path, destination: &Path, durable: bool) -> Result<()> {
     remove_directory_destination(destination)?;
     fs::rename(temp, destination)
         .with_context(|| format!("publish {} to {}", temp.display(), destination.display()))?;
-    fsync_parent(destination)
+    if durable {
+        fsync_parent(destination)?;
+    }
+    Ok(())
 }
 
 fn remove_directory_destination(destination: &Path) -> Result<()> {

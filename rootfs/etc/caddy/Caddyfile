@@ -18,4 +18,9 @@
 	handle {
 		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
 	}
+
+	# A bare empty 502 reads as "broken"; say what is actually happening.
+	handle_errors {
+		respond "Composery's IDE service is not reachable yet. It is likely still starting; if this persists, check the container logs." {err.status_code}
+	}
 }

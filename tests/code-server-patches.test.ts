@@ -252,6 +252,102 @@ describe("cloud password setup", () => {
 	});
 });
 
+describe("soft-keyboard enter", () => {
+	test("replays IME line-break commits as cancelable Enter keydowns", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch-enter.diff`));
+
+		// Both commit shapes, touch-gated, real events only, never mid-composition.
+		expect(source).toContain(
+			"if (!isTouch(window) || !e.isTrusted || e.isComposing) {"
+		);
+		expect(source).toContain(
+			"if (e.inputType !== 'insertLineBreak' && e.inputType !== 'insertParagraph') {"
+		);
+		// A trusted Enter keydown already reached every listener - no replay.
+		expect(source).toContain(
+			"e.timeStamp - lastTrustedEnter < TRUSTED_ENTER_WINDOW_MS"
+		);
+		// xterm feeds the pty from input events itself - replaying would double up.
+		expect(source).toContain("target.closest('.xterm')");
+		// StandardKeyboardEvent maps from the legacy fields the constructor drops.
+		expect(source).toContain("keyCode: { value: 13 }");
+		expect(source).toContain("which: { value: 13 }");
+		// The line-break insertion is cancelled only when a consumer handled the replay.
+		expect(source).toContain("if (!target.dispatchEvent(keydown)) {");
+		// Installed for the main window and every future auxiliary window.
+		expect(source).toContain("Event.runAndSubscribe(onDidRegisterWindow");
+		expect(source).toContain("this._register(new ImeEnterFallback());");
+	});
+
+	test("asks soft keyboards for a committing action on single-line inputs", () => {
+		const patch = readRepoFile(`${PATCHES_DIR}/touch-enter.diff`);
+
+		expect(addedLines(patch)).toContain(
+			"this.input.setAttribute('enterkeyhint', 'go');"
+		);
+		// Only the single-line <input> branch gets the hint - the flexibleHeight
+		// textarea keeps its newline return key (context line, not an added one).
+		expect(patch).toContain(
+			" \t\t\tthis.input.type = this.options.type || 'text';"
+		);
+	});
+});
+
+describe("touch link activation", () => {
+	test("terminal taps hit-test detected links and skip word links", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-terminal-links.diff`)
+		);
+
+		// Words are everywhere; a tap must keep meaning "focus the terminal".
+		expect(source).toContain("['url', 'localFile', 'localFolder'] as const");
+		expect(source).not.toContain("'word'");
+		// The same modifier-exempt activation path as the link quick pick.
+		expect(source).toContain(
+			"link.activate(new TerminalLinkQuickPickEvent(EventType.CLICK), link.text);"
+		);
+		// Any click that reaches a link on a touch screen is deliberate.
+		expect(source).toContain("if (isTouch(getWindow(this._xterm.element))) {");
+		// Tap listening waits for the terminal DOM and only ever engages on touch.
+		expect(source).toContain(
+			"const screen = xterm.raw.element?.querySelector('.xterm-screen');"
+		);
+		// Long-press fallback that reaches every detected link, not just tappable ones.
+		expect(source).toContain("MenuId.TerminalInstanceContext");
+	});
+
+	test("editor context menu offers Open Link only while the cursor is on one", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-editor-links.diff`)
+		);
+
+		expect(source).toContain(
+			"new RawContextKey<boolean>('composeryCursorOnLink', false)"
+		);
+		// Bound on touch only, so desktop menus never change.
+		expect(source).toContain(
+			"if (isTouch(getWindow(editor.getContainerDomNode()))) {"
+		);
+		expect(source).toContain(
+			"this.cursorOnLink?.set(!!this.getLinkOccurrence(this.editor.getPosition()));"
+		);
+		expect(source).toContain("command: { id: 'editor.action.openLink'");
+		expect(source).toContain("when: CURSOR_ON_LINK");
+	});
+
+	test("rendered-markdown links activate on Tap inside Gesture targets", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-markdown-links.diff`)
+		);
+
+		expect(source).toContain("if (isTouch(DOM.getWindow(outElement))) {");
+		expect(source).toContain("Gesture.addTarget(outElement)");
+		expect(source).toContain("TouchEventType.Tap");
+		// Tap resolves the anchor from the touched node, not the dispatch target.
+		expect(source).toContain("DOM.isHTMLElement(e.initialTarget)");
+	});
+});
+
 // ---------------------------------------------------------------------------
 // narrow.js keyboard-inset behavior, executed in a browser-shaped VM.
 // ---------------------------------------------------------------------------
@@ -877,21 +973,31 @@ describe("narrow overlay", () => {
 		expect(patch).toContain("suppressNativeContextMenuUntil");
 		expect(patch).toContain("e.stopImmediatePropagation()");
 
-		// The terminal tab list consumes the gesture event (listView is the semantic
-		// owner), so the fallback cannot reach the tab container's native-only
-		// listener - the same menu must open from the list's own context menu event.
-		expect(patch).toContain("this._tabList.onContextMenu(e => {");
-		expect(patch).toContain(
-			"e.browserEvent.type === TouchEventType.Contextmenu"
-		);
+		// Some engines follow an unprevented long-press release with an emulated-mouse
+		// tap that would land on the open menu's blocking overlay and dismiss it - the
+		// echo batch must be swallowed, but a fresh touch ends the suppression.
+		expect(patch).toContain("onReleaseMouseEcho");
+		expect(patch).toContain("this.suppressNativeContextMenuUntil = 0;");
 
-		// Gesture listeners that open a menu must consume the event; the view pane
-		// container must instead step aside for pane-owned touches so the fallback
-		// can reach the pane's own handlers (terminal viewport, section headers).
-		expect(patch).toContain(
-			"paneItem.pane.element.contains(e.initialTarget as Node)"
-		);
-		expect(patch).toContain("EventHelper.stop(e, true);");
+		// The fallback is the ONLY workbench-part touch path: part-level gesture
+		// context menu listeners would shadow deeper native owners (a toolbar button's
+		// item menu), and a second listView leg would emit every touch menu twice. The
+		// patch must remove them, not add more.
+		const removedLines = readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
+			.split("\n")
+			.filter((line) => line.startsWith("-") && !line.startsWith("---"))
+			.join("\n");
+		for (const removed of [
+			"addDisposableListener(parent, TouchEventType.Contextmenu",
+			"addDisposableListener(titleArea, GestureEventType.Contextmenu",
+			"addDisposableListener(area, GestureEventType.Contextmenu",
+			"addDisposableListener(tabsContainer, TouchEventType.Contextmenu",
+			"addDisposableListener(tab, TouchEventType.Contextmenu",
+			"new DomEmitter(this.domNode, TouchEventType.Contextmenu)"
+		]) {
+			expect(removedLines).toContain(removed);
+			expect(patch).not.toContain(removed);
+		}
 	});
 
 	// window.ts blocks native contextmenus AND TextInputActionsProvider shows a themed input
@@ -1891,6 +1997,29 @@ describe("default color theme", () => {
 		expect(colors["button.foreground"]).toBe(brand["primary-foreground"]);
 		expect(colors["activityBar.background"]).toBe(brand["background"]);
 		expect(colors["editorGroup.border"]).toBe(brand["border"]);
+	});
+});
+
+describe("terminal edge padding", () => {
+	// The padding patch only works because upstream's row fit subtracts the
+	// xterm element's computed CSS padding (the same mechanism as the built-in
+	// 20px gutter). If a bump drops that, the padding would clip the grid
+	// instead of reserving space.
+	test("upstream row fit still subtracts computed padding", () => {
+		const instance = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts"
+		);
+		expect(instance).toContain(
+			"parseInt(computedStyle.paddingTop) + parseInt(computedStyle.paddingBottom)"
+		);
+	});
+
+	test("patch pads the shared .xterm rule top and bottom", () => {
+		const added = addedLines(
+			readRepoFile(`${PATCHES_DIR}/terminal-padding.diff`)
+		);
+		expect(added).toContain("padding-top: 4px;");
+		expect(added).toContain("padding-bottom: 4px;");
 	});
 });
 

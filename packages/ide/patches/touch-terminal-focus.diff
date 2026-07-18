@@ -1,0 +1,23 @@
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+@@ -8,6 +8,7 @@
+ import { DataTransfers } from '../../../../base/browser/dnd.js';
+ import * as dom from '../../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
++import { Gesture, EventType as TouchEventType } from '../../../../base/browser/touch.js';
+ import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
+ import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
+ import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
+@@ -1202,7 +1203,10 @@
+ 				listener.dispose();
+ 			});
+ 		}));
+-		this._register(dom.addDisposableListener(xterm.raw.element, 'touchstart', () => {
++		// Composery: focus on Tap rather than raw touchstart - a touch that begins a scroll
++		// of the terminal buffer must not focus the terminal and pop the on-screen keyboard.
++		this._register(Gesture.addTarget(xterm.raw.element));
++		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Tap, () => {
+ 			xterm.raw.focus();
+ 		}));
+ 

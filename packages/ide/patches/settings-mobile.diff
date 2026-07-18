@@ -1,7 +1,40 @@
 diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
 --- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
-@@ -1073,7 +1073,9 @@ export class SettingsEditor2 extends EditorPane {
+@@ -11,7 +11,8 @@
+ import { Orientation, Sizing, SplitView } from '../../../../base/browser/ui/splitview/splitview.js';
+ import { ToggleActionViewItem } from '../../../../base/browser/ui/toggle/toggle.js';
+ import { ITreeElement } from '../../../../base/browser/ui/tree/tree.js';
+-import { CodeWindow } from '../../../../base/browser/window.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { CodeWindow, mainWindow } from '../../../../base/browser/window.js';
+ import { Action } from '../../../../base/common/actions.js';
+ import { CancelablePromise, createCancelablePromise, Delayer, raceTimeout } from '../../../../base/common/async.js';
+ import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
+@@ -578,8 +579,9 @@
+ 	}
+ 
+ 	private _setOptions(options: ISettingsEditorOptions): void {
+-		if (options.focusSearch && !platform.isIOS) {
+-			// isIOS - #122044
++		// Composery: auto-focusing search pops the on-screen keyboard over the just-opened
++		// editor - upstream #122044 exempted iOS only; gate every touch device.
++		if (options.focusSearch && !isTouch(mainWindow)) {
+ 			this.focusSearch();
+ 		}
+ 
+@@ -624,8 +626,8 @@
+ 		super.focus();
+ 
+ 		if (this._currentFocusContext === SettingsFocusContext.Search) {
+-			if (!platform.isIOS) {
+-				// #122044
++			if (!isTouch(mainWindow)) {
++				// Composery: touch, not just iOS - #122044
+ 				this.focusSearch();
+ 			}
+ 		} else if (this._currentFocusContext === SettingsFocusContext.SettingControl) {
+@@ -1074,7 +1076,9 @@
  		this.splitView.addView({
  			onDidChange: Event.None,
  			element: this.settingsTreeContainer,
@@ -12,3 +45,28 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEdi
  			maximumSize: Number.POSITIVE_INFINITY,
  			layout: (width, _, height) => {
  				this.settingsTreeContainer.style.width = `${width}px`;
+diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts b/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts
+@@ -8,7 +8,9 @@
+ import { localize } from '../../../../nls.js';
+ import { Delayer } from '../../../../base/common/async.js';
+ import * as DOM from '../../../../base/browser/dom.js';
+-import { isIOS, OS } from '../../../../base/common/platform.js';
++import { OS } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { ToggleActionViewItem } from '../../../../base/browser/ui/toggle/toggle.js';
+ import { HighlightedLabel } from '../../../../base/browser/ui/highlightedlabel/highlightedLabel.js';
+@@ -207,7 +209,9 @@
+ 		const activeKeybindingEntry = this.activeKeybindingEntry;
+ 		if (activeKeybindingEntry) {
+ 			this.selectEntry(activeKeybindingEntry);
+-		} else if (!isIOS) {
++		} else if (!isTouch(mainWindow)) {
++			// Composery: as upstream does for iOS, do not pop the on-screen keyboard
++			// just because the editor was focused.
+ 			this.searchWidget.focus();
+ 		}
+ 	}

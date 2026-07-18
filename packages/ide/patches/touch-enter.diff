@@ -1,0 +1,106 @@
+Soft-keyboard Enter everywhere: mobile IMEs commit their action key as a
+beforeinput line break (with keyCode 229 keydowns while composing), leaving
+every Enter-only flow - quick input accept, inline rename, suggest accept,
+chat/REPL submit - unreachable on touch. ImeEnterFallback replays those
+commits as cancelable synthetic Enter keydowns; InputBox also asks soft
+keyboards for a committing "go" action instead of the focus-hopping arrow
+some IMEs default to on bare single-line inputs.
+
+--- /dev/null
++++ b/lib/vscode/src/vs/base/browser/imeEnter.ts
+@@ -0,0 +1,61 @@
++/*---------------------------------------------------------------------------------------------
++ * Composery: soft-keyboard Enter fallback. Mobile IMEs deliver their action key ("go",
++ * "send", Gboard's arrow) as a beforeinput line break, and while composing the matching
++ * keydown reports keyCode 229 - so every Enter-driven flow desktop reaches through a real
++ * keydown (quick input accept, inline rename, suggest accept, chat and REPL submit) is
++ * unreachable on touch. Replay such commits as a cancelable synthetic Enter keydown on the
++ * editable element: the keybinding service and widget listeners see the usual event, and
++ * when one of them handles it the line-break insertion is cancelled, exactly as a handled
++ * physical Enter never reaches the text. Exempt: commits already preceded by a trusted
++ * Enter keydown (physical and iOS keyboards - every listener had its chance), composition
++ * updates, and xterm's helper textarea (the terminal feeds the pty from input itself).
++ *--------------------------------------------------------------------------------------------*/
++
++import { addDisposableListener, onDidRegisterWindow } from './dom.js';
++import { isTouch } from './touchGate.js';
++import { mainWindow } from './window.js';
++import { Event } from '../common/event.js';
++import { Disposable } from '../common/lifecycle.js';
++
++// IMEs emit the trusted keydown and its line break back to back; anything older belongs
++// to a previous keystroke and the commit needs replaying.
++const TRUSTED_ENTER_WINDOW_MS = 250;
++
++export class ImeEnterFallback extends Disposable {
++
++	constructor() {
++		super();
++		this._register(Event.runAndSubscribe(onDidRegisterWindow, ({ window, disposables }) => {
++			let lastTrustedEnter = Number.NEGATIVE_INFINITY;
++			disposables.add(addDisposableListener(window, 'keydown', e => {
++				if (e.isTrusted && e.keyCode === 13 /* Enter */) {
++					lastTrustedEnter = e.timeStamp;
++				}
++			}, true));
++			disposables.add(addDisposableListener(window, 'beforeinput', e => {
++				if (!isTouch(window) || !e.isTrusted || e.isComposing) {
++					return;
++				}
++				if (e.inputType !== 'insertLineBreak' && e.inputType !== 'insertParagraph') {
++					return;
++				}
++				if (e.timeStamp - lastTrustedEnter < TRUSTED_ENTER_WINDOW_MS) {
++					return;
++				}
++				const target = e.target;
++				if (!(target instanceof HTMLElement) || target.closest('.xterm')) {
++					return;
++				}
++				const keydown = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
++				// The constructor drops legacy fields, but StandardKeyboardEvent maps from them.
++				Object.defineProperties(keydown, {
++					keyCode: { value: 13 },
++					which: { value: 13 }
++				});
++				if (!target.dispatchEvent(keydown)) {
++					e.preventDefault();
++				}
++			}, true));
++		}, { window: mainWindow, disposables: this._store }));
++	}
++}
+--- a/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
++++ b/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
+@@ -184,6 +184,10 @@
+ 		} else {
+ 			this.input.type = this.options.type || 'text';
+ 			this.input.setAttribute('wrap', 'off');
++			// Composery: single-line inputs submit on Enter - ask soft keyboards for a
++			// committing action ("go") instead of the focus-hopping arrow some IMEs
++			// default to on bare inputs, which never produces an Enter at all.
++			this.input.setAttribute('enterkeyhint', 'go');
+ 		}
+ 
+ 		if (this.ariaLabel) {
+--- a/lib/vscode/src/vs/workbench/browser/window.ts
++++ b/lib/vscode/src/vs/workbench/browser/window.ts
+@@ -6,6 +6,7 @@
+ import { isSafari, setFullscreen } from '../../base/browser/browser.js';
+ import { addDisposableListener, EventHelper, EventType, getWindow, getWindowById, getWindows, getWindowsCount, hasAppFocus, isEditableElement, windowOpenNoOpener, windowOpenPopup, windowOpenWithSuccess } from '../../base/browser/dom.js';
+ import { isTouch } from '../../base/browser/touchGate.js';
++import { ImeEnterFallback } from '../../base/browser/imeEnter.js';
+ import { DomEmitter } from '../../base/browser/event.js';
+ import { HidDeviceData, requestHidDevice, requestSerialPort, requestUsbDevice, SerialPortData, UsbDeviceData } from '../../base/browser/deviceAccess.js';
+ import { timeout } from '../../base/common/async.js';
+@@ -316,6 +317,10 @@
+ 			EventHelper.stop(e, true);
+ 		}));
+ 
++		// Composery: replay soft-keyboard line-break commits as Enter keydowns so
++		// Enter-only flows stay reachable on touch (see ImeEnterFallback).
++		this._register(new ImeEnterFallback());
++
+ 		// Prevent default navigation on drop
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.DROP, e => EventHelper.stop(e, true)));
+ 	}

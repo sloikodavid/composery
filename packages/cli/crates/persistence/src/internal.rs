@@ -28,8 +28,12 @@ impl WriterLock {
             .open(&paths.lock_file)
             .with_context(|| format!("open lock {}", paths.lock_file.display()))?;
 
-        file.try_lock_exclusive()
-            .with_context(|| format!("acquire lock {}", paths.lock_file.display()))?;
+        file.try_lock_exclusive().with_context(|| {
+            format!(
+                "acquire lock {} (another persistence process owns this volume; is a second container mounting it?)",
+                paths.lock_file.display()
+            )
+        })?;
 
         Ok(Self { _file: file })
     }

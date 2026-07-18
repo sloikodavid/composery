@@ -1,0 +1,78 @@
+Editor links open with ctrl+click, which does not exist on touch. Track (on
+touch only) whether the cursor rests on a detected link and surface Open Link
+in the editor context menu - a long-press moves the cursor onto the link
+before the menu opens, so the entry is always accurate.
+
+--- a/lib/vscode/src/vs/editor/contrib/links/browser/links.ts
++++ b/lib/vscode/src/vs/editor/contrib/links/browser/links.ts
+@@ -28,9 +28,17 @@
+ import { ClickLinkGesture, ClickLinkKeyboardEvent, ClickLinkMouseEvent } from '../../gotoSymbol/browser/link/clickLinkGesture.js';
+ import { getLinks, Link, LinksList } from './getLinks.js';
+ import * as nls from '../../../../nls.js';
++import { getWindow } from '../../../../base/browser/dom.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { MenuId, MenuRegistry } from '../../../../platform/actions/common/actions.js';
++import { IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+ 
++// Composery: true on touch devices while the primary cursor rests on a detected link -
++// gates the context-menu Open Link entry that stands in for ctrl+click.
++const CURSOR_ON_LINK = new RawContextKey<boolean>('composeryCursorOnLink', false);
++
+ export class LinkDetector extends Disposable implements IEditorContribution {
+ 
+ 	public static readonly ID: string = 'editor.linkDetector';
+@@ -46,6 +54,7 @@
+ 	private activeLinksList: LinksList | null;
+ 	private activeLinkDecorationId: string | null;
+ 	private currentOccurrences: { [decorationId: string]: LinkOccurrence };
++	private readonly cursorOnLink: IContextKey<boolean> | undefined;
+ 
+ 	constructor(
+ 		private readonly editor: ICodeEditor,
+@@ -53,9 +62,18 @@
+ 		@INotificationService private readonly notificationService: INotificationService,
+ 		@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService,
+ 		@ILanguageFeatureDebounceService languageFeatureDebounceService: ILanguageFeatureDebounceService,
++		@IContextKeyService contextKeyService: IContextKeyService,
+ 	) {
+ 		super();
+ 
++		// Composery: touch has no ctrl+click - track whether the cursor rests on a link
++		// (a long-press moves the cursor before the context menu opens), so the menu can
++		// offer Open Link instead.
++		if (isTouch(getWindow(editor.getContainerDomNode()))) {
++			this.cursorOnLink = CURSOR_ON_LINK.bindTo(contextKeyService);
++			this._register(editor.onDidChangeCursorPosition(() => this.updateCursorOnLink()));
++		}
++
+ 		this.providers = this.languageFeaturesService.linkProvider;
+ 		this.debounceInformation = languageFeatureDebounceService.for(this.providers, 'Links', { min: 1000, max: 4000 });
+ 		this.computeLinks = this._register(new RunOnceScheduler(() => this.computeLinksNow(), 1000));
+@@ -175,6 +193,12 @@
+ 				this.currentOccurrences[occurence.decorationId] = occurence;
+ 			}
+ 		});
++
++		this.updateCursorOnLink();
++	}
++
++	private updateCursorOnLink(): void {
++		this.cursorOnLink?.set(!!this.getLinkOccurrence(this.editor.getPosition()));
+ 	}
+ 
+ 	private _onEditorMouseMove(mouseEvent: ClickLinkMouseEvent, withKey: ClickLinkKeyboardEvent | null): void {
+@@ -426,3 +450,12 @@
+ 
+ registerEditorContribution(LinkDetector.ID, LinkDetector, EditorContributionInstantiation.AfterFirstRender);
+ registerEditorAction(OpenLinkAction);
++
++// Composery: the reachable ctrl+click stand-in - the entry appears only while the
++// (touch-bound) cursor-on-link key is true, so desktop menus are untouched.
++MenuRegistry.appendMenuItem(MenuId.EditorContext, {
++	command: { id: 'editor.action.openLink', title: nls.localize('openLinkMenu', "Open Link") },
++	group: 'navigation',
++	order: 10,
++	when: CURSOR_ON_LINK
++});

@@ -1,0 +1,143 @@
+Terminal links require ctrl+click and a hover tooltip, neither of which exists
+on touch - and the terminal is a Gesture target, so taps never even surface as
+clicks. Open the tapped link directly by hit-testing the tapped cell against
+the detected url/file/folder links (words stay tap-inert: nearly every cell
+holds one and a tap must keep meaning focus), drop the modifier requirement
+for any click that does reach a link on touch, and give the link quick pick a
+long-press home in the terminal context menu.
+
+--- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkManager.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkManager.ts
+@@ -3,7 +3,8 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { EventType } from '../../../../../base/browser/dom.js';
++import { EventType, getWindow } from '../../../../../base/browser/dom.js';
++import { isTouch } from '../../../../../base/browser/touchGate.js';
+ import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
+ import { DisposableStore, dispose, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
+ import { isMacintosh, OS } from '../../../../../base/common/platform.js';
+@@ -252,6 +253,40 @@
+ 		return links[0];
+ 	}
+ 
++	// Composery: touch link activation - a tap carries no modifier, so resolve the link
++	// covering the tapped cell and open it through the same modifier-exempt path as the
++	// link quick pick. Word links (workspace search) stay tap-inert on purpose: nearly
++	// every cell holds a word, and a tap must keep meaning "focus the terminal".
++	async openLinkAt(clientX: number, clientY: number): Promise<boolean> {
++		interface XtermWithCore extends Terminal {
++			_core: IXtermCore;
++		}
++		const cell = (this._xterm as XtermWithCore)._core._renderService.dimensions.css.cell;
++		const screen = this._xterm.element?.querySelector('.xterm-screen');
++		if (!screen || cell.width <= 0 || cell.height <= 0) {
++			return false;
++		}
++		const rect = screen.getBoundingClientRect();
++		const x = Math.floor((clientX - rect.left) / cell.width) + 1;
++		const row = Math.floor((clientY - rect.top) / cell.height) + 1;
++		if (x < 1 || x > this._xterm.cols || row < 1 || row > this._xterm.rows) {
++			return false;
++		}
++		const y = this._xterm.buffer.active.viewportY + row;
++		for (const type of ['url', 'localFile', 'localFolder'] as const) {
++			const links = await this._getLinksForType(y, type);
++			const link = links?.find(l =>
++				y >= l.range.start.y && y <= l.range.end.y &&
++				(y > l.range.start.y || x >= l.range.start.x) &&
++				(y < l.range.end.y || x <= l.range.end.x));
++			if (link) {
++				link.activate(new TerminalLinkQuickPickEvent(EventType.CLICK), link.text);
++				return true;
++			}
++		}
++		return false;
++	}
++
+ 	async getLinks(): Promise<{ viewport: IDetectedLinks; all: Promise<IDetectedLinks> }> {
+ 		// Fetch and await the viewport results
+ 		const viewportLinksByLinePromises: Promise<IDetectedLinks | undefined>[] = [];
+@@ -447,6 +482,11 @@
+ 	}
+ 
+ 	protected _isLinkActivationModifierDown(event: MouseEvent): boolean {
++		// Composery: no modifier exists on a touch screen - any click that reaches a
++		// link there is deliberate.
++		if (isTouch(getWindow(this._xterm.element))) {
++			return true;
++		}
+ 		const editorConf = this._configurationService.getValue<{ multiCursorModifier: 'ctrlCmd' | 'alt' }>('editor');
+ 		if (editorConf.multiCursorModifier === 'ctrlCmd') {
+ 			return !!event.altKey;
+--- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminal.links.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminal.links.contribution.ts
+@@ -4,11 +4,16 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import type { Terminal as RawXtermTerminal } from '@xterm/xterm';
++import * as dom from '../../../../../base/browser/dom.js';
++import { EventType as TouchEventType, Gesture, GestureEvent } from '../../../../../base/browser/touch.js';
++import { isTouch } from '../../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../../base/browser/window.js';
+ import { Event } from '../../../../../base/common/event.js';
+ import { KeyCode, KeyMod } from '../../../../../base/common/keyCodes.js';
+ import { DisposableStore } from '../../../../../base/common/lifecycle.js';
+ import { localize2 } from '../../../../../nls.js';
+ import { AccessibleViewProviderId } from '../../../../../platform/accessibility/browser/accessibleView.js';
++import { MenuId, MenuRegistry } from '../../../../../platform/actions/common/actions.js';
+ import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
+ import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
+ import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+@@ -16,6 +21,7 @@
+ import { accessibleViewCurrentProviderId, accessibleViewIsShown } from '../../../accessibility/browser/accessibilityConfiguration.js';
+ import { ITerminalContribution, ITerminalInstance, IXtermTerminal, isDetachedTerminalInstance } from '../../../terminal/browser/terminal.js';
+ import { registerActiveInstanceAction } from '../../../terminal/browser/terminalActions.js';
++import { TerminalContextMenuGroup } from '../../../terminal/browser/terminalMenus.js';
+ import { registerTerminalContribution, type IDetachedCompatibleTerminalContributionContext, type ITerminalContributionContext } from '../../../terminal/browser/terminalExtensions.js';
+ import { isTerminalProcessManager } from '../../../terminal/common/terminal.js';
+ import { TerminalContextKeys } from '../../../terminal/common/terminalContextKey.js';
+@@ -78,6 +84,23 @@
+ 			}));
+ 		}
+ 		linkManager.add(this._terminalLinkProviderService.onDidRemoveLinkProvider(() => linkManager.externalProvideLinksCb = undefined));
++
++		// Composery: no ctrl exists on a touch screen and the terminal is a Gesture
++		// target (tap-to-focus), so taps never surface as clicks - listen for Tap on
++		// the screen element once it exists and hit-test the tapped cell instead.
++		const onceRender = xterm.raw.onRender(() => {
++			onceRender.dispose();
++			const screen = xterm.raw.element?.querySelector('.xterm-screen');
++			if (!(screen instanceof HTMLElement) || !isTouch(dom.getWindow(screen))) {
++				return;
++			}
++			this.add(Gesture.addTarget(screen));
++			this.add(dom.addDisposableListener(screen, TouchEventType.Tap, (e: GestureEvent) => {
++				const targetWindow = dom.getWindow(screen);
++				linkManager.openLinkAt(e.pageX - targetWindow.scrollX, e.pageY - targetWindow.scrollY);
++			}));
++		});
++		this.add(onceRender);
+ 	}
+ 
+ 	async showLinkQuickpick(extended?: boolean): Promise<void> {
+@@ -132,6 +155,18 @@
+ 	],
+ 	run: (activeInstance) => TerminalLinkContribution.get(activeInstance)?.showLinkQuickpick()
+ });
++// Composery: hover tooltips and ctrl+click do not exist on touch - give the link quick
++// pick a long-press home in the terminal context menu there.
++if (isTouch(mainWindow)) {
++	MenuRegistry.appendMenuItem(MenuId.TerminalInstanceContext, {
++		command: {
++			id: TerminalLinksCommandId.OpenDetectedLink,
++			title: localize2('openDetectedLinkMenu', 'Open Detected Link...')
++		},
++		group: TerminalContextMenuGroup.Edit,
++		order: 4
++	});
++}
+ registerActiveInstanceAction({
+ 	id: TerminalLinksCommandId.OpenWebLink,
+ 	title: localize2('workbench.action.terminal.openLastUrlLink', 'Open Last URL Link'),
