@@ -55,11 +55,9 @@ export function canonicalPaths(root, paths, readDirectory = readdirSync) {
 }
 
 function gitFiles() {
-	const output = execFileSync(
-		"git",
-		["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-		{ cwd: REPO_ROOT }
-	);
+	const output = execFileSync("git", ["ls-files", "--cached", "-z"], {
+		cwd: REPO_ROOT
+	});
 	return canonicalPaths(
 		REPO_ROOT,
 		output.toString("utf8").split("\0").filter(Boolean)
