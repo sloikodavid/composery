@@ -36,10 +36,10 @@ export default function Home() {
 		<div className="py-12 sm:py-16">
 			<section className="mx-auto w-full max-w-[44rem] space-y-6 text-center">
 				<div className="space-y-4">
-					<h1 className="font-heading mx-auto text-4xl font-medium tracking-tight text-foreground sm:text-5xl sm:text-nowrap">
+					<h1 className="font-heading mx-auto text-[clamp(1.75rem,7.5vw,2.75rem)] leading-[1.1] font-medium tracking-tight text-foreground sm:text-nowrap md:text-5xl">
 						Like VS Code, but always on.
 					</h1>
-					<p className="mx-auto max-w-[41rem] text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8 sm:text-nowrap">
+					<p className="mx-auto max-w-[41rem] text-[clamp(0.875rem,3vw,1rem)] leading-[1.6] text-muted-foreground md:max-w-none md:text-lg md:text-nowrap">
 						A secure cloud computer with a powerful UI, usable from any phone or
 						browser.
 					</p>
@@ -76,10 +76,10 @@ export default function Home() {
 			</figure>
 
 			<section className="mx-auto mt-16 w-full max-w-3xl text-center sm:mt-24">
-				<h2 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+				<h2 className="font-heading text-[clamp(1.25rem,5vw,1.875rem)] leading-[1.15] font-medium tracking-tight text-foreground">
 					Check on your agents from anywhere.
 				</h2>
-				<p className="mx-auto mt-3 max-w-[36rem] text-muted-foreground">
+				<p className="mx-auto mt-3 max-w-[36rem] text-[clamp(0.875rem,2.7vw,1rem)] leading-relaxed text-muted-foreground">
 					Your agents keep working with your laptop closed. Open your Composery
 					to see what they did, and tell them what is next.
 				</p>

@@ -29,13 +29,16 @@ jobs:
       # fuzz=0, like build.sh, to catch patch drift before the full image build.
       - name: Verify IDE patch stack applies
         working-directory: packages/ide
-        env:
-          QUILT_PUSH_ARGS: "--fuzz=0"
         run: |
           while IFS= read -r p; do
             [ -z "$p" ] || { cp "patches/$p" "upstream/patches/$p"; printf '%s\n' "$p" >> upstream/patches/series; }
           done < patches/series
-          cd upstream && QUILT_PATCHES=patches quilt push -a
+          cd upstream
+          QUILT_PATCHES=patches quilt push -a --fuzz=0
+          QUILT_PATCHES=patches quilt pop -a
+          rm -rf .pc
+          git clean -fdx -- patches
+          git checkout -- patches
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy

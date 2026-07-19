@@ -3,6 +3,7 @@
 !rootfs/**
 !packages/ide/**
 !packages/cli/**
+!packages/shared/index.ts
 packages/ide/upstream
 packages/ide/build
 packages/ide/tmp
