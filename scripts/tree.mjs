@@ -11,7 +11,7 @@ import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const TREE_OUTPUT_FILE = "AGENTS.md";
+const AGENTS_FILE = "AGENTS.md";
 const TREE_START = "<!-- repo-structure:start -->";
 const TREE_FINISH = "<!-- repo-structure:finish -->";
 const write = process.argv.includes("--write");
@@ -62,11 +62,7 @@ function gitFiles() {
 	);
 	return canonicalPaths(
 		REPO_ROOT,
-		output
-			.toString("utf8")
-			.split("\0")
-			.filter(Boolean)
-			.filter((path) => path !== "prompts/TREE.md")
+		output.toString("utf8").split("\0").filter(Boolean)
 	);
 }
 
@@ -77,7 +73,7 @@ function renderTree() {
 		type: "directory"
 	};
 
-	for (const path of [...gitFiles(), TREE_OUTPUT_FILE]) {
+	for (const path of [...gitFiles(), AGENTS_FILE]) {
 		const parts = path.split("/").filter(Boolean);
 		let current = root;
 		for (const [index, name] of parts.entries()) {
@@ -136,13 +132,13 @@ function renderAgentsFile(current, tree) {
 }
 
 function expectedAgentsFile() {
-	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const file = join(REPO_ROOT, AGENTS_FILE);
 	const current = existsSync(file) ? readFileSync(file, "utf8") : "";
 	return renderAgentsFile(current, renderTree());
 }
 
 function syncTree({ quiet = false } = {}) {
-	const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+	const file = join(REPO_ROOT, AGENTS_FILE);
 	const expected = expectedAgentsFile();
 	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 
@@ -150,7 +146,7 @@ function syncTree({ quiet = false } = {}) {
 
 	mkdirSync(dirname(file), { recursive: true });
 	writeFileSync(file, expected);
-	if (!quiet) console.log(`Updated ${TREE_OUTPUT_FILE}`);
+	if (!quiet) console.log(`Updated ${AGENTS_FILE}`);
 	return true;
 }
 
@@ -165,13 +161,13 @@ if (
 	} else if (write) {
 		syncTree();
 	} else {
-		const file = join(REPO_ROOT, TREE_OUTPUT_FILE);
+		const file = join(REPO_ROOT, AGENTS_FILE);
 		const expected = expectedAgentsFile();
 		const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 
 		if (actual !== expected) {
 			console.error(
-				`${TREE_OUTPUT_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
+				`${AGENTS_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
 			);
 			process.exitCode = 1;
 		}

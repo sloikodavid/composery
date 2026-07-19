@@ -12,7 +12,6 @@ dist/
 build/
 .next/
 .source/
-prompts/TREE.md
 
 # Next.js / Convex generated in packages/web (regenerated; gitignored)
 **/convex/_generated/
