@@ -364,8 +364,8 @@ export function ConsoleHome() {
 										key={box.id}
 									>
 										<TableCell className="relative max-w-0 p-0">
-											<Link
-												className="absolute inset-0 flex flex-col items-start justify-center pl-4"
+										<Link
+											className="absolute inset-0 flex flex-col justify-center pl-4"
 												data-link
 												href={consoleBoxPath(box.id)}
 											>

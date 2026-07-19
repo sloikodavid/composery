@@ -31,8 +31,16 @@ composery-editor-{dark,light}.png    a real automation open in the editor
 3. **Finalize** ([`finalize.py`](finalize.py)) builds the phone trios and copies
    the eight named assets into `../../public/marketing/`.
 
-`raw/`, `out/`, `fonts/` and `wallpapers/` are gitignored; only the final PNGs
-are committed.
+The iPhone keyboard targets the current public iOS 26 design. Its geometry and
+materials are cross-checked against Apple's iOS UI kit and native-scale iPhone
+17 Pro press imagery. The terminal variant intentionally has lowercase legends
+and an empty QuickType area because xterm disables autocorrection,
+autocapitalization, and spellchecking on its helper textarea.
+
+`raw/` is committed source material so the published screenshots can be rebuilt
+from a fresh clone without reproducing the live IDE and agent session. `out/`
+is generated and gitignored. The Apple-licensed `fonts/` and `wallpapers/` are
+also gitignored and fetched on demand by `fonts.sh`.
 
 Paths are resolved relative to this folder, so the commands below work from any
 directory. They assume the capture instance is on `http://localhost:9911`
@@ -64,6 +72,18 @@ Expo (8081) can keep running.
   in a terminal and sign in). The shots use Fable 5.
 
 ## Regenerate
+
+To rebuild the committed marketing assets from the committed raw captures on a
+fresh clone:
+
+```bash
+bash fonts.sh                      # once; downloads Apple-licensed frame assets
+python frame.py
+python finalize.py
+```
+
+To replace the raw captures from a prepared live instance and then rebuild the
+marketing assets:
 
 ```bash
 bash run.sh                        # all four devices x themes, then frame + finalize

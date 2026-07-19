@@ -415,34 +415,31 @@ def status_bar(w, s, txt):
 
 
 # ------------------------------------------------------------------ iOS keyboard
-# The iOS 26 keyboard, measured off Apple's own Live Translation press shot
-# (iPhone 16 Pro - the same 402x874 pt canvas as the 17 Pro, so everything
-# transfers 1:1):
+# The current public iOS 26 keyboard, cross-checked against Apple's iOS 26 UI
+# kit (updated April 2026) and measured from Apple's full-resolution iPhone 17
+# Pro Live Translation press shot at the phone's native 3x scale:
 #
-#   panel        top at 535 pt (339 pt tall), flat fill, 1 pt bright top
-#                hairline, ~26 pt rounded top corners, 1.5 pt side inset
-#   strip        57 pt QuickType bar, empty (a terminal has no predictions),
-#                dividers at thirds
-#   letter keys  33x41.8 pt, corner r 8.75 (fit), 6.5 pt gaps, 7.7 pt margins,
-#                rows at 592.1 / 647.1 / 702.1 / 757 pt, 13.2 pt between rows
-#   modifiers    shift + backspace 44.1 pt; 123 / space / return are
-#                91.6 / 190.1 / 91.6 pt - the space bar is unlabeled in 26,
-#                return is a glyph, and every key is the same material
-#   below panel  emoji + mic glyphs centred 49.5 pt from each edge, y 830
+#   panel        339 pt tall, edge-to-edge, 26 pt rounded top corners
+#   strip        50 pt QuickType area; empty because xterm's helper textarea
+#                sets autocorrect=off, autocapitalize=off and spellcheck=false
+#   letter keys  33x45 pt, corner r 7.5, 6 pt gaps, 9 pt outside margins;
+#                rows start at y 50 / 106 / 162 / 218
+#   modifiers    shift + backspace 45 pt; 123 / space / return are
+#                91 / 190 / 91 pt - the space bar is unlabeled in iOS 26
+#   below panel  emoji + mic glyphs centred at x 42 / 360 and y 296
 #
-# All glyphs are the real SF Symbols (matched from the same shot); the emoji
-# key's grinning face is UIKit artwork with no SF Symbol, so it is drawn to
-# match. Light colors are sampled from Apple's shot. Apple publishes no dark
-# keyboard screenshot, so dark keeps the measured geometry with the standard
-# iOS dark key material (unchanged since iOS 13) composited over our app.
+# The terminal therefore correctly shows lowercase keys and no suggestions.
+# All other glyphs use the real SF Symbols font. The emoji key is UIKit artwork
+# with no public SF Symbol, so it is drawn from the native screenshot geometry.
+# Light colors are direct samples from Apple's shot. Apple publishes no dark
+# keyboard reference, so dark uses the matching iOS semantic materials with the
+# same measured geometry.
 KB_H = 339
 KB = {
-    "light": {"bg": (242, 242, 242), "key": (255, 255, 255), "ink": (10, 10, 11),
-              "icon": (70, 70, 70), "div": (0, 0, 0, 30), "rim": (255, 255, 255, 200),
-              "shadow": (0, 0, 0, 34)},
-    "dark": {"bg": (33, 33, 36), "key": (104, 104, 108), "ink": (249, 249, 251),
-             "icon": (196, 196, 201), "div": (255, 255, 255, 28), "rim": (255, 255, 255, 26),
-             "shadow": (0, 0, 0, 80)},
+    "light": {"bg": (227, 228, 232), "key": (255, 255, 255), "ink": (0, 0, 0),
+              "rim": (255, 255, 255, 150), "shadow": (0, 0, 0, 28)},
+    "dark": {"bg": (31, 31, 33), "key": (104, 104, 108), "ink": (255, 255, 255),
+             "rim": (255, 255, 255, 22), "shadow": (0, 0, 0, 90)},
 }
 
 
@@ -476,7 +473,7 @@ def keyboard(s, scheme):
 
     # Panel: rounded top corners, bottom bleeds off the canvas, a bright
     # hairline along the top edge (the Liquid Glass rim).
-    inset, pr = round(1.5 * S), round(26 * S)
+    inset, pr = 0, round(26 * S)
     panel = [inset, 0, w - 1 - inset, h - 1 + pr]
     d.rounded_rectangle(panel, pr, fill=c["bg"] + (255,))
     rim_lay = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -486,57 +483,54 @@ def keyboard(s, scheme):
     img = Image.alpha_composite(img, rim_lay)
     d = ImageDraw.Draw(img)
 
-    # Empty QuickType strip with its thirds dividers.
-    for xd in (134, 268):
-        d.rectangle([round(xd * S), round(14 * S), round(xd * S) + max(1, S // 2),
-                     round(43 * S)], fill=c["div"])
-
-    def key(x, y, kw, kh=41.8):
+    def key(x, y, kw, kh=45):
+        # UIKit's key shadow is a crisp one-point grounding edge, not the soft
+        # drop shadow used by the previous approximation.
         sh = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(sh).rounded_rectangle(
-            [round(x * S), round((y + 1) * S), round((x + kw) * S), round((y + kh + 1) * S)],
-            round(8.75 * S), fill=c["shadow"])
-        img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(S // 2)))
+            [round(x * S), round((y + 1) * S), round((x + kw) * S),
+             round((y + kh + 1) * S)],
+            round(7.5 * S), fill=c["shadow"])
+        img.alpha_composite(sh)
         d.rounded_rectangle(
             [round(x * S), round(y * S), round((x + kw) * S), round((y + kh) * S)],
-            round(8.75 * S), fill=c["key"] + (255,))
+            round(7.5 * S), fill=c["key"] + (255,))
         return x + kw / 2, y + kh / 2
 
-    m, g, kw = 7.7, 6.5, (402 - 2 * 7.7 - 9 * 6.5) / 10
-    rows_y = [57.1, 112.1, 167.1, 222.0]   # panel-relative (592.1 - 535, ...)
+    m, g, kw = 9, 6, 33
+    rows_y = [50, 106, 162, 218]
     letter_f = ImageFont.truetype(SF_RG, round(23.5 * S))
 
     for i, ch in enumerate("qwertyuiop"):
         cx, cy = key(m + i * (kw + g), rows_y[0], kw)
         d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
     for i, ch in enumerate("asdfghjkl"):
-        cx, cy = key(m + (kw + g) / 2 + i * (kw + g), rows_y[1], kw)
+        cx, cy = key(28.5 + i * (kw + g), rows_y[1], kw)
         d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
     for i, ch in enumerate("zxcvbnm"):
-        cx, cy = key(67.0 + i * (kw + g), rows_y[2], kw)
+        cx, cy = key(67.5 + i * (kw + g), rows_y[2], kw)
         d.text((cx * S, cy * S), ch, font=letter_f, fill=ink, anchor="mm")
 
     def glyph(name, cx, cy, size):
         d.text((cx * S, cy * S), chr(SYM[name]),
                font=ImageFont.truetype(SF_SYM, round(size * S)), fill=ink, anchor="mm")
 
-    cx, cy = key(m, rows_y[2], 44.1)
+    cx, cy = key(m, rows_y[2], 45)
     glyph("shift", cx, cy, 25)
-    cx, cy = key(402 - m - 44.1, rows_y[2], 44.1)
+    cx, cy = key(348, rows_y[2], 45)
     glyph("delete.left", cx, cy, 25)
 
-    cx, cy = key(m, rows_y[3], 91.6)
-    d.text((cx * S, cy * S), "123", font=ImageFont.truetype(SF_RG, round(17 * S)),
+    cx, cy = key(m, rows_y[3], 91)
+    d.text((cx * S, cy * S), "123", font=ImageFont.truetype(SF_RG, round(18 * S)),
            fill=ink, anchor="mm")
-    key(105.9, rows_y[3], 190.1)                 # space: unlabeled in iOS 26
-    cx, cy = key(302.9, rows_y[3], 91.6)
+    key(106, rows_y[3], 190)                     # space: unlabeled in iOS 26
+    cx, cy = key(302, rows_y[3], 91)
     glyph("return", cx, cy, 25)
 
     # Below the panel: emoji + mic, no keys.
-    icon = c["icon"] + (255,)
-    kb_smiley(d, round(49.5 * S), round(295 * S), S, icon)
-    d.text((round(352.5 * S), round(295 * S)), chr(SYM["mic"]),
-           font=ImageFont.truetype(SF_SYM, round(27 * S)), fill=icon, anchor="mm")
+    kb_smiley(d, round(42 * S), round(296 * S), S, ink)
+    d.text((round(360 * S), round(296 * S)), chr(SYM["mic"]),
+           font=ImageFont.truetype(SF_SYM, round(27 * S)), fill=ink, anchor="mm")
 
     return img.resize((round(402 * s), round(KB_H * s)), Image.LANCZOS)
 

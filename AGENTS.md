@@ -706,6 +706,21 @@ packages/
           prepare.sh
           reset.sh
           workspace.sh
+        raw/
+          dark/
+            editor.png
+            ide.png
+            mobile-editor.png
+            mobile-terminal.png
+            mobile-welcome.png
+            welcome.png
+          light/
+            editor.png
+            ide.png
+            mobile-editor.png
+            mobile-terminal.png
+            mobile-welcome.png
+            welcome.png
         .gitignore
         capture-desktop.mjs
         capture-mobile.mjs
