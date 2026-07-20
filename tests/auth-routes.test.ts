@@ -42,6 +42,23 @@ describe("register route", () => {
 		// self-hosted registration must never overwrite.
 		expect(register).toContain("allowExisting: !!cloudConfig");
 	});
+
+	test("a grant cannot write a password the environment already outranks", () => {
+		// Cloud box owners control their host, so COMPOSERY_PASSWORD on a cloud
+		// box is reachable. It wins at every restart, so the grant flow has to
+		// say so rather than store a password that silently stops working.
+		const grantBypass = register.indexOf(
+			"cloudConfig && hasCloudSetupGrant(req)"
+		);
+		const envGuard = register.indexOf('error: "env-managed"');
+		expect(envGuard).toBeGreaterThan(grantBypass);
+		// ...and inside the grant branch, before the handler can write.
+		expect(envGuard).toBeLessThan(register.indexOf('router.get("/"'));
+		// The login page has to be able to render the code this sends it.
+		expect(readRepoFile("packages/ide/patches/auth.diff")).toContain(
+			'+    case "env-managed":'
+		);
+	});
 });
 
 describe("change-password route", () => {
@@ -49,13 +66,27 @@ describe("change-password route", () => {
 		expect(changePassword).toContain('router.post("/", ensureOrigin,');
 	});
 
-	test("cloud boxes divert into the grant flow before any handler", () => {
-		const cloudRedirect = changePassword.indexOf(
+	test("cloud boxes change their password on the same terms as self-hosted", () => {
+		// Holding the box password must never require a Composery website
+		// account: someone handed the password can rotate it. The grant flow
+		// stays the recovery path for a password you cannot produce, offered as
+		// a link rather than forced on everyone who wants to change one.
+		expect(changePassword).not.toContain(
 			'redirect(req, res, "_composery/cloud/authorize"'
 		);
-		const get = changePassword.indexOf('router.get("/"');
-		expect(cloudRedirect).toBeGreaterThanOrEqual(0);
-		expect(get).toBeGreaterThan(cloudRedirect);
+		expect(
+			readRepoFile("packages/ide/overlay/src/node/routes/authPage.ts")
+		).toContain('href="{{BASE}}/_composery/cloud/authorize">Forgot password?');
+	});
+
+	test("records the change with the website before writing it locally", () => {
+		// Convex is the source of truth across rebuilds (bootstrapBox re-renders
+		// the env file from it), so a local-only change would be restored on the
+		// next bootstrap. Failing that call must abort the write, not follow it.
+		const sync = changePassword.indexOf("changeCloudPassword(");
+		const write = changePassword.indexOf("writeHashedPassword(req");
+		expect(sync).toBeGreaterThanOrEqual(0);
+		expect(write).toBeGreaterThan(sync);
 	});
 
 	test("rate limits before validating the current password", () => {

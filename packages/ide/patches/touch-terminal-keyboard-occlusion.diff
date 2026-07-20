@@ -1,0 +1,197 @@
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+@@ -9,6 +9,7 @@
+ import * as dom from '../../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+ import { Gesture, EventType as TouchEventType } from '../../../../base/browser/touch.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
+ import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
+ import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
+@@ -170,6 +171,12 @@
+ 	private _container: HTMLElement | undefined;
+ 	private _wrapperElement: (HTMLElement & { xterm?: XTermTerminal });
+ 	get domElement(): HTMLElement { return this._wrapperElement; }
++	// Composery: the pane size the grid is sized against - the last one measured with the
++	// on-screen keyboard down (see _stableGridHeight).
++	private _stableGrid: { width: number; height: number } | undefined;
++	private readonly _stableGridShrink: MutableDisposable<IDisposable> = this._register(new MutableDisposable());
++	// Below this, a pane/grid difference is layout noise rather than a keyboard.
++	private static readonly OCCLUSION_SLOP = 24;
+ 	private _horizontalScrollbar: DomScrollableElement | undefined;
+ 	private _terminalFocusContextKey: IContextKey<boolean>;
+ 	private _terminalHasFixedWidth: IContextKey<boolean>;
+@@ -707,7 +714,7 @@
+ 		const width = parseInt(computedStyle.width);
+ 		const height = parseInt(computedStyle.height);
+ 
+-		this._evaluateColsAndRows(width, height);
++		this._evaluateColsAndRows(width, this._stableGridHeight(width, height));
+ 	}
+ 
+ 	/**
+@@ -745,6 +752,111 @@
+ 		return dimension.width;
+ 	}
+ 
++	private _keyboardOpen(): boolean {
++		const targetWindow = dom.getWindow(this._wrapperElement);
++		return targetWindow.getComputedStyle(targetWindow.document.documentElement)
++			.getPropertyValue('--composery-touch-keyboard-open').trim() === '1';
++	}
++
++	/**
++	 * Composery: the height the grid is sized against, which on touch is deliberately NOT
++	 * always the current pane height. The on-screen keyboard shrinks the workbench (the
++	 * viewport meta is interactive-widget=resizes-content), and recomputing cols/rows from
++	 * that SIGWINCHes the foreground process on every keyboard toggle - measured on device as
++	 * 34 rows to 18 and back. What that costs depends on which buffer is active, so that is
++	 * what this keys on:
++	 *
++	 * - The normal buffer holds scrollback and a scroll position that belong to the user, and
++	 *   resizing it both reflows the content and shifts ydisp (Buffer#resize) - the "teleports
++	 *   to the very top unless I was at the very bottom" in the bug report. Nothing about the
++	 *   keyboard should disturb it, so keep the grid at its keyboard-down size and let the
++	 *   keyboard occlude the bottom of it; upstream already bottom-aligns the grid
++	 *   (terminal.css), which is where the prompt and cursor live.
++	 * - The alternate screen has no scrollback and no scroll position at all: the app is the
++	 *   layout engine and redraws on SIGWINCH by design. There is nothing to preserve, and -
++	 *   with no scrollback - nothing to scroll to either, so occluding it would strand
++	 *   whatever sits above the fold (OpenCode centres its input). Hand it the size that is
++	 *   really visible and let it lay itself out for the space.
++	 */
++	private _stableGridHeight(width: number, height: number): number {
++		if (!isTouch(dom.getWindow(this._wrapperElement))) {
++			return height;
++		}
++
++		// Read through a local so an xterm that does not exist yet cannot compare equal to
++		// itself and pass for the alternate screen.
++		const raw = this.xterm?.raw;
++		if (raw && raw.buffer.active === raw.buffer.alternate) {
++			// Full-screen app: give it the visible size, and leave the remembered
++			// keyboard-down height alone so the shell underneath still gets it back.
++			this._wrapperElement.classList.remove('composery-terminal-occluded');
++			return height;
++		}
++
++		if (this._keyboardOpen()) {
++			// The pane is only smaller because the keyboard is covering it.
++			this._stableGridShrink.clear();
++		} else if (this._stableGrid?.width !== width || height >= this._stableGrid.height) {
++			// Rotation invalidates the remembered height outright, and the pane growing is
++			// always a real change (the keyboard closing lands here).
++			this._stableGridShrink.clear();
++			this._stableGrid = { width, height };
++		} else {
++			// A shrink while the keyboard reports down is either a real pane change (a split)
++			// or the opening keyboard's first frames, before the viewport has shrunk enough
++			// for narrow.js to call it a keyboard. Only a shrink that outlives the animation
++			// is real - taking these frames would bake the half-open height into the grid.
++			// The keyboard state is re-read when the timer fires rather than relying on a
++			// later layout to cancel it: the last frame of the animation is often the last
++			// layout there is, so a cancel that never comes would commit the half-open size.
++			this._stableGridShrink.value = disposableTimeout(() => {
++				if (this._keyboardOpen()) {
++					return;
++				}
++				this._stableGrid = { width, height };
++				this._resize();
++			}, 500, this._store);
++		}
++
++		const stableHeight = this._stableGrid?.height ?? height;
++		// Sub-row differences are layout noise (rounding, scrollbar gutter), not a keyboard.
++		this._wrapperElement.classList.toggle('composery-terminal-occluded', stableHeight - height >= TerminalInstance.OCCLUSION_SLOP);
++		return stableHeight;
++	}
++
++	/**
++	 * Composery: which slice of the occluded grid to show. The grid is taller than the pane
++	 * (see _stableGridHeight), and upstream's bottom alignment alone is wrong for a buffer
++	 * that has not filled the screen yet: a freshly opened shell has its prompt near row 0
++	 * and blank space below, so the bottom slice is entirely empty - device-verified as a
++	 * completely blank terminal. Keep the caret in view instead. The normal buffer writes
++	 * output at the cursor, so that one rule top-anchors a short buffer and bottom-anchors
++	 * one that has filled or scrolled - the two cases the old terminal-anchor patch had to
++	 * special-case. The alternate screen is resized to fit, so nothing is ever hidden there.
++	 */
++	private _updateOcclusionOffset(): void {
++		const raw = this.xterm?.raw;
++		const element = raw?.element;
++		if (!element) {
++			return;
++		}
++
++		const hidden = element.clientHeight - this._wrapperElement.clientHeight;
++		if (hidden <= 0 || !raw.rows || raw.buffer.active === raw.buffer.alternate) {
++			element.style.bottom = '';
++			return;
++		}
++
++		const cellHeight = element.clientHeight / raw.rows;
++		const caretTop = raw.buffer.active.cursorY * cellHeight;
++		// `bottom` is measured upward from the pane's bottom edge: 0 pins the grid's last
++		// rows (right once the buffer has filled or scrolled) and NEGATIVE values slide the
++		// grid down to bring earlier rows into view. Move only as far as it takes to clear
++		// the caret, keeping a row of context above it.
++		const bottom = Math.min(0, Math.max(-hidden, caretTop - cellHeight - hidden));
++		element.style.bottom = bottom ? `${Math.round(bottom)}px` : '';
++	}
++
+ 	private _setLastKnownColsAndRows(): void {
+ 		if (TerminalInstance._lastKnownGridDimensions) {
+ 			this._cols = TerminalInstance._lastKnownGridDimensions.cols;
+@@ -871,6 +983,17 @@
+ 		}, 1000, this._store);
+ 		this._register(xterm.raw.onSelectionChange(() => this._onDidChangeSelection.fire(this)));
+ 		this._register(xterm.raw.buffer.onBufferChange(() => this._refreshAltBufferContextKey()));
++		// Composery: the normal buffer is occluded by the keyboard while the alternate
++		// screen is resized for it (see _stableGridHeight), so a buffer switch has to
++		// re-evaluate the grid - otherwise a full-screen app keeps the shell's taller size.
++		this._register(xterm.raw.buffer.onBufferChange(() => {
++			this._initDimensions();
++			this._resize();
++			this._updateOcclusionOffset();
++		}));
++		// Which slice of an occluded grid is on screen follows the caret.
++		this._register(xterm.raw.onCursorMove(() => this._updateOcclusionOffset()));
++		this._register(xterm.raw.onResize(() => this._updateOcclusionOffset()));
+ 
+ 		this._register(this._processManager.onProcessData(e => this._onProcessData(e)));
+ 		this._register(xterm.raw.onData(async data => {
+@@ -2005,12 +2128,13 @@
+ 		}
+ 
+ 		// Evaluate columns and rows, exclude the wrapper element's margin
+-		const terminalWidth = this._evaluateColsAndRows(dimension.width, dimension.height);
++		const terminalWidth = this._evaluateColsAndRows(dimension.width, this._stableGridHeight(dimension.width, dimension.height));
+ 		if (!terminalWidth) {
+ 			return;
+ 		}
+ 
+ 		this._resize();
++		this._updateOcclusionOffset();
+ 
+ 		// Signal the container is ready
+ 		if (!this._containerReadyBarrier.isOpen()) {
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
+@@ -109,6 +109,15 @@
+ 	position: static;
+ }
+ 
++/* Composery: while the on-screen keyboard occludes the terminal the grid keeps its
++   keyboard-down height (terminalInstance.ts#_stableGridHeight), so it is taller than the
++   pane. The bottom alignment above keeps the prompt and cursor visible; clip the overflow
++   above so the grid cannot spill over the tabs. */
++.monaco-workbench .terminal-editor .terminal-wrapper.composery-terminal-occluded,
++.monaco-workbench .pane-body.integrated-terminal .terminal-wrapper.composery-terminal-occluded {
++	overflow: hidden;
++}
++
+ .monaco-workbench .terminal-editor .xterm-viewport,
+ .monaco-workbench .pane-body.integrated-terminal .xterm-viewport {
+ 	z-index: 30;

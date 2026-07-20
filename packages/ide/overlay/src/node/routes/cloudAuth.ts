@@ -193,6 +193,30 @@ router.get("/error", async (req, res) => {
 	);
 });
 
+// Records a password the box already changed for itself, authorised by the
+// hash it is replacing. Keeps the website in step so the next bootstrap does
+// not restore the old password; no setup grant, so no website account needed.
+export async function changeCloudPassword(
+	currentRuntimeAuthHash: string,
+	runtimeAuthHash: string
+) {
+	if (!cloudConfig) throw new Error("Cloud authentication is not configured");
+	const response = await fetch(
+		new URL("/api/cloud/auth/password", cloudConfig.origin),
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				boxId: cloudConfig.boxId,
+				currentRuntimeAuthHash,
+				runtimeAuthHash
+			}),
+			signal: AbortSignal.timeout(30_000)
+		}
+	);
+	if (!response.ok) throw new Error("Cloud password change failed");
+}
+
 export async function installCloudPassword(
 	req: Request,
 	runtimeAuthHash: string

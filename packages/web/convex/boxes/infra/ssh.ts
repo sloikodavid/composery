@@ -323,14 +323,14 @@ __COMPOSERY_EXPECTED_HASH__
 )"
 attempt=1
 while [ "$attempt" -le 30 ]; do
-	actual_hash="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery sh -lc 'systemctl is-active --quiet ide.service && pid="$(systemctl show --property=MainPID --value ide.service)" && test "\${pid:-0}" -gt 0 && tr "\\000" "\\n" < "/proc/$pid/environ" | sed -n "s/^HASHED_PASSWORD=//p"' 2>/dev/null || true)"
+	actual_hash="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery sh -lc 'systemctl is-active --quiet ide.service && pid="$(systemctl show --property=MainPID --value ide.service)" && test "\${pid:-0}" -gt 0 && tr "\\000" "\\n" < "/proc/$pid/environ" | sed -n "s/^COMPOSERY_HASHED_PASSWORD=//p"' 2>/dev/null || true)"
 	if [ "$actual_hash" = "$expected_hash" ]; then
 		exit 0
 	fi
 	sleep 1
 	attempt=$((attempt + 1))
 done
-echo "composery container did not start with the expected HASHED_PASSWORD" >&2
+echo "composery container did not start with the expected COMPOSERY_HASHED_PASSWORD" >&2
 exit 1
 `
 		);

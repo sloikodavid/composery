@@ -1,3 +1,8 @@
+Home-menu entry for showing a QR of this instance's address, so a phone can open
+it without typing. Only the browser knows which of the server's addresses reached
+it, so the address is resolved here and handed to the composery-qr builtin
+extension, which owns the rendering.
+
 diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
@@ -24,38 +29,31 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -177,6 +182,36 @@
+@@ -177,6 +182,29 @@
  			});
  		}
  	}
 +
 +	private addShowQrCommand() {
-+		const targetWindow = window.top || window;
-+		const instanceUrl = new URL(this.productService.rootEndpoint || '.', targetWindow.location.href).href;
-+		const { hostname, protocol } = new URL(instanceUrl);
-+		const normalizedHostname = hostname.toLowerCase().replace(/\.$/, '');
-+		const isLoopback = normalizedHostname === 'localhost'
-+			|| normalizedHostname.endsWith('.localhost')
-+			|| normalizedHostname.startsWith('127.')
-+			|| normalizedHostname === '[::1]';
-+		const isUnspecified = normalizedHostname === '0.0.0.0'
-+			|| normalizedHostname === '[::]';
-+		if (!['http:', 'https:'].includes(protocol) || isLoopback || isUnspecified) {
-+			return;
-+		}
++		// This document's own address, not the embedding page's: reading across a
++		// cross-origin frame throws, and this runs during startup, where a throw
++		// costs the whole rest of it (the embedder's address is not this instance
++		// anyway). Whether another device can reach the address is the extension's
++		// call - it runs in node, so it can name this machine's addresses when not.
++		const instanceUrl = new URL(this.productService.rootEndpoint || '.', window.location.href).href;
 +
-+		CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor: ServicesAccessor) => {
-+			accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);
-+		});
++		this._register(CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor: ServicesAccessor) => {
++			return accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);
++		}));
 +
 +		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
-+			MenuRegistry.appendMenuItem(menuId, {
++			this._register(MenuRegistry.appendMenuItem(menuId, {
 +				command: {
 +					id: CodeServerClient.SHOW_QR_COMMAND_ID,
 +					title: localize('showQr', "Show QR Code"),
 +				},
-+				order: menuId === MenuId.MenubarHomeMenu ? -1 : undefined,
-+			});
++				order: menuId === MenuId.MenubarHomeMenu ? 0 : undefined,
++			}));
 +		}
 +	}
  

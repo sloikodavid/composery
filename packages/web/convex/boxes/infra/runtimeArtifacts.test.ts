@@ -33,7 +33,7 @@ describe("runtime artifacts", () => {
 		expect(artifacts.env).not.toContain("container=docker");
 		expect(artifacts.env).not.toContain("PORT");
 		expect(artifacts.env).toContain(
-			"HASHED_PASSWORD='$argon2id$v=19$m=1,t=1,p=1$salt$hash'"
+			"COMPOSERY_HASHED_PASSWORD='$argon2id$v=19$m=1,t=1,p=1$salt$hash'"
 		);
 		expect(artifacts.env).toContain("COMPOSERY_CLOUD_BOX_ID='box_123'");
 		expect(artifacts.env).toContain(

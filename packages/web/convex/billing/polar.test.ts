@@ -1,9 +1,51 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { revokeAndRefundPolarOrder } from "./polar";
+import {
+	boxProductIds,
+	isBoxProductId,
+	revokeAndRefundPolarOrder,
+	selectPolarCheckoutProduct
+} from "./polar";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.unstubAllEnvs();
+});
+
+describe("box products", () => {
+	it("orders both products with the selected billing interval first", () => {
+		vi.stubEnv("POLAR_BOX_MONTHLY_PRODUCT_ID", "monthly-product");
+		vi.stubEnv("POLAR_BOX_ANNUAL_PRODUCT_ID", "annual-product");
+
+		expect(boxProductIds("year")).toEqual([
+			"annual-product",
+			"monthly-product"
+		]);
+		expect(boxProductIds("month")).toEqual([
+			"monthly-product",
+			"annual-product"
+		]);
+		expect(isBoxProductId("monthly-product")).toBe(true);
+		expect(isBoxProductId("annual-product")).toBe(true);
+		expect(isBoxProductId("another-product")).toBe(false);
+	});
+
+	it("updates a resumable checkout to the selected product", async () => {
+		vi.stubEnv("POLAR_ENVIRONMENT", "sandbox");
+		vi.stubEnv("POLAR_ORGANIZATION_TOKEN", "polar-token");
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockResolvedValue(new Response(null, { status: 204 }));
+		vi.stubGlobal("fetch", fetch);
+
+		await selectPolarCheckoutProduct("checkout-id", "annual-product");
+
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(fetch.mock.calls[0]?.[0]).toContain("/v1/checkouts/checkout-id");
+		expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+			method: "PATCH",
+			body: JSON.stringify({ product_id: "annual-product" })
+		});
+	});
 });
 
 describe("revokeAndRefundPolarOrder", () => {

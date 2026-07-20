@@ -34,7 +34,7 @@ created once in the console and referenced by id.
    ```bash
    mkdir -p ~/.ssh
    ssh-keygen -t ed25519 -C composery-ssh -f ~/.ssh/composery_ssh
-   ```
+   ```  
 
    The first line creates `~/.ssh` if it does not exist yet; `ssh-keygen` fails
    with `No such file or directory` when the target directory is missing. When

@@ -83,6 +83,26 @@
 			: 0;
 	}
 
+	// With interactive-widget=resizes-content the keyboard shrinks the LAYOUT viewport too, so
+	// innerHeight - visualViewport.height reads 0 and none of the insets above can see it. The
+	// tallest viewport seen at this width is therefore the keyboard-down baseline; anything
+	// enough shorter than it is the keyboard. The floor keeps browser chrome (the collapsing
+	// URL bar) from reading as one.
+	const KEYBOARD_MIN_INSET = 120;
+	let keyboardBaselineWidth = 0;
+	let keyboardBaselineHeight = 0;
+
+	function keyboardOpen(width, height) {
+		if (width !== keyboardBaselineWidth) {
+			keyboardBaselineWidth = width;
+			keyboardBaselineHeight = height;
+		} else if (height > keyboardBaselineHeight) {
+			keyboardBaselineHeight = height;
+		}
+
+		return keyboardBaselineHeight - height >= KEYBOARD_MIN_INSET;
+	}
+
 	function updateViewportVars() {
 		const viewport = window.visualViewport;
 		const height = viewport?.height ?? window.innerHeight;
@@ -105,6 +125,14 @@
 		rootStyle.setProperty(
 			"--composery-touch-keyboard-inset",
 			`${Math.round(keyboardInsetBottom)}px`,
+		);
+		// Read by terminalInstance.ts to keep the terminal grid at its keyboard-down size:
+		// a keyboard must occlude the terminal, never resize the pty (SIGWINCH storms
+		// re-lay-out every TUI). Separate from the inset above, which means "overlap the
+		// viewport has NOT already excluded" and stays 0 here.
+		rootStyle.setProperty(
+			"--composery-touch-keyboard-open",
+			keyboardOpen(Math.round(width), Math.round(height)) ? "1" : "0",
 		);
 	}
 

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { extname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
@@ -7,6 +7,26 @@ const repoRoot = resolve(import.meta.dirname, "..");
 
 function readRepoFile(path: string): string {
 	return readFileSync(resolve(repoRoot, path), "utf8");
+}
+
+const BINARY = new Set([".ico", ".png", ".sqlite", ".svg", ".webm", ".woff2"]);
+
+// Every COMPOSERY_* name mentioned anywhere under the given repo paths.
+function envNamesUnder(paths: string[]): Set<string> {
+	const names = new Set<string>();
+	const visit = (path: string): void => {
+		if (statSync(path).isDirectory()) {
+			for (const entry of readdirSync(path).sort()) visit(join(path, entry));
+			return;
+		}
+		if (BINARY.has(extname(path))) return;
+		for (const match of readFileSync(path, "utf8").matchAll(
+			/COMPOSERY_[A-Z_]+/g
+		))
+			names.add(match[0]);
+	};
+	for (const path of paths) visit(resolve(repoRoot, path));
+	return names;
 }
 
 describe("runtime process managers", () => {
@@ -127,15 +147,79 @@ describe("runtime process managers", () => {
 		expect(entrypoint).toContain(
 			'install -d -m 0700 -o user -g user "$volume_root/api"'
 		);
+		// Devices, not mountpoints: a volume root inside a mount is still durable.
+		expect(entrypoint).toContain(
+			'if [ "$(stat -c %d "$volume_root")" = "$(stat -c %d /)" ]; then'
+		);
+	});
+
+	test("removes the registered password on every boot, after persistence", () => {
+		const entrypoint = readRepoFile("rootfs/opt/composery/entrypoint.sh");
+		const removal = readRepoFile("rootfs/opt/composery/remove-password.sh");
+
+		// Order matters: applying the delta first would restore the password.
+		expect(
+			entrypoint.indexOf("/opt/composery/remove-password.sh")
+		).toBeGreaterThan(entrypoint.indexOf("composery persistence apply"));
+		expect(entrypoint).toContain(
+			'if [ "${PORT:-8080}" = "${COMPOSERY_IDE_PORT:-8081}" ]'
+		);
+		// The config path has to track paths.config in patches/naming.diff.
+		expect(readRepoFile("packages/ide/patches/naming.diff")).toContain(
+			'envPaths("composery", { suffix: "" })'
+		);
+		expect(removal).toContain(
+			'config_path="${COMPOSERY_CONFIG:-/home/user/.config/composery/config.yaml}"'
+		);
+		expect(removal).toContain('chown user:user "$config_path"');
+		// Only 1/true may enable a switch that unprotects the instance, so an
+		// unrecognised value keeps the password rather than removing it.
+		expect(removal).toContain("1 | true) ;;");
+		expect(removal).toContain("*) exit 0 ;;");
+		expect(removal).not.toContain("password-removed");
+	});
+
+	test("wires every environment variable the docs promise", () => {
+		// COMPOSERY_DISABLE_FILE_UPLOADS was documented for a release with no env
+		// var behind it: upstream left --disable-file-uploads CLI-only, and
+		// Composery passes no CLI flags. Documented but inert is the worst case -
+		// the operator believes uploads are blocked - so pin docs to real wiring.
+		const documented = [
+			...readRepoFile("docs/configuration.md").matchAll(
+				/`(COMPOSERY_[A-Z_]+)`/g
+			)
+		].map((match) => match[1]);
+		const wired = envNamesUnder([
+			"Dockerfile",
+			"packages/cli/crates",
+			"packages/ide/overlay/src",
+			"packages/ide/patches",
+			"packages/ide/scripts",
+			"rootfs",
+			"scripts"
+		]);
+
+		expect(documented.length).toBeGreaterThan(20);
+		expect(documented.filter((name) => !wired.has(name))).toEqual([]);
 	});
 
 	test("bridges cloud identity and the managed password into the IDE service", () => {
 		const entrypoint = readRepoFile("rootfs/opt/composery/entrypoint.sh");
 		const service = readRepoFile("rootfs/usr/lib/systemd/system/ide.service");
 
-		expect(entrypoint).toContain("HASHED_PASSWORD");
+		// The bare name is a trap: "HASHED_PASSWORD" also matches inside
+		// "COMPOSERY_HASHED_PASSWORD", so asserting it cannot tell the two apart.
+		// The IDE reads the prefixed name (rebrand.mjs rewrites cli.ts), so
+		// ^COMPOSERY_ already carries it and the cloud env file must use it too.
 		expect(entrypoint).toContain("^COMPOSERY_");
+		expect(entrypoint).not.toMatch(/\|HASHED_PASSWORD\|/);
 		expect(entrypoint).toContain("umask 077");
 		expect(service).toContain("EnvironmentFile=-/run/composery.env");
+		expect(
+			readRepoFile("packages/web/convex/boxes/infra/runtimeArtifacts.ts")
+		).toContain("`COMPOSERY_HASHED_PASSWORD=${quoteEnvFileValue");
+		expect(readRepoFile("packages/ide/scripts/rebrand.mjs")).toContain(
+			'"process.env.COMPOSERY_HASHED_PASSWORD"'
+		);
 	});
 });

@@ -52,13 +52,16 @@ export function isReservedSlug(slug: string) {
 	return reservedBoxSlugSet.has(slug);
 }
 
-export function isValidSlug(slug: string) {
+export function isValidSlugFormat(slug: string) {
 	return (
 		slug.length >= 3 &&
 		slug.length <= 63 &&
 		!slug.endsWith("-") &&
 		!slug.startsWith("xn--") &&
-		/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug) &&
-		!isReservedSlug(slug)
+		/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug)
 	);
+}
+
+export function isValidSlug(slug: string) {
+	return isValidSlugFormat(slug) && !isReservedSlug(slug);
 }

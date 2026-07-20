@@ -4,12 +4,23 @@
 - Use `tmp/` for scratch files and artifacts (gitignored).
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
 - Collapse flashy or out-of-place words for consistency: Delete/Erase->Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
+- The container is not a boundary against the person using it: it is privileged and root-capable, and cloud box owners control their host too (the Hetzner firewall is the real boundary — see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own box is a supported surface, so every env-driven feature must behave correctly when they do.
+- Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the box password never requires a Composery website account — proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
+
+## Correctness
+
+- Check claims against the artifact, not the source you assume produces it. A patch or generator may already override what the upstream file says, and a grep that misses one spelling reads as proof of absence. Run the generator, read the built tree, query the deployment.
+- A check that cannot fail is worse than no check: it reports success forever. Before trusting a new test or guard, break what it guards and watch it fail. Substring assertions are the usual culprit — `HASHED_PASSWORD` matches inside `COMPOSERY_HASHED_PASSWORD`.
+- Silent success is the worst outcome here, worse than a crash. A password that reverts at the next restart, a documented variable nothing reads, a repair job verifying the wrong name: each looked healthy for exactly as long as nobody checked. Make the inert path say so.
+- Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
+- Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
+- Fix the class, not the instance. A bug found by reading is usually one of several; prefer a lint or regen test that catches the next one to a hand-patch of the one you saw.
 
 ## IDE / upstream naming
 
 `packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
-- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars use Composery names (`COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`, `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`, `COMPOSERY_GITHUB_TOKEN`, plus the narrower `COMPOSERY_*` toggles). `PORT` stays generic.
+- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list — a test pins it to real wiring, so add there rather than enumerating names here.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
 - `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. Put systematic product renames there so bumps fail loudly and do not scatter broad rename hunks across upstream files.
 - No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
@@ -227,6 +238,7 @@ packages/
             cloudAuth.ts
             loginRateLimit.ts
             passwordConfig.ts
+            pwned.ts
             register.ts
     patches/
       api-keys-action.diff
@@ -242,6 +254,7 @@ packages/
       editcontext-android.diff
       extensions-mobile.diff
       extensions-view-themes.diff
+      file-uploads-env.diff
       hardening.diff
       local-media-preview.diff
       markdown-preview-loopback-callback-bridge.diff
@@ -270,6 +283,7 @@ packages/
       touch-gate.diff
       touch-inline-actions.diff
       touch-input-context-menu.diff
+      touch-keyboard-reopen.diff
       touch-list-focus.diff
       touch-markdown-links.diff
       touch-menu.diff
@@ -277,10 +291,10 @@ packages/
       touch-reveal-guard.diff
       touch-sash.diff
       touch-select.diff
-      touch-terminal-anchor.diff
       touch-terminal-focus.diff
       touch-terminal-hint.diff
       touch-terminal-keybar.diff
+      touch-terminal-keyboard-occlusion.diff
       touch-terminal-links.diff
       touch-viewport-inset.diff
       trusted-domains-loopback-callback-guard.diff
@@ -369,8 +383,6 @@ packages/
               box-snapshots.tsx
             page.tsx
           new/
-            _components/
-              new-box.tsx
             page.tsx
           error.tsx
           page.tsx
@@ -404,6 +416,8 @@ packages/
         licenses/
           page.tsx
         pricing/
+          _components/
+            pricing.tsx
           page.tsx
         privacy/
           page.tsx
@@ -507,6 +521,7 @@ packages/
       dialog.tsx
       dismiss-button.tsx
       dropdown-menu.tsx
+      fading-text.tsx
       faq.tsx
       flags-table.tsx
       footer.tsx
@@ -661,6 +676,8 @@ packages/
     lib/
       auth-routing.test.ts
       auth-routing.ts
+      box-billing.test.ts
+      box-billing.ts
       box-route.test.ts
       box-route.ts
       box-slug.test.ts
@@ -796,6 +813,7 @@ rootfs/
         systemd.sh
       entrypoint.sh
       ide.sh
+      remove-password.sh
   usr/
     lib/
       systemd/

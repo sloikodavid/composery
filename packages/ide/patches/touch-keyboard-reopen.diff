@@ -1,0 +1,72 @@
+diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/browser/touch.ts
+--- a/lib/vscode/src/vs/base/browser/touch.ts
++++ b/lib/vscode/src/vs/base/browser/touch.ts
+@@ -92,6 +92,10 @@
+ 	// menu the fallback already opened (Windows fires its native one only on finger-up).
+ 	private suppressNativeContextMenuUntil = 0;
+ 
++	// Composery: the editable whose on-screen keyboard a pan has stood down, and the
++	// inputmode it had before (see suppressKeyboardReopen).
++	private keyboardSuppressed: { element: HTMLElement; inputMode: string | null } | undefined;
++
+ 	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
+ 
+ 
+@@ -327,6 +331,9 @@
+ 				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
+ 				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
+ 
++				// A tap is the gesture that asks to type - hand the keyboard back before
++				// the tap's own handlers focus anything.
++				this.allowKeyboardReopen();
+ 				const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
+ 				evt.pageX = data.rollingPageX.at(-1)!;
+ 				evt.pageY = data.rollingPageY.at(-1)!;
+@@ -402,6 +409,39 @@
+ 		}
+ 	}
+ 
++	// Composery: Android Chrome re-opens a dismissed on-screen keyboard whenever a touch
++	// gesture ends while an editable still holds focus - and the terminal and the editor
++	// both keep a hidden textarea focused the whole time. So panning either one with the
++	// keyboard down popped it straight back up, and the resize that followed ate the pan
++	// (device-verified 2026-07-20). inputmode="none" is the only thing that stands that
++	// re-open down; it does not close a keyboard that is already up and does not touch key
++	// handling, so a pan can set it unconditionally. allowKeyboardReopen puts it back on
++	// the next tap - the gesture that actually asks to type.
++	private suppressKeyboardReopen(target: EventTarget | undefined): void {
++		if (this.keyboardSuppressed || !(target instanceof Node)) {
++			return;
++		}
++		const active = target.ownerDocument?.activeElement;
++		if (!(active instanceof HTMLElement) || !DomUtils.isEditableElement(active)) {
++			return;
++		}
++		this.keyboardSuppressed = { element: active, inputMode: active.getAttribute('inputmode') };
++		active.setAttribute('inputmode', 'none');
++	}
++
++	private allowKeyboardReopen(): void {
++		if (!this.keyboardSuppressed) {
++			return;
++		}
++		const { element, inputMode } = this.keyboardSuppressed;
++		this.keyboardSuppressed = undefined;
++		if (inputMode === null) {
++			element.removeAttribute('inputmode');
++		} else {
++			element.setAttribute('inputmode', inputMode);
++		}
++	}
++
+ 	private onNativeContextMenu(e: MouseEvent): void {
+ 		if (e.isTrusted && Date.now() < this.suppressNativeContextMenuUntil) {
+ 			// Composery: the release echo of a long-press whose menu the fallback already
+@@ -575,6 +615,7 @@
+ 			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
+ 				data.tapCancelled = true;
+ 				this.clearContextMenuTimer(data);
++				this.suppressKeyboardReopen(data.initialTarget);
+ 			}
+ 
+ 			const evt = this.newGestureEvent(EventType.Change, data.initialTarget);

@@ -201,7 +201,9 @@ export const purgeExpired = internalMutation({
 	handler: async (ctx) => {
 		const alerts = await ctx.db
 			.query("staff_alerts")
-			.withIndex("purge_at", (query) => query.lte("purge_at", Date.now()))
+			.withIndex("purge_at", (query) =>
+				query.gte("purge_at", 0).lte("purge_at", Date.now())
+			)
 			.take(STAFF_ALERT_PURGE_BATCH);
 		for (const alert of alerts) await ctx.db.delete(alert._id);
 		if (alerts.length === STAFF_ALERT_PURGE_BATCH) {

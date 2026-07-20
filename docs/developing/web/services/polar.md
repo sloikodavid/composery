@@ -29,16 +29,27 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    is the one Polar value with a fail-safe default of `sandbox`
    (`convex/billing/polar.ts`).
 
-3. Create the Box product (Products -> Create Product). Give it a name, add a
-   recurring **monthly $25** price, describe the hosted box accurately, link the
-   Terms and Privacy Policy, and save. Open the product and copy its **Product
-   ID** (not the price ID) -> `POLAR_BOX_PRODUCT_ID`. The code keys off the
-   product id (`products.box` in `convex/billing/polar.ts`). This is a
-   per-deployment env var, not a hardcoded id, because the sandbox and production
-   Box products have different ids.
+3. Under Settings -> Payments, set the organization's default tax behavior to
+   **Exclusive**. Polar fixes the billing interval on each product, so create two
+   products rather than adding two prices to one product:
+   - **Box Monthly**: recurring monthly, fixed at **$24 USD**.
+   - **Box Annual**: recurring yearly, fixed at **$240 USD**. This is displayed
+     on Composery as $20/month, billed annually.
+
+   Give both the same accurate hosted-box description, Terms link, Privacy link,
+   and benefits. Duplicating Box Monthly is the safest way to create Box Annual,
+   then change its billing interval and price before publishing. Open each
+   product and copy its **Product ID** (not its price ID):
+   - Box Monthly -> `POLAR_BOX_MONTHLY_PRODUCT_ID`.
+   - Box Annual -> `POLAR_BOX_ANNUAL_PRODUCT_ID`.
+
+   Both variables are read by `convex/billing/polar.ts`. Checkout receives both
+   product IDs and selects the pricing-page choice by default; fulfillment
+   accepts paid initial orders from either ID. These are per-deployment values,
+   because sandbox and production products have different IDs.
 
 4. Create one organization custom field (Settings -> Custom Fields), attach it
-   to the Box product, and make it a **required checkbox**:
+   to **both Box products**, and make it a **required checkbox** on each:
    - Slug `composery-terms-v1`.
    - Label `I agree to the Composery Terms of Service.`
    - Help text linking to `https://www.composery.io/terms`.
@@ -81,6 +92,12 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 Checkout success URLs are built from `WEBSITE_ORIGIN`, so that var on the same
 [Convex](./convex.md) deployment must point at the matching website before you
 test checkout.
+
+The pricing page defaults to Box Annual. Its slug field checks the shared box
+namespace before checkout, preserves the chosen slug and interval through sign
+in, and sends the chosen product first in Polar's checkout product list. Polar
+still shows both products in checkout, so the customer can review or change the
+billing interval before paying.
 
 ## Billing and box lifecycle
 
@@ -131,6 +148,8 @@ refund requests in Polar rather than paying the customer outside Polar.
 
 - Polar merchant of record: https://polar.sh/docs/merchant-of-record/introduction
 - Polar account review: https://polar.sh/docs/merchant-of-record/account-reviews
+- Polar products and billing intervals: https://polar.sh/docs/features/products
+- Polar checkout sessions: https://polar.sh/docs/features/checkout/session
 - Polar webhook events: https://polar.sh/docs/integrate/webhooks/events
 - Polar custom fields: https://polar.sh/docs/features/custom-fields
 - Polar refunds: https://polar.sh/docs/features/refunds

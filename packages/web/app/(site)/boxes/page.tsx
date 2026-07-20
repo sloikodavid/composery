@@ -27,7 +27,7 @@ export default async function BoxesPage({
 			actions={
 				<AnimatedIconLink
 					className={cn("w-full sm:w-auto", buttonVariants())}
-					href="/boxes/new"
+					href="/pricing"
 					icon="plus"
 					iconPosition="start"
 					prefetch={false}

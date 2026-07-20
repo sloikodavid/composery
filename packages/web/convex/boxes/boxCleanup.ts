@@ -143,7 +143,12 @@ export const purgeExpiredCheckoutRecords = internalMutation({
 		const timestamp = Date.now();
 		const intents = await ctx.db
 			.query("box_checkout_intents")
-			.withIndex("purge_at", (query) => query.lte("purge_at", timestamp))
+			// Bounded from below: purge_at is optional, and Convex orders a
+			// missing field below every number, so lte() alone would also sweep
+			// in-flight intents that have not been given a purge_at yet.
+			.withIndex("purge_at", (query) =>
+				query.gte("purge_at", 0).lte("purge_at", timestamp)
+			)
 			.take(DELETE_BATCH_SIZE);
 		for (const intent of intents) {
 			if ((intent.retain_until ?? 0) > timestamp) {
@@ -234,7 +239,10 @@ export const scheduleExpiredBoxPurges = internalMutation({
 		const page = await ctx.db
 			.query("boxes")
 			.withIndex("status_purge_at", (query) =>
-				query.eq("status", "deleted").lte("purge_at", Date.now())
+				query
+					.eq("status", "deleted")
+					.gte("purge_at", 0)
+					.lte("purge_at", Date.now())
 			)
 			.paginate({ cursor: args.cursor ?? null, numItems: DELETE_BATCH_SIZE });
 		for (const box of page.page) {

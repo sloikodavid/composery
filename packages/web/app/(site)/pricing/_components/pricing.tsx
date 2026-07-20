@@ -1,0 +1,345 @@
+"use client";
+
+import { useAction, useConvexAuth, useQuery } from "convex/react";
+import {
+	AngryIcon,
+	ContainerIcon,
+	EarthLockIcon,
+	FileSearchCornerIcon,
+	HistoryIcon,
+	type LucideIcon,
+	MonitorCogIcon,
+	RocketIcon,
+	ShieldCheckIcon,
+	WalletIcon
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { AnimatedIconButton } from "@/components/animated-icon";
+import { Badge } from "@/components/badge";
+import { buttonVariants } from "@/components/button";
+import { Faq } from "@/components/faq";
+import { FadingText } from "@/components/fading-text";
+import { GitHubIcon } from "@/components/icons/github-icon";
+import { Input } from "@/components/input";
+import { PageTemplate } from "@/components/page-template";
+import { api } from "@/convex/_generated/api";
+import {
+	BOX_ANNUAL_SAVINGS_PERCENT,
+	BOX_BILLING,
+	type BoxBillingInterval
+} from "@/lib/box-billing";
+import { isValidSlugFormat, sanitizeSlug } from "@/lib/box-slug";
+import { errorMessage } from "@/lib/error-message";
+import { GITHUB_REPO_URL } from "@/lib/links";
+import { signInUrlForReturnPath } from "@/lib/auth-routing";
+import { cn } from "@/lib/utils";
+
+type Feature = { icon: LucideIcon; text: string };
+
+const MANAGED_FEATURES: Feature[] = [
+	{ icon: RocketIcon, text: "Ready in a minute" },
+	{ icon: ShieldCheckIcon, text: "Privately hosted in Europe" },
+	{ icon: EarthLockIcon, text: "Sub-domain, DNS, and HTTPS" },
+	{ icon: HistoryIcon, text: "Daily and manual snapshots" }
+];
+
+const SELF_HOSTED_FEATURES: Feature[] = [
+	{ icon: ContainerIcon, text: "Runs anywhere, just like n8n" },
+	{ icon: FileSearchCornerIcon, text: "Fully open-source, no lock-in" },
+	{ icon: MonitorCogIcon, text: "Platform-specific hosting templates" },
+	{ icon: AngryIcon, text: "You might get a headache" }
+];
+
+function BillingSelector({
+	billingInterval,
+	onChange
+}: {
+	billingInterval: BoxBillingInterval;
+	onChange: (billingInterval: BoxBillingInterval) => void;
+}) {
+	const annual = billingInterval === "year";
+
+	return (
+		<div
+			aria-label="Billing frequency"
+			className="flex items-center gap-2.5"
+			role="group"
+		>
+			<button
+				aria-checked={annual}
+				aria-label="Annual billing"
+				className="inline-flex h-8 items-center gap-2 rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring"
+				onClick={() => onChange(annual ? "month" : "year")}
+				role="switch"
+				type="button"
+			>
+				<span className="text-xs font-medium text-foreground">
+					{BOX_BILLING.month.label}
+				</span>
+				<span
+					aria-hidden="true"
+					className={cn(
+						"flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors",
+						annual ? "bg-primary" : "bg-input"
+					)}
+				>
+					<span
+						className={cn(
+							"size-4 rounded-full bg-background shadow-sm transition-transform",
+							annual && "translate-x-4"
+						)}
+					/>
+				</span>
+				<span className="text-xs font-medium text-foreground">
+					{BOX_BILLING.year.label}
+				</span>
+			</button>
+			<Badge className="bg-success/10 text-success">
+				Save {BOX_ANNUAL_SAVINGS_PERCENT}%
+			</Badge>
+		</div>
+	);
+}
+
+function FeatureList({ features }: { features: Feature[] }) {
+	return (
+		<ul className="space-y-3.5">
+			{features.map(({ icon: Icon, text }) => (
+				<li className="flex items-center gap-3 text-sm" key={text}>
+					<Icon className="size-4 shrink-0 text-muted-foreground" />
+					<span className="text-foreground">{text}</span>
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function PlanCard({
+	children,
+	descriptor,
+	features,
+	name,
+	period,
+	price
+}: {
+	children: ReactNode;
+	descriptor: string;
+	features: Feature[];
+	name: string;
+	period?: string;
+	price: string;
+}) {
+	return (
+		<div className="flex flex-col rounded-lg border border-border p-7 sm:p-8">
+			<h3 className="font-heading text-2xl font-medium tracking-tight text-foreground">
+				{name}
+			</h3>
+			<p className="mt-1 text-sm text-muted-foreground">{descriptor}</p>
+
+			<div className="mt-6 flex items-baseline gap-1.5">
+				<span className="font-heading text-4xl font-medium tracking-tight text-foreground tabular-nums sm:text-5xl">
+					{price}
+				</span>
+				{period ? (
+					<span className="text-sm text-muted-foreground">{period}</span>
+				) : null}
+			</div>
+
+			<div className="mt-6">{children}</div>
+
+			<div className="mt-7 border-t border-border pt-7">
+				<FeatureList features={features} />
+			</div>
+		</div>
+	);
+}
+
+function BoxCheckout({
+	billingInterval,
+	initialSlug
+}: {
+	billingInterval: BoxBillingInterval;
+	initialSlug: string;
+}) {
+	const createCheckout = useAction(api.user.checkout.createCheckout);
+	const { isAuthenticated, isLoading: authenticationLoading } = useConvexAuth();
+	const [slug, setSlug] = useState(initialSlug);
+	const [submitting, setSubmitting] = useState(false);
+	const normalizedSlug = sanitizeSlug(slug);
+	const slugFormatValid = isValidSlugFormat(normalizedSlug);
+	const availability = useQuery(
+		api.user.checkout.slugAvailability,
+		slugFormatValid ? { slug: normalizedSlug } : "skip"
+	);
+	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
+	const slugAvailable = availability?.available ?? false;
+	const slugVisuallyInvalid = normalizedSlug.length > 0 && !slugFormatValid;
+	const slugInvalid = normalizedSlug.length >= 3 && !slugFormatValid;
+	const slugTaken = slugFormatValid && availability != null && !slugAvailable;
+	const canCheckout =
+		!authenticationLoading &&
+		slugFormatValid &&
+		slugAvailable &&
+		(checkoutAvailability?.available === true ||
+			availability?.resumable === true);
+	const checkoutUnavailable =
+		checkoutAvailability?.available === false && !availability?.resumable;
+	const slugError = checkoutUnavailable
+		? "Unavailable"
+		: slugInvalid
+			? "Invalid"
+			: slugTaken
+				? "Taken"
+				: "";
+
+	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		if (!canCheckout || submitting) return;
+
+		if (!isAuthenticated) {
+			const query = new URLSearchParams({
+				billing: billingInterval,
+				slug: normalizedSlug
+			});
+			window.location.assign(
+				signInUrlForReturnPath(`/pricing?${query.toString()}`)
+			);
+			return;
+		}
+
+		setSubmitting(true);
+		try {
+			const checkout = await createCheckout({
+				billingInterval,
+				slug: normalizedSlug
+			});
+			window.location.assign(checkout.checkoutUrl);
+		} catch (error) {
+			toast.error("Checkout could not start", {
+				description: errorMessage(error)
+			});
+			setSubmitting(false);
+		}
+	}
+
+	return (
+		<form className="relative" onSubmit={handleSubmit}>
+			<div className="absolute right-0 bottom-full left-0 mb-1 flex min-h-5 items-center justify-end">
+				<span
+					aria-live="polite"
+					id="box-slug-status"
+					title={
+						checkoutUnavailable
+							? (checkoutAvailability.message ?? undefined)
+							: undefined
+					}
+				>
+					<FadingText
+						className="truncate text-xs font-medium text-destructive"
+						text={slugError}
+					/>
+				</span>
+			</div>
+			<div className="flex min-w-0 gap-2">
+				<Input
+					aria-describedby="box-slug-status"
+					aria-invalid={slugVisuallyInvalid || slugTaken}
+					aria-label="Box slug"
+					autoCapitalize="none"
+					autoComplete="off"
+					autoFocus
+					className="h-9 min-w-0 flex-1 rounded-2xl"
+					id="box-slug"
+					maxLength={63}
+					name="slug"
+					onChange={(event) => setSlug(sanitizeSlug(event.target.value))}
+					pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
+					placeholder="my-box"
+					spellCheck={false}
+					type="text"
+					value={slug}
+				/>
+				<AnimatedIconButton
+					className="h-9 shrink-0 rounded-2xl"
+					disabled={!canCheckout || submitting}
+					icon="arrow-right"
+					size="lg"
+					type="submit"
+				>
+					Checkout
+				</AnimatedIconButton>
+			</div>
+		</form>
+	);
+}
+
+export function Pricing({
+	initialBillingInterval,
+	initialSlug
+}: {
+	initialBillingInterval: BoxBillingInterval;
+	initialSlug: string;
+}) {
+	const [billingInterval, setBillingInterval] = useState(
+		initialBillingInterval
+	);
+	const billing = BOX_BILLING[billingInterval];
+
+	return (
+		<PageTemplate
+			actions={
+				<BillingSelector
+					billingInterval={billingInterval}
+					onChange={setBillingInterval}
+				/>
+			}
+			actionsInline
+			breadcrumbs={[{ icon: WalletIcon, label: "Pricing" }]}
+		>
+			<div className="space-y-8">
+				<div className="grid gap-5 md:grid-cols-2">
+					<PlanCard
+						descriptor="An always-on secure box with Composery."
+						features={MANAGED_FEATURES}
+						name="Composery Cloud"
+						period={
+							billingInterval === "year"
+								? `/ month, billed annually`
+								: "/ month"
+						}
+						price={`$${billing.monthlyPrice}`}
+					>
+						<BoxCheckout
+							billingInterval={billingInterval}
+							initialSlug={initialSlug}
+						/>
+					</PlanCard>
+
+					<PlanCard
+						descriptor="Run your own Composery anywhere."
+						features={SELF_HOSTED_FEATURES}
+						name="Self-hosted"
+						price="Free"
+					>
+						<a
+							className={cn(
+								"w-full gap-2",
+								buttonVariants({ size: "lg", variant: "outline" })
+							)}
+							href={GITHUB_REPO_URL}
+							rel="noreferrer"
+							target="_blank"
+						>
+							<GitHubIcon className="size-4" />
+							Go to repo
+						</a>
+					</PlanCard>
+				</div>
+
+				<Faq />
+			</div>
+		</PageTemplate>
+	);
+}

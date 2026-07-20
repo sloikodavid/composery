@@ -35,6 +35,13 @@ router.use((req, res, next) => {
 	// A cloud setup grant proves box ownership, so it may set the password
 	// even when one exists: that is the cloud change/recovery flow.
 	if (cloudConfig && hasCloudSetupGrant(req)) {
+		// Cloud box owners control their own host, so they can set
+		// COMPOSERY_PASSWORD on a cloud box. It outranks whatever the grant
+		// would write here and takes back over at the next restart, so say so
+		// rather than store a password that silently stops working.
+		if (isEnvPasswordManaged(req)) {
+			return redirect(req, res, "login", { error: "env-managed" });
+		}
 		return next();
 	}
 	if (isEnvPasswordManaged(req) || hasPassword(req)) {

@@ -272,10 +272,24 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 		const timestamp = Date.now();
 		const users = await ctx.db
 			.query("users")
-			.withIndex("purge_at", (query) => query.lte("purge_at", timestamp))
+			// purge_at is optional and Convex orders a missing field below every
+			// number, so a bare lte() also selects every account that never had
+			// one - that is, every live account. Bound the range from below.
+			.withIndex("purge_at", (query) =>
+				query.gte("purge_at", 0).lte("purge_at", timestamp)
+			)
 			.take(ACCOUNT_DELETION_PAGE_SIZE);
 
 		for (const user of users) {
+			// Only a finished deletion may be purged. A live account carrying a
+			// purge_at is stray state, so clear it instead of sweeping it.
+			if (!user.deletion_finished_at) {
+				await ctx.db.patch(user._id, {
+					purge_at: undefined,
+					updated_at: timestamp
+				});
+				continue;
+			}
 			const [box, intent, event] = await Promise.all([
 				ctx.db
 					.query("boxes")
@@ -299,7 +313,8 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 
 			if (box || intent || event) {
 				await ctx.db.patch(user._id, {
-					purge_at: timestamp + ACCOUNT_PURGE_RETRY_MS
+					purge_at: timestamp + ACCOUNT_PURGE_RETRY_MS,
+					updated_at: timestamp
 				});
 				continue;
 			}

@@ -323,3 +323,33 @@
 		opacity: 1 !important;
 	}
 }
+
+/*
+ * Notebook insert-cell toolbars a mouse reveals on hover that a finger never can. A cell's
+ * title toolbar (run/split/delete/move-up-down) and its gutter run button already reveal on
+ * .focused - a tap focuses the cell - so cell reordering and the rest need nothing here; only
+ * the between-cell "+ Code / + Markdown" insert bars are hover-only with no focus fallback. The
+ * top insert bar (one per notebook) shows whenever the notebook is editable; each cell's
+ * insert-below bar shows when that cell is focused, so a tap reveals where the next cell lands.
+ * NotebookCellList extends the base list widget, so the consumed-tap stand-down from
+ * touch-inline-actions.diff already keeps a toolbar tap off the cell underneath it. !important:
+ * head <link>, workbench styles inject later and win ties.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-workbench
+		.notebookOverlay.notebook-editor-editable
+		.cell-list-top-cell-toolbar-container {
+		opacity: 1 !important;
+	}
+
+	.monaco-workbench
+		.notebookOverlay.notebook-editor-editable
+		> .cell-list-container
+		> .monaco-list
+		> .monaco-scrollable-element
+		> .monaco-list-rows
+		> .monaco-list-row.focused
+		.cell-bottom-toolbar-container {
+		opacity: 1 !important;
+	}
+}

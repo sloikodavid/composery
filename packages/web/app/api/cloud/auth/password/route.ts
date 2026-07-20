@@ -12,6 +12,21 @@ export async function POST(request: Request) {
 	} catch {
 		return response({ error: "Invalid request." }, 400);
 	}
+	// Two ways to authorise the same write: a setup grant from the website
+	// (ownership proven through Clerk), or the box's current hash (the holder
+	// proved the current password on the box itself).
+	if (isPasswordChangeRequest(body)) {
+		try {
+			const result = await fetchAction(api.boxes.boxAuth.changePassword, {
+				boxId: body.boxId as Id<"boxes">,
+				currentRuntimeAuthHash: body.currentRuntimeAuthHash,
+				runtimeAuthHash: body.runtimeAuthHash
+			});
+			return response(result, 202);
+		} catch {
+			return response({ error: "Password change could not start." }, 409);
+		}
+	}
 	if (!isPasswordRequest(body)) {
 		return response({ error: "Invalid request." }, 400);
 	}
@@ -26,6 +41,25 @@ export async function POST(request: Request) {
 	} catch {
 		return response({ error: "Password setup could not start." }, 409);
 	}
+}
+
+function isPasswordChangeRequest(value: unknown): value is {
+	boxId: string;
+	currentRuntimeAuthHash: string;
+	runtimeAuthHash: string;
+} {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const body = value as Record<string, unknown>;
+	return (
+		typeof body.boxId === "string" &&
+		body.boxId.length <= 64 &&
+		typeof body.currentRuntimeAuthHash === "string" &&
+		body.currentRuntimeAuthHash.length <= 512 &&
+		body.currentRuntimeAuthHash.startsWith("$argon2id$") &&
+		typeof body.runtimeAuthHash === "string" &&
+		body.runtimeAuthHash.length <= 512 &&
+		body.runtimeAuthHash.startsWith("$argon2id$")
+	);
 }
 
 function isPasswordRequest(value: unknown): value is {

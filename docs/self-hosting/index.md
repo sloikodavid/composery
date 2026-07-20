@@ -84,6 +84,45 @@ boundary - Composery is intentionally root-capable inside the container:
 - register a strong password, or set `COMPOSERY_PASSWORD` /
   `COMPOSERY_HASHED_PASSWORD`
   (see [Configuration](../configuration.md));
+- never leave `COMPOSERY_REMOVE_PASSWORD` set after you have registered a new password
+  (see [Forgotten password](#forgotten-password)) - it reopens the instance on every
+  restart;
 - keep the image [updated](#updating);
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;
 - back up the named Docker volume or the mounted `/data` disk before major upgrades.
+
+## Forgotten password
+
+Two ways back in, both through your target's environment variables. Neither needs the
+volume.
+
+**Prefer `COMPOSERY_PASSWORD`.** Set it and restart: it overrides the registered password
+and keeps overriding it for as long as it stays set. The instance is never left open, so
+there is no window to get wrong.
+
+The other way removes the password instead, and it is the dangerous one.
+
+### COMPOSERY_REMOVE_PASSWORD leaves your instance wide open
+
+Set `COMPOSERY_REMOVE_PASSWORD=1` and restart, and the registered password is deleted. The
+instance then behaves exactly like a brand new one: the next person to load the URL is
+handed the "create password" screen. **That person does not have to be you.** Whoever
+registers first owns the instance, and a Composery instance is a root-capable machine with
+a terminal, your files, and your credentials on it.
+
+It runs on **every boot while the variable is set**, not once. Each restart removes the
+password again - including restarts you did not ask for, such as host reboots, platform
+redeploys, and node migrations. An instance you believe you re-secured can be silently
+returned to open weeks later.
+
+Use it like this, and do not stop after step 2:
+
+1. Set `COMPOSERY_REMOVE_PASSWORD=1` only when you can open the instance _right now_.
+2. Restart, open it immediately, and register the new password.
+3. **Set `COMPOSERY_REMOVE_PASSWORD=0` (or remove it entirely) and restart again.** Until
+   you do, you are one restart away from an unprotected instance.
+
+Only `1` and `true` turn it on, trimmed and case-insensitive. Every other value - `0`,
+`false`, empty, or a typo - leaves the registered password alone, so a mistake fails
+towards staying protected. The container logs a warning on every boot it is active, and a
+separate note if `COMPOSERY_PASSWORD` is also set and still governs sign-in.

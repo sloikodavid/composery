@@ -4,8 +4,10 @@ as a bare focus-move that emits nothing at all - leaving every Enter-only flow
 (quick input accept, inline rename, suggest accept, chat/REPL submit)
 unreachable on touch. Three layers, from keyboard to guaranteed:
 ImeEnterFallback replays line-break commits as cancelable synthetic Enter
-keydowns; InputBox asks soft keyboards for a committing "go" action instead of
-the focus-hopping arrow some IMEs default to on bare single-line inputs; and
+keydowns; InputBox asks soft keyboards for a newline key ("enter") rather than
+an action key - an action key ("go"/"send", Gboard's right arrow) commits no
+text, so it emits neither a usable keydown nor a line break for the fallback to
+replay, and the focus-hopping arrow bare inputs default to is worse still; and
 the quick input text prompt shows its OK button on touch, a tap path into the
 same accept emitter that does not depend on the IME emitting anything.
 
@@ -13,8 +15,8 @@ same accept emitter that does not depend on the IME emitting anything.
 +++ b/lib/vscode/src/vs/base/browser/imeEnter.ts
 @@ -0,0 +1,61 @@
 +/*---------------------------------------------------------------------------------------------
-+ * Composery: soft-keyboard Enter fallback. Mobile IMEs deliver their action key ("go",
-+ * "send", Gboard's arrow) as a beforeinput line break, and while composing the matching
++ * Composery: soft-keyboard Enter fallback. Mobile IMEs commit their newline key as a
++ * beforeinput line break instead of a usable keydown - while composing, the matching
 + * keydown reports keyCode 229 - so every Enter-driven flow desktop reaches through a real
 + * keydown (quick input accept, inline rename, suggest accept, chat and REPL submit) is
 + * unreachable on touch. Replay such commits as a cancelable synthetic Enter keydown on the
@@ -80,9 +82,9 @@ same accept emitter that does not depend on the IME emitting anything.
  			this.input.type = this.options.type || 'text';
  			this.input.setAttribute('wrap', 'off');
 +			// Composery: single-line inputs submit on Enter - ask soft keyboards for a
-+			// committing action ("go") instead of the focus-hopping arrow some IMEs
-+			// default to on bare inputs, which never produces an Enter at all.
-+			this.input.setAttribute('enterkeyhint', 'go');
++			// newline key, whose line-break commit ImeEnterFallback replays as a real
++			// Enter. An action key ("go"/"send") commits no text, so nothing to replay.
++			this.input.setAttribute('enterkeyhint', 'enter');
  		}
  
  		if (this.ariaLabel) {

@@ -67,3 +67,51 @@ describe("box retention", () => {
 		});
 	});
 });
+
+describe("purge sweeps", () => {
+	// Convex orders a missing field below every number in an index, so
+	// `lte("purge_at", now)` on an optional purge_at also selects every row that
+	// never received one - live users, in-flight checkouts. That shipped: a live
+	// account was found carrying a purge_at only the retry path writes, meaning
+	// the sweep had already selected it. Every range over an optional purge_at
+	// must be bounded from below.
+	it("bounds every purge_at range query from below", async () => {
+		const { readdir, readFile } = await import("node:fs/promises");
+		const { join } = await import("node:path");
+		const root = join(import.meta.dirname, "..");
+
+		const walk = async (dir: string): Promise<string[]> => {
+			const entries = await readdir(dir, { withFileTypes: true });
+			const files = await Promise.all(
+				entries.map(async (entry) => {
+					const path = join(dir, entry.name);
+					if (entry.isDirectory()) {
+						return entry.name === "_generated" ? [] : walk(path);
+					}
+					return entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")
+						? [path]
+						: [];
+				})
+			);
+			return files.flat();
+		};
+
+		const offenders: string[] = [];
+		for (const file of await walk(root)) {
+			const source = await readFile(file, "utf8");
+			for (const match of source.matchAll(/\.lte\(\s*"purge_at"/g)) {
+				// The lower bound belongs to the same range builder, so it reads a
+				// short window back rather than trying to parse the expression.
+				const preceding = source.slice(
+					Math.max(0, match.index - 200),
+					match.index
+				);
+				if (!preceding.includes('.gte("purge_at"')) {
+					offenders.push(file.slice(root.length + 1));
+				}
+			}
+		}
+
+		expect(offenders).toEqual([]);
+	});
+});

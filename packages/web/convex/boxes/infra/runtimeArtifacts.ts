@@ -33,7 +33,7 @@ export function renderComposeryEnv({
 	}
 	return [
 		runtimeAuthHash
-			? `HASHED_PASSWORD=${quoteEnvFileValue(runtimeAuthHash)}`
+			? `COMPOSERY_HASHED_PASSWORD=${quoteEnvFileValue(runtimeAuthHash)}`
 			: undefined,
 		cloudBoxId
 			? `COMPOSERY_CLOUD_BOX_ID=${quoteEnvFileValue(cloudBoxId)}`

@@ -1,17 +1,17 @@
 /* The website's design language (packages/web components) hand-written for
    these dependency-free pages: 10px radii, soft 3px focus rings, tinted
-   warning/destructive button states, 200ms ease-out transitions, fade-only
-   page enter. Colours come from brand.css variables so a brand change
-   propagates here without touching this file. */
+   warning/destructive button states, 200ms ease-out transitions, fade-only page
+   enter. Colours come from brand.css variables so a brand change propagates
+   here without touching this file. */
 
 /* Tint strength for the warning/destructive submit states: the website's
    bg-warning/10 -> /16 -> /24 scale, raised in dark where tints need more
-   presence (dark:bg-warning/18 -> /26 -> /34). data-scheme mirrors brand.css:
-   the mobile app stamps the app scheme on :root. */
+   presence. data-scheme mirrors brand.css: the mobile app stamps the app scheme
+   on :root. */
 :root {
-	--auth-tint: 10%;
-	--auth-tint-hover: 16%;
-	--auth-tint-active: 24%;
+	--auth-tint: 15%;
+	--auth-tint-hover: 22%;
+	--auth-tint-active: 30%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,9 +23,9 @@
 }
 
 :root[data-scheme="light"] {
-	--auth-tint: 10%;
-	--auth-tint-hover: 16%;
-	--auth-tint-active: 24%;
+	--auth-tint: 15%;
+	--auth-tint-hover: 22%;
+	--auth-tint-active: 30%;
 }
 
 :root[data-scheme="dark"] {
@@ -43,7 +43,7 @@
 
 .auth-logo-link {
 	display: block;
-	margin: 0 auto 18px;
+	margin: 0 auto 14px;
 	transition:
 		opacity 200ms ease-out,
 		transform 80ms ease;
@@ -57,31 +57,55 @@
 	transform: scale(0.98);
 }
 
+/* Inlined, not an <img> (authPage.ts): the logo paints itself in currentColor, which
+   inside an <img> resolves in the image's own isolated document - where the only scheme
+   signal is the standalone file's prefers-color-scheme rule, out of reach of the
+   data-scheme the app stamps on :root. An Android WebView reports the activity scheme
+   there rather than the system one, so the app drew a black logo on the dark page
+   (device-verified 2026-07-20). Inlined it simply inherits body's colour, the same way
+   the website's header logo does. */
 .auth-logo {
 	display: block;
-	height: clamp(40px, 9vw, 52px);
+	height: clamp(38px, 8.5vw, 46px);
 	max-width: 100%;
 	width: auto;
 }
 
-/* Stage crumbs double as the input's label row: the website's page-template
-   breadcrumbs, miniaturized. Past stages are muted and clickable to go back,
-   the current stage reads as the label. Fixed height, never wraps. */
-.auth-crumbs {
+/* Label row shared with the status message: the website's field header, where
+   the label sits left and its live message sits right (NewBox's Slug row). One
+   fixed-height row so a message can appear on the right without ever pushing
+   the input or button down. */
+.auth-head {
+	/* Locked geometry, not merely reserved: an empty status box has no text
+	   baseline, so baseline alignment made this row 20px or 21px depending on
+	   whether a message was showing - and every element below inherited that 1px
+	   jump. A fixed height with centred items cannot move whatever the content. */
 	align-items: center;
 	box-sizing: border-box;
+	display: flex;
+	gap: 12px;
+	height: 20px;
+	justify-content: space-between;
+	margin-bottom: 8px;
+	width: 100%;
+}
+
+/* Stage crumbs are the input's label: the website's page-template breadcrumbs,
+   miniaturized. Past stages are muted and clickable to go back, the current
+   stage reads as the label. Truncates before the status does, never wraps. */
+.auth-crumbs {
+	align-items: center;
 	color: var(--vscode-descriptionForeground);
 	display: flex;
+	flex: 1 1 auto;
 	font-size: 13px;
 	font-weight: 500;
 	gap: 6px;
 	line-height: 20px;
-	margin-bottom: 8px;
-	min-height: 20px;
+	min-width: 0;
 	overflow: hidden;
 	padding: 0 2px;
 	white-space: nowrap;
-	width: 100%;
 }
 
 .crumb {
@@ -120,8 +144,49 @@ button.crumb:hover {
 	display: none;
 }
 
+/* Live message on the right of the label row: strength/breach guidance while
+   typing, "Matches"/"Does not match" on the confirm step, or a server error.
+   Fixed height whether empty or full, one line only - it changes in place and
+   can never displace the input or button. */
+.auth-status {
+	box-sizing: border-box;
+	color: var(--vscode-descriptionForeground);
+	flex: 0 1 auto;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 16px;
+	max-width: 60%;
+	min-height: 16px;
+	overflow: hidden;
+	text-align: right;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.auth-status.success {
+	color: var(--auth-success);
+}
+
+.auth-status.destructive,
+.auth-status .error {
+	color: var(--vscode-errorForeground);
+}
+
+/* Each message change re-triggers a short opacity fade so guidance never snaps
+   in abruptly (retriggered from JS by re-adding the class). */
+.auth-status.auth-fade {
+	animation: auth-fade-in 180ms ease-out;
+}
+
 .auth-fields {
 	width: 100%;
+}
+
+/* A newly revealed stage fades its input in (register/change-password steps),
+   opacity only - the website never slides. Retriggered from JS on stage
+   change. */
+.auth-stage-enter {
+	animation: auth-fade-in 180ms ease-out;
 }
 
 .auth-input {
@@ -150,46 +215,12 @@ button.crumb:hover {
 
 .auth-input:focus {
 	border-color: var(--auth-input-focus);
-	box-shadow: 0 0 0 3px
-		color-mix(in oklab, var(--auth-input-focus) 25%, transparent);
+	box-shadow: 0 0 0 1px var(--auth-input-focus);
 }
 
 .auth-input[aria-invalid="true"] {
 	border-color: var(--vscode-errorForeground);
-	box-shadow: 0 0 0 3px
-		color-mix(in oklab, var(--vscode-errorForeground) 20%, transparent);
-}
-
-/* One status line per page, under the input: fixed height whether empty or
-   full, one line only - messages change in place and can never displace the
-   button below. Server-rendered errors (the .error span) land here too. */
-.auth-status {
-	box-sizing: border-box;
-	color: var(--vscode-descriptionForeground);
-	font-size: 12px;
-	font-weight: 500;
-	line-height: 16px;
-	margin-top: 8px;
-	min-height: 16px;
-	overflow: hidden;
-	padding: 0 2px;
-	text-align: left;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	width: 100%;
-}
-
-.auth-status.success {
-	color: var(--auth-success);
-}
-
-.auth-status.warning {
-	color: var(--auth-warning);
-}
-
-.auth-status.destructive,
-.auth-status .error {
-	color: var(--vscode-errorForeground);
+	box-shadow: 0 0 0 1px var(--vscode-errorForeground);
 }
 
 .submit-button {
@@ -207,7 +238,7 @@ button.crumb:hover {
 	gap: 8px;
 	height: 48px;
 	justify-content: center;
-	margin-top: 12px;
+	margin-top: 8px;
 	outline: none;
 	padding: 0 20px;
 	text-align: center;
@@ -242,8 +273,7 @@ button.crumb:hover {
 
 .submit-button:focus-visible {
 	border-color: var(--vscode-focusBorder);
-	box-shadow: 0 0 0 3px
-		color-mix(in oklab, var(--vscode-focusBorder) 30%, transparent);
+	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
 .submit-button:disabled {
@@ -251,10 +281,16 @@ button.crumb:hover {
 	opacity: 0.5;
 }
 
-/* Tinted, not solid: the website's soft warning/destructive buttons. */
+/* Tinted, not solid: the website's soft warning/destructive buttons. A weak
+   password softens the button to warning; a breach turns it destructive and
+   using it anyway takes a second click. */
 .submit-button.warning {
-	background: color-mix(in oklab, var(--auth-warning) var(--auth-tint), transparent);
-	color: var(--auth-warning);
+	background: color-mix(
+		in oklab,
+		var(--auth-warning) var(--auth-tint),
+		var(--vscode-editor-background)
+	);
+	color: color-mix(in oklab, var(--auth-warning) 88%, var(--vscode-foreground));
 }
 
 .submit-button.warning:hover:not(:disabled) {
@@ -275,15 +311,46 @@ button.crumb:hover {
 
 .submit-button.warning:focus-visible {
 	border-color: color-mix(in oklab, var(--auth-warning) 40%, transparent);
-	box-shadow: 0 0 0 3px
-		color-mix(in oklab, var(--auth-warning) 20%, transparent);
+	box-shadow: 0 0 0 1px var(--auth-warning);
+}
+
+/* The confirm step is the one that finishes the job, so once the two entries
+   match the button turns success-green: the last step reads as deliberate
+   rather than as the form starting over. */
+.submit-button.success {
+	background: color-mix(
+		in oklab,
+		var(--auth-success) var(--auth-tint),
+		var(--vscode-editor-background)
+	);
+	color: color-mix(in oklab, var(--auth-success) 88%, var(--vscode-foreground));
+}
+
+.submit-button.success:hover:not(:disabled) {
+	background: color-mix(
+		in oklab,
+		var(--auth-success) var(--auth-tint-hover),
+		var(--vscode-editor-background)
+	);
+}
+
+.submit-button.success:active:not(:disabled) {
+	background: color-mix(
+		in oklab,
+		var(--auth-success) var(--auth-tint-active),
+		var(--vscode-editor-background)
+	);
+}
+
+.submit-button.success:focus-visible {
+	box-shadow: 0 0 0 1px var(--auth-success);
 }
 
 .submit-button.destructive {
 	background: color-mix(
 		in oklab,
 		var(--vscode-errorForeground) var(--auth-tint),
-		transparent
+		var(--vscode-editor-background)
 	);
 	color: var(--vscode-errorForeground);
 }
@@ -310,8 +377,7 @@ button.crumb:hover {
 		var(--vscode-errorForeground) 40%,
 		transparent
 	);
-	box-shadow: 0 0 0 3px
-		color-mix(in oklab, var(--vscode-errorForeground) 20%, transparent);
+	box-shadow: 0 0 0 1px var(--vscode-errorForeground);
 }
 
 .submit-button svg {
@@ -319,6 +385,73 @@ button.crumb:hover {
 	flex: none;
 	height: 16px;
 	width: 16px;
+}
+
+/* The website's lucide-animated glyphs (components/icons/arrow-right.tsx,
+   login.tsx) replicated with CSS `d` morphs so these dependency-free pages need
+   no motion library: on hover or focus the Continue arrow's shaft shortens
+   (M5 12h14 -> h9) while its head nudges back (-3), and the Sign in arrow slides
+   into the door (+3), each over 0.4s. Chromium/WebKit animate `d`; anywhere it
+   is unsupported the glyph simply stays put, and reduced-motion opts out. */
+@keyframes submit-arrow-shaft {
+	0%,
+	100% {
+		d: path("M5 12h14");
+	}
+	50% {
+		d: path("M5 12h9");
+	}
+}
+
+@keyframes submit-arrow-head {
+	0%,
+	100% {
+		d: path("m12 5 7 7 -7 7");
+	}
+	50% {
+		d: path("m9 5 7 7 -7 7");
+	}
+}
+
+@keyframes submit-login-arrow {
+	0%,
+	100% {
+		d: path("M10 17 15 12 10 7");
+	}
+	50% {
+		d: path("M13 17 18 12 13 7");
+	}
+}
+
+@keyframes submit-login-line {
+	0%,
+	100% {
+		d: path("M3 12h12");
+	}
+	50% {
+		d: path("M6 12h12");
+	}
+}
+
+/* Played once per hover/focus via a JS-toggled class (auth.js), so the glyph
+   finishes its nudge even when the pointer leaves mid-way instead of snapping
+   back the moment :hover stops matching. */
+@media (prefers-reduced-motion: no-preference) {
+	.submit-button.glyph-play .submit-arrow-shaft {
+		animation: submit-arrow-shaft 400ms ease;
+	}
+
+	.submit-button.glyph-play .submit-arrow-head {
+		animation: submit-arrow-head 400ms ease;
+	}
+
+	.submit-button.glyph-play .submit-login-arrow {
+		animation: submit-login-arrow 400ms ease;
+	}
+
+	.submit-button.glyph-play .submit-login-line {
+		animation: submit-login-line 400ms ease;
+	}
 }
 
 /* Visuals come from .link (global.css); this only places it in the form. */
@@ -347,8 +480,19 @@ button.crumb:hover {
 	width: 1px;
 }
 
+@keyframes auth-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
-	.auth-form {
+	.auth-form,
+	.auth-status.auth-fade,
+	.auth-stage-enter {
 		animation: none;
 	}
 

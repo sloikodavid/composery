@@ -47,7 +47,7 @@ export default function Home() {
 				<div className="flex flex-wrap justify-center gap-3">
 					<AnimatedIconLink
 						className={buttonVariants({ size: "lg" })}
-						href="/boxes/new"
+						href="/pricing"
 						icon="plus"
 						iconPosition="start"
 						prefetch={false}
@@ -80,8 +80,7 @@ export default function Home() {
 					Check on your agents from anywhere.
 				</h2>
 				<p className="mx-auto mt-3 max-w-[36rem] text-[clamp(0.875rem,2.7vw,1rem)] leading-relaxed text-muted-foreground">
-					Your agents keep working with your laptop closed. Open your Composery
-					to see what they did, and tell them what is next.
+					Your Composery keeps working with your laptop closed. Pick up from mobile whenever you want.
 				</p>
 				<ThemedShot
 					alt="The same Composery instance on a phone: the welcome screen, Claude Code running in the terminal, and the morning brief."

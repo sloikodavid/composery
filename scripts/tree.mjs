@@ -64,6 +64,16 @@ function gitFiles() {
 	);
 }
 
+// Directories before files, then by name under a pinned locale. localeCompare
+// with a default (undefined) locale resolves it from the environment (en-US on
+// the author's box, en-US-POSIX on a LANG=C.UTF-8 CI runner), which sorts
+// "_components" vs "[id]" differently and makes the committed tree fail the CI
+// check forever. Exported so a test guards the pin.
+export function compareEntries(left, right) {
+	if (left.type !== right.type) return left.type === "directory" ? -1 : 1;
+	return left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
+}
+
 function renderTree() {
 	const root = {
 		children: new Map(),
@@ -86,12 +96,7 @@ function renderTree() {
 	}
 
 	function renderNode(node, depth = 0) {
-		const entries = [...node.children.values()].sort((left, right) => {
-			if (left.type !== right.type) return left.type === "directory" ? -1 : 1;
-			return left.name.localeCompare(right.name, undefined, {
-				sensitivity: "base"
-			});
-		});
+		const entries = [...node.children.values()].sort(compareEntries);
 
 		if (depth > 0 && entries.length > 80)
 			return [`${"  ".repeat(depth)}... (${entries.length} items)`];

@@ -5,7 +5,9 @@
 - Database/schema fields and persisted status/type literals: snake_case (stored data, not JS names).
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- Box lifecycle workflows: `<verb>Box<target>` - `provisionBox`, `resetBox`, `deleteBox`, `suspendBox`, `unsuspendBox`, `changeBoxSlug`, `changeBoxPassword`.
+- Box lifecycle workflows are named `<verb>Box` or `<verb>Box<target>`; see `convex/boxes/workflows/` for the current set.
+- Retention and purge windows live in `convex/boxes/boxRetention.ts`; read the window from there rather than restating a duration.
+- `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
 - Collapse flashy or out-of-place words for consistency: Erase->Delete/Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
 

@@ -132,6 +132,59 @@ export const installPassword = action({
 	}
 });
 
+// The grant flow proves ownership through the website and is the only way to
+// set a password you cannot already produce. This is the other half: a box
+// whose holder proved the current password changed it locally, and Convex has
+// to record that or the next bootstrap would restore the old one.
+export const changePassword = action({
+	args: {
+		boxId: v.id("boxes"),
+		currentRuntimeAuthHash: v.string(),
+		runtimeAuthHash: v.string()
+	},
+	returns: v.object({ accepted: v.boolean() }),
+	handler: async (ctx, args) => {
+		if (
+			!ARGON2ID_PATTERN.test(args.currentRuntimeAuthHash) ||
+			!ARGON2ID_PATTERN.test(args.runtimeAuthHash) ||
+			args.currentRuntimeAuthHash.length > 512 ||
+			args.runtimeAuthHash.length > 512
+		) {
+			throw new ConvexError("Invalid password hash.");
+		}
+		await ctx.runMutation(internal.boxes.boxAuth.applyPasswordChange, args);
+		return { accepted: true };
+	}
+});
+
+export const applyPasswordChange = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		currentRuntimeAuthHash: v.string(),
+		runtimeAuthHash: v.string()
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box || box.deleted_at) {
+			throw new ConvexError("Box not found.");
+		}
+		// The stored hash is itself the box's credential - the session cookie is
+		// that same string - so presenting it proves no more and no less than
+		// already holding the box password. This grants nothing new; it only
+		// keeps Convex in step with a change the box has already made.
+		if (box.runtime_auth_hash !== args.currentRuntimeAuthHash) {
+			throw new ConvexError("Current password does not match.");
+		}
+		if (box.runtime_auth_hash === args.runtimeAuthHash) return;
+		// Deliberately no reconcile: the box wrote this password itself, so
+		// pushing it back over SSH would restart the box for no reason.
+		await ctx.db.patch(box._id, {
+			runtime_auth_hash: args.runtimeAuthHash,
+			updated_at: Date.now()
+		});
+	}
+});
+
 export const boxForAuthorization = internalQuery({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args) => await ctx.db.get(args.boxId)

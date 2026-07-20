@@ -3,10 +3,15 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, query } from "../_generated/server";
 import { emailFromIdentity } from "../authorization";
-import { polarServer } from "../billing/polar";
+import {
+	boxProductId,
+	boxProductIds,
+	polarServer,
+	selectPolarCheckoutProduct
+} from "../billing/polar";
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
-import { requiredEnv, websiteOrigin } from "../env";
+import { websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
 import { readGlobalSettings } from "../settings";
@@ -17,15 +22,22 @@ type CheckoutResult = {
 	slug: string;
 };
 
+type ActiveCheckoutResult = CheckoutResult & { checkoutId: string };
+
 export const slugAvailability = query({
 	args: {
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
 		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) return { available: false };
-
 		const slug = sanitizeSlug(args.slug);
+		if (!identity) {
+			return {
+				available: await isSlugAvailable(ctx, slug),
+				resumable: false,
+				slug
+			};
+		}
 
 		// The caller's own active reservation isn't "taken" from their point of
 		// view - createCheckout reuses it. Ignore it here so a returning user can
@@ -70,8 +82,6 @@ export const completedCheckout = query({
 export const availability = query({
 	args: {},
 	handler: async (ctx) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) return { available: false, message: null };
 		const settings = await readGlobalSettings(ctx);
 		const capacity = await readCapacityUsage(ctx, settings);
 		return {
@@ -83,6 +93,7 @@ export const availability = query({
 
 export const createCheckout = action({
 	args: {
+		billingInterval: v.union(v.literal("month"), v.literal("year")),
 		slug: v.string()
 	},
 	returns: v.object({
@@ -108,7 +119,7 @@ export const createCheckout = action({
 			throw new ConvexError("Slug is unavailable.");
 		}
 
-		const activeCheckout: CheckoutResult | null = await ctx.runQuery(
+		const activeCheckout: ActiveCheckoutResult | null = await ctx.runQuery(
 			internal.checkout.checkoutIntents.activeCheckoutIntentForUserSlug,
 			{
 				userId: identity.subject,
@@ -117,6 +128,10 @@ export const createCheckout = action({
 		);
 
 		if (activeCheckout) {
+			await selectPolarCheckoutProduct(
+				activeCheckout.checkoutId,
+				boxProductId(args.billingInterval)
+			);
 			return {
 				checkoutUrl: activeCheckout.checkoutUrl,
 				intentId: activeCheckout.intentId,
@@ -141,10 +156,13 @@ export const createCheckout = action({
 			const checkout = await polarServer().createCheckoutSession(ctx, {
 				userId: identity.subject,
 				email: user.email,
-				productIds: [requiredEnv("POLAR_BOX_PRODUCT_ID")],
+				// Polar models monthly and yearly billing as separate products. Both
+				// are available in checkout; the first is selected by default.
+				productIds: boxProductIds(args.billingInterval),
 				origin,
 				successUrl: `${origin}/boxes?checkout_id={CHECKOUT_ID}`,
 				metadata: {
+					[CHECKOUT_INTENT_METADATA_KEYS.billingInterval]: args.billingInterval,
 					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reservedIntentId,
 					[CHECKOUT_INTENT_METADATA_KEYS.slug]: slug,
 					[CHECKOUT_INTENT_METADATA_KEYS.userId]: identity.subject

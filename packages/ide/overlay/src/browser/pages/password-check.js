@@ -1,4 +1,13 @@
 (() => {
+	// The breach range request goes to the box's own origin (register.ts relays
+	// it to the range API server-side), so the page never makes a cross-origin
+	// request. Base path comes from the hidden #base field the auth shell
+	// renders; it is "" at the server root.
+	const rangeBase =
+		(typeof document !== "undefined" &&
+			document.getElementById("base")?.value) ||
+		""
+
 	const commonParts = [
 		"123456",
 		"abcdef",
@@ -24,13 +33,13 @@
 		const hasLongRepeat = /(.)\1{3,}/.test(password)
 
 		if (password.length < 12) {
-			return { ok: false, message: "Use at least 12 characters." }
+			return { ok: false, message: "Too short" }
 		}
 		if (hasCommonPart) {
-			return { ok: false, message: "Use a less common password." }
+			return { ok: false, message: "Too common" }
 		}
 		if (hasLongRepeat || uniqueCharacters < 6) {
-			return { ok: false, message: "Avoid repeated characters." }
+			return { ok: false, message: "Too repetitive" }
 		}
 
 		const ok =
@@ -40,7 +49,7 @@
 
 		return {
 			ok,
-			message: ok ? "" : "Use a longer passphrase or another character type."
+			message: ok ? "" : "A little weak"
 		}
 	}
 
@@ -121,13 +130,12 @@
 		const hash = await sha1Hex(new TextEncoder().encode(password))
 		const prefix = hash.slice(0, 5)
 		const suffix = hash.slice(5)
-		const response = await fetch(
-			`https://api.pwnedpasswords.com/range/${prefix}`,
-			{
-				headers: { "Add-Padding": "true" },
-				signal
-			}
-		)
+		// Only the prefix leaves the browser; the box adds "Add-Padding" and does
+		// the cross-origin fetch. Same-origin here means CSP 'self' is enough and
+		// there is nothing to block or hang.
+		const response = await fetch(`${rangeBase}/_composery/pwned/${prefix}`, {
+			signal
+		})
 		if (!response.ok) throw new Error("Pwned Passwords check failed")
 
 		for (const line of (await response.text()).split("\n")) {

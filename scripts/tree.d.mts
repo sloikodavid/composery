@@ -11,3 +11,7 @@ export function canonicalPaths(
 	paths: string[],
 	readDirectory?: ReadDirectory
 ): string[];
+
+export type Entry = { name: string; type: "directory" | "file" };
+
+export function compareEntries(left: Entry, right: Entry): number;

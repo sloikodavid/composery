@@ -15,6 +15,7 @@ import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 // Polar checkout metadata keys. Set when creating a checkout and read back from
 // paid orders to reconnect a completed payment to the reserved intent.
 export const CHECKOUT_INTENT_METADATA_KEYS = {
+	billingInterval: "composery_billing_interval",
 	intentId: "composery_checkout_intent_id",
 	slug: "composery_box_slug",
 	userId: "composery_clerk_user_id"
@@ -114,9 +115,10 @@ export const activeCheckoutIntentForUserSlug = internalQuery({
 			)
 			.first();
 
-		if (!intent?.polar_checkout_url) return null;
+		if (!intent?.polar_checkout_id || !intent.polar_checkout_url) return null;
 
 		return {
+			checkoutId: intent.polar_checkout_id,
 			intentId: intent._id,
 			checkoutUrl: intent.polar_checkout_url,
 			slug: intent.slug

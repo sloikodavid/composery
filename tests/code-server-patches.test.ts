@@ -8,6 +8,7 @@ import {
 	readFileSync,
 	rmSync
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { posix, resolve } from "node:path";
 import vm from "node:vm";
@@ -17,7 +18,6 @@ import { describe, expect, test } from "vitest";
 import {
 	addedLines,
 	applyPatch,
-	evaluatePatchSnippets,
 	extractAddedFunction,
 	readRepoFile,
 	repoRoot
@@ -190,31 +190,150 @@ describe("local media preview", () => {
 	});
 });
 
-describe("QR action", () => {
-	test("is unavailable for addresses another device cannot reach", () => {
-		const source = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
-
-		expect(source).toContain("normalizedHostname.endsWith('.localhost')");
-		expect(source).toContain("normalizedHostname.startsWith('127.')");
-		expect(source).toContain("normalizedHostname === '[::1]'");
-		expect(source).toContain("normalizedHostname === '0.0.0.0'");
-		expect(source).toContain("normalizedHostname === '[::]'");
-		expect(
-			source.indexOf("if (!['http:', 'https:'].includes(protocol)")
-		).toBeLessThan(source.indexOf("CommandsRegistry.registerCommand"));
+// The workbench half of the QR is a patch, the rendering half is a shipped
+// extension. Top-level function declarations in a vm context land on the context
+// object, so the extension's internals are reachable without test-only exports.
+function loadQrExtension(): {
+	isReachableFromAnotherDevice: (url: URL) => boolean;
+	render: (url: string) => string;
+} {
+	const source = readRepoFile(
+		"packages/ide/overlay/lib/vscode/extensions/composery-qr/extension.js"
+	);
+	const nodeRequire = createRequire(import.meta.url);
+	const context: Record<string, unknown> = vm.createContext({
+		URL,
+		module: { exports: {} },
+		require(name: string): unknown {
+			if (name === "vscode") return { commands: {}, window: {} };
+			if (name === "node:os") return { networkInterfaces: () => ({}) };
+			if (name === "./qrcode-generator.js") {
+				return nodeRequire(
+					resolve(
+						repoRoot,
+						"packages/ide/overlay/lib/vscode/extensions/composery-qr/qrcode-generator.js"
+					)
+				) as unknown;
+			}
+			throw new Error(`Unexpected require: ${name}`);
+		}
 	});
 
-	test("fits the QR card within narrow and short webviews", () => {
+	vm.runInContext(source, context);
+
+	expect(context.isReachableFromAnotherDevice).toBeTypeOf("function");
+	expect(context.render).toBeTypeOf("function");
+	return {
+		isReachableFromAnotherDevice: context.isReachableFromAnotherDevice as (
+			url: URL
+		) => boolean,
+		render: context.render as (url: string) => string
+	};
+}
+
+describe("QR action", () => {
+	// startup() is awaited by the workbench, and code-server supports running
+	// embedded, where window.top belongs to someone else and throws on access.
+	test("resolves the address without touching the embedder", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/qr-action.diff`));
+
+		expect(source).toContain(
+			"new URL(this.productService.rootEndpoint || '.', window.location.href).href"
+		);
+		expect(source).not.toContain("window.top");
+		// The handler's promise must reach the command service, or a missing
+		// extension host fails the menu item silently.
+		expect(source).toContain(
+			"return accessor.get(ICommandService).executeCommand('composery.showQr'"
+		);
+		// Both registrations return disposables that belong to the client.
+		expect(source).toContain(
+			"this._register(CommandsRegistry.registerCommand("
+		);
+		expect(source).toContain("this._register(MenuRegistry.appendMenuItem(");
+	});
+
+	test("refuses addresses another device cannot reach", () => {
+		const { isReachableFromAnotherDevice } = loadQrExtension();
+
+		for (const reachable of [
+			"https://box.test/",
+			"http://192.168.1.192:8080/",
+			// A hostname is not a prefix match: 127.example.com is somebody's domain.
+			"http://127.example.com/"
+		]) {
+			expect(isReachableFromAnotherDevice(new URL(reachable)), reachable).toBe(
+				true
+			);
+		}
+
+		for (const unreachable of [
+			"http://localhost:8080/",
+			"http://box.localhost/",
+			"http://localhost./",
+			"http://127.0.0.1:8080/",
+			"http://127.1:8080/",
+			"http://2130706433:8080/",
+			"http://0.0.0.0:8080/",
+			"http://[::1]/",
+			"http://[::]/",
+			// IPv4-mapped loopback, which the URL parser hands over as ::ffff:7f00:1.
+			"http://[::ffff:127.0.0.1]/",
+			"ftp://box.test/"
+		]) {
+			expect(
+				isReachableFromAnotherDevice(new URL(unreachable)),
+				unreachable
+			).toBe(false);
+		}
+	});
+
+	// A short LAN address makes a low-version code with wide modules, so a quiet
+	// zone measured in layout pixels shrinks exactly when it matters most.
+	test("carries the spec's four-module quiet zone at every version", () => {
+		const { render } = loadQrExtension();
+
+		for (const url of [
+			"http://192.168.1.192:8080/",
+			"https://a-much-longer-name.boxes.composery.app/?folder=/home/user/src"
+		]) {
+			const svg = render(url);
+			const size = Number(/viewBox="0 0 (\d+) \1"/.exec(svg)?.[1]);
+			// The finder pattern owns module (0, 0), so the first move in the path
+			// is offset from the edge by exactly the quiet zone.
+			const quietZone = Number(/<path d="M(\d+),/.exec(svg)?.[1]);
+
+			expect(quietZone / 8, url).toBe(4);
+			expect(size, url).toBeGreaterThan(quietZone * 2);
+		}
+	});
+
+	test("sizes the QR card against the viewport, not device guesses", () => {
 		const extension = readRepoFile(
 			"packages/ide/overlay/lib/vscode/extensions/composery-qr/extension.js"
 		);
 
-		expect(extension).toContain("width: min(288px, 100%);");
+		// A percentage min-height does not resolve against an auto-height <html>,
+		// which left the card pinned to the top of the tab.
+		expect(extension).toContain("min-height: 100dvh;");
+		expect(extension).not.toContain("min-height: 100%");
 		expect(extension).toContain(
-			"@media (max-width: 335px), (max-height: 430px)"
+			"width: min(288px, 100%, calc(100dvh - 10rem));"
 		);
-		expect(extension).toContain("calc(100vh - 98px)");
-		expect(extension).toContain("overflow: auto;");
+		expect(extension).not.toContain("100vh");
+		expect(extension).not.toContain("@media");
+		expect(extension).toContain("env(safe-area-inset-top, 0px)");
+		// The page cannot rely on webview-mobile.diff injecting a viewport for it.
+		expect(extension).toContain('name="viewport"');
+	});
+
+	test("reuses one panel instead of stacking tabs", () => {
+		const extension = readRepoFile(
+			"packages/ide/overlay/lib/vscode/extensions/composery-qr/extension.js"
+		);
+
+		expect(extension).toContain("panel.reveal(panel.viewColumn, false)");
+		expect(extension).toContain("if (rendered !== url.href)");
 	});
 });
 
@@ -292,12 +411,18 @@ describe("soft-keyboard enter", () => {
 		expect(source).toContain("this._register(new ImeEnterFallback());");
 	});
 
-	test("asks soft keyboards for a committing action on single-line inputs", () => {
+	test("asks soft keyboards for a newline key on single-line inputs", () => {
 		const patch = readRepoFile(`${PATCHES_DIR}/touch-enter.diff`);
 
+		// Must be a key that commits a line break, because that commit is the only
+		// thing ImeEnterFallback can replay. An action key ("go"/"send") renders as
+		// Gboard's right arrow and emits nothing at all, disabling the fallback.
 		expect(addedLines(patch)).toContain(
-			"this.input.setAttribute('enterkeyhint', 'go');"
+			"this.input.setAttribute('enterkeyhint', 'enter');"
 		);
+		for (const actionKey of ["'go'", "'send'", "'done'", "'search'"]) {
+			expect(addedLines(patch)).not.toContain(`'enterkeyhint', ${actionKey}`);
+		}
 		// Only the single-line <input> branch gets the hint - the flexibleHeight
 		// textarea keeps its newline return key (context line, not an added one).
 		expect(patch).toContain(
@@ -400,6 +525,18 @@ describe("touch inline actions", () => {
 			expect(css).toContain(surface);
 		}
 		expect(css).toContain(".tabs-list .actions");
+	});
+
+	test("notebook insert-cell toolbars are reachable on touch", () => {
+		const css = readRepoFile(`${ASSETS}/touch.css`);
+
+		// The two hover-only insert affordances: the per-notebook top bar and the
+		// focused cell's insert-below bar. The title toolbar and run button already
+		// reveal on .focused, so they are deliberately not forced here.
+		expect(css).toContain(".cell-list-top-cell-toolbar-container");
+		expect(css).toContain(
+			"> .monaco-list-row.focused\n\t\t.cell-bottom-toolbar-container"
+		);
 	});
 });
 
@@ -1037,6 +1174,36 @@ describe("narrow overlay", () => {
 
 		expect(selectionThreshold).toBeGreaterThan(0);
 		expect(selectionThreshold).toBe(tapCancelSlop);
+	});
+
+	// Android Chrome re-opens a dismissed on-screen keyboard when a touch gesture ends
+	// while an editable holds focus - and the terminal and the editor both keep a hidden
+	// textarea focused. Panning either with the keyboard down popped it back up and the
+	// resize ate the pan. The suppression must hang off the same pan decision that cancels
+	// the tap, and only a tap may hand the keyboard back.
+	test("a pan stands the on-screen keyboard down until the next tap", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`)
+		);
+
+		// inputmode="none" is the only attribute that suppresses the re-open.
+		expect(patch).toContain("active.setAttribute('inputmode', 'none')");
+		// Only editables - nothing else can raise a keyboard.
+		expect(patch).toContain("DomUtils.isEditableElement(active)");
+		// Released on the tap, before the tap's handlers focus anything.
+		expect(patch).toContain("this.allowKeyboardReopen();");
+		// A pre-existing inputmode belongs to whoever set it: save and restore it
+		// rather than clobbering it to the default.
+		expect(patch).toContain("active.getAttribute('inputmode')");
+		expect(patch).toContain("element.setAttribute('inputmode', inputMode)");
+
+		// The trigger is the pan decision itself, so the threshold can never drift
+		// apart from the tap-cancel slop it rides on.
+		const panPatch = readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`);
+		expect(panPatch).toContain("data.tapCancelled = true;");
+		expect(panPatch).toContain(
+			"+\t\t\t\tthis.suppressKeyboardReopen(data.initialTarget);"
+		);
 	});
 
 	// Long-press menus fire during the hold (Gesture timer), and editor context
@@ -2143,128 +2310,126 @@ describe("terminal edge padding", () => {
 	});
 });
 
-describe("terminal touch anchoring", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/touch-terminal-anchor.diff`);
+describe("terminal keyboard occlusion", () => {
+	const patch = readRepoFile(
+		`${PATCHES_DIR}/touch-terminal-keyboard-occlusion.diff`
+	);
 
-	// The patch's premise: upstream bottom-aligns the panel/editor terminal, so
-	// short buffers sit under a pane-height-dependent top gap and jump when the
-	// on-screen keyboard toggles the pane height. If an upstream bump changes
-	// that alignment, the override must be revisited, not silently stacked.
-	test("upstream still bottom-aligns the terminal grid", () => {
-		const css = readRepoFile(
-			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css"
-		);
-		expect(css).toMatch(
-			/\.monaco-workbench \.terminal-editor \.xterm,\r?\n\.monaco-workbench \.pane-body\.integrated-terminal \.xterm \{[^}]*position: absolute;[^}]*bottom: 0;/
-		);
-	});
-
-	test("CSS override and class toggle share one class name", () => {
+	// The normal buffer holds scrollback and a scroll position that belong to the user,
+	// and resizing it reflows the content and shifts ydisp - the "teleports to the very
+	// top unless I was at the very bottom" in the report. The keyboard must not disturb
+	// it: keep the grid at its keyboard-down size and occlude the bottom of it.
+	test("the grid is sized against the keyboard-down pane height", () => {
 		const added = addedLines(patch);
+
+		// Both sizing entry points go through the stable height, not the live one.
+		expect(patch).toContain(
+			"+		this._evaluateColsAndRows(width, this._stableGridHeight(width, height));"
+		);
 		expect(added).toContain(
-			".terminal-wrapper.composery-terminal-top-anchor .xterm"
+			"const terminalWidth = this._evaluateColsAndRows(dimension.width, this._stableGridHeight(dimension.width, dimension.height));"
 		);
-		expect(added).toContain("classList.toggle('composery-terminal-top-anchor'");
-		expect(added).toContain("top: 0;");
-		expect(added).toContain("bottom: auto;");
+
+		// The remembered height is only refreshed while the keyboard is down, and a
+		// rotation (width change) invalidates it.
+		expect(added).toContain("'--composery-touch-keyboard-open'");
+		expect(added).toContain(
+			"} else if (this._stableGrid?.width !== width || height >= this._stableGrid.height) {"
+		);
+
+		// The opening keyboard shrinks the viewport before it is far enough along for
+		// narrow.js to call it a keyboard. Committing those frames would bake the
+		// half-open height into the grid, so a shrink only counts once it outlives the
+		// animation - measured as a 648px grid collapsing to 590px without this.
+		expect(added).toContain(
+			"this._stableGridShrink.value = disposableTimeout("
+		);
+		expect(added).toContain("this._stableGridShrink.clear();");
+
+		// Touch only - a desktop window must keep resizing its pty as before.
+		expect(added).toContain(
+			"if (!isTouch(dom.getWindow(this._wrapperElement))) {"
+		);
+		expect(added).toContain("return height;");
 	});
 
-	test("terminalInstance wires the tracker after xterm attaches", () => {
-		expect(addedLines(patch)).toContain(
-			"this._register(trackTerminalTopAnchor(xterm.raw, this._wrapperElement));"
+	// The alternate screen is the other half of the rule and the reason it is a rule
+	// rather than a special case: it carries no scrollback and no scroll position, so
+	// there is nothing to preserve by occluding it - and nothing to scroll to either,
+	// which would strand any UI above the fold (OpenCode centres its input, and at 18
+	// rows it lays out logo, input, hints and footer all visible). Hand it the size that
+	// is really on screen and let the app lay itself out.
+	test("the alternate screen is resized, not occluded", () => {
+		const added = addedLines(patch);
+
+		expect(added).toContain(
+			"if (raw && raw.buffer.active === raw.buffer.alternate) {"
+		);
+		expect(added).toContain(
+			"this._wrapperElement.classList.remove('composery-terminal-occluded');"
+		);
+
+		// A buffer switch changes which half of the rule applies, so the grid has to be
+		// re-evaluated - otherwise a full-screen app entered with the keyboard up keeps
+		// the shell's taller grid and draws below the fold.
+		expect(added).toContain("xterm.raw.buffer.onBufferChange(() => {");
+		expect(added).toContain("this._initDimensions();");
+
+		// Sub-row pane/grid differences are layout noise, not a keyboard.
+		expect(added).toContain("OCCLUSION_SLOP");
+	});
+
+	// Bottom alignment alone is wrong for a buffer that has not filled the screen: a
+	// freshly opened shell has its prompt near row 0 with blank space below, so the
+	// bottom slice of an occluded grid is entirely empty - device-verified as a
+	// completely blank terminal. The visible slice follows the caret instead, which
+	// top-anchors a short buffer and bottom-anchors a filled one from one rule.
+	test("the occluded slice follows the caret, so a short buffer is not blank", () => {
+		const added = addedLines(patch);
+
+		expect(added).toContain(
+			"const bottom = Math.min(0, Math.max(-hidden, caretTop - cellHeight - hidden));"
+		);
+		expect(added).toContain(
+			"const caretTop = raw.buffer.active.cursorY * cellHeight;"
+		);
+		// Nothing is ever hidden in the alternate screen - it is resized to fit.
+		expect(added).toContain(
+			"if (hidden <= 0 || !raw.rows || raw.buffer.active === raw.buffer.alternate) {"
+		);
+		// The caret moving is what changes the answer.
+		expect(added).toContain(
+			"this._register(xterm.raw.onCursorMove(() => this._updateOcclusionOffset()));"
 		);
 	});
 
-	const fakeXterm = () => {
-		const listeners: (() => void)[] = [];
-		const on = (listener: () => void) => {
-			listeners.push(listener);
-			return { dispose() {} };
-		};
-		const active: { type: string; baseY: number; cursorY: number } = {
-			type: "normal",
-			baseY: 0,
-			cursorY: 0
-		};
-		const raw = {
-			rows: 18,
-			buffer: {
-				active,
-				onBufferChange: on
-			},
-			onWriteParsed: on,
-			onResize: on
-		};
-		return { raw, listeners, fire: () => listeners.forEach((l) => l()) };
-	};
+	// The taller-than-the-pane grid relies on upstream's bottom alignment to keep the
+	// cursor row above the keyboard, and must not spill over the tabs above.
+	test("the occluded grid is clipped, not spilled", () => {
+		const added = addedLines(patch);
 
-	const fakeWrapper = () => {
-		const classes = new Set<string>();
-		return {
-			classes,
-			wrapper: {
-				classList: {
-					toggle(name: string, force: boolean) {
-						if (force) classes.add(name);
-						else classes.delete(name);
-					}
-				}
-			}
-		};
-	};
-
-	const tracker = (touch: boolean) =>
-		evaluatePatchSnippets<{
-			trackTerminalTopAnchor: (
-				raw: unknown,
-				wrapperElement: unknown
-			) => { dispose(): void };
-		}>(
-			[
-				`const isTouch = () => ${touch};`,
-				"const getWindow = () => ({});",
-				"class DisposableStore { add() {} dispose() {} }",
-				extractAddedFunction(patch, "trackTerminalTopAnchor")
-			],
-			["trackTerminalTopAnchor"]
-		).trackTerminalTopAnchor;
-
-	// Run the shipped tracker against a scripted xterm: only buffers that have
-	// not reached the bottom row pin to the pane top; filling the viewport,
-	// scrollback, and the alternate screen return to upstream bottom alignment.
-	test("tracker pins short buffers only", () => {
-		const { raw, fire } = fakeXterm();
-		const { classes, wrapper } = fakeWrapper();
-		tracker(true)(raw, wrapper);
-
-		const anchored = () => classes.has("composery-terminal-top-anchor");
-		expect(anchored()).toBe(true);
-
-		raw.buffer.active.cursorY = raw.rows - 1;
-		fire();
-		expect(anchored()).toBe(false);
-
-		raw.buffer.active.cursorY = 0;
-		raw.buffer.active.baseY = 3;
-		fire();
-		expect(anchored()).toBe(false);
-
-		raw.buffer.active.baseY = 0;
-		raw.buffer.active.type = "alternate";
-		fire();
-		expect(anchored()).toBe(false);
-
-		raw.buffer.active.type = "normal";
-		fire();
-		expect(anchored()).toBe(true);
+		expect(added).toContain(".terminal-wrapper.composery-terminal-occluded");
+		expect(added).toContain("overflow: hidden;");
+		expect(added).toContain(
+			"this._wrapperElement.classList.toggle('composery-terminal-occluded', stableHeight - height >= TerminalInstance.OCCLUSION_SLOP);"
+		);
 	});
 
-	test("tracker is inert without touch", () => {
-		const { raw, listeners } = fakeXterm();
-		const { classes, wrapper } = fakeWrapper();
-		tracker(false)(raw, wrapper);
+	// The signal it reads is published by narrow.js and is deliberately NOT the
+	// existing inset var, which means "overlap the viewport has not already excluded"
+	// and reads 0 under interactive-widget=resizes-content.
+	test("narrow.js publishes the keyboard-open signal from a viewport baseline", () => {
+		const narrow = readRepoFile(
+			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/narrow.js"
+		);
 
-		expect(classes.size).toBe(0);
-		expect(listeners.length).toBe(0);
+		expect(narrow).toContain('"--composery-touch-keyboard-open"');
+		expect(narrow).toContain(
+			"keyboardBaselineHeight - height >= KEYBOARD_MIN_INSET"
+		);
+		// A collapsing URL bar must not read as a keyboard.
+		expect(narrow).toContain("const KEYBOARD_MIN_INSET = 120;");
+		// Rotation resets the baseline.
+		expect(narrow).toContain("if (width !== keyboardBaselineWidth) {");
 	});
 });

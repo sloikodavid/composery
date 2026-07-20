@@ -1,4 +1,5 @@
 naming.diff
+file-uploads-env.diff
 hardening.diff
 auth.diff
 readiness.diff
@@ -42,7 +43,7 @@ default-color-theme.diff
 shortcuts.diff
 terminal-padding.diff
 touch-terminal-keybar.diff
-touch-terminal-anchor.diff
+touch-terminal-keyboard-occlusion.diff
 touch-terminal-hint.diff
 touch-viewport-inset.diff
 touch-input-context-menu.diff
@@ -56,3 +57,4 @@ touch-terminal-links.diff
 touch-inline-actions.diff
 local-media-preview.diff
 product-icon-themes.diff
+touch-keyboard-reopen.diff

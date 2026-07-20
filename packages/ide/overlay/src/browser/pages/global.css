@@ -12,6 +12,9 @@ html,
 body {
 	height: 100%;
 	overflow: hidden;
+	/* No blue/grey flash over buttons, links and inputs when tapped - the
+	   pressed states below are the only press feedback these pages give. */
+	-webkit-tap-highlight-color: transparent;
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
 	width: 100%;

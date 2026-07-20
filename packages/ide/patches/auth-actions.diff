@@ -38,7 +38,7 @@
  				scope: vscodeBase + '/',
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -9,6 +9,7 @@ import { IStorageService, StorageScope,
+@@ -9,6 +9,7 @@
  
  export class CodeServerClient extends Disposable {
  	static LOGOUT_COMMAND_ID = 'code-server.logout';
@@ -46,7 +46,7 @@
  
  	constructor (
  		@ILogService private logService: ILogService,
-@@ -90,6 +91,10 @@ export class CodeServerClient extends Di
+@@ -90,6 +91,10 @@
  			this.addLogoutCommand(this.productService.logoutEndpoint);
  		}
  
@@ -57,7 +57,7 @@
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -145,22 +150,44 @@ export class CodeServerClient extends Di
+@@ -145,23 +150,47 @@
  		updateLoop();
  	}
  
@@ -85,6 +85,7 @@
 +					id: CodeServerClient.CHANGE_PASSWORD_COMMAND_ID,
 +					title: localize('changePassword', "Change Password"),
 +				},
++				order: menuId === MenuId.MenubarHomeMenu ? 1 : undefined,
 +			});
 +		}
 +	}
@@ -108,5 +109,7 @@
 -					title: localize('logout', "Sign out of {0}", 'code-server'),
 +					title: localize('logout', "Sign Out"),
  				},
++				order: menuId === MenuId.MenubarHomeMenu ? 2 : undefined,
  			});
  		}
+ 	}

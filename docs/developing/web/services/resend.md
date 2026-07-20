@@ -65,10 +65,28 @@ Repeat these steps for every Convex deployment that should deliver alerts.
 2. For a development smoke test, **Composery <onboarding@resend.dev>** may be
    used as **ALERT_EMAIL_FROM**; Resend restricts that sender to the account
    owner's address.
-3. For production, verify a dedicated sending subdomain of the website domain,
-   publish the SPF, DKIM, and return-path records Resend supplies, and set
-   **ALERT_EMAIL_FROM** to the verified identity. Do not use the runtime-box
-   domain.
+3. For production, verify a **dedicated sending subdomain** of the marketing
+   domain. Do not verify the apex `composery.io`, and do not use the
+   runtime-box domain (`CLOUD_DOMAIN`, the hostname customer boxes are served
+   on). A subdomain isolates alert-mail sending reputation from
+   `www.composery.io`; it has no effect on SEO or search ranking, which do not
+   read mail-authentication DNS.
+
+   In **Resend → Domains → Add Domain**, enter a hostname such as
+   `mail.composery.io`. Resend generates the exact records; add them verbatim in
+   Cloudflare DNS, left **DNS-only / unproxied**, then wait for Resend to mark
+   the domain **Verified**:
+   - **DKIM** — a `TXT` record at `resend._domainkey.mail.composery.io` holding
+     the `p=…` public key.
+   - **SPF** — a `TXT` record (`v=spf1 include:amazonses.com ~all`) plus an `MX`
+     record on the return-path host (e.g. `send.mail.composery.io`), which
+     catches bounces. Resend sends through AWS SES, so the MX target is
+     `feedback-smtp.<region>.amazonses.com`; copy the region shown.
+   - Optionally a **DMARC** `TXT` at `_dmarc.mail.composery.io`.
+
+   Then set **ALERT_EMAIL_FROM** to any address at the verified subdomain, e.g.
+   `Composery <alerts@mail.composery.io>`. The local part is cosmetic; only the
+   domain must match a verified identity.
 4. In Resend, create a webhook for **<CONVEX_SITE_URL>/resend/events**. Enable
    **email.sent**, **email.delivered**, **email.delivery_delayed**,
    **email.bounced**, **email.complained**, **email.failed**,

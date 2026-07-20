@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isReservedSlug, isValidSlug, sanitizeSlug } from "@/lib/box-slug";
+import {
+	isReservedSlug,
+	isValidSlug,
+	isValidSlugFormat,
+	sanitizeSlug
+} from "@/lib/box-slug";
 
 describe("sanitizeSlug", () => {
 	it("lowercases, strips invalid characters, and trims leading dashes", () => {
@@ -69,6 +74,15 @@ describe("isValidSlug", () => {
 
 	it("allows consecutive interior dashes", () => {
 		expect(isValidSlug("a--b")).toBe(true);
+	});
+});
+
+describe("isValidSlugFormat", () => {
+	it("separates well-formed reserved names from malformed slugs", () => {
+		expect(isValidSlugFormat("console")).toBe(true);
+		expect(isValidSlugFormat("my-box")).toBe(true);
+		expect(isValidSlugFormat("ab")).toBe(false);
+		expect(isValidSlugFormat("my-box-")).toBe(false);
 	});
 });
 

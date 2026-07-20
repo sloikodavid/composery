@@ -37,12 +37,12 @@ export const clerkAppearance = {
 		headerTitle: "font-heading text-lg font-medium text-foreground",
 		headerSubtitle: "text-[15px] text-muted-foreground",
 		// Primary/outline buttons mirror components/button.tsx (default + outline
-		// variants): color-mix hovers rather than opacity, ring-3 focus, the
+		// variants): color-mix hovers rather than opacity, ring-1 focus, the
 		// active nudge. Sized like new-box's h-12 rounded-lg controls.
 		button:
-			"rounded-lg font-medium transition-all outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px",
+			"rounded-lg font-medium transition-all outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		formButtonPrimary:
-			"h-12 w-full rounded-lg text-[15px] font-medium bg-primary text-primary-foreground shadow-none! transition-all outline-none hover:bg-[color-mix(in_oklab,var(--primary)_88%,var(--background))]! active:bg-[color-mix(in_oklab,var(--primary)_78%,var(--background))]! focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px",
+			"h-12 w-full rounded-lg text-[15px] font-medium bg-primary text-primary-foreground shadow-none! transition-all outline-none hover:bg-[color-mix(in_oklab,var(--primary)_88%,var(--background))]! active:bg-[color-mix(in_oklab,var(--primary)_78%,var(--background))]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		formButtonReset:
 			"rounded-lg font-medium transition-all active:translate-y-px",
 		socialButtons: "gap-2",
@@ -50,19 +50,19 @@ export const clerkAppearance = {
 		// soft surface inside the outline instead of blending into it. dark: keeps
 		// its stronger lift since the border there is barely visible.
 		socialButtonsBlockButton:
-			"h-12 rounded-lg text-[15px] font-medium border border-border bg-background text-foreground transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! hover:text-foreground active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
+			"h-12 rounded-lg text-[15px] font-medium border border-border bg-background text-foreground transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! hover:text-foreground active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
 		socialButtonsBlockButtonText: "text-[15px] font-medium text-foreground!",
 		socialButtonsIconButton:
-			"h-12 rounded-lg border border-border bg-background transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
+			"h-12 rounded-lg border border-border bg-background transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
 		// Inputs mirror components/input.tsx (outline variant) at new-box's
-		// h-12 rounded-lg px-5 scale, with the ring-3 focus treatment.
+		// h-12 rounded-lg px-5 scale, with the ring-1 focus treatment.
 		input:
-			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 dark:bg-input/30!",
+			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring dark:bg-input/30!",
 		formFieldInput:
-			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 dark:bg-input/30!",
+			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring dark:bg-input/30!",
 		formFieldLabel: "text-[15px] font-medium text-foreground",
 		otpCodeFieldInput:
-			"rounded-lg border border-border focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25",
+			"rounded-lg border border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",
 		dividerLine: "bg-border",
 		dividerText: "text-[15px] text-muted-foreground",
 		footerActionLink:

@@ -7,6 +7,7 @@ import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { TERMS_FIELD_SLUG } from "../../lib/cloud-legal";
 import {
+	isBoxProductId,
 	polarServer,
 	revokeAndRefundPolarOrder,
 	revokePolarSubscription
@@ -125,7 +126,7 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 			},
 			"order.paid": async (ctx, event) => {
 				const order = event.data;
-				if (order.productId !== requiredEnv("POLAR_BOX_PRODUCT_ID")) return;
+				if (!isBoxProductId(order.productId)) return;
 				if (
 					order.billingReason !== "subscription_create" ||
 					!order.subscription ||

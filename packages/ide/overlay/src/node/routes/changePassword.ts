@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ensureOrigin, getCookieOptions, redirect } from "../http";
 import { hash, sanitizeString } from "../util";
 import { renderAuthPage } from "./authPage";
-import { cloudConfig } from "./cloudAuth";
+import { changeCloudPassword, cloudConfig } from "./cloudAuth";
 import { RateLimiter } from "./login";
 import {
 	hasPassword,
@@ -23,6 +23,8 @@ const errorMessage = (error: unknown): string | undefined => {
 			return "Passwords do not match";
 		case "rate-limit":
 			return "Too many attempts. Try again later.";
+		case "unavailable":
+			return "Could not reach Composery to record the change. Try again.";
 		default:
 			return undefined;
 	}
@@ -36,15 +38,10 @@ export const router = Router();
 const limiter = new RateLimiter();
 
 router.use(async (req, res, next) => {
-	// On cloud boxes the password changes through the cloud grant flow:
-	// authorize proves box ownership, then /register sets the new password.
-	// No current password needed, so this also recovers a forgotten one.
-	if (cloudConfig) {
-		return redirect(req, res, "_composery/cloud/authorize", {
-			error: undefined
-		});
-	}
-
+	// Cloud boxes change their password here too, on the same terms as
+	// self-hosted: prove the current one. The grant flow stays the recovery
+	// path for a password you cannot produce, reached from the link this page
+	// renders, so holding the box password never requires a website account.
 	if (isEnvPasswordManaged(req)) {
 		res.status(404).send("Not found");
 		return;
@@ -74,6 +71,31 @@ router.get("/", async (req, res) => {
 	);
 });
 
+// Answers the current-password step where the user is standing, instead of
+// taking three stages of input and only rejecting at the final POST. Shares the
+// limiter with the submit below, so proving a guess here costs the same token
+// and this cannot become a way around login's rate limit.
+// Answers with an explicit result body rather than a bare status: unrelated
+// middleware also answers 401/404, and a client keying "wrong password" off a
+// status alone would reject on any of them. Only { valid: false } from here is
+// a rejection.
+router.post("/verify", ensureOrigin, async (req, res) => {
+	const currentPassword = sanitizeString(req.body?.currentPassword);
+	res.setHeader("Cache-Control", "no-store");
+	if (!limiter.canTry()) {
+		return res.json({ valid: false, reason: "rate-limit" });
+	}
+	if (!currentPassword) {
+		return res.json({ valid: false, reason: "missing" });
+	}
+	if (!(await validateExistingPassword(req, currentPassword))) {
+		// Only failures consume a token, mirroring login.
+		limiter.removeToken();
+		return res.json({ valid: false, reason: "incorrect" });
+	}
+	return res.json({ valid: true });
+});
+
 router.post("/", ensureOrigin, async (req, res) => {
 	const currentPassword = sanitizeString(req.body?.currentPassword);
 	const newPassword = sanitizeString(req.body?.newPassword);
@@ -100,6 +122,17 @@ router.post("/", ensureOrigin, async (req, res) => {
 		return redirect(req, res, "change-password", { error: "mismatch" });
 	}
 	const hashedPassword = await hash(newPassword);
+	// Tell the website before writing locally. If it refuses, the box keeps the
+	// password Convex still believes in, instead of holding one the next
+	// bootstrap would silently restore over.
+	if (cloudConfig) {
+		const currentHash = req.args["hashed-password"];
+		try {
+			await changeCloudPassword(currentHash ?? "", hashedPassword);
+		} catch {
+			return redirect(req, res, "change-password", { error: "unavailable" });
+		}
+	}
 	await writeHashedPassword(req, hashedPassword, { allowExisting: true });
 	res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req));
 	return redirect(req, res, "/", {

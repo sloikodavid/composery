@@ -22,6 +22,7 @@ import {
 	useColorScheme,
 	View
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView, { type WebViewNavigation } from "react-native-webview";
 
@@ -78,6 +79,9 @@ export default function InstanceScreen() {
 	// Live title-bar background reported by the page, so the status-bar strip
 	// matches whatever IDE theme the user runs.
 	const [stripColor, setStripColor] = useState<string | null>(null);
+	// Android only: the on-screen keyboard's height, kept out of the WebView's own
+	// height (see the keyboard effect below). Always 0 on iOS.
+	const [keyboardInset, setKeyboardInset] = useState(0);
 	const webviewRef = useRef<WebView>(null);
 	// Tracks whether the current webview load errored, so onLoadEnd can clear
 	// loadError only on a successful reload — keeping the error overlay mounted
@@ -207,12 +211,42 @@ export default function InstanceScreen() {
 		);
 	}, [scheme]);
 
-	// Android WebView in edge-to-edge Expo activities can leave innerHeight and
-	// visualViewport unchanged while the IME overlays the lower half of the page.
-	// WKWebView has also had keyboard/visual-viewport regressions on iOS 26. Send
-	// the native, docked keyboard overlap to the IDE so its own layout can keep the
-	// terminal keybar and bottom panels above the keyboard on both platforms.
+	// Android edge-to-edge activities are not resized for the IME: nothing consumes
+	// the ime() window inset, so this WebView keeps its full height and runs on
+	// underneath the keyboard. The page is then permanently taller than the part of
+	// it anyone can see - the workbench fits itself to the visual viewport, and the
+	// layout viewport keeps the difference as live but empty canvas that the visual
+	// viewport pans into, which is the blank space you can scroll the workbench off
+	// into. Consume the inset here instead, where it belongs: shrink the WebView by
+	// the keyboard's height and layout, visual viewport and document agree again,
+	// with nothing underneath to reveal.
+	//
+	// iOS needs the opposite treatment - WKWebView reports its own keyboard
+	// geometry, and has had regressions doing it - so there the overlap is still
+	// reported to the IDE and the view keeps its height.
 	useEffect(() => {
+		if (Platform.OS === "android") {
+			const subscriptions = [
+				Keyboard.addListener("keyboardDidShow", (event: KeyboardEvent) =>
+					// Measured from the keyboard's top edge to the bottom of the screen,
+					// not endCoordinates.height: the reported height stops at the
+					// navigation bar's inset while the keyboard window itself covers it,
+					// and the difference is exactly as much page as this is meant to hide.
+					setKeyboardInset(
+						Math.max(
+							0,
+							Math.round(
+								Dimensions.get("screen").height - event.endCoordinates.screenY
+							)
+						)
+					)
+				),
+				Keyboard.addListener("keyboardDidHide", () => setKeyboardInset(0))
+			];
+			return () =>
+				subscriptions.forEach((subscription) => subscription.remove());
+		}
+
 		const applyInset = (inset: number) => {
 			webviewRef.current?.injectJavaScript(
 				`document.documentElement.style.setProperty("--composery-touch-keyboard-inset", ${JSON.stringify(
@@ -220,20 +254,15 @@ export default function InstanceScreen() {
 				)}); window.dispatchEvent(new Event("composery-native-keyboard-change")); true;`
 			);
 		};
-		const onFrame = (event: KeyboardEvent) => {
-			if (Platform.OS === "android") {
-				applyInset(event.endCoordinates.height);
-				return;
-			}
-			const screenHeight = Dimensions.get("screen").height;
-			const { height, screenY } = event.endCoordinates;
-			const docked = screenY + height >= screenHeight - 2;
-			applyInset(docked ? screenHeight - screenY : 0);
-		};
 		const subscriptions = [
 			Keyboard.addListener(
-				Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow",
-				onFrame
+				"keyboardWillChangeFrame",
+				(event: KeyboardEvent) => {
+					const screenHeight = Dimensions.get("screen").height;
+					const { height, screenY } = event.endCoordinates;
+					const docked = screenY + height >= screenHeight - 2;
+					applyInset(docked ? screenHeight - screenY : 0);
+				}
 			),
 			Keyboard.addListener("keyboardDidHide", () => applyInset(0))
 		];
@@ -277,6 +306,10 @@ export default function InstanceScreen() {
 		: scheme === "dark"
 			? "light"
 			: "dark";
+	// Identity only: this gesture claims nothing and changes no behaviour. Its job is
+	// to make the WebView a participant in the gesture arbitration it already sits
+	// inside, rather than an opaque native child - see the GestureDetector below.
+	const webviewGesture = useMemo(() => Gesture.Native(), []);
 	const goBack = () => router.back();
 
 	return (
@@ -313,103 +346,115 @@ export default function InstanceScreen() {
 						// status-bar strip above already owns the top inset.
 						paddingLeft: Platform.OS === "ios" ? insets.left : 0,
 						paddingRight: Platform.OS === "ios" ? insets.right : 0,
-						paddingBottom: Platform.OS === "ios" ? insets.bottom : 0
+						paddingBottom: Platform.OS === "ios" ? insets.bottom : keyboardInset
 					}}
 				>
-					<WebView
-						key={reloadKey}
-						ref={webviewRef}
-						source={{ uri: instance.url }}
-						// White (the browser's default canvas) so a transparent-body page —
-						// e.g. an upstream Cloudflare/origin error page — renders as it
-						// would in a desktop browser, not with the theme bleeding through.
-						// The load flash is hidden by the overlay below, not this colour.
-						style={{ flex: 1, backgroundColor: "#ffffff" }}
-						automaticallyAdjustContentInsets={false}
-						automaticallyAdjustsScrollIndicatorInsets={false}
-						contentInsetAdjustmentBehavior="never"
-						bounces={false}
-						overScrollMode="never"
-						keyboardDisplayRequiresUserAction={false}
-						hideKeyboardAccessoryView
-						allowsBackForwardNavigationGestures={false}
-						allowsLinkPreview={false}
-						// Array, not the string "none": under the New Architecture the
-						// Fabric props parser casts dataDetectorTypes to a vector and a
-						// bare string fails an isObject() assertion → native SIGABRT the
-						// instant the WebView mounts (crashes the whole app on Android).
-						dataDetectorTypes={["none"]}
-						contentMode="mobile"
-						setSupportMultipleWindows={false}
-						// iOS uses WKHTTPCookieStore, Android CookieManager.
-						sharedCookiesEnabled
-						thirdPartyCookiesEnabled
-						javaScriptEnabled
-						domStorageEnabled
-						webviewDebuggingEnabled={__DEV__}
-						injectedJavaScriptBeforeContentLoaded={beforeLoad}
-						injectedJavaScript={INSTALL_SCRIPT}
-						onMessage={(event) => {
-							const data = event.nativeEvent.data;
-							// The titlebar back button is always "go home" — it pops straight
-							// to the instances list, never walking the webview's own history
-							// (that's the hardware/gesture back's job).
-							if (data === "composery:back") goBack();
-							else if (data === "composery:overlay-back:on") {
-								setOverlayBackActive(true);
-							} else if (data === "composery:overlay-back:off") {
+					{/* The WebView handles its own touches, but it sits under the app's
+					    GestureHandlerRootView, which arbitrates every touch in the tree. To an
+					    arbiter that does not know this child, a gesture the OS claims midway -
+					    the Android back swipe - ends without the ACTION_CANCEL that would
+					    otherwise reach it, so the page is left holding a touchstart with no
+					    touchend, touchmove or touchcancel to follow, and any in-page long-press
+					    timer fires under the swiping finger. A native gesture enrols the WebView
+					    in that arbitration as itself, which is what restores the cancel
+					    (device-verified 2026-07-20: it lands 165ms into a back swipe, well
+					    inside the 700ms the page waits before calling a touch a long press). */}
+					<GestureDetector gesture={webviewGesture}>
+						<WebView
+							key={reloadKey}
+							ref={webviewRef}
+							source={{ uri: instance.url }}
+							// White (the browser's default canvas) so a transparent-body page —
+							// e.g. an upstream Cloudflare/origin error page — renders as it
+							// would in a desktop browser, not with the theme bleeding through.
+							// The load flash is hidden by the overlay below, not this colour.
+							style={{ flex: 1, backgroundColor: "#ffffff" }}
+							automaticallyAdjustContentInsets={false}
+							automaticallyAdjustsScrollIndicatorInsets={false}
+							contentInsetAdjustmentBehavior="never"
+							bounces={false}
+							overScrollMode="never"
+							keyboardDisplayRequiresUserAction={false}
+							hideKeyboardAccessoryView
+							allowsBackForwardNavigationGestures={false}
+							allowsLinkPreview={false}
+							// Array, not the string "none": under the New Architecture the
+							// Fabric props parser casts dataDetectorTypes to a vector and a
+							// bare string fails an isObject() assertion → native SIGABRT the
+							// instant the WebView mounts (crashes the whole app on Android).
+							dataDetectorTypes={["none"]}
+							contentMode="mobile"
+							setSupportMultipleWindows={false}
+							// iOS uses WKHTTPCookieStore, Android CookieManager.
+							sharedCookiesEnabled
+							thirdPartyCookiesEnabled
+							javaScriptEnabled
+							domStorageEnabled
+							webviewDebuggingEnabled={__DEV__}
+							injectedJavaScriptBeforeContentLoaded={beforeLoad}
+							injectedJavaScript={INSTALL_SCRIPT}
+							onMessage={(event) => {
+								const data = event.nativeEvent.data;
+								// The titlebar back button is always "go home" — it pops straight
+								// to the instances list, never walking the webview's own history
+								// (that's the hardware/gesture back's job).
+								if (data === "composery:back") goBack();
+								else if (data === "composery:overlay-back:on") {
+									setOverlayBackActive(true);
+								} else if (data === "composery:overlay-back:off") {
+									setOverlayBackActive(false);
+								} else if (data.startsWith("composery:bg:")) {
+									setStripColor(data.slice("composery:bg:".length));
+								} else if (data.startsWith("composery:diag:")) {
+									// WebView layout facts (see back-button.ts diag; dev-only sender) -
+									// the WebView can't be inspected like a browser tab, so Metro logs them.
+									console.log(
+										"[instance-webview]",
+										data.slice("composery:diag:".length)
+									);
+								}
+							}}
+							onLoadStart={() => {
 								setOverlayBackActive(false);
-							} else if (data.startsWith("composery:bg:")) {
-								setStripColor(data.slice("composery:bg:".length));
-							} else if (data.startsWith("composery:diag:")) {
-								// WebView layout facts (see back-button.ts diag; dev-only sender) -
-								// the WebView can't be inspected like a browser tab, so Metro logs them.
-								console.log(
-									"[instance-webview]",
-									data.slice("composery:diag:".length)
-								);
-							}
-						}}
-						onLoadStart={() => {
-							setOverlayBackActive(false);
-							errorThisLoad.current = false;
-							setWebLoading(true);
-						}}
-						onLoadEnd={() => {
-							webviewRef.current?.requestFocus();
-							setWebLoading(false);
-							if (!errorThisLoad.current) {
-								setLoadError(null);
-								void fetchServerStamp(instance.url).then((stamp) => {
-									serverStamp.current = stamp;
-								});
-							}
-						}}
-						onError={(event) => {
-							errorThisLoad.current = true;
-							setLoadError(event.nativeEvent.description || "");
-						}}
-						onContentProcessDidTerminate={recoverWebViewProcess}
-						onRenderProcessGone={recoverWebViewProcess}
-						onNavigationStateChange={onNavigationStateChange}
-						onShouldStartLoadWithRequest={(request) => {
-							// Navigation guard (PLAN.md Wrinkle 6): 'other' covers the initial
-							// load and sub-frame/resource requests — allow all. Only
-							// user-driven top-frame nav to a different host opens the browser.
-							if (request.navigationType === "other") return true;
-							let parsed: URL;
-							try {
-								parsed = new URL(request.url);
-							} catch {
-								return true;
-							}
-							if (parsed.origin === instanceOrigin) return true;
-							if (request.isTopFrame === false) return true;
-							void openBrowserAsync(request.url);
-							return false;
-						}}
-						testID="instance-webview"
-					/>
+								errorThisLoad.current = false;
+								setWebLoading(true);
+							}}
+							onLoadEnd={() => {
+								webviewRef.current?.requestFocus();
+								setWebLoading(false);
+								if (!errorThisLoad.current) {
+									setLoadError(null);
+									void fetchServerStamp(instance.url).then((stamp) => {
+										serverStamp.current = stamp;
+									});
+								}
+							}}
+							onError={(event) => {
+								errorThisLoad.current = true;
+								setLoadError(event.nativeEvent.description || "");
+							}}
+							onContentProcessDidTerminate={recoverWebViewProcess}
+							onRenderProcessGone={recoverWebViewProcess}
+							onNavigationStateChange={onNavigationStateChange}
+							onShouldStartLoadWithRequest={(request) => {
+								// Navigation guard (PLAN.md Wrinkle 6): 'other' covers the initial
+								// load and sub-frame/resource requests — allow all. Only
+								// user-driven top-frame nav to a different host opens the browser.
+								if (request.navigationType === "other") return true;
+								let parsed: URL;
+								try {
+									parsed = new URL(request.url);
+								} catch {
+									return true;
+								}
+								if (parsed.origin === instanceOrigin) return true;
+								if (request.isTopFrame === false) return true;
+								void openBrowserAsync(request.url);
+								return false;
+							}}
+							testID="instance-webview"
+						/>
+					</GestureDetector>
 
 					{/* Webview load error: keep the error overlay mounted over the
 						reloading WebView so Retry stays put and the back button never

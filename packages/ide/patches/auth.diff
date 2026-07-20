@@ -147,17 +147,18 @@ diff --git a/src/node/main.ts b/src/node/main.ts
 diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
 --- a/src/node/routes/index.ts
 +++ b/src/node/routes/index.ts
-@@ -21,6 +21,9 @@
+@@ -21,6 +21,10 @@
  import * as health from "./health"
  import * as login from "./login"
  import * as logout from "./logout"
 +import * as registerRoute from "./register"
++import * as pwnedRoute from "./pwned"
 +import * as changePasswordRoute from "./changePassword"
 +import * as cloudAuthRoute from "./cloudAuth"
  import * as pathProxy from "./pathProxy"
  import * as update from "./update"
  import * as vscode from "./vscode"
-@@ -154,11 +157,17 @@
+@@ -154,11 +158,18 @@
    app.router.use("/healthz", health.router)
    app.wsRouter.use("/healthz", health.wsRouter.router)
  
@@ -167,6 +168,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
      app.router.use("/login", login.router)
 +    app.router.use("/register", registerRoute.router)
 +    app.router.use("/change-password", changePasswordRoute.router)
++    app.router.use("/_composery/pwned", pwnedRoute.router)
      app.router.use("/logout", logout.router)
    } else {
      app.router.all("/login", (req, res) => redirect(req, res, "/", {}))
@@ -196,7 +198,7 @@ diff --git a/src/node/routes/login.ts b/src/node/routes/login.ts
  
  // RateLimiter wraps around the limiter library for logins.
  // It allows 2 logins every minute plus 12 logins every hour.
-@@ -26,40 +27,42 @@
+@@ -26,40 +27,44 @@
  }
  
  const getRoot = async (req: Request, error?: Error): Promise<string> => {
@@ -238,6 +240,8 @@ diff --git a/src/node/routes/login.ts b/src/node/routes/login.ts
 +  switch (req.query.error) {
 +    case "configured":
 +      return new Error("Password was already configured. Sign in instead.")
++    case "env-managed":
++      return new Error("COMPOSERY_PASSWORD is set on this box and takes precedence over a password set here. Change or remove that variable instead.")
 +    case "rate-limit":
 +      return new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
 +    case "missing":

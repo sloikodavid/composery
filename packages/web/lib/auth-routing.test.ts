@@ -51,8 +51,8 @@ describe("parseAuthorizedParties", () => {
 
 describe("normalizeInternalReturnPath", () => {
 	it("keeps internal paths with search params and hashes", () => {
-		expect(normalizeInternalReturnPath("/boxes/new?from=pricing#slug")).toBe(
-			"/boxes/new?from=pricing#slug"
+		expect(normalizeInternalReturnPath("/pricing?billing=year#slug")).toBe(
+			"/pricing?billing=year#slug"
 		);
 	});
 
@@ -64,7 +64,7 @@ describe("normalizeInternalReturnPath", () => {
 	it("falls back to root for external or protocol-relative paths", () => {
 		expect(normalizeInternalReturnPath("https://evil.test/boxes")).toBe("/");
 		expect(normalizeInternalReturnPath("//evil.test/boxes")).toBe("/");
-		expect(normalizeInternalReturnPath("boxes/new")).toBe("/");
+		expect(normalizeInternalReturnPath("pricing")).toBe("/");
 	});
 
 	it("falls back to root for backslash-based protocol evasion", () => {
@@ -86,14 +86,14 @@ describe("normalizeInternalReturnPath", () => {
 
 describe("signInUrlForReturnPath", () => {
 	it("preserves the redirect query contract", () => {
-		expect(signInUrlForReturnPath("/boxes/new")).toBe(
-			"/sign-in?redirect_url=%2Fboxes%2Fnew"
+		expect(signInUrlForReturnPath("/pricing")).toBe(
+			"/sign-in?redirect_url=%2Fpricing"
 		);
 	});
 
 	it("url-encodes the query string and separators in the return path", () => {
-		expect(signInUrlForReturnPath("/boxes/new?a=b&c=d")).toBe(
-			"/sign-in?redirect_url=%2Fboxes%2Fnew%3Fa%3Db%26c%3Dd"
+		expect(signInUrlForReturnPath("/pricing?slug=a&billing=year")).toBe(
+			"/sign-in?redirect_url=%2Fpricing%3Fslug%3Da%26billing%3Dyear"
 		);
 	});
 

@@ -51,6 +51,8 @@ async function main() {
 	await assertWebAppSmoke();
 	await assertApiSmoke();
 	await assertPersistenceAppliesChanges();
+	assertVolumeMountWarning();
+	await assertPasswordRemoval();
 	await assertSystemdEnvBridge();
 }
 
@@ -568,6 +570,53 @@ async function assertPersistenceAppliesChanges() {
 	});
 	execSh("test -f /data/persistence/changed/excluded-smoke/dormant");
 	execSh("test -f /data/persistence/removed/excluded-smoke/tombstone");
+}
+
+function assertVolumeMountWarning() {
+	log("checking the unmounted-volume warning stays quiet on a real volume");
+
+	// This container has a volume on /data, so the warning firing here would mean
+	// the device comparison is inverted and every deploy gets a false alarm.
+	const logs = docker(["logs", config.containerName], {
+		capture: true,
+		quiet: true
+	});
+	const output = `${logs.stdout}${logs.stderr}`;
+	if (output.includes("no volume is mounted at")) {
+		throw new Error(
+			"Entrypoint warned about an unmounted volume while /data was a mounted volume."
+		);
+	}
+}
+
+async function assertPasswordRemoval() {
+	log("checking the password removal toggle");
+
+	// A throwaway root shell on the real image and volume: the boot script is
+	// run directly against a scratch config so the live one keeps its password.
+	runWithDataVolume(
+		[
+			"set -e",
+			"cfg=/data/smoke-remove-password.yaml",
+			"remove=/opt/composery/remove-password.sh",
+			'write_config() { printf \'auth: password\\nhashed-password: $argon2i$v=19$m=4096,t=3,p=1$c29tZXNhbHQ$%s\\n\' "$1" > "$cfg"; }',
+			// A registered password is removed, and nothing else in the config is.
+			"write_config first",
+			'COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD=1 "$remove"',
+			"grep -q '^auth: password$' \"$cfg\"",
+			'! grep -q hashed-password "$cfg"',
+			// Every boot, not once: a password registered since is removed again.
+			// Accepted spellings are trimmed and case-insensitive.
+			'for on in 1 true TRUE " true "; do write_config again; COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD="$on" "$remove"; ! grep -q hashed-password "$cfg"; done',
+			// Off, and anything unrecognised, must fail safe and keep the password.
+			'for off in 0 false FALSE no "" nonsense; do write_config keep; COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD="$off" "$remove"; grep -q hashed-password "$cfg"; done',
+			// Unset behaves like off.
+			"write_config unset",
+			'COMPOSERY_CONFIG="$cfg" "$remove"',
+			'grep -q hashed-password "$cfg"',
+			'rm -f "$cfg"'
+		].join("\n")
+	);
 }
 
 async function login(cookies) {

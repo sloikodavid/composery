@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { components } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { requiredEnv } from "../env";
+import type { BoxBillingInterval } from "../../lib/box-billing";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",
@@ -22,6 +23,38 @@ type PolarRefund = {
 };
 
 const REFUND_IDEMPOTENCY_METADATA_KEY = "composery_refund_key";
+
+const BOX_PRODUCT_ENV = {
+	month: "POLAR_BOX_MONTHLY_PRODUCT_ID",
+	year: "POLAR_BOX_ANNUAL_PRODUCT_ID"
+} as const satisfies Record<BoxBillingInterval, string>;
+
+export function boxProductId(billingInterval: BoxBillingInterval) {
+	return requiredEnv(BOX_PRODUCT_ENV[billingInterval]);
+}
+
+export function boxProductIds(billingInterval: BoxBillingInterval) {
+	const otherInterval = billingInterval === "year" ? "month" : "year";
+	return [boxProductId(billingInterval), boxProductId(otherInterval)];
+}
+
+export function isBoxProductId(productId: string | null | undefined) {
+	if (!productId) return false;
+	return Object.values(BOX_PRODUCT_ENV).some(
+		(environmentVariable) => requiredEnv(environmentVariable) === productId
+	);
+}
+
+export async function selectPolarCheckoutProduct(
+	checkoutId: string,
+	productId: string
+) {
+	await polarApi(`/v1/checkouts/${encodeURIComponent(checkoutId)}`, {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ product_id: productId })
+	});
+}
 
 function polarEnvironment() {
 	const environment = process.env.POLAR_ENVIRONMENT ?? "sandbox";
@@ -207,7 +240,8 @@ export const revokeSubscription = internalAction({
 export function polarServer() {
 	return new Polar(components.polar, {
 		products: {
-			box: process.env.POLAR_BOX_PRODUCT_ID ?? ""
+			boxMonthly: process.env.POLAR_BOX_MONTHLY_PRODUCT_ID ?? "",
+			boxAnnual: process.env.POLAR_BOX_ANNUAL_PRODUCT_ID ?? ""
 		},
 		organizationToken: process.env.POLAR_ORGANIZATION_TOKEN ?? "",
 		webhookSecret: process.env.POLAR_WEBHOOK_SECRET ?? "",
