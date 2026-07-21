@@ -72,7 +72,8 @@ export function Footer() {
 							rel="noreferrer"
 							target="_blank"
 						>
-							<XIcon className="size-4" />X
+							<XIcon className="size-4" />
+							<span className="sr-only sm:not-sr-only">X</span>
 						</a>
 						<a
 							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
@@ -81,7 +82,7 @@ export function Footer() {
 							target="_blank"
 						>
 							<LinkedInIcon className="size-4" />
-							LinkedIn
+							<span className="sr-only sm:not-sr-only">LinkedIn</span>
 						</a>
 						<a
 							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
@@ -90,7 +91,7 @@ export function Footer() {
 							target="_blank"
 						>
 							<GitHubIcon className="size-4" />
-							GitHub
+							<span className="sr-only sm:not-sr-only">GitHub</span>
 						</a>
 					</div>
 				</div>

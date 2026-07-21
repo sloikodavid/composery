@@ -308,6 +308,32 @@
 		display: flex !important;
 	}
 
+	/* Notification toasts and the notifications centre (clear, configure, do not
+	 * disturb). Upstream also reveals these on list focus and on the focused row, so
+	 * on touch they were reachable - but only by spending a tap on the toast to
+	 * reveal the button, before the tap that presses it. */
+	.monaco-workbench
+		.notifications-list-container
+		.notification-list-item
+		.notification-list-item-toolbar-container {
+		display: block !important;
+	}
+
+	/* Search result rows (dismiss match, replace) */
+	.search-view .monaco-list .monaco-list-row .monaco-action-bar {
+		display: inline-block !important;
+	}
+
+	/* Settings list/object rows (edit, remove) */
+	.settings-editor
+		> .settings-body
+		.settings-tree-container
+		.setting-item.setting-item-list
+		.setting-list-row
+		.monaco-action-bar {
+		display: block !important;
+	}
+
 	/* Terminal tabs (split, kill) */
 	.monaco-workbench .pane-body.integrated-terminal .tabs-list .actions {
 		display: block !important;

@@ -188,7 +188,7 @@ describe("runtime process managers", () => {
 			...readRepoFile("docs/configuration.md").matchAll(
 				/`(COMPOSERY_[A-Z_]+)`/g
 			)
-		].map((match) => match[1]);
+		].flatMap((match) => match[1] ?? []);
 		const wired = envNamesUnder([
 			"Dockerfile",
 			"packages/cli/crates",

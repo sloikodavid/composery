@@ -40,6 +40,11 @@
 			"groupName": "node runtime"
 		},
 		{
+			"description": "Group Rust toolchain pins so the CI toolchain and the Docker build image move together; Cargo's rust-version is pinned to them by a test.",
+			"matchPackageNames": ["rust", "library/rust", "dtolnay/rust-toolchain"],
+			"groupName": "rust toolchain"
+		},
+		{
 			"description": "Automerge low-risk updates once CI + smoke pass.",
 			"matchUpdateTypes": ["patch", "pin", "digest"],
 			"automerge": true
@@ -70,6 +75,32 @@
 			"enabled": false
 		},
 		{
+			"description": "Patched in pnpm-workspace.yaml, where the patch filename embeds the exact version: a bump that does not also regenerate the patch fails to install. Hold for manual regeneration.",
+			"matchPackageNames": ["fumadocs-mdx", "fumadocs-ui"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Clerk is version-locked by the overrides in pnpm-workspace.yaml (@clerk/ui imports an internal hook @clerk/shared dropped after 4.14.0). Move the whole set by hand or not at all.",
+			"matchPackageNames": ["@clerk/**"],
+			"groupName": "clerk",
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Expo pins its own dependency set per SDK; `expo install --check` is the source of truth. Bumping one package to the next SDK's version breaks that alignment, so group the SDK and take it deliberately.",
+			"matchPackageNames": [
+				"expo",
+				"expo-**",
+				"@expo/**",
+				"react-native",
+				"react-native-**"
+			],
+			"groupName": "expo sdk",
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
 			"description": "Hold code-server submodule bumps for manual patch-rebase; a new release can break the quilt stack.",
 			"matchManagers": ["git-submodules"],
 			"automerge": false,
@@ -83,6 +114,14 @@
 			"matchStrings": [
 				"#\\s*renovate:\\s*datasource=(?<datasource>npm|crate)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*ARG\\s+\\S+=(?<currentValue>\\S+)"
 			]
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^\\.github/workflows/mobile-e2e\\.yml$/"],
+			"matchStrings": [
+				"#\\s*renovate:\\s*datasource=(?<datasource>github-releases)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*MAESTRO_VERSION:\\s*(?<currentValue>\\S+)"
+			],
+			"extractVersionTemplate": "^cli-(?<version>.+)$"
 		},
 		{
 			"customType": "regex",

@@ -5,8 +5,20 @@
 	const narrow = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
 	const coarsePointer = window.matchMedia("(pointer: coarse)");
 	let pending = false;
+	// Our sentinel history entry is the current one (browser back gesture only - the
+	// native app never walks WebView history, see syncBackGuard).
 	let backGuardArmed = false;
-	let backGuardDisarming = false;
+	// history.back() calls WE issued to retire a sentinel. Counted, not a flag: a
+	// layer can reopen while one is still in flight, and the resulting popstate
+	// must be recognised as ours and then re-armed, or the guard is left believing
+	// in a sentinel that is no longer there and the next back leaves the page.
+	let pendingBackGuardDisarms = 0;
+	// The layer we last asked to close, and one that refused to (see dismissTopLayer).
+	let dismissing = null;
+	let undismissable = null;
+	// Last layer state sent to the app. Starts false to match the app's own initial
+	// state, so the first message is a real change and not an echo of it.
+	let reportedLayerOpen = false;
 	const modalEditorNarrowAttribute = "data-composery-narrow-maximized";
 	const modalEditorMaximizePendingAttribute =
 		"data-composery-narrow-maximize-pending";
@@ -16,23 +28,43 @@
 	const partHiddenClasses = ["nosidebar", "nopanel", "noauxiliarybar"];
 	const keyboardInsetProbe = document.createElement("div");
 
+	// The layers a back gesture peels, top first. Every entry must be something the
+	// user opened and that an Escape actually closes - back is a dismissal, not a
+	// wildcard "close whatever is on screen".
+	//
+	// Deliberately absent:
+	// - .notification-toast-container: a toast arrives unasked and expires on its
+	//   own. Listing it spent the user's back press on a banner they were not
+	//   interacting with, leaving the part they meant to close open.
+	// - .editor-widget: the class every editor widget shares, so it matched
+	//   whatever upstream adds next, dismissable or not - and a back press absorbed
+	//   by a widget that does NOT close on Escape reads as a dead press. The
+	//   dismissable editor widgets we mean are named individually below instead.
 	const overlaySelectors = [
 		".monaco-menu-container",
 		".action-list-submenu-panel",
 		".quick-input-widget",
-		".monaco-hover:not(.hidden)",
-		".editor-widget",
-		".suggest-details-container",
 		".monaco-dialog-modal-block",
+		".monaco-dialog-box",
 		".monaco-modal-editor-block",
 		".notifications-center",
-		".notification-toast-container",
 		".context-view",
-		".monaco-dialog-box",
+		".monaco-hover:not(.hidden)",
 		".suggest-widget",
+		".suggest-details-container",
 		".parameter-hints-widget",
 		".rename-box",
 		".find-widget",
+		// The standalone color picker is a content widget over the editor with its
+		// own close button and Escape handler, and it renders outside .context-view -
+		// so replacing the blanket .editor-widget match with named widgets left it
+		// the one dismissable editor popup back could not reach.
+		".standalone-colorpicker",
+		// Widgets that open inside the editor and take it over - peek references,
+		// test peek, the merge conflict and inline chat widgets. Lower than the
+		// popups above, which sit on top of them, and higher than a full-screen part,
+		// which sits under the editor holding them.
+		".zone-widget",
 	];
 	const modalEditorMaximizeSelector =
 		".monaco-modal-editor-block .modal-editor-action-container .action-label.codicon-screen-full";
@@ -136,6 +168,20 @@
 		);
 	}
 
+	function onScreen(element) {
+		if (!(element instanceof HTMLElement) || !element.isConnected) {
+			return false;
+		}
+
+		const style = getComputedStyle(element);
+		if (style.display === "none" || style.visibility === "hidden") {
+			return false;
+		}
+
+		const rect = element.getBoundingClientRect();
+		return rect.width > 0 && rect.height > 0;
+	}
+
 	function activeOverlay() {
 		// A rotated phone can exceed the narrow layout breakpoint while still using
 		// Android hardware Back. Keep transient IDE layers in the WebView history
@@ -147,18 +193,7 @@
 
 		for (const selector of overlaySelectors) {
 			for (const element of document.querySelectorAll(selector)) {
-				if (!(element instanceof HTMLElement)) {
-					continue;
-				}
-
-				const style = getComputedStyle(element);
-				const rect = element.getBoundingClientRect();
-				if (
-					style.display !== "none" &&
-					style.visibility !== "hidden" &&
-					rect.width > 0 &&
-					rect.height > 0
-				) {
+				if (element !== undismissable && onScreen(element)) {
 					return element;
 				}
 			}
@@ -185,77 +220,187 @@
 		);
 	}
 
+	// Stands in for the open full-screen part the way an element stands in for an
+	// overlay, so both kinds of layer move through the same dismissal bookkeeping.
+	const PART = "part";
+
+	// The topmost thing back would close, or null when back belongs to the host.
 	function activeBackTarget() {
-		if (activeOverlay()) {
-			return "overlay";
+		const overlay = activeOverlay();
+		if (overlay) {
+			return overlay;
 		}
 
-		if (narrowPartOpen()) {
-			return "part";
+		if (undismissable !== PART && narrowPartOpen()) {
+			return PART;
 		}
 
 		return null;
 	}
 
-	function dispatchEscape() {
-		const target =
-			document.activeElement instanceof HTMLElement
-				? document.activeElement
-				: document.body;
-		const eventInit = {
+	function stillPresent(target) {
+		return target === PART ? narrowPartOpen() : onScreen(target);
+	}
+
+	// VS Code reads e.keyCode and nothing else (base/browser/keyboardEvent.ts
+	// extractKeyCode), and keyCode is a legacy KeyboardEventInit member no engine
+	// is obliged to honour - where it is dropped the event arrives as keyCode 0,
+	// resolves to KeyCode.Unknown and matches no keybinding, so every dismissal
+	// below would silently do nothing. Define it back on when the constructor
+	// swallowed it, rather than trusting the engine.
+	function escapeEvent(type) {
+		const event = new KeyboardEvent(type, {
 			key: "Escape",
 			code: "Escape",
 			keyCode: 27,
 			which: 27,
 			bubbles: true,
 			cancelable: true,
-		};
+		});
 
-		target.dispatchEvent(new KeyboardEvent("keydown", eventInit));
-		target.dispatchEvent(new KeyboardEvent("keyup", eventInit));
+		if (event.keyCode !== 27) {
+			Object.defineProperty(event, "keyCode", { get: () => 27 });
+			Object.defineProperty(event, "which", { get: () => 27 });
+		}
+
+		return event;
 	}
 
-	function postNativeBackGuard(active) {
+	// Aim the Escape at the focused element when the layer owns focus (the widget's
+	// own handler expects it there), and at the layer itself otherwise - a menu
+	// opened by touch often leaves focus behind in the editor, and an Escape
+	// delivered to the body would be resolved against the body's context keys and
+	// close nothing.
+	function dispatchEscape(overlay) {
+		const active =
+			document.activeElement instanceof HTMLElement
+				? document.activeElement
+				: null;
+		const target =
+			active && (!overlay || overlay.contains(active)) ? active : overlay;
+		const element = target ?? document.body;
+
+		element.dispatchEvent(escapeEvent("keydown"));
+		element.dispatchEvent(escapeEvent("keyup"));
+	}
+
+	// A layer that ignores its Escape must not swallow every later back press: once
+	// it has had the grace period below, stop counting it as a layer for as long as
+	// it stays on screen, so the guard disarms and the next back does the thing
+	// underneath instead of nothing at all.
+	const DISMISS_GRACE = 500;
+
+	// Close the topmost layer. Returns whether there was one - false means back
+	// belongs to whoever is hosting the page (leave for the instance list in the
+	// app, leave the page in a browser).
+	function dismissTopLayer() {
+		const target = activeBackTarget();
+		if (!target) {
+			dismissing = null;
+			return false;
+		}
+
+		dismissing = { target, at: Date.now() };
+		if (target === PART) {
+			window.dispatchEvent(new Event(narrowClosePartEvent));
+		} else {
+			dispatchEscape(target);
+		}
+
+		// A layer that refuses to close mutates nothing, so nothing would wake the
+		// observer to notice: come back for the verdict ourselves.
+		window.setTimeout(schedule, DISMISS_GRACE + 50);
+		return true;
+	}
+
+	function reviewDismissal() {
+		if (undismissable && !stillPresent(undismissable)) {
+			undismissable = null;
+		}
+
+		if (!dismissing) {
+			return;
+		}
+
+		if (
+			!stillPresent(dismissing.target) ||
+			dismissing.target !== activeBackTarget()
+		) {
+			dismissing = null;
+			return;
+		}
+
+		if (Date.now() - dismissing.at > DISMISS_GRACE) {
+			undismissable = dismissing.target;
+			dismissing = null;
+		}
+	}
+
+	function postNative(message) {
 		if (!window.__composeryNative || !window.ReactNativeWebView?.postMessage) {
 			return;
 		}
 
 		try {
-			window.ReactNativeWebView.postMessage(
-				`composery:overlay-back:${active ? "on" : "off"}`,
-			);
+			window.ReactNativeWebView.postMessage(message);
 		} catch {}
 	}
 
-	function updateBackGuard() {
+	function nativeHost() {
+		return Boolean(
+			window.__composeryNative && window.ReactNativeWebView?.postMessage,
+		);
+	}
+
+	function syncBackGuard() {
+		reviewDismissal();
 		const target = activeBackTarget();
-		if (target && !backGuardArmed) {
-			backGuardArmed = true;
-			// A reload (or a restored WebView) keeps session history, so a previous
-			// sentinel can already be the current entry - adopt it instead of stacking
-			// a second one, or back presses accumulate across reloads.
-			if (!history.state?.composeryBackGuard) {
-				history.pushState({ composeryBackGuard: true }, "", location.href);
+
+		// In the app the back press is delivered to us directly, so there is no
+		// sentinel to keep: history stays exactly as the workbench left it and a back
+		// can never walk it. All the app needs is whether this press has a layer to
+		// spend itself on or should leave the screen - on the transitions only, since
+		// this runs on every workbench mutation and a live terminal produces them by
+		// the hundred.
+		if (nativeHost()) {
+			const open = Boolean(target);
+			if (open !== reportedLayerOpen) {
+				reportedLayerOpen = open;
+				postNative(`composery:overlay-back:${open ? "on" : "off"}`);
 			}
-			postNativeBackGuard(true);
 			return;
 		}
 
-		if (target || !backGuardArmed) {
+		if (target) {
+			if (!backGuardArmed) {
+				backGuardArmed = true;
+				// A reload (or a restored WebView) keeps session history, so a previous
+				// sentinel can already be the current entry - adopt it instead of stacking
+				// a second one, or back presses accumulate across reloads.
+				if (!history.state?.composeryBackGuard) {
+					history.pushState({ composeryBackGuard: true }, "", location.href);
+				}
+			}
 			return;
 		}
 
-		backGuardArmed = false;
-		postNativeBackGuard(false);
-		if (history.state?.composeryBackGuard) {
-			backGuardDisarming = true;
-			history.back();
+		if (backGuardArmed) {
+			backGuardArmed = false;
+			if (history.state?.composeryBackGuard) {
+				pendingBackGuardDisarms++;
+				history.back();
+			}
 		}
 	}
 
 	function handleBackGuardPop() {
-		if (backGuardDisarming) {
-			backGuardDisarming = false;
+		if (pendingBackGuardDisarms > 0) {
+			pendingBackGuardDisarms--;
+			backGuardArmed = false;
+			// A layer can have opened while our history.back() was in flight, and it
+			// would have adopted the sentinel this pop just retired. Re-arm against the
+			// history we actually have now.
+			syncBackGuard();
 			return;
 		}
 
@@ -264,18 +409,34 @@
 		}
 
 		backGuardArmed = false;
-		postNativeBackGuard(false);
-		const target = activeBackTarget();
-		if (target === "overlay") {
-			dispatchEscape();
-		} else if (target === "part") {
-			window.dispatchEvent(new Event(narrowClosePartEvent));
+		dismissTopLayer();
+		// Re-arm synchronously: this pop retired the sentinel, so until one is back a
+		// second browser back reaches real navigation and leaves the page (device-seen
+		// 2026-07-21: a back with a menu over an open panel closed the menu, then the
+		// next back hit Chrome's "Leave site?" instead of closing the panel). A layer
+		// closed by Escape is gone from the DOM by now, so activeBackTarget already
+		// reflects the layer beneath it, and syncBackGuard re-plants the sentinel while
+		// that layer is still open. The app never gets here - it has no sentinel.
+		syncBackGuard();
+		// And again once a layer that closes on an animation rather than synchronously
+		// has finished, in case the pass above re-armed against one that is now gone.
+		window.setTimeout(syncBackGuard, 100);
+	}
+
+	// The app's hardware/gesture back. Same ladder as the browser guard above, minus
+	// the history round trip: dismiss the top layer, or tell the app there was none
+	// so it leaves for the instance list. Defined for every host so the app can call
+	// it without knowing which page it landed on.
+	window.__composeryNativeBack = function () {
+		reviewDismissal();
+		const dismissed = dismissTopLayer();
+		if (!dismissed) {
+			postNative("composery:back");
 		}
 
-		if (target) {
-			window.setTimeout(updateBackGuard, 100);
-		}
-	}
+		schedule();
+		return dismissed;
+	};
 
 	function updateModalEditorNarrowState() {
 		for (const action of document.querySelectorAll(modalEditorMaximizeSelector)) {
@@ -325,7 +486,7 @@
 	function enforce() {
 		pending = false;
 		updateViewportVars();
-		updateBackGuard();
+		syncBackGuard();
 		updateModalEditorNarrowState();
 	}
 

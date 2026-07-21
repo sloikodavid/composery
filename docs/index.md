@@ -1,6 +1,6 @@
 ---
 title: Composery
-description: A Debian-style VPS in your browser - install packages, edit system files, build projects, and keep that state across restarts.
+description: A secure cloud computer with a powerful UI, usable from any phone or browser.
 ---
 
 Composery feels like a small Debian-style VPS in a browser. You get a real Linux

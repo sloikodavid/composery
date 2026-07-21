@@ -13,6 +13,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Everything that must hold on any developer's machine, on the two OSes the
+  # Linux-only `check` job cannot speak for. Runs `check:portable` rather than a
+  # step list, so a new check:* target is covered here the day it is added; a
+  # test pins that script to the check:* family so nothing can quietly opt out.
+  # Excluded on purpose: check:cli (persistence needs inotify/xattr, so cargo
+  # only runs on Linux or in the Rust container) and check:renovate (validates
+  # JSON against a schema - no OS-specific behaviour to catch).
+  portable:
+    name: portable (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Spans both host OSes and both architectures: windows-2025 is x64,
+        # macos-15 is arm64. Linux gets the same span from smoke.yml's
+        # amd64/arm64 pair.
+        os: [windows-2025, macos-15]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:portable
+      # The two artifacts a contributor builds from their own machine. The image
+      # (build:docker) is Linux-only by nature and stays on the check job.
+      - run: pnpm build:web
+        env:
+          NEXT_PUBLIC_CONVEX_URL: https://convex.invalid
+      - run: pnpm build:mobile
+
   check:
     runs-on: ubuntu-26.04
     steps:
@@ -24,6 +59,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # Validates every workflow, and runs shellcheck over each `run:` block -
+      # the CI files are the one part of the repo `pnpm check` cannot see.
+      # Config (runner labels) is .github/actionlint.yml.
+      - uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs quilt
       # Cheap early gate: quilt-push our patch stack over pristine code-server with
       # fuzz=0, like build.sh, to catch patch drift before the full image build.
@@ -42,7 +81,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: packages/cli
       - run: pnpm install --frozen-lockfile

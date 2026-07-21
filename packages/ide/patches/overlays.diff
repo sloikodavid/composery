@@ -24,7 +24,7 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
 -		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
 +		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" data-light="{{BASE}}/_static/src/browser/media/favicon-light.svg" data-dark="{{BASE}}/_static/src/browser/media/favicon-dark.svg" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
@@ -32,12 +32,13 @@
  		<style id="vscode-css-modules" type="text/css" media="screen"></style>
  
  	</head>
-@@ -65,5 +66,7 @@
+@@ -65,5 +66,8 @@
  	<script>
  		performance.mark('code/willLoadWorkbenchMain');
  	</script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
@@ -55,7 +56,7 @@
 -		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
 -		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
 +		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" data-light="{{BASE}}/_static/src/browser/media/favicon-light.svg" data-dark="{{BASE}}/_static/src/browser/media/favicon-dark.svg" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
  		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
@@ -72,11 +73,12 @@
  
  	</head>
  
-@@ -46,5 +53,7 @@
+@@ -46,5 +53,8 @@
  	<script type="module" src="{{WORKBENCH_NLS_FALLBACK_URL}}"></script>
  	<!-- attempt to load NLS messages in case non-english -->
  	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>

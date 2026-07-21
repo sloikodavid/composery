@@ -87,6 +87,7 @@ Repeat these steps for every Convex deployment that should deliver alerts.
    Then set **ALERT_EMAIL_FROM** to any address at the verified subdomain, e.g.
    `Composery <alerts@mail.composery.io>`. The local part is cosmetic; only the
    domain must match a verified identity.
+
 4. In Resend, create a webhook for **<CONVEX_SITE_URL>/resend/events**. Enable
    **email.sent**, **email.delivered**, **email.delivery_delayed**,
    **email.bounced**, **email.complained**, **email.failed**,

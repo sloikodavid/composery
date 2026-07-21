@@ -93,6 +93,20 @@ describe("desktop URL and text editor integration", () => {
 		expect(dockerfile).not.toContain("export BROWSER");
 	});
 
+	// Two editor affordances a finger cannot reach on the settings upstream ships:
+	// folding controls are revealed by hover ("mouseover"), so a region can be
+	// unfolded on touch but never folded; and the minimap takes a fixed slice of the
+	// width off a phone-sized editor to render a view of the file no one is going to
+	// drag. Both are plain settings a user can put back.
+	test("editor defaults suit the pointer this is used with", () => {
+		const settings = JSON.parse(
+			readRepoFile("rootfs/home/user/.local/share/composery/User/settings.json")
+		) as Record<string, unknown>;
+
+		expect(settings["editor.showFoldingControls"]).toBe("always");
+		expect(settings["editor.minimap.enabled"]).toBe(false);
+	});
+
 	test("integrated terminal runs a login shell so ~/.profile and ~/.local/bin load", () => {
 		const settings = JSON.parse(
 			readRepoFile("rootfs/home/user/.local/share/composery/User/settings.json")

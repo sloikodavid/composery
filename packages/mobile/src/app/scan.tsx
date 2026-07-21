@@ -1,9 +1,14 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Flashlight } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import { Linking, Text, useWindowDimensions, View } from "react-native";
+import {
+	AppState,
+	Linking,
+	Text,
+	useWindowDimensions,
+	View
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { BackButton } from "@/components/back-button";
@@ -11,6 +16,7 @@ import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback } from "@/lib/haptics";
+import { useScreenExit } from "@/lib/nav";
 import { parseScannedInstance } from "@/lib/parse-scanned";
 import { useTheme } from "@/lib/use-theme";
 
@@ -19,10 +25,11 @@ const FRAME_SCALE = 0.7;
 
 export default function ScanScreen() {
 	const theme = useTheme();
+	const { replaceWith } = useScreenExit();
 	const { width, height } = useWindowDimensions();
 	// A generous square that stays comfortably inside the narrowest screens.
 	const frame = Math.min(width, height) * FRAME_SCALE;
-	const [permission, requestPermission] = useCameraPermissions();
+	const [permission, requestPermission, getPermission] = useCameraPermissions();
 	const [torch, setTorch] = useState(false);
 	const [hint, setHint] = useState<string | null>(null);
 	// Latches on the first decode so a stream of frames can't fire navigation (or
@@ -36,6 +43,18 @@ export default function ScanScreen() {
 		},
 		[]
 	);
+
+	// useCameraPermissions reads the status once on mount and never again, so a
+	// user who leaves for system Settings, grants the camera, and comes back would
+	// stay stuck on the "Open settings" prompt over a permission that is now
+	// granted - the screen disagreeing with the OS. Re-read it on every foreground
+	// so returning from Settings shows the camera without leaving and re-entering.
+	useEffect(() => {
+		const subscription = AppState.addEventListener("change", (state) => {
+			if (state === "active") void getPermission();
+		});
+		return () => subscription.remove();
+	}, [getPermission]);
 
 	function onScan(value: string) {
 		if (locked.current) return;
@@ -56,8 +75,9 @@ export default function ScanScreen() {
 		successFeedback();
 		// Hand off to the add screen prefilled, so the user confirms and labels it
 		// rather than it being added silently. replace() so Back doesn't land on
-		// the camera again.
-		router.replace({ pathname: "/add-instance", params: { url } });
+		// the camera again — and only while this screen is still the one showing,
+		// or a frame-late decode would replace the instances list instead.
+		replaceWith({ pathname: "/add-instance", params: { url } });
 	}
 
 	// Permission still resolving on first mount.

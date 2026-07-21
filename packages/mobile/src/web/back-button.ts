@@ -12,6 +12,25 @@ export const APPICON_SELECTOR = ".window-appicon";
 
 export type Placement = "titlebar" | "wait";
 
+// Whether an element's computed background is the colour that is actually on
+// screen, and so safe to report as the status-bar strip. Kept as source rather
+// than a TS function because the script is injected as a string and Hermes does
+// not preserve Function#toString - this is the only way the script and its test
+// can share one copy of the rule.
+export const USABLE_BG_SOURCE = `function usableBg(bg) {
+	// Only rgb()/rgba(). "transparent", "" and the colour syntaxes React Native
+	// cannot parse (color(), oklch()) are not usable surface colours.
+	if (!bg || bg.indexOf("rgb") !== 0) return null;
+	// A translucent surface composites over whatever is behind it, so its
+	// computed colour is not the colour on screen. A theme that sets the title
+	// bar with 8-digit hex - #ffffff10 over a black workbench - paints a
+	// near-black strip but reads as light, which flips the status-bar icons to
+	// black-on-black. Take the opaque surface underneath instead: that is what
+	// the eye sees through it anyway.
+	var parts = bg.match(/-?\\d*\\.?\\d+/g) || [];
+	return parts.length > 3 && Number(parts[3]) < 1 ? null : bg;
+}`;
+
 // Rewire once the title-bar logo exists; until then wait (the workbench builds
 // it async, and the observer retries). No floating fallback.
 export function choosePlacement(state: { hasAppicon: boolean }): Placement {
@@ -70,6 +89,13 @@ window.__composeryScheme = ${JSON.stringify(scheme)};
 true;`;
 }
 
+// Injected on every hardware/gesture back press. The page owns the decision: it
+// closes its topmost layer, or posts "composery:back" when it has none and the
+// app should leave for the instance list. The WebView's own session history is
+// never walked - inside the IDE it holds login redirects and workbench sentinels,
+// none of which is a place the user asked to go back to.
+export const NATIVE_BACK_SCRIPT = `window.__composeryNativeBack && window.__composeryNativeBack(); true;`;
+
 // Runs after load: rewires the title-bar logo as the back control and reports
 // the live title-bar background so the app can tint the status-bar strip to
 // match any IDE theme.
@@ -81,6 +107,14 @@ export const INSTALL_SCRIPT = `(function () {
 	var lastBg = "";
 
 	function post(m) { try { window.ReactNativeWebView.postMessage(m); } catch (e) {} }
+
+	// Hardware/gesture back asks the page to close its topmost layer. The workbench
+	// defines this itself (narrow.js) and knows its menus, dialogs and full-screen
+	// parts; the login and error pages have no layers, so back there means leave.
+	// Never overwrite the workbench's - it loads first, this runs at load end.
+	if (!window.__composeryNativeBack) {
+		window.__composeryNativeBack = function () { post("composery:back"); return false; };
+	}
 
 	function ensureStyle() {
 		if (document.getElementById(ID + "-style")) return;
@@ -120,26 +154,24 @@ export const INSTALL_SCRIPT = `(function () {
 		logo.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") go(e); });
 	}
 
-	function isTransparent(c) {
-		return !c || c === "transparent" || c === "rgba(0, 0, 0, 0)";
-	}
+	${USABLE_BG_SOURCE}
 
 	function surfaceBg(el) {
-		if (!el) return null;
-		var bg = getComputedStyle(el).backgroundColor;
-		return isTransparent(bg) ? null : bg;
+		return el ? usableBg(getComputedStyle(el).backgroundColor) : null;
 	}
 
 	function readBg() {
 		// On the workbench the title bar is the top surface; on any other page
-		// (login, error pages) use the page's own background, defaulting to white.
-		// Keeps the strip matching the page, not a stale theme colour.
+		// (login, error pages) use the page's own background. Keeps the strip
+		// matching the page, not a stale theme colour. Nothing opaque anywhere
+		// reports empty, and the app falls back to its own background - never a
+		// guessed white, which would be a white bar over a dark app.
 		var color =
 			surfaceBg(document.querySelector(".part.titlebar")) ||
 			surfaceBg(document.querySelector(WORKBENCH)) ||
 			surfaceBg(document.body) ||
 			surfaceBg(document.documentElement) ||
-			"rgb(255, 255, 255)";
+			"";
 		if (color !== lastBg) {
 			lastBg = color;
 			post("composery:bg:" + color);

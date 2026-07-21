@@ -1,9 +1,9 @@
 // The one back/dismiss affordance, shared so every screen's back action looks
 // and feels identical: a round ArrowLeft button in the app's button vocabulary.
-import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 
 import { PressableScale } from "@/components/pressable-scale";
+import { useScreenExit } from "@/lib/nav";
 import { useTheme } from "@/lib/use-theme";
 
 export function BackButton({
@@ -12,7 +12,7 @@ export function BackButton({
 	disabled,
 	testID
 }: {
-	// Defaults to router.back(); pass router.dismiss for modal screens.
+	// Defaults to leaving for the previous screen (or the list).
 	onPress?: () => void;
 	// "overlay" = light-on-dark, for buttons sitting over media (e.g. the camera).
 	variant?: "default" | "overlay";
@@ -20,6 +20,9 @@ export function BackButton({
 	testID?: string;
 }) {
 	const theme = useTheme();
+	// Guarded, so an impatient double-tap leaves once instead of popping the screen
+	// underneath as well.
+	const { leave } = useScreenExit();
 	const overlay = variant === "overlay";
 	return (
 		<PressableScale
@@ -30,7 +33,7 @@ export function BackButton({
 			hitSlop={8}
 			onPress={() => {
 				if (onPress) onPress();
-				else router.back();
+				else leave();
 			}}
 			style={{
 				width: 40,

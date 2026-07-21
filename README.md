@@ -1,8 +1,6 @@
 # Composery
 
-A Debian-style VPS in your browser: a full VS Code-based IDE on top of a real
-Linux machine. Install packages, edit system files, build projects, run
-agents - and keep that state across restarts.
+A secure cloud computer with a powerful UI, usable from any phone or browser.
 
 <p align="center">
   <picture>

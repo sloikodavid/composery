@@ -4,7 +4,7 @@
 # Maestro cannot see inside a WebView, so it only asserts the native WebView view
 # (testID "instance-webview") is visible, not the web content. See README.md for
 # run steps and preconditions.
-appId: host.exp.exponent
+appId: ${APP_ID}
 ---
 - launchApp
 - assertVisible:

@@ -1,6 +1,6 @@
 # Adds an instance by URL and asserts it appears in the list.
 # Precondition: app loaded in Expo Go with a fresh AsyncStorage (empty list).
-appId: host.exp.exponent
+appId: ${APP_ID}
 ---
 - launchApp
 - assertVisible:

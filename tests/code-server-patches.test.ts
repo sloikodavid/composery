@@ -27,6 +27,42 @@ const PATCHES_DIR = "packages/ide/patches";
 const ASSETS =
 	"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
 
+// Selectors are wrapped for readability in one sheet and not the other; compare
+// them as the browser does, on whitespace-insensitive text.
+const flat = (css: string) => css.replace(/\s+/g, " ");
+
+// Every readable file under a repo-relative directory, as repo-relative paths.
+const BINARY = /\.(png|jpe?g|gif|ico|woff2?|ttf|otf|mp4|webm|zip|gz)$/i;
+function textFilesUnder(dir: string): string[] {
+	return readdirSync(resolve(repoRoot, dir), { withFileTypes: true }).flatMap(
+		(entry) => {
+			const path = posix.join(dir, entry.name);
+			if (entry.isDirectory()) return textFilesUnder(path);
+			return entry.isFile() && !BINARY.test(entry.name) ? [path] : [];
+		}
+	);
+}
+
+// Whether a stylesheet hides an element by default and reveals it on hover - the
+// upstream shape that makes a touch override necessary. `parts` identifies the
+// element loosely enough to survive the extra qualifiers upstream hangs off the
+// hover rule (`:hover:not(.highlighted)` and friends).
+function hoverGate(css: string, parts: string[]) {
+	const reveals = /display:\s*(block|flex|inline-block|inline|initial)/;
+	const rules = [...flat(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+		.map((match) => ({ selector: match[1] ?? "", body: match[2] ?? "" }))
+		.filter((rule) => parts.every((part) => rule.selector.includes(part)));
+
+	return {
+		hidden: rules.some(
+			(rule) => /display:\s*none/.test(rule.body) && !reveals.test(rule.body)
+		),
+		revealedOnHover: rules.some(
+			(rule) => rule.selector.includes(":hover") && reveals.test(rule.body)
+		)
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Patch stack lint: mechanical validity for every patch in the series.
 // ---------------------------------------------------------------------------
@@ -117,9 +153,13 @@ describe("patch stack lint", () => {
 	// a slow place to find out. Rehearse the exact stack the build applies:
 	// code-server's own series, then ours, in order, on a shadow tree fed from
 	// the pristine upstream working copy.
+	// Timeout sized for what this does - copy a working tree and shell out to
+	// patch once per file per patch - not for how long it happens to take on an
+	// idle machine. It ran ~45s of a 60s budget here, so a loaded CI runner failed
+	// it for being busy rather than for anything wrong with the stack.
 	test(
 		"the full patch stack applies with GNU patch at fuzz=0",
-		{ timeout: 60_000 },
+		{ timeout: 240_000 },
 		() => {
 			const upstream = resolve(repoRoot, "packages/ide/upstream");
 			const shadow = mkdtempSync(resolve(tmpdir(), "composery-stack-"));
@@ -527,6 +567,98 @@ describe("touch inline actions", () => {
 		expect(css).toContain(".tabs-list .actions");
 	});
 
+	// Forcing an action bar visible is only right while upstream is still hiding it
+	// behind a hover a finger cannot produce. Check the pairing against upstream
+	// itself: if a bump stops hiding one, the !important below is no longer a fix
+	// but a forced state we are imposing, and if the class is renamed the rule is
+	// dead while looking exactly as alive as the rest.
+	test("every forced action bar is one upstream still hides behind hover", () => {
+		const touchCss = flat(readRepoFile(`${ASSETS}/touch.css`));
+
+		for (const { css, parts, forced } of [
+			{
+				css: "src/vs/workbench/browser/parts/notifications/media/notificationsList.css",
+				parts: [".notification-list-item-toolbar-container"],
+				forced: ".notification-list-item-toolbar-container"
+			},
+			{
+				css: "src/vs/workbench/contrib/search/browser/media/searchview.css",
+				parts: [".search-view", ".monaco-list-row", ".monaco-action-bar"],
+				forced: ".search-view .monaco-list .monaco-list-row .monaco-action-bar"
+			},
+			{
+				css: "src/vs/workbench/contrib/preferences/browser/media/settingsWidgets.css",
+				parts: [".setting-list-row", ".monaco-action-bar"],
+				forced: ".setting-list-row .monaco-action-bar"
+			}
+		]) {
+			const upstream = readRepoFile(`packages/ide/upstream/lib/vscode/${css}`);
+			expect({
+				forced,
+				coveredOnTouch: touchCss.includes(forced),
+				...hoverGate(upstream, parts)
+			}).toEqual({
+				forced,
+				coveredOnTouch: true,
+				hidden: true,
+				revealedOnHover: true
+			});
+		}
+	});
+
+	// The IDE tree is built apart from the workspace, so it cannot import `shared` and
+	// every Composery address it ships is a copy: the title-bar logo, the auth page's
+	// brand link, product.json's documentation and newsletter URLs, the repository
+	// coordinates. Copies drift in silence - shared says of REPO that "a fork repoints
+	// these once and every derived URL follows", which is only true of the copies
+	// something checks. This is that check.
+	test("every Composery address in the IDE is the one shared defines", () => {
+		const shared = readRepoFile("packages/shared/index.ts");
+		const websiteOrigin = /WEBSITE_ORIGIN = "([^"]+)"/.exec(shared)?.[1];
+		const repoOwner = /owner: "([^"]+)"/.exec(shared)?.[1];
+		const repoName = /name: "([^"]+)"/.exec(shared)?.[1];
+		expect({ websiteOrigin, repoOwner, repoName }).toEqual({
+			websiteOrigin: expect.any(String) as string,
+			repoOwner: expect.any(String) as string,
+			repoName: expect.any(String) as string
+		});
+
+		const wrong: string[] = [];
+		for (const file of textFilesUnder("packages/ide/patches").concat(
+			textFilesUnder("packages/ide/overlay")
+		)) {
+			for (const match of readRepoFile(file).matchAll(
+				/https?:\/\/[^"'\s)`]+/g
+			)) {
+				let url: URL;
+				try {
+					url = new URL(match[0]);
+				} catch {
+					continue; // a template literal, not an address
+				}
+
+				if (
+					url.hostname.includes("composery") &&
+					url.origin !== websiteOrigin
+				) {
+					wrong.push(`${file}: ${match[0]}`);
+				}
+				// Only addresses that name this project. Links to code-server and VS Code
+				// are upstream provenance and belong to their owners.
+				const repo = url.pathname.split("/")[2]?.replace(/\.git$/, "");
+				if (
+					url.hostname === "github.com" &&
+					repo?.toLowerCase().includes("composery") &&
+					!url.pathname.startsWith(`/${repoOwner}/${repoName}`)
+				) {
+					wrong.push(`${file}: ${match[0]}`);
+				}
+			}
+		}
+
+		expect(wrong).toEqual([]);
+	});
+
 	test("notebook insert-cell toolbars are reachable on touch", () => {
 		const css = readRepoFile(`${ASSETS}/touch.css`);
 
@@ -931,16 +1063,42 @@ describe("narrow overlay", () => {
 	});
 
 	// narrow.js signals overlay-back state to the native app; the mobile WebView
-	// listens for the same protocol strings.
+	// listens for the same protocol strings (in the InstanceView the WebView lives
+	// in - the route itself is only a focus marker).
 	test("overlay-back protocol matches between narrow.js and the mobile app", () => {
 		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
-		const instanceScreen = readRepoFile(
-			"packages/mobile/src/app/instance/[id].tsx"
+		const instanceView = readRepoFile(
+			"packages/mobile/src/components/instance-view.tsx"
 		);
 
 		expect(narrowJs).toContain("composery:overlay-back:");
-		expect(instanceScreen).toContain("composery:overlay-back:on");
-		expect(instanceScreen).toContain("composery:overlay-back:off");
+		expect(instanceView).toContain("composery:overlay-back:on");
+		expect(instanceView).toContain("composery:overlay-back:off");
+	});
+
+	// A back press is handed to the page, which closes its top layer or answers
+	// "composery:back" so the app leaves. Same entry point on both sides, or every
+	// press in the IDE goes straight back to the instances list.
+	test("the native back call matches between narrow.js and the mobile app", () => {
+		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const webScripts = readRepoFile("packages/mobile/src/web/back-button.ts");
+
+		expect(narrowJs).toContain("window.__composeryNativeBack = function");
+		expect(narrowJs).toContain('postNative("composery:back")');
+		expect(webScripts).toContain("window.__composeryNativeBack()");
+	});
+
+	// The WebView's session history holds login redirects and, in a browser, the
+	// guard's own sentinels - never a screen the user asked to return to. Walking
+	// it was what made back land on the login page or nowhere at all.
+	test("the app never walks the WebView's history", () => {
+		const instanceView = readRepoFile(
+			"packages/mobile/src/components/instance-view.tsx"
+		);
+
+		expect(instanceView).not.toContain(".goBack()");
+		expect(instanceView).not.toContain("canGoBack");
+		expect(instanceView).not.toContain("onNavigationStateChange");
 	});
 
 	// Rotation can make a phone wider than the narrow layout breakpoint while
@@ -1118,11 +1276,27 @@ describe("narrow overlay", () => {
 	// Re-opening the already-visible editor (tapping the same extension in the
 	// marketplace) fires no visible-editors change, so upstream's showEditorIfHidden
 	// never runs and the fullscreen part reads as tap-dead. The will-open event
-	// fires for every request, deduped or not.
-	test("narrow fullscreen exits on any editor open request", () => {
-		expect(
-			addedLines(readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`))
-		).toContain("this.mainPartEditorService.onWillOpenEditor(() => {");
+	// fires for every request, deduped or not - which is also why it has to be
+	// filtered: an editor opened in the background (a task revealing a file, an
+	// extension opening its log, editors restored on reload) would otherwise take
+	// the full-screen part away from the user, with nothing having asked it to.
+	// Upstream's event carries only the editor and its group, so the options come
+	// with it from the same patch.
+	test("narrow fullscreen exits for editors meant to be looked at", () => {
+		const added = addedLines(
+			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
+		);
+
+		expect(added).toContain(
+			"this.mainPartEditorService.onWillOpenEditor(e => {"
+		);
+		expect(added).toContain(
+			"if (e.options?.preserveFocus || e.options?.inactive) {"
+		);
+		expect(added).toContain("readonly options?: IEditorOptions;");
+		expect(added).toContain(
+			"this._onWillOpenEditor.fire({ editor, groupId: this.id, options });"
+		);
 	});
 
 	// The extension editor header is a nowrap flex row upstream; long names clipped
@@ -1480,6 +1654,31 @@ describe("adaptive favicon", () => {
 		expect(favicon).toContain("currentColor");
 		expect(favicon).not.toContain('media="(prefers-color-scheme');
 	});
+
+	test.each([
+		[
+			"packages/ide/overlay/src/browser/pages/auth.html",
+			"src/browser/pages/favicon.js"
+		],
+		[
+			"packages/ide/overlay/src/browser/pages/error.html",
+			"src/browser/pages/favicon.js"
+		],
+		[`${PATCHES_DIR}/overlays.diff`, "workbench-assets/favicon.js"]
+	])(
+		"%s hands the SVG favicon the scheme-pinned pair and the script that swaps it",
+		(path, script) => {
+			const raw = readRepoFile(path);
+			const content = path.endsWith(".diff") ? addedLines(raw) : raw;
+
+			// The adaptive file alone only ever caught up across a reload: Chromium
+			// rasterizes a favicon once per URL and never re-runs the embedded
+			// media query. The swap itself is driven in tests/favicon.test.ts.
+			expect(content).toContain("favicon-light.svg");
+			expect(content).toContain("favicon-dark.svg");
+			expect(content).toContain(script);
+		}
+	);
 });
 
 type WebviewViewportMeta = {
@@ -2431,5 +2630,39 @@ describe("terminal keyboard occlusion", () => {
 		expect(narrow).toContain("const KEYBOARD_MIN_INSET = 120;");
 		// Rotation resets the baseline.
 		expect(narrow).toContain("if (width !== keyboardBaselineWidth) {");
+	});
+});
+
+// The mobile app overrides the page's colour scheme with a data-scheme attribute
+// on <html>, because an Android WebView's native prefers-color-scheme tracks the
+// activity theme rather than the system (see back-button.ts). Any page the app
+// can put on screen therefore needs scheme CSS keyed on that attribute as well as
+// on the media query - and the app tints its status-bar strip to whatever the page
+// paints, so a page that misses the override shows a white bar over a dark app.
+// The three copies live in three languages and cannot share a constant; this is
+// what keeps them from drifting, as the readiness page already had.
+describe("app scheme override", () => {
+	const pages: [name: string, source: () => string][] = [
+		[
+			"workbench first paint",
+			() => readRepoFile(`${PATCHES_DIR}/overlays.diff`)
+		],
+		[
+			"auth and error pages",
+			() => readRepoFile("packages/ide/overlay/src/browser/pages/brand.css")
+		],
+		[
+			"persistence startup page",
+			() =>
+				readRepoFile("packages/ide/overlay/src/node/persistence/readiness.ts")
+		]
+	];
+
+	test.each(pages)("%s keys its dark background on data-scheme", (_, read) => {
+		const source = read();
+		expect(source).toMatch(/\[data-scheme="dark"\]/);
+		expect(source).toMatch(/\[data-scheme="light"\]/);
+		// The media query stays for real browsers; the attribute is the override.
+		expect(source).toContain("prefers-color-scheme");
 	});
 });

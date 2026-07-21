@@ -5,8 +5,49 @@ import {
 	buildBeforeLoad,
 	choosePlacement,
 	INSTALL_SCRIPT,
-	TITLEBAR_LEFT_SELECTOR
+	NATIVE_BACK_SCRIPT,
+	TITLEBAR_LEFT_SELECTOR,
+	USABLE_BG_SOURCE
 } from "./back-button";
+
+// The rule ships as source, so the test runs that source rather than a
+// second copy of it.
+const usableBg = new Function(`${USABLE_BG_SOURCE}; return usableBg;`)() as (
+	bg: string | null | undefined
+) => string | null;
+
+describe("status-bar strip color", () => {
+	test("takes an opaque background", () => {
+		expect(usableBg("rgb(10, 10, 10)")).toBe("rgb(10, 10, 10)");
+		expect(usableBg("rgba(255, 255, 255, 1)")).toBe("rgba(255, 255, 255, 1)");
+	});
+
+	// The bug this rule exists for: a theme setting titleBar.activeBackground with
+	// 8-digit hex computes to a translucent white over a black workbench. Reported
+	// as-is it paints a near-black strip but scores as light, so the app picks dark
+	// status-bar icons - black on black.
+	test("rejects a translucent background so the surface under it is used", () => {
+		expect(usableBg("rgba(255, 255, 255, 0.06)")).toBeNull();
+		expect(usableBg("rgba(0, 0, 0, 0)")).toBeNull();
+	});
+
+	// Anything the app's own rgb parser (isLight in instance/[id].tsx) and React
+	// Native's style parser cannot both read is not a colour we can report.
+	test("rejects colors that are not rgb()", () => {
+		expect(usableBg("transparent")).toBeNull();
+		expect(usableBg("color(srgb 0.04 0.04 0.04)")).toBeNull();
+		expect(usableBg("oklch(0.2 0 0)")).toBeNull();
+		expect(usableBg("")).toBeNull();
+		expect(usableBg(null)).toBeNull();
+	});
+
+	// No opaque surface anywhere reports empty and the app keeps its own
+	// background. A guessed white would be a white bar over a dark app.
+	test("the script never guesses a color", () => {
+		expect(INSTALL_SCRIPT).toContain(USABLE_BG_SOURCE);
+		expect(INSTALL_SCRIPT).not.toContain("rgb(255, 255, 255)");
+	});
+});
 
 describe("back-button placement", () => {
 	test("rewires the logo when it exists", () => {
@@ -51,6 +92,26 @@ describe("back-button placement", () => {
 		expect(INSTALL_SCRIPT).toContain("@media (hover: none)");
 		expect(INSTALL_SCRIPT).toContain(":focus-visible");
 		expect(INSTALL_SCRIPT).toContain("focusBorder");
+	});
+});
+
+describe("hardware back", () => {
+	test("asks the page to close its top layer", () => {
+		expect(NATIVE_BACK_SCRIPT).toContain("window.__composeryNativeBack()");
+		// Absent (an error page, a load that never finished) the call is skipped
+		// rather than throwing into a WebView nobody can see the console of.
+		expect(NATIVE_BACK_SCRIPT).toContain("window.__composeryNativeBack &&");
+	});
+
+	// The workbench defines its own, knowing its menus, dialogs and full-screen
+	// parts; this script runs at load end, after it. Overwriting it would reduce
+	// every back press inside the IDE to "leave for the instances list".
+	test("the fallback never displaces the workbench's own", () => {
+		expect(INSTALL_SCRIPT).toContain("if (!window.__composeryNativeBack)");
+		const fallback = INSTALL_SCRIPT.slice(
+			INSTALL_SCRIPT.indexOf("if (!window.__composeryNativeBack)")
+		);
+		expect(fallback.slice(0, 200)).toContain('post("composery:back")');
 	});
 });
 

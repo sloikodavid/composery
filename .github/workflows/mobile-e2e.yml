@@ -1,0 +1,134 @@
+name: mobile-e2e
+
+# Drives the native mobile shell on a real Android emulator and a real iOS
+# simulator, so the two platforms Composery is *used* from are covered by
+# something that actually boots the app rather than only bundling it.
+#
+# Both jobs build a dev client with `expo run:*` instead of installing Expo Go.
+# Expo Go would be quicker, but its Android package is version-pinned to a
+# sideloaded APK (56.0.1 rejects every SDK 56 project, expo/expo#46846) and its
+# iOS package id differs - a dev client is the same `io.composery` on both and
+# matches what ships.
+#
+# Nightly and on demand, never on pull requests: a native build plus an emulator
+# boot is slow and device runs are the flakiest thing in any suite. Bundling for
+# both platforms is already a per-PR gate in ci.yml (`pnpm build:mobile`).
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The dev/EAS build id, per app.json. Flows take it as ${APP_ID} so the same
+  # file drives Expo Go or a real build on either platform.
+  APP_ID: io.composery
+  # get.maestro.mobile.dev installs whatever is latest when MAESTRO_VERSION is
+  # unset, which would make a failing nightly impossible to attribute. Both jobs
+  # inherit this from the workflow environment.
+  # renovate: datasource=github-releases depName=mobile-dev-inc/maestro
+  MAESTRO_VERSION: 2.7.0
+
+jobs:
+  android:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # Not Renovate-managed on purpose: this tracks the Java the Android Gradle
+      # Plugin requires, not the newest JDK. Raise it when AGP does.
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      # KVM is what makes the emulator usable rather than glacially slow.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Build and drive the app
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          # Also unmanaged: an emulator API level tracks the app's target SDK
+          # (app.json / Expo), not a package registry.
+          api-level: 35
+          arch: x86_64
+          working-directory: packages/mobile
+          # Metro first: run:android launches the dev client, which shows a
+          # connection error instead of the app if the bundler is not serving.
+          # run:android then prebuilds the gitignored native project and installs
+          # the dev client on the emulator this action booted.
+          script: |
+            pnpm exec expo start --dev-client --port 8081 &
+            sh ../../.github/scripts/wait-for-metro.sh
+            pnpm exec expo run:android --no-bundler
+            maestro test -e APP_ID="$APP_ID" --format junit \
+              --output ../../maestro-android.xml src/maestro/e2e.yml
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: maestro-android
+          path: |
+            maestro-android.xml
+            ~/.maestro/tests/**
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Maestro
+        run: |
+          curl -Ls https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Build and drive the app
+        working-directory: packages/mobile
+        run: |
+          set -euo pipefail
+          # Metro first: run:ios launches the dev client, which shows a connection
+          # error instead of the app if the bundler is not already serving.
+          pnpm exec expo start --dev-client --port 8081 &
+          sh ../../.github/scripts/wait-for-metro.sh
+          # Boots a simulator, prebuilds the gitignored iOS project, and installs
+          # the dev client. Same APP_ID as Android because it is a real build.
+          pnpm exec expo run:ios --no-bundler
+          maestro test -e APP_ID="$APP_ID" --format junit \
+            --output ../../maestro-ios.xml src/maestro/e2e.yml
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: maestro-ios
+          path: |
+            maestro-ios.xml
+            ~/.maestro/tests/**

@@ -1,6 +1,8 @@
+import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { readRepoFile } from "./support/patchSource.ts";
+import { readRepoFile, repoRoot } from "./support/patchSource.ts";
 
 // Overlay route files compile with the upstream IDE tsconfig, so they cannot be
 // imported here (see tests/support and the overlay typecheck script); their
@@ -14,6 +16,34 @@ const register = readRepoFile(
 const changePassword = readRepoFile(
 	"packages/ide/overlay/src/node/routes/changePassword.ts"
 );
+
+describe("auth page navigation", () => {
+	const pagesDir = "packages/ide/overlay/src/browser/pages";
+	const authPage = readRepoFile(`${pagesDir}/../../node/routes/authPage.ts`);
+
+	test("every page but login offers a way back to sign in", () => {
+		const fragments = readdirSync(resolve(repoRoot, pagesDir)).filter((name) =>
+			name.endsWith("-fields.html")
+		);
+		expect(fragments).toContain("login-fields.html");
+		for (const fragment of fragments) {
+			const source = readRepoFile(`${pagesDir}/${fragment}`);
+			// login is where the link points, so it carries the reverse edge.
+			const expected =
+				fragment === "login-fields.html"
+					? "{{CHANGE_PASSWORD_LINK}}"
+					: "{{SIGN_IN_LINK}}";
+			expect(source, fragment).toContain(expected);
+		}
+	});
+
+	test("the sign-in link is gated on a password existing", () => {
+		// First-run registration has no password yet, so a sign-in link there
+		// would lead to a page that cannot let anyone through.
+		expect(authPage).toContain('page !== "login" && hasPassword(req)');
+		expect(authPage).toContain('href="{{BASE}}/login">Sign in');
+	});
+});
 
 describe("register route", () => {
 	test("rejects cross-origin POSTs (drive-by workspace claim)", () => {

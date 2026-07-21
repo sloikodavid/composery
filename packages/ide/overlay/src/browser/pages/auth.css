@@ -461,6 +461,11 @@ button.crumb:hover {
 	text-align: center;
 }
 
+/* Stacked links (change-password shows both) sit closer than the button gap. */
+.auth-link + .auth-link {
+	margin-top: 8px;
+}
+
 .username {
 	height: 1px;
 	opacity: 0;

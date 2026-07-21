@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { openBrowserAsync } from "expo-web-browser";
 import { useEffect, useState } from "react";
 import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
@@ -10,6 +10,7 @@ import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback, tapFeedback } from "@/lib/haptics";
 import { WEBSITE_ORIGIN } from "shared";
 import { createInstanceStore } from "@/lib/instance-store";
+import { useScreenExit } from "@/lib/nav";
 import { useTheme } from "@/lib/use-theme";
 
 const store = createInstanceStore(AsyncStorage);
@@ -24,6 +25,7 @@ type EditLoadState =
 
 export default function AddInstanceScreen() {
 	const theme = useTheme();
+	const { leave } = useScreenExit();
 	// `url` arrives from a scan (router.replace) or the composery://add-instance
 	// deep link, prefilling a new instance; `id` means we're editing an existing one.
 	const { id, url: urlParam } = useLocalSearchParams<{
@@ -102,7 +104,7 @@ export default function AddInstanceScreen() {
 			}
 			successFeedback();
 			Keyboard.dismiss();
-			router.dismiss();
+			leave();
 		} catch (err) {
 			errorFeedback();
 			setError(err instanceof Error ? err.message : "Could not save instance.");
@@ -139,11 +141,7 @@ export default function AddInstanceScreen() {
 					paddingVertical: 12
 				}}
 			>
-				<BackButton
-					testID="add-instance-cancel"
-					onPress={() => router.dismiss()}
-					disabled={submitting}
-				/>
+				<BackButton testID="add-instance-cancel" disabled={submitting} />
 				<Text
 					style={[
 						heading("semibold"),

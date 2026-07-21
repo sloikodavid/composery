@@ -9,13 +9,14 @@
 		"node": ">=24.18.0 <25"
 	},
 	"scripts": {
-		"dev": "concurrently -n tree,docker,convex,next,mobile -c green,blue,yellow,white,cyan \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:mobile\"",
+		"dev": "concurrently -n tree,docker,convex,next,mobile -c green,blue,yellow,yellow,magenta \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:mobile\"",
 		"dev:next": "pnpm --filter web dev:next",
 		"dev:convex": "pnpm --filter web dev:convex",
 		"dev:mobile": "pnpm --filter mobile dev",
 		"dev:docker": "docker compose --progress=plain -f compose.dev.yml up --build",
 		"dev:tree": "node scripts/tree.mjs --watch",
-		"check": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:renovate && pnpm check:ide && pnpm check:cli && pnpm check:shared",
+		"check": "pnpm check:portable && pnpm check:cli && pnpm check:renovate",
+		"check:portable": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:ide && pnpm check:shared",
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",
 		"check:lint": "eslint . && pnpm -r --if-present run check:lint",
 		"check:format": "prettier --check .",
@@ -44,9 +45,11 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "9.39.4",
+		"@types/jsdom": "^28.0.3",
 		"@types/node": "catalog:",
 		"concurrently": "catalog:",
 		"eslint": "catalog:",
+		"jsdom": "^29.1.1",
 		"prettier": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "8.61.1",

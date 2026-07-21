@@ -8,13 +8,15 @@
 		/>
 		<meta
 			http-equiv="Content-Security-Policy"
-			content="style-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
+			content="style-src 'self'; script-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
 		/>
 		<meta name="color-scheme" content="light dark" />
 		<title>{{ERROR_TITLE}} - {{APP_NAME}}</title>
 		<!-- ICO first with explicit sizes, adaptive SVG last with sizes="any":
 		     Chromium picks an unsized or later-listed ICO over the SVG and the
-		     tab icon stops following the colour scheme. -->
+		     tab icon stops following the colour scheme. The scheme-pinned pair
+		     is what favicon.js swaps the link to, so the icon follows a scheme
+		     change live instead of only across a reload. -->
 		<link
 			rel="icon"
 			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico"
@@ -26,6 +28,8 @@
 			href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg"
 			type="image/svg+xml"
 			sizes="any"
+			data-light="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-light.svg"
+			data-dark="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-dark.svg"
 		/>
 		<link
 			rel="manifest"
@@ -46,5 +50,6 @@
 				<a class="link" href="{{BASE}}{{TO}}">Go home</a>
 			</section>
 		</main>
+		<script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/favicon.js"></script>
 	</body>
 </html>

@@ -11,8 +11,10 @@ under [Mobile](./mobile.md).
 ## Fresh clone
 
 The supported Node line is pinned in `.nvmrc`; pnpm is pinned by
-`packageManager` in the root `package.json`. The IDE build also needs Git LFS,
-Git submodules, and Quilt. CLI work needs the Rust toolchain pinned in CI.
+`packageManager` in the root `package.json`. Node, pnpm, Git, Git LFS, and Git
+submodules are the whole list on any host. Quilt and Rust are needed only to
+run the IDE build or the CLI checks natively on Linux - see
+[Host platforms](#host-platforms).
 
 ```bash
 git clone --recurse-submodules https://github.com/<github-user>/<repo>.git
@@ -32,6 +34,25 @@ git lfs pull
 
 Do not hand-edit dependency versions into a package manifest. Install or update
 them through pnpm so the manifest and lockfile move together.
+
+## Host platforms
+
+Develop on Linux, Windows, or macOS. `pnpm check:portable` is the part of the
+gate that must pass identically on all three, and CI runs it on Windows and
+macOS runners as well as Linux, so a host-specific break fails a pull request
+rather than one contributor's afternoon.
+
+Quilt and a local Rust toolchain are not prerequisites off Linux. Two targets
+need Linux, and reach for Docker when they cannot find it:
+
+| Target                            | Off Linux                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pnpm check:cli`                  | Runs cargo in the Dockerfile's Rust image; the persistence crate needs Linux inotify/xattr |
+| `pnpm build:docker`, `pnpm smoke` | Build and run the shipped Linux image through Docker Desktop                               |
+
+So `pnpm check` and `pnpm smoke` want Docker running on a Windows or macOS
+host; everything else is native. The IDE fork builds inside the image, so
+`packages/ide/scripts/build.sh` is never run from the host.
 
 ## Workspace map
 

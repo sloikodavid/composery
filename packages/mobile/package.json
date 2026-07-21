@@ -3,20 +3,19 @@
 	"main": "expo-router/entry",
 	"version": "1.0.0",
 	"dependencies": {
-		"shared": "workspace:*",
 		"@expo-google-fonts/inter": "^0.4.2",
 		"@expo/dom-webview": "~56.0.6",
-		"@expo/metro-runtime": "~56.0.16",
+		"@expo/metro-runtime": "~56.0.17",
 		"@gorhom/bottom-sheet": "^5.2.14",
 		"@react-native-async-storage/async-storage": "^2.2.0",
-		"expo": "~56.0.14",
+		"expo": "~56.0.16",
 		"expo-camera": "~56.0.8",
-		"expo-constants": "~56.0.20",
+		"expo-constants": "~56.0.21",
 		"expo-font": "~56.0.7",
 		"expo-haptics": "~56.0.3",
 		"expo-linking": "~56.0.15",
-		"expo-router": "~56.2.13",
-		"expo-splash-screen": "~56.0.12",
+		"expo-router": "~56.2.15",
+		"expo-splash-screen": "~56.0.13",
 		"expo-status-bar": "~56.0.4",
 		"expo-system-ui": "~56.0.5",
 		"expo-web-browser": "~56.0.5",
@@ -31,7 +30,8 @@
 		"react-native-svg": "15.15.4",
 		"react-native-web": "~0.21.0",
 		"react-native-webview": "13.16.1",
-		"react-native-worklets": "0.8.3"
+		"react-native-worklets": "0.8.3",
+		"shared": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/react": "catalog:",
@@ -50,7 +50,7 @@
 		"check:lint": "eslint .",
 		"check:test": "vitest run",
 		"fix:lint": "eslint . --fix",
-		"build": "expo export --platform android"
+		"build": "expo export --platform all"
 	},
 	"private": true
 }

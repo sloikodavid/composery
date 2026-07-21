@@ -1,3 +1,32 @@
+--- a/lib/vscode/src/vs/workbench/common/editor.ts
++++ b/lib/vscode/src/vs/workbench/common/editor.ts
+@@ -1186,7 +1186,14 @@
+ 	readonly target: GroupIdentifier;
+ }
+ 
+-export interface IEditorWillOpenEvent extends IEditorIdentifier { }
++export interface IEditorWillOpenEvent extends IEditorIdentifier {
++
++	/**
++	 * Composery: the options the editor is opening with, so a listener can tell an open
++	 * the user is asking to look at from one that happens in the background.
++	 */
++	readonly options?: IEditorOptions;
++}
+ 
+ export interface IWillInstantiateEditorPaneEvent {
+ 
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -1163,7 +1163,7 @@
+ 		}
+ 
+ 		// Fire the event letting everyone know we are about to open an editor
+-		this._onWillOpenEditor.fire({ editor, groupId: this.id });
++		this._onWillOpenEditor.fire({ editor, groupId: this.id, options });
+ 
+ 		// Determine options
+ 		const pinned = options?.sticky
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
 @@ -47,6 +47,7 @@
@@ -37,10 +66,10 @@
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1688,6 +1690,38 @@
+@@ -1688,6 +1690,46 @@
  			}));
  		}
-
+ 
 +		// Composery: on a narrow touch viewport keep exactly one of the side bar / panel / secondary
 +		// side bar open at a time and let it fill the screen by collapsing the editor (see
 +		// applyNarrowLayout). Record which part the user last opened as the intent, then apply.
@@ -56,7 +85,15 @@
 +		// toggleMaximizedPanel, but not re-opening the already-visible editor (tapping the same
 +		// extension in the marketplace list fires no visible-editors change), which then reads
 +		// as a dead tap. Will-open fires for every request, deduped or not.
-+		this._register(this.mainPartEditorService.onWillOpenEditor(() => {
++		this._register(this.mainPartEditorService.onWillOpenEditor(e => {
++			// An editor that opens without asking to be looked at - a task revealing a
++			// file, an extension opening its log, editors restored on reload - did not
++			// ask for the screen, and taking the part the user is working in away from
++			// them reads as the layout closing things by itself.
++			if (e.options?.preserveFocus || e.options?.inactive) {
++				return;
++			}
++
 +			if (this.isNarrowViewport && this.editorHiddenForNarrowPart && !this.inNarrowPartTransition) {
 +				this.narrowPart = undefined;
 +				this.scheduleNarrowLayout();
@@ -76,7 +113,7 @@
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1738,6 +1760,15 @@
+@@ -1738,6 +1780,15 @@
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
@@ -92,7 +129,7 @@
  		}
  	}
  
-@@ -1887,8 +1918,10 @@
+@@ -1887,8 +1938,10 @@
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
@@ -105,7 +142,7 @@
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2237,28 @@
+@@ -2204,10 +2257,28 @@
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -135,7 +172,7 @@
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2353,137 @@
+@@ -2302,6 +2373,137 @@
  		}
  	}
  

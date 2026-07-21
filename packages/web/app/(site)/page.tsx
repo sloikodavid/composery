@@ -80,7 +80,8 @@ export default function Home() {
 					Check on your agents from anywhere.
 				</h2>
 				<p className="mx-auto mt-3 max-w-[36rem] text-[clamp(0.875rem,2.7vw,1rem)] leading-relaxed text-muted-foreground">
-					Your Composery keeps working with your laptop closed. Pick up from mobile whenever you want.
+					Your Composery keeps working with your laptop closed. Pick up from
+					mobile whenever you want.
 				</p>
 				<ThemedShot
 					alt="The same Composery instance on a phone: the welcome screen, Claude Code running in the terminal, and the morning brief."

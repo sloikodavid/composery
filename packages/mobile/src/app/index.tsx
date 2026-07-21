@@ -11,7 +11,7 @@ import {
 	Trash2
 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { BackHandler, FlatList, Pressable, Text, View } from "react-native";
 import Animated, {
 	FadeIn,
 	FadeInDown,
@@ -51,6 +51,22 @@ export default function IndexScreen() {
 		setMenuFor(instance);
 		sheetRef.current?.present();
 	}
+	// @gorhom/bottom-sheet registers no Android back handler of its own, so a back
+	// press with the menu open fell straight through to the navigator and quit the
+	// app from underneath it. Back closes the menu, as it does for every other
+	// dismissable layer in the app.
+	useEffect(() => {
+		if (!menuFor) return;
+		const subscription = BackHandler.addEventListener(
+			"hardwareBackPress",
+			() => {
+				sheetRef.current?.dismiss();
+				return true;
+			}
+		);
+		return () => subscription.remove();
+	}, [menuFor]);
+
 	// A header separator fades in once the list is scrolled off the top.
 	const [scrolled, setScrolled] = useState(false);
 	const sepOpacity = useSharedValue(0);

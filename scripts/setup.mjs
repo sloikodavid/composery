@@ -31,6 +31,8 @@ if (!existsSync(join(REPO_ROOT, "packages/ide/upstream/package.json"))) {
 
 run("pnpm", ["install"], { shell: process.platform === "win32" });
 
+// build.sh runs inside the image, so the host command is the same everywhere;
+// naming it kept sending Windows and macOS contributors after a Linux script.
 console.log(
-	"\nSetup complete. Build with: packages/ide/scripts/build.sh (Linux)"
+	"\nSetup complete. Check with: pnpm check  Build the image with: pnpm build:docker"
 );

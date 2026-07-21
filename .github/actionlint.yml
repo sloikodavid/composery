@@ -1,0 +1,9 @@
+# actionlint validates every workflow (including shellcheck over each `run:`
+# block) in ci.yml. Its bundled runner-label list trails GitHub's actual images,
+# so the labels this repo already runs on have to be declared here or every
+# workflow reports an error. Declaring a label only tells actionlint the name is
+# real - a typo'd or retired one still fails, because it will not be listed.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

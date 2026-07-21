@@ -1,6 +1,7 @@
 # Conventions
 
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
+- Every version pin needs a Renovate path or a stated reason it cannot have one. Action refs carry `@<sha> # vX.Y.Z`, Docker refs carry `tag@digest` (a bare digest hides the version from Renovate), and a bare `ARG` carries a `# renovate:` comment naming its datasource. Pins Renovate cannot see - a version repeated in a second file - are tied to the managed copy by a test. Pins it should not chase stay unmanaged on purpose: apt packages track Debian, runner labels track GitHub. `renovate.json` groups pins that must move together.
 - Use `tmp/` for scratch files and artifacts (gitignored).
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
 - Collapse flashy or out-of-place words for consistency: Delete/Erase->Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
@@ -47,12 +48,16 @@
   ISSUE_TEMPLATE/
     bug.yml
     config.yml
+  scripts/
+    wait-for-metro.sh
   workflows/
     ci.yml
     cla.yml
+    mobile-e2e.yml
     release.yml
     smoke-nightly.yml
     smoke.yml
+  actionlint.yml
   CLA.md
   PULL_REQUEST_TEMPLATE.md
   RELEASE.md
@@ -181,6 +186,7 @@ packages/
                 browser/
                   workbench/
                     workbench-assets/
+                      favicon.js
                       fonts.css
                       geist-mono.woff2
                       inter.woff2
@@ -200,6 +206,8 @@ packages/
               opencode.svg
               pi.svg
             composery-logo.svg
+            favicon-dark.svg
+            favicon-light.svg
             favicon.ico
             favicon.svg
             inter.woff2
@@ -215,6 +223,7 @@ packages/
             change-password-fields.html
             cloud-error-fields.html
             error.html
+            favicon.js
             global.css
             login-fields.html
             password-check.js
@@ -328,15 +337,22 @@ packages/
       components/
         action-sheet.tsx
         back-button.tsx
+        instance-host.tsx
+        instance-view.tsx
         logo.tsx
         pressable-scale.tsx
         spinner.tsx
       lib/
+        back-decision.test.ts
+        back-decision.ts
         fonts.ts
         haptics.ts
         id.ts
+        instance-host.ts
         instance-store.test.ts
         instance-store.ts
+        nav.test.ts
+        nav.ts
         normalize-url.test.ts
         normalize-url.ts
         parse-scanned.test.ts
@@ -717,6 +733,8 @@ packages/
         composery-mobile-light.png
         composery-welcome-dark.png
         composery-welcome-light.png
+      icon-dark.svg
+      icon-light.svg
     scripts/
       screenshots/
         demo/
@@ -882,8 +900,11 @@ tests/
     patchSource.ts
   auth-routes.test.ts
   code-server-patches.test.ts
+  cross-platform.test.ts
   desktop-integration.test.ts
+  favicon.test.ts
   loopback-callback-guard.test.ts
+  narrow-back.test.ts
   password-check.test.ts
   runtime-init.test.ts
   toolchain-pins.test.ts

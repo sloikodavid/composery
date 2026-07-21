@@ -30,6 +30,8 @@
 	},
 	"editor.wordWrap": "on",
 	"editor.scrollbar.vertical": "hidden",
+	"editor.minimap.enabled": false,
+	"editor.showFoldingControls": "always",
 	"editor.tabSize": 2,
 	"editor.scrollOnMiddleClick": true,
 	"editor.dragAndDrop": false,

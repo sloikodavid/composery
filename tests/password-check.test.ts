@@ -113,9 +113,7 @@ describe("IDE password guidance", () => {
 	});
 
 	test("the box relays the range request server-side, with padding", () => {
-		const pwned = readRepoFile(
-			"packages/ide/overlay/src/node/routes/pwned.ts"
-		);
+		const pwned = readRepoFile("packages/ide/overlay/src/node/routes/pwned.ts");
 		const authPatch = readRepoFile("packages/ide/patches/auth.diff");
 		// A dedicated router in Composery's machine-endpoint namespace, mounted
 		// unconditionally so both password pages reach it. It validates the prefix

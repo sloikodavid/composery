@@ -1,10 +1,20 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ICON_VIEWBOX, brandColors, iconInner, theme } from "../index.ts";
+import {
+	ICON_VIEWBOX,
+	brandColors,
+	iconInner,
+	iconSvg,
+	theme
+} from "../index.ts";
 import { formatContent } from "../../../scripts/write-formatted.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const webApp = join(root, "packages", "web", "app");
+const webPublic = join(root, "packages", "web", "public");
+const ideBrowser = join(root, "packages", "ide", "overlay", "src", "browser");
+const ideMedia = join(ideBrowser, "media");
 
 // `--check` verifies the committed CSS/SVG assets still match index.ts (drift
 // guard, wired into `pnpm check`) instead of writing. Every output of this script
@@ -116,48 +126,54 @@ ${cssVars(darkVars, "\t")}
 `;
 }
 
-// Browser favicon that follows the OS/browser colour scheme (like github.com
-// and polar.sh): a dark mark on a light UI, a light mark on a dark UI.
+// Browser favicon that follows the colour scheme (like github.com and
+// polar.sh): a dark mark on a light UI, a light mark on a dark UI. It takes two
+// kinds of file, because neither can do both jobs.
+//
+// The adaptive one carries its own prefers-color-scheme rule, so it is right on
+// first paint and with JS off; this is the file pages declare. The scheme-pinned
+// pair is one fixed colour each: Chromium rasterizes a favicon once per URL and
+// never re-runs the embedded media query, so the adaptive file alone only ever
+// changes across a reload. The favicon scripts point the link at a pinned file
+// instead, and a new URL is something every browser does re-render.
+//
 // Pages must declare the .ico fallback FIRST with an explicit sizes attribute
-// and this SVG LAST with sizes="any" - Chromium picks an unsized (or
+// and the adaptive SVG LAST with sizes="any" - Chromium picks an unsized (or
 // later-listed) ICO over the SVG and the tab icon stops following the colour
 // scheme.
 const adaptiveFavicon = ({ width = 256, height = 256 } = {}) =>
 	`<svg width="${width}" height="${height}" viewBox="${ICON_VIEWBOX}" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:${brandColors.icon.light}}@media (prefers-color-scheme:dark){svg{color:${brandColors.icon.dark}}}</style>${iconInner()}</svg>`;
 
-await emit(join(root, "packages", "web", "app", "brand.css"), webThemeCss());
+const pinnedFavicon = ({ scheme, width = 256, height = 256 }) =>
+	iconSvg({ color: brandColors.icon[scheme], height, width });
 
+await emit(join(webApp, "brand.css"), webThemeCss());
+
+await emit(join(ideBrowser, "pages", "brand.css"), idePageThemeCss());
+
+await emit(join(webApp, "icon.svg"), `${adaptiveFavicon()}\n`);
 await emit(
-	join(
-		root,
-		"packages",
-		"ide",
-		"overlay",
-		"src",
-		"browser",
-		"pages",
-		"brand.css"
-	),
-	idePageThemeCss()
+	join(webPublic, "icon-light.svg"),
+	`${pinnedFavicon({ scheme: "light" })}\n`
+);
+await emit(
+	join(webPublic, "icon-dark.svg"),
+	`${pinnedFavicon({ scheme: "dark" })}\n`
 );
 
+// The editor's favicons size themselves off the <link>, not a fixed box.
+const ideFaviconBox = { width: "100%", height: "100%" };
 await emit(
-	join(root, "packages", "web", "app", "icon.svg"),
-	`${adaptiveFavicon()}\n`
+	join(ideMedia, "favicon.svg"),
+	`${adaptiveFavicon(ideFaviconBox)}\n`
 );
-
 await emit(
-	join(
-		root,
-		"packages",
-		"ide",
-		"overlay",
-		"src",
-		"browser",
-		"media",
-		"favicon.svg"
-	),
-	`${adaptiveFavicon({ width: "100%", height: "100%" })}\n`
+	join(ideMedia, "favicon-light.svg"),
+	`${pinnedFavicon({ scheme: "light", ...ideFaviconBox })}\n`
+);
+await emit(
+	join(ideMedia, "favicon-dark.svg"),
+	`${pinnedFavicon({ scheme: "dark", ...ideFaviconBox })}\n`
 );
 
 const appJson = JSON.parse(

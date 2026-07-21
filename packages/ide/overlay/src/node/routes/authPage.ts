@@ -3,7 +3,7 @@ import * as path from "path";
 import { rootPath } from "../constants";
 import { replaceTemplates } from "../http";
 import { escapeHtml } from "../util";
-import { isEnvPasswordManaged } from "./passwordConfig";
+import { hasPassword, isEnvPasswordManaged } from "./passwordConfig";
 
 export interface AuthPage {
 	/** Basename of the `<page>-fields.html` fragment (fields + submit button). */
@@ -44,6 +44,12 @@ export const renderAuthPage = async (
 		isCloudBox && page === "change-password"
 			? '<a class="link auth-link" href="{{BASE}}/_composery/cloud/authorize">Forgot password?</a>'
 			: "";
+	// The way back from every other page. Gated on a password existing, so
+	// first-run registration does not offer a sign-in that cannot succeed.
+	const signInLink =
+		page !== "login" && hasPassword(req)
+			? '<a class="link auth-link" href="{{BASE}}/login">Sign in</a>'
+			: "";
 	return replaceTemplates(
 		req,
 		shell
@@ -64,6 +70,7 @@ export const renderAuthPage = async (
 			)
 			.replace(/{{CHANGE_PASSWORD_LINK}}/, () => changePasswordLink)
 			.replace(/{{FORGOT_PASSWORD_LINK}}/, () => forgotPasswordLink)
+			.replace(/{{SIGN_IN_LINK}}/, () => signInLink)
 			.replace(/{{PASSWORD_CHECK_SCRIPT}}/, () =>
 				page === "register" || page === "change-password"
 					? '<script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/password-check.js"></script>'
