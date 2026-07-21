@@ -31,7 +31,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
  	}
  
  	/**
-@@ -745,6 +752,111 @@
+@@ -745,6 +752,120 @@
  		return dimension.width;
  	}
  
@@ -109,13 +109,18 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
 +
 +	/**
 +	 * Composery: which slice of the occluded grid to show. The grid is taller than the pane
-+	 * (see _stableGridHeight), and upstream's bottom alignment alone is wrong for a buffer
-+	 * that has not filled the screen yet: a freshly opened shell has its prompt near row 0
-+	 * and blank space below, so the bottom slice is entirely empty - device-verified as a
-+	 * completely blank terminal. Keep the caret in view instead. The normal buffer writes
-+	 * output at the cursor, so that one rule top-anchors a short buffer and bottom-anchors
-+	 * one that has filled or scrolled - the two cases the old terminal-anchor patch had to
-+	 * special-case. The alternate screen is resized to fit, so nothing is ever hidden there.
++	 * (see _stableGridHeight), and upstream's bottom alignment alone is wrong whenever the
++	 * cursor is not on the last row: everything below the cursor is blank, so the bottom
++	 * slice is padding. Measured with the keyboard up, that left 251-327px of dead space
++	 * under the prompt in a 367px window, varying with how much had been printed.
++	 *
++	 * A terminal grows upward from its prompt, so the rule is to put the caret's row at the
++	 * BOTTOM of the visible window and fill the rest with the history above it - clamped so
++	 * it never scrolls past the top of the grid. That degenerates to upstream's bottom
++	 * alignment once the buffer has filled or scrolled (caret on the last row), and it
++	 * top-anchors a buffer too short to fill the window, which is what the old
++	 * terminal-anchor patch had to special-case. The alternate screen is resized to fit, so
++	 * nothing is ever hidden there.
 +	 */
 +	private _updateOcclusionOffset(): void {
 +		const raw = this.xterm?.raw;
@@ -125,25 +130,29 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
 +		}
 +
 +		const hidden = element.clientHeight - this._wrapperElement.clientHeight;
-+		if (hidden <= 0 || !raw.rows || raw.buffer.active === raw.buffer.alternate) {
++		const screen = element.querySelector('.xterm-screen');
++		if (hidden <= 0 || !raw.rows || !(screen instanceof HTMLElement) || raw.buffer.active === raw.buffer.alternate) {
 +			element.style.bottom = '';
 +			return;
 +		}
 +
-+		const cellHeight = element.clientHeight / raw.rows;
-+		const caretTop = raw.buffer.active.cursorY * cellHeight;
-+		// `bottom` is measured upward from the pane's bottom edge: 0 pins the grid's last
-+		// rows (right once the buffer has filled or scrolled) and NEGATIVE values slide the
-+		// grid down to bring earlier rows into view. Move only as far as it takes to clear
-+		// the caret, keeping a row of context above it.
-+		const bottom = Math.min(0, Math.max(-hidden, caretTop - cellHeight - hidden));
++		// Rows live in .xterm-screen, so measure a cell against that rather than dividing
++		// .xterm's padded height into rows.
++		const cellHeight = screen.clientHeight / raw.rows;
++		// Every row below the caret is blank, so slide the grid down by exactly that many
++		// rows to bring the caret onto the window's bottom edge, capped at the hidden
++		// amount so it never scrolls past the top of the grid. `bottom` is measured upward
++		// from the pane's bottom edge, hence negative. Zero once the caret is on the last
++		// row, which is upstream's own bottom alignment.
++		const rowsBelowCaret = raw.rows - 1 - raw.buffer.active.cursorY;
++		const bottom = Math.max(-hidden, -rowsBelowCaret * cellHeight);
 +		element.style.bottom = bottom ? `${Math.round(bottom)}px` : '';
 +	}
 +
  	private _setLastKnownColsAndRows(): void {
  		if (TerminalInstance._lastKnownGridDimensions) {
  			this._cols = TerminalInstance._lastKnownGridDimensions.cols;
-@@ -871,6 +983,17 @@
+@@ -871,6 +992,17 @@
  		}, 1000, this._store);
  		this._register(xterm.raw.onSelectionChange(() => this._onDidChangeSelection.fire(this)));
  		this._register(xterm.raw.buffer.onBufferChange(() => this._refreshAltBufferContextKey()));
@@ -161,7 +170,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
  
  		this._register(this._processManager.onProcessData(e => this._onProcessData(e)));
  		this._register(xterm.raw.onData(async data => {
-@@ -2005,12 +2128,13 @@
+@@ -2012,12 +2144,13 @@
  		}
  
  		// Evaluate columns and rows, exclude the wrapper element's margin

@@ -37,8 +37,8 @@ fi
 # instead of offering the open create-password screen. Report what is true here
 # rather than warning about an exposure this deployment does not have.
 if [ -n "${COMPOSERY_CLOUD_BOX_ID:-}" ]; then
-  echo "WARNING: COMPOSERY_REMOVE_PASSWORD is set, so this box has no password. Setting a new one still has to pass the Composery ownership check, so the box is not open to whoever finds it, but the password is removed again on every restart until you set COMPOSERY_REMOVE_PASSWORD=0 (or unset it)." >&2
+  echo "WARNING: COMPOSERY_REMOVE_PASSWORD is set, so this box has no password. Setting a new one still has to pass the Composery ownership check, so the box is not open to whoever finds it, but the password is removed again on every restart until you set COMPOSERY_REMOVE_PASSWORD=false (or unset it)." >&2
   exit 0
 fi
 
-echo "WARNING: COMPOSERY_REMOVE_PASSWORD is set, so this instance has NO PASSWORD and anyone who reaches it can register one and take it over. Register your new password now, then set COMPOSERY_REMOVE_PASSWORD=0 (or unset it) and restart - until you do, every restart removes the password again." >&2
+echo "WARNING: COMPOSERY_REMOVE_PASSWORD is set, so this instance has NO PASSWORD and anyone who reaches it can register one and take it over. Register your new password now, then set COMPOSERY_REMOVE_PASSWORD=false (or unset it) and restart - until you do, every restart removes the password again." >&2

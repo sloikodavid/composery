@@ -303,57 +303,33 @@
  	@memoize get onTouchStart(): Event<IListTouchEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'touchstart')).event, e => this.toTouchEvent(e), this.disposables); }
  	@memoize get onTap(): Event<IListGestureEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.rowsContainer, TouchEventType.Tap)).event, e => this.toGestureEvent(e), this.disposables); }
  
---- a/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
-+++ b/lib/vscode/src/vs/editor/browser/widget/diffEditor/components/diffEditorViewZones/inlineDiffDeletedCodeMargin.ts
-@@ -7,7 +7,8 @@
- import { Action } from '../../../../../../base/common/actions.js';
- import { Codicon } from '../../../../../../base/common/codicons.js';
- import { Disposable } from '../../../../../../base/common/lifecycle.js';
--import { isIOS } from '../../../../../../base/common/platform.js';
-+import { isTouch } from '../../../../../../base/browser/touchGate.js';
-+import { mainWindow } from '../../../../../../base/browser/window.js';
- import { ThemeIcon } from '../../../../../../base/common/themables.js';
- import { IEditorMouseEvent, MouseTargetType } from '../../../../editorBrowser.js';
- import { CodeEditorWidget } from '../../../codeEditor/codeEditorWidget.js';
-@@ -66,7 +67,7 @@
+--- a/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
++++ b/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
+@@ -6,6 +6,8 @@
+ import { IContextMenuDelegate } from '../../../base/browser/contextmenu.js';
+ import { $, addDisposableListener, EventType, getActiveElement, getWindow, isAncestor, isHTMLElement } from '../../../base/browser/dom.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../base/browser/window.js';
+ import { Menu } from '../../../base/browser/ui/menu/menu.js';
+ import { ActionRunner, IRunEvent, WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../base/common/actions.js';
+ import { isCancellationError } from '../../../base/common/errors.js';
+@@ -49,7 +51,14 @@
  
- 		let currentLineNumberOffset = 0;
+ 		let menu: Menu | undefined;
  
--		const useShadowDOM = _modifiedEditor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
-+		const useShadowDOM = _modifiedEditor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
- 		const showContextMenu = (anchor: { x: number; y: number }, baseActions?: Action[], onHide?: () => void) => {
- 			this._contextMenuService.showContextMenu({
- 				domForShadowRoot: useShadowDOM ? _modifiedEditor.getDomNode() ?? undefined : undefined,
---- a/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
-+++ b/lib/vscode/src/vs/editor/contrib/contextmenu/browser/contextmenu.ts
-@@ -12,7 +12,8 @@
- import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
- import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
- import { DisposableStore } from '../../../../base/common/lifecycle.js';
--import { isIOS } from '../../../../base/common/platform.js';
-+import { isTouch } from '../../../../base/browser/touchGate.js';
-+import { mainWindow } from '../../../../base/browser/window.js';
- import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from '../../../browser/editorBrowser.js';
- import { EditorAction, EditorContributionInstantiation, registerEditorAction, registerEditorContribution, ServicesAccessor } from '../../../browser/editorExtensions.js';
- import { EditorOption } from '../../../common/config/editorOptions.js';
-@@ -212,7 +213,7 @@
- 			anchor = { x: posx, y: posy };
- 		}
- 
--		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
-+		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
- 
- 		// Show menu
- 		this._contextMenuIsBeingShownCount++;
-@@ -362,7 +363,7 @@
- 			}]
- 		));
- 
--		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isIOS; // Do not use shadow dom on IOS #122035
-+		const useShadowDOM = this._editor.getOption(EditorOption.useShadowDOM) && !isTouch(mainWindow); // Composery: overlay touch styling cannot pierce a shadow root - and iOS never could (#122035)
- 		this._contextMenuIsBeingShownCount++;
- 		this._contextMenuService.showContextMenu({
- 			domForShadowRoot: useShadowDOM ? this._editor.getDomNode() : undefined,
+-		const shadowRootElement = isHTMLElement(delegate.domForShadowRoot) ? delegate.domForShadowRoot : undefined;
++		// Composery: never render a menu into a shadow root on touch, whoever asks
++		// (menuAsChild dropdowns like the settings gear, editor menus, submenu items).
++		// Touch events retarget to the shadow host, so the surface hosting it - a list
++		// row, say - sees the very next touchstart as its own, steals focus back, and
++		// the menu closes on blur before any item can activate; Gesture cannot reach
++		// items behind the shadow boundary either, and overlay touch styling cannot
++		// pierce it. The standard context view is the verified touch path.
++		const shadowRootElement = isHTMLElement(delegate.domForShadowRoot) && !isTouch(mainWindow) ? delegate.domForShadowRoot : undefined;
+ 		this.contextViewService.showContextView({
+ 			getAnchor: () => delegate.getAnchor(),
+ 			canRelayout: false,
 --- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
 @@ -30,7 +30,7 @@

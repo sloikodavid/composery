@@ -104,7 +104,7 @@ The other way removes the password instead, and it is the dangerous one.
 
 ### COMPOSERY_REMOVE_PASSWORD leaves your instance wide open
 
-Set `COMPOSERY_REMOVE_PASSWORD=1` and restart, and the registered password is deleted. The
+Set `COMPOSERY_REMOVE_PASSWORD=true` and restart, and the registered password is deleted. The
 instance then behaves exactly like a brand new one: the next person to load the URL is
 handed the "create password" screen. **That person does not have to be you.** Whoever
 registers first owns the instance, and a Composery instance is a root-capable machine with
@@ -117,9 +117,9 @@ returned to open weeks later.
 
 Use it like this, and do not stop after step 2:
 
-1. Set `COMPOSERY_REMOVE_PASSWORD=1` only when you can open the instance _right now_.
+1. Set `COMPOSERY_REMOVE_PASSWORD=true` only when you can open the instance _right now_.
 2. Restart, open it immediately, and register the new password.
-3. **Set `COMPOSERY_REMOVE_PASSWORD=0` (or remove it entirely) and restart again.** Until
+3. **Set `COMPOSERY_REMOVE_PASSWORD=false` (or remove it entirely) and restart again.** Until
    you do, you are one restart away from an unprotected instance.
 
 Only `1` and `true` turn it on, trimmed and case-insensitive. Every other value - `0`,

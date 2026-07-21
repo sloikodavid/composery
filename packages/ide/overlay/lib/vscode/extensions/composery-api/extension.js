@@ -108,13 +108,13 @@ async function manageKeys() {
 function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand(COMMAND, async () => {
-			// Same false/0 semantics as the server's config.ts bool().
-			const enabled = (process.env.COMPOSERY_API_ENABLED || "")
+			// Same 1/true semantics as the server's config.ts disabled().
+			const off = (process.env.COMPOSERY_DISABLE_API || "")
 				.trim()
 				.toLowerCase();
-			if (enabled === "false" || enabled === "0") {
+			if (off === "1" || off === "true") {
 				vscode.window.showWarningMessage(
-					"The API is disabled (COMPOSERY_API_ENABLED=false). Keys can be managed, but every API request will return 404."
+					"The API is disabled (COMPOSERY_DISABLE_API=true). Keys can be managed, but every API request will return 404."
 				);
 			}
 			try {

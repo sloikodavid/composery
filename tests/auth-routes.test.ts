@@ -2,7 +2,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { readRepoFile, repoRoot } from "./support/patchSource.ts";
+import { addedLines, readRepoFile, repoRoot } from "./support/patchSource.ts";
 
 // Overlay route files compile with the upstream IDE tsconfig, so they cannot be
 // imported here (see tests/support and the overlay typecheck script); their
@@ -149,5 +149,55 @@ describe("change-password route", () => {
 		const write = changePassword.indexOf("writeHashedPassword(req,");
 		expect(validate).toBeGreaterThanOrEqual(0);
 		expect(write).toBeGreaterThan(validate);
+	});
+});
+
+describe("disabled authentication", () => {
+	const disableAuth = readRepoFile("packages/ide/patches/disable-auth.diff");
+	const cloudAuth = readRepoFile(
+		"packages/ide/overlay/src/node/routes/cloudAuth.ts"
+	);
+
+	test("only an explicit 1/true unprotects the instance", () => {
+		// Every other value, typos included, has to leave sign-in required: a
+		// misread switch must never be the thing that opens the box.
+		expect(disableAuth).toContain(
+			"process.env.COMPOSERY_DISABLE_AUTH?.match(/^(1|true)$/)"
+		);
+	});
+
+	test("the switch selects the auth type every gate already reads", () => {
+		// authenticated() short-circuits on AuthType.None, so selecting it is
+		// what opens the workbench, both proxies and the websockets together.
+		// A surface gated on the env var directly would drift out of step.
+		expect(disableAuth).toContain("args.auth = AuthType.None");
+		const elsewhere = readRepoFile("packages/ide/patches/series")
+			.split(/\r?\n/)
+			.filter((patch) => patch && patch !== "disable-auth.diff")
+			.flatMap((patch) =>
+				addedLines(readRepoFile(`packages/ide/patches/${patch}`)).split("\n")
+			);
+		expect(
+			elsewhere.filter((line) => line.includes("COMPOSERY_DISABLE_AUTH"))
+		).toEqual([]);
+	});
+
+	test("the disabled state is a warning, not a log line", () => {
+		// Silent success is the failure mode here: an operator who does not
+		// notice keeps a root-capable terminal open to whoever finds it.
+		expect(disableAuth).toContain(
+			'-    logger.info("  - Authentication is disabled")'
+		);
+		expect(disableAuth).toContain("+    logger.warn(");
+	});
+
+	test("a configured password says it is being ignored", () => {
+		expect(disableAuth).toContain('args.password || args["hashed-password"]');
+	});
+
+	test("the cloud grant flow stops when sign-in does", () => {
+		// Its only job is setting the box password; with sign-in off it would
+		// pass the ownership check, report success, and gate nothing.
+		expect(cloudAuth).toContain("req.args.auth !== AuthType.Password");
 	});
 });

@@ -2,6 +2,7 @@ naming.diff
 file-uploads-env.diff
 hardening.diff
 auth.diff
+disable-auth.diff
 readiness.diff
 api.diff
 node-engine.diff
@@ -44,6 +45,7 @@ shortcuts.diff
 terminal-padding.diff
 touch-terminal-keybar.diff
 touch-terminal-keyboard-occlusion.diff
+touch-terminal-suggestions.diff
 touch-terminal-hint.diff
 touch-viewport-inset.diff
 touch-input-context-menu.diff

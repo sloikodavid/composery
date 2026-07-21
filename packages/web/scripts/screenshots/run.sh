@@ -6,7 +6,7 @@
 #   bash screenshots/run.sh [container-name]
 set -e
 cd "$(dirname "$0")"
-export MSYS_NO_PATHCONV=1   # keep git-bash from mangling the container :/tmp path
+export MSYS_NO_PATHCONV=true   # keep git-bash from mangling the container :/tmp path
 C="${1:-composery-shots}"
 
 docker cp demo/reset.sh "$C:/tmp/reset.sh"

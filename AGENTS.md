@@ -260,6 +260,7 @@ packages/
       clipboard-osc52.diff
       default-color-theme.diff
       default-layout.diff
+      disable-auth.diff
       editcontext-android.diff
       extensions-mobile.diff
       extensions-view-themes.diff
@@ -305,6 +306,7 @@ packages/
       touch-terminal-keybar.diff
       touch-terminal-keyboard-occlusion.diff
       touch-terminal-links.diff
+      touch-terminal-suggestions.diff
       touch-viewport-inset.diff
       trusted-domains-loopback-callback-guard.diff
       updates.diff
@@ -326,6 +328,8 @@ packages/
         favicon.png
         icon.png
         splash-icon.png
+    plugins/
+      android-dialog-theme.js
     src/
       app/
         instance/
@@ -343,6 +347,7 @@ packages/
         pressable-scale.tsx
         spinner.tsx
       lib/
+        android-dialog-theme.test.ts
         back-decision.test.ts
         back-decision.ts
         fonts.ts

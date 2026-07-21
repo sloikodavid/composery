@@ -9,7 +9,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  
  	private readonly activeTouches: { [id: number]: TouchData };
  
-@@ -162,9 +163,15 @@
+@@ -168,9 +169,15 @@
  	private onTouchStart(e: TouchEvent): void {
  		const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
  
@@ -25,7 +25,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  		}
  
  		// Composery: long-presses are single-finger - a second touch cancels any pending timer.
-@@ -174,6 +181,8 @@
+@@ -184,6 +191,8 @@
  
  		for (let i = 0, len = e.targetTouches.length; i < len; i++) {
  			const touch = e.targetTouches.item(i);
@@ -34,7 +34,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  
  			const data: TouchData = this.activeTouches[touch.identifier] = {
  				id: touch.identifier,
-@@ -186,7 +195,7 @@
+@@ -196,7 +205,7 @@
  				rollingPageY: [touch.pageY],
  				contextMenuTimer: undefined,
  				contextMenuFired: false,
@@ -43,7 +43,21 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				syntheticContextMenu: false
  			};
  
-@@ -445,6 +454,7 @@
+@@ -303,7 +312,12 @@
+ 				const deltaY = finalY - data.rollingPageY[0];
+ 
+ 				// We need to get all the dispatch targets on the start of the inertia event
+-				const dispatchTo = [...this.targets].filter(t => data.initialTarget instanceof Node && t.contains(data.initialTarget));
++				// Composery: honour the ignore list here too - normal dispatch checks it, but
++				// inertia dispatches directly, so a flick out of an ignored element (the
++				// editor's caret handle) would still fling its gesture target.
++				const owner = data.initialTarget instanceof Node ? data.initialTarget : undefined;
++				const ignored = !!owner && [...this.ignoreTargets].some(t => t.contains(owner));
++				const dispatchTo = ignored ? [] : [...this.targets].filter(t => !!owner && t.contains(owner));
+ 				this.inertia(targetWindow, dispatchTo, timestamp,	// time now
+ 					Math.abs(deltaX) / deltaT,						// speed
+ 					deltaX > 0 ? 1 : -1,							// x direction
+@@ -464,6 +478,7 @@
  	}
  
  	private inertia(targetWindow: Window, dispatchTo: readonly EventTarget[], t1: number, vX: number, dirX: number, x: number, vY: number, dirY: number, y: number, initialTarget?: EventTarget): void {
@@ -51,7 +65,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -474,6 +484,11 @@
+@@ -493,6 +508,11 @@
  
  			if (!stopped) {
  				this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y, initialTarget);

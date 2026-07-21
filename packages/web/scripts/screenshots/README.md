@@ -62,7 +62,7 @@ Expo (8081) can keep running.
   Open http://localhost:9911, register the password (`example123`, or set
   `COMPOSERY_PASSWORD`), then, from this folder:
   ```bash
-  export MSYS_NO_PATHCONV=1   # git-bash only
+  export MSYS_NO_PATHCONV=true   # git-bash only
   docker cp demo/workspace.sh composery-shots:/tmp/workspace.sh
   docker exec -u user composery-shots bash /tmp/workspace.sh
   docker cp demo/prepare.sh composery-shots:/tmp/prepare.sh

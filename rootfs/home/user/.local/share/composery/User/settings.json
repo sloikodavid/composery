@@ -12,7 +12,6 @@
 	"workbench.navigationControl.enabled": false,
 	"workbench.editor.useModal": "off",
 	"workbench.editor.scrollToSwitchTabs": true,
-	"workbench.editor.wrapTabs": true,
 	"workbench.secondarySideBar.defaultVisibility": "hidden",
 	"workbench.iconTheme": null,
 	"breadcrumbs.enabled": false,

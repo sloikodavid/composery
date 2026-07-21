@@ -1,5 +1,6 @@
 import * as crypto from "crypto";
 import { Router, type Request, type Response } from "express";
+import { AuthType } from "../cli";
 import { renderAuthPage } from "./authPage";
 
 const AUTHORIZATION_COOKIE = "composery-cloud-authorization";
@@ -38,6 +39,17 @@ function readCloudConfig(): CloudConfig | undefined {
 
 export const cloudConfig = readCloudConfig();
 export const router = Router();
+
+router.use((req, res, next) => {
+	// The grant flow's only job is setting the box password. With sign-in
+	// disabled it would pass the ownership check, report success, and gate
+	// nothing - a password that implies the box is protected when it is open to
+	// whoever reaches it. Land on the workbench the operator already opened.
+	if (req.args.auth !== AuthType.Password) {
+		return res.redirect("/");
+	}
+	next();
+});
 
 function randomToken() {
 	return crypto.randomBytes(32).toString("base64url");

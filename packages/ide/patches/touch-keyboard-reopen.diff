@@ -1,7 +1,7 @@
 diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/browser/touch.ts
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -92,6 +92,10 @@
+@@ -93,6 +93,10 @@
  	// menu the fallback already opened (Windows fires its native one only on finger-up).
  	private suppressNativeContextMenuUntil = 0;
  
@@ -12,7 +12,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
  
  
-@@ -327,6 +331,9 @@
+@@ -368,6 +372,9 @@
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
@@ -22,7 +22,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
  				evt.pageX = data.rollingPageX.at(-1)!;
  				evt.pageY = data.rollingPageY.at(-1)!;
-@@ -402,6 +409,39 @@
+@@ -448,6 +455,39 @@
  		}
  	}
  
@@ -62,7 +62,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  	private onNativeContextMenu(e: MouseEvent): void {
  		if (e.isTrusted && Date.now() < this.suppressNativeContextMenuUntil) {
  			// Composery: the release echo of a long-press whose menu the fallback already
-@@ -575,6 +615,7 @@
+@@ -628,6 +668,7 @@
  			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
  				data.tapCancelled = true;
  				this.clearContextMenuTimer(data);

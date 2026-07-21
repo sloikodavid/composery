@@ -19,3 +19,109 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts b/lib/vscode/s
  			this.list.domFocus();
  		}
  	}
+diff --git a/lib/vscode/src/vs/base/browser/ui/list/listView.ts b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
+--- a/lib/vscode/src/vs/base/browser/ui/list/listView.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
+@@ -308,6 +308,10 @@
+ 	private _scrollHeight: number = 0;
+ 	private scrollableElementUpdateDisposable: IDisposable | null = null;
+ 	private scrollableElementWidthDelayer = new Delayer<void>(50);
++	// Composery: index of a row kept alive outside the render range because it holds DOM
++	// focus - recycling it would blur the control and close the on-screen keyboard. See
++	// render().
++	private focusPinnedIndex: number | undefined;
+ 	private splicing = false;
+ 	private dragOverAnimationDisposable: IDisposable | undefined;
+ 	private dragOverAnimationStopDisposable: IDisposable = Disposable.None;
+@@ -631,6 +635,15 @@
+ 	}
+ 
+ 	private _splice(start: number, deleteCount: number, elements: readonly T[] = []): T[] {
++		// Composery: a data mutation invalidates the pinned index - release the row now,
++		// while this.items still matches it. The rare blur (content replaced under an
++		// off-screen focused control) is honest; a silently leaked row would not be.
++		if (this.focusPinnedIndex !== undefined) {
++			if (this.items[this.focusPinnedIndex]?.row) {
++				this.removeItemFromDOM(this.focusPinnedIndex);
++			}
++			this.focusPinnedIndex = undefined;
++		}
+ 		const previousRenderRange = this.getRenderRange(this.lastRenderTop, this.lastRenderHeight);
+ 		const deleteRange = { start, end: start + deleteCount };
+ 		const removeRange = Range.intersect(previousRenderRange, deleteRange);
+@@ -882,6 +895,20 @@
+ 		}
+ 
+ 		this.scrollableElement.setScrollDimensions(scrollDimensions);
++
++		// Composery: the on-screen keyboard shrinks the list exactly while someone types
++		// into a row control (the settings editor); the shrink alone leaves that control
++		// below the new fold, alive only through the render() pin and invisible under the
++		// keyboard. Now that the scroll clamp knows the new height, bring it back on screen.
++		const active = getActiveElement();
++		if (active instanceof HTMLElement && this.rowsContainer.contains(active)) {
++			const rowElement = active.closest('.monaco-list-row');
++			const index = rowElement ? Number(rowElement.getAttribute('data-index')) : NaN;
++			const item = this.items[index];
++			if (item?.row && this.elementTop(index) + item.size > this.scrollTop + scrollDimensions.height!) {
++				this.setScrollTop(Math.max(this.elementTop(index) + item.size - scrollDimensions.height!, 0));
++			}
++		}
+ 
+ 		if (typeof width !== 'undefined') {
+ 			this.renderWidth = width;
+@@ -908,20 +935,42 @@
+ 	protected render(previousRenderRange: IRange, renderTop: number, renderHeight: number, renderLeft: number | undefined, scrollWidth: number | undefined, updateItemsInDOM: boolean = false, onScroll: boolean = false): void {
+ 		const renderRange = this.getRenderRange(renderTop, renderHeight);
+ 
++		// Composery: releasing a row recycles its DOM, and recycling the row that holds
++		// DOM focus blurs the control - on touch that closes the on-screen keyboard
++		// mid-typing (the workbench shrinks exactly when the keyboard opens, and the
++		// settings editor's inputs live in rows). Keep that one row alive until focus
++		// moves on or the row scrolls back into range.
++		const activeElement = getActiveElement();
++		if (this.focusPinnedIndex !== undefined) {
++			const pinned = this.items[this.focusPinnedIndex];
++			if (this.focusPinnedIndex >= renderRange.start && this.focusPinnedIndex < renderRange.end) {
++				this.focusPinnedIndex = undefined; // rendered normally below
++			} else if (!pinned?.row) {
++				this.focusPinnedIndex = undefined;
++			} else if (!pinned.row.domNode.contains(activeElement)) {
++				this.removeItemFromDOM(this.focusPinnedIndex, onScroll);
++				this.focusPinnedIndex = undefined;
++			}
++		}
++
+ 		const rangesToInsert = Range.relativeComplement(renderRange, previousRenderRange).reverse();
+ 		const rangesToRemove = Range.relativeComplement(previousRenderRange, renderRange);
+ 
+ 		if (updateItemsInDOM) {
+ 			const rangesToUpdate = Range.intersect(previousRenderRange, renderRange);
+ 
+ 			for (let i = rangesToUpdate.start; i < rangesToUpdate.end; i++) {
+ 				this.updateItemInDOM(this.items[i], i);
+ 			}
+ 		}
+ 
+ 		this.cache.transact(() => {
+ 			for (const range of rangesToRemove) {
+ 				for (let i = range.start; i < range.end; i++) {
++					if (this.items[i].row?.domNode.contains(activeElement)) {
++						this.focusPinnedIndex = i;
++						continue;
++					}
+ 					this.removeItemFromDOM(i, onScroll);
+ 				}
+ 			}
+@@ -1581,7 +1630,10 @@
+ 
+ 				for (const range of unrenderRanges) {
+ 					for (let i = range.start; i < range.end; i++) {
+-						if (this.items[i].row) {
++						// Composery: same pin as render() - never recycle the focused row.
++						if (this.items[i].row?.domNode.contains(getActiveElement())) {
++							this.focusPinnedIndex = i;
++						} else if (this.items[i].row) {
+ 							this.removeItemFromDOM(i);
+ 						}
+ 					}

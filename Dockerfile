@@ -49,7 +49,7 @@ RUN git init -q packages/ide/upstream \
 # compiles are the expensive part and must not rerun on every overlay/patch
 # edit. build.sh reuses the node_modules copied with the tree and skips npm ci.
 RUN --mount=type=cache,id=composery-ide-npm,target=/root/.npm,sharing=locked \
-  cd packages/ide/upstream && CI=1 npm ci
+  cd packages/ide/upstream && CI=true npm ci
 
 FROM ide-base AS ide-builder
 

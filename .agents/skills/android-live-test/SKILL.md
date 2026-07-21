@@ -10,7 +10,7 @@ Use `node .agents/skills/android-live-test/scripts/android.mjs <command>` from t
 ## Workflow
 
 1. Run `status`. If no device is connected, run `boot` for the installed emulator. For a physical phone, ask the user to enable Developer options and Wireless debugging, then use `pair` and `connect`; pairing requires values shown on the phone.
-2. Start Metro separately with `pnpm --filter mobile dev`. Open Expo Go with `start host.exp.exponent`, or open a URL/deep link with `open-url <url>`.
+2. Start Metro separately with `pnpm --filter mobile dev` — unless it is already running: Metro on 8081 is shared and serves every device, so never start a second one. Open Expo Go with `start host.exp.exponent`, or open a URL/deep link with `open-url <url>`.
 3. Run `screenshot tmp/<name>.png`, then inspect the image. Use `dump tmp/<name>.xml` when semantic labels or bounds are useful.
 4. Interact with `tap`, `swipe`, `text`, and `key`. Prefer stable visible labels/test IDs through the existing Maestro flows when they cover the scenario; use coordinates for exploration and WebView content.
 5. Capture `logcat` around failures. Use `record` for motion, gesture, or timing bugs.
@@ -29,4 +29,5 @@ Use `node .agents/skills/android-live-test/scripts/android.mjs <command>` from t
 - Use a local/test Composery instance and disposable data for destructive flows.
 - Do not clear app data, uninstall apps, or reset a physical phone unless the user explicitly requests it.
 - Do not commit screenshots, recordings, dumps, or logs; keep them under `tmp/`.
-- Never assume a lone device. `status` shows serials; pass `--serial <serial>` when multiple devices are attached.
+- Never assume a lone device. `status` shows serials; pass `--serial <serial>` (or set `ANDROID_SERIAL`) when multiple devices are attached.
+- Parallel agents: one agent per device. `boot` is safe to run concurrently (it picks a free port; the same AVD can run multiple read-only instances) and prints the new serial — pass that serial to every later command. Never send input to a device you did not boot or were not assigned; other devices in `status` may belong to other agents.

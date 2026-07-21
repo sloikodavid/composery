@@ -29,6 +29,7 @@
 			"favicon": "./assets/images/favicon.png"
 		},
 		"plugins": [
+			"./plugins/android-dialog-theme.js",
 			"expo-router",
 			[
 				"expo-camera",

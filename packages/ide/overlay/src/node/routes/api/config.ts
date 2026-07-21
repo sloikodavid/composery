@@ -8,12 +8,12 @@ const MAX_CONCURRENT_EXEC = 128
 const MAX_SESSIONS = 500
 const MAX_AUTH_FAIL_PER_MIN = 1000
 
-function bool(name: string, def: boolean): boolean {
+// Only an explicit 1/true turns a surface off, like every other
+// COMPOSERY_DISABLE_*: a typo has to leave the API reachable rather than
+// silently 404 every request an operator still believes is wired up.
+function disabled(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase()
-  if (!raw) return def
-  if (raw === "true" || raw === "1") return true
-  if (raw === "false" || raw === "0") return false
-  return def
+  return raw === "1" || raw === "true"
 }
 
 function num(name: string, def: number, max: number): number {
@@ -29,7 +29,7 @@ function int(name: string, def: number, max: number): number {
 }
 
 export const apiConfig = {
-  enabled: bool("COMPOSERY_API_ENABLED", true),
+  enabled: !disabled("COMPOSERY_DISABLE_API"),
   shell: process.env.SHELL || "/bin/bash",
   home: process.env.HOME,
   execTimeoutSec: num("COMPOSERY_API_EXEC_TIMEOUT", 60, MAX_EXEC_TIMEOUT_SEC),

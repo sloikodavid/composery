@@ -22,7 +22,7 @@ const config = {
 	noCache: parseBoolean(process.env.SMOKE_NO_CACHE),
 	password: process.env.SMOKE_PASSWORD ?? "smoke-password",
 	port: parsePort(process.env.SMOKE_PORT ?? "18080"),
-	// SMOKE_SKIP_SYSTEMD=1 skips the systemd path where host cgroups are unavailable (e.g. Docker Desktop).
+	// SMOKE_SKIP_SYSTEMD=true skips the systemd path where host cgroups are unavailable (e.g. Docker Desktop).
 	skipSystemd: parseBoolean(process.env.SMOKE_SKIP_SYSTEMD),
 	volumeName: process.env.SMOKE_VOLUME_NAME ?? `composery-smoke-${RUN_ID}`
 };
@@ -123,7 +123,7 @@ function runSystemdContainer() {
 			"-e",
 			`COMPOSERY_PASSWORD=${config.password}`,
 			"-e",
-			"COMPOSERY_DISABLE_FILE_DOWNLOADS=1",
+			"COMPOSERY_DISABLE_FILE_DOWNLOADS=true",
 			"-v",
 			`${config.volumeName}:/data`,
 			config.imageTag
@@ -150,7 +150,7 @@ async function assertSystemdEnvBridge() {
 
 	await waitForContainerFile("/run/composery.env");
 	execSh("grep -q '^COMPOSERY_PASSWORD=' /run/composery.env");
-	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=1$' /run/composery.env");
+	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=true$' /run/composery.env");
 
 	const cookies = new Map();
 	await login(cookies);
@@ -602,7 +602,7 @@ async function assertPasswordRemoval() {
 			'write_config() { printf \'auth: password\\nhashed-password: $argon2i$v=19$m=4096,t=3,p=1$c29tZXNhbHQ$%s\\n\' "$1" > "$cfg"; }',
 			// A registered password is removed, and nothing else in the config is.
 			"write_config first",
-			'COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD=1 "$remove"',
+			'COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD=true "$remove"',
 			"grep -q '^auth: password$' \"$cfg\"",
 			'! grep -q hashed-password "$cfg"',
 			// Every boot, not once: a password registered since is removed again.

@@ -65,10 +65,13 @@ echo "static stamp: $COMPOSERY_STATIC_STAMP"
 # layer pre-installs it in pristine upstream (keyed by the upstream commit) so
 # overlay/patch edits do not recompile the native modules every build.
 ( cd "$BUILD" \
-  && { [ -d node_modules ] || CI=1 npm ci; } \
+  && { [ -d node_modules ] || CI=true npm ci; } \
   && npm run build \
   && VERSION="${VERSION:-0.0.0}" npm run build:vscode \
   && KEEP_MODULES=1 npm run release )
+# KEEP_MODULES is upstream's variable: ci/build/build-release.sh tests the
+# literal string `= 1`, so any other spelling silently ships a release with no
+# bin/ launcher and no node_modules (the IDE service then FATALs at boot).
 
 echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
 rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"

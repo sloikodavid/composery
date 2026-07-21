@@ -59,7 +59,7 @@ function outputPath(value) {
 const help = `Android live test
 
   status                         List devices, size, density, and foreground app
-  boot [avd]                     Start an AVD (defaults to the first installed AVD)
+  boot [avd]                     Start an emulator instance (prints its serial; safe to run in parallel)
   pair <host:port> <code>        Pair a physical phone for wireless debugging
   connect <host:port>            Connect to a paired physical phone
   screenshot <output.png>        Capture the current screen
@@ -76,11 +76,18 @@ const help = `Android live test
   logcat [lines]                 Print recent logs (default 400 lines)
   record <output.mp4> [seconds]  Record the screen (default 15, max 180)
 
-Add --serial <serial> to any command when multiple devices are connected.`;
+Add --serial <serial> (or set ANDROID_SERIAL) to any command when multiple devices are connected.`;
 
 switch (command) {
 	case "status": {
-		process.stdout.write(run(adb, ["devices", "-l"]));
+		const devices = run(adb, ["devices", "-l"]);
+		process.stdout.write(devices);
+		const attached =
+			devices.match(/^\S+\s+(device|offline|unauthorized)/gm) ?? [];
+		if (!serial && !process.env.ANDROID_SERIAL && attached.length > 1) {
+			console.log("Multiple devices attached; pass --serial for details.");
+			break;
+		}
 		try {
 			process.stdout.write(runAdb(["shell", "wm", "size"]));
 			process.stdout.write(runAdb(["shell", "wm", "density"]));
@@ -102,13 +109,22 @@ switch (command) {
 			.filter(Boolean);
 		const avd = args[0] ?? avds[0];
 		required(avd, "boot [avd]");
-		const child = spawn(emulator, ["-avd", avd, "-no-snapshot-save"], {
-			detached: true,
-			stdio: "ignore",
-			windowsHide: true
-		});
+		const used = run(adb, ["devices"]);
+		const free = [];
+		for (let port = 5554; port <= 5584; port += 2)
+			if (!used.includes(`emulator-${port}`)) free.push(port);
+		// ponytail: racy free-port scan; on a collision the emulator exits loudly — rerun boot
+		const port = free[Math.floor(Math.random() * free.length)];
+		required(port, "boot [avd] (no free emulator port)");
+		const child = spawn(
+			emulator,
+			["-avd", avd, "-port", String(port), "-read-only", "-no-snapshot-save"],
+			{ detached: true, stdio: "ignore", windowsHide: true }
+		);
 		child.unref();
-		console.log(`Started ${avd}. Run status until it reports device.`);
+		console.log(
+			`Started ${avd} as emulator-${port}. Pass --serial emulator-${port} to later commands; run status until it reports device.`
+		);
 		break;
 	}
 	case "pair":
@@ -133,11 +149,10 @@ switch (command) {
 		break;
 	case "dump": {
 		const path = outputPath(args[0]);
-		runAdb(["shell", "uiautomator", "dump", "/sdcard/window.xml"]);
-		writeFileSync(
-			path,
-			runAdb(["exec-out", "cat", "/sdcard/window.xml"], { binary: true })
-		);
+		const device = `/sdcard/composery-dump-${process.pid}.xml`;
+		runAdb(["shell", "uiautomator", "dump", device]);
+		writeFileSync(path, runAdb(["exec-out", "cat", device], { binary: true }));
+		runAdb(["shell", "rm", device]);
 		break;
 	}
 	case "tap":
@@ -225,22 +240,12 @@ switch (command) {
 	case "record": {
 		const path = outputPath(args[0]);
 		const seconds = String(Math.min(Number(args[1] ?? 15), 180));
-		runAdb(
-			[
-				"shell",
-				"screenrecord",
-				"--time-limit",
-				seconds,
-				"/sdcard/composery-record.mp4"
-			],
-			{ stdio: "inherit" }
-		);
-		writeFileSync(
-			path,
-			runAdb(["exec-out", "cat", "/sdcard/composery-record.mp4"], {
-				binary: true
-			})
-		);
+		const device = `/sdcard/composery-record-${process.pid}.mp4`;
+		runAdb(["shell", "screenrecord", "--time-limit", seconds, device], {
+			stdio: "inherit"
+		});
+		writeFileSync(path, runAdb(["exec-out", "cat", device], { binary: true }));
+		runAdb(["shell", "rm", device]);
 		break;
 	}
 	default:

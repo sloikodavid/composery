@@ -18,7 +18,9 @@ import { describe, expect, test } from "vitest";
 import {
 	addedLines,
 	applyPatch,
+	evaluatePatchSnippets,
 	extractAddedFunction,
+	extractAddedMethod,
 	readRepoFile,
 	repoRoot
 } from "./support/patchSource.ts";
@@ -930,8 +932,17 @@ describe("narrow overlay", () => {
 		);
 		expect(gesturePatch).toContain("if (!allNativeZone) {");
 		expect(gesturePatch).toContain(
-			"nativeStationary = nativeStationary && !!data && data.nativeZone && !data.tapCancelled;"
+			"nativeStationary = nativeStationary && !!data && (data.nativeDrag || (data.nativeZone && !data.tapCancelled));"
 		);
+
+		// A touch grabbing one of the browser's selection handles belongs to the
+		// browser for its whole life: Gesture dispatches nothing for it (no pan
+		// under the drag, no tap, no fling) and never calls preventDefault, which
+		// would abort the drag on Android.
+		expect(gesturePatch).toContain(
+			"private isOnNativeSelectionHandle(touch: Touch): boolean"
+		);
+		expect(gesturePatch).toContain("if (data.nativeDrag) {");
 
 		// The editor registers the zone, mirrors selectionchange into the model and
 		// owns the copy payload.
@@ -991,24 +1002,20 @@ describe("narrow overlay", () => {
 		expect(touchEditorPatch).not.toContain("isTouchDevice");
 	});
 
-	// Inertia Change events carry the gesture owner (touch-context-menu.diff gives
-	// them an initialTarget so submenu flicks stop at their own menu), so the
-	// editor cannot identify them by a missing initialTarget. The live-gesture
-	// check is the one that works: Gesture dispatches End (which nulls
-	// _touchGesture) before any inertia frame, while real finger moves always
-	// follow a Start. Keying on initialTarget made the suppression dead code and
-	// a fast selection or handle-drag release flung the editor.
-	test("editor inertia suppression keys on the live gesture, not initialTarget", () => {
-		const touchEditorPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+	// A flick released from the editor's caret handle must not fling the view.
+	// Gesture's normal dispatch honours the ignore list, but inertia dispatches
+	// directly - the fix lives there, so the editor needs no suppression-window
+	// state of its own (which was racy: a timed window around drag end).
+	test("inertia honours the ignore list instead of an editor timer", () => {
+		const flingPatch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-fling-catch.diff`)
 		);
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
 
-		expect(touchEditorPatch).toContain(
-			"if (!this._touchGesture && Date.now() < this._suppressTouchInertiaUntil)"
+		expect(flingPatch).toContain(
+			"const ignored = !!owner && [...this.ignoreTargets].some(t => t.contains(owner));"
 		);
-		expect(touchEditorPatch).not.toContain(
-			"!event.initialTarget && Date.now() < this._suppressTouchInertiaUntil"
-		);
+		expect(touchEditorPatch).not.toContain("_suppressTouchInertiaUntil");
 	});
 
 	// Upstream picks PointerEventHandler only for phone UAs (isIOS, or isAndroid
@@ -1380,11 +1387,15 @@ describe("narrow overlay", () => {
 		);
 	});
 
-	// Long-press menus fire during the hold (Gesture timer), and editor context
-	// menus render in the light DOM on touch, where the overlay touch styling
-	// cannot pierce a shadow root. A pan remains a pan through release and inertia;
-	// it must never fall back into the synthetic tap path or reach ancestor menus.
-	test("touch-context-menu patch fires during the hold and widens the shadow gate", () => {
+	// Long-press menus fire during the hold (Gesture timer), and every context
+	// menu renders in the light DOM on touch: one central gate in
+	// ContextMenuHandler drops domForShadowRoot (menuAsChild dropdowns like the
+	// settings gear, editor menus), because touch events retarget to a shadow
+	// host - the surface under it steals focus back on the next touchstart and
+	// the menu dies on blur - and the overlay touch styling cannot pierce a
+	// shadow root. A pan remains a pan through release and inertia; it must
+	// never fall back into the synthetic tap path or reach ancestor menus.
+	test("touch-context-menu patch fires during the hold and gates shadow-root menus centrally", () => {
 		const patch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
 		);
@@ -1396,8 +1407,11 @@ describe("narrow overlay", () => {
 			"this.newGestureEvent(EventType.Change, initialTarget)"
 		);
 		expect(patch).toContain(
-			"EditorOption.useShadowDOM) && !isTouch(mainWindow)"
+			"isHTMLElement(delegate.domForShadowRoot) && !isTouch(mainWindow)"
 		);
+		// Central means central: the old per-call-site gates must stay gone, or
+		// the rule regrows exceptions.
+		expect(patch).not.toContain("EditorOption.useShadowDOM");
 		// The OS cancels touches on app switch; without touchcancel cleanup the
 		// stale entries kill the single-touch checks (long-press, inertia) forever.
 		expect(patch).toContain("'touchcancel'");
@@ -1459,6 +1473,33 @@ describe("narrow overlay", () => {
 			expect(removedLines).toContain(removed);
 			expect(patch).not.toContain(removed);
 		}
+	});
+
+	// The on-screen keyboard shrinks the workbench exactly while someone types into a
+	// row control (settings editor inputs, the SCM input): the virtualized list would
+	// recycle the now-out-of-range focused row, blurring the control and closing the
+	// keyboard mid-typing. The list must keep that one row alive and scroll it back
+	// above the fold instead.
+	test("touch-list-focus keeps the focused row alive through a keyboard shrink", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-list-focus.diff`)
+		);
+
+		// render()/_rerender(): never recycle the row holding DOM focus.
+		expect(patch).toContain("focusPinnedIndex");
+		expect(patch).toContain(
+			"if (this.items[i].row?.domNode.contains(activeElement)) {"
+		);
+		expect(patch).toContain(
+			"if (this.items[i].row?.domNode.contains(getActiveElement())) {"
+		);
+		// layout(): after the shrink, reveal the focused row above the keyboard.
+		expect(patch).toContain("this.rowsContainer.contains(active)");
+		expect(patch).toContain(
+			"this.setScrollTop(Math.max(this.elementTop(index) + item.size - scrollDimensions.height!, 0));"
+		);
+		// splice(): a stale pinned index must release its row, not leak it.
+		expect(patch).toContain("this.removeItemFromDOM(this.focusPinnedIndex);");
 	});
 
 	// window.ts blocks native contextmenus AND TextInputActionsProvider shows a themed input
@@ -2116,19 +2157,37 @@ describe("composery api keys", () => {
 	});
 
 	test("warns when the API is disabled, with the server's flag literal", async () => {
-		expect(
-			readRepoFile("packages/ide/overlay/src/node/routes/api/config.ts")
-		).toContain("COMPOSERY_API_ENABLED");
-		expect(extension).toContain("COMPOSERY_API_ENABLED");
+		const config = readRepoFile(
+			"packages/ide/overlay/src/node/routes/api/config.ts"
+		);
+		expect(config).toContain("COMPOSERY_DISABLE_API");
+		expect(extension).toContain("COMPOSERY_DISABLE_API");
+		// The extension warns off its own read of the flag, so the server has to
+		// disable on exactly the values the warning is shown for.
+		expect(config).toContain('raw === "1" || raw === "true"');
 
 		const { harness, run } = loadApiKeysExtension({
-			env: { COMPOSERY_API_ENABLED: "false" },
+			env: { COMPOSERY_DISABLE_API: "true" },
 			responses: [{ keys: [] }]
 		});
 
 		await run();
 
-		expect(harness.warnings[0]).toContain("COMPOSERY_API_ENABLED=false");
+		expect(harness.warnings[0]).toContain("COMPOSERY_DISABLE_API=true");
+	});
+
+	test("an unrecognised value leaves the API reachable", async () => {
+		// Both sides read the flag independently, so a typo that warned here
+		// while the server kept serving (or the reverse) would be worse than
+		// either state: the operator would trust the wrong one.
+		const { harness, run } = loadApiKeysExtension({
+			env: { COMPOSERY_DISABLE_API: "yes" },
+			responses: [{ keys: [] }]
+		});
+
+		await run();
+
+		expect(harness.warnings).toEqual([]);
 	});
 });
 
@@ -2587,19 +2646,78 @@ describe("terminal keyboard occlusion", () => {
 		const added = addedLines(patch);
 
 		expect(added).toContain(
-			"const bottom = Math.min(0, Math.max(-hidden, caretTop - cellHeight - hidden));"
+			"const bottom = Math.max(-hidden, -rowsBelowCaret * cellHeight);"
 		);
 		expect(added).toContain(
-			"const caretTop = raw.buffer.active.cursorY * cellHeight;"
+			"const rowsBelowCaret = raw.rows - 1 - raw.buffer.active.cursorY;"
 		);
 		// Nothing is ever hidden in the alternate screen - it is resized to fit.
 		expect(added).toContain(
-			"if (hidden <= 0 || !raw.rows || raw.buffer.active === raw.buffer.alternate) {"
+			"if (hidden <= 0 || !raw.rows || !(screen instanceof HTMLElement) || raw.buffer.active === raw.buffer.alternate) {"
 		);
 		// The caret moving is what changes the answer.
 		expect(added).toContain(
 			"this._register(xterm.raw.onCursorMove(() => this._updateOcclusionOffset()));"
 		);
+	});
+
+	// Run the SHIPPED method against fake geometry rather than restating its arithmetic,
+	// so the numbers below are the ones the terminal actually computes. The scenario is
+	// the measured one: a 684px grid (34 rows) in a 367px pane once the keyboard is up.
+	const runOffset = (cursorY: number, alternate = false) => {
+		type Case = { bottom: string };
+		const { run } = evaluatePatchSnippets<{
+			run: (cursorY: number, alternate: boolean) => Case;
+		}>(
+			[
+				"class HTMLElement {}",
+				"class Screen extends HTMLElement { constructor(h, top) { super(); this.clientHeight = h; this.offsetTop = top; } }",
+				`class Term {
+					constructor(raw, wrapper) { this.xterm = { raw }; this._wrapperElement = wrapper; }
+					${extractAddedMethod(patch, "_updateOcclusionOffset")}
+				}`,
+				`function run(cursorY, alternate) {
+					const rows = 34;
+					const screen = new Screen(680, 4);
+					const normal = {}; const alt = {};
+					const element = {
+						clientHeight: 688,
+						style: {},
+						querySelector: () => screen
+					};
+					const raw = {
+						rows,
+						element,
+						buffer: { active: alternate ? alt : normal, alternate: alt }
+					};
+					raw.buffer.active.cursorY = cursorY;
+					new Term(raw, { clientHeight: 367 })._updateOcclusionOffset();
+					return { bottom: element.style.bottom ?? "" };
+				}`
+			],
+			["run"]
+		);
+		return run(cursorY, alternate).bottom;
+	};
+
+	// The rule: the caret's row sits at the BOTTOM of the visible window, with history
+	// above it. Anything else leaves blank rows under the prompt - measured on the
+	// previous build as 251-327px of dead space in a 367px window.
+	test("the occluded slice puts the caret at the bottom of the window", () => {
+		// Buffer filled/scrolled: caret on the last row, so upstream's bottom alignment
+		// is already right and nothing moves.
+		expect(runOffset(33)).toBe("");
+
+		// Caret mid-grid: slide down by the 11 blank rows below it (11 * 20 = 220).
+		expect(runOffset(22)).toBe("-220px");
+
+		// Caret near the top with too little content to fill the window: clamp at the
+		// top of the grid rather than scrolling past it (hidden = 688 - 367 = 321).
+		expect(runOffset(1)).toBe("-321px");
+		expect(runOffset(0)).toBe("-321px");
+
+		// The alternate screen is resized to fit, so it is never offset.
+		expect(runOffset(5, true)).toBe("");
 	});
 
 	// The taller-than-the-pane grid relies on upstream's bottom alignment to keep the
@@ -2630,6 +2748,25 @@ describe("terminal keyboard occlusion", () => {
 		expect(narrow).toContain("const KEYBOARD_MIN_INSET = 120;");
 		// Rotation resets the baseline.
 		expect(narrow).toContain("if (width !== keyboardBaselineWidth) {");
+	});
+});
+
+// A terminal is not prose: the on-screen keyboard must offer no dictionary
+// suggestions and no autocorrect over shell input. xterm already sets autocorrect,
+// autocapitalize and spellcheck off on its helper textarea, but on Android those
+// three do not remove the suggestion strip - Chromium maps that strip (and the
+// autocorrect it also overrides, via TYPE_TEXT_FLAG_NO_SUGGESTIONS) off only from
+// autocomplete="off", which xterm omits. The patch sets it on the terminal's own
+// textarea; harmless on desktop, where the attribute drives no soft keyboard.
+describe("terminal soft-keyboard suggestions", () => {
+	test("the terminal textarea opts out of suggestions and autocorrect", () => {
+		const source = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-terminal-suggestions.diff`)
+		);
+
+		expect(source).toContain(
+			"xterm.raw.textarea.setAttribute('autocomplete', 'off')"
+		);
 	});
 });
 

@@ -32,7 +32,7 @@ export const USABLE_BG_SOURCE = `function usableBg(bg) {
 }`;
 
 // Rewire once the title-bar logo exists; until then wait (the workbench builds
-// it async, and the observer retries). No floating fallback.
+// it async, and the poll retries). No floating fallback.
 export function choosePlacement(state: { hasAppicon: boolean }): Placement {
 	return state.hasAppicon ? "titlebar" : "wait";
 }
@@ -199,21 +199,20 @@ export const INSTALL_SCRIPT = `(function () {
 		} catch (e) {}
 	}
 
-	var scheduled = false;
-	function schedule() {
-		if (scheduled) return;
-		scheduled = true;
-		requestAnimationFrame(function () { scheduled = false; placeTitlebar(); readBg(); });
-	}
-
 	// Dev only: production would compute and post a message nobody logs.
 	if (window.__composeryDev) {
 		diag();
 		setTimeout(diag, 6000);
 	}
-	schedule();
-	new MutationObserver(schedule).observe(document.documentElement, {
-		attributes: true, childList: true, subtree: true
-	});
+	// Poll, never observe: a document-wide MutationObserver (attributes + childList
+	// + subtree) makes the browser allocate a record for every DOM change, and
+	// Monaco and the terminal make thousands a second - overhead the same page
+	// never carries in Chrome, where none of this script runs. The rAF it
+	// scheduled also forced a style recalc per frame via getComputedStyle. Two
+	// cheap reads twice a second cover the same needs (logo rebuilt, theme
+	// flipped) at no per-mutation cost.
+	placeTitlebar();
+	readBg();
+	setInterval(function () { placeTitlebar(); readBg(); }, 500);
 })();
 true;`;

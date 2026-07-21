@@ -76,6 +76,30 @@ export function extractAddedFunction(patch: string, name: string): string {
 	throw new Error(`Could not parse added function ${name}`);
 }
 
+// A single added class method `private name(...) {...}`, brace-matched, returned
+// without its modifier so it can be spliced into a stand-in class and exercised.
+export function extractAddedMethod(patch: string, name: string): string {
+	const source = addedLines(patch);
+	const start = source.indexOf(`private ${name}(`);
+	if (start < 0) {
+		throw new Error(`Could not find added method ${name}`);
+	}
+
+	let depth = 0;
+	for (let i = source.indexOf("{", start); i < source.length; i++) {
+		const char = source[i];
+		if (char === "{") depth++;
+		else if (char === "}") {
+			depth--;
+			if (depth === 0) {
+				return source.slice(start, i + 1).replace(/^private /, "");
+			}
+		}
+	}
+
+	throw new Error(`Could not parse added method ${name}`);
+}
+
 // An added `const name = ...;` statement (single or multi-line, ends at `;`
 // on a line boundary).
 export function extractAddedConst(patch: string, name: string): string {

@@ -16,7 +16,7 @@ of instances). The instance already exists; this only automates work inside it.
 
 The API is on by default but **auto-gated**: with no keys, every endpoint returns
 `401`, so it is effectively off until you mint one. To turn it off entirely, set
-`COMPOSERY_API_ENABLED=false` (every endpoint then returns `404`).
+`COMPOSERY_DISABLE_API=true` (every endpoint then returns `404`).
 
 ## API keys
 

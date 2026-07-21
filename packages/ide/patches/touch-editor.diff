@@ -1,6 +1,6 @@
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -8,29 +8,123 @@
+@@ -8,29 +8,121 @@
  import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
  import { mainWindow } from '../../../base/browser/window.js';
  import { Disposable } from '../../../base/common/lifecycle.js';
@@ -23,7 +23,6 @@
 +
 +const TOUCH_PAN_THRESHOLD = 16;
 +const TOUCH_SELECTION_MENU_HOLD_TIME = 650;
-+const TOUCH_INERTIA_SUPPRESSION_TIME = 350;
 +const TOUCH_CARET_EDGE_SCROLL_ZONE = 44;
 +const TOUCH_CARET_MAX_SCROLL_SPEED = 720;
 +const TOUCH_SCROLL_SELECTION_SETTLE_TIME = 200;
@@ -47,7 +46,6 @@
  export class PointerEventHandler extends MouseHandler {
  	private _lastPointerType: string;
 +	private _touchGesture: TouchGestureState | null;
-+	private _suppressTouchInertiaUntil: number;
 +	private _primarySelection: Selection | null;
 +	private _primaryModelSelection: Selection | null;
 +	private _nativeSelectionActive: boolean;
@@ -96,7 +94,6 @@
  
  		this._lastPointerType = 'mouse';
 +		this._touchGesture = null;
-+		this._suppressTouchInertiaUntil = 0;
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
 +		this._nativeSelectionActive = false;
@@ -121,12 +118,13 @@
 +		this._register(dom.addDisposableListener(this._caretHandle, 'pointercancel', (event: PointerEvent) => this._onCaretPointerUp(event), { passive: false }));
 +		this.viewHelper.linesContentDomNode.appendChild(this._caretHandle);
 +		// The handle drags via pointer events; without this the same touches also reach the
-+		// Gesture singleton and pan the editor 1:1 with every handle drag.
++		// Gesture singleton and pan the editor 1:1 with every handle drag (and fling it
++		// through release inertia - Gesture skips both for ignored targets).
 +		this._register(Gesture.ignoreTarget(this._caretHandle));
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +147,162 @@
+@@ -53,18 +145,155 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -265,13 +263,6 @@
 +
  	private onChange(event: GestureEvent): void {
  		if (this._lastPointerType === 'touch') {
-+			// Inertia after a caret-handle drag must not fling the view. Inertia Change
-+			// events are the ones with no live gesture: Gesture has already sent End
-+			// (which nulls _touchGesture), while real finger moves always follow a Start.
-+			if (!this._touchGesture && Date.now() < this._suppressTouchInertiaUntil) {
-+				return;
-+			}
-+
 +			if (this._touchGesture && !this._touchGesture.panned) {
 +				this._touchGesture.totalX += event.translationX;
 +				this._touchGesture.totalY += event.translationY;
@@ -289,7 +280,7 @@
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +312,20 @@
+@@ -74,13 +303,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -312,11 +303,16 @@
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,11 +338,365 @@
+@@ -93,11 +329,365 @@
  		}
  	}
  
 +	// --- native browser selection <-> editor selection ---
++	// Known ceiling: dragging a native handle against the viewport edge does not
++	// auto-scroll - the browser cannot scroll Monaco's virtualized lines, so a
++	// selection larger than one screen means scroll first, then extend. Upgrade
++	// path: drive viewLayout from the handle touch's position like the caret
++	// handle does, re-syncing the hit-tested focus as lines slide under it.
 +
 +	private onNativeSelectionChange(): void {
 +		if (this._lastPointerType !== 'touch') {
@@ -650,13 +646,8 @@
 +
 +	private _stopCaretDrag(): void {
 +		this._stopCaretAutoScroll();
-+		if (this._activeCaretDrag) {
-+			if (this._caretHandle.hasPointerCapture(this._activeCaretDrag.pointerId)) {
-+				this._caretHandle.releasePointerCapture(this._activeCaretDrag.pointerId);
-+			}
-+			// Gesture ignores handle touches for dispatch but still tracks them for inertia
-+			// (the inertia dispatch list skips the ignore check) - keep the flick out.
-+			this._suppressTouchInertiaUntil = Date.now() + TOUCH_INERTIA_SUPPRESSION_TIME;
++		if (this._activeCaretDrag && this._caretHandle.hasPointerCapture(this._activeCaretDrag.pointerId)) {
++			this._caretHandle.releasePointerCapture(this._activeCaretDrag.pointerId);
 +		}
 +		this._activeCaretDrag = null;
 +	}
@@ -678,7 +669,7 @@
  		super._onMouseDown(e, pointerId);
  	}
  }
-@@ -141,8 +740,12 @@
+@@ -141,8 +731,12 @@
  
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super();
