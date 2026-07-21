@@ -15,7 +15,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const KEY_PREFIX: &str = "csy_";
+const KEY_PREFIX: &str = "composery_";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyStore {
@@ -171,7 +171,7 @@ fn generate(name: &str) -> Result<NewKey> {
     getrandom::getrandom(&mut id_bytes).map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
     let id = format!("k_{}", hex_encode(&id_bytes));
 
-    let prefix: String = secret.chars().take(12).collect();
+    let prefix: String = secret.chars().take(KEY_PREFIX.len() + 8).collect();
 
     Ok(NewKey {
         record: KeyRecord {
@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(store.keys.len(), 1);
         let record_id = store.keys[0].id.clone();
         assert_eq!(store.keys[0].name, "ci");
-        assert!(new.secret.starts_with("csy_"));
+        assert!(new.secret.starts_with("composery_"));
         assert_eq!(store.keys[0].hash, hash_secret(&new.secret));
 
         assert!(store.revoke(&record_id));
@@ -285,7 +285,7 @@ mod tests {
             hash_secret(""),
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
-        assert_eq!(hash_secret("csy_abc"), hash_secret("csy_abc"));
+        assert_eq!(hash_secret("composery_abc"), hash_secret("composery_abc"));
     }
 
     #[test]

@@ -49,21 +49,24 @@ listed in `CLERK_AUTHORIZED_PARTIES`.
 
 ## Production environment variables
 
-Add these Vercel Production environment variables (frontend plane):
+`packages/web/.env.example.next.prod` is the authoritative list of Vercel
+Production env vars (frontend plane); add every key it lists. Most values come
+from the service page that produces them ([Clerk](./clerk.md), [Polar](./polar.md),
+[Hetzner](./hetzner.md)), and the `NEXT_PUBLIC_*` dashboard-link vars are
+optional. The few with a non-obvious value or flag:
 
-| Variable                            | Production value                                                |
-| ----------------------------------- | --------------------------------------------------------------- |
-| `CONVEX_DEPLOY_KEY`                 | the `prod:` deploy key from the [Convex](./convex.md) step      |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Production [Clerk](./clerk.md) publishable key                  |
-| `CLERK_SECRET_KEY`                  | Production Clerk secret key                                     |
-| `NEXT_PUBLIC_CLERK_SIGN_IN_URL`     | `/sign-in`                                                      |
-| `CLERK_AUTHORIZED_PARTIES`          | `https://www.<website-domain>` (exact origins, comma separated) |
+| Variable                   | Production value / handling                                               |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `CONVEX_DEPLOY_KEY`        | the `prod:` deploy key from the [Convex](./convex.md) step; `--sensitive` |
+| `CLERK_SECRET_KEY`         | Production Clerk secret key; `--sensitive`                                |
+| `CLERK_AUTHORIZED_PARTIES` | `https://www.<website-domain>` (exact origins, comma separated)           |
+
+Set each with `vercel env add <NAME> production`, adding `--sensitive` for the
+two secrets above:
 
 ```bash
 vercel env add CONVEX_DEPLOY_KEY production --sensitive
-vercel env add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY production
 vercel env add CLERK_SECRET_KEY production --sensitive
-vercel env add NEXT_PUBLIC_CLERK_SIGN_IN_URL production
 vercel env add CLERK_AUTHORIZED_PARTIES production
 ```
 

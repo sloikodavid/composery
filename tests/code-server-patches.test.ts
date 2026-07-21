@@ -898,86 +898,51 @@ describe("narrow overlay", () => {
 		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
 	});
 
-	// The touch-editor patch creates the caret drag handle that only the touch
-	// overlay styles; the pair must name the same class. Range selection handles
-	// are the browser's own (native selection) and must not come back as custom
-	// elements.
-	test("touch caret handle is styled by the touch overlay", () => {
+	// The touch-editor patch creates the selection drag handles (caret + both range
+	// ends) that only the touch overlay styles; the pair must name the same classes.
+	test("touch selection handles are styled by the touch overlay", () => {
 		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
 		expect(touchEditorPatch).toContain("composery-touch-caret-handle");
 		expect(touchCss).toContain(".composery-touch-caret-handle");
-		expect(touchEditorPatch).not.toContain("composery-touch-selection-handle");
-		expect(touchCss).not.toContain("composery-touch-selection-handle");
+		expect(touchEditorPatch).toContain("composery-touch-range-handle-");
+		expect(touchCss).toContain(".composery-touch-range-handle-start");
+		expect(touchCss).toContain(".composery-touch-range-handle-end");
 	});
 
-	// Native mobile text selection: the browser creates it (long-press on now-
-	// selectable lines), the editor mirrors it into the model, and the clipboard
-	// payload comes from the model - rendered spans use no-break spaces and stop
-	// at the rendered viewport, so a DOM copy would corrupt the text.
-	test("native selection is unblocked, synced, and clipboard-owned", () => {
-		const gesturePatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-native-selection.diff`)
-		);
+	// Touch selection is editor-driven: the browser's selection UI aims at the
+	// focused element, and the editor's focused element is a hidden one-pixel
+	// input - never the rendered lines the finger is on (device-verified: with the
+	// editor focused, Chrome's long-press and handle drags operate on the hidden
+	// input at garbage geometry). So a long-press word-selects through the model
+	// and custom handles adjust it; no browser selection may exist in the lines.
+	test("editor touch selection is model-driven, not browser-native", () => {
 		const touchEditorPatch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
 		);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
-		// Gesture stands down from preventDefault inside the zone (start, and moves
-		// still inside the tap-cancel slop); everywhere else keeps it.
-		expect(gesturePatch).toContain(
-			"public static nativeSelectionZone(element: HTMLElement): IDisposable"
-		);
-		expect(gesturePatch).toContain("if (!allNativeZone) {");
-		expect(gesturePatch).toContain(
-			"nativeStationary = nativeStationary && !!data && (data.nativeDrag || (data.nativeZone && !data.tapCancelled));"
-		);
-
-		// A touch grabbing one of the browser's selection handles belongs to the
-		// browser for its whole life: Gesture dispatches nothing for it (no pan
-		// under the drag, no tap, no fling) and never calls preventDefault, which
-		// would abort the drag on Android.
-		expect(gesturePatch).toContain(
-			"private isOnNativeSelectionHandle(touch: Touch): boolean"
-		);
-		expect(gesturePatch).toContain("if (data.nativeDrag) {");
-
-		// The editor registers the zone, mirrors selectionchange into the model and
-		// owns the copy payload.
+		// Long-press on text selects the word (a double-click dispatch); the hold
+		// inside an existing selection opens the IDE menu instead.
 		expect(touchEditorPatch).toContain(
-			"Gesture.nativeSelectionZone(this.viewHelper.linesContentDomNode)"
+			"this._dispatchMouseTarget(target, /*inSelectionMode*/false, /*mouseDownCount*/2)"
 		);
-		expect(touchEditorPatch).toContain("'selectionchange'");
-		expect(touchEditorPatch).toContain("generateDataToCopyAndStoreInMemory");
+		expect(touchEditorPatch).toContain("startedInSelection");
 
-		// Chromium only selects what user-select allows, and Monaco stays the single
-		// selection painter - the browser's own highlight is made transparent.
-		expect(touchCss).toContain("user-select: text !important");
-		expect(touchCss).toContain(
-			".monaco-workbench .monaco-editor .view-lines ::selection"
-		);
-	});
-
-	// Android fires a real contextmenu while its long-press starts the native
-	// selection and again when a handle drag ends; neither may open the IDE menu.
-	// The IDE menu on touch comes from the in-selection hold timer instead - armed
-	// on Start and surviving the browser's touchcancel takeover.
-	test("IDE context menu is arbitrated around the native selection", () => {
-		const touchEditorPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+		// Range handles keep the far end anchored in model coordinates, so an edge
+		// auto-scroll can extend past the rendered lines.
+		expect(touchEditorPatch).toContain("_setSelectionFromClientPoint");
+		expect(touchEditorPatch).toContain(
+			"Selection.fromPositions(drag.anchor, modelPosition)"
 		);
 
-		expect(touchEditorPatch).toContain(
-			"if (isAndroid && this._lastPointerType === 'touch'"
-		);
-		expect(touchEditorPatch).toContain(
-			"gesture.startedOnText && !gesture.startedInSelection"
-		);
-		expect(touchEditorPatch).toContain(
-			"if (gesture.canceled && gesture.menuTimer !== undefined)"
-		);
+		// The native-selection experiment is gone: no selectable lines, no browser
+		// selection sync, no transparent ::selection to hide one.
+		expect(touchEditorPatch).not.toContain("selectionchange");
+		expect(touchEditorPatch).not.toContain("nativeSelectionZone");
+		expect(touchCss).not.toContain("user-select: text !important");
+		expect(touchCss).not.toContain("::selection");
 	});
 
 	// A pan can start on editor padding as well as rendered text. It must be
@@ -1338,9 +1303,7 @@ describe("narrow overlay", () => {
 
 	// Both patches encode the same device-verified "finger moved enough that this
 	// is a pan, not a tap" magnitude: the editor's pan threshold and the gesture
-	// tap-cancel slop. The native-selection move exemption keys on the same slop,
-	// so a drift would let stationary-window moves reach the browser after the
-	// editor already started panning. They live in different files - pin them.
+	// tap-cancel slop. They live in different files - pin them.
 	test("editor pan threshold matches the gesture tap-cancel slop", () => {
 		const selectionThreshold = Number(
 			/TOUCH_PAN_THRESHOLD = (\d+)/.exec(
@@ -1500,6 +1463,70 @@ describe("narrow overlay", () => {
 		);
 		// splice(): a stale pinned index must release its row, not leak it.
 		expect(patch).toContain("this.removeItemFromDOM(this.focusPinnedIndex);");
+	});
+
+	// Janky event delivery (a busy phone, the app WebView) can hold a real pan's
+	// touchmoves until after the 700ms hold timer fired: Gesture then called the
+	// pan a long-press, ate every later move (dead scroll) and skipped the
+	// keyboard-reopen suppressor. The moves' own timeStamps carry the finger's
+	// true timing, so a wrong verdict must revert - and a spent touch must still
+	// arm the suppressor.
+	test("touch pan-revert corrects a hold verdict the event queue falsified", () => {
+		const contextMenu = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
+		);
+		expect(contextMenu).toContain("initialEventTimeStamp: e.timeStamp");
+		expect(contextMenu).toContain(
+			"e.timeStamp - data.initialEventTimeStamp < Gesture.HOLD_DELAY"
+		);
+		expect(contextMenu).toContain(
+			"mainWindow.dispatchEvent(new MouseEvent('mousedown'));"
+		);
+
+		const keyboard = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`)
+		);
+		// once in the pan branch, once in the spent-touch branch
+		const suppressions = keyboard
+			.split("\n")
+			.filter((line) =>
+				line.includes("this.suppressKeyboardReopen(data.initialTarget);")
+			);
+		expect(suppressions.length).toBe(2);
+	});
+
+	// Auto-focusing an editable because a surface became visible pops the
+	// on-screen keyboard over the content the user came to see. Uniform rule for
+	// every touch device, not upstream's per-site iOS exemptions.
+	test("touch-autofocus keeps surface-open from popping the keyboard", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-autofocus.diff`)
+		);
+
+		// extensions view search, SCM commit box, editor refocus on panel close
+		expect(patch).toContain("if (!isTouch(mainWindow)) {");
+		expect(patch).toContain(
+			"this.tree.getFocus().length === 0 && !isTouch(mainWindow)"
+		);
+		expect(patch).toContain("!isTouch(mainWindow) &&");
+	});
+
+	// The browser's focus reveal scrolls overflow:hidden ancestors and pans the
+	// mobile visual viewport - the workbench does its own revealing. Every
+	// programmatic focus into a scrolled surface must preventScroll.
+	test("touch-reveal-guard covers workbench editables beyond the editor", () => {
+		const patch = addedLines(
+			readRepoFile(`${PATCHES_DIR}/touch-reveal-guard.diff`)
+		);
+
+		expect(patch).toContain("this.input.focus({ preventScroll: true });");
+		expect(patch).toContain(
+			"this.focusToReturn?.focus({ preventScroll: true });"
+		);
+		expect(patch).toContain(
+			"(<HTMLElement>control).focus({ preventScroll: true });"
+		);
+		expect(patch).toContain("rowElement.focus({ preventScroll: true })");
 	});
 
 	// window.ts blocks native contextmenus AND TextInputActionsProvider shows a themed input
@@ -2064,8 +2091,8 @@ describe("composery api keys", () => {
 					created_at: 1752710400,
 					id: "k1",
 					name: "ci",
-					prefix: "csy_abcd1234",
-					secret: "csy_secret"
+					prefix: "composery_abcd1234",
+					secret: "composery_secret"
 				},
 				{
 					keys: [
@@ -2073,7 +2100,7 @@ describe("composery api keys", () => {
 							created_at: 1752710400,
 							id: "k1",
 							name: "ci",
-							prefix: "csy_abcd1234"
+							prefix: "composery_abcd1234"
 						}
 					]
 				}
@@ -2087,7 +2114,7 @@ describe("composery api keys", () => {
 			["composery", "api", "key", "create", "--name", "ci", "--json"],
 			["composery", "api", "key", "list", "--json"]
 		]);
-		expect(harness.clipboard).toEqual(["csy_secret"]);
+		expect(harness.clipboard).toEqual(["composery_secret"]);
 		expect(harness.errors).toEqual([]);
 	});
 
@@ -2102,7 +2129,7 @@ describe("composery api keys", () => {
 							created_at: 1752710400,
 							id: "k1",
 							name: "ci",
-							prefix: "csy_abcd1234"
+							prefix: "composery_abcd1234"
 						}
 					]
 				},
@@ -2134,7 +2161,7 @@ describe("composery api keys", () => {
 							created_at: 1752710400,
 							id: "k1",
 							name: "ci",
-							prefix: "csy_abcd1234"
+							prefix: "composery_abcd1234"
 						}
 					]
 				},
@@ -2144,7 +2171,7 @@ describe("composery api keys", () => {
 							created_at: 1752710400,
 							id: "k1",
 							name: "ci",
-							prefix: "csy_abcd1234"
+							prefix: "composery_abcd1234"
 						}
 					]
 				}
@@ -2642,14 +2669,16 @@ describe("terminal keyboard occlusion", () => {
 	// bottom slice of an occluded grid is entirely empty - device-verified as a
 	// completely blank terminal. The visible slice follows the caret instead, which
 	// top-anchors a short buffer and bottom-anchors a filled one from one rule.
-	test("the occluded slice follows the caret, so a short buffer is not blank", () => {
+	test("the occluded slice follows the content, so a short buffer is not blank", () => {
 		const added = addedLines(patch);
 
 		expect(added).toContain(
-			"const bottom = Math.max(-hidden, -rowsBelowCaret * cellHeight);"
+			"const bottom = Math.max(-hidden, -(raw.rows - 1 - anchorRow) * cellHeight);"
 		);
+		// The anchor starts at the caret and walks down to the last row with content.
+		expect(added).toContain("let anchorRow = buffer.cursorY;");
 		expect(added).toContain(
-			"const rowsBelowCaret = raw.rows - 1 - raw.buffer.active.cursorY;"
+			"if (buffer.getLine(buffer.baseY + row)?.translateToString(true).trim()) {"
 		);
 		// Nothing is ever hidden in the alternate screen - it is resized to fit.
 		expect(added).toContain(
@@ -2664,10 +2693,18 @@ describe("terminal keyboard occlusion", () => {
 	// Run the SHIPPED method against fake geometry rather than restating its arithmetic,
 	// so the numbers below are the ones the terminal actually computes. The scenario is
 	// the measured one: a 684px grid (34 rows) in a 367px pane once the keyboard is up.
-	const runOffset = (cursorY: number, alternate = false) => {
+	const runOffset = (
+		cursorY: number,
+		alternate = false,
+		lastContentRow?: number
+	) => {
 		type Case = { bottom: string };
 		const { run } = evaluatePatchSnippets<{
-			run: (cursorY: number, alternate: boolean) => Case;
+			run: (
+				cursorY: number,
+				alternate: boolean,
+				lastContentRow?: number
+			) => Case;
 		}>(
 			[
 				"class HTMLElement {}",
@@ -2676,10 +2713,18 @@ describe("terminal keyboard occlusion", () => {
 					constructor(raw, wrapper) { this.xterm = { raw }; this._wrapperElement = wrapper; }
 					${extractAddedMethod(patch, "_updateOcclusionOffset")}
 				}`,
-				`function run(cursorY, alternate) {
+				`function run(cursorY, alternate, lastContentRow) {
 					const rows = 34;
 					const screen = new Screen(680, 4);
-					const normal = {}; const alt = {};
+					const last = lastContentRow === undefined ? cursorY : lastContentRow;
+					const mkBuffer = () => ({
+						cursorY,
+						baseY: 0,
+						getLine: (i) => ({
+							translateToString: () => (i <= last ? "text" : "   ")
+						})
+					});
+					const alt = mkBuffer();
 					const element = {
 						clientHeight: 688,
 						style: {},
@@ -2688,16 +2733,15 @@ describe("terminal keyboard occlusion", () => {
 					const raw = {
 						rows,
 						element,
-						buffer: { active: alternate ? alt : normal, alternate: alt }
+						buffer: { active: alternate ? alt : mkBuffer(), alternate: alt }
 					};
-					raw.buffer.active.cursorY = cursorY;
 					new Term(raw, { clientHeight: 367 })._updateOcclusionOffset();
 					return { bottom: element.style.bottom ?? "" };
 				}`
 			],
 			["run"]
 		);
-		return run(cursorY, alternate).bottom;
+		return run(cursorY, alternate, lastContentRow).bottom;
 	};
 
 	// The rule: the caret's row sits at the BOTTOM of the visible window, with history
@@ -2718,6 +2762,22 @@ describe("terminal keyboard occlusion", () => {
 
 		// The alternate screen is resized to fit, so it is never offset.
 		expect(runOffset(5, true)).toBe("");
+	});
+
+	// pi and other inline TUIs keep a footer BELOW their input line. Anchoring on the
+	// caret looks right for a shell - nothing is drawn past the prompt - but here it
+	// pushes the footer behind the keyboard, which is the reported "I cannot see
+	// anything below my cursor". The anchor is the last row with content, not the caret.
+	test("content below the cursor stays on screen", () => {
+		// Cursor on row 22 with a footer occupying rows 23-25: anchor on 25, so the
+		// slide is the 8 blank rows below it (8 * 20 = 160) rather than 11 (220).
+		expect(runOffset(22, false, 25)).toBe("-160px");
+
+		// A shell has nothing below the prompt, so the two anchors agree.
+		expect(runOffset(22, false, 22)).toBe("-220px");
+
+		// Footer running to the last row means upstream's bottom alignment already fits.
+		expect(runOffset(22, false, 33)).toBe("");
 	});
 
 	// The taller-than-the-pane grid relies on upstream's bottom alignment to keep the

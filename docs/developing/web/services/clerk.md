@@ -48,21 +48,10 @@ users go through `/sign-in` with an internal `redirect_url`, while signed-in
 users return to the box without seeing another prompt. Do not configure a Clerk
 force redirect because it overrides the transaction return path.
 
-The box callback is derived from the current box record rather than accepted
-from the request. The authorization code is single-use, expires after two
-minutes, and is bound to the browser with an S256 PKCE challenge. The resulting
-grant can only set that box's initial password and expires after ten minutes.
-The accepted hash is recorded as pending before the box writes its local
-configuration. Reconciliation starts after a short delay so the form response
-can finish on the box origin, then persists the same hash into the managed
-runtime environment. An abandoned pending setup becomes authorizable again
-after its grant expires.
-
-The Create Password and Change Password pages share the IDE authentication
-shell and the former website password flow. Strength and k-anonymous breach
-results are guidance rather than hard requirements: a user can explicitly
-continue with a warned password, and a matching confirmation is always
-required. The raw password never leaves the box origin.
+The code, PKCE challenge, grant, and their lifetimes live in
+`convex/boxes/boxAuth.ts`; read them there rather than restating them. The raw
+password never leaves the box origin, so Clerk only ever proves who owns the
+box.
 
 Check both cases when changing Clerk routing:
 

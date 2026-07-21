@@ -40,15 +40,13 @@ dashboard, separately for the dev and production deployments (Deployment Setting
 sensitive and account-specific, so a human enters them there. They are not
 committed and not read from `.env.local`.
 
-Use `packages/web/.env.example.convex.dev` and `packages/web/.env.example.convex.prod`
-as the checklist of which keys each deployment needs and their non-secret
-defaults. The keys are `CLERK_FRONTEND_API_URL`, `CLERK_WEBHOOK_SIGNING_SECRET`, `WEBSITE_ORIGIN`, `CLOUD_DOMAIN`,
-the `POLAR_*`, `HETZNER_*`, `CLOUDFLARE_*` groups, plus `RUNTIME_IMAGE`,
-`RUNTIME_PORT`, `SSH_USER`, and `SSH_PRIVATE_KEY`. Production staff alert
-delivery also requires `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and
-`ALERT_EMAIL_FROM`; see [Resend](./resend.md).
-Do not put frontend-plane vars (`CONVEX_DEPLOYMENT`, `NEXT_PUBLIC_*`,
-`CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES`) on the deployment.
+`packages/web/.env.example.convex.dev` and `packages/web/.env.example.convex.prod`
+are the authoritative list of which keys each deployment needs, with their
+non-secret defaults and a comment on each saying where to obtain the value. Copy
+from them; this page does not restate the names, and a variable absent from those
+files does not belong on the deployment. `CLERK_SECRET_KEY` also lives in the
+Next env - it is the one variable set on both planes, the same Clerk secret the
+deployment uses for staff-triggered account deletion (`convex/accountDeletion.ts`).
 
 Only `CLERK_FRONTEND_API_URL` is required at deploy time. Convex evaluates
 `convex/auth.config.ts` during every push, and it calls

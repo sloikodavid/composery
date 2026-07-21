@@ -21,41 +21,68 @@ created once in the console and referenced by id.
    with no finer-grained permissions. Copy it immediately - it is shown only
    once. -> `HETZNER_CLOUD_TOKEN`.
 
-2. **SSH key.** Generate a dedicated keypair locally. The code constrains only
+2. **SSH key.** Generate a dedicated keypair **per deployment**. Each Convex
+   deployment must already have its own Hetzner project, and a Hetzner SSH key is a
+   project resource, so dev and prod cannot share one registration anyway; using
+   distinct keys also keeps a leaked dev key from reaching the prod fleet, since
+   the private half is that deployment's trust root. The code constrains only
    two things, both from `convex/boxes/infra/ssh.ts`: the key must be a type
    `ssh2` can parse (RSA, ECDSA, or Ed25519, in OpenSSH or PEM form), and it
-   **must have no passphrase** - the backend passes only
-   `host`/`username`/`privateKey` to `ssh2`, so an encrypted key fails to
-   authenticate. Algorithm is your choice; Ed25519 is the recommended default. A
+   **must have no passphrase** - the backend never supplies a `passphrase` to
+   `ssh2` (`sshTarget` builds only `host`/`username`/`privateKey`), so an
+   encrypted key fails to authenticate. Algorithm is your choice; Ed25519 is the recommended default. A
    passphrase-less key is acceptable here because it is a dedicated, rotatable
    key whose value lives only as a Convex deployment secret and whose public half
    is trusted only on boxes you provision.
 
    ```bash
    mkdir -p ~/.ssh
-   ssh-keygen -t ed25519 -C composery-ssh -f ~/.ssh/composery_ssh
+   ssh-keygen -t ed25519 -C composery-web-dev -f ~/.ssh/composery_web_dev
+   ssh-keygen -t ed25519 -C composery-web-prod -f ~/.ssh/composery_web_prod
    ```
 
    The first line creates `~/.ssh` if it does not exist yet; `ssh-keygen` fails
    with `No such file or directory` when the target directory is missing. When
    prompted for a passphrase, press Enter twice to leave it empty. Use a
    dedicated `-f` path so you do not overwrite your personal `id_ed25519`. This
-   writes the private key to `~/.ssh/composery_ssh` and the public key to
-   `~/.ssh/composery_ssh.pub`.
-   - **Public key** -> add it as an SSH key in the Hetzner project (Project ->
-     Security -> SSH Keys). Put that name or id in `HETZNER_SSH_KEY_IDS`
-     (comma-separated for multiple); Hetzner injects it into every server it
+   writes each private key to `~/.ssh/composery_web_<env>` and each public key to
+   `~/.ssh/composery_web_<env>.pub`. The `-C` comment is local bookkeeping only:
+   `authorizedPublicKey()` in `convex/boxes/infra/sshKeys.ts` rebuilds the public
+   line from the private key with a fixed `composery-web` comment, so the same
+   text lands in `authorized_keys` whatever you name the key. Change a comment
+   later with `ssh-keygen -c -C <comment> -f <keyfile>`, which rewrites it in
+   place and leaves the key material - and therefore every existing box's trust -
+   untouched.
+
+   Run the rest of this step once per deployment, pairing each environment's key
+   with that environment's Hetzner project and Convex deployment.
+   - **Public key** -> add it as an SSH key in that environment's Hetzner project
+     (Project -> Security -> SSH Keys). Put that name or id in `HETZNER_SSH_KEYS`
+     (comma-separated for multiple). The name is the practical choice - it is what
+     the console shows, and `splitKeyRefs` passes any non-numeric entry through for
+     Hetzner to resolve by name. The catch is that renaming the key in the console
+     then breaks server creation until this value is updated to match. The numeric
+     id survives renames but is not shown in the console, which lists SSH keys
+     without per-key pages; read it from the API instead:
+
+     ```bash
+     curl -s -H "Authorization: Bearer $HETZNER_CLOUD_TOKEN" \
+       https://api.hetzner.cloud/v1/ssh_keys
+     ```
+
+     Whichever form you use, Hetzner injects that key into every server it
      creates in this project. The backend also derives this same public key from
      `SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create,
      reset, and snapshot restore. Hetzner added `user_data` to its rebuild API;
      sending the current value on every rebuild keeps control-plane access from
      depending only on the key selected when the server was first created.
+
    - **Private key** -> `SSH_PRIVATE_KEY`, as a single line with each newline
      escaped as `\n` (the code reverses this with `.replace(/\\n/g, "\n")`).
      Produce that exact value and paste it into the Convex dashboard:
 
      ```bash
-     awk '{printf "%s\\n", $0}' ~/.ssh/composery_ssh
+     awk '{printf "%s\\n", $0}' ~/.ssh/composery_web_dev
      ```
 
    Keep `SSH_USER=root` unless the image's default login user differs. The
@@ -65,11 +92,11 @@ created once in the console and referenced by id.
    root. A box only receives the public key, and SSH agent forwarding is not
    used.
 
-   `HETZNER_SSH_KEY_IDS` only affects Hetzner's create-time injection. Existing
+   `HETZNER_SSH_KEYS` only affects Hetzner's create-time injection. Existing
    running servers keep whatever was written into `authorized_keys`, while reset
    rebuilds install the public key derived from the current `SSH_PRIVATE_KEY`.
    During rotation, install and test the new public key on existing servers
-   before replacing the Convex secret, update `HETZNER_SSH_KEY_IDS` for new
+   before replacing the Convex secret, update `HETZNER_SSH_KEYS` for new
    servers, and treat revocation of a compromised key as fleet maintenance.
    Hetzner remembers keys selected at server creation and can inject them again
    during a rebuild, so replacing a Convex secret alone does not prove the old

@@ -40,8 +40,9 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				contextMenuFired: false,
 -				tapCancelled: false,
 +				tapCancelled: caughtFling,
- 				syntheticContextMenu: false
- 			};
+ 				syntheticContextMenu: false,
+ 				// The event's own timeStamp carries the finger's true timing even when
+ 				// delivery to the page lags behind (see the pan-revert in onTouchMove).
  
 @@ -303,7 +312,12 @@
  				const deltaY = finalY - data.rollingPageY[0];

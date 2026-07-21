@@ -30,7 +30,7 @@ const envNames = [
 	"HETZNER_CLOUD_TOKEN",
 	"HETZNER_FIREWALL_ID",
 	"HETZNER_NETWORK_ID",
-	"HETZNER_SSH_KEY_IDS",
+	"HETZNER_SSH_KEYS",
 	"SSH_PRIVATE_KEY",
 	"SSH_USER"
 ] as const;
@@ -63,7 +63,7 @@ describe("vps request contracts", () => {
 		process.env.HETZNER_BOX_IMAGE = "ubuntu-24.04";
 		process.env.HETZNER_FIREWALL_ID = "42";
 		process.env.HETZNER_NETWORK_ID = "";
-		process.env.HETZNER_SSH_KEY_IDS = "123,composery-key";
+		process.env.HETZNER_SSH_KEYS = "123,composery-key";
 		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
 		process.env.SSH_USER = "root";
 

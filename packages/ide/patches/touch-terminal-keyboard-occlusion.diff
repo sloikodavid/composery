@@ -31,7 +31,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
  	}
  
  	/**
-@@ -745,6 +752,120 @@
+@@ -745,6 +752,131 @@
  		return dimension.width;
  	}
  
@@ -139,20 +139,31 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
 +		// Rows live in .xterm-screen, so measure a cell against that rather than dividing
 +		// .xterm's padded height into rows.
 +		const cellHeight = screen.clientHeight / raw.rows;
-+		// Every row below the caret is blank, so slide the grid down by exactly that many
-+		// rows to bring the caret onto the window's bottom edge, capped at the hidden
-+		// amount so it never scrolls past the top of the grid. `bottom` is measured upward
-+		// from the pane's bottom edge, hence negative. Zero once the caret is on the last
-+		// row, which is upstream's own bottom alignment.
-+		const rowsBelowCaret = raw.rows - 1 - raw.buffer.active.cursorY;
-+		const bottom = Math.max(-hidden, -rowsBelowCaret * cellHeight);
++		// Anchor on the last row that has anything on it. Anchoring on the caret instead
++		// looks identical for a shell - nothing is drawn past the prompt - but an inline
++		// TUI keeps its footer BELOW its input line (pi does), and that footer is exactly
++		// what the keyboard then covers.
++		const buffer = raw.buffer.active;
++		let anchorRow = buffer.cursorY;
++		for (let row = raw.rows - 1; row > anchorRow; row--) {
++			if (buffer.getLine(buffer.baseY + row)?.translateToString(true).trim()) {
++				anchorRow = row;
++				break;
++			}
++		}
++		// Every row below the anchor is blank, so slide the grid down by exactly that many
++		// to bring the anchor onto the window's bottom edge, capped at the hidden amount so
++		// it never scrolls past the top of the grid. `bottom` is measured upward from the
++		// pane's bottom edge, hence negative; zero once the anchor is on the last row,
++		// which is upstream's own bottom alignment.
++		const bottom = Math.max(-hidden, -(raw.rows - 1 - anchorRow) * cellHeight);
 +		element.style.bottom = bottom ? `${Math.round(bottom)}px` : '';
 +	}
 +
  	private _setLastKnownColsAndRows(): void {
  		if (TerminalInstance._lastKnownGridDimensions) {
  			this._cols = TerminalInstance._lastKnownGridDimensions.cols;
-@@ -871,6 +992,17 @@
+@@ -871,6 +1003,17 @@
  		}, 1000, this._store);
  		this._register(xterm.raw.onSelectionChange(() => this._onDidChangeSelection.fire(this)));
  		this._register(xterm.raw.buffer.onBufferChange(() => this._refreshAltBufferContextKey()));
@@ -170,7 +181,7 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstan
  
  		this._register(this._processManager.onProcessData(e => this._onProcessData(e)));
  		this._register(xterm.raw.onData(async data => {
-@@ -2012,12 +2144,13 @@
+@@ -2012,12 +2155,13 @@
  		}
  
  		// Evaluate columns and rows, exclude the wrapper element's margin

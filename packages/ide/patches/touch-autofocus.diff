@@ -1,0 +1,99 @@
+A surface becoming visible must not auto-focus an editable on touch: focusing
+pops the on-screen keyboard over the content the user came to see (upstream
+gated only iOS for some of these, #122044 / #127832 family; the settings and
+keybindings editors got the same treatment in settings-mobile.diff). A tap on
+the field still focuses it.
+
+diff --git a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import './media/extensionsViewlet.css';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { localize, localize2 } from '../../../../nls.js';
+ import { timeout, Delayer } from '../../../../base/common/async.js';
+ import { isCancellationError } from '../../../../base/common/errors.js';
+@@ -727,7 +729,12 @@
+ 
+ 	override focus(): void {
+ 		super.focus();
+-		this.searchBox?.focus();
++		// Composery: on touch, focusing the marketplace search just because the view
++		// opened pops the on-screen keyboard over the list the user came to read. A
++		// tap on the box still focuses it.
++		if (!isTouch(mainWindow)) {
++			this.searchBox?.focus();
++		}
+ 	}
+ 
+ 	private _dimension: Dimension | undefined;
+diff --git a/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts b/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts
+--- a/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts
++++ b/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import './media/scm.css';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { Event, Emitter } from '../../../../base/common/event.js';
+ import { basename, dirname } from '../../../../base/common/resources.js';
+ import { IDisposable, Disposable, DisposableStore, combinedDisposable, dispose, toDisposable, MutableDisposable, DisposableMap } from '../../../../base/common/lifecycle.js';
+@@ -2157,7 +2159,9 @@
+ 		this.treeOperationSequencer.queue(() => {
+ 			return new Promise<void>(resolve => {
+ 				if (this.isExpanded()) {
+-					if (this.tree.getFocus().length === 0) {
++					// Composery: on touch, auto-focusing the commit box would pop the
++					// on-screen keyboard over the changes tree just for opening the view.
++					if (this.tree.getFocus().length === 0 && !isTouch(mainWindow)) {
+ 						for (const repository of this.scmViewService.visibleRepositories) {
+ 							const widget = this.inputRenderer.getRenderedInputWidget(repository.input);
+ 
+diff --git a/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts b/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts
+--- a/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts
++++ b/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import * as dom from '../../../../base/browser/dom.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+ import * as aria from '../../../../base/browser/ui/aria/aria.js';
+ import { MessageType } from '../../../../base/browser/ui/inputbox/inputBox.js';
+@@ -1223,7 +1225,10 @@
+ 
+ 	override focus(): void {
+ 		super.focus();
+-		if (this.lastFocusState === 'input' || !this.hasSearchResults()) {
++		// Composery: on touch, only a view that has nothing to show may claim the
++		// keyboard - refocusing the query box over existing results hides the very
++		// results the user came back to (upstream's iOS #122044 family).
++		if ((this.lastFocusState === 'input' && !isTouch(mainWindow)) || !this.hasSearchResults()) {
+ 			const updatedText = this.searchConfig.seedOnFocus ? this.updateTextFromSelection({ allowSearchOnType: false }) : false;
+ 			this.searchWidget.focus(undefined, undefined, updatedText);
+ 		} else {
+diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/workbench/browser/layout.ts
+--- a/lib/vscode/src/vs/workbench/browser/layout.ts
++++ b/lib/vscode/src/vs/workbench/browser/layout.ts
+@@ -47,6 +47,7 @@
+ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { CodeWindow, mainWindow } from '../../base/browser/window.js';
++import { isTouch } from '../../base/browser/touchGate.js';
+ import { isNarrow } from './narrowGate.js';
+ 
+ //#region Layout Implementation
+@@ -2156,7 +2157,7 @@
+ 		if (hidden && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel)) {
+ 			this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Panel);
+ 			if (
+-				!isIOS &&						// do not auto focus on iOS (https://github.com/microsoft/vscode/issues/127832)
++				!isTouch(mainWindow) &&			// Composery: every touch device, not just iOS - the keyboard pops with nothing to type (#127832)
+ 				!this.isAuxiliaryBarMaximized()	// do not auto focus when auxiliary bar is maximized
+ 			) {
+ 				focusEditor = true;

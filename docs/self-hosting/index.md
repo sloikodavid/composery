@@ -40,6 +40,10 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
   EFS at `/data` (advanced).
 - **Azure Container Apps** - needs an Azure Files share mounted at `/data`, or use a VM.
 
+## Maintenance
+
+* **[Disk space](../disk-space.md)** - remove unused Docker images and build cache, then reclaim space held by Docker Desktop's virtual disk on Windows and macOS.
+
 ## Updating
 
 Composery ships as a single rolling image; there is no migration step to run on upgrade.

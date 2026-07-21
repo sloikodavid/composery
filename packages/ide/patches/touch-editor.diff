@@ -1,14 +1,11 @@
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -8,29 +8,121 @@
+@@ -8,29 +8,82 @@
  import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
  import { mainWindow } from '../../../base/browser/window.js';
  import { Disposable } from '../../../base/common/lifecycle.js';
 -import * as platform from '../../../base/common/platform.js';
 +import { isTouch } from '../../../base/browser/touchGate.js';
-+import { isFirefox } from '../../../base/browser/browser.js';
-+import { isAndroid, isIOS } from '../../../base/common/platform.js';
-+import { Mimes } from '../../../base/common/mime.js';
  import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
  import { NavigationCommandRevealType } from '../coreCommands.js';
  import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
@@ -17,21 +14,20 @@
  import { ViewContext } from '../../common/viewModel/viewContext.js';
 +import * as viewEvents from '../../common/viewEvents.js';
  import { TextAreaSyntethicEvents } from './editContext/textArea/textAreaEditContextInput.js';
-+import { generateDataToCopyAndStoreInMemory } from './editContext/clipboardUtils.js';
 +import { Selection } from '../../common/core/selection.js';
 +import { Position } from '../../common/core/position.js';
 +
 +const TOUCH_PAN_THRESHOLD = 16;
 +const TOUCH_SELECTION_MENU_HOLD_TIME = 650;
-+const TOUCH_CARET_EDGE_SCROLL_ZONE = 44;
-+const TOUCH_CARET_MAX_SCROLL_SPEED = 720;
-+const TOUCH_SCROLL_SELECTION_SETTLE_TIME = 200;
++const TOUCH_HANDLE_EDGE_SCROLL_ZONE = 44;
++const TOUCH_HANDLE_MAX_SCROLL_SPEED = 720;
++
++type TouchHandleKind = 'caret' | 'start' | 'end';
 +
 +interface TouchGestureState {
 +	startedOnText: boolean;
 +	startedInSelection: boolean;
 +	panned: boolean;
-+	canceled: boolean;
 +	menuOpened: boolean;
 +	totalX: number;
 +	totalY: number;
@@ -48,91 +44,75 @@
 +	private _touchGesture: TouchGestureState | null;
 +	private _primarySelection: Selection | null;
 +	private _primaryModelSelection: Selection | null;
-+	private _nativeSelectionActive: boolean;
-+	private _lastSyncedModelSelection: Selection | null;
-+	private _expectedDomSelection: { anchorNode: Node | null; anchorOffset: number; focusNode: Node | null; focusOffset: number } | null;
-+	private _lastScrollTime: number;
++	// Touch selection is driven entirely by the editor: the browser's own selection UI
++	// cannot work here - it aims at the focused element, and the editor's focused
++	// element is a hidden one-pixel input, not the rendered lines the finger is on.
++	// So a long-press selects the word through the model, and these handles (the same
++	// mechanism for the collapsed caret and both range ends) adjust it.
 +	private readonly _caretHandle: HTMLElement;
-+	private _activeCaretDrag: { pointerId: number } | null;
-+	private _caretAutoScrollFrame: number | undefined;
-+	private _caretAutoScrollLastTime: number;
-+	private _caretClientX: number;
-+	private _caretClientY: number;
++	private readonly _startHandle: HTMLElement;
++	private readonly _endHandle: HTMLElement;
++	private _activeHandleDrag: { pointerId: number; kind: TouchHandleKind; anchor: Position | null } | null;
++	private _handleAutoScrollFrame: number | undefined;
++	private _handleAutoScrollLastTime: number;
++	private _handleClientX: number;
++	private _handleClientY: number;
 +
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super(context, viewController, viewHelper);
  
  		this._register(Gesture.addTarget(this.viewHelper.linesContentDomNode));
-+		// The browser must see the initial touch un-prevented or its long-press text
-+		// selection never starts (native handles + OS toolbar). Gesture keeps driving
-+		// taps and pans; it only stands down from preventDefault inside this zone.
-+		this._register(Gesture.nativeSelectionZone(this.viewHelper.linesContentDomNode));
 +		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Start, (e) => this.onTouchStart(e)));
-+		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.End, (e) => this.onTouchEnd(e)));
++		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.End, () => this.onTouchEnd()));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
 -		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
 +		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: GestureEvent) => this.onGestureContextMenu(e)));
-+		// The browser cancels a touch when its long-press recognizer takes it over (text
-+		// selection); Gesture folds that into End, so the distinction is read here, on the
-+		// element, before Gesture's document-level listener runs.
-+		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'touchcancel', () => {
-+			if (this._touchGesture) {
-+				this._touchGesture.canceled = true;
-+			}
-+		}));
-+		// Native-selection support: keep the browser selection and the model selection in
-+		// step, own the clipboard payload, and keep long-press drag-and-drop of selected
-+		// text out of the editor.
-+		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode.ownerDocument, 'selectionchange', () => this.onNativeSelectionChange()));
-+		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode, 'copy', (e: ClipboardEvent) => this.onNativeCopy(e)));
-+		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'dragstart', (e: DragEvent) => {
-+			if (this._lastPointerType === 'touch') {
-+				e.preventDefault();
-+			}
-+		}));
  
  		this._lastPointerType = 'mouse';
 +		this._touchGesture = null;
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
-+		this._nativeSelectionActive = false;
-+		this._lastSyncedModelSelection = null;
-+		this._expectedDomSelection = null;
-+		this._lastScrollTime = 0;
-+		this._activeCaretDrag = null;
-+		this._caretAutoScrollFrame = undefined;
-+		this._caretAutoScrollLastTime = 0;
-+		this._caretClientX = 0;
-+		this._caretClientY = 0;
++		this._activeHandleDrag = null;
++		this._handleAutoScrollFrame = undefined;
++		this._handleAutoScrollLastTime = 0;
++		this._handleClientX = 0;
++		this._handleClientY = 0;
 +
-+		// Native handles only exist for ranges - a collapsed cursor still needs a drag
-+		// affordance for precise placement, so the caret handle stays custom.
-+		this._caretHandle = this.viewHelper.viewDomNode.ownerDocument.createElement('div');
-+		this._caretHandle.className = 'composery-touch-caret-handle';
-+		this._caretHandle.setAttribute('aria-hidden', 'true');
-+		this._caretHandle.style.display = 'none';
-+		this._register(dom.addDisposableListener(this._caretHandle, 'pointerdown', (event: PointerEvent) => this._onCaretPointerDown(event), { passive: false }));
-+		this._register(dom.addDisposableListener(this._caretHandle, 'pointermove', (event: PointerEvent) => this._onCaretPointerMove(event), { passive: false }));
-+		this._register(dom.addDisposableListener(this._caretHandle, 'pointerup', (event: PointerEvent) => this._onCaretPointerUp(event), { passive: false }));
-+		this._register(dom.addDisposableListener(this._caretHandle, 'pointercancel', (event: PointerEvent) => this._onCaretPointerUp(event), { passive: false }));
-+		this.viewHelper.linesContentDomNode.appendChild(this._caretHandle);
-+		// The handle drags via pointer events; without this the same touches also reach the
-+		// Gesture singleton and pan the editor 1:1 with every handle drag (and fling it
-+		// through release inertia - Gesture skips both for ignored targets).
-+		this._register(Gesture.ignoreTarget(this._caretHandle));
++		this._caretHandle = this._createTouchHandle('caret');
++		this._startHandle = this._createTouchHandle('start');
++		this._endHandle = this._createTouchHandle('end');
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +145,155 @@
+@@ -53,18 +106,150 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
 +	public override dispose(): void {
-+		this._stopCaretDrag();
++		this._stopHandleDrag();
 +		this._clearTouchMenuTimer();
 +		this._caretHandle.remove();
++		this._startHandle.remove();
++		this._endHandle.remove();
 +		super.dispose();
++	}
++
++	private _createTouchHandle(kind: TouchHandleKind): HTMLElement {
++		const handle = this.viewHelper.viewDomNode.ownerDocument.createElement('div');
++		handle.className = kind === 'caret' ? 'composery-touch-caret-handle' : `composery-touch-caret-handle composery-touch-range-handle-${kind}`;
++		handle.setAttribute('aria-hidden', 'true');
++		handle.style.display = 'none';
++		this._register(dom.addDisposableListener(handle, 'pointerdown', (event: PointerEvent) => this._onHandlePointerDown(event, kind, handle), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointermove', (event: PointerEvent) => this._onHandlePointerMove(event), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointerup', (event: PointerEvent) => this._onHandlePointerUp(event, handle), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointercancel', (event: PointerEvent) => this._onHandlePointerUp(event, handle), { passive: false }));
++		this.viewHelper.linesContentDomNode.appendChild(handle);
++		// The handles drag via pointer events; without this the same touches also reach
++		// the Gesture singleton and pan the editor 1:1 with every drag (and fling it
++		// through release inertia - Gesture skips both for ignored targets).
++		this._register(Gesture.ignoreTarget(handle));
++		return handle;
 +	}
 +
 +	private onTouchStart(event: GestureEvent): void {
@@ -145,33 +125,21 @@
 +			startedOnText: target.type === MouseTargetType.CONTENT_TEXT,
 +			startedInSelection,
 +			panned: false,
-+			canceled: false,
 +			menuOpened: false,
 +			totalX: 0,
 +			totalY: 0,
 +			pageX: event.pageX,
 +			pageY: event.pageY,
-+			// Long-press inside the existing selection asks for actions on it. The browser
-+			// shows nothing for that press (no contextmenu, its toolbar just stays), so the
-+			// IDE menu opens from this timer - ahead of Gesture's 700ms fallback. iOS
-+			// surfaces its own callout for the same hold and keeps the native UI.
-+			menuTimer: startedInSelection && !isIOS
++			// Long-press inside the existing selection asks for actions on it - the IDE
++			// menu opens from this timer, ahead of Gesture's 700ms long-press, which is
++			// when a long-press elsewhere selects the word instead.
++			menuTimer: startedInSelection
 +				? dom.getWindow(this.viewHelper.viewDomNode).setTimeout(() => this._openTouchSelectionMenu(), TOUCH_SELECTION_MENU_HOLD_TIME)
 +				: undefined
 +		};
 +	}
 +
-+	private onTouchEnd(_event: GestureEvent): void {
-+		const gesture = this._touchGesture;
-+		if (!gesture) {
-+			return;
-+		}
-+		if (gesture.canceled && gesture.menuTimer !== undefined) {
-+			// The browser canceled the touch because its long-press recognizer took over.
-+			// For a press inside the selection it shows nothing - keep the timer so the
-+			// IDE menu still opens mid-hold; the state is reaped by the next touch.
-+			return;
-+		}
++	private onTouchEnd(): void {
 +		this._clearTouchMenuTimer();
 +		this._touchGesture = null;
 +	}
@@ -229,36 +197,25 @@
  	}
  
 +	private onGestureContextMenu(event: GestureEvent): void {
-+		// A pan is a scroll, and after the hold menu the same press must not open a second
-+		// menu. Otherwise this is Gesture's during-hold long-press (it only fires when no
-+		// native contextmenu preempted it - iOS, or non-text areas some engines skip).
++		// A pan is a scroll, and after the in-selection hold menu the same press must
++		// not open a second surface.
 +		if (this._touchGesture?.panned || this._touchGesture?.menuOpened) {
 +			event.preventDefault();
 +			return;
 +		}
 +
-+		super._onContextMenu(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
-+	}
-+
-+	protected override _onContextMenu(e: EditorMouseEvent, testEventTarget: boolean): void {
-+		// On Android a real contextmenu accompanies the browser's own selection work in
-+		// the lines: one fires while a long-press starts the native selection, another
-+		// when a selection-handle drag ends. Neither asks for a menu - the IDE menu on
-+		// touch comes from the in-selection hold timer and the gesture path. Presses on
-+		// non-text areas of the lines (and anything outside them, like the margin) fall
-+		// through and open the menu as before.
-+		if (isAndroid && this._lastPointerType === 'touch' && e.target && this.viewHelper.linesContentDomNode.contains(e.target)) {
-+			const gesture = this._touchGesture;
-+			if (!gesture || gesture.panned || gesture.menuOpened || (gesture.startedOnText && !gesture.startedInSelection)) {
-+				// Device-verified: the selection toolbar only appears when this contextmenu
-+				// keeps its default action, and window.ts preventDefaults whatever bubbles
-+				// to the workbench container - stop the bubbling, keep the default.
-+				e.browserEvent.stopPropagation();
-+				return;
-+			}
++		// A long-press on text selects the word under the finger, exactly as it would
++		// in a textarea; the handles then adjust it and a second hold inside the
++		// selection opens the menu. Non-text spots in the lines keep the menu.
++		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
++		if (target.type === MouseTargetType.CONTENT_TEXT) {
++			event.preventDefault();
++			this.viewHelper.focusTextArea();
++			this._dispatchMouseTarget(target, /*inSelectionMode*/false, /*mouseDownCount*/2);
++			return;
 +		}
 +
-+		super._onContextMenu(e, testEventTarget);
++		super._onContextMenu(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +	}
 +
  	private onChange(event: GestureEvent): void {
@@ -270,8 +227,7 @@
 +					this._touchGesture.panned = true;
 +					this._clearTouchMenuTimer();
 +					// A scroll after all - apply the pan accumulated during the arm window
-+					// at once. Within the window finger jitter must not scroll the view:
-+					// the browser's long-press recognizer is still deciding on selection.
++					// at once. Within the window finger jitter must not scroll the view.
 +					this._context.viewModel.viewLayout.deltaScrollNow(-this._touchGesture.totalX, -this._touchGesture.totalY);
 +				}
 +				return;
@@ -280,7 +236,7 @@
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +303,20 @@
+@@ -74,13 +259,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -303,272 +259,82 @@
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,11 +329,365 @@
+@@ -93,11 +285,182 @@
  		}
  	}
  
-+	// --- native browser selection <-> editor selection ---
-+	// Known ceiling: dragging a native handle against the viewport edge does not
-+	// auto-scroll - the browser cannot scroll Monaco's virtualized lines, so a
-+	// selection larger than one screen means scroll first, then extend. Upgrade
-+	// path: drive viewLayout from the handle touch's position like the caret
-+	// handle does, re-syncing the hit-tested focus as lines slide under it.
-+
-+	private onNativeSelectionChange(): void {
-+		if (this._lastPointerType !== 'touch') {
-+			return;
-+		}
-+		const document = this.viewHelper.viewDomNode.ownerDocument;
-+		const selection = document.getSelection();
-+		const lines = this.viewHelper.viewLinesDomNode;
-+		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-+			// Dismissed (tap elsewhere, Copy, Escape) - the model cursor is not touched;
-+			// taps place it through the gesture path anyway.
-+			this._nativeSelectionActive = false;
-+			this._lastSyncedModelSelection = null;
-+			this._expectedDomSelection = null;
-+			return;
-+		}
-+		if (this._matchesExpectedDomSelection(selection)) {
-+			// Our own containment write coming back around.
-+			return;
-+		}
-+		const anchorInside = !!selection.anchorNode && lines.contains(selection.anchorNode);
-+		const focusInside = !!selection.focusNode && lines.contains(selection.focusNode);
-+		if (!anchorInside && !focusInside) {
-+			if (this._nativeSelectionActive && selection.containsNode(lines, true)) {
-+				// The OS toolbar's Select all selects the whole page: contain it - the
-+				// whole model into the editor selection, the rendered lines into the DOM
-+				// one so the rest of the workbench does not paint selected.
-+				this._applyNativeSelectAll();
-+			} else {
-+				this._nativeSelectionActive = false;
-+				this._lastSyncedModelSelection = null;
-+			}
-+			return;
-+		}
-+		if (this._touchGesture?.panned || Date.now() - this._lastScrollTime < TOUCH_SCROLL_SELECTION_SETTLE_TIME) {
-+			// Scrolling unrenders lines; the browser clamps its selection to the surviving
-+			// nodes and announces the clamp. The model keeps the real selection (and paints
-+			// it) - skip the echo instead of shrinking the selection under the user.
-+			return;
-+		}
-+		const range = selection.getRangeAt(0);
-+		const allRendered = document.createRange();
-+		allRendered.selectNodeContents(lines);
-+		if (range.compareBoundaryPoints(Range.START_TO_START, allRendered) <= 0 && range.compareBoundaryPoints(Range.END_TO_END, allRendered) >= 0) {
-+			// The OS toolbar's Select all can only reach the rendered lines - the rest of
-+			// the workbench is user-select: none and unrendered lines have no DOM. The
-+			// gesture means the whole document: promote the model selection past the
-+			// rendered window (copy reads the model, so Copy-after-Select-all stays whole).
-+			this._setModelSelectionToFullDocument();
-+			return;
-+		}
-+		const anchor = anchorInside ? this._domPointToModelPosition(selection.anchorNode!, selection.anchorOffset) : this._modelEdgeTowards(selection.anchorNode!);
-+		const focus = focusInside ? this._domPointToModelPosition(selection.focusNode!, selection.focusOffset) : this._modelEdgeTowards(selection.focusNode!);
-+		if (!anchor || !focus) {
-+			return;
-+		}
-+		const next = Selection.fromPositions(anchor, focus);
-+		this._nativeSelectionActive = true;
-+		this._lastSyncedModelSelection = next;
-+		if (!this._primaryModelSelection || !next.equalsSelection(this._primaryModelSelection)) {
-+			this.viewController.setSelection(next);
-+		}
-+	}
-+
-+	private _matchesExpectedDomSelection(selection: globalThis.Selection): boolean {
-+		const expected = this._expectedDomSelection;
-+		return !!expected
-+			&& expected.anchorNode === selection.anchorNode && expected.anchorOffset === selection.anchorOffset
-+			&& expected.focusNode === selection.focusNode && expected.focusOffset === selection.focusOffset;
-+	}
-+
-+	private _setModelSelectionToFullDocument(): void {
-+		const model = this._context.viewModel.model;
-+		const lineCount = model.getLineCount();
-+		const all = new Selection(1, 1, lineCount, model.getLineMaxColumn(lineCount));
-+		this._nativeSelectionActive = true;
-+		this._lastSyncedModelSelection = all;
-+		if (!this._primaryModelSelection || !all.equalsSelection(this._primaryModelSelection)) {
-+			this.viewController.setSelection(all);
-+		}
-+	}
-+
-+	private _applyNativeSelectAll(): void {
-+		this._setModelSelectionToFullDocument();
-+		const document = this.viewHelper.viewDomNode.ownerDocument;
-+		const selection = document.getSelection();
-+		if (!selection) {
-+			return;
-+		}
-+		const range = document.createRange();
-+		range.selectNodeContents(this.viewHelper.viewLinesDomNode);
-+		selection.removeAllRanges();
-+		selection.addRange(range);
-+		this._expectedDomSelection = {
-+			anchorNode: selection.anchorNode,
-+			anchorOffset: selection.anchorOffset,
-+			focusNode: selection.focusNode,
-+			focusOffset: selection.focusOffset
-+		};
-+	}
-+
-+	private _domPointToModelPosition(node: Node, offset: number): Position | null {
-+		let spanNode: HTMLElement | null;
-+		let spanOffset: number;
-+		if (node.nodeType === Node.TEXT_NODE) {
-+			spanNode = node.parentElement;
-+			spanOffset = offset;
-+		} else if (node instanceof HTMLElement) {
-+			// Element endpoints appear at range-normalization boundaries (container edges);
-+			// resolve to the nearest rendered text under the boundary.
-+			const atEnd = offset >= node.childNodes.length;
-+			const scope = atEnd ? node : node.childNodes[offset];
-+			const text = this._edgeTextNode(scope, atEnd);
-+			if (text) {
-+				spanNode = text.parentElement;
-+				spanOffset = atEnd ? text.data.length : 0;
-+			} else if (scope instanceof HTMLElement) {
-+				// An empty line renders no text node (Select all ends there); any node
-+				// inside the line resolves to (line, 1) via getPositionFromDOMInfo's
-+				// empty-line special case.
-+				spanNode = scope;
-+				spanOffset = 0;
-+			} else {
-+				return null;
-+			}
-+		} else {
-+			return null;
-+		}
-+		if (!spanNode) {
-+			return null;
-+		}
-+		const viewPosition = this.viewHelper.getPositionFromDOMInfo(spanNode, spanOffset);
-+		return viewPosition ? this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(viewPosition) : null;
-+	}
-+
-+	private _edgeTextNode(scope: Node, last: boolean): Text | null {
-+		if (scope.nodeType === Node.TEXT_NODE) {
-+			return scope as Text;
-+		}
-+		const walker = scope.ownerDocument!.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
-+		let result: Text | null = null;
-+		while (walker.nextNode()) {
-+			result = walker.currentNode as Text;
-+			if (!last) {
-+				break;
-+			}
-+		}
-+		return result;
-+	}
-+
-+	private _modelEdgeTowards(outsideNode: Node): Position {
-+		const model = this._context.viewModel.model;
-+		const precedes = (this.viewHelper.viewLinesDomNode.compareDocumentPosition(outsideNode) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
-+		if (precedes) {
-+			return new Position(1, 1);
-+		}
-+		const lineCount = model.getLineCount();
-+		return new Position(lineCount, model.getLineMaxColumn(lineCount));
-+	}
-+
-+	private onNativeCopy(e: ClipboardEvent): void {
-+		if (e.defaultPrevented || !e.clipboardData) {
-+			return; // the hidden input already handled its own copy
-+		}
-+		if (!this._nativeSelectionActive || !this._primaryModelSelection || this._primaryModelSelection.isEmpty()) {
-+			return;
-+		}
-+		// The OS toolbar copies the DOM selection: rendered spans use no-break spaces and
-+		// stop at the rendered viewport, so the payload must come from the model instead.
-+		const { dataToCopy, metadata } = generateDataToCopyAndStoreInMemory(this._context.viewModel, undefined, isFirefox);
-+		e.preventDefault();
-+		e.clipboardData.setData(Mimes.text, dataToCopy.text);
-+		if (typeof dataToCopy.html === 'string') {
-+			e.clipboardData.setData('text/html', dataToCopy.html);
-+		}
-+		e.clipboardData.setData('vscode-editor-data', JSON.stringify(metadata));
-+	}
-+
 +	// --- view state tracking ---
 +
 +	public override onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean {
 +		super.onCursorStateChanged(e);
 +		this._primarySelection = e.selections[0] ?? null;
 +		this._primaryModelSelection = e.modelSelections[0] ?? null;
-+		if (this._nativeSelectionActive && (!this._primaryModelSelection || !this._lastSyncedModelSelection || !this._lastSyncedModelSelection.equalsSelection(this._primaryModelSelection))) {
-+			// The cursor left the synced selection (tap, typing, an edit) - drop the
-+			// browser selection so the OS toolbar and handles dismiss with it.
-+			this._nativeSelectionActive = false;
-+			this._lastSyncedModelSelection = null;
-+			this._expectedDomSelection = null;
-+			const selection = this.viewHelper.viewDomNode.ownerDocument.getSelection();
-+			if (selection && !selection.isCollapsed && selection.anchorNode && this.viewHelper.linesContentDomNode.contains(selection.anchorNode)) {
-+				selection.removeAllRanges();
-+			}
-+		}
-+		this._updateCaretHandle();
++		this._updateTouchHandles();
 +		return false;
 +	}
 +
 +	public override onScrollChanged(e: viewEvents.ViewScrollChangedEvent): boolean {
-+		this._lastScrollTime = Date.now();
-+		this._updateCaretHandle();
++		this._updateTouchHandles();
 +		return false;
 +	}
 +
 +	public override onConfigurationChanged(e: viewEvents.ViewConfigurationChangedEvent): boolean {
 +		super.onConfigurationChanged(e);
-+		this._updateCaretHandle();
++		this._updateTouchHandles();
 +		return false;
 +	}
 +
-+	// --- caret handle ---
++	// --- selection handles ---
 +
-+	private _updateCaretHandle(): void {
-+		const selection = this._primarySelection;
-+		if (!selection || !selection.isEmpty() || this._lastPointerType !== 'touch') {
-+			this._caretHandle.style.display = 'none';
-+			return;
-+		}
-+
-+		const position = selection.getPosition();
-+		const visibleRange = this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column);
-+		if (!visibleRange || visibleRange.outsideRenderedLine) {
-+			this._caretHandle.style.display = 'none';
-+			return;
-+		}
-+
-+		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
-+		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + lineHeight;
-+		this._caretHandle.style.display = 'block';
-+		this._caretHandle.style.transform = `translate(${Math.round(visibleRange.left)}px, ${Math.round(top)}px)`;
++	private _updateTouchHandles(): void {
++		const selection = this._lastPointerType === 'touch' ? this._primarySelection : null;
++		this._positionHandle(this._caretHandle, selection && selection.isEmpty() ? selection.getPosition() : null);
++		this._positionHandle(this._startHandle, selection && !selection.isEmpty() ? selection.getStartPosition() : null);
++		this._positionHandle(this._endHandle, selection && !selection.isEmpty() ? selection.getEndPosition() : null);
 +	}
 +
-+	private _onCaretPointerDown(event: PointerEvent): void {
++	private _positionHandle(handle: HTMLElement, position: Position | null): void {
++		const visibleRange = position ? this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column) : null;
++		if (!position || !visibleRange || visibleRange.outsideRenderedLine) {
++			handle.style.display = 'none';
++			return;
++		}
++		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
++		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + lineHeight;
++		handle.style.display = 'block';
++		handle.style.transform = `translate(${Math.round(visibleRange.left)}px, ${Math.round(top)}px)`;
++	}
++
++	private _onHandlePointerDown(event: PointerEvent, kind: TouchHandleKind, handle: HTMLElement): void {
 +		if (event.pointerType === 'mouse') {
 +			return;
 +		}
 +
 +		event.preventDefault();
 +		event.stopPropagation();
-+		this._activeCaretDrag = { pointerId: event.pointerId };
-+		this._caretHandle.setPointerCapture(event.pointerId);
++		const selection = this._primaryModelSelection;
++		this._activeHandleDrag = {
++			pointerId: event.pointerId,
++			kind,
++			// The fixed end of a range drag. Model coordinates survive scrolling, so a
++			// drag can auto-scroll far beyond the rendered lines without losing it.
++			anchor: !selection || kind === 'caret' ? null : kind === 'start' ? selection.getEndPosition() : selection.getStartPosition()
++		};
++		handle.setPointerCapture(event.pointerId);
 +		this.viewHelper.focusTextArea();
 +	}
 +
-+	private _onCaretPointerMove(event: PointerEvent): void {
-+		if (!this._activeCaretDrag || event.pointerId !== this._activeCaretDrag.pointerId) {
++	private _onHandlePointerMove(event: PointerEvent): void {
++		if (!this._activeHandleDrag || event.pointerId !== this._activeHandleDrag.pointerId) {
 +			return;
 +		}
 +
 +		event.preventDefault();
 +		event.stopPropagation();
-+		this._caretClientX = event.clientX;
-+		this._caretClientY = event.clientY;
-+		this._updateCaretAutoScroll(event.clientY);
-+		this._setCaretFromClientPoint(event.clientX, event.clientY);
++		this._handleClientX = event.clientX;
++		this._handleClientY = event.clientY;
++		this._updateHandleAutoScroll(event.clientY);
++		this._setSelectionFromClientPoint(event.clientX, event.clientY);
 +	}
 +
 +	private _clampClientYToView(clientY: number): number {
@@ -576,80 +342,87 @@
 +		return Math.max(rect.top + 1, Math.min(rect.bottom - 1, clientY));
 +	}
 +
-+	private _setCaretFromClientPoint(clientX: number, clientY: number): void {
++	private _setSelectionFromClientPoint(clientX: number, clientY: number): void {
++		const drag = this._activeHandleDrag;
++		if (!drag) {
++			return;
++		}
 +		const target = this.getTargetAtClientPoint(clientX, this._clampClientYToView(clientY));
 +		if (!target?.position) {
 +			return;
 +		}
 +
 +		const modelPosition = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
-+		this.viewController.setSelection(Selection.fromPositions(modelPosition));
++		// Dragging one range handle keeps the other end anchored; crossing it flips the
++		// selection direction and the handles swap roles on the next render, exactly
++		// like a textarea's.
++		this.viewController.setSelection(drag.anchor ? Selection.fromPositions(drag.anchor, modelPosition) : Selection.fromPositions(modelPosition));
 +	}
 +
-+	private _updateCaretAutoScroll(clientY: number): void {
++	private _updateHandleAutoScroll(clientY: number): void {
 +		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		const distanceAbove = rect.top + TOUCH_CARET_EDGE_SCROLL_ZONE - clientY;
-+		const distanceBelow = clientY - (rect.bottom - TOUCH_CARET_EDGE_SCROLL_ZONE);
++		const distanceAbove = rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - clientY;
++		const distanceBelow = clientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE);
 +		if (distanceAbove <= 0 && distanceBelow <= 0) {
-+			this._stopCaretAutoScroll();
++			this._stopHandleAutoScroll();
 +			return;
 +		}
 +
-+		if (this._caretAutoScrollFrame !== undefined) {
++		if (this._handleAutoScrollFrame !== undefined) {
 +			return;
 +		}
 +
-+		this._caretAutoScrollLastTime = Date.now();
-+		this._caretAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runCaretAutoScroll());
++		this._handleAutoScrollLastTime = Date.now();
++		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
 +	}
 +
-+	private _runCaretAutoScroll(): void {
-+		this._caretAutoScrollFrame = undefined;
-+		if (!this._activeCaretDrag) {
++	private _runHandleAutoScroll(): void {
++		this._handleAutoScrollFrame = undefined;
++		if (!this._activeHandleDrag) {
 +			return;
 +		}
 +
 +		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		const distanceAbove = Math.max(0, rect.top + TOUCH_CARET_EDGE_SCROLL_ZONE - this._caretClientY);
-+		const distanceBelow = Math.max(0, this._caretClientY - (rect.bottom - TOUCH_CARET_EDGE_SCROLL_ZONE));
++		const distanceAbove = Math.max(0, rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - this._handleClientY);
++		const distanceBelow = Math.max(0, this._handleClientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE));
 +		const direction = distanceAbove > 0 ? -1 : distanceBelow > 0 ? 1 : 0;
 +		if (direction === 0) {
 +			return;
 +		}
 +
-+		const edgeDistance = Math.min(TOUCH_CARET_EDGE_SCROLL_ZONE, Math.max(distanceAbove, distanceBelow));
++		const edgeDistance = Math.min(TOUCH_HANDLE_EDGE_SCROLL_ZONE, Math.max(distanceAbove, distanceBelow));
 +		const now = Date.now();
-+		const elapsed = now - this._caretAutoScrollLastTime;
-+		this._caretAutoScrollLastTime = now;
-+		const speed = TOUCH_CARET_MAX_SCROLL_SPEED * Math.max(0.25, edgeDistance / TOUCH_CARET_EDGE_SCROLL_ZONE);
++		const elapsed = now - this._handleAutoScrollLastTime;
++		this._handleAutoScrollLastTime = now;
++		const speed = TOUCH_HANDLE_MAX_SCROLL_SPEED * Math.max(0.25, edgeDistance / TOUCH_HANDLE_EDGE_SCROLL_ZONE);
 +		this._context.viewModel.viewLayout.deltaScrollNow(0, direction * speed * (elapsed / 1000));
 +		this.viewHelper.renderNow();
-+		this._setCaretFromClientPoint(this._caretClientX, this._caretClientY);
-+		this._caretAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runCaretAutoScroll());
++		this._setSelectionFromClientPoint(this._handleClientX, this._handleClientY);
++		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
 +	}
 +
-+	private _stopCaretAutoScroll(): void {
-+		if (this._caretAutoScrollFrame !== undefined) {
-+			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._caretAutoScrollFrame);
-+			this._caretAutoScrollFrame = undefined;
++	private _stopHandleAutoScroll(): void {
++		if (this._handleAutoScrollFrame !== undefined) {
++			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._handleAutoScrollFrame);
++			this._handleAutoScrollFrame = undefined;
 +		}
 +	}
 +
-+	private _onCaretPointerUp(event: PointerEvent): void {
-+		if (!this._activeCaretDrag || event.pointerId !== this._activeCaretDrag.pointerId) {
++	private _onHandlePointerUp(event: PointerEvent, handle: HTMLElement): void {
++		if (!this._activeHandleDrag || event.pointerId !== this._activeHandleDrag.pointerId) {
 +			return;
 +		}
 +		event.preventDefault();
 +		event.stopPropagation();
-+		this._stopCaretDrag();
++		if (handle.hasPointerCapture(event.pointerId)) {
++			handle.releasePointerCapture(event.pointerId);
++		}
++		this._stopHandleDrag();
 +	}
 +
-+	private _stopCaretDrag(): void {
-+		this._stopCaretAutoScroll();
-+		if (this._activeCaretDrag && this._caretHandle.hasPointerCapture(this._activeCaretDrag.pointerId)) {
-+			this._caretHandle.releasePointerCapture(this._activeCaretDrag.pointerId);
-+		}
-+		this._activeCaretDrag = null;
++	private _stopHandleDrag(): void {
++		this._stopHandleAutoScroll();
++		this._activeHandleDrag = null;
 +	}
 +
  	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {
@@ -669,7 +442,7 @@
  		super._onMouseDown(e, pointerId);
  	}
  }
-@@ -141,8 +731,12 @@
+@@ -141,8 +504,12 @@
  
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super();

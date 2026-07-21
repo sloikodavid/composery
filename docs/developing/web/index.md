@@ -29,28 +29,25 @@ This is a solo project with two long-lived backends and no preview/staging tier:
 | Development | local only | `pnpm run dev`        | dev deployment        | development Clerk instance | Polar sandbox    | dev Hetzner project and Cloudflare namespace   |
 | Production  | `main`     | Production deployment | production deployment | production Clerk instance  | Polar production | production Hetzner project and Cloudflare zone |
 
-**Two config planes**, set in different places:
+**Two config planes**, set in different places. Each plane's variables live in
+one place - its `.env.example.*` files - and the rest of these docs point there
+instead of repeating the list:
 
-- _Frontend env_ is read by Next.js. It lives in `.env.local` (local) and Vercel
-  Production:
-  - `CONVEX_DEPLOYMENT` (Convex CLI only), `NEXT_PUBLIC_CONVEX_URL`.
-  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_CLERK_SIGN_IN_URL`,
-    `CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES` (`proxy.ts`).
-  - `NEXT_PUBLIC_POLAR_ENVIRONMENT`, `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`
-    (`lib/polar-dashboard.ts`), `NEXT_PUBLIC_HETZNER_PROJECT_ID`
-    (`lib/hetzner-dashboard.ts`), `NEXT_PUBLIC_VERCEL_PROJECT_URL` (`lib/vercel-dashboard.ts`).
-- _Convex deployment env_ is read by Convex functions/actions/auth/crons. A
-  human sets it per deployment in the Convex dashboard (Deployment Settings ->
-  Environment Variables); it lives on the deployment, not on your machine:
-  - `CLERK_FRONTEND_API_URL` (`convex/auth.config.ts`).
-  - `WEBSITE_ORIGIN`, `CLOUD_DOMAIN` (`convex/env.ts`).
-  - `POLAR_*` (`convex/billing/polar.ts`), `HETZNER_*` and `SSH_*`
-    (`convex/boxes/infra/`), `CLOUDFLARE_*`, `RUNTIME_IMAGE`, `RUNTIME_PORT`.
-  - `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and `ALERT_EMAIL_FROM` for
-    production staff-only operational alerts (`convex/staffAlerts.ts`).
+- _Frontend env_ is read by Next.js (and the Convex and Clerk CLIs). It lives in
+  `.env.local` locally and in Vercel Production. The full, authoritative list is
+  `packages/web/.env.example.next.dev` (local) and `.env.example.next.prod`
+  (Vercel); [Vercel](./services/vercel.md) covers setting it.
+- _Convex deployment env_ is read by Convex functions, actions, auth, and crons.
+  A human sets it per deployment in the Convex dashboard (Deployment Settings ->
+  Environment Variables); it lives on the deployment, not on your machine. The
+  full, authoritative list is `packages/web/.env.example.convex.dev` and
+  `.env.example.convex.prod`; [Convex](./services/convex.md) covers setting it.
 
-Putting a Convex deployment var in `.env.local` does nothing at runtime - it
-takes effect only on the deployment.
+`CLERK_SECRET_KEY` is the only variable on both planes: the same Clerk secret
+sits in the Next env and on the Convex deployment, the latter for staff-triggered
+account deletion (`convex/accountDeletion.ts`). Otherwise the planes are
+disjoint - putting a Convex deployment var in `.env.local`, or a frontend var on
+the deployment, does nothing at runtime; each plane reads only its own store.
 
 Domain split:
 

@@ -33,7 +33,7 @@
  import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
  import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
  import { CodeWindow, mainWindow } from '../../base/browser/window.js';
-+import { isNarrow, NARROW_QUERY } from './narrowGate.js';
++import { isNarrow } from './narrowGate.js';
  
  //#region Layout Implementation
  
@@ -66,7 +66,7 @@
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1688,6 +1690,46 @@
+@@ -1688,6 +1690,47 @@
  			}));
  		}
  
@@ -78,8 +78,6 @@
 +				this.onContentPartVisibility(partId as Parts, visible);
 +			}
 +		}));
-+		this._register(addDisposableListener(mainWindow.matchMedia(NARROW_QUERY), 'change', () => this.scheduleNarrowLayout()));
-+
 +		// Composery: an editor open REQUEST while a part is fullscreen means the editor wants the
 +		// screen - exit fullscreen and reveal it. showEditorIfHidden covers most of these via
 +		// toggleMaximizedPanel, but not re-opening the already-visible editor (tapping the same
@@ -109,27 +107,27 @@
 +				this.scheduleNarrowLayout();
 +			}
 +		}));
++		// Upstream restores all three content parts asynchronously after the first layout. Reconcile
++		// once that work is done too, so a late restore cannot be the last writer to the grid.
++		this.whenReady.finally(() => this.scheduleNarrowLayout());
 +
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1738,6 +1780,15 @@
+@@ -1738,6 +1781,12 @@
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
 +
-+			// Composery: fullscreen the open part once the real viewport is known at boot (parts
-+			// already visible at init fire no visibility event). Seed the intent from the restored
-+			// layout, or the boot pass reads "no intent" and closes the part the user left open.
-+			if (!this.narrowLayoutInitialized) {
-+				this.narrowLayoutInitialized = true;
-+				this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part));
-+				this.scheduleNarrowLayout();
-+			}
++			// Composery: every upstream layout is a convergence point for responsive state. This
++			// covers boot, resize, rotation, zoom and fullscreen instead of relying on the single
++			// MediaQueryList edge where the viewport crosses the breakpoint.
++			this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part));
++			this.scheduleNarrowLayout();
  		}
  	}
  
-@@ -1887,8 +1938,10 @@
+@@ -1887,8 +1936,10 @@
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
@@ -142,7 +140,7 @@
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2257,28 @@
+@@ -2204,10 +2255,28 @@
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -172,7 +170,7 @@
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2373,137 @@
+@@ -2302,6 +2371,136 @@
  		}
  	}
  
@@ -195,7 +193,6 @@
 +	private inNarrowPartTransition = false;
 +	private editorHiddenForNarrowPart = false;
 +	private narrowPart: Parts | undefined;
-+	private narrowLayoutInitialized = false;
 +	private narrowLayoutScheduled = false;
 +	private desktopPartVisibility: Set<Parts> | undefined;
 +

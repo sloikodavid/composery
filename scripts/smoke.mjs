@@ -150,7 +150,9 @@ async function assertSystemdEnvBridge() {
 
 	await waitForContainerFile("/run/composery.env");
 	execSh("grep -q '^COMPOSERY_PASSWORD=' /run/composery.env");
-	execSh("grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=true$' /run/composery.env");
+	execSh(
+		"grep -q '^COMPOSERY_DISABLE_FILE_DOWNLOADS=true$' /run/composery.env"
+	);
 
 	const cookies = new Map();
 	await login(cookies);
@@ -326,9 +328,11 @@ async function assertApiSmoke() {
 	);
 	if (
 		typeof created.secret !== "string" ||
-		!created.secret.startsWith("csy_")
+		!created.secret.startsWith("composery_")
 	) {
-		throw new Error("composery api key create did not return a csy_ secret.");
+		throw new Error(
+			"composery api key create did not return a composery_ secret."
+		);
 	}
 	const key = created.secret;
 
@@ -378,7 +382,7 @@ async function assertApiSmoke() {
 	const ptyOutput = await runPtyOverWebsocket(key, `echo ${ptyMarker}`);
 	assertContains("PTY websocket output", ptyOutput, ptyMarker);
 
-	const badKeyUpgrade = await ptyWebsocket("csy_not-a-real-key", "true");
+	const badKeyUpgrade = await ptyWebsocket("composery_not-a-real-key", "true");
 	if (badKeyUpgrade.status === 101) {
 		throw new Error("PTY websocket upgraded with an invalid key.");
 	}
@@ -428,7 +432,7 @@ async function assertApiSmoke() {
 		const response = await request("/_composery/api/v1/exec", {
 			body: JSON.stringify({ command: "true" }),
 			headers: {
-				authorization: "Bearer csy_definitely-not-a-real-key",
+				authorization: "Bearer composery_definitely-not-a-real-key",
 				"content-type": "application/json"
 			},
 			method: "POST"

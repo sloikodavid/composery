@@ -92,6 +92,7 @@ docs/
     repository.md
   self-hosting/
     digitalocean.md
+    disk-space.md
     fly.md
     index.md
     koyeb.md
@@ -284,8 +285,10 @@ packages/
       tips.diff
       titlebar-logo.diff
       titlebar-menubar-overflow.diff
+      touch-autofocus.diff
       touch-compact-footer.diff
       touch-context-menu.diff
+      touch-dismiss.diff
       touch-editor-links.diff
       touch-editor.diff
       touch-enter.diff
@@ -297,7 +300,6 @@ packages/
       touch-list-focus.diff
       touch-markdown-links.diff
       touch-menu.diff
-      touch-native-selection.diff
       touch-reveal-guard.diff
       touch-sash.diff
       touch-select.diff
@@ -682,6 +684,7 @@ packages/
       crons.ts
       env.test.ts
       env.ts
+      envExample.test.ts
       http.ts
       roles.test.ts
       roles.ts

@@ -221,7 +221,7 @@ function normalizeIpv6ForDns(ip: string) {
 	return ip.split("/")[0];
 }
 
-function splitIds(value: string | undefined) {
+function splitKeyRefs(value: string | undefined) {
 	return (value ?? "")
 		.split(",")
 		.map((part) => part.trim())
@@ -253,7 +253,7 @@ export function createServerPayload(
 	candidate: PlacementCandidate,
 	slug: string
 ) {
-	const sshKeys = splitIds(requiredEnv("HETZNER_SSH_KEY_IDS"));
+	const sshKeys = splitKeyRefs(requiredEnv("HETZNER_SSH_KEYS"));
 	const firewallId = requiredEnv("HETZNER_FIREWALL_ID");
 	const networkId = optionalEnv("HETZNER_NETWORK_ID");
 

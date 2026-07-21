@@ -125,10 +125,10 @@ fn print_key_list(list: &KeyList) {
         println!("No API keys. Create one with `composery api key create --name <name>`.");
         return;
     }
-    println!("{:<14}  {:<20}  {:<16}  CREATED", "ID", "NAME", "PREFIX");
+    println!("{:<14}  {:<20}  {:<20}  CREATED", "ID", "NAME", "PREFIX");
     for key in &list.keys {
         println!(
-            "{:<14}  {:<20}  {:<16}  {}",
+            "{:<14}  {:<20}  {:<20}  {}",
             key.id,
             key.name,
             key.prefix,

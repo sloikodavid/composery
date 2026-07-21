@@ -1,7 +1,7 @@
 diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/browser/touch.ts
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -93,6 +93,10 @@
+@@ -91,6 +91,10 @@
  	// menu the fallback already opened (Windows fires its native one only on finger-up).
  	private suppressNativeContextMenuUntil = 0;
  
@@ -12,7 +12,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
  
  
-@@ -368,6 +372,9 @@
+@@ -290,6 +294,9 @@
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
@@ -22,7 +22,7 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  				const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
  				evt.pageX = data.rollingPageX.at(-1)!;
  				evt.pageY = data.rollingPageY.at(-1)!;
-@@ -448,6 +455,39 @@
+@@ -365,6 +372,39 @@
  		}
  	}
  
@@ -62,7 +62,16 @@ diff --git a/lib/vscode/src/vs/base/browser/touch.ts b/lib/vscode/src/vs/base/br
  	private onNativeContextMenu(e: MouseEvent): void {
  		if (e.isTrusted && Date.now() < this.suppressNativeContextMenuUntil) {
  			// Composery: the release echo of a long-press whose menu the fallback already
-@@ -628,6 +668,7 @@
+@@ -541,12 +581,16 @@
+ 					// exactly the lever for the menu the fallback may have opened mid-pan.
+ 					mainWindow.dispatchEvent(new MouseEvent('mousedown'));
+ 				} else {
++					// A spent touch is still a gesture whose end Chrome answers with the
++					// keyboard re-open - stand it down over the long-press menu too.
++					this.suppressKeyboardReopen(data.initialTarget);
+ 					continue;
+ 				}
+ 			}
  			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
  				data.tapCancelled = true;
  				this.clearContextMenuTimer(data);

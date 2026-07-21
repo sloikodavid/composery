@@ -36,7 +36,7 @@ composery api key list
 composery api key revoke <id>
 ```
 
-The secret (`csy_...`) is shown once at creation and never again - only its
+The secret (`composery_...`) is shown once at creation and never again - only its
 SHA-256 hash is stored, in `<volume>/api/keys.json` (`0600`, on the persistent
 volume so keys survive a redeploy; `/data` by default). Add `--json` to any command for
 machine-readable output.
@@ -44,8 +44,8 @@ machine-readable output.
 Authenticate with either header:
 
 ```
-Authorization: Bearer csy_...
-X-API-Key: csy_...
+Authorization: Bearer composery_...
+X-API-Key: composery_...
 ```
 
 ## Run a command (one-shot)
@@ -55,7 +55,7 @@ environment your editor terminal has - and returns the result.
 
 ```bash
 curl -X POST https://<your-instance>/_composery/api/v1/exec \
-  -H "Authorization: Bearer csy_..." \
+  -H "Authorization: Bearer composery_..." \
   -H "Content-Type: application/json" \
   -d '{"command":"pnpm build","cwd":"~/app","timeout":600}'
 ```

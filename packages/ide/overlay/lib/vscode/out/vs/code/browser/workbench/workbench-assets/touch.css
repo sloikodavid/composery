@@ -9,10 +9,10 @@
 }
 
 /*
- * The collapsed-cursor drag handle (touch-editor.diff). Range selection is native (browser
- * handles + OS toolbar), but no browser offers a caret handle in non-editable content, so
- * precise cursor placement keeps this custom one. Visibility is driven from JS, which only
- * shows it for touch pointers.
+ * Editor selection drag handles (touch-editor.diff): the collapsed caret and both range
+ * ends. The browser cannot provide these - its selection UI aims at the focused element,
+ * and the editor's focused element is a hidden one-pixel input, never the rendered lines.
+ * Visibility is driven from JS, which only shows them for touch pointers.
  */
 .composery-touch-caret-handle {
 	background: var(--vscode-editorCursor-foreground);
@@ -42,36 +42,25 @@
 	width: 2px;
 }
 
-/*
- * Native text selection in the code editor (touch-editor.diff + touch-native-selection.diff).
- * The lines must be selectable for the browser's long-press selection to exist at all -
- * upstream only allows that on Safari/WebKit (enable-user-select), Chromium gets
- * no-user-select. The margin stays unselectable so line numbers never join a selection.
- * The browser's own selection paint is disabled: the model selection is synced from it and
- * Monaco already paints that one - two highlights in two colors would stack otherwise.
- * touch-action: none keeps the un-prevented initial touch (touch-native-selection.diff)
- * out of the browser's pan/zoom gestures without disturbing its long-press selection.
- * !important: this sheet is a head <link>, workbench styles inject later and win ties.
- */
-@media (hover: none), (any-pointer: coarse) {
-	.monaco-workbench .monaco-editor .view-line,
-	.monaco-workbench .monaco-editor .view-lines {
-		user-select: text !important;
-		-webkit-user-select: text !important;
-	}
+/* Range handles are mirrored teardrops whose tips anchor at the selection edges. */
+.composery-touch-range-handle-start,
+.composery-touch-range-handle-end {
+	margin-top: 0;
+}
 
-	.monaco-workbench .monaco-editor .margin {
-		user-select: none !important;
-		-webkit-user-select: none !important;
-	}
+.composery-touch-range-handle-start {
+	border-radius: 999px 0 999px 999px;
+	margin-left: -20px;
+}
 
-	.monaco-workbench .monaco-editor .lines-content {
-		touch-action: none;
-	}
+.composery-touch-range-handle-end {
+	border-radius: 0 999px 999px 999px;
+	margin-left: -2px;
+}
 
-	.monaco-workbench .monaco-editor .view-lines ::selection {
-		background: transparent;
-	}
+.composery-touch-range-handle-start::before,
+.composery-touch-range-handle-end::before {
+	content: none;
 }
 
 .keybindings-editor > .keybindings-body > .keybindings-table-container {

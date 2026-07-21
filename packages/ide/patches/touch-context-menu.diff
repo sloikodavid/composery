@@ -1,6 +1,6 @@
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -27,6 +27,10 @@
+@@ -27,6 +27,11 @@
  	rollingTimestamps: number[];
  	rollingPageX: number[];
  	rollingPageY: number[];
@@ -8,6 +8,7 @@
 +	contextMenuFired: boolean;
 +	tapCancelled: boolean;
 +	syntheticContextMenu: boolean;
++	initialEventTimeStamp: number;
  }
  
  export interface GestureEvent extends MouseEvent {
@@ -58,7 +59,7 @@
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +193,42 @@
+@@ -168,9 +194,45 @@
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -67,7 +68,10 @@
 +				contextMenuTimer: undefined,
 +				contextMenuFired: false,
 +				tapCancelled: false,
-+				syntheticContextMenu: false
++				syntheticContextMenu: false,
++				// The event's own timeStamp carries the finger's true timing even when
++				// delivery to the page lags behind (see the pan-revert in onTouchMove).
++				initialEventTimeStamp: e.timeStamp
  			};
  
 +			// Composery: fire the long-press context menu DURING the hold, as native platforms
@@ -272,14 +276,29 @@
  			}
  		});
  	}
-@@ -354,6 +511,16 @@
+@@ -354,6 +515,31 @@
  
  			const data = this.activeTouches[touch.identifier];
  
-+			// Composery: after the during-hold menu fired the touch is spent - no more panning.
-+			// Once movement becomes a pan, release must not synthesize a tap or long press.
++			// Composery: after the during-hold menu fired the touch is spent - no more panning
++			// - except when the verdict was wrong: janky event delivery can hold a real pan's
++			// moves until after the hold timer fired (the settings list on a busy phone), and
++			// eating them leaves scrolling dead. The event timeStamps carry the finger's true
++			// timing: if it was panning inside the hold window, revert the fallback. Owners
++			// that consumed the hold keep it - that drag extends the editor's word-selection.
 +			if (data.contextMenuFired) {
-+				continue;
++				if (data.syntheticContextMenu
++					&& e.timeStamp - data.initialEventTimeStamp < Gesture.HOLD_DELAY
++					&& Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
++					data.contextMenuFired = false;
++					data.syntheticContextMenu = false;
++					this.suppressNativeContextMenuUntil = 0;
++					// ContextMenuHandler closes on any window mousedown outside its menu -
++					// exactly the lever for the menu the fallback may have opened mid-pan.
++					mainWindow.dispatchEvent(new MouseEvent('mousedown'));
++				} else {
++					continue;
++				}
 +			}
 +			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
 +				data.tapCancelled = true;
@@ -465,6 +484,18 @@
  
  		// Keyboard accessibility
  		disposables.add(addDisposableListener(tab, EventType.KEY_UP, e => {
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -439,6 +439,8 @@
+ 	private createContainerContextMenu(): void {
+ 		this._register(addDisposableListener(this.element, EventType.CONTEXT_MENU, e => this.onShowContainerContextMenu(e)));
+-		this._register(addDisposableListener(this.element, TouchEventType.Contextmenu, () => this.onShowContainerContextMenu()));
++		// Composery: no gesture context menu listener - it never fired (the group is not a
++		// Gesture target) and would double the menu the day one is added; an unconsumed
++		// long-press comes back through Gesture's native contextmenu re-fire above.
+ 	}
+ 
+ 	private onShowContainerContextMenu(e?: MouseEvent): void {
 --- a/lib/vscode/src/vs/workbench/browser/parts/editor/singleEditorTabsControl.ts
 +++ b/lib/vscode/src/vs/workbench/browser/parts/editor/singleEditorTabsControl.ts
 @@ -93,7 +93,9 @@

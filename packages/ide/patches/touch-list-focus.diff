@@ -49,18 +49,28 @@ diff --git a/lib/vscode/src/vs/base/browser/ui/list/listView.ts b/lib/vscode/src
  		const previousRenderRange = this.getRenderRange(this.lastRenderTop, this.lastRenderHeight);
  		const deleteRange = { start, end: start + deleteCount };
  		const removeRange = Range.intersect(previousRenderRange, deleteRange);
-@@ -882,6 +895,20 @@
+@@ -882,6 +895,30 @@
  		}
++
++		// Composery: renderHeight still reads the height this list was last rendered at.
++		const heightShrank = scrollDimensions.height! < this.renderHeight;
  
  		this.scrollableElement.setScrollDimensions(scrollDimensions);
 +
 +		// Composery: the on-screen keyboard shrinks the list exactly while someone types
 +		// into a row control (the settings editor); the shrink alone leaves that control
 +		// below the new fold, alive only through the render() pin and invisible under the
-+		// keyboard. Now that the scroll clamp knows the new height, bring it back on screen.
++		// keyboard. Gate on the shrink itself: revealing on any other layout would teleport
++		// the list back to the focused row whenever an unrelated relayout runs mid-scroll.
 +		const active = getActiveElement();
-+		if (active instanceof HTMLElement && this.rowsContainer.contains(active)) {
-+			const rowElement = active.closest('.monaco-list-row');
++		if (heightShrank && active instanceof HTMLElement && this.rowsContainer.contains(active)) {
++			// Walk to the row that is OUR direct child: settings rows nest their own
++			// data-index'd rows (list/object settings), so the nearest one up can belong
++			// to a different list entirely.
++			let rowElement: HTMLElement | null = active;
++			while (rowElement && rowElement.parentElement !== this.rowsContainer) {
++				rowElement = rowElement.parentElement;
++			}
 +			const index = rowElement ? Number(rowElement.getAttribute('data-index')) : NaN;
 +			const item = this.items[index];
 +			if (item?.row && this.elementTop(index) + item.size > this.scrollTop + scrollDimensions.height!) {

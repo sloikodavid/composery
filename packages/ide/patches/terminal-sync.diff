@@ -1,0 +1,347 @@
+diff --git a/lib/vscode/src/vs/platform/terminal/common/terminal.ts b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
+index 0238d70..99d61fd 100644
+--- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
++++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
+@@ -1127,6 +1127,8 @@ export interface ITerminalCommandSelector {
+ 
+ export interface ITerminalBackend extends ITerminalBackendPtyServiceContributions {
+ 	readonly remoteAuthority: string | undefined;
++	/** Fired when another renderer creates a persistent terminal on this backend. */
++	readonly onDidRequestTerminalSync?: Event<void>;
+ 
+ 	readonly isResponsive: boolean;
+ 
+diff --git a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+index 2f8d40d..6ab4bf4 100644
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -91,6 +91,36 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
+ 
+ type WorkspaceId = string;
+ 
++function mergeTerminalLayouts(workspaceId: string, layout: ISetTerminalLayoutInfoArgs | undefined, processes: Iterable<readonly [number, PersistentTerminalProcess]>): ISetTerminalLayoutInfoArgs | undefined {
++	const tabs = layout?.tabs.map(tab => ({ ...tab, terminals: [...tab.terminals] })) ?? [];
++	const background = [...(layout?.background ?? [])];
++	const knownIds = new Set([
++		...tabs.flatMap(tab => tab.terminals.map(terminal => terminal.terminal)),
++		...background
++	]);
++
++	for (const [id, process] of processes) {
++		if (process.workspaceId !== workspaceId || !process.shouldPersistTerminal || knownIds.has(id)) {
++			continue;
++		}
++		knownIds.add(id);
++		if (process.shellLaunchConfig.hideFromUser) {
++			background.push(id);
++		} else {
++			tabs.push({
++				isActive: false,
++				activePersistentProcessId: id,
++				terminals: [{ terminal: id, relativeSize: 1 }]
++			});
++		}
++	}
++
++	if (!layout && tabs.length === 0 && background.length === 0) {
++		return undefined;
++	}
++	return { workspaceId, tabs, background };
++}
++
+ let SerializeAddon: typeof XtermSerializeAddon;
+ let Unicode11Addon: typeof XtermUnicode11Addon;
+ 
+@@ -576,7 +606,10 @@ export class PtyService extends Disposable implements IPtyService {
+ 	@traceRpc
+ 	async getTerminalLayoutInfo(args: IGetTerminalLayoutInfoArgs): Promise<ITerminalsLayoutInfo | undefined> {
+ 		performance.mark('code/willGetTerminalLayoutInfo');
+-		const layout = this._workspaceLayoutInfos.get(args.workspaceId);
++		// Renderer snapshots are necessarily partial when several browsers share a workspace.
++		// Reconcile them with the authoritative process registry so one browser can never hide a
++		// terminal created by another, even if its last saved layout was empty or stale.
++		const layout = mergeTerminalLayouts(args.workspaceId, this._workspaceLayoutInfos.get(args.workspaceId), this._ptys);
+ 		if (layout) {
+ 			const doneSet: Set<number> = new Set();
+ 			const expandedTabs = await Promise.all(layout.tabs.map(async tab => this._expandTerminalTab(args.workspaceId, tab, doneSet)));
+@@ -613,7 +646,10 @@ export class PtyService extends Disposable implements IPtyService {
+ 			}
+ 			doneSet.add(persistentProcessId);
+ 			const persistentProcess = this._throwIfNoPty(persistentProcessId);
+-			const processDetails = persistentProcess && await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined);
++			if (persistentProcess.workspaceId !== workspaceId || !persistentProcess.shouldPersistTerminal) {
++				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
++			}
++			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
+ 			return {
+ 				terminal: { ...processDetails, id: persistentProcessId },
+ 				relativeSize: hasLayout ? t.relativeSize : 0
+@@ -635,11 +671,11 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return `${workspaceId}-${ptyId}`;
+ 	}
+ 
+-	private async _buildProcessDetails(id: number, persistentProcess: PersistentTerminalProcess, wasRevived: boolean = false): Promise<IProcessDetails> {
++	private async _buildProcessDetails(id: number, persistentProcess: PersistentTerminalProcess, wasRevived: boolean = false, checkOrphan: boolean = true): Promise<IProcessDetails> {
+ 		performance.mark(`code/willBuildProcessDetails/${id}`);
+ 		// If the process was just revived, don't do the orphan check as it will
+ 		// take some time
+-		const [cwd, isOrphan] = await Promise.all([persistentProcess.getCwd(), wasRevived ? true : persistentProcess.isOrphaned()]);
++		const [cwd, isOrphan] = await Promise.all([persistentProcess.getCwd(), wasRevived ? true : checkOrphan ? persistentProcess.isOrphaned() : false]);
+ 		const result = {
+ 			id,
+ 			title: persistentProcess.title,
+@@ -829,16 +865,23 @@ class PersistentTerminalProcess extends Disposable {
+		}
+		this._disconnectRunner1.cancel();
+		this._disconnectRunner2.cancel();
+	}
+
+	async detach(forcePersist?: boolean): Promise<void> {
+-		// Keep the process around if it was indicated to persist and it has had some iteraction or
+-		// was replayed
++		// A persistent terminal can be attached to several browser windows. Only the final renderer
++		// detaching may start its grace timer or stop it; otherwise a phone reload could kill the
++		// terminal that is still open on a laptop.
++		if (!await this.isOrphaned()) {
++			return;
++		}
++		// Keep the process around if it was indicated to persist and it has had some interaction or
++		// was replayed.
+ 		if (this.shouldPersistTerminal && (this._interactionState.value !== InteractionState.None || forcePersist)) {
+-			this._disconnectRunner1.schedule();
++			this._logService.info(`Persistent process "${this._persistentProcessId}": Parked until a renderer attaches or the user closes it`);
++			return;
+		} else {
+			this.shutdown(true);
+		}
+	}
+
+	serializeNormalBuffer(): Promise<IPtyHostProcessReplayEvent> {
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts b/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts
+@@ -11,6 +11,8 @@ import { BasePty } from '../common/basePty.js';
+  * created on the local pty host.
+  */
+ export class LocalPty extends BasePty implements ITerminalChildProcess {
++	private _isDetached = false;
++
+ 	constructor(
+ 		id: number,
+ 		shouldPersist: boolean,
+@@ -23,8 +25,14 @@ export class LocalPty extends BasePty implements ITerminalChildProcess {
+ 		return this._proxy.start(this.id);
+ 	}
+ 
+-	detach(forcePersist?: boolean): Promise<void> {
+-		return this._proxy.detachFromProcess(this.id, forcePersist);
++	async detach(forcePersist?: boolean): Promise<void> {
++		this._isDetached = true;
++		try {
++			return await this._proxy.detachFromProcess(this.id, forcePersist);
++		} catch (error) {
++			this._isDetached = false;
++			throw error;
++		}
+ 	}
+ 
+ 	shutdown(immediate: boolean): void {
+@@ -92,6 +101,8 @@ export class LocalPty extends BasePty implements ITerminalChildProcess {
+ 	}
+ 
+ 	handleOrphanQuestion() {
+-		this._proxy.orphanQuestionReply(this.id);
++		if (!this._isDetached) {
++			this._proxy.orphanQuestionReply(this.id);
++		}
+ 	}
+ }
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts
+index 68d16e8..a2b1022 100644
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts
+@@ -12,6 +12,7 @@ import { hasKey } from '../../../../base/common/types.js';
+ 
+ export class RemotePty extends BasePty implements ITerminalChildProcess {
+ 	private readonly _startBarrier: Barrier;
++	private _isDetached = false;
+ 
+ 	constructor(
+ 		id: number,
+@@ -47,7 +48,16 @@ export class RemotePty extends BasePty implements ITerminalChildProcess {
+ 
+ 	async detach(forcePersist?: boolean): Promise<void> {
+ 		await this._startBarrier.wait();
+-		return this._remoteTerminalChannel.detachFromProcess(this.id, forcePersist);
++		// Stop answering orphan questions before the detach request reaches the pty host. This lets
++		// the host distinguish this renderer leaving from the final renderer leaving when a terminal
++		// is mirrored across multiple browser windows.
++		this._isDetached = true;
++		try {
++			return await this._remoteTerminalChannel.detachFromProcess(this.id, forcePersist);
++		} catch (error) {
++			this._isDetached = false;
++			throw error;
++		}
+ 	}
+ 
+ 	shutdown(immediate: boolean): void {
+@@ -126,6 +136,8 @@ export class RemotePty extends BasePty implements ITerminalChildProcess {
+ 	}
+ 
+ 	handleOrphanQuestion() {
+-		this._remoteTerminalChannel.orphanQuestionReply(this.id);
++		if (!this._isDetached) {
++			this._remoteTerminalChannel.orphanQuestionReply(this.id);
++		}
+ 	}
+ }
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+index b03a5f2..3c17cff 100644
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+@@ -52,6 +52,8 @@ export class RemoteTerminalBackendContribution implements IWorkbenchContribution
+ 
+ class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBackend {
+ 	private readonly _ptys: Map<number, RemotePty> = new Map();
++	private readonly _onDidRequestTerminalSync = this._register(new Emitter<void>());
++	readonly onDidRequestTerminalSync = this._onDidRequestTerminalSync.event;
+ 
+ 	private readonly _whenConnected = new DeferredPromise<void>();
+ 	get whenReady(): Promise<void> { return this._whenConnected.p; }
+@@ -88,7 +90,16 @@ class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBack
+ 		}));
+ 		this._register(this._remoteTerminalChannel.onProcessOrphanQuestion(e => this._ptys.get(e.id)?.handleOrphanQuestion()));
+ 		this._register(this._remoteTerminalChannel.onDidRequestDetach(e => this._onDidRequestDetach.fire(e)));
+-		this._register(this._remoteTerminalChannel.onProcessReady(e => this._ptys.get(e.id)?.handleReady(e.event)));
++		this._register(this._remoteTerminalChannel.onProcessReady(e => {
++			const pty = this._ptys.get(e.id);
++			if (pty) {
++				pty.handleReady(e.event);
++			} else {
++				// Process events are broadcast by the shared remote pty host. An unknown persistent
++				// process was created by another browser, so reconcile this workbench immediately.
++				this._onDidRequestTerminalSync.fire();
++			}
++		}));
+ 		this._register(this._remoteTerminalChannel.onDidChangeProperty(e => this._ptys.get(e.id)?.handleDidChangeProperty(e.property)));
+ 		this._register(this._remoteTerminalChannel.onProcessExit(e => {
+ 			const pty = this._ptys.get(e.id);
+diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
+index 152d14d..cde679d 100644
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
+@@ -82,6 +82,7 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 	private _terminalCountContextKey: IContextKey<number>;
+ 	private _nativeDelegate?: ITerminalServiceNativeDelegate;
+ 	private _shutdownWindowCount?: number;
++	private _remoteTerminalSync: Promise<void> = Promise.resolve();
+ 
+ 	get isProcessSupportRegistered(): boolean { return !!this._processSupportContextKey.get(); }
+ 
+@@ -458,13 +459,11 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		if (!backend) {
+ 			return;
+ 		}
+-		mark('code/terminal/willGetTerminalLayoutInfo');
+-		const layoutInfo = await backend.getTerminalLayoutInfo();
+-		mark('code/terminal/didGetTerminalLayoutInfo');
++		if (backend.onDidRequestTerminalSync) {
++			this._register(backend.onDidRequestTerminalSync(() => this._queueRemoteTerminalSync(backend)));
++		}
++		await this._queueRemoteTerminalSync(backend);
+ 		backend.reduceConnectionGraceTime();
+-		mark('code/terminal/willRecreateTerminalGroups');
+-		await this._recreateTerminalGroups(layoutInfo);
+-		mark('code/terminal/didRecreateTerminalGroups');
+ 		// now that terminals have been restored,
+ 		// attach listeners to update remote when terminals are changed
+ 		this._attachProcessLayoutListeners();
+@@ -472,6 +471,25 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		this._logService.trace('Reconnected to remote terminals');
+ 	}
+ 
++	private _queueRemoteTerminalSync(backend: ITerminalBackend): Promise<void> {
++		const sync = this._remoteTerminalSync.then(async () => {
++			mark('code/terminal/willGetTerminalLayoutInfo');
++			const layoutInfo = await backend.getTerminalLayoutInfo();
++			mark('code/terminal/didGetTerminalLayoutInfo');
++			mark('code/terminal/willRecreateTerminalGroups');
++			await this._recreateTerminalGroups(layoutInfo, true);
++			const knownIds = new Set(this.instances.map(instance => instance.persistentProcessId));
++			const background = layoutInfo?.background?.filter(terminal => terminal && !knownIds.has(terminal.id)) ?? [];
++			const revivedInstances = await this._reviveBackgroundTerminalInstances(background);
++			this._backgroundedTerminalInstances.push(...revivedInstances.map(instance => ({ instance })));
++			mark('code/terminal/didRecreateTerminalGroups');
++		});
++		// Keep future notifications usable after a failed sync, while returning the original promise
++		// so startup observes and reports the failure instead of silently claiming success.
++		this._remoteTerminalSync = sync.catch(error => this._logService.error('Failed to synchronize remote terminals', error));
++		return sync;
++	}
++
+ 	private async _reconnectToLocalTerminals(): Promise<void> {
+ 		const localBackend = await this._terminalInstanceService.getBackend();
+ 		if (!localBackend) {
+@@ -494,15 +512,16 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		this._logService.trace('Reconnected to local terminals');
+ 	}
+ 
+-	private _recreateTerminalGroups(layoutInfo?: ITerminalsLayoutInfo): Promise<ITerminalGroup[]> {
++	private _recreateTerminalGroups(layoutInfo?: ITerminalsLayoutInfo, includeAttached: boolean = false): Promise<ITerminalGroup[]> {
+ 		const groupPromises: Promise<ITerminalGroup | undefined>[] = [];
+ 		let activeGroup: Promise<ITerminalGroup | undefined> | undefined;
+ 		if (layoutInfo) {
+ 			for (const tabLayout of layoutInfo.tabs) {
+-				const terminalLayouts = tabLayout.terminals.filter(t => t.terminal && t.terminal.isOrphan);
+-				if (terminalLayouts.length) {
+-					this._restoredGroupCount += terminalLayouts.length;
+-					const promise = this._recreateTerminalGroup(tabLayout, terminalLayouts);
++				const terminalLayouts = tabLayout.terminals.filter((t): t is IRawTerminalInstanceLayoutInfo<IPtyHostAttachTarget> => !!t.terminal && (includeAttached || t.terminal.isOrphan));
++				const missingTerminalCount = terminalLayouts.filter(t => !this.instances.some(instance => instance.persistentProcessId === t.terminal.id)).length;
++				if (missingTerminalCount) {
++					this._restoredGroupCount += missingTerminalCount;
++					const promise = this._recreateTerminalGroup(tabLayout, terminalLayouts, includeAttached);
+ 					groupPromises.push(promise);
+ 					if (tabLayout.isActive) {
+ 						activeGroup = promise;
+@@ -533,21 +552,31 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		return instances;
+ 	}
+ 
+-	private async _recreateTerminalGroup(tabLayout: IRawTerminalTabLayoutInfo<IPtyHostAttachTarget | null>, terminalLayouts: IRawTerminalInstanceLayoutInfo<IPtyHostAttachTarget | null>[]): Promise<ITerminalGroup | undefined> {
+-		let lastInstance: Promise<ITerminalInstance> | undefined;
++	private async _recreateTerminalGroup(tabLayout: IRawTerminalTabLayoutInfo<IPtyHostAttachTarget | null>, terminalLayouts: IRawTerminalInstanceLayoutInfo<IPtyHostAttachTarget>[], includeAttached: boolean): Promise<ITerminalGroup | undefined> {
++		const lastInstance = terminalLayouts
++			.map(terminalLayout => this.instances.find(instance => instance.persistentProcessId === terminalLayout.terminal.id))
++			.find((instance): instance is ITerminalInstance => !!instance);
++		let lastInstancePromise = lastInstance ? Promise.resolve(lastInstance) : undefined;
+ 		for (const terminalLayout of terminalLayouts) {
+-			const attachPersistentProcess = terminalLayout.terminal!;
+-			if (this._lifecycleService.startupKind !== StartupKind.ReloadedWindow && attachPersistentProcess.type === 'Task') {
++			const attachPersistentProcess = terminalLayout.terminal;
++			const existingInstance = this.instances.find(instance => instance.persistentProcessId === attachPersistentProcess.id);
++			if (existingInstance) {
++				if (!lastInstancePromise) {
++					lastInstancePromise = Promise.resolve(existingInstance);
++				}
++				continue;
++			}
++			if (!includeAttached && this._lifecycleService.startupKind !== StartupKind.ReloadedWindow && attachPersistentProcess.type === 'Task') {
+ 				continue;
+ 			}
+ 			mark(`code/terminal/willRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`);
+-			lastInstance = this.createTerminal({
++			lastInstancePromise = this.createTerminal({
+ 				config: { attachPersistentProcess },
+-				location: lastInstance ? { parentTerminal: lastInstance } : TerminalLocation.Panel
++				location: lastInstancePromise ? { parentTerminal: lastInstancePromise } : TerminalLocation.Panel
+ 			});
+-			lastInstance.then(() => mark(`code/terminal/didRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`));
++			lastInstancePromise.then(() => mark(`code/terminal/didRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`));
+ 		}
+-		const group = lastInstance?.then(instance => {
++		const group = lastInstancePromise?.then(instance => {
+ 			const g = this._terminalGroupService.getGroupForInstance(instance);
+ 			g?.resizePanes(tabLayout.terminals.map(terminal => terminal.relativeSize));
+ 			return g;
