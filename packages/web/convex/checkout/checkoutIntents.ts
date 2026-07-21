@@ -1,13 +1,20 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
-import { internalMutation, internalQuery } from "../_generated/server";
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx
+} from "../_generated/server";
 import { assertSlugAvailable } from "../boxes/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
 } from "../boxes/boxRetention";
-import { readGlobalSettings } from "../settings";
+import {
+	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
+	readGlobalSettings
+} from "../settings";
 import { CLOUD_TERMS_VERSION } from "../../lib/cloud-legal";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
@@ -15,7 +22,10 @@ import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 // Polar checkout metadata keys. Set when creating a checkout and read back from
 // paid orders to reconnect a completed payment to the reserved intent.
 export const CHECKOUT_INTENT_METADATA_KEYS = {
-	billingInterval: "composery_billing_interval",
+	// What the pricing page toggle was set to, not what was bought: Polar
+	// checkout offers both products and the customer may switch. Analytics only
+	// - the sold interval is the subscription's recurringInterval.
+	selectedBillingInterval: "composery_selected_billing_interval",
 	intentId: "composery_checkout_intent_id",
 	slug: "composery_box_slug",
 	userId: "composery_clerk_user_id"
@@ -52,6 +62,49 @@ export function paidOrderRecordingStatus(
 	return "recorded" as const;
 }
 
+// How many of a user's oldest active reservations must yield so a new one fits
+// under the cap. Zero while there is room.
+export function reservationsToRelease(activeCount: number, cap: number) {
+	if (
+		!Number.isInteger(activeCount) ||
+		activeCount < 0 ||
+		activeCount > MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER
+	) {
+		throw new RangeError("Active checkout reservation count is out of bounds");
+	}
+	if (
+		!Number.isInteger(cap) ||
+		cap < 1 ||
+		cap > MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER
+	) {
+		throw new RangeError("Checkout reservation limit is out of bounds");
+	}
+	return Math.max(0, activeCount - cap + 1);
+}
+
+// Every terminal transition of an unpaid intent looks the same: stop holding the
+// slug and capacity, keep why, and schedule the purge.
+async function releaseIntentDoc(
+	ctx: MutationCtx,
+	intent: Doc<"box_checkout_intents">,
+	release: {
+		polarCheckoutStatus?: string;
+		reason: string;
+		status: "expired" | "released";
+	}
+) {
+	const timestamp = Date.now();
+	await ctx.db.patch(intent._id, {
+		status: release.status,
+		polar_checkout_status: release.polarCheckoutStatus,
+		released_at: timestamp,
+		release_reason: release.reason,
+		purge_at: unpaidCheckoutPurgeAt(timestamp),
+		...terminalCheckoutSecretPatch(),
+		updated_at: timestamp
+	});
+}
+
 export const reserveCheckoutIntent = internalMutation({
 	args: {
 		slug: v.string(),
@@ -70,19 +123,29 @@ export const reserveCheckoutIntent = internalMutation({
 
 		// A user reserving a slug removes it from everyone else's namespace and
 		// commits one complete infrastructure package until checkout converts or
-		// lapses. The per-user cap separately bounds reservation hoarding; it is not
-		// a limit on paid boxes.
+		// lapses. The per-user cap bounds how many a user holds at once; it is not a
+		// limit on paid boxes, and reaching it does not block the sale. Nothing lets
+		// a user cancel a reservation, and an abandoned one is exactly what the cap
+		// exists to reclaim, so the oldest yields to the new one. Payment arriving
+		// late on a released intent still converts or refunds, as when the TTL sweep
+		// releases it.
 		const cap = settings.maxActiveCheckoutIntentsPerUser;
 		const active = await ctx.db
 			.query("box_checkout_intents")
 			.withIndex("user_id_status", (query) =>
 				query.eq("user_id", args.userId).eq("status", "active")
 			)
-			.take(cap);
-		if (active.length >= cap) {
-			throw new ConvexError(
-				"Too many pending checkouts. Finish or cancel an existing one before reserving another box."
-			);
+			.take(MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER + 1);
+		// Index order is oldest first, so these are the stalest reservations. A cap
+		// lowered below the live count is enforced before the replacement is added.
+		for (const stale of active.slice(
+			0,
+			reservationsToRelease(active.length, cap)
+		)) {
+			await releaseIntentDoc(ctx, stale, {
+				reason: "superseded_by_new_reservation",
+				status: "released"
+			});
 		}
 
 		const timestamp = Date.now();
@@ -157,15 +220,10 @@ export const releaseCheckoutIntent = internalMutation({
 		const intent = await ctx.db.get(args.intentId);
 		if (!intent || intent.status !== "active" || intent.box_id) return false;
 
-		const timestamp = Date.now();
-		await ctx.db.patch(intent._id, {
-			status: "released",
-			polar_checkout_status: args.polarCheckoutStatus,
-			released_at: timestamp,
-			release_reason: args.reason,
-			purge_at: unpaidCheckoutPurgeAt(timestamp),
-			...terminalCheckoutSecretPatch(),
-			updated_at: timestamp
+		await releaseIntentDoc(ctx, intent, {
+			polarCheckoutStatus: args.polarCheckoutStatus,
+			reason: args.reason,
+			status: "released"
 		});
 		await reconcileCapacityAlert(ctx);
 
@@ -189,15 +247,10 @@ export const releaseCheckoutIntentByPolarCheckout = internalMutation({
 
 		if (!intent || intent.status !== "active" || intent.box_id) return false;
 
-		const timestamp = Date.now();
-		await ctx.db.patch(intent._id, {
-			status: args.reason === "checkout_expired" ? "expired" : "released",
-			polar_checkout_status: args.polarCheckoutStatus,
-			released_at: timestamp,
-			release_reason: args.reason,
-			purge_at: unpaidCheckoutPurgeAt(timestamp),
-			...terminalCheckoutSecretPatch(),
-			updated_at: timestamp
+		await releaseIntentDoc(ctx, intent, {
+			polarCheckoutStatus: args.polarCheckoutStatus,
+			reason: args.reason,
+			status: args.reason === "checkout_expired" ? "expired" : "released"
 		});
 		await reconcileCapacityAlert(ctx);
 
@@ -304,13 +357,9 @@ export const releaseExpiredCheckoutIntents = internalMutation({
 			.take(100);
 
 		for (const intent of expired) {
-			await ctx.db.patch(intent._id, {
-				status: "expired",
-				released_at: timestamp,
-				release_reason: "checkout_expired_sweep",
-				purge_at: unpaidCheckoutPurgeAt(timestamp),
-				...terminalCheckoutSecretPatch(),
-				updated_at: timestamp
+			await releaseIntentDoc(ctx, intent, {
+				reason: "checkout_expired_sweep",
+				status: "expired"
 			});
 		}
 		if (expired.length > 0) await reconcileCapacityAlert(ctx);

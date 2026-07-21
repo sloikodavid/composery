@@ -55,7 +55,7 @@ window.__composeryScheme = ${JSON.stringify(scheme)};
 	// The WebView's own scheme, kept for diagnostics - it diverges from the
 	// app scheme on Android, which is why the shim and data-scheme exist.
 	window.__composeryNativeDark = real("(prefers-color-scheme: dark)").matches;
-	var listeners = [];
+	var queries = [];
 	// CSS media queries can't be shimmed like matchMedia, and the WebView's
 	// native prefers-color-scheme tracks the Android activity theme, not the
 	// system. Pages key their scheme CSS on data-scheme as the app override
@@ -68,22 +68,42 @@ window.__composeryScheme = ${JSON.stringify(scheme)};
 	stampScheme();
 	document.addEventListener("DOMContentLoaded", stampScheme);
 	window.matchMedia = function (query) {
-		if (!/prefers-color-scheme/i.test(query)) return real(query);
-		return {
+		var match = /^\\s*\\(\\s*prefers-color-scheme\\s*:\\s*(dark|light)\\s*\\)\\s*$/i.exec(query);
+		// Only synthesize the exact queries the IDE consumes. A compound query has
+		// browser semantics beyond this shim; passing it through is predictable,
+		// while treating every query containing these words as only dark-or-light
+		// silently discards the rest of its conditions.
+		if (!match) return real(query);
+		var wanted = match[1].toLowerCase();
+		var listeners = [];
+		var entry = { wanted: wanted, listeners: listeners, last: wanted === window.__composeryScheme, mql: null };
+		var mql = {
 			media: query, onchange: null,
-			get matches() { return /dark/i.test(query) === (window.__composeryScheme === "dark"); },
-			addEventListener: function (type, cb) { if (type === "change" && cb) listeners.push(cb); },
+			get matches() { return wanted === window.__composeryScheme; },
+			addEventListener: function (type, cb) { if (type === "change" && cb && listeners.indexOf(cb) < 0) listeners.push(cb); },
 			removeEventListener: function (type, cb) { listeners = listeners.filter(function (l) { return l !== cb; }); },
-			addListener: function (cb) { if (cb) listeners.push(cb); },
+			addListener: function (cb) { if (cb && listeners.indexOf(cb) < 0) listeners.push(cb); },
 			removeListener: function (cb) { listeners = listeners.filter(function (l) { return l !== cb; }); },
-			dispatchEvent: function () { return false; }
+			dispatchEvent: function (ev) {
+				if (typeof mql.onchange === "function") mql.onchange.call(mql, ev);
+				listeners.slice().forEach(function (cb) { cb.call(mql, ev); });
+				return true;
+			}
 		};
+		entry.mql = mql;
+		queries.push(entry);
+		return mql;
 	};
 	window.__composerySetScheme = function (s) {
 		window.__composeryScheme = s === "dark" ? "dark" : "light";
 		stampScheme();
-		var ev = { matches: window.__composeryScheme === "dark", media: "(prefers-color-scheme: dark)" };
-		listeners.slice().forEach(function (cb) { try { cb.call(null, ev); } catch (e) {} });
+		queries.slice().forEach(function (entry) {
+			var next = entry.wanted === window.__composeryScheme;
+			if (next === entry.last) return;
+			entry.last = next;
+			var ev = { matches: next, media: entry.mql.media };
+			try { entry.mql.dispatchEvent(ev); } catch (e) {}
+		});
 	};
 })();
 true;`;

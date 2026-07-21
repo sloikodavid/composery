@@ -176,6 +176,11 @@ describe("runtime process managers", () => {
 		// unrecognised value keeps the password rather than removing it.
 		expect(removal).toContain("1 | true) ;;");
 		expect(removal).toContain("*) exit 0 ;;");
+		// Trim the edges only. Deleting all whitespace turns "t rue" into the
+		// destructive value "true" and violates fail-towards-protected parsing.
+		expect(removal).toContain('${removal#"${removal%%[![:space:]]*}"}');
+		expect(removal).toContain('${removal%"${removal##*[![:space:]]}"}');
+		expect(removal).not.toContain("//[[:space:]]/");
 		expect(removal).not.toContain("password-removed");
 	});
 

@@ -10,12 +10,12 @@ GitHub surfaces; the CLA bot records signatures; Renovate opens dependency
 pull requests. This page assumes no GitHub account exists yet and walks a fresh
 setup to parity with the canonical repository.
 
-Everything below runs on the free plan: a public repository gets unlimited
-Actions minutes on the hosted x64 and arm64 runners, free public GHCR storage,
-and every security feature this page enables. No workflow needs a repository
-secret - all of them authenticate with the ephemeral, repository-scoped
-`GITHUB_TOKEN`. Keep it that way: a workflow that suddenly needs a personal
-access token deserves scrutiny.
+Repository checks and image publication authenticate with the ephemeral,
+repository-scoped `GITHUB_TOKEN`. Mobile cloud builds additionally use an Expo
+token in protected GitHub environments; the production APK download exchanges
+GitHub OIDC for a short-lived Google credential. Do not replace either with a
+personal GitHub access token. Check GitHub's plan/billing pages for runner and
+storage allowances rather than recording mutable quotas here.
 
 ## Account and repository
 
@@ -126,13 +126,27 @@ Settings -> Actions -> General: Actions enabled, all actions allowed, default
 workflow token permissions **read-only**. Workflows elevate per-file through
 their `permissions:` blocks, which is why none of this needs org-level policy:
 
-| Workflow            | Trigger                               | Elevated permissions and why                                                                                                                 |
-| ------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`            | pull requests, pushes to `main`       | none (`contents: read`) - typecheck/lint/test/build gate plus a quilt fuzz=0 patch-stack check                                               |
-| `smoke.yml`         | pull requests, pushes, call, dispatch | `security-events: write` - boots the built image and uploads a non-blocking Trivy SARIF                                                      |
-| `smoke-nightly.yml` | daily cron, dispatch                  | `security-events: write` - re-runs smoke with no build cache                                                                                 |
-| `release.yml`       | manual dispatch only                  | `contents: write` (release + tag), `packages: write` (GHCR), `id-token`/`attestations: write` (provenance), `security-events: write` (Trivy) |
-| `cla.yml`           | PR events and PR comments             | `contents: write` (signature branch), `issues: write` (PR comments), `actions: write`                                                        |
+| Workflow             | Trigger                               | Elevated permissions and why                                                                               |
+| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `ci.yml`             | pull requests, pushes to `main`       | none (`contents: read`) - typecheck/lint/test/build and generated native-config gates                      |
+| `smoke.yml`          | pull requests, pushes, call, dispatch | `security-events: write` - boots the image and uploads Trivy SARIF                                         |
+| `smoke-nightly.yml`  | schedule, dispatch                    | `security-events: write` - uncached image smoke                                                            |
+| `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                                    |
+| `mobile-preview.yml` | mobile pushes to `main`, dispatch     | none; uses protected `EXPO_TOKEN` to build an internal APK                                                 |
+| `mobile-release.yml` | `mobile-v*` tag                       | final job gets `contents: write` for the mobile GitHub Release and `id-token: write` for Google federation |
+| `release.yml`        | dispatch                              | image release, GHCR, provenance, and Trivy permissions                                                     |
+| `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                                     |
+
+Create GitHub environments under **Settings** -> **Environments**:
+
+- `mobile-preview`: secret `EXPO_TOKEN`. Repository variable
+  `MOBILE_PREVIEW_ENABLED=true` opts into automatic main-branch APK builds.
+- `mobile-production`: required reviewers, secret `EXPO_TOKEN`, and variables
+  `GCP_WORKLOAD_IDENTITY_PROVIDER` and
+  `GCP_ANDROID_PUBLISHER_SERVICE_ACCOUNT`.
+
+Use the mobile Expo/Google runbooks to create those identities. A fork can leave
+them absent; its normal CI and image workflows remain usable.
 
 Operational notes:
 
@@ -163,19 +177,18 @@ credentials exist anywhere. Two one-time steps after the first release run:
 
 The tag scheme, and why some tags are immutable while `latest`,
 `<major>.<minor>`, and `preview-<ref>` move, is specified in
-[`.github/RELEASE.md`](https://github.com/sloikodavid/composery/blob/main/.github/RELEASE.md).
+[`.github/IMAGE_RELEASE.md`](https://github.com/sloikodavid/composery/blob/main/.github/IMAGE_RELEASE.md).
 Renovate is configured to never bump our own image reference.
 
 ## Releases and tags
 
-Stable `v*` tags and GitHub Releases are created exclusively by the release
-workflow; never create them by hand. `CHANGELOG.md` deliberately points at the
-releases page instead of duplicating it. The procedure - preview vs stable,
-what each publishes, how the version is read from the root `package.json` - is
-`.github/RELEASE.md`; the repository side is only:
+Stable image `v*` tags and image GitHub Releases are created exclusively by the
+image release workflow; never create them by hand. Mobile uses the distinct
+`mobile-v*` namespace and tag-triggered workflow. The operator procedures are
+`.github/IMAGE_RELEASE.md` and `.github/MOBILE_RELEASE.md`; the image side is:
 
-- Actions -> release -> Run workflow (requires write access; there are no
-  other release credentials).
+- Actions -> release -> Run workflow (requires write access; image release has
+  no provider credential).
 - Each published image gets a build provenance attestation pushed to the
   registry. Verify one with:
 

@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
-import { openBrowserAsync } from "expo-web-browser";
 import {
 	EllipsisVertical,
 	ExternalLink,
@@ -11,7 +10,7 @@ import {
 	Trash2
 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BackHandler, FlatList, Pressable, Text, View } from "react-native";
+import { BackHandler, FlatList, Text, View } from "react-native";
 import Animated, {
 	FadeIn,
 	FadeInDown,
@@ -30,8 +29,9 @@ import { Icon, Logo } from "@/components/logo";
 import { PressableScale } from "@/components/pressable-scale";
 import { Spinner } from "@/components/spinner";
 import { body, heading } from "@/lib/fonts";
-import { errorFeedback, tapFeedback } from "@/lib/haptics";
+import { errorFeedback } from "@/lib/haptics";
 import { createInstanceStore, type Instance } from "@/lib/instance-store";
+import { openExternalUrl } from "@/lib/open-url";
 import { WEBSITE_ORIGIN } from "shared";
 import { useTheme, type Theme } from "@/lib/use-theme";
 
@@ -132,7 +132,7 @@ export default function IndexScreen() {
 				{
 					label: "Open in browser",
 					icon: ExternalLink,
-					onPress: () => void openBrowserAsync(menuFor.url)
+					onPress: () => void openExternalUrl(menuFor.url)
 				},
 				{
 					label: "Edit",
@@ -171,7 +171,7 @@ export default function IndexScreen() {
 							accessibilityRole="link"
 							accessibilityLabel="Composery website"
 							scaleTo={0.96}
-							onPress={() => void openBrowserAsync(WEBSITE_ORIGIN)}
+							onPress={() => void openExternalUrl(WEBSITE_ORIGIN)}
 						>
 							<Logo height={26} color={theme.foreground} />
 						</PressableScale>
@@ -265,6 +265,7 @@ export default function IndexScreen() {
 					)}
 				/>
 			)}
+			<LegalLinks theme={theme} />
 
 			<ActionSheet
 				ref={sheetRef}
@@ -273,6 +274,37 @@ export default function IndexScreen() {
 				onClose={() => setMenuFor(null)}
 			/>
 		</SafeAreaView>
+	);
+}
+
+function LegalLinks({ theme }: { theme: Theme }) {
+	return (
+		<View
+			style={{
+				flexDirection: "row",
+				justifyContent: "center",
+				gap: 20,
+				paddingHorizontal: 16,
+				paddingVertical: 12
+			}}
+		>
+			{[
+				{ label: "Privacy", path: "/privacy" },
+				{ label: "Terms", path: "/terms" }
+			].map(({ label, path }) => (
+				<PressableScale
+					key={path}
+					accessibilityRole="link"
+					accessibilityLabel={`${label} policy`}
+					onPress={() => void openExternalUrl(`${WEBSITE_ORIGIN}${path}`)}
+					hitSlop={8}
+				>
+					<Text style={[body("medium"), { color: theme.mutedForeground }]}>
+						{label}
+					</Text>
+				</PressableScale>
+			))}
+		</View>
 	);
 }
 
@@ -494,30 +526,6 @@ function EmptyState({
 					</Text>
 				</PressableScale>
 			</View>
-			<Pressable
-				accessibilityRole="link"
-				accessibilityLabel="Get a Composery"
-				onPress={() => {
-					tapFeedback();
-					void openBrowserAsync(`${WEBSITE_ORIGIN}/pricing`);
-				}}
-				hitSlop={8}
-				style={({ pressed }) => ({
-					flexDirection: "row",
-					alignItems: "center",
-					marginTop: 20,
-					opacity: pressed ? 0.5 : 1
-				})}
-			>
-				<Text style={[body(), { fontSize: 13, color: theme.mutedForeground }]}>
-					{"Want a Composery? "}
-				</Text>
-				<Text
-					style={[body("semibold"), { fontSize: 13, color: theme.primary }]}
-				>
-					Get one →
-				</Text>
-			</Pressable>
 		</Animated.View>
 	);
 }

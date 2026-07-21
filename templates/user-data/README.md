@@ -9,4 +9,4 @@ Vultr, Linode, ...) and the server boots with Composery behind Caddy over HTTPS.
 at the server and set your domain in the file first.
 
 **-> [DigitalOcean guide](../../docs/self-hosting/digitalocean.md)** ·
-[Docker Compose on a VPS](../../docs/self-hosting/vps.md)
+[VPS](../../docs/self-hosting/vps.md)

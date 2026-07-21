@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams } from "expo-router";
-import { openBrowserAsync } from "expo-web-browser";
 import { useEffect, useState } from "react";
 import { Keyboard, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,7 +7,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BackButton } from "@/components/back-button";
 import { body, heading } from "@/lib/fonts";
 import { errorFeedback, successFeedback, tapFeedback } from "@/lib/haptics";
-import { WEBSITE_ORIGIN } from "shared";
 import { createInstanceStore } from "@/lib/instance-store";
 import { useScreenExit } from "@/lib/nav";
 import { useTheme } from "@/lib/use-theme";
@@ -233,31 +231,6 @@ export default function AddInstanceScreen() {
 						{displayError}
 					</Text>
 				) : null}
-
-				<Pressable
-					onPress={() => {
-						tapFeedback();
-						void openBrowserAsync(`${WEBSITE_ORIGIN}/pricing`);
-					}}
-					hitSlop={8}
-					style={({ pressed }) => ({
-						flexDirection: "row",
-						alignItems: "center",
-						marginTop: 10,
-						opacity: pressed ? 0.5 : 1
-					})}
-				>
-					<Text
-						style={[body(), { fontSize: 13, color: theme.mutedForeground }]}
-					>
-						{"Want a Composery? "}
-					</Text>
-					<Text
-						style={[body("semibold"), { fontSize: 13, color: theme.primary }]}
-					>
-						Get one →
-					</Text>
-				</Pressable>
 			</View>
 		</SafeAreaView>
 	);

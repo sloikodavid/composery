@@ -1,5 +1,5 @@
 ---
-title: Other PaaS & self-hosted platforms
+title: Other platforms
 description: Run Composery on Coolify, Dokploy, CapRover, Northflank, Sliplane, PikaPods, Elestio, and similar container hosts.
 ---
 

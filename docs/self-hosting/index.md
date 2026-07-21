@@ -1,5 +1,5 @@
 ---
-title: Self-Hosting
+title: Self-hosting
 description: Deploy Composery with one container, one persistent /data volume, and one HTTP edge.
 ---
 
@@ -13,19 +13,20 @@ ephemeral filesystem and no attachable disk are [not viable](#not-viable).
 
 Run on your own server, or on a managed platform that supplies the HTTPS edge and a disk:
 
-- **[Docker Compose on a VPS](vps.md)** - your own Linux server. Pick the init system
-  (`systemd` or `supervisor`) and whether Composery owns its TLS edge (bundled Caddy or
-  your own proxy).
 - **[DigitalOcean](digitalocean.md)** - a Droplet with a compose recipe (the common n8n
   path), or DOKS. Not App Platform.
 - **[Fly.io](fly.md)** - `fly.toml` with one volume.
 - **[Render](render.md)** - `render.yaml` Blueprint with a persistent disk.
 - **[Railway](railway.md)** - image service with a volume at `/data`.
-- **[Koyeb](koyeb.md)** - image service with a volume at `/data` (single-instance regions).
-- **[Kubernetes](kubernetes.md)** - one replica, a PVC at `/data`, Service, and Ingress.
-- **[Other PaaS & self-hosted platforms](paas.md)** - Coolify, Dokploy, CapRover, Northflank,
+- **[Koyeb](koyeb.md)** - image service with a volume at `/data`
+  (single-instance regions).
+- **[Other platforms](other-platformsmd)** - Coolify, Dokploy, CapRover, Northflank,
   Sliplane, PikaPods, Elestio, and any host that runs a container image with a volume at
   `/data`.
+- **[VPS](vps.md)** - your own Linux server. Pick the init system
+  (`systemd` or `supervisor`) and whether Composery owns its TLS edge (bundled Caddy or
+  your own proxy).
+- **[Kubernetes](kubernetes.md)** - one replica, a PVC at `/data`, Service, and Ingress.
 
 ## Not viable
 
@@ -42,7 +43,8 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 
 ## Maintenance
 
-* **[Disk space](../disk-space.md)** - remove unused Docker images and build cache, then reclaim space held by Docker Desktop's virtual disk on Windows and macOS.
+- **[Disk space](../disk-space.md)** - remove unused Docker images and build cache, then
+  reclaim space held by Docker Desktop's virtual disk on Windows and macOS.
 
 ## Updating
 

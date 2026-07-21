@@ -5,7 +5,7 @@ description: Runbooks for working on the Composery repository itself.
 
 Everything under this section is for people working on the Composery repository,
 not for running an instance. If you want to deploy Composery, start at
-[Self-Hosting](../self-hosting/index.md).
+[Self-hosting](../self-hosting/index.md).
 
 - **[Repository](repository.md)** - fresh-clone setup, workspace layout, commands,
   generated files, test gates, and the normal change/release workflow.
@@ -17,7 +17,7 @@ not for running an instance. If you want to deploy Composery, start at
 - **[Web](web/index.md)** - the Next.js website and cloud backend in `packages/web`,
   with nested service setup pages for Convex, Clerk, Polar, Hetzner, Cloudflare,
   Resend, and Vercel.
-- **[Mobile](mobile.md)** - building and shipping `packages/mobile` to the App Store
+- **[Mobile](mobile/index.md)** - building and shipping `packages/mobile` to the App Store
   and Play Store.
 
 Repository-wide commands live in the root `package.json`: `pnpm dev` runs the web,

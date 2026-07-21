@@ -6,7 +6,7 @@ export const BOX_BILLING = {
 	},
 	year: {
 		billedPrice: 240,
-		label: "Annually",
+		label: "Annual",
 		monthlyPrice: 20
 	}
 } as const;

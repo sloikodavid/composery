@@ -1,5 +1,6 @@
 "use client";
 
+import { useUser } from "@clerk/nextjs";
 import { useAction, useConvexAuth, useQuery } from "convex/react";
 import {
 	AngryIcon,
@@ -17,7 +18,6 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { Badge } from "@/components/badge";
 import { buttonVariants } from "@/components/button";
 import { Faq } from "@/components/faq";
 import { FadingText } from "@/components/fading-text";
@@ -59,46 +59,44 @@ function BillingSelector({
 	billingInterval: BoxBillingInterval;
 	onChange: (billingInterval: BoxBillingInterval) => void;
 }) {
-	const annual = billingInterval === "year";
-
 	return (
 		<div
 			aria-label="Billing frequency"
-			className="flex items-center gap-2.5"
+			className="flex flex-wrap items-center gap-1.5 text-base font-medium"
 			role="group"
 		>
-			<button
-				aria-checked={annual}
-				aria-label="Annual billing"
-				className="inline-flex h-8 items-center gap-2 rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring"
-				onClick={() => onChange(annual ? "month" : "year")}
-				role="switch"
-				type="button"
-			>
-				<span className="text-xs font-medium text-foreground">
-					{BOX_BILLING.month.label}
-				</span>
-				<span
-					aria-hidden="true"
-					className={cn(
-						"flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors",
-						annual ? "bg-primary" : "bg-input"
-					)}
-				>
-					<span
-						className={cn(
-							"size-4 rounded-full bg-background shadow-sm transition-transform",
-							annual && "translate-x-4"
-						)}
-					/>
-				</span>
-				<span className="text-xs font-medium text-foreground">
-					{BOX_BILLING.year.label}
-				</span>
-			</button>
-			<Badge className="bg-success/10 text-success">
-				Save {BOX_ANNUAL_SAVINGS_PERCENT}%
-			</Badge>
+			{(["month", "year"] as const).map((interval, index) => {
+				const selected = interval === billingInterval;
+
+				return (
+					<span className="contents" key={interval}>
+						{index > 0 ? (
+							<span aria-hidden="true" className="text-muted-foreground">
+								/
+							</span>
+						) : null}
+						<button
+							aria-pressed={selected}
+							className={cn(
+								"transition-colors outline-none focus-visible:text-foreground",
+								selected
+									? "text-foreground"
+									: "text-muted-foreground hover:text-foreground"
+							)}
+							onClick={() => onChange(interval)}
+							type="button"
+						>
+							{BOX_BILLING[interval].label}
+							{interval === "year" ? (
+								<span className="text-success">
+									{" "}
+									-{BOX_ANNUAL_SAVINGS_PERCENT}%
+								</span>
+							) : null}
+						</button>
+					</span>
+				);
+			})}
 		</div>
 	);
 }
@@ -139,7 +137,7 @@ function PlanCard({
 			<p className="mt-1 text-sm text-muted-foreground">{descriptor}</p>
 
 			<div className="mt-6 flex items-baseline gap-1.5">
-				<span className="font-heading text-4xl font-medium tracking-tight text-foreground tabular-nums sm:text-5xl">
+				<span className="font-heading text-5xl font-medium tracking-tight text-foreground tabular-nums">
 					{price}
 				</span>
 				{period ? (
@@ -165,8 +163,18 @@ function BoxCheckout({
 }) {
 	const createCheckout = useAction(api.user.checkout.createCheckout);
 	const { isAuthenticated, isLoading: authenticationLoading } = useConvexAuth();
-	const [slug, setSlug] = useState(initialSlug);
+	const { user } = useUser();
+	// Clerk resolves after mount, so the suggestion is derived rather than
+	// seeded into state; typing takes over from then on.
+	const [typedSlug, setTypedSlug] = useState<string | null>(initialSlug || null);
 	const [submitting, setSubmitting] = useState(false);
+	const suggestedSlug = sanitizeSlug(
+		user?.username ??
+			user?.primaryEmailAddress?.emailAddress.split("@")[0] ??
+			""
+	);
+	const slug =
+		typedSlug ?? (isValidSlugFormat(suggestedSlug) ? suggestedSlug : "");
 	const normalizedSlug = sanitizeSlug(slug);
 	const slugFormatValid = isValidSlugFormat(normalizedSlug);
 	const availability = useQuery(
@@ -254,7 +262,7 @@ function BoxCheckout({
 					id="box-slug"
 					maxLength={63}
 					name="slug"
-					onChange={(event) => setSlug(sanitizeSlug(event.target.value))}
+					onChange={(event) => setTypedSlug(sanitizeSlug(event.target.value))}
 					pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
 					placeholder="my-box"
 					spellCheck={false}
@@ -301,13 +309,13 @@ export function Pricing({
 			<div className="space-y-8">
 				<div className="grid gap-5 md:grid-cols-2">
 					<PlanCard
-						descriptor="An always-on secure box with Composery."
+						descriptor="..with an always-on secure Composery."
 						features={MANAGED_FEATURES}
-						name="Composery Cloud"
+						name="Box"
 						period={
 							billingInterval === "year"
-								? `/ month, billed annually`
-								: "/ month"
+								? `/ month - billed annually.`
+								: "/ month."
 						}
 						price={`$${billing.monthlyPrice}`}
 					>
@@ -318,7 +326,7 @@ export function Pricing({
 					</PlanCard>
 
 					<PlanCard
-						descriptor="Run your own Composery anywhere."
+						descriptor="Manage your own Composery."
 						features={SELF_HOSTED_FEATURES}
 						name="Self-hosted"
 						price="Free"

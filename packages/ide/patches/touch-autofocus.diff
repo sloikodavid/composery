@@ -88,7 +88,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/layout.ts b/lib/vscode/src/vs/w
  import { isNarrow } from './narrowGate.js';
  
  //#region Layout Implementation
-@@ -2156,7 +2157,7 @@
+@@ -2154,7 +2155,7 @@
  		if (hidden && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel)) {
  			this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Panel);
  			if (

@@ -1,0 +1,32 @@
+# EAS archives from the monorepo root. Keep generated trees and local secrets out
+# explicitly: unlike Git, the archiver does not combine every nested .gitignore.
+tmp/
+.git/
+node_modules/
+**/node_modules/
+.cache/
+**/.next/
+**/.source/
+**/.expo/
+**/dist/
+**/coverage/
+**/*.tsbuildinfo
+target/
+packages/cli/target/
+packages/ide/upstream/
+packages/mobile/android/
+packages/mobile/ios/
+.pnpm-store/
+
+.env
+.env.*
+*.log
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+
+.DS_Store
+Thumbs.db

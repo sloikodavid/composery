@@ -3,7 +3,7 @@ import { ScaleIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/card";
 import { PageTemplate } from "@/components/page-template";
 
-export const LEGAL_UPDATED = "11 July 2026";
+export const LEGAL_UPDATED = "21 July 2026";
 
 export function LegalPage({
 	title,

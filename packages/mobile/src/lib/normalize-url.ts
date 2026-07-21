@@ -77,6 +77,13 @@ export function normalizeInstanceUrl(input: string): URL {
 		throw new Error(`URL must not contain credentials: ${input}`);
 	}
 
+	// Cleartext is useful for a box on the same trusted LAN, but accepting it for
+	// a public host would expose the password, session, terminal, and files to the
+	// network. Public Composeries have one rule: HTTPS.
+	if (url.protocol === "http:" && !looksLocalHost(url.hostname)) {
+		throw new Error("Public instances must use HTTPS");
+	}
+
 	// The parser keeps leading `//` (`host//code/` -> `//code/`); collapse to one
 	// since code-server is subpath-sensitive. Internal `//` is kept.
 	if (url.pathname.length > 1 && url.pathname.startsWith("//")) {

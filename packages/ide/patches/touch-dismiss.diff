@@ -4,17 +4,16 @@ modal with no way out. Upstream neutered ignoreFocusOut for iOS only.
 diff --git a/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts b/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
 --- a/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
 +++ b/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
-@@ -21,7 +21,8 @@
+@@ -21,7 +21,7 @@
  import { Emitter, Event, EventBufferer } from '../../../base/common/event.js';
  import { KeyCode } from '../../../base/common/keyCodes.js';
  import { Disposable, DisposableStore } from '../../../base/common/lifecycle.js';
 -import { isIOS } from '../../../base/common/platform.js';
-+import { isTouch } from '../../../base/browser/touchGate.js';
 +import { mainWindow } from '../../../base/browser/window.js';
  import Severity from '../../../base/common/severity.js';
  import { ThemeIcon } from '../../../base/common/themables.js';
  import './media/quickInput.css';
-@@ -262,8 +263,10 @@
+@@ -262,8 +262,10 @@
  	}
  
  	set ignoreFocusOut(ignoreFocusOut: boolean) {

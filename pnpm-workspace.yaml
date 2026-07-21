@@ -29,7 +29,7 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     "ws@7>utf-8-validate": "6"
-    "@gorhom/bottom-sheet>react-native-reanimated": "4.3.1"
+    "@gorhom/bottom-sheet>react-native-reanimated": "4.5.0"
 
 allowBuilds:
   "@clerk/shared": true
@@ -43,3 +43,4 @@ allowBuilds:
   core-js: false
   msw: false
   utf-8-validate: false
+  dtrace-provider: false

@@ -1,79 +1,57 @@
 # Maestro flows
 
-End-to-end flows for the Composery mobile app. They target the native UI by
-`testID` — Maestro cannot see inside a WebView, so a flow asserts the native
-WebView view is visible (`instance-webview`), not the web content.
+The flows drive native UI by `testID`. Maestro can assert that the native
+WebView exists, but cannot inspect its document; unit tests and manual device
+checks cover the WebView navigation boundary.
 
-## testIDs
+## Test IDs
 
-Every `testID` in the app, so a flow author can see what is targetable without
-reading the screens. A test pins this list to the source both ways - an id
-renamed out of the app, or added without landing here, fails the check.
+- `add-instance-button`: empty-state/header add action
+- `add-instance-url-input` / `add-instance-label-input`: form inputs
+- `add-instance-submit` / `add-instance-cancel`: form actions
+- `add-instance-error`: form error
+- `instance-item`: instance row
+- `instance-menu-button`: instance overflow action
+- `instance-webview`: verified instance WebView
+- `instance-back-missing`: missing-instance back action
+- `scan-button`: QR scanner action
+- `scan-back`: scanner back action
+- `scan-hint`: scanner guidance
+- `scan-torch`: scanner torch
+- `scan-permission-action`: allow-camera/open-settings action
 
-- `add-instance-button` — empty-state CTA and header add button
-- `add-instance-url-input` / `add-instance-label-input` — modal inputs
-- `add-instance-submit` / `add-instance-cancel` — modal actions
-- `add-instance-error` — modal validation error text
-- `instance-item` — a list row
-- `instance-menu-button` — per-row overflow menu
-- `instance-webview` — the WebView on the instance screen
-- `instance-back-missing` — back action on the not-found / load-error view
-- `scan-button` — opens the QR scanner
-- `scan-back` — leaves the scanner
-- `scan-hint` — scanner guidance text
-- `scan-torch` — torch toggle
-- `scan-permission-action` — camera permission prompt action
+## Environment
 
-## Which app the flows drive
+Flows receive both values per run:
 
-`appId` is `${APP_ID}`, supplied per run, because the target differs by platform
-and build: Expo Go's package id is `host.exp.exponent` on Android but
-`host.exp.Exponent` on iOS, and a dev/EAS build is `io.composery` on both.
-Hardcoding any one of them locks the flows to a single platform.
+- `APP_ID`: `io.composery` for a native build, `host.exp.exponent` for Android
+  Expo Go, or `host.exp.Exponent` for iOS Expo Go.
+- `INSTANCE_URL`: a reachable server that returns the Composery marker.
+
+The deterministic local fixture is:
 
 ```sh
-maestro test -e APP_ID=host.exp.exponent src/maestro/e2e.yml   # Expo Go, Android
-maestro test -e APP_ID=host.exp.Exponent src/maestro/e2e.yml   # Expo Go, iOS
-maestro test -e APP_ID=io.composery      src/maestro/e2e.yml   # dev or EAS build
+node packages/mobile/scripts/test-instance.mjs
 ```
 
-CI drives the third form on both platforms - see
-[`.github/workflows/mobile-e2e.yml`](../../../../.github/workflows/mobile-e2e.yml),
-which builds a dev client with `expo run:*` rather than installing Expo Go, so
-it does not inherit the Expo Go version pinning below.
+Use `http://10.0.2.2:4173` from the Android emulator,
+`http://127.0.0.1:4173` from the iOS simulator, or the workstation LAN address
+from a physical phone.
 
-## Running locally (Android via WSL)
+## Run
 
-Maestro on Windows runs through WSL + Java 17 + the Android SDK and can only
-drive Android (iOS needs macOS). Against Expo Go:
+From `packages/mobile`, after the app is installed and the fixture is running:
 
-1. Start the dev server: `pnpm --filter mobile dev`.
-2. Install an Expo Go build matching the project's SDK (see `expo` in
-   `package.json`) on the emulator/device.
+```sh
+maestro test \
+  -e APP_ID=io.composery \
+  -e INSTANCE_URL=http://10.0.2.2:4173 \
+  src/maestro/e2e.yml
+```
 
-   One Android build, **56.0.1**, rejects every SDK 56 project with "Project is
-   incompatible with this version of Expo Go" — it compares the manifest's
-   `sdkVersion` against its own app version rather than the SDK it supports
-   (expo/expo#46846, still open at the time of writing). Later 56.0.x builds
-   have shipped since that report; take the newest one and only chase this if
-   you actually see that message. Any specific build is sideloadable from
-   [expo/expo-go-releases](https://github.com/expo/expo-go-releases):
+`e2e.yml` and `add-instance.yml` expect empty app storage. Use a fresh emulator
+for repeatability. Do not clear a physical phone without its owner's permission.
 
-   ```sh
-   adb install -r Expo-Go-56.0.4.apk
-   ```
-
-   Android refuses to downgrade with `-r` alone, so uninstall first when
-   stepping back a version (`adb uninstall host.exp.exponent`).
-
-3. Open the project in Expo Go on the emulator/device and let it load.
-4. For `add-instance.yml` / `e2e.yml`, start from a fresh AsyncStorage (clear
-   Expo Go app data) so the list is empty.
-5. From WSL, with `maestro` on PATH and `ANDROID_HOME` set:
-
-   ```sh
-   export APP_ID=host.exp.exponent
-   maestro test -e APP_ID=$APP_ID src/maestro/add-instance.yml
-   maestro test -e APP_ID=$APP_ID src/maestro/open-instance.yml  # needs an instance
-   maestro test -e APP_ID=$APP_ID src/maestro/e2e.yml
-   ```
+Nightly CI generates and installs the native Release configuration on Android
+and iOS, starts the fixture, and executes `e2e.yml`; it does not depend on Metro
+or a development client.

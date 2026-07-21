@@ -17,11 +17,12 @@ describe("hardware back", () => {
 		});
 	});
 
-	// A live page with nothing open: ask it (it finds nothing), and leave.
-	test("a page with nothing open is asked, then we leave", () => {
+	// A live page with nothing reported open still owns the decision: the report
+	// can be one postMessage stale, so it asks the page and waits for its answer.
+	test("a page with nothing reported open is asked before leaving", () => {
 		expect(backAction(state(true, false))).toEqual({
 			askPage: true,
-			leave: true
+			leave: false
 		});
 	});
 
@@ -49,15 +50,13 @@ describe("iOS edge-swipe", () => {
 		expect(iosSwipeEnabled(state(false, true))).toBe(true);
 	});
 
-	// The swipe and the hardware back are one contract: the swipe is enabled exactly
-	// when a hardware back in the same state would leave. If these two ever diverge,
-	// iOS and Android back stop agreeing.
-	test("is enabled exactly when a hardware back would leave", () => {
-		for (const pageVisible of [true, false]) {
-			for (const pageLayerOpen of [true, false]) {
-				const s = state(pageVisible, pageLayerOpen);
-				expect(iosSwipeEnabled(s)).toBe(backAction(s).leave);
-			}
-		}
+	// The layer report is only a hint. Hardware can ask the page and must not use
+	// that hint to leave early; iOS cannot ask during a system swipe, so it uses
+	// the hint only to gate whether the gesture may start.
+	test("only the iOS gesture uses the layer hint to leave", () => {
+		expect(backAction(state(true, false)).leave).toBe(false);
+		expect(backAction(state(true, true)).leave).toBe(false);
+		expect(iosSwipeEnabled(state(true, false))).toBe(true);
+		expect(iosSwipeEnabled(state(true, true))).toBe(false);
 	});
 });

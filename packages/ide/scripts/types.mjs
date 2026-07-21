@@ -41,6 +41,9 @@ const SCRATCH = join(
 	"tmp",
 	`ide-overlay-typecheck-${Date.now()}-${process.pid}`
 );
+// A failed npm install/typecheck must not leave a full upstream tree and its
+// node_modules behind. The exit hook also covers run()'s deliberate exits.
+process.on("exit", () => rmSync(SCRATCH, { force: true, recursive: true }));
 const isWindows = process.platform === "win32";
 const NPM_CLI = join(
 	dirname(process.execPath),
@@ -103,6 +106,16 @@ for (const entry of readdirSync(join(OVERLAY, "src"))) {
 
 run("node", [join(PACKAGE_ROOT, "scripts/rebrand.mjs"), SCRATCH]);
 
+// pnpm injects npm_config_manage_package_manager_versions into child scripts,
+// but npm does not own that option and warns today that it will reject it in a
+// future major. The nested install is deliberately npm (upstream lockfile), so
+// do not leak pnpm's private option across that package-manager boundary.
+const npmEnv = Object.fromEntries(
+	Object.entries(process.env).filter(
+		([name]) =>
+			name.toLowerCase() !== "npm_config_manage_package_manager_versions"
+	)
+);
 const scratch = { cwd: SCRATCH };
 run(
 	isWindows ? process.execPath : "npm",
@@ -113,7 +126,7 @@ run(
 		"--no-audit",
 		"--no-fund"
 	],
-	scratch
+	{ ...scratch, env: npmEnv }
 );
 run(
 	process.execPath,

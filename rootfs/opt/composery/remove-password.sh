@@ -8,7 +8,10 @@ set -euo pipefail
 # API's bool()), so 0, false, and any typo leave the password alone: the wrong
 # value must fail towards keeping the instance protected.
 removal="${COMPOSERY_REMOVE_PASSWORD:-}"
-removal="${removal//[[:space:]]/}"
+# Trim only the edges. Removing every whitespace character would turn a typo
+# such as "t rue" into "true" and activate the destructive path.
+removal="${removal#"${removal%%[![:space:]]*}"}"
+removal="${removal%"${removal##*[![:space:]]}"}"
 case "${removal,,}" in
   1 | true) ;;
   *) exit 0 ;;

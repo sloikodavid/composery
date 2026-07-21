@@ -17,17 +17,13 @@ export type BackAction = {
 	leave: boolean;
 };
 
-// Hardware Back / the back gesture. The page always gets first refusal; we only
-// leave for what it does not claim.
-export function backAction({
-	pageVisible,
-	pageLayerOpen
-}: BackState): BackAction {
+// Hardware Back / the back gesture. A visible page is the authority: it closes
+// a layer or posts back when there was nothing to close. pageLayerOpen is only
+// a navigation-gesture hint and can be one message stale, so it must never make
+// the app leave before the page has actually refused the press.
+export function backAction({ pageVisible }: BackState): BackAction {
 	if (pageVisible) {
-		// The page peels its own layer; leave only when it reports none to peel.
-		// A stale "open" costs nothing - the page finds nothing and posts back, and
-		// we leave a frame later; a stale "closed" costs one press. Neither strands.
-		return { askPage: true, leave: !pageLayerOpen };
+		return { askPage: true, leave: false };
 	}
 	// No live page to ask (loading or error screen): back just leaves.
 	return { askPage: false, leave: true };
@@ -40,5 +36,5 @@ export function backAction({
 // pop the screen out from under a menu the user is reading. Tied to backAction so
 // the two can't diverge.
 export function iosSwipeEnabled(state: BackState): boolean {
-	return backAction(state).leave;
+	return !state.pageVisible || !state.pageLayerOpen;
 }

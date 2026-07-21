@@ -21,6 +21,15 @@ const workflows = readdirSync(resolve(repoRoot, ".github/workflows"))
 	.filter((path) => readRepoFile(path).includes("actions/setup-node"));
 
 describe("toolchain pins", () => {
+	test("the IDE upstream npm install drops pnpm-only environment config and cleans scratch on failure", () => {
+		const source = readRepoFile("packages/ide/scripts/types.mjs");
+		expect(source).toContain('process.on("exit", () => rmSync(SCRATCH');
+		expect(source).toContain(
+			'name.toLowerCase() !== "npm_config_manage_package_manager_versions"'
+		);
+		expect(source).toContain("{ ...scratch, env: npmEnv }");
+	});
+
 	test(".nvmrc is exact semver", () => {
 		expect(nodeVersion).toMatch(/^\d+\.\d+\.\d+$/);
 	});

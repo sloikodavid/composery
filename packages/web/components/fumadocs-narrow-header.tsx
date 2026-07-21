@@ -19,7 +19,7 @@ import { buttonVariants } from "@/components/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
 import { GitHubIcon } from "@/components/icons/github-icon";
 import { GITHUB_REPO_URL } from "@/lib/links";
-import { NavLogoLink } from "@/components/logo";
+import { Logo } from "@/components/logo";
 import {
 	type NavLink,
 	PUBLIC_NAV_LINKS,
@@ -36,14 +36,22 @@ const FUMADOCS_GHOST_ICON = fdButtonVariants({
 	className: "p-2"
 });
 
-// fumadocs' real sidebar drawer, shown on narrow screens. SidebarProvider owns
-// the open state, the responsive drawer/full switch (collapses on resize to
-// desktop), and close-on-navigation; SidebarDrawerContent supplies the exact
-// slide/fade. NextProvider wires the framework hooks it needs. All fumadocs is
-// confined to this file so the rest of the app stays free of it. Narrow-gated
-// (md:hidden) to mirror the desktop pill's md:flex, matching the project's
-// narrow gate rather than a touch or "mobile" one.
-export function FumadocsNarrowSidebar() {
+// The narrow-screen header bar, plus the drawer its trigger opens. The bar has
+// to read as the same component as the docs' own narrow header (fumadocs'
+// `#nd-subnav`, in dist/layouts/docs/slots/header.js), since the two alternate
+// as you move between the marketing pages and the docs: same h-14, same
+// px-2.5, same border and translucent backdrop, same Logo, and the same ghost
+// icon button below. A patch pulls #nd-subnav's `ps-4 pe-2.5` to `px-2.5` to
+// close the last gap - keep the two in step when either moves.
+//
+// SidebarProvider owns the drawer's open state, the responsive drawer/full
+// switch (collapses on resize to desktop), and close-on-navigation;
+// SidebarDrawerContent supplies the exact slide/fade. NextProvider wires the
+// framework hooks it needs. All fumadocs is confined to this file so the rest
+// of the app stays free of it. Narrow-gated (md:hidden) to mirror the desktop
+// pill's md:flex, matching the project's narrow gate rather than a touch or
+// "mobile" one.
+export function FumadocsNarrowHeader() {
 	const pathname = usePathname();
 	const authedLinks = useAuthedNavLinks();
 
@@ -65,8 +73,8 @@ export function FumadocsNarrowSidebar() {
 	return (
 		<NextProvider>
 			<SidebarProvider>
-				<div className="flex h-14 items-center border-b border-border bg-background/80 pe-2.5 ps-4 backdrop-blur-sm md:hidden">
-					<NavLogoLink />
+				<div className="flex h-14 items-center border-b border-border bg-background/80 px-2.5 backdrop-blur-sm md:hidden">
+					<Logo />
 					<div className="flex-1" />
 					<SidebarTrigger
 						aria-label="Open menu"

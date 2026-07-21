@@ -172,7 +172,7 @@ authoritative:
 
 A customer can still finish Polar checkout just before provider capacity
 disappears. Every active checkout reserves a complete package in Composery's
-local accounting—one server plus the configured per-box snapshot entitlement—but
+local accounting (one server plus the configured per-box snapshot entitlement), but
 it does not create or hold a Hetzner resource before payment. If initial
 provisioning still fails, Composery revokes the Polar subscription, refunds the
 full remaining refundable amount of the paid order, and runs normal box

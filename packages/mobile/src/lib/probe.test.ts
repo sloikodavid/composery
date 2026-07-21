@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
 	fetchServerStamp,
@@ -54,6 +54,35 @@ describe("probeUrl", () => {
 });
 
 describe("probeComposery", () => {
+	test("refuses redirects so another origin cannot borrow the marker", async () => {
+		const fetchImpl = vi.fn(() =>
+			Promise.resolve(
+				new Response('{"composery":true}', {
+					status: 200,
+					headers: { "content-type": "application/json" }
+				})
+			)
+		) as ProbeFetch;
+
+		await probeComposery("https://example.com/", { fetchImpl });
+
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"https://example.com/_composery",
+			expect.objectContaining({ redirect: "error" })
+		);
+	});
+
+	test("refuses to follow a marker redirect", async () => {
+		let redirect: RequestRedirect | undefined;
+		const fetchImpl: ProbeFetch = (_input, init) => {
+			redirect = init?.redirect;
+			return Promise.reject(new TypeError("redirect rejected"));
+		};
+		const result = await probeComposery("https://example.com/", { fetchImpl });
+		expect(redirect).toBe("error");
+		expect(result).toMatchObject({ ok: false, reason: "unreachable" });
+	});
+
 	test("returns ok for composery true response", async () => {
 		const fetchImpl = mockFetch(
 			new Response('{"composery":true}', {

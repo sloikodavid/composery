@@ -41,6 +41,17 @@ export function setActiveInstance(id: string | null) {
 	emit();
 }
 
+// Focus cleanup can arrive after the next route has focused. Only the route
+// that claimed the active id may clear it, or an old cleanup can park the new
+// instance host after navigation has already finished.
+export function clearActiveInstance(id: string) {
+	if (state.activeId === id) setActiveInstance(null);
+}
+
+export function getActiveInstanceId(): string | null {
+	return state.activeId;
+}
+
 // The host publishes the live back state so the route can gate the swipe.
 export function publishHostBackState(back: HostBackState) {
 	if (
@@ -56,8 +67,8 @@ export function publishHostBackState(back: HostBackState) {
 export function useActiveInstanceId(): string | null {
 	return useSyncExternalStore(
 		subscribe,
-		() => state.activeId,
-		() => state.activeId
+		getActiveInstanceId,
+		getActiveInstanceId
 	);
 }
 

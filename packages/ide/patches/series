@@ -1,6 +1,7 @@
 naming.diff
 file-uploads-env.diff
 hardening.diff
+runtime-dependency-security.diff
 auth.diff
 disable-auth.diff
 readiness.diff

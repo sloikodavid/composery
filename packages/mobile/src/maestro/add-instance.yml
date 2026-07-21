@@ -11,7 +11,7 @@ appId: ${APP_ID}
     id: "add-instance-url-input"
 - tapOn:
     id: "add-instance-url-input"
-- inputText: "https://example.com"
+- inputText: "${INSTANCE_URL}"
 - tapOn:
     id: "add-instance-submit"
 - assertVisible:

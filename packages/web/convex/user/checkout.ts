@@ -162,7 +162,8 @@ export const createCheckout = action({
 				origin,
 				successUrl: `${origin}/boxes?checkout_id={CHECKOUT_ID}`,
 				metadata: {
-					[CHECKOUT_INTENT_METADATA_KEYS.billingInterval]: args.billingInterval,
+					[CHECKOUT_INTENT_METADATA_KEYS.selectedBillingInterval]:
+						args.billingInterval,
 					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reservedIntentId,
 					[CHECKOUT_INTENT_METADATA_KEYS.slug]: slug,
 					[CHECKOUT_INTENT_METADATA_KEYS.userId]: identity.subject

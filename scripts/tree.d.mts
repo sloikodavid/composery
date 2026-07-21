@@ -1,5 +1,7 @@
 export type ReadDirectory = (path: string) => string[];
 
+export const GIT_FILE_ARGS: string[];
+
 export function canonicalPath(
 	root: string,
 	path: string,

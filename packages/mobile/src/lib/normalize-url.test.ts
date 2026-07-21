@@ -124,16 +124,16 @@ describe("normalizeInstanceUrl", () => {
 		});
 	});
 
-	describe("an explicit scheme is always honored", () => {
+	describe("an explicit secure scheme is honored", () => {
 		test("explicit https on a LAN host stays https", () => {
 			expect(normalizeInstanceUrl("https://192.168.1.5").href).toBe(
 				"https://192.168.1.5/"
 			);
 		});
 
-		test("explicit http on a public host stays http", () => {
-			expect(normalizeInstanceUrl("http://mybox.com").href).toBe(
-				"http://mybox.com/"
+		test("explicit http on a public host is rejected", () => {
+			expect(() => normalizeInstanceUrl("http://mybox.com")).toThrow(
+				"Public instances must use HTTPS"
 			);
 		});
 	});

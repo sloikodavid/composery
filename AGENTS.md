@@ -49,23 +49,36 @@
     bug.yml
     config.yml
   scripts/
+    install-maestro.sh
     wait-for-metro.sh
   workflows/
     ci.yml
     cla.yml
     mobile-e2e.yml
+    mobile-preview.yml
+    mobile-release.yml
     release.yml
     smoke-nightly.yml
     smoke.yml
   actionlint.yml
   CLA.md
+  IMAGE_RELEASE.md
+  MOBILE_RELEASE.md
   PULL_REQUEST_TEMPLATE.md
-  RELEASE.md
 .vscode/
   extensions.json
   settings.json
 docs/
   developing/
+    mobile/
+      apple.md
+      development.md
+      expo.md
+      google-play.md
+      index.md
+      meta.json
+      releasing.md
+      review-and-privacy.md
     services/
       github.md
       index.md
@@ -88,7 +101,6 @@ docs/
     ide.md
     index.md
     meta.json
-    mobile.md
     repository.md
   self-hosting/
     digitalocean.md
@@ -98,7 +110,7 @@ docs/
     koyeb.md
     kubernetes.md
     meta.json
-    paas.md
+    other-platforms.md
     railway.md
     render.md
     vps.md
@@ -278,10 +290,12 @@ packages/
       product-icon-themes.diff
       qr-action.diff
       readiness.diff
+      runtime-dependency-security.diff
       series
       settings-mobile.diff
       shortcuts.diff
       terminal-padding.diff
+      terminal-sync.diff
       tips.diff
       titlebar-logo.diff
       titlebar-menubar-overflow.diff
@@ -332,6 +346,10 @@ packages/
         splash-icon.png
     plugins/
       android-dialog-theme.js
+    scripts/
+      check-native-config.mjs
+      eas.mjs
+      test-instance.mjs
     src/
       app/
         instance/
@@ -355,6 +373,7 @@ packages/
         fonts.ts
         haptics.ts
         id.ts
+        instance-host.test.ts
         instance-host.ts
         instance-store.test.ts
         instance-store.ts
@@ -362,6 +381,8 @@ packages/
         nav.ts
         normalize-url.test.ts
         normalize-url.ts
+        open-url.test.ts
+        open-url.ts
         parse-scanned.test.ts
         parse-scanned.ts
         probe.test.ts
@@ -369,6 +390,8 @@ packages/
         theme.test.ts
         theme.ts
         use-theme.ts
+        webview-navigation.test.ts
+        webview-navigation.ts
       maestro/
         add-instance.yml
         e2e.yml
@@ -377,6 +400,11 @@ packages/
       web/
         back-button.test.ts
         back-button.ts
+    store/
+      listing.md
+      privacy.md
+      README.md
+      review-notes.md
     .gitignore
     app.json
     eas.json
@@ -548,7 +576,7 @@ packages/
       faq.tsx
       flags-table.tsx
       footer.tsx
-      fumadocs-narrow-sidebar.tsx
+      fumadocs-narrow-header.tsx
       fumadocs-theme-toggle.tsx
       header.tsx
       icon.tsx
@@ -910,14 +938,18 @@ tests/
   code-server-patches.test.ts
   cross-platform.test.ts
   desktop-integration.test.ts
+  eas-ignore.test.ts
   favicon.test.ts
   loopback-callback-guard.test.ts
   narrow-back.test.ts
+  narrow-layout-reconciliation.test.ts
   password-check.test.ts
   runtime-init.test.ts
+  terminal-sync.test.ts
   toolchain-pins.test.ts
   tree-script.test.ts
 .dockerignore
+.easignore
 .editorconfig
 .gitattributes
 .gitignore

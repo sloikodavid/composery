@@ -60,16 +60,33 @@ function isReachableFromAnotherDevice(url) {
 // in a container these are the container's own addresses, and only the reader can
 // tell which of them their phone is actually on.
 function networkAddresses(url) {
-	return Object.values(os.networkInterfaces())
+	return [
+		...new Set(
+			Object.values(os.networkInterfaces())
 		.flat()
 		.filter((iface) => iface && !iface.internal && iface.family === "IPv4")
-		.map(
-			(iface) =>
-				`${url.protocol}//${iface.address}${url.port ? `:${url.port}` : ""}${url.pathname}`
+			.map((iface) => iface.address)
 		)
+	]
+		// Prefer the ranges normally used by a physical LAN over the 172.16/12
+		// range commonly claimed by container bridges.
+		.sort((left, right) => networkAddressPriority(left) - networkAddressPriority(right))
+		.map((address) => {
+			const alternative = new URL(url.href);
+			alternative.hostname = address;
+			return alternative.href;
+		})
 		// Bridges and VPNs push this list out; a few candidates is a hint, a
 		// dozen is noise.
 		.slice(0, 3);
+}
+
+function networkAddressPriority(address) {
+	if (address.startsWith("192.168.")) return 0;
+	if (address.startsWith("10.")) return 1;
+	if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) return 2;
+	if (address.startsWith("169.254.")) return 4;
+	return 3;
 }
 
 function render(url) {
@@ -170,7 +187,7 @@ function activate(context) {
 	let rendered;
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand(COMMAND, (value) => {
+		vscode.commands.registerCommand(COMMAND, async (value) => {
 			let url;
 			try {
 				url = new URL(typeof value === "string" ? value : "");
@@ -183,11 +200,15 @@ function activate(context) {
 
 			if (!isReachableFromAnotherDevice(url)) {
 				const alternatives = networkAddresses(url);
-				vscode.window.showWarningMessage(
-					`Another device cannot reach ${url.host}. Reopen Composery at an address on your network${
-						alternatives.length ? ` — such as ${alternatives.join(" or ")}` : ""
-					}, then show the QR code from there.`
+				const selected = await vscode.window.showWarningMessage(
+					alternatives.length
+						? "This address only works on this device. Try one below. Composery found these addresses on this computer, but cannot tell which one your other device can use."
+						: "This address only works on this device. Reopen Composery using this computer's network address, then show the QR code again.",
+					...alternatives
 				);
+				if (selected) {
+					await vscode.env.openExternal(vscode.Uri.parse(selected));
+				}
 				return;
 			}
 

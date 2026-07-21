@@ -1,12 +1,12 @@
 {
 	"pages": [
-		"vps",
-		"digitalocean",
-		"fly",
 		"render",
 		"railway",
+		"digitalocean",
+		"fly",
 		"koyeb",
-		"kubernetes",
-		"paas"
+		"other-platforms",
+		"vps",
+		"kubernetes"
 	]
 }

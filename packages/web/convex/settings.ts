@@ -21,6 +21,7 @@ import { sendStaffAlert, staffConsoleUrl } from "./staffAlerts";
 // default caps concurrent active checkout reservations so one account can't hog
 // slugs it never pays for. Staff-tunable via the console.
 export const DEFAULT_MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER = 3;
+export const MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER = 50;
 
 async function globalSettings(ctx: { db: DatabaseReader }) {
 	return await ctx.db

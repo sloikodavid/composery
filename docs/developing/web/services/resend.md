@@ -76,9 +76,9 @@ Repeat these steps for every Convex deployment that should deliver alerts.
    `mail.composery.io`. Resend generates the exact records; add them verbatim in
    Cloudflare DNS, left **DNS-only / unproxied**, then wait for Resend to mark
    the domain **Verified**:
-   - **DKIM** — a `TXT` record at `resend._domainkey.mail.composery.io` holding
+   - **DKIM:** a `TXT` record at `resend._domainkey.mail.composery.io` holding
      the `p=…` public key.
-   - **SPF** — a `TXT` record (`v=spf1 include:amazonses.com ~all`) plus an `MX`
+   - **SPF:** a `TXT` record (`v=spf1 include:amazonses.com ~all`) plus an `MX`
      record on the return-path host (e.g. `send.mail.composery.io`), which
      catches bounces. Resend sends through AWS SES, so the MX target is
      `feedback-smtp.<region>.amazonses.com`; copy the region shown.

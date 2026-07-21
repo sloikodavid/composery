@@ -54,8 +54,19 @@ export function canonicalPaths(root, paths, readDirectory = readdirSync) {
 	];
 }
 
+// Include new, non-ignored files before they are staged. A tree check that is
+// green before `git add` but turns red after it is not checking the artifact a
+// contributor is about to commit.
+export const GIT_FILE_ARGS = [
+	"ls-files",
+	"--cached",
+	"--others",
+	"--exclude-standard",
+	"-z"
+];
+
 function gitFiles() {
-	const output = execFileSync("git", ["ls-files", "--cached", "-z"], {
+	const output = execFileSync("git", GIT_FILE_ARGS, {
 		cwd: REPO_ROOT
 	});
 	return canonicalPaths(

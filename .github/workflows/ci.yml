@@ -26,9 +26,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Spans both host OSes and both architectures: windows-2025 is x64,
-        # macos-15 is arm64. Linux gets the same span from smoke.yml's
-        # amd64/arm64 pair.
+        # Spans both non-Linux host OSes and both architectures: windows-2025 is
+        # x64 and macos-15 is arm64. Ubuntu x64 runs the same portable target in
+        # the check job below.
         os: [windows-2025, macos-15]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

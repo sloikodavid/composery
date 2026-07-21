@@ -16,6 +16,7 @@ const DEFAULT_ATTEMPTS = {
 };
 
 const config = {
+	buildTimeoutMs: parseOptionalTimeout(process.env.SMOKE_BUILD_TIMEOUT_MS),
 	containerName:
 		process.env.SMOKE_CONTAINER_NAME ?? `composery-smoke-${RUN_ID}`,
 	imageTag: process.env.SMOKE_IMAGE_TAG ?? "composery:smoke",
@@ -69,7 +70,7 @@ function buildImage() {
 	const args = ["build", "-t", config.imageTag];
 	if (config.noCache) args.push("--no-cache");
 	args.push(".");
-	docker(args, { timeoutMs: 45 * 60_000 });
+	docker(args, { timeoutMs: config.buildTimeoutMs });
 }
 
 function runDefaultContainer() {
@@ -613,7 +614,7 @@ async function assertPasswordRemoval() {
 			// Accepted spellings are trimmed and case-insensitive.
 			'for on in 1 true TRUE " true "; do write_config again; COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD="$on" "$remove"; ! grep -q hashed-password "$cfg"; done',
 			// Off, and anything unrecognised, must fail safe and keep the password.
-			'for off in 0 false FALSE no "" nonsense; do write_config keep; COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD="$off" "$remove"; grep -q hashed-password "$cfg"; done',
+			'for off in 0 false FALSE no "" nonsense "t rue"; do write_config keep; COMPOSERY_CONFIG="$cfg" COMPOSERY_REMOVE_PASSWORD="$off" "$remove"; grep -q hashed-password "$cfg"; done',
 			// Unset behaves like off.
 			"write_config unset",
 			'COMPOSERY_CONFIG="$cfg" "$remove"',
@@ -1081,7 +1082,8 @@ function run(command, args, options = {}) {
 		cwd: REPO_ROOT,
 		encoding: "utf8",
 		stdio: options.capture ? "pipe" : "inherit",
-		timeout: options.timeoutMs ?? 120_000
+		timeout:
+			options.timeoutMs === null ? undefined : (options.timeoutMs ?? 120_000)
 	});
 	if (result.error) throw result.error;
 	if (options.check !== false && result.status !== 0) {
@@ -1175,6 +1177,15 @@ function assertContains(label, haystack, needle) {
 
 function parseBoolean(value) {
 	return value === "1" || value === "true";
+}
+
+function parseOptionalTimeout(value) {
+	if (value === undefined || value === "") return null;
+	const timeout = Number(value);
+	if (!Number.isSafeInteger(timeout) || timeout < 1) {
+		throw new Error(`Invalid smoke build timeout: ${value}`);
+	}
+	return timeout;
 }
 
 function parsePort(value) {

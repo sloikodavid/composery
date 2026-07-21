@@ -209,6 +209,18 @@ describe("patch stack lint", () => {
 			try {
 				applySeries(resolve(upstream, "patches"));
 				applySeries(resolve(repoRoot, PATCHES_DIR));
+
+				// These security pins live in a patch because the lockfile belongs to
+				// the pinned upstream submodule; Renovate cannot update a patch hunk
+				// without destroying its coordinates. An upstream bump must apply the
+				// stack cleanly and keep the assembled runtime on fixed versions.
+				const lock = JSON.parse(
+					readFileSync(resolve(shadow, "package-lock.json"), "utf8")
+				) as { packages?: Record<string, { version?: string }> };
+				expect(lock.packages?.["node_modules/js-yaml"]?.version).toBe("4.3.0");
+				expect(lock.packages?.["node_modules/body-parser"]?.version).toBe(
+					"2.3.0"
+				);
 			} finally {
 				rmSync(shadow, { recursive: true, force: true });
 			}
@@ -235,8 +247,22 @@ describe("local media preview", () => {
 // The workbench half of the QR is a patch, the rendering half is a shipped
 // extension. Top-level function declarations in a vm context land on the context
 // object, so the extension's internals are reachable without test-only exports.
-function loadQrExtension(): {
+function loadQrExtension(
+	networkInterfaces: () => Record<
+		string,
+		Array<{
+			address: string;
+			family: string;
+			internal: boolean;
+		} | null>
+	> = () => ({}),
+	vscodeApi: unknown = { commands: {}, window: {} }
+): {
+	activate: (context: {
+		subscriptions: { push(disposable: unknown): void };
+	}) => void;
 	isReachableFromAnotherDevice: (url: URL) => boolean;
+	networkAddresses: (url: URL) => string[];
 	render: (url: string) => string;
 } {
 	const source = readRepoFile(
@@ -247,8 +273,8 @@ function loadQrExtension(): {
 		URL,
 		module: { exports: {} },
 		require(name: string): unknown {
-			if (name === "vscode") return { commands: {}, window: {} };
-			if (name === "node:os") return { networkInterfaces: () => ({}) };
+			if (name === "vscode") return vscodeApi;
+			if (name === "node:os") return { networkInterfaces };
 			if (name === "./qrcode-generator.js") {
 				return nodeRequire(
 					resolve(
@@ -263,12 +289,18 @@ function loadQrExtension(): {
 
 	vm.runInContext(source, context);
 
+	expect(context.activate).toBeTypeOf("function");
 	expect(context.isReachableFromAnotherDevice).toBeTypeOf("function");
+	expect(context.networkAddresses).toBeTypeOf("function");
 	expect(context.render).toBeTypeOf("function");
 	return {
+		activate: context.activate as (context: {
+			subscriptions: { push(disposable: unknown): void };
+		}) => void,
 		isReachableFromAnotherDevice: context.isReachableFromAnotherDevice as (
 			url: URL
 		) => boolean,
+		networkAddresses: context.networkAddresses as (url: URL) => string[],
 		render: context.render as (url: string) => string
 	};
 }
@@ -328,6 +360,72 @@ describe("QR action", () => {
 				unreachable
 			).toBe(false);
 		}
+	});
+
+	test("offers useful LAN links before container bridge addresses", () => {
+		const { networkAddresses } = loadQrExtension(() => ({
+			docker: [{ address: "172.18.0.2", family: "IPv4", internal: false }],
+			wifi: [
+				{ address: "192.168.1.192", family: "IPv4", internal: false },
+				{ address: "fe80::1", family: "IPv6", internal: false }
+			],
+			loopback: [{ address: "127.0.0.1", family: "IPv4", internal: true }]
+		}));
+
+		expect(
+			networkAddresses(
+				new URL("http://localhost:8080/code/?folder=/home/user#readme")
+			)
+		).toEqual([
+			"http://192.168.1.192:8080/code/?folder=/home/user#readme",
+			"http://172.18.0.2:8080/code/?folder=/home/user#readme"
+		]);
+	});
+
+	test("opens a selected network address from an explanatory toast", async () => {
+		const lanUrl = "http://192.168.1.192:8080/";
+		let command: ((value: string) => Promise<void>) | undefined;
+		let warning: unknown[] | undefined;
+		let opened: unknown;
+		const { activate } = loadQrExtension(
+			() => ({
+				wifi: [{ address: "192.168.1.192", family: "IPv4", internal: false }]
+			}),
+			{
+				commands: {
+					registerCommand(
+						_id: string,
+						handler: (value: string) => Promise<void>
+					) {
+						command = handler;
+						return { dispose() {} };
+					}
+				},
+				env: {
+					openExternal(uri: unknown) {
+						opened = uri;
+						return Promise.resolve(true);
+					}
+				},
+				Uri: { parse: (value: string) => value },
+				window: {
+					showWarningMessage(...items: unknown[]) {
+						warning = items;
+						return Promise.resolve(lanUrl);
+					}
+				}
+			}
+		);
+
+		activate({ subscriptions: { push() {} } });
+		if (!command) throw new Error("QR command was not registered");
+		await command("http://localhost:8080/");
+
+		expect(warning).toEqual([
+			"This address only works on this device. Try one below. Composery found these addresses on this computer, but cannot tell which one your other device can use.",
+			lanUrl
+		]);
+		expect(opened).toBe(lanUrl);
 	});
 
 	// A short LAN address makes a low-version code with wide modules, so a quiet
@@ -2861,5 +2959,15 @@ describe("app scheme override", () => {
 		expect(source).toMatch(/\[data-scheme="light"\]/);
 		// The media query stays for real browsers; the attribute is the override.
 		expect(source).toContain("prefers-color-scheme");
+	});
+});
+
+describe("persistence readiness cache", () => {
+	test("uses monotonic elapsed time instead of the adjustable wall clock", () => {
+		const source = readRepoFile(
+			"packages/ide/overlay/src/node/persistence/readiness.ts"
+		);
+		expect(source.match(/performance\.now\(\)/g)).toHaveLength(2);
+		expect(source).not.toMatch(/(?:cached\.at|at:)\s*Date\.now\(\)/);
 	});
 });

@@ -1,0 +1,11 @@
+{
+	"pages": [
+		"index",
+		"development",
+		"expo",
+		"apple",
+		"google-play",
+		"review-and-privacy",
+		"releasing"
+	]
+}

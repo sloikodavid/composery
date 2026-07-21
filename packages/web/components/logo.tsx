@@ -122,35 +122,32 @@ function LogoMenu({ children }: { children: ReactNode }) {
 	);
 }
 
-export function Logo() {
-	return (
-		<Link
-			aria-label="Composery"
-			className="inline-flex text-foreground transition-colors hover:text-foreground/80"
-			href="/"
-		>
-			<LogoMenu>
-				<LogoLockup className="h-8 w-auto" />
-			</LogoMenu>
-		</Link>
-	);
-}
-
-// fumadocs DocsLayout nav-title slot: spread its props so the `me-auto` it passes
-// reaches the link (keeps the collapse button pushed to the end).
-export function NavLogoLink({ className, ...props }: ComponentProps<"a">) {
+// The one logo link, for every surface: site header, footer, and both fumadocs
+// nav slots. `size` picks the mark's height - only the footer differs, since
+// it's a brand block rather than a fixed-height bar. Remaining props land on the
+// link, which is what the fumadocs nav-title slot needs: it passes a `me-auto`
+// that keeps the sidebar collapse button pushed to the end.
+export function Logo({
+	className,
+	size = "h-9",
+	...props
+}: ComponentProps<"a"> & { size?: string }) {
 	return (
 		<Link
 			{...props}
 			aria-label="Composery"
 			href="/"
 			className={cn(
-				"inline-flex text-foreground transition-colors hover:text-foreground/80",
+				// Fade with opacity, not a translucent currentColor: the mark's icon
+				// paints fill and stroke in the same paint, so a per-shape alpha
+				// composites them twice and the stroke shows through as a seam. Opacity
+				// composites the whole mark once (same as auth.css's .auth-logo-link).
+				"inline-flex text-foreground transition-opacity hover:opacity-80",
 				className
 			)}
 		>
 			<LogoMenu>
-				<LogoLockup className="h-7.5 w-auto" />
+				<LogoLockup className={cn(size, "w-auto")} />
 			</LogoMenu>
 		</Link>
 	);

@@ -10,6 +10,19 @@ diff --git a/dist/components/ui/popover.js b/dist/components/ui/popover.js
  		...props
  	}) });
  }
+diff --git a/dist/layouts/docs/slots/header.js b/dist/layouts/docs/slots/header.js
+index cd0c533..9457f54 100644
+--- a/dist/layouts/docs/slots/header.js
++++ b/dist/layouts/docs/slots/header.js
+@@ -12,7 +12,7 @@ function Header(props) {
+ 		id: "nd-subnav",
+ 		"data-transparent": isNavTransparent,
+ 		...props,
+-		className: cn("[grid-area:header] sticky top-(--fd-docs-row-1) z-30 flex items-center ps-4 pe-2.5 border-b transition-colors backdrop-blur-sm h-(--fd-header-height) md:hidden max-md:layout:[--fd-header-height:--spacing(14)] data-[transparent=false]:bg-fd-background/80", props.className),
++		className: cn("[grid-area:header] sticky top-(--fd-docs-row-1) z-30 flex items-center px-2.5 border-b transition-colors backdrop-blur-sm h-(--fd-header-height) md:hidden max-md:layout:[--fd-header-height:--spacing(14)] data-[transparent=false]:bg-fd-background/80", props.className),
+ 		children: [
+ 			slots.navTitle && /* @__PURE__ */ jsx(slots.navTitle, { className: "inline-flex items-center gap-2.5 font-semibold" }),
+ 			/* @__PURE__ */ jsx("div", {
 diff --git a/dist/layouts/shared/page-actions.js b/dist/layouts/shared/page-actions.js
 index 74590d8..13efd3d 100644
 --- a/dist/layouts/shared/page-actions.js

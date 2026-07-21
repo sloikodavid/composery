@@ -2,7 +2,7 @@
 	"expo": {
 		"name": "Composery",
 		"slug": "composery",
-		"version": "1.0.0",
+		"version": "0.0.0",
 		"orientation": "default",
 		"icon": "./assets/images/icon.png",
 		"scheme": "composery",
@@ -11,10 +11,19 @@
 			"bundleIdentifier": "io.composery",
 			"config": {
 				"usesNonExemptEncryption": false
+			},
+			"infoPlist": {
+				"NSLocalNetworkUsageDescription": "Allow Composery to connect directly to an instance on your local network.",
+				"NSAppTransportSecurity": {
+					"NSAllowsArbitraryLoads": false,
+					"NSAllowsArbitraryLoadsInWebContent": false,
+					"NSAllowsLocalNetworking": true
+				}
 			}
 		},
 		"android": {
 			"package": "io.composery",
+			"allowBackup": false,
 			"adaptiveIcon": {
 				"backgroundColor": "#0a0a0a",
 				"foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -22,7 +31,16 @@
 				"monochromeImage": "./assets/images/android-icon-monochrome.png"
 			},
 			"predictiveBackGestureEnabled": false,
-			"permissions": ["android.permission.CAMERA"]
+			"permissions": ["android.permission.CAMERA"],
+			"blockedPermissions": [
+				"android.permission.READ_EXTERNAL_STORAGE",
+				"android.permission.RECORD_AUDIO",
+				"android.permission.SYSTEM_ALERT_WINDOW",
+				"android.permission.WRITE_EXTERNAL_STORAGE"
+			]
+		},
+		"updates": {
+			"enabled": false
 		},
 		"web": {
 			"output": "static",
@@ -30,11 +48,20 @@
 		},
 		"plugins": [
 			"./plugins/android-dialog-theme.js",
+			[
+				"expo-build-properties",
+				{
+					"android": {
+						"usesCleartextTraffic": true
+					}
+				}
+			],
 			"expo-router",
 			[
 				"expo-camera",
 				{
 					"cameraPermission": "Allow Composery to use the camera to scan an instance QR code.",
+					"microphonePermission": false,
 					"recordAudioAndroid": false
 				}
 			],
@@ -50,7 +77,9 @@
 						"imageWidth": 76
 					}
 				}
-			]
+			],
+			"expo-font",
+			"expo-status-bar"
 		],
 		"experiments": {
 			"typedRoutes": true,

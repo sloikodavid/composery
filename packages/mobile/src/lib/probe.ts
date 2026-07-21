@@ -55,7 +55,9 @@ export async function probeComposery(
 	try {
 		const response = await fetchWithTimeout(
 			probeUrl(instanceUrl),
-			{ redirect: "follow", headers: { accept: "application/json" } },
+			// A redirect could let an arbitrary origin borrow a real Composery's
+			// marker and then be admitted as the WebView's trusted main document.
+			{ redirect: "error", headers: { accept: "application/json" } },
 			options
 		);
 		if (!response.ok) return { ok: false, reason: "not-composery" };

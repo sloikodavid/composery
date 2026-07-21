@@ -16,10 +16,10 @@ const rootPackage = JSON.parse(readRepoFile("package.json")) as {
 const scripts = rootPackage.scripts;
 const ciWorkflow = readRepoFile(".github/workflows/ci.yml");
 
-// Linux-only, with the reason each one cannot run elsewhere:
-// - check:cli   cargo builds the persistence crate, which needs inotify/xattr.
-// - check:renovate  validates JSON against a schema; no OS-specific behaviour.
-const LINUX_ONLY = ["check:cli", "check:renovate"];
+// Deliberately excluded from the cross-platform matrix:
+// - check:cli  cargo builds the persistence crate, which needs inotify/xattr.
+// - check:renovate  schema validation has no OS-specific behaviour to repeat.
+const PORTABLE_EXCLUSIONS = ["check:cli", "check:renovate"];
 
 // pnpm run targets named inside a script body, e.g. "pnpm check:types && ...".
 function targetsOf(script: string): string[] {
@@ -34,28 +34,93 @@ const checkTargets = Object.keys(scripts).filter(
 const portableTargets = targetsOf(scripts["check:portable"] ?? "");
 
 describe("cross-platform checks", () => {
-	test("every check target is either portable or explicitly Linux-only", () => {
+	test("formatting excludes Expo's generated native projects", () => {
+		const prettierIgnore = readRepoFile(".prettierignore");
+
+		expect(prettierIgnore).toMatch(/^packages\/mobile\/android\/$/m);
+		expect(prettierIgnore).toMatch(/^packages\/mobile\/ios\/$/m);
+	});
+
+	test("local smoke builds have no arbitrary wall-clock cutoff", () => {
+		const smoke = readRepoFile("scripts/smoke.mjs");
+
+		expect(smoke).toContain(
+			"buildTimeoutMs: parseOptionalTimeout(process.env.SMOKE_BUILD_TIMEOUT_MS)"
+		);
+		expect(smoke).toContain("options.timeoutMs === null");
+		expect(smoke).toContain(": (options.timeoutMs ?? 120_000)");
+		expect(smoke).not.toContain("45 * 60_000");
+	});
+
+	test("native config uses Expo's matching clean prebuild engine", () => {
+		const checker = readRepoFile(
+			"packages/mobile/scripts/check-native-config.mjs"
+		);
+		const mobilePackage = JSON.parse(
+			readRepoFile("packages/mobile/package.json")
+		) as { scripts?: Record<string, string> };
+
+		expect(mobilePackage.scripts?.["check:native-config"]).toBe(
+			"node scripts/check-native-config.mjs"
+		);
+		expect(checker).toContain(
+			'createRequire(expoRequire.resolve("@expo/cli/package.json"))'
+		);
+		expect(checker).toMatch(
+			/const prebuildVersion = cliRequire\(\s*"@expo\/prebuild-config\/package\.json"\s*\)\.version/
+		);
+		expect(checker).toContain("ignoreExistingNativeFiles: true");
+	});
+
+	test("the pinned EAS wrapper does not shell-interpret arguments", () => {
+		const wrapper = readRepoFile("packages/mobile/scripts/eas.mjs");
+
+		expect(wrapper).toContain("`eas-cli@${version}`");
+		expect(wrapper).not.toMatch(/shell\s*:/);
+		expect(wrapper).toContain("node_modules/npm/bin/npx-cli.js");
+		expect(wrapper).toContain(
+			"delete childEnv.npm_config_manage_package_manager_versions"
+		);
+	});
+
+	test("lint warnings fail every lint scope", () => {
+		const packages = [
+			"package.json",
+			"packages/mobile/package.json",
+			"packages/web/package.json"
+		];
+		for (const path of packages) {
+			const pkg = JSON.parse(readRepoFile(path)) as {
+				scripts?: Record<string, string>;
+			};
+			expect(pkg.scripts?.["check:lint"], path).toContain("--max-warnings 0");
+		}
+	});
+
+	test("every check target is portable or explicitly excluded", () => {
 		const unclassified = checkTargets.filter(
-			(name) => !portableTargets.includes(name) && !LINUX_ONLY.includes(name)
+			(name) =>
+				!portableTargets.includes(name) && !PORTABLE_EXCLUSIONS.includes(name)
 		);
 
 		expect(unclassified).toEqual([]);
 	});
 
-	test("the Linux-only targets are named, not merely left out", () => {
+	test("portable exclusions are named, not merely left out", () => {
 		// A target dropped from check:portable without being listed here would
 		// otherwise read as "portable set shrank" instead of failing.
 		expect(checkTargets).toEqual(
-			expect.arrayContaining([...LINUX_ONLY, ...portableTargets])
+			expect.arrayContaining([...PORTABLE_EXCLUSIONS, ...portableTargets])
 		);
 		expect(portableTargets.length).toBeGreaterThan(0);
 	});
 
-	test("check still runs the portable set and every Linux-only target", () => {
+	test("check still runs the portable set and every exclusion", () => {
 		const umbrella = targetsOf(scripts.check ?? "");
 
 		expect(umbrella).toContain("check:portable");
-		for (const target of LINUX_ONLY) expect(umbrella).toContain(target);
+		for (const target of PORTABLE_EXCLUSIONS)
+			expect(umbrella).toContain(target);
 	});
 
 	test("CI proves the portable set on both Windows and macOS", () => {
@@ -146,14 +211,14 @@ describe("cross-platform checks", () => {
 		};
 		walk(resolve(repoRoot, "packages/mobile/src"));
 
+		const testIdSection = readRepoFile(
+			"packages/mobile/src/maestro/README.md"
+		).match(/## Test IDs\s+([\s\S]*?)(?:\n## |$)/)?.[1];
+		expect(testIdSection).toBeDefined();
 		const documented = new Set(
-			[
-				...readRepoFile("packages/mobile/src/maestro/README.md").matchAll(
-					/^- (`[^\n]+?`) —/gm
-				)
-			]
-				.flatMap((match) => [...(match[1] ?? "").matchAll(/`([^`]+)`/g)])
-				.flatMap((match) => match[1] ?? [])
+			[...(testIdSection ?? "").matchAll(/`([^`]+)`/g)].flatMap(
+				(match) => match[1] ?? []
+			)
 		);
 
 		expect(ids.size).toBeGreaterThan(5);
@@ -167,6 +232,22 @@ describe("cross-platform checks", () => {
 		expect(workflow).toContain("android-emulator-runner");
 		expect(workflow).toContain("expo run:ios");
 		expect(workflow).toMatch(/runs-on: macos-[\w.-]+/);
+	});
+
+	test("mobile e2e installs a checksummed Maestro release without a mutable installer", () => {
+		const workflow = readRepoFile(".github/workflows/mobile-e2e.yml");
+		const installer = readRepoFile(".github/scripts/install-maestro.sh");
+
+		expect(workflow).toMatch(/MAESTRO_VERSION: \d+\.\d+\.\d+/);
+		expect(workflow).toMatch(/MAESTRO_SHA256: [a-f0-9]{64}/);
+		expect(
+			workflow.match(/sh \.github\/scripts\/install-maestro\.sh/g)
+		).toHaveLength(2);
+		expect(workflow).not.toContain("get.maestro.mobile.dev");
+		expect(installer).toContain(
+			"releases/download/cli-$MAESTRO_VERSION/maestro.zip"
+		);
+		expect(installer).toContain("shasum -a 256 -c -");
 	});
 
 	test("the mobile bundle is exported for every platform it ships to", () => {

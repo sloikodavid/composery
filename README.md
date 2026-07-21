@@ -35,14 +35,14 @@ docker run -d --name composery -p 8080:8080 -v composery_data:/data \
 
 Open `http://localhost:8080` and register a password. For anything
 internet-facing, put TLS in front - start at
-[Self-Hosting](docs/self-hosting/index.md).
+[Self-hosting](docs/self-hosting/index.md).
 
 ## Documentation
 
 Rendered at [composery.io/docs](https://www.composery.io/docs), source in
 [`docs/`](docs/index.md):
 
-- [Self-Hosting](docs/self-hosting/index.md) - VPS with Docker Compose,
+- [Self-hosting](docs/self-hosting/index.md) - VPS with Docker Compose,
   DigitalOcean, Fly.io, Render, Railway, Koyeb, Kubernetes, and other
   container hosts.
 - [Configuration](docs/configuration.md) - runtime environment variables.

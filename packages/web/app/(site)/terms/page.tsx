@@ -14,11 +14,28 @@ export default function TermsPage() {
 		<LegalPage title="Terms of Service">
 			<p>
 				These terms are an agreement between you and {OWNER.legalName}, trading
-				as
-				{OWNER.tradingName} in {OWNER.jurisdiction} (“{OWNER.tradingName}”), for{" "}
-				{WEBSITE_DOMAIN} and Composery Cloud. They do not replace the Apache 2.0
-				licence governing the separately distributed open-source software.
+				as {OWNER.tradingName} in {OWNER.jurisdiction} (“{OWNER.tradingName}”),
+				for {WEBSITE_DOMAIN} and Composery Cloud. The Composery mobile
+				application and self-hosted runtime are open-source software distributed
+				under the Apache 2.0 licence. These Terms govern the hosted service you
+				access through the app, not your separate right to use that software.
 			</p>
+			<LegalSection title="Mobile application">
+				<p>
+					Composery Mobile is a client for Composery instances. You choose and
+					control the instance URLs saved on your device. An independently
+					operated instance is provided by its operator under that operator’s
+					terms and privacy policy; Composery does not control it merely because
+					the app can connect to it. Accessing Composery Cloud through the app
+					remains subject to these Terms.
+				</p>
+				<p>
+					Camera access is optional and used only to scan an instance QR code.
+					You may deny or withdraw that permission and enter the URL manually.
+					The app does not require microphone, storage, contacts, location,
+					advertising, or tracking permission.
+				</p>
+			</LegalSection>
 			<LegalSection title="Eligibility and accounts">
 				<p>
 					You must be able to enter this agreement. If you are under 18, you may

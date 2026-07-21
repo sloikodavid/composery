@@ -5,7 +5,7 @@ import { Authenticated, Unauthenticated } from "convex/react";
 import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/button";
-import { FumadocsNarrowSidebar } from "@/components/fumadocs-narrow-sidebar";
+import { FumadocsNarrowHeader } from "@/components/fumadocs-narrow-header";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,
@@ -42,18 +42,23 @@ export function Header() {
 	return (
 		<header className="sticky top-0 z-40">
 			{/* Desktop: the floating pill. */}
-			<div className="mx-auto hidden h-14 w-full max-w-5xl items-center justify-between gap-6 rounded-b-2xl border border-t-0 border-border bg-background px-3.5 md:flex">
-				<div className="flex min-w-0 items-center gap-5">
-					<Logo />
-					<nav className="flex items-center gap-1">
-						{PUBLIC_NAV_LINKS.map((link) => pill(link, false))}
-						<Authenticated>
-							{authedLinks.map((link) => pill(link, true))}
-						</Authenticated>
-					</nav>
-				</div>
+			{/* Three columns rather than a flex row: the equal `1fr` sides centre the
+			    nav on the bar itself, so it stays put no matter how much wider the
+			    auth cluster is than the logo. `justify-between` would only centre it
+			    if the two sides happened to match. */}
+			<div className="mx-auto hidden h-14 w-full max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-6 rounded-b-2xl border border-t-0 border-border bg-background pe-3.5 ps-2.5 md:grid">
+				{/* Grid items stretch by default, which would leave the logo's link box
+				    spanning the whole column. */}
+				<Logo className="justify-self-start" />
 
-				<div className="flex items-center gap-2">
+				<nav className="flex min-w-0 items-center gap-1">
+					{PUBLIC_NAV_LINKS.map((link) => pill(link, false))}
+					<Authenticated>
+						{authedLinks.map((link) => pill(link, true))}
+					</Authenticated>
+				</nav>
+
+				<div className="flex items-center justify-end gap-2">
 					<ThemeToggle />
 					<Authenticated>
 						{/* Fixed footprint so the row displaces once when auth resolves;
@@ -75,8 +80,9 @@ export function Header() {
 				</div>
 			</div>
 
-			{/* Narrow screens: fumadocs' sidebar drawer, isolated in its own component. */}
-			<FumadocsNarrowSidebar />
+			{/* Narrow screens: the bar that replaces this pill, matching the docs'
+			    own narrow header. Isolated in its own component. */}
+			<FumadocsNarrowHeader />
 		</header>
 	);
 }

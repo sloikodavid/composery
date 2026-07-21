@@ -9,4 +9,4 @@ docker compose up -d        # then reach http://<host>:8080
 
 Do not expose `8080` to the public internet without TLS in front.
 
-**-> [Docker Compose on a VPS](../../docs/self-hosting/vps.md)**
+**-> [VPS](../../docs/self-hosting/vps.md)**

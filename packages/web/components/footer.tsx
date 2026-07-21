@@ -49,7 +49,7 @@ export function Footer() {
 		<footer className="border-t border-border bg-background">
 			<div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
 				<div className="max-w-sm space-y-3">
-					<Logo />
+					<Logo size="h-12" />
 					<p className="text-balance text-sm leading-6 text-muted-foreground">
 						A secure cloud computer with a powerful UI, usable from any phone or
 						browser.

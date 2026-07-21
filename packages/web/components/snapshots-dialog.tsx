@@ -50,7 +50,7 @@ const SNAPSHOT_SORT = {
 };
 
 function formatSize(bytes: number | null) {
-	if (bytes === null) return "—";
+	if (bytes === null) return "-";
 	const gb = bytes / 1e9;
 	return gb >= 1
 		? `${gb.toFixed(2)} GB`

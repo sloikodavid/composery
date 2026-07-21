@@ -8,7 +8,7 @@
 		"dev:convex": "convex dev",
 		"check": "pnpm check:types && pnpm check:lint && pnpm check:test",
 		"check:types": "fumadocs-mdx && next typegen && tsc --noEmit",
-		"check:lint": "eslint .",
+		"check:lint": "eslint . --max-warnings 0",
 		"check:test": "vitest run",
 		"fix:lint": "eslint . --fix",
 		"build": "next build",

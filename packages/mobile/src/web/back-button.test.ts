@@ -133,6 +133,47 @@ describe("color-scheme override", () => {
 		const setScheme = script.slice(script.indexOf("__composerySetScheme"));
 		expect(setScheme).toContain("stampScheme()");
 	});
+
+	test("notifies dark and light queries with their own match result", () => {
+		const documentElement = { dataset: {} as Record<string, string> };
+		const nativeQuery = { matches: false, media: "native" };
+		const windowObject = {
+			matchMedia: () => nativeQuery
+		} as unknown as {
+			matchMedia: (query: string) => MediaQueryList;
+			__composerySetScheme: (scheme: string) => void;
+		};
+		const documentObject = {
+			documentElement,
+			addEventListener: () => undefined
+		};
+
+		new Function("window", "document", buildBeforeLoad("dark"))(
+			windowObject,
+			documentObject
+		);
+		const dark = windowObject.matchMedia("(prefers-color-scheme: dark)");
+		const light = windowObject.matchMedia("(prefers-color-scheme: light)");
+		const darkEvents: boolean[] = [];
+		const lightEvents: boolean[] = [];
+		dark.addEventListener("change", (event) => darkEvents.push(event.matches));
+		light.addEventListener("change", (event) =>
+			lightEvents.push(event.matches)
+		);
+
+		windowObject.__composerySetScheme("light");
+
+		expect(dark.matches).toBe(false);
+		expect(light.matches).toBe(true);
+		expect(darkEvents).toEqual([false]);
+		expect(lightEvents).toEqual([true]);
+		expect(documentElement.dataset.scheme).toBe("light");
+		// Compound queries are passed through intact instead of having their other
+		// conditions silently discarded by the app shim.
+		expect(
+			windowObject.matchMedia("screen and (prefers-color-scheme: dark)")
+		).toBe(nativeQuery);
+	});
 });
 
 describe("menubar", () => {

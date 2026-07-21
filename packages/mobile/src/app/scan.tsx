@@ -113,6 +113,12 @@ export default function ScanScreen() {
 					</Text>
 					<PressableScale
 						testID="scan-permission-action"
+						accessibilityRole="button"
+						accessibilityLabel={
+							permission.canAskAgain
+								? "Allow camera"
+								: "Open camera permission settings"
+						}
 						onPress={() => {
 							if (permission.canAskAgain) void requestPermission();
 							else void Linking.openSettings();
@@ -132,6 +138,18 @@ export default function ScanScreen() {
 							]}
 						>
 							{permission.canAskAgain ? "Allow camera" : "Open settings"}
+						</Text>
+					</PressableScale>
+					<PressableScale
+						accessibilityRole="button"
+						accessibilityLabel="Enter instance URL instead"
+						onPress={() => replaceWith("/add-instance")}
+						style={{ paddingHorizontal: 22, paddingVertical: 13, marginTop: 8 }}
+					>
+						<Text
+							style={[body("semibold"), { fontSize: 15, color: "#ffffff" }]}
+						>
+							Enter URL instead
 						</Text>
 					</PressableScale>
 				</View>

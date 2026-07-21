@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { canonicalPaths, compareEntries } from "../scripts/tree.mjs";
+import {
+	canonicalPaths,
+	compareEntries,
+	GIT_FILE_ARGS
+} from "../scripts/tree.mjs";
 
 function directories(contents: Record<string, string[]>) {
 	return (path: string) => {
@@ -12,6 +16,16 @@ function directories(contents: Record<string, string[]>) {
 }
 
 describe("tree path discovery", () => {
+	test("includes unstaged new files but not ignored scratch", () => {
+		expect(GIT_FILE_ARGS).toEqual([
+			"ls-files",
+			"--cached",
+			"--others",
+			"--exclude-standard",
+			"-z"
+		]);
+	});
+
 	test("deduplicates the two Git entries from a case-only file rename", () => {
 		const readDirectory = directories({
 			"/repo": ["prompts"],

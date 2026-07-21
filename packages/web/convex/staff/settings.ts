@@ -1,7 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import { mutation, query } from "../_generated/server";
-import { readGlobalSettings } from "../settings";
+import {
+	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
+	readGlobalSettings
+} from "../settings";
 import { requireCapability } from "../authorization";
 import {
 	validateThresholds,
@@ -93,7 +96,11 @@ export const setMaxActiveCheckoutIntentsPerUser = mutation({
 	},
 	handler: async (ctx, args) => {
 		const staffUser = await requireCapability(ctx, "settings_management");
-		if (!Number.isInteger(args.max) || args.max < 1 || args.max > 50) {
+		if (
+			!Number.isInteger(args.max) ||
+			args.max < 1 ||
+			args.max > MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER
+		) {
 			throw new ConvexError("Limit must be a whole number between 1 and 50.");
 		}
 		await ctx.runMutation(

@@ -8,4 +8,4 @@ rootless hosts with a domain.
 docker compose up -d        # then open https://<your-domain>
 ```
 
-**-> [Docker Compose on a VPS](../../docs/self-hosting/vps.md)**
+**-> [VPS](../../docs/self-hosting/vps.md)**

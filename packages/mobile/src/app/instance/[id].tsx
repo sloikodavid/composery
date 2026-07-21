@@ -10,7 +10,11 @@ import {
 import { useCallback, useEffect } from "react";
 
 import { iosSwipeEnabled } from "@/lib/back-decision";
-import { setActiveInstance, useHostBackState } from "@/lib/instance-host";
+import {
+	clearActiveInstance,
+	setActiveInstance,
+	useHostBackState
+} from "@/lib/instance-host";
 
 export default function InstanceRoute() {
 	const { id } = useLocalSearchParams<{ id: string }>();
@@ -20,7 +24,7 @@ export default function InstanceRoute() {
 	useFocusEffect(
 		useCallback(() => {
 			setActiveInstance(id);
-			return () => setActiveInstance(null);
+			return () => clearActiveInstance(id);
 		}, [id])
 	);
 

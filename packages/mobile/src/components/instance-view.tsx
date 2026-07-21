@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
-import { openBrowserAsync } from "expo-web-browser";
 import { ExternalLink, RotateCw } from "lucide-react-native";
 import {
 	type ReactNode,
@@ -38,6 +37,8 @@ import {
 	type ProbeResult
 } from "@/lib/probe";
 import { useTheme, type Theme } from "@/lib/use-theme";
+import { classifyWebViewNavigation } from "@/lib/webview-navigation";
+import { openExternalUrl } from "@/lib/open-url";
 import {
 	buildBeforeLoad,
 	INSTALL_SCRIPT,
@@ -336,7 +337,6 @@ export function InstanceView({
 		() => buildBeforeLoad(scheme === "dark" ? "dark" : "light", __DEV__),
 		[scheme]
 	);
-	const instanceOrigin = instance ? new URL(instance.url).origin : "";
 	const probeKey = instance ? `${instance.url}:${reloadKey}` : "";
 	const probing = probeResult?.key !== probeKey;
 	const probeCurrent =
@@ -529,19 +529,15 @@ export function InstanceView({
 							onContentProcessDidTerminate={recoverWebViewProcess}
 							onRenderProcessGone={recoverWebViewProcess}
 							onShouldStartLoadWithRequest={(request) => {
-								// Navigation guard (PLAN.md Wrinkle 6): 'other' covers the initial
-								// load and sub-frame/resource requests — allow all. Only
-								// user-driven top-frame nav to a different host opens the browser.
-								if (request.navigationType === "other") return true;
-								let parsed: URL;
-								try {
-									parsed = new URL(request.url);
-								} catch {
-									return true;
+								const target = classifyWebViewNavigation({
+									instanceUrl: instance.url,
+									isTopFrame: request.isTopFrame,
+									requestUrl: request.url
+								});
+								if (target === "inside") return true;
+								if (target === "external") {
+									void openExternalUrl(request.url);
 								}
-								if (parsed.origin === instanceOrigin) return true;
-								if (request.isTopFrame === false) return true;
-								void openBrowserAsync(request.url);
 								return false;
 							}}
 							testID="instance-webview"
@@ -567,7 +563,7 @@ export function InstanceView({
 								onBack={onLeave}
 								onRetry={retry}
 								retrying={webRetrying}
-								onOpenInBrowser={() => void openBrowserAsync(instance.url)}
+								onOpenInBrowser={() => void openExternalUrl(instance.url)}
 							/>
 						</View>
 					) : webLoading ? (
@@ -611,7 +607,7 @@ export function InstanceView({
 					onBack={onLeave}
 					onRetry={retry}
 					retrying={probing}
-					onOpenInBrowser={() => void openBrowserAsync(instance.url)}
+					onOpenInBrowser={() => void openExternalUrl(instance.url)}
 				/>
 			) : (
 				<ChromeLoading theme={theme} onBack={onLeave} />

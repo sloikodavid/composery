@@ -110,6 +110,14 @@
 	"customManagers": [
 		{
 			"customType": "regex",
+			"managerFilePatterns": ["/^packages/mobile/eas\\.json$/"],
+			"matchStrings": ["\\\"version\\\":\\s*\\\"(?<currentValue>[^\\\"]+)\\\""],
+			"datasourceTemplate": "npm",
+			"depNameTemplate": "eas-cli",
+			"versioningTemplate": "npm"
+		},
+		{
+			"customType": "regex",
 			"managerFilePatterns": ["/^Dockerfile$/"],
 			"matchStrings": [
 				"#\\s*renovate:\\s*datasource=(?<datasource>npm|crate)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*ARG\\s+\\S+=(?<currentValue>\\S+)"

@@ -4,11 +4,9 @@ name: mobile-e2e
 # simulator, so the two platforms Composery is *used* from are covered by
 # something that actually boots the app rather than only bundling it.
 #
-# Both jobs build a dev client with `expo run:*` instead of installing Expo Go.
-# Expo Go would be quicker, but its Android package is version-pinned to a
-# sideloaded APK (56.0.1 rejects every SDK 56 project, expo/expo#46846) and its
-# iOS package id differs - a dev client is the same `io.composery` on both and
-# matches what ships.
+# Both jobs build the Release configuration with `expo run:*`. This exercises
+# the embedded bundle and production native config without Expo Go, Metro, or
+# development-client permissions that the store binary will not have.
 #
 # Nightly and on demand, never on pull requests: a native build plus an emulator
 # boot is slow and device runs are the flakiest thing in any suite. Bundling for
@@ -29,11 +27,14 @@ env:
   # The dev/EAS build id, per app.json. Flows take it as ${APP_ID} so the same
   # file drives Expo Go or a real build on either platform.
   APP_ID: io.composery
-  # get.maestro.mobile.dev installs whatever is latest when MAESTRO_VERSION is
-  # unset, which would make a failing nightly impossible to attribute. Both jobs
-  # inherit this from the workflow environment.
+  # Both jobs install the same immutable release asset through the checked-in
+  # installer below, so a failing nightly can be attributed to a known CLI.
   # renovate: datasource=github-releases depName=mobile-dev-inc/maestro
   MAESTRO_VERSION: 2.7.0
+  # GitHub release asset checksum. Renovate can bump the release above but its
+  # datasource does not expose asset hashes, so that PR intentionally stays red
+  # until this is copied from the release's checksums_sha256.txt.
+  MAESTRO_SHA256: a4ccab6b604617e7aef6db4f885666056eabe5cfa32befaa3bc994041b8fcbb5
 
 jobs:
   android:
@@ -56,7 +57,7 @@ jobs:
 
       - name: Install Maestro
         run: |
-          curl -Ls https://get.maestro.mobile.dev | bash
+          sh .github/scripts/install-maestro.sh
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
       # KVM is what makes the emulator usable rather than glacially slow.
@@ -75,15 +76,12 @@ jobs:
           api-level: 35
           arch: x86_64
           working-directory: packages/mobile
-          # Metro first: run:android launches the dev client, which shows a
-          # connection error instead of the app if the bundler is not serving.
-          # run:android then prebuilds the gitignored native project and installs
-          # the dev client on the emulator this action booted.
           script: |
-            pnpm exec expo start --dev-client --port 8081 &
-            sh ../../.github/scripts/wait-for-metro.sh
-            pnpm exec expo run:android --no-bundler
-            maestro test -e APP_ID="$APP_ID" --format junit \
+            set -euo pipefail
+            node scripts/test-instance.mjs &
+            pnpm exec expo run:android --variant release --no-bundler
+            maestro test -e APP_ID="$APP_ID" \
+              -e INSTANCE_URL="http://10.0.2.2:4173" --format junit \
               --output ../../maestro-android.xml src/maestro/e2e.yml
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -108,21 +106,19 @@ jobs:
 
       - name: Install Maestro
         run: |
-          curl -Ls https://get.maestro.mobile.dev | bash
+          sh .github/scripts/install-maestro.sh
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
       - name: Build and drive the app
         working-directory: packages/mobile
         run: |
           set -euo pipefail
-          # Metro first: run:ios launches the dev client, which shows a connection
-          # error instead of the app if the bundler is not already serving.
-          pnpm exec expo start --dev-client --port 8081 &
-          sh ../../.github/scripts/wait-for-metro.sh
+          node scripts/test-instance.mjs &
           # Boots a simulator, prebuilds the gitignored iOS project, and installs
-          # the dev client. Same APP_ID as Android because it is a real build.
-          pnpm exec expo run:ios --no-bundler
-          maestro test -e APP_ID="$APP_ID" --format junit \
+          # the same Release configuration the store build uses.
+          pnpm exec expo run:ios --configuration Release --no-bundler
+          maestro test -e APP_ID="$APP_ID" \
+            -e INSTANCE_URL="http://127.0.0.1:4173" --format junit \
             --output ../../maestro-ios.xml src/maestro/e2e.yml
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

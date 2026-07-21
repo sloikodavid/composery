@@ -1,5 +1,5 @@
 ---
-title: Docker Compose on a VPS
+title: VPS
 description: Self-host Composery on your own Linux server with Docker Compose.
 ---
 
@@ -9,7 +9,7 @@ Install Docker, then choose two things: the **init** system, and whether Compose
 its TLS edge**.
 
 For a dashboard over Docker instead of raw Compose (Coolify, Dokploy, CapRover) or a fully
-managed VM (Elestio), see [Other PaaS & self-hosted platforms](paas.md).
+managed VM (Elestio), see [Other PaaS & self-hosted platforms](other-platformsmd).
 
 - **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a
   privileged container with host cgroup access) or `supervisor` (works on any host,

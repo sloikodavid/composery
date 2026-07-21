@@ -13,11 +13,14 @@ const cacheTtlMs = 1000;
 let cached: { value: PersistenceReadiness; at: number } | undefined;
 
 export async function checkPersistenceReadiness(): Promise<PersistenceReadiness> {
-	if (cached && Date.now() - cached.at < cacheTtlMs) {
+	// Cache age is elapsed time, not civil time. Date.now() can move backwards
+	// after an NTP correction or host clock change and otherwise keep a stale
+	// readiness result alive indefinitely.
+	if (cached && performance.now() - cached.at < cacheTtlMs) {
 		return cached.value;
 	}
 	const value = await readPersistenceReadiness();
-	cached = { value, at: Date.now() };
+	cached = { value, at: performance.now() };
 	return value;
 }
 

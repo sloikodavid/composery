@@ -117,7 +117,7 @@ pause and never re-enables itself.
 Changing the snapshot policy recalculates the full fleet commitment. A change
 that would worsen an overcommit is rejected until the allocation is increased;
 a change that reduces commitments is allowed. Reducing a cap does not instantly
-delete customer-created snapshots—normal retention/cleanup owns deletion—so the
+delete customer-created snapshots. Normal retention/cleanup owns deletion, so the
 console may remain overcommitted until cleanup finishes.
 
 ### Paid race and provider rejection

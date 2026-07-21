@@ -1,0 +1,229 @@
+name: mobile-release
+
+on:
+  push:
+    tags:
+      - mobile-v*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Check release identity
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+            echo "A mobile release tag must point at the current main commit." >&2
+            exit 1
+          fi
+          version="$(node -p 'require("./packages/mobile/app.json").expo.version')"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Mobile version must be plain semver, got: $version" >&2
+            exit 1
+          fi
+          if [[ "$TAG" != "mobile-v$version" ]]; then
+            echo "Tag $TAG does not match app version $version." >&2
+            exit 1
+          fi
+          asc_app_id="$(node -p 'require("./packages/mobile/eas.json").submit?.production?.ios?.ascAppId ?? ""')"
+          if [[ ! "$asc_app_id" =~ ^[0-9]+$ ]]; then
+            echo "Set submit.production.ios.ascAppId in packages/mobile/eas.json before a production release." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build-submit:
+    needs: validate
+    runs-on: ubuntu-26.04
+    environment: mobile-production
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    outputs:
+      android_build_id: ${{ steps.build.outputs.android_build_id }}
+      version_code: ${{ steps.build.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter mobile check
+      - run: pnpm --filter mobile build
+
+      - name: Build and submit to internal distribution
+        id: build
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          pnpm --filter mobile eas -- build --platform all \
+            --profile production --auto-submit --non-interactive --wait --json \
+            > tmp/eas-production-builds.json
+
+          version_code="$(jq -r '.[] | select(.platform == "ANDROID") | .appBuildVersion // empty' tmp/eas-production-builds.json)"
+          android_build_id="$(jq -r '.[] | select(.platform == "ANDROID") | .id // empty' tmp/eas-production-builds.json)"
+          if [[ ! "$version_code" =~ ^[0-9]+$ || -z "$android_build_id" ]]; then
+            echo "Could not resolve the Android build identity from EAS." >&2
+            cat tmp/eas-production-builds.json >&2
+            exit 1
+          fi
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "android_build_id=$android_build_id" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eas-production-builds-${{ github.ref_name }}
+          path: tmp/eas-production-builds.json
+          retention-days: 90
+          if-no-files-found: error
+
+  publish-apk:
+    needs: [validate, build-submit]
+    runs-on: ubuntu-26.04
+    environment: mobile-production
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      PACKAGE_NAME: io.composery
+      VERSION: ${{ needs.validate.outputs.version }}
+      VERSION_CODE: ${{ needs.build-submit.outputs.version_code }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        id: google-auth
+        with:
+          token_format: access_token
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_ANDROID_PUBLISHER_SERVICE_ACCOUNT }}
+
+      - name: Download Google-signed universal APK
+        env:
+          ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          list_url="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME/generatedApks/$VERSION_CODE"
+
+          for _ in {1..40}; do
+            curl --fail --silent --show-error \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              "$list_url" --output tmp/generated-apks.json
+            download_id="$(jq -r '.generatedApks[]?.generatedUniversalApk.downloadId // empty' tmp/generated-apks.json | head -n 1)"
+            [[ -n "$download_id" ]] && break
+            sleep 30
+          done
+          if [[ -z "$download_id" ]]; then
+            echo "Play did not produce a universal APK for version code $VERSION_CODE." >&2
+            cat tmp/generated-apks.json >&2
+            exit 1
+          fi
+
+          download_url="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME/generatedApks/$VERSION_CODE/downloads/$download_id:download"
+          curl --fail --location --retry 3 \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$download_url" --output "tmp/composery-$VERSION.apk"
+
+      - name: Check APK identity, signer, and permissions
+        id: apk
+        run: |
+          set -euo pipefail
+          apk="tmp/composery-$VERSION.apk"
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk" | tee tmp/apksigner.txt
+          "$build_tools/aapt" dump badging "$apk" | tee tmp/aapt-badging.txt
+          "$build_tools/aapt" dump permissions "$apk" | tee tmp/aapt-permissions.txt
+
+          grep -F "package: name='$PACKAGE_NAME' versionCode='$VERSION_CODE' versionName='$VERSION'" tmp/aapt-badging.txt
+          mapfile -t active_permissions < <(sed -n "s/^uses-permission: name='\([^']*\)'.*/\1/p" tmp/aapt-permissions.txt | sort -u)
+          expected_permissions=(
+            android.permission.ACCESS_NETWORK_STATE
+            android.permission.CAMERA
+            android.permission.INTERNET
+            android.permission.VIBRATE
+            io.composery.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+          )
+          if [[ "${active_permissions[*]}" != "${expected_permissions[*]}" ]]; then
+            echo "Unexpected APK permissions: ${active_permissions[*]}" >&2
+            exit 1
+          fi
+
+          signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' tmp/apksigner.txt | head -n 1 | tr -d ':')"
+          if [[ ! "$signer" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            echo "Could not read the APK signer digest." >&2
+            exit 1
+          fi
+          sha256sum "$apk" > "$apk.sha256"
+          echo "signer=${signer,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Create provenance record
+        env:
+          APK_SIGNER: ${{ steps.apk.outputs.signer }}
+          EAS_BUILD_ID: ${{ needs.build-submit.outputs.android_build_id }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          apk_sha="$(cut -d ' ' -f 1 "tmp/composery-$VERSION.apk.sha256")"
+          jq -n \
+            --arg package "$PACKAGE_NAME" \
+            --arg version "$VERSION" \
+            --arg versionCode "$VERSION_CODE" \
+            --arg commit "$SOURCE_COMMIT" \
+            --arg easBuildId "$EAS_BUILD_ID" \
+            --arg apkSha256 "$apk_sha" \
+            --arg signerSha256 "$APK_SIGNER" \
+            '{package:$package,version:$version,versionCode:$versionCode,sourceCommit:$commit,easBuildId:$easBuildId,apkSha256:$apkSha256,signerCertificateSha256:$signerSha256,builder:"EAS Build",signer:"Google Play App Signing"}' \
+            > "tmp/composery-$VERSION.provenance.json"
+
+      - name: Install and smoke-test exact APK
+        run: sh .github/scripts/install-maestro.sh
+        env:
+          # renovate: datasource=github-releases depName=mobile-dev-inc/maestro
+          MAESTRO_VERSION: 2.7.0
+          MAESTRO_SHA256: a4ccab6b604617e7aef6db4f885666056eabe5cfa32befaa3bc994041b8fcbb5
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          script: |
+            adb install "tmp/composery-$VERSION.apk"
+            node packages/mobile/scripts/test-instance.mjs &
+            "$HOME/.maestro/bin/maestro" test -e APP_ID="$PACKAGE_NAME" \
+              -e INSTANCE_URL="http://10.0.2.2:4173" \
+              packages/mobile/src/maestro/e2e.yml
+
+      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          generate_release_notes: true
+          files: |
+            tmp/composery-${{ env.VERSION }}.apk
+            tmp/composery-${{ env.VERSION }}.apk.sha256
+            tmp/composery-${{ env.VERSION }}.provenance.json
