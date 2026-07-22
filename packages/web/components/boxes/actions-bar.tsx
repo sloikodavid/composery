@@ -12,7 +12,9 @@ import { useIsTouch } from "@/hooks/use-is-touch";
 
 // Page-level box actions, beside the breadcrumbs. Shared by the owner and console
 // box pages. Same three actions everywhere; on touch the QR drops its label so
-// Copy link and Open box keep full-width halves on a narrow row.
+// Copy link and Open box keep full-width halves on a narrow row. Three buttons
+// never fit beside a breadcrumb, so this is the one page action bar that claims
+// the whole width on a narrow screen (PageTemplate keeps actions inline).
 export function BoxActionsBar({ runtimeUrl }: { runtimeUrl: string }) {
 	const [qrOpen, setQrOpen] = useState(false);
 	const isTouch = useIsTouch();
@@ -20,7 +22,7 @@ export function BoxActionsBar({ runtimeUrl }: { runtimeUrl: string }) {
 	return (
 		<>
 			{isTouch ? (
-				<div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+				<div className="grid w-full grid-cols-[1fr_1fr_auto] gap-2 sm:w-auto">
 					<CopyLinkButton value={runtimeUrl} />
 					<AnimatedIconAnchor
 						className={buttonVariants()}

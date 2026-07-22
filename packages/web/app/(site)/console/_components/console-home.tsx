@@ -364,9 +364,14 @@ export function ConsoleHome() {
 										className="h-14 has-[[data-link]:hover]:bg-muted/50"
 										key={box.id}
 									>
+										{/* The link is an overlay so it fills the whole cell (height
+										    100% does not resolve inside a td), which is what makes the
+										    row hover and click as one. A stacked row has no cell to
+										    fill and takes its height from its contents, so below sm the
+										    link goes back into the flow. */}
 										<TableCell className="relative p-0">
 											<Link
-												className="absolute inset-0 flex flex-col justify-center pl-4"
+												className="absolute inset-0 flex flex-col justify-center pl-4 max-sm:static max-sm:pl-0"
 												data-link
 												href={consoleBoxPath(box.id)}
 											>

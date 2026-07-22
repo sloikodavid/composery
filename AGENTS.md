@@ -262,6 +262,7 @@ packages/
               pty.ts
               ratelimit.ts
               session.ts
+              terminals.ts
             authPage.ts
             changePassword.ts
             cloudAuth.ts
@@ -271,6 +272,7 @@ packages/
             register.ts
     patches/
       api-keys-action.diff
+      api-terminals.diff
       api.diff
       asset-cache.diff
       auth-actions.diff
@@ -435,7 +437,7 @@ packages/
           themed-shot.tsx
         boxes/
           _components/
-            box-table.tsx
+            box-list.tsx
             checkout-redirect.tsx
           [id]/
             _components/
@@ -950,6 +952,7 @@ tests/
   code-server-patches.test.ts
   cross-platform.test.ts
   desktop-integration.test.ts
+  docs-links.test.ts
   eas-ignore.test.ts
   favicon.test.ts
   loopback-callback-guard.test.ts
@@ -958,7 +961,6 @@ tests/
   password-check.test.ts
   runtime-init.test.ts
   terminal-sync.test.ts
-  tmux-session-target.test.ts
   toolchain-pins.test.ts
   touch-editor-selection.test.ts
   touch-list-focus.test.ts

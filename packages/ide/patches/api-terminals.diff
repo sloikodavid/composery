@@ -1,0 +1,151 @@
+Expose the VS Code pty host to the embedder, so the Composery API can create
+ordinary persistent VS Code terminals instead of a parallel implementation.
+
+diff --git a/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts b/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
+--- a/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
++++ b/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
+@@ -33,6 +33,7 @@
+ import { ConnectionType, ConnectionTypeRequest, ErrorMessage, HandshakeMessage, IRemoteExtensionHostStartParams, ITunnelConnectionStartParams, OKMessage, SignRequest } from '../../platform/remote/common/remoteAgentConnection.js';
+ import { RemoteAgentConnectionContext } from '../../platform/remote/common/remoteAgentEnvironment.js';
+ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
++import { IPtyService } from '../../platform/terminal/common/terminal.js';
+ import { ExtensionHostConnection } from './extensionHostConnection.js';
+ import { ManagementConnection } from './remoteExtensionManagement.js';
+ import { determineServerConnectionToken, requestHasValidConnectionToken as httpRequestHasValidConnectionToken, ServerConnectionToken, ServerConnectionTokenParseError, ServerConnectionTokenType } from './serverConnectionToken.js';
+@@ -80,6 +81,7 @@
+ 		@ILogService private readonly _logService: ILogService,
+ 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
+ 		@IServerLifetimeService private readonly _serverLifetimeService: IServerLifetimeService,
++		@IPtyService public readonly ptyService: IPtyService,
+ 	) {
+ 		super();
+ 		this._webEndpointOriginChecker = WebEndpointOriginChecker.create(this._productService);
+@@ -591,6 +593,11 @@
+ 	 * Do not remove!!. Called from server-main.js
+ 	 */
+ 	dispose(): void;
++	/**
++	 * The pty host, so an embedder can create terminals that are ordinary
++	 * persistent VS Code terminals rather than a parallel implementation.
++	 */
++	readonly ptyService: IPtyService;
+ }
+ 
+ export async function createServer(address: string | net.AddressInfo | null, args: ServerParsedArgs, REMOTE_DATA_FOLDER: string): Promise<IServerAPI> {
+
+diff --git a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -91,12 +91,29 @@
+ 
+ type WorkspaceId = string;
+ 
++/**
++ * Workspace of a terminal created outside any editor window - the Composery
++ * API. It has no workspace to belong to, so it belongs to whichever window
++ * asks. Keep in sync with the API's own copy (routes/api/terminals.ts); a test
++ * pins the two together.
++ */
++export const API_TERMINAL_WORKSPACE_ID = 'composery-api-terminal';
++
++function isForWorkspace(process: PersistentTerminalProcess, workspaceId: string): boolean {
++	return process.workspaceId === workspaceId || process.workspaceId === API_TERMINAL_WORKSPACE_ID;
++}
++
+ function mergeTerminalLayouts(workspaceId: string, layout: ISetTerminalLayoutInfoArgs | undefined, processes: Iterable<readonly [number, PersistentTerminalProcess]>): ISetTerminalLayoutInfoArgs | undefined {
+ 	const tabs = layout?.tabs.map(tab => ({ ...tab, terminals: [...tab.terminals] })) ?? [];
+ 	const background = [...(layout?.background ?? [])];
+ 	const knownIds = new Set([...tabs.flatMap(tab => tab.terminals.map(terminal => terminal.terminal)), ...background]);
+ 	for (const [id, process] of processes) {
+-		if (process.workspaceId !== workspaceId || !process.shouldPersistTerminal || knownIds.has(id)) {
++		// isDetaching skips a terminal the user detached on purpose. Without it
++		// the next layout request adopts it straight back and a client attaches,
++		// cancelling the disconnect - which silently undoes Detach Session. Only
++		// *adding* is gated: a client's own terminals arrive in `layout` and are
++		// restored on reload either way.
++		if (!isForWorkspace(process, workspaceId) || !process.shouldPersistTerminal || process.isDetaching || knownIds.has(id)) {
+ 			continue;
+ 		}
+ 		knownIds.add(id);
+@@ -630,7 +647,7 @@
+ 			}
+ 			doneSet.add(persistentProcessId);
+ 			const persistentProcess = this._throwIfNoPty(persistentProcessId);
+-			if (persistentProcess.workspaceId !== workspaceId || !persistentProcess.shouldPersistTerminal) {
++			if (!isForWorkspace(persistentProcess, workspaceId) || !persistentProcess.shouldPersistTerminal) {
+ 				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
+ 			}
+ 			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
+@@ -752,6 +769,7 @@
+ 	get color(): string | undefined { return this._color; }
+ 	get fixedDimensions(): IFixedTerminalDimensions | undefined { return this._fixedDimensions; }
+ 	get hasChildProcesses(): boolean { return this._terminalProcess.hasChildProcesses; }
++	get isDetaching(): boolean { return this._disconnectRunner1.isScheduled() || this._disconnectRunner2.isScheduled(); }
+ 
+ 	setTitle(title: string, titleSource: TitleEventSource): void {
+ 		if (titleSource === TitleEventSource.Api) {
+
+diff --git a/src/node/routes/vscode.ts b/src/node/routes/vscode.ts
+--- a/src/node/routes/vscode.ts
++++ b/src/node/routes/vscode.ts
+@@ -13,6 +13,7 @@
+ import { SocketProxyProvider } from "../socket"
+ import { isFile } from "../util"
+ import { type WebsocketRequest, Router as WsRouter } from "../wsRouter"
++import { PtyService } from "./api/terminals"
+ 
+ export const router = express.Router()
+ 
+@@ -29,6 +30,11 @@
+   handleUpgrade(req: http.IncomingMessage, socket: net.Socket): void
+   handleServerError(err: Error): void
+   dispose(): void
++  /**
++   * The pty host.  Terminals the Composery API creates go through this, so they
++   * are ordinary persistent VS Code terminals rather than a parallel kind.
++   */
++  readonly ptyService: PtyService
+ }
+ 
+ /**
+@@ -115,6 +121,14 @@
+   return next()
+ }
+ 
++/**
++ * VS Code's pty host, for the API routes.  Only defined once VS Code has been
++ * loaded, so callers must run `ensureVSCodeLoaded` first.
++ */
++export function ptyService(): PtyService | undefined {
++  return vscodeServer?.ptyService
++}
++
+ router.get("/", ensureVSCodeLoaded, async (req, res, next) => {
+   const isAuthenticated = await authenticated(req)
+   const NO_FOLDER_OR_WORKSPACE_QUERY = !req.query.folder && !req.query.workspace
+
+diff --git a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
+--- a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
++++ b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
+@@ -15,6 +15,7 @@
+ import { createRandomIPCHandle } from '../../base/parts/ipc/node/ipc.net.js';
+ import { RemoteAgentConnectionContext } from '../../platform/remote/common/remoteAgentEnvironment.js';
+ import { IPtyHostService, IShellLaunchConfig, ITerminalProfile, ITerminalsLayoutInfo } from '../../platform/terminal/common/terminal.js';
++import { API_TERMINAL_WORKSPACE_ID } from '../../platform/terminal/node/ptyService.js';
+ import { IGetTerminalLayoutInfoArgs, ISetTerminalLayoutInfoArgs } from '../../platform/terminal/common/terminalProcess.js';
+ import { IWorkspaceFolder } from '../../platform/workspace/common/workspace.js';
+ import { createURITransformer } from '../../base/common/uriTransformer.js';
+@@ -460,7 +461,12 @@
+ 
+ 	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
+ 		return (listener, thisArgs, disposables) => {
+-			const subscription = Event.filter(this._onPersistentTerminalInventoryChange.event, e => this._workspaceClients.get(e.workspaceId)?.has(clientId) ?? false)(listener, thisArgs);
++			// A terminal created outside any editor window belongs to no workspace, so
++			// no client is registered under its id and the plain lookup would never
++			// deliver it - the terminal would surface only on the next reload. Tell
++			// every client instead, which is what "belongs to whichever window asks"
++			// means for the live path.
++			const subscription = Event.filter(this._onPersistentTerminalInventoryChange.event, e => e.workspaceId === API_TERMINAL_WORKSPACE_ID || (this._workspaceClients.get(e.workspaceId)?.has(clientId) ?? false))(listener, thisArgs);
+ 			const result = combinedDisposable(subscription, toDisposable(() => {
+ 				this._layouts.delete(clientId);
+ 				for (const clients of this._workspaceClients.values()) {

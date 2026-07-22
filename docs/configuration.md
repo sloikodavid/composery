@@ -53,7 +53,7 @@ volume shared with persistence (`/data` by default; see `COMPOSERY_DOCKER_VOLUME
 | `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.                                                                |
 | `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                                            |
 | `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                                   |
-| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent interactive sessions per key.                                                          |
+| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent streamed terminals per key.                                                            |
 | `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                                         |
 
 Invalid numeric values fall back to the defaults. Extreme numeric values are

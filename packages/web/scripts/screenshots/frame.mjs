@@ -1061,12 +1061,36 @@ try {
 				const source = await image(`raw/${scheme}/${name}.png`);
 				const dark = scheme === "dark";
 				const textColor = dark ? [255, 255, 255] : [22, 22, 24];
-				const pixel = canvas(1, 1);
-				const pixelContext = pixel.getContext("2d", {
-					willReadFrequently: true
-				});
-				pixelContext.drawImage(source, 0, 0, 1, 1);
-				const appBackground = [...pixelContext.getImageData(0, 0, 1, 1).data];
+
+				// The status bar and home indicator sit over the app, not beside it:
+				// an edge-to-edge iPhone app owns the full display and its background
+				// runs behind both. So those strips take the capture's own edge row -
+				// its median, which is the exact colour on a uniform row and ignores
+				// the stray content pixels the welcome screen has on its last one.
+				const edgeColor = (edge) => {
+					const strip = canvas(source.width, 1);
+					const stripContext = strip.getContext("2d", {
+						willReadFrequently: true
+					});
+					stripContext.drawImage(
+						source,
+						0,
+						edge === "top" ? 0 : source.height - 1,
+						source.width,
+						1,
+						0,
+						0,
+						source.width,
+						1
+					);
+					const { data } = stripContext.getImageData(0, 0, source.width, 1);
+					const channel = (offset) => {
+						const values = [];
+						for (let i = offset; i < data.length; i += 4) values.push(data[i]);
+						return values.sort((a, b) => a - b)[values.length >> 1];
+					};
+					return [channel(0), channel(1), channel(2), 255];
+				};
 
 				// The terminal shot is captured at the keyboard-open viewport (473 pt)
 				// and gets the measured iOS 26 keyboard composited below it, exactly
@@ -1081,10 +1105,15 @@ try {
 						(keys ? keys.height : Math.round(34 * scale))
 				);
 				const context = screen.getContext("2d");
-				context.fillStyle = color(appBackground);
-				context.fillRect(0, 0, screen.width, screen.height);
+				context.fillStyle = color(edgeColor("top"));
+				context.fillRect(0, 0, screen.width, statusHeight);
 				context.drawImage(source, 0, statusHeight);
-				if (keys) context.drawImage(keys, 0, statusHeight + source.height);
+				const belowApp = statusHeight + source.height;
+				if (keys) context.drawImage(keys, 0, belowApp);
+				else {
+					context.fillStyle = color(edgeColor("bottom"));
+					context.fillRect(0, belowApp, screen.width, screen.height - belowApp);
+				}
 				context.drawImage(statusBar(screen.width, scale, textColor), 0, 0);
 
 				const islandWidth = Math.round(125 * scale);

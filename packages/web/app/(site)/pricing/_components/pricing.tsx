@@ -309,7 +309,6 @@ export function Pricing({
 					onChange={setBillingInterval}
 				/>
 			}
-			actionsInline
 			breadcrumbs={[{ icon: WalletIcon, label: "Pricing" }]}
 		>
 			<div className="space-y-8">

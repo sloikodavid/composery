@@ -1,33 +1,14 @@
 import { logger } from "@coder/logger"
-import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
 import * as crypto from "crypto"
-import * as express from "express"
 import { wss, Router as WsRouter, type WebsocketRequest } from "../../wsRouter"
+import { ensureVSCodeLoaded, ptyService } from "../vscode"
 import { authenticate } from "./auth"
 import { apiConfig } from "./config"
 import { apiBasePath } from "./constants"
-import { nodePty } from "./pty"
 import { sessions } from "./ratelimit"
+import { API_TERMINAL_WORKSPACE_ID, type PtyService } from "./terminals"
 
 export const wsRouter = WsRouter()
-export const httpRouter = express.Router()
-
-const TMUX_COMMAND_TIMEOUT_MS = 5000
-const SESSION_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/
-// tmux user option carrying what this session was started to run. It is both
-// the editor's tab title and its marker for "the API made this", so a session a
-// user started by hand with `tmux` is left alone. Read back as
-// `#{@composery_cmd}`; keep in sync with the composery-api extension.
-const SESSION_LABEL = "@composery_cmd"
-// Mirrors VS Code's ShutdownConstants.DataFlushTimeout (terminalProcess.ts).
-// node-pty's onExit can fire while reads are still pending
-// (microsoft/node-pty#72), so hold the exit frame until output goes quiet or
-// the tail of a command's output is lost.
-const DATA_FLUSH_TIMEOUT_MS = 250
-// Above this much unsent output queued on the socket, pause the pty until the
-// client drains - otherwise a fast-spewing command with a slow client grows
-// the Node heap without bound.
-const MAX_WS_BUFFERED_BYTES = 4 * 1024 * 1024
 
 function endWithStatus(req: WebsocketRequest, status: number, message: string): void {
   req.ws.end(`HTTP/1.1 ${status} ${message}\r\nConnection: close\r\n\r\n`)
@@ -38,63 +19,27 @@ function clampDim(value: string | number | null | undefined, fallback: number): 
   return n >= 1 && n <= 1000 ? n : fallback
 }
 
-function validSessionName(name: string | undefined): name is string {
-  return typeof name === "string" && SESSION_NAME_PATTERN.test(name)
+// What `createTerminalEnvironment` adds on top of the process environment for a
+// terminal opened in the editor (addTerminalEnvironmentKeys in
+// lib/vscode/.../terminal/common/terminalEnvironment.ts). That function lives in
+// the workbench bundle and cannot be reached from here, so the keys are set
+// directly; a test pins them to upstream's list.
+function terminalEnv(): Record<string, string | undefined> {
+  return { ...process.env, TERM_PROGRAM: "vscode", COLORTERM: "truecolor" }
 }
 
-// tmux target-session falls back to prefix and fnmatch matching; a leading `=`
-// forces an exact match. Without it `kill-session -t build` stops `build-2`.
-function target(name: string): string {
-  return `=${name}`
-}
-
-// set-option takes a *pane* target, whose parser rejects a bare `=name` - the
-// trailing `:` makes it a session-qualified pane target, which accepts `=` and
-// is exact. Verified on tmux 3.3a: `set-option -t build` writes into `build-2`,
-// `set-option -t =build:` refuses. Anything that reaches for a session here has
-// to go through this, or the anchoring is silently lost.
-function paneTarget(name: string): string {
-  return `=${name}:`
-}
-
-function stopChild(child: ChildProcessWithoutNullStreams): void {
-  try {
-    child.kill("SIGTERM")
-  } catch {}
-}
-
-function tmux(args: string[]): Promise<number> {
-  return new Promise((resolve) => {
-    const child = spawn("tmux", args)
-    let settled = false
-    const settle = (code: number) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeout)
-      resolve(code)
-    }
-    const timeout = setTimeout(() => {
-      stopChild(child)
-      settle(-1)
-    }, TMUX_COMMAND_TIMEOUT_MS)
-    child.on("error", () => settle(-1))
-    child.on("close", (code) => settle(code ?? -1))
-  })
-}
-
-wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
+wsRouter.ws(`${apiBasePath}/exec`, ensureVSCodeLoaded, async (req: WebsocketRequest) => {
   const auth = await authenticate(req)
   if (!auth.id) {
     endWithStatus(req, auth.status ?? 401, auth.message ?? "Unauthorized")
     return
   }
   const keyId = auth.id
-  const url = new URL(req.url || "/", "http://localhost")
-  const rawSessionName = url.searchParams.has("session")
-    ? url.searchParams.get("session") || undefined
-    : undefined
-  if (rawSessionName !== undefined && !validSessionName(rawSessionName)) {
-    endWithStatus(req, 400, "Invalid Session")
+
+  const pty: PtyService | undefined = ptyService()
+  if (!pty) {
+    logger.error("API terminal requested before the editor server finished loading")
+    endWithStatus(req, 503, "Editor Not Ready")
     return
   }
 
@@ -109,217 +54,133 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
     sessions.release(keyId)
   }
 
+  const url = new URL(req.url || "/", "http://localhost")
   const cols = clampDim(url.searchParams.get("cols"), 80)
   const rows = clampDim(url.searchParams.get("rows"), 24)
   const cmd = url.searchParams.get("cmd") || undefined
-  // Every API terminal is a tmux session so the editor can attach to the same
-  // pty rather than to a parallel one. Without ?session= the name is ours and
-  // dies with the socket, which keeps the documented ephemeral behaviour.
-  const persistent = rawSessionName !== undefined
-  const sessionName = rawSessionName ?? `api-${crypto.randomBytes(4).toString("hex")}`
+  const cwd = apiConfig.home || process.cwd()
 
-  // Create detached, label, then attach - rather than `new-session -A`, which
-  // attaches to an existing name and silently drops cmd. It also means the API
-  // client and the editor run the identical attach command, and the label is in
-  // place before the editor can list the session.
-  const exists = (await tmux(["has-session", "-t", target(sessionName)])) === 0
-  if (exists && cmd) {
-    release()
-    endWithStatus(req, 409, "Session Exists")
-    return
-  }
-  if (!exists) {
-    const create = ["new-session", "-d", "-s", sessionName]
-    // Same login shell the one-shot /exec uses; tmux runs its own default-shell
-    // as a login shell when no command is given.
-    if (cmd) create.push(apiConfig.shell, "-l", "-c", cmd)
-    if ((await tmux(create)) !== 0) {
-      release()
-      endWithStatus(req, 500, "Terminal unavailable")
-      return
-    }
-    // The editor titles the terminal tab from this and lists only sessions that
-    // carry it. A session that fails to get one still works perfectly over the
-    // websocket - it is just invisible in the editor, so say so rather than let
-    // the whole feature look merely empty.
-    const labelled = await tmux([
-      "set-option",
-      "-t",
-      paneTarget(sessionName),
-      SESSION_LABEL,
-      cmd || apiConfig.shell,
-    ])
-    if (labelled !== 0) {
-      logger.warn(
-        `could not label tmux session ${sessionName}; it will not be listed in the editor`,
-      )
-    }
-  }
-
-  let term: any
-  let termExited = false
-  const stopTerm = () => {
-    release()
-    if (!persistent) void tmux(["kill-session", "-t", target(sessionName)])
-    if (!term || termExited) return
-    termExited = true
-    try {
-      term.kill()
-    } catch {}
-  }
+  let id: number
   try {
-    term = nodePty().spawn("tmux", ["attach-session", "-t", target(sessionName)], {
-      name: "xterm-256color",
+    id = await pty.createProcess(
+      {
+        // The tab title in the editor, so it reads as the command it is running.
+        name: cmd,
+        executable: apiConfig.shell,
+        args: cmd ? ["-l", "-c", cmd] : ["-l"],
+        cwd,
+        env: {},
+      },
+      cwd,
       cols,
       rows,
-      cwd: apiConfig.home || process.cwd(),
-      // COLORTERM matches addTerminalEnvironmentKeys (terminalEnvironment.ts) so
-      // an attached editor client and an API client render the same colours.
-      env: { ...process.env, COLORTERM: "truecolor" },
-    })
-  } catch {
+      "11",
+      terminalEnv(),
+      { ...process.env },
+      {
+        // Same shell integration an editor terminal gets; `suggestEnabled` drives
+        // the editor's suggest widget, which has no meaning over a socket.
+        shellIntegration: { enabled: true, suggestEnabled: false, nonce: crypto.randomUUID() },
+        windowsUseConptyDll: false,
+        environmentVariableCollections: undefined,
+        workspaceFolder: undefined,
+        isScreenReaderOptimized: false,
+      },
+      // Persistent, and belonging to no window in particular: this is an ordinary
+      // editor terminal that happens to have been started over HTTP, so it shows
+      // up in the editor and outlives the socket exactly like one opened with `+`.
+      true,
+      API_TERMINAL_WORKSPACE_ID,
+      "",
+    )
+  } catch (error) {
     release()
+    logger.error(`API terminal could not be created: ${error instanceof Error ? error.message : error}`)
     endWithStatus(req, 500, "Terminal unavailable")
     return
   }
 
-  req.ws.once("close", stopTerm)
-  req.ws.once("error", stopTerm)
-
   try {
     wss.handleUpgrade(req, req.ws, req.head, (ws) => {
-      let drainTimer: ReturnType<typeof setInterval> | undefined
-      const pauseUntilDrained = () => {
-        if (drainTimer) return
-        term.pause()
-        drainTimer = setInterval(() => {
-          if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES / 2 && ws.readyState === ws.OPEN) return
-          clearInterval(drainTimer)
-          drainTimer = undefined
-          if (!termExited) term.resume()
-        }, 50)
-        drainTimer.unref?.()
-      }
-
-      let pendingExit: number | undefined
-      let flushTimer: ReturnType<typeof setTimeout> | undefined
-      const queueExit = () => {
-        if (pendingExit === undefined) return
-        if (flushTimer) clearTimeout(flushTimer)
-        flushTimer = setTimeout(() => {
+      const listeners = [
+        pty.onProcessData(({ id: from, event }) => {
+          if (from !== id) return
+          const data = typeof event === "string" ? event : event.data
+          // Acknowledging only once the bytes have actually reached the socket is
+          // what drives the pty host's flow control: it pauses the pty past
+          // FlowControlConstants.HighWatermarkChars of unacknowledged output, so a
+          // slow reader throttles the process instead of growing a buffer here.
+          ws.send(Buffer.from(data, "utf8"), () => {
+            void pty.acknowledgeDataEvent(id, data.length)
+          })
+        }),
+        pty.onProcessExit(({ id: from, event }) => {
+          if (from !== id) return
+          release()
           try {
-            ws.send(JSON.stringify({ exit: { code: pendingExit } }))
+            ws.send(JSON.stringify({ exit: { code: event ?? -1 } }))
             ws.close()
           } catch {}
-        }, DATA_FLUSH_TIMEOUT_MS)
-      }
-
-      term.onData((data: string) => {
-        try {
-          ws.send(Buffer.from(data, "utf8"))
-        } catch {}
-        if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES) pauseUntilDrained()
-        queueExit()
-      })
-      term.onExit(({ exitCode }: { exitCode: number }) => {
-        termExited = true
-        release()
-        pendingExit = exitCode
-        queueExit()
-      })
+        }),
+      ]
 
       ws.on("message", (data: Buffer, isBinary: boolean) => {
         if (isBinary) {
-          term.write(data.toString("utf8"))
+          void pty.input(id, data.toString("utf8"))
           return
         }
         const text = data.toString("utf8")
-        let message: any
+        let message: { resize?: { cols?: number; rows?: number }; input?: unknown }
         try {
           message = JSON.parse(text)
         } catch {
-          term.write(text)
+          void pty.input(id, text)
           return
         }
-        // Text frames are JSON control messages, but JSON that is not one of
-        // ours is stdin (pasting a config blob parses fine) - write it rather
-        // than dropping it.
+        // Text frames are JSON control messages, but JSON that is not one of ours
+        // is stdin - pasting a config blob parses fine and must not vanish.
         if (message?.resize) {
-          term.resize(clampDim(message.resize.cols, cols), clampDim(message.resize.rows, rows))
+          void pty.resize(id, clampDim(message.resize.cols, cols), clampDim(message.resize.rows, rows))
         } else if (message?.input != null) {
-          term.write(String(message.input))
+          void pty.input(id, String(message.input))
         } else {
-          term.write(text)
+          void pty.input(id, text)
         }
       })
 
-      ws.on("close", () => {
-        stopTerm()
+      // Disconnecting stops streaming and nothing else. The terminal stays in the
+      // editor, live, the way an editor terminal survives a browser reload -
+      // shutting it down here would mean a command run over HTTP could never be
+      // picked up afterwards. It is closed the way any terminal is: in the editor.
+      const stopStreaming = () => {
+        release()
+        for (const listener of listeners) listener.dispose()
+        // Output sent but never acknowledged - the socket died mid-flight - would
+        // leave the pty paused at the high watermark with nobody left to ack it,
+        // stalling the command until someone happened to open it in the editor
+        // (which replays and clears the count). The pty host clamps this at zero.
+        void pty.acknowledgeDataEvent(id, Number.MAX_SAFE_INTEGER)
+      }
+      ws.on("close", stopStreaming)
+      ws.on("error", stopStreaming)
+
+      void pty.start(id).then((result) => {
+        if (result && "message" in result) {
+          logger.error(`API terminal failed to launch: ${result.message}`)
+          try {
+            ws.send(JSON.stringify({ exit: { code: -1, message: result.message } }))
+            ws.close()
+          } catch {}
+        }
       })
 
       req.ws.resume()
     })
   } catch {
-    stopTerm()
+    release()
+    void pty.shutdown(id, true)
     try {
       endWithStatus(req, 500, "Terminal unavailable")
     } catch {}
   }
-})
-
-httpRouter.get("/sessions", (_req, res) => {
-  const child = spawn("tmux", [
-    "ls",
-    "-F",
-    "#{session_name}\t#{session_created}\t#{session_attached}",
-  ])
-  let out = ""
-  let settled = false
-  let timeout: ReturnType<typeof setTimeout>
-  const send = (payload: unknown) => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeout)
-    res.json(payload)
-  }
-  timeout = setTimeout(() => {
-    stopChild(child)
-    send({ sessions: [] })
-  }, TMUX_COMMAND_TIMEOUT_MS)
-  res.on("close", () => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeout)
-    stopChild(child)
-  })
-  child.stdout.on("data", (chunk) => (out += chunk))
-  child.on("error", () => send({ sessions: [] }))
-  child.on("close", () => {
-    const list = out
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => {
-        const [name, created, attached] = line.split("\t")
-        return {
-          name,
-          created_at: Number(created) || 0,
-          attached: attached !== "0" && attached !== undefined,
-        }
-      })
-    send({ sessions: list })
-  })
-})
-
-httpRouter.delete("/sessions/:name", async (req, res) => {
-  const name = req.params.name
-  if (!validSessionName(name)) {
-    res.status(400).json({ message: "invalid session name" })
-    return
-  }
-  const code = await tmux(["kill-session", "-t", target(name)])
-  if (code === -1) {
-    res.status(504).json({ message: "tmux unavailable or timed out" })
-    return
-  }
-  res.status(200).json({ killed: code === 0, name })
 })

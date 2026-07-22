@@ -1,11 +1,10 @@
 import { WashingMachineIcon } from "lucide-react";
 import type { Metadata } from "next";
-import { BoxTable } from "./_components/box-table";
+import { BoxList } from "./_components/box-list";
 import { CheckoutRedirect } from "./_components/checkout-redirect";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { PageTemplate } from "@/components/page-template";
 import { buttonVariants } from "@/components/base/button";
-import { cn } from "@/lib/utils";
 import { redirectIfSignedOut } from "@/lib/route-guards";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +25,7 @@ export default async function BoxesPage({
 		<PageTemplate
 			actions={
 				<AnimatedIconLink
-					className={cn("w-full sm:w-auto", buttonVariants())}
+					className={buttonVariants()}
 					href="/pricing"
 					icon="plus"
 					iconPosition="start"
@@ -38,7 +37,7 @@ export default async function BoxesPage({
 			breadcrumbs={[{ icon: WashingMachineIcon, label: "Boxes" }]}
 		>
 			<CheckoutRedirect checkoutId={checkoutId} />
-			<BoxTable />
+			<BoxList />
 		</PageTemplate>
 	);
 }

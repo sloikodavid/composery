@@ -80,44 +80,35 @@ command. Reusing a key for a different command payload returns `409`.
 
 ## Interactive terminal (websocket)
 
-`WS /_composery/api/v1/exec` is a real terminal: a server-side PTY with stdin, live output, and
-resize. No timeout, no output cap - it runs until the process exits or you
-disconnect. Binary websocket messages are raw terminal I/O both ways; text
-messages are JSON control, currently `{"resize":{"cols":N,"rows":N}}`.
+`WS /_composery/api/v1/exec` opens **a terminal in the editor** and streams it to
+you. It is not a terminal of its own kind: it is created through the editor's own
+pty host, exactly like pressing `+` in the terminal panel, and the websocket is
+simply attached to it.
 
-Query parameters: `cmd` (default the login shell), `cols`, `rows`, and `session`.
-
-## Watching them in the editor
-
-A terminal the API opens **shows up as a terminal tab in the editor**, titled
-with the command it is running - a tab reading `pnpm build`. Tabs are listed,
-never focused: nothing steals your cursor or opens the panel, the same way the
-editor surfaces terminals that survived a reload. Click one and you are in the
-running terminal, sharing screen, scrollback, and input with whatever opened it.
-
-Close a tab and it stays closed - closing it stops watching, it does not stop the
-command. Run **Composery: Show API Terminals** to reopen whatever is still going.
-
-Under the hood these are `tmux` sessions, which is how one terminal can have two
-clients in it at once. Two consequences leak through: `Ctrl-B` is tmux's prefix
-key inside these terminals, and a tmux session you started by hand is left alone
-rather than pulled into the editor.
-
-## Detached terminals
-
-Without `?session=` a terminal stops when you disconnect.
-
-Add `?session=<name>` to make the terminal **detached**: it keeps running after
-you disconnect and reattaches when you reconnect with the same name. Detached
-sessions survive an editor restart (not a container reboot, which is a real
-reboot). Session names are 1-64 characters: letters, numbers, `.`, `_`, and `-`.
-Passing `cmd` with the name of a session that already exists returns `409`
-rather than attaching and quietly dropping the command.
-
+```bash
+websocat -H "Authorization: Bearer composery_..." "wss://<your-instance>/_composery/api/v1/exec?cmd=pnpm+build"
 ```
-GET    /_composery/api/v1/sessions          # list sessions
-DELETE /_composery/api/v1/sessions/:name    # stop one
-```
+
+No timeout, no output cap - it runs until the process exits. Binary websocket
+messages are raw terminal I/O both ways; text messages are JSON control,
+currently `{"resize":{"cols":N,"rows":N}}`. Query parameters: `cmd` (default the
+login shell), `cols`, and `rows`.
+
+Because it is an ordinary editor terminal, everything true of one is true of it:
+
+- **It appears as a terminal tab**, titled with the command it is running. Open
+  the editor and it is there, listed and not stealing focus, the same way
+  terminals that survived a reload are.
+- **It outlives the websocket.** Disconnecting stops the streaming, not the
+  command - the terminal stays in the editor, running, and you can pick it up
+  there. A terminal opened with `+` behaves the same when you close the browser.
+- **Closing it in the editor stops it**, like any other terminal. That is the way
+  to end one, and the only way.
+- Output flows under the editor's own flow control, so a slow reader throttles
+  the process rather than piling up in memory.
+
+There is no separate notion of an "API session" to learn, nothing to name, and
+nothing to attach to by hand.
 
 ## Configuration
 

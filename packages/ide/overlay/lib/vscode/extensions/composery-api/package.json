@@ -1,7 +1,7 @@
 {
 	"name": "composery-api",
 	"displayName": "Composery API",
-	"description": "Create and revoke keys for this instance's automation API, and show the terminals it opens as editor tabs.",
+	"description": "Create and revoke keys for this instance's automation API.",
 	"version": "0.1.0",
 	"publisher": "composery",
 	"license": "Apache-2.0",
@@ -10,7 +10,7 @@
 		"vscode": "*"
 	},
 	"extensionKind": ["workspace"],
-	"activationEvents": ["onStartupFinished", "onCommand:composery.manageApiKeys"],
+	"activationEvents": ["onCommand:composery.manageApiKeys"],
 	"main": "./extension.js",
 	"contributes": {
 		"commands": [

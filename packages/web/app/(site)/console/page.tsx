@@ -17,7 +17,7 @@ export default async function ConsolePage() {
 
 	return (
 		<PageTemplate
-			actions={<OpenInVercel className="w-full sm:w-auto" size="default" />}
+			actions={<OpenInVercel size="default" />}
 			breadcrumbs={[{ icon: LayoutGridIcon, label: "Console" }]}
 		>
 			<ConsoleHome />

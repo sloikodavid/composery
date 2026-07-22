@@ -16,10 +16,6 @@ type Crumb = {
 
 type PageTemplateProps = {
 	actions?: ReactNode;
-	// Compact actions (e.g. a toggle) sit inline beside the breadcrumb on mobile
-	// instead of taking their own full-width row. Full-width button actions leave
-	// this off.
-	actionsInline?: boolean;
 	breadcrumbs: Crumb[];
 	children?: ReactNode;
 };
@@ -31,7 +27,6 @@ const CRUMB_ICON_CLASSES = "size-5";
 
 export function PageTemplate({
 	actions,
-	actionsInline = false,
 	breadcrumbs,
 	children
 }: PageTemplateProps) {
@@ -91,17 +86,12 @@ export function PageTemplate({
 					})}
 				</h1>
 
-				{/* Actions take their own full-width row below the breadcrumb on small
-			    screens (so they never wrap raggedly beside long breadcrumbs), then
-			    sit inline on the right from sm up. Single-button actions use
-			    `w-full sm:w-auto`; multi-button actions lay out as a grid on mobile.
-			    Compact actions opt into `actionsInline` to stay beside the
-			    breadcrumb on mobile (flex-wrap still drops them if they don't fit). */}
-				{actions ? (
-					<div className={actionsInline ? undefined : "w-full sm:w-auto"}>
-						{actions}
-					</div>
-				) : null}
+				{/* Actions sit on the right of the breadcrumb row at every width -
+			    flex-wrap drops them to their own line only when they genuinely
+			    don't fit. Actions that want the whole width on a narrow screen
+			    (a multi-button bar) say so themselves with `w-full sm:w-auto`;
+			    PageTemplate doesn't decide that for them. */}
+				{actions}
 			</div>
 
 			{children ? <div className="page-fade-in">{children}</div> : null}

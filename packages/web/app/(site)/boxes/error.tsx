@@ -51,11 +51,7 @@ export default function BoxesError({ error, reset }: ErrorPageProps) {
 
 	return (
 		<PageTemplate
-			actions={
-				<Button className="w-full sm:w-auto" onClick={reset}>
-					Try again
-				</Button>
-			}
+			actions={<Button onClick={reset}>Try again</Button>}
 			breadcrumbs={[{ icon: TriangleAlertIcon, label: "Something went wrong" }]}
 		>
 			<p className="text-sm text-muted-foreground">

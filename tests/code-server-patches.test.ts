@@ -2029,17 +2029,7 @@ type ApiKeysHarness = {
 	clipboard: string[];
 	commands: Map<string, () => Promise<void>>;
 	errors: string[];
-	// composery CLI calls only; the session watcher's tmux polling is separate so
-	// it cannot drift into the key-management assertions.
 	execCalls: string[][];
-	tmuxCalls: string[][];
-	infos: string[];
-	terminals: Array<{ name: string; shellPath: string; shellArgs: string[] }>;
-	// Fires the editor's onDidCloseTerminal for a tab the user closed.
-	closeTerminal: (terminal: unknown) => void;
-	// The session watcher's interval body, so a test drives polling instead of
-	// waiting on wall-clock time.
-	poll: () => Promise<void>;
 	warnings: string[];
 };
 
@@ -2048,15 +2038,13 @@ function loadApiKeysExtension({
 	inputText,
 	modalAction,
 	picks = [],
-	responses = [],
-	tmuxOutput = ""
+	responses = []
 }: {
 	env?: Record<string, string>;
 	inputText?: string;
 	modalAction?: string;
 	picks?: string[];
 	responses?: unknown[];
-	tmuxOutput?: string;
 }): { run: () => Promise<void>; harness: ApiKeysHarness } {
 	const extension = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-api/extension.js"
@@ -2066,28 +2054,13 @@ function loadApiKeysExtension({
 		commands: new Map(),
 		errors: [],
 		execCalls: [],
-		infos: [],
-		tmuxCalls: [],
-		poll: () => Promise.resolve(),
-		terminals: [],
-		closeTerminal: () => {},
 		warnings: []
-	};
-	const closeListeners: Array<(terminal: unknown) => void> = [];
-	harness.closeTerminal = (terminal) => {
-		for (const listener of closeListeners) listener(terminal);
 	};
 	const vscode = {
 		commands: {
 			registerCommand(name: string, callback: () => Promise<void>) {
 				harness.commands.set(name, callback);
 				return { dispose() {} };
-			}
-		},
-		ThemeIcon: class {
-			id: string;
-			constructor(id: string) {
-				this.id = id;
 			}
 		},
 		env: {
@@ -2099,27 +2072,11 @@ function loadApiKeysExtension({
 			}
 		},
 		window: {
-			createTerminal(options: {
-				name: string;
-				shellPath: string;
-				shellArgs: string[];
-			}) {
-				// Return the same object that is recorded, so a test can close the
-				// exact terminal the extension is holding.
-				const terminal = Object.assign(options, { show() {} });
-				harness.terminals.push(terminal);
-				return terminal;
-			},
-			onDidCloseTerminal(listener: (terminal: unknown) => void) {
-				closeListeners.push(listener);
-				return { dispose() {} };
-			},
 			showErrorMessage(message: string) {
 				harness.errors.push(message);
 				return Promise.resolve(undefined);
 			},
-			showInformationMessage(message: string) {
-				harness.infos.push(message);
+			showInformationMessage() {
 				return Promise.resolve(modalAction);
 			},
 			showInputBox() {
@@ -2143,13 +2100,8 @@ function loadApiKeysExtension({
 		exports: { activate?: (context: { subscriptions: unknown[] }) => void };
 	} = { exports: {} };
 	const context = vm.createContext({
-		clearInterval() {},
 		module: cjsModule,
 		process: { env },
-		setInterval(callback: () => Promise<void>) {
-			harness.poll = callback;
-			return 0;
-		},
 		require(name: string) {
 			if (name === "vscode") return vscode;
 			if (name === "child_process") {
@@ -2160,12 +2112,6 @@ function loadApiKeysExtension({
 						options: unknown,
 						callback: (error: null, stdout: string, stderr: string) => void
 					) {
-						// tmux prints its own -F format, the composery CLI prints JSON.
-						if (command === "tmux") {
-							harness.tmuxCalls.push([command, ...args]);
-							callback(null, tmuxOutput, "");
-							return;
-						}
 						harness.execCalls.push([command, ...args]);
 						callback(null, JSON.stringify(responses.shift()), "");
 					}
@@ -2350,121 +2296,6 @@ describe("composery api keys", () => {
 		await run();
 
 		expect(harness.warnings).toEqual([]);
-	});
-
-	// name \t @composery_cmd \t pane_current_command.
-	// `mine` is a session someone started by hand, so it carries no API label.
-	const TMUX_SESSIONS =
-		"api-1a2b3c4d\tpnpm build\tnode\nbuild\t/bin/bash\tbash\nmine\t\tbash\n";
-
-	test("API sessions become terminal tabs on their own, named for the command", async () => {
-		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
-
-		await harness.poll();
-
-		// Listed, never focused, and titled by what the API was asked to run -
-		// `api-1a2b3c4d` would tell the user nothing. The hand-made session is
-		// left alone rather than hijacked into the editor.
-		expect(harness.terminals).toEqual([
-			expect.objectContaining({
-				name: "pnpm build",
-				shellPath: "tmux",
-				shellArgs: ["attach-session", "-t", "=api-1a2b3c4d"]
-			}),
-			expect.objectContaining({
-				name: "/bin/bash",
-				shellPath: "tmux",
-				shellArgs: ["attach-session", "-t", "=build"]
-			})
-		]);
-	});
-
-	test("a session already listed is not opened twice", async () => {
-		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
-
-		await harness.poll();
-		// Closing a tab detaches tmux but leaves the session, so a later poll
-		// still sees it - reopening it would fight the user every five seconds.
-		await harness.poll();
-		await harness.poll();
-
-		expect(harness.terminals).toHaveLength(2);
-	});
-
-	test("closing a tab keeps it closed until the command is asked for it back", async () => {
-		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
-
-		await harness.poll();
-		expect(harness.terminals).toHaveLength(2);
-
-		// Close the `pnpm build` tab. tmux stays attached-less but running, so the
-		// watcher keeps seeing the session on every poll.
-		harness.closeTerminal(harness.terminals[0]!);
-		await harness.poll();
-		await harness.poll();
-		expect(harness.terminals).toHaveLength(2);
-
-		// The one way back, and it needs no picker and nothing to name: reopen
-		// what is still running.
-		await harness.commands.get("composery.showApiTerminals")!();
-
-		// attach-session, not new-session: the editor lands in the terminal the
-		// API is already driving rather than a second one beside it.
-		expect(harness.terminals).toHaveLength(3);
-		expect(harness.terminals[2]).toEqual(
-			expect.objectContaining({
-				name: "pnpm build",
-				shellPath: "tmux",
-				shellArgs: ["attach-session", "-t", "=api-1a2b3c4d"]
-			})
-		);
-	});
-
-	test("no session vocabulary reaches the editor UI", () => {
-		// "Session" is tmux's word and the HTTP API's query parameter, not a thing
-		// a user opens or names. In the editor these are terminals that something
-		// else started, and nothing in the UI should ask them to learn otherwise.
-		const uiStrings = [
-			...manifest.contributes.commands.map(
-				(entry) => `${entry.category ?? ""} ${entry.title}`
-			),
-			manifest.description
-		];
-		for (const value of uiStrings) {
-			expect(
-				value.toLowerCase(),
-				`session jargon in UI string: ${value}`
-			).not.toContain("session");
-		}
-		// The + dropdown creates new terminals; an attach-to-existing entry there
-		// is the wrong menu whatever it is called.
-		expect(manifest.contributes).not.toHaveProperty("terminal");
-		expect(extension).not.toContain("registerTerminalProfileProvider");
-	});
-
-	test("the label is the cross-file contract between server and editor", () => {
-		const server = readRepoFile(
-			"packages/ide/overlay/src/node/routes/api/session.ts"
-		);
-		// The label is a cross-file contract: the server writes this tmux user
-		// option, the extension reads it back to title the tab and to tell an API
-		// session apart from one a user started by hand.
-		expect(server).toContain('SESSION_LABEL = "@composery_cmd"');
-		expect(extension).toContain('SESSION_LABEL = "@composery_cmd"');
-		expect(server).toContain("#{session_name}");
-		expect(extension).toContain("#{session_name}");
-		// The watcher only runs if the extension is already loaded when a terminal
-		// shows up; without this the tabs appear on the second visit, or never.
-		expect(manifest.activationEvents).toContain("onStartupFinished");
-	});
-
-	test("says so when the API has opened nothing", async () => {
-		const { harness } = loadApiKeysExtension({ tmuxOutput: "" });
-
-		await harness.commands.get("composery.showApiTerminals")!();
-
-		expect(harness.terminals).toEqual([]);
-		expect(harness.infos[0]).toContain("has not opened any terminals");
 	});
 });
 
@@ -3242,5 +3073,81 @@ describe("PWA install metadata", () => {
 		expect(added).toContain(
 			`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// API terminals: the API creates ordinary persistent VS Code terminals through
+// the pty host, so they show up in the editor like any other. The contracts
+// below span the patch and the code-server-side routes, which compile
+// separately and so cannot share a symbol.
+// ---------------------------------------------------------------------------
+
+describe("api terminals", () => {
+	const patch = readRepoFile(`${PATCHES_DIR}/api-terminals.diff`);
+	const terminals = readRepoFile(
+		"packages/ide/overlay/src/node/routes/api/terminals.ts"
+	);
+	const session = readRepoFile(
+		"packages/ide/overlay/src/node/routes/api/session.ts"
+	);
+
+	test("the workspace sentinel is identical on both sides", () => {
+		// A terminal created outside any editor window carries this instead of a
+		// real workspace id. If the two copies drift, the pty host stops matching
+		// API terminals into any window's layout and they silently never appear.
+		const inPatch = /API_TERMINAL_WORKSPACE_ID = '([^']+)'/.exec(
+			addedLines(patch)
+		);
+		const inRoutes = /API_TERMINAL_WORKSPACE_ID = "([^"]+)"/.exec(terminals);
+		expect(inPatch?.[1]).toBeDefined();
+		expect(inRoutes?.[1]).toBe(inPatch?.[1]);
+	});
+
+	test("the API terminal env matches what an editor terminal is given", () => {
+		// addTerminalEnvironmentKeys lives in the workbench bundle, which this
+		// server cannot import, so session.ts sets the keys itself. Read the real
+		// upstream function and require the same ones, or an API terminal quietly
+		// renders differently from the identical terminal opened with `+`.
+		const upstream = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/terminal/common/terminalEnvironment.ts"
+		);
+		const body = upstream.slice(
+			upstream.indexOf("export function addTerminalEnvironmentKeys")
+		);
+		const keys = [
+			...body.slice(0, body.indexOf("\n}")).matchAll(/env\['(\w+)'\]/g)
+		]
+			.map((match) => match[1])
+			// TERM_PROGRAM_VERSION and LANG need the product version and the client
+			// locale; neither reaches this server, and both are absent on purpose.
+			.filter((key) => key !== "TERM_PROGRAM_VERSION" && key !== "LANG");
+		expect(keys.length).toBeGreaterThan(0);
+		for (const key of keys) {
+			expect(session, `session.ts is missing ${key}`).toContain(key);
+		}
+	});
+
+	test("a deliberately detached terminal is not synced back", () => {
+		// terminal-sync merges every persistent process for a workspace into each
+		// client's layout. Detach Session works by scheduling the disconnect
+		// runners - there is no detached flag - so without this guard the next
+		// layout request re-adopts the terminal and a client attaching cancels the
+		// disconnect, silently undoing the detach.
+		const added = addedLines(patch);
+		expect(added).toContain("process.isDetaching");
+		expect(added).toMatch(
+			/get isDetaching\(\).*_disconnectRunner1\.isScheduled\(\) \|\| this\._disconnectRunner2\.isScheduled\(\)/
+		);
+	});
+
+	test("the pty host is reached through the server API, not rebuilt", () => {
+		// The point of the patch: one field exposing VS Code's own pty host. If
+		// session.ts ever spawns its own pty again it is a parallel terminal
+		// implementation, which is what this whole thing exists to avoid.
+		expect(addedLines(patch)).toContain("readonly ptyService: IPtyService");
+		expect(session).toContain("createProcess(");
+		expect(session).not.toContain("node-pty");
+		expect(session).not.toContain("spawn(");
 	});
 });

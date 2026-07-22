@@ -61,5 +61,6 @@ touch-keyboard-reopen.diff
 touch-autofocus.diff
 touch-dismiss.diff
 terminal-sync.diff
+api-terminals.diff
 pwa.diff
 bfcache-reload.diff

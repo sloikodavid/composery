@@ -20,5 +20,5 @@ persistence requirement, the not-viable platforms, and per-provider instructions
 Use it _instead of_ one of the compose recipes - every other method ignores it.
 
 Platforms with no config file to commit are documented, not foldered: [Koyeb](../docs/self-hosting/koyeb.md)
-(CLI/dashboard) and the [other PaaS & self-hosted hosts](../docs/self-hosting/other-platformsmd)
+(CLI/dashboard) and the [other PaaS & self-hosted hosts](../docs/self-hosting/other-platforms.md)
 (Coolify, Dokploy, CapRover, Northflank, Sliplane, PikaPods, Elestio).

@@ -17,8 +17,9 @@ import { cn } from "@/lib/utils";
 //   token's widest possible contents, header and sort arrow included.
 // - `actions-N` is N icon buttons: N x size-8, the gap-1 between them, and the
 //   row's edge padding. Action columns hold icon buttons only, so N says it all.
-// - The table is at least the sum of those widths, so a narrow viewport scrolls
-//   the container rather than squishing a column into its neighbour.
+// - From `sm` up the table is at least the sum of those widths, so a merely
+//   narrow window scrolls the container rather than squishing a column into its
+//   neighbour. Below `sm` the widths stop applying entirely - see STACKED.
 const COL_WIDTH = {
 	text: 192, // a slug, an email, an id - anything user-supplied (truncates)
 	date: 128, // formatDate, e.g. "Sep 30, 2025"
@@ -33,6 +34,34 @@ const COL_WIDTH = {
 // What the fluid column is guaranteed, and so the width the table reserves for
 // it before the container starts scrolling.
 const FLUID_WIDTH = 192;
+
+// Below `sm` a table stops being a table. There is no width at which four sized
+// columns and a phone agree: the fixed columns keep their full width, so the
+// fluid column - the one holding what the row is actually about - ends up the
+// narrowest thing on the row, and you scroll sideways to read a date that never
+// needed the space. Instead each row becomes a block: the first cell is the
+// row's identity, the middle cells stack under it as muted metadata, and the
+// last cell (an action column in every table here) sits to its right.
+//
+// This is also why the min-width reservation is a custom property applied from
+// `sm` up rather than an inline style - an inline `min-width` no class can
+// override is what would keep the scroller alive underneath the stacked rows.
+const STACKED = [
+	"max-sm:block max-sm:min-w-0",
+	"max-sm:[&_thead]:hidden",
+	"max-sm:[&_tbody]:block",
+	// h-auto because rows are given a fixed h-14 to keep a table's rows even -
+	// stacked, that height is a ceiling the content immediately overflows.
+	"max-sm:[&_tr]:grid max-sm:[&_tr]:h-auto max-sm:[&_tr]:grid-cols-[1fr_auto] max-sm:[&_tr]:items-center max-sm:[&_tr]:gap-x-3 max-sm:[&_tr]:px-4 max-sm:[&_tr]:py-2.5",
+	"max-sm:[&_td]:overflow-visible max-sm:[&_td]:px-0 max-sm:[&_td]:py-0 max-sm:[&_td]:whitespace-normal",
+	// Middle cells: their own line under the identity, muted.
+	"max-sm:[&_td:not(:first-child):not(:last-child)]:col-start-1 max-sm:[&_td:not(:first-child):not(:last-child)]:text-muted-foreground",
+	// Action cell: beside the identity rather than below it.
+	"max-sm:[&_td:last-child:not(:only-child)]:col-start-2 max-sm:[&_td:last-child:not(:only-child)]:row-start-1",
+	// The loading and empty rows are a single colSpan cell, which is both the
+	// first and the last child - it spans instead of sitting in the action slot.
+	"max-sm:[&_td:only-child]:col-span-2"
+].join(" ");
 
 type TableCol = "fluid" | keyof typeof COL_WIDTH;
 
@@ -58,8 +87,16 @@ function Table({
 			<ColumnCount value={cols.length}>
 				<table
 					data-slot="table"
-					className={cn("w-full table-fixed caption-bottom text-sm", className)}
-					style={{ minWidth: fixed + FLUID_WIDTH }}
+					className={cn(
+						"w-full table-fixed caption-bottom text-sm sm:min-w-(--table-min-width)",
+						STACKED,
+						className
+					)}
+					style={
+						{
+							"--table-min-width": `${fixed + FLUID_WIDTH}px`
+						} as React.CSSProperties
+					}
 					{...props}
 				>
 					<colgroup>

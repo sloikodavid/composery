@@ -105,87 +105,6 @@ async function manageKeys() {
 	}
 }
 
-// API terminals are tmux sessions (see routes/api/session.ts), so the editor
-// attaches to the same pty instead of opening a parallel one. `=` forces an
-// exact tmux target match.
-const SESSION_LABEL = "@composery_cmd";
-const LIST_FORMAT = `#{session_name}\t#{${SESSION_LABEL}}\t#{pane_current_command}`;
-const POLL_MS = 5000;
-const MAX_TITLE = 40;
-
-function attachOptions(session) {
-	return {
-		name: session.title,
-		shellPath: "tmux",
-		shellArgs: ["attach-session", "-t", `=${session.name}`],
-		iconPath: new vscode.ThemeIcon("plug")
-	};
-}
-
-function listSessions() {
-	return new Promise((resolve) => {
-		execFile("tmux", ["ls", "-F", LIST_FORMAT], { timeout: 5000 }, (error, stdout) =>
-			resolve(
-				error
-					? []
-					: stdout
-							.split("\n")
-							.filter(Boolean)
-							.map((line) => {
-								const [name, apiCommand, running] = line.split("\t");
-								return {
-									name,
-									apiCommand,
-									// What the tab says. The command the API was asked to run
-									// beats the process currently in the pane, which beats the
-									// generated session name - "pnpm build", not "api-1a2b3c4d".
-									title: (apiCommand || running || name)
-										.trim()
-										.slice(0, MAX_TITLE)
-								};
-							})
-			)
-		);
-	});
-}
-
-// Terminals the API opened appear as tabs on their own - listed, never focused,
-// the way VS Code surfaces terminals that survived a reload. There is no concept
-// here for the user to learn: a command ran somewhere, and its terminal is a tab.
-// Only sessions carrying the API's label are shown, so a tmux session someone
-// started by hand is left where they put it.
-function watchTerminals(context) {
-	const opened = new Map();
-	const poll = async () => {
-		const found = await listSessions();
-		const live = new Set(found.map((session) => session.name));
-		for (const name of [...opened.keys()]) {
-			if (!live.has(name)) opened.delete(name);
-		}
-		for (const session of found) {
-			if (!session.apiCommand || opened.has(session.name)) continue;
-			opened.set(session.name, vscode.window.createTerminal(attachOptions(session)));
-		}
-	};
-	const timer = setInterval(poll, POLL_MS);
-	context.subscriptions.push(
-		{ dispose: () => clearInterval(timer) },
-		// Closing the tab kills the command, the way closing any terminal does.
-		// Closing it only kills `tmux attach-session` - that detaches and leaves
-		// the command running - so the session has to be stopped explicitly, or a
-		// closed tab would silently reappear on the next poll.
-		vscode.window.onDidCloseTerminal((closed) => {
-			for (const [name, terminal] of opened) {
-				// The map entry is left for the poll above to clear once tmux
-				// confirms the session is gone; dropping it here would race the kill
-				// and reopen the tab.
-				if (terminal === closed) execFile("tmux", ["kill-session", "-t", `=${name}`], () => {});
-			}
-		})
-	);
-	void poll();
-}
-
 function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand(COMMAND, async () => {
@@ -205,7 +124,6 @@ function activate(context) {
 			}
 		})
 	);
-	watchTerminals(context);
 }
 
 function deactivate() {}

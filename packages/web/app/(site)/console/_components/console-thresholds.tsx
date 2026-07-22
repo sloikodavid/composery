@@ -146,18 +146,21 @@ export function ConsoleThresholds({
 				{drafts.map((draft) => {
 					const disabled = Number(draft.value) <= 0;
 					return (
+						/* Two fixed-width control groups plus a label don't fit on one
+						   narrow row - they were what made the whole console page scroll
+						   sideways - so the label takes its own line below sm. */
 						<div
-							className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-3"
+							className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto_auto]"
 							key={draft.signal}
 						>
 							<span
-								className={`text-sm ${disabled ? "text-muted-foreground" : "text-foreground"}`}
+								className={`col-span-2 text-sm sm:col-span-1 ${disabled ? "text-muted-foreground" : "text-foreground"}`}
 							>
 								{SIGNAL_LABELS[draft.signal]}
 							</span>
 							<div className="flex items-center gap-1.5">
 								<Input
-									className="w-32 tabular-nums"
+									className="w-24 tabular-nums"
 									disabled={busy !== null}
 									min={0}
 									onChange={(event) =>

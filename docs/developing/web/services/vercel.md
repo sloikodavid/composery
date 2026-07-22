@@ -5,7 +5,7 @@ description: Configure and deploy the Next.js app to Vercel Production, plus coo
 
 You only deploy production from git (branch `main`). Local development never goes
 through Vercel; it uses `pnpm run dev` with `.env.local` (see
-[index](./index.md#local-development)). So Vercel only needs Production
+[index](../index.md#local-development)). So Vercel only needs Production
 configuration.
 
 ## Link the project
@@ -34,7 +34,7 @@ Project settings:
   has nowhere correct to point.
 
 Plus the two project-level settings `packages/web/vercel.json` cannot encode
-(covered in [index](./index.md#deploy)): **Root Directory** = `packages/web`, and
+(covered in [index](../index.md#production-deploy)): **Root Directory** = `packages/web`, and
 **Include source files outside of the Root Directory in the Build Step** =
 Enabled, so the build can read `docs/` and the workspace manifests.
 

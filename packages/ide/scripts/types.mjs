@@ -1,5 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	writeFileSync
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,8 +31,7 @@ function run(command, args, options = {}) {
 // Typecheck the IDE server tree exactly as build.sh assembles it: pristine
 // upstream src + every code-server-side patch + overlay's new files. Sources
 // come from git blobs (always LF) so the patches apply on Windows working
-// trees too. updates.diff spans src/ and lib/vscode; only its src/ sections
-// apply here (lib/vscode is not part of this tree).
+// trees too.
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
 const SERVER_PATCHES = [
@@ -35,7 +42,9 @@ const SERVER_PATCHES = [
 	"api.diff",
 	"node-engine.diff"
 ];
-const UPDATES_DIFF = join(PACKAGE_ROOT, "patches/updates.diff");
+// These span src/ and lib/vscode; only their src/ sections apply here, because
+// lib/vscode is not part of this tree.
+const SPLIT_PATCHES = ["updates.diff", "api-terminals.diff"];
 const SCRATCH = join(
 	REPO_ROOT,
 	"tmp",
@@ -59,6 +68,40 @@ if (!existsSync(join(UPSTREAM, "package.json"))) {
 
 rmSync(SCRATCH, { force: true, recursive: true });
 mkdirSync(SCRATCH, { recursive: true });
+
+// SCRATCH sits inside this repository, and `git apply` run against a tree it
+// considers part of an enclosing repo resolves the patch paths somewhere else
+// and exits 0 having changed nothing - so every patch below silently became a
+// no-op and this script typechecked pristine code-server. Giving the scratch
+// tree its own repository makes the paths mean what they say.
+execFileSync("git", ["-C", SCRATCH, "init", "-q"], { stdio: "inherit" });
+
+function gitScratch(...args) {
+	return execFileSync("git", ["-C", SCRATCH, ...args], { encoding: "utf8" });
+}
+
+// The patches are pure LF and the sources are extracted as LF; a global
+// core.autocrlf would rewrite them on the way through the index and every hunk
+// would stop matching.
+gitScratch("config", "core.autocrlf", "false");
+gitScratch("config", "core.eol", "lf");
+
+// Commit the pristine tree once it is extracted, so `git status` afterwards
+// reports real modifications rather than a wall of untracked files - that is
+// what lets applyAndConfirm() below tell "applied" from "did nothing".
+function commitBaseline() {
+	gitScratch("add", "-A");
+	gitScratch(
+		"-c",
+		"user.name=composery",
+		"-c",
+		"user.email=composery@invalid",
+		"commit",
+		"-q",
+		"-m",
+		"pristine upstream"
+	);
+}
 
 execFileSync(
 	"git",
@@ -84,19 +127,61 @@ execFileSync("tar", ["-xf", "upstream.tar"], {
 	stdio: "inherit"
 });
 rmSync(join(SCRATCH, "upstream.tar"));
+commitBaseline();
+
+// A patch that applies cleanly must change something. Comparing the tree before
+// and after catches the silent no-op above returning in any other guise - an
+// empty slice, a pathspec that stops matching, a patch reduced to nothing.
+// A tree hash, not a file list: two patches touching the same file leave the
+// same `git status` output, so only content tells "applied" from "did nothing".
+function treeHash() {
+	gitScratch("add", "-A");
+	return gitScratch("write-tree").trim();
+}
+
+function applyAndConfirm(name, patchPath) {
+	const before = treeHash();
+	execFileSync("git", ["-C", SCRATCH, "apply", "-p1", patchPath], {
+		stdio: "inherit"
+	});
+	const after = treeHash();
+	if (before === after) {
+		console.error(`${name} applied without changing the tree; it is a no-op.`);
+		process.exit(1);
+	}
+}
 
 for (const name of SERVER_PATCHES) {
-	execFileSync(
-		"git",
-		["-C", SCRATCH, "apply", "-p1", join(PACKAGE_ROOT, "patches", name)],
-		{ stdio: "inherit" }
-	);
+	applyAndConfirm(name, join(PACKAGE_ROOT, "patches", name));
 }
-execFileSync(
-	"git",
-	["-C", SCRATCH, "apply", "-p1", "--include=src/**", UPDATES_DIFF],
-	{ stdio: "inherit" }
-);
+// Slice the src/ sections out rather than passing `git apply --include=src/**`:
+// git resolves that pathspec against the enclosing repository, and SCRATCH sits
+// inside this one, so it matches nothing and the patch applies as a silent
+// no-op (exit 0, tree untouched).
+function srcSectionsOf(patchPath) {
+	let keeping = false;
+	return readFileSync(patchPath, "utf8")
+		.split("\n")
+		.filter((line) => {
+			if (line.startsWith("diff --git ")) {
+				keeping = / b\/src\//.test(line) || / b\/dev\/null/.test(line);
+			}
+			return keeping;
+		})
+		.join("\n");
+}
+
+for (const name of SPLIT_PATCHES) {
+	const sections = srcSectionsOf(join(PACKAGE_ROOT, "patches", name));
+	if (!sections.trim()) {
+		console.error(`${name} is listed as split but has no src/ sections.`);
+		process.exit(1);
+	}
+	const sliced = join(SCRATCH, `${name}.src`);
+	writeFileSync(sliced, `${sections}\n`);
+	applyAndConfirm(name, sliced);
+	rmSync(sliced);
+}
 
 for (const entry of readdirSync(join(OVERLAY, "src"))) {
 	cpSync(join(OVERLAY, "src", entry), join(SCRATCH, "src", entry), {

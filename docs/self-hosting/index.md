@@ -20,7 +20,7 @@ Run on your own server, or on a managed platform that supplies the HTTPS edge an
 - **[Railway](railway.md)** - image service with a volume at `/data`.
 - **[Koyeb](koyeb.md)** - image service with a volume at `/data`
   (single-instance regions).
-- **[Other platforms](other-platformsmd)** - Coolify, Dokploy, CapRover, Northflank,
+- **[Other platforms](other-platforms.md)** - Coolify, Dokploy, CapRover, Northflank,
   Sliplane, PikaPods, Elestio, and any host that runs a container image with a volume at
   `/data`.
 - **[VPS](vps.md)** - your own Linux server. Pick the init system
@@ -43,7 +43,7 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 
 ## Maintenance
 
-- **[Disk space](../disk-space.md)** - remove unused Docker images and build cache, then
+- **[Disk space](./disk-space.md)** - remove unused Docker images and build cache, then
   reclaim space held by Docker Desktop's virtual disk on Windows and macOS.
 
 ## Updating

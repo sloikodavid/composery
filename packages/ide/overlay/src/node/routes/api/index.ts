@@ -3,7 +3,7 @@ import { httpAuth } from "./auth"
 import { apiConfig } from "./config"
 import { apiBasePath } from "./constants"
 import { router as execRouter } from "./exec"
-import { httpRouter as sessionHttpRouter, wsRouter as sessionWsRouter } from "./session"
+import { wsRouter as sessionWsRouter } from "./session"
 
 export const enabled = apiConfig.enabled
 export const router = express.Router()
@@ -13,7 +13,6 @@ if (apiConfig.enabled) {
   const v1 = express.Router()
   v1.use(httpAuth())
   v1.use(execRouter)
-  v1.use(sessionHttpRouter)
   router.use(apiBasePath, v1)
 } else {
   router.use(apiBasePath, (_req, res) => {
