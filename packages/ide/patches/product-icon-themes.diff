@@ -4,6 +4,15 @@ elements blank indefinitely when the late-added face uses font-display:block.
 swap invalidates those glyphs when the face becomes available, matching the
 immediate rendering desktop VS Code users get.
 
+2026-07-22 re-check (prune pass): strongest deletion candidate. On Chrome/WebView
+134 the cited defect did NOT reproduce - a real product icon theme
+(PKief.material-product-icons, font-display:block, this patch removed) loads and
+paints its glyphs (document.fonts.check true, a distinct glyph advance, visibly
+material toolbar icons). Kept only because this is a browser-version-dependent
+Chromium defect and current Chromium (151/152) will not run under the x86_64
+emulator's ARM translation; delete once a physical device with current Chrome
+confirms the glyphs still paint under font-display:block.
+
 diff --git a/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts b/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts
 --- a/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts
 +++ b/lib/vscode/src/vs/platform/theme/browser/iconsStyleSheet.ts

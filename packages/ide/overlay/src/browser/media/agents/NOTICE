@@ -13,5 +13,5 @@ affiliation with or endorsement by those owners.
   pi.svg        Pi              - earendil-works
 
 These files are the original marks. The welcome card tints them at display time
-to the theme accent with a CSS mask (welcome.diff); the files themselves are left
+to the theme accent with a CSS mask (product.diff); the files themselves are left
 unmodified.

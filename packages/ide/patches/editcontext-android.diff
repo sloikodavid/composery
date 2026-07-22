@@ -1,7 +1,16 @@
 Force the textarea input path on Android: Chromium EditContext drops IME
 selection deletes (Gboard backspace over a selection arrives as a textupdate
-that nativeEditContext#_emitTypeEvent maps to type(''), a no-op). Verified on
-device 2026-07-17; see microsoft/vscode#202787.
+that nativeEditContext#_emitTypeEvent maps to type(''), a no-op). See
+microsoft/vscode#202787.
+
+2026-07-22 re-check (prune pass): mechanism re-verified on device - without this
+patch the Android editor activates NativeEditContext (a native-edit-context DIV);
+with it the textarea path is used. The behavioural repro was inconclusive on
+Chrome 134: a selected word becomes a Gboard composing region, so its backspace
+removes one character rather than exercising the selection-replace no-op. This is
+a browser-version-dependent Chromium defect and current Chromium (151/152) will
+not run under the x86_64 emulator's ARM translation, so kept. Retest the Gboard
+backspace-over-selection on a physical device with current Chrome before deleting.
 
 diff --git a/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts b/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts
 --- a/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts

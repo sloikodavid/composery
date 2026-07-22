@@ -31,8 +31,14 @@ echo "== 2. scratch build tree = pristine code-server (submodule stays clean) ==
 rm -rf "$BUILD"; cp -r "$PACKAGE_ROOT/upstream" "$BUILD"
 
 echo "== 3. add our VS Code-side patches to code-server's series (upstream's own apply unmodified) =="
+# Ours land in a subdirectory of upstream's patch namespace, never beside their
+# files: flat names collided the moment one of ours matched one of theirs
+# (clipboard.diff), and the cp silently replaced their patch with ours before
+# quilt aborted on the duplicate series entry. A directory keeps our filenames
+# ours and makes the collision unrepresentable rather than merely unlikely.
+mkdir -p "$BUILD/patches/composery"
 while read -r p; do
-  [ -z "$p" ] || { cp "$PACKAGE_ROOT/patches/$p" "$BUILD/patches/$p"; printf '%s\n' "$p" >> "$BUILD/patches/series"; }
+  [ -z "$p" ] || { cp "$PACKAGE_ROOT/patches/$p" "$BUILD/patches/composery/$p"; printf 'composery/%s\n' "$p" >> "$BUILD/patches/series"; }
 done < "$PACKAGE_ROOT/patches/series"
 
 echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches), -p1, fuzz=0 =="
@@ -59,7 +65,7 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # cached long-term by browsers. code-server stamps it with `git rev-parse HEAD`, assuming its
 # repo commit moves when patches change - our fork pins that commit forever, so every release
 # would ship different code under identical URLs and clients would keep stale caches. Stamp a
-# content hash of everything we lay on top instead (asset-cache.diff makes the build honor it):
+# content hash of everything we lay on top instead (web-client.diff makes the build honor it):
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
 # scripts/ and ../shared/index.ts are hashed too: rebrand.mjs rewrites the
 # assembled tree from both, so a rename-rule or brand-constant change alters

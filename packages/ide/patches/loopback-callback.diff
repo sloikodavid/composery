@@ -1,5 +1,46 @@
-diff --git a/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts b/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts
-index 575d1ddc..3ef8d891 100644
+Guard callback links that target loopback: in a remote workspace, a link whose
+callback/redirect parameter points at localhost completes on the wrong machine
+- the browser is not the host that owns the port. One concern, two halves:
+
+- trustedDomainsValidator: detect a loopback callback target in any query-like
+  position (query, hash-query, one level of nesting) and warn before opening,
+  offering Copy as the way to carry the link to the right machine. The check
+  runs before the trusted-workspace bypass: workspace trust says nothing about
+  where a redirect lands.
+- markdown preview: absolute http(s) links otherwise navigate inside the
+  preview webview and bypass the workbench opener entirely; route them through
+  the existing openLink message so the guard above sees them (and tolerate
+  resolveDocumentLink returning undefined for links it cannot resolve).
+
+--- a/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
++++ b/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
+@@ -669,7 +669,14 @@ document.addEventListener('click', event => {
+ 			let hrefText = node.getAttribute('data-href');
+ 			if (!hrefText) {
+ 				hrefText = node.getAttribute('href');
+-				// Pass through known schemes
++				if (hrefText && /^(?:https?):/i.test(hrefText)) {
++					messaging.postMessage('openLink', { href: hrefText });
++					event.preventDefault();
++					event.stopPropagation();
++					return;
++				}
++
++				// Schemes that do not need workbench validation retain their native behavior.
+ 				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
+ 					return;
+ 				}
+--- a/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
++++ b/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
+@@ -484,7 +484,7 @@ class MarkdownPreview extends Disposable implements WebviewResourceProvider {
+ 		const openLinks = config.get<string>('preview.openMarkdownLinks', 'inPreview');
+ 		if (openLinks === 'inPreview') {
+ 			const resolved = await this.#opener.resolveDocumentLink(href, this.resource);
+-			if (resolved.kind === 'file') {
++			if (resolved?.kind === 'file') {
+ 				try {
+ 					const doc = await vscode.workspace.openTextDocument(vscode.Uri.from(resolved.uri));
+ 					if (isMarkdownFile(doc)) {
 --- a/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts
 @@ -3,6 +3,7 @@

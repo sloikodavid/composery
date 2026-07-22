@@ -1,9 +1,14 @@
-Composery naming on the code-server server: COMPOSERY_* env vars (cookie suffix, host, config, idle timeout, feature toggles), the COMPOSERY_STATIC_BASE template token, composery config/data paths, the Composery app-name default, and brand log/help strings. Deliberately patch-side for src/ (greppable at the source); rebrand.mjs covers the rest of the tree.
+Composery naming on the code-server server source: COMPOSERY_* env vars (cookie
+suffix, host, config path, idle timeout, reconnection grace time, and the
+feature toggles - including COMPOSERY_DISABLE_FILE_UPLOADS, whose upstream flag
+never had an env var at all), the COMPOSERY_STATIC_BASE template token,
+composery config/data paths, the Composery app-name default, and brand
+log/help strings. Deliberately patch-side for src/ (greppable at the source);
+rebrand.mjs covers the rest of the assembled tree.
 
-diff --git a/src/node/cli.ts b/src/node/cli.ts
 --- a/src/node/cli.ts
 +++ b/src/node/cli.ts
-@@ -178,12 +178,12 @@
+@@ -178,12 +178,12 @@ export const options: Options<Required<UserProvidedArgs>> = {
      type: "string",
      description:
        "Adds a suffix to the cookie. This can prevent a collision of cookies for subdomains, making them explixit. \n" +
@@ -18,7 +23,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    },
    "disable-file-uploads": {
      type: "boolean",
-@@ -195,7 +195,7 @@
+@@ -195,7 +195,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
    },
    "disable-getting-started-override": {
      type: "boolean",
@@ -27,7 +32,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    },
    "disable-proxy": {
      type: "boolean",
-@@ -613,15 +613,15 @@
+@@ -613,15 +613,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
      args.password = process.env.PASSWORD
    }
  
@@ -37,6 +42,10 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    }
  
 -  if (process.env.CS_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
++  if (process.env.COMPOSERY_DISABLE_FILE_UPLOADS?.match(/^(1|true)$/)) {
++    args["disable-file-uploads"] = true
++  }
++
 +  if (process.env.COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
      args["disable-getting-started-override"] = true
    }
@@ -46,7 +55,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
      args["disable-proxy"] = true
    }
  
-@@ -631,26 +631,26 @@
+@@ -631,26 +635,26 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
      usingEnvPassword = false
    }
  
@@ -82,7 +91,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    }
  
    // Ensure they're not readable by child processes.
-@@ -677,7 +677,7 @@
+@@ -677,7 +681,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    }
    args["proxy-domain"] = finalProxies
  
@@ -91,7 +100,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
  
    args._ = getResolvedPathsFromArgs(args)
  
-@@ -718,11 +718,11 @@
+@@ -718,11 +722,11 @@ interface ConfigArgs extends UserProvidedArgs {
  /**
   * Reads the code-server yaml config file and returns it as Args.
   *
@@ -105,7 +114,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
      if (!configPath) {
        configPath = path.join(paths.config, "config.yaml")
      }
-@@ -809,8 +809,8 @@
+@@ -809,8 +813,8 @@ export function bindAddrFromArgs(addr: Addr, args: UserProvidedArgs): Addr {
    if (args["bind-addr"]) {
      addr = parseBindAddr(args["bind-addr"])
    }
@@ -116,7 +125,7 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
    }
    if (args.host) {
      addr.host = args.host
-@@ -867,7 +867,7 @@
+@@ -867,7 +871,7 @@ export const shouldOpenInExistingInstance = async (
      logger.debug("Found --reuse-window or --new-window")
      const socketPath = await client.getConnectedSocketPath(paths[0])
      if (!socketPath) {
@@ -125,10 +134,9 @@ diff --git a/src/node/cli.ts b/src/node/cli.ts
      }
      return socketPath
    }
-diff --git a/src/node/http.ts b/src/node/http.ts
 --- a/src/node/http.ts
 +++ b/src/node/http.ts
-@@ -71,7 +71,7 @@
+@@ -71,7 +71,7 @@ export const replaceTemplates = <T extends object>(
    return content
      .replace(/{{TO}}/g, (typeof req.query.to === "string" && escapeHtml(req.query.to)) || "/")
      .replace(/{{BASE}}/g, serverOptions.base)
@@ -137,10 +145,9 @@ diff --git a/src/node/http.ts b/src/node/http.ts
      .replace("{{OPTIONS}}", () => escapeJSON(serverOptions))
  }
  
-diff --git a/src/node/main.ts b/src/node/main.ts
 --- a/src/node/main.ts
 +++ b/src/node/main.ts
-@@ -122,7 +122,7 @@
+@@ -122,7 +122,7 @@ export const openInExistingInstance = async (args: DefaultedArgs, socketPath: st
  export const runCodeServer = async (
    args: DefaultedArgs,
  ): Promise<{ dispose: Disposable["dispose"]; server: http.Server }> => {
@@ -149,7 +156,7 @@ diff --git a/src/node/main.ts b/src/node/main.ts
  
    // Load custom strings if provided
    if (args.i18n) {
-@@ -222,7 +222,7 @@
+@@ -222,7 +222,7 @@ export const runCodeServer = async (
      })
      // TODO: Could be nice to add wrapping to the logger?
      logger.info(
@@ -158,10 +165,9 @@ diff --git a/src/node/main.ts b/src/node/main.ts
      )
    }
  
-diff --git a/src/node/util.ts b/src/node/util.ts
 --- a/src/node/util.ts
 +++ b/src/node/util.ts
-@@ -57,8 +57,8 @@
+@@ -57,8 +57,8 @@ export const paths = getEnvPaths()
   * ones. Most CLIs do this as in practice only GUI apps use the standard macOS directories.
   */
  export function getEnvPaths(platform = process.platform): Paths {

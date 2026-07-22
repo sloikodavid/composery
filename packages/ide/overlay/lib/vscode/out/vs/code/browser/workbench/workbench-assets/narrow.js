@@ -22,7 +22,7 @@
 	const modalEditorNarrowAttribute = "data-composery-narrow-maximized";
 	const modalEditorMaximizePendingAttribute =
 		"data-composery-narrow-maximize-pending";
-	// Mirrors (cannot import) the listener in narrow-fullscreen.diff; keep in sync.
+	// Mirrors (cannot import) the listener in narrow.diff; keep in sync.
 	const narrowClosePartEvent = "composery-narrow-close-part";
 	// Mirror of layout.ts part-hidden workbench classes; their absence means the part is open.
 	const partHiddenClasses = ["nosidebar", "nopanel", "noauxiliarybar"];
@@ -203,7 +203,7 @@
 	}
 
 	// A narrow-fullscreen part (side bar / panel / secondary side bar, kept exclusive by
-	// narrow-fullscreen.diff) counts as a back-dismissible layer too - below every transient
+	// narrow.diff) counts as a back-dismissible layer too - below every transient
 	// overlay, so back peels the stack: menu first, then the open part, then the page.
 	function narrowPartOpen() {
 		if (!narrow.matches) {
@@ -482,7 +482,7 @@
 	}
 
 	// DOM housekeeping that has to react to workbench mutations. The fullscreen single-part
-	// coordination lives natively in the workbench Layout (narrow-fullscreen.diff), not here.
+	// coordination lives natively in the workbench Layout (narrow.diff), not here.
 	function enforce() {
 		pending = false;
 		updateViewportVars();
@@ -511,7 +511,7 @@
 
 	// Geometry listeners refresh the viewport vars SYNCHRONOUSLY: this script loads
 	// before workbench.js, so its listeners run first within the same resize event,
-	// and the workbench layout fit (touch-viewport-inset.diff) reads
+	// and the workbench layout fit (touch.diff) reads
 	// --composery-touch-keyboard-inset in its own listener - an async (rAF) update
 	// would leave it a stale keyboard inset and wedge the workbench at the
 	// keyboard-open height after the keyboard closes.

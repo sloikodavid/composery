@@ -1,4 +1,4 @@
-// An in-page <select> (the IDE's dropdowns on touch - see touch-select.diff)
+// An in-page <select> (the IDE's dropdowns on touch - see touch.diff)
 // surfaces as a framework AlertDialog themed by the hosting activity, which
 // prebuild leaves at stock defaults: teal-green controls, or whatever the
 // wallpaper dictates. Pin the control accent to the brand primary so the dialog

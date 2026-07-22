@@ -34,17 +34,19 @@ function run(command, args, options = {}) {
 // trees too.
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
+// Code-server-side patches in series order. "src" entries also span
+// lib/vscode; only their src/ sections apply here, because lib/vscode is not
+// part of this tree. Order matters: later patches' contexts build on earlier
+// ones (readiness anchors on routes auth adds).
 const SERVER_PATCHES = [
-	"naming.diff",
-	"hardening.diff",
-	"auth.diff",
-	"readiness.diff",
-	"api.diff",
-	"node-engine.diff"
+	["naming.diff", "full"],
+	["hardening.diff", "full"],
+	["auth.diff", "src"],
+	["readiness.diff", "full"],
+	["node-engine.diff", "full"],
+	["api.diff", "src"],
+	["updates.diff", "src"]
 ];
-// These span src/ and lib/vscode; only their src/ sections apply here, because
-// lib/vscode is not part of this tree.
-const SPLIT_PATCHES = ["updates.diff", "api-terminals.diff"];
 const SCRATCH = join(
 	REPO_ROOT,
 	"tmp",
@@ -151,28 +153,58 @@ function applyAndConfirm(name, patchPath) {
 	}
 }
 
-for (const name of SERVER_PATCHES) {
-	applyAndConfirm(name, join(PACKAGE_ROOT, "patches", name));
-}
 // Slice the src/ sections out rather than passing `git apply --include=src/**`:
 // git resolves that pathspec against the enclosing repository, and SCRATCH sits
 // inside this one, so it matches nothing and the patch applies as a silent
-// no-op (exit 0, tree untouched).
+// no-op (exit 0, tree untouched). Sections are delimited by their `--- a/`
+// line (with or without a preceding `diff --git`), so the slice starts fresh
+// at every file boundary.
 function srcSectionsOf(patchPath) {
-	let keeping = false;
-	return readFileSync(patchPath, "utf8")
-		.split("\n")
-		.filter((line) => {
-			if (line.startsWith("diff --git ")) {
-				keeping = / b\/src\//.test(line) || / b\/dev\/null/.test(line);
-			}
-			return keeping;
-		})
-		.join("\n");
+	const lines = readFileSync(patchPath, "utf8").split("\n");
+	const kept = [];
+	let section = [];
+	const flush = () => {
+		if (section.length === 0) {
+			return;
+		}
+		// The section's file is the +++ side, or the --- side for deletions.
+		const paths = section
+			.filter((l) => l.startsWith("--- ") || l.startsWith("+++ "))
+			.map((l) => /^(?:---|\+\+\+) (?:[ab]\/)?(\S+)/.exec(l)?.[1])
+			.filter((p) => p && p !== "/dev/null");
+		if (paths.some((p) => p.startsWith("src/"))) {
+			kept.push(...section);
+		}
+		section = [];
+	};
+	let inBody = false;
+	for (const line of lines) {
+		const isGit = line.startsWith("diff --git ");
+		// `--- ` opens a new section unless it completes the `diff --git` pair
+		// above it; inside a hunk body a removed line starts with a single "-".
+		const isFileMarker =
+			line.startsWith("--- ") && !section.at(-1)?.startsWith("diff --git ");
+		if (isGit || isFileMarker) {
+			flush();
+		}
+		if (isGit || line.startsWith("--- ")) {
+			inBody = true;
+		}
+		if (inBody) {
+			section.push(line);
+		}
+	}
+	flush();
+	return kept.join("\n");
 }
 
-for (const name of SPLIT_PATCHES) {
-	const sections = srcSectionsOf(join(PACKAGE_ROOT, "patches", name));
+for (const [name, mode] of SERVER_PATCHES) {
+	const patchPath = join(PACKAGE_ROOT, "patches", name);
+	if (mode === "full") {
+		applyAndConfirm(name, patchPath);
+		continue;
+	}
+	const sections = srcSectionsOf(patchPath);
 	if (!sections.trim()) {
 		console.error(`${name} is listed as split but has no src/ sections.`);
 		process.exit(1);

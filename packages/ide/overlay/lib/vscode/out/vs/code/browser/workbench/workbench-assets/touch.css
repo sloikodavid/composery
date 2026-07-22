@@ -9,7 +9,7 @@
 }
 
 /*
- * Editor selection drag handles (touch-editor.diff): the collapsed caret and both range
+ * Editor selection drag handles (touch.diff): the collapsed caret and both range
  * ends. The browser cannot provide these - its selection UI aims at the focused element,
  * and the editor's focused element is a hidden one-pixel input, never the rendered lines.
  * Visibility is driven from JS, which only shows them for touch pointers.
@@ -195,7 +195,7 @@
  * Inline actions a mouse reveals on hover that a finger never can - row and header action
  * bars, quick pick item buttons, the settings gear - stay visible on touch. Their Tap
  * handlers preventDefault and the list/tree widgets stand down on consumed taps
- * (touch-inline-actions.diff), so a tap on a button never also runs the row. !important:
+ * (touch.diff), so a tap on a button never also runs the row. !important:
  * this sheet is a head <link> and the workbench injects its own styles later, so ties lose.
  */
 @media (hover: none), (any-pointer: coarse) {
@@ -357,7 +357,7 @@
  * top insert bar (one per notebook) shows whenever the notebook is editable; each cell's
  * insert-below bar shows when that cell is focused, so a tap reveals where the next cell lands.
  * NotebookCellList extends the base list widget, so the consumed-tap stand-down from
- * touch-inline-actions.diff already keeps a toolbar tap off the cell underneath it. !important:
+ * touch.diff already keeps a toolbar tap off the cell underneath it. !important:
  * head <link>, workbench styles inject later and win ties.
  */
 @media (hover: none), (any-pointer: coarse) {

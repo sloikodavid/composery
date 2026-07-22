@@ -59,7 +59,7 @@ window.__composeryScheme = ${JSON.stringify(scheme)};
 	// CSS media queries can't be shimmed like matchMedia, and the WebView's
 	// native prefers-color-scheme tracks the Android activity theme, not the
 	// system. Pages key their scheme CSS on data-scheme as the app override
-	// (auth pages via brand.css, workbench first-paint via overlays.diff).
+	// (auth pages via brand.css, workbench first-paint via web-client.diff).
 	function stampScheme() {
 		if (document.documentElement) {
 			document.documentElement.dataset.scheme = window.__composeryScheme;

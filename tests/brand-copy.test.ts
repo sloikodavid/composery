@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 import { readRepoFile } from "./support/patchSource.ts";
 
 // The tagline is the first sentence a reader gets, and it is written down in
-// four places. Two of them import it; README.md and docs/index.md are Markdown
-// and cannot, so shared says of itself that such files "duplicate these values
+// several places. Some of them import it; README.md, docs/index.md and the
+// Dockerfile cannot, so shared says of itself that such files "duplicate these values
 // by hand". A hand copy nothing checks is a hand copy that drifts - this is the
 // check that makes the sentence in shared the one that actually ships.
 describe("brand copy", () => {
@@ -20,7 +20,12 @@ describe("brand copy", () => {
 		// The README opens on it, under the title.
 		["README.md", (copy: string) => copy],
 		// Fumadocs frontmatter, which reads as a sentence about the product.
-		["docs/index.md", (copy: string) => `Composery is ${lowerFirst(copy)}`]
+		["docs/index.md", (copy: string) => `Composery is ${lowerFirst(copy)}`],
+		// The OCI image description registries show next to the image.
+		[
+			"Dockerfile",
+			(copy: string) => `org.opencontainers.image.description="${copy}"`
+		]
 	])("%s carries the tagline shared declares", (file, phrase) => {
 		expect(readRepoFile(file)).toContain(phrase(tagline!));
 	});

@@ -6,7 +6,8 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
-	rmSync
+	rmSync,
+	writeFileSync
 } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -143,13 +144,22 @@ describe("patch stack lint", () => {
 				).toBeGreaterThanOrEqual(0);
 			}
 
+			// After a consumed hunk the only legal continuations are another hunk,
+			// a file marker, no-newline, or EOF. Anything else - a stray context
+			// or blank line a hand edit left behind - makes GNU patch treat the
+			// REST OF THE PATCH as garbage and drop every later hunk while
+			// exiting 0. That exact failure shipped: touch-fling-catch's hunk #4
+			// under-declared its body by one line and hunks 5-7 (the whole
+			// inertia fix) silently never applied, in CI and in the image build.
 			const next = lines[index + 1];
-			const dangling =
-				next !== undefined &&
-				(next.startsWith("+") || next.startsWith("-")) &&
-				!next.startsWith("+++") &&
-				!next.startsWith("---");
-			expect(dangling, `${label} leaves dangling diff lines`).toBe(false);
+			const legal =
+				next === undefined ||
+				(next === "" && index + 2 === lines.length) || // trailing newline
+				next.startsWith("@@ ") ||
+				next.startsWith("diff ") ||
+				next.startsWith("--- ") ||
+				next.startsWith("\\");
+			expect(legal, `${label} is followed by stray diff-body lines`).toBe(true);
 		}
 
 		expect(hunks).toBeGreaterThan(0);
@@ -160,6 +170,15 @@ describe("patch stack lint", () => {
 	// a slow place to find out. Rehearse the exact stack the build applies:
 	// code-server's own series, then ours, in order, on a shadow tree fed from
 	// the pristine upstream working copy.
+	//
+	// Assemble one patch directory and one series first, exactly as build.sh
+	// does, instead of applying the two series from where they live. Reading
+	// each patch from its own directory made the rehearsal blind to the whole
+	// namespace: our clipboard.diff overwrote code-server's identically named
+	// patch in the build tree and appended a duplicate series entry, so the
+	// image build died on "already applied" while this test stayed green. Ours
+	// go under composery/ for that reason - assert the assembly keeps upstream's
+	// patches intact and the series free of duplicates.
 	// Timeout sized for what this does - copy a working tree and shell out to
 	// patch once per file per patch - not for how long it happens to take on an
 	// idle machine. It ran ~45s of a 60s budget here, so a loaded CI runner failed
@@ -183,14 +202,51 @@ describe("patch stack lint", () => {
 				return [...files];
 			};
 
-			const applySeries = (seriesDir: string) => {
-				const series = readFileSync(resolve(seriesDir, "series"), "utf8")
+			const readSeries = (seriesDir: string) =>
+				readFileSync(resolve(seriesDir, "series"), "utf8")
 					.trim()
 					.split(/\r?\n/)
 					.filter((line) => line && !line.startsWith("#"));
+
+			// build.sh step 3: upstream's patch directory, ours copied into its
+			// composery/ subdirectory, their series lines then ours.
+			const assembled = mkdtempSync(resolve(tmpdir(), "composery-patches-"));
+			const upstreamPatches = resolve(upstream, "patches");
+			const ourPatches = resolve(repoRoot, PATCHES_DIR);
+			const upstreamNames = readSeries(upstreamPatches);
+			const ourNames = readSeries(ourPatches);
+
+			for (const name of upstreamNames) {
+				copyFileSync(resolve(upstreamPatches, name), resolve(assembled, name));
+			}
+			mkdirSync(resolve(assembled, "composery"));
+			for (const name of ourNames) {
+				copyFileSync(
+					resolve(ourPatches, name),
+					resolve(assembled, "composery", name)
+				);
+			}
+			const series = [
+				...upstreamNames,
+				...ourNames.map((name) => `composery/${name}`)
+			];
+
+			try {
+				expect(new Set(series).size, "assembled series has duplicates").toBe(
+					series.length
+				);
+				for (const name of upstreamNames) {
+					expect(
+						readFileSync(resolve(assembled, name), "utf8"),
+						`assembling replaced code-server's ${name}`
+					).toBe(readFileSync(resolve(upstreamPatches, name), "utf8"));
+				}
+
+				const patchedFiles = new Set<string>();
 				for (const name of series) {
-					const patchFile = resolve(seriesDir, name);
+					const patchFile = resolve(assembled, name);
 					for (const rel of filesTouched(readFileSync(patchFile, "utf8"))) {
+						patchedFiles.add(rel);
 						const dst = resolve(shadow, rel);
 						const src = resolve(upstream, rel);
 						if (!existsSync(dst) && existsSync(src)) {
@@ -209,11 +265,28 @@ describe("patch stack lint", () => {
 						);
 					}
 				}
-			};
 
-			try {
-				applySeries(resolve(upstream, "patches"));
-				applySeries(resolve(repoRoot, PATCHES_DIR));
+				// Applying cleanly is not the same as compiling. Folding patches
+				// merges hunks that each added the same import to a file, and the
+				// duplicate only surfaced in the image build's typecheck minutes
+				// later ("Duplicate identifier 'isTouch'" in layout.ts/window.ts).
+				// The assembled tree is already here - reject the whole class now.
+				const duplicateImports = new Map<string, string[]>();
+				for (const rel of patchedFiles) {
+					// Skip what the stack removes outright, not just what it edits.
+					if (!/\.ts$/.test(rel) || !existsSync(resolve(shadow, rel))) continue;
+					const seen = new Set<string>();
+					const twice = new Set<string>();
+					for (const line of readFileSync(resolve(shadow, rel), "utf8").split(
+						"\n"
+					)) {
+						if (!/^import .* from ['"]/.test(line)) continue;
+						if (seen.has(line)) twice.add(line.trim());
+						seen.add(line);
+					}
+					if (twice.size) duplicateImports.set(rel, [...twice]);
+				}
+				expect(Object.fromEntries(duplicateImports)).toEqual({});
 
 				// These security pins live in a patch because the lockfile belongs to
 				// the pinned upstream submodule; Renovate cannot update a patch hunk
@@ -228,6 +301,7 @@ describe("patch stack lint", () => {
 				);
 			} finally {
 				rmSync(shadow, { recursive: true, force: true });
+				rmSync(assembled, { recursive: true, force: true });
 			}
 		}
 	);
@@ -468,7 +542,7 @@ describe("QR action", () => {
 		expect(extension).not.toContain("100vh");
 		expect(extension).not.toContain("@media");
 		expect(extension).toContain("env(safe-area-inset-top, 0px)");
-		// The page cannot rely on webview-mobile.diff injecting a viewport for it.
+		// The page cannot rely on web-client.diff injecting a viewport for it.
 		expect(extension).toContain('name="viewport"');
 	});
 
@@ -531,7 +605,11 @@ describe("cloud password setup", () => {
 
 describe("soft-keyboard enter", () => {
 	test("replays IME line-break commits as cancelable Enter keydowns", () => {
-		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch-enter.diff`));
+		// ImeEnterFallback is a whole file we own, so it lives in the overlay rather
+		// than in a /dev/null hunk in touch.diff.
+		const source = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/base/browser/imeEnter.ts`
+		);
 
 		// Both commit shapes, touch-gated, real events only, never mid-composition.
 		expect(source).toContain(
@@ -549,15 +627,20 @@ describe("soft-keyboard enter", () => {
 		// StandardKeyboardEvent maps from the legacy fields the constructor drops.
 		expect(source).toContain("keyCode: { value: 13 }");
 		expect(source).toContain("which: { value: 13 }");
-		// The line-break insertion is cancelled only when a consumer handled the replay.
-		expect(source).toContain("if (!target.dispatchEvent(keydown)) {");
+		// The line-break insertion is cancelled when a consumer handled the replay - or
+		// unconditionally when the keybar armed a modifier, since the synthetic keydown
+		// then replaces the commit outright (see the Shift+Enter test).
+		expect(source).toContain("const handled = !target.dispatchEvent(keydown);");
 		// Installed for the main window and every future auxiliary window.
 		expect(source).toContain("Event.runAndSubscribe(onDidRegisterWindow");
-		expect(source).toContain("this._register(new ImeEnterFallback());");
+		// The construction site stays an upstream edit, so it stays in the patch.
+		expect(addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))).toContain(
+			"this._register(new ImeEnterFallback());"
+		);
 	});
 
 	test("asks soft keyboards for a newline key on single-line inputs", () => {
-		const patch = readRepoFile(`${PATCHES_DIR}/touch-enter.diff`);
+		const patch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 
 		// Must be a key that commits a line break, because that commit is the only
 		// thing ImeEnterFallback can replay. An action key ("go"/"send") renders as
@@ -576,7 +659,7 @@ describe("soft-keyboard enter", () => {
 	});
 
 	test("quick input text prompts get a tap path that bypasses the IME", () => {
-		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch-enter.diff`));
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		// The OK button feeds the same accept emitter Enter does; showing it on
 		// touch guarantees submission even when the IME emits no event at all.
@@ -586,9 +669,7 @@ describe("soft-keyboard enter", () => {
 
 describe("touch link activation", () => {
 	test("terminal taps hit-test detected links and skip word links", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-terminal-links.diff`)
-		);
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		// Words are everywhere; a tap must keep meaning "focus the terminal".
 		expect(source).toContain("['url', 'localFile', 'localFolder'] as const");
@@ -608,9 +689,7 @@ describe("touch link activation", () => {
 	});
 
 	test("editor context menu offers Open Link only while the cursor is on one", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor-links.diff`)
-		);
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(source).toContain(
 			"new RawContextKey<boolean>('composeryCursorOnLink', false)"
@@ -627,9 +706,7 @@ describe("touch link activation", () => {
 	});
 
 	test("rendered-markdown links activate on Tap inside Gesture targets", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-markdown-links.diff`)
-		);
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(source).toContain("if (isTouch(DOM.getWindow(outElement))) {");
 		expect(source).toContain("Gesture.addTarget(outElement)");
@@ -641,9 +718,7 @@ describe("touch link activation", () => {
 
 describe("touch inline actions", () => {
 	test("lists, tables and trees stand down on taps consumed by inline controls", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-inline-actions.diff`)
-		);
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		const guards = source.match(
 			/e\.browserEvent\.type === TouchEventType\.Tap && e\.browserEvent\.defaultPrevented/g
@@ -930,7 +1005,7 @@ describe("narrow overlay", () => {
 		).toBe("0px");
 	});
 
-	// The workbench layout listener (touch-viewport-inset.diff) registers after
+	// The workbench layout listener (touch.diff) registers after
 	// narrow.js on the same visualViewport and reads
 	// --composery-touch-keyboard-inset within the same resize delivery. The vars
 	// must update synchronously in narrow.js's geometry listeners: an
@@ -961,9 +1036,7 @@ describe("narrow overlay", () => {
 	// visualViewport leaves the workbench wedged at the keyboard-open height
 	// (verified live on Android Chrome); both viewports must drive layout().
 	test("keyboard layout listens to the layout viewport as well", () => {
-		const viewportPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-viewport-inset.diff`)
-		);
+		const viewportPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(viewportPatch).toContain("if (viewport !== mainWindow) {");
 		expect(viewportPatch).toContain(
@@ -974,9 +1047,7 @@ describe("narrow overlay", () => {
 	// Android may resize visualViewport and report the same keyboard through the
 	// native bridge. The layout must consume one signal, never subtract both.
 	test("does not double-subtract a resized viewport and native keyboard inset", () => {
-		const viewportPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-viewport-inset.diff`)
-		);
+		const viewportPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(viewportPatch).toContain(
 			"const nativeOnlyKeyboardOverlap = viewportKeyboardOverlap > 0 ? 0 : nativeKeyboardOverlap"
@@ -1004,7 +1075,7 @@ describe("narrow overlay", () => {
 	// The touch-editor patch creates the selection drag handles (caret + both range
 	// ends) that only the touch overlay styles; the pair must name the same classes.
 	test("touch selection handles are styled by the touch overlay", () => {
-		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
 		expect(touchEditorPatch).toContain("composery-touch-caret-handle");
@@ -1022,7 +1093,7 @@ describe("narrow overlay", () => {
 	// and custom handles adjust it; no browser selection may exist in the lines.
 	test("editor touch selection is model-driven, not browser-native", () => {
 		const touchEditorPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+			readRepoFile(`${PATCHES_DIR}/touch.diff`)
 		);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
@@ -1053,7 +1124,7 @@ describe("narrow overlay", () => {
 	// and keyboard-driven layout changes must preserve the current scroll.
 	test("touch editor scrolling does not focus or reveal on keyboard resize", () => {
 		const touchEditorPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+			readRepoFile(`${PATCHES_DIR}/touch.diff`)
 		);
 
 		expect(touchEditorPatch).toContain(
@@ -1075,10 +1146,8 @@ describe("narrow overlay", () => {
 	// directly - the fix lives there, so the editor needs no suppression-window
 	// state of its own (which was racy: a timed window around drag end).
 	test("inertia honours the ignore list instead of an editor timer", () => {
-		const flingPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-fling-catch.diff`)
-		);
-		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
+		const flingPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 
 		expect(flingPatch).toContain(
 			"const ignored = !!owner && [...this.ignoreTargets].some(t => t.contains(owner));"
@@ -1091,7 +1160,7 @@ describe("narrow overlay", () => {
 	// the legacy TouchHandler, which has none of the touch selection, handle and
 	// context-menu support - so the gate must be the canonical touch gate.
 	test("PointerEventHandler is gated on the touch gate, not the phone UA", () => {
-		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch-editor.diff`);
+		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 
 		expect(addedLines(touchEditorPatch)).toContain(
 			"if (isTouch(mainWindow) && BrowserFeatures.pointerEvents)"
@@ -1107,7 +1176,7 @@ describe("narrow overlay", () => {
 	// presses must fall through to the base MouseHandler's mousedown flow.
 	test("mouse presses skip the pointerdown path so click counts survive", () => {
 		const touchEditorPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-editor.diff`)
+			readRepoFile(`${PATCHES_DIR}/touch.diff`)
 		);
 
 		expect(touchEditorPatch).toContain(
@@ -1120,9 +1189,7 @@ describe("narrow overlay", () => {
 	// layout, that pass closes the part the user left open - and a reviving
 	// background view (the reattaching terminal) can then steal the fullscreen.
 	test("narrow-fullscreen boot pass seeds intent from the restored layout", () => {
-		const layoutPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
-		);
+		const layoutPatch = addedLines(readRepoFile(`${PATCHES_DIR}/narrow.diff`));
 
 		expect(layoutPatch).toContain(
 			"this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part))"
@@ -1192,16 +1259,14 @@ describe("narrow overlay", () => {
 	// listens for it - same literal on both sides or back exits the IDE.
 	test("narrow close-part event matches between narrow.js and the layout patch", () => {
 		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
-		const layoutPatch = readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`);
+		const layoutPatch = readRepoFile(`${PATCHES_DIR}/narrow.diff`);
 
 		expect(narrowJs).toContain('"composery-narrow-close-part"');
 		expect(addedLines(layoutPatch)).toContain("'composery-narrow-close-part'");
 	});
 
 	test("narrow rotation preserves the part selected on mobile", () => {
-		const layoutPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
-		);
+		const layoutPatch = addedLines(readRepoFile(`${PATCHES_DIR}/narrow.diff`));
 
 		expect(layoutPatch).toContain("if (this.inNarrowPartTransition)");
 		expect(layoutPatch).toContain("desktopPartVisibility.add(this.narrowPart)");
@@ -1209,7 +1274,7 @@ describe("narrow overlay", () => {
 
 	test("mobile extension features keep wide table columns reachable", () => {
 		const extensionsPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/extensions-mobile.diff`)
+			readRepoFile(`${PATCHES_DIR}/narrow.diff`)
 		);
 		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
 
@@ -1226,7 +1291,7 @@ describe("narrow overlay", () => {
 		// The left region must fit the logo + menubar margin + the real 38px
 		// overflow button; anything less spills the button under the command
 		// center. The menubar itself must stay the zero-basis flexer from
-		// titlebar-menubar-overflow.diff (its allocated width is what triggers
+		// narrow.diff (its allocated width is what triggers
 		// overflow mode), so narrow.css must not width-force it.
 		expect(narrowCss).toMatch(
 			/> \.titlebar-left \{[\s\S]*?min-width: 77px !important;/
@@ -1234,12 +1299,9 @@ describe("narrow overlay", () => {
 		expect(narrowCss).not.toContain(".menubar.overflow-menu-only");
 	});
 
-	test("short touch layouts keep the terminal keybar inside the viewport", () => {
+	test("short touch layouts keep the footer's row for content", () => {
 		const compactFooterPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-compact-footer.diff`)
-		);
-		const keybarPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-terminal-keybar.diff`)
+			readRepoFile(`${PATCHES_DIR}/touch.diff`)
 		);
 		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
 
@@ -1247,8 +1309,155 @@ describe("narrow overlay", () => {
 			"isTouch(getWindow(this.contentArea))"
 		);
 		expect(compactFooterPatch).toContain("composery-compact-footer");
-		expect(keybarPatch).toContain("this.minimumBodySize = this._keybar.height");
 		expect(narrowCss).toContain(".part.composery-compact-footer > .footer");
+	});
+
+	// The keybar costs workbench height, so the two properties that keep it from
+	// "ruining the experience by taking up space" are load-bearing: it is reserved
+	// out of the grid (or it would overlap content), and it is reserved only while
+	// a soft keyboard is up (or it would be permanent).
+	test("keybar height is reserved out of the grid, keyboard-gated", () => {
+		const keybarPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+
+		expect(keybarPatch).toContain(
+			"this.workbenchGrid.layout(this._mainContainerDimension.width, " +
+				"this._mainContainerDimension.height - (this.keybar?.height ?? 0))"
+		);
+		expect(keybarPatch).toContain(
+			"this.keybar?.setViewport(hasKeyboard, visibleHeight)"
+		);
+		// hasKeyboard must incorporate the canonical keyboard-open signal, not only
+		// the viewport delta: our viewport meta is interactive-widget=resizes-content,
+		// so innerHeight - visualViewport.height is structurally 0 and a hasKeyboard
+		// computed from it alone can never be true - the keybar shipped dead in mobile
+		// web on exactly that. The string alone is a false guard (the terminal reads
+		// the same var), so pin the actual disjunction. Device-verified 2026-07-22.
+		expect(keybarPatch).toContain("const keyboardOpen =");
+		expect(keybarPatch).toContain("const hasKeyboard = keyboardOpen ||");
+	});
+
+	// Its visibility rule is the whole design: `height` must stay gated on the
+	// keyboard, not merely on the bar existing.
+	test("keybar reports no height without a keyboard", () => {
+		const keybar = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
+		);
+
+		expect(keybar).toMatch(
+			/get height\(\): number \{\s*if \(!this\.bar \|\| !this\.keyboardVisible\) \{\s*return 0;/
+		);
+	});
+
+	// A short viewport drops to one row, and that row must be reachable: compact
+	// carries no Fn key, so inheriting the Fn layer would strand the user in F1-F12
+	// with no way back.
+	test("keybar collapses to one row and never strands the Fn layer", () => {
+		const keybar = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
+		);
+
+		expect(keybar).toContain("const compact = visibleHeight < COMPACT_BELOW;");
+		expect(keybar).toMatch(
+			/if \(!keyboardVisible \|\| compact\) \{\s*this\.fnLayer = false;/
+		);
+		expect(keybar).toMatch(
+			/const rows = this\.compact \? COMPACT_ROWS : this\.fnLayer \? FN_ROWS : BASE_ROWS;/
+		);
+		// COMPACT_ROWS is one row, and holds no key that toggles a layer.
+		const compactRows = keybar.match(/const COMPACT_ROWS[\s\S]*?\n\];/)?.[0];
+		expect(compactRows).toBeDefined();
+		expect(compactRows).not.toContain("FN");
+		// Exactly one inner array between the `= [` and its close.
+		expect(compactRows).toMatch(/= \[\s*\[[^[\]]*\]\s*\];/);
+	});
+
+	// render() reruns on every keyboard show/hide, compact switch and Fn toggle. Per-key
+	// listeners on the object's own store would pin a fresh set of detached nodes each
+	// pass and release none of them, so they belong to a store that render() clears.
+	test("keybar releases per-key listeners on every re-render", () => {
+		const keybar = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
+		);
+
+		const addKey = keybar.match(/private addKey\([\s\S]*?\n\t\}/)?.[0];
+		expect(addKey).toBeDefined();
+		// Everything addKey attaches is scoped to the clearable store.
+		expect(addKey).not.toContain("this._register(");
+		expect(addKey?.match(/this\.keyDisposables\.add\(/g)?.length).toBe(3);
+		// ...and render() actually clears it before rebuilding.
+		expect(keybar).toMatch(
+			/private render\(\): void \{[\s\S]*?this\.keyDisposables\.clear\(\);[\s\S]*?dom\.clearNode\(this\.bar\);/
+		);
+	});
+
+	// Shift+Enter is the chord a phone can neither send nor be taught to send: Enter
+	// reaches the page as a data-less insertLineBreak, so it never passes through the
+	// keybar at all. ImeEnterFallback is the only code that sees it, which is why the
+	// sticky modifiers are shared state rather than the keybar's own.
+	test("soft-keyboard Enter carries the keybar's sticky modifiers", () => {
+		const ime = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/base/browser/imeEnter.ts`
+		);
+
+		// The replayed Enter must carry the flags, not be a bare Enter.
+		expect(ime).toMatch(/shiftKey: stickyModifiers\.held\('shift'\)/);
+		// An armed modifier lifts the xterm exemption - xterm's own input path is exactly
+		// what will not apply a sticky Shift.
+		expect(ime).toMatch(
+			/if \(!armed && target\.closest\('\.xterm'\)\) \{\s*return;/
+		);
+		// ...and there the commit is cancelled outright, or the terminal sees two newlines.
+		expect(ime).toMatch(
+			/if \(handled \|\| armed\) \{\s*e\.preventDefault\(\);/
+		);
+		// A used modifier must be spent, or it leaks onto the next keystroke.
+		expect(ime).toMatch(/if \(armed\) \{\s*stickyModifiers\.consume\(\);/);
+	});
+
+	// Both writers must agree on one store; a private copy in either is the bug this
+	// module exists to prevent.
+	test("keybar and Enter fallback share one sticky modifier store", () => {
+		const keybar = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
+		);
+		const ime = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/base/browser/imeEnter.ts`
+		);
+
+		expect(keybar).toContain("from '../../base/browser/stickyModifiers.js'");
+		// imeEnter.ts already sits in base/browser, so its path is a sibling one.
+		expect(ime).toContain("from './stickyModifiers.js'");
+		// The keybar keeps no modifier state of its own.
+		expect(keybar).not.toMatch(/private .*modifiers = new Map/);
+	});
+
+	// The keybar's whole visibility rule rides on upstream's isIOS being true for an
+	// iPad, which reports itself as a Mac since iPadOS 13. If a bump ever drops the
+	// maxTouchPoints half of that test, the bar silently never appears on iPad.
+	test("upstream isIOS still detects an iPad reporting as a Mac", () => {
+		const platform = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/base/common/platform.ts"
+		);
+
+		expect(platform).toMatch(
+			/_isIOS = \(_userAgent\.indexOf\('Macintosh'\)[\s\S]{0,160}navigator\.maxTouchPoints > 0;/
+		);
+	});
+
+	// Every key is one synthetic KeyboardEvent at the focused element - that is what
+	// lets one bar serve the terminal and the workbench without importing
+	// ITerminalService into vs/workbench/browser, which the layering rules forbid.
+	test("keybar dispatches synthetic keys and imports no terminal service", () => {
+		const keybar = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
+		);
+
+		expect(keybar).toContain("new KeyboardEvent('keydown'");
+		// xterm and StandardKeyboardEvent both read the legacy numeric field, which the
+		// KeyboardEvent constructor drops.
+		expect(keybar).toContain("keyCode: { value: keyCode }");
+		expect(keybar).not.toMatch(/import .*ITerminalService/);
+		expect(keybar).not.toMatch(/from '.*\/contrib\//);
 	});
 
 	// narrow.js detects an open part via the workbench part-hidden classes; those
@@ -1268,9 +1477,7 @@ describe("narrow overlay", () => {
 	// The sash grab-area default must key off the canonical touch gate (not a
 	// second hardcoded query, and not iOS-only like upstream).
 	test("touch-sash patch keys the sash size default off the touch gate", () => {
-		const sashPatch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-sash.diff`)
-		);
+		const sashPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(sashPatch).toContain("touchGate.js");
 		expect(sashPatch).toContain("isTouch(mainWindow) ? 20 : 4");
@@ -1280,7 +1487,7 @@ describe("narrow overlay", () => {
 	// constructor, where touch overrides even an explicit useCustomDrawn - so no
 	// call-site override can quietly bring the custom-drawn list back.
 	test("touch-select patch keys the native-select decision off the touch gate", () => {
-		const rawPatch = readRepoFile(`${PATCHES_DIR}/touch-select.diff`);
+		const rawPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 		const selectPatch = addedLines(rawPatch);
 
 		expect(selectPatch).toContain(
@@ -1305,7 +1512,7 @@ describe("narrow overlay", () => {
 	// tap-dead. Touch scrolling is native overflow instead, mirrored back into the
 	// DomScrollableElement so wheel scrolling stays consistent.
 	test("welcome page scrolls natively on touch and stays clickable", () => {
-		const welcome = readRepoFile(`${PATCHES_DIR}/welcome.diff`);
+		const welcome = readRepoFile(`${PATCHES_DIR}/product.diff`);
 		const welcomeAdded = addedLines(welcome);
 
 		expect(welcomeAdded).not.toContain("Gesture.addTarget");
@@ -1325,7 +1532,7 @@ describe("narrow overlay", () => {
 	// wrongly - the titlebar icon must be a mask filled from a titlebar theme
 	// colour, with no theme-class fork left behind.
 	test("titlebar logo is masked with the titlebar foreground for every theme", () => {
-		const logoPatch = readRepoFile(`${PATCHES_DIR}/titlebar-logo.diff`);
+		const logoPatch = readRepoFile(`${PATCHES_DIR}/product.diff`);
 		const logoAdded = addedLines(logoPatch);
 
 		expect(logoAdded).toContain(
@@ -1334,8 +1541,37 @@ describe("narrow overlay", () => {
 		expect(logoAdded).toContain(
 			"mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;"
 		);
-		expect(logoPatch).not.toContain("composery-theme");
+		// Scoped to the titlebar sections: product.diff also carries the theme
+		// defaults, which legitimately name the composery-themes extension.
+		const titlebarSections = logoPatch
+			.split(/^(?=--- a\/)/m)
+			.filter((section) =>
+				section.startsWith(
+					"--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/"
+				)
+			)
+			.join("");
+		expect(titlebarSections).not.toBe("");
+		expect(titlebarSections).not.toContain("composery-theme");
 		expect(logoAdded).not.toContain("background-size: 20px");
+		// WebKit rasterizes a size-less SVG mask at the box size in CSS pixels, so
+		// the 20px logo came off a ~35px bitmap and read as mushy on 3x iOS screens.
+		// The mask source must keep a pixel intrinsic size well above 20px * 3.
+		const iconSection = logoPatch
+			.split(/^(?=--- a\/)/m)
+			.filter((section) =>
+				section.startsWith(
+					"--- a/lib/vscode/src/vs/workbench/browser/media/code-icon.svg"
+				)
+			)
+			.join("");
+		expect(iconSection).not.toBe("");
+		const iconSvg = /<svg width="(\d+)" height="(\d+)" viewBox=/.exec(
+			addedLines(iconSection)
+		);
+		expect(iconSvg).not.toBeNull();
+		expect(Number(iconSvg?.[1])).toBeGreaterThanOrEqual(64);
+		expect(iconSvg?.[2]).toBe(iconSvg?.[1]);
 	});
 
 	// Phone browsers are detected as fullscreen, where upstream pads the menubar
@@ -1358,9 +1594,7 @@ describe("narrow overlay", () => {
 	// Upstream's event carries only the editor and its group, so the options come
 	// with it from the same patch.
 	test("narrow fullscreen exits for editors meant to be looked at", () => {
-		const added = addedLines(
-			readRepoFile(`${PATCHES_DIR}/narrow-fullscreen.diff`)
-		);
+		const added = addedLines(readRepoFile(`${PATCHES_DIR}/narrow.diff`));
 
 		expect(added).toContain(
 			"this.mainPartEditorService.onWillOpenEditor(e => {"
@@ -1388,7 +1622,7 @@ describe("narrow overlay", () => {
 	test("editor menu hold time stays below the gesture hold delay", () => {
 		const selectionHold = Number(
 			/TOUCH_SELECTION_MENU_HOLD_TIME = (\d+)/.exec(
-				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))
 			)?.[1]
 		);
 		const gestureHold = Number(
@@ -1410,12 +1644,12 @@ describe("narrow overlay", () => {
 	test("editor pan threshold matches the gesture tap-cancel slop", () => {
 		const selectionThreshold = Number(
 			/TOUCH_PAN_THRESHOLD = (\d+)/.exec(
-				addedLines(readRepoFile(`${PATCHES_DIR}/touch-editor.diff`))
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))
 			)?.[1]
 		);
 		const tapCancelSlop = Number(
 			/data\.initialPageY - touch\.pageY\) >= (\d+)/.exec(
-				addedLines(readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`))
+				addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))
 			)?.[1]
 		);
 
@@ -1429,9 +1663,7 @@ describe("narrow overlay", () => {
 	// resize ate the pan. The suppression must hang off the same pan decision that cancels
 	// the tap, and only a tap may hand the keyboard back.
 	test("a pan stands the on-screen keyboard down until the next tap", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		// inputmode="none" is the only attribute that suppresses the re-open.
 		expect(patch).toContain("active.setAttribute('inputmode', 'none')");
@@ -1446,7 +1678,7 @@ describe("narrow overlay", () => {
 
 		// The trigger is the pan decision itself, so the threshold can never drift
 		// apart from the tap-cancel slop it rides on.
-		const panPatch = readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`);
+		const panPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 		expect(panPatch).toContain("data.tapCancelled = true;");
 		expect(panPatch).toContain(
 			"+\t\t\t\tthis.suppressKeyboardReopen(data.initialTarget);"
@@ -1462,9 +1694,7 @@ describe("narrow overlay", () => {
 	// shadow root. A pan remains a pan through release and inertia; it must
 	// never fall back into the synthetic tap path or reach ancestor menus.
 	test("touch-context-menu patch fires during the hold and gates shadow-root menus centrally", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(patch).toContain("contextMenuTimer");
 		expect(patch).toContain("tapCancelled");
@@ -1496,9 +1726,7 @@ describe("narrow overlay", () => {
 	// contextmenu from the touched element - and the semantic owners that do consume
 	// must open their own menus.
 	test("long-press falls back to a native contextmenu when no gesture owner consumes", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		// touch.ts: the fallback fires only for unconsumed gesture context events...
 		expect(patch).toContain("if (!holdEvt.defaultPrevented) {");
@@ -1524,7 +1752,7 @@ describe("narrow overlay", () => {
 		// context menu listeners would shadow deeper native owners (a toolbar button's
 		// item menu), and a second listView leg would emit every touch menu twice. The
 		// patch must remove them, not add more.
-		const removedLines = readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
+		const removedLines = readRepoFile(`${PATCHES_DIR}/touch.diff`)
 			.split("\n")
 			.filter((line) => line.startsWith("-") && !line.startsWith("---"))
 			.join("\n");
@@ -1548,9 +1776,7 @@ describe("narrow overlay", () => {
 	// true timing, so a wrong verdict must revert - and a spent touch must still
 	// arm the suppressor.
 	test("touch pan-revert corrects a hold verdict the event queue falsified", () => {
-		const contextMenu = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-context-menu.diff`)
-		);
+		const contextMenu = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 		expect(contextMenu).toContain("initialEventTimeStamp: e.timeStamp");
 		expect(contextMenu).toContain(
 			"e.timeStamp - data.initialEventTimeStamp < Gesture.HOLD_DELAY"
@@ -1559,9 +1785,7 @@ describe("narrow overlay", () => {
 			"mainWindow.dispatchEvent(new MouseEvent('mousedown'));"
 		);
 
-		const keyboard = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-keyboard-reopen.diff`)
-		);
+		const keyboard = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 		// once in the pan branch, once in the spent-touch branch
 		const suppressions = keyboard
 			.split("\n")
@@ -1575,9 +1799,7 @@ describe("narrow overlay", () => {
 	// on-screen keyboard over the content the user came to see. Uniform rule for
 	// every touch device, not upstream's per-site iOS exemptions.
 	test("touch-autofocus keeps surface-open from popping the keyboard", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-autofocus.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		// extensions view search, SCM commit box, editor refocus on panel close
 		expect(patch).toContain("if (!isTouch(mainWindow)) {");
@@ -1591,9 +1813,7 @@ describe("narrow overlay", () => {
 	// focus. Generic controls and settings-list keyboard navigation rely on native
 	// reveal, so suppressing it can leave the focused control off screen.
 	test("touch-reveal-guard stays scoped to focus restoration", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-reveal-guard.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(patch).not.toContain("this.input.focus({ preventScroll: true });");
 		expect(patch).not.toContain(
@@ -1615,9 +1835,7 @@ describe("narrow overlay", () => {
 	// editable control on touch; the code editor keeps its gesture menu (hidden input excluded),
 	// and mouse/desktop keeps the themed menu.
 	test("touch routes real editable controls to the native selection toolbar", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-input-context-menu.diff`)
-		);
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(patch).toContain(
 			"isTouch(getWindow(this.layoutService.mainContainer))"
@@ -1632,12 +1850,8 @@ describe("narrow overlay", () => {
 	});
 
 	test("nested menus retain focus and home actions stay at the File root", () => {
-		const touchMenu = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-menu.diff`)
-		);
-		const homeActions = addedLines(
-			readRepoFile(`${PATCHES_DIR}/menu-home-actions.diff`)
-		);
+		const touchMenu = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+		const homeActions = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
 
 		expect(touchMenu).toContain("EventType.FOCUS_IN");
 		expect(touchMenu).toContain("this.hideScheduler.cancel()");
@@ -1694,7 +1908,7 @@ describe("narrow overlay", () => {
 		expect(readRepoFile(`${ASSETS}/narrow.js`)).toContain(
 			`NARROW_MAX_WIDTH = ${narrowWidth}`
 		);
-		expect(readRepoFile(`${PATCHES_DIR}/webview-mobile.diff`)).toContain(
+		expect(readRepoFile(`${PATCHES_DIR}/web-client.diff`)).toContain(
 			`@media (max-width: ${narrowWidth}px)`
 		);
 	});
@@ -1743,8 +1957,8 @@ describe("mobile viewport contract", () => {
 		"packages/ide/overlay/src/browser/pages/error.html",
 		"packages/ide/overlay/src/browser/pages/auth.html",
 		"packages/ide/overlay/src/node/persistence/readiness.ts",
-		`${PATCHES_DIR}/overlays.diff`,
-		`${PATCHES_DIR}/webview-mobile.diff`
+		`${PATCHES_DIR}/web-client.diff`,
+		`${PATCHES_DIR}/web-client.diff`
 	])("%s declares the shared viewport parts", (path) => {
 		const content = readRepoFile(path);
 		for (const part of VIEWPORT_PARTS) {
@@ -1752,8 +1966,8 @@ describe("mobile viewport contract", () => {
 		}
 	});
 
-	test("workbench pages carry the viewport contract via overlays.diff", () => {
-		const overlaysPatch = readRepoFile(`${PATCHES_DIR}/overlays.diff`);
+	test("workbench pages carry the viewport contract via web-client.diff", () => {
+		const overlaysPatch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
 		expect(overlaysPatch).toContain(
 			"lib/vscode/src/vs/code/browser/workbench/callback.html"
 		);
@@ -1767,7 +1981,7 @@ describe("adaptive favicon", () => {
 	test.each([
 		"packages/ide/overlay/src/browser/pages/auth.html",
 		"packages/ide/overlay/src/browser/pages/error.html",
-		`${PATCHES_DIR}/overlays.diff`
+		`${PATCHES_DIR}/web-client.diff`
 	])(
 		"%s declares the sized ICO fallback before the adaptive SVG favicon",
 		(path) => {
@@ -1810,7 +2024,7 @@ describe("adaptive favicon", () => {
 			"packages/ide/overlay/src/browser/pages/error.html",
 			"src/browser/pages/favicon.js"
 		],
-		[`${PATCHES_DIR}/overlays.diff`, "workbench-assets/favicon.js"]
+		[`${PATCHES_DIR}/web-client.diff`, "workbench-assets/favicon.js"]
 	])(
 		"%s hands the SVG favicon the scheme-pinned pair and the script that swaps it",
 		(path, script) => {
@@ -1843,7 +2057,7 @@ type WebviewViewportDocument = {
 function webviewViewportAfterEnsure(
 	initialContent?: string
 ): string | undefined {
-	const webviewPatch = readRepoFile(`${PATCHES_DIR}/webview-mobile.diff`);
+	const webviewPatch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
 	const functionSource = extractAddedFunction(
 		webviewPatch,
 		"ensureMobileViewport"
@@ -1927,7 +2141,7 @@ describe("composery agent setup", () => {
 	const extension = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-agents/extension.js"
 	);
-	const welcome = readRepoFile(`${PATCHES_DIR}/welcome.diff`);
+	const welcome = readRepoFile(`${PATCHES_DIR}/product.diff`);
 
 	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
 		(match) => match[1]
@@ -1974,7 +2188,7 @@ describe("composery shortcuts", () => {
 	const manifest = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
 	);
-	const shortcutsPatch = readRepoFile(`${PATCHES_DIR}/shortcuts.diff`);
+	const shortcutsPatch = readRepoFile(`${PATCHES_DIR}/product.diff`);
 
 	test("keeps patched internal commands aligned with the extension", () => {
 		for (const command of [
@@ -2156,9 +2370,9 @@ describe("composery api keys", () => {
 			expect.objectContaining({ command: "composery.manageApiKeys" })
 		);
 		expect(extension).toContain('"composery.manageApiKeys"');
-		expect(
-			addedLines(readRepoFile(`${PATCHES_DIR}/api-keys-action.diff`))
-		).toContain("id: 'composery.manageApiKeys'");
+		expect(addedLines(readRepoFile(`${PATCHES_DIR}/api.diff`))).toContain(
+			"id: 'composery.manageApiKeys'"
+		);
 	});
 
 	test("creating a key runs the CLI and copies the secret on request", async () => {
@@ -2445,7 +2659,7 @@ describe("composery updates", () => {
 		expect(updatesAdded).not.toContain("updateEndpoint");
 		const qrAction = readRepoFile(`${PATCHES_DIR}/qr-action.diff`);
 		expect(qrAction).not.toContain("checkForUpdates");
-		expect(readRepoFile(`${PATCHES_DIR}/branding.diff`)).not.toContain(
+		expect(readRepoFile(`${PATCHES_DIR}/product.diff`)).not.toContain(
 			"checkUpdates"
 		);
 	});
@@ -2562,8 +2776,9 @@ describe("default color theme", () => {
 			) as { colors: Record<string, string> }
 		).colors;
 
-	// Apply the patch alone onto the pristine upstream file, so the assertions
-	// run against exactly what the build tree contains after quilt.
+	// Apply the patch's theme-service section alone onto the pristine upstream
+	// file, so the assertions run against exactly what the build tree contains
+	// after quilt. product.diff spans many files; only this one is seeded.
 	const patchedThemeService = (): string => {
 		const shadow = mkdtempSync(resolve(tmpdir(), "composery-theme-"));
 		try {
@@ -2573,10 +2788,14 @@ describe("default color theme", () => {
 				resolve(repoRoot, "packages/ide/upstream", themeServiceRel),
 				dst
 			);
-			applyPatch(
-				resolve(repoRoot, PATCHES_DIR, "default-color-theme.diff"),
-				shadow
-			);
+			const section = readRepoFile(`${PATCHES_DIR}/product.diff`)
+				.split(/^(?=--- a\/)/m)
+				.filter((part) => part.startsWith(`--- a/${themeServiceRel}`))
+				.join("");
+			expect(section).not.toBe("");
+			const sectionFile = resolve(shadow, "theme-section.diff");
+			writeFileSync(sectionFile, section);
+			applyPatch(sectionFile, shadow);
 			return readFileSync(dst, "utf8").replaceAll("\r\n", "\n");
 		} finally {
 			rmSync(shadow, { recursive: true, force: true });
@@ -2668,18 +2887,14 @@ describe("terminal edge padding", () => {
 	});
 
 	test("patch pads the shared .xterm rule top and bottom", () => {
-		const added = addedLines(
-			readRepoFile(`${PATCHES_DIR}/terminal-padding.diff`)
-		);
+		const added = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
 		expect(added).toContain("padding-top: 4px;");
 		expect(added).toContain("padding-bottom: 4px;");
 	});
 });
 
 describe("terminal keyboard occlusion", () => {
-	const patch = readRepoFile(
-		`${PATCHES_DIR}/touch-terminal-keyboard-occlusion.diff`
-	);
+	const patch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
 
 	// The normal buffer holds scrollback and a scroll position that belong to the user,
 	// and resizing it reflows the content and shifts ydisp - the "teleports to the very
@@ -2901,9 +3116,7 @@ describe("terminal keyboard occlusion", () => {
 // textarea; harmless on desktop, where the attribute drives no soft keyboard.
 describe("terminal soft-keyboard suggestions", () => {
 	test("the terminal textarea opts out of suggestions and autocorrect", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-terminal-suggestions.diff`)
-		);
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(source).toContain(
 			"xterm.raw.textarea.setAttribute('autocomplete', 'off')"
@@ -2923,7 +3136,7 @@ describe("app scheme override", () => {
 	const pages: [name: string, source: () => string][] = [
 		[
 			"workbench first paint",
-			() => readRepoFile(`${PATCHES_DIR}/overlays.diff`)
+			() => readRepoFile(`${PATCHES_DIR}/web-client.diff`)
 		],
 		[
 			"auth and error pages",
@@ -3003,7 +3216,7 @@ describe("overlay never shadows an upstream file", () => {
 // in an upstream file none of us reads by accident, and a wrong one is only
 // visible after installing the app.
 describe("PWA install metadata", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/pwa.diff`);
+	const patch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
 	const added = addedLines(patch);
 	const removed = patch
 		.split(/\r?\n/)
@@ -3018,14 +3231,6 @@ describe("PWA install metadata", () => {
 				)
 			) as { colors: Record<string, string> }
 		).colors["editor.background"]!;
-
-	test("applies after the patches it shares files with", () => {
-		const series = readRepoFile(`${PATCHES_DIR}/series`).split(/\r?\n/);
-		expect(series).toContain("pwa.diff");
-		expect(series.indexOf("pwa.diff")).toBeGreaterThan(
-			series.indexOf("overlays.diff")
-		);
-	});
 
 	test("installs as a standalone window, not fullscreen", () => {
 		expect(added).toContain('display: "standalone"');
@@ -3084,7 +3289,7 @@ describe("PWA install metadata", () => {
 // ---------------------------------------------------------------------------
 
 describe("api terminals", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/api-terminals.diff`);
+	const patch = readRepoFile(`${PATCHES_DIR}/api.diff`);
 	const terminals = readRepoFile(
 		"packages/ide/overlay/src/node/routes/api/terminals.ts"
 	);

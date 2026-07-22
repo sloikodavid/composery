@@ -29,7 +29,7 @@ values:
   `tests/code-server-patches.test.ts` assert the handful of genuinely shared
   keys (backgrounds, foregrounds, buttons, borders) still match
   `packages/shared/index.ts`. The true editor default via
-  `packages/ide/patches/default-color-theme.diff`, which points
+  `packages/ide/patches/product.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
   symmetric: every chrome key one theme retints, the other should too.
@@ -41,7 +41,7 @@ values:
   the "Preparing workspace" page shown until the workspace is ready, wired in by
   our owned `packages/ide/overlay/src/node/routes/index.ts` (the `persistenceGate`).
 - **Logo**.
-  `packages/ide/patches/branding.diff` and
+  `packages/ide/patches/product.diff` and
   `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
   and styled text fill).
 - **Auth backend (register / change-password / login flow)**.
@@ -62,7 +62,7 @@ values:
   `packages/shared/scripts/icons.mjs`, fed by `packages/shared/index.ts`.
 
 The `COLOR_THEME_*_INITIAL_COLORS` first-paint snapshot also lives in
-`default-color-theme.diff`, hand-maintained like every other patch. Themes load
+`product.diff`, hand-maintained like every other patch. Themes load
 asynchronously and frame one needs colors before the JSON parses, so VS Code
 keeps a synchronous snapshot; this is upstream's mechanism, not ours. The patch
 retints upstream's snapshot values with the theme JSONs' values (keys the

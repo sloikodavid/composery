@@ -1,3 +1,16 @@
+Re-sample focus after a mobile WebView resume: the WebView can restore document
+focus without dispatching any event the host samples below, so the latched value
+wedges stale (gray titlebar, and element focus() never raises the on-screen
+keyboard). Vendor-defect workaround, kept individually deletable.
+
+2026-07-22 re-check (prune pass): not re-verifiable here. The Composery Mobile
+app WebView loads the IDE but exposes no devtools socket, so document.hasFocus()
+cannot be read nor focus() injected, and the gray-titlebar signal is too subtle
+on the mobile layout to judge from a screenshot; only WebView 134 is available
+(current 151/152 will not run under the x86_64 emulator's ARM translation).
+Retest a background/resume cycle on a physical device with a debuggable WebView
+before deleting.
+
 --- a/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
 +++ b/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
 @@ -161,10 +161,37 @@

@@ -210,9 +210,14 @@ packages/
             vs/
               base/
                 browser/
+                  imeEnter.ts
+                  stickyModifiers.ts
                   touchGate.ts
               workbench/
                 browser/
+                  media/
+                    keybar.css
+                  keybar.ts
                   narrowGate.ts
       src/
         browser/
@@ -271,72 +276,25 @@ packages/
             pwned.ts
             register.ts
     patches/
-      api-keys-action.diff
-      api-terminals.diff
       api.diff
-      asset-cache.diff
-      auth-actions.diff
       auth.diff
-      bfcache-reload.diff
-      branding.diff
-      clipboard-ipc.diff
-      clipboard-osc52.diff
-      default-color-theme.diff
-      default-layout.diff
-      disable-auth.diff
+      clipboard.diff
       editcontext-android.diff
-      extensions-mobile.diff
-      extensions-view-themes.diff
-      file-uploads-env.diff
       hardening.diff
       local-media-preview.diff
-      markdown-preview-loopback-callback-bridge.diff
-      menu-home-actions.diff
+      loopback-callback.diff
       naming.diff
-      narrow-fullscreen.diff
+      narrow.diff
       node-engine.diff
-      overlays.diff
       product-icon-themes.diff
-      pwa.diff
+      product.diff
       qr-action.diff
       readiness.diff
-      runtime-dependency-security.diff
       series
-      settings-mobile.diff
-      shortcuts.diff
-      terminal-padding.diff
       terminal-sync.diff
-      tips.diff
-      titlebar-logo.diff
-      titlebar-menubar-overflow.diff
-      touch-autofocus.diff
-      touch-compact-footer.diff
-      touch-context-menu.diff
-      touch-dismiss.diff
-      touch-editor-links.diff
-      touch-editor.diff
-      touch-enter.diff
-      touch-fling-catch.diff
-      touch-inline-actions.diff
-      touch-input-context-menu.diff
-      touch-keyboard-reopen.diff
-      touch-list-focus.diff
-      touch-markdown-links.diff
-      touch-menu.diff
-      touch-reveal-guard.diff
-      touch-sash.diff
-      touch-select.diff
-      touch-terminal-focus.diff
-      touch-terminal-hint.diff
-      touch-terminal-keybar.diff
-      touch-terminal-keyboard-occlusion.diff
-      touch-terminal-links.diff
-      touch-terminal-suggestions.diff
-      touch-viewport-inset.diff
-      trusted-domains-loopback-callback-guard.diff
+      touch.diff
       updates.diff
-      webview-mobile.diff
-      welcome.diff
+      web-client.diff
       window-focus-resample.diff
     scripts/
       build.sh
@@ -833,6 +791,7 @@ packages/
     vercel.json
     vitest.config.ts
 prompts/
+  nugget.md
   refactor.md
   senior-buzzwords.md
 rootfs/

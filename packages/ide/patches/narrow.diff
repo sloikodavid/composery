@@ -1,35 +1,21 @@
---- a/lib/vscode/src/vs/workbench/common/editor.ts
-+++ b/lib/vscode/src/vs/workbench/common/editor.ts
-@@ -1186,7 +1186,14 @@
- 	readonly target: GroupIdentifier;
- }
- 
--export interface IEditorWillOpenEvent extends IEditorIdentifier { }
-+export interface IEditorWillOpenEvent extends IEditorIdentifier {
-+
-+	/**
-+	 * Composery: the options the editor is opening with, so a listener can tell an open
-+	 * the user is asking to look at from one that happens in the background.
-+	 */
-+	readonly options?: IEditorOptions;
-+}
- 
- export interface IWillInstantiateEditorPaneEvent {
- 
---- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
-+++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
-@@ -1163,7 +1163,7 @@
- 		}
- 
- 		// Fire the event letting everyone know we are about to open an editor
--		this._onWillOpenEditor.fire({ editor, groupId: this.id });
-+		this._onWillOpenEditor.fire({ editor, groupId: this.id, options });
- 
- 		// Determine options
- 		const pinned = options?.sticky
+The narrow-viewport layout - everything gated on viewport geometry (the
+narrowGate overlay), independent of touch: a phone-width window shows one
+workbench part fullscreen at a time.
+
+- layout.ts: NARROW_PARTS fullscreen switching; boot pass seeds intent from
+  the restored layout (parts restored visible fire no visibility event, so
+  the first narrow pass would otherwise close what the user left open);
+  rotation preserves the selected part; narrow close-part events from
+  narrow.js dismiss the fullscreen part on back gestures.
+- Titlebar: the left flex region shrinks below the menubar's intrinsic width
+  and the menubar flexes from zero, so MenuBar measures its real allocation
+  and moves labels into overflow instead of pushing the title off-screen.
+- Extension editor: feature tables get a picker (styled by narrow.css) and
+  horizontal scrolling, so wide columns stay reachable.
+
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
-@@ -47,6 +47,7 @@
+@@ -47,6 +47,7 @@ import { AuxiliaryBarPart } from './parts/auxiliarybar/auxiliaryBarPart.js';
  import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
  import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
  import { CodeWindow, mainWindow } from '../../base/browser/window.js';
@@ -37,7 +23,7 @@
  
  //#region Layout Implementation
  
-@@ -1385,7 +1386,8 @@
+@@ -1385,7 +1386,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  
  	private focusPanelOrEditor(): void {
  		const activePanel = this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel);
@@ -47,7 +33,7 @@
  			activePanel.focus(); // prefer panel if it has focus or editor is hidden
  		} else {
  			this.focus(); // otherwise focus editor
-@@ -1664,13 +1666,13 @@
+@@ -1664,13 +1666,13 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  
  		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
  			this._register(part.onDidVisibilityChange(visible => {
@@ -66,7 +52,7 @@
  
  					if (part === sideBar) {
  						this.setSideBarHidden(!visible);
-@@ -1688,6 +1690,47 @@
+@@ -1688,6 +1690,47 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  			}));
  		}
  
@@ -114,7 +100,7 @@
  		this._register(this.storageService.onWillSaveState(() => {
  
  			// Side Bar Size
-@@ -1738,6 +1781,12 @@
+@@ -1738,6 +1781,12 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  
  			// Emit as event
  			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
@@ -127,7 +113,7 @@
  		}
  	}
  
-@@ -1887,8 +1936,10 @@
+@@ -1887,8 +1936,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
  
  		// The editor and panel cannot be hidden at the same time
@@ -140,7 +126,7 @@
  			this.setPanelHidden(false, true);
  		}
  	}
-@@ -2204,10 +2255,28 @@
+@@ -2204,10 +2255,28 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		return (
  			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
  			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
@@ -170,7 +156,7 @@
  		const size = this.workbenchGrid.getViewSize(this.panelPartView);
  		const panelPosition = this.getPanelPosition();
  		const maximize = !this.isPanelMaximized();
-@@ -2302,6 +2371,136 @@
+@@ -2302,6 +2371,136 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		}
  	}
  
@@ -307,3 +293,142 @@
  	hasMainWindowBorder(): boolean {
  		return this.state.runtime.mainWindowBorder;
  	}
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -1165,7 +1165,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 		}
+ 
+ 		// Fire the event letting everyone know we are about to open an editor
+-		this._onWillOpenEditor.fire({ editor, groupId: this.id });
++		this._onWillOpenEditor.fire({ editor, groupId: this.id, options });
+ 
+ 		// Determine options
+ 		const pinned = options?.sticky
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -76,9 +76,20 @@
+ 	order: 0;
+ 	width: 20%;
+ 	flex-grow: 2;
++	/* Composery: allow the left flex item to shrink below the menubar's intrinsic width. The
++	 * menubar can then measure its real allocation and move labels into its overflow menu instead
++	 * of pushing the centered and trailing titlebar contents off-screen. */
++	min-width: 0;
+ 	justify-content: flex-start;
+ }
+ 
++/* Composery: flex the menubar from zero so its border-box width is the space left after fixed
++ * titlebar-left controls. MenuBar uses that width to decide which labels move into overflow. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .menubar:not(.compact) {
++	flex: 1 1 0;
++	min-width: 0;
++}
++
+ .monaco-workbench .part.titlebar > .titlebar-container.has-center > .titlebar-center {
+ 	order: 1;
+ 	width: 60%;
+--- a/lib/vscode/src/vs/workbench/common/editor.ts
++++ b/lib/vscode/src/vs/workbench/common/editor.ts
+@@ -1186,7 +1186,14 @@ export interface IEditorWillMoveEvent extends IEditorIdentifier {
+ 	readonly target: GroupIdentifier;
+ }
+ 
+-export interface IEditorWillOpenEvent extends IEditorIdentifier { }
++export interface IEditorWillOpenEvent extends IEditorIdentifier {
++
++	/**
++	 * Composery: the options the editor is opening with, so a listener can tell an open
++	 * the user is asking to look at from one that happens in the background.
++	 */
++	readonly options?: IEditorOptions;
++}
+ 
+ export interface IWillInstantiateEditorPaneEvent {
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionFeaturesTab.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionFeaturesTab.ts
+@@ -6,6 +6,7 @@
+ import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+ import { $, append, clearNode, addDisposableListener, EventType } from '../../../../base/browser/dom.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
++import { ScrollbarVisibility } from '../../../../base/common/scrollable.js';
+ import { ExtensionIdentifier, IExtensionManifest } from '../../../../platform/extensions/common/extensions.js';
+ import { Orientation, Sizing, SplitView } from '../../../../base/browser/ui/splitview/splitview.js';
+ import { IExtensionFeatureDescriptor, Extensions, IExtensionFeaturesRegistry, IExtensionFeatureRenderer, IExtensionFeaturesManagementService, IExtensionFeatureTableRenderer, IExtensionFeatureMarkdownRenderer, ITableData, IRenderedData, IExtensionFeatureMarkdownAndTableRenderer } from '../../../services/extensionManagement/common/extensionFeatures.js';
+@@ -353,14 +354,29 @@ export class ExtensionFeaturesTab extends Themable {
+ 			return;
+ 		}
+ 
++		// Composery: a native selector replaces the desktop split list on phones,
++		// leaving the contribution itself the full viewport width.
++		const featurePicker = append(this.domNode, $('select.composery-feature-picker')) as HTMLSelectElement;
++		featurePicker.ariaLabel = localize('extensionFeaturePicker', "Extension feature");
++		for (const feature of features) {
++			featurePicker.add(new Option(feature.label));
++		}
++
+ 		const splitView = this._register(new SplitView<number>(this.domNode, {
+ 			orientation: Orientation.HORIZONTAL,
+ 			proportionalLayout: true
+ 		}));
++		let wasNarrow: boolean | undefined;
+ 		this.layoutParticipants.push({
+ 			layout: (height: number, width: number) => {
+-				splitView.el.style.height = `${height - 14}px`;
++				const isNarrow = width < 600;
++				featurePicker.classList.toggle('visible', isNarrow);
++				splitView.el.style.height = `${height - 14 - (isNarrow ? 44 : 0)}px`;
+ 				splitView.layout(width);
++				if (isNarrow !== wasNarrow) {
++					splitView.resizeView(0, isNarrow ? 0 : 200);
++					wasNarrow = isNarrow;
++				}
+ 			}
+ 		});
+ 
+@@ -373,16 +389,21 @@ export class ExtensionFeaturesTab extends Themable {
+ 			const feature = e.elements[0];
+ 			if (feature) {
+ 				this.showFeatureView(feature, featureViewContainer);
++				featurePicker.selectedIndex = features.indexOf(feature);
+ 			}
+ 		}));
+ 
+ 		const index = this.feature ? features.findIndex(f => f.id === this.feature) : 0;
+ 		list.setSelection([index === -1 ? 0 : index]);
+ 
++		this._register(addDisposableListener(featurePicker, EventType.CHANGE, () => {
++			list.setSelection([featurePicker.selectedIndex]);
++		}));
++
+ 		splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: featuresListContainer,
+-			minimumSize: 100,
++			minimumSize: 0,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				featuresListContainer.style.width = `${width}px`;
+@@ -393,7 +414,9 @@ export class ExtensionFeaturesTab extends Themable {
+ 		splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: featureViewContainer,
+-			minimumSize: 500,
++			// Composery: the phone selector collapses the list pane so this view can
++			// use the full viewport; the lower minimum also avoids resize overflow.
++			minimumSize: 240,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				featureViewContainer.style.width = `${width}px`;
+@@ -587,7 +610,10 @@ class ExtensionFeatureView extends Disposable {
+ 		const body = append(content, $('.feature-body'));
+ 
+ 		const bodyContent = $('.feature-body-content');
+-		const scrollableContent = this._register(new DomScrollableElement(bodyContent, {}));
++		// Composery: feature tables can exceed a phone viewport. Keep every column
++		// reachable through the workbench's touch-aware horizontal scroller.
++		const scrollableContent = this._register(new DomScrollableElement(bodyContent,
++			{ horizontal: ScrollbarVisibility.Auto }));
+ 		append(body, scrollableContent.getDomNode());
+ 		this.layoutParticipants.push({ layout: () => scrollableContent.scanDomNode() });
+ 		scrollableContent.scanDomNode();

@@ -41,11 +41,11 @@ const pageIconLinks = (page: string) =>
 		readRepoFile(`packages/ide/overlay/src/browser/pages/${page}`)
 	).join("\n");
 
-// The icon links exactly as overlays.diff adds them to the workbench. It patches
+// The icon links exactly as web-client.diff adds them to the workbench. It patches
 // workbench.html and workbench-dev.html with the identical pair; the first pair
 // is the markup under test.
 const workbenchIconLinks = iconLinks(
-	addedLines(readRepoFile("packages/ide/patches/overlays.diff"))
+	addedLines(readRepoFile("packages/ide/patches/web-client.diff"))
 )
 	.slice(0, 2)
 	.join("\n");

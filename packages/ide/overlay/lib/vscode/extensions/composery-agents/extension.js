@@ -1,6 +1,6 @@
 const vscode = require("vscode");
 
-// Keep these ids and logos in sync with welcome.diff.
+// Keep these ids and logos in sync with product.diff.
 const AGENTS = [
 	{
 		id: "claude",

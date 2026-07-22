@@ -213,7 +213,7 @@ ARG COMPOSERY_BUILD_REVISION=unknown
 ARG COMPOSERY_BUILD_SOURCE=https://github.com/sloikodavid/composery
 
 LABEL org.opencontainers.image.title="Composery" \
-  org.opencontainers.image.description="A persistent VPS-like Linux appliance with Composery in the browser." \
+  org.opencontainers.image.description="A secure cloud computer with a powerful UI, usable from any phone or browser." \
   org.opencontainers.image.source="${COMPOSERY_BUILD_SOURCE}" \
   org.opencontainers.image.revision="${COMPOSERY_BUILD_REVISION}" \
   org.opencontainers.image.version="${COMPOSERY_BUILD_VERSION}" \

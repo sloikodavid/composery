@@ -153,7 +153,7 @@ describe("change-password route", () => {
 });
 
 describe("disabled authentication", () => {
-	const disableAuth = readRepoFile("packages/ide/patches/disable-auth.diff");
+	const disableAuth = readRepoFile("packages/ide/patches/auth.diff");
 	const cloudAuth = readRepoFile(
 		"packages/ide/overlay/src/node/routes/cloudAuth.ts"
 	);
@@ -173,7 +173,7 @@ describe("disabled authentication", () => {
 		expect(disableAuth).toContain("args.auth = AuthType.None");
 		const elsewhere = readRepoFile("packages/ide/patches/series")
 			.split(/\r?\n/)
-			.filter((patch) => patch && patch !== "disable-auth.diff")
+			.filter((patch) => patch && patch !== "auth.diff")
 			.flatMap((patch) =>
 				addedLines(readRepoFile(`packages/ide/patches/${patch}`)).split("\n")
 			);

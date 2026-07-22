@@ -18,7 +18,7 @@ release tree during the build, so the themes are available with no Dockerfile or
 - The theme colors should stay symmetric: every chrome key one theme retints,
   the other should too.
 - The first-paint color snapshot in
-  `packages/ide/patches/default-color-theme.diff` mirrors these theme files so
+  `packages/ide/patches/product.diff` mirrors these theme files so
   browser startup does not flash stale colors; the same tests fail if the
   patch and the themes drift apart, so update both together.
 

@@ -16,7 +16,7 @@ type Guard = {
 };
 
 const trustedDomainsPatch = readRepoFile(
-	"packages/ide/patches/trusted-domains-loopback-callback-guard.diff"
+	"packages/ide/patches/loopback-callback.diff"
 );
 const functions = [
 	"normalizeLoopbackCallbackParamName",
@@ -119,9 +119,18 @@ describe("loopback callback guard", () => {
 	});
 
 	test("routes Markdown HTTP links through the workbench decision point", () => {
-		const markdownPatch = readRepoFile(
-			"packages/ide/patches/markdown-preview-loopback-callback-bridge.diff"
-		);
+		// The preview posts links to the workbench instead of deciding itself:
+		// within the one patch, the guard logic lives only in the
+		// trustedDomainsValidator sections, never the markdown extension's.
+		const markdownSections = trustedDomainsPatch
+			.split(/^--- /m)
+			.filter((section) =>
+				section.startsWith(
+					"a/lib/vscode/extensions/markdown-language-features/"
+				)
+			);
+		expect(markdownSections.length).toBeGreaterThan(0);
+		const markdownPatch = markdownSections.join("\n");
 		expect(markdownPatch).toContain("messaging.postMessage('openLink'");
 		expect(markdownPatch).not.toContain("findLoopbackCallbackTarget");
 		expect(trustedDomainsPatch).toContain(

@@ -14,10 +14,9 @@ composery.checkForUpdates command). This patch owns everything around that:
   (serverEnvironmentService.ts), plus the server side: the /update route and
   UpdateProvider (patch-deleted files) and the disable-update-check CLI flag.
 
-diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -5,7 +5,6 @@
+@@ -5,7 +5,6 @@ import { CommandsRegistry } from '../../platform/commands/common/commands.js';
  import { ILogService } from '../../platform/log/common/log.js';
  import { INotificationService, Severity } from '../../platform/notification/common/notification.js';
  import { IProductService } from '../../platform/product/common/productService.js';
@@ -25,7 +24,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  import { ICommandService } from '../../platform/commands/common/commands.js';
  import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
  
-@@ -18,7 +17,6 @@
+@@ -18,7 +17,6 @@ export class CodeServerClient extends Disposable {
  		@ILogService private logService: ILogService,
  		@INotificationService private notificationService: INotificationService,
  		@IProductService private productService: IProductService,
@@ -33,7 +32,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  	) {
  		super();
  	}
-@@ -90,9 +88,9 @@
+@@ -90,9 +88,9 @@ export class CodeServerClient extends Disposable {
  			});
  		}
  
@@ -46,7 +45,7 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
  
  		if (this.productService.logoutEndpoint) {
  			this.addLogoutCommand(this.productService.logoutEndpoint);
-@@ -102,6 +100,14 @@
+@@ -102,6 +100,14 @@ export class CodeServerClient extends Disposable {
  			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
  		}
  
@@ -58,10 +57,10 @@ diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/w
 +			order: -2,
 +		});
 +
- 		this.addShowQrCommand();
- 
- 		if (this.productService.serviceWorker) {
-@@ -109,56 +115,6 @@
+ 		// Composery: the command is implemented by the composery-api builtin extension.
+ 		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
+ 			command: {
+@@ -117,56 +123,6 @@ export class CodeServerClient extends Disposable {
  		}
  	}
  

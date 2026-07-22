@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { addedLines, readRepoFile } from "./support/patchSource.ts";
 
-const rawPatch = readRepoFile("packages/ide/patches/narrow-fullscreen.diff");
+const rawPatch = readRepoFile("packages/ide/patches/narrow.diff");
 const patch = addedLines(rawPatch);
 
 describe("narrow layout reconciliation", () => {

@@ -7,7 +7,7 @@ import {
 	readRepoFile
 } from "./support/patchSource.ts";
 
-const patch = readRepoFile("packages/ide/patches/touch-list-focus.diff");
+const patch = readRepoFile("packages/ide/patches/touch.diff");
 const added = addedLines(patch);
 
 type Item = {

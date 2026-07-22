@@ -8,7 +8,7 @@ import {
 	readRepoFile
 } from "./support/patchSource.ts";
 
-const patch = readRepoFile("packages/ide/patches/touch-editor.diff");
+const patch = readRepoFile("packages/ide/patches/touch.diff");
 
 interface Point {
 	x: number;

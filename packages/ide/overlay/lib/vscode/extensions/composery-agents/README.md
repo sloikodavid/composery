@@ -9,5 +9,5 @@ the agent prompts for. Run with no id (the `Composery: Set Up an AI Coding Agent
 palette entry) to pick from the list instead.
 
 `AGENTS` in `extension.js` is the single source of truth for the setup commands.
-The welcome card in `packages/ide/patches/welcome.diff` references the same
+The welcome card in `packages/ide/patches/product.diff` references the same
 agent ids and ships their logos under `overlay/src/browser/media/agents/`.

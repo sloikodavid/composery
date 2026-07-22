@@ -1,18 +1,53 @@
-diff --git a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+System clipboard bridges for the remote context: programs on the box reaching
+the real clipboard of the machine the browser runs on.
+
+- OSC 52: the browser clipboard service mirrors regular 'clipboard'-type
+  writes to the system clipboard best-effort, so terminal programs copying via
+  OSC 52 reach it. The write can reject when the tab is unfocused or the
+  browser demands a user gesture it never had (an OSC 52 write arrives from
+  the pty stream, not a tap) - the in-memory copy stays as the fallback and we
+  never steal focus to force it.
+- CLI: --clipboard-out / --clipboard-image-out / --clipboard-image-in pipe
+  text and PNG images over the remote CLI channel, with writeImage threaded
+  through the clipboard services end to end. The rootfs wl-copy / xclip / xsel
+  shims sit on top of these flags.
+
 --- a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
 +++ b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
-@@ -73,6 +73,10 @@ export class BrowserClipboardService ext
+@@ -73,6 +73,10 @@ export class BrowserClipboardService extends Disposable implements IClipboardSer
  		return new Uint8Array(0);
  	}
-
+ 
 +	async writeImage(buffer: Uint8Array, mimeType: string = 'image/png'): Promise<void> {
 +		await getActiveWindow().navigator.clipboard.write([new ClipboardItem({ [mimeType]: new Blob([buffer as Uint8Array<ArrayBuffer>], { type: mimeType }) })]);
 +	}
 +
  	private webKitPendingClipboardWritePromise: DeferredPromise<string> | undefined;
-
+ 
  	// In Safari, it has the following note:
-diff --git a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts b/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
+@@ -124,9 +128,21 @@ export class BrowserClipboardService extends Disposable implements IClipboardSer
+ 		// Clear resources given we are writing text
+ 		this.clearResourcesState();
+ 
+-		// With type: only in-memory is supported
++		// With type: only in-memory is supported in the browser. The regular
++		// clipboard ('clipboard') is additionally mirrored to the real system
++		// clipboard best-effort, so terminal programs copying via OSC 52 reach it.
++		// The write can reject when the tab is unfocused or the browser requires a
++		// user gesture; the in-memory copy stays as the fallback and we never steal
++		// focus to force it.
+ 		if (type) {
+ 			this.mapTextToType.set(type, text);
++			if (type === 'clipboard') {
++				try {
++					await getActiveWindow().navigator.clipboard.writeText(text);
++				} catch (error) {
++					this.logService.trace('BrowserClipboardService#writeText system clipboard mirror failed', error);
++				}
++			}
+ 			this.logService.trace('BrowserClipboardService#writeText');
+ 			return;
+ 		}
 --- a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
 +++ b/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts
 @@ -64,4 +64,9 @@ export interface IClipboardService {
@@ -25,10 +60,9 @@ diff --git a/lib/vscode/src/vs/platform/clipboard/common/clipboardService.ts b/l
 +	 */
 +	writeImage(buffer: Uint8Array, mimeType?: string): Promise<void>;
  }
-diff --git a/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts b/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
 --- a/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
 +++ b/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardService.ts
-@@ -11,6 +11,10 @@ export class TestClipboardService implem
+@@ -11,6 +11,10 @@ export class TestClipboardService implements IClipboardService {
  		throw new Error('Method not implemented.');
  	}
  
@@ -39,7 +73,6 @@ diff --git a/lib/vscode/src/vs/platform/clipboard/test/common/testClipboardServi
  	_serviceBrand: undefined;
  
  	private text: string | undefined = undefined;
-diff --git a/lib/vscode/src/vs/platform/environment/common/argv.ts b/lib/vscode/src/vs/platform/environment/common/argv.ts
 --- a/lib/vscode/src/vs/platform/environment/common/argv.ts
 +++ b/lib/vscode/src/vs/platform/environment/common/argv.ts
 @@ -147,6 +147,9 @@ export interface NativeParsedArgs {
@@ -52,10 +85,9 @@ diff --git a/lib/vscode/src/vs/platform/environment/common/argv.ts b/lib/vscode/
  	'unresponsive-sample-interval'?: string;
  	'unresponsive-sample-period'?: string;
  	'enable-rdp-display-tracking'?: boolean;
-diff --git a/lib/vscode/src/vs/platform/environment/node/argv.ts b/lib/vscode/src/vs/platform/environment/node/argv.ts
 --- a/lib/vscode/src/vs/platform/environment/node/argv.ts
 +++ b/lib/vscode/src/vs/platform/environment/node/argv.ts
-@@ -116,6 +116,9 @@ export const OPTIONS: OptionDescriptions
+@@ -116,6 +116,9 @@ export const OPTIONS: OptionDescriptions<Required<NativeParsedArgs>> = {
  	'profile': { type: 'string', 'cat': 'o', args: 'profileName', description: localize('profileName', "Opens the provided folder or workspace with the given profile and associates the profile with the workspace. If the profile does not exist, a new empty one is created.") },
  	'help': { type: 'boolean', cat: 'o', alias: 'h', description: localize('help', "Print usage.") },
  	'stdin-to-clipboard': { type: 'boolean', cat: 'o', alias: 'c', description: localize('clipboard', "copies the STDIN to the clipboard") },
@@ -65,10 +97,9 @@ diff --git a/lib/vscode/src/vs/platform/environment/node/argv.ts b/lib/vscode/sr
  
  	'extensions-dir': { type: 'string', deprecates: ['extensionHomePath'], cat: 'e', args: 'dir', description: localize('extensionHomePath', "Set the root path for extensions.") },
  	'extensions-download-dir': { type: 'string' },
-diff --git a/lib/vscode/src/vs/platform/native/common/native.ts b/lib/vscode/src/vs/platform/native/common/native.ts
 --- a/lib/vscode/src/vs/platform/native/common/native.ts
 +++ b/lib/vscode/src/vs/platform/native/common/native.ts
-@@ -225,6 +225,7 @@ export interface ICommonNativeHostServic
+@@ -225,6 +225,7 @@ export interface ICommonNativeHostService {
  	readClipboardBuffer(format: string): Promise<VSBuffer>;
  	hasClipboard(format: string, type?: 'selection' | 'clipboard'): Promise<boolean>;
  	readImage(): Promise<Uint8Array>;
@@ -76,7 +107,6 @@ diff --git a/lib/vscode/src/vs/platform/native/common/native.ts b/lib/vscode/src
  
  	// macOS Touchbar
  	newWindowTab(): Promise<void>;
-diff --git a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts b/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
 --- a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
 +++ b/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainService.ts
 @@ -5,7 +5,7 @@
@@ -88,7 +118,7 @@ diff --git a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainServi
  import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
  import { promisify } from 'util';
  import { memoize } from '../../../base/common/decorators.js';
-@@ -990,6 +990,10 @@ export class NativeHostMainService exten
+@@ -990,6 +990,10 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
  		return clipboard.readImage().toPNG();
  	}
  
@@ -99,10 +129,9 @@ diff --git a/lib/vscode/src/vs/platform/native/electron-main/nativeHostMainServi
  	async writeClipboardText(windowId: number | undefined, text: string, type?: 'selection' | 'clipboard'): Promise<void> {
  		return clipboard.writeText(text, type);
  	}
-diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/server/node/server.cli.ts
 --- a/lib/vscode/src/vs/server/node/server.cli.ts
 +++ b/lib/vscode/src/vs/server/node/server.cli.ts
-@@ -78,6 +78,9 @@ const isSupportedForPipe = (optionId: ke
+@@ -78,6 +78,9 @@ const isSupportedForPipe = (optionId: keyof RemoteParsedArgs) => {
  		case 'remote':
  		case 'locate-shell-integration-path':
  		case 'stdin-to-clipboard':
@@ -112,7 +141,7 @@ diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/ser
  			return true;
  		default:
  			return false;
-@@ -301,6 +304,30 @@ export async function main(desc: Product
+@@ -301,6 +304,30 @@ export async function main(desc: ProductDescription, args: string[]): Promise<vo
  			}
  		}
  	} else {
@@ -143,7 +172,6 @@ diff --git a/lib/vscode/src/vs/server/node/server.cli.ts b/lib/vscode/src/vs/ser
  		if (parsedArgs['stdin-to-clipboard']) {
  			if(!hasStdinWithoutTty()) {
  				console.error("stdin has a tty.");
-diff --git a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts b/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
 --- a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
 +++ b/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts
 @@ -3,6 +3,7 @@
@@ -154,7 +182,7 @@ diff --git a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts b/
  import { Schemas } from '../../../base/common/network.js';
  import { isWeb } from '../../../base/common/platform.js';
  import { isString } from '../../../base/common/types.js';
-@@ -102,6 +103,21 @@ CommandsRegistry.registerCommand('_remot
+@@ -102,6 +103,21 @@ CommandsRegistry.registerCommand('_remoteCLI.setClipboard', function (accessor:
  	clipboardService.writeText(content);
  })
  
@@ -176,7 +204,6 @@ diff --git a/lib/vscode/src/vs/workbench/api/browser/mainThreadCLICommands.ts b/
  class RemoteExtensionManagementCLI extends ExtensionManagementCLI {
  
  	private _location: string | undefined;
-diff --git a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts b/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
 --- a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
 +++ b/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts
 @@ -49,7 +49,20 @@ export interface ClipboardPipeArgs {
@@ -236,10 +263,9 @@ diff --git a/lib/vscode/src/vs/workbench/api/node/extHostCLIServer.ts b/lib/vsco
  	dispose(): void {
  		this._disposed = true;
  		this._server?.close();
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
-@@ -99,7 +99,7 @@ class RemoteTerminalBackend extends Base
+@@ -99,7 +99,7 @@ class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBack
  			}
  		}));
  
@@ -248,10 +274,9 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminal
  		this._register(this._remoteTerminalChannel.onExecuteCommand(async e => {
  			// Ensure this request for for this window
  			const pty = this._ptys.get(e.persistentProcessId);
-diff --git a/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts b/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
 --- a/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
 +++ b/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/clipboardService.ts
-@@ -31,6 +31,10 @@ export class NativeClipboardService impl
+@@ -31,6 +31,10 @@ export class NativeClipboardService implements IClipboardService {
  		return this.nativeHostService.readImage();
  	}
  
@@ -262,10 +287,9 @@ diff --git a/lib/vscode/src/vs/workbench/services/clipboard/electron-browser/cli
  	async writeText(text: string, type?: 'selection' | 'clipboard'): Promise<void> {
  		this.logService.trace('NativeClipboardService#writeText called with type:', type, ' with text.length:', text.length);
  		return this.nativeHostService.writeClipboardText(text, type);
-diff --git a/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts b/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
 --- a/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
 +++ b/lib/vscode/src/vs/workbench/test/electron-browser/workbenchTestServices.ts
-@@ -180,6 +180,7 @@ export class TestNativeHostService imple
+@@ -180,6 +180,7 @@ export class TestNativeHostService implements INativeHostService {
  	async writeClipboardBuffer(format: string, buffer: VSBuffer, type?: 'selection' | 'clipboard' | undefined): Promise<void> { }
  	async triggerPaste(options?: INativeHostOptions): Promise<void> { }
  	async readImage(): Promise<Uint8Array> { return Uint8Array.from([]); }

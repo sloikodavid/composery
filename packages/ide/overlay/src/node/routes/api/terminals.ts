@@ -7,7 +7,7 @@
 // Workspace of a terminal created outside any editor window. The API has no
 // editor and so no workspace to belong to; a terminal carrying this belongs to
 // whichever window asks for its layout. Must equal API_TERMINAL_WORKSPACE_ID in
-// lib/vscode/src/vs/platform/terminal/node/ptyService.ts (api-terminals.diff);
+// lib/vscode/src/vs/platform/terminal/node/ptyService.ts (api.diff);
 // a test pins the two together.
 export const API_TERMINAL_WORKSPACE_ID = "composery-api-terminal"
 

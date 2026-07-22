@@ -1,391 +1,145 @@
-Composery password-auth lifecycle. First boot has no password: register (or the cloud authorize flow) creates it, change-password changes it, and the server treats the no-password state as unauthenticated instead of refusing to start. login renders through the shared auth shell (renderAuthPage) with redirect-style errors and per-source rate limiting; env passwords stay mutually exclusive; the generated-password default config is gone (register owns creation). Deletes upstream's standalone login/error pages - the overlay auth shell replaces them (error.html/global.css are re-provided by the overlay).
+Composery sign-in, end to end.
 
-diff --git a/src/node/cli.ts b/src/node/cli.ts
---- a/src/node/cli.ts
-+++ b/src/node/cli.ts
-@@ -2,7 +2,7 @@
- import { promises as fs } from "fs"
- import { load } from "js-yaml"
- import * as path from "path"
--import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
-+import { generateCertificate, paths, splitOnFirstEquals } from "./util"
- import { EditorSessionManagerClient } from "./vscodeSocket"
+Password lifecycle: first boot has no password - register (or the cloud
+authorize flow) creates it, change-password changes it, and the server treats
+the no-password state as unauthenticated instead of refusing to start. login
+renders through the shared auth shell (renderAuthPage) with redirect-style
+errors and per-source rate limiting; env passwords stay mutually exclusive;
+the generated-password default config is gone (register owns creation).
+Deletes upstream's standalone login/error pages - the overlay auth shell
+replaces them (error.html/global.css are re-provided by the overlay).
+
+Workbench commands: Sign Out and Change Password are registered when the
+matching endpoint is in product.json (change-password only while the password
+is server-managed, not env-managed), both routed through openAuthEndpoint,
+which suppresses beforeunload for the deliberate navigation. The endpoints
+resolve against window.top so they work embedded.
+
+COMPOSERY_DISABLE_AUTH turns sign-in off for deployments with their own gate
+in front (a private network, an SSO proxy, a throwaway local box). Upstream
+carries AuthType.None end to end - authenticated() short-circuits, so the
+workbench, both proxies and every websocket open together, and the sign-in
+commands drop out with the endpoints behind them. Only an explicit 1/true
+disables: every other value, typos included, fails towards keeping sign-in.
+The boot line becomes a warning that names the real exposure - a cloud box
+sits on the public internet where a self-hosted one may be loopback-only -
+and a configured-but-ignored password says so.
+
+--- a/lib/vscode/src/vs/base/common/product.ts
++++ b/lib/vscode/src/vs/base/common/product.ts
+@@ -88,6 +88,7 @@ export interface IProductConfiguration {
+ 	readonly rootEndpoint?: string
+ 	readonly updateEndpoint?: string
+ 	readonly logoutEndpoint?: string
++	readonly changePasswordEndpoint?: string
+ 	readonly proxyEndpointTemplate?: string
+ 	readonly serviceWorker?: {
+ 		readonly path: string;
+--- a/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
++++ b/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
+@@ -19,6 +19,7 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
+ 	/* ----- code-server ----- */
+ 	'disable-update-check': { type: 'boolean' },
+ 	'auth': { type: 'string' },
++	'change-password': { type: 'boolean' },
+ 	'disable-file-downloads': { type: 'boolean' },
+ 	'disable-file-uploads': { type: 'boolean' },
+ 	'disable-getting-started-override': { type: 'boolean' },
+@@ -120,6 +121,7 @@ export interface ServerParsedArgs {
+ 	/* ----- code-server ----- */
+ 	'disable-update-check'?: boolean;
+ 	'auth'?: string;
++	'change-password'?: boolean;
+ 	'disable-file-downloads'?: boolean;
+ 	'disable-file-uploads'?: boolean;
+ 	'disable-getting-started-override'?: boolean,
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -374,6 +374,7 @@ export class WebClientServer {
+ 			rootEndpoint: rootBase,
+ 			updateEndpoint: !this._environmentService.args['disable-update-check'] ? rootBase + '/update/check' : undefined,
+ 			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,
++			changePasswordEndpoint: this._environmentService.args['change-password'] ? rootBase + '/change-password' : undefined,
+ 			proxyEndpointTemplate: process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
+ 			serviceWorker: {
+ 				scope: vscodeBase + '/',
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -9,6 +9,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
  
- export enum Feature {
-@@ -58,6 +58,7 @@
-   "link-protection-trusted-domains"?: string[]
-   // locale is used by both VS Code and code-server.
-   locale?: string
-+  "change-password"?: boolean
- }
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
++	static CHANGE_PASSWORD_COMMAND_ID = 'composery.changePassword';
  
- /**
-@@ -93,7 +94,6 @@
-   "ignore-last-opened"?: boolean
-   verbose?: boolean
-   "app-name"?: string
--  "welcome-text"?: string
-   "abs-proxy-base-path"?: string
-   i18n?: string
-   "idle-timeout-seconds"?: number
-@@ -174,6 +174,9 @@
-   "session-socket": {
-     type: "string",
-   },
-+  "change-password": {
-+    type: "boolean",
-+  },
-   "cookie-suffix": {
-     type: "string",
-     description:
-@@ -295,13 +298,7 @@
-     type: "string",
-     short: "an",
-     description:
--      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and welcome message",
--  },
--  "welcome-text": {
--    type: "string",
--    short: "w",
--    description: "Text to show on login page",
--    deprecated: true,
-+      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and login page title",
-   },
-   "abs-proxy-base-path": {
-     type: "string",
-@@ -611,6 +608,7 @@
-   let usingEnvPassword = !!process.env.PASSWORD
-   if (process.env.PASSWORD) {
-     args.password = process.env.PASSWORD
-+    args["hashed-password"] = undefined
-   }
+ 	constructor (
+ 		@ILogService private logService: ILogService,
+@@ -90,6 +91,10 @@ export class CodeServerClient extends Disposable {
+ 			this.addLogoutCommand(this.productService.logoutEndpoint);
+ 		}
  
-   if (process.env.COMPOSERY_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
-@@ -628,6 +626,7 @@
-   const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
-   if (process.env.HASHED_PASSWORD) {
-     args["hashed-password"] = process.env.HASHED_PASSWORD
-+    args.password = undefined
-     usingEnvPassword = false
-   }
- 
-@@ -695,18 +694,15 @@
- /**
-  * Helper function to return the default config file.
-  *
-- * @param {string} password - Password passed in (usually from generatePassword())
-  * @returns The default config file:
-  *
-  * - bind-addr: 127.0.0.1:8080
-  * - auth: password
-- * - password: <password>
-  * - cert: false
-  */
--export function defaultConfigFile(password: string): string {
-+export function defaultConfigFile(): string {
-   return `bind-addr: 127.0.0.1:8080
- auth: password
--password: ${password}
- cert: false
- `
- }
-@@ -731,8 +727,7 @@
-   await fs.mkdir(path.dirname(configPath), { recursive: true })
- 
-   try {
--    const generatedPassword = await generatePassword()
--    await fs.writeFile(configPath, defaultConfigFile(generatedPassword), {
-+    await fs.writeFile(configPath, defaultConfigFile(), {
-       flag: "wx", // wx means to fail if the path exists.
-     })
-     logger.info(`Wrote default config file to ${configPath}`)
-@@ -921,5 +916,6 @@
-     version: !!args.version,
-     port: args.port?.toString(),
-     log: args.log ? [args.log] : undefined,
-+    "change-password": args.auth === AuthType.Password && !args.usingEnvPassword && !args.usingEnvHashedPassword,
-   }
- }
-diff --git a/src/node/http.ts b/src/node/http.ts
---- a/src/node/http.ts
-+++ b/src/node/http.ts
-@@ -122,6 +122,9 @@
-     case AuthType.Password: {
-       // The password is stored in the cookie after being hashed.
-       const hashedPasswordFromArgs = req.args["hashed-password"]
-+      if (!req.args.password && !hashedPasswordFromArgs) {
-+        return false
-+      }
-       const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
-       const isCookieValidArgs: IsCookieValidArgs = {
-         passwordMethod,
-diff --git a/src/node/main.ts b/src/node/main.ts
---- a/src/node/main.ts
-+++ b/src/node/main.ts
-@@ -133,12 +133,6 @@
-   logger.info(`Using user-data-dir ${args["user-data-dir"]}`)
-   logger.debug(`Using extensions-dir ${args["extensions-dir"]}`)
- 
--  if (args.auth === AuthType.Password && !args.password && !args["hashed-password"]) {
--    throw new Error(
--      "Please pass in a password via the config file or environment variable ($PASSWORD or $HASHED_PASSWORD)",
--    )
--  }
--
-   const app = await createApp(args)
-   const protocol = args.cert ? "https" : "http"
-   const serverAddress = ensureAddress(app.server, protocol)
-@@ -152,6 +146,8 @@
-       logger.info("    - Using password from $PASSWORD")
-     } else if (args.usingEnvHashedPassword) {
-       logger.info("    - Using password from $HASHED_PASSWORD")
-+    } else if (!args.password && !args["hashed-password"]) {
-+      logger.info("    - No password configured yet")
-     } else if (args["hashed-password"]) {
-       logger.info(`    - Using hashed-password from ${args.config}`)
-     } else {
-diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
---- a/src/node/routes/index.ts
-+++ b/src/node/routes/index.ts
-@@ -21,6 +21,10 @@
- import * as health from "./health"
- import * as login from "./login"
- import * as logout from "./logout"
-+import * as registerRoute from "./register"
-+import * as pwnedRoute from "./pwned"
-+import * as changePasswordRoute from "./changePassword"
-+import * as cloudAuthRoute from "./cloudAuth"
- import * as pathProxy from "./pathProxy"
- import * as update from "./update"
- import * as vscode from "./vscode"
-@@ -154,11 +158,18 @@
-   app.router.use("/healthz", health.router)
-   app.wsRouter.use("/healthz", health.wsRouter.router)
- 
-+  app.router.use("/_composery/cloud", cloudAuthRoute.router)
++		if (this.productService.changePasswordEndpoint) {
++			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
++		}
 +
-   if (args.auth === AuthType.Password) {
-     app.router.use("/login", login.router)
-+    app.router.use("/register", registerRoute.router)
-+    app.router.use("/change-password", changePasswordRoute.router)
-+    app.router.use("/_composery/pwned", pwnedRoute.router)
-     app.router.use("/logout", logout.router)
-   } else {
-     app.router.all("/login", (req, res) => redirect(req, res, "/", {}))
-+    app.router.all("/register", (req, res) => redirect(req, res, "/", {}))
-+    app.router.all("/change-password", (req, res) => redirect(req, res, "/", {}))
-     app.router.all("/logout", (req, res) => redirect(req, res, "/", {}))
-   }
+ 		if (this.productService.serviceWorker) {
+ 			await this.registerServiceWorker(this.productService.serviceWorker);
+ 		}
+@@ -145,23 +150,47 @@ export class CodeServerClient extends Disposable {
+ 		updateLoop();
+ 	}
  
-diff --git a/src/node/routes/login.ts b/src/node/routes/login.ts
---- a/src/node/routes/login.ts
-+++ b/src/node/routes/login.ts
-@@ -1,11 +1,12 @@
- import { Router, Request } from "express"
--import { promises as fs } from "fs"
- import { RateLimiter as Limiter } from "limiter"
--import * as path from "path"
--import { rootPath } from "../constants"
--import { authenticated, getCookieOptions, redirect, replaceTemplates } from "../http"
-+import { authenticated, getCookieOptions, redirect } from "../http"
- import i18n from "../i18n"
--import { getPasswordMethod, handlePasswordValidation, sanitizeString, escapeHtml } from "../util"
-+import { getPasswordMethod, handlePasswordValidation, sanitizeString } from "../util"
-+import { renderAuthPage } from "./authPage"
-+import { cloudConfig } from "./cloudAuth"
-+import { hasPassword } from "./passwordConfig"
-+import { LoginRateLimit, loginSource } from "./loginRateLimit"
- 
- // RateLimiter wraps around the limiter library for logins.
- // It allows 2 logins every minute plus 12 logins every hour.
-@@ -26,40 +27,44 @@
- }
- 
- const getRoot = async (req: Request, error?: Error): Promise<string> => {
--  const content = await fs.readFile(path.join(rootPath, "src/browser/pages/login.html"), "utf8")
--  const locale = req.args["locale"] || "en"
--  i18n.changeLanguage(locale)
--  const welcomeText = req.args["welcome-text"] || (i18n.t("WELCOME", { app: req.args["app-name"] }) as string)
--
--  // Determine password message using i18n
--  let passwordMsg = i18n.t("LOGIN_PASSWORD")
--  if (req.args.usingEnvPassword) {
--    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
--  } else if (req.args.usingEnvHashedPassword) {
--    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
--  }
--
--  return replaceTemplates(
--    req,
--    content
--      .replace(/{{I18N_LOGIN_TITLE}}/g, i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }))
--      .replace(/{{WELCOME_TEXT}}/g, welcomeText)
--      .replace(/{{PASSWORD_MSG}}/g, passwordMsg)
--      .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
--      .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
--      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
--      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
--  )
-+  i18n.changeLanguage(req.args["locale"] || "en")
-+  const displayError = error || getErrorFromQuery(req)
-+  return renderAuthPage(req, {
-+    page: "login",
-+    title: i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }),
-+    formLabel: "Sign in",
-+    error: displayError?.message,
-+  })
-+}
++	private openAuthEndpoint(endpoint: string) {
++		const targetWindow = window.top || window;
++		const authUrl = new URL(endpoint, targetWindow.location.href);
++		authUrl.searchParams.set('base', this.productService.rootEndpoint || '.');
++		authUrl.searchParams.set('href', targetWindow.location.href);
++		const skipBeforeUnload = (event: BeforeUnloadEvent) => event.stopImmediatePropagation();
++		window.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
++		targetWindow.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
++		window.setTimeout(() => window.removeEventListener('beforeunload', skipBeforeUnload, true), 10000);
++		targetWindow.setTimeout(() => targetWindow.removeEventListener('beforeunload', skipBeforeUnload, true), 10000);
++		targetWindow.location.assign(authUrl);
++	}
 +
-+const getErrorFromQuery = (req: Request): Error | undefined => {
-+  switch (req.query.error) {
-+    case "configured":
-+      return new Error("Password was already configured. Sign in instead.")
-+    case "env-managed":
-+      return new Error("COMPOSERY_PASSWORD is set on this box and takes precedence over a password set here. Change or remove that variable instead.")
-+    case "rate-limit":
-+      return new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
-+    case "missing":
-+      return new Error(i18n.t("MISS_PASSWORD") as string)
-+    case "incorrect":
-+      return new Error(i18n.t("INCORRECT_PASSWORD") as string)
-+    default:
-+      return undefined
-+  }
- }
++	private addChangePasswordCommand(changePasswordEndpoint: string) {
++		CommandsRegistry.registerCommand(CodeServerClient.CHANGE_PASSWORD_COMMAND_ID, () => {
++			this.openAuthEndpoint(changePasswordEndpoint);
++		});
++
++		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
++			MenuRegistry.appendMenuItem(menuId, {
++				command: {
++					id: CodeServerClient.CHANGE_PASSWORD_COMMAND_ID,
++					title: localize('changePassword', "Change Password"),
++				},
++				order: menuId === MenuId.MenubarHomeMenu ? 1 : undefined,
++			});
++		}
++	}
++
+ 	private addLogoutCommand(logoutEndpoint: string) {
+ 		CommandsRegistry.registerCommand(CodeServerClient.LOGOUT_COMMAND_ID, () => {
+-			const logoutUrl = new URL(logoutEndpoint, window.location.href);
+-			// Cookies must be set with absolute paths and must use the same path to
+-			// be unset (we set it on the root) so send the relative root and the
+-			// current href so the backend can derive the absolute path to the root.
+-			logoutUrl.searchParams.set('base', this.productService.rootEndpoint || ".");
+-			logoutUrl.searchParams.set('href', window.location.href);
+-			window.location.assign(logoutUrl);
++			this.openAuthEndpoint(logoutEndpoint);
+ 		});
  
--const limiter = new RateLimiter()
-+const limiter = new LoginRateLimit()
- 
- export const router = Router()
- 
- router.use(async (req, res, next) => {
-   const to = (typeof req.query.to === "string" && req.query.to) || "/"
-+  if (!hasPassword(req)) {
-+    return redirect(req, res, cloudConfig ? "_composery/cloud/authorize" : "register", { to, error: undefined })
-+  }
-   if (await authenticated(req)) {
--    return redirect(req, res, to, { to: undefined })
-+    return redirect(req, res, to, { to: undefined, error: undefined })
-   }
-   next()
- })
-@@ -72,50 +75,46 @@
-   const password = sanitizeString(req.body?.password)
-   const hashedPasswordFromArgs = req.args["hashed-password"]
- 
--  try {
--    // Check to see if they exceeded their login attempts
--    if (!limiter.canTry()) {
--      throw new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
--    }
--
--    if (!password) {
--      throw new Error(i18n.t("MISS_PASSWORD") as string)
--    }
--
--    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
--    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
--      passwordMethod,
--      hashedPasswordFromArgs,
--      passwordFromRequestBody: password,
--      passwordFromArgs: req.args.password,
--    })
--
--    if (isPasswordValid) {
--      // The hash does not add any actual security but we do it for
--      // obfuscation purposes (and as a side effect it handles escaping).
--      res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
--
--      const to = (typeof req.query.to === "string" && req.query.to) || "/"
--      return redirect(req, res, to, { to: undefined })
--    }
--
--    // Note: successful logins should not count against the RateLimiter
--    // which is why this logic must come after the successful login logic
--    limiter.removeToken()
--
--    console.error(
--      "Failed login attempt",
--      JSON.stringify({
--        xForwardedFor: req.headers["x-forwarded-for"],
--        remoteAddress: req.connection.remoteAddress,
--        userAgent: req.headers["user-agent"],
--        timestamp: Math.floor(new Date().getTime() / 1000),
--      }),
--    )
--
--    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
--  } catch (error: any) {
--    const renderedHtml = await getRoot(req, error)
--    res.send(renderedHtml)
-+  // Check to see if they exceeded their login attempts
-+  const source = loginSource(req)
-+  if (!limiter.canTry(source)) {
-+    return redirect(req, res, "login", { error: "rate-limit" })
-+  }
-+
-+  if (!password) {
-+    return redirect(req, res, "login", { error: "missing" })
-   }
-+
-+  const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
-+  const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
-+    passwordMethod,
-+    hashedPasswordFromArgs,
-+    passwordFromRequestBody: password,
-+    passwordFromArgs: req.args.password,
-+  })
-+
-+  if (isPasswordValid) {
-+    // The hash does not add any actual security but we do it for
-+    // obfuscation purposes (and as a side effect it handles escaping).
-+    res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
-+
-+    const to = (typeof req.query.to === "string" && req.query.to) || "/"
-+    return redirect(req, res, to, { to: undefined, error: undefined })
-+  }
-+
-+  // Note: successful logins should not count against the RateLimiter
-+  // which is why this logic must come after the successful login logic
-+  limiter.recordFailure(source)
-+
-+  console.error(
-+    "Failed login attempt",
-+    JSON.stringify({
-+      xForwardedFor: req.headers["x-forwarded-for"],
-+      remoteAddress: req.connection.remoteAddress,
-+      userAgent: req.headers["user-agent"],
-+      timestamp: Math.floor(new Date().getTime() / 1000),
-+    }),
-+  )
-+
-+  return redirect(req, res, "login", { error: "incorrect" })
- })
-diff --git a/src/node/util.ts b/src/node/util.ts
---- a/src/node/util.ts
-+++ b/src/node/util.ts
-@@ -7,7 +7,6 @@
- import * as os from "os"
- import * as path from "path"
- import safeCompare from "safe-compare"
--import * as util from "util"
- import xdgBasedir from "xdg-basedir"
- 
- export interface Paths {
-@@ -131,12 +130,6 @@
-   }
- }
- 
--export const generatePassword = async (length = 24): Promise<string> => {
--  const buffer = Buffer.alloc(Math.ceil(length / 2))
--  await util.promisify(crypto.randomFill)(buffer)
--  return buffer.toString("hex").substring(0, length)
--}
--
- /**
-  * Used to hash the password.
-  */
-diff --git a/src/browser/pages/error.css b/src/browser/pages/error.css
+ 		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
+ 			MenuRegistry.appendMenuItem(menuId, {
+ 				command: {
+ 					id: CodeServerClient.LOGOUT_COMMAND_ID,
+-					title: localize('logout', "Sign out of {0}", 'code-server'),
++					title: localize('logout', "Sign Out"),
+ 				},
++				order: menuId === MenuId.MenubarHomeMenu ? 2 : undefined,
+ 			});
+ 		}
+ 	}
 --- a/src/browser/pages/error.css
 +++ /dev/null
 @@ -1,33 +0,0 @@
@@ -422,7 +176,6 @@ diff --git a/src/browser/pages/error.css b/src/browser/pages/error.css
 -.error-display .success {
 -  color: green;
 -}
-diff --git a/src/browser/pages/error.html b/src/browser/pages/error.html
 --- a/src/browser/pages/error.html
 +++ /dev/null
 @@ -1,35 +0,0 @@
@@ -461,7 +214,6 @@ diff --git a/src/browser/pages/error.html b/src/browser/pages/error.html
 -    </div>
 -  </body>
 -</html>
-diff --git a/src/browser/pages/global.css b/src/browser/pages/global.css
 --- a/src/browser/pages/global.css
 +++ /dev/null
 @@ -1,101 +0,0 @@
@@ -566,7 +318,6 @@ diff --git a/src/browser/pages/global.css b/src/browser/pages/global.css
 -  top: 0;
 -  left: 0;
 -}
-diff --git a/src/browser/pages/login.css b/src/browser/pages/login.css
 --- a/src/browser/pages/login.css
 +++ /dev/null
 @@ -1,67 +0,0 @@
@@ -637,7 +388,6 @@ diff --git a/src/browser/pages/login.css b/src/browser/pages/login.css
 -input {
 -  -webkit-appearance: none;
 -}
-diff --git a/src/browser/pages/login.html b/src/browser/pages/login.html
 --- a/src/browser/pages/login.html
 +++ /dev/null
 @@ -1,62 +0,0 @@
@@ -703,3 +453,417 @@ diff --git a/src/browser/pages/login.html b/src/browser/pages/login.html
 -    </script>
 -  </body>
 -</html>
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -2,7 +2,7 @@ import { field, Level, logger } from "@coder/logger"
+ import { promises as fs } from "fs"
+ import { load } from "js-yaml"
+ import * as path from "path"
+-import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
++import { generateCertificate, paths, splitOnFirstEquals } from "./util"
+ import { EditorSessionManagerClient } from "./vscodeSocket"
+ 
+ export enum Feature {
+@@ -58,6 +58,7 @@ export interface UserProvidedCodeArgs {
+   "link-protection-trusted-domains"?: string[]
+   // locale is used by both VS Code and code-server.
+   locale?: string
++  "change-password"?: boolean
+ }
+ 
+ /**
+@@ -93,7 +94,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
+   "ignore-last-opened"?: boolean
+   verbose?: boolean
+   "app-name"?: string
+-  "welcome-text"?: string
+   "abs-proxy-base-path"?: string
+   i18n?: string
+   "idle-timeout-seconds"?: number
+@@ -174,6 +174,9 @@ export const options: Options<Required<UserProvidedArgs>> = {
+   "session-socket": {
+     type: "string",
+   },
++  "change-password": {
++    type: "boolean",
++  },
+   "cookie-suffix": {
+     type: "string",
+     description:
+@@ -295,13 +298,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
+     type: "string",
+     short: "an",
+     description:
+-      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and welcome message",
+-  },
+-  "welcome-text": {
+-    type: "string",
+-    short: "w",
+-    description: "Text to show on login page",
+-    deprecated: true,
++      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and login page title",
+   },
+   "abs-proxy-base-path": {
+     type: "string",
+@@ -596,6 +593,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+     args.auth = AuthType.Password
+   }
+ 
++  // Overrides the config file, which ships `auth: password`, so the switch
++  // works without editing config. Only 1/true disable sign-in: every other
++  // value, typos included, has to fail towards keeping the instance protected.
++  if (process.env.COMPOSERY_DISABLE_AUTH?.match(/^(1|true)$/)) {
++    args.auth = AuthType.None
++  }
++
+   const addr = bindAddrFromAllSources(configArgs || {}, cliArgs)
+   args.host = addr.host
+   args.port = addr.port
+@@ -611,6 +615,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   let usingEnvPassword = !!process.env.PASSWORD
+   if (process.env.PASSWORD) {
+     args.password = process.env.PASSWORD
++    args["hashed-password"] = undefined
+   }
+ 
+   if (process.env.COMPOSERY_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
+@@ -632,6 +637,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
+   if (process.env.HASHED_PASSWORD) {
+     args["hashed-password"] = process.env.HASHED_PASSWORD
++    args.password = undefined
+     usingEnvPassword = false
+   }
+ 
+@@ -699,18 +705,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
+ /**
+  * Helper function to return the default config file.
+  *
+- * @param {string} password - Password passed in (usually from generatePassword())
+  * @returns The default config file:
+  *
+  * - bind-addr: 127.0.0.1:8080
+  * - auth: password
+- * - password: <password>
+  * - cert: false
+  */
+-export function defaultConfigFile(password: string): string {
++export function defaultConfigFile(): string {
+   return `bind-addr: 127.0.0.1:8080
+ auth: password
+-password: ${password}
+ cert: false
+ `
+ }
+@@ -735,8 +738,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
+   await fs.mkdir(path.dirname(configPath), { recursive: true })
+ 
+   try {
+-    const generatedPassword = await generatePassword()
+-    await fs.writeFile(configPath, defaultConfigFile(generatedPassword), {
++    await fs.writeFile(configPath, defaultConfigFile(), {
+       flag: "wx", // wx means to fail if the path exists.
+     })
+     logger.info(`Wrote default config file to ${configPath}`)
+@@ -925,5 +927,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
+     version: !!args.version,
+     port: args.port?.toString(),
+     log: args.log ? [args.log] : undefined,
++    "change-password": args.auth === AuthType.Password && !args.usingEnvPassword && !args.usingEnvHashedPassword,
+   }
+ }
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -122,6 +122,9 @@ export const authenticated = async (req: express.Request): Promise<boolean> => {
+     case AuthType.Password: {
+       // The password is stored in the cookie after being hashed.
+       const hashedPasswordFromArgs = req.args["hashed-password"]
++      if (!req.args.password && !hashedPasswordFromArgs) {
++        return false
++      }
+       const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
+       const isCookieValidArgs: IsCookieValidArgs = {
+         passwordMethod,
+--- a/src/node/main.ts
++++ b/src/node/main.ts
+@@ -133,12 +133,6 @@ export const runCodeServer = async (
+   logger.info(`Using user-data-dir ${args["user-data-dir"]}`)
+   logger.debug(`Using extensions-dir ${args["extensions-dir"]}`)
+ 
+-  if (args.auth === AuthType.Password && !args.password && !args["hashed-password"]) {
+-    throw new Error(
+-      "Please pass in a password via the config file or environment variable ($PASSWORD or $HASHED_PASSWORD)",
+-    )
+-  }
+-
+   const app = await createApp(args)
+   const protocol = args.cert ? "https" : "http"
+   const serverAddress = ensureAddress(app.server, protocol)
+@@ -152,13 +146,29 @@ export const runCodeServer = async (
+       logger.info("    - Using password from $PASSWORD")
+     } else if (args.usingEnvHashedPassword) {
+       logger.info("    - Using password from $HASHED_PASSWORD")
++    } else if (!args.password && !args["hashed-password"]) {
++      logger.info("    - No password configured yet")
+     } else if (args["hashed-password"]) {
+       logger.info(`    - Using hashed-password from ${args.config}`)
+     } else {
+       logger.info(`    - Using password from ${args.config}`)
+     }
+   } else {
+-    logger.info("  - Authentication is disabled")
++    // Owners control their own host, so this is never withheld - but report what
++    // it costs here rather than warning generically. A cloud box is published on
++    // the public internet, where no sign-in means whoever learns the address is
++    // in; a self-hosted instance may only be reachable on a loopback or a LAN.
++    // Config can also select `auth: none`, so name both ways back.
++    const reach = process.env.COMPOSERY_CLOUD_BOX_ID
++      ? "this box is published on the internet, so anyone who learns its address"
++      : "anyone who can reach it"
++    logger.warn(
++      `Authentication is disabled: ${reach} gets a root-capable terminal. ` +
++        `Unset COMPOSERY_DISABLE_AUTH (or drop 'auth: none' from ${args.config}) and restart to require sign-in.`,
++    )
++    if (args.password || args["hashed-password"]) {
++      logger.warn("  - A configured password is ignored while authentication is disabled")
++    }
+   }
+ 
+   if (args.cert) {
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -21,6 +21,10 @@ import { errorHandler, wsErrorHandler } from "./errors"
+ import * as health from "./health"
+ import * as login from "./login"
+ import * as logout from "./logout"
++import * as registerRoute from "./register"
++import * as pwnedRoute from "./pwned"
++import * as changePasswordRoute from "./changePassword"
++import * as cloudAuthRoute from "./cloudAuth"
+ import * as pathProxy from "./pathProxy"
+ import * as update from "./update"
+ import * as vscode from "./vscode"
+@@ -154,11 +158,18 @@ export const register = async (
+   app.router.use("/healthz", health.router)
+   app.wsRouter.use("/healthz", health.wsRouter.router)
+ 
++  app.router.use("/_composery/cloud", cloudAuthRoute.router)
++
+   if (args.auth === AuthType.Password) {
+     app.router.use("/login", login.router)
++    app.router.use("/register", registerRoute.router)
++    app.router.use("/change-password", changePasswordRoute.router)
++    app.router.use("/_composery/pwned", pwnedRoute.router)
+     app.router.use("/logout", logout.router)
+   } else {
+     app.router.all("/login", (req, res) => redirect(req, res, "/", {}))
++    app.router.all("/register", (req, res) => redirect(req, res, "/", {}))
++    app.router.all("/change-password", (req, res) => redirect(req, res, "/", {}))
+     app.router.all("/logout", (req, res) => redirect(req, res, "/", {}))
+   }
+ 
+--- a/src/node/routes/login.ts
++++ b/src/node/routes/login.ts
+@@ -1,11 +1,12 @@
+ import { Router, Request } from "express"
+-import { promises as fs } from "fs"
+ import { RateLimiter as Limiter } from "limiter"
+-import * as path from "path"
+-import { rootPath } from "../constants"
+-import { authenticated, getCookieOptions, redirect, replaceTemplates } from "../http"
++import { authenticated, getCookieOptions, redirect } from "../http"
+ import i18n from "../i18n"
+-import { getPasswordMethod, handlePasswordValidation, sanitizeString, escapeHtml } from "../util"
++import { getPasswordMethod, handlePasswordValidation, sanitizeString } from "../util"
++import { renderAuthPage } from "./authPage"
++import { cloudConfig } from "./cloudAuth"
++import { hasPassword } from "./passwordConfig"
++import { LoginRateLimit, loginSource } from "./loginRateLimit"
+ 
+ // RateLimiter wraps around the limiter library for logins.
+ // It allows 2 logins every minute plus 12 logins every hour.
+@@ -26,40 +27,44 @@ export class RateLimiter {
+ }
+ 
+ const getRoot = async (req: Request, error?: Error): Promise<string> => {
+-  const content = await fs.readFile(path.join(rootPath, "src/browser/pages/login.html"), "utf8")
+-  const locale = req.args["locale"] || "en"
+-  i18n.changeLanguage(locale)
+-  const welcomeText = req.args["welcome-text"] || (i18n.t("WELCOME", { app: req.args["app-name"] }) as string)
+-
+-  // Determine password message using i18n
+-  let passwordMsg = i18n.t("LOGIN_PASSWORD")
+-  if (req.args.usingEnvPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
+-  } else if (req.args.usingEnvHashedPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
+-  }
++  i18n.changeLanguage(req.args["locale"] || "en")
++  const displayError = error || getErrorFromQuery(req)
++  return renderAuthPage(req, {
++    page: "login",
++    title: i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }),
++    formLabel: "Sign in",
++    error: displayError?.message,
++  })
++}
+ 
+-  return replaceTemplates(
+-    req,
+-    content
+-      .replace(/{{I18N_LOGIN_TITLE}}/g, i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }))
+-      .replace(/{{WELCOME_TEXT}}/g, welcomeText)
+-      .replace(/{{PASSWORD_MSG}}/g, passwordMsg)
+-      .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
+-      .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
+-      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
+-      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
+-  )
++const getErrorFromQuery = (req: Request): Error | undefined => {
++  switch (req.query.error) {
++    case "configured":
++      return new Error("Password was already configured. Sign in instead.")
++    case "env-managed":
++      return new Error("COMPOSERY_PASSWORD is set on this box and takes precedence over a password set here. Change or remove that variable instead.")
++    case "rate-limit":
++      return new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
++    case "missing":
++      return new Error(i18n.t("MISS_PASSWORD") as string)
++    case "incorrect":
++      return new Error(i18n.t("INCORRECT_PASSWORD") as string)
++    default:
++      return undefined
++  }
+ }
+ 
+-const limiter = new RateLimiter()
++const limiter = new LoginRateLimit()
+ 
+ export const router = Router()
+ 
+ router.use(async (req, res, next) => {
+   const to = (typeof req.query.to === "string" && req.query.to) || "/"
++  if (!hasPassword(req)) {
++    return redirect(req, res, cloudConfig ? "_composery/cloud/authorize" : "register", { to, error: undefined })
++  }
+   if (await authenticated(req)) {
+-    return redirect(req, res, to, { to: undefined })
++    return redirect(req, res, to, { to: undefined, error: undefined })
+   }
+   next()
+ })
+@@ -72,50 +77,46 @@ router.post<{}, string, { password?: string; base?: string } | undefined, { to?:
+   const password = sanitizeString(req.body?.password)
+   const hashedPasswordFromArgs = req.args["hashed-password"]
+ 
+-  try {
+-    // Check to see if they exceeded their login attempts
+-    if (!limiter.canTry()) {
+-      throw new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
+-    }
+-
+-    if (!password) {
+-      throw new Error(i18n.t("MISS_PASSWORD") as string)
+-    }
+-
+-    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
+-    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
+-      passwordMethod,
+-      hashedPasswordFromArgs,
+-      passwordFromRequestBody: password,
+-      passwordFromArgs: req.args.password,
+-    })
+-
+-    if (isPasswordValid) {
+-      // The hash does not add any actual security but we do it for
+-      // obfuscation purposes (and as a side effect it handles escaping).
+-      res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
+-
+-      const to = (typeof req.query.to === "string" && req.query.to) || "/"
+-      return redirect(req, res, to, { to: undefined })
+-    }
+-
+-    // Note: successful logins should not count against the RateLimiter
+-    // which is why this logic must come after the successful login logic
+-    limiter.removeToken()
+-
+-    console.error(
+-      "Failed login attempt",
+-      JSON.stringify({
+-        xForwardedFor: req.headers["x-forwarded-for"],
+-        remoteAddress: req.connection.remoteAddress,
+-        userAgent: req.headers["user-agent"],
+-        timestamp: Math.floor(new Date().getTime() / 1000),
+-      }),
+-    )
+-
+-    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
+-  } catch (error: any) {
+-    const renderedHtml = await getRoot(req, error)
+-    res.send(renderedHtml)
++  // Check to see if they exceeded their login attempts
++  const source = loginSource(req)
++  if (!limiter.canTry(source)) {
++    return redirect(req, res, "login", { error: "rate-limit" })
++  }
++
++  if (!password) {
++    return redirect(req, res, "login", { error: "missing" })
++  }
++
++  const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
++  const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
++    passwordMethod,
++    hashedPasswordFromArgs,
++    passwordFromRequestBody: password,
++    passwordFromArgs: req.args.password,
++  })
++
++  if (isPasswordValid) {
++    // The hash does not add any actual security but we do it for
++    // obfuscation purposes (and as a side effect it handles escaping).
++    res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
++
++    const to = (typeof req.query.to === "string" && req.query.to) || "/"
++    return redirect(req, res, to, { to: undefined, error: undefined })
+   }
++
++  // Note: successful logins should not count against the RateLimiter
++  // which is why this logic must come after the successful login logic
++  limiter.recordFailure(source)
++
++  console.error(
++    "Failed login attempt",
++    JSON.stringify({
++      xForwardedFor: req.headers["x-forwarded-for"],
++      remoteAddress: req.connection.remoteAddress,
++      userAgent: req.headers["user-agent"],
++      timestamp: Math.floor(new Date().getTime() / 1000),
++    }),
++  )
++
++  return redirect(req, res, "login", { error: "incorrect" })
+ })
+--- a/src/node/util.ts
++++ b/src/node/util.ts
+@@ -7,7 +7,6 @@ import * as net from "net"
+ import * as os from "os"
+ import * as path from "path"
+ import safeCompare from "safe-compare"
+-import * as util from "util"
+ import xdgBasedir from "xdg-basedir"
+ 
+ export interface Paths {
+@@ -131,12 +130,6 @@ DNS.1 = ${hostname}
+   }
+ }
+ 
+-export const generatePassword = async (length = 24): Promise<string> => {
+-  const buffer = Buffer.alloc(Math.ceil(length / 2))
+-  await util.promisify(crypto.randomFill)(buffer)
+-  return buffer.toString("hex").substring(0, length)
+-}
+-
+ /**
+  * Used to hash the password.
+  */

@@ -45,7 +45,7 @@
 	 * the command center can't crowd the two controls. The width cannot be
 	 * content-derived: the menubar is a zero-basis flexer whose allocated
 	 * width is what tells MenuBar to collapse into the overflow button
-	 * (titlebar-menubar-overflow.diff), so it must stay extrinsically sized.
+	 * (narrow.diff), so it must stay extrinsically sized.
 	 * 77px = 35px logo + 4px menubar margin + the 38px overflow button
 	 * (16px codicon + upstream's 8px menubar-item side paddings + border) -
 	 * anything less spills the button under the command center. */
@@ -343,7 +343,7 @@
 	}
 
 	/* The workbench itself already sits above the on-screen keyboard and the edge-to-edge
-	 * bottom inset (touch-viewport-inset.diff), so a plain offset is enough here. */
+	 * bottom inset (touch.diff), so a plain offset is enough here. */
 	.monaco-workbench > .notifications-center {
 		bottom: 8px !important;
 		top: auto !important;
