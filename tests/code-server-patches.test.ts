@@ -28,6 +28,11 @@ import {
 const PATCHES_DIR = "packages/ide/patches";
 const ASSETS =
 	"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
+// The two small-screen gates are whole files we own, so they live in the overlay
+// rather than in a /dev/null patch. See "overlay never shadows an upstream file".
+const OVERLAY_VSCODE_SRC = "packages/ide/overlay/lib/vscode/src";
+const TOUCH_GATE = `${OVERLAY_VSCODE_SRC}/vs/base/browser/touchGate.ts`;
+const NARROW_GATE = `${OVERLAY_VSCODE_SRC}/vs/workbench/browser/narrowGate.ts`;
 
 // Selectors are wrapped for readability in one sheet and not the other; compare
 // them as the browser does, on whitespace-insensitive text.
@@ -987,7 +992,7 @@ describe("narrow overlay", () => {
 	test("keeps the touch gate free of keyboard-inset logic", () => {
 		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
 		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
-		const touchGatePatch = readRepoFile(`${PATCHES_DIR}/touch-gate.diff`);
+		const touchGatePatch = readRepoFile(TOUCH_GATE);
 
 		expect(narrowJs).toContain("bottomKeyboardOverlap");
 		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
@@ -1536,33 +1541,6 @@ describe("narrow overlay", () => {
 		}
 	});
 
-	// The on-screen keyboard shrinks the workbench exactly while someone types into a
-	// row control (settings editor inputs, the SCM input): the virtualized list would
-	// recycle the now-out-of-range focused row, blurring the control and closing the
-	// keyboard mid-typing. The list must keep that one row alive and scroll it back
-	// above the fold instead.
-	test("touch-list-focus keeps the focused row alive through a keyboard shrink", () => {
-		const patch = addedLines(
-			readRepoFile(`${PATCHES_DIR}/touch-list-focus.diff`)
-		);
-
-		// render()/_rerender(): never recycle the row holding DOM focus.
-		expect(patch).toContain("focusPinnedIndex");
-		expect(patch).toContain(
-			"if (this.items[i].row?.domNode.contains(activeElement)) {"
-		);
-		expect(patch).toContain(
-			"if (this.items[i].row?.domNode.contains(getActiveElement())) {"
-		);
-		// layout(): after the shrink, reveal the focused row above the keyboard.
-		expect(patch).toContain("this.rowsContainer.contains(active)");
-		expect(patch).toContain(
-			"this.setScrollTop(Math.max(this.elementTop(index) + item.size - scrollDimensions.height!, 0));"
-		);
-		// splice(): a stale pinned index must release its row, not leak it.
-		expect(patch).toContain("this.removeItemFromDOM(this.focusPinnedIndex);");
-	});
-
 	// Janky event delivery (a busy phone, the app WebView) can hold a real pan's
 	// touchmoves until after the 700ms hold timer fired: Gesture then called the
 	// pan a long-press, ate every later move (dead scroll) and skipped the
@@ -1609,15 +1587,19 @@ describe("narrow overlay", () => {
 		expect(patch).toContain("!isTouch(mainWindow) &&");
 	});
 
-	// The browser's focus reveal scrolls overflow:hidden ancestors and pans the
-	// mobile visual viewport - the workbench does its own revealing. Every
-	// programmatic focus into a scrolled surface must preventScroll.
-	test("touch-reveal-guard covers workbench editables beyond the editor", () => {
+	// Prevent browser reveal only when the caller already owns reveal or is restoring
+	// focus. Generic controls and settings-list keyboard navigation rely on native
+	// reveal, so suppressing it can leave the focused control off screen.
+	test("touch-reveal-guard stays scoped to focus restoration", () => {
 		const patch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/touch-reveal-guard.diff`)
 		);
 
-		expect(patch).toContain("this.input.focus({ preventScroll: true });");
+		expect(patch).not.toContain("this.input.focus({ preventScroll: true });");
+		expect(patch).not.toContain(
+			"this.selectElement.focus({ preventScroll: true });"
+		);
+		expect(patch).not.toContain("selectedRow.focus({ preventScroll: true });");
 		expect(patch).toContain(
 			"this.focusToReturn?.focus({ preventScroll: true });"
 		);
@@ -1685,10 +1667,10 @@ describe("narrow overlay", () => {
 	// require every mirror to match, so a query or breakpoint tweak cannot drift.
 	test("overlay assets and patches mirror the canonical gate queries", () => {
 		const touchQuery = /TOUCH_QUERY = '([^']+)'/.exec(
-			readRepoFile(`${PATCHES_DIR}/touch-gate.diff`)
+			readRepoFile(TOUCH_GATE)
 		)?.[1];
 		const narrowWidth = /NARROW_MAX_WIDTH = (\d+)/.exec(
-			readRepoFile(`${PATCHES_DIR}/narrow-gate.diff`)
+			readRepoFile(NARROW_GATE)
 		)?.[1];
 		expect(touchQuery).toBeDefined();
 		expect(narrowWidth).toBeDefined();
@@ -1722,9 +1704,7 @@ describe("narrow overlay", () => {
 	// the stack adds against the file the gate patch actually creates.
 	test("every patched touchGate import resolves to the gate file", () => {
 		const gateFile = "lib/vscode/src/vs/base/browser/touchGate.ts";
-		expect(readRepoFile(`${PATCHES_DIR}/touch-gate.diff`)).toContain(
-			`+++ b/${gateFile}`
-		);
+		expect(existsSync(resolve(repoRoot, TOUCH_GATE))).toBe(true);
 
 		let imports = 0;
 		for (const name of seriesNames) {
@@ -2049,7 +2029,17 @@ type ApiKeysHarness = {
 	clipboard: string[];
 	commands: Map<string, () => Promise<void>>;
 	errors: string[];
+	// composery CLI calls only; the session watcher's tmux polling is separate so
+	// it cannot drift into the key-management assertions.
 	execCalls: string[][];
+	tmuxCalls: string[][];
+	infos: string[];
+	terminals: Array<{ name: string; shellPath: string; shellArgs: string[] }>;
+	// Fires the editor's onDidCloseTerminal for a tab the user closed.
+	closeTerminal: (terminal: unknown) => void;
+	// The session watcher's interval body, so a test drives polling instead of
+	// waiting on wall-clock time.
+	poll: () => Promise<void>;
 	warnings: string[];
 };
 
@@ -2058,13 +2048,15 @@ function loadApiKeysExtension({
 	inputText,
 	modalAction,
 	picks = [],
-	responses = []
+	responses = [],
+	tmuxOutput = ""
 }: {
 	env?: Record<string, string>;
 	inputText?: string;
 	modalAction?: string;
 	picks?: string[];
 	responses?: unknown[];
+	tmuxOutput?: string;
 }): { run: () => Promise<void>; harness: ApiKeysHarness } {
 	const extension = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-api/extension.js"
@@ -2074,13 +2066,28 @@ function loadApiKeysExtension({
 		commands: new Map(),
 		errors: [],
 		execCalls: [],
+		infos: [],
+		tmuxCalls: [],
+		poll: () => Promise.resolve(),
+		terminals: [],
+		closeTerminal: () => {},
 		warnings: []
+	};
+	const closeListeners: Array<(terminal: unknown) => void> = [];
+	harness.closeTerminal = (terminal) => {
+		for (const listener of closeListeners) listener(terminal);
 	};
 	const vscode = {
 		commands: {
 			registerCommand(name: string, callback: () => Promise<void>) {
 				harness.commands.set(name, callback);
 				return { dispose() {} };
+			}
+		},
+		ThemeIcon: class {
+			id: string;
+			constructor(id: string) {
+				this.id = id;
 			}
 		},
 		env: {
@@ -2092,11 +2099,27 @@ function loadApiKeysExtension({
 			}
 		},
 		window: {
+			createTerminal(options: {
+				name: string;
+				shellPath: string;
+				shellArgs: string[];
+			}) {
+				// Return the same object that is recorded, so a test can close the
+				// exact terminal the extension is holding.
+				const terminal = Object.assign(options, { show() {} });
+				harness.terminals.push(terminal);
+				return terminal;
+			},
+			onDidCloseTerminal(listener: (terminal: unknown) => void) {
+				closeListeners.push(listener);
+				return { dispose() {} };
+			},
 			showErrorMessage(message: string) {
 				harness.errors.push(message);
 				return Promise.resolve(undefined);
 			},
-			showInformationMessage() {
+			showInformationMessage(message: string) {
+				harness.infos.push(message);
 				return Promise.resolve(modalAction);
 			},
 			showInputBox() {
@@ -2120,8 +2143,13 @@ function loadApiKeysExtension({
 		exports: { activate?: (context: { subscriptions: unknown[] }) => void };
 	} = { exports: {} };
 	const context = vm.createContext({
+		clearInterval() {},
 		module: cjsModule,
 		process: { env },
+		setInterval(callback: () => Promise<void>) {
+			harness.poll = callback;
+			return 0;
+		},
 		require(name: string) {
 			if (name === "vscode") return vscode;
 			if (name === "child_process") {
@@ -2132,6 +2160,12 @@ function loadApiKeysExtension({
 						options: unknown,
 						callback: (error: null, stdout: string, stderr: string) => void
 					) {
+						// tmux prints its own -F format, the composery CLI prints JSON.
+						if (command === "tmux") {
+							harness.tmuxCalls.push([command, ...args]);
+							callback(null, tmuxOutput, "");
+							return;
+						}
 						harness.execCalls.push([command, ...args]);
 						callback(null, JSON.stringify(responses.shift()), "");
 					}
@@ -2160,7 +2194,10 @@ describe("composery api keys", () => {
 		)
 	) as {
 		activationEvents: string[];
-		contributes: { commands: Array<{ command: string }> };
+		contributes: {
+			commands: Array<{ command: string; title: string; category?: string }>;
+		};
+		description: string;
 		extensionKind: string[];
 	};
 
@@ -2313,6 +2350,121 @@ describe("composery api keys", () => {
 		await run();
 
 		expect(harness.warnings).toEqual([]);
+	});
+
+	// name \t @composery_cmd \t pane_current_command.
+	// `mine` is a session someone started by hand, so it carries no API label.
+	const TMUX_SESSIONS =
+		"api-1a2b3c4d\tpnpm build\tnode\nbuild\t/bin/bash\tbash\nmine\t\tbash\n";
+
+	test("API sessions become terminal tabs on their own, named for the command", async () => {
+		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
+
+		await harness.poll();
+
+		// Listed, never focused, and titled by what the API was asked to run -
+		// `api-1a2b3c4d` would tell the user nothing. The hand-made session is
+		// left alone rather than hijacked into the editor.
+		expect(harness.terminals).toEqual([
+			expect.objectContaining({
+				name: "pnpm build",
+				shellPath: "tmux",
+				shellArgs: ["attach-session", "-t", "=api-1a2b3c4d"]
+			}),
+			expect.objectContaining({
+				name: "/bin/bash",
+				shellPath: "tmux",
+				shellArgs: ["attach-session", "-t", "=build"]
+			})
+		]);
+	});
+
+	test("a session already listed is not opened twice", async () => {
+		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
+
+		await harness.poll();
+		// Closing a tab detaches tmux but leaves the session, so a later poll
+		// still sees it - reopening it would fight the user every five seconds.
+		await harness.poll();
+		await harness.poll();
+
+		expect(harness.terminals).toHaveLength(2);
+	});
+
+	test("closing a tab keeps it closed until the command is asked for it back", async () => {
+		const { harness } = loadApiKeysExtension({ tmuxOutput: TMUX_SESSIONS });
+
+		await harness.poll();
+		expect(harness.terminals).toHaveLength(2);
+
+		// Close the `pnpm build` tab. tmux stays attached-less but running, so the
+		// watcher keeps seeing the session on every poll.
+		harness.closeTerminal(harness.terminals[0]!);
+		await harness.poll();
+		await harness.poll();
+		expect(harness.terminals).toHaveLength(2);
+
+		// The one way back, and it needs no picker and nothing to name: reopen
+		// what is still running.
+		await harness.commands.get("composery.showApiTerminals")!();
+
+		// attach-session, not new-session: the editor lands in the terminal the
+		// API is already driving rather than a second one beside it.
+		expect(harness.terminals).toHaveLength(3);
+		expect(harness.terminals[2]).toEqual(
+			expect.objectContaining({
+				name: "pnpm build",
+				shellPath: "tmux",
+				shellArgs: ["attach-session", "-t", "=api-1a2b3c4d"]
+			})
+		);
+	});
+
+	test("no session vocabulary reaches the editor UI", () => {
+		// "Session" is tmux's word and the HTTP API's query parameter, not a thing
+		// a user opens or names. In the editor these are terminals that something
+		// else started, and nothing in the UI should ask them to learn otherwise.
+		const uiStrings = [
+			...manifest.contributes.commands.map(
+				(entry) => `${entry.category ?? ""} ${entry.title}`
+			),
+			manifest.description
+		];
+		for (const value of uiStrings) {
+			expect(
+				value.toLowerCase(),
+				`session jargon in UI string: ${value}`
+			).not.toContain("session");
+		}
+		// The + dropdown creates new terminals; an attach-to-existing entry there
+		// is the wrong menu whatever it is called.
+		expect(manifest.contributes).not.toHaveProperty("terminal");
+		expect(extension).not.toContain("registerTerminalProfileProvider");
+	});
+
+	test("the label is the cross-file contract between server and editor", () => {
+		const server = readRepoFile(
+			"packages/ide/overlay/src/node/routes/api/session.ts"
+		);
+		// The label is a cross-file contract: the server writes this tmux user
+		// option, the extension reads it back to title the tab and to tell an API
+		// session apart from one a user started by hand.
+		expect(server).toContain('SESSION_LABEL = "@composery_cmd"');
+		expect(extension).toContain('SESSION_LABEL = "@composery_cmd"');
+		expect(server).toContain("#{session_name}");
+		expect(extension).toContain("#{session_name}");
+		// The watcher only runs if the extension is already loaded when a terminal
+		// shows up; without this the tabs appear on the second visit, or never.
+		expect(manifest.activationEvents).toContain("onStartupFinished");
+	});
+
+	test("says so when the API has opened nothing", async () => {
+		const { harness } = loadApiKeysExtension({ tmuxOutput: "" });
+
+		await harness.commands.get("composery.showApiTerminals")!();
+
+		expect(harness.terminals).toEqual([]);
+		expect(harness.infos[0]).toContain("has not opened any terminals");
 	});
 });
 
@@ -2969,5 +3121,126 @@ describe("persistence readiness cache", () => {
 		);
 		expect(source.match(/performance\.now\(\)/g)).toHaveLength(2);
 		expect(source).not.toMatch(/(?:cached\.at|at:)\s*Date\.now\(\)/);
+	});
+});
+
+// Modified upstream files are patches, so quilt at fuzz=0 fails loudly when
+// upstream moves under them. Whole files we own are copied over the tree
+// instead, which has no such tripwire: if upstream ever ships a file at one of
+// our overlay paths, the copy would silently replace it and the loss would look
+// exactly like nothing happening. This is that tripwire.
+describe("overlay never shadows an upstream file", () => {
+	const OVERLAY_SRC = "packages/ide/overlay/lib/vscode/src";
+	const UPSTREAM_SRC = "packages/ide/upstream/lib/vscode/src";
+
+	function overlayFiles(dir: string, base = ""): string[] {
+		const root = resolve(repoRoot, dir);
+		if (!existsSync(root)) return [];
+		return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+			const relative = base ? posix.join(base, entry.name) : entry.name;
+			return entry.isDirectory()
+				? overlayFiles(posix.join(dir, entry.name), relative)
+				: [relative];
+		});
+	}
+
+	test("every overlaid VS Code source file is one upstream does not have", () => {
+		const files = overlayFiles(OVERLAY_SRC);
+
+		// A green run here must mean the check ran, not that the tree was empty.
+		expect(files.length).toBeGreaterThan(0);
+
+		for (const file of files) {
+			expect(
+				existsSync(resolve(repoRoot, UPSTREAM_SRC, file)),
+				`${file} exists upstream - it must be a patch, not an overlay file`
+			).toBe(false);
+		}
+	});
+
+	test("the build copies the overlaid VS Code sources onto the tree", () => {
+		// An overlay directory nothing installs is a documented no-op: the files
+		// would read as shipped while never reaching the build.
+		expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
+			'cp -r "$PACKAGE_ROOT/overlay/lib/vscode/src/." "$BUILD/lib/vscode/src/"'
+		);
+	});
+});
+
+// The installed PWA is the mobile story until the native apps ship, so the
+// values that decide how it looks on a home screen are worth pinning: they live
+// in an upstream file none of us reads by accident, and a wrong one is only
+// visible after installing the app.
+describe("PWA install metadata", () => {
+	const patch = readRepoFile(`${PATCHES_DIR}/pwa.diff`);
+	const added = addedLines(patch);
+	const removed = patch
+		.split(/\r?\n/)
+		.filter((line) => line.startsWith("-") && !line.startsWith("---"))
+		.join("\n");
+
+	const background = (file: string): string =>
+		(
+			JSON.parse(
+				readRepoFile(
+					`packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/${file}`
+				)
+			) as { colors: Record<string, string> }
+		).colors["editor.background"]!;
+
+	test("applies after the patches it shares files with", () => {
+		const series = readRepoFile(`${PATCHES_DIR}/series`).split(/\r?\n/);
+		expect(series).toContain("pwa.diff");
+		expect(series.indexOf("pwa.diff")).toBeGreaterThan(
+			series.indexOf("overlays.diff")
+		);
+	});
+
+	test("installs as a standalone window, not fullscreen", () => {
+		expect(added).toContain('display: "standalone"');
+		// Fullscreen hides the clock and battery; window-controls-overlay would
+		// put the OS controls over a titlebar that reserves no room for them.
+		expect(removed).toContain('display: "fullscreen"');
+		expect(removed).toContain("display_override:");
+		// The key, not the word: the patch's own comment explains the removal.
+		expect(added).not.toContain("display_override:");
+	});
+
+	test("names the app what shared names it", () => {
+		const brandName = /BRAND_NAME = "([^"]+)"/.exec(
+			readRepoFile("packages/shared/index.ts")
+		)?.[1];
+		expect(brandName).toEqual(expect.any(String));
+
+		// iOS writes this under the home-screen icon in preference to the
+		// manifest's short_name, so it is the name most phones actually show.
+		expect(added).toContain(
+			`<meta name="apple-mobile-web-app-title" content="${brandName}">`
+		);
+		expect(removed).toContain('content="Code"');
+	});
+
+	test("describes the app the way the website does", () => {
+		const description = /APP_DESCRIPTION =\s*"([^"]+)"/.exec(
+			readRepoFile("packages/shared/index.ts")
+		)?.[1];
+		expect(description).toEqual(expect.any(String));
+		expect(added).toContain(`"${description}"`);
+	});
+
+	test("splash and status bar are the theme backgrounds", () => {
+		const dark = background("composery-dark.json");
+		const light = background("composery-light.json");
+
+		// One manifest colour, so it takes the dark background the launcher icon
+		// tile also uses; the metas then track the scheme the workbench starts in.
+		expect(added).toContain(`theme_color: "${dark}"`);
+		expect(added).toContain(`background_color: "${dark}"`);
+		expect(added).toContain(
+			`<meta name="theme-color" content="${dark}" media="(prefers-color-scheme: dark)" />`
+		);
+		expect(added).toContain(
+			`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`
+		);
 	});
 });

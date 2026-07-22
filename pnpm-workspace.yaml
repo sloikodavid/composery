@@ -7,8 +7,8 @@ catalog:
   "@types/node": 24.13.2
   "@types/react": ^19.2.15
   concurrently: ^10.0.3
-  eslint: 9.39.4
-  prettier: 3.8.3
+  eslint: 9.39.5
+  prettier: 3.9.5
   typescript: 6.0.3
   vitest: 4.1.10
 

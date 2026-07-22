@@ -1,6 +1,6 @@
 import * as path from "path"
 
-const MAX_EXEC_TIMEOUT_SEC = 24 * 60 * 60
+export const MAX_EXEC_TIMEOUT_SEC = 24 * 60 * 60
 const MAX_EXEC_OUTPUT_BYTES = 64 * 1024 * 1024
 const MAX_RATE_RPS = 1000
 const MAX_RATE_BURST = 10_000

@@ -4,7 +4,7 @@ import { BoxTable } from "./_components/box-table";
 import { CheckoutRedirect } from "./_components/checkout-redirect";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { PageTemplate } from "@/components/page-template";
-import { buttonVariants } from "@/components/button";
+import { buttonVariants } from "@/components/base/button";
 import { cn } from "@/lib/utils";
 import { redirectIfSignedOut } from "@/lib/route-guards";
 

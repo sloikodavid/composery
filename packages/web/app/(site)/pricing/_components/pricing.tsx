@@ -18,11 +18,11 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/button";
-import { Faq } from "@/components/faq";
-import { FadingText } from "@/components/fading-text";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { Input } from "@/components/input";
+import { buttonVariants } from "@/components/base/button";
+import { Faq } from "./faq";
+import { FadingText } from "./fading-text";
+import { GitHubLogo } from "@/components/icons/github-logo";
+import { Input } from "@/components/base/input";
 import { PageTemplate } from "@/components/page-template";
 import { api } from "@/convex/_generated/api";
 import {
@@ -166,15 +166,26 @@ function BoxCheckout({
 	const { user } = useUser();
 	// Clerk resolves after mount, so the suggestion is derived rather than
 	// seeded into state; typing takes over from then on.
-	const [typedSlug, setTypedSlug] = useState<string | null>(initialSlug || null);
+	const [typedSlug, setTypedSlug] = useState<string | null>(
+		initialSlug || null
+	);
 	const [submitting, setSubmitting] = useState(false);
 	const suggestedSlug = sanitizeSlug(
 		user?.username ??
 			user?.primaryEmailAddress?.emailAddress.split("@")[0] ??
 			""
 	);
+	// Checked before it's shown: landing on a prefilled slug that's already
+	// taken reads as an error the visitor didn't cause, so an unavailable
+	// suggestion just leaves the field empty.
+	const suggestionAvailability = useQuery(
+		api.user.checkout.slugAvailability,
+		typedSlug === null && isValidSlugFormat(suggestedSlug)
+			? { slug: suggestedSlug }
+			: "skip"
+	);
 	const slug =
-		typedSlug ?? (isValidSlugFormat(suggestedSlug) ? suggestedSlug : "");
+		typedSlug ?? (suggestionAvailability?.available ? suggestedSlug : "");
 	const normalizedSlug = sanitizeSlug(slug);
 	const slugFormatValid = isValidSlugFormat(normalizedSlug);
 	const availability = useQuery(
@@ -184,7 +195,6 @@ function BoxCheckout({
 	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
 	const slugAvailable = availability?.available ?? false;
 	const slugVisuallyInvalid = normalizedSlug.length > 0 && !slugFormatValid;
-	const slugInvalid = normalizedSlug.length >= 3 && !slugFormatValid;
 	const slugTaken = slugFormatValid && availability != null && !slugAvailable;
 	const canCheckout =
 		!authenticationLoading &&
@@ -194,13 +204,12 @@ function BoxCheckout({
 			availability?.resumable === true);
 	const checkoutUnavailable =
 		checkoutAvailability?.available === false && !availability?.resumable;
+	// A rejected slug already shows as a red field, so the only words here are
+	// for the one state that isn't about the slug at all: no capacity for new
+	// boxes.
 	const slugError = checkoutUnavailable
-		? "Unavailable"
-		: slugInvalid
-			? "Invalid"
-			: slugTaken
-				? "Taken"
-				: "";
+		? (checkoutAvailability.message ?? "Unavailable")
+		: "";
 
 	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -237,15 +246,12 @@ function BoxCheckout({
 			<div className="absolute right-0 bottom-full left-0 mb-1 flex min-h-5 items-center justify-end">
 				<span
 					aria-live="polite"
+					className="min-w-0"
 					id="box-slug-status"
-					title={
-						checkoutUnavailable
-							? (checkoutAvailability.message ?? undefined)
-							: undefined
-					}
+					title={slugError || undefined}
 				>
 					<FadingText
-						className="truncate text-xs font-medium text-destructive"
+						className="max-w-full truncate text-xs font-medium text-destructive"
 						text={slugError}
 					/>
 				</span>
@@ -309,7 +315,7 @@ export function Pricing({
 			<div className="space-y-8">
 				<div className="grid gap-5 md:grid-cols-2">
 					<PlanCard
-						descriptor="..with an always-on secure Composery."
+						descriptor="..with a secure + always-on Composery."
 						features={MANAGED_FEATURES}
 						name="Box"
 						period={
@@ -340,7 +346,7 @@ export function Pricing({
 							rel="noreferrer"
 							target="_blank"
 						>
-							<GitHubIcon className="size-4" />
+							<GitHubLogo className="size-4" />
 							Go to repo
 						</a>
 					</PlanCard>

@@ -4,8 +4,8 @@ import { ConvexError } from "convex/values";
 import { ConstructionIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect } from "react";
 import { PageTemplate } from "@/components/page-template";
-import { Button } from "@/components/button";
-import { Card, CardContent } from "@/components/card";
+import { Button } from "@/components/base/button";
+import { Card, CardContent } from "@/components/base/card";
 
 type ErrorPageProps = {
 	error: Error & { digest?: string };

@@ -1,7 +1,7 @@
 import { LayoutGridIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { ConsoleHome } from "./_components/console-home";
-import { OpenInVercel } from "@/components/open-in-vercel";
+import { OpenInVercel } from "@/components/open-in";
 import { PageTemplate } from "@/components/page-template";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 

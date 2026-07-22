@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -50,7 +50,7 @@ jobs:
 
   build-submit:
     needs: validate
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     environment: mobile-production
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -96,7 +96,7 @@ jobs:
 
   publish-apk:
     needs: [validate, build-submit]
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     environment: mobile-production
     permissions:
       contents: write

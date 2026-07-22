@@ -8,22 +8,23 @@ import {
 } from "convex/react";
 import { useState, type ReactNode } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { BoxStatusAction } from "@/components/box-status-action";
-import { ChangeSlugDialog } from "@/components/change-slug-dialog";
-import { FlagsTable } from "@/components/flags-table";
-import { MonitorCard } from "@/components/monitor-card";
-import { OpenInConvex } from "@/components/open-in-convex";
-import { OpenInHetzner } from "@/components/open-in-hetzner";
-import { OpenInPolar } from "@/components/open-in-polar";
-import { RuntimeHealthNotice } from "@/components/runtime-health-notice";
-import { RecoveryDialog } from "@/components/recovery-dialog";
+import { BoxStatusAction } from "@/components/boxes/status-action";
+import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
+import { FlagsTable } from "@/components/boxes/flags-table";
+import { MonitorCard } from "@/components/boxes/monitor-card";
+import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
+import { RepairDialog } from "@/components/boxes/repair-dialog";
+import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
-import { StatusText } from "@/components/status-text";
-import { DEFAULT_RANGE, type MetricsRange } from "@/components/metrics-chart";
+import { StatusText } from "@/components/boxes/status-text";
+import {
+	DEFAULT_RANGE,
+	type MetricsRange
+} from "@/components/boxes/metrics-chart";
 import { ConsoleBoxSnapshots } from "./console-box-snapshots";
-import { SuspendDialog } from "@/components/suspend-dialog";
-import { Card, CardContent } from "@/components/card";
-import { Separator } from "@/components/separator";
+import { SuspendDialog } from "./suspend-dialog";
+import { Card, CardContent } from "@/components/base/card";
+import { Separator } from "@/components/base/separator";
 import {
 	Table,
 	TableBody,
@@ -33,7 +34,7 @@ import {
 	TableHeader,
 	TableLoadingRow,
 	TableRow
-} from "@/components/table";
+} from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useBusyAction } from "@/hooks/use-busy-action";
@@ -100,10 +101,10 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 	return (
 		<>
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table>
+				<Table cols={["fluid", "datetime", "status", "actions-1"]}>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="w-full min-w-48 pl-4">
+							<TableHead className="pl-4">
 								<SortHeader
 									label="Operation"
 									sort={operationSort}
@@ -136,7 +137,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 					</TableHeader>
 					<TableBody>
 						{operations.status === "LoadingFirstPage" ? (
-							<TableLoadingRow span={4} />
+							<TableLoadingRow />
 						) : sortedOperations.length > 0 ? (
 							sortedOperations.map((operation) => {
 								const detail = operationDetail(operation);
@@ -145,7 +146,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 										className={detail ? "[&>td]:align-top" : undefined}
 										key={operation._id}
 									>
-										<TableCell className="max-w-0 pl-4">
+										<TableCell className="pl-4">
 											<div className="min-w-0">
 												<p className="font-medium wrap-break-word text-foreground">
 													{operation.type}
@@ -175,7 +176,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 								);
 							})
 						) : (
-							<TableEmptyRow span={4}>No operations.</TableEmptyRow>
+							<TableEmptyRow>No operations.</TableEmptyRow>
 						)}
 					</TableBody>
 				</Table>
@@ -198,10 +199,10 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 			) : null}
 
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table>
+				<Table cols={["fluid", "datetime", "actions-1"]}>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="w-full min-w-48 pl-4">
+							<TableHead className="pl-4">
 								<SortHeader label="Event" sort={eventSort} sortKey="type" />
 							</TableHead>
 							<TableHead>
@@ -223,14 +224,14 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 					</TableHeader>
 					<TableBody>
 						{events.status === "LoadingFirstPage" ? (
-							<TableLoadingRow span={3} />
+							<TableLoadingRow />
 						) : sortedEvents.length > 0 ? (
 							sortedEvents.map((event) => (
 								<TableRow
 									className={event.message ? "[&>td]:align-top" : undefined}
 									key={event._id}
 								>
-									<TableCell className="max-w-0 pl-4">
+									<TableCell className="pl-4">
 										<div className="min-w-0">
 											<p className="font-medium wrap-break-word text-foreground">
 												{event.type}
@@ -254,7 +255,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 								</TableRow>
 							))
 						) : (
-							<TableEmptyRow span={3}>No events.</TableEmptyRow>
+							<TableEmptyRow>No events.</TableEmptyRow>
 						)}
 					</TableBody>
 				</Table>
@@ -295,9 +296,8 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 	const changeSlug = useMutation(api.staff.boxes.changeBoxSlug);
 	const suspendBox = useAction(api.staff.boxes.suspendBox);
 	const unsuspendBox = useAction(api.staff.boxes.unsuspendBox);
-	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
 	const recover = useAction(api.staff.boxes.recover);
-	const runtimeHealth = useAction(api.staff.boxes.runtimeHealth);
+	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.staff.boxes.runtimeLogs);
 	const setUserSuspended = useAction(api.staff.users.setUserSuspended);
 	const { busy, run } = useBusyAction();
@@ -439,13 +439,6 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 
 	return (
 		<div className="page-fade-in space-y-4">
-			{box.status !== "deleted" ? (
-				<RuntimeHealthNotice
-					check={() => runtimeHealth({ boxId: box.id })}
-					detail="The VPS may still be running. Use Recovery to check each layer and try data-preserving repairs before resetting it."
-					status={box.status}
-				/>
-			) : null}
 			<Card>
 				<CardContent className="space-y-6">
 					<dl className="grid gap-4 text-sm sm:grid-cols-2">
@@ -550,14 +543,19 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 									</AnimatedIconButton>
 								) : null}
 								<ConsoleBoxSnapshots boxId={box.id} status={box.status} />
-								<RecoveryDialog
+								<RepairDialog
+									boxStatus={box.status}
 									busy={busy}
 									check={() => recoveryStatus({ boxId: box.id })}
-									onRecover={(type) =>
-										run(`recovery-${type}`, "Recovery started", () =>
-											recover({ boxId: box.id, type })
+									onRepair={() =>
+										run("repair", "Repair started", () =>
+											recover({ boxId: box.id })
 										)
 									}
+									slug={box.slug}
+								/>
+								<ResetDialog
+									busy={busy}
 									onReset={() =>
 										run("reset", "Resetting box", () =>
 											resetBox({ boxId: box.id })

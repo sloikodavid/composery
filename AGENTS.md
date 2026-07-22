@@ -60,7 +60,6 @@
     release.yml
     smoke-nightly.yml
     smoke.yml
-  actionlint.yml
   CLA.md
   IMAGE_RELEASE.md
   MOBILE_RELEASE.md
@@ -207,6 +206,14 @@ packages/
                       narrow.js
                       touch.css
                       touch.js
+          src/
+            vs/
+              base/
+                browser/
+                  touchGate.ts
+              workbench/
+                browser/
+                  narrowGate.ts
       src/
         browser/
           media/
@@ -268,6 +275,7 @@ packages/
       asset-cache.diff
       auth-actions.diff
       auth.diff
+      bfcache-reload.diff
       branding.diff
       clipboard-ipc.diff
       clipboard-osc52.diff
@@ -284,10 +292,10 @@ packages/
       menu-home-actions.diff
       naming.diff
       narrow-fullscreen.diff
-      narrow-gate.diff
       node-engine.diff
       overlays.diff
       product-icon-themes.diff
+      pwa.diff
       qr-action.diff
       readiness.diff
       runtime-dependency-security.diff
@@ -307,7 +315,6 @@ packages/
       touch-editor.diff
       touch-enter.diff
       touch-fling-catch.diff
-      touch-gate.diff
       touch-inline-actions.diff
       touch-input-context-menu.diff
       touch-keyboard-reopen.diff
@@ -343,6 +350,7 @@ packages/
         android-icon-monochrome.png
         favicon.png
         icon.png
+        splash-icon-dark.png
         splash-icon.png
     plugins/
       android-dialog-theme.js
@@ -423,6 +431,8 @@ packages/
   web/
     app/
       (site)/
+        _components/
+          themed-shot.tsx
         boxes/
           _components/
             box-table.tsx
@@ -438,6 +448,8 @@ packages/
           error.tsx
           page.tsx
         brand/
+          _components/
+            brand-kit.tsx
           page.tsx
         console/
           _components/
@@ -455,6 +467,7 @@ packages/
                 console-box-detail.tsx
                 console-box-links.tsx
                 console-box-snapshots.tsx
+                suspend-dialog.tsx
               page.tsx
           page.tsx
         cookies/
@@ -462,12 +475,16 @@ packages/
         design/
           _components/
             design-demos.tsx
+            logo-export.tsx
+            logo-showcase.tsx
             toast-demo.tsx
           page.tsx
         licenses/
           page.tsx
         pricing/
           _components/
+            fading-text.tsx
+            faq.tsx
             pricing.tsx
           page.tsx
         privacy/
@@ -524,8 +541,35 @@ packages/
       robots.ts
       sitemap.ts
     components/
+      base/
+        badge.tsx
+        button.tsx
+        card.tsx
+        chart.tsx
+        dialog.tsx
+        dropdown-menu.tsx
+        input.tsx
+        label.tsx
+        select.tsx
+        separator.tsx
+        sonner.tsx
+        table.tsx
+        textarea.tsx
+      boxes/
+        actions-bar.tsx
+        change-slug-dialog.tsx
+        flags-table.tsx
+        metrics-chart.tsx
+        monitor-card.tsx
+        qr-dialog.tsx
+        repair-dialog.tsx
+        reset-dialog.tsx
+        running-indicator.tsx
+        snapshots-dialog.tsx
+        status-action.tsx
+        status-button.tsx
+        status-text.tsx
       icons/
-        arrow-left.tsx
         arrow-right.tsx
         arrow-up-right.tsx
         book-open.tsx
@@ -533,13 +577,14 @@ packages/
         construction.tsx
         convex.tsx
         copy.tsx
+        create.tsx
         credit-card.tsx
         delete.tsx
         download.tsx
-        github-icon.tsx
+        github-logo.tsx
         hetzner.tsx
         layout-grid.tsx
-        linkedin-icon.tsx
+        linkedin-logo.tsx
         lock.tsx
         login.tsx
         pen-tool.tsx
@@ -547,72 +592,35 @@ packages/
         plug-zap.tsx
         plus.tsx
         polar.tsx
+        registry.test.ts
         rotate-cw.tsx
+        scan-text.tsx
         square-pen.tsx
         sun-moon.tsx
         vercel.tsx
         wallet.tsx
         washing-machine.tsx
         wrench.tsx
-        x-icon.tsx
+        x-logo.tsx
         x.tsx
       animated-icon.tsx
-      badge.tsx
-      box-actions-bar.tsx
-      box-qr-dialog.tsx
-      box-status-action.tsx
-      brand-kit.tsx
-      button.tsx
-      card.tsx
-      change-slug-dialog.tsx
-      chart.tsx
+      brand-icon.tsx
       confirm-dialog.tsx
       copy-email.tsx
       copy-link-button.tsx
-      dialog.tsx
       dismiss-button.tsx
-      dropdown-menu.tsx
-      fading-text.tsx
-      faq.tsx
-      flags-table.tsx
       footer.tsx
       fumadocs-narrow-header.tsx
       fumadocs-theme-toggle.tsx
       header.tsx
-      icon.tsx
-      input.tsx
-      label.tsx
       legal-page.tsx
-      logo-export.tsx
-      logo-showcase.tsx
       logo.tsx
       mdx.tsx
-      metrics-chart.tsx
-      monitor-card.tsx
-      open-in-convex.tsx
-      open-in-dashboard.tsx
-      open-in-hetzner.tsx
-      open-in-polar.tsx
-      open-in-vercel.tsx
+      open-in.tsx
       page-template.tsx
-      recovery-dialog.tsx
-      running-indicator.tsx
-      runtime-health-notice.tsx
-      scan-text.tsx
-      select.tsx
-      separator.tsx
-      skeleton.tsx
-      snapshots-dialog.tsx
-      sonner.tsx
       sort-header.tsx
-      status-button.tsx
-      status-text.tsx
-      suspend-dialog.tsx
-      table.tsx
-      textarea.tsx
       theme-provider.tsx
       theme-toggle.tsx
-      themed-shot.tsx
     convex/
       _generated/
         api.d.ts
@@ -751,9 +759,12 @@ packages/
       nav-links.ts
       polar-dashboard.test.ts
       polar-dashboard.ts
+      repair-status.test.ts
+      repair-status.ts
       route-guards.ts
       shared.ts
       source.ts
+      table-columns.test.ts
       utils.ts
       vercel-dashboard.ts
     patches/
@@ -795,9 +806,9 @@ packages/
         .gitignore
         capture-desktop.mjs
         capture-mobile.mjs
-        finalize.py
+        finalize.mjs
         fonts.sh
-        frame.py
+        frame.mjs
         lib.mjs
         README.md
         run.sh
@@ -935,6 +946,7 @@ tests/
   support/
     patchSource.ts
   auth-routes.test.ts
+  brand-copy.test.ts
   code-server-patches.test.ts
   cross-platform.test.ts
   desktop-integration.test.ts
@@ -946,7 +958,10 @@ tests/
   password-check.test.ts
   runtime-init.test.ts
   terminal-sync.test.ts
+  tmux-session-target.test.ts
   toolchain-pins.test.ts
+  touch-editor-selection.test.ts
+  touch-list-focus.test.ts
   tree-script.test.ts
 .dockerignore
 .easignore

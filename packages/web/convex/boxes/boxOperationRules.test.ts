@@ -92,10 +92,17 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 
 	it("allows recovery from usable and failed boxes, but not suspended boxes", () => {
 		expect(isOperationAllowed("running", "recover")).toBe(true);
-		expect(isOperationAllowed("stopped", "recover")).toBe(true);
 		expect(isOperationAllowed("provisioning_failed", "recover")).toBe(true);
 		expect(isOperationAllowed("reset_failed", "recover")).toBe(true);
 		expect(isOperationAllowed("restore_failed", "recover")).toBe(true);
+		expect(isOperationAllowed("suspended", "recover")).toBe(false);
+	});
+
+	// Repair reaches the box over SSH, and both of these states leave nothing
+	// listening: stopping powers the server off. Allowing it would spend five
+	// SSH timeouts to fail, and page staff, for a box that only needed starting.
+	it("refuses recovery on boxes whose host is powered off", () => {
+		expect(isOperationAllowed("stopped", "recover")).toBe(false);
 		expect(isOperationAllowed("suspended", "recover")).toBe(false);
 	});
 

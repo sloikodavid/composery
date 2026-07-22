@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { LogoExport } from "@/components/logo-export";
-import { LogoShowcase } from "@/components/logo-showcase";
+import { LogoExport } from "./_components/logo-export";
+import { LogoShowcase } from "./_components/logo-showcase";
 import {
 	AnimatedIconsDemo,
 	AnimatedIconOnlyDemo,
@@ -23,15 +23,14 @@ import {
 } from "./_components/design-demos";
 import { ToastDemo } from "./_components/toast-demo";
 import { PageTemplate } from "@/components/page-template";
-import { StatusText } from "@/components/status-text";
-import { Badge } from "@/components/badge";
-import { Button } from "@/components/button";
-import { Card, CardContent } from "@/components/card";
+import { StatusText } from "@/components/boxes/status-text";
+import { Badge } from "@/components/base/badge";
+import { Button } from "@/components/base/button";
+import { Card, CardContent } from "@/components/base/card";
 import { CopyLinkButton } from "@/components/copy-link-button";
-import { Input } from "@/components/input";
-import { Label } from "@/components/label";
-import { Separator } from "@/components/separator";
-import { Skeleton } from "@/components/skeleton";
+import { Input } from "@/components/base/input";
+import { Label } from "@/components/base/label";
+import { Separator } from "@/components/base/separator";
 import {
 	Table,
 	TableBody,
@@ -41,8 +40,8 @@ import {
 	TableHeader,
 	TableLoadingRow,
 	TableRow
-} from "@/components/table";
-import { Textarea } from "@/components/textarea";
+} from "@/components/base/table";
+import { Textarea } from "@/components/base/textarea";
 import { BRAND_COLORS } from "shared";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 
@@ -353,15 +352,15 @@ export default async function DesignPage() {
 				</Section>
 
 				<Section
-					note="Card-table pattern used on every data page: rounded-2xl border bg-card container, content-sized columns with one flexible column (head w-full min-w-48, cells max-w-0), h-14 rows, loading and empty states."
+					note="Card-table pattern used on every data page: rounded-2xl border bg-card container, fixed column widths from the table cols tokens with one fluid column, h-14 rows, loading and empty states. The three below share one cols shape, so they are the same table at three moments - nothing moves between them."
 					title="Table"
 				>
 					<div className="space-y-4">
 						<div className="overflow-hidden rounded-2xl border border-border bg-card">
-							<Table>
+							<Table cols={["fluid", "status", "date"]}>
 								<TableHeader>
 									<TableRow>
-										<TableHead className="w-full min-w-48 pl-4">Name</TableHead>
+										<TableHead className="pl-4">Name</TableHead>
 										<TableHead>Status</TableHead>
 										<TableHead>Created</TableHead>
 									</TableRow>
@@ -369,7 +368,7 @@ export default async function DesignPage() {
 								<TableBody>
 									{TABLE_ROWS.map((row) => (
 										<TableRow className="h-14" key={row.name}>
-											<TableCell className="max-w-0 pl-4 font-medium text-foreground">
+											<TableCell className="pl-4 font-medium text-foreground">
 												{row.name}
 											</TableCell>
 											<TableCell>
@@ -387,18 +386,16 @@ export default async function DesignPage() {
 						<div className="space-y-1.5">
 							<p className="text-xs text-muted-foreground">Loading state</p>
 							<div className="overflow-hidden rounded-2xl border border-border bg-card">
-								<Table>
+								<Table cols={["fluid", "status", "date"]}>
 									<TableHeader>
 										<TableRow>
-											<TableHead className="w-full min-w-48 pl-4">
-												Name
-											</TableHead>
+											<TableHead className="pl-4">Name</TableHead>
 											<TableHead>Status</TableHead>
 											<TableHead>Created</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										<TableLoadingRow span={3} />
+										<TableLoadingRow />
 									</TableBody>
 								</Table>
 							</div>
@@ -407,18 +404,16 @@ export default async function DesignPage() {
 						<div className="space-y-1.5">
 							<p className="text-xs text-muted-foreground">Empty state</p>
 							<div className="overflow-hidden rounded-2xl border border-border bg-card">
-								<Table>
+								<Table cols={["fluid", "status", "date"]}>
 									<TableHeader>
 										<TableRow>
-											<TableHead className="w-full min-w-48 pl-4">
-												Name
-											</TableHead>
+											<TableHead className="pl-4">Name</TableHead>
 											<TableHead>Status</TableHead>
 											<TableHead>Created</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										<TableEmptyRow span={3}>No rows.</TableEmptyRow>
+										<TableEmptyRow>No rows.</TableEmptyRow>
 									</TableBody>
 								</Table>
 							</div>
@@ -475,14 +470,6 @@ export default async function DesignPage() {
 						<p className="text-sm text-muted-foreground">Above</p>
 						<Separator />
 						<p className="text-sm text-muted-foreground">Below</p>
-					</div>
-				</Section>
-
-				<Section title="Skeleton">
-					<div className="space-y-3">
-						<Skeleton className="h-4 w-48" />
-						<Skeleton className="h-4 w-32" />
-						<Skeleton className="h-20 w-full" />
 					</div>
 				</Section>
 			</div>

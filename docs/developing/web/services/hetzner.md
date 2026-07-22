@@ -212,16 +212,18 @@ It logs the server and sends a deduplicated Resend staff alert for review. Norma
 subscription/account deletion and failed-initial-delivery cleanup use the
 tracked delete workflow and do remove the server automatically.
 
-The owner and staff box pages share one Recovery dialog. Its checks cover the
-public URL, the internal SSH control channel, host disk and Docker, both Caddy
-layers, the Composery container, persistence, and `ide.service`. Its
-non-destructive actions restart inner services, recreate containers from the
-current host configuration, reboot the VPS, or restore the Composery-managed
-files in `/opt/composery-web` from Convex state before recreating containers.
-That last action reuses the same artifact renderers as provisioning; there is no
-separate recovery seed to drift. All four retain the named Docker volumes. Full
-reset remains the final, explicitly destructive option and does not delete
-existing snapshots.
+The owner and staff box pages share one Repair dialog. On open it reads
+`recoveryStatus`, which probes the public URL and inspects the host over SSH in
+parallel, and lays out each layer - website, server, Docker, reverse proxy,
+runtime container, the inner editor/web-server/persistence services, and disk -
+in plain language, read-only. Its single non-destructive **Repair**
+action rewrites the Composery-managed files in `/opt/composery-web` from Convex
+state, re-pulls the image, and force-recreates the stack (`repairRuntime`), so it
+heals both damaged host files and a wedged or crashed container in one step. It
+reuses the same artifact renderers as provisioning, so there is no separate
+recovery seed to drift, and it retains the named Docker volumes (the box's
+files). A separate Reset button rebuilds the disk from a clean image; it is the
+final, explicitly destructive option and does not delete existing snapshots.
 
 ## Box snapshots
 

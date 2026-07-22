@@ -100,6 +100,55 @@ export function extractAddedMethod(patch: string, name: string): string {
 	throw new Error(`Could not parse added method ${name}`);
 }
 
+// Every line a patch leaves behind inside its hunks - added and context both,
+// with the leading marker stripped. This is what the file reads like after the
+// patch applies, so constructs that open on an added line and close on a context
+// line (a case block whose trailing brace was already there) stay balanced.
+// Hunks are not contiguous with each other, so only use this within one hunk.
+export function postImageLines(patch: string): string {
+	return patch
+		.split(/\r?\n/)
+		.filter(
+			(line) =>
+				(line.startsWith("+") && !line.startsWith("+++")) ||
+				line.startsWith(" ")
+		)
+		.map((line) => line.slice(1))
+		.join("\n");
+}
+
+// The body of a `case <prefix>.<name>: { ... }` block the patch ships, returned
+// without its braces so it can be spliced into a stand-in method. Channel request
+// handlers only exist as case blocks, so this is the only way to exercise the
+// dispatch the patch actually ships rather than a paraphrase of it.
+export function extractAddedCaseBody(
+	patch: string,
+	name: string,
+	prefix: string
+): string {
+	const source = postImageLines(patch);
+	const marker = `case ${prefix}.${name}: {`;
+	const start = source.indexOf(marker);
+	if (start < 0) {
+		throw new Error(`Could not find added case ${prefix}.${name}`);
+	}
+
+	const open = start + marker.length - 1;
+	let depth = 0;
+	for (let i = open; i < source.length; i++) {
+		const char = source[i];
+		if (char === "{") depth++;
+		else if (char === "}") {
+			depth--;
+			if (depth === 0) {
+				return source.slice(open + 1, i);
+			}
+		}
+	}
+
+	throw new Error(`Could not parse added case ${prefix}.${name}`);
+}
+
 // An added `const name = ...;` statement (single or multi-line, ends at `;`
 // on a line boundary).
 export function extractAddedConst(patch: string, name: string): string {

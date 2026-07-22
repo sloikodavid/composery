@@ -9,14 +9,14 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 	type ChartConfig
-} from "@/components/chart";
+} from "@/components/base/chart";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/components/select";
+} from "@/components/base/select";
 import { api } from "@/convex/_generated/api";
 import { formatDate } from "@/lib/datetime";
 

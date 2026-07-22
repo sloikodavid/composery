@@ -20,7 +20,7 @@ composery-editor-{dark,light}.png    a real automation open in the editor
 1. **Capture** ([`capture-desktop.mjs`](capture-desktop.mjs),
    [`capture-mobile.mjs`](capture-mobile.mjs)) drive the instance with Playwright
    and screenshot the raw workbench into `raw/<theme>/`.
-2. **Frame** ([`frame.py`](frame.py)) wraps each capture in a device front. All
+2. **Frame** ([`frame.mjs`](frame.mjs)) wraps each capture in a device front. All
    geometry is measured off Apple's own screenshots and specs - real SF Pro
    text, real SF Symbols glyphs. Desktop: a 14" MacBook Pro display (1512x982
    pt, notch, transparent Tahoe menu bar, the real Tahoe wallpaper) with the
@@ -28,7 +28,7 @@ composery-editor-{dark,light}.png    a real automation open in the editor
    display, 62 pt corners, 1.44 mm bezel, Dynamic Island); the terminal shot
    adds the iOS 26 keyboard, measured key-by-key from Apple's own screenshot,
    below the keyboard-height viewport it was captured at.
-3. **Finalize** ([`finalize.py`](finalize.py)) builds the phone trios and copies
+3. **Finalize** ([`finalize.mjs`](finalize.mjs)) builds the phone trios and copies
    the eight named assets into `../../public/marketing/`.
 
 The iPhone keyboard targets the current public iOS 26 design. Its geometry and
@@ -52,8 +52,9 @@ Expo (8081) can keep running.
 - **Fonts + wallpapers.** `bash fonts.sh` fetches SF Pro + SF Symbols from
   Apple into `fonts/` and the Tahoe wallpaper into `wallpapers/`
   (Apple-licensed, so never committed). Needs 7-Zip.
-- **Python.** `pip install Pillow`.
-- **Playwright** browsers come with the repo's dev deps (`pnpm install`).
+- **Node + Chromium.** Run `pnpm install`, then `pnpm --filter web exec
+playwright install chromium`. The latter downloads the Chromium revision
+  pinned by the repository's Playwright dependency.
 - **A demo instance** on `:9911` with a fresh volume:
   ```bash
   docker run -d --name composery-shots -p 9911:8080 \
@@ -77,9 +78,11 @@ To rebuild the committed marketing assets from the committed raw captures on a
 fresh clone:
 
 ```bash
+pnpm install
+pnpm --filter web exec playwright install chromium
 bash fonts.sh                      # once; downloads Apple-licensed frame assets
-python frame.py
-python finalize.py
+node frame.mjs
+node finalize.mjs
 ```
 
 To replace the raw captures from a prepared live instance and then rebuild the
@@ -93,7 +96,7 @@ Or a single frame while iterating on the framing:
 
 ```bash
 node capture-desktop.mjs dark
-python frame.py && python finalize.py
+node frame.mjs && node finalize.mjs
 ```
 
 ## What is capture-only vs shipped

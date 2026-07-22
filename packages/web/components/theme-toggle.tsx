@@ -2,15 +2,15 @@
 
 import { useTheme } from "next-themes";
 import { useRef } from "react";
-import { Button } from "@/components/button";
 import {
-	SunMoonIcon,
-	type SunMoonIconHandle
-} from "@/components/icons/sun-moon";
+	AnimatedIcon,
+	type AnimatedIconHandle
+} from "@/components/animated-icon";
+import { Button } from "@/components/base/button";
 
 export function ThemeToggle() {
 	const { resolvedTheme, setTheme } = useTheme();
-	const iconRef = useRef<SunMoonIconHandle>(null);
+	const iconRef = useRef<AnimatedIconHandle>(null);
 
 	return (
 		<Button
@@ -23,7 +23,7 @@ export function ThemeToggle() {
 			type="button"
 			variant="ghost"
 		>
-			<SunMoonIcon className="size-4" ref={iconRef} size={16} />
+			<AnimatedIcon icon="sun-moon" iconRef={iconRef} />
 		</Button>
 	);
 }

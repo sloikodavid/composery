@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { Button } from "@/components/button";
+import { Button } from "@/components/base/button";
 
 export function ToastDemo() {
 	return (

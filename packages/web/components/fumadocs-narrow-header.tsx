@@ -15,9 +15,9 @@ import { SidebarIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/button";
+import { buttonVariants } from "@/components/base/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
-import { GitHubIcon } from "@/components/icons/github-icon";
+import { GitHubLogo } from "@/components/icons/github-logo";
 import { GITHUB_REPO_URL } from "@/lib/links";
 import { Logo } from "@/components/logo";
 import {
@@ -96,7 +96,7 @@ export function FumadocsNarrowHeader() {
 									rel="noreferrer"
 									target="_blank"
 								>
-									<GitHubIcon />
+									<GitHubLogo />
 								</a>
 							</div>
 							<FumadocsThemeToggle className="p-0" />

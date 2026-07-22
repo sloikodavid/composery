@@ -11,7 +11,6 @@ import type {
 } from "react";
 import { useRef } from "react";
 
-import { ArrowLeftIcon } from "@/components/icons/arrow-left";
 import { ArrowRightIcon } from "@/components/icons/arrow-right";
 import { ArrowUpRightIcon } from "@/components/icons/arrow-up-right";
 import { BookOpenIcon } from "@/components/icons/book-open";
@@ -20,6 +19,9 @@ import { ConstructionIcon } from "@/components/icons/construction";
 import { ConvexIcon } from "@/components/icons/convex";
 import { CopyIcon } from "@/components/icons/copy";
 import { CreditCardIcon } from "@/components/icons/credit-card";
+import type { AnimatedIconHandle } from "@/components/icons/create";
+
+export type { AnimatedIconHandle };
 import { DeleteIcon } from "@/components/icons/delete";
 import { DownloadIcon } from "@/components/icons/download";
 import { HetznerIcon } from "@/components/icons/hetzner";
@@ -28,9 +30,11 @@ import { LockIcon } from "@/components/icons/lock";
 import { LogInIcon } from "@/components/icons/login";
 import { PenToolIcon } from "@/components/icons/pen-tool";
 import { PlayIcon } from "@/components/icons/play";
+import { PlugZapIcon } from "@/components/icons/plug-zap";
 import { PlusIcon } from "@/components/icons/plus";
 import { PolarIcon } from "@/components/icons/polar";
 import { RotateCWIcon } from "@/components/icons/rotate-cw";
+import { ScanTextIcon } from "@/components/icons/scan-text";
 import { SquarePenIcon } from "@/components/icons/square-pen";
 import { SunMoonIcon } from "@/components/icons/sun-moon";
 import { VercelIcon } from "@/components/icons/vercel";
@@ -38,42 +42,46 @@ import { WalletIcon } from "@/components/icons/wallet";
 import { WashingMachineIcon } from "@/components/icons/washing-machine";
 import { WrenchIcon } from "@/components/icons/wrench";
 import { XIcon } from "@/components/icons/x";
-import { Button } from "@/components/button";
+import { Button } from "@/components/base/button";
 import { cn } from "@/lib/utils";
 
-export type AnimatedIconHandle = {
-	startAnimation: () => void | Promise<void>;
-	stopAnimation: () => void | Promise<void>;
+// Every @lucide-animated glyph the app can name. Adding one is a line here; the
+// name union and the /design gallery both read off this map, so neither can
+// drift from what is actually registered.
+const ICONS = {
+	"arrow-right": ArrowRightIcon,
+	"arrow-up-right": ArrowUpRightIcon,
+	"book-open": BookOpenIcon,
+	check: CheckIcon,
+	construction: ConstructionIcon,
+	convex: ConvexIcon,
+	copy: CopyIcon,
+	"credit-card": CreditCardIcon,
+	delete: DeleteIcon,
+	download: DownloadIcon,
+	hetzner: HetznerIcon,
+	"layout-grid": LayoutGridIcon,
+	lock: LockIcon,
+	login: LogInIcon,
+	"pen-tool": PenToolIcon,
+	play: PlayIcon,
+	"plug-zap": PlugZapIcon,
+	plus: PlusIcon,
+	polar: PolarIcon,
+	"rotate-cw": RotateCWIcon,
+	"scan-text": ScanTextIcon,
+	"square-pen": SquarePenIcon,
+	"sun-moon": SunMoonIcon,
+	vercel: VercelIcon,
+	wallet: WalletIcon,
+	"washing-machine": WashingMachineIcon,
+	wrench: WrenchIcon,
+	x: XIcon
 };
 
-export type AnimatedIconName =
-	| "arrow-left"
-	| "arrow-right"
-	| "arrow-up-right"
-	| "book-open"
-	| "check"
-	| "construction"
-	| "convex"
-	| "copy"
-	| "credit-card"
-	| "delete"
-	| "download"
-	| "hetzner"
-	| "layout-grid"
-	| "lock"
-	| "login"
-	| "pen-tool"
-	| "play"
-	| "plus"
-	| "polar"
-	| "rotate-cw"
-	| "square-pen"
-	| "sun-moon"
-	| "vercel"
-	| "wallet"
-	| "washing-machine"
-	| "wrench"
-	| "x";
+export const ANIMATED_ICON_NAMES = Object.keys(ICONS) as AnimatedIconName[];
+
+export type AnimatedIconName = keyof typeof ICONS;
 
 type AnimatedIconPosition = "start" | "end" | "only";
 
@@ -92,7 +100,22 @@ type HandlerProps<T extends HTMLElement> = {
 	onMouseLeave?: MouseEventHandler<T>;
 };
 
-function useAnimatedIconHandlers<T extends HTMLElement>({
+// True only when the browser would paint a focus ring (keyboard/AT focus), so
+// mouse clicks and programmatic focus don't trigger the hover animation. Older
+// engines that reject the selector fall back to not animating.
+function isFocusVisible(element: HTMLElement) {
+	try {
+		return element.matches(":focus-visible");
+	} catch {
+		return false;
+	}
+}
+
+// Wires a whole interactive element (link, anchor, button) to an icon's handle,
+// so the icon animates while the target - not just the glyph - is hovered or
+// keyboard-focused. Anything rendering an animated icon inside its own trigger
+// should use this rather than repeating the four handlers.
+export function useAnimatedIconHandlers<T extends HTMLElement>({
 	onBlur,
 	onFocus,
 	onMouseEnter,
@@ -108,7 +131,13 @@ function useAnimatedIconHandlers<T extends HTMLElement>({
 				onBlur?.(event);
 			},
 			onFocus: (event) => {
-				void iconRef.current?.startAnimation();
+				// Only animate on keyboard focus. Programmatic focus - e.g. a dialog
+				// autofocusing its first button on open - would otherwise start the
+				// hover animation and hold it, leaving the icon frozen mid-pose until
+				// the element blurs.
+				if (isFocusVisible(event.currentTarget)) {
+					void iconRef.current?.startAnimation();
+				}
 				onFocus?.(event);
 			},
 			onMouseEnter: (event) => {
@@ -123,83 +152,33 @@ function useAnimatedIconHandlers<T extends HTMLElement>({
 	};
 }
 
-function AnimatedIconGlyph({
+// A named glyph bound to a handle. Exported for the odd trigger that lays its
+// icon out itself (see StatusButton) and so still needs the ref, but not the
+// start/end placement AnimatedIconContents does.
+export function AnimatedIcon({
 	className,
 	icon,
 	iconRef,
-	position,
+	position = "only",
 	size = 16
 }: {
 	className?: string;
 	icon: AnimatedIconName;
 	iconRef: Ref<AnimatedIconHandle>;
-	position: AnimatedIconPosition;
+	position?: AnimatedIconPosition;
 	size?: number;
 }) {
-	const iconProps = {
-		"aria-hidden": true,
-		className: cn("size-4", className),
-		"data-icon": position === "only" ? undefined : `inline-${position}`,
-		ref: iconRef,
-		size
-	};
+	const Glyph = ICONS[icon];
 
-	switch (icon) {
-		case "arrow-left":
-			return <ArrowLeftIcon {...iconProps} />;
-		case "arrow-right":
-			return <ArrowRightIcon {...iconProps} />;
-		case "arrow-up-right":
-			return <ArrowUpRightIcon {...iconProps} />;
-		case "book-open":
-			return <BookOpenIcon {...iconProps} />;
-		case "check":
-			return <CheckIcon {...iconProps} />;
-		case "construction":
-			return <ConstructionIcon {...iconProps} />;
-		case "convex":
-			return <ConvexIcon {...iconProps} />;
-		case "copy":
-			return <CopyIcon {...iconProps} />;
-		case "credit-card":
-			return <CreditCardIcon {...iconProps} />;
-		case "delete":
-			return <DeleteIcon {...iconProps} />;
-		case "download":
-			return <DownloadIcon {...iconProps} />;
-		case "hetzner":
-			return <HetznerIcon {...iconProps} />;
-		case "layout-grid":
-			return <LayoutGridIcon {...iconProps} />;
-		case "lock":
-			return <LockIcon {...iconProps} />;
-		case "login":
-			return <LogInIcon {...iconProps} />;
-		case "pen-tool":
-			return <PenToolIcon {...iconProps} />;
-		case "play":
-			return <PlayIcon {...iconProps} />;
-		case "plus":
-			return <PlusIcon {...iconProps} />;
-		case "polar":
-			return <PolarIcon {...iconProps} />;
-		case "rotate-cw":
-			return <RotateCWIcon {...iconProps} />;
-		case "square-pen":
-			return <SquarePenIcon {...iconProps} />;
-		case "sun-moon":
-			return <SunMoonIcon {...iconProps} />;
-		case "vercel":
-			return <VercelIcon {...iconProps} />;
-		case "wallet":
-			return <WalletIcon {...iconProps} />;
-		case "washing-machine":
-			return <WashingMachineIcon {...iconProps} />;
-		case "wrench":
-			return <WrenchIcon {...iconProps} />;
-		case "x":
-			return <XIcon {...iconProps} />;
-	}
+	return (
+		<Glyph
+			aria-hidden
+			className={cn("size-4", className)}
+			data-icon={position === "only" ? undefined : `inline-${position}`}
+			ref={iconRef}
+			size={size}
+		/>
+	);
 }
 
 function AnimatedIconContents({
@@ -211,7 +190,7 @@ function AnimatedIconContents({
 	iconSize
 }: SharedProps & { iconRef: Ref<AnimatedIconHandle> }) {
 	const glyph = (
-		<AnimatedIconGlyph
+		<AnimatedIcon
 			className={iconClassName}
 			icon={icon}
 			iconRef={iconRef}

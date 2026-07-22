@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Button } from "@/components/button";
+import { Button } from "@/components/base/button";
 import { cn } from "@/lib/utils";
 import { inter } from "./fonts";
 import "./globals.css";

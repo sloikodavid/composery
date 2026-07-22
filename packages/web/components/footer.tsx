@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
-import { GitHubIcon } from "@/components/icons/github-icon";
-import { LinkedInIcon } from "@/components/icons/linkedin-icon";
-import { XIcon } from "@/components/icons/x-icon";
+import { GitHubLogo } from "@/components/icons/github-logo";
+import { LinkedInLogo } from "@/components/icons/linkedin-logo";
+import { XLogo } from "@/components/icons/x-logo";
 import { Logo } from "@/components/logo";
 import {
 	GITHUB_ADVISORY_URL,
@@ -12,10 +12,10 @@ import {
 	LINKEDIN_URL,
 	X_URL
 } from "@/lib/links";
+import { appTagline } from "@/lib/shared";
 
 type FooterLink =
-	| { href: string; label: string }
-	| { copyEmail: true; label: string };
+	{ href: string; label: string } | { copyEmail: true; label: string };
 
 const PRODUCT_LINKS: FooterLink[] = [
 	{ href: "/boxes", label: "Boxes" },
@@ -51,8 +51,7 @@ export function Footer() {
 				<div className="max-w-sm space-y-3">
 					<Logo size="h-12" />
 					<p className="text-balance text-sm leading-6 text-muted-foreground">
-						A secure cloud computer with a powerful UI, usable from any phone or
-						browser.
+						{appTagline}
 					</p>
 				</div>
 
@@ -72,7 +71,7 @@ export function Footer() {
 							rel="noreferrer"
 							target="_blank"
 						>
-							<XIcon className="size-4" />
+							<XLogo className="size-4" />
 							<span className="sr-only sm:not-sr-only">X</span>
 						</a>
 						<a
@@ -81,7 +80,7 @@ export function Footer() {
 							rel="noreferrer"
 							target="_blank"
 						>
-							<LinkedInIcon className="size-4" />
+							<LinkedInLogo className="size-4" />
 							<span className="sr-only sm:not-sr-only">LinkedIn</span>
 						</a>
 						<a
@@ -90,7 +89,7 @@ export function Footer() {
 							rel="noreferrer"
 							target="_blank"
 						>
-							<GitHubIcon className="size-4" />
+							<GitHubLogo className="size-4" />
 							<span className="sr-only sm:not-sr-only">GitHub</span>
 						</a>
 					</div>

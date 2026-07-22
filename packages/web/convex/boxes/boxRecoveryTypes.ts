@@ -1,14 +1,5 @@
 import { v, type Infer } from "convex/values";
 
-export const vRecoveryType = v.union(
-	v.literal("restart_services"),
-	v.literal("recreate_containers"),
-	v.literal("restore_runtime"),
-	v.literal("reboot_server")
-);
-
-export type RecoveryType = Infer<typeof vRecoveryType>;
-
 export const vRuntimeComponentState = v.union(
 	v.literal("active"),
 	v.literal("inactive"),

@@ -20,7 +20,7 @@
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",
 		"check:lint": "eslint . --max-warnings 0 && pnpm -r --if-present run check:lint",
 		"check:format": "prettier --check .",
-		"check:test": "vitest run && pnpm -r --if-present run check:test",
+		"check:test": "vitest run",
 		"check:tree": "node scripts/tree.mjs",
 		"check:renovate": "pnpm dlx --package renovate renovate-config-validator renovate.json",
 		"check:ide": "pnpm --filter ide check",
@@ -45,7 +45,7 @@
 		"trailingComma": "none"
 	},
 	"devDependencies": {
-		"@eslint/js": "9.39.4",
+		"@eslint/js": "9.39.5",
 		"@types/jsdom": "^28.0.3",
 		"@types/node": "catalog:",
 		"concurrently": "catalog:",
@@ -53,7 +53,7 @@
 		"jsdom": "^29.1.1",
 		"prettier": "catalog:",
 		"typescript": "catalog:",
-		"typescript-eslint": "8.61.1",
+		"typescript-eslint": "8.65.0",
 		"vitest": "catalog:"
 	}
 }

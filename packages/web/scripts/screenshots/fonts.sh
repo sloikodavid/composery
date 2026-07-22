@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 mkdir -p fonts wallpapers
 
 # macOS Tahoe default wallpaper, light + dark (6K originals).
-WP="https://raw.githubusercontent.com/LAYTAT/macOS-Wallpapers/master"
+WP="https://raw.githubusercontent.com/LAYTAT/macOS-Wallpapers/fae15d0c4fc58790bc93de33699e0adbb0ca987f"
 [ -f wallpapers/tahoe-light.png ] || curl -sL -o wallpapers/tahoe-light.png "$WP/26-Tahoe-Light-6K.png"
 [ -f wallpapers/tahoe-dark.png ] || curl -sL -o wallpapers/tahoe-dark.png "$WP/26-Tahoe-Dark-6K.png"
 
@@ -41,5 +41,18 @@ cp "$tmp/pro_x/Library/Fonts/SF-Pro-Text-Regular.otf" fonts/
 "$SZ" x -y "$tmp/sym_pkg/Payload" -o"$tmp/sym_p" >/dev/null
 "$SZ" x -y "$tmp/sym_p/Payload~" -o"$tmp/sym_x" >/dev/null
 cp "$tmp/sym_x/Applications/SF Symbols.app/Contents/Resources/Fonts/SFSymbolsFallback.otf" fonts/SF-Symbols.otf
+
+hash() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{print $1}';
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+check() {
+  [ "$(hash "$2")" = "$1" ] || { echo "Unexpected $2; downloaded assets changed. Refuse to render."; exit 1; }
+}
+check 2da7e3fdb744566f9c96a9a3e48949e8b24209fc0b9bcf1d101f5dc88359f065 fonts/SF-Pro-Text-Regular.otf
+check 1314411ab8c720273a9b57a6ad1d51888bd14ec6db3569970078bfb27c002bd9 fonts/SF-Pro-Text-Semibold.otf
+check bba5e09ec296a17e7dfc4644caa2e3b2b1524c5630a7dfd708140cc51628c7ca fonts/SF-Symbols.otf
+check 29aa57a43f972ab28a0820031cde598d1a32ed5e70fe8418b0e35e37cb3827b4 wallpapers/tahoe-light.png
+check 86a2b684a31b02dc12f054af48d061e9c2ec0b8f12f869926ace64c83f5018db wallpapers/tahoe-dark.png
 
 echo "Done:"; ls -la fonts/

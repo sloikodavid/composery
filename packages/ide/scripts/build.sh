@@ -44,6 +44,12 @@ echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches)
 echo "== 5. overlay: our whole owned files, path-mirrored =="
 cp -r "$PACKAGE_ROOT/overlay/src/." "$BUILD/src/"
 cp -r "$PACKAGE_ROOT/overlay/lib/vscode/extensions/." "$BUILD/lib/vscode/extensions/"
+# Whole files we own inside VS Code's source tree. Without this a brand-new file
+# under lib/vscode/src could only arrive as a /dev/null patch, which made the
+# overlay-vs-patch split a rule plus an exception. A regen test refuses to let
+# anything here shadow a path that exists upstream, so the tripwire quilt gives
+# us for modified files is not lost for whole ones.
+cp -r "$PACKAGE_ROOT/overlay/lib/vscode/src/." "$BUILD/lib/vscode/src/"
 
 echo "== 6. rebrand the assembled IDE tree and fail on old live product names =="
 node "$PACKAGE_ROOT/scripts/rebrand.mjs" "$BUILD"

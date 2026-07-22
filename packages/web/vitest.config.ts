@@ -9,6 +9,10 @@ export default defineConfig({
 	},
 	test: {
 		environment: "node",
-		include: ["lib/**/*.test.ts", "convex/**/*.test.ts"]
+		include: [
+			"components/**/*.test.ts",
+			"lib/**/*.test.ts",
+			"convex/**/*.test.ts"
+		]
 	}
 });

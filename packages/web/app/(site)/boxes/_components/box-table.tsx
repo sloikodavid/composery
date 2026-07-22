@@ -1,22 +1,23 @@
 "use client";
 
 import { usePaginatedQuery } from "convex/react";
-import { LoaderIcon } from "lucide-react";
 import Link from "next/link";
 import {
 	AnimatedIconAnchor,
 	AnimatedIconButton
 } from "@/components/animated-icon";
-import { StatusText } from "@/components/status-text";
-import { buttonVariants } from "@/components/button";
+import { StatusText } from "@/components/boxes/status-text";
+import { buttonVariants } from "@/components/base/button";
 import {
 	Table,
 	TableBody,
 	TableCell,
+	TableEmptyRow,
 	TableHead,
 	TableHeader,
+	TableLoadingRow,
 	TableRow
-} from "@/components/table";
+} from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
 import { formatDate } from "@/lib/datetime";
 import { boxPath } from "@/lib/box-route";
@@ -40,10 +41,10 @@ export function BoxTable() {
 	return (
 		<div className="space-y-3">
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table>
+				<Table cols={["fluid", "date", "status", "actions-1"]}>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="w-full min-w-48 pl-4">Slug</TableHead>
+							<TableHead className="pl-4">Slug</TableHead>
 							<TableHead>Created</TableHead>
 							<TableHead>Status</TableHead>
 							<TableHead className="pr-4">
@@ -54,11 +55,7 @@ export function BoxTable() {
 
 					{loadingFirstPage ? (
 						<TableBody>
-							<TableRow>
-								<TableCell className="h-14 text-center" colSpan={4}>
-									<LoaderIcon className="mx-auto size-5 animate-spin text-muted-foreground" />
-								</TableCell>
-							</TableRow>
+							<TableLoadingRow />
 						</TableBody>
 					) : boxes.length > 0 ? (
 						/* The slug link fills its whole cell, and hovering it tints the
@@ -70,7 +67,7 @@ export function BoxTable() {
 									className="h-14 has-[[data-link]:hover]:bg-muted/50"
 									key={box.id}
 								>
-									<TableCell className="relative max-w-0 p-0">
+									<TableCell className="relative p-0">
 										<Link
 											className="absolute inset-0 flex items-center pl-4"
 											data-link
@@ -105,14 +102,7 @@ export function BoxTable() {
 						</TableBody>
 					) : (
 						<TableBody>
-							<TableRow>
-								<TableCell
-									className="h-14 text-center text-muted-foreground"
-									colSpan={4}
-								>
-									No boxes yet.
-								</TableCell>
-							</TableRow>
+							<TableEmptyRow>No boxes yet.</TableEmptyRow>
 						</TableBody>
 					)}
 				</Table>

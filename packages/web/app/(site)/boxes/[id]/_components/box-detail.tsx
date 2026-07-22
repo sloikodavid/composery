@@ -6,18 +6,22 @@ import {
 	AnimatedIconAnchor,
 	AnimatedIconButton
 } from "@/components/animated-icon";
-import { BoxStatusAction } from "@/components/box-status-action";
-import { ChangeSlugDialog } from "@/components/change-slug-dialog";
-import { MonitorCard } from "@/components/monitor-card";
-import { RecoveryDialog } from "@/components/recovery-dialog";
-import { RuntimeHealthNotice } from "@/components/runtime-health-notice";
-import { DEFAULT_RANGE, type MetricsRange } from "@/components/metrics-chart";
+import { BoxStatusAction } from "@/components/boxes/status-action";
+import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
+import { MonitorCard } from "@/components/boxes/monitor-card";
+import { RepairDialog } from "@/components/boxes/repair-dialog";
+import { ResetDialog } from "@/components/boxes/reset-dialog";
+import {
+	DEFAULT_RANGE,
+	type MetricsRange
+} from "@/components/boxes/metrics-chart";
 import { BoxSnapshots } from "./box-snapshots";
-import { Card, CardContent } from "@/components/card";
-import { buttonVariants } from "@/components/button";
+import { Card, CardContent } from "@/components/base/card";
+import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { formatDate } from "@/lib/datetime";
+import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
@@ -32,9 +36,8 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 	const resetBox = useMutation(api.user.boxes.reset);
 	const retryProvision = useMutation(api.user.boxes.retryProvision);
 	const changeSlug = useMutation(api.user.boxes.changeSlug);
-	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
 	const recover = useAction(api.user.boxes.recover);
-	const runtimeHealth = useAction(api.user.boxes.runtimeHealth);
+	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.user.boxes.runtimeLogs);
 	const { busy, run } = useBusyAction();
 
@@ -65,11 +68,6 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 		// incl. its border, main padding, breadcrumb row, gaps), so the card
 		// fills the rest of the viewport without making the page scroll.
 		<div className="page-fade-in flex h-[calc(100dvh-10rem-1px)] min-h-112 flex-col gap-4">
-			<RuntimeHealthNotice
-				check={() => runtimeHealth({ slug: box.slug })}
-				detail="The server may still be running. Use Recovery to check each layer and try data-preserving repairs before resetting it."
-				status={box.status}
-			/>
 			<MonitorCard
 				className="min-h-0 flex-1"
 				loadLogs={() => runtimeLogs({ slug: box.slug })}
@@ -126,7 +124,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					</AnimatedIconButton>
 				)}
 				<AnimatedIconAnchor
-					className={buttonVariants({ variant: "outline" })}
+					className={cn(buttonVariants({ variant: "outline" }))}
 					href={new URL("/change-password", box.runtimeUrl).toString()}
 					icon="lock"
 					iconPosition="start"
@@ -139,14 +137,17 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					onSubmit={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
 				/>
 				<BoxSnapshots slug={box.slug} status={box.status} />
-				<RecoveryDialog
+				<RepairDialog
+					boxStatus={box.status}
 					busy={busy}
 					check={() => recoveryStatus({ slug: box.slug })}
-					onRecover={(type) =>
-						run(`recovery-${type}`, "Recovery started", () =>
-							recover({ slug: box.slug, type })
-						)
+					onRepair={() =>
+						run("repair", "Repair started", () => recover({ slug: box.slug }))
 					}
+					slug={box.slug}
+				/>
+				<ResetDialog
+					busy={busy}
 					onReset={() =>
 						run("reset", "Resetting box", () =>
 							resetBox({ slug: box.slug, confirmation: box.slug })

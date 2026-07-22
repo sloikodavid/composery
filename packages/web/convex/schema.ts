@@ -127,6 +127,8 @@ export const vSnapshotStatus = v.union(
 	v.literal("deleting")
 );
 
+export type SnapshotStatus = Infer<typeof vSnapshotStatus>;
+
 export const vStaffAlertSeverity = v.union(
 	v.literal("warning"),
 	v.literal("critical"),

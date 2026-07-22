@@ -750,31 +750,6 @@ export const powerOnServer = internalAction({
 	}
 });
 
-export const rebootServer = internalAction({
-	args: {
-		serverId: v.number()
-	},
-	handler: async (_ctx, args) => {
-		if ((await serverStatus(args.serverId)) === "off") {
-			const response = await hetznerRequest<HetznerActionResponse>(
-				`/servers/${args.serverId}/actions/poweron`,
-				{ method: "POST" }
-			);
-			if (!response.action)
-				throw new Error("Hetzner did not return an action.");
-			await waitForActionSuccess(response.action.id);
-			return;
-		}
-
-		const response = await hetznerRequest<HetznerActionResponse>(
-			`/servers/${args.serverId}/actions/reboot`,
-			{ method: "POST" }
-		);
-		if (!response.action) throw new Error("Hetzner did not return an action.");
-		await waitForActionSuccess(response.action.id);
-	}
-});
-
 export function snapshotImageListPath(slug: string) {
 	const params = new URLSearchParams({
 		type: "snapshot",

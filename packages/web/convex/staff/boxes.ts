@@ -19,9 +19,7 @@ import {
 import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
 import {
 	vRecoveryStatus,
-	vRecoveryType,
-	type RecoveryStatus,
-	type RecoveryType
+	type RecoveryStatus
 } from "../boxes/boxRecoveryTypes";
 import {
 	beginBoxOperationRecord,
@@ -524,27 +522,6 @@ export const runtimeLogs = action({
 	}
 });
 
-export const runtimeHealth = action({
-	args: {
-		boxId: v.id("boxes")
-	},
-	returns: v.object({
-		reachable: v.boolean()
-	}),
-	handler: async (ctx, args): Promise<{ reachable: boolean }> => {
-		await requireCapabilityInAction(ctx, "box_operations");
-		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box) throw new ConvexError("Box not found.");
-
-		return await ctx.runAction(internal.boxes.boxHealth.probeRuntime, {
-			boxId: box._id
-		});
-	}
-});
-
 export const recoveryStatus = action({
 	args: { boxId: v.id("boxes") },
 	returns: vRecoveryStatus,
@@ -562,7 +539,7 @@ export const recoveryStatus = action({
 });
 
 export const recover = action({
-	args: { boxId: v.id("boxes"), type: vRecoveryType },
+	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
@@ -571,9 +548,7 @@ export const recover = action({
 		);
 		if (!box) throw new ConvexError("Box not found.");
 		await startBoxOperation(ctx, box._id, "recover", {
-			idempotencyKey: `staff-recover:${box._id}:${args.type}`,
-			metadata: { type: args.type },
-			workflowArgs: { type: args.type as RecoveryType }
+			idempotencyKey: `staff-recover:${box._id}`
 		});
 	}
 });

@@ -4,9 +4,11 @@ import type { ComponentProps } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { Button } from "@/components/button";
-import { CheckIcon, type CheckIconHandle } from "@/components/icons/check";
-import { CopyIcon, type CopyIconHandle } from "@/components/icons/copy";
+import {
+	AnimatedIcon,
+	type AnimatedIconHandle
+} from "@/components/animated-icon";
+import { Button } from "@/components/base/button";
 
 type ButtonProps = ComponentProps<typeof Button>;
 
@@ -28,8 +30,8 @@ export function CopyLinkButton({
 	"children" | "value" | "onClick"
 >) {
 	const [copied, setCopied] = useState(false);
-	const check = useRef<CheckIconHandle>(null);
-	const copy = useRef<CopyIconHandle>(null);
+	const check = useRef<AnimatedIconHandle>(null);
+	const copy = useRef<AnimatedIconHandle>(null);
 
 	// Play the draw once the check has mounted (it replaces the copy glyph).
 	useEffect(() => {
@@ -93,9 +95,9 @@ export function CopyLinkButton({
 						}}
 					>
 						{copied ? (
-							<CheckIcon ref={check} size={16} />
+							<AnimatedIcon icon="check" iconRef={check} />
 						) : (
-							<CopyIcon ref={copy} size={16} />
+							<AnimatedIcon icon="copy" iconRef={copy} />
 						)}
 					</motion.span>
 				</AnimatePresence>

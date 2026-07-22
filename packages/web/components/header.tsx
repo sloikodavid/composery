@@ -4,7 +4,7 @@ import { UserButton } from "@clerk/nextjs";
 import { Authenticated, Unauthenticated } from "convex/react";
 import { usePathname } from "next/navigation";
 import { AnimatedIconLink } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/button";
+import { buttonVariants } from "@/components/base/button";
 import { FumadocsNarrowHeader } from "@/components/fumadocs-narrow-header";
 import { Logo } from "@/components/logo";
 import {

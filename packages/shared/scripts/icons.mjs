@@ -125,10 +125,18 @@ await write(
 	join(mobileImages, "android-icon-monochrome.png"),
 	await png(centeredIconSvg({ size: 1024, scale: 0.546, fill: "#ffffff" }))
 );
+// Two splash icons: the splash background follows the system theme, so a single
+// ink glyph would be black on near-black in dark mode.
 await write(
 	join(mobileImages, "splash-icon.png"),
 	await png(
 		centeredIconSvg({ size: 384, scale: 0.687, fill: brandColors.surface.ink })
+	)
+);
+await write(
+	join(mobileImages, "splash-icon-dark.png"),
+	await png(
+		centeredIconSvg({ size: 384, scale: 0.687, fill: brandColors.icon.dark })
 	)
 );
 await write(

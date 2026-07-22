@@ -23,11 +23,9 @@ touch-context-menu.diff
 touch-fling-catch.diff
 touch-list-focus.diff
 touch-terminal-focus.diff
-touch-gate.diff
 touch-compact-footer.diff
 touch-sash.diff
 touch-select.diff
-narrow-gate.diff
 narrow-fullscreen.diff
 branding.diff
 updates.diff
@@ -63,3 +61,5 @@ touch-keyboard-reopen.diff
 touch-autofocus.diff
 touch-dismiss.diff
 terminal-sync.diff
+pwa.diff
+bfcache-reload.diff

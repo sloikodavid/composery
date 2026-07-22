@@ -36,9 +36,9 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-26.04
+            runner: ubuntu-24.04
           - arch: arm64
-            runner: ubuntu-26.04-arm
+            runner: ubuntu-24.04-arm
     env:
       # Runners are ephemeral; the fixed tag only needs to be stable enough for
       # the Trivy step below. smoke.mjs dumps diagnostics and cleans up itself.

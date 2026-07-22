@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
 import * as express from "express"
 import * as path from "path"
-import { apiConfig } from "./config"
+import { apiConfig, MAX_EXEC_TIMEOUT_SEC } from "./config"
 import { execs } from "./ratelimit"
 
 export const router = express.Router()
@@ -36,7 +36,6 @@ const idempotency = new Map<string, IdempotencyEntry>()
 const inFlight = new Map<string, InFlightExec>()
 const IDEMPOTENCY_TTL_MS = 5 * 60_000
 const IDEMPOTENCY_MAX_RESULTS = 1024
-const MAX_TIMEOUT_SEC = Math.floor(2_147_483_647 / 1000)
 
 interface OutputBuffer {
   chunks: Buffer[]
@@ -75,7 +74,9 @@ function resolveTimeoutSec(timeout: unknown): number {
     typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0
       ? timeout
       : apiConfig.execTimeoutSec
-  return Math.min(value, MAX_TIMEOUT_SEC)
+  // Same ceiling COMPOSERY_API_EXEC_TIMEOUT is held to, so a request cannot ask
+  // for a longer run than an operator can configure and sit on an exec slot.
+  return Math.min(value, MAX_EXEC_TIMEOUT_SEC)
 }
 
 function resolveEnv(env: unknown): NodeJS.ProcessEnv | undefined {

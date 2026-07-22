@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { AnimatedIconLink } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/button";
-import { ThemedShot } from "@/components/themed-shot";
+import { buttonVariants } from "@/components/base/button";
+import { ThemedShot } from "./_components/themed-shot";
 import { GITHUB_REPO_URL } from "@/lib/links";
-import { appDescription, appName, siteUrl } from "@/lib/shared";
+import { appDescription, appName, appTagline, siteUrl } from "@/lib/shared";
 
 const jsonLd = {
 	"@context": "https://schema.org",
@@ -33,15 +33,14 @@ const jsonLd = {
 
 export default function Home() {
 	return (
-		<div className="py-12 sm:py-16">
+		<div className="page-fade-in py-12 sm:py-16">
 			<section className="mx-auto w-full max-w-[44rem] space-y-6 text-center">
 				<div className="space-y-4">
 					<h1 className="font-heading mx-auto text-[clamp(1.75rem,7.5vw,2.75rem)] leading-[1.1] font-medium tracking-tight text-foreground sm:text-nowrap md:text-5xl">
 						Like VS Code, but always on.
 					</h1>
 					<p className="mx-auto max-w-[41rem] text-[clamp(0.875rem,3vw,1rem)] leading-[1.6] text-muted-foreground md:max-w-none md:text-lg md:text-nowrap">
-						A secure cloud computer with a powerful UI, usable from any phone or
-						browser.
+						{appTagline}
 					</p>
 				</div>
 				<div className="flex flex-wrap justify-center gap-3">

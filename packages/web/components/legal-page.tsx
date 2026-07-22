@@ -1,9 +1,14 @@
 import type { ReactNode } from "react";
 import { ScaleIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle
+} from "@/components/base/card";
 import { PageTemplate } from "@/components/page-template";
 
-export const LEGAL_UPDATED = "21 July 2026";
+const LEGAL_UPDATED = "21 July 2026";
 
 export function LegalPage({
 	title,

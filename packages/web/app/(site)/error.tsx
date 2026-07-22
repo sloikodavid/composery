@@ -3,7 +3,7 @@
 import { TriangleAlertIcon } from "lucide-react";
 import { useEffect } from "react";
 import { PageTemplate } from "@/components/page-template";
-import { Button } from "@/components/button";
+import { Button } from "@/components/base/button";
 
 type ErrorPageProps = {
 	error: Error & { digest?: string };

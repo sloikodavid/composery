@@ -3,7 +3,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/sonner";
+import { Toaster } from "@/components/base/sonner";
 import { appDescription, siteUrl } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 import { inter } from "./fonts";

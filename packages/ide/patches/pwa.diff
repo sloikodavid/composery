@@ -1,0 +1,68 @@
+The installed app: PWA manifest and the workbench's install metadata.
+
+code-server's generated manifest is code-server's: it asks for fullscreen
+display, offers window-controls-overlay, and describes itself as "Run Code on
+a remote server." The workbench's apple-mobile-web-app-title - the name iOS
+writes under a home-screen icon, which takes precedence over the manifest's
+short_name - is still "Code".
+
+Colours are the brand backgrounds, the same pair the first-paint block in
+these files already uses. A "PWA install metadata" test in
+tests/code-server-patches.test.ts pins them to packages/shared.
+
+diff --git a/src/node/routes/vscode.ts b/src/node/routes/vscode.ts
+--- a/src/node/routes/vscode.ts
++++ b/src/node/routes/vscode.ts
+@@ -182,9 +182,19 @@
+           name: req.args["app-name"],
+           short_name: req.args["app-name"],
+           start_url: ".",
+-          display: "fullscreen",
+-          display_override: ["window-controls-overlay"],
+-          description: "Run Code on a remote server.",
++          // standalone, not fullscreen: an installed editor keeps the clock and
++          // battery visible like every other app. display_override is dropped
++          // with it - window-controls-overlay would let the OS controls sit on
++          // top of our own titlebar, which does not reserve titlebar-area-*.
++          display: "standalone",
++          description:
++            "Composery is an always-on cloud IDE: VS Code in the browser or on your phone, self-hosted on your own server or managed in Composery Cloud, and made for long-running AI agents.",
++          // Brand dark background, matching the maskable launcher icon's tile, so
++          // the Android splash and status bar are continuous with the icon the
++          // user just tapped. A manifest carries one value; the workbench's
++          // theme-color meta corrects the status bar per scheme once it paints.
++          theme_color: "#0a0a0a",
++          background_color: "#0a0a0a",
+           icons: [192, 512]
+             .map((size) => [
+               {
+diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench.html b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+--- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
++++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+@@ -10,7 +10,10 @@
+ 		<!-- Mobile tweaks -->
+ 		<meta name="mobile-web-app-capable" content="yes" />
+ 		<meta name="apple-mobile-web-app-capable" content="yes" />
+-		<meta name="apple-mobile-web-app-title" content="Code">
++		<meta name="apple-mobile-web-app-title" content="Composery">
++		<!-- Status bar tint for an installed app. The manifest carries one colour for the splash; these track the scheme the workbench itself starts in (window.autoDetectColorScheme). -->
++		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
++		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+ 		<link rel="apple-touch-icon" sizes="192x192" href="{{BASE}}/_static/src/browser/media/pwa-icon-192.png" />
+ 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
+ 
+diff --git a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
+--- a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
++++ b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
+@@ -10,7 +10,10 @@
+ 		<!-- Mobile tweaks -->
+ 		<meta name="mobile-web-app-capable" content="yes" />
+ 		<meta name="apple-mobile-web-app-capable" content="yes" />
+-		<meta name="apple-mobile-web-app-title" content="Code">
++		<meta name="apple-mobile-web-app-title" content="Composery">
++		<!-- Status bar tint for an installed app. The manifest carries one colour for the splash; these track the scheme the workbench itself starts in (window.autoDetectColorScheme). -->
++		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
++		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+ 		<link rel="apple-touch-icon" sizes="192x192" href="{{BASE}}/_static/src/browser/media/pwa-icon-192.png" />
+ 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
+ 

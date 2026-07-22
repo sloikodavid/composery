@@ -24,7 +24,7 @@ jobs:
     # Manual runs always work; setting MOBILE_PREVIEW_ENABLED=true makes mobile
     # changes on main produce an APK automatically.
     if: github.event_name == 'workflow_dispatch' || vars.MOBILE_PREVIEW_ENABLED == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     environment: mobile-preview
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}

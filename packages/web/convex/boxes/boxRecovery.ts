@@ -1,14 +1,11 @@
-"use node";
-
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import {
-	vRecoveryStatus,
-	vRecoveryType,
-	type RecoveryStatus
-} from "./boxRecoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "./boxRecoveryTypes";
 
+// Probes the public URL and inspects the host over SSH in parallel, so the
+// Repair dialog can show one honest picture of every layer. Read-only: the
+// single Repair action is the only thing that changes the box.
 export const status = internalAction({
 	args: { boxId: v.id("boxes") },
 	returns: vRecoveryStatus,
@@ -18,34 +15,5 @@ export const status = internalAction({
 			ctx.runAction(internal.boxes.infra.ssh.inspectRuntime, args)
 		]);
 		return { ...host, httpReachable: http.reachable };
-	}
-});
-
-export const run = internalAction({
-	args: {
-		boxId: v.id("boxes"),
-		type: vRecoveryType
-	},
-	handler: async (ctx, args): Promise<void> => {
-		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box.hetzner_server_id) throw new Error("Box has no Hetzner server.");
-
-		if (args.type === "reboot_server") {
-			await ctx.runAction(internal.boxes.infra.hetznerVps.rebootServer, {
-				serverId: box.hetzner_server_id
-			});
-		} else if (args.type === "restore_runtime") {
-			await ctx.runAction(internal.boxes.infra.ssh.bootstrapRuntime, {
-				boxId: args.boxId
-			});
-		} else {
-			await ctx.runAction(internal.boxes.infra.ssh.recoverRuntime, {
-				boxId: args.boxId,
-				type: args.type
-			});
-		}
 	}
 });

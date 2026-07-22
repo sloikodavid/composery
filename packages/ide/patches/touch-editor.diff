@@ -1,6 +1,6 @@
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -8,29 +8,82 @@
+@@ -8,29 +8,131 @@ import * as dom from '../../../base/browser/dom.js';
  import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
  import { mainWindow } from '../../../base/browser/window.js';
  import { Disposable } from '../../../base/common/lifecycle.js';
@@ -20,9 +20,40 @@
 +const TOUCH_PAN_THRESHOLD = 16;
 +const TOUCH_SELECTION_MENU_HOLD_TIME = 650;
 +const TOUCH_HANDLE_EDGE_SCROLL_ZONE = 44;
++// Keep in step with the handle box in touch.css - a range handle offsets its body
++// by exactly one width to put its tip on the selection edge.
++const TOUCH_HANDLE_WIDTH = 22;
++const TOUCH_HANDLE_FLIPPED_CLASS = 'composery-touch-range-handle-flipped';
 +const TOUCH_HANDLE_MAX_SCROLL_SPEED = 720;
 +
 +type TouchHandleKind = 'caret' | 'start' | 'end';
++
++interface TouchPoint {
++	x: number;
++	y: number;
++}
++
++interface TouchRangeHandleLayout {
++	activeKind: 'start' | 'end';
++	fixedKind: 'start' | 'end';
++	showFixed: boolean;
++}
++
++function getTouchHandleGrabOffset(pointer: TouchPoint, selectionPoint: TouchPoint): TouchPoint {
++	return { x: pointer.x - selectionPoint.x, y: pointer.y - selectionPoint.y };
++}
++
++function getTouchHandleSelectionPoint(pointer: TouchPoint, grabOffset: TouchPoint): TouchPoint {
++	return { x: pointer.x - grabOffset.x, y: pointer.y - grabOffset.y };
++}
++
++function getTouchRangeHandleLayout(selectionEmpty: boolean, movingBeforeAnchor: boolean): TouchRangeHandleLayout {
++	return {
++		activeKind: movingBeforeAnchor ? 'start' : 'end',
++		fixedKind: movingBeforeAnchor ? 'end' : 'start',
++		showFixed: !selectionEmpty
++	};
++}
 +
 +interface TouchGestureState {
 +	startedOnText: boolean;
@@ -52,7 +83,10 @@
 +	private readonly _caretHandle: HTMLElement;
 +	private readonly _startHandle: HTMLElement;
 +	private readonly _endHandle: HTMLElement;
-+	private _activeHandleDrag: { pointerId: number; kind: TouchHandleKind; anchor: Position | null } | null;
++	private _activeHandleDrag: { pointerId: number; handle: HTMLElement; anchor: Position | null; grabOffset: TouchPoint } | null;
++	private _handleUpdateFrame: number | undefined;
++	private _editorFocused: boolean;
++	private _handlesSuppressed: boolean;
 +	private _handleAutoScrollFrame: number | undefined;
 +	private _handleAutoScrollLastTime: number;
 +	private _handleClientX: number;
@@ -74,6 +108,9 @@
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
 +		this._activeHandleDrag = null;
++		this._handleUpdateFrame = undefined;
++		this._editorFocused = false;
++		this._handlesSuppressed = false;
 +		this._handleAutoScrollFrame = undefined;
 +		this._handleAutoScrollLastTime = 0;
 +		this._handleClientX = 0;
@@ -82,15 +119,28 @@
 +		this._caretHandle = this._createTouchHandle('caret');
 +		this._startHandle = this._createTouchHandle('start');
 +		this._endHandle = this._createTouchHandle('end');
++
++		const targetWindow = dom.getWindow(this.viewHelper.viewDomNode);
++		this._register(dom.addDisposableListener(targetWindow, 'blur', () => {
++			this._suppressTouchHandles();
++			this._stopHandleDrag();
++		}));
++		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode.ownerDocument, 'visibilitychange', () => {
++			if (this.viewHelper.viewDomNode.ownerDocument.visibilityState !== 'visible') {
++				this._suppressTouchHandles();
++				this._stopHandleDrag();
++			}
++		}));
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +106,150 @@
+@@ -53,18 +155,160 @@ export class PointerEventHandler extends MouseHandler {
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
 +	public override dispose(): void {
 +		this._stopHandleDrag();
++		this._cancelTouchHandleUpdate();
 +		this._clearTouchMenuTimer();
 +		this._caretHandle.remove();
 +		this._startHandle.remove();
@@ -103,10 +153,15 @@
 +		handle.className = kind === 'caret' ? 'composery-touch-caret-handle' : `composery-touch-caret-handle composery-touch-range-handle-${kind}`;
 +		handle.setAttribute('aria-hidden', 'true');
 +		handle.style.display = 'none';
-+		this._register(dom.addDisposableListener(handle, 'pointerdown', (event: PointerEvent) => this._onHandlePointerDown(event, kind, handle), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointerdown', (event: PointerEvent) => this._onHandlePointerDown(event, handle), { passive: false }));
 +		this._register(dom.addDisposableListener(handle, 'pointermove', (event: PointerEvent) => this._onHandlePointerMove(event), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'pointerup', (event: PointerEvent) => this._onHandlePointerUp(event, handle), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'pointercancel', (event: PointerEvent) => this._onHandlePointerUp(event, handle), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointerup', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'pointercancel', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
++		this._register(dom.addDisposableListener(handle, 'lostpointercapture', (event: PointerEvent) => {
++			if (this._activeHandleDrag?.pointerId === event.pointerId && this._activeHandleDrag.handle === handle) {
++				this._stopHandleDrag();
++			}
++		}));
 +		this.viewHelper.linesContentDomNode.appendChild(handle);
 +		// The handles drag via pointer events; without this the same touches also reach
 +		// the Gesture singleton and pan the editor 1:1 with every drag (and fling it
@@ -117,6 +172,8 @@
 +
 +	private onTouchStart(event: GestureEvent): void {
 +		this._lastPointerType = 'touch';
++		this._handlesSuppressed = false;
++		this._scheduleTouchHandleUpdate();
 +		this._clearTouchMenuTimer();
 +		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +		const modelPosition = target.position ? this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position) : null;
@@ -166,6 +223,7 @@
 +			clientX: gesture.pageX - targetWindow.scrollX,
 +			clientY: gesture.pageY - targetWindow.scrollY
 +		});
++		this._suppressTouchHandles();
 +		super._onContextMenu(new EditorMouseEvent(browserEvent, false, this.viewHelper.viewDomNode), false);
 +	}
 +
@@ -215,6 +273,7 @@
 +			return;
 +		}
 +
++		this._suppressTouchHandles();
 +		super._onContextMenu(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +	}
 +
@@ -236,7 +295,7 @@
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +259,20 @@
+@@ -74,13 +318,20 @@ export class PointerEventHandler extends MouseHandler {
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -259,7 +318,7 @@
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,11 +285,182 @@
+@@ -93,11 +344,342 @@ export class PointerEventHandler extends MouseHandler {
  		}
  	}
  
@@ -269,28 +328,135 @@
 +		super.onCursorStateChanged(e);
 +		this._primarySelection = e.selections[0] ?? null;
 +		this._primaryModelSelection = e.modelSelections[0] ?? null;
-+		this._updateTouchHandles();
++		this._scheduleTouchHandleUpdate();
 +		return false;
 +	}
 +
 +	public override onScrollChanged(e: viewEvents.ViewScrollChangedEvent): boolean {
-+		this._updateTouchHandles();
++		this._scheduleTouchHandleUpdate();
 +		return false;
 +	}
 +
 +	public override onConfigurationChanged(e: viewEvents.ViewConfigurationChangedEvent): boolean {
 +		super.onConfigurationChanged(e);
-+		this._updateTouchHandles();
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onFocusChanged(e: viewEvents.ViewFocusChangedEvent): boolean {
++		super.onFocusChanged(e);
++		this._editorFocused = e.isFocused;
++		if (e.isFocused) {
++			this._handlesSuppressed = false;
++		} else {
++			this._stopHandleDrag();
++		}
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onDecorationsChanged(e: viewEvents.ViewDecorationsChangedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onFlushed(e: viewEvents.ViewFlushedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onLinesChanged(e: viewEvents.ViewLinesChangedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onLinesDeleted(e: viewEvents.ViewLinesDeletedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onLinesInserted(e: viewEvents.ViewLinesInsertedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
++		return false;
++	}
++
++	public override onTokensChanged(e: viewEvents.ViewTokensChangedEvent): boolean {
++		const selection = this._primarySelection;
++		if (selection && e.ranges.some(range =>
++			range.fromLineNumber <= selection.startLineNumber && selection.startLineNumber <= range.toLineNumber
++			|| range.fromLineNumber <= selection.endLineNumber && selection.endLineNumber <= range.toLineNumber
++		)) {
++			this._scheduleTouchHandleUpdate();
++		}
++		return false;
++	}
++
++	public override onZonesChanged(e: viewEvents.ViewZonesChangedEvent): boolean {
++		this._scheduleTouchHandleUpdate();
 +		return false;
 +	}
 +
 +	// --- selection handles ---
 +
++	private _scheduleTouchHandleUpdate(): void {
++		if (this._handleUpdateFrame !== undefined) {
++			return;
++		}
++		this._handleUpdateFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => {
++			this._handleUpdateFrame = undefined;
++			this._updateTouchHandles();
++		});
++	}
++
++	private _cancelTouchHandleUpdate(): void {
++		if (this._handleUpdateFrame !== undefined) {
++			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._handleUpdateFrame);
++			this._handleUpdateFrame = undefined;
++		}
++	}
++
++	private _suppressTouchHandles(): void {
++		this._handlesSuppressed = true;
++		this._hideTouchHandles();
++	}
++
++	private _hideTouchHandles(): void {
++		this._caretHandle.style.display = 'none';
++		this._startHandle.style.display = 'none';
++		this._endHandle.style.display = 'none';
++	}
++
 +	private _updateTouchHandles(): void {
-+		const selection = this._lastPointerType === 'touch' ? this._primarySelection : null;
-+		this._positionHandle(this._caretHandle, selection && selection.isEmpty() ? selection.getPosition() : null);
-+		this._positionHandle(this._startHandle, selection && !selection.isEmpty() ? selection.getStartPosition() : null);
-+		this._positionHandle(this._endHandle, selection && !selection.isEmpty() ? selection.getEndPosition() : null);
++		const selection = this._lastPointerType === 'touch' && this._editorFocused && !this._handlesSuppressed ? this._primarySelection : null;
++		if (!selection) {
++			this._hideTouchHandles();
++			return;
++		}
++
++		const drag = this._activeHandleDrag;
++		if (drag?.anchor) {
++			const activeHandle = drag.handle;
++			const fixedHandle = activeHandle === this._startHandle ? this._endHandle : this._startHandle;
++			const moving = selection.getPosition();
++			const fixed = selection.getSelectionStart();
++			const layout = getTouchRangeHandleLayout(selection.isEmpty(), Position.isBeforeOrEqual(moving, fixed));
++			this._setRangeHandleKind(activeHandle, layout.activeKind);
++			this._setRangeHandleKind(fixedHandle, layout.fixedKind);
++			this._positionHandle(this._caretHandle, null);
++			this._positionHandle(activeHandle, moving);
++			this._positionHandle(fixedHandle, layout.showFixed ? fixed : null);
++			return;
++		}
++
++		this._setRangeHandleKind(this._startHandle, 'start');
++		this._setRangeHandleKind(this._endHandle, 'end');
++		this._positionHandle(this._caretHandle, selection.isEmpty() ? selection.getPosition() : null);
++		this._positionHandle(this._startHandle, selection.isEmpty() ? null : selection.getStartPosition());
++		this._positionHandle(this._endHandle, selection.isEmpty() ? null : selection.getEndPosition());
++	}
++
++	private _setRangeHandleKind(handle: HTMLElement, kind: 'start' | 'end'): void {
++		handle.className = `composery-touch-caret-handle composery-touch-range-handle-${kind}`;
 +	}
 +
 +	private _positionHandle(handle: HTMLElement, position: Position | null): void {
@@ -301,27 +467,72 @@
 +		}
 +		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
 +		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + lineHeight;
++		// Only the start handle hangs its body a full width to the LEFT of its tip, so
++		// at column 1 the body lands outside .lines-content and the overflow-guard
++		// clips it away - the selection looks like it has only one handle. Mirror it
++		// instead of clamping: the tip must stay exactly on the selection edge or
++		// dragging jumps, so flip the body the way Android and iOS do. The end handle
++		// already opens rightwards and is never clipped here.
++		handle.classList.toggle(
++			TOUCH_HANDLE_FLIPPED_CLASS,
++			this._getHandleKind(handle) === 'start' && visibleRange.left < TOUCH_HANDLE_WIDTH
++		);
 +		handle.style.display = 'block';
 +		handle.style.transform = `translate(${Math.round(visibleRange.left)}px, ${Math.round(top)}px)`;
 +	}
 +
-+	private _onHandlePointerDown(event: PointerEvent, kind: TouchHandleKind, handle: HTMLElement): void {
++	private _getHandleKind(handle: HTMLElement): TouchHandleKind {
++		if (handle === this._caretHandle) {
++			return 'caret';
++		}
++		return handle.classList.contains('composery-touch-range-handle-start') ? 'start' : 'end';
++	}
++
++	private _getHandleSelectionClientPoint(handle: HTMLElement, kind: TouchHandleKind, position: Position): TouchPoint {
++		const rect = handle.getBoundingClientRect();
++		// A mirrored start handle keeps its tip on the same selection edge but on the
++		// opposite corner of its box, so the drag anchor follows the flip.
++		if (handle.classList.contains(TOUCH_HANDLE_FLIPPED_CLASS)) {
++			const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
++			return { x: rect.left, y: rect.top - lineHeight / 2 };
++		}
++		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
++		return {
++			x: kind === 'start' ? rect.right : kind === 'end' ? rect.left : rect.left + rect.width / 2,
++			y: rect.top - lineHeight / 2
++		};
++	}
++
++	private _onHandlePointerDown(event: PointerEvent, handle: HTMLElement): void {
 +		if (event.pointerType === 'mouse') {
 +			return;
 +		}
 +
++		const modelSelection = this._primaryModelSelection;
++		const viewSelection = this._primarySelection;
++		if (!modelSelection || !viewSelection) {
++			return;
++		}
++
++		const kind = this._getHandleKind(handle);
++		const viewPosition = kind === 'caret' ? viewSelection.getPosition() : kind === 'start' ? viewSelection.getStartPosition() : viewSelection.getEndPosition();
++		const selectionPoint = this._getHandleSelectionClientPoint(handle, kind, viewPosition);
 +		event.preventDefault();
 +		event.stopPropagation();
-+		const selection = this._primaryModelSelection;
 +		this._activeHandleDrag = {
 +			pointerId: event.pointerId,
-+			kind,
++			handle,
 +			// The fixed end of a range drag. Model coordinates survive scrolling, so a
 +			// drag can auto-scroll far beyond the rendered lines without losing it.
-+			anchor: !selection || kind === 'caret' ? null : kind === 'start' ? selection.getEndPosition() : selection.getStartPosition()
++			anchor: kind === 'caret' ? null : kind === 'start' ? modelSelection.getEndPosition() : modelSelection.getStartPosition(),
++			// A handle hangs below the text and is intentionally much larger than its
++			// one-pixel selection tip. Preserve where the finger grabbed the handle so
++			// its first move cannot jump to the next line or an adjacent column.
++			grabOffset: getTouchHandleGrabOffset({ x: event.clientX, y: event.clientY }, selectionPoint)
 +		};
 +		handle.setPointerCapture(event.pointerId);
 +		this.viewHelper.focusTextArea();
++		this._scheduleTouchHandleUpdate();
 +	}
 +
 +	private _onHandlePointerMove(event: PointerEvent): void {
@@ -347,15 +558,16 @@
 +		if (!drag) {
 +			return;
 +		}
-+		const target = this.getTargetAtClientPoint(clientX, this._clampClientYToView(clientY));
++		const selectionPoint = getTouchHandleSelectionPoint({ x: clientX, y: clientY }, drag.grabOffset);
++		const target = this.getTargetAtClientPoint(selectionPoint.x, this._clampClientYToView(selectionPoint.y));
 +		if (!target?.position) {
 +			return;
 +		}
 +
 +		const modelPosition = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
-+		// Dragging one range handle keeps the other end anchored; crossing it flips the
-+		// selection direction and the handles swap roles on the next render, exactly
-+		// like a textarea's.
++		// Dragging one range handle keeps the other end anchored. The captured DOM
++		// handle remains the moving endpoint when it crosses that anchor; only its
++		// visual start/end role changes in _updateTouchHandles.
 +		this.viewController.setSelection(drag.anchor ? Selection.fromPositions(drag.anchor, modelPosition) : Selection.fromPositions(modelPosition));
 +	}
 +
@@ -408,21 +620,28 @@
 +		}
 +	}
 +
-+	private _onHandlePointerUp(event: PointerEvent, handle: HTMLElement): void {
++	private _onHandlePointerUp(event: PointerEvent): void {
 +		if (!this._activeHandleDrag || event.pointerId !== this._activeHandleDrag.pointerId) {
 +			return;
 +		}
 +		event.preventDefault();
 +		event.stopPropagation();
-+		if (handle.hasPointerCapture(event.pointerId)) {
-+			handle.releasePointerCapture(event.pointerId);
-+		}
 +		this._stopHandleDrag();
 +	}
 +
 +	private _stopHandleDrag(): void {
-+		this._stopHandleAutoScroll();
++		const drag = this._activeHandleDrag;
 +		this._activeHandleDrag = null;
++		if (drag?.handle.hasPointerCapture(drag.pointerId)) {
++			drag.handle.releasePointerCapture(drag.pointerId);
++		}
++		this._stopHandleAutoScroll();
++		this._scheduleTouchHandleUpdate();
++	}
++
++	protected override _onContextMenu(e: EditorMouseEvent, testEventTarget: boolean): void {
++		this._suppressTouchHandles();
++		super._onContextMenu(e, testEventTarget);
 +	}
 +
  	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {
@@ -442,7 +661,7 @@
  		super._onMouseDown(e, pointerId);
  	}
  }
-@@ -141,8 +504,12 @@
+@@ -141,8 +723,12 @@ export class PointerHandler extends Disposable {
  
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super();

@@ -1,0 +1,42 @@
+Reload the workbench when the browser restores it from the back/forward cache.
+
+A bfcache restore hands back the page exactly as it was - DOM, scroll, focus -
+but every socket it held is gone, so Composery reappears looking alive on top of
+a dead connection and the reader has to work out that a reload is the way out.
+The HTML is already Cache-Control: no-store (asset-cache.diff), which used to be
+enough to keep a page out of the bfcache; Chrome on Android now caches no-store
+pages anyway, so the page has to say so itself.
+
+Costs nothing when it never happens: `persisted` is set only on a bfcache
+restore, so an ordinary load registers the listener and never calls it.
+
+diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -117,12 +117,26 @@
+ 		});
+ 
+ 		this.addShowQrCommand();
++		this.reloadOnBackForwardRestore();
+ 
+ 		if (this.productService.serviceWorker) {
+ 			await this.registerServiceWorker(this.productService.serviceWorker);
+ 		}
+ 	}
+ 
++	// Composery: a page restored from the back/forward cache keeps its DOM but not
++	// its sockets, so the workbench comes back looking alive over a connection that
++	// died while it was away - the state VS Code can only offer to reload out of.
++	// `persisted` is true for that restore and nothing else, so an ordinary load
++	// never reaches the reload.
++	private reloadOnBackForwardRestore(): void {
++		window.addEventListener('pageshow', event => {
++			if (event.persisted) {
++				window.location.reload();
++			}
++		});
++	}
++
+ 	private openAuthEndpoint(endpoint: string) {
+ 		const targetWindow = window.top || window;
+ 		const authUrl = new URL(endpoint, targetWindow.location.href);

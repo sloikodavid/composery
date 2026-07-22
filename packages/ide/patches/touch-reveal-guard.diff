@@ -111,20 +111,6 @@
 +		}
 +	}
  }
-diff --git a/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts b/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
---- a/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
-+++ b/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
-@@ -312,7 +312,9 @@
- 	}
- 
- 	public focus(): void {
--		this.input.focus();
-+		// Composery: widgets and lists do their own revealing - the browser's focus
-+		// reveal scrolls overflow:hidden ancestors and, on mobile, pans the visual viewport.
-+		this.input.focus({ preventScroll: true });
- 	}
- 
- 	public blur(): void {
 diff --git a/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts b/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
 --- a/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
 +++ b/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
@@ -139,32 +125,6 @@ diff --git a/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.t
  				}
  
  				this.lastContainer = null;
-diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
---- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
-+++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
-@@ -137,7 +137,8 @@
- 	public focus(): void {
- 		if (this.selectElement) {
- 			this.selectElement.tabIndex = 0;
--			this.selectElement.focus();
-+			// Composery: see InputBox.focus - no browser reveal, the surface reveals itself.
-+			this.selectElement.focus({ preventScroll: true });
- 		}
- 	}
- 
-diff --git a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxCustom.ts b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxCustom.ts
---- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxCustom.ts
-+++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxCustom.ts
-@@ -342,7 +342,8 @@
- 	public focus(): void {
- 		if (this.selectElement) {
- 			this.selectElement.tabIndex = 0;
--			this.selectElement.focus();
-+			// Composery: see InputBox.focus - no browser reveal, the surface reveals itself.
-+			this.selectElement.focus({ preventScroll: true });
- 		}
- 	}
- 
 diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
 --- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
@@ -211,15 +171,6 @@ diff --git a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsWid
  		}
  
  		this.listDisposables.add(DOM.addDisposableListener(rowElement, 'click', (e) => {
-@@ -421,7 +423,7 @@
- 		const selectedRow = this.rowElements[this.model.getSelected()!];
- 
- 		selectedRow.classList.add('selected');
--		selectedRow.focus();
-+		selectedRow.focus({ preventScroll: true }); // Composery: no browser reveal
- 	}
- 
- 	private selectNextRow(): void {
 @@ -661,7 +663,7 @@
  				e.preventDefault();
  				e.stopPropagation();

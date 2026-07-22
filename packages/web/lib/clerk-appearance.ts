@@ -85,13 +85,16 @@ export const clerkAppearance = {
 // The route embeds SignIn directly in the page, so its outer card should sit
 // flush with the page. Keep that choice component-local: Clerk deliberately
 // renders modal flows as raised even when an embedded component is flush.
+// `!` because Clerk sizes both boxes off the viewport (min(25rem, 100vw-2.5rem)),
+// which ignores the page's own padding and spills the card past the right edge
+// on a phone; a plain `w-full` loses to it.
 export const signInAppearance = {
 	...clerkAppearance,
 	options: { elevation: "flush" },
 	elements: {
 		...clerkAppearance.elements,
-		rootBox: "w-full",
-		cardBox: "w-full"
+		rootBox: "w-full!",
+		cardBox: "w-full!"
 	}
 } as const;
 

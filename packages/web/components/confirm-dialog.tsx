@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Button } from "@/components/button";
+import { Button } from "@/components/base/button";
 import {
 	Dialog,
 	DialogClose,
@@ -11,7 +11,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle
-} from "@/components/dialog";
+} from "@/components/base/dialog";
 
 // Wraps a destructive action in a confirmation step. `children` is a render prop
 // that receives an `open` callback to wire onto the trigger button, so callers

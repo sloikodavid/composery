@@ -38,13 +38,11 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	unsuspend: ["suspended"],
 	restore: ["running", "restore_failed"],
 	snapshot: ["running"],
-	recover: [
-		"running",
-		"stopped",
-		"provisioning_failed",
-		"reset_failed",
-		"restore_failed"
-	]
+	// Not "stopped": stopping a box powers the server off, so every repair step
+	// runs over SSH against a host that cannot answer. Offering it there buys a
+	// guaranteed five-attempt failure and a critical staff alert for a box whose
+	// owner only had to start it.
+	recover: ["running", "provisioning_failed", "reset_failed", "restore_failed"]
 };
 
 export const ACTIVE_OPERATION_STATUSES = [

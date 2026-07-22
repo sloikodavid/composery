@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
-// One definition of "is this a touch device" so the QR button (desktop-only) and
-// the Open-in-app button (touch-only) can't drift apart.
+// One definition of "is this a touch device", so the box actions bar has a single
+// answer to lay itself out against.
 const TOUCH_QUERY = "(hover: none) and (pointer: coarse)";
 
 function subscribe(onChange: () => void) {

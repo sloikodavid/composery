@@ -101,6 +101,16 @@
 			"dependencyDashboardApproval": true
 		},
 		{
+			"description": "typescript-eslint peers `typescript >=4.8.4 <6.1.0`, so TS 6.1+ and the Go-native TS 7 both break typed linting. TS 7 dropped the programmatic API typescript-eslint reads types through; a replacement lands in 7.1, and typescript-eslint closed its TS 7 issue as not planned until then. Lift this when typescript-eslint's peer range names a version we want.",
+			"matchPackageNames": ["typescript"],
+			"allowedVersions": "<6.1.0"
+		},
+		{
+			"description": "ESLint 10 removed the context.getFilename/getSourceCode APIs that eslint-plugin-react, eslint-plugin-jsx-a11y and eslint-plugin-import still call, and all three arrive transitively through eslint-config-next and eslint-config-expo. On v10 both packages abort with a TypeError before linting a single file, so this is a hard block, not a warning. Lift when those plugins ship v10 support (jsx-eslint/eslint-plugin-react#3977, vercel/next.js#89764).",
+			"matchPackageNames": ["eslint", "@eslint/js"],
+			"allowedVersions": "<10"
+		},
+		{
 			"description": "Hold code-server submodule bumps for manual patch-rebase; a new release can break the quilt stack.",
 			"matchManagers": ["git-submodules"],
 			"automerge": false,

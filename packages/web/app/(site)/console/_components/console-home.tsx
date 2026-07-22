@@ -10,7 +10,7 @@ import { ConsoleCapacity } from "./console-capacity";
 import { ConsoleGrantBox } from "./console-grant-box";
 import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
 import { ConsoleThresholds } from "./console-thresholds";
-import { FlagsTable } from "@/components/flags-table";
+import { FlagsTable } from "@/components/boxes/flags-table";
 import { DismissButton } from "@/components/dismiss-button";
 import {
 	DEFAULT_METRIC,
@@ -18,16 +18,13 @@ import {
 	MetricSelect,
 	MetricsLineChart,
 	MetricsRangeSelect,
-	metricField,
 	type MetricsRange
-} from "@/components/metrics-chart";
-import { OpenInConvex } from "@/components/open-in-convex";
-import { OpenInHetzner } from "@/components/open-in-hetzner";
-import { OpenInPolar } from "@/components/open-in-polar";
+} from "@/components/boxes/metrics-chart";
+import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
 import { SortHeader } from "@/components/sort-header";
-import { StatusText } from "@/components/status-text";
+import { StatusText } from "@/components/boxes/status-text";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { Input } from "@/components/input";
+import { Input } from "@/components/base/input";
 import {
 	Table,
 	TableBody,
@@ -37,7 +34,7 @@ import {
 	TableHeader,
 	TableLoadingRow,
 	TableRow
-} from "@/components/table";
+} from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
@@ -133,22 +130,25 @@ function NeedsAttentionPanel() {
 					in the last 7 days
 				</span>
 			</div>
-			<Table>
+			<Table cols={["fluid", "text", "datetime", "actions-2"]}>
 				<TableHeader>
 					<TableRow>
-						<TableHead className="w-full min-w-48 pl-4">Operation</TableHead>
+						<TableHead className="pl-4">Operation</TableHead>
 						<TableHead>Box</TableHead>
 						<TableHead>When</TableHead>
 						<TableHead className="pr-4 text-right">
 							<div className="flex items-center justify-end gap-1">
 								<DismissButton
 									disabled={busy !== null}
+									iconOnly
 									onClick={() =>
 										run("dismiss-all-failures", "Messages dismissed", () =>
 											dismissAllFailures({})
 										)
 									}
-								/>
+								>
+									Dismiss all
+								</DismissButton>
 								<OpenInConvex
 									field="status"
 									iconOnly
@@ -165,7 +165,7 @@ function NeedsAttentionPanel() {
 							className={failure.lastError ? "[&>td]:align-top" : undefined}
 							key={failure.id}
 						>
-							<TableCell className="max-w-0 pl-4">
+							<TableCell className="pl-4">
 								<div className="min-w-0">
 									<p className="font-medium text-foreground">{failure.type}</p>
 									{failure.lastError ? (
@@ -192,6 +192,7 @@ function NeedsAttentionPanel() {
 								<div className="flex items-center justify-end gap-1">
 									<DismissButton
 										disabled={busy !== null}
+										iconOnly
 										onClick={() =>
 											run(
 												`dismiss-failure-${failure.id}`,
@@ -225,7 +226,7 @@ function GlobalMetricsPanel() {
 	const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
 	const series = useQuery(api.staff.metrics.series, {
-		metric: metricField(metricKey),
+		metric: metricKey,
 		range
 	});
 
@@ -324,10 +325,10 @@ export function ConsoleHome() {
 				</div>
 
 				<div className="overflow-hidden rounded-2xl border border-border bg-card">
-					<Table>
+					<Table cols={["fluid", "text", "date", "status", "actions-3"]}>
 						<TableHeader>
 							<TableRow>
-								<TableHead className="w-full min-w-48 pl-4">
+								<TableHead className="pl-4">
 									<SortHeader label="Box" sort={boxSort} sortKey="slug" />
 								</TableHead>
 								<TableHead>
@@ -354,7 +355,7 @@ export function ConsoleHome() {
 						</TableHeader>
 						{boxes === undefined ? (
 							<TableBody>
-								<TableLoadingRow span={5} />
+								<TableLoadingRow />
 							</TableBody>
 						) : boxes.length > 0 ? (
 							<TableBody className="page-fade-in">
@@ -363,7 +364,7 @@ export function ConsoleHome() {
 										className="h-14 has-[[data-link]:hover]:bg-muted/50"
 										key={box.id}
 									>
-										<TableCell className="relative max-w-0 p-0">
+										<TableCell className="relative p-0">
 											<Link
 												className="absolute inset-0 flex flex-col justify-center pl-4"
 												data-link
@@ -407,7 +408,7 @@ export function ConsoleHome() {
 							</TableBody>
 						) : (
 							<TableBody>
-								<TableEmptyRow span={5}>No boxes found.</TableEmptyRow>
+								<TableEmptyRow>No boxes found.</TableEmptyRow>
 							</TableBody>
 						)}
 					</Table>
@@ -429,10 +430,12 @@ export function ConsoleHome() {
 			</div>
 
 			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table>
+				<Table
+					cols={["fluid", "text", "date", "datetime", "status", "actions-2"]}
+				>
 					<TableHeader>
 						<TableRow>
-							<TableHead className="w-full min-w-48 pl-4">
+							<TableHead className="pl-4">
 								<SortHeader label="Intent" sort={intentSort} sortKey="slug" />
 							</TableHead>
 							<TableHead>
@@ -462,13 +465,13 @@ export function ConsoleHome() {
 					</TableHeader>
 					{intents === undefined ? (
 						<TableBody>
-							<TableLoadingRow span={6} />
+							<TableLoadingRow />
 						</TableBody>
 					) : intents.length > 0 ? (
 						<TableBody className="page-fade-in">
 							{sortedIntents.map((intent: CheckoutIntent) => (
 								<TableRow key={intent.id}>
-									<TableCell className="max-w-0 pl-4">
+									<TableCell className="pl-4">
 										<div className="min-w-0">
 											<span className="block truncate font-medium text-foreground">
 												{intent.slug}
@@ -489,6 +492,7 @@ export function ConsoleHome() {
 									<TableCell className="pr-4">
 										<div className="flex items-center justify-end gap-1">
 											<DismissButton
+												iconOnly
 												onClick={() =>
 													run("release", "Checkout released", () =>
 														releaseIntent({
@@ -513,9 +517,7 @@ export function ConsoleHome() {
 						</TableBody>
 					) : (
 						<TableBody>
-							<TableEmptyRow span={6}>
-								No active checkout intents.
-							</TableEmptyRow>
+							<TableEmptyRow>No active checkout intents.</TableEmptyRow>
 						</TableBody>
 					)}
 				</Table>

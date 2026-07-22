@@ -1,4 +1,6 @@
+import { logger } from "@coder/logger"
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
+import * as crypto from "crypto"
 import * as express from "express"
 import { wss, Router as WsRouter, type WebsocketRequest } from "../../wsRouter"
 import { authenticate } from "./auth"
@@ -12,6 +14,16 @@ export const httpRouter = express.Router()
 
 const TMUX_COMMAND_TIMEOUT_MS = 5000
 const SESSION_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/
+// tmux user option carrying what this session was started to run. It is both
+// the editor's tab title and its marker for "the API made this", so a session a
+// user started by hand with `tmux` is left alone. Read back as
+// `#{@composery_cmd}`; keep in sync with the composery-api extension.
+const SESSION_LABEL = "@composery_cmd"
+// Mirrors VS Code's ShutdownConstants.DataFlushTimeout (terminalProcess.ts).
+// node-pty's onExit can fire while reads are still pending
+// (microsoft/node-pty#72), so hold the exit frame until output goes quiet or
+// the tail of a command's output is lost.
+const DATA_FLUSH_TIMEOUT_MS = 250
 // Above this much unsent output queued on the socket, pause the pty until the
 // client drains - otherwise a fast-spewing command with a slow client grows
 // the Node heap without bound.
@@ -30,10 +42,44 @@ function validSessionName(name: string | undefined): name is string {
   return typeof name === "string" && SESSION_NAME_PATTERN.test(name)
 }
 
+// tmux target-session falls back to prefix and fnmatch matching; a leading `=`
+// forces an exact match. Without it `kill-session -t build` stops `build-2`.
+function target(name: string): string {
+  return `=${name}`
+}
+
+// set-option takes a *pane* target, whose parser rejects a bare `=name` - the
+// trailing `:` makes it a session-qualified pane target, which accepts `=` and
+// is exact. Verified on tmux 3.3a: `set-option -t build` writes into `build-2`,
+// `set-option -t =build:` refuses. Anything that reaches for a session here has
+// to go through this, or the anchoring is silently lost.
+function paneTarget(name: string): string {
+  return `=${name}:`
+}
+
 function stopChild(child: ChildProcessWithoutNullStreams): void {
   try {
     child.kill("SIGTERM")
   } catch {}
+}
+
+function tmux(args: string[]): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("tmux", args)
+    let settled = false
+    const settle = (code: number) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolve(code)
+    }
+    const timeout = setTimeout(() => {
+      stopChild(child)
+      settle(-1)
+    }, TMUX_COMMAND_TIMEOUT_MS)
+    child.on("error", () => settle(-1))
+    child.on("close", (code) => settle(code ?? -1))
+  })
 }
 
 wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
@@ -65,24 +111,56 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
 
   const cols = clampDim(url.searchParams.get("cols"), 80)
   const rows = clampDim(url.searchParams.get("rows"), 24)
-  const sessionName = rawSessionName
   const cmd = url.searchParams.get("cmd") || undefined
+  // Every API terminal is a tmux session so the editor can attach to the same
+  // pty rather than to a parallel one. Without ?session= the name is ours and
+  // dies with the socket, which keeps the documented ephemeral behaviour.
+  const persistent = rawSessionName !== undefined
+  const sessionName = rawSessionName ?? `api-${crypto.randomBytes(4).toString("hex")}`
 
-  let file: string
-  let args: string[]
-  if (sessionName) {
-    file = "tmux"
-    args = ["new-session", "-A", "-s", sessionName]
-    if (cmd) args.push(cmd)
-  } else {
-    file = apiConfig.shell
-    args = cmd ? ["-l", "-c", cmd] : ["-l"]
+  // Create detached, label, then attach - rather than `new-session -A`, which
+  // attaches to an existing name and silently drops cmd. It also means the API
+  // client and the editor run the identical attach command, and the label is in
+  // place before the editor can list the session.
+  const exists = (await tmux(["has-session", "-t", target(sessionName)])) === 0
+  if (exists && cmd) {
+    release()
+    endWithStatus(req, 409, "Session Exists")
+    return
+  }
+  if (!exists) {
+    const create = ["new-session", "-d", "-s", sessionName]
+    // Same login shell the one-shot /exec uses; tmux runs its own default-shell
+    // as a login shell when no command is given.
+    if (cmd) create.push(apiConfig.shell, "-l", "-c", cmd)
+    if ((await tmux(create)) !== 0) {
+      release()
+      endWithStatus(req, 500, "Terminal unavailable")
+      return
+    }
+    // The editor titles the terminal tab from this and lists only sessions that
+    // carry it. A session that fails to get one still works perfectly over the
+    // websocket - it is just invisible in the editor, so say so rather than let
+    // the whole feature look merely empty.
+    const labelled = await tmux([
+      "set-option",
+      "-t",
+      paneTarget(sessionName),
+      SESSION_LABEL,
+      cmd || apiConfig.shell,
+    ])
+    if (labelled !== 0) {
+      logger.warn(
+        `could not label tmux session ${sessionName}; it will not be listed in the editor`,
+      )
+    }
   }
 
   let term: any
   let termExited = false
   const stopTerm = () => {
     release()
+    if (!persistent) void tmux(["kill-session", "-t", target(sessionName)])
     if (!term || termExited) return
     termExited = true
     try {
@@ -90,12 +168,14 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
     } catch {}
   }
   try {
-    term = nodePty().spawn(file, args, {
+    term = nodePty().spawn("tmux", ["attach-session", "-t", target(sessionName)], {
       name: "xterm-256color",
       cols,
       rows,
       cwd: apiConfig.home || process.cwd(),
-      env: process.env,
+      // COLORTERM matches addTerminalEnvironmentKeys (terminalEnvironment.ts) so
+      // an attached editor client and an API client render the same colours.
+      env: { ...process.env, COLORTERM: "truecolor" },
     })
   } catch {
     release()
@@ -110,7 +190,7 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
     wss.handleUpgrade(req, req.ws, req.head, (ws) => {
       let drainTimer: ReturnType<typeof setInterval> | undefined
       const pauseUntilDrained = () => {
-        if (drainTimer || typeof term.pause !== "function") return
+        if (drainTimer) return
         term.pause()
         drainTimer = setInterval(() => {
           if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES / 2 && ws.readyState === ws.OPEN) return
@@ -120,19 +200,32 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
         }, 50)
         drainTimer.unref?.()
       }
+
+      let pendingExit: number | undefined
+      let flushTimer: ReturnType<typeof setTimeout> | undefined
+      const queueExit = () => {
+        if (pendingExit === undefined) return
+        if (flushTimer) clearTimeout(flushTimer)
+        flushTimer = setTimeout(() => {
+          try {
+            ws.send(JSON.stringify({ exit: { code: pendingExit } }))
+            ws.close()
+          } catch {}
+        }, DATA_FLUSH_TIMEOUT_MS)
+      }
+
       term.onData((data: string) => {
         try {
           ws.send(Buffer.from(data, "utf8"))
         } catch {}
         if (ws.bufferedAmount > MAX_WS_BUFFERED_BYTES) pauseUntilDrained()
+        queueExit()
       })
       term.onExit(({ exitCode }: { exitCode: number }) => {
         termExited = true
         release()
-        try {
-          ws.send(JSON.stringify({ exit: { code: exitCode } }))
-          ws.close()
-        } catch {}
+        pendingExit = exitCode
+        queueExit()
       })
 
       ws.on("message", (data: Buffer, isBinary: boolean) => {
@@ -141,14 +234,21 @@ wsRouter.ws(`${apiBasePath}/exec`, async (req: WebsocketRequest) => {
           return
         }
         const text = data.toString("utf8")
+        let message: any
         try {
-          const message = JSON.parse(text)
-          if (message.resize) {
-            term.resize(clampDim(message.resize.cols, cols), clampDim(message.resize.rows, rows))
-          } else if (message.input != null) {
-            term.write(String(message.input))
-          }
+          message = JSON.parse(text)
         } catch {
+          term.write(text)
+          return
+        }
+        // Text frames are JSON control messages, but JSON that is not one of
+        // ours is stdin (pasting a config blob parses fine) - write it rather
+        // than dropping it.
+        if (message?.resize) {
+          term.resize(clampDim(message.resize.cols, cols), clampDim(message.resize.rows, rows))
+        } else if (message?.input != null) {
+          term.write(String(message.input))
+        } else {
           term.write(text)
         }
       })
@@ -210,32 +310,16 @@ httpRouter.get("/sessions", (_req, res) => {
   })
 })
 
-httpRouter.delete("/sessions/:name", (req, res) => {
+httpRouter.delete("/sessions/:name", async (req, res) => {
   const name = req.params.name
   if (!validSessionName(name)) {
     res.status(400).json({ message: "invalid session name" })
     return
   }
-
-  const child = spawn("tmux", ["kill-session", "-t", name])
-  let settled = false
-  let timeout: ReturnType<typeof setTimeout>
-  const send = (status: number, payload: unknown) => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeout)
-    res.status(status).json(payload)
+  const code = await tmux(["kill-session", "-t", target(name)])
+  if (code === -1) {
+    res.status(504).json({ message: "tmux unavailable or timed out" })
+    return
   }
-  timeout = setTimeout(() => {
-    stopChild(child)
-    send(504, { message: "tmux timed out" })
-  }, TMUX_COMMAND_TIMEOUT_MS)
-  res.on("close", () => {
-    if (settled) return
-    settled = true
-    clearTimeout(timeout)
-    stopChild(child)
-  })
-  child.on("error", () => send(500, { message: "tmux unavailable" }))
-  child.on("close", (code) => send(200, { killed: code === 0, name }))
+  res.status(200).json({ killed: code === 0, name })
 })

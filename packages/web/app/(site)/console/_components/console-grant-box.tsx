@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { useState } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
-import { Input } from "@/components/input";
+import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 

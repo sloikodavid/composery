@@ -2,8 +2,11 @@
 
 import { EllipsisVertical, ExternalLink, Trash2Icon } from "lucide-react";
 import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { Button } from "@/components/button";
+import {
+	ANIMATED_ICON_NAMES,
+	AnimatedIconButton
+} from "@/components/animated-icon";
+import { Button } from "@/components/base/button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
 	Dialog,
@@ -13,7 +16,7 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle
-} from "@/components/dialog";
+} from "@/components/base/dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -22,14 +25,14 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger
-} from "@/components/dropdown-menu";
+} from "@/components/base/dropdown-menu";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/components/select";
+} from "@/components/base/select";
 
 // Dialog demo: shows the default (compact) and panel (wider) sizes.
 export function DialogDemo() {
@@ -165,27 +168,8 @@ export function DropdownMenuDemo() {
 	);
 }
 
-// Animated icons demo: all registered animated icons on buttons and anchors.
-const ANIMATED_ICON_NAMES = [
-	"arrow-right",
-	"arrow-up-right",
-	"construction",
-	"copy",
-	"credit-card",
-	"delete",
-	"download",
-	"layout-grid",
-	"lock",
-	"login",
-	"pen-tool",
-	"play",
-	"plus",
-	"rotate-cw",
-	"square-pen",
-	"wallet",
-	"washing-machine"
-] as const;
-
+// Animated icons demo: every registered animated icon, read off the registry
+// so the gallery can't fall behind what is actually wired up.
 export function AnimatedIconsDemo() {
 	return (
 		<div className="flex flex-wrap gap-2">

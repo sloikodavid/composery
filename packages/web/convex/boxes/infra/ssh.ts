@@ -52,14 +52,37 @@ function heredoc(path: string, delimiter: string, contents: string) {
 ${contents}${contents.endsWith("\n") ? "" : "\n"}${delimiter}`;
 }
 
-function bootstrapScript({
+// `docker compose up -d` returns once the container is created, not once the
+// editor is serving, so a crash-looping box would report a clean repair. The
+// owner is root on this host and can break it in ways we cannot enumerate -
+// the only honest answer is to watch the editor come back, or fail.
+const AWAIT_IDE = `attempt=1
+while [ "$attempt" -le 60 ]; do
+	if docker exec composery systemctl is-active --quiet ide.service 2>/dev/null; then
+		exit 0
+	fi
+	sleep 2
+	attempt=$((attempt + 1))
+done
+echo "The runtime came up but its editor never started." >&2
+exit 1
+`;
+
+// Writes the runtime files and brings the stack up. `repair` restarts every
+// container even when its config is unchanged - healing a wedged or crashed one
+// - and then holds until the editor answers, so the operation only reports
+// success once the box is genuinely back. Named volumes (the box's files)
+// survive either way.
+export function bootstrapScript({
 	caddyfile,
 	compose,
-	env
+	env,
+	repair = false
 }: {
 	caddyfile: string;
 	compose: string;
 	env: string;
+	repair?: boolean;
 }) {
 	return `set -euo pipefail
 install -d /opt/composery-web
@@ -67,8 +90,8 @@ ${heredoc(COMPOSERY_COMPOSE_PATH, "__COMPOSERY_COMPOSE__", compose)}
 ${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
 ${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull
-docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d
-`;
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${repair ? " --force-recreate" : ""}
+${repair ? AWAIT_IDE : ""}`;
 }
 
 export async function runSsh(
@@ -152,6 +175,25 @@ export async function runSsh(
 	);
 }
 
+// Prints one `key=value` line per layer the Repair dialog shows. `set +e` keeps
+// a failed probe from killing the rest, so every key is reported even when the
+// box is badly broken. `parseRuntimeInspection` reads these keys back; a test
+// pins the two together.
+export const INSPECT_SCRIPT = `set +e
+if docker info >/dev/null 2>&1; then echo docker=active; else echo docker=inactive; fi
+state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{end}}' caddy 2>/dev/null)"
+printf 'outer_caddy=%s\\n' "\${state:-missing}"
+state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{end}}' composery 2>/dev/null)"
+printf 'composery=%s\\n' "\${state:-missing}"
+disk="$(df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
+printf 'disk_used_percent=%s\\n' "$disk"
+for service in persistence caddy ide; do
+	state="$(docker exec composery systemctl is-active "$service.service" 2>/dev/null)"
+	case "$state" in active) ;; inactive|failed|activating|deactivating) state=inactive ;; *) state=missing ;; esac
+	printf '%s=%s\\n' "$service" "$state"
+done
+`;
+
 function componentState(value: string | undefined) {
 	return value === "active" || value === "inactive" || value === "missing"
 		? value
@@ -165,11 +207,16 @@ export function parseRuntimeInspection(stdout: string): RecoveryStatus {
 			.map((line) => line.trim().split("=", 2))
 			.filter((parts): parts is [string, string] => parts.length === 2)
 	);
-	const diskUsedPercent = Number(values.get("disk_used_percent"));
+	// The owner is root on their own host, so every line here is untrusted
+	// input. `df` prints a plain integer percentage and nothing else qualifies:
+	// `Number` alone would take "0x10" as 16, and an empty value - what a failed
+	// `df` leaves behind - as a perfectly empty disk.
+	const rawDisk = values.get("disk_used_percent") ?? "";
+	const diskUsedPercent = /^\d{1,3}$/.test(rawDisk) ? Number(rawDisk) : 101;
 	return {
 		hostReachable: true,
 		httpReachable: false,
-		diskUsedPercent: Number.isFinite(diskUsedPercent) ? diskUsedPercent : null,
+		diskUsedPercent: diskUsedPercent <= 100 ? diskUsedPercent : null,
 		docker: componentState(values.get("docker")),
 		outerCaddy: componentState(values.get("outer_caddy")),
 		composery: componentState(values.get("composery")),
@@ -179,6 +226,18 @@ export function parseRuntimeInspection(stdout: string): RecoveryStatus {
 	};
 }
 
+const UNREACHABLE_STATUS: RecoveryStatus = {
+	hostReachable: false,
+	httpReachable: false,
+	diskUsedPercent: null,
+	docker: "unknown",
+	outerCaddy: "unknown",
+	composery: "unknown",
+	persistence: "unknown",
+	caddy: "unknown",
+	ide: "unknown"
+};
+
 export const inspectRuntime = internalAction({
 	args: { boxId: v.id("boxes") },
 	returns: vRecoveryStatus,
@@ -187,78 +246,53 @@ export const inspectRuntime = internalAction({
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
-		if (!box.hetzner_ipv4) {
-			return {
-				hostReachable: false,
-				httpReachable: false,
-				diskUsedPercent: null,
-				docker: "unknown",
-				outerCaddy: "unknown",
-				composery: "unknown",
-				persistence: "unknown",
-				caddy: "unknown",
-				ide: "unknown"
-			};
-		}
+		if (!box.hetzner_ipv4) return UNREACHABLE_STATUS;
 
 		try {
 			const { stdout } = await runSsh(
 				sshTarget(box.hetzner_ipv4),
-				`set +e
-if docker info >/dev/null 2>&1; then echo docker=active; else echo docker=inactive; fi
-state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{end}}' caddy 2>/dev/null)"
-printf 'outer_caddy=%s\\n' "\${state:-missing}"
-state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{end}}' composery 2>/dev/null)"
-printf 'composery=%s\\n' "\${state:-missing}"
-disk="$(df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
-printf 'disk_used_percent=%s\\n' "$disk"
-for service in persistence caddy ide; do
-	state="$(docker exec composery systemctl is-active "$service.service" 2>/dev/null)"
-	case "$state" in active) ;; inactive|failed|activating|deactivating) state=inactive ;; *) state=missing ;; esac
-	printf '%s=%s\\n' "$service" "$state"
-done
-`,
+				INSPECT_SCRIPT,
 				{ maxOutputBytes: 64 * 1024, timeoutMs: 20_000 }
 			);
 			return parseRuntimeInspection(stdout);
 		} catch {
-			return {
-				hostReachable: false,
-				httpReachable: false,
-				diskUsedPercent: null,
-				docker: "unknown",
-				outerCaddy: "unknown",
-				composery: "unknown",
-				persistence: "unknown",
-				caddy: "unknown",
-				ide: "unknown"
-			};
+			return UNREACHABLE_STATUS;
 		}
 	}
 });
 
-export const recoverRuntime = internalAction({
+// One data-preserving repair for a wedged box: rewrite the runtime files (in
+// case they were damaged), re-pull the image, and force-recreate the stack. The
+// box's files live in named volumes and are untouched.
+export const repairRuntime = internalAction({
 	args: {
-		boxId: v.id("boxes"),
-		type: v.union(
-			v.literal("restart_services"),
-			v.literal("recreate_containers")
-		)
+		boxId: v.id("boxes")
 	},
-	handler: async (ctx, args): Promise<void> => {
+	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
-		if (!box.hetzner_ipv4) throw new Error("Box has no server address.");
 
-		const command =
-			args.type === "restart_services"
-				? `docker exec composery systemctl restart persistence.service caddy.service ide.service`
-				: `docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d --force-recreate`;
-		await runSsh(sshTarget(box.hetzner_ipv4), command, {
-			timeoutMs: 5 * 60_000
+		if (!box.hetzner_ipv4) {
+			throw new Error("Box has no Hetzner IPv4 for repair.");
+		}
+		if (!box.runtime_image) {
+			throw new Error("Box has no runtime image for repair.");
+		}
+		const artifacts = renderRuntimeArtifacts({
+			cloudBoxId: box._id,
+			cloudOrigin: websiteOrigin(),
+			domain: runtimeDomain(box.slug),
+			runtimeAuthHash: box.runtime_auth_hash,
+			runtimeImage: box.runtime_image,
+			runtimePort: runtimePort()
 		});
+
+		await runSsh(
+			sshTarget(box.hetzner_ipv4),
+			bootstrapScript({ ...artifacts, repair: true })
+		);
 	}
 });
 

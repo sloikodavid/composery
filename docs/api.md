@@ -87,16 +87,35 @@ messages are JSON control, currently `{"resize":{"cols":N,"rows":N}}`.
 
 Query parameters: `cmd` (default the login shell), `cols`, `rows`, and `session`.
 
-## Detached sessions
+## Watching them in the editor
 
-Add `?session=<name>` to make the terminal **detached**: it is backed by `tmux`,
-so it keeps running after you disconnect and reattaches when you reconnect with
-the same name. Detached sessions survive an editor restart (not a container
-reboot, which is a real reboot). Session names are 1-64 characters: letters,
-numbers, `.`, `_`, and `-`.
+A terminal the API opens **shows up as a terminal tab in the editor**, titled
+with the command it is running - a tab reading `pnpm build`. Tabs are listed,
+never focused: nothing steals your cursor or opens the panel, the same way the
+editor surfaces terminals that survived a reload. Click one and you are in the
+running terminal, sharing screen, scrollback, and input with whatever opened it.
+
+Close a tab and it stays closed - closing it stops watching, it does not stop the
+command. Run **Composery: Show API Terminals** to reopen whatever is still going.
+
+Under the hood these are `tmux` sessions, which is how one terminal can have two
+clients in it at once. Two consequences leak through: `Ctrl-B` is tmux's prefix
+key inside these terminals, and a tmux session you started by hand is left alone
+rather than pulled into the editor.
+
+## Detached terminals
+
+Without `?session=` a terminal stops when you disconnect.
+
+Add `?session=<name>` to make the terminal **detached**: it keeps running after
+you disconnect and reattaches when you reconnect with the same name. Detached
+sessions survive an editor restart (not a container reboot, which is a real
+reboot). Session names are 1-64 characters: letters, numbers, `.`, `_`, and `-`.
+Passing `cmd` with the name of a session that already exists returns `409`
+rather than attaching and quietly dropping the command.
 
 ```
-GET    /_composery/api/v1/sessions          # list detached sessions
+GET    /_composery/api/v1/sessions          # list sessions
 DELETE /_composery/api/v1/sessions/:name    # stop one
 ```
 

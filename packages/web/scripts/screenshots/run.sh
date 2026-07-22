@@ -17,6 +17,6 @@ for theme in dark light; do
 	reset; node capture-mobile.mjs "$theme"
 done
 
-python frame.py
-python finalize.py
+node frame.mjs
+node finalize.mjs
 echo "marketing assets regenerated in packages/web/public/marketing/"
