@@ -41,6 +41,10 @@ jobs:
 
       - name: Build preview APK
         run: |
+          # The default shell is `bash -e` without pipefail, so every
+          # `apksigner|aapt ... | tee` below would report success on a failed
+          # verify - the one thing this step exists to catch.
+          set -euo pipefail
           mkdir -p tmp
           pnpm --filter mobile eas -- build --platform android \
             --profile preview --non-interactive --wait --json \

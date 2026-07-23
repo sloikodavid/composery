@@ -7,49 +7,38 @@ import ts from "typescript";
 
 export const repoRoot = resolve(import.meta.dirname, "..", "..");
 
-// "Whatever is called patch" was not a usable rule: the Windows runner carries
-// Strawberry Perl's GNU patch 2.5.9 (C:\Strawberry\c\bin) ahead of everything
-// else on PATH, and it aborts on product.diff's theme section - "Assertation
-// failed!", patch.c:354, expression `hunk` - having already written a partial
-// file. So reject that build by version, and only that build: this is a check
-// for one broken vendor build, cited above, deletable the day no supported
-// runner ships a pre-2.7 GNU patch.
+// "Whatever is called patch" was not a usable rule. The Windows runner resolves
+// PATH to Strawberry Perl's patch 2.5.9 (C:\Strawberry\c\bin), which aborts on
+// product.diff's theme section - "Assertation failed!", patch.c:354, expression
+// `hunk` - after writing a partial file. Nor is a version string: 2.5.9 predates
+// the "GNU patch" banner and announces itself as plain "patch 2.5.9", which is
+// the same shape as Apple's "patch 2.0-12u11-Apple" - and that one applies the
+// whole stack correctly, so a numeric floor rejects the working tool and keeps
+// the broken one.
 //
-// Everything that does not identify as an old GNU build is taken as it comes.
-// macOS ships Apple's BSD patch, which reports no GNU version at all and
-// applies the whole stack correctly; requiring a GNU banner would have rejected
-// the working tool over its name. Git for Windows bundles 2.7.6 in
-// <git>/usr/bin, off PATH - that is the fallback, so the suite runs identically
-// everywhere and a local pass predicts a CI pass.
-function knownBrokenPatch(binary: string): boolean {
-	const probe = spawnSync(binary, ["--version"], { encoding: "utf8" });
-	if (probe.status !== 0) return true; // not runnable at all
-	const gnu = /GNU patch (\d+)\.(\d+)/.exec(probe.stdout ?? "");
-	if (!gnu) return false;
-	return Number(gnu[1]) < 2 || (Number(gnu[1]) === 2 && Number(gnu[2]) < 7);
+// So prefer a build we can locate and know to be good over one we can only
+// interrogate. Git for Windows bundles 2.7.6 in <git>/usr/bin, off PATH, and
+// git is already a hard requirement here. Delete the win32 branch when no
+// supported runner ships a pre-2.6 patch on PATH.
+function runnable(binary: string): boolean {
+	return spawnSync(binary, ["--version"], { stdio: "ignore" }).status === 0;
+}
+
+function gitBundledPatch(): string | undefined {
+	if (process.platform !== "win32") return undefined;
+	const gitCore = execFileSync("git", ["--exec-path"], {
+		encoding: "utf8"
+	}).trim();
+	// <git>/mingw64/libexec/git-core -> <git>/usr/bin
+	const bundled = resolve(gitCore, "..", "..", "..", "usr", "bin", "patch.exe");
+	return existsSync(bundled) ? bundled : undefined;
 }
 
 export const patchBin = (() => {
-	if (!knownBrokenPatch("patch")) return "patch";
-	if (process.platform === "win32") {
-		const gitCore = execFileSync("git", ["--exec-path"], {
-			encoding: "utf8"
-		}).trim();
-		const bundled = resolve(
-			gitCore,
-			"..",
-			"..",
-			"..",
-			"usr",
-			"bin",
-			"patch.exe"
-		);
-		if (existsSync(bundled) && !knownBrokenPatch(bundled)) return bundled;
+	for (const candidate of [gitBundledPatch(), "patch"]) {
+		if (candidate && runnable(candidate)) return candidate;
 	}
-	throw new Error(
-		"No usable patch(1) found; the patch-stack tests need one that is not GNU " +
-			"patch older than 2.7."
-	);
+	throw new Error("No usable patch(1) found; the patch-stack tests need one.");
 })();
 
 export function applyPatch(patchFile: string, cwd: string): void {

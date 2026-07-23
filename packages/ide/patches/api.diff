@@ -98,15 +98,15 @@ The Composery automation API, server to menu.
  export async function createServer(address: string | net.AddressInfo | null, args: ServerParsedArgs, REMOTE_DATA_FOLDER: string): Promise<IServerAPI> {
 --- a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
 +++ b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
-@@ -15,6 +15,7 @@ import { IServerChannel } from '../../base/parts/ipc/common/ipc.js';
+@@ -15,6 +15,7 @@
  import { createRandomIPCHandle } from '../../base/parts/ipc/node/ipc.net.js';
  import { RemoteAgentConnectionContext } from '../../platform/remote/common/remoteAgentEnvironment.js';
- import { IPtyHostService, IShellLaunchConfig, ITerminalProfile, ITerminalsLayoutInfo } from '../../platform/terminal/common/terminal.js';
+ import { IPtyHostService, IShellLaunchConfig, ITerminalProfile } from '../../platform/terminal/common/terminal.js';
 +import { API_TERMINAL_WORKSPACE_ID } from '../../platform/terminal/node/ptyService.js';
  import { IGetTerminalLayoutInfoArgs, ISetTerminalLayoutInfoArgs } from '../../platform/terminal/common/terminalProcess.js';
  import { IWorkspaceFolder } from '../../platform/workspace/common/workspace.js';
  import { createURITransformer } from '../../base/common/uriTransformer.js';
-@@ -460,7 +461,12 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -476,7 +477,12 @@
  
  	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
  		return (listener, thisArgs, disposables) => {

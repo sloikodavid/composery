@@ -130,6 +130,26 @@ describe("cross-platform checks", () => {
 		expect(ciWorkflow).toMatch(/os: \[windows-[\w.-]+, macos-[\w.-]+\]/);
 	});
 
+	// Both Trivy scans read the same image at CRITICAL,HIGH with unfixed
+	// findings included, so either one blocking means a Debian CVE with no fix
+	// available stops the pipeline - nothing a change here could clear. smoke.yml
+	// said as much while release.yml quietly ran exit-code 1, which would have
+	// failed the publish job on two unfixed perl-modules CRITICALs. They report;
+	// they do not gate.
+	test("neither image scan can block on a CVE with no fix", () => {
+		for (const path of [
+			".github/workflows/smoke.yml",
+			".github/workflows/release.yml"
+		]) {
+			const workflow = readRepoFile(path);
+			const scans = [...workflow.matchAll(/aquasecurity\/trivy-action/g)];
+
+			expect(scans, path).toHaveLength(1);
+			expect(workflow, path).toContain('exit-code: "0"');
+			expect(workflow, path).not.toContain('exit-code: "1"');
+		}
+	});
+
 	// A dependency shipping prebuilt binaries for only some platforms makes
 	// `pnpm install --frozen-lockfile` unresolvable on the rest - the failure a
 	// contributor on Apple Silicon hits first. Rather than exempt the families

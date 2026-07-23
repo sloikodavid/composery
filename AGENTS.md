@@ -50,7 +50,6 @@
     config.yml
   scripts/
     install-maestro.sh
-    wait-for-metro.sh
   workflows/
     ci.yml
     cla.yml

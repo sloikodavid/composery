@@ -209,7 +209,11 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
+          # `sh` here is dash, which has no pipefail (see mobile-e2e.yml); `-eu`
+          # is what both emulator scripts get. Without it a failed adb install
+          # still ran Maestro, reporting a missing app as a flow failure.
           script: |
+            set -eu
             adb install "tmp/composery-$VERSION.apk"
             node packages/mobile/scripts/test-instance.mjs &
             "$HOME/.maestro/bin/maestro" test -e APP_ID="$PACKAGE_NAME" \
