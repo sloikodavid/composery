@@ -6,8 +6,8 @@ import { ICON_SVG, ICON_VIEWBOX } from "shared";
 // The Composery icon itself - unrelated to components/icons, which is the
 // @lucide-animated glyph set.
 export function BrandIcon({ className }: { className?: string }) {
-	const maskId = useId().replace(/[^A-Za-z0-9_-]/g, "");
-	const inner = ICON_SVG.replaceAll("composery-icon-holes", maskId);
+	const holesId = useId().replace(/[^A-Za-z0-9_-]/g, "");
+	const inner = ICON_SVG.replaceAll("composery-icon-holes", holesId);
 
 	return (
 		<svg

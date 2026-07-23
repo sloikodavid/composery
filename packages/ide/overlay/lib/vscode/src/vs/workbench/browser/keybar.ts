@@ -3,14 +3,20 @@
  * Home/End, PgUp/PgDn, Del, F1-F12 and the Ctrl/Alt/Shift modifiers - docked above the
  * keyboard for the whole workbench, not just the terminal.
  *
- * Lifetime is the keyboard's. The bar exists because the soft keyboard cannot make these
- * keys, so it is visible exactly while that keyboard is: layout.ts already computes the
- * keyboard overlap to fit the workbench above it (touch.diff) and pushes the
- * verdict here, then reserves `height` out of the grid. Nothing is reserved when nobody is
- * typing, and the rule needs no per-surface judgement - opening the command palette focuses
- * its input, which raises the keyboard, which brings the arrows that let you move the active
- * item without accepting it (quick pick previews on onDidChangeActive, commits on accept -
- * a tap can only ever do the latter, so on touch that preview is otherwise unreachable).
+ * Visible while the soft keyboard is up, and additionally while a terminal holds focus. The
+ * keyboard case needs no per-surface judgement: layout.ts computes the keyboard overlap to fit
+ * the workbench above it (touch.diff) and pushes the verdict here, which reserves `height` out
+ * of the grid - opening the command palette focuses its input, which raises the keyboard, which
+ * brings the arrows that let you move the active item without accepting it (quick pick previews
+ * on onDidChangeActive, commits on accept - a tap can only ever do the latter, so on touch that
+ * preview is otherwise unreachable).
+ *
+ * The terminal is the one surface where these keys earn their space with no keyboard up: a
+ * pager, htop, a menu-driven TUI, ^C and shell-history arrows are all driven by keys the soft
+ * keyboard cannot make, and xterm keeps its hidden textarea focused so a synthetic key still
+ * lands there. So the bar also docks whenever the focused element sits inside an .xterm,
+ * keyboard or not, and layout() reclaims the rows again when focus leaves. Nothing is reserved
+ * otherwise.
  *
  * Every key is delivered the same way: a synthetic KeyboardEvent dispatched at whatever is
  * focused, exactly as ImeEnterFallback replays soft-keyboard Enter (imeEnter.ts). That is
@@ -33,6 +39,7 @@ import './media/keybar.css';
 import * as dom from '../../base/browser/dom.js';
 import { EventType as TouchEventType, Gesture } from '../../base/browser/touch.js';
 import { Disposable, DisposableStore } from '../../base/common/lifecycle.js';
+import { Emitter } from '../../base/common/event.js';
 import { isTouch } from '../../base/browser/touchGate.js';
 import { MODIFIERS, Modifier, stickyModifiers } from '../../base/browser/stickyModifiers.js';
 
@@ -129,6 +136,12 @@ export class Keybar extends Disposable {
 	private fnLayer = false;
 	private keyboardVisible = false;
 	private compact = false;
+	private terminalFocused = false;
+
+	// Terminal focus flips visibility between layout passes; layout() subscribes to reclaim
+	// or give back the reserved rows when it does.
+	private readonly _onDidChangeHeight = this._register(new Emitter<void>());
+	readonly onDidChangeHeight = this._onDidChangeHeight.event;
 
 	constructor(container: HTMLElement) {
 		super();
@@ -152,9 +165,16 @@ export class Keybar extends Disposable {
 		this._register(dom.addDisposableListener(container.ownerDocument, 'beforeinput', e => this.onBeforeInput(e as InputEvent), true));
 		// ImeEnterFallback clears one-shots too, for the Enter the keybar never sees.
 		this._register(stickyModifiers.onDidChange(() => this.updateModifiers()));
+		// The bar also docks while a terminal holds focus (see the header): track focus moving
+		// in and out of any .xterm. focusout leaves activeElement on <body> only until the next
+		// focusin lands, and updateTerminalFocus is a no-op when the verdict is unchanged, so
+		// reading it synchronously on both events settles on the right answer without a flicker.
+		this._register(dom.addDisposableListener(container.ownerDocument, 'focusin', () => this.updateTerminalFocus()));
+		this._register(dom.addDisposableListener(container.ownerDocument, 'focusout', () => this.updateTerminalFocus()));
 	}
 
-	// The height the workbench grid must give up: zero unless a soft keyboard is actually up.
+	// The height the workbench grid must give up: zero unless the bar is showing - a soft
+	// keyboard is up, or a terminal holds focus.
 	//
 	// iPad is covered without anything special here: upstream's isIOS is
 	// `(Macintosh|iPad|iPhone in the UA) && maxTouchPoints > 0` (platform.ts), which is the
@@ -163,10 +183,15 @@ export class Keybar extends Disposable {
 	// laptop does fall outside layout.ts's isAndroid/isIOS branch and so never shows the
 	// bar - correct, it has a physical keyboard and nothing to compensate for.
 	get height(): number {
-		if (!this.bar || !this.keyboardVisible) {
+		if (!this.visible) {
 			return 0;
 		}
 		return this.compact ? COMPACT_HEIGHT : KEYBAR_HEIGHT;
+	}
+
+	// The bar earns grid space while the keyboard is up or a terminal holds focus.
+	private get visible(): boolean {
+		return !!this.bar && (this.keyboardVisible || this.terminalFocused);
 	}
 
 	// Driven from layout(), the one place that knows the keyboard is up and how much of the
@@ -179,21 +204,53 @@ export class Keybar extends Disposable {
 		if (this.keyboardVisible === keyboardVisible && this.compact === compact) {
 			return;
 		}
-		const wasCompact = this.compact;
+		const compactChanged = this.compact !== compact;
 		this.keyboardVisible = keyboardVisible;
 		this.compact = compact;
-		this.bar.style.display = keyboardVisible ? '' : 'none';
+		// setViewport is only ever called from within layout(), which reads height() straight
+		// after - it never needs to ask for a relayout, so this path leaves onDidChangeHeight
+		// alone (firing it back into layout() would re-enter the pass).
+		this.apply(compactChanged);
+	}
+
+	// Focus moving in or out of a terminal can flip the bar's visibility with no layout event
+	// of its own - a dismissed keyboard does relayout, but tapping from the terminal across to
+	// the editor does not - so this re-applies and, when the reserved height actually changed,
+	// asks layout() to reclaim or give back the grid rows.
+	private updateTerminalFocus(): void {
+		if (!this.bar) {
+			return;
+		}
+		const active = this.bar.ownerDocument.activeElement;
+		const focused = active instanceof Element && !!active.closest('.xterm');
+		if (focused === this.terminalFocused) {
+			return;
+		}
+		const before = this.height;
+		this.terminalFocused = focused;
+		this.apply(false);
+		if (this.height !== before) {
+			this._onDidChangeHeight.fire();
+		}
+	}
+
+	private apply(compactChanged: boolean): void {
+		if (!this.bar) {
+			return;
+		}
+		const visible = this.visible;
+		this.bar.style.display = visible ? '' : 'none';
 		this.bar.style.height = `${this.compact ? COMPACT_HEIGHT : KEYBAR_HEIGHT}px`;
-		if (!keyboardVisible) {
-			// A dismissed keyboard ends the chord that armed them.
+		if (!visible) {
+			// A bar nobody can see ends the chord that armed the modifiers.
 			stickyModifiers.reset();
 		}
 		// Compact carries no Fn key, so it must never inherit a layer with no way back out.
 		// An armed modifier does survive the switch - the row it lives on is in both layouts.
-		if (!keyboardVisible || compact) {
+		if (!visible || this.compact) {
 			this.fnLayer = false;
 		}
-		if (!keyboardVisible || compact !== wasCompact) {
+		if (!visible || compactChanged) {
 			this.render();
 		}
 	}

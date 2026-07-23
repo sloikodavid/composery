@@ -84,7 +84,7 @@ const top = round(inkTop - PAD);
 const width = round(inkRight - inkLeft + 2 * PAD);
 const height = round(inkBottom - inkTop + 2 * PAD);
 const viewBox = `${left} ${top} ${width} ${height}`;
-const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ maskId: "composery-logo-icon-holes" })}</svg>`;
+const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ holesId: "composery-logo-icon-holes" })}</svg>`;
 const inner = `${icon}<g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
 
 const out = join(root, "packages", "web", "lib", "logo-data.ts");

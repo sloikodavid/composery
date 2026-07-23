@@ -132,19 +132,34 @@ export const BRAND_THEME = theme;
 // measured with tmp/measure-icon.mjs; update if ICON_PATH or the stroke width changes.
 const ICON_PATH =
 	"M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z";
-const ICON_SLIT_PATH = "M12 15.5 L12 3.6";
-const ICON_MASK_ID = "composery-icon-holes";
+// The holes - a circle with a slit running into it - subtract from the mark as one
+// even-odd subpath, not as the two shapes they read as: two overlapping subpaths
+// cancel where they overlap under even-odd and paint the lens back in. So the
+// outline traces their union - up the slit's left wall, over its round cap, down
+// the right wall to where it meets the circle at y = 15 - sqrt(3.6^2 - 1.05^2),
+// then the long way round the circle. Slit r 1.05 (the old stroke-width 2.1),
+// circle r 3.6 at (12,15), both unchanged from the shapes this replaced.
+const ICON_HOLES_PATH =
+	"M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z";
+const ICON_HOLES_ID = "composery-icon-holes";
 const ICON_INK_MIN = 0.617;
 const ICON_INK_SIZE = 17.617;
 const ICON_FIT_SCALE = 20 / ICON_INK_SIZE;
 const ICON_FIT_SHIFT = -ICON_INK_MIN * ICON_FIT_SCALE;
 const ICON_FIT = `translate(${ICON_FIT_SHIFT} ${ICON_FIT_SHIFT}) scale(${ICON_FIT_SCALE}) rotate(135 12 12)`;
 
+// The holes are clipped, not masked. A <mask> makes the engine rasterize the mask,
+// take its luminance and multiply that in - a step engines do not agree on (the
+// colour space the luminance is computed in is the known divergence), and the
+// intermediate is what carries the hole's antialiasing. WebKit renders those edges
+// soft where Blink keeps them crisp, so the mark looked mushy on iOS and nowhere
+// else. A clip is pure geometry with no luminance step, so every engine antialiases
+// the hole the same way it antialiases the outer edge.
 export function iconInner({
 	fill = "currentColor",
-	maskId = ICON_MASK_ID
+	holesId = ICON_HOLES_ID
 } = {}) {
-	return `<g transform="${ICON_FIT}"><mask id="${maskId}"><rect width="24" height="24" fill="#fff" stroke="none"/><circle cx="12" cy="15" r="3.6" fill="#000" stroke="none"/><path d="${ICON_SLIT_PATH}" stroke="#000" stroke-linecap="round" stroke-width="2.1"/></mask><path d="${ICON_PATH}" fill="${fill}" stroke="${fill}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" mask="url(#${maskId})"/></g>`;
+	return `<g transform="${ICON_FIT}"><clipPath id="${holesId}"><path clip-rule="evenodd" d="${ICON_HOLES_PATH}"/></clipPath><path d="${ICON_PATH}" fill="${fill}" stroke="${fill}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#${holesId})"/></g>`;
 }
 
 export function iconSvg({

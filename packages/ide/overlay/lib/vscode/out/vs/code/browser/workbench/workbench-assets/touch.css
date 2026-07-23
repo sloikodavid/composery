@@ -9,6 +9,28 @@
 }
 
 /*
+ * Rubber-band containment (any touch device). Views like the Welcome page scroll
+ * through a DomScrollableElement whose panes are overflow:hidden and scrolled
+ * programmatically - a finger drag over them is not owned by any scroll handler,
+ * so iOS rubber-bands the whole page instead and the workbench's scroll-reset
+ * (window.ts, on the visualViewport bounce) snaps it back: content teleports.
+ * overscroll-behavior on the root and on every custom scroll surface keeps the
+ * bounce from chaining out to the document, so no view can drag the page. Applied
+ * at the root and on .monaco-scrollable-element so it holds for every IDE view,
+ * not just Welcome. Reasoned for iOS, not device-tested.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	html,
+	body {
+		overscroll-behavior: none;
+	}
+
+	.monaco-workbench .monaco-scrollable-element {
+		overscroll-behavior: contain;
+	}
+}
+
+/*
  * Editor selection drag handles (touch.diff): the collapsed caret and both range
  * ends. The browser cannot provide these - its selection UI aims at the focused element,
  * and the editor's focused element is a hidden one-pixel input, never the rendered lines.
@@ -187,6 +209,27 @@
 
 	.monaco-workbench .monaco-editor .view-lines {
 		-webkit-touch-callout: default;
+	}
+
+	/*
+	 * The editor's hidden edit-context input (native EditContext div, or the legacy
+	 * textarea) stays focused and mirrors the model selection into a real DOM selection
+	 * so screen readers and the OS know where the caret is. iOS then paints its own inert
+	 * selection grab-handles for that DOM selection, wherever screenReaderSupport has
+	 * parked the element: at the editor's top-left when the caret is scrolled out of view
+	 * (_renderAtTopLeft), or over the selected text when it is on-screen - so a select-all
+	 * or a keybar Ctrl+C (which refreshes that selection to copy) sprays the knobs across
+	 * the selection. Both are the same hidden input; both are redundant with the
+	 * model-driven caret/range handles the editor draws itself (touch.diff). Suppress the
+	 * native selection UI at the source: copy/cut read the editor model
+	 * (ensureClipboardGetsEditorData), not this selection, and the input's caret is
+	 * already transparent, so nothing visible is lost. Harmless on Android (it draws no
+	 * such handles); reasoned for iOS, not device-tested.
+	 */
+	.monaco-workbench .monaco-editor .native-edit-context,
+	.monaco-workbench .monaco-editor .inputarea {
+		-webkit-user-select: none;
+		user-select: none;
 	}
 
 }

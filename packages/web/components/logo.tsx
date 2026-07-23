@@ -26,8 +26,8 @@ import { cn } from "@/lib/utils";
 // right-click. The brand menu lives on LogoMenu, wrapped only around the real
 // clickable logo below.
 export function LogoLockup({ className }: { className?: string }) {
-	const maskId = useId().replace(/[^A-Za-z0-9_-]/g, "");
-	const inner = LOGO_INNER.replaceAll("composery-logo-icon-holes", maskId);
+	const holesId = useId().replace(/[^A-Za-z0-9_-]/g, "");
+	const inner = LOGO_INNER.replaceAll("composery-logo-icon-holes", holesId);
 
 	return (
 		<svg

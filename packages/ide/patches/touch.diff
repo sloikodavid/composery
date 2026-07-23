@@ -37,15 +37,19 @@ IME line-break commits replay as cancelable Enter keydowns (imeEnter.ts)
 carrying the keybar's sticky modifiers; single-line inputs ask the IME for a
 newline key (enterkeyhint=enter - an action key renders as Gboard's arrow and
 emits nothing); quick input prompts show OK on touch as the IME-independent
-accept path. A pan stands the keyboard's re-open down (inputmode=none) until
-the next tap - the gesture that asks to type. Nothing autofocuses a search
-field on touch (settings, keybindings, extensions, search, SCM - upstream
-exempted iOS only); quick picks never ignore focus loss (no Escape key to
-reach for); editables keep the OS text-selection menu instead of the void.
+accept path. Nothing forces the keyboard down: it follows focus, and a pan
+neither pops nor closes it. Transient overlays (quick input, context menus)
+dismiss on a deliberate press outside them, never on focus-out - on touch the
+soft keyboard churns focus with no intent to dismiss (opening a menu blurs the
+field, the keyboard closing, iOS pulling focus to <body>), so a blur is not a
+dismissal and ignoreFocusOut is honoured. Nothing autofocuses a search field on
+touch (settings, keybindings, extensions, search, SCM - upstream exempted iOS
+only); editables keep the OS text-selection menu instead of the void.
 
 Terminal. Focus on Tap; autocomplete=off so Android IMEs drop the suggestion
-strip over shell input; the initial hint is tappable (Gesture.ignoreTarget);
-the viewport pins to the prompt while the keyboard occludes it.
+strip over shell input; the initial hint is tappable (Gesture.ignoreTarget).
+The keyboard resizes the grid like any other pane change - holding the scroll
+position across that is terminal.diff, which is not touch-gated.
 
 Links. A tap activates what a click activates: detected terminal links
 (url/localFile/localFolder - never 'word'), editor links via a cursor-on-link
@@ -113,7 +117,7 @@ short layouts its row back.
  }
  
  export interface GestureEvent extends MouseEvent {
-@@ -76,11 +81,20 @@ export class Gesture extends Disposable {
+@@ -76,11 +81,16 @@ export class Gesture extends Disposable {
  	private readonly targets = new LinkedList<HTMLElement>();
  	private readonly ignoreTargets = new LinkedList<HTMLElement>();
  	private handle: IDisposable | null;
@@ -127,14 +131,10 @@ short layouts its row back.
 +	// menu the fallback already opened (Windows fires its native one only on finger-up).
 +	private suppressNativeContextMenuUntil = 0;
 +
-+	// Composery: the editable whose on-screen keyboard a pan has stood down, and the
-+	// inputmode it had before (see suppressKeyboardReopen).
-+	private keyboardSuppressed: { element: HTMLElement; inputMode: string | null } | undefined;
-+
  	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
  
  
-@@ -95,6 +109,14 @@ export class Gesture extends Disposable {
+@@ -95,6 +105,14 @@ export class Gesture extends Disposable {
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
@@ -149,7 +149,7 @@ short layouts its row back.
  		}, { window: mainWindow, disposables: this._store }));
  	}
  
-@@ -152,15 +174,32 @@ export class Gesture extends Disposable {
+@@ -152,15 +170,32 @@ export class Gesture extends Disposable {
  	private onTouchStart(e: TouchEvent): void {
  		const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
  
@@ -162,13 +162,13 @@ short layouts its row back.
  			this.handle.dispose();
  			this.handle = null;
 +			flingTargets = this.inertiaTargets;
- 		}
- 
++		}
++
 +		// Composery: long-presses are single-finger - a second touch cancels any pending timer.
 +		for (const id in this.activeTouches) {
 +			this.clearContextMenuTimer(this.activeTouches[Number(id)]);
-+		}
-+
+ 		}
+ 
 +		// Composery: a fresh touch is a deliberate new gesture - stop swallowing the
 +		// previous long-press release echo or this touch's own synthesized events die too.
 +		this.suppressNativeContextMenuUntil = 0;
@@ -183,7 +183,7 @@ short layouts its row back.
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +207,45 @@ export class Gesture extends Disposable {
+@@ -168,9 +203,45 @@ export class Gesture extends Disposable {
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -230,7 +230,7 @@ short layouts its row back.
  			const evt = this.newGestureEvent(EventType.Start, touch.target);
  			evt.pageX = touch.pageX;
  			evt.pageY = touch.pageY;
-@@ -201,16 +276,33 @@ export class Gesture extends Disposable {
+@@ -201,7 +272,21 @@ export class Gesture extends Disposable {
  			const data = this.activeTouches[touch.identifier],
  				holdTime = Date.now() - data.initialTimeStamp;
  
@@ -253,11 +253,7 @@ short layouts its row back.
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-+				// A tap is the gesture that asks to type - hand the keyboard back before
-+				// the tap's own handlers focus anything.
-+				this.allowKeyboardReopen();
- 				const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
- 				evt.pageX = data.rollingPageX.at(-1)!;
+@@ -210,7 +295,7 @@ export class Gesture extends Disposable {
  				evt.pageY = data.rollingPageY.at(-1)!;
  				this.dispatchEvent(evt);
  
@@ -266,7 +262,7 @@ short layouts its row back.
  				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
  				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
  
-@@ -218,6 +310,9 @@ export class Gesture extends Disposable {
+@@ -218,6 +303,9 @@ export class Gesture extends Disposable {
  				evt.pageX = data.rollingPageX.at(-1)!;
  				evt.pageY = data.rollingPageY.at(-1)!;
  				this.dispatchEvent(evt);
@@ -276,7 +272,7 @@ short layouts its row back.
  
  			} else if (activeTouchCount === 1) {
  				const finalX = data.rollingPageX.at(-1)!;
-@@ -228,14 +323,20 @@ export class Gesture extends Disposable {
+@@ -228,14 +316,20 @@ export class Gesture extends Disposable {
  				const deltaY = finalY - data.rollingPageY[0];
  
  				// We need to get all the dispatch targets on the start of the inertia event
@@ -299,7 +295,7 @@ short layouts its row back.
  				);
  			}
  
-@@ -252,6 +353,115 @@ export class Gesture extends Disposable {
+@@ -252,6 +346,82 @@ export class Gesture extends Disposable {
  		}
  	}
  
@@ -324,39 +320,6 @@ short layouts its row back.
 +		if (data.contextMenuTimer !== undefined) {
 +			mainWindow.clearTimeout(data.contextMenuTimer);
 +			data.contextMenuTimer = undefined;
-+		}
-+	}
-+
-+	// Composery: Android Chrome re-opens a dismissed on-screen keyboard whenever a touch
-+	// gesture ends while an editable still holds focus - and the terminal and the editor
-+	// both keep a hidden textarea focused the whole time. So panning either one with the
-+	// keyboard down popped it straight back up, and the resize that followed ate the pan
-+	// (device-verified 2026-07-20). inputmode="none" is the only thing that stands that
-+	// re-open down; it does not close a keyboard that is already up and does not touch key
-+	// handling, so a pan can set it unconditionally. allowKeyboardReopen puts it back on
-+	// the next tap - the gesture that actually asks to type.
-+	private suppressKeyboardReopen(target: EventTarget | undefined): void {
-+		if (this.keyboardSuppressed || !(target instanceof Node)) {
-+			return;
-+		}
-+		const active = target.ownerDocument?.activeElement;
-+		if (!(active instanceof HTMLElement) || !DomUtils.isEditableElement(active)) {
-+			return;
-+		}
-+		this.keyboardSuppressed = { element: active, inputMode: active.getAttribute('inputmode') };
-+		active.setAttribute('inputmode', 'none');
-+	}
-+
-+	private allowKeyboardReopen(): void {
-+		if (!this.keyboardSuppressed) {
-+			return;
-+		}
-+		const { element, inputMode } = this.keyboardSuppressed;
-+		this.keyboardSuppressed = undefined;
-+		if (inputMode === null) {
-+			element.removeAttribute('inputmode');
-+		} else {
-+			element.setAttribute('inputmode', inputMode);
 +		}
 +	}
 +
@@ -415,7 +378,7 @@ short layouts its row back.
  	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
  		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
  		event.initEvent(type, false, true);
-@@ -301,12 +511,18 @@ export class Gesture extends Disposable {
+@@ -301,12 +471,18 @@ export class Gesture extends Disposable {
  
  			for (const [_, target] of targets) {
  				target.dispatchEvent(event);
@@ -435,7 +398,7 @@ short layouts its row back.
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -329,13 +545,18 @@ export class Gesture extends Disposable {
+@@ -329,13 +505,18 @@ export class Gesture extends Disposable {
  			}
  
  			// dispatch translation event
@@ -456,7 +419,7 @@ short layouts its row back.
  			}
  		});
  	}
-@@ -354,6 +575,35 @@ export class Gesture extends Disposable {
+@@ -354,6 +535,33 @@ export class Gesture extends Disposable {
  
  			const data = this.activeTouches[touch.identifier];
  
@@ -477,16 +440,14 @@ short layouts its row back.
 +					// exactly the lever for the menu the fallback may have opened mid-pan.
 +					mainWindow.dispatchEvent(new MouseEvent('mousedown'));
 +				} else {
-+					// A spent touch is still a gesture whose end Chrome answers with the
-+					// keyboard re-open - stand it down over the long-press menu too.
-+					this.suppressKeyboardReopen(data.initialTarget);
++					// A spent touch is still a gesture - no more panning after the
++					// during-hold menu fired.
 +					continue;
 +				}
 +			}
 +			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= 16) {
 +				data.tapCancelled = true;
 +				this.clearContextMenuTimer(data);
-+				this.suppressKeyboardReopen(data.initialTarget);
 +			}
 +
  			const evt = this.newGestureEvent(EventType.Change, data.initialTarget);
@@ -928,6 +889,35 @@ short layouts its row back.
  	}
  
  	private cleanupExistingSubmenu(force: boolean): void {
+--- a/lib/vscode/src/vs/base/browser/ui/menu/menubar.ts
++++ b/lib/vscode/src/vs/base/browser/ui/menu/menubar.ts
+@@ -8,6 +8,7 @@ import * as DOM from '../../dom.js';
+ import { StandardKeyboardEvent } from '../../keyboardEvent.js';
+ import { StandardMouseEvent } from '../../mouseEvent.js';
+ import { EventType, Gesture, GestureEvent } from '../../touch.js';
++import { isTouch } from '../../touchGate.js';
+ import { cleanMnemonic, HorizontalDirection, IMenuDirection, IMenuOptions, IMenuStyles, Menu, MENU_ESCAPED_MNEMONIC_REGEX, MENU_MNEMONIC_REGEX, VerticalDirection } from './menu.js';
+ import { ActionRunner, IAction, IActionRunner, Separator, SubmenuAction } from '../../../common/actions.js';
+ import { asArray } from '../../../common/arrays.js';
+@@ -169,6 +170,18 @@ export class MenuBar extends Disposable {
+ 		this._register(DOM.addDisposableListener(this.container, DOM.EventType.FOCUS_OUT, (e) => {
+ 			const event = e;
+ 
++			// Composery: on touch, opening a menu from the editor or terminal blurred their
++			// hidden input, so the on-screen keyboard dismisses - and when it finishes iOS
++			// pulls DOM focus out of the just-opened menu to the body, arriving here with no
++			// relatedTarget (the same shape as the webview case below). Unfocusing then would
++			// close the menu the user just opened and drop the titlebar's focused state (the
++			// Android fix's contextview/menubarControl gates don't cover this focus path).
++			// A real tap-away moves focus onto the tapped element - relatedTarget is set - and
++			// still falls through to the branches below, so it keeps closing the menu.
++			if (this.isOpen && !event.relatedTarget && isTouch(DOM.getWindow(this.container))) {
++				return;
++			}
++
+ 			// We are losing focus and there is no related target, e.g. webview case
+ 			if (!event.relatedTarget) {
+ 				this.setUnfocusedState();
 --- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
 +++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
 @@ -6,6 +6,8 @@
@@ -1894,7 +1884,26 @@ short layouts its row back.
  		this.contextViewService.showContextView({
  			getAnchor: () => delegate.getAnchor(),
  			canRelayout: false,
-@@ -140,7 +149,9 @@ export class ContextMenuHandler {
+@@ -94,9 +103,16 @@ export class ContextMenuHandler {
+ 				);
+ 
+ 				menu.onDidCancel(() => this.contextViewService.hideContextView(true), null, menuDisposables);
+-				menu.onDidBlur(() => this.contextViewService.hideContextView(true), null, menuDisposables);
+ 				const targetWindow = getWindow(container);
+-				menuDisposables.add(addDisposableListener(targetWindow, EventType.BLUR, () => this.contextViewService.hideContextView(true)));
++				// Composery: on touch, blur is the soft keyboard churning focus, not intent to
++				// dismiss - opening the menu blurs the editor's hidden input, the keyboard closes,
++				// and iOS then pulls focus to <body> (a window blur too). Neither should tear the
++				// menu down; the outside-press (MOUSE_DOWN) path below is the deliberate touch
++				// dismissal, and onDidCancel (Escape/Back) still closes it.
++				if (!isTouch(targetWindow)) {
++					menu.onDidBlur(() => this.contextViewService.hideContextView(true), null, menuDisposables);
++					menuDisposables.add(addDisposableListener(targetWindow, EventType.BLUR, () => this.contextViewService.hideContextView(true)));
++				}
+ 				menuDisposables.add(addDisposableListener(targetWindow, EventType.MOUSE_DOWN, (e: MouseEvent) => {
+ 					if (e.defaultPrevented) {
+ 						return;
+@@ -140,7 +156,9 @@ export class ContextMenuHandler {
  				this.blockDisposable = null;
  
  				if (!!this.lastContainer && (getActiveElement() === this.lastContainer || isAncestor(getActiveElement(), this.lastContainer))) {
@@ -1915,29 +1924,31 @@ short layouts its row back.
  import { ToolBar } from '../../../base/browser/ui/toolbar/toolbar.js';
  import { Button, IButtonStyles } from '../../../base/browser/ui/button/button.js';
  import { CountBadge, ICountBadgeStyles } from '../../../base/browser/ui/countBadge/countBadge.js';
-@@ -20,7 +21,7 @@ import { Codicon } from '../../../base/common/codicons.js';
+@@ -20,7 +21,6 @@ import { Codicon } from '../../../base/common/codicons.js';
  import { Emitter, Event, EventBufferer } from '../../../base/common/event.js';
  import { KeyCode } from '../../../base/common/keyCodes.js';
  import { Disposable, DisposableStore } from '../../../base/common/lifecycle.js';
 -import { isIOS } from '../../../base/common/platform.js';
-+import { mainWindow } from '../../../base/browser/window.js';
  import Severity from '../../../base/common/severity.js';
  import { ThemeIcon } from '../../../base/common/themables.js';
  import './media/quickInput.css';
-@@ -261,8 +262,10 @@ export abstract class QuickInput extends Disposable implements IQuickInput {
+@@ -261,8 +261,13 @@ export abstract class QuickInput extends Disposable implements IQuickInput {
  	}
  
  	set ignoreFocusOut(ignoreFocusOut: boolean) {
 -		const shouldUpdate = this._ignoreFocusOut !== ignoreFocusOut && !isIOS;
 -		this._ignoreFocusOut = ignoreFocusOut && !isIOS;
-+		// Composery: a phone has no Escape key, so a quick pick that ignores focus
-+		// loss is a modal you cannot dismiss - upstream neutered it for iOS only.
-+		const shouldUpdate = this._ignoreFocusOut !== ignoreFocusOut && !isTouch(mainWindow);
-+		this._ignoreFocusOut = ignoreFocusOut && !isTouch(mainWindow);
++		// Composery: honour ignoreFocusOut on every platform. Upstream forced it off on iOS
++		// (a phone has no Escape key), but on touch a quick pick is dismissed by a deliberate
++		// press outside it (quickInputController) and by Back - so a picker that asks to
++		// ignore focus loss can safely do so instead of dying to the soft keyboard's focus
++		// churn (opening a menu, the keyboard closing, iOS pulling focus to <body>).
++		const shouldUpdate = this._ignoreFocusOut !== ignoreFocusOut;
++		this._ignoreFocusOut = ignoreFocusOut;
  		if (shouldUpdate) {
  			this.update();
  		}
-@@ -1288,6 +1291,10 @@ export class InputBox extends QuickInput implements IInputBox {
+@@ -1288,6 +1293,10 @@ export class InputBox extends QuickInput implements IInputBox {
  			title: !!this.title || !!this.step || !!this.titleButtons.length,
  			description: !!this.description || !!this.step,
  			inputBox: true,
@@ -1948,6 +1959,51 @@ short layouts its row back.
  			message: true,
  			progressBar: true
  		};
+--- a/lib/vscode/src/vs/platform/quickinput/browser/quickInputController.ts
++++ b/lib/vscode/src/vs/platform/quickinput/browser/quickInputController.ts
+@@ -21,6 +21,7 @@ import { QuickInputBox } from './quickInputBox.js';
+ import { QuickInputUI, Writeable, IQuickInputStyles, IQuickInputOptions, QuickPick, backButton, InputBox, Visibilities, QuickWidget, InQuickInputContextKey, QuickInputTypeContextKey, EndOfQuickInputBoxContextKey, QuickInputAlignmentContextKey } from './quickInput.js';
+ import { ILayoutService } from '../../layout/browser/layoutService.js';
+ import { mainWindow } from '../../../base/browser/window.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { IInstantiationService } from '../../instantiation/common/instantiation.js';
+ import { IContextMenuService } from '../../contextview/browser/contextView.js';
+ import { QuickInputList } from './quickInputList.js';
+@@ -330,13 +331,33 @@ export class QuickInputController extends Disposable {
+ 			this.previousFocusElement = dom.isHTMLElement(e.relatedTarget) ? e.relatedTarget : undefined;
+ 		}, true));
+ 		this._register(focusTracker.onDidBlur(() => {
+-			if (!this.getUI().ignoreFocusOut && !this.options.ignoreFocusOut()) {
++			// Composery: on touch the soft keyboard churns focus with no intent to dismiss
++			// (opening a menu blurs the field, the keyboard closing, iOS pulling focus to
++			// <body>), so blur must not hide the quick input - a deliberate outside press
++			// does (the listener below), the way a context menu already dismisses on touch.
++			if (!isTouch(mainWindow) && !this.getUI().ignoreFocusOut && !this.options.ignoreFocusOut()) {
+ 				this.hide(QuickInputHideReason.Blur);
+ 			}
+ 			this.inQuickInputContext.set(false);
+ 			this.endOfQuickInputBoxContext.set(false);
+ 			this.previousFocusElement = undefined;
+ 		}));
++		// Composery: the touch replacement for blur-dismissal. A pointerdown (press - not a
++		// release or a focus move) landing outside the widget dismisses it, so a real tap-away
++		// closes it while the keyboard's focus churn, and a text-selection drag that begins
++		// inside and releases outside, do not.
++		this._register(dom.addDisposableListener(dom.getWindow(container).document, dom.EventType.POINTER_DOWN, (e) => {
++			if (!isTouch(mainWindow) || !this.isVisible()) {
++				return;
++			}
++			if (this.getUI().ignoreFocusOut || this.options.ignoreFocusOut()) {
++				return;
++			}
++			const target = e.target;
++			if (target instanceof Node && !this.getUI().container.contains(target)) {
++				this.hide(QuickInputHideReason.Blur);
++			}
++		}, true));
+ 		this._register(inputBox.onKeyDown(e => {
+ 			const value = this.getUI().inputBox.isSelectionAtEnd();
+ 			if (this.endOfQuickInputBoxContext.get() !== value) {
 --- a/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
 +++ b/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
 @@ -9,6 +9,7 @@ import { IWorkbenchLayoutService } from '../../services/layout/browser/layoutSer
@@ -1994,18 +2050,21 @@ short layouts its row back.
  	private state!: ILayoutState;
  	private stateModel!: LayoutStateModel;
  
-@@ -336,6 +341,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -336,6 +341,13 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		// Listeners
  		this.registerLayoutListeners();
  
 +		// Composery: the touch keybar lives in the workbench container (theme variables are
 +		// scoped to .monaco-workbench) and reserves its height out of the grid below.
 +		this.keybar = this._register(new Keybar(this.mainContainer));
++		// It also reserves rows while a terminal holds focus, which can toggle with no layout
++		// event of its own - relayout so the grid reclaims or gives those rows back.
++		this._register(this.keybar.onDidChangeHeight(() => this.layout()));
 +
  		// State
  		this.initLayoutState(accessor.get(ILifecycleService), accessor.get(IFileService));
  	}
-@@ -465,7 +474,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -465,7 +477,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		this._register(this.editorGroupService.mainPart.onDidChangeGroupMaximized(() => this.centerMainEditorLayout(this.stateModel.getRuntimeValue(LayoutStateKeys.MAIN_EDITOR_CENTERED))));
  
  		// Prevent workbench from scrolling #55456
@@ -2018,7 +2077,7 @@ short layouts its row back.
  
  		// Menubar visibility changes
  		const showingCustomMenu = (isWindows || isLinux || isWeb) && !hasNativeTitlebar(this.configurationService);
-@@ -1771,12 +1784,49 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -1771,12 +1787,49 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  				this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
  			);
  
@@ -2069,7 +2128,7 @@ short layouts its row back.
  			this.initialized = true;
  
  			// Emit as event
-@@ -2130,7 +2180,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+@@ -2130,7 +2183,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
  		if (hidden && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel)) {
  			this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Panel);
  			if (
@@ -2667,208 +2726,17 @@ short layouts its row back.
  			const updatedText = this.searchConfig.seedOnFocus ? this.updateTextFromSelection({ allowSearchOnType: false }) : false;
  			this.searchWidget.focus(undefined, undefined, updatedText);
  		} else {
---- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
-+++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
-@@ -109,6 +109,15 @@
- 	position: static;
- }
- 
-+/* Composery: while the on-screen keyboard occludes the terminal the grid keeps its
-+   keyboard-down height (terminalInstance.ts#_stableGridHeight), so it is taller than the
-+   pane. The bottom alignment above keeps the prompt and cursor visible; clip the overflow
-+   above so the grid cannot spill over the tabs. */
-+.monaco-workbench .terminal-editor .terminal-wrapper.composery-terminal-occluded,
-+.monaco-workbench .pane-body.integrated-terminal .terminal-wrapper.composery-terminal-occluded {
-+	overflow: hidden;
-+}
-+
- .monaco-workbench .terminal-editor .xterm-viewport,
- .monaco-workbench .pane-body.integrated-terminal .xterm-viewport {
- 	z-index: 30;
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
-@@ -8,6 +8,8 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+@@ -8,6 +8,7 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
  import { DataTransfers } from '../../../../base/browser/dnd.js';
  import * as dom from '../../../../base/browser/dom.js';
  import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
 +import { Gesture, EventType as TouchEventType } from '../../../../base/browser/touch.js';
-+import { isTouch } from '../../../../base/browser/touchGate.js';
  import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
  import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
  import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
-@@ -169,6 +171,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
- 	private _container: HTMLElement | undefined;
- 	private _wrapperElement: (HTMLElement & { xterm?: XTermTerminal });
- 	get domElement(): HTMLElement { return this._wrapperElement; }
-+	// Composery: the pane size the grid is sized against - the last one measured with the
-+	// on-screen keyboard down (see _stableGridHeight).
-+	private _stableGrid: { width: number; height: number } | undefined;
-+	private readonly _stableGridShrink: MutableDisposable<IDisposable> = this._register(new MutableDisposable());
-+	// Below this, a pane/grid difference is layout noise rather than a keyboard.
-+	private static readonly OCCLUSION_SLOP = 24;
- 	private _horizontalScrollbar: DomScrollableElement | undefined;
- 	private _terminalFocusContextKey: IContextKey<boolean>;
- 	private _terminalHasFixedWidth: IContextKey<boolean>;
-@@ -706,7 +714,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
- 		const width = parseInt(computedStyle.width);
- 		const height = parseInt(computedStyle.height);
- 
--		this._evaluateColsAndRows(width, height);
-+		this._evaluateColsAndRows(width, this._stableGridHeight(width, height));
- 	}
- 
- 	/**
-@@ -744,6 +752,131 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
- 		return dimension.width;
- 	}
- 
-+	private _keyboardOpen(): boolean {
-+		const targetWindow = dom.getWindow(this._wrapperElement);
-+		return targetWindow.getComputedStyle(targetWindow.document.documentElement)
-+			.getPropertyValue('--composery-touch-keyboard-open').trim() === '1';
-+	}
-+
-+	/**
-+	 * Composery: the height the grid is sized against, which on touch is deliberately NOT
-+	 * always the current pane height. The on-screen keyboard shrinks the workbench (the
-+	 * viewport meta is interactive-widget=resizes-content), and recomputing cols/rows from
-+	 * that SIGWINCHes the foreground process on every keyboard toggle - measured on device as
-+	 * 34 rows to 18 and back. What that costs depends on which buffer is active, so that is
-+	 * what this keys on:
-+	 *
-+	 * - The normal buffer holds scrollback and a scroll position that belong to the user, and
-+	 *   resizing it both reflows the content and shifts ydisp (Buffer#resize) - the "teleports
-+	 *   to the very top unless I was at the very bottom" in the bug report. Nothing about the
-+	 *   keyboard should disturb it, so keep the grid at its keyboard-down size and let the
-+	 *   keyboard occlude the bottom of it; upstream already bottom-aligns the grid
-+	 *   (terminal.css), which is where the prompt and cursor live.
-+	 * - The alternate screen has no scrollback and no scroll position at all: the app is the
-+	 *   layout engine and redraws on SIGWINCH by design. There is nothing to preserve, and -
-+	 *   with no scrollback - nothing to scroll to either, so occluding it would strand
-+	 *   whatever sits above the fold (OpenCode centres its input). Hand it the size that is
-+	 *   really visible and let it lay itself out for the space.
-+	 */
-+	private _stableGridHeight(width: number, height: number): number {
-+		if (!isTouch(dom.getWindow(this._wrapperElement))) {
-+			return height;
-+		}
-+
-+		// Read through a local so an xterm that does not exist yet cannot compare equal to
-+		// itself and pass for the alternate screen.
-+		const raw = this.xterm?.raw;
-+		if (raw && raw.buffer.active === raw.buffer.alternate) {
-+			// Full-screen app: give it the visible size, and leave the remembered
-+			// keyboard-down height alone so the shell underneath still gets it back.
-+			this._wrapperElement.classList.remove('composery-terminal-occluded');
-+			return height;
-+		}
-+
-+		if (this._keyboardOpen()) {
-+			// The pane is only smaller because the keyboard is covering it.
-+			this._stableGridShrink.clear();
-+		} else if (this._stableGrid?.width !== width || height >= this._stableGrid.height) {
-+			// Rotation invalidates the remembered height outright, and the pane growing is
-+			// always a real change (the keyboard closing lands here).
-+			this._stableGridShrink.clear();
-+			this._stableGrid = { width, height };
-+		} else {
-+			// A shrink while the keyboard reports down is either a real pane change (a split)
-+			// or the opening keyboard's first frames, before the viewport has shrunk enough
-+			// for narrow.js to call it a keyboard. Only a shrink that outlives the animation
-+			// is real - taking these frames would bake the half-open height into the grid.
-+			// The keyboard state is re-read when the timer fires rather than relying on a
-+			// later layout to cancel it: the last frame of the animation is often the last
-+			// layout there is, so a cancel that never comes would commit the half-open size.
-+			this._stableGridShrink.value = disposableTimeout(() => {
-+				if (this._keyboardOpen()) {
-+					return;
-+				}
-+				this._stableGrid = { width, height };
-+				this._resize();
-+			}, 500, this._store);
-+		}
-+
-+		const stableHeight = this._stableGrid?.height ?? height;
-+		// Sub-row differences are layout noise (rounding, scrollbar gutter), not a keyboard.
-+		this._wrapperElement.classList.toggle('composery-terminal-occluded', stableHeight - height >= TerminalInstance.OCCLUSION_SLOP);
-+		return stableHeight;
-+	}
-+
-+	/**
-+	 * Composery: which slice of the occluded grid to show. The grid is taller than the pane
-+	 * (see _stableGridHeight), and upstream's bottom alignment alone is wrong whenever the
-+	 * cursor is not on the last row: everything below the cursor is blank, so the bottom
-+	 * slice is padding. Measured with the keyboard up, that left 251-327px of dead space
-+	 * under the prompt in a 367px window, varying with how much had been printed.
-+	 *
-+	 * A terminal grows upward from its prompt, so the rule is to put the caret's row at the
-+	 * BOTTOM of the visible window and fill the rest with the history above it - clamped so
-+	 * it never scrolls past the top of the grid. That degenerates to upstream's bottom
-+	 * alignment once the buffer has filled or scrolled (caret on the last row), and it
-+	 * top-anchors a buffer too short to fill the window, which is what the old
-+	 * terminal-anchor patch had to special-case. The alternate screen is resized to fit, so
-+	 * nothing is ever hidden there.
-+	 */
-+	private _updateOcclusionOffset(): void {
-+		const raw = this.xterm?.raw;
-+		const element = raw?.element;
-+		if (!element) {
-+			return;
-+		}
-+
-+		const hidden = element.clientHeight - this._wrapperElement.clientHeight;
-+		const screen = element.querySelector('.xterm-screen');
-+		if (hidden <= 0 || !raw.rows || !(screen instanceof HTMLElement) || raw.buffer.active === raw.buffer.alternate) {
-+			element.style.bottom = '';
-+			return;
-+		}
-+
-+		// Rows live in .xterm-screen, so measure a cell against that rather than dividing
-+		// .xterm's padded height into rows.
-+		const cellHeight = screen.clientHeight / raw.rows;
-+		// Anchor on the last row that has anything on it. Anchoring on the caret instead
-+		// looks identical for a shell - nothing is drawn past the prompt - but an inline
-+		// TUI keeps its footer BELOW its input line (pi does), and that footer is exactly
-+		// what the keyboard then covers.
-+		const buffer = raw.buffer.active;
-+		let anchorRow = buffer.cursorY;
-+		for (let row = raw.rows - 1; row > anchorRow; row--) {
-+			if (buffer.getLine(buffer.baseY + row)?.translateToString(true).trim()) {
-+				anchorRow = row;
-+				break;
-+			}
-+		}
-+		// Every row below the anchor is blank, so slide the grid down by exactly that many
-+		// to bring the anchor onto the window's bottom edge, capped at the hidden amount so
-+		// it never scrolls past the top of the grid. `bottom` is measured upward from the
-+		// pane's bottom edge, hence negative; zero once the anchor is on the last row,
-+		// which is upstream's own bottom alignment.
-+		const bottom = Math.max(-hidden, -(raw.rows - 1 - anchorRow) * cellHeight);
-+		element.style.bottom = bottom ? `${Math.round(bottom)}px` : '';
-+	}
-+
- 	private _setLastKnownColsAndRows(): void {
- 		if (TerminalInstance._lastKnownGridDimensions) {
- 			this._cols = TerminalInstance._lastKnownGridDimensions.cols;
-@@ -870,6 +1003,17 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
- 		}, 1000, this._store);
- 		this._register(xterm.raw.onSelectionChange(() => this._onDidChangeSelection.fire(this)));
- 		this._register(xterm.raw.buffer.onBufferChange(() => this._refreshAltBufferContextKey()));
-+		// Composery: the normal buffer is occluded by the keyboard while the alternate
-+		// screen is resized for it (see _stableGridHeight), so a buffer switch has to
-+		// re-evaluate the grid - otherwise a full-screen app keeps the shell's taller size.
-+		this._register(xterm.raw.buffer.onBufferChange(() => {
-+			this._initDimensions();
-+			this._resize();
-+			this._updateOcclusionOffset();
-+		}));
-+		// Which slice of an occluded grid is on screen follows the caret.
-+		this._register(xterm.raw.onCursorMove(() => this._updateOcclusionOffset()));
-+		this._register(xterm.raw.onResize(() => this._updateOcclusionOffset()));
- 
- 		this._register(this._processManager.onProcessData(e => this._onProcessData(e)));
- 		this._register(xterm.raw.onData(async data => {
-@@ -1130,6 +1274,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1130,6 +1131,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  			throw new Error('xterm elements not set after open');
  		}
  
@@ -2882,7 +2750,7 @@ short layouts its row back.
  		this._setAriaLabel(xterm.raw, this._instanceId, this._title);
  
  		xterm.raw.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
-@@ -1202,7 +1353,10 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1202,7 +1210,10 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  				listener.dispose();
  			});
  		}));
@@ -2894,21 +2762,6 @@ short layouts its row back.
  			xterm.raw.focus();
  		}));
  
-@@ -2001,12 +2155,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
- 		}
- 
- 		// Evaluate columns and rows, exclude the wrapper element's margin
--		const terminalWidth = this._evaluateColsAndRows(dimension.width, dimension.height);
-+		const terminalWidth = this._evaluateColsAndRows(dimension.width, this._stableGridHeight(dimension.width, dimension.height));
- 		if (!terminalWidth) {
- 			return;
- 		}
- 
- 		this._resize();
-+		this._updateOcclusionOffset();
- 
- 		// Signal the container is ready
- 		if (!this._containerReadyBarrier.isOpen()) {
 --- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
 @@ -9,6 +9,7 @@ import { StandardMouseEvent } from '../../../../../base/browser/mouseEvent.js';

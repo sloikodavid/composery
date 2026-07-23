@@ -9,7 +9,7 @@ import {
 	readRepoFile
 } from "./support/patchSource.js";
 
-const patch = readRepoFile("packages/ide/patches/terminal-sync.diff");
+const patch = readRepoFile("packages/ide/patches/terminal.diff");
 const added = addedLines(patch);
 
 interface Layout {
@@ -82,7 +82,12 @@ const clientStateSource = extractAddedClass("TerminalClientState");
 function evaluateClientState(source = clientStateSource) {
 	return evaluatePatchSnippets<{
 		TerminalClientState: new () => {
-			attach(id: number, clientId: string, makeController: boolean): void;
+			attach(
+				id: number,
+				clientId: string,
+				makeController: boolean,
+				streaming?: boolean
+			): void;
 			detach(
 				id: number,
 				clientId: string
@@ -95,6 +100,8 @@ function evaluateClientState(source = clientStateSource) {
 			detachClient(clientId: string): { id: number; final: boolean }[];
 			isAttached(id: number, clientId: string): boolean;
 			isController(id: number, clientId: string): boolean;
+			isStreaming(id: number, clientId: string): boolean;
+			markStreaming(id: number, clientId: string): void;
 			acknowledge(id: number, clientId: string, charCount: number): number;
 			recordDimensions(
 				id: number,
@@ -390,6 +397,34 @@ describe("per-client terminal attachment state", () => {
 		expect(state.isAttached(1, "laptop")).toBe(true);
 	});
 
+	test("a freshly attached client does not stream live data until its replay lands", () => {
+		const State = evaluateClientState();
+		const state = new State();
+
+		// The creating client streams immediately: a fresh terminal has no prior output,
+		// so there is nothing a replay could duplicate.
+		state.attach(5, "phone", true, true);
+		expect(state.isStreaming(5, "phone")).toBe(true);
+
+		// A client attaching to a running terminal must NOT receive live data until its
+		// replay lands. Otherwise data from the attach->replay window is written to its
+		// xterm and then re-rendered by the full-buffer replay - duplicated lines.
+		state.attach(5, "laptop", false);
+		expect(state.isAttached(5, "laptop")).toBe(true);
+		expect(state.isStreaming(5, "laptop")).toBe(false);
+
+		// The replay landing opens the stream; live data flows from the snapshot boundary on.
+		state.markStreaming(5, "laptop");
+		expect(state.isStreaming(5, "laptop")).toBe(true);
+
+		// Streaming is always a subset of attachment: a stranger streams nothing, and
+		// detaching closes the stream so a re-attach waits for a fresh replay.
+		state.markStreaming(5, "stranger");
+		expect(state.isStreaming(5, "stranger")).toBe(false);
+		state.detach(5, "laptop");
+		expect(state.isStreaming(5, "laptop")).toBe(false);
+	});
+
 	test("the controller guard is mutation-tested", () => {
 		const mutated = clientStateSource.replace(
 			"return this.isController(id, clientId);",
@@ -513,9 +548,19 @@ describe("renderer synchronization", () => {
 		expect(harness.calls).toBe(2);
 	});
 
-	test("ready and replay are target-only while data and exit require attachment", () => {
+	test("ready and replay are target-only, exit needs attachment, data needs a landed replay", () => {
 		expect(added).toContain("this._startState.target(e.id) === ctx.clientId");
-		expect(added).toContain("this._clientState.isAttached(e.id, ctx.clientId)");
+		// Exit must reach every attached client (even one mid-replay) so it can dispose.
+		expect(added).toContain(
+			"case RemoteTerminalChannelEvent.OnProcessExitEvent: return Event.filter(this._ptyHostService.onProcessExit, e => this._clientState.isAttached(e.id, ctx.clientId))"
+		);
+		// Live data must be gated on streaming, not raw attachment: a just-attached client
+		// receives nothing until its replay lands (marked streaming), so the attach->replay
+		// window is never duplicated on top of the full-buffer replay.
+		expect(added).toContain(
+			"case RemoteTerminalChannelEvent.OnProcessDataEvent: return Event.filter(this._ptyHostService.onProcessData, e => this._clientState.isStreaming(e.id, ctx.clientId))"
+		);
+		expect(added).toContain("this._clientState.markStreaming(e.id, target)");
 		expect(added).toContain("OnPersistentTerminalInventoryChange");
 		expect(added).not.toContain("unknown persistent");
 		expect(added).toContain("is not attached to terminal");
@@ -552,8 +597,51 @@ describe("renderer synchronization", () => {
 		);
 		expect(added).toContain("failOnAttachError: true");
 		expect(
-			added.match(/throw new Error\(`Failed to synchronize terminal/g)
+			added.match(
+				/return \{ message: `Could not find pty with id \$\{shellLaunchConfig\.attachPersistentProcess\.id\} to synchronize` \}/g
+			)
 		).toHaveLength(2);
+	});
+
+	test("initial reconnect sync runs before the listener, then catches up", () => {
+		// The initial sync must finish before the inventory listener can fire a
+		// concurrent sync: two syncs racing on independent getTerminalLayoutInfo
+		// snapshots each see the same terminal as unattached and double-create it.
+		// A catch-up queue call after registration then covers any event that
+		// arrived during the initial sync's window (the listener was not live yet).
+		const initialIdx = added.indexOf(
+			"await this._syncRemoteTerminals(backend, true)"
+		);
+		const listenerIdx = added.indexOf("backend.onDidRequestTerminalSync(e =>");
+		expect(initialIdx).toBeGreaterThanOrEqual(0);
+		expect(listenerIdx).toBeGreaterThan(initialIdx);
+		expect(
+			added.match(/void this\._queueRemoteTerminalSync\(backend\)/g)
+		).toHaveLength(2);
+	});
+
+	test("a raced attach disposes the phantom silently, no zombie or rogue shell", () => {
+		// When a synced terminal exits server-side between getTerminalLayoutInfo and
+		// the attach, the attach fails. Upstream would spawn a fresh shell in the
+		// tab (a rogue terminal); throwing instead leaves an unhandled rejection and
+		// a process-less tab. We return a launch error whose message upstream's
+		// parseExitResult treats as an internal error, so the instance disposes with
+		// no notification. Pin that coupling: an upstream rename of the sentinel must
+		// fail here rather than silently turn the error toast back on.
+		expect(
+			added.match(
+				/return \{ message: `Could not find pty with id \$\{shellLaunchConfig\.attachPersistentProcess\.id\} to synchronize` \}/g
+			)
+		).toHaveLength(2);
+
+		const terminalInstance = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts"
+		);
+		const sentinel = /\.message\.toString\(\)\.includes\('([^']+)'\)/.exec(
+			terminalInstance
+		)?.[1];
+		expect(sentinel).toBe("Could not find pty with id");
+		expect("Could not find pty with id 7 to synchronize").toContain(sentinel!);
 	});
 
 	test("single-recipient events and client maps are released on disconnect", () => {
@@ -594,6 +682,7 @@ describe("channel dispatch honours the client state machine", () => {
 					forcePersist?: boolean
 				): Promise<void>;
 				resize(clientId: string, id: number, cols: number, rows: number): void;
+				input(clientId: string, id: number, data: string): Promise<void>;
 				calls: string[];
 			};
 		}>(
@@ -605,7 +694,8 @@ describe("channel dispatch honours the client state machine", () => {
 					_ptyHostService = {
 						attachToProcess: async (id) => { this.calls.push('attach:' + id); },
 						detachFromProcess: async (id, forcePersist) => { this.calls.push('detach:' + id + ':' + Boolean(forcePersist)); },
-						resize: async (id, cols, rows) => { this.calls.push('resize:' + id + ':' + cols + 'x' + rows); }
+						resize: async (id, cols, rows) => { this.calls.push('resize:' + id + ':' + cols + 'x' + rows); },
+						input: async (id, data) => { this.calls.push('input:' + id + ':' + data); }
 					};
 					async attach(clientId, id) {
 						const ctx = { clientId };
@@ -616,6 +706,11 @@ describe("channel dispatch honours the client state machine", () => {
 						const ctx = { clientId };
 						const args = [id, forcePersist];
 						${extractAddedCaseBody(patch, "DetachFromProcess", "RemoteTerminalChannelRequest")}
+					}
+					async input(clientId, id, data) {
+						const ctx = { clientId };
+						const args = [id, data];
+						${extractAddedCaseBody(patch, "Input", "RemoteTerminalChannelRequest")}
 					}
 					resize(clientId, id, cols, rows) {
 						this._clientState.recordDimensions(id, clientId, { cols, rows });
@@ -680,5 +775,40 @@ describe("channel dispatch honours the client state machine", () => {
 		// The phone owned the size; handing control back must not leave the laptop
 		// rendering into a 40-column pty.
 		expect(channel.calls).toContain("resize:41:100x30");
+	});
+
+	test("a settled controller does not re-resize the pty on every keystroke", async () => {
+		const { Channel } = evaluateDispatch();
+		const channel = new Channel();
+
+		await channel.attach("phone", 41); // first attach becomes the controller
+		await channel.attach("laptop", 41);
+		channel.resize("phone", 41, 80, 24);
+		channel.resize("laptop", 41, 120, 40);
+
+		// The controller typing must not resize: the pty already has its size, and a
+		// resize per keystroke is an extra pty-host round-trip on the hot path (and
+		// flushes the output batcher) that upstream never pays.
+		await channel.input("phone", 41, "a");
+		await channel.input("phone", 41, "b");
+		expect(channel.calls.filter((c) => c.startsWith("resize:"))).toHaveLength(
+			0
+		);
+
+		// A different client typing takes control and asserts its size exactly once,
+		// then stops resizing once it is the settled controller.
+		await channel.input("laptop", 41, "c");
+		await channel.input("laptop", 41, "d");
+		expect(channel.calls.filter((c) => c.startsWith("resize:"))).toEqual([
+			"resize:41:120x40"
+		]);
+
+		// Every keystroke still reaches the pty regardless of the resize decision.
+		expect(channel.calls.filter((c) => c.startsWith("input:"))).toEqual([
+			"input:41:a",
+			"input:41:b",
+			"input:41:c",
+			"input:41:d"
+		]);
 	});
 });

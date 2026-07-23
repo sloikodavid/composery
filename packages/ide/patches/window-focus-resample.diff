@@ -1,7 +1,14 @@
-Re-sample focus after a mobile WebView resume: the WebView can restore document
-focus without dispatching any event the host samples below, so the latched value
-wedges stale (gray titlebar, and element focus() never raises the on-screen
-keyboard). Vendor-defect workaround, kept individually deletable.
+Mobile hasFocus is unreliable, two ways, both washing out the titlebar/menubar
+(which drive off IHostService.hasFocus via onDidChangeFocus). One: a WebView
+resume restores document focus without dispatching any event the host samples
+below, so the latched value wedges stale (gray titlebar, and element focus()
+never raises the on-screen keyboard) - re-sampled on pointerdown and a post-
+visibility poll. Two: on touch the soft keyboard's native chrome (iOS's close-
+keyboard button, the keyboard surface) takes and drops window focus without the
+user leaving, so document.hasFocus() reports the app inactive while it is plainly
+foreground - so the hasFocus getter answers by visibility on touch (present ==
+active) rather than OS window focus. Vendor-defect workaround, kept individually
+deletable.
 
 2026-07-22 re-check (prune pass): not re-verifiable here. The Composery Mobile
 app WebView loads the IDE but exposes no devtools socket, so document.hasFocus()
@@ -13,7 +20,15 @@ before deleting.
 
 --- a/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
 +++ b/lib/vscode/src/vs/workbench/services/host/browser/browserHostService.ts
-@@ -161,10 +161,37 @@
+@@ -16,6 +16,7 @@ import { IWorkspace, IWorkspaceProvider } from '../../../browser/web.api.js';
+ import { IFileService } from '../../../../platform/files/common/files.js';
+ import { ILabelService, Verbosity } from '../../../../platform/label/common/label.js';
+ import { EventType, ModifierKeyEmitter, addDisposableListener, addDisposableThrottledListener, detectFullscreen, disposableWindowInterval, getActiveDocument, getActiveWindow, getWindowId, onDidRegisterWindow, trackFocus, getWindows as getDOMWindows } from '../../../../base/browser/dom.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { Disposable, DisposableSet, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../environment/browser/environmentService.js';
+ import { memoize } from '../../../../base/common/decorators.js';
+@@ -161,10 +162,37 @@ export class BrowserHostService extends Disposable implements IHostService {
  			const focusTracker = disposables.add(trackFocus(window));
  			const visibilityTracker = disposables.add(new DomEmitter(window.document, 'visibilitychange'));
  
@@ -51,3 +66,23 @@ before deleting.
  				Event.map(this.onDidChangeActiveWindow, () => this.hasFocus, disposables),
  			)(focus => emitter.fire(focus), undefined, disposables);
  		}, { window: mainWindow, disposables: this._store }));
+@@ -173,7 +201,18 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 	}
+ 
+ 	get hasFocus(): boolean {
+-		return getActiveDocument().hasFocus();
++		const activeDocument = getActiveDocument();
++		// Composery: on touch the soft keyboard's native chrome (iOS's "Done"/close-keyboard
++		// button, the keyboard surface itself) takes and drops window focus without the user
++		// leaving, so document.hasFocus() reports the app inactive - washing out the titlebar
++		// and menubar (both drive off this via onDidChangeFocus) - while it is plainly
++		// foreground. Presence, not OS window focus, is the right signal on touch: the app is
++		// active whenever its document is visible. (Desktop keeps the true window-focus answer,
++		// including a touch laptop tabbing away - a cosmetic edge far smaller than the phone bug.)
++		if (isTouch(getActiveWindow())) {
++			return activeDocument.visibilityState === 'visible';
++		}
++		return activeDocument.hasFocus();
+ 	}
+ 
+ 	async hadLastFocus(): Promise<boolean> {

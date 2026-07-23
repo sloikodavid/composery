@@ -291,7 +291,7 @@ packages/
       qr-action.diff
       readiness.diff
       series
-      terminal-sync.diff
+      terminal.diff
       touch.diff
       updates.diff
       web-client.diff

@@ -21,7 +21,7 @@ import {
 	applyPatch,
 	evaluatePatchSnippets,
 	extractAddedFunction,
-	extractAddedMethod,
+	postImageLines,
 	readRepoFile,
 	repoRoot
 } from "./support/patchSource.ts";
@@ -1312,11 +1312,12 @@ describe("narrow overlay", () => {
 		expect(narrowCss).toContain(".part.composery-compact-footer > .footer");
 	});
 
-	// The keybar costs workbench height, so the two properties that keep it from
+	// The keybar costs workbench height, so the properties that keep it from
 	// "ruining the experience by taking up space" are load-bearing: it is reserved
-	// out of the grid (or it would overlap content), and it is reserved only while
-	// a soft keyboard is up (or it would be permanent).
-	test("keybar height is reserved out of the grid, keyboard-gated", () => {
+	// out of the grid (or it would overlap content), and driven by the keyboard signal
+	// from layout(). Terminal focus adds height with no layout event of its own, so
+	// layout() must also relayout when the bar's reserved height changes.
+	test("keybar height is reserved out of the grid, keyboard-driven", () => {
 		const keybarPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 
 		expect(keybarPatch).toContain(
@@ -1334,18 +1335,30 @@ describe("narrow overlay", () => {
 		// the same var), so pin the actual disjunction. Device-verified 2026-07-22.
 		expect(keybarPatch).toContain("const keyboardOpen =");
 		expect(keybarPatch).toContain("const hasKeyboard = keyboardOpen ||");
+		// Terminal focus toggles the reserved height between layout passes; without this
+		// relayout the grid never gives the rows back when focus leaves the terminal.
+		expect(keybarPatch).toContain(
+			"this.keybar.onDidChangeHeight(() => this.layout())"
+		);
 	});
 
-	// Its visibility rule is the whole design: `height` must stay gated on the
-	// keyboard, not merely on the bar existing.
-	test("keybar reports no height without a keyboard", () => {
+	// Its visibility rule is the whole design: `height` is gated on `visible`, not merely
+	// on the bar existing - and `visible` is the keyboard OR a focused terminal, so the bar
+	// docks for terminal keys with no keyboard up yet never becomes permanent elsewhere.
+	test("keybar height is gated on visibility, keyboard or focused terminal", () => {
 		const keybar = readRepoFile(
 			`${OVERLAY_VSCODE_SRC}/vs/workbench/browser/keybar.ts`
 		);
 
 		expect(keybar).toMatch(
-			/get height\(\): number \{\s*if \(!this\.bar \|\| !this\.keyboardVisible\) \{\s*return 0;/
+			/get height\(\): number \{\s*if \(!this\.visible\) \{\s*return 0;/
 		);
+		expect(keybar).toMatch(
+			/get visible\(\): boolean \{\s*return !!this\.bar && \(this\.keyboardVisible \|\| this\.terminalFocused\);/
+		);
+		// terminalFocused tracks focus into any .xterm - the one surface whose keys earn
+		// the bar with no keyboard up.
+		expect(keybar).toContain("active.closest('.xterm')");
 	});
 
 	// A short viewport drops to one row, and that row must be reachable: compact
@@ -1358,7 +1371,7 @@ describe("narrow overlay", () => {
 
 		expect(keybar).toContain("const compact = visibleHeight < COMPACT_BELOW;");
 		expect(keybar).toMatch(
-			/if \(!keyboardVisible \|\| compact\) \{\s*this\.fnLayer = false;/
+			/if \(!visible \|\| this\.compact\) \{\s*this\.fnLayer = false;/
 		);
 		expect(keybar).toMatch(
 			/const rows = this\.compact \? COMPACT_ROWS : this\.fnLayer \? FN_ROWS : BASE_ROWS;/
@@ -1554,24 +1567,31 @@ describe("narrow overlay", () => {
 		expect(titlebarSections).not.toBe("");
 		expect(titlebarSections).not.toContain("composery-theme");
 		expect(logoAdded).not.toContain("background-size: 20px");
-		// WebKit rasterizes a size-less SVG mask at the box size in CSS pixels, so
-		// the 20px logo came off a ~35px bitmap and read as mushy on 3x iOS screens.
-		// The mask source must keep a pixel intrinsic size well above 20px * 3.
-		const iconSection = logoPatch
-			.split(/^(?=--- a\/)/m)
-			.filter((section) =>
-				section.startsWith(
-					"--- a/lib/vscode/src/vs/workbench/browser/media/code-icon.svg"
-				)
-			)
-			.join("");
-		expect(iconSection).not.toBe("");
-		const iconSvg = /<svg width="(\d+)" height="(\d+)" viewBox=/.exec(
-			addedLines(iconSection)
-		);
-		expect(iconSvg).not.toBeNull();
-		expect(Number(iconSvg?.[1])).toBeGreaterThanOrEqual(64);
-		expect(iconSvg?.[2]).toBe(iconSvg?.[1]);
+	});
+
+	// The patch carries the mark's geometry by hand (a patch cannot import from
+	// packages/shared), so every copy - the titlebar icon and each letterpress
+	// watermark - is pinned to the generator here or the IDE keeps painting an
+	// old shape after a redesign. The holes must stay a clip: as a nested <mask>
+	// they go through a luminance step engines disagree on, and WebKit rendered
+	// the hole edges soft where Blink kept them crisp (mushy mark on iOS only).
+	test("patched icon SVGs match the shared icon geometry", () => {
+		const shared = readRepoFile("packages/shared/index.ts");
+		const iconPath = /const ICON_PATH =\s*"([^"]+)"/.exec(shared)?.[1];
+		const holesPath = /const ICON_HOLES_PATH =\s*"([^"]+)"/.exec(shared)?.[1];
+		expect(iconPath).toBeDefined();
+		expect(holesPath).toBeDefined();
+
+		const added = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
+		const marks = [...added.matchAll(/<path d="([^"]+)"[^>]*clip-path=/g)];
+		const holes = [...added.matchAll(/clip-rule="evenodd" d="([^"]+)"/g)];
+
+		// Every letterpress variant plus the titlebar icon.
+		expect(marks).toHaveLength(7);
+		expect(holes).toHaveLength(7);
+		for (const mark of marks) expect(mark[1]).toBe(iconPath);
+		for (const hole of holes) expect(hole[1]).toBe(holesPath);
+		expect(added).not.toContain("<mask id=");
 	});
 
 	// Phone browsers are detected as fullscreen, where upstream pads the menubar
@@ -1657,32 +1677,31 @@ describe("narrow overlay", () => {
 		expect(selectionThreshold).toBe(tapCancelSlop);
 	});
 
-	// Android Chrome re-opens a dismissed on-screen keyboard when a touch gesture ends
-	// while an editable holds focus - and the terminal and the editor both keep a hidden
-	// textarea focused. Panning either with the keyboard down popped it back up and the
-	// resize ate the pan. The suppression must hang off the same pan decision that cancels
-	// the tap, and only a tap may hand the keyboard back.
-	test("a pan stands the on-screen keyboard down until the next tap", () => {
-		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+	// On touch the soft keyboard follows focus; a pan neither pops nor closes it, so the
+	// old inputmode="none" keyboard-reopen suppressor is gone. Instead, transient overlays
+	// stop dying to the keyboard's focus churn: quick input no longer hides on blur but on
+	// a deliberate pointerdown outside it (press, not release, so a text-selection drag out
+	// does not dismiss), and the context menu's blur/window-blur hides are gated off touch
+	// (its outside MOUSE_DOWN and onDidCancel remain). One rule, both platforms - iOS's
+	// focus-to-<body> simply is not an outside press.
+	test("touch overlays dismiss on an outside press, and a pan never forces the keyboard", () => {
+		const raw = readRepoFile(`${PATCHES_DIR}/touch.diff`);
+		const patch = addedLines(raw);
 
-		// inputmode="none" is the only attribute that suppresses the re-open.
-		expect(patch).toContain("active.setAttribute('inputmode', 'none')");
-		// Only editables - nothing else can raise a keyboard.
-		expect(patch).toContain("DomUtils.isEditableElement(active)");
-		// Released on the tap, before the tap's handlers focus anything.
-		expect(patch).toContain("this.allowKeyboardReopen();");
-		// A pre-existing inputmode belongs to whoever set it: save and restore it
-		// rather than clobbering it to the default.
-		expect(patch).toContain("active.getAttribute('inputmode')");
-		expect(patch).toContain("element.setAttribute('inputmode', inputMode)");
+		// The keyboard-reopen suppressor is fully removed - nothing writes inputmode on a pan.
+		expect(raw).not.toContain("suppressKeyboardReopen");
+		expect(raw).not.toContain("allowKeyboardReopen");
+		expect(raw).not.toContain("'inputmode', 'none'");
 
-		// The trigger is the pan decision itself, so the threshold can never drift
-		// apart from the tap-cancel slop it rides on.
-		const panPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
-		expect(panPatch).toContain("data.tapCancelled = true;");
-		expect(panPatch).toContain(
-			"+\t\t\t\tthis.suppressKeyboardReopen(data.initialTarget);"
+		// Quick input: blur only hides off touch; a pointerdown outside the widget hides on touch.
+		expect(patch).toContain(
+			"if (!isTouch(mainWindow) && !this.getUI().ignoreFocusOut"
 		);
+		expect(patch).toContain("dom.EventType.POINTER_DOWN");
+		expect(patch).toContain("!this.getUI().container.contains(target)");
+
+		// Context menu: the focus-based hides are gated off touch, the press-based one stays.
+		expect(patch).toContain("if (!isTouch(targetWindow))");
 	});
 
 	// Long-press menus fire during the hold (Gesture timer), and every context
@@ -1771,10 +1790,8 @@ describe("narrow overlay", () => {
 
 	// Janky event delivery (a busy phone, the app WebView) can hold a real pan's
 	// touchmoves until after the 700ms hold timer fired: Gesture then called the
-	// pan a long-press, ate every later move (dead scroll) and skipped the
-	// keyboard-reopen suppressor. The moves' own timeStamps carry the finger's
-	// true timing, so a wrong verdict must revert - and a spent touch must still
-	// arm the suppressor.
+	// pan a long-press and ate every later move (dead scroll). The moves' own
+	// timeStamps carry the finger's true timing, so a wrong verdict must revert.
 	test("touch pan-revert corrects a hold verdict the event queue falsified", () => {
 		const contextMenu = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
 		expect(contextMenu).toContain("initialEventTimeStamp: e.timeStamp");
@@ -1784,15 +1801,6 @@ describe("narrow overlay", () => {
 		expect(contextMenu).toContain(
 			"mainWindow.dispatchEvent(new MouseEvent('mousedown'));"
 		);
-
-		const keyboard = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
-		// once in the pan branch, once in the spent-touch branch
-		const suppressions = keyboard
-			.split("\n")
-			.filter((line) =>
-				line.includes("this.suppressKeyboardReopen(data.initialTarget);")
-			);
-		expect(suppressions.length).toBe(2);
 	});
 
 	// Auto-focusing an editable because a surface became visible pops the
@@ -1865,7 +1873,9 @@ describe("narrow overlay", () => {
 	// and latches the value; a WebView resume restores focus without any of them,
 	// wedging the workbench inactive (gray title bar, IME suppressed). The
 	// resample patch must keep both healing sources: interaction, and the
-	// visible-poll upstream itself uses for auxiliary windows.
+	// visible-poll upstream itself uses for auxiliary windows. And on touch the
+	// keyboard's native chrome drops window focus without the user leaving, so
+	// hasFocus answers by visibility (present == active), not document.hasFocus().
 	test("window-focus-resample patch samples interaction and late focus", () => {
 		const patch = addedLines(
 			readRepoFile(`${PATCHES_DIR}/window-focus-resample.diff`)
@@ -1873,6 +1883,9 @@ describe("narrow overlay", () => {
 
 		expect(patch).toContain("'pointerdown'");
 		expect(patch).toContain("disposableWindowInterval");
+		// Touch app-active == visible, not OS window focus.
+		expect(patch).toContain("visibilityState === 'visible'");
+		expect(patch).toContain("isTouch(getActiveWindow())");
 	});
 
 	// The two gates are defined once in the gate patches but mirrored - CSS and
@@ -2893,204 +2906,89 @@ describe("terminal edge padding", () => {
 	});
 });
 
-describe("terminal keyboard occlusion", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
+// A row resize moves the xterm viewport, and nothing puts it back. Buffer#resize
+// advances ydisp once per row it drops off the top, which is right while the
+// viewport follows the bottom - the cursor has to stay visible, so the content
+// moves up by exactly the height that was taken away - and wrong once the user
+// has scrolled up to read, where it drags the text out from under them by that
+// same height. A soft keyboard shrinking the panel is the cheapest way to see it;
+// a sash drag does it on desktop too, which is why the patch is not touch-gated.
+// Columns are not part of this: Buffer#_reflow returns immediately unless the
+// column count changed, so a keyboard rewraps nothing.
+describe("terminal resize scroll", () => {
+	const patch = readRepoFile(`${PATCHES_DIR}/terminal.diff`);
 
-	// The normal buffer holds scrollback and a scroll position that belong to the user,
-	// and resizing it reflows the content and shifts ydisp - the "teleports to the very
-	// top unless I was at the very bottom" in the report. The keyboard must not disturb
-	// it: keep the grid at its keyboard-down size and occlude the bottom of it.
-	test("the grid is sized against the keyboard-down pane height", () => {
-		const added = addedLines(patch);
-
-		// Both sizing entry points go through the stable height, not the live one.
-		expect(patch).toContain(
-			"+		this._evaluateColsAndRows(width, this._stableGridHeight(width, height));"
-		);
-		expect(added).toContain(
-			"const terminalWidth = this._evaluateColsAndRows(dimension.width, this._stableGridHeight(dimension.width, dimension.height));"
-		);
-
-		// The remembered height is only refreshed while the keyboard is down, and a
-		// rotation (width change) invalidates it.
-		expect(added).toContain("'--composery-touch-keyboard-open'");
-		expect(added).toContain(
-			"} else if (this._stableGrid?.width !== width || height >= this._stableGrid.height) {"
-		);
-
-		// The opening keyboard shrinks the viewport before it is far enough along for
-		// narrow.js to call it a keyboard. Committing those frames would bake the
-		// half-open height into the grid, so a shrink only counts once it outlives the
-		// animation - measured as a 648px grid collapsing to 590px without this.
-		expect(added).toContain(
-			"this._stableGridShrink.value = disposableTimeout("
-		);
-		expect(added).toContain("this._stableGridShrink.clear();");
-
-		// Touch only - a desktop window must keep resizing its pty as before.
-		expect(added).toContain(
-			"if (!isTouch(dom.getWindow(this._wrapperElement))) {"
-		);
-		expect(added).toContain("return height;");
-	});
-
-	// The alternate screen is the other half of the rule and the reason it is a rule
-	// rather than a special case: it carries no scrollback and no scroll position, so
-	// there is nothing to preserve by occluding it - and nothing to scroll to either,
-	// which would strand any UI above the fold (OpenCode centres its input, and at 18
-	// rows it lays out logo, input, hints and footer all visible). Hand it the size that
-	// is really on screen and let the app lay itself out.
-	test("the alternate screen is resized, not occluded", () => {
-		const added = addedLines(patch);
-
-		expect(added).toContain(
-			"if (raw && raw.buffer.active === raw.buffer.alternate) {"
-		);
-		expect(added).toContain(
-			"this._wrapperElement.classList.remove('composery-terminal-occluded');"
+	// Run the SHIPPED resize() rather than restating its arithmetic. The stand-in
+	// xterm moves the viewport on resize the way xterm does and records what it is
+	// asked to scroll, so what is asserted below is this patch's behaviour and not
+	// a re-implementation of Buffer#resize agreeing with itself.
+	const runResize = (viewportY: number, baseY: number, drift: number) => {
+		const source = postImageLines(patch);
+		const start = source.indexOf("\tresize(columns");
+		const end = source.indexOf("\n\t}", start);
+		expect(start, "resize() not found in the patch").toBeGreaterThan(-1);
+		expect(end, "resize() has no closing brace in the hunk").toBeGreaterThan(
+			start
 		);
 
-		// A buffer switch changes which half of the rule applies, so the grid has to be
-		// re-evaluated - otherwise a full-screen app entered with the keyboard up keeps
-		// the shell's taller grid and draws below the fold.
-		expect(added).toContain("xterm.raw.buffer.onBufferChange(() => {");
-		expect(added).toContain("this._initDimensions();");
-
-		// Sub-row pane/grid differences are layout noise, not a keyboard.
-		expect(added).toContain("OCCLUSION_SLOP");
-	});
-
-	// Bottom alignment alone is wrong for a buffer that has not filled the screen: a
-	// freshly opened shell has its prompt near row 0 with blank space below, so the
-	// bottom slice of an occluded grid is entirely empty - device-verified as a
-	// completely blank terminal. The visible slice follows the caret instead, which
-	// top-anchors a short buffer and bottom-anchors a filled one from one rule.
-	test("the occluded slice follows the content, so a short buffer is not blank", () => {
-		const added = addedLines(patch);
-
-		expect(added).toContain(
-			"const bottom = Math.max(-hidden, -(raw.rows - 1 - anchorRow) * cellHeight);"
-		);
-		// The anchor starts at the caret and walks down to the last row with content.
-		expect(added).toContain("let anchorRow = buffer.cursorY;");
-		expect(added).toContain(
-			"if (buffer.getLine(buffer.baseY + row)?.translateToString(true).trim()) {"
-		);
-		// Nothing is ever hidden in the alternate screen - it is resized to fit.
-		expect(added).toContain(
-			"if (hidden <= 0 || !raw.rows || !(screen instanceof HTMLElement) || raw.buffer.active === raw.buffer.alternate) {"
-		);
-		// The caret moving is what changes the answer.
-		expect(added).toContain(
-			"this._register(xterm.raw.onCursorMove(() => this._updateOcclusionOffset()));"
-		);
-	});
-
-	// Run the SHIPPED method against fake geometry rather than restating its arithmetic,
-	// so the numbers below are the ones the terminal actually computes. The scenario is
-	// the measured one: a 684px grid (34 rows) in a 367px pane once the keyboard is up.
-	const runOffset = (
-		cursorY: number,
-		alternate = false,
-		lastContentRow?: number
-	) => {
-		type Case = { bottom: string };
 		const { run } = evaluatePatchSnippets<{
 			run: (
-				cursorY: number,
-				alternate: boolean,
-				lastContentRow?: number
-			) => Case;
+				viewportY: number,
+				baseY: number,
+				drift: number
+			) => { viewportY: number; scrolled: number[] };
 		}>(
 			[
-				"class HTMLElement {}",
-				"class Screen extends HTMLElement { constructor(h, top) { super(); this.clientHeight = h; this.offsetTop = top; } }",
 				`class Term {
-					constructor(raw, wrapper) { this.xterm = { raw }; this._wrapperElement = wrapper; }
-					${extractAddedMethod(patch, "_updateOcclusionOffset")}
+					constructor(raw) { this.raw = raw; this._logService = { debug() {} }; }
+					${source.slice(start, end + 3)}
 				}`,
-				`function run(cursorY, alternate, lastContentRow) {
-					const rows = 34;
-					const screen = new Screen(680, 4);
-					const last = lastContentRow === undefined ? cursorY : lastContentRow;
-					const mkBuffer = () => ({
-						cursorY,
-						baseY: 0,
-						getLine: (i) => ({
-							translateToString: () => (i <= last ? "text" : "   ")
-						})
-					});
-					const alt = mkBuffer();
-					const element = {
-						clientHeight: 688,
-						style: {},
-						querySelector: () => screen
-					};
+				`function run(viewportY, baseY, drift) {
+					const scrolled = [];
+					const buffer = { viewportY, baseY };
 					const raw = {
-						rows,
-						element,
-						buffer: { active: alternate ? alt : mkBuffer(), alternate: alt }
+						buffer: { active: buffer },
+						// xterm walks ydisp along with ybase for every row it drops or
+						// gains, wherever the viewport happened to be sitting.
+						resize: () => { buffer.viewportY += drift; buffer.baseY += drift; },
+						scrollLines: (lines) => { scrolled.push(lines); buffer.viewportY += lines; }
 					};
-					new Term(raw, { clientHeight: 367 })._updateOcclusionOffset();
-					return { bottom: element.style.bottom ?? "" };
+					new Term(raw).resize(80, 18);
+					return { viewportY: buffer.viewportY, scrolled };
 				}`
 			],
 			["run"]
 		);
-		return run(cursorY, alternate, lastContentRow).bottom;
+		return run(viewportY, baseY, drift);
 	};
 
-	// The rule: the caret's row sits at the BOTTOM of the visible window, with history
-	// above it. Anything else leaves blank rows under the prompt - measured on the
-	// previous build as 251-327px of dead space in a 367px window.
-	test("the occluded slice puts the caret at the bottom of the window", () => {
-		// Buffer filled/scrolled: caret on the last row, so upstream's bottom alignment
-		// is already right and nothing moves.
-		expect(runOffset(33)).toBe("");
+	test("a scrolled-up viewport does not move when the pane shrinks", () => {
+		// Reading history 60 rows back, keyboard takes 16 rows: the text stays put
+		// and the keyboard simply covers the rows below it.
+		expect(runResize(40, 100, 16)).toEqual({ viewportY: 40, scrolled: [-16] });
 
-		// Caret mid-grid: slide down by the 11 blank rows below it (11 * 20 = 220).
-		expect(runOffset(22)).toBe("-220px");
-
-		// Caret near the top with too little content to fill the window: clamp at the
-		// top of the grid rather than scrolling past it (hidden = 688 - 367 = 321).
-		expect(runOffset(1)).toBe("-321px");
-		expect(runOffset(0)).toBe("-321px");
-
-		// The alternate screen is resized to fit, so it is never offset.
-		expect(runOffset(5, true)).toBe("");
+		// And back, when the keyboard closes and the rows return.
+		expect(runResize(40, 100, -16)).toEqual({ viewportY: 40, scrolled: [16] });
 	});
 
-	// pi and other inline TUIs keep a footer BELOW their input line. Anchoring on the
-	// caret looks right for a shell - nothing is drawn past the prompt - but here it
-	// pushes the footer behind the keyboard, which is the reported "I cannot see
-	// anything below my cursor". The anchor is the last row with content, not the caret.
-	test("content below the cursor stays on screen", () => {
-		// Cursor on row 22 with a footer occupying rows 23-25: anchor on 25, so the
-		// slide is the 8 blank rows below it (8 * 20 = 160) rather than 11 (220).
-		expect(runOffset(22, false, 25)).toBe("-160px");
-
-		// A shell has nothing below the prompt, so the two anchors agree.
-		expect(runOffset(22, false, 22)).toBe("-220px");
-
-		// Footer running to the last row means upstream's bottom alignment already fits.
-		expect(runOffset(22, false, 33)).toBe("");
+	test("a viewport following the bottom keeps following it", () => {
+		// The cursor has to clear the keyboard, so this one is supposed to move -
+		// xterm already did it, and nothing here may undo that.
+		expect(runResize(100, 100, 16)).toEqual({ viewportY: 116, scrolled: [] });
 	});
 
-	// The taller-than-the-pane grid relies on upstream's bottom alignment to keep the
-	// cursor row above the keyboard, and must not spill over the tabs above.
-	test("the occluded grid is clipped, not spilled", () => {
-		const added = addedLines(patch);
-
-		expect(added).toContain(".terminal-wrapper.composery-terminal-occluded");
-		expect(added).toContain("overflow: hidden;");
-		expect(added).toContain(
-			"this._wrapperElement.classList.toggle('composery-terminal-occluded', stableHeight - height >= TerminalInstance.OCCLUSION_SLOP);"
-		);
+	test("the alternate screen is never scrolled", () => {
+		// No scrollback means viewportY and baseY are both pinned at 0, so the same
+		// "was it following the bottom" question answers this without a second rule.
+		expect(runResize(0, 0, 0)).toEqual({ viewportY: 0, scrolled: [] });
 	});
+});
 
-	// The signal it reads is published by narrow.js and is deliberately NOT the
-	// existing inset var, which means "overlap the viewport has not already excluded"
-	// and reads 0 under interactive-widget=resizes-content.
+// The keyboard-open signal the keybar reads (it reserves its row out of the grid
+// only while a keyboard is up) is published by narrow.js, and is deliberately NOT
+// the existing inset var - that one means "overlap the viewport has not already
+// excluded" and reads 0 under interactive-widget=resizes-content.
+describe("soft-keyboard open signal", () => {
 	test("narrow.js publishes the keyboard-open signal from a viewport baseline", () => {
 		const narrow = readRepoFile(
 			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/narrow.js"
