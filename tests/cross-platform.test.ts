@@ -130,6 +130,39 @@ describe("cross-platform checks", () => {
 		expect(ciWorkflow).toMatch(/os: \[windows-[\w.-]+, macos-[\w.-]+\]/);
 	});
 
+	// A CI timeout is a hang detector, not a performance budget. Sizing one from
+	// how long a job happened to take on an idle runner is what cancelled the
+	// android e2e job at exactly 60 minutes, mid-build - a healthy build
+	// reported as a failed nightly, which is the same "failed for being busy"
+	// trap the patch-stack test's timeout comment describes. Two rules keep them
+	// honest: nothing below a floor far above the real work, and no step-level
+	// budget at all, since nested inside a job timeout the tighter one simply
+	// fires first and the job timeout it duplicates never gets a say.
+	test("workflow timeouts are hang detectors, not budgets", () => {
+		const FLOOR_MINUTES = 120;
+		const tooTight: string[] = [];
+		const stepLevel: string[] = [];
+
+		for (const file of readdirSync(resolve(repoRoot, ".github/workflows"))) {
+			const workflow = readRepoFile(`.github/workflows/${file}`);
+			for (const match of workflow.matchAll(
+				/^(?<indent>[ ]*)timeout-minutes: (?<minutes>\d+)$/gm
+			)) {
+				const indent = match.groups?.indent ?? "";
+				const minutes = Number(match.groups?.minutes);
+				// Jobs sit two levels in ("jobs:" -> name -> key); anything deeper
+				// belongs to a step.
+				if (indent.length > 4) stepLevel.push(`${file}: ${match[0].trim()}`);
+				if (minutes < FLOOR_MINUTES) {
+					tooTight.push(`${file}: ${minutes} < ${FLOOR_MINUTES}`);
+				}
+			}
+		}
+
+		expect(tooTight).toEqual([]);
+		expect(stepLevel).toEqual([]);
+	});
+
 	// Both Trivy scans read the same image at CRITICAL,HIGH with unfixed
 	// findings included, so either one blocking means a Debian CVE with no fix
 	// available stops the pipeline - nothing a change here could clear. smoke.yml

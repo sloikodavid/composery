@@ -30,7 +30,14 @@ jobs:
   smoke:
     name: ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # A hang detector, not a budget - and not optional either: leaving it off
+    # takes GitHub's default of 360, so a wedged job burns six hours of runner
+    # time and a concurrency slot. Sized against what the work is (a full image
+    # build plus the suite, ~20 minutes on these runners), far enough above it
+    # that a loaded runner is never mistaken for a broken one. A test pins the
+    # floor, because the failure mode of a tight one is a healthy job reported
+    # as a failure - which is exactly what a budget-sized 60 did to mobile-e2e.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -54,7 +61,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - name: Run smoke suite
-        timeout-minutes: 50
         run: pnpm smoke
       - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         if: matrix.arch == 'amd64'

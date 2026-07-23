@@ -31,7 +31,13 @@ env:
 jobs:
   android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # 60 was a budget, and the work outgrew it: a Gradle release build, an
+    # emulator boot and a Maestro run stopped fitting, so a healthy build was
+    # cancelled mid-step and reported as a failed nightly. See smoke.yml for
+    # why this is a hang detector and why it cannot simply be removed. If this
+    # is ever reached again the answer is caching Gradle and the AVD, not a
+    # bigger number - at that point it really is too slow.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
@@ -95,7 +101,8 @@ jobs:
     # packages" before compiling anything. ci.yml's macos-15 job only bundles
     # with Metro, so it is unaffected and stays on the GA image.
     runs-on: macos-26
-    timeout-minutes: 90
+    # Same number as android on purpose: one rule, no per-job budget to remember.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
