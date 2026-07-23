@@ -1109,11 +1109,12 @@ try {
 				context.fillRect(0, 0, screen.width, statusHeight);
 				context.drawImage(source, 0, statusHeight);
 				const belowApp = statusHeight + source.height;
+				// The app's background runs behind the keyboard as well, so its rounded
+				// top corners reveal the app, not a transparent notch. Fill the strip
+				// below the capture with its bottom edge whether or not keys sit on it.
+				context.fillStyle = color(edgeColor("bottom"));
+				context.fillRect(0, belowApp, screen.width, screen.height - belowApp);
 				if (keys) context.drawImage(keys, 0, belowApp);
-				else {
-					context.fillStyle = color(edgeColor("bottom"));
-					context.fillRect(0, belowApp, screen.width, screen.height - belowApp);
-				}
 				context.drawImage(statusBar(screen.width, scale, textColor), 0, 0);
 
 				const islandWidth = Math.round(125 * scale);
