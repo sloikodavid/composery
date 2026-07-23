@@ -1,11 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	writeFileSync
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
@@ -16,43 +10,6 @@ const TREE_START = "<!-- repo-structure:start -->";
 const TREE_FINISH = "<!-- repo-structure:finish -->";
 const write = process.argv.includes("--write");
 const watch = process.argv.includes("--watch");
-
-function caseKey(value) {
-	return value.normalize("NFC").toLowerCase();
-}
-
-export function canonicalPath(root, path, readDirectory = readdirSync) {
-	const canonical = [];
-
-	for (const part of path.split("/").filter(Boolean)) {
-		let entries;
-		try {
-			entries = readDirectory(join(root, ...canonical));
-		} catch (error) {
-			if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return;
-			throw error;
-		}
-
-		const exact = entries.find((entry) => entry === part);
-		const matches = exact
-			? [exact]
-			: entries.filter((entry) => caseKey(entry) === caseKey(part));
-		if (matches.length !== 1) return;
-		canonical.push(matches[0]);
-	}
-
-	return canonical.join("/");
-}
-
-export function canonicalPaths(root, paths, readDirectory = readdirSync) {
-	return [
-		...new Set(
-			paths
-				.map((path) => canonicalPath(root, path, readDirectory))
-				.filter(Boolean)
-		)
-	];
-}
 
 // Include new, non-ignored files before they are staged. A tree check that is
 // green before `git add` but turns red after it is not checking the artifact a
@@ -65,14 +22,18 @@ export const GIT_FILE_ARGS = [
 	"-z"
 ];
 
-function gitFiles() {
-	const output = execFileSync("git", GIT_FILE_ARGS, {
-		cwd: REPO_ROOT
-	});
-	return canonicalPaths(
-		REPO_ROOT,
-		output.toString("utf8").split("\0").filter(Boolean)
-	);
+// Git's names, verbatim. This used to re-resolve every path against the real
+// directory and take the filesystem's spelling, which made the generated file
+// depend on the machine that ran it: a committed case-only rename
+// (prompts/REFACTOR.md) still had the old name on disk under Windows' and
+// macOS' case-insensitive lookup, so `pnpm fix:tree` wrote a name no
+// case-sensitive checkout has and CI failed on every commit afterwards. The
+// index is what gets pushed, so the index is the only authority here.
+export function gitFiles() {
+	return execFileSync("git", GIT_FILE_ARGS, { cwd: REPO_ROOT })
+		.toString("utf8")
+		.split("\0")
+		.filter(Boolean);
 }
 
 // Directories before files, then by name under a pinned locale. localeCompare

@@ -1,18 +1,6 @@
-export type ReadDirectory = (path: string) => string[];
-
 export const GIT_FILE_ARGS: string[];
 
-export function canonicalPath(
-	root: string,
-	path: string,
-	readDirectory?: ReadDirectory
-): string | undefined;
-
-export function canonicalPaths(
-	root: string,
-	paths: string[],
-	readDirectory?: ReadDirectory
-): string[];
+export function gitFiles(): string[];
 
 export type Entry = { name: string; type: "directory" | "file" };
 

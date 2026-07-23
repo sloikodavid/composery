@@ -197,12 +197,8 @@ jobs:
             '{package:$package,version:$version,versionCode:$versionCode,sourceCommit:$commit,easBuildId:$easBuildId,apkSha256:$apkSha256,signerCertificateSha256:$signerSha256,builder:"EAS Build",signer:"Google Play App Signing"}' \
             > "tmp/composery-$VERSION.provenance.json"
 
-      - name: Install and smoke-test exact APK
+      - name: Install Maestro
         run: sh .github/scripts/install-maestro.sh
-        env:
-          # renovate: datasource=github-releases depName=mobile-dev-inc/maestro
-          MAESTRO_VERSION: 2.7.0
-          MAESTRO_SHA256: a4ccab6b604617e7aef6db4f885666056eabe5cfa32befaa3bc994041b8fcbb5
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

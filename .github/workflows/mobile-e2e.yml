@@ -27,14 +27,6 @@ env:
   # The dev/EAS build id, per app.json. Flows take it as ${APP_ID} so the same
   # file drives Expo Go or a real build on either platform.
   APP_ID: io.composery
-  # Both jobs install the same immutable release asset through the checked-in
-  # installer below, so a failing nightly can be attributed to a known CLI.
-  # renovate: datasource=github-releases depName=mobile-dev-inc/maestro
-  MAESTRO_VERSION: 2.7.0
-  # GitHub release asset checksum. Renovate can bump the release above but its
-  # datasource does not expose asset hashes, so that PR intentionally stays red
-  # until this is copied from the release's checksums_sha256.txt.
-  MAESTRO_SHA256: a4ccab6b604617e7aef6db4f885666056eabe5cfa32befaa3bc994041b8fcbb5
 
 jobs:
   android:

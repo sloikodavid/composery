@@ -236,79 +236,6 @@ describe("authoritative terminal inventory", () => {
 			])
 		).toBeUndefined();
 	});
-
-	test("legacy origin-specific inventories are merged once without duplicate PTYs", () => {
-		const register = extractAddedMethod(patch, "_registerWorkspaceAlias");
-		const merge = extractAddedMethod(patch, "_mergeTerminalLayoutInfos");
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => {
-				_workspaceAliases: Map<string, Set<string>>;
-				_workspaceClients: Map<string, Set<string>>;
-				inventoryEvents: { workspaceId: string }[];
-				_registerWorkspaceAlias(source: string, target: string): void;
-				_mergeTerminalLayoutInfos(layouts: unknown[]): {
-					tabs: { terminals: { terminal: { id: number } }[] }[];
-					background: { id: number }[];
-				};
-			};
-		}>(
-			[
-				`class Harness {
-					_workspaceAliases = new Map();
-					_latestLayouts = new Map();
-					_layouts = new Map();
-					_workspaceClients = new Map();
-					_processWorkspaces = new Map();
-					inventoryEvents = [];
-					_onPersistentTerminalInventoryChange = { fire: event => this.inventoryEvents.push(event) };
-					${register}
-					${merge}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
-		harness._registerWorkspaceAlias("phone-origin", "remote:documents");
-		harness._registerWorkspaceAlias("laptop-origin", "remote:documents");
-		expect([
-			...(harness._workspaceAliases.get("remote:documents") ?? [])
-		]).toEqual(["phone-origin", "laptop-origin"]);
-		harness._workspaceClients.set("remote:documents", new Set(["phone"]));
-		harness._registerWorkspaceAlias("tablet-origin", "remote:documents");
-		expect(harness.inventoryEvents).toEqual([
-			{ workspaceId: "remote:documents" }
-		]);
-
-		const terminal = (id: number) => ({ terminal: { id }, relativeSize: 1 });
-		const merged = harness._mergeTerminalLayoutInfos([
-			{
-				tabs: [
-					{
-						isActive: true,
-						activePersistentProcessId: 1,
-						terminals: [terminal(1)]
-					}
-				],
-				background: [{ id: 3 }]
-			},
-			{
-				tabs: [
-					{
-						isActive: false,
-						activePersistentProcessId: 1,
-						terminals: [terminal(1), terminal(2)]
-					}
-				],
-				background: [{ id: 3 }, { id: 4 }]
-			}
-		]);
-		expect(
-			merged.tabs.flatMap((tab) =>
-				tab.terminals.map((entry) => entry.terminal.id)
-			)
-		).toEqual([1, 2]);
-		expect(merged.background.map((entry) => entry.id)).toEqual([3, 4]);
-	});
 });
 
 describe("per-client terminal attachment state", () => {
@@ -548,6 +475,65 @@ describe("renderer synchronization", () => {
 		expect(harness.calls).toBe(2);
 	});
 
+	test("a coalesced re-sync never double-creates a terminal whose attach is in flight", async () => {
+		// createTerminal resolves before its attach reaches the pty host, so when a burst of
+		// inventory events makes the queue loop run a second sync, the server still reports the
+		// just-created terminal as unattached (isOrphan). Without the this.instances guard the
+		// observing client creates it twice - the "one terminal opens as several" symptom.
+		const method = extractAddedMethod(patch, "_syncRemoteTerminals");
+		const { Harness } = evaluatePatchSnippets<{
+			Harness: new () => {
+				created: number[];
+				_syncRemoteTerminals(backend: object): Promise<void>;
+			};
+		}>(
+			[
+				`function mark() {}
+				class Harness {
+					instances = [];
+					created = [];
+					_reconnectedTerminalGroups;
+					_recreateTerminalGroups(layout) {
+						for (const tab of layout.tabs) for (const t of tab.terminals) if (t.terminal) {
+							this.created.push(t.terminal.id);
+							this.instances.push({ shellLaunchConfig: { attachPersistentProcess: { id: t.terminal.id } } });
+						}
+						return Promise.resolve([]);
+					}
+					async _reviveBackgroundTerminalInstances(bg) {
+						for (const t of bg) if (t) {
+							this.created.push(t.id);
+							this.instances.push({ shellLaunchConfig: { attachPersistentProcess: { id: t.id } } });
+						}
+						return [];
+					}
+					${method}
+				}`
+			],
+			["Harness"]
+		);
+		// The server keeps reporting both terminals as orphaned across both syncs.
+		const backend = {
+			getTerminalLayoutInfo: () =>
+				Promise.resolve({
+					tabs: [
+						{
+							isActive: true,
+							activePersistentProcessId: 5,
+							terminals: [
+								{ terminal: { id: 5, isOrphan: true }, relativeSize: 1 }
+							]
+						}
+					],
+					background: [{ id: 6, isOrphan: true }]
+				})
+		};
+		const harness = new Harness();
+		await harness._syncRemoteTerminals(backend);
+		await harness._syncRemoteTerminals(backend);
+		expect(harness.created).toEqual([5, 6]);
+	});
+
 	test("ready and replay are target-only, exit needs attachment, data needs a landed replay", () => {
 		expect(added).toContain("this._startState.target(e.id) === ctx.clientId");
 		// Exit must reach every attached client (even one mid-replay) so it can dispose.
@@ -582,14 +568,13 @@ describe("renderer synchronization", () => {
 				/workspaceId: this\._workspaceContextService\.getWorkspace\(\)\.id/g
 			)
 		).toHaveLength(3);
-		expect(added.match(/clientWorkspaceId: string;/g)).toHaveLength(2);
-		expect(added.match(/clientWorkspaceId\?: string;/g)).toHaveLength(2);
 	});
 
 	test("initial sync restores groups while background creation remains single-owned", () => {
 		expect(added).toContain("await this._syncRemoteTerminals(backend, true)");
+		// Recreated from the owned-filtered layout, not the raw server layout.
 		expect(added).toContain(
-			"const groups = this._recreateTerminalGroups(layoutInfo)"
+			"const groups = this._recreateTerminalGroups(layout)"
 		);
 		expect(added).toContain("this._reconnectedTerminalGroups = groups");
 		expect(added).not.toContain(
@@ -652,7 +637,7 @@ describe("renderer synchronization", () => {
 			"this._clientState.isController(e.id, ctx.clientId)"
 		);
 		expect(added).toContain(
-			"this._isWorkspaceLeader(this._canonicalWorkspaceId(e.workspaceId), ctx.clientId)"
+			"this._isWorkspaceLeader(e.workspaceId, ctx.clientId)"
 		);
 		expect(added).toContain(
 			"this._workspaceClients.get(e.workspaceId)?.has(clientId) ?? false"

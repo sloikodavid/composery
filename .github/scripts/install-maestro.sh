@@ -2,40 +2,24 @@
 # Installs the exact Maestro release used by native E2E. The upstream installer
 # is a mutable script, so executing it would leave the same pinned CLI version
 # dependent on whatever installation logic happens to be served that day.
+#
+# The pin lives here, not in the workflows that call this: it was an env: block
+# in both mobile-e2e.yml and mobile-release.yml, and renovate.json's custom
+# manager only ever read the first, so a bump would have left the release
+# workflow installing the old CLI against the new checksum. One home, one
+# Renovate path. The validation those two inputs used to get is gone with them -
+# a literal three lines above the code that reads it cannot arrive malformed,
+# and a check that cannot fail only reports success forever.
 set -eu
 
-: "${MAESTRO_VERSION:?MAESTRO_VERSION is required}"
-: "${MAESTRO_SHA256:?MAESTRO_SHA256 is required}"
+# renovate: datasource=github-releases depName=mobile-dev-inc/maestro
+MAESTRO_VERSION=2.7.0
+# GitHub release asset checksum. Renovate can bump the version above but its
+# datasource does not expose asset hashes, so that PR intentionally stays red
+# until this is copied from the release's checksums_sha256.txt.
+MAESTRO_SHA256=a4ccab6b604617e7aef6db4f885666056eabe5cfa32befaa3bc994041b8fcbb5
 
-case "$MAESTRO_VERSION" in
-  *[!0-9.]* | .* | *. | *..* | *.*.*.*)
-    echo "MAESTRO_VERSION must be a numeric release version" >&2
-    exit 1
-    ;;
-  *.*.*) ;;
-  *)
-    echo "MAESTRO_VERSION must be a numeric release version" >&2
-    exit 1
-    ;;
-esac
-case "$MAESTRO_SHA256" in
-  *[!0-9a-f]* | "")
-    echo "MAESTRO_SHA256 must be a lowercase SHA-256 digest" >&2
-    exit 1
-    ;;
-esac
-if [ "${#MAESTRO_SHA256}" -ne 64 ]; then
-  echo "MAESTRO_SHA256 must be a lowercase SHA-256 digest" >&2
-  exit 1
-fi
-
-install_dir="${MAESTRO_DIR:-$HOME/.maestro}"
-case "$install_dir" in
-  "" | / | "$HOME")
-    echo "Refusing unsafe MAESTRO_DIR: $install_dir" >&2
-    exit 1
-    ;;
-esac
+install_dir="$HOME/.maestro"
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' 0 HUP INT TERM

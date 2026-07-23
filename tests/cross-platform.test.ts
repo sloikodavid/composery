@@ -234,20 +234,40 @@ describe("cross-platform checks", () => {
 		expect(workflow).toMatch(/runs-on: macos-[\w.-]+/);
 	});
 
-	test("mobile e2e installs a checksummed Maestro release without a mutable installer", () => {
-		const workflow = readRepoFile(".github/workflows/mobile-e2e.yml");
+	test("every Maestro install is the one checksummed pin Renovate can see", () => {
 		const installer = readRepoFile(".github/scripts/install-maestro.sh");
+		const renovate = readRepoFile("renovate.json");
+		const callers = [
+			".github/workflows/mobile-e2e.yml",
+			".github/workflows/mobile-release.yml"
+		];
 
-		expect(workflow).toMatch(/MAESTRO_VERSION: \d+\.\d+\.\d+/);
-		expect(workflow).toMatch(/MAESTRO_SHA256: [a-f0-9]{64}/);
-		expect(
-			workflow.match(/sh \.github\/scripts\/install-maestro\.sh/g)
-		).toHaveLength(2);
-		expect(workflow).not.toContain("get.maestro.mobile.dev");
+		expect(installer).toMatch(
+			/# renovate: datasource=github-releases depName=mobile-dev-inc\/maestro\nMAESTRO_VERSION=\d+\.\d+\.\d+\n/
+		);
+		expect(installer).toMatch(/MAESTRO_SHA256=[a-f0-9]{64}\n/);
 		expect(installer).toContain(
 			"releases/download/cli-$MAESTRO_VERSION/maestro.zip"
 		);
 		expect(installer).toContain("shasum -a 256 -c -");
+		expect(renovate).toContain("install-maestro");
+
+		// A second copy of the pin is what this collapsed: Renovate's custom
+		// manager reads one file, so a version living anywhere else is a version
+		// that stays behind on the next bump - against a checksum that moved.
+		for (const caller of callers) {
+			const workflow = readRepoFile(caller);
+			expect(workflow, caller).toContain(
+				"sh .github/scripts/install-maestro.sh"
+			);
+			expect(workflow, caller).not.toMatch(/MAESTRO_(VERSION|SHA256)/);
+			expect(workflow, caller).not.toContain("get.maestro.mobile.dev");
+		}
+		expect(
+			readRepoFile(callers[0]!).match(
+				/sh \.github\/scripts\/install-maestro\.sh/g
+			)
+		).toHaveLength(2);
 	});
 
 	test("the mobile bundle is exported for every platform it ships to", () => {

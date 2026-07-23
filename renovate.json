@@ -135,9 +135,9 @@
 		},
 		{
 			"customType": "regex",
-			"managerFilePatterns": ["/^\\.github/workflows/mobile-e2e\\.yml$/"],
+			"managerFilePatterns": ["/^\\.github/scripts/install-maestro\\.sh$/"],
 			"matchStrings": [
-				"#\\s*renovate:\\s*datasource=(?<datasource>github-releases)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*MAESTRO_VERSION:\\s*(?<currentValue>\\S+)"
+				"#\\s*renovate:\\s*datasource=(?<datasource>github-releases)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*MAESTRO_VERSION=(?<currentValue>\\S+)"
 			],
 			"extractVersionTemplate": "^cli-(?<version>.+)$"
 		},

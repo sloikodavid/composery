@@ -7,27 +7,30 @@ import ts from "typescript";
 
 export const repoRoot = resolve(import.meta.dirname, "..", "..");
 
-// GNU patch, 2.7 or newer. Version is part of the requirement, not trivia:
-// 2.5.9 aborts ("Assertation failed!", patch.c:354) on a perfectly valid diff
-// whose last hunk is followed by trailing `diff --git`/`index` lines, which is
-// exactly what slicing one file's section out of a multi-file patch produces.
-// The Windows CI runner has that build first on PATH (Strawberry Perl ships it
-// in C:\Strawberry\c\bin), so "whatever is called patch" was not a usable rule.
-// Delete the version gate once no supported runner carries a pre-2.7 build.
+// "Whatever is called patch" was not a usable rule: the Windows runner carries
+// Strawberry Perl's GNU patch 2.5.9 (C:\Strawberry\c\bin) ahead of everything
+// else on PATH, and it aborts on product.diff's theme section - "Assertation
+// failed!", patch.c:354, expression `hunk` - having already written a partial
+// file. So reject that build by version, and only that build: this is a check
+// for one broken vendor build, cited above, deletable the day no supported
+// runner ships a pre-2.7 GNU patch.
 //
-// Git for Windows bundles 2.7.6 in <git>/usr/bin, off PATH; that is the
-// fallback, so the suite runs identically on every OS and a local pass predicts
-// a CI pass.
-function usableGnuPatch(binary: string): boolean {
+// Everything that does not identify as an old GNU build is taken as it comes.
+// macOS ships Apple's BSD patch, which reports no GNU version at all and
+// applies the whole stack correctly; requiring a GNU banner would have rejected
+// the working tool over its name. Git for Windows bundles 2.7.6 in
+// <git>/usr/bin, off PATH - that is the fallback, so the suite runs identically
+// everywhere and a local pass predicts a CI pass.
+function knownBrokenPatch(binary: string): boolean {
 	const probe = spawnSync(binary, ["--version"], { encoding: "utf8" });
-	if (probe.status !== 0) return false;
-	const version = /GNU patch (\d+)\.(\d+)/.exec(probe.stdout ?? "");
-	if (!version) return false;
-	return Number(version[1]) > 2 || Number(version[2]) >= 7;
+	if (probe.status !== 0) return true; // not runnable at all
+	const gnu = /GNU patch (\d+)\.(\d+)/.exec(probe.stdout ?? "");
+	if (!gnu) return false;
+	return Number(gnu[1]) < 2 || (Number(gnu[1]) === 2 && Number(gnu[2]) < 7);
 }
 
 export const patchBin = (() => {
-	if (usableGnuPatch("patch")) return "patch";
+	if (!knownBrokenPatch("patch")) return "patch";
 	if (process.platform === "win32") {
 		const gitCore = execFileSync("git", ["--exec-path"], {
 			encoding: "utf8"
@@ -41,9 +44,12 @@ export const patchBin = (() => {
 			"bin",
 			"patch.exe"
 		);
-		if (existsSync(bundled) && usableGnuPatch(bundled)) return bundled;
+		if (existsSync(bundled) && !knownBrokenPatch(bundled)) return bundled;
 	}
-	throw new Error("GNU patch 2.7+ not found; the patch-stack tests need it.");
+	throw new Error(
+		"No usable patch(1) found; the patch-stack tests need one that is not GNU " +
+			"patch older than 2.7."
+	);
 })();
 
 export function applyPatch(patchFile: string, cwd: string): void {

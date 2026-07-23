@@ -791,7 +791,7 @@ packages/
     vitest.config.ts
 prompts/
   nugget.md
-  refactor.md
+  REFACTOR.md
   senior-buzzwords.md
 rootfs/
   etc/
