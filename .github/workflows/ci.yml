@@ -71,21 +71,14 @@ jobs:
       # Needs no config: every label this repo runs on is in actionlint's own
       # list, so a typo'd or retired one fails here.
       - uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs quilt
-      # Cheap early gate: quilt-push our patch stack over pristine code-server with
-      # fuzz=0, like build.sh, to catch patch drift before the full image build.
-      - name: Verify IDE patch stack applies
-        working-directory: packages/ide
-        run: |
-          while IFS= read -r p; do
-            [ -z "$p" ] || { cp "patches/$p" "upstream/patches/$p"; printf '%s\n' "$p" >> upstream/patches/series; }
-          done < patches/series
-          cd upstream
-          QUILT_PATCHES=patches quilt push -a --fuzz=0
-          QUILT_PATCHES=patches quilt pop -a
-          rm -rf .pc
-          git clean -fdx -- patches
-          git checkout -- patches
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs
+      # No patch-stack gate here on purpose. A hand-written quilt push in this
+      # file was a third copy of build.sh's assembly and drifted from it: build.sh
+      # moved our patches into a composery/ subdirectory (our clipboard.diff had
+      # been silently replacing code-server's), this copy kept the flat cp, and CI
+      # failed on "already applied" while the image built fine. The rehearsal now
+      # lives in check:test, where it reads build.sh's own assembly rules, and the
+      # real stack is applied by build.sh itself during `pnpm build` below.
       # The one action ref that cannot carry a SHA: this action picks the
       # toolchain from its own @rev, so the version tag is the input. Renovate
       # tracks it in the "rust toolchain" group; a test pins Cargo's floor to it.

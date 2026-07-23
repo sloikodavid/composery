@@ -76,8 +76,12 @@ jobs:
           api-level: 35
           arch: x86_64
           working-directory: packages/mobile
+          # The action runs this with `sh -c`, which is dash on the runner: `set
+          # -o pipefail` is a hard parse error there, not a no-op, so the whole
+          # script died before the first command. Nothing below pipes, so `-eu`
+          # is the entire guarantee either shell would give.
           script: |
-            set -euo pipefail
+            set -eu
             node scripts/test-instance.mjs &
             pnpm exec expo run:android --variant release --no-bundler
             maestro test -e APP_ID="$APP_ID" \
@@ -93,7 +97,12 @@ jobs:
             ~/.maestro/tests/**
 
   ios:
-    runs-on: macos-15
+    # Unmanaged like every runner label, but load-bearing here: this picks the
+    # Xcode, and macos-15's default (16.4) cannot resolve the package graph Expo
+    # SDK 57 / React Native 0.86 produce - `expo run:ios` died in "Prepare
+    # packages" before compiling anything. ci.yml's macos-15 job only bundles
+    # with Metro, so it is unaffected and stays on the GA image.
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

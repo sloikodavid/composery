@@ -180,8 +180,24 @@ if (
 		const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
 
 		if (actual !== expected) {
+			// Naming the drifting lines is the whole value of this check on a CI
+			// runner: "out of date" alone cannot distinguish a forgotten fix:tree
+			// from a file that only exists on that machine, and the runner is gone
+			// by the time anyone reads it.
+			const actualLines = new Set(actual.split("\n"));
+			const expectedLines = new Set(expected.split("\n"));
 			console.error(
-				`${AGENTS_FILE} tree block is out of date. Run 'pnpm fix:tree'.`
+				[
+					`${AGENTS_FILE} tree block is out of date. Run 'pnpm fix:tree'.`,
+					...expected
+						.split("\n")
+						.filter((line) => line.trim() && !actualLines.has(line))
+						.map((line) => `+${line}`),
+					...actual
+						.split("\n")
+						.filter((line) => line.trim() && !expectedLines.has(line))
+						.map((line) => `-${line}`)
+				].join("\n")
 			);
 			process.exitCode = 1;
 		}

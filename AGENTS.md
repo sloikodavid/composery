@@ -264,7 +264,6 @@ packages/
               exec.ts
               index.ts
               keystore.ts
-              pty.ts
               ratelimit.ts
               session.ts
               terminals.ts

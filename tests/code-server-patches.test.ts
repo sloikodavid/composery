@@ -232,6 +232,15 @@ describe("patch stack lint", () => {
 			];
 
 			try {
+				// The assembly above is build.sh step 3 restated in TypeScript, so it
+				// is a copy that can drift - and did, in the workflow that used to
+				// hold a third copy. Pin it to the script: change the namespace there
+				// and this fails here rather than only in the image build.
+				expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
+					'cp "$PACKAGE_ROOT/patches/$p" "$BUILD/patches/composery/$p"; ' +
+						'printf \'composery/%s\\n\' "$p" >> "$BUILD/patches/series"'
+				);
+
 				expect(new Set(series).size, "assembled series has duplicates").toBe(
 					series.length
 				);

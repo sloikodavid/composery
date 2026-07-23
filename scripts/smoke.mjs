@@ -388,30 +388,23 @@ async function assertApiSmoke() {
 		throw new Error("PTY websocket upgraded with an invalid key.");
 	}
 
-	const sessionName = `composery-session-${RUN_ID}`;
-	await openTmuxSession(key, sessionName);
-	await retry("detached session is listed", 20, async () => {
-		const names = await listApiSessions(key);
-		if (!names.includes(sessionName)) {
-			throw new Error(`session ${sessionName} not listed yet`);
-		}
-	});
-	const deleted = await apiRequest(
-		"DELETE",
-		`/_composery/api/v1/sessions/${sessionName}`,
-		key
+	// The socket streams an ordinary editor terminal; it does not own it. Dropping
+	// the connection must stop the streaming and nothing else, or a command
+	// started over HTTP could never be picked up in the editor afterwards. Prove
+	// it from outside: detach while the command is still running and watch it
+	// finish anyway. (docs/api.md makes this promise; nothing else checks it.)
+	const detachedMarker = `/tmp/composery-detached-${RUN_ID}`;
+	const detached = await ptyWebsocket(
+		key,
+		`sleep 3 && touch ${detachedMarker}`,
+		{ detachOnUpgrade: true }
 	);
-	if (deleted.statusCode !== 200 || JSON.parse(deleted.body).killed !== true) {
+	if (detached.status !== 101) {
 		throw new Error(
-			`Expected DELETE /sessions to kill the session, got ${deleted.statusCode} ${deleted.body}.`
+			`Expected the detached terminal to upgrade (101), got ${detached.status}.`
 		);
 	}
-	await retry("deleted session is gone", 20, async () => {
-		const names = await listApiSessions(key);
-		if (names.includes(sessionName)) {
-			throw new Error(`session ${sessionName} still listed after delete`);
-		}
-	});
+	await waitForContainerFile(detachedMarker);
 
 	execSh(`composery api key revoke ${created.id}`, { user: "user" });
 	const afterRevoke = await request("/_composery/api/v1/exec", {
@@ -831,8 +824,10 @@ async function runPtyOverWebsocket(key, command) {
 	return output;
 }
 
-// Minimal RFC 6455 client: manual frame decode of the server's unmasked text/binary frames.
-function ptyWebsocket(key, command) {
+// Minimal RFC 6455 client: manual frame decode of the server's unmasked
+// text/binary frames. `detachOnUpgrade` hangs up the moment the upgrade lands,
+// leaving the terminal running with nobody reading it.
+function ptyWebsocket(key, command, { detachOnUpgrade = false } = {}) {
 	return new Promise((resolvePromise, reject) => {
 		const query = command ? `?cmd=${encodeURIComponent(command)}` : "";
 		const handshake = [
@@ -875,6 +870,11 @@ function ptyWebsocket(key, command) {
 				}
 				upgraded = true;
 				buffer = buffer.slice(separator + 4);
+				if (detachOnUpgrade) {
+					socket.destroy();
+					resolvePromise({ status: 101, output });
+					return;
+				}
 			}
 			while (buffer.length >= 2) {
 				const opcode = buffer[0] & 0x0f;
@@ -912,70 +912,6 @@ function ptyWebsocket(key, command) {
 		socket.on("close", () =>
 			resolvePromise({ status: upgraded ? 101 : 0, output })
 		);
-	});
-}
-
-function apiRequest(method, path, key, body) {
-	return request(path, {
-		method,
-		headers: {
-			authorization: `Bearer ${key}`,
-			...(body ? { "content-type": "application/json" } : {})
-		},
-		body: body ? JSON.stringify(body) : undefined
-	});
-}
-
-async function listApiSessions(key) {
-	const response = await apiRequest("GET", "/_composery/api/v1/sessions", key);
-	if (response.statusCode !== 200) {
-		throw new Error(
-			`GET /_composery/api/v1/sessions returned ${response.statusCode}.`
-		);
-	}
-	return (JSON.parse(response.body).sessions || []).map(
-		(session) => session.name
-	);
-}
-
-function openTmuxSession(key, sessionName) {
-	return new Promise((resolvePromise, reject) => {
-		const handshake = [
-			`GET /_composery/api/v1/exec?session=${encodeURIComponent(sessionName)} HTTP/1.1`,
-			`Host: 127.0.0.1:${config.port}`,
-			"Upgrade: websocket",
-			"Connection: Upgrade",
-			`Authorization: Bearer ${key}`,
-			`Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}`,
-			"Sec-WebSocket-Version: 13",
-			"",
-			""
-		].join("\r\n");
-		const socket = net.createConnection(
-			{ host: "127.0.0.1", port: config.port },
-			() => socket.write(handshake, "ascii")
-		);
-		socket.setTimeout(15_000);
-		let head = "";
-		socket.on("data", async (chunk) => {
-			if (head.includes("\r\n\r\n")) return;
-			head += chunk.toString("latin1");
-			if (!head.includes("\r\n\r\n")) return;
-			const status = Number(head.split(" ")[1]) || 0;
-			if (status !== 101) {
-				socket.destroy();
-				reject(new Error(`tmux session upgrade failed: ${status}.`));
-				return;
-			}
-			await sleep(1500);
-			socket.end();
-			resolvePromise();
-		});
-		socket.on("error", reject);
-		socket.on("timeout", () => {
-			socket.destroy();
-			reject(new Error("tmux session websocket timed out."));
-		});
 	});
 }
 

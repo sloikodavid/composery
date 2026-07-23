@@ -7,13 +7,27 @@ import ts from "typescript";
 
 export const repoRoot = resolve(import.meta.dirname, "..", "..");
 
-// GNU patch is on PATH on Linux/CI; Windows shells usually miss it, but Git
-// for Windows ships it in <git>/usr/bin. Resolving it here keeps the suite
-// running identically on both, so a local pass predicts a CI pass.
+// GNU patch, 2.7 or newer. Version is part of the requirement, not trivia:
+// 2.5.9 aborts ("Assertation failed!", patch.c:354) on a perfectly valid diff
+// whose last hunk is followed by trailing `diff --git`/`index` lines, which is
+// exactly what slicing one file's section out of a multi-file patch produces.
+// The Windows CI runner has that build first on PATH (Strawberry Perl ships it
+// in C:\Strawberry\c\bin), so "whatever is called patch" was not a usable rule.
+// Delete the version gate once no supported runner carries a pre-2.7 build.
+//
+// Git for Windows bundles 2.7.6 in <git>/usr/bin, off PATH; that is the
+// fallback, so the suite runs identically on every OS and a local pass predicts
+// a CI pass.
+function usableGnuPatch(binary: string): boolean {
+	const probe = spawnSync(binary, ["--version"], { encoding: "utf8" });
+	if (probe.status !== 0) return false;
+	const version = /GNU patch (\d+)\.(\d+)/.exec(probe.stdout ?? "");
+	if (!version) return false;
+	return Number(version[1]) > 2 || Number(version[2]) >= 7;
+}
+
 export const patchBin = (() => {
-	if (spawnSync("patch", ["--version"], { stdio: "ignore" }).status === 0) {
-		return "patch";
-	}
+	if (usableGnuPatch("patch")) return "patch";
 	if (process.platform === "win32") {
 		const gitCore = execFileSync("git", ["--exec-path"], {
 			encoding: "utf8"
@@ -27,9 +41,9 @@ export const patchBin = (() => {
 			"bin",
 			"patch.exe"
 		);
-		if (existsSync(bundled)) return bundled;
+		if (existsSync(bundled) && usableGnuPatch(bundled)) return bundled;
 	}
-	throw new Error("GNU patch not found; the patch-stack tests need it.");
+	throw new Error("GNU patch 2.7+ not found; the patch-stack tests need it.");
 })();
 
 export function applyPatch(patchFile: string, cwd: string): void {
@@ -80,7 +94,9 @@ export function extractAddedFunction(patch: string, name: string): string {
 // without its modifier so it can be spliced into a stand-in class and exercised.
 export function extractAddedMethod(patch: string, name: string): string {
 	const source = addedLines(patch);
-	const start = source.indexOf(`private ${name}(`);
+	// One rule for both `private name(` and `private async name(`; the `async` stays in
+	// the returned body so it splices into a stand-in class unchanged.
+	const start = source.search(new RegExp(`private (?:async )?${name}\\(`));
 	if (start < 0) {
 		throw new Error(`Could not find added method ${name}`);
 	}
