@@ -105,10 +105,9 @@ function render(url) {
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta
-			name="viewport"
-			content="width=device-width, initial-scale=1, viewport-fit=cover"
-		/>
+		<!-- No viewport meta: this page is webview content, and Chromium ignores
+		     viewport meta in a nested browsing context (measured on Android
+		     Chrome 134 - see web-client.diff). -->
 		<meta
 			http-equiv="Content-Security-Policy"
 			content="default-src 'none'; style-src 'unsafe-inline';"
@@ -130,10 +129,11 @@ function render(url) {
 				   against an auto-height <html>, so the card would hug the top of
 				   the tab with the whole viewport empty below it. */
 				min-height: 100dvh;
-				padding: max(16px, env(safe-area-inset-top, 0px))
-					max(16px, env(safe-area-inset-right, 0px))
-					max(16px, env(safe-area-inset-bottom, 0px))
-					max(16px, env(safe-area-inset-left, 0px));
+				/* A flat 16px, no safe-area term: this is webview content, and a
+				   nested browsing context reads every safe-area inset as 0 even
+				   when the top frame has a real one, so max(16px, inset) only ever
+				   resolved to the 16px. The workbench around us owns the insets. */
+				padding: 16px;
 				overflow: auto;
 				font-family: var(--vscode-font-family);
 				color: var(--vscode-foreground);

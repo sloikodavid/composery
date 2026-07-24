@@ -200,7 +200,6 @@ packages/
                 browser/
                   workbench/
                     workbench-assets/
-                      favicon.js
                       fonts.css
                       geist-mono.woff2
                       inter.woff2
