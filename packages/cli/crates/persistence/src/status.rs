@@ -18,6 +18,14 @@ pub struct StatusReport {
     pub last_daemon_error: Option<String>,
     pub watch_status: String,
     pub audit_status: String,
+    /// Live inotify directory watches, the configured budget, cumulative
+    /// budget evictions, and whether the watcher has shed to audit-only under
+    /// dirty-queue pressure. When `watches_shed` is true or `watch_status` is
+    /// `degraded`, `last_error` carries the reason.
+    pub watch_count: u64,
+    pub watch_budget: u64,
+    pub watch_evictions: u64,
+    pub watches_shed: bool,
     pub last_error: Option<String>,
     pub baseline_present: bool,
     pub baseline_valid: bool,
@@ -43,6 +51,10 @@ pub struct RuntimeStatus {
     pub dirty_queue_size: u64,
     pub watch_status: Option<String>,
     pub audit_status: Option<String>,
+    pub watch_count: u64,
+    pub watch_budget: u64,
+    pub watch_evictions: u64,
+    pub watches_shed: bool,
 }
 
 pub fn build_with_runtime(
@@ -90,6 +102,10 @@ pub fn build_with_runtime(
             .filter(|value| !value.is_empty()),
         watch_status,
         audit_status,
+        watch_count: runtime.watch_count,
+        watch_budget: runtime.watch_budget,
+        watch_evictions: runtime.watch_evictions,
+        watches_shed: runtime.watches_shed,
         last_error,
         baseline_present,
         baseline_valid,
@@ -116,6 +132,12 @@ pub fn print_human(report: &StatusReport) {
     println!("  baselineValid: {}", report.baseline_valid);
     println!("  watch: {}", report.watch_status);
     println!("  audit: {}", report.audit_status);
+    println!(
+        "  watches: {} / {}",
+        report.watch_count, report.watch_budget
+    );
+    println!("  watchEvictions: {}", report.watch_evictions);
+    println!("  watchesShed: {}", report.watches_shed);
     println!("  dirtyQueueSize: {}", report.dirty_queue_size);
     println!("  changed: {}", report.public_counts.changed);
     println!("  removed: {}", report.public_counts.removed);
@@ -174,6 +196,10 @@ mod tests {
                 dirty_queue_size: 7,
                 watch_status: Some("degraded".into()),
                 audit_status: Some("running".into()),
+                watch_count: 5,
+                watch_budget: 8192,
+                watch_evictions: 3,
+                watches_shed: true,
             },
         )
         .unwrap();
@@ -185,6 +211,10 @@ mod tests {
         assert_eq!(report.last_apply_error.as_deref(), Some("boom"));
         assert_eq!(report.watch_status, "degraded");
         assert_eq!(report.audit_status, "running");
+        assert_eq!(report.watch_count, 5);
+        assert_eq!(report.watch_budget, 8192);
+        assert_eq!(report.watch_evictions, 3);
+        assert!(report.watches_shed);
         assert_eq!(report.dirty_queue_size, 7);
         assert_eq!(report.public_counts.changed, 2);
         assert!(report.baseline_valid);

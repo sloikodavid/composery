@@ -13,7 +13,6 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use walkdir::WalkDir;
 
 use crate::{
     baseline::BaselineRecord,
@@ -142,7 +141,7 @@ pub fn run_once(
     let mut work_started = Instant::now();
     let budget = Duration::from_millis(config.audit.max_work_ms_per_tick.max(1));
 
-    let mut entries = WalkDir::new(root).follow_links(false).into_iter();
+    let mut entries = rootfs::rootfs_walker(root).into_iter();
     while let Some(entry) = entries.next() {
         if stop.load(Ordering::Relaxed) {
             return Ok(());
@@ -359,7 +358,6 @@ mod tests {
         sync::{
             Arc,
             atomic::{AtomicBool, AtomicU64},
-            mpsc,
         },
     };
 
@@ -368,8 +366,7 @@ mod tests {
         let fixture = Fixture::new();
         fs::write(fixture.root.join("etc/hello.txt"), "changed").unwrap();
         fs::remove_file(fixture.root.join("etc/delete-me")).unwrap();
-        let (tx, rx) = mpsc::channel();
-        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
 
         run_once(
             &fixture.root,
@@ -402,8 +399,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let (tx, rx) = mpsc::channel();
-        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
 
         run_once(
             &fixture.root,
@@ -434,8 +430,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let (tx, rx) = mpsc::channel();
-        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
 
         run_once(
             &fixture.root,
@@ -483,8 +478,7 @@ mod tests {
             fixture.root.join("etc/hard-b-extra"),
         )
         .unwrap();
-        let (tx, rx) = mpsc::channel();
-        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
 
         run_once(
             &fixture.root,
@@ -507,8 +501,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("root-file");
         fs::write(&root, "not a directory").unwrap();
-        let (tx, _rx) = mpsc::channel();
-        let dirty_tx = crate::dirty::DirtySender::new(tx, Arc::new(AtomicU64::new(0)));
+        let (dirty_tx, _rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
         let lifecycle =
             crate::lifecycle::LifecycleStatus::new(crate::lifecycle::LifecycleState::Initializing);
 
