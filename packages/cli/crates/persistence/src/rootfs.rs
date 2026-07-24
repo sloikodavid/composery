@@ -16,8 +16,23 @@ use std::{
     },
     path::{Path, PathBuf},
 };
+use walkdir::WalkDir;
 
 use crate::public;
+
+/// The one walker both the watch registration and the rolling audit use to
+/// traverse the live rootfs. `same_file_system(true)` stops at every mount
+/// boundary: a bind-mounted `/data` volume, a container runtime's overlay
+/// tree under `/var/lib/docker`, procfs, an sshfs a user mounted - each is
+/// runtime-managed by whatever mounted it, not part of the image we persist,
+/// so observing it is neither our job nor bounded by our budgets. Sharing one
+/// constructor keeps the two traversals from drifting apart. Config exclusions
+/// still apply on top of this, unchanged.
+pub fn rootfs_walker(start: &Path) -> WalkDir {
+    WalkDir::new(start)
+        .follow_links(false)
+        .same_file_system(true)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -748,8 +763,11 @@ fn make_dev(major: u64, minor: u64) -> libc::dev_t {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink};
+    use super::{
+        FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink, rootfs_walker,
+    };
     use std::{
+        collections::BTreeSet,
         fs,
         io::Write,
         os::unix::{
@@ -759,6 +777,29 @@ mod tests {
         path::Path,
         process::Command,
     };
+
+    #[test]
+    fn rootfs_walker_traverses_the_subtree_watch_and_audit_share() {
+        // The seam both the watcher and the auditor go through. Its
+        // `same_file_system(true)` boundary cannot be exercised here without
+        // privileges to mount a second filesystem, so this only pins that the
+        // one shared constructor walks a normal tree; the mount-stop behaviour
+        // is covered by walkdir's own tests.
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("a/b")).unwrap();
+        fs::write(root.join("a/file"), "x").unwrap();
+
+        let seen = rootfs_walker(root)
+            .into_iter()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().to_path_buf())
+            .collect::<BTreeSet<_>>();
+
+        assert!(seen.contains(&root.join("a")));
+        assert!(seen.contains(&root.join("a/b")));
+        assert!(seen.contains(&root.join("a/file")));
+    }
 
     #[test]
     fn copies_regular_file_metadata_and_xattrs() {

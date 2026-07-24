@@ -44,6 +44,7 @@ struct WriterRuntime {
     dirty_tx: dirty::DirtySender,
     watch_status: LifecycleStatus,
     audit_status: LifecycleStatus,
+    watch_metrics: watch::WatchMetrics,
 }
 
 #[cfg(unix)]
@@ -83,18 +84,19 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
 
     let baseline_records = baseline.all_records()?;
     let (writer_tx, writer_rx) = mpsc::channel();
-    let (dirty_tx, dirty_rx) = mpsc::channel();
     let (watch_error_tx, watch_error_rx) = mpsc::channel();
     let dirty_pending = Arc::new(AtomicU64::new(0));
-    let dirty_sender = dirty::DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+    let (dirty_sender, dirty_rx) = dirty::DirtySender::bounded(Arc::clone(&dirty_pending));
     let watch_status = LifecycleStatus::new(LifecycleState::Initializing);
     let audit_status = LifecycleStatus::new(LifecycleState::Initializing);
+    let watch_metrics = watch::WatchMetrics::new();
 
     let _watcher = match watch::Watcher::start(
         root.clone(),
         config.clone(),
         dirty_sender.clone(),
         watch_status.clone(),
+        watch_metrics.clone(),
         paths.watch_error_log.clone(),
         watch_error_tx,
     ) {
@@ -139,6 +141,7 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
                     dirty_tx: writer_dirty_sender,
                     watch_status: writer_watch_status,
                     audit_status: writer_audit_status,
+                    watch_metrics,
                 },
                 writer_rx,
                 dirty_rx,
@@ -306,6 +309,7 @@ fn writer_loop(
                 match command {
                     WriterCommand::Status(response) => {
                         let dirty_queue_size = runtime.dirty_tx.pending_count();
+                        let watch = runtime.watch_metrics.snapshot();
                         let _ = response.send(
                             status::build_with_runtime(
                                 &runtime.paths,
@@ -314,6 +318,10 @@ fn writer_loop(
                                     dirty_queue_size,
                                     watch_status: Some(runtime.watch_status.text()),
                                     audit_status: Some(runtime.audit_status.text()),
+                                    watch_count: watch.active,
+                                    watch_budget: runtime.config.max_watches,
+                                    watch_evictions: watch.evictions,
+                                    watches_shed: watch.shed,
                                 },
                             )
                             .map_err(|error| format!("{error:#}")),
@@ -486,6 +494,7 @@ mod tests {
         paths::Paths,
         public::PublicPath,
         status::StatusReport,
+        watch::WatchMetrics,
     };
     use std::{
         fs,
@@ -500,10 +509,9 @@ mod tests {
     fn status_doctor_and_prune_requests_are_served_through_writer() {
         let fixture = Fixture::new();
         let (writer_tx, writer_rx) = mpsc::channel();
-        let (dirty_tx, dirty_rx) = mpsc::channel();
         let (watch_error_tx, watch_error_rx) = mpsc::channel();
         let dirty_pending = Arc::new(AtomicU64::new(0));
-        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let (dirty_sender, dirty_rx) = DirtySender::bounded(Arc::clone(&dirty_pending));
         let root = fixture.root.clone();
         let paths = fixture.paths.clone();
         let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
@@ -519,6 +527,7 @@ mod tests {
                     dirty_tx: dirty_sender,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
+                    watch_metrics: WatchMetrics::new(),
                 },
                 writer_rx,
                 dirty_rx,
@@ -558,10 +567,9 @@ mod tests {
     fn writer_status_reports_shared_worker_lifecycle_states() {
         let fixture = Fixture::new();
         let (writer_tx, writer_rx) = mpsc::channel();
-        let (dirty_tx, dirty_rx) = mpsc::channel();
         let (_watch_error_tx, watch_error_rx) = mpsc::channel();
         let dirty_pending = Arc::new(AtomicU64::new(0));
-        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let (dirty_sender, dirty_rx) = DirtySender::bounded(Arc::clone(&dirty_pending));
         let watch_status = LifecycleStatus::new(LifecycleState::Initializing);
         let audit_status = LifecycleStatus::new(LifecycleState::Initializing);
         let root = fixture.root.clone();
@@ -581,6 +589,7 @@ mod tests {
                     dirty_tx: dirty_sender,
                     watch_status: writer_watch_status,
                     audit_status: writer_audit_status,
+                    watch_metrics: WatchMetrics::new(),
                 },
                 writer_rx,
                 dirty_rx,
@@ -763,10 +772,9 @@ mod tests {
     fn writer_drains_queued_dirty_paths_on_graceful_stop() {
         let fixture = Fixture::new();
         let (writer_tx, writer_rx) = mpsc::channel();
-        let (dirty_tx, dirty_rx) = mpsc::channel();
         let (_watch_error_tx, watch_error_rx) = mpsc::channel();
         let dirty_pending = Arc::new(AtomicU64::new(0));
-        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let (dirty_sender, dirty_rx) = DirtySender::bounded(Arc::clone(&dirty_pending));
 
         // More than one 256-path batch, queued before the command channel is
         // already gone - the writer must drain them all before exiting.
@@ -794,6 +802,7 @@ mod tests {
                     dirty_tx: writer_dirty_sender,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
+                    watch_metrics: WatchMetrics::new(),
                 },
                 writer_rx,
                 dirty_rx,
@@ -817,10 +826,9 @@ mod tests {
         }
         let fixture = Fixture::new();
         let (writer_tx, writer_rx) = mpsc::channel();
-        let (dirty_tx, dirty_rx) = mpsc::channel();
         let (_watch_error_tx, watch_error_rx) = mpsc::channel();
         let dirty_pending = Arc::new(AtomicU64::new(0));
-        let dirty_sender = DirtySender::new(dirty_tx, Arc::clone(&dirty_pending));
+        let (dirty_sender, dirty_rx) = DirtySender::bounded(Arc::clone(&dirty_pending));
         let root = std::path::PathBuf::from("/");
         let paths = fixture.paths.clone();
         let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
@@ -840,6 +848,7 @@ mod tests {
                     dirty_tx: writer_dirty_sender,
                     watch_status: LifecycleStatus::new(LifecycleState::Running),
                     audit_status: LifecycleStatus::new(LifecycleState::Running),
+                    watch_metrics: WatchMetrics::new(),
                 },
                 writer_rx,
                 dirty_rx,

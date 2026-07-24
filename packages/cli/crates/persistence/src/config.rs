@@ -11,6 +11,13 @@ use std::{
 pub struct Config {
     pub exclusions: Vec<String>,
     pub audit: AuditConfig,
+    /// Hard cap on live inotify directory watches; see `crate::watch` for why
+    /// the watcher's cost must be bounded by construction. Serde default keeps
+    /// pre-existing config.json files on deployed volumes parsing. Zero is a
+    /// valid choice (audit-only, no watcher latency optimization); any tree
+    /// past the cap is covered by the rolling audit.
+    #[serde(default = "default_max_watches")]
+    pub max_watches: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +45,23 @@ fn default_deep_hash_interval_secs() -> u64 {
     3600
 }
 
+/// Default ceiling on live inotify directory watches.
+///
+/// Observation cost must not scale with the workload's shape. Each watch costs
+/// ~1 KiB of kernel memory plus one userspace map entry, so 8192 watches bound
+/// the daemon to roughly ~8 MiB of kernel watch memory and a similarly small
+/// userspace table - flat, regardless of how many directories a
+/// Docker-in-Docker or node_modules workload creates. `fs.inotify.max_user_watches`
+/// is a host-wide sysctl shared by every container under one kernel, so the
+/// daemon deliberately claims only a small constant slice and never grows into
+/// it; unwatched trees are recovered by the rolling audit. Owners who want more
+/// (or zero) live latency can set `maxWatches` in config.json.
+pub const MAX_WATCHES_DEFAULT: u64 = 8192;
+
+fn default_max_watches() -> u64 {
+    MAX_WATCHES_DEFAULT
+}
+
 impl Default for Config {
     fn default() -> Self {
         with_required_exclusions(Self {
@@ -47,6 +71,7 @@ impl Default for Config {
                 interval_secs: default_interval_secs(),
                 deep_hash_interval_secs: default_deep_hash_interval_secs(),
             },
+            max_watches: default_max_watches(),
         })
     }
 }
@@ -296,6 +321,28 @@ mod tests {
         let config = load_or_create(&path).unwrap();
 
         assert_eq!(config.audit.deep_hash_interval_secs, 3600);
+    }
+
+    #[test]
+    fn config_without_max_watches_parses_with_default() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // A config.json written before the watch budget existed: no maxWatches.
+        fs::write(
+            &path,
+            r#"{"exclusions":["/data"],"audit":{"maxWorkMsPerTick":10,"intervalSecs":60,"deepHashIntervalSecs":3600}}"#,
+        )
+        .unwrap();
+
+        let config = load_or_create(&path).unwrap();
+
+        assert_eq!(config.max_watches, super::MAX_WATCHES_DEFAULT);
+        // It must parse in place, not be quarantined and rebuilt: without a
+        // serde default the missing field would error into recovery, which
+        // would also yield the default value and hide the regression.
+        assert!(!path.with_extension("invalid-1.json").exists());
+        assert!(fs::read_to_string(&path).unwrap().contains("\"/data\""));
     }
 
     #[test]

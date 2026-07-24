@@ -67,6 +67,21 @@ with safe defaults. A configuration typo therefore cannot prevent the IDE from s
 Storage or filesystem-integrity failures still stop boot rather than pretending the
 durable state was applied.
 
+## Bounded observation
+
+The live inotify watcher is a latency optimisation, not the source of truth: the rolling
+audit is the recovery floor. So the watcher's cost is capped by construction rather than
+allowed to scale with the workload. It watches at most `maxWatches` directories (8192 by
+default, tunable in `config.json`) and evicts the least-recently-active watch when full;
+the dirty-change queue between the watcher and the writer is likewise bounded and sheds
+under sustained pressure. Neither `/var/lib/docker` overlay churn nor a `node_modules`
+storm can grow the daemon's memory. Anything not currently watched - trees past the budget,
+or under a saturated queue - is still recovered by the next audit pass, at most one audit
+interval later. Both the watcher and the audit also stop at mount boundaries: a bind-mounted
+volume or a container runtime's overlay tree is runtime-managed, not part of the image, so
+it is neither watched nor audited. `composery persistence status` reports the active watch
+count, the budget, cumulative evictions, and whether the watcher has shed to audit-only.
+
 ## Commands
 
 Inside the container:
