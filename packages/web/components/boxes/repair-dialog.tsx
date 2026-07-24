@@ -105,6 +105,9 @@ export function RepairDialog({
 
 	async function refresh() {
 		setChecking(true);
+		// Clear first, so "Check again" shows the same loading state as opening
+		// the dialog. Leaving the old rows up reads as nothing having happened.
+		setStatus(null);
 		try {
 			setStatus(await check());
 		} catch (error) {
@@ -187,36 +190,34 @@ export function RepairDialog({
 								</AnimatedIconButton>
 							</div>
 
-							{/* Every row is laid out before the check returns - only the
-							    icon and badge wait on data - so the dialog opens at its
-							    final height instead of growing under the pointer. */}
+							{/* One placeholder bar per real check, in a row of the same
+							    height (py-2.5 either side of a 36px body), so the list is
+							    the same size loading as loaded and the dialog never
+							    resizes. */}
 							<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
 								{CHECKS.map((item) => {
 									const state = status ? item.read(status) : null;
+									if (!state) {
+										return (
+											<div className="px-3 py-2.5" key={item.label}>
+												<div className="h-9 animate-pulse rounded-lg bg-muted" />
+											</div>
+										);
+									}
 									return (
 										<div
 											className="flex items-start gap-3 px-3 py-2.5"
 											key={item.label}
 										>
-											{state ? (
-												<ToneIcon className="mt-0.5" tone={state.tone} />
-											) : (
-												<div className="mt-0.5 size-4 shrink-0 animate-pulse rounded-full bg-muted" />
-											)}
+											<ToneIcon className="mt-0.5" tone={state.tone} />
 											<div className="min-w-0 flex-1">
 												<p className="text-sm font-medium">{item.label}</p>
 												<p className="text-xs text-muted-foreground">
 													{item.description}
 												</p>
 											</div>
-											{/* Placeholder inside a real Badge: same element, so
-											    the row cannot change height when data lands. */}
-											<Badge variant={state ? TONE_BADGE[state.tone] : "secondary"}>
-												{state ? (
-													state.label
-												) : (
-													<span className="inline-block h-3 w-12 animate-pulse rounded bg-current opacity-30" />
-												)}
+											<Badge variant={TONE_BADGE[state.tone]}>
+												{state.label}
 											</Badge>
 										</div>
 									);
