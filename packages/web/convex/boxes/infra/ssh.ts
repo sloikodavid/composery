@@ -202,6 +202,11 @@ for service in persistence caddy ide; do
 	case "$state" in active) ;; inactive|failed|activating|deactivating) state=inactive ;; *) state=missing ;; esac
 	printf '%s=%s\\n' "$service" "$state"
 done
+# Which persistence engine this boot chose. Only the daemon can answer, so a box
+# whose persistence is down reports "unknown" rather than a guess - the same
+# rule the service states follow.
+engine="$(docker exec composery /opt/composery/bin/composery persistence status 2>/dev/null | sed -n 's/^[[:space:]]*engine:[[:space:]]*//p' | head -n 1)"
+printf 'engine=%s\\n' "\${engine:-unknown}"
 `;
 
 function componentState(value: string | undefined) {
@@ -223,10 +228,13 @@ export function parseRuntimeInspection(stdout: string): RecoveryStatus {
 	// `df` leaves behind - as a perfectly empty disk.
 	const rawDisk = values.get("disk_used_percent") ?? "";
 	const diskUsedPercent = /^\d{1,3}$/.test(rawDisk) ? Number(rawDisk) : 101;
+	const rawEngine = values.get("engine");
 	return {
 		hostReachable: true,
 		httpReachable: false,
 		diskUsedPercent: diskUsedPercent <= 100 ? diskUsedPercent : null,
+		engine:
+			rawEngine === "overlay" || rawEngine === "copy" ? rawEngine : "unknown",
 		docker: componentState(values.get("docker")),
 		outerCaddy: componentState(values.get("outer_caddy")),
 		composery: componentState(values.get("composery")),
@@ -240,6 +248,7 @@ const UNREACHABLE_STATUS: RecoveryStatus = {
 	hostReachable: false,
 	httpReachable: false,
 	diskUsedPercent: null,
+	engine: "unknown",
 	docker: "unknown",
 	outerCaddy: "unknown",
 	composery: "unknown",

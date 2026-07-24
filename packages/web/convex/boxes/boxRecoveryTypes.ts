@@ -7,10 +7,17 @@ export const vRuntimeComponentState = v.union(
 	v.literal("unknown")
 );
 
+export const vRuntimeEngine = v.union(
+	v.literal("overlay"),
+	v.literal("copy"),
+	v.literal("unknown")
+);
+
 export const vRecoveryStatus = v.object({
 	hostReachable: v.boolean(),
 	httpReachable: v.boolean(),
 	diskUsedPercent: v.union(v.number(), v.null()),
+	engine: vRuntimeEngine,
 	docker: vRuntimeComponentState,
 	outerCaddy: vRuntimeComponentState,
 	composery: vRuntimeComponentState,

@@ -6,6 +6,7 @@ const HEALTHY: RecoveryStatus = {
 	hostReachable: true,
 	httpReachable: true,
 	diskUsedPercent: 12,
+	engine: "copy",
 	docker: "active",
 	outerCaddy: "active",
 	composery: "active",
@@ -29,7 +30,8 @@ describe("repair status", () => {
 			"Editor",
 			"Web server",
 			"Persistence",
-			"Disk"
+			"Disk",
+			"Persistence engine"
 		]);
 	});
 
@@ -71,6 +73,7 @@ describe("repair status", () => {
 				hostReachable: true,
 				httpReachable: true,
 				diskUsedPercent: null,
+				engine: "unknown",
 				docker: "unknown",
 				outerCaddy: "unknown",
 				composery: "unknown",

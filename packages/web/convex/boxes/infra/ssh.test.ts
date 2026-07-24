@@ -19,6 +19,7 @@ arbitrary=value
 			hostReachable: true,
 			httpReachable: false,
 			diskUsedPercent: 91,
+			engine: "unknown",
 			docker: "active",
 			outerCaddy: "inactive",
 			composery: "active",
@@ -33,6 +34,7 @@ arbitrary=value
 			hostReachable: true,
 			httpReachable: false,
 			diskUsedPercent: null,
+			engine: "unknown",
 			docker: "unknown",
 			outerCaddy: "unknown",
 			composery: "unknown",
@@ -83,16 +85,21 @@ arbitrary=value
 	// quiet box rather than a broken check - so pin the two together.
 	it("prints a key for every field the Repair dialog reads", () => {
 		const keys = emittedKeys(INSPECT_SCRIPT);
-		expect(keys).toHaveLength(7);
+		expect(keys).toHaveLength(8);
 
 		const stdout = keys
-			.map((key) => `${key}=${key === "disk_used_percent" ? "42" : "active"}`)
+			.map((key) => {
+				if (key === "disk_used_percent") return `${key}=42`;
+				if (key === "engine") return `${key}=copy`;
+				return `${key}=active`;
+			})
 			.join("\n");
 
 		expect(parseRuntimeInspection(stdout)).toEqual({
 			hostReachable: true,
 			httpReachable: false,
 			diskUsedPercent: 42,
+			engine: "copy",
 			docker: "active",
 			outerCaddy: "active",
 			composery: "active",

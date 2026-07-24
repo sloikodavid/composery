@@ -66,6 +66,7 @@
   PULL_REQUEST_TEMPLATE.md
 .vscode/
   extensions.json
+  launch.json
   settings.json
 docs/
   developing/
@@ -864,6 +865,17 @@ scripts/
   tree.d.mts
   tree.mjs
   write-formatted.mjs
+spike/
+  01-pivot-boot.sh
+  02-reserved-upper.sh
+  03-persistence.sh
+  04-upgrade.sh
+  05-unprivileged.sh
+  06-inner-docker.sh
+  Dockerfile
+  entrypoint.sh
+  FINDINGS.md
+  lib.sh
 templates/
   fly/
     fly.toml

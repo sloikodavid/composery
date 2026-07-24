@@ -40,6 +40,19 @@ export function diskState(percent: number | null): {
 	};
 }
 
+// Informational, not pass/fail: both engines are healthy answers, so neither is
+// an issue. Only the daemon can name the live engine, so an unreadable one is
+// `muted` ("we could not read this") like every other unread check - never a
+// guess at which engine is running.
+export function engineState(engine: RecoveryStatus["engine"]): {
+	label: string;
+	tone: Tone;
+} {
+	if (engine === "overlay") return { label: "Overlay", tone: "ok" };
+	if (engine === "copy") return { label: "Copy", tone: "ok" };
+	return { label: "Unknown", tone: "muted" };
+}
+
 export function buildChecks(status: RecoveryStatus): Check[] {
 	return [
 		{
@@ -90,6 +103,11 @@ export function buildChecks(status: RecoveryStatus): Check[] {
 			label: "Disk",
 			description: "Space in use.",
 			state: diskState(status.diskUsedPercent)
+		},
+		{
+			label: "Persistence engine",
+			description: "How your changes are saved.",
+			state: engineState(status.engine)
 		}
 	];
 }
