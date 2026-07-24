@@ -8,6 +8,7 @@ pub mod daemon;
 #[cfg(unix)]
 pub mod dirty;
 pub mod doctor;
+pub mod engine;
 pub mod internal;
 pub mod layout;
 #[cfg(unix)]

@@ -16,6 +16,7 @@
 - Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
 - Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
 - Fix the class, not the instance. A bug found by reading is usually one of several; prefer a lint or regen test that catches the next one to a hand-patch of the one you saw.
+- Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem — if cost scales with a workload's shape, that is the bug, not the workload.
 
 ## IDE / upstream naming
 
@@ -144,6 +145,7 @@ packages/
           daemon.rs
           dirty.rs
           doctor.rs
+          engine.rs
           internal.rs
           layout.rs
           lib.rs
@@ -788,6 +790,7 @@ packages/
     vercel.json
     vitest.config.ts
 prompts/
+  green.md
   nugget.md
   REFACTOR.md
   senior-buzzwords.md

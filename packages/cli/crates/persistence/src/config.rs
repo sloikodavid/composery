@@ -6,18 +6,28 @@ use std::{
     path::Path,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// The runtime config. The image owns policy (the integrity and default
+/// exclusion sets, in code); the file owns only user intent (`exclude` /
+/// `persist`) - the same delta model the product itself uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    pub exclusions: Vec<String>,
+    /// User intent: paths to exclude from the persisted delta, on top of the
+    /// image's default set.
+    pub exclude: Vec<String>,
+    /// User intent: paths the image excludes by default that this box wants
+    /// persisted anyway. Never overrides an integrity exclusion.
+    pub persist: Vec<String>,
     pub audit: AuditConfig,
     /// Hard cap on live inotify directory watches; see `crate::watch` for why
-    /// the watcher's cost must be bounded by construction. Serde default keeps
-    /// pre-existing config.json files on deployed volumes parsing. Zero is a
-    /// valid choice (audit-only, no watcher latency optimization); any tree
-    /// past the cap is covered by the rolling audit.
-    #[serde(default = "default_max_watches")]
+    /// the watcher's cost must be bounded by construction. Zero is a valid
+    /// choice (audit-only); any tree past the cap is covered by the audit.
     pub max_watches: u64,
+    /// Effective exclusion set the engine enforces:
+    /// integrity ∪ (defaults − persist) ∪ exclude, with integrity always
+    /// winning. Derived from the fields above plus the code-owned integrity and
+    /// default sets; never written to the file. `crate::public::is_excluded`
+    /// reads this and nothing else.
+    pub exclusions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +45,41 @@ pub struct AuditConfig {
     /// config.json files on deployed volumes parsing.
     #[serde(default = "default_deep_hash_interval_secs")]
     pub deep_hash_interval_secs: u64,
+}
+
+/// Exactly what lives in `config.json`. Serde defaults keep a file written by
+/// any earlier build parsing in place rather than being quarantined for a
+/// missing field.
+///
+/// `exclusions` is the name the single-array layout used before user intent was
+/// split from image policy. It is an alias rather than a migration: such a file
+/// keeps working, its entries keep excluding what they always did, and nothing
+/// has to be rewritten on the volume to make that true. Dropping the name
+/// instead would let serde ignore it and silently stop honouring paths the
+/// owner chose.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileConfig {
+    #[serde(default, alias = "exclusions")]
+    exclude: Vec<String>,
+    #[serde(default)]
+    persist: Vec<String>,
+    audit: AuditConfig,
+    #[serde(default = "default_max_watches")]
+    max_watches: u64,
+}
+
+/// The subset of `Config` that is written to `config.json` - user intent only.
+/// The integrity and default exclusion sets live in code, never on the volume,
+/// so a new image can change them without a stale copy on a volume overriding
+/// it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredConfig<'a> {
+    exclude: &'a [String],
+    persist: &'a [String],
+    audit: &'a AuditConfig,
+    max_watches: u64,
 }
 
 fn default_interval_secs() -> u64 {
@@ -62,21 +107,11 @@ fn default_max_watches() -> u64 {
     MAX_WATCHES_DEFAULT
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        with_required_exclusions(Self {
-            exclusions: vec!["/var/cache".into()],
-            audit: AuditConfig {
-                max_work_ms_per_tick: 10,
-                interval_secs: default_interval_secs(),
-                deep_hash_interval_secs: default_deep_hash_interval_secs(),
-            },
-            max_watches: default_max_watches(),
-        })
-    }
-}
-
-fn required_exclusions() -> Vec<String> {
+/// Paths the persistence delta must never touch, enforced in code regardless of
+/// the config file: runtime state, the durable volume, and Composery's own
+/// update-owned implementation. Folded into every effective set and impossible
+/// to remove via `persist` or `exclude`.
+fn integrity_exclusions() -> Vec<String> {
     vec![
         crate::paths::volume_root().to_string_lossy().into_owned(),
         "/run".into(),
@@ -93,33 +128,75 @@ fn required_exclusions() -> Vec<String> {
     ]
 }
 
-fn with_required_exclusions(mut config: Config) -> Config {
-    let mut exclusions = required_exclusions();
-    for exclusion in config.exclusions.drain(..) {
-        if !exclusions.contains(&exclusion) {
-            exclusions.push(exclusion);
-        }
-    }
-    config.exclusions = exclusions;
-    config
+/// Excluded by default because they hold regenerable caches (downloaded apt
+/// archives and the like), but shipped with the image rather than written into
+/// the file - so a future image can change the set, and a box can override any
+/// entry per-path via `persist`.
+fn default_exclusions() -> Vec<String> {
+    vec!["/var/cache".into()]
 }
 
-fn file_default() -> Config {
-    let mut config = Config::default();
-    let required = required_exclusions();
-    config
-        .exclusions
-        .retain(|exclusion| !required.contains(exclusion));
-    config
+/// integrity ∪ (defaults − persist) ∪ exclude. Integrity is added first and
+/// unconditionally, so nothing in `persist` or `exclude` can ever remove it -
+/// that is what makes "integrity always wins" impossible to get wrong.
+fn effective_exclusions(exclude: &[String], persist: &[String]) -> Vec<String> {
+    let mut result = integrity_exclusions();
+    for path in default_exclusions() {
+        if !persist.iter().any(|kept| kept == &path) && !result.contains(&path) {
+            result.push(path);
+        }
+    }
+    for path in exclude {
+        if !result.contains(path) {
+            result.push(path.clone());
+        }
+    }
+    result
+}
+
+impl AuditConfig {
+    fn image_default() -> Self {
+        Self {
+            max_work_ms_per_tick: 10,
+            interval_secs: default_interval_secs(),
+            deep_hash_interval_secs: default_deep_hash_interval_secs(),
+        }
+    }
 }
 
 impl Config {
+    fn from_intent(
+        exclude: Vec<String>,
+        persist: Vec<String>,
+        audit: AuditConfig,
+        max_watches: u64,
+    ) -> Self {
+        let exclusions = effective_exclusions(&exclude, &persist);
+        Self {
+            exclude,
+            persist,
+            audit,
+            max_watches,
+            exclusions,
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
-        for exclusion in &self.exclusions {
-            validate_exclusion(exclusion)
-                .with_context(|| format!("invalid exclusion {exclusion:?}"))?;
+        for path in self.exclude.iter().chain(self.persist.iter()) {
+            validate_config_path(path).with_context(|| format!("invalid config path {path:?}"))?;
         }
         Ok(())
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::from_intent(
+            Vec::new(),
+            Vec::new(),
+            AuditConfig::image_default(),
+            default_max_watches(),
+        )
     }
 }
 
@@ -136,8 +213,11 @@ pub fn load_or_create(path: &Path) -> Result<Config> {
             let loaded = fs::read(path)
                 .with_context(|| format!("read config {}", path.display()))
                 .and_then(|data| {
-                    serde_json::from_slice::<Config>(&data)
+                    serde_json::from_slice::<FileConfig>(&data)
                         .with_context(|| format!("parse config {}", path.display()))
+                })
+                .map(|file| {
+                    Config::from_intent(file.exclude, file.persist, file.audit, file.max_watches)
                 })
                 .and_then(|config| {
                     config
@@ -146,7 +226,7 @@ pub fn load_or_create(path: &Path) -> Result<Config> {
                     Ok(config)
                 });
             match loaded {
-                Ok(config) => Ok(with_required_exclusions(config)),
+                Ok(config) => Ok(config),
                 Err(error) => recover_invalid(path, &error),
             }
         }
@@ -160,10 +240,10 @@ pub fn load_or_create(path: &Path) -> Result<Config> {
 }
 
 fn create_default(path: &Path) -> Result<Config> {
-    let config = file_default();
+    let config = Config::default();
     config.validate().context("validate default config")?;
     write(path, &config)?;
-    Ok(with_required_exclusions(config))
+    Ok(config)
 }
 
 fn recover_invalid(path: &Path, error: &anyhow::Error) -> Result<Config> {
@@ -222,7 +302,13 @@ fn write(path: &Path, config: &Config) -> Result<()> {
         .with_context(|| format!("create config dir {}", parent.display()))?;
     ensure_real_dir(parent)?;
 
-    let mut data = serde_json::to_vec_pretty(config).context("encode default config")?;
+    let stored = StoredConfig {
+        exclude: &config.exclude,
+        persist: &config.persist,
+        audit: &config.audit,
+        max_watches: config.max_watches,
+    };
+    let mut data = serde_json::to_vec_pretty(&stored).context("encode config")?;
     data.push(b'\n');
     let temp = path.with_extension("json.tmp");
     let _ = fs::remove_file(&temp);
@@ -261,7 +347,7 @@ fn ensure_real_dir(path: &Path) -> Result<()> {
     }
 }
 
-fn validate_exclusion(value: &str) -> Result<()> {
+fn validate_config_path(value: &str) -> Result<()> {
     let bytes = value.as_bytes();
     if bytes.first() != Some(&b'/') {
         bail!("path must be absolute");
@@ -282,18 +368,23 @@ fn validate_exclusion(value: &str) -> Result<()> {
     }
 
     if !has_component {
-        bail!("root path cannot be excluded");
+        bail!("root path cannot be listed");
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, load_or_create};
+    use super::{AuditConfig, Config, default_max_watches, integrity_exclusions, load_or_create};
+    use serde_json::{Value, json};
     use std::fs;
 
+    fn read_json(path: &std::path::Path) -> Value {
+        serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+    }
+
     #[test]
-    fn load_or_create_writes_default_config() {
+    fn load_or_create_writes_only_user_intent_not_the_default_set() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("persistence/config.json");
 
@@ -301,10 +392,81 @@ mod tests {
 
         assert_eq!(config, Config::default());
         assert!(path.exists());
-        let stored: Config = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(stored.exclusions, vec!["/var/cache"]);
+        let stored = read_json(&path);
+        assert_eq!(stored["exclude"], json!([]));
+        assert_eq!(stored["persist"], json!([]));
+        // The `/var/cache` default is shipped with the image now, never frozen
+        // onto the volume - so it must not appear in the file...
+        assert!(stored.get("exclusions").is_none());
+        assert!(!fs::read_to_string(&path).unwrap().contains("/var/cache"));
+        // ...but it still governs the effective set, alongside the integrity set.
+        assert!(config.exclusions.iter().any(|e| e == "/var/cache"));
+        assert!(config.exclusions.iter().any(|e| e == "/data"));
+
         let reparsed = load_or_create(&path).unwrap();
         assert_eq!(reparsed, Config::default());
+    }
+
+    #[test]
+    fn effective_set_is_integrity_union_defaults_minus_persist_union_exclude() {
+        let with_add = Config::from_intent(
+            vec!["/srv/cache".into()],
+            Vec::new(),
+            AuditConfig::image_default(),
+            default_max_watches(),
+        );
+        assert!(with_add.exclusions.iter().any(|e| e == "/var/cache")); // default kept
+        assert!(with_add.exclusions.iter().any(|e| e == "/srv/cache")); // user add
+        assert!(with_add.exclusions.iter().any(|e| e == "/opt/composery")); // integrity
+
+        let persisting_default = Config::from_intent(
+            Vec::new(),
+            vec!["/var/cache".into()],
+            AuditConfig::image_default(),
+            default_max_watches(),
+        );
+        // persist removes a default from the effective set.
+        assert!(
+            !persisting_default
+                .exclusions
+                .iter()
+                .any(|e| e == "/var/cache")
+        );
+    }
+
+    #[test]
+    fn persist_cannot_override_an_integrity_exclusion() {
+        // A box that tries to force-persist Composery's own implementation still
+        // cannot: integrity always wins over `persist`.
+        let config = Config::from_intent(
+            Vec::new(),
+            vec!["/opt/composery".into()],
+            AuditConfig::image_default(),
+            default_max_watches(),
+        );
+        assert!(config.exclusions.iter().any(|e| e == "/opt/composery"));
+    }
+
+    #[test]
+    fn a_config_written_before_the_split_keeps_excluding_what_it_named() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // The single-array layout an earlier build wrote. Serde ignores unknown
+        // fields, so without the alias this file would parse happily and quietly
+        // stop honouring the path its owner chose - the worst outcome here.
+        fs::write(
+            &path,
+            r#"{"exclusions":["/srv/data"],"audit":{"maxWorkMsPerTick":10}}"#,
+        )
+        .unwrap();
+
+        let config = load_or_create(&path).unwrap();
+
+        assert_eq!(config.exclude, vec!["/srv/data".to_string()]);
+        assert!(config.exclusions.iter().any(|e| e == "/srv/data"));
+        // The image's own default set still applies alongside it.
+        assert!(config.exclusions.iter().any(|e| e == "/var/cache"));
     }
 
     #[test]
@@ -314,7 +476,7 @@ mod tests {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(
             &path,
-            r#"{"exclusions":["/data"],"audit":{"maxWorkMsPerTick":10}}"#,
+            r#"{"exclude":["/data"],"audit":{"maxWorkMsPerTick":10}}"#,
         )
         .unwrap();
 
@@ -331,7 +493,7 @@ mod tests {
         // A config.json written before the watch budget existed: no maxWatches.
         fs::write(
             &path,
-            r#"{"exclusions":["/data"],"audit":{"maxWorkMsPerTick":10,"intervalSecs":60,"deepHashIntervalSecs":3600}}"#,
+            r#"{"exclude":["/data"],"audit":{"maxWorkMsPerTick":10,"intervalSecs":60,"deepHashIntervalSecs":3600}}"#,
         )
         .unwrap();
 
@@ -346,13 +508,14 @@ mod tests {
     }
 
     #[test]
-    fn required_exclusions_cannot_be_removed_from_the_file() {
+    fn integrity_exclusions_cannot_be_removed_from_the_file() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("persistence/config.json");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Even asking to persist integrity paths does not remove them.
         fs::write(
             &path,
-            r#"{"exclusions":[],"audit":{"maxWorkMsPerTick":10}}"#,
+            r#"{"persist":["/opt/composery","/data"],"audit":{"maxWorkMsPerTick":10}}"#,
         )
         .unwrap();
 
@@ -361,25 +524,93 @@ mod tests {
         for required in ["/data", "/proc", "/opt/persistence", "/opt/composery"] {
             assert!(config.exclusions.iter().any(|value| value == required));
         }
-        let stored: Config = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-        assert!(stored.exclusions.is_empty());
+        // The file keeps recording only the (ineffective) user intent; the
+        // integrity set is never written into it.
+        let stored = read_json(&path);
+        assert_eq!(stored["persist"], json!(["/opt/composery", "/data"]));
+        assert!(stored.get("exclusions").is_none());
     }
 
     #[test]
-    fn load_or_create_preserves_and_recovers_invalid_exclusions() {
+    fn integrity_exclusions_cover_every_product_owned_image_path() {
+        // Product code and state ship under these roots in the image; each MUST
+        // be shielded from becoming a user delta. Deriving the roots from the
+        // real Dockerfile means a newly installed product path - a moved binary,
+        // a new reserved directory - fails this test until it is
+        // integrity-excluded, instead of relying on anyone remembering the list.
+        // (Product paths outside /opt or /data are out of scope: the convention
+        // is that Composery's own implementation lives under /opt.)
+        let dockerfile = fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../Dockerfile"),
+        )
+        .expect("read repo Dockerfile via CARGO_MANIFEST_DIR");
+
+        let mut roots = std::collections::BTreeSet::new();
+        for token in dockerfile.split(|c: char| {
+            !(c == '/' || c == '.' || c == '_' || c == '-' || c.is_ascii_alphanumeric())
+        }) {
+            if let Some(root) = product_root(token) {
+                roots.insert(root);
+            }
+        }
+        // Sanity: the two roots we know the image installs must be discovered,
+        // or the extraction has silently stopped finding anything.
+        assert!(
+            roots.contains("/opt/composery"),
+            "expected /opt/composery among {roots:?}"
+        );
+        assert!(
+            roots.contains("/opt/persistence"),
+            "expected /opt/persistence among {roots:?}"
+        );
+
+        let integrity = integrity_exclusions();
+        for root in &roots {
+            assert!(
+                integrity.iter().any(|excluded| covers(excluded, root)),
+                "product-owned {root} is not covered by an integrity exclusion"
+            );
+        }
+    }
+
+    // Reduce a Dockerfile path token to the product-owned root it belongs to, or
+    // None if it is not product-owned. The whole `/data` volume is one root;
+    // under `/opt` each first-level directory is its own root.
+    fn product_root(token: &str) -> Option<String> {
+        if token == "/data" || token.starts_with("/data/") {
+            return Some("/data".to_string());
+        }
+        if let Some(rest) = token.strip_prefix("/opt/") {
+            let first = rest.split('/').next().unwrap_or("");
+            if !first.is_empty() {
+                return Some(format!("/opt/{first}"));
+            }
+        }
+        None
+    }
+
+    fn covers(excluded: &str, path: &str) -> bool {
+        path == excluded
+            || (path.starts_with(excluded) && path.as_bytes().get(excluded.len()) == Some(&b'/'))
+    }
+
+    #[test]
+    fn load_or_create_preserves_and_recovers_invalid_exclude() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("persistence/config.json");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let mut config = Config::default();
-        config.exclusions.push("relative".into());
-        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        fs::write(
+            &path,
+            r#"{"exclude":["relative"],"audit":{"maxWorkMsPerTick":10}}"#,
+        )
+        .unwrap();
 
         let recovered = load_or_create(&path).unwrap();
 
         assert_eq!(recovered, Config::default());
         assert!(path.with_extension("invalid-1.json").is_file());
-        let stored: Config = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-        assert_eq!(stored.exclusions, vec!["/var/cache"]);
+        let stored = read_json(&path);
+        assert_eq!(stored["exclude"], json!([]));
     }
 
     #[test]
