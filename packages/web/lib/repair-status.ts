@@ -53,63 +53,79 @@ export function engineState(engine: RecoveryStatus["engine"]): {
 	return { label: "Unknown", tone: "muted" };
 }
 
-export function buildChecks(status: RecoveryStatus): Check[] {
-	return [
-		{
-			label: "Website",
-			description: "Reachable at its public URL.",
-			state: status.httpReachable
+// What the dialog lists, and how each row reads itself off an inspection. The
+// label and description do not depend on the box, so the dialog can lay every
+// row out before the check returns and fill in only the state - the list never
+// changes height, which is what stops the modal resizing under the pointer.
+export const CHECKS: {
+	label: string;
+	description: string;
+	read: (status: RecoveryStatus) => Check["state"];
+}[] = [
+	{
+		label: "Website",
+		description: "Reachable at its public URL.",
+		read: (status) =>
+			status.httpReachable
 				? { label: "Online", tone: "ok" }
 				: { label: "Not responding", tone: "bad" }
-		},
-		{
-			label: "Server",
-			description: "The host it runs on.",
-			state: status.hostReachable
+	},
+	{
+		label: "Server",
+		description: "The host it runs on.",
+		read: (status) =>
+			status.hostReachable
 				? { label: "Reachable", tone: "ok" }
 				: { label: "Unreachable", tone: "bad" }
-		},
-		{
-			label: "Docker",
-			description: "Container engine.",
-			state: serviceState(status.docker)
-		},
-		{
-			label: "Reverse proxy",
-			description: "Terminates HTTPS at the edge.",
-			state: serviceState(status.outerCaddy)
-		},
-		{
-			label: "Runtime container",
-			description: "Everything runs in here.",
-			state: serviceState(status.composery)
-		},
-		{
-			label: "Editor",
-			description: "The editor and terminal.",
-			state: serviceState(status.ide)
-		},
-		{
-			label: "Web server",
-			description: "Serves the editor.",
-			state: serviceState(status.caddy)
-		},
-		{
-			label: "Persistence",
-			description: "Saves your files.",
-			state: serviceState(status.persistence)
-		},
-		{
-			label: "Disk",
-			description: "Space in use.",
-			state: diskState(status.diskUsedPercent)
-		},
-		{
-			label: "Persistence engine",
-			description: "How your changes are saved.",
-			state: engineState(status.engine)
-		}
-	];
+	},
+	{
+		label: "Docker",
+		description: "Container engine.",
+		read: (status) => serviceState(status.docker)
+	},
+	{
+		label: "Reverse proxy",
+		description: "Terminates HTTPS at the edge.",
+		read: (status) => serviceState(status.outerCaddy)
+	},
+	{
+		label: "Runtime container",
+		description: "Everything runs in here.",
+		read: (status) => serviceState(status.composery)
+	},
+	{
+		label: "Editor",
+		description: "The editor and terminal.",
+		read: (status) => serviceState(status.ide)
+	},
+	{
+		label: "Web server",
+		description: "Serves the editor.",
+		read: (status) => serviceState(status.caddy)
+	},
+	{
+		label: "Persistence",
+		description: "Saves your files.",
+		read: (status) => serviceState(status.persistence)
+	},
+	{
+		label: "Disk",
+		description: "Space in use.",
+		read: (status) => diskState(status.diskUsedPercent)
+	},
+	{
+		label: "Persistence engine",
+		description: "How your changes are saved.",
+		read: (status) => engineState(status.engine)
+	}
+];
+
+export function buildChecks(status: RecoveryStatus): Check[] {
+	return CHECKS.map((check) => ({
+		label: check.label,
+		description: check.description,
+		state: check.read(status)
+	}));
 }
 
 export function summarize(

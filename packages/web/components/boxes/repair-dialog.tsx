@@ -22,7 +22,7 @@ import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
 import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
 import type { BoxStatus } from "@/convex/schema";
 import { errorMessage } from "@/lib/error-message";
-import { type Tone, buildChecks, summarize } from "@/lib/repair-status";
+import { CHECKS, type Tone, buildChecks, summarize } from "@/lib/repair-status";
 import { cn } from "@/lib/utils";
 
 const TONE_BADGE = {
@@ -159,8 +159,20 @@ export function RepairDialog({
 										</span>
 									</div>
 								) : (
-									<div className="flex items-center gap-2 text-sm text-muted-foreground">
-										<LoaderIcon className="size-4 animate-spin" /> Checking…
+									<div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+										{checking ? (
+											<>
+												<LoaderIcon className="size-4 shrink-0 animate-spin" />
+												<span className="truncate">Checking…</span>
+											</>
+										) : (
+											<>
+												<ToneIcon tone="muted" />
+												<span className="truncate">
+													Couldn&apos;t check the box
+												</span>
+											</>
+										)}
 									</div>
 								)}
 								<AnimatedIconButton
@@ -175,39 +187,40 @@ export function RepairDialog({
 								</AnimatedIconButton>
 							</div>
 
+							{/* Every row is laid out before the check returns - only the
+							    icon and badge wait on data - so the dialog opens at its
+							    final height instead of growing under the pointer. */}
 							<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
-								{checking && !status ? (
-									<div className="space-y-2 p-3">
-										{Array.from({ length: 6 }).map((_, index) => (
-											<div
-												className="h-9 animate-pulse rounded-lg bg-muted"
-												key={index}
-											/>
-										))}
-									</div>
-								) : status ? (
-									checks.map((item) => (
+								{CHECKS.map((item) => {
+									const state = status ? item.read(status) : null;
+									return (
 										<div
 											className="flex items-start gap-3 px-3 py-2.5"
 											key={item.label}
 										>
-											<ToneIcon className="mt-0.5" tone={item.state.tone} />
+											{state ? (
+												<ToneIcon className="mt-0.5" tone={state.tone} />
+											) : (
+												<div className="mt-0.5 size-4 shrink-0 animate-pulse rounded-full bg-muted" />
+											)}
 											<div className="min-w-0 flex-1">
 												<p className="text-sm font-medium">{item.label}</p>
 												<p className="text-xs text-muted-foreground">
 													{item.description}
 												</p>
 											</div>
-											<Badge variant={TONE_BADGE[item.state.tone]}>
-												{item.state.label}
+											{/* Placeholder inside a real Badge: same element, so
+											    the row cannot change height when data lands. */}
+											<Badge variant={state ? TONE_BADGE[state.tone] : "secondary"}>
+												{state ? (
+													state.label
+												) : (
+													<span className="inline-block h-3 w-12 animate-pulse rounded bg-current opacity-30" />
+												)}
 											</Badge>
 										</div>
-									))
-								) : (
-									<div className="px-3 py-6 text-center text-sm text-muted-foreground">
-										Couldn&apos;t check the box.
-									</div>
-								)}
+									);
+								})}
 							</div>
 						</>
 					) : (
