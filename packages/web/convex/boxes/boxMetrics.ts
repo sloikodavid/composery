@@ -81,6 +81,7 @@ const ROLLUP_BOX_STATUSES: readonly BoxStatus[] = [
 	"starting",
 	"resetting",
 	"reset_failed",
+	"repairing",
 	"restoring",
 	"restore_failed",
 	"suspending",

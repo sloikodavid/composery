@@ -46,6 +46,35 @@ function ToneIcon({ tone, className }: { tone: Tone; className?: string }) {
 	return <CircleHelpIcon className={cn(base, "text-muted-foreground")} />;
 }
 
+// The last repair this box attempted. A repair leaves the box "running"
+// throughout, so unlike every other operation its progress and its failure are
+// nowhere in the box status - this record is the only place they exist.
+export type RepairOperation = {
+	status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+	error: string | null;
+	finishedAt: number | null;
+};
+
+function repairNotice(repair: RepairOperation | null) {
+	if (!repair) return null;
+	if (repair.status === "pending" || repair.status === "running") {
+		return {
+			tone: "muted" as Tone,
+			text: "Repairing this box now. It can take a few minutes; the checks above update when it finishes."
+		};
+	}
+	if (repair.status === "failed") {
+		return {
+			tone: "bad" as Tone,
+			text: `The last repair failed: ${repair.error ?? "no reason recorded"}`
+		};
+	}
+	if (repair.status === "succeeded") {
+		return { tone: "ok" as Tone, text: "The last repair finished." };
+	}
+	return { tone: "muted" as Tone, text: "The last repair was cancelled." };
+}
+
 // Owner and console box pages share this. It shows a read-only picture of every
 // layer of the box, then offers one data-preserving Repair action. The caller's
 // check loads the status and onRepair performs the repair.
@@ -54,12 +83,14 @@ export function RepairDialog({
 	busy,
 	check,
 	onRepair,
+	repair,
 	slug
 }: {
 	boxStatus: BoxStatus;
 	busy: string | null;
 	check: () => Promise<RecoveryStatus>;
 	onRepair: () => Promise<void>;
+	repair: RepairOperation | null;
 	slug: string;
 }) {
 	const [open, setOpen] = useState(false);
@@ -94,6 +125,9 @@ export function RepairDialog({
 
 	const checks = status ? buildChecks(status) : [];
 	const summary = status ? summarize(status, checks) : null;
+	const notice = repairNotice(repair);
+	const repairing =
+		repair?.status === "pending" || repair?.status === "running";
 
 	return (
 		<>
@@ -182,19 +216,30 @@ export function RepairDialog({
 							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
 								{boxStatus === "stopped"
 									? "This box is stopped, not broken. Start it to check and repair it."
-									: "This box can't be repaired in its current state."}
+									: boxStatus === "repairing"
+										? "A repair is already running on this box. It can take a few minutes."
+										: "This box can't be repaired in its current state."}
 							</p>
 						</div>
 					)}
 
+					{notice ? (
+						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
+							<ToneIcon className="mt-0.5" tone={notice.tone} />
+							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
+								{notice.text}
+							</p>
+						</div>
+					) : null}
+
 					<AnimatedIconButton
 						className="w-full"
-						disabled={busy !== null || !repairable}
+						disabled={busy !== null || !repairable || repairing}
 						icon="wrench"
 						iconPosition="start"
-						onClick={() => void onRepair().then(() => changeOpen(false))}
+						onClick={() => void onRepair()}
 					>
-						{busy === "repair" ? "Repairing…" : "Repair"}
+						{busy === "repair" || repairing ? "Repairing…" : "Repair"}
 					</AnimatedIconButton>
 				</DialogContent>
 			</Dialog>

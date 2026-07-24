@@ -141,8 +141,19 @@ describe("runtime bootstrap and repair scripts", () => {
 		expect(repair).toContain(artifacts.env);
 		expect(repair).toContain(artifacts.caddyfile);
 		expect(repair).toContain("compose -p composery -f");
-		expect(repair).toContain(" pull\n");
+		expect(repair).toContain(" pull ");
 		expect(repair).toContain("set -euo pipefail");
+	});
+
+	// Repair exists to get a broken box serving again. Under `set -e` a pruned
+	// digest or an unreachable registry would abort the script before anything
+	// restarted, leaving the box as broken as it was - the "repair does nothing"
+	// report. Bootstrap keeps failing there, because a first boot with no image
+	// has nothing to fall back to.
+	it("repairs with the local image when the pull fails, but never bootstraps", () => {
+		expect(repair).toMatch(/ pull \|\| echo /);
+		expect(bootstrap).not.toContain("||");
+		expect(bootstrap).toMatch(/ pull\n/);
 	});
 
 	// Repair is offered as the safe option, and the box's files live in named

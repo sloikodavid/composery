@@ -1,5 +1,34 @@
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { DatabaseReader } from "../_generated/server";
 import { cloudUrl } from "../env";
+
+// Every other box operation moves the box into a visible status while it runs
+// (stopping, resetting, ...). Repair deliberately does not - a broken box is
+// still "running" - so this record is the only place a repair's progress and
+// its failure exist. Both detail views read it, so they cannot disagree about
+// what the owner and staff are told.
+export async function latestRepair(
+	db: DatabaseReader,
+	boxId: Id<"boxes">
+): Promise<{
+	status: Doc<"box_operations">["status"];
+	error: string | null;
+	finishedAt: number | null;
+} | null> {
+	const operation = await db
+		.query("box_operations")
+		.withIndex("box_id_type_created_at", (query) =>
+			query.eq("box_id", boxId).eq("type", "recover")
+		)
+		.order("desc")
+		.first();
+	if (!operation) return null;
+	return {
+		status: operation.status,
+		error: operation.last_error ?? null,
+		finishedAt: operation.finished_at ?? null
+	};
+}
 
 export function safeBox(box: Doc<"boxes">) {
 	return {

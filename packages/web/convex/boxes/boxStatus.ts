@@ -302,6 +302,32 @@ export const swapSlug = internalMutation({
 	}
 });
 
+// Repair leaves the box exactly where it started - "running" - so this only
+// clears the transient `repairing` status and settles the operation the dialog
+// reads for the outcome.
+export const markRepairSucceeded = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		operationId: v.id("box_operations")
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		const timestamp = Date.now();
+		await ctx.db.patch(args.boxId, {
+			status: "running",
+			updated_at: timestamp
+		});
+		await ctx.db.patch(args.operationId, {
+			status: "succeeded",
+			finished_at: timestamp,
+			updated_at: timestamp
+		});
+		await appendBoxEvent(ctx, box, "box.recovery_succeeded");
+	}
+});
+
 export const markResetSucceeded = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
