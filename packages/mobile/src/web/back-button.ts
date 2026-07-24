@@ -129,7 +129,7 @@ export const INSTALL_SCRIPT = `(function () {
 	function post(m) { try { window.ReactNativeWebView.postMessage(m); } catch (e) {} }
 
 	// Hardware/gesture back asks the page to close its topmost layer. The workbench
-	// defines this itself (narrow.js) and knows its menus, dialogs and full-screen
+	// defines this itself (shell.js) and knows its menus, dialogs and full-screen
 	// parts; the login and error pages have no layers, so back there means leave.
 	// Never overwrite the workbench's - it loads first, this runs at load end.
 	if (!window.__composeryNativeBack) {

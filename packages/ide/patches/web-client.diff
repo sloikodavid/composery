@@ -9,7 +9,7 @@ app, and liveness across cache restores.
   vscode-resource-cache entries stranded under old stamps - storage a mobile
   WebView user has no way to clear.
 - Overlay asset wiring: the workbench pages link narrow.css / touch.css /
-  fonts.css and load narrow.js / touch.js from workbench-assets, carry the
+  fonts.css and load shell.js from workbench-assets, carry the
   shared viewport contract (viewport-fit=cover,
   interactive-widget=resizes-content), and declare the favicon set: sized ICO
   fallback first, adaptive SVG last, with favicon.js swapping the
@@ -93,12 +93,11 @@ app, and liveness across cache restores.
  		<style id="vscode-css-modules" type="text/css" media="screen"></style>
  
  	</head>
-@@ -65,5 +71,8 @@
+@@ -65,5 +71,7 @@
  	<script>
  		performance.mark('code/willLoadWorkbenchMain');
  	</script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/shell.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>
@@ -146,12 +145,11 @@ app, and liveness across cache restores.
  
  	</head>
  
-@@ -46,5 +60,8 @@
+@@ -46,5 +60,7 @@
  	<script type="module" src="{{WORKBENCH_NLS_FALLBACK_URL}}"></script>
  	<!-- attempt to load NLS messages in case non-english -->
  	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.js"></script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.js"></script>
++	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/shell.js"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>

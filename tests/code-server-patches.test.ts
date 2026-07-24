@@ -862,7 +862,7 @@ describe("touch inline actions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// narrow.js keyboard-inset behavior, executed in a browser-shaped VM.
+// shell.js keyboard-inset behavior, executed in a browser-shaped VM.
 // ---------------------------------------------------------------------------
 
 function runNarrowViewportVars({
@@ -885,7 +885,7 @@ function runNarrowViewportVars({
 	setVisualViewportHeight(height: number): void;
 	fireVisualViewportResize(): void;
 } {
-	const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+	const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 	const properties = new Map<string, string>();
 	const visualViewportListeners: { type: string; listener: () => void }[] = [];
 	const viewportObject = visualViewport
@@ -965,7 +965,7 @@ function runNarrowViewportVars({
 			visualViewport: viewportObject
 		}
 	});
-	vm.runInContext(narrowJs, context);
+	vm.runInContext(shellJs, context);
 
 	return {
 		properties,
@@ -1015,9 +1015,9 @@ describe("narrow overlay", () => {
 	});
 
 	// The workbench layout listener (touch.diff) registers after
-	// narrow.js on the same visualViewport and reads
+	// shell.js on the same visualViewport and reads
 	// --composery-touch-keyboard-inset within the same resize delivery. The vars
-	// must update synchronously in narrow.js's geometry listeners: an
+	// must update synchronously in shell.js's geometry listeners: an
 	// animation-frame update hands the layout a stale keyboard inset and wedges
 	// the workbench at the keyboard-open height after the keyboard closes. The
 	// harness stubs requestAnimationFrame as a no-op, so only the sync path can
@@ -1070,11 +1070,11 @@ describe("narrow overlay", () => {
 	// (viewport width). Keyboard-inset logic belongs to the narrow overlay only;
 	// the touch gate must never grow viewport knowledge.
 	test("keeps the touch gate free of keyboard-inset logic", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
 		const touchGatePatch = readRepoFile(TOUCH_GATE);
 
-		expect(narrowJs).toContain("bottomKeyboardOverlap");
+		expect(shellJs).toContain("bottomKeyboardOverlap");
 		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
 		expect(touchGatePatch).toContain("TOUCH_QUERY");
 		expect(touchGatePatch).not.toContain("keyboardInset");
@@ -1213,16 +1213,16 @@ describe("narrow overlay", () => {
 		);
 	});
 
-	// narrow.js signals overlay-back state to the native app; the mobile WebView
+	// shell.js signals overlay-back state to the native app; the mobile WebView
 	// listens for the same protocol strings (in the InstanceView the WebView lives
 	// in - the route itself is only a focus marker).
-	test("overlay-back protocol matches between narrow.js and the mobile app", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+	test("overlay-back protocol matches between shell.js and the mobile app", () => {
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 		const instanceView = readRepoFile(
 			"packages/mobile/src/components/instance-view.tsx"
 		);
 
-		expect(narrowJs).toContain("composery:overlay-back:");
+		expect(shellJs).toContain("composery:overlay-back:");
 		expect(instanceView).toContain("composery:overlay-back:on");
 		expect(instanceView).toContain("composery:overlay-back:off");
 	});
@@ -1230,12 +1230,12 @@ describe("narrow overlay", () => {
 	// A back press is handed to the page, which closes its top layer or answers
 	// "composery:back" so the app leaves. Same entry point on both sides, or every
 	// press in the IDE goes straight back to the instances list.
-	test("the native back call matches between narrow.js and the mobile app", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+	test("the native back call matches between shell.js and the mobile app", () => {
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 		const webScripts = readRepoFile("packages/mobile/src/web/back-button.ts");
 
-		expect(narrowJs).toContain("window.__composeryNativeBack = function");
-		expect(narrowJs).toContain('postNative("composery:back")');
+		expect(shellJs).toContain("window.__composeryNativeBack = function");
+		expect(shellJs).toContain('postNative("composery:back")');
 		expect(webScripts).toContain("window.__composeryNativeBack()");
 	});
 
@@ -1255,22 +1255,20 @@ describe("narrow overlay", () => {
 	// Rotation can make a phone wider than the narrow layout breakpoint while
 	// Android hardware Back still needs to dismiss dialogs and menus in the IDE.
 	test("overlay back guards survive wide coarse-pointer orientation", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 
-		expect(narrowJs).toContain('window.matchMedia("(pointer: coarse)")');
-		expect(narrowJs).toContain(
-			"if (!narrow.matches && !coarsePointer.matches)"
-		);
+		expect(shellJs).toContain('window.matchMedia("(pointer: coarse)")');
+		expect(shellJs).toContain("if (!narrow.matches && !coarsePointer.matches)");
 	});
 
 	// A back gesture with a narrow-fullscreen part open must close the part, not
-	// leave the page: narrow.js dispatches the close event and the layout patch
+	// leave the page: shell.js dispatches the close event and the layout patch
 	// listens for it - same literal on both sides or back exits the IDE.
-	test("narrow close-part event matches between narrow.js and the layout patch", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+	test("narrow close-part event matches between shell.js and the layout patch", () => {
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 		const layoutPatch = readRepoFile(`${PATCHES_DIR}/narrow.diff`);
 
-		expect(narrowJs).toContain('"composery-narrow-close-part"');
+		expect(shellJs).toContain('"composery-narrow-close-part"');
 		expect(addedLines(layoutPatch)).toContain("'composery-narrow-close-part'");
 	});
 
@@ -1482,16 +1480,16 @@ describe("narrow overlay", () => {
 		expect(keybar).not.toMatch(/from '.*\/contrib\//);
 	});
 
-	// narrow.js detects an open part via the workbench part-hidden classes; those
+	// shell.js detects an open part via the workbench part-hidden classes; those
 	// literals belong to upstream layout.ts and must survive upstream bumps.
-	test("narrow.js part-hidden classes exist upstream", () => {
-		const narrowJs = readRepoFile(`${ASSETS}/narrow.js`);
+	test("shell.js part-hidden classes exist upstream", () => {
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
 		const layoutTs = readRepoFile(
 			"packages/ide/upstream/lib/vscode/src/vs/workbench/browser/layout.ts"
 		);
 
 		for (const hiddenClass of ["nosidebar", "nopanel", "noauxiliarybar"]) {
-			expect(narrowJs).toContain(`"${hiddenClass}"`);
+			expect(shellJs).toContain(`"${hiddenClass}"`);
 			expect(layoutTs).toContain(`'${hiddenClass}'`);
 		}
 	});
@@ -1918,7 +1916,7 @@ describe("narrow overlay", () => {
 		for (const line of touchMedia) {
 			expect(line).toBe(`@media ${touchQuery} {`);
 		}
-		expect(readRepoFile(`${ASSETS}/touch.js`)).toContain(`"${touchQuery}"`);
+		expect(readRepoFile(`${ASSETS}/shell.js`)).toContain(`"${touchQuery}"`);
 
 		const narrowMedia = readRepoFile(`${ASSETS}/narrow.css`)
 			.split("\n")
@@ -1927,7 +1925,7 @@ describe("narrow overlay", () => {
 		for (const line of narrowMedia) {
 			expect(line).toBe(`@media (max-width: ${narrowWidth}px) {`);
 		}
-		expect(readRepoFile(`${ASSETS}/narrow.js`)).toContain(
+		expect(readRepoFile(`${ASSETS}/shell.js`)).toContain(
 			`NARROW_MAX_WIDTH = ${narrowWidth}`
 		);
 		expect(readRepoFile(`${PATCHES_DIR}/web-client.diff`)).toContain(
@@ -2994,13 +2992,13 @@ describe("terminal resize scroll", () => {
 });
 
 // The keyboard-open signal the keybar reads (it reserves its row out of the grid
-// only while a keyboard is up) is published by narrow.js, and is deliberately NOT
+// only while a keyboard is up) is published by shell.js, and is deliberately NOT
 // the existing inset var - that one means "overlap the viewport has not already
 // excluded" and reads 0 under interactive-widget=resizes-content.
 describe("soft-keyboard open signal", () => {
-	test("narrow.js publishes the keyboard-open signal from a viewport baseline", () => {
+	test("shell.js publishes the keyboard-open signal from a viewport baseline", () => {
 		const narrow = readRepoFile(
-			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/narrow.js"
+			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/shell.js"
 		);
 
 		expect(narrow).toContain('"--composery-touch-keyboard-open"');

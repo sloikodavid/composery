@@ -1,7 +1,7 @@
 /*
  * Touch-pointer workbench styles - the touch half of the two small-screen gates (any touch device,
  * any screen size). Gate: (hover: none), (any-pointer: coarse). Mirrored - but not importable - in
- * touchGate.ts and touch.js; keep the touch query in sync.
+ * touchGate.ts and shell.js; keep the touch query in sync.
  */
 
 .keybindings-editor > .keybindings-body {

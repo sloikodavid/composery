@@ -202,9 +202,8 @@ packages/
                       geist-mono.woff2
                       inter.woff2
                       narrow.css
-                      narrow.js
+                      shell.js
                       touch.css
-                      touch.js
           src/
             vs/
               base/

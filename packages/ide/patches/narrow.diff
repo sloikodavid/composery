@@ -6,7 +6,7 @@ workbench part fullscreen at a time.
   the restored layout (parts restored visible fire no visibility event, so
   the first narrow pass would otherwise close what the user left open);
   rotation preserves the selected part; narrow close-part events from
-  narrow.js dismiss the fullscreen part on back gestures.
+  shell.js dismiss the fullscreen part on back gestures.
 - Titlebar: the left flex region shrinks below the menubar's intrinsic width
   and the menubar flexes from zero, so MenuBar measures its real allocation
   and moves labels into overflow instead of pushing the title off-screen.
@@ -84,7 +84,7 @@ workbench part fullscreen at a time.
 +			}
 +		}));
 +
-+		// Composery: the overlay back guard (narrow.js) translates a browser/hardware back into this
++		// Composery: the overlay back guard (shell.js) translates a browser/hardware back into this
 +		// event while a narrow-fullscreen part is open. Close the part - back dismisses the top
 +		// layer instead of leaving the page.
 +		this._register(addDisposableListener(mainWindow, 'composery-narrow-close-part', () => {

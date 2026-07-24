@@ -2099,7 +2099,7 @@ short layouts its row back.
 +				// Our own viewport meta is interactive-widget=resizes-content, so the keyboard
 +				// shrinks the layout viewport in lockstep with the visual one and both overlaps
 +				// above read 0 - the visible height is already correct, but the keybar would never
-+				// appear and the safe-area inset would never be dropped. narrow.js publishes the
++				// appear and the safe-area inset would never be dropped. shell.js publishes the
 +				// keyboard-open verdict from a viewport baseline for exactly this case (the terminal
 +				// reads it too, via _keyboardOpen); make it authoritative here, with the measured
 +				// overlaps as a fallback for any surface that shrinks only the visual viewport.

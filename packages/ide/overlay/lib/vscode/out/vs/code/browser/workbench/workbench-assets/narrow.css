@@ -1,17 +1,27 @@
 /*
  * Narrow-viewport workbench styles - the screen-size half of the two small-screen gates (any small
  * screen, mouse or touch). Gate: (max-width: 768px). Mirrored - but not importable - in narrowGate.ts
- * and narrow.js; keep the breakpoint in sync.
+ * and shell.js; keep the breakpoint in sync.
  */
 
 :root {
 	--composery-viewport-height: 100dvh;
-	--composery-viewport-width: 100vw;
 	--composery-touch-keyboard-inset: 0px;
 	--composery-safe-area-top: env(safe-area-inset-top, 0px);
 	--composery-safe-area-right: env(safe-area-inset-right, 0px);
 	--composery-safe-area-bottom: env(safe-area-inset-bottom, 0px);
 	--composery-safe-area-left: env(safe-area-inset-left, 0px);
+
+	/* One home for the overlay inset used by every narrow popup/dialog/menu below, so the
+	 * 16px gap and safe-area composition can't drift across the copies (resolved at use time,
+	 * so --composery-viewport-height stays live as shell.js updates it). */
+	--composery-overlay-max-width: calc(
+		100vw - var(--composery-safe-area-left) - var(--composery-safe-area-right) - 16px
+	);
+	--composery-overlay-max-height: calc(
+		var(--composery-viewport-height) - var(--composery-safe-area-top) -
+			var(--composery-safe-area-bottom) - 16px
+	);
 }
 
 .composery-feature-picker {
@@ -82,14 +92,18 @@
 	}
 
 	/* The extension header's name row is a nowrap flex line upstream; a long name
-	 * plus badges just clips at the header's hidden overflow on a phone. Wrap it. */
+	 * plus badges just clips at the header's hidden overflow on a phone. Give the name
+	 * its own full-width line so it wraps at word boundaries. break-word, not anywhere:
+	 * the name is a flex:0 (basis 0) item, and overflow-wrap:anywhere drops its
+	 * min-content to one character, collapsing the item to a one-letter-per-line column. */
 	.extension-editor > .header > .details > .title {
 		flex-wrap: wrap;
 	}
 
 	.extension-editor > .header > .details > .title > .name {
+		flex-basis: 100%;
 		white-space: normal;
-		overflow-wrap: anywhere;
+		overflow-wrap: break-word;
 	}
 
 	html,
@@ -163,11 +177,7 @@
 		right: max(8px, var(--composery-safe-area-right)) !important;
 		width: auto !important;
 		max-width: none !important;
-		max-height: calc(
-			var(--composery-viewport-height) -
-				var(--composery-safe-area-top) -
-				var(--composery-safe-area-bottom) - 16px
-		) !important;
+		max-height: var(--composery-overlay-max-height) !important;
 	}
 
 	.monaco-dialog-box {
@@ -230,10 +240,7 @@
 		left: max(8px, var(--composery-safe-area-left)) !important;
 		right: max(8px, var(--composery-safe-area-right)) !important;
 		width: auto !important;
-		max-width: calc(
-			100vw - var(--composery-safe-area-left) -
-				var(--composery-safe-area-right) - 16px
-		) !important;
+		max-width: var(--composery-overlay-max-width) !important;
 	}
 
 	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
@@ -297,15 +304,8 @@
 	.rename-box,
 	.find-widget {
 		box-sizing: border-box !important;
-		max-width: calc(
-			100vw - var(--composery-safe-area-left) -
-				var(--composery-safe-area-right) - 16px
-		) !important;
-		max-height: calc(
-			var(--composery-viewport-height) -
-				var(--composery-safe-area-top) -
-				var(--composery-safe-area-bottom) - 16px
-		) !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
 	}
 
 	/* Menus own a DomScrollableElement upstream. Constrain its measured content instead of the
@@ -314,15 +314,8 @@
 	.context-view.monaco-menu-container .monaco-menu,
 	.monaco-menu-container .monaco-menu {
 		box-sizing: border-box !important;
-		max-width: calc(
-			100vw - var(--composery-safe-area-left) -
-				var(--composery-safe-area-right) - 16px
-		) !important;
-		max-height: calc(
-			var(--composery-viewport-height) -
-				var(--composery-safe-area-top) -
-				var(--composery-safe-area-bottom) - 16px
-		) !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
 	}
 
 	.monaco-workbench > .notifications-center,
@@ -331,15 +324,8 @@
 		left: max(8px, var(--composery-safe-area-left)) !important;
 		right: max(8px, var(--composery-safe-area-right)) !important;
 		width: auto !important;
-		max-width: calc(
-			100vw - var(--composery-safe-area-left) -
-				var(--composery-safe-area-right) - 16px
-		) !important;
-		max-height: calc(
-			var(--composery-viewport-height) -
-				var(--composery-safe-area-top) -
-				var(--composery-safe-area-bottom) - 16px
-		) !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
 	}
 
 	/* The workbench itself already sits above the on-screen keyboard and the edge-to-edge

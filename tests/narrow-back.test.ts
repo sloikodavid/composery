@@ -1,4 +1,4 @@
-// The back ladder in narrow.js, exercised against a real DOM. Everything here is
+// The back ladder in shell.js, exercised against a real DOM. Everything here is
 // a state machine over layers, history and app messages, and every bug it has had
 // was a sequence bug that no amount of reading the source made obvious - so it is
 // driven, not grepped.
@@ -7,20 +7,20 @@ import { readFileSync } from "node:fs";
 import { type DOMWindow, JSDOM } from "jsdom";
 import { afterEach, describe, expect, test } from "vitest";
 
-const NARROW_JS = new URL(
-	"../packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/narrow.js",
+const SHELL_JS = new URL(
+	"../packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/shell.js",
 	import.meta.url
 );
-const source = readFileSync(NARROW_JS, "utf8");
+const source = readFileSync(SHELL_JS, "utf8");
 
-// Longer than narrow.js's own DISMISS_GRACE, so a layer that ignored its Escape
+// Longer than shell.js's own DISMISS_GRACE, so a layer that ignored its Escape
 // has been given up on by the time we look.
 const AFTER_GRACE = 700;
 const sleep = (ms: number) =>
 	new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // What the page adds to its window: the app's marker and bridge, and the back
-// entry point narrow.js publishes for it.
+// entry point shell.js publishes for it.
 type PageWindow = DOMWindow & {
 	__composeryNative?: boolean;
 	__composeryNativeBack?: () => boolean;

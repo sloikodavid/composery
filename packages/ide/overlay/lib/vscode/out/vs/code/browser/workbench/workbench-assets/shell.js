@@ -1,10 +1,20 @@
 (function () {
-	// Narrow-viewport (any small screen, mouse or touch) DOM housekeeping - the imperative half of
-	// narrow.css. Mirrors (cannot import) narrowGate.ts NARROW_QUERY; keep the breakpoint in sync.
+	// Composery: the shared imperative shell for small and touch surfaces - the runtime half of
+	// both narrow.css and touch.css. One MutationObserver + rAF loop drives every DOM-reactive
+	// behaviour here; each one gates on its OWN capability, not on a device bucket:
+	//   - viewport height + soft-keyboard inset/open: geometry / keyboard axis (computed always, 0 when absent)
+	//   - back-guard overlays: narrow viewport OR coarse pointer (a rotated phone past the breakpoint still uses Back)
+	//   - narrow-fullscreen part detection + modal editor: narrow viewport
+	//   - keybindings / split-view finger-pan and kept-visible scrollbars: touch pointer
+	// Mirrors (cannot import) narrowGate.ts / touchGate.ts; keep the queries in sync.
 	const NARROW_MAX_WIDTH = 768;
 	const narrow = window.matchMedia(`(max-width: ${NARROW_MAX_WIDTH}px)`);
 	const coarsePointer = window.matchMedia("(pointer: coarse)");
+	const touchLike = window.matchMedia("(hover: none), (any-pointer: coarse)");
 	let pending = false;
+
+	//#region Viewport geometry, back-guard and modal editor (narrow viewport + keyboard axis)
+
 	// Our sentinel history entry is the current one (browser back gesture only - the
 	// native app never walks WebView history, see syncBackGuard).
 	let backGuardArmed = false;
@@ -149,10 +159,6 @@
 		rootStyle.setProperty(
 			"--composery-viewport-height",
 			`${Math.round(height)}px`,
-		);
-		rootStyle.setProperty(
-			"--composery-viewport-width",
-			`${Math.round(width)}px`,
 		);
 		rootStyle.setProperty(
 			"--composery-touch-keyboard-inset",
@@ -481,13 +487,345 @@
 		}
 	}
 
-	// DOM housekeeping that has to react to workbench mutations. The fullscreen single-part
+	//#endregion
+
+	//#region Touch scroll affordances (touch pointer, any screen size)
+
+	let horizontalPan = null;
+	let horizontalScrollbarDrag = null;
+
+	const keybindingsTableContainerSelector = ".keybindings-table-container";
+	const keybindingsScrollSelector =
+		`.keybindings-editor > .keybindings-body > ${keybindingsTableContainerSelector}`;
+	const horizontalPanSelectors = [
+		".settings-editor .monaco-split-view2.horizontal > .monaco-scrollable-element > .split-view-container",
+		".profiles-editor > .monaco-split-view2.horizontal > .monaco-scrollable-element > .split-view-container",
+		keybindingsScrollSelector,
+	];
+
+	function browserPinchWheel(event) {
+		return (
+			event.ctrlKey &&
+			!event.metaKey &&
+			!event.shiftKey &&
+			!event.altKey
+		);
+	}
+
+	function releaseBrowserZoomGesture(event) {
+		if (browserPinchWheel(event)) {
+			event.stopPropagation();
+		}
+	}
+
+	function maxScrollLeft(container) {
+		return Math.max(0, container.scrollWidth - container.clientWidth);
+	}
+
+	function setScrollLeft(container, scrollLeft) {
+		const nextScrollLeft = Math.max(
+			0,
+			Math.min(maxScrollLeft(container), scrollLeft),
+		);
+
+		if (container.scrollLeft !== nextScrollLeft) {
+			container.scrollLeft = nextScrollLeft;
+			updateKeybindingsScrollbar(container);
+			return true;
+		}
+
+		return false;
+	}
+
+	function keybindingsScrollContainer(target) {
+		if (!(target instanceof Element)) {
+			return null;
+		}
+
+		const container = target.closest(keybindingsScrollSelector);
+		return container instanceof HTMLElement ? container : null;
+	}
+
+	function ensureKeybindingsScrollbar(container) {
+		const body = container.parentElement;
+		if (!(body instanceof HTMLElement)) {
+			return null;
+		}
+
+		let scrollbar = body.querySelector(":scope > .composery-keybindings-scrollbar");
+		if (scrollbar instanceof HTMLElement) {
+			return scrollbar;
+		}
+
+		scrollbar = document.createElement("div");
+		scrollbar.className =
+			"composery-keybindings-scrollbar scrollbar horizontal";
+		scrollbar.setAttribute("role", "presentation");
+		scrollbar.setAttribute("aria-hidden", "true");
+
+		const slider = document.createElement("div");
+		slider.className = "slider";
+		scrollbar.append(slider);
+		body.append(scrollbar);
+
+		return scrollbar;
+	}
+
+	function updateKeybindingsScrollbar(container) {
+		if (!container.matches(keybindingsScrollSelector)) {
+			return;
+		}
+
+		const scrollbar = ensureKeybindingsScrollbar(container);
+		if (!scrollbar) {
+			return;
+		}
+
+		const slider = scrollbar.querySelector(":scope > .slider");
+		if (!(slider instanceof HTMLElement)) {
+			return;
+		}
+
+		const maxLeft = maxScrollLeft(container);
+		if (maxLeft <= 1 || container.clientWidth <= 0) {
+			scrollbar.classList.add("hidden");
+			return;
+		}
+
+		scrollbar.classList.remove("hidden");
+		const trackWidth = container.clientWidth;
+		const sliderWidth = Math.max(
+			20,
+			Math.round((trackWidth / container.scrollWidth) * trackWidth),
+		);
+		const sliderLeft = Math.round(
+			(container.scrollLeft / maxLeft) * (trackWidth - sliderWidth),
+		);
+
+		slider.style.width = `${sliderWidth}px`;
+		slider.style.transform = `translate3d(${sliderLeft}px, 0, 0)`;
+	}
+
+	function updateKeybindingsScrollbars() {
+		for (const container of document.querySelectorAll(keybindingsScrollSelector)) {
+			if (container instanceof HTMLElement) {
+				updateKeybindingsScrollbar(container);
+			}
+		}
+	}
+
+	function handleHorizontalWheel(event) {
+		if (browserPinchWheel(event)) {
+			return;
+		}
+
+		const absX = Math.abs(event.deltaX);
+		const absY = Math.abs(event.deltaY);
+		if (absX <= absY || absX < 1) {
+			return;
+		}
+
+		const container = keybindingsScrollContainer(event.target);
+		if (!container || maxScrollLeft(container) <= 1) {
+			return;
+		}
+
+		if (setScrollLeft(container, container.scrollLeft + event.deltaX)) {
+			event.preventDefault();
+			event.stopPropagation();
+		}
+	}
+
+	// Finger-pan of horizontally-overflowing SplitViews is a touch affordance, independent of
+	// screen size (on a wide screen the container simply does not overflow, so this is inert).
+	function touchPointer() {
+		return touchLike.matches;
+	}
+
+	function interactiveTarget(element) {
+		return Boolean(
+			element.closest(
+				[
+					".scrollbar",
+					"a",
+					"button",
+					"input",
+					"select",
+					"textarea",
+					"[contenteditable='true']",
+					"[role='button']",
+					"[role='checkbox']",
+					"[role='radio']",
+					".monaco-button",
+					".action-label",
+				].join(","),
+			),
+		);
+	}
+
+	function horizontalPanContainer(target) {
+		if (!touchPointer() || !(target instanceof Element)) {
+			return null;
+		}
+
+		if (interactiveTarget(target)) {
+			return null;
+		}
+
+		const selector = horizontalPanSelectors.join(",");
+		const container = target.closest(selector);
+		if (!(container instanceof HTMLElement)) {
+			return null;
+		}
+
+		if (container.scrollWidth <= container.clientWidth + 1) {
+			return null;
+		}
+
+		return container;
+	}
+
+	function startHorizontalPan(event) {
+		if (event.pointerType === "mouse" || event.button !== 0) {
+			return;
+		}
+
+		const container = horizontalPanContainer(event.target);
+		if (!container) {
+			return;
+		}
+
+		horizontalPan = {
+			container,
+			dragging: false,
+			pointerId: event.pointerId,
+			scrollLeft: container.scrollLeft,
+			x: event.clientX,
+			y: event.clientY,
+		};
+	}
+
+	function startHorizontalScrollbarDrag(event) {
+		if (event.button !== 0 || !(event.target instanceof Element)) {
+			return;
+		}
+
+		const slider = event.target.closest(
+			".composery-keybindings-scrollbar > .slider",
+		);
+		if (!(slider instanceof HTMLElement)) {
+			return;
+		}
+
+		const scrollbar = slider.closest(".composery-keybindings-scrollbar");
+		const container = scrollbar?.parentElement?.querySelector(
+			`:scope > ${keybindingsTableContainerSelector}`,
+		);
+		if (!(container instanceof HTMLElement) || !(scrollbar instanceof HTMLElement)) {
+			return;
+		}
+
+		horizontalScrollbarDrag = {
+			container,
+			pointerId: event.pointerId,
+			scrollLeft: container.scrollLeft,
+			slider,
+			trackWidth: scrollbar.clientWidth,
+			sliderWidth: slider.offsetWidth,
+			x: event.clientX,
+		};
+		slider.classList.add("active");
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function updateHorizontalPan(event) {
+		if (!horizontalPan || event.pointerId !== horizontalPan.pointerId) {
+			return;
+		}
+
+		const deltaX = event.clientX - horizontalPan.x;
+		const deltaY = event.clientY - horizontalPan.y;
+		const absX = Math.abs(deltaX);
+		const absY = Math.abs(deltaY);
+
+		if (!horizontalPan.dragging) {
+			if (absY > absX && absY > 8) {
+				horizontalPan = null;
+				return;
+			}
+
+			if (absX < 8 || absX <= absY) {
+				return;
+			}
+
+			horizontalPan.dragging = true;
+		}
+
+		const { container } = horizontalPan;
+		if (setScrollLeft(container, horizontalPan.scrollLeft - deltaX)) {
+			container.dispatchEvent(new Event("scroll"));
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function updateHorizontalScrollbarDrag(event) {
+		if (
+			!horizontalScrollbarDrag ||
+			event.pointerId !== horizontalScrollbarDrag.pointerId
+		) {
+			return;
+		}
+
+		const {
+			container,
+			scrollLeft,
+			sliderWidth,
+			trackWidth,
+			x,
+		} = horizontalScrollbarDrag;
+		const maxLeft = maxScrollLeft(container);
+		const maxSliderLeft = Math.max(1, trackWidth - sliderWidth);
+		const nextScrollLeft = scrollLeft + ((event.clientX - x) / maxSliderLeft) * maxLeft;
+
+		setScrollLeft(container, nextScrollLeft);
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function stopHorizontalPan(event) {
+		if (horizontalPan?.pointerId === event.pointerId) {
+			horizontalPan = null;
+		}
+	}
+
+	function stopHorizontalScrollbarDrag(event) {
+		if (horizontalScrollbarDrag?.pointerId === event.pointerId) {
+			horizontalScrollbarDrag.slider.classList.remove("active");
+			horizontalScrollbarDrag = null;
+		}
+	}
+
+	function handleKeybindingsScroll(event) {
+		if (event.target instanceof HTMLElement) {
+			updateKeybindingsScrollbar(event.target);
+		}
+	}
+
+	//#endregion
+
+	//#region Shared reactive loop
+
+	// One rAF-coalesced pass runs every DOM-reactive behaviour above. The fullscreen single-part
 	// coordination lives natively in the workbench Layout (narrow.diff), not here.
 	function enforce() {
 		pending = false;
 		updateViewportVars();
 		syncBackGuard();
 		updateModalEditorNarrowState();
+		updateKeybindingsScrollbars();
 	}
 
 	function schedule() {
@@ -503,12 +841,6 @@
 		schedule();
 	}
 
-	new MutationObserver(schedule).observe(document.documentElement, {
-		attributes: true,
-		childList: true,
-		subtree: true,
-	});
-
 	// Geometry listeners refresh the viewport vars SYNCHRONOUSLY: this script loads
 	// before workbench.js, so its listeners run first within the same resize event,
 	// and the workbench layout fit (touch.diff) reads
@@ -520,6 +852,13 @@
 		schedule();
 	}
 
+	new MutationObserver(schedule).observe(document.documentElement, {
+		attributes: true,
+		childList: true,
+		subtree: true,
+	});
+
+	// Viewport geometry, back-guard and modal editor (narrow viewport + keyboard axis).
 	document.addEventListener("dblclick", blockNarrowModalEditorRestore, true);
 	// Re-evaluate viewport vars and the back guard when the app/tab returns to the
 	// foreground - the OS may have closed the keyboard or resized while backgrounded.
@@ -531,7 +870,34 @@
 	navigator.virtualKeyboard?.addEventListener("geometrychange", handleViewportGeometry);
 	narrow.addEventListener("change", handleNarrowChange);
 
+	// Touch scroll affordances (finger-pan of overflowing views, kept-visible scrollbars).
+	document.addEventListener("scroll", handleKeybindingsScroll, true);
+	document.addEventListener("pointerdown", startHorizontalScrollbarDrag, true);
+	document.addEventListener("pointerdown", startHorizontalPan, true);
+	document.addEventListener("pointermove", updateHorizontalScrollbarDrag, {
+		capture: true,
+		passive: false,
+	});
+	document.addEventListener("pointermove", updateHorizontalPan, {
+		capture: true,
+		passive: false,
+	});
+	document.addEventListener("pointerup", stopHorizontalScrollbarDrag, true);
+	document.addEventListener("pointerup", stopHorizontalPan, true);
+	document.addEventListener("pointercancel", stopHorizontalScrollbarDrag, true);
+	document.addEventListener("pointercancel", stopHorizontalPan, true);
+	window.addEventListener("wheel", (event) => {
+		releaseBrowserZoomGesture(event);
+		handleHorizontalWheel(event);
+	}, {
+		capture: true,
+		passive: false,
+	});
+	touchLike.addEventListener("change", schedule);
+
 	updateViewportVars();
 	window.setTimeout(schedule, 500);
 	window.setTimeout(schedule, 1500);
+
+	//#endregion
 })();
