@@ -5,7 +5,7 @@ FROM debian:trixie-slim
 # systemd (+sysv wrappers), and util-linux/mount for pivot_root/mount/findmnt.
 RUN apt-get update \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-		systemd systemd-sysv util-linux mount procps \
+		systemd systemd-sysv util-linux mount procps attr strace \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
 
@@ -37,6 +37,23 @@ RUN printf '%s\n' \
 ARG LOWER_VERSION=1
 RUN echo "lower-version=${LOWER_VERSION}" >/etc/overlay-spike-lower \
 	&& echo "from-image-v${LOWER_VERSION}" >/usr/share/overlay-spike-marker
+
+# Upgrade-test fixtures (04). The upgrade test builds v1 then v2 and boots v2 on
+# v1's upper. Each file probes one interaction between a NEW lower and an OLD upper:
+#   untouched.txt   present in both, user never touches -> should show v2 after upgrade
+#   user-edits.txt  present in both, user edits on v1   -> upper must win over v2
+#   reintroduced.txt present in both, user deletes on v1 -> v2's copy shadowed by whiteout
+#   pkgdir/         user replaces the dir on v1 (opaque) -> v2's new files in it hidden
+#   only-in-v2.txt  added only in v2                     -> new lower file should appear
+RUN set -eu; d=/opt/upg; mkdir -p "$d/pkgdir"; \
+	echo "v${LOWER_VERSION}" >"$d/untouched.txt"; \
+	echo "v${LOWER_VERSION}" >"$d/user-edits.txt"; \
+	echo "v${LOWER_VERSION}-important" >"$d/reintroduced.txt"; \
+	echo "v${LOWER_VERSION}-a" >"$d/pkgdir/a.txt"; \
+	if [ "${LOWER_VERSION}" = 2 ]; then \
+		echo "v2-only" >"$d/only-in-v2.txt"; \
+		echo "v2-b" >"$d/pkgdir/b.txt"; \
+	fi
 
 COPY entrypoint.sh /usr/local/sbin/overlay-root-entrypoint.sh
 RUN chmod +x /usr/local/sbin/overlay-root-entrypoint.sh
