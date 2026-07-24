@@ -79,6 +79,18 @@ mount --rbind /run "$MERGED/run"
 mount --rbind /tmp "$MERGED/tmp"
 mount --rbind "$DATA" "$MERGED$DATA" # durable volume; upper is a subtree of it
 
+# The container runtime injects /etc/resolv.conf, /etc/hosts and /etc/hostname
+# as individual FILE bind mounts on the old root. They are invisible through the
+# overlay lower (which sees only the image's empty copies), so without rebinding
+# them the pivoted system has no DNS and no hostname at all. These are exactly
+# the runtime-managed files persistence already refuses to own.
+for f in /etc/resolv.conf /etc/hosts /etc/hostname; do
+	if mountpoint -q "$f" 2>/dev/null || [ -s "$f" ]; then
+		[ -e "$MERGED$f" ] || : >"$MERGED$f"
+		mount --bind "$f" "$MERGED$f"
+	fi
+done
+
 log "merged tree mounts before pivot:"
 findmnt -o TARGET,SOURCE,FSTYPE -R "$MERGED" >&2 || true
 
