@@ -184,6 +184,28 @@ describe("runtime process managers", () => {
 		expect(removal).not.toContain("password-removed");
 	});
 
+	test("selects the persistence engine before applying, mirroring COMPOSERY_INIT", () => {
+		const entrypoint = readRepoFile("rootfs/opt/composery/entrypoint.sh");
+
+		// Same auto|overlay|copy plus exit-64-on-unknown contract COMPOSERY_INIT uses.
+		expect(entrypoint).toContain('case "${COMPOSERY_PERSISTENCE:-auto}" in');
+		expect(entrypoint).toContain("auto | overlay | copy) ;;");
+		expect(entrypoint).toMatch(
+			/Unsupported COMPOSERY_PERSISTENCE[\s\S]*?exit 64/
+		);
+
+		// The choice is recorded for `persistence status`, and the copy engine
+		// still applies the delta - selection runs first.
+		expect(entrypoint).toContain("persistence select-engine");
+		expect(entrypoint.indexOf("persistence select-engine")).toBeLessThan(
+			entrypoint.indexOf("persistence apply")
+		);
+
+		// The overlay engine is unfinished, so its branch fails loudly instead of
+		// half-mounting.
+		expect(entrypoint).toMatch(/"\$engine" = overlay[\s\S]*?exit 1/);
+	});
+
 	test("wires every environment variable the docs promise", () => {
 		// COMPOSERY_DISABLE_FILE_UPLOADS was documented for a release with no env
 		// var behind it: upstream left --disable-file-uploads CLI-only, and

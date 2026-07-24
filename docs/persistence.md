@@ -23,6 +23,31 @@ The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or 
 named volume). Network filesystems such as NFS are not supported: persistence relies on
 file locking, atomic renames, and xattrs that NFS does not reliably provide.
 
+## Engines
+
+Persistence has two engines behind one contract, selected by `COMPOSERY_PERSISTENCE`
+(`auto` by default):
+
+- **copy** — the universal engine, and the only one that works on managed PaaS that
+  cannot grant container privileges (Render, Railway, Koyeb, and similar). A userspace
+  daemon compares the live root filesystem against the image baseline and writes only your
+  deltas to `/data/persistence`. Its observation cost is bounded by construction (see
+  [Bounded observation](#bounded-observation)).
+- **overlay** — a kernel-maintained engine that makes the root filesystem an overlayfs
+  whose upper layer lives on the `/data` volume, so the kernel records the delta directly.
+  It needs a privileged container (`CAP_SYS_ADMIN`). _Not yet available_: `auto` resolves
+  to the copy engine, and an explicit `COMPOSERY_PERSISTENCE=overlay` stops the container
+  rather than pretending.
+
+What is identical across engines: one durable volume at `/data`, the same delta model, the
+same image-upgrade promise (a new image ships a new baseline/lower, your changes stay on
+top, every file you never touched moves to the new version), and the same integrity
+boundary — the paths under [What persists](#what-persists) are never captured either way.
+What differs is only _how_ the delta is maintained: a userspace daemon under copy, the
+kernel under overlay. `auto` probes by attempting a real overlay mount on the `/data`
+volume and falls back to copy on any failure; `composery persistence status` reports the
+selected engine and the reason it was chosen.
+
 ## What persists
 
 Persisted:
@@ -43,9 +68,10 @@ update-owned Composery implementation:
 - `/opt/persistence` and `/opt/composery`;
 - resolver and hostname files: `/etc/hosts`, `/etc/hostname`, `/etc/resolv.conf`.
 
-`/var/cache` is also excluded by default because it contains regenerable caches such as
-downloaded apt archives. Unlike the integrity exclusions above, this is an ordinary
-user-configurable exclusion.
+`/var/cache` is also excluded by default because it holds regenerable caches such as
+downloaded apt archives. Unlike the integrity exclusions above, this is a default the image
+ships rather than an unremovable rule: list it under `persist` in `config.json` to keep it,
+and a future image can change the default set without rewriting your volume.
 
 For the systemd profile, keep `/etc/systemd`, `/var/lib/systemd`, and `/etc/machine-id`
 persisted. Those paths store enabled units, service state, and machine identity; excluding
@@ -59,13 +85,19 @@ mode, owner, mtime, or xattrs - Composery stores the metadata delta without copy
 full file into `changed/`. This keeps a touched large image file from ballooning the
 `/data` volume.
 
-The active config lives at `/data/persistence/config.json`. Its `exclusions` array adds
-paths to the built-in boundary above; a new config contains only `/var/cache`, so it does
-not repeat settings that cannot be changed. If the file is malformed or contains an
-invalid value, it is preserved beside the original as `config.invalid-N.json` and replaced
-with safe defaults. A configuration typo therefore cannot prevent the IDE from starting.
-Storage or filesystem-integrity failures still stop boot rather than pretending the
-durable state was applied.
+The active config lives at `/data/persistence/config.json` and records only your intent,
+never the built-in policy. Two symmetric arrays: `exclude` adds paths to the boundary, and
+`persist` keeps a path the image excludes by default (it can never override an integrity
+exclusion). A new config contains neither — the image owns the default set, so a future
+image can change it — alongside an `audit` block and a `maxWatches` cap. The effective
+exclusion set is the integrity set, plus the image defaults you did not `persist`, plus
+whatever you `exclude`. Older single-`exclusions` configs are migrated forward on first
+boot and the change is logged, dropping the `/var/cache` entry that was indistinguishable
+from the old baked-in default so the current image governs it. If the file is malformed or
+contains an invalid value, it is preserved beside the original as `config.invalid-N.json`
+and replaced with safe defaults, so a configuration typo cannot prevent the IDE from
+starting. Storage or filesystem-integrity failures still stop boot rather than pretending
+the durable state was applied.
 
 ## Bounded observation
 

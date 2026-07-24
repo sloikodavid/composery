@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 use persistence::paths::Paths;
-use persistence::{boot, control, daemon, doctor, prune, status};
+use persistence::{boot, control, daemon, doctor, engine, prune, status};
 
 #[cfg(unix)]
 use std::path::PathBuf;
@@ -13,6 +13,11 @@ use crate::output;
 pub enum PersistenceCommand {
     /// Apply persisted public truth to the live filesystem during boot.
     Apply,
+    /// Select the persistence engine for this boot (from COMPOSERY_PERSISTENCE),
+    /// record it for `status`, and print it (`overlay` or `copy`). Internal boot
+    /// command invoked by the entrypoint.
+    #[command(name = "select-engine", hide = true)]
+    SelectEngine,
     /// Run the long-lived persistence daemon.
     Daemon,
     /// Print operational daemon status.
@@ -36,6 +41,11 @@ pub fn run(command: PersistenceCommand, json: bool) -> Result<()> {
     let paths = Paths::default();
     match command {
         PersistenceCommand::Apply => boot::apply(&paths),
+        PersistenceCommand::SelectEngine => {
+            let selection = engine::select_and_record(&paths)?;
+            println!("{}", selection.engine.as_str());
+            Ok(())
+        }
         PersistenceCommand::Daemon => daemon::run(&paths),
         PersistenceCommand::Status => output::render(
             &control::query::<status::StatusReport>(&paths, control::Command::Status)?,

@@ -10,6 +10,12 @@ use crate::{
 pub struct StatusReport {
     pub ready: bool,
     pub phase: String,
+    /// The persistence engine this boot selected (`overlay` | `copy`), and why.
+    /// Recorded at boot by `engine::select_and_record` so an operator can always
+    /// see which engine is live and the probe outcome that chose it - never
+    /// ambiguous. `unknown` means selection has not run yet.
+    pub engine: String,
+    pub engine_reason: Option<String>,
     pub last_apply_success_at: Option<String>,
     pub last_apply_failure_at: Option<String>,
     pub last_apply_error: Option<String>,
@@ -83,6 +89,12 @@ pub fn build_with_runtime(
             .meta_value("diagnostic_audit_status")?
             .unwrap_or_else(|| "unknown".into()),
     };
+    let engine = db
+        .meta_value("diagnostic_engine")?
+        .unwrap_or_else(|| "unknown".into());
+    let engine_reason = db
+        .meta_value("diagnostic_engine_reason")?
+        .filter(|value| !value.is_empty());
     Ok(StatusReport {
         ready,
         phase: if ready {
@@ -90,6 +102,8 @@ pub fn build_with_runtime(
         } else {
             "starting".into()
         },
+        engine,
+        engine_reason,
         last_apply_success_at: db.meta_value("last_apply_success_at")?,
         last_apply_failure_at: db.meta_value("last_apply_failure_at")?,
         last_apply_error: db
@@ -128,6 +142,10 @@ pub fn print_human(report: &StatusReport) {
     println!("persistence status:");
     println!("  ready: {}", report.ready);
     println!("  phase: {}", report.phase);
+    println!("  engine: {}", report.engine);
+    if let Some(reason) = &report.engine_reason {
+        println!("  engineReason: {reason}");
+    }
     println!("  baseline: {}", report.baseline_present);
     println!("  baselineValid: {}", report.baseline_valid);
     println!("  watch: {}", report.watch_status);
@@ -187,6 +205,9 @@ mod tests {
             &serde_json::to_string(&capabilities).unwrap(),
         )
         .unwrap();
+        db.record_diagnostic("engine", "overlay").unwrap();
+        db.record_diagnostic("engine_reason", "auto: overlay probe succeeded")
+            .unwrap();
         db.rebuild_public_index(&fixture.paths).unwrap();
 
         let report = build_with_runtime(
@@ -219,6 +240,11 @@ mod tests {
         assert_eq!(report.public_counts.changed, 2);
         assert!(report.baseline_valid);
         assert_eq!(report.capabilities, Some(capabilities));
+        assert_eq!(report.engine, "overlay");
+        assert_eq!(
+            report.engine_reason.as_deref(),
+            Some("auto: overlay probe succeeded")
+        );
     }
 
     #[test]
@@ -233,6 +259,10 @@ mod tests {
 
         assert!(!report.ready);
         assert_eq!(report.phase, "starting");
+        // Selection has not run in this fixture, so the engine is honestly
+        // unknown rather than a silent default.
+        assert_eq!(report.engine, "unknown");
+        assert_eq!(report.engine_reason, None);
     }
 
     struct Fixture {
