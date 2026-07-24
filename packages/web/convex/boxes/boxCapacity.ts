@@ -12,6 +12,7 @@ export const CAPACITY_BOX_STATUSES = [
 	"starting",
 	"resetting",
 	"reset_failed",
+	"repairing",
 	"restoring",
 	"restore_failed",
 	"suspending",

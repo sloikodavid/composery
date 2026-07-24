@@ -144,6 +144,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					onRepair={() =>
 						run("repair", "Repair started", () => recover({ slug: box.slug }))
 					}
+					repair={detail.repair}
 					slug={box.slug}
 				/>
 				<ResetDialog

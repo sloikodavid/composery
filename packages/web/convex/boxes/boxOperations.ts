@@ -184,6 +184,7 @@ const BOX_OPERATION_PLANS = {
 		workflow: internal.boxes.workflows.snapshotWorkflows.captureSnapshot
 	},
 	recover: {
+		targetStatus: "repairing",
 		workflow: internal.boxes.workflows.recoverBox.recoverBox
 	}
 } satisfies Record<

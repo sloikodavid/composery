@@ -1,11 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+	CAPACITY_BOX_STATUSES,
 	capacityAvailability,
 	reservedSnapshotCommitments,
 	snapshotSlotsPerBox
 } from "./boxCapacity";
+import { vBoxStatus } from "../schema";
 
 describe("box capacity", () => {
+	// These lists are hand-written subsets of the status union, so the type
+	// checker cannot notice a missing one - a new status would silently stop
+	// occupying capacity and the fleet would be over-provisioned by exactly the
+	// boxes in it. Pin the rule instead: every status that is not "deleted"
+	// holds a server.
+	it("counts every live status against capacity", () => {
+		const live = vBoxStatus.members
+			.map((member) => member.value)
+			.filter((status) => status !== "deleted");
+
+		expect([...CAPACITY_BOX_STATUSES].sort()).toEqual(live.sort());
+	});
+
 	it("fails closed until both Hetzner allocations are configured", () => {
 		expect(
 			capacityAvailability({

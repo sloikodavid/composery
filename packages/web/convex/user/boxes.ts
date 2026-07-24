@@ -17,7 +17,7 @@ import {
 import { boxMetricsSamples, vMetricsRange } from "../boxes/boxMetrics";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
-import { safeBox } from "../boxes/boxViews";
+import { latestRepair, safeBox } from "../boxes/boxViews";
 import { ownerCanReadBox } from "../boxes/boxAccess";
 import {
 	markSnapshotDeleting,
@@ -160,7 +160,8 @@ export const getById = query({
 		return {
 			box: safeBox(box),
 			subscription,
-			suspendedReason
+			suspendedReason,
+			repair: await latestRepair(ctx.db, box._id)
 		};
 	}
 });
@@ -268,9 +269,15 @@ export const recover = action({
 			slug: sanitizeSlug(args.slug)
 		});
 		if (!box) throw new ConvexError("Box not found.");
-		await startBoxOperation(ctx, box._id, "recover", {
+		// A null id means an identical repair is already in flight. Returning
+		// quietly would toast "Repair started" over a request that started
+		// nothing, which is the same lie as a repair that reports no outcome.
+		const operationId = await startBoxOperation(ctx, box._id, "recover", {
 			idempotencyKey: `recover:${box._id}`
 		});
+		if (!operationId) {
+			throw new ConvexError("This box is already being repaired.");
+		}
 	}
 });
 

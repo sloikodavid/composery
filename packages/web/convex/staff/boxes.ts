@@ -35,7 +35,7 @@ import { readGlobalSettings } from "../settings";
 import { startWorkflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
-import { staffBox } from "../boxes/boxViews";
+import { latestRepair, staffBox } from "../boxes/boxViews";
 import {
 	markSnapshotDeleting,
 	snapshotView,
@@ -297,7 +297,8 @@ export const boxDetail = query({
 			box: staffBox(box, user),
 			user: user ? publicUser(user) : null,
 			subscription,
-			suspendedReason
+			suspendedReason,
+			repair: await latestRepair(ctx.db, box._id)
 		};
 	}
 });
@@ -547,9 +548,15 @@ export const recover = action({
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
-		await startBoxOperation(ctx, box._id, "recover", {
+		// Null means an identical repair is already in flight; reporting "Repair
+		// started" over a request that started nothing is the same lie as a
+		// repair that never reports an outcome.
+		const operationId = await startBoxOperation(ctx, box._id, "recover", {
 			idempotencyKey: `staff-recover:${box._id}`
 		});
+		if (!operationId) {
+			throw new ConvexError("This box is already being repaired.");
+		}
 	}
 });
 

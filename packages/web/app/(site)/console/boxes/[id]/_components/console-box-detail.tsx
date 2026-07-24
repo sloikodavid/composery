@@ -552,6 +552,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 											recover({ boxId: box.id })
 										)
 									}
+									repair={detail.repair}
 									slug={box.slug}
 								/>
 								<ResetDialog

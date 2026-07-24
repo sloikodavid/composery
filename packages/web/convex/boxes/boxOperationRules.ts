@@ -22,6 +22,7 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 		"starting",
 		"resetting",
 		"reset_failed",
+		"repairing",
 		"restoring",
 		"restore_failed",
 		"suspending",

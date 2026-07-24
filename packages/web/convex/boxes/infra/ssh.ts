@@ -89,7 +89,17 @@ install -d /opt/composery-web
 ${heredoc(COMPOSERY_COMPOSE_PATH, "__COMPOSERY_COMPOSE__", compose)}
 ${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
 ${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}
-docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull
+${
+	repair
+		? // Repair exists to get a broken box serving again, so a pull is an
+			// upgrade attempt, not a precondition: under `set -e` an unreachable
+			// registry or a pruned digest would abort before anything restarts and
+			// leave the box exactly as broken as it was. Fall through to the local
+			// image instead. AWAIT_IDE still decides whether the repair worked, so
+			// this cannot turn a failure into a false success.
+			`docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull || echo "Could not pull the runtime image; repairing with the image already on this host." >&2`
+		: `docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull`
+}
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${repair ? " --force-recreate" : ""}
 ${repair ? AWAIT_IDE : ""}`;
 }
