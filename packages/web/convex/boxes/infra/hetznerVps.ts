@@ -6,6 +6,7 @@ import { internalAction } from "../../_generated/server";
 import {
 	SERVER_LOCATIONS,
 	SERVER_TYPES,
+	vServerLocation,
 	vSnapshotClass,
 	type ServerLocation,
 	type ServerType
@@ -1018,3 +1019,232 @@ export type CreatedServer = {
 	serverId: number;
 	serverType: ServerType;
 };
+
+// -- Parking volumes (Rebuild) ----------------------------------------------
+//
+// A Rebuild ("clean host, current files") parks the box's files on a Hetzner
+// Volume for the few minutes it takes to wipe and reboot the server from the
+// base image. The Volume is transient by design: Hetzner gives Volumes no
+// backups or snapshots and excludes attached volumes from server snapshots, so
+// they are never a permanent home for box data - only a short-lived staging
+// area, created at the start of a rebuild and deleted the moment the files are
+// safely back on the fresh host.
+
+type HetznerVolume = {
+	id: number;
+	name?: string;
+	size?: number;
+	location?: { name?: string };
+	server?: number | null;
+	linux_device?: string;
+	status?: string;
+	created?: string;
+	labels?: Record<string, string>;
+};
+
+type HetznerVolumeResponse = { volume: HetznerVolume };
+type HetznerVolumesResponse = { volumes?: HetznerVolume[] };
+type HetznerCreateVolumeResponse = {
+	volume?: HetznerVolume;
+	action?: HetznerAction;
+	next_actions?: HetznerAction[];
+};
+
+// Hetzner Volume minimum is 10 GB and the size must be a whole number of GB.
+export const PARKING_VOLUME_MIN_GB = 10;
+// The copied delta needs slack for the destination filesystem's own metadata and
+// for growth between measuring and copying; under-sizing only fails the copy
+// (before anything destructive), so erring large is the safe direction.
+const PARKING_VOLUME_HEADROOM_FACTOR = 1.2;
+const PARKING_VOLUME_HEADROOM_GB = 3;
+
+export function parkingVolumeSizeGb(usedBytes: number) {
+	if (!Number.isFinite(usedBytes) || usedBytes < 0) {
+		throw new Error("Cannot size a parking volume from an unmeasured usage.");
+	}
+	const gb =
+		Math.ceil((usedBytes * PARKING_VOLUME_HEADROOM_FACTOR) / 1e9) +
+		PARKING_VOLUME_HEADROOM_GB;
+	return Math.max(PARKING_VOLUME_MIN_GB, gb);
+}
+
+export function parkingVolumeName(slug: string) {
+	return `composery-park-${slug}`;
+}
+
+// Hetzner exposes an attached Volume at a stable, id-derived path, so the box
+// scripts never have to guess a `/dev/sd*` letter that can shift between boots.
+export function parkingVolumeDevicePath(volumeId: number) {
+	return `/dev/disk/by-id/scsi-0HC_Volume_${volumeId}`;
+}
+
+export function createVolumePayload(
+	slug: string,
+	location: ServerLocation,
+	sizeGb: number
+) {
+	return {
+		name: parkingVolumeName(slug),
+		size: sizeGb,
+		location,
+		// Pre-format so the box only ever has to mount it; formatting on the host
+		// would risk a resumed rebuild reformatting a volume that already holds the
+		// parked files.
+		format: "ext4" as const,
+		automount: false,
+		labels: { product: "composery-web", box_slug: slug, role: "parking" }
+	};
+}
+
+export function attachVolumePayload(serverId: number) {
+	// automount:false - the box scripts mount it deliberately at a known path.
+	return { server: serverId, automount: false };
+}
+
+export function productVolumeListPath(page: number) {
+	const params = new URLSearchParams({
+		label_selector: "product=composery-web,role=parking",
+		per_page: "50",
+		page: String(page)
+	});
+	return `/volumes?${params.toString()}`;
+}
+
+async function waitForVolumeActions(actions: (HetznerAction | undefined)[]) {
+	for (const action of actions) {
+		if (action?.id) await waitForActionSuccess(action.id);
+	}
+}
+
+async function getVolume(volumeId: number) {
+	const response = await hetznerRequest<HetznerVolumeResponse>(
+		`/volumes/${volumeId}`
+	);
+	return response.volume;
+}
+
+export const createParkingVolume = internalAction({
+	args: {
+		slug: v.string(),
+		location: vServerLocation,
+		usedBytes: v.number()
+	},
+	returns: v.object({ volumeId: v.number(), sizeGb: v.number() }),
+	handler: async (_ctx, args) => {
+		const sizeGb = parkingVolumeSizeGb(args.usedBytes);
+		const response = await hetznerRequest<HetznerCreateVolumeResponse>(
+			"/volumes",
+			{
+				method: "POST",
+				body: JSON.stringify(createVolumePayload(args.slug, args.location, sizeGb))
+			}
+		);
+		if (!response.volume?.id) {
+			throw new Error("Hetzner did not return a volume id.");
+		}
+		// Wait for create and the format that rides on it, so the box can mount the
+		// volume straight away.
+		await waitForVolumeActions([
+			response.action,
+			...(response.next_actions ?? [])
+		]);
+		return { volumeId: response.volume.id, sizeGb };
+	}
+});
+
+export const attachParkingVolume = internalAction({
+	args: {
+		volumeId: v.number(),
+		serverId: v.optional(v.number())
+	},
+	handler: async (_ctx, args) => {
+		if (!args.serverId) {
+			throw new Error("Box has no Hetzner server to attach the volume to.");
+		}
+		const volume = await getVolume(args.volumeId);
+		// Idempotent: a resumed rebuild may find it already on this server.
+		if (volume.server === args.serverId) return;
+
+		const response = await hetznerRequest<HetznerActionResponse>(
+			`/volumes/${args.volumeId}/actions/attach`,
+			{
+				method: "POST",
+				body: JSON.stringify(attachVolumePayload(args.serverId))
+			}
+		);
+		await waitForVolumeActions([response.action]);
+	}
+});
+
+export const detachParkingVolume = internalAction({
+	args: { volumeId: v.number() },
+	handler: async (_ctx, args) => {
+		let volume: HetznerVolume;
+		try {
+			volume = await getVolume(args.volumeId);
+		} catch (error) {
+			if (isNotFound(error)) return;
+			throw error;
+		}
+		// Idempotent: nothing to do if it is already detached.
+		if (!volume.server) return;
+
+		const response = await hetznerRequest<HetznerActionResponse>(
+			`/volumes/${args.volumeId}/actions/detach`,
+			{ method: "POST" }
+		);
+		await waitForVolumeActions([response.action]);
+	}
+});
+
+export const deleteParkingVolume = internalAction({
+	args: { volumeId: v.number() },
+	handler: async (_ctx, args) => {
+		let volume: HetznerVolume;
+		try {
+			volume = await getVolume(args.volumeId);
+		} catch (error) {
+			if (isNotFound(error)) return;
+			throw error;
+		}
+		// Hetzner refuses to delete an attached volume, so detach first (the server
+		// may already be gone, in which case it is detached anyway).
+		if (volume.server) {
+			const response = await hetznerRequest<HetznerActionResponse>(
+				`/volumes/${args.volumeId}/actions/detach`,
+				{ method: "POST" }
+			);
+			await waitForVolumeActions([response.action]);
+		}
+		try {
+			await hetznerRequest(`/volumes/${args.volumeId}`, { method: "DELETE" });
+		} catch (error) {
+			if (!isNotFound(error)) throw error;
+		}
+	}
+});
+
+// Reconciliation feed: every parking volume we own, fleet-wide, so the cron can
+// delete any that no live box still points at.
+export const listProductVolumes = internalAction({
+	args: {},
+	returns: v.array(v.object({ volumeId: v.number(), createdAtMs: v.number() })),
+	handler: async () => {
+		const volumes: { volumeId: number; createdAtMs: number }[] = [];
+		let page: number | null = 1;
+		while (page) {
+			const body: HetznerVolumesResponse & HetznerPagination =
+				await hetznerRequest<HetznerVolumesResponse & HetznerPagination>(
+					productVolumeListPath(page)
+				);
+			for (const volume of body.volumes ?? []) {
+				volumes.push({
+					volumeId: volume.id,
+					createdAtMs: parseCreatedMs(volume.created)
+				});
+			}
+			page = body.meta?.pagination?.next_page ?? null;
+		}
+		return volumes;
+	}
+});

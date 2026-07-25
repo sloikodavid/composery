@@ -186,6 +186,10 @@ const BOX_OPERATION_PLANS = {
 	recover: {
 		targetStatus: "repairing",
 		workflow: internal.boxes.workflows.recoverBox.recoverBox
+	},
+	rebuild: {
+		targetStatus: "rebuilding",
+		workflow: internal.boxes.workflows.rebuildBox.rebuildBox
 	}
 } satisfies Record<
 	OperationType,

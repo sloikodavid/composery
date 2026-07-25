@@ -9,6 +9,7 @@ import {
 import { BoxStatusAction } from "@/components/boxes/status-action";
 import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
 import { MonitorCard } from "@/components/boxes/monitor-card";
+import { RebuildDialog } from "@/components/boxes/rebuild-dialog";
 import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import {
@@ -37,6 +38,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 	const retryProvision = useMutation(api.user.boxes.retryProvision);
 	const changeSlug = useMutation(api.user.boxes.changeSlug);
 	const recover = useAction(api.user.boxes.recover);
+	const rebuild = useAction(api.user.boxes.rebuild);
 	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.user.boxes.runtimeLogs);
 	const { busy, run } = useBusyAction();
@@ -145,6 +147,17 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 						run("repair", "Repair started", () => recover({ slug: box.slug }))
 					}
 					repair={detail.repair}
+					slug={box.slug}
+				/>
+				<RebuildDialog
+					boxStatus={box.status}
+					busy={busy}
+					onRebuild={() =>
+						run("rebuild", "Rebuild started", () =>
+							rebuild({ slug: box.slug })
+						)
+					}
+					rebuild={detail.rebuild}
 					slug={box.slug}
 				/>
 				<ResetDialog

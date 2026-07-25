@@ -3,8 +3,13 @@ import { renderRuntimeArtifacts } from "./runtimeArtifacts";
 import {
 	INSPECT_SCRIPT,
 	bootstrapScript,
+	copyFromParkingScript,
+	copyToParkingScript,
+	measureUsageScript,
+	parseParkingVerification,
 	parseRuntimeInspection,
-	sshFailure
+	sshFailure,
+	verifyParkingScript
 } from "./ssh";
 
 describe("ssh failures", () => {
@@ -209,5 +214,103 @@ describe("runtime bootstrap and repair scripts", () => {
 		]) {
 			expect(repair.split(delimiter)).toHaveLength(3);
 		}
+	});
+});
+
+describe("rebuild parking scripts", () => {
+	const artifacts = renderRuntimeArtifacts({
+		cloudBoxId: "box_123",
+		cloudOrigin: "https://www.composery.io",
+		domain: "my-box.composery.cloud",
+		runtimeAuthHash: "$argon2id$v=19$m=1,t=1,p=1$salt$hash",
+		runtimeImage: "ghcr.io/sloikodavid/composery@sha256:abc",
+		runtimePort: 8080
+	});
+	const volumeId = 4242;
+	const copyOut = copyToParkingScript(volumeId);
+	const copyBack = copyFromParkingScript(artifacts, volumeId);
+	const verifyOut = verifyParkingScript("out", volumeId);
+	const verifyBack = verifyParkingScript("back", volumeId);
+	const measure = measureUsageScript();
+
+	const everyScript = [copyOut, copyBack, verifyOut, verifyBack, measure];
+
+	// The whole point of deriving the set: a volume added to renderCompose later
+	// is copied automatically. A hardcoded list would silently stop covering it.
+	it("derives the volume set from the compose file, never a hardcoded list", () => {
+		for (const script of everyScript) {
+			expect(script).toContain(
+				"docker compose -p composery -f /opt/composery-web/compose.yml config --volumes"
+			);
+		}
+		// The copy logic must not name any volume itself. copyBack legitimately
+		// embeds the whole compose file (which declares the names), so it is checked
+		// separately - every other script has no business mentioning a volume name.
+		for (const script of [copyOut, verifyOut, verifyBack, measure]) {
+			for (const name of ["composery_data", "caddy_data", "caddy_config"]) {
+				expect(script).not.toContain(name);
+			}
+		}
+	});
+
+	// The persistence delta stores xattrs, ACLs, file caps, hardlinks, whiteout
+	// devices, and sparse files. Only these flags preserve them; cp -a would not.
+	it("copies with the full-fidelity rsync flags in both directions", () => {
+		expect(copyOut).toContain("rsync -aHAXS --numeric-ids --delete");
+		expect(copyBack).toContain("rsync -aHAXS --numeric-ids --delete");
+	});
+
+	// The copy is only believed once an independent checksum pass proves it.
+	it("verifies with a dry-run checksum compare that reports every difference", () => {
+		for (const verify of [verifyOut, verifyBack]) {
+			expect(verify).toContain("rsync -aHAXS --numeric-ids -ni -c --delete");
+		}
+	});
+
+	it("verifies in the direction of whichever copy is authoritative", () => {
+		// On the way out the box's volume is the source; on the way back the parked
+		// copy is. A swapped direction would verify the wrong tree.
+		expect(verifyOut).toContain('"$mp/" "/mnt/composery-parking/$key/"');
+		expect(verifyBack).toContain('"/mnt/composery-parking/$key/" "$mp/"');
+	});
+
+	// The box is wiped for the whole rebuild, so a moving copy is pointless and
+	// dangerous - stop the stack so the volumes are quiescent.
+	it("stops the stack before copying it out", () => {
+		expect(copyOut).toContain(
+			"docker compose -p composery -f /opt/composery-web/compose.yml stop"
+		);
+	});
+
+	// The parked copy is the only copy once the server is gone. Nothing on the
+	// restore path may reformat the volume or remove a volume's contents.
+	it("never reformats the volume or destroys data on the way back", () => {
+		expect(copyBack).not.toContain("mkfs");
+		expect(copyBack).not.toMatch(/\bvolume\s+rm\b/);
+		expect(copyBack).not.toMatch(/\brm\s+-/);
+		// It materializes the empty volumes without starting anything, then copies.
+		expect(copyBack).toContain(
+			"docker compose -p composery -f /opt/composery-web/compose.yml create"
+		);
+		expect(copyBack).toContain(
+			"docker compose -p composery -f /opt/composery-web/compose.yml pull"
+		);
+		// And it lays the runtime files down first (needs the compose file present).
+		expect(copyBack).toContain(artifacts.compose);
+	});
+
+	it("sizes from real used bytes", () => {
+		expect(measure).toContain("du -sb");
+		expect(measure).toContain("used_bytes=");
+	});
+
+	it("treats any itemized verification line as a difference, empty as clean", () => {
+		expect(parseParkingVerification("")).toEqual([]);
+		expect(parseParkingVerification("\n  \n")).toEqual([]);
+		expect(
+			parseParkingVerification(
+				"composery_data: >f+++++++++ foo\ncaddy_data: cL+++ bar\n"
+			)
+		).toEqual(["composery_data: >f+++++++++ foo", "caddy_data: cL+++ bar"]);
 	});
 });

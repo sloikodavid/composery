@@ -224,7 +224,8 @@ export const markOperationFailed = internalMutation({
 			"delete",
 			"reset",
 			"restore",
-			"recover"
+			"recover",
+			"rebuild"
 		]).has(operationType);
 		await sendStaffAlert(ctx, {
 			key: `box-operation-failed:${args.operationId}`,
@@ -351,6 +352,96 @@ export const markResetSucceeded = internalMutation({
 	}
 });
 
+// Persist the parking volume the instant Hetzner creates it, before anything is
+// copied to it. Stage starts at "parking" (the box's server still holds the
+// authoritative files). A rebuild that dies after this can be retried and will
+// find the volume instead of orphaning it.
+export const recordParkingVolume = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		volumeId: v.number()
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		await ctx.db.patch(args.boxId, {
+			parking_volume_id: args.volumeId,
+			parking_volume_stage: "parking",
+			updated_at: Date.now()
+		});
+		await appendBoxEvent(ctx, box, "box.parking_volume_created", {
+			metadata: { volumeId: args.volumeId }
+		});
+	}
+});
+
+// The one-way gate of a rebuild: only after the copy onto the parking volume has
+// verified does the box cross into "restoring", where the volume becomes the
+// authoritative copy and the destructive server rebuild is allowed to run. A
+// resumed rebuild reads this to know it must never copy server -> volume again.
+export const markParkingRestoring = internalMutation({
+	args: {
+		boxId: v.id("boxes")
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		await ctx.db.patch(args.boxId, {
+			parking_volume_stage: "restoring",
+			updated_at: Date.now()
+		});
+		await appendBoxEvent(ctx, box, "box.parking_volume_restoring");
+	}
+});
+
+// Clear the pointer only after the volume is actually deleted, so the field is
+// never dropped while data still lives on a volume. Called after copy-back has
+// verified and the Hetzner Volume has been removed.
+export const clearParkingVolume = internalMutation({
+	args: {
+		boxId: v.id("boxes")
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		await ctx.db.patch(args.boxId, {
+			parking_volume_id: undefined,
+			parking_volume_stage: undefined,
+			updated_at: Date.now()
+		});
+		await appendBoxEvent(ctx, box, "box.parking_volume_deleted");
+	}
+});
+
+// A rebuild ends where reset does - a healthy "running" box - so this only
+// clears the transient `rebuilding` status and settles the operation the Rebuild
+// dialog reads for the outcome.
+export const markRebuildSucceeded = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		operationId: v.id("box_operations")
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		const timestamp = Date.now();
+		await ctx.db.patch(args.boxId, {
+			status: "running",
+			updated_at: timestamp
+		});
+		await ctx.db.patch(args.operationId, {
+			status: "succeeded",
+			finished_at: timestamp,
+			updated_at: timestamp
+		});
+		await appendBoxEvent(ctx, box, "box.rebuild_succeeded");
+	}
+});
+
 export const markDeleted = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
@@ -361,6 +452,11 @@ export const markDeleted = internalMutation({
 		if (!box) throw new ConvexError("Box not found.");
 
 		const timestamp = Date.now();
+		// deleteRuntime already removed the server, which detaches any attached
+		// volume, so the parking volume (if a rebuild was mid-flight) is now a pure
+		// orphan. Remove it before the patch below drops the pointer; reconciliation
+		// is the backstop if this best-effort delete does not land.
+		const parkingVolumeId = box.parking_volume_id;
 		await ctx.db.patch(args.boxId, {
 			...deletedBoxDataPatch(timestamp),
 			updated_at: timestamp
@@ -403,6 +499,13 @@ export const markDeleted = internalMutation({
 			internal.boxes.boxSnapshots.cascadeDeleteBoxSnapshots,
 			{ boxId: box._id }
 		);
+		if (parkingVolumeId !== undefined) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.boxes.infra.hetznerVps.deleteParkingVolume,
+				{ volumeId: parkingVolumeId }
+			);
+		}
 		await reconcileCapacityAlert(ctx);
 	}
 });

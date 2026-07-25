@@ -33,6 +33,7 @@ const FAILED_STATUSES: BoxStatus[] = [
 	"provisioning_failed",
 	"reset_failed",
 	"restore_failed",
+	"rebuild_failed",
 	"delete_failed"
 ];
 

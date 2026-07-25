@@ -17,7 +17,7 @@ import {
 import { boxMetricsSamples, vMetricsRange } from "../boxes/boxMetrics";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
-import { latestRepair, safeBox } from "../boxes/boxViews";
+import { latestRebuild, latestRepair, safeBox } from "../boxes/boxViews";
 import { ownerCanReadBox } from "../boxes/boxAccess";
 import {
 	markSnapshotDeleting,
@@ -161,7 +161,8 @@ export const getById = query({
 			box: safeBox(box),
 			subscription,
 			suspendedReason,
-			repair: await latestRepair(ctx.db, box._id)
+			repair: await latestRepair(ctx.db, box._id),
+			rebuild: await latestRebuild(ctx.db, box._id)
 		};
 	}
 });
@@ -277,6 +278,29 @@ export const recover = action({
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
+		}
+	}
+});
+
+export const rebuild = action({
+	args: { slug: v.string() },
+	handler: async (ctx, args): Promise<void> => {
+		const user = await requireActiveUserInAction(ctx);
+		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+			userId: user.clerk_user_id,
+			slug: sanitizeSlug(args.slug)
+		});
+		if (!box) throw new ConvexError("Box not found.");
+		// Null means an identical rebuild is already in flight; reporting "Rebuild
+		// started" over a request that started nothing is the same lie as an
+		// operation that never reports an outcome. A retry after a failure reuses
+		// this same key while the failed operation is settled, so it starts a fresh
+		// rebuild that resumes from the box's parking volume.
+		const operationId = await startBoxOperation(ctx, box._id, "rebuild", {
+			idempotencyKey: `rebuild:${box._id}`
+		});
+		if (!operationId) {
+			throw new ConvexError("This box is already being rebuilt.");
 		}
 	}
 });

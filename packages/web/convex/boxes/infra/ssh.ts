@@ -3,7 +3,8 @@
 import ssh2 from "ssh2";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import { internalAction } from "../../_generated/server";
+import type { Doc } from "../../_generated/dataModel";
+import { internalAction, type ActionCtx } from "../../_generated/server";
 import { requiredEnv, runtimeDomain, websiteOrigin } from "../../env";
 import { vRecoveryStatus, type RecoveryStatus } from "../boxRecoveryTypes";
 import {
@@ -12,8 +13,10 @@ import {
 	COMPOSERY_ENV_PATH,
 	renderComposeryEnv,
 	renderCaddyfile,
-	renderRuntimeArtifacts
+	renderRuntimeArtifacts,
+	type RuntimeArtifacts
 } from "./runtimeArtifacts";
+import { parkingVolumeDevicePath } from "./hetznerVps";
 import { privateKey } from "./sshKeys";
 
 const { Client } = ssh2;
@@ -68,6 +71,21 @@ echo "The runtime came up but its editor never started." >&2
 exit 1
 `;
 
+// Writes the three runtime files to /opt/composery-web. Shared by every script
+// that has to lay the compose project down before acting on it (bootstrap,
+// repair, and a rebuild's post-reboot materialize), so the one place a file's
+// path or heredoc delimiter is decided cannot drift between them.
+function writeRuntimeFilesScript({
+	caddyfile,
+	compose,
+	env
+}: RuntimeArtifacts) {
+	return `install -d /opt/composery-web
+${heredoc(COMPOSERY_COMPOSE_PATH, "__COMPOSERY_COMPOSE__", compose)}
+${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
+${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}`;
+}
+
 // Writes the runtime files and brings the stack up. `repair` restarts every
 // container even when its config is unchanged - healing a wedged or crashed one
 // - and then holds until the editor answers, so the operation only reports
@@ -85,10 +103,7 @@ export function bootstrapScript({
 	repair?: boolean;
 }) {
 	return `set -euo pipefail
-install -d /opt/composery-web
-${heredoc(COMPOSERY_COMPOSE_PATH, "__COMPOSERY_COMPOSE__", compose)}
-${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
-${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}
+${writeRuntimeFilesScript({ caddyfile, compose, env })}
 ${
 	repair
 		? // Repair exists to get a broken box serving again, so a pull is an
@@ -115,6 +130,151 @@ export function sshFailure(stderr: string, code: number | null) {
 	return (
 		lines[lines.length - 1].trim() || `SSH command failed with exit ${code}.`
 	);
+}
+
+// Where a Rebuild mounts the attached parking volume on the host.
+export const PARKING_MOUNT = "/mnt/composery-parking";
+
+// The fidelity flags a Rebuild's copies stand or fall on. The box's files are a
+// persistence delta, not ordinary files: it stores xattrs (including the
+// `trusted.overlay.*` set on the overlay upper), ACLs, file capabilities,
+// hardlinks, device nodes - the whiteouts are character devices 0:0 - and sparse
+// files. `cp -a` silently drops most of these and the box comes back subtly
+// corrupted, so every copy uses one shared flag set: -a (recursive, symlinks,
+// perms, times, group, owner, devices), -H (hardlinks), -A (ACLs), -X (all
+// xattr namespaces - as root this includes `trusted.*`), -S (sparse), and
+// --numeric-ids (no uid/gid remapping). One constant so the copy and its
+// verification can never disagree about what "faithful" means.
+const RSYNC_FIDELITY_FLAGS = "-aHAXS --numeric-ids";
+
+// rsync is tiny and usually preinstalled on the Docker-CE host image, but not
+// guaranteed; install it if missing so a rebuild fails loudly on a real problem
+// rather than a missing tool.
+const ENSURE_RSYNC = `command -v rsync >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync; }`;
+
+// Derives the exact set of Docker volumes to copy from the rendered compose file
+// on the host - never a hardcoded list, so a volume added to renderCompose later
+// is picked up automatically - and resolves each compose volume key to the host
+// mountpoint of the real Docker volume compose created for it (via compose's own
+// project/volume labels, which hold whatever name it assigned). Emitting nothing
+// is treated as an error, not an empty success.
+const VOLUME_ENUMERATION = `resolve_mp() {
+	vol="$(docker volume ls -q --filter label=com.docker.compose.project=composery --filter "label=com.docker.compose.volume=$1")"
+	if [ -z "$vol" ]; then echo "No Docker volume found for compose volume '$1'." >&2; return 1; fi
+	mp="$(docker volume inspect --format '{{ .Mountpoint }}' "$vol")"
+	if [ -z "$mp" ]; then echo "Docker volume '$vol' has no mountpoint." >&2; return 1; fi
+	printf '%s' "$mp"
+}
+VOLUME_KEYS="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} config --volumes)"
+if [ -z "$VOLUME_KEYS" ]; then echo "The compose file declares no volumes to copy." >&2; exit 1; fi`;
+
+// Wait for the attached volume's stable by-id device node, then mount it once.
+// Idempotent so a retried step does not fail on an already-mounted volume.
+function mountParkingScript(volumeId: number) {
+	const device = parkingVolumeDevicePath(volumeId);
+	return `device="${device}"
+attempt=1
+while [ "$attempt" -le 30 ]; do
+	[ -b "$device" ] && break
+	sleep 1
+	attempt=$((attempt + 1))
+done
+if [ ! -b "$device" ]; then echo "Parking volume device $device never appeared." >&2; exit 1; fi
+mkdir -p ${PARKING_MOUNT}
+mountpoint -q ${PARKING_MOUNT} || mount "$device" ${PARKING_MOUNT}`;
+}
+
+// Sum the actual used bytes of the box volumes, so the parking volume is sized
+// from real usage rather than the whole disk. `du -sb` counts apparent bytes.
+export function measureUsageScript() {
+	return `set -euo pipefail
+${VOLUME_ENUMERATION}
+total=0
+for key in $VOLUME_KEYS; do
+	mp="$(resolve_mp "$key")"
+	bytes="$(du -sb "$mp" | awk 'NR == 1 { print $1 }')"
+	total=$((total + bytes))
+done
+printf 'used_bytes=%s\\n' "$total"`;
+}
+
+// Copy every box volume onto the parking volume. The stack is stopped first so
+// the copy is a consistent, quiescent snapshot rather than a moving target - the
+// box is down for the whole rebuild anyway.
+export function copyToParkingScript(volumeId: number) {
+	return `set -euo pipefail
+${ENSURE_RSYNC}
+${VOLUME_ENUMERATION}
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} stop
+${mountParkingScript(volumeId)}
+for key in $VOLUME_KEYS; do
+	mp="$(resolve_mp "$key")"
+	mkdir -p "${PARKING_MOUNT}/$key"
+	rsync ${RSYNC_FIDELITY_FLAGS} --delete "$mp/" "${PARKING_MOUNT}/$key/"
+done`;
+}
+
+// Copy the parked files back onto the freshly rebuilt host's volumes. The runtime
+// files are written and `docker compose create` materializes the (empty) named
+// volumes without starting anything, so the files land before any container can
+// touch them.
+export function copyFromParkingScript(
+	artifacts: RuntimeArtifacts,
+	volumeId: number
+) {
+	return `set -euo pipefail
+${ENSURE_RSYNC}
+${writeRuntimeFilesScript(artifacts)}
+${mountParkingScript(volumeId)}
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} create
+${VOLUME_ENUMERATION}
+for key in $VOLUME_KEYS; do
+	mp="$(resolve_mp "$key")"
+	rsync ${RSYNC_FIDELITY_FLAGS} --delete "${PARKING_MOUNT}/$key/" "$mp/"
+done`;
+}
+
+// The copy is only trusted once an independent pass proves it. A dry-run rsync
+// with the same fidelity flags plus --checksum re-reads both trees and itemizes
+// every path that differs in content, size, perms, owner, xattr, ACL, or
+// existence; --delete makes an extra file on the destination show up too. A
+// faithful copy prints nothing. "rsync exited 0" during the copy is never taken
+// as proof on its own - this is. `direction` decides which tree is the source of
+// truth: on the way out the box's volume is; on the way back the parked copy is.
+export function verifyParkingScript(
+	direction: "out" | "back",
+	volumeId: number
+) {
+	const compare =
+		direction === "out"
+			? `rsync ${RSYNC_FIDELITY_FLAGS} -ni -c --delete "$mp/" "${PARKING_MOUNT}/$key/"`
+			: `rsync ${RSYNC_FIDELITY_FLAGS} -ni -c --delete "${PARKING_MOUNT}/$key/" "$mp/"`;
+	return `set -euo pipefail
+${ENSURE_RSYNC}
+${VOLUME_ENUMERATION}
+${mountParkingScript(volumeId)}
+for key in $VOLUME_KEYS; do
+	mp="$(resolve_mp "$key")"
+	out="$(${compare})"
+	if [ -n "$out" ]; then printf '%s\\n' "$out" | sed "s#^#$key: #"; fi
+done`;
+}
+
+// A settled parked copy is unmounted before the volume is detached and deleted.
+export function unmountParkingScript() {
+	return `set -euo pipefail
+if mountpoint -q ${PARKING_MOUNT}; then umount ${PARKING_MOUNT}; fi`;
+}
+
+// Any itemized line rsync's verification pass printed is a difference, so any
+// non-empty content means the copy is not faithful. Pure and total so the
+// decision is unit-testable without a host.
+export function parseParkingVerification(stdout: string): string[] {
+	return stdout
+		.split("\n")
+		.map((line) => line.trimEnd())
+		.filter((line) => line.trim().length > 0);
 }
 
 export async function runSsh(
@@ -289,6 +449,23 @@ export const inspectRuntime = internalAction({
 	}
 });
 
+// The runtime files a box's SSH scripts write, built from its current row. One
+// place so bootstrap, repair, and a rebuild's materialize can never render them
+// differently.
+function runtimeArtifactsForBox(box: Doc<"boxes">) {
+	if (!box.runtime_image) {
+		throw new Error("Box has no runtime image.");
+	}
+	return renderRuntimeArtifacts({
+		cloudBoxId: box._id,
+		cloudOrigin: websiteOrigin(),
+		domain: runtimeDomain(box.slug),
+		runtimeAuthHash: box.runtime_auth_hash,
+		runtimeImage: box.runtime_image,
+		runtimePort: runtimePort()
+	});
+}
+
 // One data-preserving repair for a wedged box: rewrite the runtime files (in
 // case they were damaged), re-pull the image, and force-recreate the stack. The
 // box's files live in named volumes and are untouched.
@@ -305,17 +482,7 @@ export const repairRuntime = internalAction({
 		if (!box.hetzner_ipv4) {
 			throw new Error("Box has no Hetzner IPv4 for repair.");
 		}
-		if (!box.runtime_image) {
-			throw new Error("Box has no runtime image for repair.");
-		}
-		const artifacts = renderRuntimeArtifacts({
-			cloudBoxId: box._id,
-			cloudOrigin: websiteOrigin(),
-			domain: runtimeDomain(box.slug),
-			runtimeAuthHash: box.runtime_auth_hash,
-			runtimeImage: box.runtime_image,
-			runtimePort: runtimePort()
-		});
+		const artifacts = runtimeArtifactsForBox(box);
 
 		await runSsh(
 			sshTarget(box.hetzner_ipv4),
@@ -337,17 +504,7 @@ export const bootstrapRuntime = internalAction({
 		if (!box.hetzner_ipv4) {
 			throw new Error("Box has no Hetzner IPv4 for SSH bootstrap.");
 		}
-		if (!box.runtime_image) {
-			throw new Error("Box has no runtime image for SSH bootstrap.");
-		}
-		const artifacts = renderRuntimeArtifacts({
-			cloudBoxId: box._id,
-			cloudOrigin: websiteOrigin(),
-			domain: runtimeDomain(box.slug),
-			runtimeAuthHash: box.runtime_auth_hash,
-			runtimeImage: box.runtime_image,
-			runtimePort: runtimePort()
-		});
+		const artifacts = runtimeArtifactsForBox(box);
 
 		await runSsh(sshTarget(box.hetzner_ipv4), bootstrapScript(artifacts));
 	}
@@ -449,5 +606,145 @@ ${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T caddy caddy reload --config /etc/caddy/Caddyfile || docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d caddy
 `
 		);
+	}
+});
+
+// -- Rebuild (deep repair: clean host, current files) -----------------------
+
+function requireBoxHost(box: Doc<"boxes">) {
+	if (!box.hetzner_ipv4) {
+		throw new Error(
+			"This box has no reachable host. A host with broken networking or SSH can only be recovered by Restore."
+		);
+	}
+	return box.hetzner_ipv4;
+}
+
+// Rebuild's precondition: the host must answer over SSH. A host whose networking
+// or sshd is broken cannot be reached by any of the rebuild steps, so we say so
+// up front rather than failing five steps in - Restore is the tool for that box.
+export const requireReachableHost = internalAction({
+	args: { boxId: v.id("boxes") },
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		try {
+			await runSsh(sshTarget(host), "true", { timeoutMs: 30_000 });
+		} catch (error) {
+			throw new Error(
+				`This box's host is not reachable over SSH, so it cannot be rebuilt. Recover it with Restore instead. (${error instanceof Error ? error.message : String(error)})`
+			);
+		}
+	}
+});
+
+export const measureParkingUsage = internalAction({
+	args: { boxId: v.id("boxes") },
+	returns: v.object({ usedBytes: v.number() }),
+	handler: async (ctx, args): Promise<{ usedBytes: number }> => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		const { stdout } = await runSsh(sshTarget(host), measureUsageScript(), {
+			maxOutputBytes: 64 * 1024,
+			timeoutMs: 5 * 60_000
+		});
+		const match = stdout.match(/used_bytes=(\d+)/);
+		if (!match) {
+			throw new Error("Could not measure the box's volume usage.");
+		}
+		return { usedBytes: Number(match[1]) };
+	}
+});
+
+export const copyToParking = internalAction({
+	args: { boxId: v.id("boxes"), volumeId: v.number() },
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		await runSsh(sshTarget(host), copyToParkingScript(args.volumeId), {
+			timeoutMs: 60 * 60_000
+		});
+	}
+});
+
+// Copy the parked files back onto the rebuilt host. Writes the runtime files,
+// materializes the empty volumes, and rsyncs the parked copy in - all before the
+// stack is brought up, so nothing writes to a volume until its files are back.
+export const copyFromParking = internalAction({
+	args: { boxId: v.id("boxes"), volumeId: v.number() },
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		const artifacts = runtimeArtifactsForBox(box);
+		await runSsh(
+			sshTarget(host),
+			copyFromParkingScript(artifacts, args.volumeId),
+			{ timeoutMs: 60 * 60_000 }
+		);
+	}
+});
+
+async function verifyParking(
+	ctx: ActionCtx,
+	boxId: Doc<"boxes">["_id"],
+	direction: "out" | "back",
+	volumeId: number
+) {
+	const box = await ctx.runQuery(
+		internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+		{ boxId }
+	);
+	const host = requireBoxHost(box);
+	const { stdout } = await runSsh(
+		sshTarget(host),
+		verifyParkingScript(direction, volumeId),
+		{ maxOutputBytes: 4 * 1024 * 1024, timeoutMs: 60 * 60_000 }
+	);
+	const diffs = parseParkingVerification(stdout);
+	if (diffs.length > 0) {
+		const shown = diffs.slice(0, 50).join("\n");
+		throw new Error(
+			`Parking copy verification (${direction}) found ${diffs.length} difference(s); refusing to continue:\n${shown}`
+		);
+	}
+}
+
+export const verifyParkingCopy = internalAction({
+	args: { boxId: v.id("boxes"), volumeId: v.number() },
+	handler: async (ctx, args) => {
+		await verifyParking(ctx, args.boxId, "out", args.volumeId);
+	}
+});
+
+export const verifyParkingBack = internalAction({
+	args: { boxId: v.id("boxes"), volumeId: v.number() },
+	handler: async (ctx, args) => {
+		await verifyParking(ctx, args.boxId, "back", args.volumeId);
+	}
+});
+
+export const unmountParking = internalAction({
+	args: { boxId: v.id("boxes") },
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		await runSsh(sshTarget(host), unmountParkingScript(), {
+			timeoutMs: 5 * 60_000
+		});
 	}
 });

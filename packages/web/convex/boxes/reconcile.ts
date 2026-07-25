@@ -38,6 +38,24 @@ export const snapshotImageIsKnown = internalQuery({
 	}
 });
 
+// A parking volume is owned recovery data only while a live box still points at
+// it: a succeeded rebuild clears the pointer, and a deleted box drops it, so an
+// unreferenced volume is a genuine orphan. A `rebuild_failed` box keeps its
+// pointer, which is exactly what protects its files from being reclaimed before
+// a retry.
+export const volumeReferencedByLiveBox = internalQuery({
+	args: { volumeId: v.number() },
+	handler: async (ctx, args) => {
+		const box = await ctx.db
+			.query("boxes")
+			.withIndex("parking_volume_id", (q) =>
+				q.eq("parking_volume_id", args.volumeId)
+			)
+			.first();
+		return box !== null && box.status !== "deleted";
+	}
+});
+
 export const serverHasLiveBox = internalQuery({
 	args: { serverId: v.number() },
 	handler: async (ctx, args) => {
@@ -110,6 +128,29 @@ export const reconcileHetznerResources = internalAction({
 				deletedImages += 1;
 			}
 
+			// Parking volumes bill hourly, so an orphan is a slow money leak. Unlike
+			// servers, an unreferenced parking volume is safe to delete outright: no
+			// live box points at it, so it is either from a finished rebuild (pointer
+			// cleared) or a gone box. A `rebuild_failed` box still references its
+			// volume, so its recovery data is never reclaimed here.
+			const volumes = await ctx.runAction(
+				internal.boxes.infra.hetznerVps.listProductVolumes,
+				{}
+			);
+			let deletedVolumes = 0;
+			for (const volume of volumes) {
+				const referenced = await ctx.runQuery(
+					internal.boxes.reconcile.volumeReferencedByLiveBox,
+					{ volumeId: volume.volumeId }
+				);
+				if (!isReclaimable(volume.createdAtMs, now, referenced)) continue;
+				await ctx.runAction(
+					internal.boxes.infra.hetznerVps.deleteParkingVolume,
+					{ volumeId: volume.volumeId }
+				);
+				deletedVolumes += 1;
+			}
+
 			const servers = await ctx.runAction(
 				internal.boxes.infra.hetznerVps.listProductServers,
 				{}
@@ -127,6 +168,11 @@ export const reconcileHetznerResources = internalAction({
 			if (deletedImages > 0) {
 				console.info(
 					`[reconcile] deleted ${deletedImages} orphaned snapshot image(s)`
+				);
+			}
+			if (deletedVolumes > 0) {
+				console.info(
+					`[reconcile] deleted ${deletedVolumes} orphaned parking volume(s)`
 				);
 			}
 			if (orphanedServers.length > 0) {
