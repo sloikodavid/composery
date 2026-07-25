@@ -26,8 +26,7 @@ describe("OPERATION_ALLOWED_STATUSES", () => {
 				"unsuspend",
 				"restore",
 				"snapshot",
-				"recover",
-				"rebuild"
+				"repair"
 			].sort()
 		);
 	});
@@ -91,40 +90,25 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 		expect(isOperationAllowed("running", "provision")).toBe(false);
 	});
 
-	it("allows recovery from usable and failed boxes, but not suspended boxes", () => {
-		expect(isOperationAllowed("running", "recover")).toBe(true);
-		expect(isOperationAllowed("provisioning_failed", "recover")).toBe(true);
-		expect(isOperationAllowed("reset_failed", "recover")).toBe(true);
-		expect(isOperationAllowed("restore_failed", "recover")).toBe(true);
-		expect(isOperationAllowed("suspended", "recover")).toBe(false);
-	});
-
-	// Repair reaches the box over SSH, and both of these states leave nothing
-	// listening: stopping powers the server off. Allowing it would spend five
-	// SSH timeouts to fail, and page staff, for a box that only needed starting.
-	it("refuses recovery on boxes whose host is powered off", () => {
-		expect(isOperationAllowed("stopped", "recover")).toBe(false);
-		expect(isOperationAllowed("suspended", "recover")).toBe(false);
-	});
-
-	// Rebuild needs a running box with real files and a reachable host, and must
-	// be retryable from its own failed state so a crashed rebuild can resume from
+	// Repair needs a running box with real files and a reachable host, and must
+	// be retryable from its own failed state so a crashed repair can resume from
 	// its parking volume. A box that never provisioned has no files worth keeping,
-	// so it is excluded; a powered-off box has no host to reach.
-	it("rebuilds a usable box or retries a failed rebuild, but not empty or off boxes", () => {
-		expect(isOperationAllowed("running", "rebuild")).toBe(true);
-		expect(isOperationAllowed("rebuild_failed", "rebuild")).toBe(true);
-		expect(isOperationAllowed("reset_failed", "rebuild")).toBe(true);
-		expect(isOperationAllowed("restore_failed", "rebuild")).toBe(true);
-		expect(isOperationAllowed("provisioning_failed", "rebuild")).toBe(false);
-		expect(isOperationAllowed("stopped", "rebuild")).toBe(false);
-		expect(isOperationAllowed("suspended", "rebuild")).toBe(false);
-		expect(isOperationAllowed("rebuilding", "rebuild")).toBe(false);
+	// so it is excluded; a powered-off box (stopped, suspended) has no host to
+	// reach over SSH, which is every repair step.
+	it("repairs a usable box or retries a failed repair, but not empty or off boxes", () => {
+		expect(isOperationAllowed("running", "repair")).toBe(true);
+		expect(isOperationAllowed("repair_failed", "repair")).toBe(true);
+		expect(isOperationAllowed("reset_failed", "repair")).toBe(true);
+		expect(isOperationAllowed("restore_failed", "repair")).toBe(true);
+		expect(isOperationAllowed("provisioning_failed", "repair")).toBe(false);
+		expect(isOperationAllowed("stopped", "repair")).toBe(false);
+		expect(isOperationAllowed("suspended", "repair")).toBe(false);
+		expect(isOperationAllowed("repairing", "repair")).toBe(false);
 	});
 
-	it("allows deleting a box that is mid-rebuild or rebuild_failed", () => {
-		expect(isOperationAllowed("rebuilding", "delete")).toBe(true);
-		expect(isOperationAllowed("rebuild_failed", "delete")).toBe(true);
+	it("allows deleting a box that is mid-repair or repair_failed", () => {
+		expect(isOperationAllowed("repairing", "delete")).toBe(true);
+		expect(isOperationAllowed("repair_failed", "delete")).toBe(true);
 	});
 
 	it("allows deleting from every live state except deleting/deleted", () => {

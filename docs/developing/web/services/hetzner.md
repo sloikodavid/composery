@@ -216,14 +216,22 @@ The owner and staff box pages share one Repair dialog. On open it reads
 `recoveryStatus`, which probes the public URL and inspects the host over SSH in
 parallel, and lays out each layer - website, server, Docker, reverse proxy,
 runtime container, the inner editor/web-server/persistence services, and disk -
-in plain language, read-only. Its single non-destructive **Repair**
-action rewrites the Composery-managed files in `/opt/composery-web` from Convex
-state, re-pulls the image, and force-recreates the stack (`repairRuntime`), so it
-heals both damaged host files and a wedged or crashed container in one step. It
+in plain language, read-only. Its single **Repair** action is the box's one
+recovery lever: it gives the box a clean host while keeping its files, so the
+owner never has to tell a wedged container apart from a broken host. It parks the
+box's Docker volumes on a transient Hetzner Volume, rebuilds the server from
+`HETZNER_BOX_IMAGE`, copies the files back and verifies them before deleting the
+volume, then rewrites the Composery-managed files in `/opt/composery-web` from
+Convex state and force-recreates the stack (`repairRuntime`) - so a wedged
+container and a broken host are both healed by the same action
+(`workflows/repairBox.ts`). Because it is the box's heavyweight recovery action,
+it is gated by a typed-slug confirmation and is honest about the several-minute
+downtime and the reachable-host precondition (a host with broken networking or
+SSH must use Restore instead, since Repair can't reach it to save the files). It
 reuses the same artifact renderers as provisioning, so there is no separate
-recovery seed to drift, and it retains the named Docker volumes (the box's
-files). A separate Reset button rebuilds the disk from a clean image; it is the
-final, explicitly destructive option and does not delete existing snapshots.
+recovery seed to drift. A separate Reset button rebuilds the disk from a clean
+image without preserving files; it is the final, explicitly destructive option
+and does not delete existing snapshots.
 
 ## Box snapshots
 

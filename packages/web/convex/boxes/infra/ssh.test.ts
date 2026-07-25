@@ -217,7 +217,7 @@ describe("runtime bootstrap and repair scripts", () => {
 	});
 });
 
-describe("rebuild parking scripts", () => {
+describe("repair parking scripts", () => {
 	const artifacts = renderRuntimeArtifacts({
 		cloudBoxId: "box_123",
 		cloudOrigin: "https://www.composery.io",
@@ -274,7 +274,7 @@ describe("rebuild parking scripts", () => {
 		expect(verifyBack).toContain('"/mnt/composery-parking/$key/" "$mp/"');
 	});
 
-	// The box is wiped for the whole rebuild, so a moving copy is pointless and
+	// The box is wiped for the whole repair, so a moving copy is pointless and
 	// dangerous - stop the stack so the volumes are quiescent.
 	it("stops the stack before copying it out", () => {
 		expect(copyOut).toContain(

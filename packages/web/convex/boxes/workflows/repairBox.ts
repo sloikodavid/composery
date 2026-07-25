@@ -1,35 +1,38 @@
 import { internal } from "../../_generated/api";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
-// Rebuild - the deep repair that gives a box a clean host while keeping its
-// files. Repair only rewrites the runtime files on the existing host; Restore
-// and Reset both give a clean disk but rewind or erase the files. The gap this
-// closes is a host the owner has damaged in a way no in-place repair can fix
-// (broken Docker, a mangled boot disk, wrecked systemd/nftables): the only clean
-// host is a fresh boot of the base image, and a rebuild wipes the boot disk that
-// holds the box's Docker volumes. So the files are parked on a transient Hetzner
-// Volume, the server is rebuilt from HETZNER_BOX_IMAGE, and the files are copied
-// back and verified before the volume is deleted.
+// Repair - gives a box a clean host while keeping its files. It is the box's one
+// recovery action: the owner never has to tell a wedged container apart from a
+// broken host. Restore and Reset both give a clean disk but rewind or erase the
+// files; Repair is the only path that keeps them. A host the owner has damaged
+// in a way no in-place fix can heal (broken Docker, a mangled boot disk, wrecked
+// systemd/nftables) can only be cleaned by a fresh boot of the base image, and
+// that wipes the boot disk holding the box's Docker volumes. So the files are
+// parked on a transient Hetzner Volume, the server is rebuilt from
+// HETZNER_BOX_IMAGE, and the files are copied back and verified before the
+// volume is deleted. Rewriting the runtime files and force-recreating the
+// containers on the fresh host (repairRuntime) is the final step, so a wedged
+// container is healed by the same action.
 //
 // Crash safety rests on two things, both persisted on the box row:
 //   * parking_volume_id, set the instant the volume exists and cleared only
-//     after it is deleted, so an interrupted rebuild leaves a recoverable
+//     after it is deleted, so an interrupted repair leaves a recoverable
 //     pointer instead of an orphan (reconciliation reclaims any volume no live
 //     box points at);
 //   * parking_volume_stage, the one-way gate between the two halves. The
 //     destructive server rebuild only runs after the copy onto the volume has
 //     verified (stage crosses to "restoring"), and once there the copy direction
-//     is fixed at volume -> server, so a resumed rebuild can never overwrite the
+//     is fixed at volume -> server, so a resumed repair can never overwrite the
 //     parked files with an empty server.
 //
-// No pre-rebuild Hetzner snapshot is taken: the verified parking volume is the
+// No pre-repair Hetzner snapshot is taken: the verified parking volume is the
 // safety net, and a snapshot would burn a per-box snapshot slot (which gates
 // fleet-wide checkout capacity) and cannot even capture the attached volume. An
 // owner who wants belt-and-braces can take a manual snapshot first.
-export const rebuildBox = defineBoxWorkflow({
+export const repairBox = defineBoxWorkflow({
 	onFailure: {
-		eventType: "box.rebuild_failed",
-		targetBoxStatus: "rebuild_failed"
+		eventType: "box.repair_failed",
+		targetBoxStatus: "repair_failed"
 	},
 	run: async (step, args) => {
 		const box = await step.runQuery(
@@ -37,7 +40,7 @@ export const rebuildBox = defineBoxWorkflow({
 			{ boxId: args.boxId }
 		);
 		if (!box.hetzner_server_id) {
-			throw new Error("Box has no Hetzner server to rebuild.");
+			throw new Error("Box has no Hetzner server to repair.");
 		}
 		if (!box.hetzner_location) {
 			throw new Error("Box has no Hetzner location for its parking volume.");
@@ -45,7 +48,7 @@ export const rebuildBox = defineBoxWorkflow({
 		const serverId = box.hetzner_server_id;
 
 		// PARKING PHASE. The box's own server still holds the authoritative files;
-		// nothing destructive has happened. Skipped entirely when a resumed rebuild
+		// nothing destructive has happened. Skipped entirely when a resumed repair
 		// has already crossed into "restoring".
 		let volumeId = box.parking_volume_id;
 		if (box.parking_volume_stage !== "restoring") {
@@ -102,7 +105,7 @@ export const rebuildBox = defineBoxWorkflow({
 			// A box in "restoring" must have a parking volume. If the pointer is gone
 			// the recovery data cannot be found, so fail loudly rather than proceed.
 			throw new Error(
-				"Rebuild is mid-restore but its parking volume pointer is gone."
+				"Repair is mid-restore but its parking volume pointer is gone."
 			);
 		}
 
@@ -172,14 +175,14 @@ export const rebuildBox = defineBoxWorkflow({
 			boxId: args.boxId
 		});
 
-		// Bring the stack up and hold until the editor answers, exactly as Repair
-		// does, so a reported success means the box genuinely serves.
+		// Rewrite the runtime files, force-recreate the stack, and hold until the
+		// editor answers, so a reported success means the box genuinely serves.
 		await step.runAction(
 			internal.boxes.infra.ssh.repairRuntime,
 			{ boxId: args.boxId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.boxStatus.markRebuildSucceeded, {
+		await step.runMutation(internal.boxes.boxStatus.markRepairSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId
 		});

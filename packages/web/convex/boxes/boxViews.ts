@@ -31,19 +31,11 @@ async function latestOperationSummary(
 	};
 }
 
-// Every other box operation moves the box into a visible status while it runs
-// (stopping, resetting, ...). Repair deliberately does not - a broken box is
-// still "running" - so this record is the only place a repair's progress and
-// its failure exist.
+// Repair moves the box into a visible `repairing`/`repair_failed` status, but
+// the Repair dialog still reads this record for the precise progress and the
+// error text behind a failure.
 export function latestRepair(db: DatabaseReader, boxId: Id<"boxes">) {
-	return latestOperationSummary(db, boxId, "recover");
-}
-
-// Rebuild does move the box into a visible `rebuilding`/`rebuild_failed` status,
-// but the dialog still reads this record for the precise progress and the error
-// text behind a failure, exactly as the Repair dialog does.
-export function latestRebuild(db: DatabaseReader, boxId: Id<"boxes">) {
-	return latestOperationSummary(db, boxId, "rebuild");
+	return latestOperationSummary(db, boxId, "repair");
 }
 
 export function safeBox(box: Doc<"boxes">) {

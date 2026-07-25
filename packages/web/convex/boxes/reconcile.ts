@@ -39,8 +39,8 @@ export const snapshotImageIsKnown = internalQuery({
 });
 
 // A parking volume is owned recovery data only while a live box still points at
-// it: a succeeded rebuild clears the pointer, and a deleted box drops it, so an
-// unreferenced volume is a genuine orphan. A `rebuild_failed` box keeps its
+// it: a succeeded repair clears the pointer, and a deleted box drops it, so an
+// unreferenced volume is a genuine orphan. A `repair_failed` box keeps its
 // pointer, which is exactly what protects its files from being reclaimed before
 // a retry.
 export const volumeReferencedByLiveBox = internalQuery({
@@ -130,8 +130,8 @@ export const reconcileHetznerResources = internalAction({
 
 			// Parking volumes bill hourly, so an orphan is a slow money leak. Unlike
 			// servers, an unreferenced parking volume is safe to delete outright: no
-			// live box points at it, so it is either from a finished rebuild (pointer
-			// cleared) or a gone box. A `rebuild_failed` box still references its
+			// live box points at it, so it is either from a finished repair (pointer
+			// cleared) or a gone box. A `repair_failed` box still references its
 			// volume, so its recovery data is never reclaimed here.
 			const volumes = await ctx.runAction(
 				internal.boxes.infra.hetznerVps.listProductVolumes,

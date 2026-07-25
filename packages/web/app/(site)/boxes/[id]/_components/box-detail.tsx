@@ -9,7 +9,6 @@ import {
 import { BoxStatusAction } from "@/components/boxes/status-action";
 import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
 import { MonitorCard } from "@/components/boxes/monitor-card";
-import { RebuildDialog } from "@/components/boxes/rebuild-dialog";
 import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import {
@@ -37,8 +36,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 	const resetBox = useMutation(api.user.boxes.reset);
 	const retryProvision = useMutation(api.user.boxes.retryProvision);
 	const changeSlug = useMutation(api.user.boxes.changeSlug);
-	const recover = useAction(api.user.boxes.recover);
-	const rebuild = useAction(api.user.boxes.rebuild);
+	const repair = useAction(api.user.boxes.repair);
 	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.user.boxes.runtimeLogs);
 	const { busy, run } = useBusyAction();
@@ -144,20 +142,9 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					busy={busy}
 					check={() => recoveryStatus({ slug: box.slug })}
 					onRepair={() =>
-						run("repair", "Repair started", () => recover({ slug: box.slug }))
+						run("repair", "Repair started", () => repair({ slug: box.slug }))
 					}
 					repair={detail.repair}
-					slug={box.slug}
-				/>
-				<RebuildDialog
-					boxStatus={box.status}
-					busy={busy}
-					onRebuild={() =>
-						run("rebuild", "Rebuild started", () =>
-							rebuild({ slug: box.slug })
-						)
-					}
-					rebuild={detail.rebuild}
 					slug={box.slug}
 				/>
 				<ResetDialog

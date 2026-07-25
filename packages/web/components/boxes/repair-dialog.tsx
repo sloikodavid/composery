@@ -18,6 +18,7 @@ import {
 	DialogHeader,
 	DialogTitle
 } from "@/components/base/dialog";
+import { Input } from "@/components/base/input";
 import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
 import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
 import type { BoxStatus } from "@/convex/schema";
@@ -46,9 +47,8 @@ function ToneIcon({ tone, className }: { tone: Tone; className?: string }) {
 	return <CircleHelpIcon className={cn(base, "text-muted-foreground")} />;
 }
 
-// The last repair this box attempted. A repair leaves the box "running"
-// throughout, so unlike every other operation its progress and its failure are
-// nowhere in the box status - this record is the only place they exist.
+// The last repair this box attempted. The dialog reads this record for the
+// precise progress and the error text behind a failure.
 export type RepairOperation = {
 	status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
 	error: string | null;
@@ -60,13 +60,13 @@ function repairNotice(repair: RepairOperation | null) {
 	if (repair.status === "pending" || repair.status === "running") {
 		return {
 			tone: "muted" as Tone,
-			text: "Repairing this box now. It can take a few minutes; the checks above update when it finishes."
+			text: "Repairing this box now. It copies your files off, gives the box a clean host, and copies them back - this can take several minutes. The checks above update when it finishes."
 		};
 	}
 	if (repair.status === "failed") {
 		return {
 			tone: "bad" as Tone,
-			text: `The last repair failed: ${repair.error ?? "no reason recorded"}`
+			text: `The last repair failed: ${repair.error ?? "no reason recorded"}. Your files are safe on the parking volume; repair again to resume.`
 		};
 	}
 	if (repair.status === "succeeded") {
@@ -75,8 +75,21 @@ function repairNotice(repair: RepairOperation | null) {
 	return { tone: "muted" as Tone, text: "The last repair was cancelled." };
 }
 
+function unavailableReason(boxStatus: BoxStatus) {
+	if (boxStatus === "repairing") {
+		return "A repair is already running on this box. It can take several minutes.";
+	}
+	if (boxStatus === "stopped" || boxStatus === "suspended") {
+		return "This box is not running. Start it before repairing.";
+	}
+	return "This box can't be repaired in its current state.";
+}
+
 // Owner and console box pages share this. It shows a read-only picture of every
-// layer of the box, then offers one data-preserving Repair action. The caller's
+// layer of the box, then offers one data-preserving Repair action - the box's
+// single recovery lever. Repair gives the box a clean host while keeping its
+// files, so the typed-slug confirmation guards against a misclick and the copy
+// is honest about the downtime and the reachable-host precondition. The caller's
 // check loads the status and onRepair performs the repair.
 export function RepairDialog({
 	boxStatus,
@@ -96,12 +109,13 @@ export function RepairDialog({
 	const [open, setOpen] = useState(false);
 	const [checking, setChecking] = useState(false);
 	const [status, setStatus] = useState<RecoveryStatus | null>(null);
+	const [confirmation, setConfirmation] = useState("");
 
 	// Ask the same table the backend enforces, so the dialog can never offer a
 	// repair that `beginBoxOperation` will refuse. A stopped box is the case
 	// that matters: its server is powered off, so probing it would report every
 	// layer as missing and raise a false alarm about a box that is merely off.
-	const repairable = isOperationAllowed(boxStatus, "recover");
+	const repairable = isOperationAllowed(boxStatus, "repair");
 
 	async function refresh() {
 		setChecking(true);
@@ -124,6 +138,7 @@ export function RepairDialog({
 			setStatus(null);
 			void refresh();
 		}
+		if (!nextOpen) setConfirmation("");
 	}
 
 	const checks = status ? buildChecks(status) : [];
@@ -147,7 +162,10 @@ export function RepairDialog({
 					<DialogHeader>
 						<DialogTitle>Repair {slug}</DialogTitle>
 						<DialogDescription>
-							Rebuilds the box from a clean setup while preserving files.
+							Gives the box a brand-new host and keeps all your files. The box
+							is offline for several minutes while its files are copied off, the
+							host is rebuilt from a clean image, and the files are copied back
+							and checked before anything is deleted.
 						</DialogDescription>
 					</DialogHeader>
 
@@ -228,14 +246,19 @@ export function RepairDialog({
 						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
 							<ToneIcon className="mt-0.5" tone="muted" />
 							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
-								{boxStatus === "stopped"
-									? "This box is stopped, not broken. Start it to check and repair it."
-									: boxStatus === "repairing"
-										? "A repair is already running on this box. It can take a few minutes."
-										: "This box can't be repaired in its current state."}
+								{unavailableReason(boxStatus)}
 							</p>
 						</div>
 					)}
+
+					<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
+						<ToneIcon className="mt-0.5" tone="warn" />
+						<p className="min-w-0 flex-1 text-sm text-muted-foreground">
+							Needs a reachable host. If the box&apos;s networking or SSH is
+							broken, use Restore instead - a repair can&apos;t reach it to save
+							your files.
+						</p>
+					</div>
 
 					{notice ? (
 						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
@@ -246,9 +269,22 @@ export function RepairDialog({
 						</div>
 					) : null}
 
+					{repairable ? (
+						<Input
+							autoCapitalize="none"
+							autoComplete="off"
+							onChange={(event) => setConfirmation(event.target.value)}
+							placeholder={`Type ${slug} to confirm`}
+							spellCheck={false}
+							value={confirmation}
+						/>
+					) : null}
+
 					<AnimatedIconButton
 						className="w-full"
-						disabled={busy !== null || !repairable || repairing}
+						disabled={
+							busy !== null || !repairable || repairing || confirmation !== slug
+						}
 						icon="wrench"
 						iconPosition="start"
 						onClick={() => void onRepair()}

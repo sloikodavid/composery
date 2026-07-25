@@ -1020,14 +1020,14 @@ export type CreatedServer = {
 	serverType: ServerType;
 };
 
-// -- Parking volumes (Rebuild) ----------------------------------------------
+// -- Parking volumes (Repair) -----------------------------------------------
 //
-// A Rebuild ("clean host, current files") parks the box's files on a Hetzner
+// A Repair ("clean host, current files") parks the box's files on a Hetzner
 // Volume for the few minutes it takes to wipe and reboot the server from the
 // base image. The Volume is transient by design: Hetzner gives Volumes no
 // backups or snapshots and excludes attached volumes from server snapshots, so
 // they are never a permanent home for box data - only a short-lived staging
-// area, created at the start of a rebuild and deleted the moment the files are
+// area, created at the start of a repair and deleted the moment the files are
 // safely back on the fresh host.
 
 type HetznerVolume = {
@@ -1088,7 +1088,7 @@ export function createVolumePayload(
 		size: sizeGb,
 		location,
 		// Pre-format so the box only ever has to mount it; formatting on the host
-		// would risk a resumed rebuild reformatting a volume that already holds the
+		// would risk a resumed repair reformatting a volume that already holds the
 		// parked files.
 		format: "ext4" as const,
 		automount: false,
@@ -1136,7 +1136,9 @@ export const createParkingVolume = internalAction({
 			"/volumes",
 			{
 				method: "POST",
-				body: JSON.stringify(createVolumePayload(args.slug, args.location, sizeGb))
+				body: JSON.stringify(
+					createVolumePayload(args.slug, args.location, sizeGb)
+				)
 			}
 		);
 		if (!response.volume?.id) {
@@ -1162,7 +1164,7 @@ export const attachParkingVolume = internalAction({
 			throw new Error("Box has no Hetzner server to attach the volume to.");
 		}
 		const volume = await getVolume(args.volumeId);
-		// Idempotent: a resumed rebuild may find it already on this server.
+		// Idempotent: a resumed repair may find it already on this server.
 		if (volume.server === args.serverId) return;
 
 		const response = await hetznerRequest<HetznerActionResponse>(
