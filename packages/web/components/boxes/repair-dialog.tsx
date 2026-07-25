@@ -18,7 +18,6 @@ import {
 	DialogHeader,
 	DialogTitle
 } from "@/components/base/dialog";
-import { Input } from "@/components/base/input";
 import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
 import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
 import type { BoxStatus } from "@/convex/schema";
@@ -87,9 +86,9 @@ function unavailableReason(boxStatus: BoxStatus) {
 
 // Owner and console box pages share this. It shows a read-only picture of every
 // layer of the box, then offers one data-preserving Repair action - the box's
-// single recovery lever. The typed-slug confirmation guards against a misclick,
-// since a repair takes the box offline for minutes. The caller's check loads the
-// status and onRepair performs the repair.
+// single recovery lever. Nothing is destroyed without a verified copy of it
+// existing first, so the action needs no confirmation step. The caller's check
+// loads the status and onRepair performs the repair.
 export function RepairDialog({
 	boxStatus,
 	busy,
@@ -108,7 +107,6 @@ export function RepairDialog({
 	const [open, setOpen] = useState(false);
 	const [checking, setChecking] = useState(false);
 	const [status, setStatus] = useState<RecoveryStatus | null>(null);
-	const [confirmation, setConfirmation] = useState("");
 
 	// Ask the same table the backend enforces, so the dialog can never offer a
 	// repair that `beginBoxOperation` will refuse. A stopped box is the case
@@ -137,7 +135,6 @@ export function RepairDialog({
 			setStatus(null);
 			void refresh();
 		}
-		if (!nextOpen) setConfirmation("");
 	}
 
 	const checks = status ? buildChecks(status) : [];
@@ -256,22 +253,9 @@ export function RepairDialog({
 						</div>
 					) : null}
 
-					{repairable ? (
-						<Input
-							autoCapitalize="none"
-							autoComplete="off"
-							onChange={(event) => setConfirmation(event.target.value)}
-							placeholder={`Type ${slug} to confirm`}
-							spellCheck={false}
-							value={confirmation}
-						/>
-					) : null}
-
 					<AnimatedIconButton
 						className="w-full"
-						disabled={
-							busy !== null || !repairable || repairing || confirmation !== slug
-						}
+						disabled={busy !== null || !repairable || repairing}
 						icon="wrench"
 						iconPosition="start"
 						onClick={() => void onRepair()}
