@@ -9,6 +9,18 @@ function readRepoFile(path: string): string {
 	return readFileSync(resolve(repoRoot, path), "utf8");
 }
 
+// A shell script with its comment lines removed, for assertions about what a
+// script *does* and in what order. These scripts explain themselves at length,
+// so matching the raw text lets a comment satisfy a requirement the code never
+// implements, and lets a step named in the comment above a command appear to
+// run before it. Both happened here.
+function readShellCode(path: string): string {
+	return readRepoFile(path)
+		.split("\n")
+		.filter((line) => !line.trimStart().startsWith("#"))
+		.join("\n");
+}
+
 const BINARY = new Set([".ico", ".png", ".sqlite", ".svg", ".webm", ".woff2"]);
 
 // Every COMPOSERY_* name mentioned anywhere under the given repo paths.
@@ -157,10 +169,18 @@ describe("runtime process managers", () => {
 		const entrypoint = readRepoFile("rootfs/opt/composery/entrypoint.sh");
 		const removal = readRepoFile("rootfs/opt/composery/remove-password.sh");
 
-		// Order matters: applying the delta first would restore the password.
-		expect(
-			entrypoint.indexOf("/opt/composery/remove-password.sh")
-		).toBeGreaterThan(entrypoint.indexOf("composery persistence apply"));
+		// Order matters: putting the delta back first would restore the password.
+		// remove-password runs in the shared finalize tail, which the copy path
+		// reaches only after `persistence apply` and the overlay path only after
+		// the kernel has mounted the delta (the post-pivot re-exec into finalize),
+		// so it always runs once the delta is live for either engine.
+		expect(entrypoint).toContain("/opt/composery/remove-password.sh");
+		expect(entrypoint.indexOf("/opt/composery/remove-password.sh")).toBeLessThan(
+			entrypoint.indexOf("persistence select-engine")
+		);
+		expect(entrypoint.indexOf("composery persistence apply")).toBeLessThan(
+			entrypoint.lastIndexOf("finalize")
+		);
 		expect(entrypoint).toContain(
 			'if [ "${PORT:-8080}" = "${COMPOSERY_IDE_PORT:-8081}" ]'
 		);
@@ -185,7 +205,7 @@ describe("runtime process managers", () => {
 	});
 
 	test("selects the persistence engine before applying, mirroring COMPOSERY_INIT", () => {
-		const entrypoint = readRepoFile("rootfs/opt/composery/entrypoint.sh");
+		const entrypoint = readShellCode("rootfs/opt/composery/entrypoint.sh");
 
 		// Same auto|overlay|copy plus exit-64-on-unknown contract COMPOSERY_INIT uses.
 		expect(entrypoint).toContain('case "${COMPOSERY_PERSISTENCE:-auto}" in');
@@ -201,9 +221,47 @@ describe("runtime process managers", () => {
 			entrypoint.indexOf("persistence apply")
 		);
 
-		// The overlay engine is unfinished, so its branch fails loudly instead of
-		// half-mounting.
-		expect(entrypoint).toMatch(/"\$engine" = overlay[\s\S]*?exit 1/);
+		// The overlay engine is finished: its branch hands off to init/overlay.sh
+		// (build the overlay, pivot, finalize) rather than failing loudly.
+		expect(entrypoint).toMatch(
+			/"\$engine" = overlay[\s\S]*?exec \/opt\/composery\/init\/overlay\.sh/
+		);
+		expect(entrypoint).not.toMatch(/"\$engine" = overlay[\s\S]*?exit 1/);
+	});
+
+	test("the overlay engine boot follows the spike's proven order", () => {
+		const overlay = readShellCode("rootfs/opt/composery/init/overlay.sh");
+		const entrypoint = readShellCode("rootfs/opt/composery/entrypoint.sh");
+
+		// Hygiene (recreate work/, reconcile stale whiteouts / opaque dirs) runs
+		// before the mount and sources the reserved upper/work paths from Rust
+		// rather than a second hardcoded copy.
+		expect(overlay).toContain("persistence overlay-hygiene");
+		expect(overlay.indexOf("persistence overlay-hygiene")).toBeLessThan(
+			overlay.indexOf("mount -t overlay")
+		);
+		// Private propagation before any move (spike: pivot_root refuses a shared /).
+		expect(overlay.indexOf("mount --make-rprivate /")).toBeLessThan(
+			overlay.indexOf("pivot_root")
+		);
+		// Kernel filesystems, the volume, AND the resolver files (Hazard D: no DNS
+		// in the pivoted root without them).
+		expect(overlay).toContain("mount --rbind /proc");
+		for (const file of ["/etc/resolv.conf", "/etc/hosts", "/etc/hostname"]) {
+			expect(overlay).toContain(file);
+		}
+		// /opt/composery and /opt/persistence bound so image code cannot become a
+		// user delta under overlay (the structural integrity exclusion).
+		expect(overlay).toContain("for d in /opt/composery /opt/persistence");
+		// Pivot, then re-enter the shared finalize tail through the entrypoint.
+		expect(overlay).toContain("pivot_root . mnt/oldroot");
+		expect(overlay.indexOf("pivot_root")).toBeLessThan(
+			overlay.indexOf("COMPOSERY_OVERLAY_STAGE=finalize")
+		);
+		expect(overlay).toContain("exec /opt/composery/entrypoint.sh");
+		expect(entrypoint).toMatch(
+			/COMPOSERY_OVERLAY_STAGE:-\}" = finalize[\s\S]*?finalize/
+		);
 	});
 
 	test("wires every environment variable the docs promise", () => {

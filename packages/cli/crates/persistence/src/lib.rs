@@ -14,6 +14,8 @@ pub mod layout;
 #[cfg(unix)]
 pub mod lifecycle;
 pub mod metadata;
+#[cfg(unix)]
+pub mod overlay;
 pub mod paths;
 pub mod prune;
 #[cfg(unix)]
