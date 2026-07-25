@@ -88,7 +88,9 @@ echo "static stamp: $COMPOSERY_STATIC_STAMP"
 echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
 rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
 # Upstream's release step ships only pages *.html/*.css - carry our pages JS
-# (login auth.js) too, from the rebranded build tree, or the login page 404s it.
+# from the rebranded build tree, or the login page 404s auth.js and every page
+# including the workbench 404s favicon.js (all of them load the one copy from
+# /_static, so this is the only place it arrives).
 cp "$BUILD/src/browser/pages/"*.js "$BUILD/release/src/browser/pages/"
 
 echo "Release: $BUILD/release"

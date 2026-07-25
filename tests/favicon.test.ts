@@ -1,30 +1,19 @@
-// The two favicon scripts, driven against a real DOM. The whole point of them is
+// The one favicon script, driven against a real DOM. The whole point of it is
 // that the tab icon changes without a reload, and only running the swap can show
-// that: a grep for the file names passes just as happily on a script that sets
+// that: a grep for the file name passes just as happily on a script that sets
 // the icon once and never again.
 //
-// The markup comes from the shipped page and the shipped patch, not a copy, so a
-// link that loses its scheme-pinned data attributes fails here.
-import { readFileSync } from "node:fs";
-
+// The markup comes from the shipped pages and the shipped patch, not a copy, so a
+// link that loses its scheme-pinned data attributes fails here. Every surface
+// loads the same file, so the same script is driven against all three sets of
+// links below.
 import { type DOMWindow, JSDOM } from "jsdom";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { addedLines, readRepoFile } from "./support/patchSource.ts";
 
-const PAGES_FAVICON_JS = readFileSync(
-	new URL(
-		"../packages/ide/overlay/src/browser/pages/favicon.js",
-		import.meta.url
-	),
-	"utf8"
-);
-const WORKBENCH_FAVICON_JS = readFileSync(
-	new URL(
-		"../packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/favicon.js",
-		import.meta.url
-	),
-	"utf8"
+const FAVICON_JS = readRepoFile(
+	"packages/ide/overlay/src/browser/pages/favicon.js"
 );
 
 // Server-side template tokens ({{COMPOSERY_STATIC_BASE}}, {{BASE}}, ...) resolve
@@ -41,14 +30,10 @@ const pageIconLinks = (page: string) =>
 		readRepoFile(`packages/ide/overlay/src/browser/pages/${page}`)
 	).join("\n");
 
-// The icon links exactly as web-client.diff adds them to the workbench. It patches
-// workbench.html and workbench-dev.html with the identical pair; the first pair
-// is the markup under test.
+// The icon links exactly as web-client.diff adds them to the workbench.
 const workbenchIconLinks = iconLinks(
 	addedLines(readRepoFile("packages/ide/patches/web-client.diff"))
-)
-	.slice(0, 2)
-	.join("\n");
+).join("\n");
 
 type Harness = {
 	window: DOMWindow;
@@ -118,7 +103,7 @@ describe.each(PAGES)("%s favicon", (page) => {
 	const links = pageIconLinks(page);
 
 	test("pins the icon to the scheme already in effect", () => {
-		const rendered = start("", links, PAGES_FAVICON_JS, { dark: true });
+		const rendered = start("", links, FAVICON_JS, { dark: true });
 
 		// The declared adaptive file is replaced on sight: it can only ever be
 		// re-rasterized by a reload, which is the bug being fixed.
@@ -126,7 +111,7 @@ describe.each(PAGES)("%s favicon", (page) => {
 	});
 
 	test("follows a live scheme flip with no reload", () => {
-		const rendered = start("", links, PAGES_FAVICON_JS);
+		const rendered = start("", links, FAVICON_JS);
 		expect(rendered.icon()).toBe("/src/browser/media/favicon-light.svg");
 
 		rendered.setScheme(true);
@@ -143,22 +128,14 @@ describe("workbench favicon", () => {
 
 	test("follows the editor theme, not the OS scheme", async () => {
 		// A dark editor on a light desktop: the tab belongs to what is on screen.
-		const page = start(
-			workbench("vs-dark"),
-			workbenchIconLinks,
-			WORKBENCH_FAVICON_JS
-		);
+		const page = start(workbench("vs-dark"), workbenchIconLinks, FAVICON_JS);
 		await page.settle();
 
 		expect(page.icon()).toBe("/_static/src/browser/media/favicon-dark.svg");
 	});
 
 	test("follows a theme switch with no reload", async () => {
-		const page = start(
-			workbench("vs-dark"),
-			workbenchIconLinks,
-			WORKBENCH_FAVICON_JS
-		);
+		const page = start(workbench("vs-dark"), workbenchIconLinks, FAVICON_JS);
 		await page.settle();
 
 		const element = page.window.document.querySelector(".monaco-workbench")!;
@@ -172,7 +149,7 @@ describe("workbench favicon", () => {
 	});
 
 	test("uses the OS scheme until the workbench exists, then hands over", async () => {
-		const page = start("", workbenchIconLinks, WORKBENCH_FAVICON_JS, {
+		const page = start("", workbenchIconLinks, FAVICON_JS, {
 			dark: true
 		});
 		expect(page.icon()).toBe("/_static/src/browser/media/favicon-dark.svg");
@@ -185,7 +162,7 @@ describe("workbench favicon", () => {
 	});
 
 	test("holds the icon while the workbench is still unthemed", async () => {
-		const page = start("", workbenchIconLinks, WORKBENCH_FAVICON_JS, {
+		const page = start("", workbenchIconLinks, FAVICON_JS, {
 			dark: true
 		});
 		page.window.document.body.innerHTML = workbench("");

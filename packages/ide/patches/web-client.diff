@@ -5,16 +5,22 @@ app, and liveness across cache restores.
   which this fork pins forever - the build takes COMPOSERY_STATIC_STAMP (the
   content hash build.sh computes) instead. The served HTML is
   Cache-Control: no-store because it embeds stamped URLs; service workers
-  register with updateViaCache 'none'; each boot purges service workers and
-  vscode-resource-cache entries stranded under old stamps - storage a mobile
-  WebView user has no way to clear.
-- Overlay asset wiring: the workbench pages link narrow.css / touch.css /
-  fonts.css and load shell.js from workbench-assets, carry the
+  register with updateViaCache 'none'; each boot unregisters the webview
+  service workers stranded under old stamps - storage a mobile WebView user has
+  no way to clear.
+- Overlay asset wiring: the workbench page links narrow.css / touch.css /
+  fonts.css and loads shell.js from workbench-assets, carries the
   shared viewport contract (viewport-fit=cover,
-  interactive-widget=resizes-content), and declare the favicon set: sized ICO
+  interactive-widget=resizes-content), and declares the favicon set: sized ICO
   fallback first, adaptive SVG last, with favicon.js swapping the
   scheme-pinned pair (Chromium rasterizes a favicon once per URL and never
-  re-runs its embedded media query).
+  re-runs its embedded media query). favicon.js is the one the auth and error
+  pages already load, from the same /_static path, not a second copy.
+  Two neighbouring pages are deliberately left alone: workbench-dev.html, which
+  is served only when the environment is not a built one and so never by our
+  release image; and callback.html, which has no input to keep clear of a
+  keyboard and no safe-area padding, so viewport-fit=cover there would only
+  move its text under the notch that upstream's default keeps it out of.
 - The installed app: standalone display, not fullscreen - the clock and
   battery stay visible, and window-controls-overlay is dropped with it because
   our titlebar reserves no titlebar-area-* room. Brand name (the
@@ -28,11 +34,19 @@ app, and liveness across cache restores.
   the page reloads itself on a persisted pageshow - `persisted` is set on a
   bfcache restore and nothing else.
 
-- Webview pre pages (the iframes extensions render into): the same viewport
-  contract (viewport-fit=cover, interactive-widget=resizes-content) plus
-  safe-area padding, kept in place at runtime for documents webviews replace
-  (ensureMobileViewport), with the CSP hash updated for the edited inline
-  script.
+- Webview content styles: narrow-width rules in the default stylesheet the
+  webview pre page injects into extension content. No viewport contract here,
+  and no safe-area padding: a webview is a nested browsing context, and
+  Chromium honours neither in one. Measured on Android Chrome 134 - a subframe
+  declaring `width=500, viewport-fit=cover` laid out at the parent's 411px,
+  exactly like a subframe declaring no viewport at all, and read
+  env(safe-area-inset-*) as 0 while the top frame read a real 24px bottom
+  inset. So the meta, the safe-area padding, and the runtime repair that kept
+  them on replaced documents were all no-ops and are gone.
+  What is left is frame-independent: border-box + max-width so the 20px body
+  padding cannot overflow a narrow viewport, and the text-size rules. Those
+  styles live inside a template literal in the page's inline script, so
+  the CSP hash beside them covers them; the patch-stack test recomputes it.
 
 --- a/ci/build/build-vscode.sh
 +++ b/ci/build/build-vscode.sh
@@ -47,60 +61,6 @@ app, and liveness across cache restores.
  
    pushd lib/vscode
  
---- a/lib/vscode/src/vs/code/browser/workbench/callback.html
-+++ b/lib/vscode/src/vs/code/browser/workbench/callback.html
-@@ -5,7 +5,7 @@
- 		<meta charset="utf-8" />
- 
- 		<!-- Disable pinch zooming -->
--		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
- 
- 		<title>Visual Studio Code</title>
- 
---- a/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
-+++ b/lib/vscode/src/vs/code/browser/workbench/workbench-dev.html
-@@ -10,12 +10,15 @@
- 		<!-- Mobile tweaks -->
- 		<meta name="mobile-web-app-capable" content="yes" />
- 		<meta name="apple-mobile-web-app-capable" content="yes" />
--		<meta name="apple-mobile-web-app-title" content="Code">
-+		<meta name="apple-mobile-web-app-title" content="Composery">
-+		<!-- Status bar tint for an installed app. The manifest carries one colour for the splash; these track the scheme the workbench itself starts in (window.autoDetectColorScheme). -->
-+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-+		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
- 		<link rel="apple-touch-icon" sizes="192x192" href="{{BASE}}/_static/src/browser/media/pwa-icon-192.png" />
- 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
- 
- 		<!-- Disable pinch zooming -->
--		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
- 
- 		<!-- Workbench Configuration -->
- 		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
-@@ -27,9 +30,12 @@
- 		<meta id="vscode-workbench-builtin-extensions" data-settings="{{WORKBENCH_BUILTIN_EXTENSIONS}}">
- 
- 		<!-- Workbench Icon/Manifest/CSS -->
--		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
--		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
-+		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" data-light="{{BASE}}/_static/src/browser/media/favicon-light.svg" data-dark="{{BASE}}/_static/src/browser/media/favicon-dark.svg" />
- 		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/fonts.css">
- 		<style id="vscode-css-modules" type="text/css" media="screen"></style>
- 
- 	</head>
-@@ -65,5 +71,7 @@
- 	<script>
- 		performance.mark('code/willLoadWorkbenchMain');
- 	</script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/shell.js"></script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
- 	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
- </html>
 --- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
 +++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
 @@ -10,12 +10,15 @@
@@ -150,7 +110,7 @@ app, and liveness across cache restores.
  	<!-- attempt to load NLS messages in case non-english -->
  	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>
 +	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/shell.js"></script>
-+	<script src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/favicon.js"></script>
++	<script src="{{BASE}}/_static/src/browser/pages/favicon.js"></script>
  	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
  </html>
 --- a/lib/vscode/src/vs/server/node/webClientServer.ts
@@ -202,7 +162,7 @@ app, and liveness across cache restores.
  	private openAuthEndpoint(endpoint: string) {
  		const targetWindow = window.top || window;
  		const authUrl = new URL(endpoint, targetWindow.location.href);
-@@ -196,11 +210,48 @@ export class CodeServerClient extends Disposable {
+@@ -196,11 +210,39 @@ export class CodeServerClient extends Disposable {
  			try {
  				await navigator.serviceWorker.register(serviceWorker.path, {
  					scope: serviceWorker.scope,
@@ -213,17 +173,23 @@ app, and liveness across cache restores.
  				this.logService.error('[Service Worker] registration', error as Error);
  			}
 +			// Fire-and-forget: housekeeping must never gate workbench startup.
-+			this.purgeStaleClientCaches().catch((error: any) => {
-+				this.logService.error('[Service Worker] stale cache purge', error as Error);
++			this.unregisterStaleWebviewWorkers().catch((error: any) => {
++				this.logService.error('[Service Worker] stale worker purge', error as Error);
 +			});
 +		}
 +	}
 +
-+	// Composery: each update moves the stable-<stamp> URL prefix, stranding the
-+	// webview service workers and resource-cache entries registered under old
-+	// stamps. Nothing references them again - purge them so they don't pile up
-+	// forever in storage the user has no way to clear (e.g. a mobile WebView).
-+	private async purgeStaleClientCaches() {
++	// Composery: webviews register their service worker under the webview
++	// endpoint, which sits below the stable-<stamp> static route - so every
++	// update strands the previous stamp's registration, and they pile up forever
++	// in storage the user has no way to clear (e.g. a mobile WebView). The
++	// workbench's own worker is scoped to the site root and carries no stamp, so
++	// the same test that finds the stale ones leaves it alone.
++	//
++	// Only registrations: the resource cache is keyed by the service worker's own
++	// VERSION and its entries are vscode-resource URLs of workspace files, so no
++	// part of it moves with the stamp and there is nothing there to strand.
++	private async unregisterStaleWebviewWorkers() {
 +		const stamp = this.productService.commit;
 +		if (!stamp) {
 +			return;
@@ -233,52 +199,21 @@ app, and liveness across cache restores.
 +			if (scope.includes('stable-') && !scope.includes(stamp)) {
 +				await registration.unregister();
 +			}
-+		}
-+		if (typeof caches === 'undefined') {
-+			return;
-+		}
-+		for (const name of await caches.keys()) {
-+			if (!name.startsWith('vscode-resource-cache')) {
-+				continue;
-+			}
-+			const cache = await caches.open(name);
-+			for (const request of await cache.keys()) {
-+				const path = new URL(request.url).pathname;
-+				if (path.includes('stable-') && !path.includes(stamp)) {
-+					await cache.delete(request);
-+				}
-+			}
  		}
  	}
  }
---- a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/fake.html
-+++ b/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/fake.html
-@@ -2,7 +2,7 @@
- <html lang="en">
- <head>
- 	<meta charset="UTF-8">
--	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
- 	<title>Fake</title>
- </head>
- <body>
 --- a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
 +++ b/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
-@@ -5,11 +5,11 @@
+@@ -5,7 +5,7 @@
  	<meta charset="UTF-8">
  
  	<meta http-equiv="Content-Security-Policy"
 -		content="default-src 'none'; script-src 'sha256-A6/szVNdTzyi4hDa+9OLbzS8tSd2iUV4CqimLNWex2Y=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
-+		content="default-src 'none'; script-src 'sha256-ErN2jbpFa7K/mFrMDkoFz51dnxYcQ2vknetmCtkcToI=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-DK8IYscPwU1YYkFAEiG8aBDHYfkZXeFsG/Odp3sfsDw=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
  
  	<!-- Disable pinch zooming -->
  	<meta name="viewport"
--		content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-+		content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
- </head>
- 
- <body style="margin: 0; overflow: hidden; width: 100%; height: 100%; overscroll-behavior-x: none;" role="document">
-@@ -117,6 +117,20 @@
+@@ -117,6 +117,19 @@
  				padding: 0 20px;
  			}
  
@@ -286,7 +221,6 @@ app, and liveness across cache restores.
 +				body {
 +					box-sizing: border-box;
 +					max-width: 100%;
-+					padding: env(safe-area-inset-top, 0px) max(20px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(20px, env(safe-area-inset-left, 0px));
 +					-webkit-text-size-adjust: 100%;
 +					text-size-adjust: 100%;
 +				}
@@ -299,38 +233,6 @@ app, and liveness across cache restores.
  			img, video {
  				max-width: 100%;
  				max-height: 100%;
-@@ -198,6 +212,23 @@
- 			}
- 		}`;
- 
-+		function ensureMobileViewport(targetDocument) {
-+			const viewport = Array.from(targetDocument.querySelectorAll('meta[name]')).find(meta => meta.getAttribute('name')?.toLowerCase() === 'viewport');
-+			const requiredParts = ['viewport-fit=cover', 'interactive-widget=resizes-content'];
-+			if (!viewport) {
-+				const createdViewport = targetDocument.createElement('meta');
-+				createdViewport.name = 'viewport';
-+				createdViewport.content = ['width=device-width', 'initial-scale=1', ...requiredParts].join(', ');
-+				targetDocument.head.prepend(createdViewport);
-+				return;
-+			}
-+			const content = viewport.getAttribute('content') || '';
-+			const missingParts = requiredParts.filter(part => !content.includes(part));
-+			if (missingParts.length) {
-+				viewport.setAttribute('content', [content, ...missingParts].filter(Boolean).join(', '));
-+			}
-+		}
-+
- 		/**
- 		 * @param {boolean} allowMultipleAPIAcquire
- 		 * @param {*} [state]
-@@ -854,6 +885,7 @@
- 			const options = data.options;
- 			const text = data.contents;
- 			const newDocument = new DOMParser().parseFromString(text, 'text/html');
-+			ensureMobileViewport(newDocument);
- 
- 			newDocument.querySelectorAll('a').forEach(a => {
- 				if (!a.title) {
 --- a/src/node/routes/vscode.ts
 +++ b/src/node/routes/vscode.ts
 @@ -196,9 +196,19 @@ router.get("/manifest.json", async (req, res) => {

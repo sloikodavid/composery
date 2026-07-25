@@ -36,7 +36,6 @@
 	const narrowClosePartEvent = "composery-narrow-close-part";
 	// Mirror of layout.ts part-hidden workbench classes; their absence means the part is open.
 	const partHiddenClasses = ["nosidebar", "nopanel", "noauxiliarybar"];
-	const keyboardInsetProbe = document.createElement("div");
 
 	// The layers a back gesture peels, top first. Every entry must be something the
 	// user opened and that an Escape actually closes - back is a dismissal, not a
@@ -79,46 +78,19 @@
 	const modalEditorMaximizeSelector =
 		".monaco-modal-editor-block .modal-editor-action-container .action-label.codicon-screen-full";
 
-	keyboardInsetProbe.style.cssText =
-		"position:fixed;left:-9999px;bottom:0;width:1px;height:env(keyboard-inset-height,0px);pointer-events:none;visibility:hidden;";
-	keyboardInsetProbe.setAttribute("aria-hidden", "true");
-
-	function ensureKeyboardInsetProbe() {
-		if (keyboardInsetProbe.isConnected) {
-			return;
-		}
-
-		(document.body || document.documentElement).appendChild(keyboardInsetProbe);
-	}
-
-	function envKeyboardInset() {
-		ensureKeyboardInsetProbe();
-		return keyboardInsetProbe.offsetHeight;
-	}
-
-	function bottomKeyboardOverlap(rect) {
-		if (!rect?.height) {
-			return 0;
-		}
-
-		const top = rect.y ?? rect.top ?? window.innerHeight;
-		const bottom = rect.bottom ?? top + rect.height;
-		if (bottom < window.innerHeight - 1) {
-			return 0;
-		}
-
-		return Math.max(0, Math.round(window.innerHeight - top));
-	}
-
-	function virtualKeyboardInset() {
-		const keyboard = navigator.virtualKeyboard;
-		if (!keyboard?.overlaysContent) {
-			return 0;
-		}
-
-		return bottomKeyboardOverlap(keyboard.boundingRect);
-	}
-
+	// How much of the layout viewport the keyboard covers *without* the viewport
+	// having already excluded it - the iOS case, where the keyboard overlays both
+	// viewports and interactive-widget is not honoured. On Android, where
+	// interactive-widget=resizes-content shrinks the layout viewport too, this is
+	// 0 and keyboardOpen() below is what sees the keyboard.
+	//
+	// The VirtualKeyboard API is deliberately not consulted: both
+	// navigator.virtualKeyboard.boundingRect and env(keyboard-inset-height) are
+	// populated only for a page that has set overlaysContent = true and taken over
+	// keyboard layout itself. We do the opposite - our viewport meta asks the
+	// browser to resize content - so those two report a structural zero, and
+	// reading them cost a per-frame forced layout (an env() probe element's
+	// offsetHeight) for a number that could not change.
 	function visualViewportKeyboardInset(viewport) {
 		return viewport
 			? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
@@ -126,7 +98,7 @@
 	}
 
 	// With interactive-widget=resizes-content the keyboard shrinks the LAYOUT viewport too, so
-	// innerHeight - visualViewport.height reads 0 and none of the insets above can see it. The
+	// innerHeight - visualViewport.height reads 0 and the inset above cannot see it. The
 	// tallest viewport seen at this width is therefore the keyboard-down baseline; anything
 	// enough shorter than it is the keyboard. The floor keeps browser chrome (the collapsing
 	// URL bar) from reading as one.
@@ -149,11 +121,7 @@
 		const viewport = window.visualViewport;
 		const height = viewport?.height ?? window.innerHeight;
 		const width = viewport?.width ?? window.innerWidth;
-		const keyboardInsetBottom = Math.max(
-			visualViewportKeyboardInset(viewport),
-			virtualKeyboardInset(),
-			envKeyboardInset(),
-		);
+		const keyboardInsetBottom = visualViewportKeyboardInset(viewport);
 		const rootStyle = document.documentElement.style;
 
 		rootStyle.setProperty(
@@ -342,20 +310,20 @@
 		}
 	}
 
+	function nativeHost() {
+		return Boolean(
+			window.__composeryNative && window.ReactNativeWebView?.postMessage,
+		);
+	}
+
 	function postNative(message) {
-		if (!window.__composeryNative || !window.ReactNativeWebView?.postMessage) {
+		if (!nativeHost()) {
 			return;
 		}
 
 		try {
 			window.ReactNativeWebView.postMessage(message);
 		} catch {}
-	}
-
-	function nativeHost() {
-		return Boolean(
-			window.__composeryNative && window.ReactNativeWebView?.postMessage,
-		);
 	}
 
 	function syncBackGuard() {
@@ -636,12 +604,6 @@
 		}
 	}
 
-	// Finger-pan of horizontally-overflowing SplitViews is a touch affordance, independent of
-	// screen size (on a wide screen the container simply does not overflow, so this is inert).
-	function touchPointer() {
-		return touchLike.matches;
-	}
-
 	function interactiveTarget(element) {
 		return Boolean(
 			element.closest(
@@ -663,8 +625,11 @@
 		);
 	}
 
+	// Finger-pan of horizontally-overflowing SplitViews is a touch affordance,
+	// independent of screen size (on a wide screen the container simply does not
+	// overflow, so this is inert).
 	function horizontalPanContainer(target) {
-		if (!touchPointer() || !(target instanceof Element)) {
+		if (!touchLike.matches || !(target instanceof Element)) {
 			return null;
 		}
 
@@ -867,7 +832,6 @@
 	window.addEventListener("resize", handleViewportGeometry);
 	window.visualViewport?.addEventListener("resize", handleViewportGeometry);
 	window.visualViewport?.addEventListener("scroll", handleViewportGeometry);
-	navigator.virtualKeyboard?.addEventListener("geometrychange", handleViewportGeometry);
 	narrow.addEventListener("change", handleNarrowChange);
 
 	// Touch scroll affordances (finger-pan of overflowing views, kept-visible scrollbars).

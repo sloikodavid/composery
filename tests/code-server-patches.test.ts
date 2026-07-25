@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	copyFileSync,
 	existsSync,
@@ -20,7 +21,6 @@ import {
 	addedLines,
 	applyPatch,
 	evaluatePatchSnippets,
-	extractAddedFunction,
 	postImageLines,
 	readRepoFile,
 	repoRoot
@@ -308,6 +308,44 @@ describe("patch stack lint", () => {
 				expect(lock.packages?.["node_modules/body-parser"]?.version).toBe(
 					"2.3.0"
 				);
+
+				// An inline script under a hash-based CSP carries its own sha256, by
+				// hand, in the same file. Edit the script and forget the hash and the
+				// browser refuses to run it: the webview pre page is the whole webview
+				// host, so every webview - markdown preview, notebooks, settings - comes
+				// up blank, and nothing before this said a word. The assembled tree is
+				// right here; recompute the hashes the way the browser does.
+				const hashed = [
+					"lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html",
+					"lib/vscode/src/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html"
+				];
+				for (const rel of hashed) {
+					const html = readFileSync(resolve(shadow, rel), "utf8");
+					const csp = /content="([^"]*script-src[^"]*)"/s.exec(html)?.[1];
+					expect(csp, `${rel} declares no script-src`).toEqual(
+						expect.any(String)
+					);
+
+					const scripts = [
+						...html.matchAll(
+							/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi
+						)
+					];
+					expect(scripts.length, `${rel} has no inline script`).toBeGreaterThan(
+						0
+					);
+					for (const [, body] of scripts) {
+						const digest = createHash("sha256")
+							// Windows checkouts are CRLF; the served file is LF, and so is
+							// what the browser hashes.
+							.update(Buffer.from((body ?? "").replaceAll("\r\n", "\n")))
+							.digest("base64");
+						expect(
+							csp,
+							`${rel}: inline script is not 'sha256-${digest}'`
+						).toContain(`sha256-${digest}`);
+					}
+				}
 			} finally {
 				rmSync(shadow, { recursive: true, force: true });
 				rmSync(assembled, { recursive: true, force: true });
@@ -550,9 +588,11 @@ describe("QR action", () => {
 		);
 		expect(extension).not.toContain("100vh");
 		expect(extension).not.toContain("@media");
-		expect(extension).toContain("env(safe-area-inset-top, 0px)");
-		// The page cannot rely on web-client.diff injecting a viewport for it.
-		expect(extension).toContain('name="viewport"');
+		// Nothing keyed on the frame's own viewport or safe area: this page is
+		// webview content, where Chromium honours neither (see the mobile viewport
+		// contract). Both used to be here, and both only ever hit their fallback.
+		expect(extension).not.toContain('name="viewport"');
+		expect(extension).not.toContain("env(safe-area-inset");
 	});
 
 	test("reuses one panel instead of stacking tabs", () => {
@@ -866,19 +906,10 @@ describe("touch inline actions", () => {
 // ---------------------------------------------------------------------------
 
 function runNarrowViewportVars({
-	envInset = 0,
 	innerHeight = 800,
-	virtualKeyboard,
 	visualViewport
 }: {
-	envInset?: number;
 	innerHeight?: number;
-	virtualKeyboard?: {
-		bottom: number;
-		height: number;
-		overlaysContent?: boolean;
-		y: number;
-	};
 	visualViewport?: { height: number; offsetTop: number; width?: number };
 }): {
 	properties: Map<string, string>;
@@ -905,12 +936,6 @@ function runNarrowViewportVars({
 			}
 		}
 	};
-	const body = {
-		appendChild(element: { isConnected?: boolean }) {
-			element.isConnected = true;
-		}
-	};
-
 	const context = vm.createContext({
 		HTMLElement: class HTMLElement {},
 		KeyboardEvent: class KeyboardEvent {
@@ -920,15 +945,6 @@ function runNarrowViewportVars({
 			observe() {}
 		},
 		document: {
-			body,
-			createElement() {
-				return {
-					isConnected: false,
-					offsetHeight: envInset,
-					setAttribute() {},
-					style: { cssText: "" }
-				};
-			},
 			documentElement,
 			querySelectorAll: () => [],
 			addEventListener() {}
@@ -943,15 +959,10 @@ function runNarrowViewportVars({
 			state: undefined
 		},
 		location: { href: "https://example.test/" },
-		navigator: virtualKeyboard
-			? {
-					virtualKeyboard: {
-						addEventListener() {},
-						boundingRect: virtualKeyboard,
-						overlaysContent: virtualKeyboard.overlaysContent ?? true
-					}
-				}
-			: {},
+		// No virtualKeyboard: the shipped page never enables overlaysContent, so
+		// the API reports a structural zero and shell.js does not read it. A stub
+		// here would only prove a branch that cannot run in the product.
+		navigator: {},
 		window: {
 			addEventListener() {},
 			innerHeight,
@@ -985,6 +996,11 @@ function runNarrowViewportVars({
 }
 
 describe("narrow overlay", () => {
+	// The inset means "keyboard overlap the viewport has NOT already excluded" -
+	// the iOS shape, where the visual viewport shrinks under a keyboard the layout
+	// viewport still counts. Where the layout viewport shrinks too (Android with
+	// interactive-widget=resizes-content) this is 0 on purpose and the
+	// keyboard-open baseline below is what notices.
 	test("computes keyboard inset from actual bottom overlap", () => {
 		expect(
 			runNarrowViewportVars({
@@ -994,22 +1010,15 @@ describe("narrow overlay", () => {
 
 		expect(
 			runNarrowViewportVars({
-				virtualKeyboard: { bottom: 800, height: 280, y: 520 },
 				visualViewport: { height: 800, offsetTop: 0 }
 			}).properties.get("--composery-touch-keyboard-inset")
-		).toBe("280px");
+		).toBe("0px");
 
+		// A viewport pushed down rather than shrunk (iOS scrolls the visual
+		// viewport to keep the focused field visible) is not keyboard overlap.
 		expect(
 			runNarrowViewportVars({
-				envInset: 220,
-				visualViewport: { height: 800, offsetTop: 0 }
-			}).properties.get("--composery-touch-keyboard-inset")
-		).toBe("220px");
-
-		expect(
-			runNarrowViewportVars({
-				virtualKeyboard: { bottom: 500, height: 200, y: 300 },
-				visualViewport: { height: 800, offsetTop: 0 }
+				visualViewport: { height: 800, offsetTop: 120 }
 			}).properties.get("--composery-touch-keyboard-inset")
 		).toBe("0px");
 	});
@@ -1074,11 +1083,11 @@ describe("narrow overlay", () => {
 		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
 		const touchGatePatch = readRepoFile(TOUCH_GATE);
 
-		expect(shellJs).toContain("bottomKeyboardOverlap");
+		expect(shellJs).toContain("visualViewportKeyboardInset");
 		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
 		expect(touchGatePatch).toContain("TOUCH_QUERY");
 		expect(touchGatePatch).not.toContain("keyboardInset");
-		expect(touchGatePatch).not.toContain("bottomKeyboardOverlap");
+		expect(touchGatePatch).not.toContain("KeyboardInset");
 	});
 
 	// The touch-editor patch creates the selection drag handles (caret + both range
@@ -1963,8 +1972,16 @@ describe("narrow overlay", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mobile viewport contract: every HTML surface we serve declares the same
-// viewport capabilities, and webviews repair theirs at runtime.
+// Mobile viewport contract: every top-level HTML surface we serve declares the
+// same viewport capabilities.
+//
+// Top-level only, and that is the whole rule. Chromium processes a viewport meta
+// and exposes env(safe-area-inset-*) for the main frame alone - measured on
+// Android Chrome 134, a subframe declaring `width=500, viewport-fit=cover` laid
+// out at its parent's 411px, exactly like a subframe declaring nothing, and read
+// every inset as 0 while the top frame read a real 24px bottom inset. So a
+// viewport meta on webview content (the pre page, the QR extension) is decoration
+// that reads as configuration, and none of those surfaces belongs in this list.
 // ---------------------------------------------------------------------------
 
 const VIEWPORT_PARTS = [
@@ -1972,28 +1989,53 @@ const VIEWPORT_PARTS = [
 	"interactive-widget=resizes-content"
 ];
 
+// Every viewport meta declared in a source, whatever surrounds it - the pages
+// wrap the attributes over several lines and the patch keeps them on one.
+const viewportMetas = (source: string) =>
+	[...source.matchAll(/<meta\b[^>]*\bname="viewport"[^>]*>/g)]
+		.map((meta) => /\bcontent="([^"]*)"/.exec(meta[0])?.[1])
+		.filter((content) => content !== undefined);
+
 describe("mobile viewport contract", () => {
-	test.each([
-		"packages/ide/overlay/src/browser/pages/error.html",
-		"packages/ide/overlay/src/browser/pages/auth.html",
-		"packages/ide/overlay/src/node/persistence/readiness.ts",
-		`${PATCHES_DIR}/web-client.diff`,
-		`${PATCHES_DIR}/web-client.diff`
-	])("%s declares the shared viewport parts", (path) => {
-		const content = readRepoFile(path);
-		for (const part of VIEWPORT_PARTS) {
-			expect(content).toContain(part);
+	// Read the metas, not the file. Asserting the two parts appear *somewhere* in
+	// the text passes just as happily on a file that declares three viewports and
+	// fixes one - and web-client.diff is exactly that shape, since a patch also
+	// carries the upstream lines it replaces.
+	const surfaces: [path: string, read: (text: string) => string][] = [
+		["packages/ide/overlay/src/browser/pages/error.html", (text) => text],
+		["packages/ide/overlay/src/browser/pages/auth.html", (text) => text],
+		["packages/ide/overlay/src/node/persistence/readiness.ts", (text) => text],
+		[`${PATCHES_DIR}/web-client.diff`, addedLines]
+	];
+
+	test.each(surfaces)("%s declares the shared viewport parts", (path, read) => {
+		const metas = viewportMetas(read(readRepoFile(path)));
+
+		// A surface with no viewport meta at all would otherwise pass vacuously.
+		expect(metas.length).toBeGreaterThan(0);
+		for (const meta of metas) {
+			for (const part of VIEWPORT_PARTS) {
+				expect(meta, `${path}: ${meta}`).toContain(part);
+			}
 		}
 	});
 
-	test("workbench pages carry the viewport contract via web-client.diff", () => {
-		const overlaysPatch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
-		expect(overlaysPatch).toContain(
-			"lib/vscode/src/vs/code/browser/workbench/callback.html"
-		);
-		expect(overlaysPatch).toContain(
-			"lib/vscode/src/vs/code/browser/workbench/workbench-dev.html"
-		);
+	// The other half of the rule: nothing we render into a webview declares one,
+	// because it would do nothing there while reading as though it did.
+	test("webview content declares no viewport of its own", () => {
+		expect(
+			viewportMetas(
+				readRepoFile(
+					"packages/ide/overlay/lib/vscode/extensions/composery-qr/extension.js"
+				)
+			)
+		).toEqual([]);
+
+		// One added viewport meta in the whole patch - the workbench page. A second
+		// would mean a webview page grew one back.
+		const patch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
+		expect(viewportMetas(addedLines(patch))).toHaveLength(1);
+		expect(patch).not.toContain("pre/fake.html");
 	});
 });
 
@@ -2044,7 +2086,7 @@ describe("adaptive favicon", () => {
 			"packages/ide/overlay/src/browser/pages/error.html",
 			"src/browser/pages/favicon.js"
 		],
-		[`${PATCHES_DIR}/web-client.diff`, "workbench-assets/favicon.js"]
+		[`${PATCHES_DIR}/web-client.diff`, "src/browser/pages/favicon.js"]
 	])(
 		"%s hands the SVG favicon the scheme-pinned pair and the script that swaps it",
 		(path, script) => {
@@ -2059,95 +2101,23 @@ describe("adaptive favicon", () => {
 			expect(content).toContain(script);
 		}
 	);
-});
 
-type WebviewViewportMeta = {
-	content?: string;
-	name?: string;
-	getAttribute(name: string): string | undefined;
-	setAttribute(name: string, value: string): void;
-};
-
-type WebviewViewportDocument = {
-	createElement(): WebviewViewportMeta;
-	head: { prepend(meta: WebviewViewportMeta): void };
-	querySelectorAll(): WebviewViewportMeta[];
-};
-
-function webviewViewportAfterEnsure(
-	initialContent?: string
-): string | undefined {
-	const webviewPatch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
-	const functionSource = extractAddedFunction(
-		webviewPatch,
-		"ensureMobileViewport"
-	);
-	const context = vm.createContext({});
-	vm.runInContext(
-		`${functionSource}; globalThis.ensureMobileViewport = ensureMobileViewport;`,
-		context
-	);
-
-	const metas: WebviewViewportMeta[] = [];
-	if (initialContent !== undefined) {
-		metas.push({
-			content: initialContent,
-			name: "viewport",
-			getAttribute(name: string) {
-				return name === "name" ? this.name : this.content;
-			},
-			setAttribute(name: string, value: string) {
-				if (name === "content") this.content = value;
-			}
-		});
-	}
-
-	const documentLike: WebviewViewportDocument = {
-		createElement() {
-			return {
-				content: "",
-				name: "",
-				getAttribute(name: string) {
-					return name === "name" ? this.name : this.content;
-				},
-				setAttribute(name: string, value: string) {
-					if (name === "content") this.content = value;
-				}
-			};
-		},
-		head: {
-			prepend(meta: WebviewViewportMeta) {
-				metas.unshift(meta);
-			}
-		},
-		querySelectorAll() {
-			return metas;
-		}
-	};
-
-	(
-		context as unknown as {
-			ensureMobileViewport(documentLike: WebviewViewportDocument): void;
-		}
-	).ensureMobileViewport(documentLike);
-
-	return metas[0]?.content;
-}
-
-describe("extension webviews", () => {
-	test("repairs viewport meta content at runtime", () => {
-		expect(webviewViewportAfterEnsure()).toBe(
-			"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
-		);
-		expect(webviewViewportAfterEnsure("width=device-width")).toBe(
-			"width=device-width, viewport-fit=cover, interactive-widget=resizes-content"
-		);
+	// One script for every surface, so the workbench and the auth pages cannot
+	// drift into two behaviours. It lives with the pages because that is the path
+	// all three can reach; the release step that carries pages JS across is what
+	// puts it there, so pin that too.
+	test("there is exactly one favicon script, and the release ships it", () => {
 		expect(
-			webviewViewportAfterEnsure(
-				"width=device-width, viewport-fit=cover, interactive-widget=resizes-content"
-			)
-		).toBe(
-			"width=device-width, viewport-fit=cover, interactive-widget=resizes-content"
+			existsSync(
+				resolve(
+					repoRoot,
+					"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/favicon.js"
+				)
+			),
+			"a second favicon script under workbench-assets"
+		).toBe(false);
+		expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
+			'cp "$BUILD/src/browser/pages/"*.js "$BUILD/release/src/browser/pages/"'
 		);
 	});
 });
@@ -3183,6 +3153,23 @@ describe("PWA install metadata", () => {
 		expect(added).toContain(
 			`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`
 		);
+	});
+
+	// The first-paint style sits directly beside those metas and is the colour a
+	// cold load actually shows, but nothing tied it to the themes: it could drift
+	// to a background the workbench then repaints a moment later, which reads as a
+	// flash and is only visible on a slow connection.
+	test("the pre-theme first paint is the theme background", () => {
+		const dark = background("composery-dark.json");
+		const light = background("composery-light.json");
+		const firstPaint = /<style>([\s\S]*?)<\/style>/.exec(added)?.[1];
+		expect(firstPaint).toEqual(expect.any(String));
+
+		const colours = [
+			...firstPaint!.matchAll(/background-color:\s*(#\w+)/g)
+		].map((match) => match[1]);
+		expect(colours.length).toBeGreaterThan(0);
+		expect([...new Set(colours)].sort()).toEqual([light, dark].sort());
 	});
 });
 

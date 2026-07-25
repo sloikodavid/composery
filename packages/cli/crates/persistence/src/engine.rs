@@ -21,15 +21,21 @@ use anyhow::{Context, Result, bail};
 use crate::{internal::StateDb, layout, paths::Paths};
 
 /// Whether the overlay engine's boot path (mount / pivot / upper-hygiene in
-/// `entrypoint.sh`) is finished and tested.
+/// `init/overlay.sh`, the daemon stand-down, the hygiene pass) is finished and
+/// **proven end to end on a booted container**.
 ///
-/// While this is `false`, `auto` never selects overlay and an explicit
-/// `overlay` pin fails loudly, so no half-built overlay path can ever touch a
-/// real delta - a half-working overlay is far worse than an unfinished one.
-/// `select` already covers both values, so finishing the engine is a one-line
-/// flip here plus wiring the entrypoint's overlay branch.
+/// Still `false`. The code below and in `overlay.rs` is complete and its unit
+/// tests pass, but nothing has yet booted a real container onto an overlay root
+/// and shown systemd up, files surviving a recreate, an upgrade landing, and
+/// DNS working after the pivot. Until that harness runs green
+/// (`tests/overlay-engine/`), `auto` never selects overlay and an explicit
+/// `overlay` pin fails loudly, so no unproven mount path can reach a real
+/// delta - a half-working overlay is far worse than an unfinished one.
 ///
-/// ponytail: single scaffolding gate, deliberately a `const` not a config knob.
+/// Flipping this to `true` is the last step of that verification, not a
+/// prerequisite for it.
+///
+/// ponytail: single engine gate, deliberately a `const` not a config knob.
 pub const OVERLAY_ENGINE_READY: bool = false;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,10 +165,8 @@ pub fn select_and_record(paths: &Paths) -> Result<Selection> {
 /// and work dirs sit on the real `/data` volume (per the spike, a `/tmp` probe
 /// would test the wrong filesystem's xattr support), then unmount and clean up.
 /// Returns the real failure - `EPERM` at `mount()` when unprivileged - so an
-/// explicit `overlay` pin can surface it.
-///
-/// Only ever called once `OVERLAY_ENGINE_READY` is flipped on; part of the
-/// overlay engine still under construction (see the handover in the PR).
+/// explicit `overlay` pin can surface it. The full boot then rebuilds the same
+/// overlay for real in `init/overlay.sh`; this only decides the engine.
 #[cfg(target_os = "linux")]
 pub fn probe_overlay(volume_dir: &Path) -> Result<()> {
     use std::ffi::CString;
@@ -303,11 +307,12 @@ mod tests {
 
     #[test]
     fn this_build_ships_with_overlay_gated_off() {
-        // The safe A+B floor: auto resolves to copy everywhere until the overlay
-        // engine is finished. Driven through the shipped constant, so flipping it
-        // to true (before the entrypoint's overlay branch and the daemon's
-        // under-overlay behaviour are wired) makes the panic-probe fire and this
-        // test fail.
+        // The overlay code is written and unit-tested, but nothing has booted a
+        // container onto an overlay root yet, so the shipped constant is still
+        // off and `auto` resolves to copy everywhere. Driven through the real
+        // constant: flipping it on without the boot harness passing makes the
+        // probe below fire and this test fail, which is the point - the gate
+        // moves as the last step of verification, never ahead of it.
         let selection = select(Request::Auto, OVERLAY_ENGINE_READY, || {
             panic!("must not probe while overlay is gated off")
         })

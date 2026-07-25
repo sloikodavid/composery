@@ -152,6 +152,7 @@ packages/
           lib.rs
           lifecycle.rs
           metadata.rs
+          overlay.rs
           paths.rs
           prune.rs
           public.rs
@@ -200,7 +201,6 @@ packages/
                 browser/
                   workbench/
                     workbench-assets/
-                      favicon.js
                       fonts.css
                       geist-mono.woff2
                       inter.woff2
@@ -608,6 +608,7 @@ packages/
           sshKeys.test.ts
           sshKeys.ts
         workflows/
+          boxWorkflow.test.ts
           boxWorkflow.ts
           changeBoxPassword.ts
           changeBoxSlug.ts
@@ -791,6 +792,7 @@ packages/
     vercel.json
     vitest.config.ts
 prompts/
+  claudes.md
   green.md
   nugget.md
   REFACTOR.md
@@ -836,6 +838,7 @@ rootfs/
   opt/
     composery/
       init/
+        overlay.sh
         supervisor.sh
         systemd.sh
       entrypoint.sh
@@ -916,6 +919,8 @@ tests/
   fixtures/
     cert.pem
     key.pem
+  overlay-engine/
+    Dockerfile
   support/
     patchSource.ts
   auth-routes.test.ts
