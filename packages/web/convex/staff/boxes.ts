@@ -35,7 +35,7 @@ import { readGlobalSettings } from "../settings";
 import { startWorkflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
-import { latestRebuild, latestRepair, staffBox } from "../boxes/boxViews";
+import { latestRepair, staffBox } from "../boxes/boxViews";
 import {
 	markSnapshotDeleting,
 	snapshotView,
@@ -298,8 +298,7 @@ export const boxDetail = query({
 			user: user ? publicUser(user) : null,
 			subscription,
 			suspendedReason,
-			repair: await latestRepair(ctx.db, box._id),
-			rebuild: await latestRebuild(ctx.db, box._id)
+			repair: await latestRepair(ctx.db, box._id)
 		};
 	}
 });
@@ -540,7 +539,7 @@ export const recoveryStatus = action({
 	}
 });
 
-export const recover = action({
+export const repair = action({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
@@ -550,34 +549,15 @@ export const recover = action({
 		);
 		if (!box) throw new ConvexError("Box not found.");
 		// Null means an identical repair is already in flight; reporting "Repair
-		// started" over a request that started nothing is the same lie as a
-		// repair that never reports an outcome.
-		const operationId = await startBoxOperation(ctx, box._id, "recover", {
-			idempotencyKey: `staff-recover:${box._id}`
+		// started" over a request that started nothing is the same lie as an
+		// operation that never reports an outcome. A retry after a failure reuses
+		// this same key while the failed operation is settled, so it starts a fresh
+		// repair that resumes from the box's parking volume.
+		const operationId = await startBoxOperation(ctx, box._id, "repair", {
+			idempotencyKey: `staff-repair:${box._id}`
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
-		}
-	}
-});
-
-export const rebuild = action({
-	args: { boxId: v.id("boxes") },
-	handler: async (ctx, args): Promise<void> => {
-		await requireCapabilityInAction(ctx, "box_operations");
-		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box) throw new ConvexError("Box not found.");
-		// Null means an identical rebuild is already in flight; reporting "Rebuild
-		// started" over a request that started nothing is the same lie as an
-		// operation that never reports an outcome.
-		const operationId = await startBoxOperation(ctx, box._id, "rebuild", {
-			idempotencyKey: `staff-rebuild:${box._id}`
-		});
-		if (!operationId) {
-			throw new ConvexError("This box is already being rebuilt.");
 		}
 	}
 });

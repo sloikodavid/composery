@@ -224,8 +224,7 @@ export const markOperationFailed = internalMutation({
 			"delete",
 			"reset",
 			"restore",
-			"recover",
-			"rebuild"
+			"repair"
 		]).has(operationType);
 		await sendStaffAlert(ctx, {
 			key: `box-operation-failed:${args.operationId}`,
@@ -303,8 +302,8 @@ export const swapSlug = internalMutation({
 	}
 });
 
-// Repair leaves the box exactly where it started - "running" - so this only
-// clears the transient `repairing` status and settles the operation the dialog
+// A repair ends where reset does - a healthy "running" box - so this only clears
+// the transient `repairing` status and settles the operation the Repair dialog
 // reads for the outcome.
 export const markRepairSucceeded = internalMutation({
 	args: {
@@ -325,7 +324,7 @@ export const markRepairSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.recovery_succeeded");
+		await appendBoxEvent(ctx, box, "box.repair_succeeded");
 	}
 });
 
@@ -354,7 +353,7 @@ export const markResetSucceeded = internalMutation({
 
 // Persist the parking volume the instant Hetzner creates it, before anything is
 // copied to it. Stage starts at "parking" (the box's server still holds the
-// authoritative files). A rebuild that dies after this can be retried and will
+// authoritative files). A repair that dies after this can be retried and will
 // find the volume instead of orphaning it.
 export const recordParkingVolume = internalMutation({
 	args: {
@@ -376,10 +375,10 @@ export const recordParkingVolume = internalMutation({
 	}
 });
 
-// The one-way gate of a rebuild: only after the copy onto the parking volume has
+// The one-way gate of a repair: only after the copy onto the parking volume has
 // verified does the box cross into "restoring", where the volume becomes the
 // authoritative copy and the destructive server rebuild is allowed to run. A
-// resumed rebuild reads this to know it must never copy server -> volume again.
+// resumed repair reads this to know it must never copy server -> volume again.
 export const markParkingRestoring = internalMutation({
 	args: {
 		boxId: v.id("boxes")
@@ -416,32 +415,6 @@ export const clearParkingVolume = internalMutation({
 	}
 });
 
-// A rebuild ends where reset does - a healthy "running" box - so this only
-// clears the transient `rebuilding` status and settles the operation the Rebuild
-// dialog reads for the outcome.
-export const markRebuildSucceeded = internalMutation({
-	args: {
-		boxId: v.id("boxes"),
-		operationId: v.id("box_operations")
-	},
-	handler: async (ctx, args) => {
-		const box = await ctx.db.get(args.boxId);
-		if (!box) throw new ConvexError("Box not found.");
-
-		const timestamp = Date.now();
-		await ctx.db.patch(args.boxId, {
-			status: "running",
-			updated_at: timestamp
-		});
-		await ctx.db.patch(args.operationId, {
-			status: "succeeded",
-			finished_at: timestamp,
-			updated_at: timestamp
-		});
-		await appendBoxEvent(ctx, box, "box.rebuild_succeeded");
-	}
-});
-
 export const markDeleted = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
@@ -453,7 +426,7 @@ export const markDeleted = internalMutation({
 
 		const timestamp = Date.now();
 		// deleteRuntime already removed the server, which detaches any attached
-		// volume, so the parking volume (if a rebuild was mid-flight) is now a pure
+		// volume, so the parking volume (if a repair was mid-flight) is now a pure
 		// orphan. Remove it before the patch below drops the pointer; reconciliation
 		// is the backstop if this best-effort delete does not land.
 		const parkingVolumeId = box.parking_volume_id;

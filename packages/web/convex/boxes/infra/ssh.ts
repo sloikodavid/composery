@@ -72,9 +72,9 @@ exit 1
 `;
 
 // Writes the three runtime files to /opt/composery-web. Shared by every script
-// that has to lay the compose project down before acting on it (bootstrap,
-// repair, and a rebuild's post-reboot materialize), so the one place a file's
-// path or heredoc delimiter is decided cannot drift between them.
+// that has to lay the compose project down before acting on it (bootstrap, and a
+// repair's post-reboot materialize and force-recreate bring-up), so the one place
+// a file's path or heredoc delimiter is decided cannot drift between them.
 function writeRuntimeFilesScript({
 	caddyfile,
 	compose,
@@ -132,10 +132,10 @@ export function sshFailure(stderr: string, code: number | null) {
 	);
 }
 
-// Where a Rebuild mounts the attached parking volume on the host.
+// Where a Repair mounts the attached parking volume on the host.
 export const PARKING_MOUNT = "/mnt/composery-parking";
 
-// The fidelity flags a Rebuild's copies stand or fall on. The box's files are a
+// The fidelity flags a Repair's copies stand or fall on. The box's files are a
 // persistence delta, not ordinary files: it stores xattrs (including the
 // `trusted.overlay.*` set on the overlay upper), ACLs, file capabilities,
 // hardlinks, device nodes - the whiteouts are character devices 0:0 - and sparse
@@ -148,7 +148,7 @@ export const PARKING_MOUNT = "/mnt/composery-parking";
 const RSYNC_FIDELITY_FLAGS = "-aHAXS --numeric-ids";
 
 // rsync is tiny and usually preinstalled on the Docker-CE host image, but not
-// guaranteed; install it if missing so a rebuild fails loudly on a real problem
+// guaranteed; install it if missing so a repair fails loudly on a real problem
 // rather than a missing tool.
 const ENSURE_RSYNC = `command -v rsync >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync; }`;
 
@@ -200,7 +200,7 @@ printf 'used_bytes=%s\\n' "$total"`;
 
 // Copy every box volume onto the parking volume. The stack is stopped first so
 // the copy is a consistent, quiescent snapshot rather than a moving target - the
-// box is down for the whole rebuild anyway.
+// box is down for the whole repair anyway.
 export function copyToParkingScript(volumeId: number) {
 	return `set -euo pipefail
 ${ENSURE_RSYNC}
@@ -450,8 +450,7 @@ export const inspectRuntime = internalAction({
 });
 
 // The runtime files a box's SSH scripts write, built from its current row. One
-// place so bootstrap, repair, and a rebuild's materialize can never render them
-// differently.
+// place so bootstrap and a repair's steps can never render them differently.
 function runtimeArtifactsForBox(box: Doc<"boxes">) {
 	if (!box.runtime_image) {
 		throw new Error("Box has no runtime image.");
@@ -609,7 +608,7 @@ docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T caddy caddy rel
 	}
 });
 
-// -- Rebuild (deep repair: clean host, current files) -----------------------
+// -- Repair (clean host, current files) -------------------------------------
 
 function requireBoxHost(box: Doc<"boxes">) {
 	if (!box.hetzner_ipv4) {
@@ -620,8 +619,8 @@ function requireBoxHost(box: Doc<"boxes">) {
 	return box.hetzner_ipv4;
 }
 
-// Rebuild's precondition: the host must answer over SSH. A host whose networking
-// or sshd is broken cannot be reached by any of the rebuild steps, so we say so
+// Repair's precondition: the host must answer over SSH. A host whose networking
+// or sshd is broken cannot be reached by any of the repair steps, so we say so
 // up front rather than failing five steps in - Restore is the tool for that box.
 export const requireReachableHost = internalAction({
 	args: { boxId: v.id("boxes") },
@@ -635,7 +634,7 @@ export const requireReachableHost = internalAction({
 			await runSsh(sshTarget(host), "true", { timeoutMs: 30_000 });
 		} catch (error) {
 			throw new Error(
-				`This box's host is not reachable over SSH, so it cannot be rebuilt. Recover it with Restore instead. (${error instanceof Error ? error.message : String(error)})`
+				`This box's host is not reachable over SSH, so it cannot be repaired. Restore it instead. (${error instanceof Error ? error.message : String(error)})`
 			);
 		}
 	}

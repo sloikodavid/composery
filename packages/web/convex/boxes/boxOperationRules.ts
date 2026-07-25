@@ -23,10 +23,9 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 		"resetting",
 		"reset_failed",
 		"repairing",
+		"repair_failed",
 		"restoring",
 		"restore_failed",
-		"rebuilding",
-		"rebuild_failed",
 		"suspending",
 		"suspended",
 		"unsuspending",
@@ -41,18 +40,14 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	unsuspend: ["suspended"],
 	restore: ["running", "restore_failed"],
 	snapshot: ["running"],
-	// Not "stopped": stopping a box powers the server off, so every repair step
-	// runs over SSH against a host that cannot answer. Offering it there buys a
-	// guaranteed five-attempt failure and a critical staff alert for a box whose
-	// owner only had to start it.
-	recover: ["running", "provisioning_failed", "reset_failed", "restore_failed"],
-	// Rebuild copies the box's files off, gives it a clean host, and copies them
+	// Repair copies the box's files off, gives it a clean host, and copies them
 	// back, so it needs a running box with real files and a reachable host. Not
 	// "provisioning_failed": a box that never provisioned has no files worth
 	// preserving (and may have no server) - Reset or a provision retry is the
-	// right tool there. `rebuild_failed` is included so a failed rebuild can be
-	// retried, resuming from its parking volume.
-	rebuild: ["running", "reset_failed", "restore_failed", "rebuild_failed"]
+	// right tool there. Not "stopped": a powered-off host cannot answer over SSH,
+	// so every step would time out. `repair_failed` is included so a failed
+	// repair can be retried, resuming from its parking volume.
+	repair: ["running", "reset_failed", "restore_failed", "repair_failed"]
 };
 
 export const ACTIVE_OPERATION_STATUSES = [

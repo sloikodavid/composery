@@ -38,17 +38,17 @@ queueing, bouncing, complaints, failure, or delivery delay needs attention.
 
 ## Alert policy
 
-| Alert                | When it opens                                                                                             | Deduplication                                            |
-| -------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Checkout state       | Manual or Hetzner circuit-breaker enable/disable transition                                               | Once per transition                                      |
-| Automatic suspension | Protection is enabled or disabled                                                                         | Once per transition                                      |
-| Capacity             | Allocations are removed, or can no longer fit one complete box package                                    | Once per removal and capacity episode, plus one recovery |
-| Box operation        | A provision, delete, reset, restore, recover, lifecycle, password, slug, or snapshot workflow ends failed | Once per operation                                       |
-| Abuse/resource flag  | A sustained threshold creates a new flag; auto-suspension is marked critical                              | Once per flag                                            |
-| Paid fulfillment     | Paid checkout lost capacity/slug, lacks Terms acceptance, or cannot be linked to an intent                | Once per checkout/order                                  |
-| Account deletion     | Deletion remains unfinished for 24 hours                                                                  | Once per deletion request                                |
-| Reconciliation       | Polar subscription or Hetzner orphan-resource reconciliation fails                                        | Rate-limited by time window                              |
-| Orphaned server      | Hetzner server has no live database owner after the grace period                                          | Once per server set                                      |
+| Alert                | When it opens                                                                                            | Deduplication                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Checkout state       | Manual or Hetzner circuit-breaker enable/disable transition                                              | Once per transition                                      |
+| Automatic suspension | Protection is enabled or disabled                                                                        | Once per transition                                      |
+| Capacity             | Allocations are removed, or can no longer fit one complete box package                                   | Once per removal and capacity episode, plus one recovery |
+| Box operation        | A provision, delete, reset, restore, repair, lifecycle, password, slug, or snapshot workflow ends failed | Once per operation                                       |
+| Abuse/resource flag  | A sustained threshold creates a new flag; auto-suspension is marked critical                             | Once per flag                                            |
+| Paid fulfillment     | Paid checkout lost capacity/slug, lacks Terms acceptance, or cannot be linked to an intent               | Once per checkout/order                                  |
+| Account deletion     | Deletion remains unfinished for 24 hours                                                                 | Once per deletion request                                |
+| Reconciliation       | Polar subscription or Hetzner orphan-resource reconciliation fails                                       | Rate-limited by time window                              |
+| Orphaned server      | Hetzner server has no live database owner after the grace period                                         | Once per server set                                      |
 
 Expected events do not email: unpaid checkout expiry/cancellation, customer
 cancellation/refund, successful operations, routine snapshot cleanup, and an

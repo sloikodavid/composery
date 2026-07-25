@@ -13,7 +13,6 @@ import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
 import { FlagsTable } from "@/components/boxes/flags-table";
 import { MonitorCard } from "@/components/boxes/monitor-card";
 import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
-import { RebuildDialog } from "@/components/boxes/rebuild-dialog";
 import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
@@ -297,8 +296,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 	const changeSlug = useMutation(api.staff.boxes.changeBoxSlug);
 	const suspendBox = useAction(api.staff.boxes.suspendBox);
 	const unsuspendBox = useAction(api.staff.boxes.unsuspendBox);
-	const recover = useAction(api.staff.boxes.recover);
-	const rebuild = useAction(api.staff.boxes.rebuild);
+	const repair = useAction(api.staff.boxes.repair);
 	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.staff.boxes.runtimeLogs);
 	const setUserSuspended = useAction(api.staff.users.setUserSuspended);
@@ -551,21 +549,10 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 									check={() => recoveryStatus({ boxId: box.id })}
 									onRepair={() =>
 										run("repair", "Repair started", () =>
-											recover({ boxId: box.id })
+											repair({ boxId: box.id })
 										)
 									}
 									repair={detail.repair}
-									slug={box.slug}
-								/>
-								<RebuildDialog
-									boxStatus={box.status}
-									busy={busy}
-									onRebuild={() =>
-										run("rebuild", "Rebuild started", () =>
-											rebuild({ boxId: box.id })
-										)
-									}
-									rebuild={detail.rebuild}
 									slug={box.slug}
 								/>
 								<ResetDialog

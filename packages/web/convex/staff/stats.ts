@@ -32,8 +32,8 @@ type CappedCount = {
 const FAILED_STATUSES: BoxStatus[] = [
 	"provisioning_failed",
 	"reset_failed",
+	"repair_failed",
 	"restore_failed",
-	"rebuild_failed",
 	"delete_failed"
 ];
 
