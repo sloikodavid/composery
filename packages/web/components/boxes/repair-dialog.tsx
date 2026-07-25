@@ -60,7 +60,7 @@ function repairNotice(repair: RepairOperation | null) {
 	if (repair.status === "pending" || repair.status === "running") {
 		return {
 			tone: "muted" as Tone,
-			text: "Repairing this box now. It copies your files off, gives the box a clean host, and copies them back - this can take several minutes. The checks above update when it finishes."
+			text: "Repairing this box now. The checks above update when it finishes."
 		};
 	}
 	if (repair.status === "failed") {
@@ -77,7 +77,7 @@ function repairNotice(repair: RepairOperation | null) {
 
 function unavailableReason(boxStatus: BoxStatus) {
 	if (boxStatus === "repairing") {
-		return "A repair is already running on this box. It can take several minutes.";
+		return "A repair is already running on this box.";
 	}
 	if (boxStatus === "stopped" || boxStatus === "suspended") {
 		return "This box is not running. Start it before repairing.";
@@ -87,10 +87,9 @@ function unavailableReason(boxStatus: BoxStatus) {
 
 // Owner and console box pages share this. It shows a read-only picture of every
 // layer of the box, then offers one data-preserving Repair action - the box's
-// single recovery lever. Repair gives the box a clean host while keeping its
-// files, so the typed-slug confirmation guards against a misclick and the copy
-// is honest about the downtime and the reachable-host precondition. The caller's
-// check loads the status and onRepair performs the repair.
+// single recovery lever. The typed-slug confirmation guards against a misclick,
+// since a repair takes the box offline for minutes. The caller's check loads the
+// status and onRepair performs the repair.
 export function RepairDialog({
 	boxStatus,
 	busy,
@@ -162,10 +161,7 @@ export function RepairDialog({
 					<DialogHeader>
 						<DialogTitle>Repair {slug}</DialogTitle>
 						<DialogDescription>
-							Gives the box a brand-new host and keeps all your files. The box
-							is offline for several minutes while its files are copied off, the
-							host is rebuilt from a clean image, and the files are copied back
-							and checked before anything is deleted.
+							Rebuilds the box from a clean setup while preserving files.
 						</DialogDescription>
 					</DialogHeader>
 
@@ -250,15 +246,6 @@ export function RepairDialog({
 							</p>
 						</div>
 					)}
-
-					<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
-						<ToneIcon className="mt-0.5" tone="warn" />
-						<p className="min-w-0 flex-1 text-sm text-muted-foreground">
-							Needs a reachable host. If the box&apos;s networking or SSH is
-							broken, use Restore instead - a repair can&apos;t reach it to save
-							your files.
-						</p>
-					</div>
 
 					{notice ? (
 						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
