@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import { workflow } from "./boxWorkflow";
+import { operationError, workflow } from "./boxWorkflow";
 
 export const changeBoxSlug = workflow.define({
 	args: {
@@ -91,7 +91,7 @@ export const changeBoxSlug = workflow.define({
 			await step.runMutation(internal.boxes.boxStatus.markOperationFailed, {
 				boxId: args.boxId,
 				operationId: args.operationId,
-				error: error instanceof Error ? error.message : String(error),
+				error: operationError(error),
 				eventType: "box.slug_change_failed",
 				targetBoxStatus: "running"
 			});

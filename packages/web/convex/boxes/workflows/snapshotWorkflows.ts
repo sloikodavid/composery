@@ -5,7 +5,7 @@ import {
 	SNAPSHOT_CAPTURE_DEADLINE_MS,
 	snapshotPollDelayMs
 } from "../snapshotPolicy";
-import { defineBoxWorkflow } from "./boxWorkflow";
+import { defineBoxWorkflow, operationError } from "./boxWorkflow";
 
 // Capture holds the single-active-operation lock: a Hetzner `create_image` is a
 // server action and Hetzner serializes server actions, so a concurrent
@@ -81,7 +81,7 @@ export const captureSnapshot = defineBoxWorkflow({
 		} catch (error) {
 			await step.runMutation(internal.boxes.boxSnapshots.failSnapshot, {
 				snapshotRowId,
-				error: error instanceof Error ? error.message : String(error)
+				error: operationError(error)
 			});
 			throw error;
 		}

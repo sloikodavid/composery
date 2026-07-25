@@ -104,6 +104,19 @@ docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${repair ? " --for
 ${repair ? AWAIT_IDE : ""}`;
 }
 
+// The whole stderr stream is not an error message. `docker compose` narrates
+// itself there ("caddy Pulling", "Container composery Started"), so a failing
+// script hands back a paragraph of healthy-looking progress with the one real
+// sentence buried at the end - and that paragraph is what the box owner reads
+// in the Repair dialog. The last line is the failure; everything above it is
+// the run that led there, and the logs already hold that.
+export function sshFailure(stderr: string, code: number | null) {
+	const lines = stderr.trim().split("\n");
+	return (
+		lines[lines.length - 1].trim() || `SSH command failed with exit ${code}.`
+	);
+}
+
 export async function runSsh(
 	target: SshTarget,
 	command: string,
@@ -163,11 +176,7 @@ export async function runSsh(
 						stream.on("error", finish);
 						stream.on("close", (code: number | null) => {
 							if (code && code !== 0) {
-								finish(
-									new Error(
-										stderr.trim() || `SSH command failed with exit ${code}.`
-									)
-								);
+								finish(new Error(sshFailure(stderr, code)));
 								return;
 							}
 							finish(undefined, { stdout, stderr });

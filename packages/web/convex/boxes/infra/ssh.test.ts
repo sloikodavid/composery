@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { renderRuntimeArtifacts } from "./runtimeArtifacts";
-import { INSPECT_SCRIPT, bootstrapScript, parseRuntimeInspection } from "./ssh";
+import {
+	INSPECT_SCRIPT,
+	bootstrapScript,
+	parseRuntimeInspection,
+	sshFailure
+} from "./ssh";
+
+describe("ssh failures", () => {
+	// What a failed repair actually leaves on stderr: compose progress, then the
+	// one sentence the owner needs.
+	it("reports the failure, not the progress that led to it", () => {
+		expect(
+			sshFailure(
+				`caddy Pulling
+composery Pulling
+Container composery Started
+The runtime came up but its editor never started.
+`,
+				1
+			)
+		).toBe("The runtime came up but its editor never started.");
+	});
+
+	it("falls back to the exit code when the script said nothing", () => {
+		expect(sshFailure("", 137)).toBe("SSH command failed with exit 137.");
+		expect(sshFailure("\n  \n", 2)).toBe("SSH command failed with exit 2.");
+	});
+});
 
 describe("runtime inspection", () => {
 	it("parses known component states and ignores untrusted extra output", () => {

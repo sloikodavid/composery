@@ -21,6 +21,19 @@ export async function startWorkflow(
 	await workflow.start(ctx, workflowRef, args, { startAsync: true });
 }
 
+// Convex reports a throw from an action as "Uncaught Error: <message>" followed
+// by a server stack trace, and an operation's error is shown to the box owner
+// verbatim. Keep the sentence, drop the plumbing - a file and line number in
+// our backend is not something the owner can act on.
+export function operationError(error: unknown) {
+	const raw = error instanceof Error ? error.message : String(error);
+	const message = raw
+		.split(/\n\s*at /)[0]
+		.replace(/^Uncaught \w*Error: /, "")
+		.trim();
+	return message || "Something went wrong.";
+}
+
 type BoxWorkflowArgs<Extra extends PropertyValidators> = {
 	boxId: Id<"boxes">;
 	operationId: Id<"box_operations">;
@@ -58,7 +71,7 @@ export function defineBoxWorkflow<
 				await step.runMutation(internal.boxes.boxStatus.markOperationFailed, {
 					boxId: typedArgs.boxId,
 					operationId: typedArgs.operationId,
-					error: error instanceof Error ? error.message : String(error),
+					error: operationError(error),
 					eventType: config.onFailure.eventType,
 					targetBoxStatus: config.onFailure.targetBoxStatus
 				});
