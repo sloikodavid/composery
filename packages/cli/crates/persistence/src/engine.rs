@@ -24,19 +24,20 @@ use crate::{internal::StateDb, layout, paths::Paths};
 /// `init/overlay.sh`, the daemon stand-down, the hygiene pass) is finished and
 /// **proven end to end on a booted container**.
 ///
-/// Still `false`. The code below and in `overlay.rs` is complete and its unit
-/// tests pass, but nothing has yet booted a real container onto an overlay root
-/// and shown systemd up, files surviving a recreate, an upgrade landing, and
-/// DNS working after the pivot. Until that harness runs green
-/// (`tests/overlay-engine/`), `auto` never selects overlay and an explicit
-/// `overlay` pin fails loudly, so no unproven mount path can reach a real
-/// delta - a half-working overlay is far worse than an unfinished one.
+/// `true`: `tests/overlay-engine/run.sh` boots real privileged containers on the
+/// real `rootfs/` tree and a real `composery` binary, and shows systemd as PID 1
+/// on an overlay root, files surviving a recreate, an image upgrade landing over
+/// a live upper, the hygiene pass reconciling a stale whiteout while keeping a
+/// valid one, DNS resolving after the pivot, and an unprivileged host falling
+/// back to copy while an explicit `overlay` pin fails loudly.
 ///
-/// Flipping this to `true` is the last step of that verification, not a
-/// prerequisite for it.
+/// That harness is what this constant answers to. Flipping it is the last step
+/// of the verification, never a prerequisite for it: while it was `false`, `auto`
+/// could not select overlay and an explicit pin refused, so no unproven mount
+/// path could reach a real delta. Turn it back off if the harness ever goes red.
 ///
 /// ponytail: single engine gate, deliberately a `const` not a config knob.
-pub const OVERLAY_ENGINE_READY: bool = false;
+pub const OVERLAY_ENGINE_READY: bool = true;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Engine {
@@ -306,17 +307,21 @@ mod tests {
     }
 
     #[test]
-    fn this_build_ships_with_overlay_gated_off() {
-        // The overlay code is written and unit-tested, but nothing has booted a
-        // container onto an overlay root yet, so the shipped constant is still
-        // off and `auto` resolves to copy everywhere. Driven through the real
-        // constant: flipping it on without the boot harness passing makes the
-        // probe below fire and this test fail, which is the point - the gate
-        // moves as the last step of verification, never ahead of it.
-        let selection = select(Request::Auto, OVERLAY_ENGINE_READY, || {
-            panic!("must not probe while overlay is gated off")
+    fn this_build_ships_with_the_overlay_engine_ready() {
+        // `tests/overlay-engine/run.sh` proves the engine on a booted container,
+        // so the shipped constant is on: `auto` probes, a successful probe gives
+        // overlay, a failing one still falls back to copy. Both run through the
+        // real constant, so turning the gate back off flips both outcomes and
+        // fails here rather than quietly changing which engine boxes run.
+        let overlay = select(Request::Auto, OVERLAY_ENGINE_READY, || Ok(())).unwrap();
+        assert_eq!(overlay.engine, Engine::Overlay);
+        assert!(overlay.reason.contains("probe succeeded"));
+
+        let fallback = select(Request::Auto, OVERLAY_ENGINE_READY, || {
+            anyhow::bail!("EPERM")
         })
         .unwrap();
-        assert_eq!(selection.engine, Engine::Copy);
+        assert_eq!(fallback.engine, Engine::Copy);
+        assert!(fallback.reason.contains("using copy"));
     }
 }

@@ -4,20 +4,22 @@ description: How Composery keeps your changes across restarts with the persisten
 ---
 
 Composery is a container, but it should feel like a machine whose state survives
-restarts. The `persistence` daemon compares the live root filesystem against an image
-baseline and writes only your deltas to `/data/persistence`. Mounting one durable volume
-at `/data` is the only hard requirement for [self-hosting](self-hosting/index.md).
+restarts. Persistence keeps only your changes to the image - your delta - on the `/data`
+volume, and mounting one durable volume there is the only hard requirement for
+[self-hosting](self-hosting/index.md). Two [engines](#engines) implement that, and which
+one a box runs changes nothing about the promise.
 
-The same delta model is what makes image upgrades safe: a new image ships a new baseline,
-your deltas re-apply on top, and every file you never touched moves to the new version. See
+The delta model is what makes image upgrades safe: a new image ships new base contents,
+your changes stay on top, and every file you never touched moves to the new version. See
 [Updating](self-hosting/index.md#updating) for the procedure.
 
 `/data` is owned by the normal `user` account and is the direct durable disk. Put
 databases, object stores, large build artifacts, and other high-volume state there. Files
-under `/data` occupy the volume once. Files elsewhere still behave like ordinary machine
-files, but a changed file occupies both the container's writable layer and its durable
-delta copy; a 10 GB changed file outside `/data` therefore consumes roughly 20 GB of the
-host disk. `df -h /data` shows the durable disk's ordinary filesystem usage.
+under `/data` occupy the volume once, under either engine. Files elsewhere behave like
+ordinary machine files; under the copy engine a changed one occupies both the container's
+writable layer and its delta copy, so a 10 GB changed file outside `/data` costs roughly
+20 GB of host disk (the overlay engine stores it once). `df -h /data` shows the durable
+disk's ordinary filesystem usage.
 
 The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or a Docker
 named volume). Network filesystems such as NFS are not supported: persistence relies on
@@ -35,18 +37,37 @@ Persistence has two engines behind one contract, selected by `COMPOSERY_PERSISTE
   [Bounded observation](#bounded-observation)).
 - **overlay** — a kernel-maintained engine that makes the root filesystem an overlayfs
   whose upper layer lives on the `/data` volume, so the kernel records the delta directly.
-  It needs a privileged container (`CAP_SYS_ADMIN`). _Not yet available_: `auto` resolves
-  to the copy engine, and an explicit `COMPOSERY_PERSISTENCE=overlay` stops the container
-  rather than pretending.
+  It needs a privileged container (`CAP_SYS_ADMIN`), which means Composery Cloud, the
+  `systemd` compose recipes, and any host you own; a managed platform that cannot grant
+  privileges gets the copy engine. Because the kernel maintains the delta, there is no
+  restore pass at boot and nothing to watch while you work.
 
 What is identical across engines: one durable volume at `/data`, the same delta model, the
 same image-upgrade promise (a new image ships a new baseline/lower, your changes stay on
 top, every file you never touched moves to the new version), and the same integrity
 boundary — the paths under [What persists](#what-persists) are never captured either way.
-What differs is only _how_ the delta is maintained: a userspace daemon under copy, the
-kernel under overlay. `auto` probes by attempting a real overlay mount on the `/data`
-volume and falls back to copy on any failure; `composery persistence status` reports the
-selected engine and the reason it was chosen.
+`auto` probes by attempting a real overlay mount on the `/data` volume and falls back to
+copy on any failure; an explicit `COMPOSERY_PERSISTENCE=overlay` that cannot be satisfied
+stops the container with the probe's own error rather than quietly running copy, and
+`composery persistence status` always reports the selected engine and the reason.
+
+What honestly differs:
+
+|               | copy                                                                                        | overlay                                   |
+| ------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Boot          | replays the delta before the editor starts, so a large delta costs boot time                | the kernel mounts it; nothing to replay   |
+| While running | a daemon watches and copies changes; a change is durable within one audit interval at worst | every write is already in the upper layer |
+| Disk          | a changed file outside `/data` occupies both the container layer and its delta copy         | one copy                                  |
+| Deletions     | recorded as tombstones                                                                      | recorded as overlayfs whiteouts           |
+
+One consequence is worth knowing about. Under either engine a file you delete stays
+deleted across an upgrade, which is what you want — but an upgrade that reintroduces
+content at a path you had deleted, or adds files inside a directory you had replaced
+wholesale, has to decide between your change and the image's. Overlay reconciles this at
+boot: a deletion whose file the new image genuinely changed is dropped so the new version
+arrives, a deletion the image left alone is kept, and a directory you replaced is left
+exactly as you left it and reported rather than silently reopened. The container log lists
+what it reconciled on every boot.
 
 ## What persists
 
@@ -91,9 +112,9 @@ never the built-in policy. Two symmetric arrays: `exclude` adds paths to the bou
 exclusion). A new config contains neither — the image owns the default set, so a future
 image can change it — alongside an `audit` block and a `maxWatches` cap. The effective
 exclusion set is the integrity set, plus the image defaults you did not `persist`, plus
-whatever you `exclude`. Older single-`exclusions` configs are migrated forward on first
-boot and the change is logged, dropping the `/var/cache` entry that was indistinguishable
-from the old baked-in default so the current image governs it. If the file is malformed or
+whatever you `exclude`. A config written by an older build, with a single `exclusions`
+array, keeps working unchanged: `exclusions` is read as `exclude`, so the paths you named
+go on excluding what they always did. If the file is malformed or
 contains an invalid value, it is preserved beside the original as `config.invalid-N.json`
 and replaced with safe defaults, so a configuration typo cannot prevent the IDE from
 starting. Storage or filesystem-integrity failures still stop boot rather than pretending
