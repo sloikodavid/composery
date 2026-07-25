@@ -48,6 +48,7 @@ import type * as boxes_workflows_changeBoxPassword from "../boxes/workflows/chan
 import type * as boxes_workflows_changeBoxSlug from "../boxes/workflows/changeBoxSlug.js";
 import type * as boxes_workflows_deleteBox from "../boxes/workflows/deleteBox.js";
 import type * as boxes_workflows_provisionBox from "../boxes/workflows/provisionBox.js";
+import type * as boxes_workflows_rebuildBox from "../boxes/workflows/rebuildBox.js";
 import type * as boxes_workflows_recoverBox from "../boxes/workflows/recoverBox.js";
 import type * as boxes_workflows_resetBox from "../boxes/workflows/resetBox.js";
 import type * as boxes_workflows_runtimeLifecycle from "../boxes/workflows/runtimeLifecycle.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "boxes/workflows/changeBoxSlug": typeof boxes_workflows_changeBoxSlug;
   "boxes/workflows/deleteBox": typeof boxes_workflows_deleteBox;
   "boxes/workflows/provisionBox": typeof boxes_workflows_provisionBox;
+  "boxes/workflows/rebuildBox": typeof boxes_workflows_rebuildBox;
   "boxes/workflows/recoverBox": typeof boxes_workflows_recoverBox;
   "boxes/workflows/resetBox": typeof boxes_workflows_resetBox;
   "boxes/workflows/runtimeLifecycle": typeof boxes_workflows_runtimeLifecycle;

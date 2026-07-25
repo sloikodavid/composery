@@ -21,6 +21,8 @@ export function deletedBoxDataPatch(deletedAt: number) {
 		hetzner_ipv6_id: undefined,
 		dns_record_id: undefined,
 		dns_record_aaaa_id: undefined,
+		parking_volume_id: undefined,
+		parking_volume_stage: undefined,
 		deleted_at: deletedAt,
 		purge_at: deletedBoxPurgeAt(deletedAt)
 	};

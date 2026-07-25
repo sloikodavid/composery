@@ -23,6 +23,8 @@ export const vBoxStatus = v.union(
 	v.literal("repairing"),
 	v.literal("restoring"),
 	v.literal("restore_failed"),
+	v.literal("rebuilding"),
+	v.literal("rebuild_failed"),
 	v.literal("suspending"),
 	v.literal("suspended"),
 	v.literal("unsuspending"),
@@ -40,6 +42,7 @@ export const vBoxBeginStatus = v.union(
 	v.literal("resetting"),
 	v.literal("repairing"),
 	v.literal("restoring"),
+	v.literal("rebuilding"),
 	v.literal("suspending"),
 	v.literal("suspended"),
 	v.literal("unsuspending"),
@@ -51,6 +54,7 @@ export const vBoxFailureStatus = v.union(
 	v.literal("provisioning_failed"),
 	v.literal("reset_failed"),
 	v.literal("restore_failed"),
+	v.literal("rebuild_failed"),
 	v.literal("delete_failed"),
 	v.literal("running"),
 	v.literal("stopped"),
@@ -69,7 +73,8 @@ export const vBoxOperationType = v.union(
 	v.literal("unsuspend"),
 	v.literal("restore"),
 	v.literal("snapshot"),
-	v.literal("recover")
+	v.literal("recover"),
+	v.literal("rebuild")
 );
 
 export const vBoxOperationStatus = v.union(
@@ -81,6 +86,24 @@ export const vBoxOperationStatus = v.union(
 
 export type BoxOperationType = Infer<typeof vBoxOperationType>;
 export type BoxOperationStatus = Infer<typeof vBoxOperationStatus>;
+
+// Which half of a Rebuild ("clean host, current files") a box's parking volume
+// is in. It is the crash-safety marker a resumed rebuild reads to decide the
+// authoritative copy of the files:
+//   - "parking":   the box's server still holds the files; the volume is being
+//                  filled. Safe to re-copy server -> volume and to rebuild only
+//                  once that copy has verified.
+//   - "restoring": the server has been (or is being) wiped and reborn; the
+//                  volume now holds the only copy. The files are copied back
+//                  volume -> server, and server -> volume must never run here.
+// The transition parking -> restoring happens exactly once, gated on the
+// copy-out verifying, so an interrupted rebuild always resumes towards keeping
+// the files rather than overwriting them.
+export const vParkingVolumeStage = v.union(
+	v.literal("parking"),
+	v.literal("restoring")
+);
+export type ParkingVolumeStage = Infer<typeof vParkingVolumeStage>;
 
 export const vServerType = v.union(v.literal("cx23"), v.literal("cx33"));
 export const vServerLocation = v.union(
@@ -227,6 +250,14 @@ export default defineSchema({
 		hetzner_ipv6_id: v.optional(v.number()),
 		dns_record_id: v.optional(v.string()),
 		dns_record_aaaa_id: v.optional(v.string()),
+		// Set the instant a Rebuild's parking volume is created and cleared only
+		// after that volume is deleted, so a rebuild that dies mid-flight leaves a
+		// recoverable pointer to the Hetzner Volume holding the box's files rather
+		// than orphaning it. `parking_volume_stage` says which copy is authoritative
+		// (see vParkingVolumeStage); reconciliation reclaims any volume no live box
+		// still points at.
+		parking_volume_id: v.optional(v.number()),
+		parking_volume_stage: v.optional(vParkingVolumeStage),
 		created_at: v.number(),
 		updated_at: v.number(),
 		provisioned_at: v.optional(v.number()),
@@ -242,7 +273,8 @@ export default defineSchema({
 		.index("user_id_created_at", ["user_id", "created_at"])
 		.index("user_id_status", ["user_id", "status"])
 		.index("polar_subscription_id", ["polar_subscription_id"])
-		.index("hetzner_server_id", ["hetzner_server_id"]),
+		.index("hetzner_server_id", ["hetzner_server_id"])
+		.index("parking_volume_id", ["parking_volume_id"]),
 
 	box_auth_codes: defineTable({
 		box_id: v.id("boxes"),

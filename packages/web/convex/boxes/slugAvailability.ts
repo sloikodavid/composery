@@ -18,6 +18,8 @@ export const SLUG_OCCUPYING_STATUSES: readonly Doc<"boxes">["status"][] = [
 	"reset_failed",
 	"restoring",
 	"restore_failed",
+	"rebuilding",
+	"rebuild_failed",
 	"suspending",
 	"suspended",
 	"unsuspending",

@@ -24,6 +24,8 @@ export const vSubscriptionReconciliationStatus = v.union(
 	v.literal("reset_failed"),
 	v.literal("restoring"),
 	v.literal("restore_failed"),
+	v.literal("rebuilding"),
+	v.literal("rebuild_failed"),
 	v.literal("suspending"),
 	v.literal("suspended"),
 	v.literal("unsuspending"),

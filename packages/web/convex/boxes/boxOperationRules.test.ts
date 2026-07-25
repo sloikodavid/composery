@@ -26,7 +26,8 @@ describe("OPERATION_ALLOWED_STATUSES", () => {
 				"unsuspend",
 				"restore",
 				"snapshot",
-				"recover"
+				"recover",
+				"rebuild"
 			].sort()
 		);
 	});
@@ -104,6 +105,26 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 	it("refuses recovery on boxes whose host is powered off", () => {
 		expect(isOperationAllowed("stopped", "recover")).toBe(false);
 		expect(isOperationAllowed("suspended", "recover")).toBe(false);
+	});
+
+	// Rebuild needs a running box with real files and a reachable host, and must
+	// be retryable from its own failed state so a crashed rebuild can resume from
+	// its parking volume. A box that never provisioned has no files worth keeping,
+	// so it is excluded; a powered-off box has no host to reach.
+	it("rebuilds a usable box or retries a failed rebuild, but not empty or off boxes", () => {
+		expect(isOperationAllowed("running", "rebuild")).toBe(true);
+		expect(isOperationAllowed("rebuild_failed", "rebuild")).toBe(true);
+		expect(isOperationAllowed("reset_failed", "rebuild")).toBe(true);
+		expect(isOperationAllowed("restore_failed", "rebuild")).toBe(true);
+		expect(isOperationAllowed("provisioning_failed", "rebuild")).toBe(false);
+		expect(isOperationAllowed("stopped", "rebuild")).toBe(false);
+		expect(isOperationAllowed("suspended", "rebuild")).toBe(false);
+		expect(isOperationAllowed("rebuilding", "rebuild")).toBe(false);
+	});
+
+	it("allows deleting a box that is mid-rebuild or rebuild_failed", () => {
+		expect(isOperationAllowed("rebuilding", "delete")).toBe(true);
+		expect(isOperationAllowed("rebuild_failed", "delete")).toBe(true);
 	});
 
 	it("allows deleting from every live state except deleting/deleted", () => {

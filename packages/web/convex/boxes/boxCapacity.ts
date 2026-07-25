@@ -15,6 +15,8 @@ export const CAPACITY_BOX_STATUSES = [
 	"repairing",
 	"restoring",
 	"restore_failed",
+	"rebuilding",
+	"rebuild_failed",
 	"suspending",
 	"suspended",
 	"unsuspending",

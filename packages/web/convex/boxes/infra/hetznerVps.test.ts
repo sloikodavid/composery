@@ -19,7 +19,14 @@ import {
 	primaryIpMatchesAddress,
 	primaryIpListPath,
 	rebuildServerPayload,
-	snapshotImageListPath
+	snapshotImageListPath,
+	PARKING_VOLUME_MIN_GB,
+	attachVolumePayload,
+	createVolumePayload,
+	parkingVolumeDevicePath,
+	parkingVolumeName,
+	parkingVolumeSizeGb,
+	productVolumeListPath
 } from "./hetznerVps";
 import { authorizedPublicKey } from "./sshKeys";
 
@@ -275,6 +282,59 @@ describe("snapshot response parsing", () => {
 		expect(
 			parseImageResponse({ id: 1, status: "available", image_size: null })
 		).toEqual({ status: "available" });
+	});
+});
+
+describe("parking volumes", () => {
+	it("sizes from actual used bytes with headroom, never below the Hetzner minimum", () => {
+		// A tiny box still gets at least the 10 GB minimum.
+		expect(parkingVolumeSizeGb(0)).toBe(PARKING_VOLUME_MIN_GB);
+		expect(parkingVolumeSizeGb(1_000_000)).toBe(PARKING_VOLUME_MIN_GB);
+		// A large box gets used * 1.2, rounded up to whole GB, plus 3 GB slack:
+		// 30 GB -> 36 GB -> +3 = 39.
+		expect(parkingVolumeSizeGb(30 * 1e9)).toBe(39);
+		// Headroom always rounds the volume up, never down, so the copy cannot just
+		// barely overflow.
+		expect(parkingVolumeSizeGb(10 * 1e9)).toBeGreaterThan(10);
+	});
+
+	it("refuses to size a volume from an unmeasured usage", () => {
+		expect(() => parkingVolumeSizeGb(Number.NaN)).toThrow();
+		expect(() => parkingVolumeSizeGb(-1)).toThrow();
+	});
+
+	it("names and locates a parking volume deterministically from ids", () => {
+		expect(parkingVolumeName("my-box")).toBe("composery-park-my-box");
+		// The stable by-id path is what lets the box scripts mount the volume
+		// without guessing a shifting /dev/sd* letter.
+		expect(parkingVolumeDevicePath(1234)).toBe(
+			"/dev/disk/by-id/scsi-0HC_Volume_1234"
+		);
+	});
+
+	it("creates a pre-formatted, labeled volume in the box's own location", () => {
+		expect(createVolumePayload("my-box", "nbg1", 12)).toEqual({
+			name: "composery-park-my-box",
+			size: 12,
+			location: "nbg1",
+			format: "ext4",
+			automount: false,
+			labels: { product: "composery-web", box_slug: "my-box", role: "parking" }
+		});
+	});
+
+	it("attaches without automounting so the box mounts it deliberately", () => {
+		expect(attachVolumePayload(42)).toEqual({ server: 42, automount: false });
+	});
+
+	it("lists only parking volumes fleet-wide for reconciliation", () => {
+		const path = productVolumeListPath(2);
+		const query = new URLSearchParams(path.split("?")[1]);
+		expect(path.startsWith("/volumes?")).toBe(true);
+		expect(query.get("label_selector")).toBe(
+			"product=composery-web,role=parking"
+		);
+		expect(query.get("page")).toBe("2");
 	});
 });
 
