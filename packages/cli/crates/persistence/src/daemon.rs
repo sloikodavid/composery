@@ -76,6 +76,17 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
     remove_stale_control_socket(paths)?;
 
     let db = internal::StateDb::open_or_rebuild(paths)?;
+
+    // Under the overlay engine the kernel maintains the delta, so the copy
+    // watcher/audit/apply machinery must not run. Stand down instead of starting
+    // it - the daemon still runs under both init profiles (uniform behaviour)
+    // but reports that it is standing down. The engine was recorded at boot by
+    // `select-engine`; trust that single decision rather than probing again.
+    let engine = db.meta_value("diagnostic_engine")?.unwrap_or_default();
+    if engine == "overlay" {
+        return run_overlay_standdown(paths, db, stop_rx);
+    }
+
     let config = config::load_or_create(&paths.config_file)?;
     let baseline = BaselineDb::open(&paths.baseline_db)
         .with_context(|| format!("daemon requires baseline {}", paths.baseline_db.display()))?;
@@ -200,6 +211,84 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
 #[cfg(not(unix))]
 pub fn run(_paths: &Paths) -> Result<()> {
     anyhow::bail!("persistence daemon is only supported on Unix");
+}
+
+/// The persistence daemon under the overlay engine: no watcher, auditor, writer,
+/// or apply. It writes readiness so the IDE proceeds and serves `status` over
+/// the control socket, reporting `engine=overlay` with the copy-only fields
+/// marked not-applicable, so the inert path is visible rather than silent.
+#[cfg(unix)]
+fn run_overlay_standdown(
+    paths: &Paths,
+    db: internal::StateDb,
+    mut stop_rx: Option<mpsc::Receiver<()>>,
+) -> Result<()> {
+    tracing::info!(
+        "overlay engine selected; persistence daemon standing down (kernel maintains the delta)"
+    );
+    db.record_phase_success("daemon")?;
+
+    let listener = UnixListener::bind(&paths.control_socket)
+        .with_context(|| format!("bind {}", paths.control_socket.display()))?;
+    listener
+        .set_nonblocking(true)
+        .context("set control socket nonblocking")?;
+    readiness::write_ready(paths, "overlay")?;
+    let _runtime_files = RuntimeFilesGuard { paths };
+    tracing::info!("persistence daemon is standing down and ready to report status");
+
+    loop {
+        if should_stop(&mut stop_rx) {
+            break;
+        }
+        match listener.accept() {
+            Ok((stream, _addr)) => {
+                if let Err(error) = serve_standdown_control(stream, paths, &db) {
+                    tracing::warn!(error = %error, "overlay stand-down control request failed");
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => return Err(error).context("accept control connection"),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn serve_standdown_control(
+    mut stream: UnixStream,
+    paths: &Paths,
+    db: &internal::StateDb,
+) -> Result<()> {
+    let mut line = String::new();
+    BufReader::new(stream.try_clone().context("clone control stream")?)
+        .read_line(&mut line)
+        .context("read control request")?;
+
+    let response = match serde_json::from_str::<control::Request>(&line) {
+        Ok(request) if request.version == 1 => match request.command {
+            control::Command::Status => match status::build_standing_down(paths, db) {
+                Ok(report) => {
+                    control::Response::ok(&report).unwrap_or_else(control::Response::error)
+                }
+                Err(error) => control::Response::error(format!("{error:#}")),
+            },
+            control::Command::Doctor | control::Command::Prune => control::Response::error(
+                "not applicable under the overlay engine: the kernel maintains the delta",
+            ),
+        },
+        Ok(request) => control::Response::error(format!(
+            "unsupported control protocol version {}",
+            request.version
+        )),
+        Err(error) => control::Response::error(format!("invalid control request: {error}")),
+    };
+
+    serde_json::to_writer(&mut stream, &response).context("write control response")?;
+    stream.write_all(b"\n").context("finish control response")?;
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -667,6 +756,56 @@ mod tests {
         fs::write(fixture.root.join("etc/after-stop"), "not persisted").unwrap();
         thread::sleep(Duration::from_millis(200));
         assert!(!fixture.paths.changed_dir.join("etc/after-stop").exists());
+    }
+
+    #[test]
+    fn daemon_stands_down_and_serves_status_under_overlay() {
+        let fixture = Fixture::new();
+        // Record the engine the way `select-engine` does at boot.
+        {
+            let db = StateDb::open_or_rebuild(&fixture.paths).unwrap();
+            db.record_diagnostic("engine", "overlay").unwrap();
+            db.record_diagnostic("engine_reason", "auto: overlay probe succeeded")
+                .unwrap();
+        }
+        let (stop_tx, stop_rx) = mpsc::channel();
+        let root = fixture.root.clone();
+        let paths = fixture.paths.clone();
+        let daemon = thread::spawn(move || run_inner(&paths, root, Some(stop_rx)));
+
+        wait_for(
+            || {
+                fs::read_to_string(&fixture.paths.ready_file)
+                    .is_ok_and(|ready| ready.contains("\"phase\": \"overlay\""))
+            },
+            "overlay stand-down ready file",
+        );
+
+        let report: StatusReport =
+            control::request(&fixture.paths.control_socket, control::Command::Status).unwrap();
+        assert_eq!(report.engine, "overlay");
+        assert_eq!(report.watch_status, "n/a");
+        assert_eq!(report.audit_status, "n/a");
+        assert!(report.last_daemon_success_at.is_some());
+
+        // No watcher runs under overlay, so a rootfs change is not copied out.
+        fs::write(fixture.root.join("etc/hello"), "changed").unwrap();
+        thread::sleep(Duration::from_millis(200));
+        assert!(!fixture.paths.changed_dir.join("etc/hello").exists());
+
+        // Doctor/Prune are not applicable under overlay and say so.
+        let doctor_error = control::request::<crate::doctor::DoctorReport>(
+            &fixture.paths.control_socket,
+            control::Command::Doctor,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(doctor_error.contains("not applicable"));
+
+        stop_tx.send(()).unwrap();
+        daemon.join().unwrap().unwrap();
+        assert!(!fixture.paths.ready_file.exists());
+        assert!(!fixture.paths.control_socket.exists());
     }
 
     #[test]

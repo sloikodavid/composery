@@ -133,56 +133,138 @@ pub fn build_with_runtime(
     })
 }
 
+/// Status for a daemon standing down under the overlay engine: the kernel owns
+/// the delta, so the copy watcher/audit/apply machinery never ran and its
+/// counters do not apply. The copy-only fields stay zero in the struct but are
+/// rendered as `n/a` (see `print_human`) so they can never read as a healthy
+/// idle daemon; the machine-readable discriminator is `engine == "overlay"`
+/// with `watchStatus`/`auditStatus` == `"n/a"`.
+pub fn build_standing_down(paths: &Paths, db: &StateDb) -> Result<StatusReport> {
+    let ready = ready_file_exists(paths);
+    let baseline_present = paths.baseline_db.exists();
+    let baseline_valid = baseline_present && BaselineDb::open(&paths.baseline_db).is_ok();
+    let engine = db
+        .meta_value("diagnostic_engine")?
+        .unwrap_or_else(|| "unknown".into());
+    let engine_reason = db
+        .meta_value("diagnostic_engine_reason")?
+        .filter(|value| !value.is_empty());
+    Ok(StatusReport {
+        ready,
+        phase: if ready {
+            "standing-down".into()
+        } else {
+            "starting".into()
+        },
+        engine,
+        engine_reason,
+        last_apply_success_at: None,
+        last_apply_failure_at: None,
+        last_apply_error: None,
+        last_daemon_success_at: db.meta_value("last_daemon_success_at")?,
+        last_daemon_failure_at: db.meta_value("last_daemon_failure_at")?,
+        last_daemon_error: db
+            .meta_value("last_daemon_error")?
+            .filter(|value| !value.is_empty()),
+        watch_status: "n/a".into(),
+        audit_status: "n/a".into(),
+        watch_count: 0,
+        watch_budget: 0,
+        watch_evictions: 0,
+        watches_shed: false,
+        last_error: None,
+        baseline_present,
+        baseline_valid,
+        capabilities: None,
+        dirty_queue_size: 0,
+        public_counts: PublicCounts {
+            changed: 0,
+            removed: 0,
+            metadata: 0,
+        },
+    })
+}
+
 fn ready_file_exists(paths: &Paths) -> bool {
     std::fs::symlink_metadata(&paths.ready_file)
         .is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 pub fn print_human(report: &StatusReport) {
-    println!("persistence status:");
-    println!("  ready: {}", report.ready);
-    println!("  phase: {}", report.phase);
-    println!("  engine: {}", report.engine);
+    print!("{}", human_report(report));
+}
+
+/// Build the human status text. Split out from `print_human` so tests assert on
+/// the real rendering (and the overlay stand-down branch in particular) rather
+/// than a copy of the logic.
+pub fn human_report(report: &StatusReport) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "persistence status:");
+    let _ = writeln!(out, "  ready: {}", report.ready);
+    let _ = writeln!(out, "  phase: {}", report.phase);
+    let _ = writeln!(out, "  engine: {}", report.engine);
     if let Some(reason) = &report.engine_reason {
-        println!("  engineReason: {reason}");
+        let _ = writeln!(out, "  engineReason: {reason}");
     }
-    println!("  baseline: {}", report.baseline_present);
-    println!("  baselineValid: {}", report.baseline_valid);
-    println!("  watch: {}", report.watch_status);
-    println!("  audit: {}", report.audit_status);
-    println!(
+    let _ = writeln!(out, "  baseline: {}", report.baseline_present);
+    let _ = writeln!(out, "  baselineValid: {}", report.baseline_valid);
+    let daemon_lines = |out: &mut String| {
+        if let Some(last_daemon) = &report.last_daemon_success_at {
+            let _ = writeln!(out, "  lastDaemonSuccessAt: {last_daemon}");
+        }
+        if let Some(last_daemon_failure) = &report.last_daemon_failure_at {
+            let _ = writeln!(out, "  lastDaemonFailureAt: {last_daemon_failure}");
+        }
+        if let Some(last_daemon_error) = &report.last_daemon_error {
+            let _ = writeln!(out, "  lastDaemonError: {last_daemon_error}");
+        }
+    };
+    if report.engine == "overlay" {
+        // The kernel maintains the delta under overlay, so the copy daemon's
+        // watcher/audit/apply counters do not apply. Render them as `n/a`, never
+        // as zeros that would read like a healthy idle daemon.
+        let _ = writeln!(
+            out,
+            "  copyDaemon: standing down (overlay engine; the kernel maintains the delta)"
+        );
+        let _ = writeln!(out, "  watch: n/a");
+        let _ = writeln!(out, "  audit: n/a");
+        let _ = writeln!(out, "  changed: n/a");
+        let _ = writeln!(out, "  removed: n/a");
+        let _ = writeln!(out, "  metadata: n/a");
+        daemon_lines(&mut out);
+        return out;
+    }
+    let _ = writeln!(out, "  watch: {}", report.watch_status);
+    let _ = writeln!(out, "  audit: {}", report.audit_status);
+    let _ = writeln!(
+        out,
         "  watches: {} / {}",
         report.watch_count, report.watch_budget
     );
-    println!("  watchEvictions: {}", report.watch_evictions);
-    println!("  watchesShed: {}", report.watches_shed);
-    println!("  dirtyQueueSize: {}", report.dirty_queue_size);
-    println!("  changed: {}", report.public_counts.changed);
-    println!("  removed: {}", report.public_counts.removed);
-    println!("  metadata: {}", report.public_counts.metadata);
+    let _ = writeln!(out, "  watchEvictions: {}", report.watch_evictions);
+    let _ = writeln!(out, "  watchesShed: {}", report.watches_shed);
+    let _ = writeln!(out, "  dirtyQueueSize: {}", report.dirty_queue_size);
+    let _ = writeln!(out, "  changed: {}", report.public_counts.changed);
+    let _ = writeln!(out, "  removed: {}", report.public_counts.removed);
+    let _ = writeln!(out, "  metadata: {}", report.public_counts.metadata);
     if let Some(last_apply) = &report.last_apply_success_at {
-        println!("  lastApplySuccessAt: {last_apply}");
+        let _ = writeln!(out, "  lastApplySuccessAt: {last_apply}");
     }
     if let Some(last_apply_failure) = &report.last_apply_failure_at {
-        println!("  lastApplyFailureAt: {last_apply_failure}");
+        let _ = writeln!(out, "  lastApplyFailureAt: {last_apply_failure}");
     }
     if let Some(last_apply_error) = &report.last_apply_error {
-        println!("  lastApplyError: {last_apply_error}");
+        let _ = writeln!(out, "  lastApplyError: {last_apply_error}");
     }
-    if let Some(last_daemon) = &report.last_daemon_success_at {
-        println!("  lastDaemonSuccessAt: {last_daemon}");
-    }
-    if let Some(last_daemon_failure) = &report.last_daemon_failure_at {
-        println!("  lastDaemonFailureAt: {last_daemon_failure}");
-    }
-    if let Some(last_daemon_error) = &report.last_daemon_error {
-        println!("  lastDaemonError: {last_daemon_error}");
-    }
+    daemon_lines(&mut out);
+    out
 }
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{RuntimeStatus, build_with_runtime};
+    use super::{RuntimeStatus, build_standing_down, build_with_runtime};
     use crate::{
         baseline::{GenerateOptions, generate},
         capabilities, internal, layout,
@@ -263,6 +345,34 @@ mod tests {
         // unknown rather than a silent default.
         assert_eq!(report.engine, "unknown");
         assert_eq!(report.engine_reason, None);
+    }
+
+    #[test]
+    fn standing_down_marks_copy_only_fields_not_applicable() {
+        let fixture = Fixture::new();
+        readiness::write_ready(&fixture.paths, "overlay").unwrap();
+        let db = internal::StateDb::open_or_rebuild(&fixture.paths).unwrap();
+        db.record_diagnostic("engine", "overlay").unwrap();
+        db.record_diagnostic("engine_reason", "auto: overlay probe succeeded")
+            .unwrap();
+        db.record_phase_success("daemon").unwrap();
+
+        let report = build_standing_down(&fixture.paths, &db).unwrap();
+
+        assert_eq!(report.engine, "overlay");
+        assert_eq!(report.phase, "standing-down");
+        // Copy-only status is honestly n/a, never "running".
+        assert_eq!(report.watch_status, "n/a");
+        assert_eq!(report.audit_status, "n/a");
+        assert!(report.last_daemon_success_at.is_some());
+
+        // The real human render never prints copy counters as zeros here.
+        let rendered = super::human_report(&report);
+        assert!(rendered.contains("engine: overlay"));
+        assert!(rendered.contains("standing down"));
+        assert!(rendered.contains("changed: n/a"));
+        assert!(!rendered.contains("changed: 0"));
+        assert!(!rendered.contains("watch: running"));
     }
 
     struct Fixture {

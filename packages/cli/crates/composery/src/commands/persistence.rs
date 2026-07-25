@@ -18,6 +18,12 @@ pub enum PersistenceCommand {
     /// command invoked by the entrypoint.
     #[command(name = "select-engine", hide = true)]
     SelectEngine,
+    /// Prepare the overlay reserved subtree, run the boot-time upper-hygiene
+    /// pass, and print the `upperdir=`/`workdir=` to mount. Internal overlay
+    /// boot command invoked by `init/overlay.sh` before it mounts the overlay.
+    #[cfg(unix)]
+    #[command(name = "overlay-hygiene", hide = true)]
+    OverlayHygiene,
     /// Run the long-lived persistence daemon.
     Daemon,
     /// Print operational daemon status.
@@ -46,6 +52,8 @@ pub fn run(command: PersistenceCommand, json: bool) -> Result<()> {
             println!("{}", selection.engine.as_str());
             Ok(())
         }
+        #[cfg(unix)]
+        PersistenceCommand::OverlayHygiene => persistence::overlay::run_hygiene_command(&paths),
         PersistenceCommand::Daemon => daemon::run(&paths),
         PersistenceCommand::Status => output::render(
             &control::query::<status::StatusReport>(&paths, control::Command::Status)?,
