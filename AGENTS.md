@@ -299,6 +299,8 @@ packages/
     scripts/
       build.sh
       rebrand.mjs
+      theme-lab.html
+      theme-lab.mjs
       types.mjs
     package.json
     upstream
@@ -614,7 +616,7 @@ packages/
           changeBoxSlug.ts
           deleteBox.ts
           provisionBox.ts
-          recoverBox.ts
+          repairBox.ts
           resetBox.ts
           runtimeLifecycle.ts
           snapshotWorkflows.ts
@@ -868,17 +870,6 @@ scripts/
   tree.d.mts
   tree.mjs
   write-formatted.mjs
-spike/
-  01-pivot-boot.sh
-  02-reserved-upper.sh
-  03-persistence.sh
-  04-upgrade.sh
-  05-unprivileged.sh
-  06-inner-docker.sh
-  Dockerfile
-  entrypoint.sh
-  FINDINGS.md
-  lib.sh
 templates/
   fly/
     fly.toml
@@ -921,6 +912,7 @@ tests/
     key.pem
   overlay-engine/
     Dockerfile
+    run.sh
   support/
     patchSource.ts
   auth-routes.test.ts

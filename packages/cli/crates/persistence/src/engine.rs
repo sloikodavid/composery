@@ -36,6 +36,11 @@ use crate::{internal::StateDb, layout, paths::Paths};
 /// could not select overlay and an explicit pin refused, so no unproven mount
 /// path could reach a real delta. Turn it back off if the harness ever goes red.
 ///
+/// Conditions the harness does not cover, so `auto`'s probe is what decides
+/// there rather than any claim made here: hosts with SELinux enforcing, Fly.io
+/// microVMs, and a volume filesystem without xattr support. Each would fail the
+/// probe and fall back to copy, which is the safe direction.
+///
 /// ponytail: single engine gate, deliberately a `const` not a config knob.
 pub const OVERLAY_ENGINE_READY: bool = true;
 

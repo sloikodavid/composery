@@ -21,6 +21,13 @@ writable layer and its delta copy, so a 10 GB changed file outside `/data` costs
 20 GB of host disk (the overlay engine stores it once). `df -h /data` shows the durable
 disk's ordinary filesystem usage.
 
+If you run Docker inside your box, point its `data-root` at `/data` — add
+`{"data-root": "/data/docker"}` to `/etc/docker/daemon.json` and restart it. Left at
+`/var/lib/docker`, the daemon sits on Composery's own root filesystem: under the overlay
+engine it cannot nest `overlay2` and silently falls back to the slower `fuse-overlayfs`,
+and under the copy engine its layers are churning, regenerable files that the delta has no
+reason to carry. On `/data` it gets native `overlay2` and stores its layers once.
+
 The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or a Docker
 named volume). Network filesystems such as NFS are not supported: persistence relies on
 file locking, atomic renames, and xattrs that NFS does not reliably provide.
