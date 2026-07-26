@@ -9,8 +9,7 @@ const inputVariants = cva(
 	{
 		variants: {
 			variant: {
-				outline:
-					"border border-border bg-background px-3 py-1 dark:bg-input/30",
+				outline: "border border-border bg-card px-3 py-1",
 				secondary:
 					"border border-transparent bg-input/50 px-3 py-1 dark:bg-input/30"
 			}

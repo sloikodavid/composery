@@ -1,7 +1,8 @@
 /*---------------------------------------------------------------------------------------------
  * Composery Keybar - the keys a soft keyboard cannot produce, docked above it.
- * Visibility is the on-screen keyboard's: layout.ts reserves the height only while the
- * keyboard is up (see keybar.ts), so the bar costs nothing when nobody is typing.
+ * The bar shows while the keyboard is up, and while a terminal holds focus; layout.ts
+ * reserves exactly that height out of the grid (see keybar.ts), so it costs nothing
+ * otherwise.
  * Keys are drawn as toolbar buttons, not keycaps: the titlebar's own action-label
  * treatment (actionbar.css - flat, no border, cornerRadius-medium, hover/active fill).
  *--------------------------------------------------------------------------------------------*/

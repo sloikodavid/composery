@@ -1,3 +1,8 @@
+---
+name: refactor
+description: Find architectural friction and design deep modules with strong locality, leverage, behavior-focused tests, deliberate seams, and explicit compatibility choices. Use for comprehensive refactor analysis, module-boundary redesign, interface design, architecture grilling, migration planning, or implementing high-value structural improvements without abstraction theatre.
+---
+
 # Refactor
 
 Find architectural friction and propose **deepening opportunities**: changes that turn shallow modules into deep ones.

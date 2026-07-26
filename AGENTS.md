@@ -38,10 +38,21 @@
 .agents/
   skills/
     android-live-test/
-      agents/
-        openai.yaml
       scripts/
         android.mjs
+      EMULATOR-WEBVIEW.md
+      SKILL.md
+    claudes/
+      SKILL.md
+    green/
+      SKILL.md
+    nugget/
+      SKILL.md
+    refactor/
+      SKILL.md
+    senior-buzzwords/
+      SKILL.md
+    simplify-ide/
       SKILL.md
 .claude/
   skills
@@ -212,6 +223,7 @@ packages/
               base/
                 browser/
                   imeEnter.ts
+                  softKeyboard.ts
                   stickyModifiers.ts
                   touchGate.ts
               workbench/
@@ -279,6 +291,7 @@ packages/
       api.diff
       auth.diff
       clipboard.diff
+      custom-editors.diff
       editcontext-android.diff
       hardening.diff
       local-media-preview.diff
@@ -286,7 +299,6 @@ packages/
       naming.diff
       narrow.diff
       node-engine.diff
-      product-icon-themes.diff
       product.diff
       qr-action.diff
       readiness.diff
@@ -299,8 +311,6 @@ packages/
     scripts/
       build.sh
       rebrand.mjs
-      theme-lab.html
-      theme-lab.mjs
       types.mjs
     package.json
     upstream
@@ -793,12 +803,6 @@ packages/
     tsconfig.json
     vercel.json
     vitest.config.ts
-prompts/
-  claudes.md
-  green.md
-  nugget.md
-  REFACTOR.md
-  senior-buzzwords.md
 rootfs/
   etc/
     caddy/
@@ -864,6 +868,9 @@ rootfs/
         composery-text-editor.desktop
         composery-url-handler.desktop
 scripts/
+  color-console/
+    app.html
+    server.mjs
   cli.mjs
   setup.mjs
   smoke.mjs
@@ -918,6 +925,7 @@ tests/
   auth-routes.test.ts
   brand-copy.test.ts
   code-server-patches.test.ts
+  color-console.test.ts
   cross-platform.test.ts
   desktop-integration.test.ts
   docs-links.test.ts
@@ -925,6 +933,7 @@ tests/
   favicon.test.ts
   loopback-callback-guard.test.ts
   narrow-back.test.ts
+  narrow-editor-groups.test.ts
   narrow-layout-reconciliation.test.ts
   password-check.test.ts
   runtime-init.test.ts

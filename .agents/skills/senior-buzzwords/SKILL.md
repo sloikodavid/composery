@@ -1,3 +1,12 @@
+---
+name: senior-buzzwords
+description: Apply a broad inventory of senior-engineering concerns as a systematic software audit checklist. Use for comprehensive reviews covering edge cases, concurrency, performance, data integrity, security, testing, architecture, compatibility, observability, operations, portability, user experience, and resource efficiency.
+---
+
+# Senior engineering audit checklist
+
+Use the following concerns to guide exploration. Select what is relevant to the system under review, investigate concrete failure modes, and ground findings in evidence; do not merely repeat the terms as generic advice.
+
 - Edge Cases
 - Memory Leaks
 - Monolithic Architecture

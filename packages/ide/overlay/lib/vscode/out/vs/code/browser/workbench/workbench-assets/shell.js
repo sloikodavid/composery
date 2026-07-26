@@ -2,7 +2,7 @@
 	// Composery: the shared imperative shell for small and touch surfaces - the runtime half of
 	// both narrow.css and touch.css. One MutationObserver + rAF loop drives every DOM-reactive
 	// behaviour here; each one gates on its OWN capability, not on a device bucket:
-	//   - viewport height + soft-keyboard inset/open: geometry / keyboard axis (computed always, 0 when absent)
+	//   - viewport height + soft-keyboard open verdict: geometry / keyboard axis (computed always)
 	//   - back-guard overlays: narrow viewport OR coarse pointer (a rotated phone past the breakpoint still uses Back)
 	//   - narrow-fullscreen part detection + modal editor: narrow viewport
 	//   - keybindings / split-view finger-pan and kept-visible scrollbars: touch pointer
@@ -78,24 +78,21 @@
 	const modalEditorMaximizeSelector =
 		".monaco-modal-editor-block .modal-editor-action-container .action-label.codicon-screen-full";
 
-	// How much of the layout viewport the keyboard covers *without* the viewport
-	// having already excluded it - the iOS case, where the keyboard overlays both
-	// viewports and interactive-widget is not honoured. On Android, where
-	// interactive-widget=resizes-content shrinks the layout viewport too, this is
-	// 0 and keyboardOpen() below is what sees the keyboard.
+	// --composery-touch-keyboard-inset is deliberately NOT written here. It carries the
+	// one keyboard measurement the page cannot make for itself - the height an
+	// edge-to-edge WebView's keyboard covers while resizing neither viewport - and its
+	// only writer is the native host (packages/mobile). This loop runs on every workbench
+	// mutation, so publishing our own number into it overwrote the host's within a frame
+	// and left iOS-in-app with no keyboard signal at all. softKeyboard.ts reads the
+	// property, and everything the page CAN measure it measures there.
 	//
-	// The VirtualKeyboard API is deliberately not consulted: both
+	// The VirtualKeyboard API is no substitute: both
 	// navigator.virtualKeyboard.boundingRect and env(keyboard-inset-height) are
 	// populated only for a page that has set overlaysContent = true and taken over
 	// keyboard layout itself. We do the opposite - our viewport meta asks the
 	// browser to resize content - so those two report a structural zero, and
 	// reading them cost a per-frame forced layout (an env() probe element's
 	// offsetHeight) for a number that could not change.
-	function visualViewportKeyboardInset(viewport) {
-		return viewport
-			? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-			: 0;
-	}
 
 	// With interactive-widget=resizes-content the keyboard shrinks the LAYOUT viewport too, so
 	// innerHeight - visualViewport.height reads 0 and the inset above cannot see it. The
@@ -121,21 +118,15 @@
 		const viewport = window.visualViewport;
 		const height = viewport?.height ?? window.innerHeight;
 		const width = viewport?.width ?? window.innerWidth;
-		const keyboardInsetBottom = visualViewportKeyboardInset(viewport);
 		const rootStyle = document.documentElement.style;
 
 		rootStyle.setProperty(
 			"--composery-viewport-height",
 			`${Math.round(height)}px`,
 		);
-		rootStyle.setProperty(
-			"--composery-touch-keyboard-inset",
-			`${Math.round(keyboardInsetBottom)}px`,
-		);
-		// Read by terminalInstance.ts to keep the terminal grid at its keyboard-down size:
-		// a keyboard must occlude the terminal, never resize the pty (SIGWINCH storms
-		// re-lay-out every TUI). Separate from the inset above, which means "overlap the
-		// viewport has NOT already excluded" and stays 0 here.
+		// The keyboard verdict for the one shape no geometry in the page can see: both
+		// viewports shrinking together. Read by softKeyboard.ts, which the workbench
+		// layout fit, the keybar and the editor's tap-to-refocus all go through.
 		rootStyle.setProperty(
 			"--composery-touch-keyboard-open",
 			keyboardOpen(Math.round(width), Math.round(height)) ? "1" : "0",
@@ -809,8 +800,8 @@
 	// Geometry listeners refresh the viewport vars SYNCHRONOUSLY: this script loads
 	// before workbench.js, so its listeners run first within the same resize event,
 	// and the workbench layout fit (touch.diff) reads
-	// --composery-touch-keyboard-inset in its own listener - an async (rAF) update
-	// would leave it a stale keyboard inset and wedge the workbench at the
+	// --composery-touch-keyboard-open in its own listener - an async (rAF) update
+	// would leave it a stale keyboard verdict and wedge the workbench at the
 	// keyboard-open height after the keyboard closes.
 	function handleViewportGeometry() {
 		updateViewportVars();

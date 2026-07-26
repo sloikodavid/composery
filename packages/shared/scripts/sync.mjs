@@ -69,7 +69,7 @@ function idePageSchemeVars(c, dark) {
 	return {
 		"--vscode-button-background": c.primary,
 		"--vscode-button-foreground": c.primaryForeground,
-		"--vscode-button-hoverBackground": dark ? "#e5e5e5" : "#404040",
+		"--vscode-button-hoverBackground": dark ? c.foreground : c.mutedForeground,
 		"--vscode-focusBorder": c.ring,
 		"--vscode-editor-background": c.background,
 		"--vscode-editorHoverWidget-background": dark ? c.secondary : c.popover,
@@ -82,10 +82,10 @@ function idePageSchemeVars(c, dark) {
 		"--auth-input-focus": c.ring,
 		"--vscode-foreground": c.foreground,
 		"--vscode-input-background": dark ? c.secondary : c.background,
-		"--vscode-input-border": dark ? c.input : "#d4d4d4",
+		"--vscode-input-border": dark ? c.input : c.secondary,
 		"--vscode-input-foreground": c.foreground,
-		"--vscode-toolbar-activeBackground": dark ? "#6c6f7050" : "#a6a6a650",
-		"--vscode-toolbar-hoverBackground": dark ? "#5a5d5e50" : "#b8b8b850",
+		"--vscode-toolbar-activeBackground": `${c.mutedForeground}50`,
+		"--vscode-toolbar-hoverBackground": `${c.muted}80`,
 		"--vscode-shadow-hover": dark
 			? "0 2px 8px #0000005c"
 			: "0 2px 8px #00000026"
@@ -183,7 +183,10 @@ appJson.expo.android.adaptiveIcon.backgroundColor = brandColors.surface.tile;
 const splash = appJson.expo.plugins.find(
 	(plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen"
 );
-if (splash) splash[1].backgroundColor = brandColors.surface.splash;
+if (splash) {
+	splash[1].backgroundColor = brandColors.surface.splash;
+	splash[1].dark.backgroundColor = brandColors.surface.splashDark;
+}
 await emit(join(root, "packages", "mobile", "app.json"), `${json(appJson)}\n`);
 
 if (CHECK) {

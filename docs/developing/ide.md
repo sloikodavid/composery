@@ -16,10 +16,18 @@ provenance: the submodule source, patch coordinates, and source URL metadata.
 
 ## Brand palette
 
-The Composery palette is shared from `packages/shared/index.ts`: neutral ink and
-paper surfaces, monochrome primary actions, and the same icon geometry across
-web, mobile, and the editor. Regenerate derived files instead of hand-copying brand
-values:
+The Composery palette is shared from `packages/shared/index.ts` - `theme` for the
+roles every surface shares, `ideTheme` for what only the editor has (chrome that
+sits flush with the canvas, syntax, ANSI) - along with the same icon geometry
+across web, mobile, and the editor.
+
+Edit colours through `pnpm theme`, the colour console in `scripts/color-console/`.
+It shows every role with live website, mobile and editor previews plus a contrast
+table, and applying an edit fans it out in one pass: both palettes in
+`index.ts`, the two theme JSONs role by role, the first-paint pins in the patch
+stack, the hand-synced copies below, and the generators. Editing a colour by hand
+means doing that fan-out yourself. Regenerate derived files instead of
+hand-copying brand values:
 
 - **Editor themes**.
   `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.

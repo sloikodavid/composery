@@ -153,6 +153,8 @@ function render(url) {
 				width: min(288px, 100%, calc(100dvh - 10rem));
 				aspect-ratio: 1;
 				padding: 12px;
+				/* Not a brand colour on purpose: a QR quiet zone is scanner input,
+				   and white is the contrast every reader is calibrated for. */
 				background: #ffffff;
 				border-radius: 16px;
 			}

@@ -15,6 +15,7 @@
 		"dev:mobile": "pnpm --filter mobile dev",
 		"dev:docker": "docker compose --progress=plain -f compose.dev.yml up --build",
 		"dev:tree": "node scripts/tree.mjs --watch",
+		"theme": "node scripts/color-console/server.mjs",
 		"check": "pnpm check:portable && pnpm check:cli && pnpm check:renovate",
 		"check:portable": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:ide && pnpm check:shared && pnpm check:native-config",
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",

@@ -19,7 +19,7 @@ export const clerkAppearance = {
 		colorNeutral: "var(--foreground)",
 		colorRing: "color-mix(in oklab, var(--ring) 30%, transparent)",
 		colorShimmer: "var(--muted)",
-		colorModalBackdrop: "rgba(0, 0, 0, 0.4)",
+		colorModalBackdrop: "var(--overlay)",
 		// Form controls match the full-page auth form (new-box): rounded-lg
 		// (var(--radius)), 15px text. Card/popover radius is overridden per-element
 		// to the 24px card curve below.
@@ -46,7 +46,7 @@ export const clerkAppearance = {
 		formButtonReset:
 			"rounded-lg font-medium transition-all active:translate-y-px",
 		socialButtons: "gap-2",
-		// Hover wash stays lighter than --border (#e5e5e5) so the fill reads as a
+		// Hover wash stays lighter than --border so the fill reads as a
 		// soft surface inside the outline instead of blending into it. dark: keeps
 		// its stronger lift since the border there is barely visible.
 		socialButtonsBlockButton:

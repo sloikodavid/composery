@@ -6,6 +6,10 @@
 
 :root {
 	--composery-viewport-height: 100dvh;
+	/* The native host's channel, and only its own: how much of the viewport a soft keyboard
+	 * covers on a WebView that resizes neither viewport (packages/mobile writes it; nothing
+	 * in the page may, or the measurement is lost). This 0px is what a plain browser reads,
+	 * and every browser-visible keyboard is measured by softKeyboard.ts instead. */
 	--composery-touch-keyboard-inset: 0px;
 	--composery-safe-area-top: env(safe-area-inset-top, 0px);
 	--composery-safe-area-right: env(safe-area-inset-right, 0px);

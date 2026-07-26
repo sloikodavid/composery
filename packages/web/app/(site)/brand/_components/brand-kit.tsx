@@ -88,8 +88,8 @@ function Tile({
 }
 
 const COLORS: [string, string][] = [
-	["Black", BRAND_COLORS.surface.ink],
-	["White", BRAND_COLORS.surface.paper],
+	["Ink", BRAND_COLORS.surface.ink],
+	["Paper", BRAND_COLORS.surface.paper],
 	["Success", BRAND_COLORS.state.success],
 	["Warning", BRAND_COLORS.state.warning],
 	["Destructive", BRAND_COLORS.state.destructive],

@@ -176,12 +176,11 @@ export class Keybar extends Disposable {
 	// The height the workbench grid must give up: zero unless the bar is showing - a soft
 	// keyboard is up, or a terminal holds focus.
 	//
-	// iPad is covered without anything special here: upstream's isIOS is
-	// `(Macintosh|iPad|iPhone in the UA) && maxTouchPoints > 0` (platform.ts), which is the
-	// same test the wider web settled on for iPadOS 13+ reporting itself as a Mac, and it
-	// stays false on a real Mac because none of them have a touchscreen. A Windows touch
-	// laptop does fall outside layout.ts's isAndroid/isIOS branch and so never shows the
-	// bar - correct, it has a physical keyboard and nothing to compensate for.
+	// The gate is the touch capability, so an iPad and a Windows touch laptop are covered
+	// alike. On a machine that also has a hardware keyboard the terminal rule spends a row
+	// on keys that machine can already type - accepted rather than guessed around, because
+	// nothing distinguishes "has a hardware keyboard" from "does not", and a device list
+	// that is right about laptops is wrong about the next form factor.
 	get height(): number {
 		if (!this.visible) {
 			return 0;

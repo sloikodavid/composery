@@ -29,11 +29,11 @@ describe("theme palette", () => {
 	});
 
 	test("primary light matches the shared brand palette", () => {
-		expect(light.primary).toBe("#171717");
+		expect(light.primary).toBe("#323229");
 	});
 
 	test("primary dark matches the shared brand palette", () => {
-		expect(dark.primary).toBe("#fafafa");
+		expect(dark.primary).toBe("#c1b5a9");
 	});
 
 	test("selects the palette for a React Native color scheme", () => {

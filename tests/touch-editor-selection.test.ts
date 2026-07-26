@@ -281,83 +281,42 @@ describe("touch editor selection handles", () => {
 		expect(harness.updates).toBe(1);
 	});
 
-	test("every upstream cursor-geometry invalidation schedules a handle repaint", () => {
-		const methods = [
-			"onDecorationsChanged",
-			"onFlushed",
-			"onLinesChanged",
-			"onLinesDeleted",
-			"onLinesInserted",
-			"onZonesChanged"
-		].map((name) => extractAddedOverrideMethod(patch, name));
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => Record<string, (event: object) => boolean> & {
-				updates: number;
-			};
-		}>(
-			[
-				`class Harness {
-					updates = 0;
-					_scheduleTouchHandleUpdate() { this.updates++; }
-					${methods.join("\n")}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
-
-		for (const name of [
-			"onDecorationsChanged",
-			"onFlushed",
-			"onLinesChanged",
-			"onLinesDeleted",
-			"onLinesInserted",
-			"onZonesChanged"
-		]) {
-			expect(harness[name]!({})).toBe(false);
-		}
-
-		expect(harness.updates).toBe(6);
-	});
-
-	test("token changes repaint only when they can move a selected endpoint", () => {
+	// The handles sit at model positions rendered into the lines, so anything the view
+	// reports can move them - a scroll, a re-tokenized line, a zone opening, a
+	// decoration widening a line. Enumerating the events that matter is a list that
+	// goes stale on the next upstream bump and fails silently when it does, so repaint
+	// after whatever the view just handled and let the frame guard collapse the burst.
+	test("any view event batch the editor handles schedules a handle repaint", () => {
 		const { Harness } = evaluatePatchSnippets<{
 			Harness: new () => {
 				updates: number;
-				onTokensChanged(event: {
-					ranges: Array<{ fromLineNumber: number; toLineNumber: number }>;
-				}): boolean;
+				handled: object[][];
+				handleEvents(events: object[]): void;
 			};
 		}>(
 			[
-				`class Harness {
+				`class Base {
+					handled: object[][] = [];
+					handleEvents(events: object[]) { this.handled.push(events); }
+				}
+				class Harness extends Base {
 					updates = 0;
-					_primarySelection = { startLineNumber: 10, endLineNumber: 12 };
 					_scheduleTouchHandleUpdate() { this.updates++; }
-					${extractAddedOverrideMethod(patch, "onTokensChanged")}
+					${extractAddedOverrideMethod(patch, "handleEvents")}
 				}`
 			],
 			["Harness"]
 		);
 		const harness = new Harness();
 
-		expect(
-			harness.onTokensChanged({
-				ranges: [
-					{ fromLineNumber: 1, toLineNumber: 9 },
-					{ fromLineNumber: 13, toLineNumber: 20 }
-				]
-			})
-		).toBe(false);
-		expect(harness.updates).toBe(0);
+		harness.handleEvents([{ type: "scroll" }, { type: "tokens" }]);
+		harness.handleEvents([{ type: "zones" }]);
 
-		harness.onTokensChanged({
-			ranges: [{ fromLineNumber: 8, toLineNumber: 10 }]
-		});
-		harness.onTokensChanged({
-			ranges: [{ fromLineNumber: 12, toLineNumber: 14 }]
-		});
-
+		// Upstream's own dispatch still runs - the override adds to it, never replaces it.
+		expect(harness.handled).toEqual([
+			[{ type: "scroll" }, { type: "tokens" }],
+			[{ type: "zones" }]
+		]);
 		expect(harness.updates).toBe(2);
 	});
 

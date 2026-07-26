@@ -34,6 +34,7 @@ const ASSETS =
 const OVERLAY_VSCODE_SRC = "packages/ide/overlay/lib/vscode/src";
 const TOUCH_GATE = `${OVERLAY_VSCODE_SRC}/vs/base/browser/touchGate.ts`;
 const NARROW_GATE = `${OVERLAY_VSCODE_SRC}/vs/workbench/browser/narrowGate.ts`;
+const SOFT_KEYBOARD = `${OVERLAY_VSCODE_SRC}/vs/base/browser/softKeyboard.ts`;
 
 // Selectors are wrapped for readability in one sheet and not the other; compare
 // them as the browser does, on whitespace-insensitive text.
@@ -355,18 +356,33 @@ describe("patch stack lint", () => {
 });
 
 describe("local media preview", () => {
-	test("keeps uploaded media binary and outside the workspace", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/local-media-preview.diff`)
-		);
+	const patch = () => readRepoFile(`${PATCHES_DIR}/local-media-preview.diff`);
 
-		expect(source).toContain("if (contents && getMediaMime(resource.path))");
+	test("keeps uploaded media binary and outside the workspace", () => {
+		const source = addedLines(patch());
+
+		expect(source).toContain("if (getMediaMime(name))");
 		expect(source).toContain("scheme: Schemas.tmp");
-		expect(source).toContain(
-			"await this.fileService.writeFile(resource, contents)"
+		expect(source).toContain("await fileService.writeFile(resource, contents)");
+		// Media returns a resource and nothing else: contents is what an untitled
+		// editor decodes, and text still takes that branch untouched.
+		expect(source).toContain("result.complete({ resource });");
+		expect(patch()).toContain(
+			" \t\t\t\t\tresource: URI.from({ scheme: Schemas.untitled, path: name }),"
 		);
-		expect(source).toContain("contents = undefined");
-		expect(source).toContain("await this.editorService.openEditors(editors)");
+	});
+
+	// Both takers of a local file - the unsupported-browser "Open Files..."
+	// fallback and a drop onto the workbench - hand extractFileListData's result
+	// straight to openEditors. Fixing either call site leaves the other one
+	// decoding the same bytes, so the fix has to stay in the helper they share.
+	test("fixes the shared helper, not one of its two call sites", () => {
+		const touched = patch()
+			.split("\n")
+			.filter((line) => line.startsWith("--- a/"))
+			.map((line) => line.slice("--- a/".length));
+
+		expect(touched).toEqual(["lib/vscode/src/vs/platform/dnd/browser/dnd.ts"]);
 	});
 });
 
@@ -995,57 +1011,223 @@ function runNarrowViewportVars({
 	};
 }
 
-describe("narrow overlay", () => {
-	// The inset means "keyboard overlap the viewport has NOT already excluded" -
-	// the iOS shape, where the visual viewport shrinks under a keyboard the layout
-	// viewport still counts. Where the layout viewport shrinks too (Android with
-	// interactive-widget=resizes-content) this is 0 on purpose and the
-	// keyboard-open baseline below is what notices.
-	test("computes keyboard inset from actual bottom overlap", () => {
-		expect(
-			runNarrowViewportVars({
-				visualViewport: { height: 520, offsetTop: 0 }
-			}).properties.get("--composery-touch-keyboard-inset")
-		).toBe("280px");
+// ---------------------------------------------------------------------------
+// softKeyboard.ts: the single answer three surfaces ask.
+// ---------------------------------------------------------------------------
 
-		expect(
-			runNarrowViewportVars({
-				visualViewport: { height: 800, offsetTop: 0 }
-			}).properties.get("--composery-touch-keyboard-inset")
-		).toBe("0px");
+interface FakeViewport {
+	height: number;
+	offsetTop: number;
+	scale: number;
+}
 
-		// A viewport pushed down rather than shrunk (iOS scrolls the visual
-		// viewport to keep the focused field visible) is not keyboard overlap.
+function fakeWindow(
+	innerHeight: number,
+	viewport: FakeViewport | undefined,
+	vars: Record<string, string> = {}
+): Window {
+	return {
+		innerHeight,
+		visualViewport: viewport,
+		document: { documentElement: {} },
+		getComputedStyle: () => ({
+			getPropertyValue: (name: string) => vars[name] ?? ""
+		})
+	} as unknown as Window;
+}
+
+// The overlay file has no imports, so it evaluates as-is once `export` is stripped -
+// the shipped code, not a paraphrase of it.
+const { softKeyboard } = evaluatePatchSnippets<{
+	softKeyboard: (targetWindow: Window) => { open: boolean; overlap: number };
+}>([readRepoFile(SOFT_KEYBOARD).replace(/^export /gm, "")], ["softKeyboard"]);
+
+describe("soft keyboard", () => {
+	// Shrinks the visual viewport only (iOS Safari): the difference IS the keyboard,
+	// and the height we lay out to already excludes it, so nothing more to subtract.
+	test("sees a keyboard that shrinks only the visual viewport", () => {
 		expect(
-			runNarrowViewportVars({
-				visualViewport: { height: 800, offsetTop: 120 }
-			}).properties.get("--composery-touch-keyboard-inset")
-		).toBe("0px");
+			softKeyboard(fakeWindow(800, { height: 520, offsetTop: 0, scale: 1 }))
+		).toEqual({ open: true, overlap: 0 });
 	});
 
-	// The workbench layout listener (touch.diff) registers after
-	// shell.js on the same visualViewport and reads
-	// --composery-touch-keyboard-inset within the same resize delivery. The vars
-	// must update synchronously in shell.js's geometry listeners: an
-	// animation-frame update hands the layout a stale keyboard inset and wedges
-	// the workbench at the keyboard-open height after the keyboard closes. The
-	// harness stubs requestAnimationFrame as a no-op, so only the sync path can
-	// pass this test.
-	test("viewport vars update synchronously within the resize delivery", () => {
+	// Shrinks both viewports in lockstep (our interactive-widget=resizes-content
+	// viewport on Chromium): every measurement here reads zero, and only shell.js's
+	// published verdict sees it. Measuring instead of reading it is what made the
+	// editor blur and refocus its hidden input on every single tap.
+	test("sees a keyboard that shrinks both viewports only through the verdict", () => {
+		const geometry = { height: 520, offsetTop: 0, scale: 1 };
+
+		expect(softKeyboard(fakeWindow(520, geometry))).toEqual({
+			open: false,
+			overlap: 0
+		});
+		expect(
+			softKeyboard(
+				fakeWindow(520, geometry, { "--composery-touch-keyboard-open": "1" })
+			)
+		).toEqual({ open: true, overlap: 0 });
+	});
+
+	// Shrinks neither (Composery Mobile's edge-to-edge WKWebView): the host reports
+	// the covered height and it is the only thing left to subtract.
+	test("subtracts a keyboard only the native host can see", () => {
+		expect(
+			softKeyboard(
+				fakeWindow(
+					800,
+					{ height: 800, offsetTop: 0, scale: 1 },
+					{
+						"--composery-touch-keyboard-inset": "180px"
+					}
+				)
+			)
+		).toEqual({ open: true, overlap: 180 });
+	});
+
+	// A viewport that already excluded the keyboard needs nothing more: subtracting
+	// a reported inset on top of it would cut the workbench twice.
+	test("never subtracts a measured and a reported keyboard together", () => {
+		expect(
+			softKeyboard(
+				fakeWindow(
+					800,
+					{ height: 520, offsetTop: 0, scale: 1 },
+					{
+						"--composery-touch-keyboard-inset": "180px"
+					}
+				)
+			)
+		).toEqual({ open: true, overlap: 0 });
+	});
+
+	test("reads a structural zero where there is no keyboard", () => {
+		// A viewport pushed down rather than shrunk (iOS scrolls the visual viewport
+		// to keep the focused field visible) is not keyboard overlap.
+		expect(
+			softKeyboard(fakeWindow(800, { height: 800, offsetTop: 120, scale: 1 }))
+		).toEqual({ open: false, overlap: 0 });
+		// No visualViewport at all - the whole feature is inert, never NaN.
+		expect(softKeyboard(fakeWindow(800, undefined))).toEqual({
+			open: false,
+			overlap: 0
+		});
+	});
+
+	// iOS honours pinch even under user-scalable=no, and a zoomed visual viewport is
+	// short for reasons that have nothing to do with a keyboard.
+	test("does not read pinch zoom as a keyboard", () => {
+		expect(
+			softKeyboard(fakeWindow(800, { height: 400, offsetTop: 0, scale: 2 }))
+		).toEqual({ open: false, overlap: 0 });
+	});
+
+	// One home, pinned by readership: the copy that drifted was a second measurement
+	// in the editor's tap handler, which our own viewport meta makes permanently 0.
+	test("is the only place that reads the keyboard properties", () => {
+		const users = [
+			...textFilesUnder(PATCHES_DIR),
+			...textFilesUnder(OVERLAY_VSCODE_SRC),
+			...textFilesUnder(ASSETS)
+		].filter((file) =>
+			/--composery-touch-keyboard-(open|inset)/.test(readRepoFile(file))
+		);
+
+		expect(users.sort()).toEqual(
+			[
+				`${ASSETS}/narrow.css`, // declares the host channel's default
+				`${ASSETS}/shell.js`, // publishes the open verdict
+				SOFT_KEYBOARD // the only reader
+			].sort()
+		);
+	});
+
+	// Both consumers go through it - the workbench fit and the editor's tap.
+	test("answers the workbench fit and the editor tap alike", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+
+		expect(source).toContain("const keyboard = softKeyboard(mainWindow);");
+		expect(source).toContain(
+			"Math.round(viewport.height) - keyboard.overlap - safeAreaBottom"
+		);
+		expect(source).toContain(
+			"if (!softKeyboard(dom.getWindow(this.viewHelper.viewDomNode)).open"
+		);
+	});
+});
+
+describe("narrow overlay", () => {
+	// The one shape no geometry in the page can see: with
+	// interactive-widget=resizes-content the keyboard shrinks the layout viewport in
+	// lockstep with the visual one, so innerHeight - visualViewport.height is a
+	// structural zero. shell.js publishes the verdict from the tallest viewport seen
+	// at this width instead, and softKeyboard.ts is its only reader.
+	test("publishes the keyboard-open verdict from a viewport-height baseline", () => {
 		const run = runNarrowViewportVars({
+			innerHeight: 800,
 			visualViewport: { height: 800, offsetTop: 0 }
 		});
-		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe("0px");
+		expect(run.properties.get("--composery-touch-keyboard-open")).toBe("0");
 
 		run.setVisualViewportHeight(520);
 		run.fireVisualViewportResize();
-		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe(
-			"280px"
-		);
+		expect(run.properties.get("--composery-touch-keyboard-open")).toBe("1");
 
 		run.setVisualViewportHeight(800);
 		run.fireVisualViewportResize();
-		expect(run.properties.get("--composery-touch-keyboard-inset")).toBe("0px");
+		expect(run.properties.get("--composery-touch-keyboard-open")).toBe("0");
+
+		// Browser chrome collapsing is not a keyboard: under the 120px floor the
+		// verdict must stay negative.
+		run.setVisualViewportHeight(720);
+		run.fireVisualViewportResize();
+		expect(run.properties.get("--composery-touch-keyboard-open")).toBe("0");
+	});
+
+	// The workbench layout listener (touch.diff) registers after shell.js on the same
+	// visualViewport and reads --composery-touch-keyboard-open within the same resize
+	// delivery. The vars must update synchronously in shell.js's geometry listeners:
+	// an animation-frame update hands the layout a stale verdict and wedges the
+	// workbench at the keyboard-open height after the keyboard closes. The harness
+	// stubs requestAnimationFrame as a no-op, so only the sync path can pass the test
+	// above - and --composery-viewport-height, which narrow.css sizes every overlay
+	// from, rides the same pass.
+	test("viewport height updates synchronously within the resize delivery", () => {
+		const run = runNarrowViewportVars({
+			innerHeight: 800,
+			visualViewport: { height: 800, offsetTop: 0 }
+		});
+		expect(run.properties.get("--composery-viewport-height")).toBe("800px");
+
+		run.setVisualViewportHeight(520);
+		run.fireVisualViewportResize();
+		expect(run.properties.get("--composery-viewport-height")).toBe("520px");
+	});
+
+	// --composery-touch-keyboard-inset carries the one measurement the page cannot
+	// make: the height a keyboard covers in a WebView that resizes neither viewport.
+	// Its only writer is the native host. shell.js runs on every workbench mutation,
+	// so a value of its own here overwrote the host's within a frame and left
+	// iOS-in-app with no keyboard signal at all.
+	test("leaves the native keyboard inset to the host that measures it", () => {
+		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const run = runNarrowViewportVars({
+			innerHeight: 800,
+			visualViewport: { height: 520, offsetTop: 0 }
+		});
+
+		expect(shellJs).not.toMatch(
+			/setProperty\(\s*["']--composery-touch-keyboard-inset["']/
+		);
+		expect(run.properties.has("--composery-touch-keyboard-inset")).toBe(false);
+		// Declared with a 0px default, so a plain browser reads a true zero.
+		expect(readRepoFile(`${ASSETS}/narrow.css`)).toContain(
+			"--composery-touch-keyboard-inset: 0px;"
+		);
+		// And the host still writes it.
+		expect(
+			readRepoFile("packages/mobile/src/components/instance-view.tsx")
+		).toContain('"--composery-touch-keyboard-inset"');
 	});
 
 	// With interactive-widget=resizes-content the keyboard also resizes the layout
@@ -1062,32 +1244,16 @@ describe("narrow overlay", () => {
 		);
 	});
 
-	// Android may resize visualViewport and report the same keyboard through the
-	// native bridge. The layout must consume one signal, never subtract both.
-	test("does not double-subtract a resized viewport and native keyboard inset", () => {
-		const viewportPatch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
-
-		expect(viewportPatch).toContain(
-			"const nativeOnlyKeyboardOverlap = viewportKeyboardOverlap > 0 ? 0 : nativeKeyboardOverlap"
-		);
-		expect(viewportPatch).toContain(
-			"Math.round(viewport.height) - nativeOnlyKeyboardOverlap - safeAreaBottom"
-		);
-	});
-
 	// Two independent small-screen gates: touch (hover/pointer) and narrow
-	// (viewport width). Keyboard-inset logic belongs to the narrow overlay only;
+	// (viewport width). Keyboard geometry belongs to neither - it is softKeyboard.ts;
 	// the touch gate must never grow viewport knowledge.
 	test("keeps the touch gate free of keyboard-inset logic", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
-		const narrowCss = readRepoFile(`${ASSETS}/narrow.css`);
 		const touchGatePatch = readRepoFile(TOUCH_GATE);
 
-		expect(shellJs).toContain("visualViewportKeyboardInset");
-		expect(narrowCss).toContain("--composery-touch-keyboard-inset");
 		expect(touchGatePatch).toContain("TOUCH_QUERY");
 		expect(touchGatePatch).not.toContain("keyboardInset");
 		expect(touchGatePatch).not.toContain("KeyboardInset");
+		expect(touchGatePatch).not.toContain("visualViewport");
 	});
 
 	// The touch-editor patch creates the selection drag handles (caret + both range
@@ -1146,13 +1312,22 @@ describe("narrow overlay", () => {
 		);
 
 		expect(touchEditorPatch).toContain(
-			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= TOUCH_PAN_THRESHOLD"
+			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= PAN_THRESHOLD"
 		);
 		expect(touchEditorPatch).toContain("this._touchGesture.panned = true");
 		expect(touchEditorPatch).toContain(
 			"if (this._touchGesture?.panned || this._touchGesture?.menuOpened)"
 		);
-		expect(touchEditorPatch).toContain("if (!keyboardVisible");
+		// A tap re-opens a dismissed keyboard by cycling focus, and must not cycle it
+		// while the keyboard is up. That verdict comes from softKeyboard - the editor
+		// measured the viewport delta itself, which our interactive-widget viewport
+		// makes permanently 0, so it blurred and refocused on every tap.
+		expect(touchEditorPatch).toContain(
+			"if (!softKeyboard(dom.getWindow(this.viewHelper.viewDomNode)).open"
+		);
+		expect(touchEditorPatch).not.toMatch(
+			/targetWindow\.innerHeight - viewport\.height/
+		);
 		expect(touchEditorPatch).not.toContain("revealAllCursors");
 		// One definition of "touch" in the editor: the per-interaction pointer
 		// type. A second device-level gate here was redundant with it.
@@ -1341,16 +1516,17 @@ describe("narrow overlay", () => {
 				"this._mainContainerDimension.height - (this.keybar?.height ?? 0))"
 		);
 		expect(keybarPatch).toContain(
-			"this.keybar?.setViewport(hasKeyboard, visibleHeight)"
+			"this.keybar?.setViewport(keyboard.open, visibleHeight)"
 		);
-		// hasKeyboard must incorporate the canonical keyboard-open signal, not only
-		// the viewport delta: our viewport meta is interactive-widget=resizes-content,
-		// so innerHeight - visualViewport.height is structurally 0 and a hasKeyboard
-		// computed from it alone can never be true - the keybar shipped dead in mobile
-		// web on exactly that. The string alone is a false guard (the terminal reads
-		// the same var), so pin the actual disjunction. Device-verified 2026-07-22.
-		expect(keybarPatch).toContain("const keyboardOpen =");
-		expect(keybarPatch).toContain("const hasKeyboard = keyboardOpen ||");
+		// The verdict must come from softKeyboard, never from a viewport delta measured
+		// here: our viewport meta is interactive-widget=resizes-content, so
+		// innerHeight - visualViewport.height is structurally 0 and a keyboard test built
+		// from it alone can never be true - the keybar shipped dead in mobile web on
+		// exactly that. Device-verified 2026-07-22.
+		expect(keybarPatch).toContain("const keyboard = softKeyboard(mainWindow);");
+		expect(keybarPatch).not.toMatch(
+			/mainWindow\.innerHeight - viewport\.height/
+		);
 		// Terminal focus toggles the reserved height between layout passes; without this
 		// relayout the grid never gives the rows back when focus leaves the terminal.
 		expect(keybarPatch).toContain(
@@ -1674,23 +1850,25 @@ describe("narrow overlay", () => {
 		expect(selectionHold).toBeLessThan(gestureHold);
 	});
 
-	// Both patches encode the same device-verified "finger moved enough that this
-	// is a pan, not a tap" magnitude: the editor's pan threshold and the gesture
-	// tap-cancel slop. They live in different files - pin them.
-	test("editor pan threshold matches the gesture tap-cancel slop", () => {
-		const selectionThreshold = Number(
-			/TOUCH_PAN_THRESHOLD = (\d+)/.exec(
-				addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))
-			)?.[1]
-		);
-		const tapCancelSlop = Number(
-			/data\.initialPageY - touch\.pageY\) >= (\d+)/.exec(
-				addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`))
-			)?.[1]
-		);
+	// "The finger moved enough that this is a pan, not a tap" is one device-verified
+	// magnitude, and two copies of it decided the same finger differently. It is now a
+	// single exported constant: the gesture layer cancels the tap on it and the editor
+	// classifies its own pan against the same import. Nothing may redeclare it, and
+	// Gesture's release-time slop - a second, looser number that only ever disagreed
+	// with the live verdict - is gone with it.
+	test("one pan threshold decides press or scroll everywhere", () => {
+		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+		const declarations = patch.match(/PAN_THRESHOLD\s*=\s*(\d+)/g) ?? [];
 
-		expect(selectionThreshold).toBeGreaterThan(0);
-		expect(selectionThreshold).toBe(tapCancelSlop);
+		expect(declarations).toEqual(["PAN_THRESHOLD = 16"]);
+		expect(patch).toContain("export const PAN_THRESHOLD = 16;");
+		expect(patch).toContain(
+			"data.initialPageY - touch.pageY) >= PAN_THRESHOLD"
+		);
+		expect(patch).toContain(
+			"Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= PAN_THRESHOLD"
+		);
+		expect(patch).not.toMatch(/Math\.abs\(data\.initialPageX[^)]*\) < 30/);
 	});
 
 	// On touch the soft keyboard follows focus; a pan neither pops nor closes it, so the
@@ -1733,7 +1911,14 @@ describe("narrow overlay", () => {
 
 		expect(patch).toContain("contextMenuTimer");
 		expect(patch).toContain("tapCancelled");
-		expect(patch).toContain("!data.tapCancelled && holdTime");
+		// Press or scroll first, then long or short - the timer and its release fallback
+		// both feed the one native-shaped contextmenu path.
+		expect(patch).toContain(
+			"if (holdTime >= Gesture.HOLD_DELAY) {\n\t\t\t\t\tthis.fireFallbackContextMenu(data);"
+		);
+		expect(patch).toContain(
+			"data.contextMenuFired = true;\n\t\t\t\t\tthis.fireFallbackContextMenu(data);"
+		);
 		expect(patch).toContain(
 			"this.newGestureEvent(EventType.Change, initialTarget)"
 		);
@@ -1747,25 +1932,28 @@ describe("narrow overlay", () => {
 		// stale entries kill the single-touch checks (long-press, inertia) forever.
 		expect(patch).toContain("'touchcancel'");
 		// The hold itself can re-render the pressed DOM (the editor word-selects
-		// mid-hold) and detach initialTarget; dispatch then finds no containing
-		// Gesture target and silently drops the menu. The timer must re-resolve
-		// the live element under the finger.
-		expect(patch).toContain("!data.initialTarget.isConnected");
+		// mid-hold) and detach initialTarget. The native re-fire must resolve the
+		// live element under the finger and keep End on that same target.
 		expect(patch).toContain("elementFromPoint");
+		expect(patch).toContain("data.initialTarget = target;");
 	});
 
 	// Most workbench surfaces (the terminal, the titlebar, empty editor groups) open
 	// their menus from native contextmenu listeners that a long-press never reaches:
 	// Gesture targets preventDefault the touchstart and iOS synthesizes no contextmenu
-	// at all. An unconsumed gesture context event must be re-fired as a real bubbling
-	// contextmenu from the touched element - and the semantic owners that do consume
-	// must open their own menus.
-	test("long-press falls back to a native contextmenu when no gesture owner consumes", () => {
-		const patch = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+	// at all. Gesture must re-fire exactly one real bubbling contextmenu from the
+	// touched element, with semantic owners listening on that same native path.
+	test("every long-press uses one native contextmenu path", () => {
+		const raw = readRepoFile(`${PATCHES_DIR}/touch.diff`);
+		const patch = addedLines(raw);
 
-		// touch.ts: the fallback fires only for unconsumed gesture context events...
-		expect(patch).toContain("if (!holdEvt.defaultPrevented) {");
-		expect(patch).toContain("if (!evt.defaultPrevented) {");
+		// touch.ts: the timer and release fallback are the only two call sites, and
+		// neither is conditional on a separate Gesture event being unconsumed.
+		expect(patch.match(/this\.fireFallbackContextMenu\(data\);/g)).toHaveLength(
+			2
+		);
+		expect(patch).not.toContain("holdEvt.defaultPrevented");
+		expect(patch).not.toContain("evt.type === EventType.Contextmenu");
 		expect(patch).toContain(
 			"new MouseEvent('contextmenu', { bubbles: true, cancelable: true"
 		);
@@ -1775,6 +1963,9 @@ describe("narrow overlay", () => {
 		// finger-up) must not double the menu, while a during-hold native one
 		// (Android outside Gesture targets) stands the timer down instead.
 		expect(patch).toContain("suppressNativeContextMenuUntil");
+		expect(patch).toContain(
+			"data.contextMenuFired && data.syntheticContextMenu"
+		);
 		expect(patch).toContain("e.stopImmediatePropagation()");
 
 		// Some engines follow an unprevented long-press release with an emulated-mouse
@@ -1787,7 +1978,7 @@ describe("narrow overlay", () => {
 		// context menu listeners would shadow deeper native owners (a toolbar button's
 		// item menu), and a second listView leg would emit every touch menu twice. The
 		// patch must remove them, not add more.
-		const removedLines = readRepoFile(`${PATCHES_DIR}/touch.diff`)
+		const removedLines = raw
 			.split("\n")
 			.filter((line) => line.startsWith("-") && !line.startsWith("---"))
 			.join("\n");
@@ -1802,6 +1993,52 @@ describe("narrow overlay", () => {
 			expect(removedLines).toContain(removed);
 			expect(patch).not.toContain(removed);
 		}
+
+		// The old event type and its typed DOM-map entry are deleted. The editor and
+		// menu-item consumers capture native contextmenu instead, before ancestor menus.
+		expect(removedLines).toContain(
+			"export const Contextmenu = '-monaco-gesturecontextmenu';"
+		);
+		expect(removedLines).toContain(
+			"'-monaco-gesturecontextmenu': GestureEvent;"
+		);
+		expect(patch).not.toMatch(
+			/(?:TouchEventType|GestureEventType|EventType)\.Contextmenu/
+		);
+		expect(patch).not.toContain("-monaco-gesturecontextmenu");
+		expect(patch).toContain(
+			"this.viewHelper.viewDomNode, dom.EventType.CONTEXT_MENU, (e: MouseEvent) => this.onContextMenu(e), true"
+		);
+		// Chromium can re-hit-test the synthetic MouseEvent as content-empty even
+		// while its DOM target is still the rendered token. The native listener
+		// must consume Gesture's touchstart classification, not derive a second one.
+		expect(patch).toContain("startedOnText: boolean;");
+		expect(patch).toContain("if (gesture.startedOnText) {");
+		expect(patch).toContain(
+			"const target = this._createMouseTarget(editorEvent, false);"
+		);
+		expect(patch).not.toContain(
+			"if (target.type === MouseTargetType.CONTENT_TEXT) {"
+		);
+		// Capture must not double ordinary desktop right-clicks. Touch-native and
+		// untrusted fallback events use the capture path, and gutter holds are
+		// deliberately presented as the editor menu without lying about the DOM target.
+		expect(patch).toContain(
+			"event.isTrusted && (event as PointerEvent).pointerType !== 'touch'"
+		);
+		expect(patch).toContain(
+			"const target = this._createMouseTarget(editorEvent, true);"
+		);
+		expect(patch).toContain(
+			"target.type === MouseTargetType.GUTTER_GLYPH_MARGIN"
+		);
+		expect(patch).toContain(
+			"target: MouseTarget.createContentEmpty(target.element, target.mouseColumn, target.position, { isAfterLines: false })"
+		);
+		expect(patch).toContain("if (!e.isTrusted || e.pointerType === 'touch')");
+		expect(patch).toContain(
+			"eventType !== TouchEventType.Tap && eventType !== EventType.CONTEXT_MENU"
+		);
 	});
 
 	// Janky event delivery (a busy phone, the app WebView) can hold a real pan's
@@ -2742,14 +2979,38 @@ describe("composery updates", () => {
 	});
 });
 
-describe("product icon themes", () => {
-	test("late-loaded fonts repaint product icons on Android Chromium", () => {
-		const source = addedLines(
-			readRepoFile(`${PATCHES_DIR}/product-icon-themes.diff`)
+describe("custom editors", () => {
+	// The service that registers every contributed editor (Image Preview,
+	// notebooks, anything an extension contributes) is built by one startup
+	// contribution that never touches it. Delayed hands that contribution a proxy
+	// backed by a timeout-less requestIdleCallback, which a window started in a
+	// hidden tab never gets - so nothing registers for that window's whole life.
+	test("the contributed-editor service is built at startup, not on idle", () => {
+		const patch = readRepoFile(`${PATCHES_DIR}/custom-editors.diff`);
+
+		expect(patch).toContain(
+			"-registerSingleton(ICustomEditorService, CustomEditorService, InstantiationType.Delayed);"
+		);
+		expect(patch).toContain(
+			"+registerSingleton(ICustomEditorService, CustomEditorService, InstantiationType.Eager);"
+		);
+	});
+
+	// Eager only helps because a BlockStartup contribution depends on the service.
+	// If upstream ever drops that argument, the service goes back to being built
+	// by whoever happens to ask first - which is the bug, one step removed.
+	test("a startup contribution still depends on the service", () => {
+		const factory = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/customEditor/browser/customEditorInputFactory.ts"
+		);
+		const contribution = readRepoFile(
+			"packages/ide/upstream/lib/vscode/src/vs/workbench/contrib/customEditor/browser/customEditor.contribution.ts"
 		);
 
-		expect(source).toContain("font-display: swap");
-		expect(source).not.toContain("font-display: block");
+		expect(factory).toContain("@ICustomEditorService _customEditorService");
+		expect(contribution).toContain(
+			"registerWorkbenchContribution2(ComplexCustomWorkingCopyEditorHandler.ID, ComplexCustomWorkingCopyEditorHandler, WorkbenchPhase.BlockStartup)"
+		);
 	});
 });
 
@@ -3246,5 +3507,77 @@ describe("api terminals", () => {
 		expect(session).toContain("createProcess(");
 		expect(session).not.toContain("node-pty");
 		expect(session).not.toContain("spawn(");
+	});
+});
+
+// Our first-run layout defaults are the one place a "good default" can quietly
+// become something the user cannot undo, because they are expressed against
+// upstream's own persisted state rather than a setting they can see. Both of
+// these guard the mechanism, not the taste: which containers we start with is
+// free to change, how the choice is stored is not.
+describe("default layout", () => {
+	const compositeBarRel =
+		"lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts";
+
+	const patchedCompositeBar = (): string => {
+		const shadow = mkdtempSync(resolve(tmpdir(), "composery-layout-"));
+		try {
+			const dst = resolve(shadow, compositeBarRel);
+			mkdirSync(posix.dirname(dst.replaceAll("\\", "/")), { recursive: true });
+			copyFileSync(
+				resolve(repoRoot, "packages/ide/upstream", compositeBarRel),
+				dst
+			);
+			const section = readRepoFile(`${PATCHES_DIR}/product.diff`)
+				.split(/^(?=--- a\/)/m)
+				.filter((part) => part.startsWith(`--- a/${compositeBarRel}`))
+				.join("");
+			expect(section).not.toBe("");
+			const sectionFile = resolve(shadow, "composite-bar-section.diff");
+			writeFileSync(sectionFile, section);
+			applyPatch(sectionFile, shadow);
+			return readFileSync(dst, "utf8").replaceAll("\r\n", "\n");
+		} finally {
+			rmSync(shadow, { recursive: true, force: true });
+		}
+	};
+
+	// A container is on its bar when it is PINNED - that is the state the bar's
+	// own context menu toggles and the only one persisted profile-wide. Deciding
+	// this anywhere else re-runs the id list against state the user has since
+	// changed: keying off `visible` instead re-hid the container on every reload
+	// (it is workspace-scoped and re-derived from shouldBeHidden), and deciding
+	// it in shouldBeHidden re-hid it mid-session on any view-descriptor change.
+	// So: consulted exactly once, at the one call site that knows the container
+	// is new to this profile.
+	test("default-hidden containers are decided once, by not pinning", () => {
+		const patched = patchedCompositeBar();
+		const uses = patched.split("COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS");
+
+		// One declaration, one read - a second read is a second chance to
+		// override a choice the user has already made.
+		expect(uses).toHaveLength(3);
+		expect(uses[1]).toContain("new Set<string>(");
+		expect(patched).toContain(
+			"if (!cachedViewContainer && !COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS.has(viewContainer.id)) {\n\t\t\t\tthis.compositeBar.pin(viewContainer.id);"
+		);
+
+		// Hiding by any other mechanism does not survive a reload.
+		expect(patched).not.toContain(
+			"COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS.has(viewContainerId)"
+		);
+	});
+
+	// Where a container lives is a layout opinion, not a default: unlike pinned
+	// state there is no UI that reads as "put this back", and it was seeded into
+	// per-browser storage, so the same box looked different on a second device.
+	test("no patch seeds view container locations", () => {
+		for (const patch of readdirSync(resolve(repoRoot, PATCHES_DIR))) {
+			if (!patch.endsWith(".diff")) continue;
+			expect(
+				addedLines(readRepoFile(`${PATCHES_DIR}/${patch}`)),
+				patch
+			).not.toContain("viewContainerLocations");
+		}
 	});
 });

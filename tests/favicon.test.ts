@@ -10,6 +10,8 @@
 import { type DOMWindow, JSDOM } from "jsdom";
 import { afterEach, describe, expect, test } from "vitest";
 
+import { BRAND_COLORS } from "../packages/shared/index.ts";
+
 import { addedLines, readRepoFile } from "./support/patchSource.ts";
 
 const FAVICON_JS = readRepoFile(
@@ -184,8 +186,9 @@ describe("scheme-pinned favicon files", () => {
 		const light = readRepoFile(`${base}-light.svg`);
 		const dark = readRepoFile(`${base}-dark.svg`);
 
-		expect(light).toContain('color="#000000"');
-		expect(dark).toContain('color="#fafafa"');
+		expect(light).toContain(`color="${BRAND_COLORS.icon.light}"`);
+		expect(dark).toContain(`color="${BRAND_COLORS.icon.dark}"`);
+		expect(BRAND_COLORS.icon.light).not.toBe(BRAND_COLORS.icon.dark);
 		for (const file of [light, dark]) {
 			expect(file).not.toContain("prefers-color-scheme");
 		}

@@ -85,13 +85,14 @@ export function extractAddedFunction(patch: string, name: string): string {
 	throw new Error(`Could not parse added function ${name}`);
 }
 
-// A single added class method `private name(...) {...}`, brace-matched, returned
+// A single added class member `private name(...) {...}`, brace-matched, returned
 // without its modifier so it can be spliced into a stand-in class and exercised.
 export function extractAddedMethod(patch: string, name: string): string {
 	const source = addedLines(patch);
-	// One rule for both `private name(` and `private async name(`; the `async` stays in
-	// the returned body so it splices into a stand-in class unchanged.
-	const start = source.search(new RegExp(`private (?:async )?${name}\\(`));
+	// One rule for `private name(`, `private async name(` and `private get name(`; the
+	// `async`/`get` stays in the returned body so it splices into a stand-in class
+	// unchanged. A getter is as much a behaviour worth exercising as a method is.
+	const start = source.search(new RegExp(`private (?:async |get )?${name}\\b`));
 	if (start < 0) {
 		throw new Error(`Could not find added method ${name}`);
 	}

@@ -16,7 +16,7 @@ const {
 // Pinned to BRAND_THEME.{light,dark}.primary by android-dialog-theme.test.ts:
 // this file runs under plain node require at prebuild, where the TS `shared`
 // package is out of reach.
-const ACCENT = { light: "#171717", dark: "#fafafa" };
+const ACCENT = { light: "#323229", dark: "#c1b5a9" };
 
 // composery- prefix because Android merges every library's resources into one
 // namespace, and an app color named like a library's silently overrides it.

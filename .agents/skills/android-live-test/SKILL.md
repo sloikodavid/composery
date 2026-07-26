@@ -16,6 +16,17 @@ Use `node .agents/skills/android-live-test/scripts/android.mjs <command>` from t
 5. Capture `logcat` around failures. Use `record` for motion, gesture, or timing bugs.
 6. Implement the smallest fix, run relevant unit checks, reload/restart the app, and repeat the exact interaction. Preserve before/after screenshots in `tmp/`.
 
+## Persistent emulator browser updates
+
+`boot` deliberately passes `-read-only`, so app installs, Play Store sign-in, and
+Chrome/WebView updates made during a live-test instance are discarded when it exits.
+Maintain the base AVD in a separate, normal writable emulator launch; after shutting
+that launch down cleanly, later read-only test instances inherit the updated base.
+
+Follow [EMULATOR-WEBVIEW.md](EMULATOR-WEBVIEW.md) to update the Google Play system
+image, Chrome, and Android System WebView and to record the active provider/version.
+Never wipe the base AVD merely to update its browser stack.
+
 ## Surface selection
 
 - Use direct Android control for Composery Mobile, system UI, Expo Go, and the IDE inside the app WebView.

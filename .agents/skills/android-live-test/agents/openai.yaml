@@ -1,4 +1,0 @@
-interface:
-  display_name: "Android Live Test"
-  short_description: "Drive Android apps and mobile web UI from Codex"
-  default_prompt: "Use $android-live-test to reproduce, inspect, and fix this issue on an Android phone or emulator."

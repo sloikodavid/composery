@@ -70,8 +70,8 @@ app, and liveness across cache restores.
 -		<meta name="apple-mobile-web-app-title" content="Code">
 +		<meta name="apple-mobile-web-app-title" content="Composery">
 +		<!-- Status bar tint for an installed app. The manifest carries one colour for the splash; these track the scheme the workbench itself starts in (window.autoDetectColorScheme). -->
-+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-+		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
++		<meta name="theme-color" content="#cdc9c4" media="(prefers-color-scheme: light)" />
++		<meta name="theme-color" content="#1d1b1b" media="(prefers-color-scheme: dark)" />
  		<link rel="apple-touch-icon" sizes="192x192" href="{{BASE}}/_static/src/browser/media/pwa-icon-192.png" />
  		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
  
@@ -96,11 +96,11 @@ app, and liveness across cache restores.
 +		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/fonts.css">
 +		<!-- First paint: paint the brand background so the workbench never flashes white before its theme applies. Colours are the brand light/dark backgrounds. -->
 +		<style>
-+			html, body { background-color: #ffffff; }
-+			@media (prefers-color-scheme: dark) { html, body { background-color: #0a0a0a; } }
++			html, body { background-color: #cdc9c4; }
++			@media (prefers-color-scheme: dark) { html, body { background-color: #1d1b1b; } }
 +			/* The mobile app stamps data-scheme with the app scheme: an Android WebView's native prefers-color-scheme tracks the activity theme, not the system, so the media query alone goes stale there. */
-+			html[data-scheme="light"], html[data-scheme="light"] body { background-color: #ffffff; }
-+			html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: #0a0a0a; }
++			html[data-scheme="light"], html[data-scheme="light"] body { background-color: #cdc9c4; }
++			html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: #1d1b1b; }
 +		</style>
  
  	</head>
@@ -253,8 +253,8 @@ app, and liveness across cache restores.
 +          // the Android splash and status bar are continuous with the icon the
 +          // user just tapped. A manifest carries one value; the workbench's
 +          // theme-color meta corrects the status bar per scheme once it paints.
-+          theme_color: "#0a0a0a",
-+          background_color: "#0a0a0a",
++          theme_color: "#1d1b1b",
++          background_color: "#1d1b1b",
            icons: [192, 512]
              .map((size) => [
                {
