@@ -305,6 +305,7 @@ packages/
       naming.diff
       narrow.diff
       node-engine.diff
+      path-prefix.diff
       product.diff
       qr-action.diff
       readiness.diff
@@ -657,6 +658,7 @@ packages/
         autoRepair.ts
         boxAccess.test.ts
         boxAccess.ts
+        boxAuth.test.ts
         boxAuth.ts
         boxCapacity.test.ts
         boxCapacity.ts
@@ -969,6 +971,7 @@ tests/
   docs-links.test.ts
   eas-ignore.test.ts
   favicon.test.ts
+  ide-path-prefix.test.ts
   loopback-callback-guard.test.ts
   narrow-back.test.ts
   narrow-editor-groups.test.ts

@@ -5,13 +5,13 @@ import { parseScannedInstance } from "./parse-scanned";
 describe("parseScannedInstance", () => {
 	test("normalizes a plain https instance URL", () => {
 		expect(parseScannedInstance("https://my-box.composery.cloud/")).toBe(
-			"https://my-box.composery.cloud/"
+			"https://my-box.composery.cloud/ide/"
 		);
 	});
 
 	test("prepends https:// to a bare host", () => {
 		expect(parseScannedInstance("my-box.composery.cloud")).toBe(
-			"https://my-box.composery.cloud/"
+			"https://my-box.composery.cloud/ide/"
 		);
 	});
 
@@ -20,7 +20,7 @@ describe("parseScannedInstance", () => {
 			"composery://add-instance?url=" +
 			encodeURIComponent("https://my-box.composery.cloud/?folder=/app");
 		expect(parseScannedInstance(link)).toBe(
-			"https://my-box.composery.cloud/?folder=/app"
+			"https://my-box.composery.cloud/ide/?folder=/app"
 		);
 	});
 

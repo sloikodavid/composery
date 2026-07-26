@@ -40,12 +40,13 @@ const OVERLAY = join(PACKAGE_ROOT, "overlay");
 // ones (readiness anchors on routes auth adds).
 const SERVER_PATCHES = [
 	["naming.diff", "full"],
-	["hardening.diff", "full"],
+	["hardening.diff", "src"],
 	["auth.diff", "src"],
 	["readiness.diff", "full"],
 	["node-engine.diff", "full"],
 	["api.diff", "src"],
-	["updates.diff", "src"]
+	["updates.diff", "src"],
+	["path-prefix.diff", "src"]
 ];
 const SCRATCH = join(
 	REPO_ROOT,

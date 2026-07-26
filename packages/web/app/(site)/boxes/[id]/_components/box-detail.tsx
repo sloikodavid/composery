@@ -131,7 +131,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 				)}
 				<AnimatedIconAnchor
 					className={cn(buttonVariants({ variant: "outline" }))}
-					href={new URL("/change-password", box.runtimeUrl).toString()}
+					href={new URL("change-password", box.runtimeUrl).toString()}
 					icon="lock"
 					iconPosition="start"
 					rel="noreferrer"

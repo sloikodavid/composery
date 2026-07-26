@@ -9,9 +9,7 @@ export type ProbeResult =
 
 export type ProbeFetch = typeof fetch;
 
-// Builds an endpoint URL relative to the instance URL's pathname, so a
-// subpath-mounted Composery (e.g. https://host/my-cs/) probes
-// /my-cs/_composery, not /_composery. Strips query/hash.
+// Builds an endpoint URL relative to the workbench mount. Strips query/hash.
 function endpointUrl(instanceUrl: string, endpoint: string): string {
 	const url = new URL(instanceUrl);
 	const path = url.pathname.replace(/\/+$/, "");
@@ -22,7 +20,8 @@ function endpointUrl(instanceUrl: string, endpoint: string): string {
 }
 
 export function probeUrl(instanceUrl: string): string {
-	return endpointUrl(instanceUrl, "/_composery");
+	// Identity is intentionally outside the workbench/PWA scope.
+	return new URL("/_composery", instanceUrl).toString();
 }
 
 export function versionUrl(instanceUrl: string): string {

@@ -4,6 +4,21 @@ import type { Doc, Id } from "../../_generated/dataModel";
 
 // Delete the box's DNS and server, waiting for Hetzner to finish, so the server
 // name/labels are free to reuse. Shared by resetBox and deleteBox.
+//
+// The box's Primary IPs are deliberately not touched here. Hetzner creates them
+// itself for a server asked for with `enable_ipv4`/`enable_ipv6` (see
+// `createServerPayload`), marks them `auto_delete`, and removes them along with
+// the server - asynchronously, and on its own schedule. Deleting them from here
+// therefore raced Hetzner's own cleanup and lost: the step answered
+// "Primary IP must be unassigned" and left the box in `delete_failed` with its
+// server already gone. That was the second failure of the same step, after a
+// lookup form Hetzner rejected with 422 wedged deletion in an hourly retry loop,
+// so the step itself is the defect rather than either symptom.
+//
+// Nothing silently replaces it: `reconcileHetznerResources` reports any Primary
+// IP left attached to nothing, so a leak surfaces as a staff alert instead of a
+// quiet bill - and it does so off the deletion path, where being a day late
+// costs nothing and failing costs a box that can never finish deleting.
 export async function deleteRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 	await step.runAction(
 		internal.boxes.infra.cloudflareDns.deleteRuntimeDnsRecords,
@@ -21,16 +36,6 @@ export async function deleteRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 	await step.runAction(
 		internal.boxes.infra.hetznerVps.waitServerDeleted,
 		{ serverId: box.hetzner_server_id },
-		{ retry: true }
-	);
-	await step.runAction(
-		internal.boxes.infra.hetznerVps.deletePrimaryIps,
-		{
-			ipv4: box.hetzner_ipv4,
-			ipv4Id: box.hetzner_ipv4_id,
-			ipv6: box.hetzner_ipv6,
-			ipv6Id: box.hetzner_ipv6_id
-		},
 		{ retry: true }
 	);
 }
@@ -54,9 +59,7 @@ export async function createRuntime(
 		serverType: server.serverType,
 		location: server.location,
 		ipv4: server.ipv4,
-		ipv4Id: server.ipv4Id,
-		ipv6: server.ipv6,
-		ipv6Id: server.ipv6Id
+		ipv6: server.ipv6
 	});
 
 	const dns = await step.runAction(
@@ -105,9 +108,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 		serverType: server.serverType,
 		location: server.location,
 		ipv4: server.ipv4,
-		ipv4Id: server.ipv4Id,
-		ipv6: server.ipv6,
-		ipv6Id: server.ipv6Id
+		ipv6: server.ipv6
 	});
 
 	await step.runAction(

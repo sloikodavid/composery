@@ -137,6 +137,7 @@ define evidence retention, retry cadence, or background workload:
 | Automatic repairs per box          | 2 per 24 hours                      |
 | Orphaned operation grace period    | 30 minutes                          |
 | Long-running operation alert       | After 6 hours                       |
+| Delete attempts before alert       | 3 attempts                          |
 | Raw metrics retention              | 2 days                              |
 | Hourly metrics retention           | 30 days                             |
 | Repeat flag cooloff per box/signal | 6 hours                             |
@@ -172,6 +173,7 @@ All fixed times are UTC.
 | Retry staff alerts                       | Every 15 minutes |
 | Subscription deletion reconciliation     | Hourly at :11    |
 | Account deletion finalization            | Hourly at :19    |
+| Finish failed box deletions              | Hourly at :27    |
 | Poll box metrics                         | Every 10 minutes |
 | Roll up hourly box metrics               | Hourly at :04    |
 | Delete old box metrics                   | Daily at 04:23   |

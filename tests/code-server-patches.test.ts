@@ -310,6 +310,24 @@ describe("patch stack lint", () => {
 					"2.3.0"
 				);
 
+				const routes = readFileSync(
+					resolve(shadow, "src/node/routes/index.ts"),
+					"utf8"
+				);
+				const webClient = readFileSync(
+					resolve(shadow, "lib/vscode/src/vs/server/node/webClientServer.ts"),
+					"utf8"
+				);
+				expect(
+					existsSync(resolve(shadow, "src/node/routes/domainProxy.ts"))
+				).toBe(false);
+				expect(routes).not.toContain('"/vscode"');
+				expect(routes).toContain('app.router.use("/", vscode.router)');
+				expect(webClient).not.toContain("x-forwarded-prefix");
+				expect(webClient).toContain(
+					"process.env.COMPOSERY_PROXY_URI ?? process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/'"
+				);
+
 				// An inline script under a hash-based CSP carries its own sha256, by
 				// hand, in the same file. Edit the script and forget the hash and the
 				// browser refuses to run it: the webview pre page is the whole webview

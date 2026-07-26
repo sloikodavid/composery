@@ -207,7 +207,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
 +++ b/src/node/routes/index.ts
 @@ -14,7 +14,6 @@
  import { checkPersistenceReadiness, renderStartupPage } from "../persistence/readiness"
- import { constructRedirectPath, redirect } from "../http"
+ import { redirect } from "../http"
  import { CoderSettings, SettingsProvider } from "../settings"
 -import { UpdateProvider } from "../update"
  import { getMediaMime, paths } from "../util"

@@ -18,8 +18,15 @@ export async function findBoxBySlug(ctx: QueryCtx, slug: string) {
 // that is already on its way out. Derived rather than spelled out so a new
 // status is reconciled by default - a box silently skipped by reconciliation is
 // a box whose billing state stops being checked.
+//
+// `delete_failed` is excluded for the same reason as `deleting`, not a different
+// one: the box is already committed to deletion, so asking again what its
+// subscription says cannot change the answer. Finishing that deletion is owned
+// end-to-end by `finishFailedDeletions`, which handles comp boxes too - this
+// sweep only ever reached the paid ones.
 export const SUBSCRIPTION_RECONCILIATION_STATUSES = boxStatusesExcept(
 	"deleting",
+	"delete_failed",
 	"deleted"
 );
 

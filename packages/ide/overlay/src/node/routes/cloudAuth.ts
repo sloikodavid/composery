@@ -1,10 +1,12 @@
 import * as crypto from "crypto";
 import { Router, type Request, type Response } from "express";
 import { AuthType } from "../cli";
+import { redirect } from "../http";
 import { renderAuthPage } from "./authPage";
 
 const AUTHORIZATION_COOKIE = "composery-cloud-authorization";
 const SETUP_COOKIE = "composery-cloud-setup";
+const CLOUD_CALLBACK_PATH = "/ide/_composery/cloud/callback";
 // Long enough to survive a Clerk sign-in (or sign-up) on the cloud side;
 // PKCE keeps a lingering transaction cookie harmless.
 const AUTHORIZATION_MAX_AGE_MS = 10 * 60_000;
@@ -46,7 +48,7 @@ router.use((req, res, next) => {
 	// nothing - a password that implies the box is protected when it is open to
 	// whoever reaches it. Land on the workbench the operator already opened.
 	if (req.args.auth !== AuthType.Password) {
-		return res.redirect("/");
+		return redirect(req, res, "");
 	}
 	next();
 });
@@ -102,14 +104,14 @@ function setAuthorizationTransactions(
 function callbackUrl(req: Request) {
 	const host = req.headers.host;
 	if (!host) throw new Error("Missing request host");
-	return `https://${host}/_composery/cloud/callback`;
+	return `https://${host}${CLOUD_CALLBACK_PATH}`;
 }
 
 const restrictedCookie = {
 	httpOnly: true,
 	secure: true,
 	sameSite: "lax" as const,
-	path: "/"
+	path: "/ide/"
 };
 
 export function hasCloudSetupGrant(req: Request) {
@@ -136,6 +138,7 @@ router.get("/authorize", (req, res) => {
 	authorization.searchParams.set("box_id", cloudConfig.boxId);
 	authorization.searchParams.set("code_challenge", challenge(verifier));
 	authorization.searchParams.set("state", state);
+	authorization.searchParams.set("redirect_uri", callbackUrl(req));
 	res.setHeader("Cache-Control", "no-store");
 	res.setHeader("Referrer-Policy", "no-referrer");
 	res.redirect(authorization.toString());
@@ -160,7 +163,7 @@ router.get("/callback", async (req, res) => {
 		!TOKEN_PATTERN.test(state) ||
 		!TOKEN_PATTERN.test(verifier ?? "")
 	) {
-		res.redirect("/_composery/cloud/error");
+		redirect(req, res, "_composery/cloud/error");
 		return;
 	}
 
@@ -186,9 +189,9 @@ router.get("/callback", async (req, res) => {
 			maxAge: SETUP_MAX_AGE_MS
 		});
 		res.setHeader("Cache-Control", "no-store");
-		res.redirect("/register");
+		redirect(req, res, "register");
 	} catch {
-		res.redirect("/_composery/cloud/error");
+		redirect(req, res, "_composery/cloud/error");
 	}
 });
 

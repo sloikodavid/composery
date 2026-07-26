@@ -4,7 +4,7 @@ Composery with systemd as PID 1 (the closest shape to Composery Cloud), HTTP on 
 Needs a privileged container with host cgroup access. Behind your own reverse proxy.
 
 ```bash
-docker compose up -d        # then reach http://<host>:8080
+docker compose up -d        # then reach http://<host>:8080/ide/
 ```
 
 Do not expose `8080` to the public internet without TLS in front.

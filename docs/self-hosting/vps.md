@@ -46,7 +46,7 @@ boots with Composery behind Caddy over HTTPS. It installs Docker and runs the
    `composery.env` (pre-register a password).
 4. `docker compose up -d`.
 
-Open `https://<your-domain>`.
+Open `https://<your-domain>/ide/`.
 
 ## Deploy (no-proxy variants)
 

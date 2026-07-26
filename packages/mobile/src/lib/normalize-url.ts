@@ -1,3 +1,5 @@
+import { IDE_PATH } from "shared";
+
 // The one place instance-URL rules live. Returns a parsed URL so callers can't
 // misuse a raw string. Rejects non-http(s) schemes and embedded credentials;
 // preserves pathname/query/hash, since code-server is subpath-sensitive and
@@ -89,6 +91,11 @@ export function normalizeInstanceUrl(input: string): URL {
 	if (url.pathname.length > 1 && url.pathname.startsWith("//")) {
 		url.pathname = `/${url.pathname.replace(/^\/+/, "")}`;
 	}
+
+	// A bare instance address names the product, whose browser surface has one
+	// uniform mount. Preserve explicit deeper URLs (folder/workspace links and
+	// development fixtures), but make the common host-only input canonical.
+	if (url.pathname === "/") url.pathname = IDE_PATH;
 
 	return url;
 }

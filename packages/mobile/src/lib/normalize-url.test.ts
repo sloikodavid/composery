@@ -4,18 +4,20 @@ import { normalizeInstanceUrl } from "./normalize-url";
 
 describe("normalizeInstanceUrl", () => {
 	test("prepends https:// to a bare host", () => {
-		expect(normalizeInstanceUrl("mybox.com").href).toBe("https://mybox.com/");
+		expect(normalizeInstanceUrl("mybox.com").href).toBe(
+			"https://mybox.com/ide/"
+		);
 	});
 
 	test("preserves a folder query param", () => {
 		expect(normalizeInstanceUrl("https://mybox.com/?folder=/app").href).toBe(
-			"https://mybox.com/?folder=/app"
+			"https://mybox.com/ide/?folder=/app"
 		);
 	});
 
 	test("accepts http with a port", () => {
 		expect(normalizeInstanceUrl("http://localhost:8080").href).toBe(
-			"http://localhost:8080/"
+			"http://localhost:8080/ide/"
 		);
 	});
 
@@ -34,7 +36,7 @@ describe("normalizeInstanceUrl", () => {
 	test("preserves a workspace query param", () => {
 		expect(
 			normalizeInstanceUrl("https://host/?workspace=/home/user/ws").href
-		).toBe("https://host/?workspace=/home/user/ws");
+		).toBe("https://host/ide/?workspace=/home/user/ws");
 	});
 
 	test("preserves a hash fragment", () => {
@@ -76,7 +78,7 @@ describe("normalizeInstanceUrl", () => {
 
 	test("trims surrounding whitespace", () => {
 		expect(normalizeInstanceUrl("  https://mybox.com/  ").href).toBe(
-			"https://mybox.com/"
+			"https://mybox.com/ide/"
 		);
 	});
 
@@ -93,17 +95,17 @@ describe("normalizeInstanceUrl", () => {
 
 	describe("bare local host defaults to http", () => {
 		test.each([
-			["localhost", "http://localhost/"],
-			["localhost:8080", "http://localhost:8080/"],
+			["localhost", "http://localhost/ide/"],
+			["localhost:8080", "http://localhost:8080/ide/"],
 			["localhost:8080/code/", "http://localhost:8080/code/"],
-			["127.0.0.1", "http://127.0.0.1/"],
-			["192.168.1.5", "http://192.168.1.5/"],
-			["10.0.0.1:3000", "http://10.0.0.1:3000/"],
-			["172.16.0.1", "http://172.16.0.1/"],
-			["172.31.255.255", "http://172.31.255.255/"],
-			["169.254.1.1", "http://169.254.1.1/"],
-			["raspberrypi.local", "http://raspberrypi.local/"],
-			["nas", "http://nas/"],
+			["127.0.0.1", "http://127.0.0.1/ide/"],
+			["192.168.1.5", "http://192.168.1.5/ide/"],
+			["10.0.0.1:3000", "http://10.0.0.1:3000/ide/"],
+			["172.16.0.1", "http://172.16.0.1/ide/"],
+			["172.31.255.255", "http://172.31.255.255/ide/"],
+			["169.254.1.1", "http://169.254.1.1/ide/"],
+			["raspberrypi.local", "http://raspberrypi.local/ide/"],
+			["nas", "http://nas/ide/"],
 			[
 				"192.168.1.5:8080/code/?folder=/app",
 				"http://192.168.1.5:8080/code/?folder=/app"
@@ -115,10 +117,10 @@ describe("normalizeInstanceUrl", () => {
 
 	describe("bare public host defaults to https", () => {
 		test.each([
-			["mybox.com", "https://mybox.com/"],
-			["8.8.8.8", "https://8.8.8.8/"],
-			["172.32.0.1", "https://172.32.0.1/"], // outside the 172.16/12 range
-			["169.253.0.1", "https://169.253.0.1/"] // outside link-local
+			["mybox.com", "https://mybox.com/ide/"],
+			["8.8.8.8", "https://8.8.8.8/ide/"],
+			["172.32.0.1", "https://172.32.0.1/ide/"], // outside the 172.16/12 range
+			["169.253.0.1", "https://169.253.0.1/ide/"] // outside link-local
 		])("%p -> %p", (input, expected) => {
 			expect(normalizeInstanceUrl(input).href).toBe(expected);
 		});
@@ -127,7 +129,7 @@ describe("normalizeInstanceUrl", () => {
 	describe("an explicit secure scheme is honored", () => {
 		test("explicit https on a LAN host stays https", () => {
 			expect(normalizeInstanceUrl("https://192.168.1.5").href).toBe(
-				"https://192.168.1.5/"
+				"https://192.168.1.5/ide/"
 			);
 		});
 

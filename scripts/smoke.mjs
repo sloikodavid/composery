@@ -157,8 +157,8 @@ async function assertSystemdEnvBridge() {
 
 	const cookies = new Map();
 	await login(cookies);
-	const rootPage = await fetchAuthedText("/", cookies);
-	assertContains("systemd root page", rootPage, "Composery");
+	const idePage = await fetchAuthedText("/ide/", cookies);
+	assertContains("systemd IDE page", idePage, "Composery");
 
 	execSh("systemctl is-active ide");
 
@@ -183,10 +183,18 @@ async function assertWebAppSmoke() {
 		);
 	}
 
+	const root = await request("/");
+	if (root.statusCode !== 308 || root.headers.location !== "/ide/") {
+		throw new Error(
+			`Expected / to redirect to /ide/ with HTTP 308, got ${root.statusCode} ${root.headers.location ?? ""}.`
+		);
+	}
+
 	const cookies = new Map();
 	await login(cookies);
-	const rootPage = await fetchAuthedText("/", cookies);
-	assertContains("default root page", rootPage, "Composery");
+	const idePage = await fetchAuthedText("/ide/", cookies);
+	assertContains("default IDE page", idePage, "Composery");
+	await assertIdeScope(idePage, cookies);
 
 	await assertWebsocketUpgrade(cookies);
 	await assertIdeGatesWhenPersistenceNotReady(cookies);
@@ -293,7 +301,7 @@ async function assertIdeGatesWhenPersistenceNotReady(cookies) {
 			);
 		}
 
-		const startup = await request("/", {
+		const startup = await request("/ide/", {
 			cookies,
 			headers: { accept: "text/html" }
 		});
@@ -637,18 +645,22 @@ async function assertPasswordRemoval() {
 
 async function login(cookies) {
 	const baseUrl = `http://127.0.0.1:${config.port}`;
-	const loginPage = await waitForHttp("/login", DEFAULT_ATTEMPTS.readiness, {
-		cookies
-	});
+	const loginPage = await waitForHttp(
+		"/ide/login",
+		DEFAULT_ATTEMPTS.readiness,
+		{
+			cookies
+		}
+	);
 	storeCookies(cookies, loginPage.headers["set-cookie"]);
 
 	const body = new URLSearchParams({
 		base: ".",
-		href: `${baseUrl}/login`,
+		href: `${baseUrl}/ide/login`,
 		password: config.password
 	}).toString();
 
-	const response = await request("/login", {
+	const response = await request("/ide/login", {
 		body,
 		cookies,
 		headers: {
@@ -660,6 +672,59 @@ async function login(cookies) {
 	storeCookies(cookies, response.headers["set-cookie"]);
 	if (!isHttpSuccess(response)) {
 		throw new Error(`Login failed with HTTP ${response.statusCode}.`);
+	}
+}
+
+async function assertIdeScope(idePage, cookies) {
+	const baseUrl = `http://127.0.0.1:${config.port}`;
+	const manifestResponse = await request("/ide/manifest.json", { cookies });
+	if (manifestResponse.statusCode !== 200) {
+		throw new Error(
+			`Expected /ide/manifest.json to return 200, got ${manifestResponse.statusCode}.`
+		);
+	}
+	const manifest = JSON.parse(manifestResponse.body);
+	if (manifest.start_url !== ".") {
+		throw new Error(
+			`Expected manifest start_url ".", got ${manifest.start_url}.`
+		);
+	}
+	const manifestScope = new URL(
+		manifest.start_url,
+		`${baseUrl}/ide/manifest.json`
+	);
+	if (manifestScope.pathname !== "/ide/") {
+		throw new Error(`Manifest resolved outside /ide/: ${manifestScope.href}.`);
+	}
+	if (
+		new URL("/proxy/3000/", baseUrl).pathname.startsWith(manifestScope.pathname)
+	) {
+		throw new Error("Root port proxy is inside the PWA manifest scope.");
+	}
+
+	assertContains(
+		"workbench service-worker scope",
+		idePage,
+		"&quot;scope&quot;:&quot;./&quot;"
+	);
+	assertContains(
+		"root port-proxy template",
+		idePage,
+		"&quot;proxyEndpointTemplate&quot;:&quot;/proxy/{{port}}/&quot;"
+	);
+	const workerScope = new URL("./", `${baseUrl}/ide/`);
+	if (workerScope.pathname !== "/ide/") {
+		throw new Error(
+			`Service worker resolved outside /ide/: ${workerScope.href}.`
+		);
+	}
+	const worker = await request("/ide/_static/out/browser/serviceWorker.js", {
+		cookies
+	});
+	if (worker.headers["service-worker-allowed"] !== "/ide/") {
+		throw new Error(
+			`Expected Service-Worker-Allowed /ide/, got ${worker.headers["service-worker-allowed"] ?? "missing"}.`
+		);
 	}
 }
 
@@ -784,7 +849,7 @@ function websocketHandshake(cookies) {
 			.update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
 			.digest("base64");
 		const requestText = [
-			"GET /websocket-smoke HTTP/1.1",
+			"GET /ide/websocket-smoke HTTP/1.1",
 			`Host: 127.0.0.1:${config.port}`,
 			"Upgrade: websocket",
 			"Connection: Upgrade",

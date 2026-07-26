@@ -358,6 +358,11 @@ export const CONTAINER_IMAGE = "ghcr.io/sloikodavid/composery";
 export const APP_DESCRIPTION =
 	"Composery is an always-on cloud IDE: VS Code in the browser or on your phone, self-hosted on your own server or managed in Composery Cloud, and made for long-running AI agents.";
 
+// The browser-facing workbench mount. Code that constructs a Composery URL
+// imports this instead of restating the path; non-code configs are pinned to it
+// by the route-boundary regression test.
+export const IDE_PATH = "/ide/";
+
 // The one-line pitch, in the product's own voice. Longer prose (APP_DESCRIPTION)
 // is what search engines and app stores get; this is what a person reads first.
 // README.md and docs/index.md cannot import it and copy it by hand - the "brand

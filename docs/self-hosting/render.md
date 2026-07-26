@@ -15,7 +15,7 @@ Recipe: [templates/render](https://github.com/sloikodavid/composery/tree/main/te
 2. In the Render dashboard, choose **New -> Blueprint** and select the repository.
 3. Render reads `render.yaml`, creates the web service, and attaches the disk.
 
-Open the service URL Render assigns. Register the initial password in the browser, or set
+Open `/ide/` on the service URL Render assigns. Register the initial password in the browser, or set
 `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` as a service environment variable.
 
 ## Notes

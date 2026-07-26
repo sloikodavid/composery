@@ -135,7 +135,7 @@ router.post("/", ensureOrigin, async (req, res) => {
 	}
 	await writeHashedPassword(req, hashedPassword, { allowExisting: true });
 	res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req));
-	return redirect(req, res, "/", {
+	return redirect(req, res, "", {
 		base: undefined,
 		href: undefined,
 		error: undefined

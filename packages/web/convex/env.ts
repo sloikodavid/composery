@@ -1,3 +1,5 @@
+import { IDE_PATH } from "shared";
+
 function normalizeDomain(value: string) {
 	return value.replace(/^\.+|\.+$/g, "");
 }
@@ -19,6 +21,10 @@ export function runtimeDomain(slug: string) {
 
 export function cloudUrl(slug: string) {
 	return `https://${runtimeDomain(slug)}/`;
+}
+
+export function ideUrl(slug: string) {
+	return new URL(IDE_PATH, cloudUrl(slug)).toString();
 }
 
 export function websiteOrigin() {

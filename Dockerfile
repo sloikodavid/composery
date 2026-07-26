@@ -108,6 +108,7 @@ ENV BROWSER="/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh" \
   KUBE_EDITOR="code --wait" \
   LANG="C.UTF-8" \
   VISUAL="code --wait" \
+  VSCODE_PROXY_URI="/proxy/{{port}}/" \
   XDG_RUNTIME_DIR="/run/user/1000"
 # LANG sets a UTF-8 default; LC_ALL is intentionally unpinned so the user can
 # override the locale per session (a deployment-provided LC_ALL is still honored).

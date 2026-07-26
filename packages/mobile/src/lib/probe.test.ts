@@ -16,38 +16,26 @@ function mockFetch(response: Response | Error): ProbeFetch {
 }
 
 describe("probeUrl", () => {
-	test("probe at root with trailing slash", () => {
-		expect(probeUrl("https://my-box.composery.cloud/")).toBe(
+	test("probe stays at root from the IDE mount", () => {
+		expect(probeUrl("https://my-box.composery.cloud/ide/")).toBe(
 			"https://my-box.composery.cloud/_composery"
 		);
 	});
 
-	test("probe at root without trailing slash", () => {
-		expect(probeUrl("https://my-box.composery.cloud")).toBe(
-			"https://my-box.composery.cloud/_composery"
-		);
-	});
-
-	test("probe at subpath with trailing slash", () => {
+	test("probe stays at root from any explicit workbench path", () => {
 		expect(probeUrl("https://example.com/my-cs/")).toBe(
-			"https://example.com/my-cs/_composery"
-		);
-	});
-
-	test("probe at subpath without trailing slash", () => {
-		expect(probeUrl("https://example.com/my-cs")).toBe(
-			"https://example.com/my-cs/_composery"
+			"https://example.com/_composery"
 		);
 	});
 
 	test("strips query and hash", () => {
-		expect(probeUrl("https://my-box.composery.cloud/?folder=/app#editor")).toBe(
-			"https://my-box.composery.cloud/_composery"
-		);
+		expect(
+			probeUrl("https://my-box.composery.cloud/ide/?folder=/app#editor")
+		).toBe("https://my-box.composery.cloud/_composery");
 	});
 
 	test("preserves port", () => {
-		expect(probeUrl("http://localhost:8080/")).toBe(
+		expect(probeUrl("http://localhost:8080/ide/")).toBe(
 			"http://localhost:8080/_composery"
 		);
 	});
@@ -64,7 +52,7 @@ describe("probeComposery", () => {
 			)
 		) as ProbeFetch;
 
-		await probeComposery("https://example.com/", { fetchImpl });
+		await probeComposery("https://example.com/ide/", { fetchImpl });
 
 		expect(fetchImpl).toHaveBeenCalledWith(
 			"https://example.com/_composery",
@@ -159,9 +147,9 @@ describe("probeComposery", () => {
 });
 
 describe("versionUrl", () => {
-	test("version at root", () => {
-		expect(versionUrl("https://my-box.composery.cloud/")).toBe(
-			"https://my-box.composery.cloud/version"
+	test("version stays inside the IDE mount", () => {
+		expect(versionUrl("https://my-box.composery.cloud/ide/")).toBe(
+			"https://my-box.composery.cloud/ide/version"
 		);
 	});
 

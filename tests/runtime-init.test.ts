@@ -102,7 +102,10 @@ describe("runtime process managers", () => {
 
 		expect(ide).toContain("127.0.0.1:${COMPOSERY_IDE_PORT:-8081}");
 		expect(ide).toContain("unset PORT COMPOSERY_HOST");
-		expect(caddyfile).toContain("handle /_composery*");
+		expect(caddyfile).toContain("handle_path /ide/*");
+		expect(caddyfile).toContain("handle /_composery/healthz*");
+		expect(caddyfile).toContain("handle /_composery/api/v1/*");
+		expect(caddyfile).toContain("@outside_ide path /ide/proxy");
 		expect(caddyfile).not.toContain("import ");
 		expect(systemd).toContain(
 			"ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile"
@@ -129,7 +132,7 @@ describe("runtime process managers", () => {
 		expect(readinessPatch).toContain(
 			'app.router.use("/_composery/healthz", health.router)'
 		);
-		expect(probe).toContain('endpointUrl(instanceUrl, "/_composery")');
+		expect(probe).toContain('new URL("/_composery", instanceUrl)');
 		expect(apiPath).not.toContain('"/v1"');
 		expect(apiPatch).not.toContain('+  app.router.get("/__composery"');
 		expect(readinessPatch).not.toContain('+  app.router.use("/healthz"');

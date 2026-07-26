@@ -9,6 +9,9 @@ editor, on the same single port. It exposes the editor's persistent terminals to
 There is no second execution subsystem: every process created here is a VS Code
 terminal running through the pty host.
 
+The API stays at the origin-root `/_composery/api/v1/` namespace; it is not under
+the browser workbench's `/ide/` PWA scope.
+
 This is not a control-plane API. There is no lifecycle here (no create/stop/delete
 of instances). The instance already exists; this only automates work inside it.
 

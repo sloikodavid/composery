@@ -33,7 +33,7 @@ docker run -d --name composery -p 8080:8080 -v composery_data:/data \
   ghcr.io/sloikodavid/composery:latest
 ```
 
-Open `http://localhost:8080` and register a password. For anything
+Open `http://localhost:8080/ide/` and register a password. For anything
 internet-facing, put TLS in front - start at
 [Self-hosting](docs/self-hosting/index.md).
 

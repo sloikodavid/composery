@@ -77,10 +77,13 @@ of the instance.
 
 The container includes Caddy as its single HTTP entrypoint. `/etc/caddy/Caddyfile` is its
 complete, persistent configuration; it is not a generated file or a Composery-specific
-fragment. The initial configuration keeps Composery's `/_composery` routes ahead of user
-application routes and sends everything else to the IDE.
+fragment. The initial configuration strips the public `/ide/` mount before sending
+workbench traffic to the loopback IDE. It keeps `/proxy/*` and `/absproxy/*` at the origin
+root so installed PWAs do not capture port applications. The identity probe, health
+endpoint, automation API, and `robots.txt`/`security.txt` files also stay at root; other
+root paths return `404`, except `/`, which redirects to `/ide/`.
 
-Add an application handler above the final IDE handler:
+Add an application handler above the final not-found handler:
 
 ```text
 handle /hooks/linear* {

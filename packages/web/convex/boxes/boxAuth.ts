@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { IDE_PATH } from "shared";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
@@ -42,14 +43,30 @@ async function sha256(value: string) {
 	);
 }
 
-function callbackUrl(box: Doc<"boxes">) {
-	return new URL("/_composery/cloud/callback", cloudUrl(box.slug)).toString();
+export function isBoxIdeRedirect(
+	box: Pick<Doc<"boxes">, "slug">,
+	value: string
+) {
+	try {
+		const redirect = new URL(value);
+		return (
+			redirect.origin === new URL(cloudUrl(box.slug)).origin &&
+			redirect.pathname.startsWith(IDE_PATH) &&
+			!redirect.username &&
+			!redirect.password &&
+			!redirect.search &&
+			!redirect.hash
+		);
+	} catch {
+		return false;
+	}
 }
 
 export const createAuthorizationCode = action({
 	args: {
 		boxId: v.id("boxes"),
-		codeChallenge: v.string()
+		codeChallenge: v.string(),
+		redirectUri: v.string()
 	},
 	returns: v.object({ code: v.string(), redirectUri: v.string() }),
 	handler: async (ctx, args) => {
@@ -64,19 +81,21 @@ export const createAuthorizationCode = action({
 		if (!box || box.user_id !== user.clerk_user_id || box.deleted_at) {
 			throw new ConvexError("Box not found.");
 		}
+		if (!isBoxIdeRedirect(box, args.redirectUri)) {
+			throw new ConvexError("Invalid authorization request.");
+		}
 
 		// A configured password does not block authorization: the owner proved
 		// ownership right here, so re-running the flow is how password recovery
 		// and changes work on cloud boxes.
 		const code = base64url(bytes(32));
-		const redirectUri = callbackUrl(box);
 		await ctx.runMutation(internal.boxes.boxAuth.storeAuthorizationCode, {
 			boxId: box._id,
 			codeHash: await sha256(code),
 			codeChallenge: args.codeChallenge,
-			redirectUri
+			redirectUri: args.redirectUri
 		});
-		return { code, redirectUri };
+		return { code, redirectUri: args.redirectUri };
 	}
 });
 

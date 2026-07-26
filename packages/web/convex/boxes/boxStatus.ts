@@ -38,9 +38,7 @@ export const recordServerCreated = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
 		ipv4: v.string(),
-		ipv4Id: v.optional(v.number()),
 		ipv6: v.string(),
-		ipv6Id: v.optional(v.number()),
 		location: vServerLocation,
 		serverId: v.number(),
 		serverType: vServerType
@@ -54,9 +52,7 @@ export const recordServerCreated = internalMutation({
 			hetzner_server_type: args.serverType,
 			hetzner_location: args.location,
 			hetzner_ipv4: args.ipv4,
-			hetzner_ipv4_id: args.ipv4Id,
 			hetzner_ipv6: args.ipv6,
-			hetzner_ipv6_id: args.ipv6Id,
 			updated_at: Date.now()
 		});
 
@@ -66,9 +62,7 @@ export const recordServerCreated = internalMutation({
 				serverType: args.serverType,
 				location: args.location,
 				ipv4: args.ipv4,
-				ipv4Id: args.ipv4Id,
-				ipv6: args.ipv6,
-				ipv6Id: args.ipv6Id
+				ipv6: args.ipv6
 			}
 		});
 	}
@@ -78,9 +72,7 @@ export const recordServerRebuilt = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
 		ipv4: v.string(),
-		ipv4Id: v.optional(v.number()),
 		ipv6: v.string(),
-		ipv6Id: v.optional(v.number()),
 		location: vServerLocation,
 		serverId: v.number(),
 		serverType: vServerType
@@ -94,9 +86,7 @@ export const recordServerRebuilt = internalMutation({
 			hetzner_server_type: args.serverType,
 			hetzner_location: args.location,
 			hetzner_ipv4: args.ipv4,
-			hetzner_ipv4_id: args.ipv4Id,
 			hetzner_ipv6: args.ipv6,
-			hetzner_ipv6_id: args.ipv6Id,
 			updated_at: Date.now()
 		});
 
@@ -106,9 +96,7 @@ export const recordServerRebuilt = internalMutation({
 				serverType: args.serverType,
 				location: args.location,
 				ipv4: args.ipv4,
-				ipv4Id: args.ipv4Id,
-				ipv6: args.ipv6,
-				ipv6Id: args.ipv6Id
+				ipv6: args.ipv6
 			}
 		});
 	}

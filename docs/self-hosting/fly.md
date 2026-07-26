@@ -18,7 +18,7 @@ fly volumes create composery_data --size 10 --region iad
 fly deploy
 ```
 
-Open `https://composery.fly.dev`. Register the initial password in the browser, or set one
+Open `https://composery.fly.dev/ide/`. Register the initial password in the browser, or set one
 as a secret:
 
 ```bash

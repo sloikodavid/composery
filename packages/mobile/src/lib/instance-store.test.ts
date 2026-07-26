@@ -31,7 +31,7 @@ describe("instance-store reducers", () => {
 		expect(instance).toEqual({
 			id: "abc",
 			label: "",
-			url: "https://mybox.com/",
+			url: "https://mybox.com/ide/",
 			createdAt: 1000
 		});
 	});
@@ -64,7 +64,7 @@ describe("instance-store reducers", () => {
 
 	test("add throws on a duplicate URL (after normalization)", () => {
 		const list: Instance[] = [
-			{ id: "x", label: "old", url: "https://mybox.com/", createdAt: 0 }
+			{ id: "x", label: "old", url: "https://mybox.com/ide/", createdAt: 0 }
 		];
 		// `mybox.com` normalizes to the same href as the existing entry.
 		expect(() =>
@@ -80,8 +80,8 @@ describe("instance-store reducers", () => {
 
 	test("remove drops the matching id and keeps the rest", () => {
 		const list: Instance[] = [
-			{ id: "a", label: "a", url: "https://a/", createdAt: 0 },
-			{ id: "b", label: "b", url: "https://b/", createdAt: 0 }
+			{ id: "a", label: "a", url: "https://a/ide/", createdAt: 0 },
+			{ id: "b", label: "b", url: "https://b/ide/", createdAt: 0 }
 		];
 		expect(remove(list, "a")).toEqual([list[1]]);
 		// Does not mutate.
@@ -91,8 +91,8 @@ describe("instance-store reducers", () => {
 
 	test("touch sets lastOpenedAt on only the matching instance", () => {
 		const list: Instance[] = [
-			{ id: "a", label: "a", url: "https://a/", createdAt: 0 },
-			{ id: "b", label: "b", url: "https://b/", createdAt: 0 }
+			{ id: "a", label: "a", url: "https://a/ide/", createdAt: 0 },
+			{ id: "b", label: "b", url: "https://b/ide/", createdAt: 0 }
 		];
 		const touched = touch(list, "b", () => 5000);
 		expect(touched[0].lastOpenedAt).toBeUndefined();
@@ -102,9 +102,9 @@ describe("instance-store reducers", () => {
 
 	test("get returns the instance or undefined", () => {
 		const list: Instance[] = [
-			{ id: "a", label: "a", url: "https://a/", createdAt: 0 }
+			{ id: "a", label: "a", url: "https://a/ide/", createdAt: 0 }
 		];
-		expect(get(list, "a")?.url).toBe("https://a/");
+		expect(get(list, "a")?.url).toBe("https://a/ide/");
 		expect(get(list, "missing")).toBeUndefined();
 	});
 
@@ -113,7 +113,7 @@ describe("instance-store reducers", () => {
 			{
 				id: "a",
 				label: "old",
-				url: "https://a/",
+				url: "https://a/ide/",
 				createdAt: 1,
 				lastOpenedAt: 9
 			}
@@ -122,18 +122,18 @@ describe("instance-store reducers", () => {
 		expect(next[0]).toEqual({
 			id: "a",
 			label: "New",
-			url: "https://newbox.com/",
+			url: "https://newbox.com/ide/",
 			createdAt: 1,
 			lastOpenedAt: 9
 		});
 		// Does not mutate.
-		expect(list[0].url).toBe("https://a/");
+		expect(list[0].url).toBe("https://a/ide/");
 	});
 
 	test("update rejects a URL already used by a different instance", () => {
 		const list: Instance[] = [
-			{ id: "a", label: "a", url: "https://a/", createdAt: 0 },
-			{ id: "b", label: "b", url: "https://b/", createdAt: 0 }
+			{ id: "a", label: "a", url: "https://a/ide/", createdAt: 0 },
+			{ id: "b", label: "b", url: "https://b/ide/", createdAt: 0 }
 		];
 		expect(() => update(list, "a", { url: "https://b/" })).toThrow();
 		// Re-saving an instance's own URL is allowed.
@@ -142,7 +142,7 @@ describe("instance-store reducers", () => {
 
 	test("update rejects a missing id", () => {
 		const list: Instance[] = [
-			{ id: "a", label: "a", url: "https://a/", createdAt: 0 }
+			{ id: "a", label: "a", url: "https://a/ide/", createdAt: 0 }
 		];
 		expect(() => update(list, "missing", { url: "https://b/" })).toThrow(
 			"Instance not found: missing"
@@ -160,7 +160,13 @@ describe("instance-store adapter", () => {
 		const storage = fakeStorage();
 		const store = createInstanceStore(storage);
 		const list: Instance[] = [
-			{ id: "a", label: "A", url: "https://a/", createdAt: 1, lastOpenedAt: 2 }
+			{
+				id: "a",
+				label: "A",
+				url: "https://a/ide/",
+				createdAt: 1,
+				lastOpenedAt: 2
+			}
 		];
 		await store.persist(list);
 		expect(await store.loadAll()).toEqual(list);
@@ -175,7 +181,7 @@ describe("instance-store adapter", () => {
 		const existing: Instance = {
 			id: "old",
 			label: "Old",
-			url: "https://old.com/",
+			url: "https://old.com/ide/",
 			createdAt: 1
 		};
 		await store.persist([existing]);
@@ -188,7 +194,7 @@ describe("instance-store adapter", () => {
 		expect(instance).toEqual({
 			id: "abc",
 			label: "New",
-			url: "https://new.com/",
+			url: "https://new.com/ide/",
 			createdAt: 1000
 		});
 		expect(await store.loadAll()).toEqual([instance, existing]);
@@ -201,7 +207,7 @@ describe("instance-store adapter", () => {
 			{
 				id: "a",
 				label: "Old",
-				url: "https://old.com/",
+				url: "https://old.com/ide/",
 				createdAt: 1,
 				lastOpenedAt: 2
 			}
@@ -215,7 +221,7 @@ describe("instance-store adapter", () => {
 		expect(instance).toEqual({
 			id: "a",
 			label: "New",
-			url: "https://new.com/",
+			url: "https://new.com/ide/",
 			createdAt: 1,
 			lastOpenedAt: 2
 		});
@@ -241,13 +247,13 @@ describe("instance-store adapter", () => {
 			{
 				id: "id-2",
 				label: "",
-				url: "https://second.com/",
+				url: "https://second.com/ide/",
 				createdAt: 2
 			},
 			{
 				id: "id-1",
 				label: "",
-				url: "https://first.com/",
+				url: "https://first.com/ide/",
 				createdAt: 1
 			}
 		]);
@@ -263,7 +269,7 @@ describe("instance-store adapter", () => {
 
 		await store.create({ url: "first.com" });
 		await expect(store.create({ url: "first.com" })).rejects.toThrow(
-			"Instance already added: https://first.com/"
+			"Instance already added: https://first.com/ide/"
 		);
 		await store.create({ url: "second.com" });
 
@@ -271,13 +277,13 @@ describe("instance-store adapter", () => {
 			{
 				id: "id-2",
 				label: "",
-				url: "https://second.com/",
+				url: "https://second.com/ide/",
 				createdAt: 2
 			},
 			{
 				id: "id-1",
 				label: "",
-				url: "https://first.com/",
+				url: "https://first.com/ide/",
 				createdAt: 1
 			}
 		]);
@@ -322,7 +328,7 @@ describe("instance-store adapter", () => {
 			{
 				id: "a",
 				label: "A",
-				url: "https://mybox.com/",
+				url: "https://mybox.com/ide/",
 				createdAt: 1,
 				lastOpenedAt: 2
 			}
@@ -335,12 +341,12 @@ describe("instance-store adapter", () => {
 			"composery.instances",
 			JSON.stringify([
 				{ id: "a", label: "A", url: "https://mybox.com/", createdAt: 1 },
-				{ id: "b", label: "B", url: "mybox.com", createdAt: 2 }
+				{ id: "b", label: "B", url: "https://mybox.com/ide/", createdAt: 2 }
 			])
 		);
 		const store = createInstanceStore(storage);
 		expect(await store.loadAll()).toEqual([
-			{ id: "a", label: "A", url: "https://mybox.com/", createdAt: 1 }
+			{ id: "a", label: "A", url: "https://mybox.com/ide/", createdAt: 1 }
 		]);
 	});
 
@@ -348,11 +354,11 @@ describe("instance-store adapter", () => {
 		const storage = fakeStorage();
 		const store = createInstanceStore(storage);
 		await store.persist([
-			{ id: "a", label: "A", url: "https://a/", createdAt: 1 }
+			{ id: "a", label: "A", url: "https://a/ide/", createdAt: 1 }
 		]);
 		const raw = await storage.getItem("composery.instances");
 		expect(raw).toBe(
-			'[{"id":"a","label":"A","url":"https://a/","createdAt":1}]'
+			'[{"id":"a","label":"A","url":"https://a/ide/","createdAt":1}]'
 		);
 	});
 });

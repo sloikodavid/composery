@@ -15,7 +15,7 @@ does not need one - give the platform these five things and it works:
 | Persistent volume | mounted at `/data`                         |
 | Instances         | **one** (`persistence` is a single writer) |
 
-Register the password on first visit, or set `COMPOSERY_PASSWORD` /
+Open `/ide/` on the service URL and register the password on first visit, or set `COMPOSERY_PASSWORD` /
 `COMPOSERY_HASHED_PASSWORD`
 (see [Configuration](../configuration.md)).
 

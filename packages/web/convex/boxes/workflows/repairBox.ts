@@ -128,9 +128,7 @@ export const repairBox = defineBoxWorkflow({
 			serverType: server.serverType,
 			location: server.location,
 			ipv4: server.ipv4,
-			ipv4Id: server.ipv4Id,
-			ipv6: server.ipv6,
-			ipv6Id: server.ipv6Id
+			ipv6: server.ipv6
 		});
 		await step.runAction(
 			internal.boxes.infra.hetznerVps.attachParkingVolume,

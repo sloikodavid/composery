@@ -25,7 +25,7 @@ Wait for the pod to become ready (the startup probe allows ~150s for `composery 
 kubectl rollout status deploy/composery
 ```
 
-Browse to the Ingress host. Register the initial password in the browser, or provide it
+Browse to `/ide/` on the Ingress host. Register the initial password in the browser, or provide it
 from a Secret (see the commented `COMPOSERY_PASSWORD` block in `composery.yaml`):
 
 ```bash

@@ -1,6 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
-import { cloudUrl } from "../env";
+import { ideUrl } from "../env";
 import { ACTIVE_OPERATION_STATUSES } from "./boxOperationRules";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
@@ -122,7 +122,7 @@ export function safeBox(box: Doc<"boxes">) {
 		id: box._id,
 		slug: box.slug,
 		status: box.status,
-		runtimeUrl: cloudUrl(box.slug),
+		runtimeUrl: ideUrl(box.slug),
 		createdAt: box.created_at,
 		updatedAt: box.updated_at,
 		provisionedAt: box.provisioned_at,
@@ -137,7 +137,7 @@ export function safeBox(box: Doc<"boxes">) {
 export function staffBox(box: Doc<"boxes">, user?: Doc<"users"> | null) {
 	return {
 		...safeBox(box),
-		runtimeUrl: box.status === "deleted" ? null : cloudUrl(box.slug),
+		runtimeUrl: box.status === "deleted" ? null : ideUrl(box.slug),
 		userId: box.user_id,
 		userEmail: user?.email ?? "",
 		polarCustomerId: box.polar_customer_id ?? null,

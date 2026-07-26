@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { classifyWebViewNavigation } from "./webview-navigation";
 
-const instanceUrl = "https://box.example.com/composery/?folder=/workspace";
+const instanceUrl = "https://box.example.com/ide/?folder=/workspace";
 
 function classify(requestUrl: string, isTopFrame: boolean | undefined = true) {
 	return classifyWebViewNavigation({ instanceUrl, isTopFrame, requestUrl });
@@ -10,22 +10,19 @@ function classify(requestUrl: string, isTopFrame: boolean | undefined = true) {
 
 describe("classifyWebViewNavigation", () => {
 	test("keeps the verified Composery mount inside", () => {
-		expect(classify("https://box.example.com/composery/")).toBe("inside");
-		expect(classify("https://box.example.com/composery/editor?x=1#y")).toBe(
-			"inside"
-		);
+		expect(classify("https://box.example.com/ide/")).toBe("inside");
+		expect(classify("https://box.example.com/ide/editor?x=1#y")).toBe("inside");
 	});
 
 	test("opens every cross-origin top-level navigation externally", () => {
 		expect(classify("https://example.org/docs")).toBe("external");
-		expect(classify("http://box.example.com/composery/")).toBe("external");
+		expect(classify("http://box.example.com/ide/")).toBe("external");
 	});
 
 	test("opens same-origin pages outside a subpath mount externally", () => {
 		expect(classify("https://box.example.com/admin")).toBe("external");
-		expect(classify("https://box.example.com/composery-other")).toBe(
-			"external"
-		);
+		expect(classify("https://box.example.com/ide-other")).toBe("external");
+		expect(classify("https://box.example.com/proxy/3000/")).toBe("external");
 	});
 
 	test("does not rely on navigationType or a present top-frame flag", () => {

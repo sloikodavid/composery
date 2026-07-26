@@ -7,16 +7,14 @@ import {
 	composeryServerListPath,
 	createServerPayload,
 	createSnapshotImagePayload,
-	findPrimaryIpByAddress,
 	isHetznerNotFound,
+	isUnassignedPrimaryIp,
 	parseActionStatus,
 	parseCreateImageResponse,
 	parseImageResponse,
 	parseLocations,
 	parseServerTypes,
 	placementCandidates,
-	primaryIpLookupAddresses,
-	primaryIpMatchesAddress,
 	primaryIpListPath,
 	rebuildServerPayload,
 	snapshotImageListPath,
@@ -101,87 +99,48 @@ describe("vps request contracts", () => {
 		});
 	});
 
-	it("looks up orphaned Primary IPs by exact address before deletion", () => {
-		const path = primaryIpListPath("203.0.113.10");
+	// Servers are asked for with `enable_ipv4`/`enable_ipv6` and never with an
+	// explicit Primary IP id. That is the form Hetzner marks `auto_delete` and
+	// removes with the server, and it is the whole reason box deletion no longer
+	// deletes Primary IPs itself. If this ever changed to pass an id, the
+	// reconciliation report below would be the only thing left cleaning up after
+	// it - so pin the shape that makes the reliance true.
+	it("lets Hetzner own the box's Primary IPs rather than naming existing ones", () => {
+		const keyPair = utils.generateKeyPairSync("ed25519", {
+			comment: "composery-test"
+		});
+		process.env.HETZNER_BOX_IMAGE = "ubuntu-24.04";
+		process.env.HETZNER_FIREWALL_ID = "42";
+		process.env.HETZNER_NETWORK_ID = "";
+		process.env.HETZNER_SSH_KEYS = "123";
+		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
+		process.env.SSH_USER = "root";
+
+		expect(
+			createServerPayload({ serverType: "cx23", location: "nbg1" }, "my-box")
+				.public_net
+		).toEqual({ enable_ipv4: true, enable_ipv6: true });
+	});
+
+	it("pages the whole Primary IP list rather than querying one address", () => {
+		const path = primaryIpListPath(3);
 		const query = new URLSearchParams(path.split("?")[1]);
 
 		expect(path.startsWith("/primary_ips?")).toBe(true);
-		expect(query.get("ip")).toBe("203.0.113.10");
+		expect(query.get("page")).toBe("3");
+		// No `ip` filter: reconciliation asks "what is attached to nothing",
+		// which is a question about the whole project, not about one box.
+		expect(query.get("ip")).toBeNull();
 	});
 
-	it("looks up normalized IPv6 Primary IPs with and without Hetzner's /64 suffix", () => {
-		expect(primaryIpLookupAddresses("2001:db8::1")).toEqual([
-			"2001:db8::1",
-			"2001:db8::1/64"
-		]);
-		expect(primaryIpLookupAddresses("2001:db8::1/64")).toEqual([
-			"2001:db8::1/64",
-			"2001:db8::1"
-		]);
-
-		const path = primaryIpListPath("2001:db8::1/64");
-		const query = new URLSearchParams(path.split("?")[1]);
-		expect(query.get("ip")).toBe("2001:db8::1/64");
-	});
-
-	// The production incident this guards against: Hetzner answers the
-	// `<address>/64` lookup form with 422 "invalid input in field 'ip'", which
-	// used to throw and wedge box deletion in an hourly retry loop forever.
-	it("treats a lookup form Hetzner rejects as no match instead of failing", async () => {
-		process.env.HETZNER_CLOUD_TOKEN = "test-token";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: string | URL) => {
-				if (String(url).includes("%2F64")) {
-					return new Response(
-						JSON.stringify({
-							error: {
-								code: "invalid_input",
-								message: "invalid input in field 'ip'"
-							}
-						}),
-						{ status: 422 }
-					);
-				}
-				return new Response(JSON.stringify({ primary_ips: [] }), {
-					status: 200
-				});
-			})
-		);
-
-		await expect(findPrimaryIpByAddress("2001:db8::")).resolves.toBeUndefined();
-	});
-
-	it("still surfaces non-input Hetzner errors from the lookup", async () => {
-		process.env.HETZNER_CLOUD_TOKEN = "test-token";
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(
-				async () =>
-					new Response(JSON.stringify({ error: { message: "boom" } }), {
-						status: 500
-					})
-			)
-		);
-
-		await expect(findPrimaryIpByAddress("203.0.113.10")).rejects.toThrow(
-			HetznerApiError
-		);
-	});
-
-	it("matches IPv6 Primary IPs with or without the network suffix", () => {
-		expect(
-			primaryIpMatchesAddress(
-				{ ip: "2001:db8:85a3::8a2e:370:7334/64" },
-				"2001:db8:85a3::8a2e:370:7334"
-			)
-		).toBe(true);
-		expect(
-			primaryIpMatchesAddress(
-				{ ip: "2001:db8:85a3::8a2e:370:7334" },
-				"2001:db8:85a3::8a2e:370:7334/64"
-			)
-		).toBe(true);
+	it("counts a Primary IP as unassigned only when Hetzner reports no assignee", () => {
+		expect(isUnassignedPrimaryIp({ assignee_id: null })).toBe(true);
+		expect(isUnassignedPrimaryIp({})).toBe(true);
+		// The one that must not be reported: an IP doing its job on a live box.
+		expect(isUnassignedPrimaryIp({ assignee_id: 154362612 })).toBe(false);
+		// 0 is not a server id Hetzner issues, but it is falsy - so a truthiness
+		// check here would report a live IP as a leak.
+		expect(isUnassignedPrimaryIp({ assignee_id: 0 })).toBe(false);
 	});
 });
 

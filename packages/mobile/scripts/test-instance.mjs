@@ -13,7 +13,7 @@ const server = createServer((request, response) => {
 		response.end('{"composery":true}');
 		return;
 	}
-	if (request.url === "/version") {
+	if (request.url === "/ide/version") {
 		response.writeHead(200, { "content-type": "text/plain" });
 		response.end("0000000");
 		return;

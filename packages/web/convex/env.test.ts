@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	cloudUrl,
+	ideUrl,
 	normalizeDomainValue,
 	optionalEnv,
 	requiredEnv,
@@ -66,6 +67,7 @@ describe("domain + url builders", () => {
 		process.env.CLOUD_DOMAIN = ".composery.cloud.";
 		expect(runtimeDomain("my-box")).toBe("my-box.composery.cloud");
 		expect(cloudUrl("my-box")).toBe("https://my-box.composery.cloud/");
+		expect(ideUrl("my-box")).toBe("https://my-box.composery.cloud/ide/");
 	});
 
 	it("strips trailing slashes from the website origin", () => {

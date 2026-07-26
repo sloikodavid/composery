@@ -21,6 +21,7 @@ Recipe: [templates/railway](https://github.com/sloikodavid/composery/tree/main/t
 3. Set service variables: `PORT=8080` (register the password in the browser, or set
    `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD`).
 4. **Settings -> Networking -> Generate Domain**, target port `8080`.
+5. Open `/ide/` on the generated domain.
 
 ## Notes
 

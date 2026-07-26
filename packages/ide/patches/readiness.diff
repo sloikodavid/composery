@@ -30,7 +30,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
  import { Heart } from "../heart"
 -import { redirect } from "../http"
 +import { checkPersistenceReadiness, renderStartupPage } from "../persistence/readiness"
-+import { constructRedirectPath, redirect } from "../http"
++import { redirect } from "../http"
  import { CoderSettings, SettingsProvider } from "../settings"
  import { UpdateProvider } from "../update"
  import { getMediaMime, paths } from "../util"
@@ -56,7 +56,7 @@ diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
 +      return res
 +        .status(503)
 +        .type("html")
-+        .send(renderStartupPage(constructRedirectPath(req, {}, "_composery/healthz")))
++        .send(renderStartupPage("/_composery/healthz"))
 +    }
 +
 +    return res.status(503).type("text").send("Starting workspace\n")

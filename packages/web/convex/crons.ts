@@ -40,6 +40,17 @@ crons.hourly(
 	internal.accountDeletion.sweepPendingAccountDeletions
 );
 
+// A deletion that stopped part-way leaves the record claiming a box exists when
+// its server is already gone, and nothing else re-drives one - see
+// boxes/boxCleanup.ts. Runs after the two sweeps that can put a box into
+// delete_failed in the first place.
+crons.hourly(
+	"finish failed box deletions",
+	{ minuteUTC: 27 },
+	internal.boxes.boxCleanup.finishFailedDeletions,
+	{}
+);
+
 crons.interval(
 	"poll box metrics",
 	{ minutes: METRICS_POLL_INTERVAL_MINUTES },

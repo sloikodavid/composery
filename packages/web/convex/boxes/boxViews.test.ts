@@ -33,7 +33,7 @@ describe("safeBox", () => {
 			id: "boxes:1",
 			slug: "my-box",
 			status: "running",
-			runtimeUrl: "https://my-box.composery.cloud/",
+			runtimeUrl: "https://my-box.composery.cloud/ide/",
 			createdAt: 1_000,
 			updatedAt: 2_000,
 			provisionedAt: undefined,
@@ -99,7 +99,7 @@ describe("staffBox", () => {
 				dns_record_aaaa_id: "rec-aaaa"
 			})
 		);
-		expect(view.runtimeUrl).toBe("https://my-box.composery.cloud/");
+		expect(view.runtimeUrl).toBe("https://my-box.composery.cloud/ide/");
 		expect(view.userId).toBe("user_1");
 		expect(view.userEmail).toBe("");
 		expect(view.hetznerServerId).toBe(42);

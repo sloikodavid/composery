@@ -138,7 +138,11 @@ export const vOperationTrigger = v.union(
 	v.literal("system:auto_snapshot"),
 	v.literal("system:abuse_suspension"),
 	v.literal("system:subscription_revoked"),
-	v.literal("system:account_deletion")
+	v.literal("system:account_deletion"),
+	// Re-drives a deletion that was already ordered and stopped part-way. Named
+	// apart from the triggers above because it starts no teardown of its own: it
+	// only finishes one of theirs (see `finishFailedDeletions`).
+	v.literal("system:delete_retry")
 );
 export type OperationTrigger = Infer<typeof vOperationTrigger>;
 
@@ -333,9 +337,7 @@ export default defineSchema({
 		hetzner_server_type: v.optional(vServerType),
 		hetzner_location: v.optional(vServerLocation),
 		hetzner_ipv4: v.optional(v.string()),
-		hetzner_ipv4_id: v.optional(v.number()),
 		hetzner_ipv6: v.optional(v.string()),
-		hetzner_ipv6_id: v.optional(v.number()),
 		dns_record_id: v.optional(v.string()),
 		dns_record_aaaa_id: v.optional(v.string()),
 		// Set the instant a Repair's parking volume is created and cleared only

@@ -102,9 +102,43 @@ export const alertOrphanedServers = internalMutation({
 	}
 });
 
+// A Primary IP attached to nothing should not exist for more than the seconds
+// Hetzner takes to remove it with its server, so this alert normally never
+// fires - which is the point. Box deletion no longer removes Primary IPs itself
+// (see `deleteRuntime`); it relies on Hetzner's `auto_delete`, and this is what
+// turns that reliance from an assumption into a checked fact. Reported and never
+// deleted, for the same reason as servers: Primary IPs carry none of our labels,
+// so an unassigned one is not provably ours.
+export const alertUnassignedPrimaryIps = internalMutation({
+	args: {
+		primaryIps: v.array(
+			v.object({
+				primaryIpId: v.number(),
+				ip: v.optional(v.string())
+			})
+		)
+	},
+	handler: async (ctx, args) => {
+		const lines = args.primaryIps.map(
+			(primaryIp) =>
+				`- ${primaryIp.primaryIpId}${primaryIp.ip ? ` (${primaryIp.ip})` : ""}`
+		);
+		const ids = args.primaryIps
+			.map((primaryIp) => primaryIp.primaryIpId)
+			.sort((a, b) => a - b)
+			.join(",");
+		await sendStaffAlert(ctx, {
+			key: `unassigned-hetzner-primary-ips:${ids}`,
+			severity: "warning",
+			subject: `${args.primaryIps.length} unassigned Hetzner Primary IP(s) need review`,
+			text: `Daily reconciliation found Hetzner Primary IPs older than the grace window that are attached to no server. Hetzner is expected to delete these along with the server they were created for, so finding one means that did not happen and it is billing for nothing.\n\nThey are never removed automatically; review them in the Hetzner console and remove them by hand:\n\n${lines.join("\n")}\n\nhttps://console.hetzner.cloud/`
+		});
+	}
+});
+
 // Daily backstop for orphaned Hetzner resources. Snapshot images are deleted
 // outright (an unreferenced image is invisible in the UI and pure cost).
-// Orphaned servers are only reported via alertOrphanedServers, never deleted.
+// Orphaned servers and unassigned Primary IPs are only reported, never deleted.
 export const reconcileHetznerResources = internalAction({
 	args: {},
 	handler: async (ctx) => {
@@ -165,6 +199,18 @@ export const reconcileHetznerResources = internalAction({
 				orphanedServers.push({ serverId: server.serverId, name: server.name });
 			}
 
+			// Not referenced against our database at all: an unassigned Primary IP
+			// belongs to no server by Hetzner's own account, so the age window is the
+			// only thing standing between "a server is still being torn down" and "a
+			// leak".
+			const primaryIps = await ctx.runAction(
+				internal.boxes.infra.hetznerVps.listUnassignedPrimaryIps,
+				{}
+			);
+			const leakedPrimaryIps = primaryIps.filter((primaryIp) =>
+				isReclaimable(primaryIp.createdAtMs, now, false)
+			);
+
 			if (deletedImages > 0) {
 				console.info(
 					`[reconcile] deleted ${deletedImages} orphaned snapshot image(s)`
@@ -184,6 +230,22 @@ export const reconcileHetznerResources = internalAction({
 				await ctx.runMutation(internal.boxes.reconcile.alertOrphanedServers, {
 					servers: orphanedServers
 				});
+			}
+			if (leakedPrimaryIps.length > 0) {
+				console.warn(
+					`[reconcile] unassigned Hetzner Primary IP(s), not auto-deleted: ${leakedPrimaryIps
+						.map((primaryIp) => primaryIp.primaryIpId)
+						.join(", ")}`
+				);
+				await ctx.runMutation(
+					internal.boxes.reconcile.alertUnassignedPrimaryIps,
+					{
+						primaryIps: leakedPrimaryIps.map((primaryIp) => ({
+							primaryIpId: primaryIp.primaryIpId,
+							ip: primaryIp.ip
+						}))
+					}
+				);
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

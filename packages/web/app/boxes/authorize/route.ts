@@ -26,10 +26,12 @@ export async function GET(request: Request) {
 	const boxId = url.searchParams.get("box_id") ?? "";
 	const codeChallenge = url.searchParams.get("code_challenge") ?? "";
 	const state = url.searchParams.get("state") ?? "";
+	const redirectUri = url.searchParams.get("redirect_uri") ?? "";
 	if (
 		!BOX_ID_PATTERN.test(boxId) ||
 		!CHALLENGE_PATTERN.test(codeChallenge) ||
-		!STATE_PATTERN.test(state)
+		!STATE_PATTERN.test(state) ||
+		redirectUri.length > 512
 	) {
 		return error("Invalid box authorization request.");
 	}
@@ -51,7 +53,8 @@ export async function GET(request: Request) {
 			api.boxes.boxAuth.createAuthorizationCode,
 			{
 				boxId: boxId as Id<"boxes">,
-				codeChallenge
+				codeChallenge,
+				redirectUri
 			},
 			{ token }
 		);

@@ -43,7 +43,7 @@ is generated and gitignored. The Apple-licensed `fonts/` and `wallpapers/` are
 also gitignored and fetched on demand by `fonts.sh`.
 
 Paths are resolved relative to this folder, so the commands below work from any
-directory. They assume the capture instance is on `http://localhost:9911`
+directory. They assume the capture instance is on `http://localhost:9911/ide/`
 (override with `COMPOSERY_URL`) - its own port, so `pnpm dev:docker` (8080) and
 Expo (8081) can keep running.
 
@@ -60,7 +60,7 @@ playwright install chromium`. The latter downloads the Chromium revision
   docker run -d --name composery-shots -p 9911:8080 \
     -v composery_shots_data:/data composery-composery:latest
   ```
-  Open http://localhost:9911, register the password (`example123`, or set
+  Open http://localhost:9911/ide/, register the password (`example123`, or set
   `COMPOSERY_PASSWORD`), then, from this folder:
   ```bash
   export MSYS_NO_PATHCONV=true   # git-bash only

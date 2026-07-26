@@ -116,6 +116,8 @@ type HetznerImage = {
 export type { HetznerAction, HetznerImage };
 
 type HetznerPrimaryIp = {
+	assignee_id?: number | null;
+	created?: string;
 	id: number;
 	ip?: string;
 };
@@ -210,13 +212,6 @@ function isNotFound(error: unknown) {
 }
 
 export { isNotFound as isHetznerNotFound };
-
-function isInvalidInput(error: unknown) {
-	return (
-		error instanceof HetznerApiError &&
-		(error.status === 400 || error.status === 422)
-	);
-}
 
 function normalizeIpv6ForDns(ip: string) {
 	return ip.split("/")[0];
@@ -333,9 +328,7 @@ function materializeServer(
 		serverType,
 		location,
 		ipv4,
-		ipv4Id: server.public_net?.ipv4?.id,
-		ipv6: normalizeIpv6ForDns(ipv6),
-		ipv6Id: server.public_net?.ipv6?.id
+		ipv6: normalizeIpv6ForDns(ipv6)
 	};
 }
 
@@ -582,86 +575,67 @@ export const deleteServer = internalAction({
 	}
 });
 
-export function primaryIpListPath(ip: string) {
-	const params = new URLSearchParams({ ip });
+export function primaryIpListPath(page: number) {
+	const params = new URLSearchParams({
+		per_page: "50",
+		page: String(page)
+	});
 	return `/primary_ips?${params.toString()}`;
 }
 
-export function primaryIpLookupAddresses(address: string) {
-	const normalized = normalizeIpv6ForDns(address);
-	if (!address.includes(":")) return [address];
-	if (address.includes("/")) return [...new Set([address, normalized])];
-	return [...new Set([address, `${normalized}/64`])];
+// A Primary IP with no assignee belongs to no server. Every one of ours is
+// created implicitly by `createServerPayload` (`enable_ipv4`/`enable_ipv6` with
+// no explicit id), which is exactly the form Hetzner marks `auto_delete` and
+// removes along with the server - so in normal operation this is never true for
+// more than the few seconds that removal takes.
+//
+// Hetzner reports an unassigned Primary IP as `assignee_id: null`, and older
+// responses omit the field entirely; both mean the same thing here.
+export function isUnassignedPrimaryIp(primaryIp: {
+	assignee_id?: number | null;
+}) {
+	return primaryIp.assignee_id === null || primaryIp.assignee_id === undefined;
 }
 
-export function primaryIpMatchesAddress(
-	primaryIp: { ip?: string },
-	address: string
-) {
-	if (!primaryIp.ip) return false;
-	return (
-		primaryIp.ip === address ||
-		normalizeIpv6ForDns(primaryIp.ip) === normalizeIpv6ForDns(address)
-	);
-}
-
-export async function findPrimaryIpByAddress(ip: string) {
-	for (const address of primaryIpLookupAddresses(ip)) {
-		let response: HetznerPrimaryIpsResponse;
-		try {
-			response = await hetznerRequest<HetznerPrimaryIpsResponse>(
-				primaryIpListPath(address)
-			);
-		} catch (error) {
-			// Hetzner rejects some lookup forms with "invalid input in field 'ip'"
-			// (seen with the `<address>/64` IPv6 form). A value the API cannot
-			// parse cannot name an existing Primary IP, so skip it - throwing here
-			// wedged box deletion permanently, retried by every hourly sweep.
-			if (isInvalidInput(error)) continue;
-			throw error;
+// Reconciliation feed: every Primary IP in the project that is attached to
+// nothing, so the cron can report a leak rather than let one bill quietly.
+//
+// Primary IPs carry none of our labels (Hetzner creates them, not us), so this
+// cannot filter by `product=composery-web` the way the server and volume feeds
+// do. That is also why reconciliation only ever reports these - an unlabelled
+// resource is not provably ours to delete.
+export const listUnassignedPrimaryIps = internalAction({
+	args: {},
+	returns: v.array(
+		v.object({
+			primaryIpId: v.number(),
+			ip: v.optional(v.string()),
+			createdAtMs: v.number()
+		})
+	),
+	handler: async () => {
+		const unassigned: {
+			primaryIpId: number;
+			ip?: string;
+			createdAtMs: number;
+		}[] = [];
+		let page: number | null = 1;
+		while (page) {
+			const body: HetznerPrimaryIpsResponse & HetznerPagination =
+				await hetznerRequest<HetznerPrimaryIpsResponse & HetznerPagination>(
+					primaryIpListPath(page)
+				);
+			for (const primaryIp of body.primary_ips ?? []) {
+				if (!isUnassignedPrimaryIp(primaryIp)) continue;
+				unassigned.push({
+					primaryIpId: primaryIp.id,
+					ip: primaryIp.ip,
+					createdAtMs: parseCreatedMs(primaryIp.created)
+				});
+			}
+			page = body.meta?.pagination?.next_page ?? null;
 		}
-		const primaryIp = (response.primary_ips ?? []).find((candidate) =>
-			primaryIpMatchesAddress(candidate, ip)
-		);
-		if (primaryIp) return primaryIp;
-	}
-	return undefined;
-}
-
-async function deletePrimaryIp(primaryIpId: number) {
-	try {
-		await hetznerRequest(`/primary_ips/${primaryIpId}`, { method: "DELETE" });
-		return true;
-	} catch (error) {
-		if (!isNotFound(error)) throw error;
-		return false;
-	}
-}
-
-async function deletePrimaryIpByIdOrAddress(
-	id: number | undefined,
-	address: string | undefined
-) {
-	if (id !== undefined) {
-		const deleted = await deletePrimaryIp(id);
-		if (deleted) return;
-	}
-
-	if (!address) return;
-	const primaryIp = await findPrimaryIpByAddress(address);
-	if (primaryIp) await deletePrimaryIp(primaryIp.id);
-}
-
-export const deletePrimaryIps = internalAction({
-	args: {
-		ipv4: v.optional(v.string()),
-		ipv4Id: v.optional(v.number()),
-		ipv6: v.optional(v.string()),
-		ipv6Id: v.optional(v.number())
-	},
-	handler: async (_ctx, args) => {
-		await deletePrimaryIpByIdOrAddress(args.ipv4Id, args.ipv4);
-		await deletePrimaryIpByIdOrAddress(args.ipv6Id, args.ipv6);
+		return unassigned;
 	}
 });
 
@@ -1012,9 +986,7 @@ export const deleteImage = internalAction({
 
 export type CreatedServer = {
 	ipv4: string;
-	ipv4Id?: number;
 	ipv6: string;
-	ipv6Id?: number;
 	location: ServerLocation;
 	serverId: number;
 	serverType: ServerType;

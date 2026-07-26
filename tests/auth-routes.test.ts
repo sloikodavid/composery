@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -42,6 +42,39 @@ describe("auth page navigation", () => {
 		// would lead to a page that cannot let anyone through.
 		expect(authPage).toContain('page !== "login" && hasPassword(req)');
 		expect(authPage).toContain('href="{{BASE}}/login">Sign in');
+	});
+
+	test("all owned auth navigation remains relative to the unknown public mount", () => {
+		const routeDir = "packages/ide/overlay/src/node/routes";
+		const routeFiles = (dir: string): string[] =>
+			readdirSync(resolve(repoRoot, dir)).flatMap((name) => {
+				const path = `${dir}/${name}`;
+				return statSync(resolve(repoRoot, path)).isDirectory()
+					? routeFiles(path)
+					: name.endsWith(".ts")
+						? [path]
+						: [];
+			});
+
+		const absoluteRedirects = routeFiles(routeDir).flatMap((path) => {
+			const source = readRepoFile(path);
+			return [
+				...source.matchAll(
+					/(?:\bres\.redirect\(|\bredirect\(\s*req,\s*res,)\s*["'`]\/(?!\/)/g
+				)
+			].map((match) => `${path}:${match.index}`);
+		});
+		const absoluteLinks = readdirSync(resolve(repoRoot, pagesDir))
+			.filter((name) => name.endsWith(".html"))
+			.flatMap((name) => {
+				const source = readRepoFile(`${pagesDir}/${name}`);
+				return [...source.matchAll(/\b(?:action|href)=["']\/(?!\/)/g)].map(
+					(match) => `${name}:${match.index}`
+				);
+			});
+
+		expect(absoluteRedirects).toEqual([]);
+		expect(absoluteLinks).toEqual([]);
 	});
 });
 

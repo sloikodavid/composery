@@ -37,7 +37,7 @@ export async function launch({
 }
 
 export async function login(page, folder = FOLDER) {
-	await page.goto(BASE + "/", { waitUntil: "domcontentloaded" });
+	await page.goto(BASE + "/ide/", { waitUntil: "domcontentloaded" });
 	// Register (password + confirm) or log in (password) - fill whatever is there.
 	const pws = page.locator('input[type="password"]');
 	const n = await pws.count();
@@ -48,8 +48,8 @@ export async function login(page, folder = FOLDER) {
 		await page.waitForTimeout(3000);
 	}
 	const url = folder
-		? `${BASE}/?folder=${encodeURIComponent(folder)}`
-		: BASE + "/";
+		? `${BASE}/ide/?folder=${encodeURIComponent(folder)}`
+		: BASE + "/ide/";
 	await page.goto(url, { waitUntil: "domcontentloaded" });
 	await page.waitForSelector(".monaco-workbench", { timeout: 60000 });
 	await page.waitForTimeout(6000);

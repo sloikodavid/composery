@@ -44,7 +44,7 @@ koyeb service create composery \
 The same fields are available in the control panel (Docker image, port `8080`, an HTTP
 health check on `/_composery/healthz`, and the volume at `/data`).
 
-Open the `.koyeb.app` URL Koyeb assigns. Register the initial password in the browser, or
+Open `/ide/` on the `.koyeb.app` URL Koyeb assigns. Register the initial password in the browser, or
 set `COMPOSERY_PASSWORD` / `COMPOSERY_HASHED_PASSWORD` with another `--env` flag (or in the
 control panel).
 

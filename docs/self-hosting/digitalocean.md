@@ -25,7 +25,7 @@ up behind Caddy on first boot.
 A Droplet is a full VM, so it allows privileged containers and host cgroups: the
 `systemd + Caddy` recipe (closest to Composery Cloud) works, as does `supervisor + Caddy`.
 
-Open `https://<your-domain>`. State lives in the `composery_data` volume; snapshot the
+Open `https://<your-domain>/ide/`. State lives in the `composery_data` volume; snapshot the
 Droplet before major image upgrades.
 
 ## Managed Kubernetes (DOKS)
