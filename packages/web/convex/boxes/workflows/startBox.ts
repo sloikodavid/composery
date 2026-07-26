@@ -2,7 +2,7 @@ import { internal } from "../../_generated/api";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
 export const startBox = defineBoxWorkflow({
-	onFailure: { eventType: "box.start_failed", targetBoxStatus: "stopped" },
+	type: "start",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

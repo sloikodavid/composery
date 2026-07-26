@@ -1,3 +1,4 @@
+// runbook: Deleted box/support evidence
 export const DELETED_BOX_RETENTION_DAYS = 180;
 export const DELETED_BOX_RETENTION_MS =
 	DELETED_BOX_RETENTION_DAYS * 24 * 60 * 60 * 1000;
@@ -28,9 +29,11 @@ export function deletedBoxDataPatch(deletedAt: number) {
 	};
 }
 
+// runbook: Unpaid checkout record
 export const UNPAID_CHECKOUT_RETENTION_DAYS = 30;
 export const UNPAID_CHECKOUT_RETENTION_MS =
 	UNPAID_CHECKOUT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+// runbook: Paid billing record
 export const BILLING_RECORD_RETENTION_YEARS = 6;
 
 export function unpaidCheckoutPurgeAt(finishedAt: number) {

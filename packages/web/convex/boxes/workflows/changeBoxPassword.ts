@@ -4,10 +4,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 
 export const changeBoxPassword = defineBoxWorkflow({
 	extraArgs: { runtimeAuthHash: v.string() },
-	onFailure: {
-		eventType: "box.change_password_failed",
-		targetBoxStatus: "running"
-	},
+	type: "change_password",
 	run: async (step, args) => {
 		await step.runAction(
 			internal.boxes.infra.ssh.rewritePasswordAndRestart,

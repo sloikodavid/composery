@@ -132,15 +132,14 @@ define evidence retention, retry cadence, or background workload:
 | Behavior                           | Window                              |
 | ---------------------------------- | ----------------------------------- |
 | Unpaid checkout reservation        | 1 hour                              |
-| Metrics polling                    | 10 minutes                          |
-| Box health probe                   | 10 minutes                          |
 | Consecutive failures before repair | 3 probes (~30 minutes)              |
-| Automatic repair quiet window      | 2 hours after an owner action       |
+| Automatic repair quiet window      | 2 hours after a person acts         |
 | Automatic repairs per box          | 2 per 24 hours                      |
+| Orphaned operation grace period    | 30 minutes                          |
+| Long-running operation alert       | After 6 hours                       |
 | Raw metrics retention              | 2 days                              |
 | Hourly metrics retention           | 30 days                             |
 | Repeat flag cooloff per box/signal | 6 hours                             |
-| Staff-alert retry                  | 15 minutes                          |
 | Staff-alert record retention       | 180 days                            |
 | Stuck account-deletion alert       | After 24 hours                      |
 | Incomplete snapshot-row retention  | 24 hours                            |
@@ -148,6 +147,11 @@ define evidence retention, retry cadence, or background workload:
 | Deleted box/support evidence       | 180 days                            |
 | Unpaid checkout record             | 30 days                             |
 | Paid billing record                | 6 calendar years after the box ends |
+
+Each row is bound to the constant that produces it by a `// runbook:` comment on
+that constant, and `tests/runbook-windows.test.ts` fails if a number here stops
+matching the code or a row loses its constant. Cadences that come from a cron
+are stated once under [Scheduled work](#scheduled-work) instead.
 
 Paid initial-fulfillment failure, provider cleanup, capacity admission, and
 refund behavior are specified once in [Operations](./operations.md),
@@ -177,6 +181,7 @@ All fixed times are UTC.
 | Purge expired deleted accounts           | Daily at 04:39   |
 | Purge expired staff alerts               | Daily at 04:43   |
 | Sweep box health                         | Every 10 minutes |
+| Sweep stuck box operations               | Every 15 minutes |
 | Refresh runtime release                  | Hourly at :26    |
 | Update boxes past their floor deadline   | Hourly at :41    |
 | Snapshot running boxes                   | Daily at 03:07   |
@@ -204,18 +209,51 @@ supposed to break, so "not serving" is a normal state for someone mid-experiment
 and an unconditional healer would fight them:
 
 - the box must have failed several consecutive probes, not one;
-- no owner-initiated operation may have run recently - the owner's hand on the
-  box always takes precedence over ours;
+- no operation started by a _person_ may have run recently - the owner's hand on
+  the box always takes precedence over ours. Operations the fleet started itself
+  (a nightly snapshot, a forced floor update, an abuse suspension) do not count,
+  which is what stops the fleet's own housekeeping from suppressing repair;
 - the box's status must independently allow a repair, which already excludes a
   stopped, suspended, or mid-operation box;
 - and a box may only be repaired automatically twice in a day. Past that it is a
   person's problem: each repair parks the box's files on a Hetzner Volume and
   takes the box down while it runs, so an unbounded healer is an unbounded bill.
+  Reaching that limit raises a critical staff alert - a box nobody is going to fix
+  automatically must not also be a box nobody knows about.
 
-Every automatic repair records `triggered_by` in its operation metadata, so a
-box's history distinguishes one the fleet started from one its owner asked for.
-Failures alert through the normal operation-failure path; nothing is retried
-outside the window count above.
+The sweep probes every status a repair may begin from, not only `running`. That
+matters most for `update_failed`: repairing a box whose update failed is how the
+update is rolled back, because the box's recorded image only advances once the new
+one has answered.
+
+Every operation records a `trigger` naming who started it (`owner`, `staff`, or a
+`system:` sweep), so a box's history distinguishes one the fleet started from one a
+person asked for. Failures alert through the normal operation-failure path;
+nothing is retried outside the window count above.
+
+## The operation lock
+
+A box runs one operation at a time. Everything else is refused with "This box is
+busy with another operation", which is what keeps a reset from racing a repair -
+and it means an operation that never finishes makes its box unusable for ever.
+
+Three things keep that from happening, in order of how much they promise:
+
+- the operation row and its workflow are created in **one transaction**, so an
+  operation can never exist with nothing behind it;
+- `finishBoxOperation` runs on every terminal outcome the workflow component
+  reports - success, failure, or cancellation - so an operation is closed even
+  when the workflow's own error handling never ran;
+- `boxOperationSweep` checks anything still open past the grace period against the
+  workflow component. It closes an operation only when the workflow is provably
+  gone, never on elapsed time alone: a repair copies a whole disk twice and can
+  legitimately run for hours.
+
+An operation whose workflow is genuinely still running past the long-running
+window is reported to staff rather than closed, because cancelling one mid-flight
+is a judgement call about the box's files. **Cancel operation** on the box's
+console page is the lever: it stops the workflow, then records the operation as
+failed, leaving the box in the same status an ordinary failure would.
 
 ## Retained deleted data
 

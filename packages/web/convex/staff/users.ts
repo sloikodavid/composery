@@ -83,7 +83,8 @@ export const setUserSuspended = action({
 						? "user-suspend"
 						: "user-unsuspend",
 					reason: args.suspended ? args.reason : undefined,
-					suspend: args.suspended
+					suspend: args.suspended,
+					trigger: "staff"
 				}).catch((error) => {
 					failureCount += 1;
 					if (failures.length < USER_BOX_ACTION_FAILURE_EXAMPLES) {

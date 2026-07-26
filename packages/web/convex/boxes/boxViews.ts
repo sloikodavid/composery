@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { cloudUrl } from "../env";
+import { ACTIVE_OPERATION_STATUSES } from "./boxOperationRules";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
 
@@ -45,6 +46,59 @@ export function latestRepair(db: DatabaseReader, boxId: Id<"boxes">) {
 // and this record is the only thing that says why.
 export function latestUpdate(db: DatabaseReader, boxId: Id<"boxes">) {
 	return latestOperationSummary(db, boxId, "update");
+}
+
+// The operation currently holding this box's lock, if any. One definition, read by
+// the console (to offer cancelling a wedged one) and by the sweep that rescues
+// them, so neither can disagree about what "busy" means.
+export async function activeOperation(db: DatabaseReader, boxId: Id<"boxes">) {
+	for (const status of ACTIVE_OPERATION_STATUSES) {
+		const operation = await db
+			.query("box_operations")
+			.withIndex("box_id_status", (query) =>
+				query.eq("box_id", boxId).eq("status", status)
+			)
+			.first();
+		if (operation) {
+			return {
+				createdAt: operation.created_at,
+				operationId: operation._id,
+				type: operation.type,
+				workflowId: operation.workflow_id
+			};
+		}
+	}
+	return null;
+}
+
+// "Did the last thing that happened to this box fail?" - the box's most recent
+// operation, reported only when it failed.
+//
+// Deliberately the latest operation rather than the latest *failure*: a failure
+// that something has since succeeded past is history, not the box's current state,
+// and this self-clears the moment anything else finishes. That is what lets one
+// notice cover every operation instead of a per-operation dialog each owner has to
+// think to open - repair and update had one, and reset, restore, provisioning,
+// slug changes and configuration applies had nothing at all.
+export async function latestFailure(
+	db: DatabaseReader,
+	boxId: Id<"boxes">
+): Promise<{
+	error: string | null;
+	finishedAt: number | null;
+	type: Doc<"box_operations">["type"];
+} | null> {
+	const operation = await db
+		.query("box_operations")
+		.withIndex("box_id_created_at", (query) => query.eq("box_id", boxId))
+		.order("desc")
+		.first();
+	if (!operation || operation.status !== "failed") return null;
+	return {
+		error: operation.last_error ?? null,
+		finishedAt: operation.finished_at ?? null,
+		type: operation.type
+	};
 }
 
 // A box's version standing, read once against the cached fleet release so the

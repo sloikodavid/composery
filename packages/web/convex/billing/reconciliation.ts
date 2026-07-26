@@ -34,7 +34,8 @@ async function reconcileBoxSubscription(ctx: ActionCtx, box: Doc<"boxes">) {
 
 	try {
 		await startBoxOperation(ctx, box._id, "delete", {
-			idempotencyKey: `delete:${box.polar_subscription_id}`
+			idempotencyKey: `delete:${box.polar_subscription_id}`,
+			trigger: "system:subscription_revoked"
 		});
 	} catch {
 		// Box is busy or already tearing down; leave it for the next sweep.

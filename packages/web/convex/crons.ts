@@ -104,6 +104,17 @@ crons.interval(
 	{}
 );
 
+// An operation nothing will ever finish holds its box's lock for ever, and every
+// later action on that box is refused as "busy". Nothing should reach that state -
+// see boxes/boxOperationSweep.ts - so this normally finds nothing, which is
+// exactly why it has to run rather than be assumed.
+crons.interval(
+	"sweep stuck box operations",
+	{ minutes: 15 },
+	internal.boxes.boxOperationSweep.sweepStuckOperations,
+	{}
+);
+
 // Hourly rather than per box or per page view: one registry round trip answers
 // "what does the channel resolve to now" for the entire fleet.
 crons.hourly(

@@ -1,13 +1,13 @@
 ---
 title: API
-description: Run commands against a running Composery from anywhere, authenticated by API keys minted on the instance.
+description: Create and control a running Composery's real editor terminals from anywhere.
 ---
 
 Every Composery serves a small automation API on its own URL, in-process with the
-editor, on the same single port. It lets you run commands against the instance from
-outside the editor - `curl`, CI, a script, your laptop - using API keys you mint
-on the instance. It is the same instance you already have root in; the API just makes that
-shell programmatic and remote.
+editor, on the same single port. It exposes the editor's persistent terminals to
+`curl`, CI, scripts, and WebSocket clients using API keys minted on the instance.
+There is no second execution subsystem: every process created here is a VS Code
+terminal running through the pty host.
 
 This is not a control-plane API. There is no lifecycle here (no create/stop/delete
 of instances). The instance already exists; this only automates work inside it.
@@ -49,55 +49,93 @@ Authorization: Bearer composery_...
 X-API-Key: composery_...
 ```
 
-## Run a command (one-shot)
+## Create a terminal
 
-`POST /_composery/api/v1/exec` runs a command in a login shell as the editor user - the same
-environment your editor terminal has - and returns the result.
+`POST /_composery/api/v1/terminals` creates the same persistent pty-backed
+terminal as the editor. It returns immediately by default:
 
 ```bash
-curl -X POST https://<your-instance>/_composery/api/v1/exec \
+curl -X POST https://<your-instance>/_composery/api/v1/terminals \
   -H "Authorization: Bearer composery_..." \
   -H "Content-Type: application/json" \
-  -d '{"command":"pnpm build","cwd":"~/app","timeout":600}'
+  -d '{"command":"pnpm dev","cwd":"~/app","title":"dev"}'
 ```
 
-Combined stdout/stderr output is capped and the request is time-bounded - these
-limits exist only because a synchronous request cannot stream forever. For long
-or interactive work, use the websocket below.
+Set `hidden: true` to keep it in the editor's background terminal collection.
+The default is `false`; the value is passed to VS Code's `hideFromUser` launch
+config rather than implemented as an API-only visibility state.
 
-<APIOperation path="/_composery/api/v1/exec" method="post" />
-
-## Interactive terminal (websocket)
-
-`WS /_composery/api/v1/exec` opens **a terminal in the editor** and streams it to
-you. It is not a terminal of its own kind: it is created through the editor's own
-pty host, exactly like pressing `+` in the terminal panel, and the websocket is
-simply attached to it.
+For a one-shot, add `wait: true`. The request then waits for the pty to exit and
+returns `output`, `exit_code`, `timed_out`, and `truncated`:
 
 ```bash
-websocat -H "Authorization: Bearer composery_..." "wss://<your-instance>/_composery/api/v1/exec?cmd=pnpm+build"
+curl -X POST https://<your-instance>/_composery/api/v1/terminals \
+  -H "Authorization: Bearer composery_..." \
+  -H "Content-Type: application/json" \
+  -d '{"command":"pnpm build","cwd":"~/app","wait":true,"timeout":600}'
 ```
 
-No timeout, no output cap - it runs until the process exits. Binary websocket
-messages are raw terminal I/O both ways; text messages are JSON control,
-currently `{"resize":{"cols":N,"rows":N}}`. Query parameters: `cmd` (default the
-login shell), `cols`, and `rows`.
+A pty has one output stream, so `output` is the raw merged stream. ANSI and
+shell-integration sequences are retained. The timeout and output cap apply only
+while waiting synchronously.
 
-Because it is an ordinary editor terminal, everything true of one is true of it:
+Disconnecting from a wait stops the terminal, because nothing is left that could
+collect the result. Send an `Idempotency-Key` and it keeps running instead: the
+key is what lets a retry pick the result back up, so there is something to come
+back to.
 
-- **It appears as a terminal tab**, titled with the command it is running. Open
-  the editor and it is there, listed and not stealing focus, the same way
-  terminals that survived a reload are.
-- **It outlives the websocket.** Disconnecting stops the streaming, not the
-  command - the terminal stays in the editor, running, and you can pick it up
-  there. A terminal opened with `+` behaves the same when you close the browser.
-- **Closing it in the editor stops it**, like any other terminal. That is the way
-  to end one, and the only way.
-- Output flows under the editor's own flow control, so a slow reader throttles
-  the process rather than piling up in memory.
+<APIOperation path="/_composery/api/v1/terminals" method="post" />
 
-There is no separate notion of an "API session" to learn, nothing to name, and
-nothing to attach to by hand.
+## Inspect and control terminals
+
+The inventory is every persistent terminal, including the ones you opened in the
+editor yourself - there is no separate class of API terminal to look for.
+
+<APIOperation path="/_composery/api/v1/terminals" method="get" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="get" />
+
+Scrollback is the pty host's own replay: the size events and the raw output it
+would send an editor reattaching to that terminal, control sequences included. A
+terminal that has never written anything replays as empty rather than as `404`.
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/buffer" method="get" />
+
+Renaming uses VS Code's API title source, the one that survives the process
+renaming itself. `cols` and `rows` move together, and nothing is applied unless
+the whole request is valid.
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="patch" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/input" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/signal" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/clear" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="delete" />
+
+## Attach over WebSocket
+
+`WS /_composery/api/v1/terminals/{id}` attaches to an existing terminal.
+Binary frames from the server are raw terminal output; incoming frames are
+terminal input. The attach first replays existing scrollback and then follows
+the live tail. On exit, the server sends `{"exit":{"code":N}}` and closes.
+
+```bash
+websocat -H "Authorization: Bearer composery_..." \
+  "wss://<your-instance>/_composery/api/v1/terminals/7"
+```
+
+Disconnecting only detaches this stream. The terminal stays in the editor,
+running: a command started here keeps going with nobody attached, and you can
+pick it up in the editor or attach again later. Closing it in the editor stops
+it, the way it stops any terminal, and so does `DELETE`.
+
+The pty host arbitrates its single flow-control counter across the browser and
+API attachments, so the same broadcast output is never acknowledged twice, and a
+terminal nothing is attached to runs at full speed rather than stalling on output
+no one is there to acknowledge.
 
 ## Configuration
 
@@ -107,11 +145,12 @@ environment variables, listed with their defaults in
 
 ## Webhooks
 
-Webhook senders should call an application route such as `/hooks/linear`, not the exec
-API directly. The receiver verifies the provider signature against the unchanged request
-body, deduplicates the delivery, queues the work, and returns the provider's success
-response quickly. Its worker can then run `claude -p ...`, `codex exec ...`, or any other
-normal command locally. No Composery query parameters are involved.
+Webhook senders should call an application route such as `/hooks/linear`, not the
+terminal API directly. The receiver verifies the provider signature against the
+unchanged request body, deduplicates the delivery, queues the work, and returns the
+provider's success response quickly. Its worker can then run `claude -p ...`,
+`codex exec ...`, or any other normal command locally. No Composery query parameters
+are involved.
 
 For example, run a receiver on `127.0.0.1:3000`, add the following to
 `/etc/caddy/Caddyfile`, and give the provider

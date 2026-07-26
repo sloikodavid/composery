@@ -28,7 +28,11 @@ import { requiredEnv } from "./env";
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * 60 * 1000;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
 const ACCOUNT_PURGE_RETRY_MS = 24 * 60 * 60 * 1000;
-const ACCOUNT_DELETION_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
+// Exported only because the operator runbook states it: `// runbook:` binds the
+// number in the doc to this constant, and the test that pins the pair reads the
+// exported value.
+// runbook: Stuck account-deletion alert
+export const ACCOUNT_DELETION_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
 
 type DeletionTrigger = "clerk_webhook" | "staff";
 type AccountDeletionResult = { status: "missing" | "pending" };
@@ -71,7 +75,8 @@ async function startDeletionWorkflows(ctx: ActionCtx, boxes: Doc<"boxes">[]) {
 
 		try {
 			await startBoxOperation(ctx, box._id, "delete", {
-				idempotencyKey: boxDeletionIdempotencyKey(box)
+				idempotencyKey: boxDeletionIdempotencyKey(box),
+				trigger: "system:account_deletion"
 			});
 		} catch {
 			// The finalizer retries busy boxes until the normal operation gate opens.

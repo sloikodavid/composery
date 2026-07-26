@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { isSystemTrigger, type OperationTrigger } from "../schema";
 import {
+	AUTO_REPAIR_TRIGGER,
 	AUTO_REPAIR_WINDOW_MS,
 	MAX_AUTO_REPAIRS_PER_WINDOW,
 	OWNER_QUIET_WINDOW_MS,
 	SUSTAINED_FAILURES,
+	SWEPT_STATUSES,
 	autoRepairDecision,
 	type AutoRepairFacts
 } from "./autoRepair";
+import { OPERATION_ALLOWED_STATUSES } from "./boxOperationRules";
 
 const NOW = 10_000_000_000;
 
@@ -117,5 +121,65 @@ describe("autoRepairDecision", () => {
 				repair: true
 			}
 		);
+	});
+});
+
+// The gate matrix above is pure and was always tested. What was not tested is
+// whether the sweep ever hands it a box in one of those states, and for a long
+// time it did not: it only ever listed `status == "running"`, so the
+// `update_failed` case above was unreachable in production while its test passed.
+// A decision that cannot be reached is worse than a missing one, because the test
+// suite reports it as covered.
+describe("the sweep feeds every status the decision can act on", () => {
+	it("probes exactly the statuses a repair may begin from", () => {
+		expect([...SWEPT_STATUSES].sort()).toEqual(
+			[...OPERATION_ALLOWED_STATUSES.repair].sort()
+		);
+	});
+
+	it.each(OPERATION_ALLOWED_STATUSES.repair)(
+		"sweeps %s, which the decision can approve",
+		(status) => {
+			expect(SWEPT_STATUSES).toContain(status);
+			expect(autoRepairDecision(facts({ status }), NOW)).toEqual({
+				repair: true
+			});
+		}
+	);
+});
+
+// The quiet window means "a person is working on this box". It used to mean "any
+// operation ran", which the fleet's own housekeeping satisfied: a nightly
+// automatic snapshot suppressed repair for two hours every night, and a forced
+// floor update suppressed it for two hours after the event most likely to have
+// broken the box.
+describe("trigger classification", () => {
+	const humanTriggers: OperationTrigger[] = ["owner", "staff"];
+	const systemTriggers: OperationTrigger[] = [
+		"system:auto_repair",
+		"system:runtime_floor",
+		"system:auto_snapshot",
+		"system:abuse_suspension",
+		"system:subscription_revoked",
+		"system:account_deletion"
+	];
+
+	it.each(humanTriggers)("%s counts as a person acting", (trigger) => {
+		expect(isSystemTrigger(trigger)).toBe(false);
+	});
+
+	it.each(systemTriggers)("%s does not hold repair off", (trigger) => {
+		expect(isSystemTrigger(trigger)).toBe(true);
+	});
+
+	// An operation recorded before the column existed. Reading it as a person's
+	// keeps repair off a box someone may have been working on, which is the safe
+	// direction for a value we cannot know.
+	it("treats an unrecorded trigger as a person", () => {
+		expect(isSystemTrigger(undefined)).toBe(false);
+	});
+
+	it("counts its own repairs against the attempt limit", () => {
+		expect(isSystemTrigger(AUTO_REPAIR_TRIGGER)).toBe(true);
 	});
 });

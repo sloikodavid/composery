@@ -41,7 +41,8 @@ async function pollTargets(ctx: ActionCtx, targets: PollTarget[]) {
 							boxId: target.boxId,
 							idempotencyKeyPrefix: `flag:${suspendFlagId}`,
 							reason: suspendReason,
-							suspend: true
+							suspend: true,
+							trigger: "system:abuse_suspension"
 						});
 					}
 				} catch (error) {

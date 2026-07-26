@@ -6,10 +6,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // by a subscription ending (the subscription.revoked webhook or the hourly
 // reconciliation sweep), never directly by user or staff.
 export const deleteBox = defineBoxWorkflow({
-	onFailure: {
-		eventType: "box.delete_failed",
-		targetBoxStatus: "delete_failed"
-	},
+	type: "delete",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

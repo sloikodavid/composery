@@ -14,7 +14,7 @@ import { defineBoxWorkflow, operationError } from "./boxWorkflow";
 // wrapper marks the operation failed and emits one `box.snapshot_failed` event.
 export const captureSnapshot = defineBoxWorkflow({
 	extraArgs: { class: vSnapshotClass },
-	onFailure: { eventType: "box.snapshot_failed" },
+	type: "snapshot",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
@@ -92,10 +92,7 @@ export const captureSnapshot = defineBoxWorkflow({
 // the box's current password/slug are reconciled onto the restored disk.
 export const restoreBox = defineBoxWorkflow({
 	extraArgs: { snapshotRowId: v.id("box_snapshots") },
-	onFailure: {
-		eventType: "box.restore_failed",
-		targetBoxStatus: "restore_failed"
-	},
+	type: "restore",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

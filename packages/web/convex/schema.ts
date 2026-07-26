@@ -88,6 +88,8 @@ export const vBoxFailureStatus = v.union(
 	v.literal("suspended")
 );
 
+export type BoxFailureStatus = Infer<typeof vBoxFailureStatus>;
+
 export const vBoxOperationType = v.union(
 	v.literal("provision"),
 	v.literal("delete"),
@@ -114,6 +116,42 @@ export const vBoxOperationStatus = v.union(
 
 export type BoxOperationType = Infer<typeof vBoxOperationType>;
 export type BoxOperationStatus = Infer<typeof vBoxOperationStatus>;
+
+// Who started an operation. Recorded on every one, because "who did this" is a
+// question a box's history has to be able to answer - in support, in the console,
+// and in automatic repair's own gates.
+//
+// A closed union rather than a free string: automatic repair holds off while a
+// person is working on a box, and it tells the two apart by this field alone. A
+// misspelled trigger would silently reclassify a fleet action as a human one, so
+// there is nothing to misspell.
+export const vOperationTrigger = v.union(
+	// A person acting on the box: its owner, or staff acting on their behalf. Both
+	// hold automatic repair off - the hand on the box is a human's either way.
+	v.literal("owner"),
+	v.literal("staff"),
+	// The fleet acting on its own. Every one of these is named separately so a
+	// box's history says which sweep touched it, and so `isSystemTrigger` can
+	// classify them all without listing them.
+	v.literal("system:auto_repair"),
+	v.literal("system:runtime_floor"),
+	v.literal("system:auto_snapshot"),
+	v.literal("system:abuse_suspension"),
+	v.literal("system:subscription_revoked"),
+	v.literal("system:account_deletion")
+);
+export type OperationTrigger = Infer<typeof vOperationTrigger>;
+
+// True for anything the fleet started by itself. Keyed off the `system:` prefix
+// rather than a second list of literals, so a trigger added to the union above is
+// classified the moment it exists instead of defaulting to "a person did this".
+//
+// `undefined` means an operation recorded before the column existed. Those read
+// as human, which is the safe direction: it holds automatic repair off rather
+// than letting it act on a box a person may have been working on.
+export function isSystemTrigger(trigger: OperationTrigger | undefined) {
+	return trigger !== undefined && trigger.startsWith("system:");
+}
 
 // Which half of a Repair ("clean host, current files") a box's parking volume
 // is in. It is the crash-safety marker a resumed repair reads to decide the
@@ -357,6 +395,14 @@ export default defineSchema({
 		status: vBoxOperationStatus,
 		idempotency_key: v.string(),
 		reserved_slug: v.optional(v.string()),
+		// Who asked for this. Optional only because rows predating the column exist;
+		// every new operation records one (see `startBoxOperation`).
+		trigger: v.optional(vOperationTrigger),
+		// The workflow carrying this operation out, recorded in the same transaction
+		// that creates the row. It is what lets `boxOperationSweep` ask whether an
+		// operation still has anything running behind it, instead of guessing from
+		// how long it has been open. Absent on rows predating the column.
+		workflow_id: v.optional(v.string()),
 		started_at: v.optional(v.number()),
 		finished_at: v.optional(v.number()),
 		last_error: v.optional(v.string()),
@@ -368,6 +414,7 @@ export default defineSchema({
 	})
 		.index("box_id", ["box_id"])
 		.index("box_id_status", ["box_id", "status"])
+		.index("box_id_created_at", ["box_id", "created_at"])
 		.index("box_type_status", ["box_id", "type", "status"])
 		.index("box_id_type_created_at", ["box_id", "type", "created_at"])
 		.index("status_created_at", ["status", "created_at"])

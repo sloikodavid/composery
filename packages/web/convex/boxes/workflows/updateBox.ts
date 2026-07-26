@@ -27,10 +27,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // Repair rewrites the old compose file and puts the box back. There is no
 // separate rollback path because this ordering is the rollback path.
 export const updateBox = defineBoxWorkflow({
-	onFailure: {
-		eventType: "box.update_failed",
-		targetBoxStatus: "update_failed"
-	},
+	type: "update",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

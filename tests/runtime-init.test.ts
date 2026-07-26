@@ -295,9 +295,17 @@ describe("runtime process managers", () => {
 	// infrastructure variables are checked from the other direction: offering any
 	// of them would let a saved configuration take a box off its own password or
 	// detach it from the control plane.
-	test("only offers box configuration for variables that are documented and wired", async () => {
-		const { RUNTIME_CONFIG_KEYS } =
-			await import("../packages/web/convex/boxes/runtimeConfig");
+	test("only offers box configuration for variables that are documented and wired", () => {
+		// Read rather than imported. This suite lives in the root TypeScript
+		// project, which resolves modules differently from packages/web's, so
+		// importing a Convex source file here fights the two configurations for no
+		// benefit - and every other assertion in this file already reads its
+		// evidence off disk.
+		const RUNTIME_CONFIG_KEYS = [
+			...readRepoFile("packages/web/convex/boxes/runtimeConfig.ts").matchAll(
+				/^\t\tkey: "([A-Z_]+)"/gm
+			)
+		].map((match) => match[1] as string);
 		const documented = new Set(
 			[
 				...readRepoFile("docs/configuration.md").matchAll(

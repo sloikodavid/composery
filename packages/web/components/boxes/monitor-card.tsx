@@ -4,6 +4,7 @@ import {
 	ConstructionIcon,
 	LoaderIcon,
 	ScrollTextIcon,
+	TriangleAlertIcon,
 	UnplugIcon
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -26,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
 import { highlightLogs } from "@/lib/highlight-logs";
+import type { FailureNotice } from "@/lib/operation-failure";
 
 const REFRESH_INTERVAL = 5000;
 
@@ -58,7 +60,11 @@ function Message({
 	);
 }
 
-function notRunningMessage(status: string, note?: string) {
+function notRunningMessage(
+	status: string,
+	note?: string,
+	failure?: FailureNotice | null
+) {
 	if (status === "suspended" || status === "suspending") {
 		return {
 			icon: ConstructionIcon,
@@ -75,6 +81,18 @@ function notRunningMessage(status: string, note?: string) {
 			detail: "Start it to see its metrics and logs."
 		};
 	}
+	// A box sitting in a `*_failed` status used to fall through to the neutral
+	// sentence below, so the largest thing on the page said "metrics will appear
+	// when the box is running" while the actual reason it was not running sat
+	// unread inside a dialog. Say what happened instead.
+	if (failure) {
+		return {
+			icon: TriangleAlertIcon,
+			iconClassName: "text-destructive",
+			title: failure.title,
+			detail: failure.detail
+		};
+	}
 	return {
 		icon: ScrollTextIcon,
 		iconClassName: "text-muted-foreground",
@@ -82,8 +100,28 @@ function notRunningMessage(status: string, note?: string) {
 	};
 }
 
+// The last operation on this box, if it failed and the viewer can act on it. A
+// box whose slug change or configuration apply failed keeps running, so that
+// failure has no status to show up in - the strip at the foot of the card is the
+// only thing that reports it at all.
+function FailureStrip({ notice }: { notice: FailureNotice }) {
+	return (
+		<div className="flex items-start gap-3 border-t border-border bg-destructive/5 px-4 py-2.5 text-xs">
+			<TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+			<div className="min-w-0 flex-1">
+				<p className="font-medium text-foreground">{notice.title}</p>
+				<p className="wrap-break-word text-muted-foreground">{notice.detail}</p>
+				{notice.hint ? (
+					<p className="mt-0.5 text-muted-foreground">{notice.hint}</p>
+				) : null}
+			</div>
+		</div>
+	);
+}
+
 export function MonitorCard({
 	className,
+	failure,
 	loadLogs,
 	note,
 	onRangeChange,
@@ -92,6 +130,7 @@ export function MonitorCard({
 	status
 }: {
 	className?: string;
+	failure?: FailureNotice | null;
 	loadLogs: () => Promise<{ logs: string | null }>;
 	note?: string;
 	onRangeChange: (range: MetricsRange) => void;
@@ -172,7 +211,7 @@ export function MonitorCard({
 			)}
 		>
 			{!running ? (
-				<Message {...notRunningMessage(status, note)} />
+				<Message {...notRunningMessage(status, note, failure)} />
 			) : (
 				<>
 					<div className="absolute top-3 left-3 z-10 flex gap-2">
@@ -242,6 +281,10 @@ export function MonitorCard({
 							)}
 						</div>
 					)}
+					{/* Only on the running path: when the box is not running the failure is
+					    already the whole message above, and showing it twice would read as
+					    two problems. */}
+					{failure ? <FailureStrip notice={failure} /> : null}
 				</>
 			)}
 		</div>

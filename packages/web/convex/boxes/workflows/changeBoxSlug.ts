@@ -1,18 +1,22 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
-import { operationError, workflow } from "./boxWorkflow";
+import { defineBoxWorkflow } from "./boxWorkflow";
 
-export const changeBoxSlug = workflow.define({
-	args: {
-		boxId: v.id("boxes"),
-		newSlug: v.string(),
-		operationId: v.id("box_operations")
-	},
-	handler: async (step, args) => {
-		await step.runMutation(internal.boxes.boxStatus.markOperationRunning, {
-			operationId: args.operationId
-		});
-
+// Moving a box to a new slug means new DNS records and a reverse proxy reload,
+// neither of which is atomic with the row. So the box only takes the new slug
+// once both have landed, and anything that throws before that unwinds the DNS it
+// created rather than leaving a record pointing at a box that never answered on
+// it.
+//
+// The unwind lives inside `run` and rethrows, so the failure itself is still
+// recorded by `defineBoxWorkflow` from `OPERATION_FAILURE`. This used to hand-roll
+// the whole wrapper - marking the operation running and failed itself - which
+// meant it was the one workflow that could disagree with every other about where
+// a failure leaves the box.
+export const changeBoxSlug = defineBoxWorkflow({
+	extraArgs: { newSlug: v.string() },
+	type: "change_slug",
+	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
@@ -88,13 +92,6 @@ export const changeBoxSlug = workflow.define({
 					)
 					.catch(() => undefined);
 			}
-			await step.runMutation(internal.boxes.boxStatus.markOperationFailed, {
-				boxId: args.boxId,
-				operationId: args.operationId,
-				error: operationError(error),
-				eventType: "box.slug_change_failed",
-				targetBoxStatus: "running"
-			});
 			throw error;
 		}
 	}

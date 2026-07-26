@@ -23,13 +23,7 @@ export const changeBoxConfig = defineBoxWorkflow({
 	extraArgs: {
 		config: v.record(v.string(), v.string())
 	},
-	onFailure: {
-		eventType: "box.config_failed",
-		// No status change. A failed apply leaves the box running the configuration
-		// it already had, which is exactly `running` - claiming a failure status
-		// would report a broken box where there is a rejected change.
-		targetBoxStatus: "running"
-	},
+	type: "change_config",
 	run: async (step, args) => {
 		await step.runAction(
 			internal.boxes.infra.ssh.applyRuntimeConfig,

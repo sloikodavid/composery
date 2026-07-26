@@ -4,7 +4,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // Suspension powers the whole VPS off at the provider, not just the container,
 // so it holds even against a user who escaped the container or broke the box.
 export const suspendBox = defineBoxWorkflow({
-	onFailure: { eventType: "box.suspend_failed", targetBoxStatus: "running" },
+	type: "suspend",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

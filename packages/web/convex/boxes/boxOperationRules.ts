@@ -1,11 +1,12 @@
 import type {
+	BoxFailureStatus,
 	BoxOperationStatus,
 	BoxOperationType,
 	BoxStatus
 } from "../schema";
 
 // The single source of truth for which box states each operation may begin
-// from. `beginBoxOperation` refuses anything not listed here, so a wrong entry
+// from. `startOperation` refuses anything not listed here, so a wrong entry
 // either blocks a legal action or lets a dangerous one through - this table is
 // the gate.
 export const OPERATION_ALLOWED_STATUSES: Record<
@@ -77,6 +78,56 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	// only advanced once the editor answers), so the box is still simply running.
 	change_config: ["running"]
 };
+
+// Where each operation leaves the box when it fails, and the event it records.
+//
+// Both halves are a function of the operation type and nothing else, so they
+// belong in one table rather than restated in each workflow's `onFailure` - that
+// is how `repair_failed` came to be spelled in one place and forgotten in
+// another. `defineBoxWorkflow` reads this for the normal failure path and
+// `boxOperationSweep` reads the same rows to rescue a box whose workflow died
+// without recording anything, so the two can never disagree about where a failed
+// operation leaves the box.
+//
+// `boxStatus: undefined` means the operation never moved the box off the status
+// it started from, so a failure has nothing to put back: a snapshot runs beside a
+// `running` box without changing it.
+//
+// The event strings are deliberately not normalized to `box.<type>_failed`.
+// Three of them predate the naming (`slug_change`, `config`, `change_password`)
+// and a box's event log is read by staff across years; renaming would split the
+// same event into two names either side of a deploy for no behavioural gain. The
+// inconsistency is spelled out here once instead of hiding in 13 files.
+export const OPERATION_FAILURE = {
+	provision: {
+		eventType: "box.provisioning_failed",
+		boxStatus: "provisioning_failed"
+	},
+	delete: { eventType: "box.delete_failed", boxStatus: "delete_failed" },
+	reset: { eventType: "box.reset_failed", boxStatus: "reset_failed" },
+	stop: { eventType: "box.stop_failed", boxStatus: "running" },
+	start: { eventType: "box.start_failed", boxStatus: "stopped" },
+	change_password: {
+		eventType: "box.change_password_failed",
+		boxStatus: "running"
+	},
+	change_slug: { eventType: "box.slug_change_failed", boxStatus: "running" },
+	suspend: { eventType: "box.suspend_failed", boxStatus: "running" },
+	unsuspend: { eventType: "box.unsuspend_failed", boxStatus: "suspended" },
+	restore: { eventType: "box.restore_failed", boxStatus: "restore_failed" },
+	// A snapshot never changes the box's status, so a failed one leaves nothing to
+	// put back. The snapshot row carries the failure; the box is still running.
+	snapshot: { eventType: "box.snapshot_failed", boxStatus: undefined },
+	repair: { eventType: "box.repair_failed", boxStatus: "repair_failed" },
+	update: { eventType: "box.update_failed", boxStatus: "update_failed" },
+	// A failed apply leaves the box running the configuration it already had,
+	// which is exactly `running` - claiming a failure status would report a broken
+	// box where there is a rejected change.
+	change_config: { eventType: "box.config_failed", boxStatus: "running" }
+} satisfies Record<
+	BoxOperationType,
+	{ eventType: string; boxStatus: BoxFailureStatus | undefined }
+>;
 
 export const ACTIVE_OPERATION_STATUSES = [
 	"pending",

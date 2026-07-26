@@ -9,7 +9,7 @@ import { floorDeadlinePassed, runtimeStanding } from "./runtimeRelease";
 //
 // Only `running` boxes are returned. A stopped or suspended box cannot be
 // updated over SSH at all, and a box mid-operation must not have one queued
-// behind it - `beginBoxOperation` would refuse anyway, but asking it to refuse
+// behind it - `startOperation` would refuse anyway, but asking it to refuse
 // once per box per hour turns a normal state into a stream of failures. Those
 // boxes are simply picked up by a later run, once they are running again.
 export const boxesPastFloorDeadline = internalQuery({
@@ -66,7 +66,8 @@ export const updateBoxesPastDeadline = internalAction({
 					// deadline is retried on the next run, but a box already being
 					// updated for this deadline is not queued twice.
 					idempotencyKey: `floor-update:${target.boxId}`,
-					metadata: { reason: "minimum_runtime_version" }
+					metadata: { reason: "minimum_runtime_version" },
+					trigger: "system:runtime_floor"
 				});
 			} catch {
 				// Busy with another operation, or no longer eligible. Both are normal

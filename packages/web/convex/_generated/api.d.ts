@@ -25,6 +25,7 @@ import type * as boxes_boxLogs from "../boxes/boxLogs.js";
 import type * as boxes_boxMetrics from "../boxes/boxMetrics.js";
 import type * as boxes_boxMetricsPoll from "../boxes/boxMetricsPoll.js";
 import type * as boxes_boxOperationRules from "../boxes/boxOperationRules.js";
+import type * as boxes_boxOperationSweep from "../boxes/boxOperationSweep.js";
 import type * as boxes_boxOperations from "../boxes/boxOperations.js";
 import type * as boxes_boxQueries from "../boxes/boxQueries.js";
 import type * as boxes_boxRecovery from "../boxes/boxRecovery.js";
@@ -106,6 +107,7 @@ declare const fullApi: ApiFromModules<{
   "boxes/boxMetrics": typeof boxes_boxMetrics;
   "boxes/boxMetricsPoll": typeof boxes_boxMetricsPoll;
   "boxes/boxOperationRules": typeof boxes_boxOperationRules;
+  "boxes/boxOperationSweep": typeof boxes_boxOperationSweep;
   "boxes/boxOperations": typeof boxes_boxOperations;
   "boxes/boxQueries": typeof boxes_boxQueries;
   "boxes/boxRecovery": typeof boxes_boxRecovery;

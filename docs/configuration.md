@@ -55,20 +55,19 @@ practice until you mint a key with `composery api key create`; with no keys, eve
 endpoint returns 401. The key store lives at `<volume>/api/keys.json`, on the persistent
 volume shared with persistence (`/data` by default; see `COMPOSERY_DOCKER_VOLUME_PATH`).
 
-| Variable                            | Default    | Use                                                                                               |
-| ----------------------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| `COMPOSERY_DISABLE_API`             | unset      | Set to `1` or `true` to disable the API entirely (every endpoint returns 404).                    |
-| `COMPOSERY_API_EXEC_TIMEOUT`        | `60`       | Default timeout in seconds for one-shot `POST /_composery/api/v1/exec`. The websocket is unbound. |
-| `COMPOSERY_API_EXEC_MAX_OUTPUT`     | `10485760` | Combined stdout/stderr byte cap on one-shot exec output before truncation (10 MiB).               |
-| `COMPOSERY_API_MAX_CONCURRENT_EXEC` | `16`       | Concurrent one-shot exec requests.                                                                |
-| `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                                            |
-| `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                                   |
-| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent streamed terminals per key.                                                            |
-| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                                         |
+| Variable                            | Default    | Use                                                                                                              |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `COMPOSERY_DISABLE_API`             | unset      | Set to `1` or `true` to disable the API entirely (every endpoint returns 404).                                   |
+| `COMPOSERY_API_TERMINAL_TIMEOUT`    | `60`       | Default timeout in seconds when `POST /_composery/api/v1/terminals` uses `wait: true`. The websocket is unbound. |
+| `COMPOSERY_API_TERMINAL_MAX_OUTPUT` | `10485760` | Raw merged pty-output byte cap for a one-shot wait before truncation (10 MiB).                                   |
+| `COMPOSERY_API_RATE_RPS`            | `50`       | Sustained requests per second per key.                                                                           |
+| `COMPOSERY_API_RATE_BURST`          | `200`      | Burst request capacity per key.                                                                                  |
+| `COMPOSERY_API_MAX_SESSIONS`        | `50`       | Concurrent one-shot waits and WebSocket terminal attachments per key.                                            |
+| `COMPOSERY_API_AUTH_FAIL_PER_MIN`   | `20`       | Failed-auth attempts per minute per IP before throttling.                                                        |
 
 Invalid numeric values fall back to the defaults. Extreme numeric values are
-clamped to guardrail caps: 24h exec timeout, 64 MiB one-shot output, 1000 RPS,
-10000 burst, 128 concurrent one-shot execs, 500 interactive sessions, and 1000
+clamped to guardrail caps: 24h one-shot timeout, 64 MiB one-shot output, 1000 RPS,
+10000 burst, 500 concurrent terminal streams, and 1000
 failed-auth attempts/min/IP.
 
 Rate limits are abuse rails, not DDoS defense - that is handled by the platform in front

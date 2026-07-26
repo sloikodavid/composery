@@ -5,10 +5,15 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
 	internalMutation,
-	type DatabaseReader,
-	type DatabaseWriter
+	type ActionCtx,
+	type DatabaseReader
 } from "../_generated/server";
-import { vBoxBeginStatus, vBoxOperationType } from "../schema";
+import {
+	vBoxBeginStatus,
+	vBoxOperationType,
+	vOperationTrigger,
+	type OperationTrigger
+} from "../schema";
 import {
 	ACTIVE_OPERATION_STATUSES,
 	isOperationAllowed
@@ -17,9 +22,11 @@ import { assertSlugAvailable } from "./slugAvailability";
 import { startWorkflow } from "./workflows/boxWorkflow";
 
 type ReadDbCtx = { db: DatabaseReader };
-type WriteDbCtx = { db: DatabaseWriter };
 type OperationType = Infer<typeof vBoxOperationType>;
 type StartArgs = Parameters<typeof startWorkflow>;
+// Actions and mutations both start operations. An action's `runMutation` has the
+// narrower signature of the two, so typing the slot with it accepts either.
+type StartCtx = { runMutation: ActionCtx["runMutation"] };
 
 function assertOperationAllowed(box: Doc<"boxes">, type: OperationType) {
 	if (!isOperationAllowed(box.status, type)) {
@@ -57,84 +64,6 @@ async function findActiveOperationForBox(ctx: ReadDbCtx, boxId: Id<"boxes">) {
 
 	return null;
 }
-
-export async function beginBoxOperationRecord(
-	ctx: WriteDbCtx,
-	box: Doc<"boxes">,
-	input: {
-		idempotencyKey: string;
-		metadata?: Record<string, unknown>;
-		reservedSlug?: string;
-		targetStatus?: Doc<"boxes">["status"];
-		type: Doc<"box_operations">["type"];
-	}
-) {
-	const existing = await findActiveOperationByIdempotencyKey(
-		ctx,
-		input.idempotencyKey
-	);
-
-	if (existing) {
-		return null;
-	}
-
-	const activeOperation = await findActiveOperationForBox(ctx, box._id);
-	if (activeOperation) {
-		throw new ConvexError(
-			"This box is busy with another operation. Try again in a moment."
-		);
-	}
-
-	assertOperationAllowed(box, input.type);
-
-	if (input.reservedSlug) {
-		await assertSlugAvailable(ctx, input.reservedSlug, box._id);
-	}
-
-	const timestamp = Date.now();
-	if (input.targetStatus) {
-		await ctx.db.patch(box._id, {
-			status: input.targetStatus,
-			updated_at: timestamp
-		});
-	}
-
-	const operationId = await ctx.db.insert("box_operations", {
-		box_id: box._id,
-		type: input.type,
-		status: "pending",
-		idempotency_key: input.idempotencyKey,
-		reserved_slug: input.reservedSlug,
-		metadata: input.metadata,
-		created_at: timestamp,
-		updated_at: timestamp
-	});
-
-	return operationId as Id<"box_operations">;
-}
-
-export const beginBoxOperation = internalMutation({
-	args: {
-		boxId: v.id("boxes"),
-		idempotencyKey: v.string(),
-		metadata: v.optional(v.record(v.string(), v.any())),
-		reservedSlug: v.optional(v.string()),
-		targetStatus: v.optional(vBoxBeginStatus),
-		type: vBoxOperationType
-	},
-	handler: async (ctx, args) => {
-		const box = await ctx.db.get(args.boxId);
-		if (!box) throw new ConvexError("Box not found.");
-
-		return await beginBoxOperationRecord(ctx, box, {
-			idempotencyKey: args.idempotencyKey,
-			metadata: args.metadata,
-			reservedSlug: args.reservedSlug,
-			targetStatus: args.targetStatus,
-			type: args.type
-		});
-	}
-});
 
 // The one place that knows, per operation, which status the box moves to while
 // the operation runs and which workflow carries it out. `satisfies` makes the
@@ -199,13 +128,95 @@ const BOX_OPERATION_PLANS = {
 	{ targetStatus?: Infer<typeof vBoxBeginStatus>; workflow: StartArgs[1] }
 >;
 
+// Create the operation row, start its workflow, and record which workflow that
+// was - all in one transaction.
+//
+// The atomicity is the point, not incidental tidiness. This used to run as two
+// steps, so every caller reached through an action (repair, update, restore, and
+// every automatic sweep) had a window between them: an action that died after the
+// row committed but before the workflow started left an operation `pending` with
+// nothing behind it, which made `findActiveOperationForBox` refuse every later
+// action on that box - permanently, since nothing existed to fail it. The box
+// could only be freed by editing the row by hand. One mutation removes the window
+// instead of detecting it afterwards.
+export const startOperation = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		idempotencyKey: v.string(),
+		metadata: v.optional(v.record(v.string(), v.any())),
+		reservedSlug: v.optional(v.string()),
+		trigger: vOperationTrigger,
+		type: vBoxOperationType,
+		workflowArgs: v.optional(v.record(v.string(), v.any()))
+	},
+	handler: async (ctx, args): Promise<Id<"box_operations"> | null> => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		const existing = await findActiveOperationByIdempotencyKey(
+			ctx,
+			args.idempotencyKey
+		);
+		if (existing) return null;
+
+		const activeOperation = await findActiveOperationForBox(ctx, box._id);
+		if (activeOperation) {
+			throw new ConvexError(
+				"This box is busy with another operation. Try again in a moment."
+			);
+		}
+
+		assertOperationAllowed(box, args.type);
+
+		if (args.reservedSlug) {
+			await assertSlugAvailable(ctx, args.reservedSlug, box._id);
+		}
+
+		const plan = BOX_OPERATION_PLANS[args.type];
+		const timestamp = Date.now();
+		if ("targetStatus" in plan && plan.targetStatus) {
+			await ctx.db.patch(box._id, {
+				status: plan.targetStatus,
+				updated_at: timestamp
+			});
+		}
+
+		const operationId = await ctx.db.insert("box_operations", {
+			box_id: box._id,
+			type: args.type,
+			status: "pending",
+			idempotency_key: args.idempotencyKey,
+			reserved_slug: args.reservedSlug,
+			trigger: args.trigger,
+			metadata: args.metadata,
+			created_at: timestamp,
+			updated_at: timestamp
+		});
+
+		const workflowId = await startWorkflow(
+			ctx,
+			plan.workflow,
+			{
+				boxId: box._id,
+				operationId,
+				...args.workflowArgs
+			} as StartArgs[2],
+			{ boxId: box._id, operationId }
+		);
+		await ctx.db.patch(operationId, { workflow_id: workflowId });
+
+		return operationId;
+	}
+});
+
 export async function startBoxSuspension(
-	ctx: StartArgs[0],
+	ctx: StartCtx,
 	input: {
 		boxId: Id<"boxes">;
 		idempotencyKeyPrefix: string;
 		reason?: string;
 		suspend: boolean;
+		trigger: OperationTrigger;
 	}
 ) {
 	return await startBoxOperation(
@@ -214,42 +225,37 @@ export async function startBoxSuspension(
 		input.suspend ? "suspend" : "unsuspend",
 		{
 			idempotencyKey: `${input.idempotencyKeyPrefix}:${input.boxId}`,
-			metadata: input.suspend ? { reason: input.reason } : undefined
+			metadata: input.suspend ? { reason: input.reason } : undefined,
+			trigger: input.trigger
 		}
 	);
 }
 
+// Every operation starts here, whether the caller is a mutation or an action, so
+// there is exactly one path into `startOperationRecord` and it is transactional
+// for all of them. Callers that already hold a `Doc<"boxes">` in their own
+// mutation (checkout conversion, staff comps) still come through here rather than
+// calling the record helper directly - one absolute rule beats a rule plus an
+// exception, and the exception is what grew a second, non-atomic path last time.
 export async function startBoxOperation(
-	ctx: StartArgs[0],
+	ctx: StartCtx,
 	boxId: Id<"boxes">,
 	type: OperationType,
 	options: {
 		idempotencyKey: string;
-		reservedSlug?: string;
 		metadata?: Record<string, unknown>;
+		reservedSlug?: string;
+		trigger: OperationTrigger;
 		workflowArgs?: Record<string, unknown>;
 	}
 ): Promise<Id<"box_operations"> | null> {
-	const plan = BOX_OPERATION_PLANS[type];
-
-	const operationId = await ctx.runMutation(
-		internal.boxes.boxOperations.beginBoxOperation,
-		{
-			boxId,
-			type,
-			idempotencyKey: options.idempotencyKey,
-			targetStatus: "targetStatus" in plan ? plan.targetStatus : undefined,
-			reservedSlug: options.reservedSlug,
-			metadata: options.metadata
-		}
-	);
-	if (!operationId) return null;
-
-	await startWorkflow(ctx, plan.workflow, {
+	return await ctx.runMutation(internal.boxes.boxOperations.startOperation, {
 		boxId,
-		operationId,
-		...options.workflowArgs
-	} as StartArgs[2]);
-
-	return operationId;
+		idempotencyKey: options.idempotencyKey,
+		metadata: options.metadata,
+		reservedSlug: options.reservedSlug,
+		trigger: options.trigger,
+		type,
+		workflowArgs: options.workflowArgs
+	});
 }

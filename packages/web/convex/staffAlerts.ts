@@ -12,7 +12,11 @@ import { rolesWithCapability, userHasCapability } from "./roles";
 import { vStaffAlertSeverity } from "./schema";
 
 const STAFF_ALERT_RECIPIENT_LIMIT = 50;
-const STAFF_ALERT_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+// Exported only because the operator runbook states it: `// runbook:` binds the
+// number in the doc to this constant, and the test that pins the pair reads the
+// exported value.
+// runbook: Staff-alert record retention
+export const STAFF_ALERT_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const STAFF_ALERT_RETRY_BATCH = 20;
 const STAFF_ALERT_PURGE_BATCH = 200;
 

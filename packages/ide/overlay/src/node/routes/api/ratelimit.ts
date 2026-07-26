@@ -103,4 +103,3 @@ class SlotLimiter {
 export const rateLimit = new KeyedRateLimiter(apiConfig.rateRps, apiConfig.rateBurst)
 export const authFail = new FailWindow(apiConfig.authFailPerMin)
 export const sessions = new SlotLimiter(apiConfig.maxSessions)
-export const execs = new SlotLimiter(apiConfig.maxConcurrentExec)

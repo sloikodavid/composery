@@ -81,6 +81,7 @@ export const save = mutation({
 
 		const operationId = await startBoxOperation(ctx, box._id, "change_config", {
 			idempotencyKey: `config:${box._id}:${Date.now()}`,
+			trigger: "owner",
 			// The attempted configuration lives on the operation so a failed apply is
 			// still recoverable for support, even though the box row deliberately
 			// keeps the last configuration known to boot. Secret values are held back

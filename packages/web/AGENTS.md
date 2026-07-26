@@ -6,6 +6,8 @@
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
 - Box lifecycle workflows are named `<verb>Box` or `<verb>Box<target>`; see `convex/boxes/workflows/` for the current set.
+- Every box operation starts through `startBoxOperation` and carries a required `trigger` (`owner`, `staff`, or a `system:` sweep). Automatic repair decides whether a person is working on a box from that field alone, so a new automatic caller adds its own `system:` literal rather than borrowing one.
+- A workflow declares its operation `type`, not its own failure handling. Where a failure leaves the box and what event it records live once in `OPERATION_FAILURE` (`convex/boxes/boxOperationRules.ts`), because the sweep that rescues a stuck operation has to reach the same answer the workflow would have.
 - Retention and purge windows live in `convex/boxes/boxRetention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.

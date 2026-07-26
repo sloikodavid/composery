@@ -99,7 +99,7 @@ export function UpdateDialog({
 	const [open, setOpen] = useState(false);
 
 	// Ask the same table the backend enforces, so the dialog can never offer an
-	// update `beginBoxOperation` will refuse. Only a running box (or one whose
+	// update `startOperation` will refuse. Only a running box (or one whose
 	// last update failed) can be updated: the host has to answer over SSH for the
 	// new image to be pulled at all.
 	const updatable = isOperationAllowed(boxStatus, "update");

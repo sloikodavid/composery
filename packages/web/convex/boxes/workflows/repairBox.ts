@@ -30,10 +30,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // fleet-wide checkout capacity) and cannot even capture the attached volume. An
 // owner who wants belt-and-braces can take a manual snapshot first.
 export const repairBox = defineBoxWorkflow({
-	onFailure: {
-		eventType: "box.repair_failed",
-		targetBoxStatus: "repair_failed"
-	},
+	type: "repair",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

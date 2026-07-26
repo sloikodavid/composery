@@ -24,6 +24,7 @@ import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { boxPath } from "@/lib/box-route";
 import { formatDate } from "@/lib/datetime";
+import { failureNotice } from "@/lib/operation-failure";
 import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
@@ -74,6 +75,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 		<div className="page-fade-in flex h-[calc(100dvh-10rem-1px)] min-h-112 flex-col gap-4">
 			<MonitorCard
 				className="min-h-0 flex-1"
+				failure={failureNotice(detail.failure, "owner")}
 				loadLogs={() => runtimeLogs({ slug: box.slug })}
 				note={detail.suspendedReason ?? undefined}
 				onRangeChange={setRange}

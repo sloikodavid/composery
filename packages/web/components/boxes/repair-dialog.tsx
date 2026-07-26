@@ -93,7 +93,7 @@ export function RepairDialog({
 	const [status, setStatus] = useState<RecoveryStatus | null>(null);
 
 	// Ask the same table the backend enforces, so the dialog can never offer a
-	// repair that `beginBoxOperation` will refuse. A stopped box is the case
+	// repair that `startOperation` will refuse. A stopped box is the case
 	// that matters: its server is powered off, so probing it would report every
 	// layer as missing and raise a false alarm about a box that is merely off.
 	const repairable = isOperationAllowed(boxStatus, "repair");

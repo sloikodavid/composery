@@ -11,4 +11,7 @@ export const SPEC_ID = "instance";
 // A page renders an endpoint by dropping this into the Markdown. It is a
 // component, so anything reading the page as plain Markdown - `llms.txt`, the
 // copy button, `content.md` - sees an inert tag unless it substitutes something.
-export const API_OPERATION = /^<APIOperation\b[^>]*\/>$/m;
+// Global: a page carries one of these per operation, and replacing only the
+// first leaves the rest as tags nobody renders.
+export const API_OPERATION =
+	/^<APIOperation path="([^"]+)" method="(\w+)" \/>$/gm;

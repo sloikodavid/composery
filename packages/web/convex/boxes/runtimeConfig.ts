@@ -202,28 +202,21 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	},
 	{
 		kind: "number",
-		key: "COMPOSERY_API_EXEC_TIMEOUT",
-		label: "API command timeout",
-		description: "Seconds a one-shot API command may run before it is stopped.",
+		key: "COMPOSERY_API_TERMINAL_TIMEOUT",
+		label: "API terminal wait timeout",
+		description:
+			"Seconds a one-shot terminal wait may run before it is stopped.",
 		min: 1,
 		max: 86_400
 	},
 	{
 		kind: "number",
-		key: "COMPOSERY_API_EXEC_MAX_OUTPUT",
-		label: "API command output cap",
+		key: "COMPOSERY_API_TERMINAL_MAX_OUTPUT",
+		label: "API terminal output cap",
 		description:
-			"Bytes of combined output a one-shot API command returns before it is truncated.",
+			"Bytes of raw merged pty output a one-shot terminal wait returns before it is truncated.",
 		min: 1,
 		max: 67_108_864
-	},
-	{
-		kind: "number",
-		key: "COMPOSERY_API_MAX_CONCURRENT_EXEC",
-		label: "Concurrent API commands",
-		description: "One-shot API commands that may run at once.",
-		min: 1,
-		max: 128
 	},
 	{
 		kind: "number",
@@ -244,8 +237,9 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_MAX_SESSIONS",
-		label: "API terminal sessions",
-		description: "Streamed API terminals that may be open at once, per key.",
+		label: "API terminal streams",
+		description:
+			"One-shot waits and WebSocket terminal attachments that may run at once, per key.",
 		min: 1,
 		max: 500
 	},

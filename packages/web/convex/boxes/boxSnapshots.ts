@@ -7,7 +7,7 @@ import {
 	internalQuery,
 	type MutationCtx
 } from "../_generated/server";
-import { vSnapshotClass } from "../schema";
+import { vSnapshotClass, type OperationTrigger } from "../schema";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
 import { appendBoxEvent } from "./boxEvents";
@@ -193,7 +193,8 @@ async function prepareSnapshotCapacity(
 export async function startManualSnapshot(
 	ctx: StartCtx,
 	box: Doc<"boxes">,
-	idempotencyKeyPrefix: string
+	idempotencyKeyPrefix: string,
+	trigger: OperationTrigger
 ) {
 	if (box.status !== "running") {
 		throw new ConvexError(
@@ -222,6 +223,7 @@ export async function startManualSnapshot(
 
 	const operationId = await startBoxOperation(ctx, box._id, "snapshot", {
 		idempotencyKey: `${idempotencyKeyPrefix}:${box._id}:${snapshotIdempotencyBucket(Date.now(), manualMinIntervalMs)}`,
+		trigger,
 		workflowArgs: { class: "manual" }
 	});
 	if (!operationId) {
@@ -534,6 +536,7 @@ export const startAutomaticSnapshot = internalMutation({
 		try {
 			await startBoxOperation(ctx, args.boxId, "snapshot", {
 				idempotencyKey: `auto-snapshot:${args.boxId}:${snapshotIdempotencyBucket(Date.now(), manualMinIntervalMs)}`,
+				trigger: "system:auto_snapshot",
 				workflowArgs: { class: "scheduled" }
 			});
 		} catch (error) {

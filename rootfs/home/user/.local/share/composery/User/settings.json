@@ -15,11 +15,11 @@
 	"workbench.iconTheme": null,
 	"breadcrumbs.enabled": false,
 	"files.exclude": {
-  "**/.DS_Store": false,
-  "**/.git": false,
-  "**/.hg": false,
-  "**/.svn": false,
-  "**/Thumbs.db": false
+		"**/.DS_Store": false,
+		"**/.git": false,
+		"**/.hg": false,
+		"**/.svn": false,
+		"**/Thumbs.db": false
 	},
 	"explorer.compactFolders": false,
 	"scm.compactFolders": false,

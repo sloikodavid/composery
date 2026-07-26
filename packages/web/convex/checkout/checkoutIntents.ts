@@ -31,6 +31,7 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 	userId: "composery_clerk_user_id"
 } as const;
 
+// runbook: Unpaid checkout reservation
 export const CHECKOUT_RESERVATION_TTL_MS = 60 * 60 * 1000;
 
 export function paidOrderRecordingStatus(

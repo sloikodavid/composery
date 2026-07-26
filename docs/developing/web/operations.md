@@ -164,6 +164,12 @@ complete alert boundary lives in [Resend](./services/resend.md#alert-policy).
 
 - Review `/console` for failed operations, abuse flags, capacity commitments,
   active checkout reservations, and disabled checkout/auto-suspend toggles.
+- Act on two alerts that mean a box is stuck rather than merely broken: automatic
+  repair reaching its per-box limit (the box is down and nothing further will be
+  tried), and an operation still running past its window (the box refuses every
+  action while it stays open). **Cancel operation** on the box's console page is
+  the lever for the second. See
+  [Automatic repair and the operation lock](./maintenance.md#automatic-repair).
 - Review Convex function and cron failures, Polar webhook deliveries, Hetzner
   actions/resources/limits, Cloudflare records, and Vercel production health.
 - Confirm Polar owns customer billing email and Resend delivery is healthy and

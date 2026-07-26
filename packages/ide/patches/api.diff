@@ -7,17 +7,57 @@ The Composery automation API, server to menu.
   middleware.
 - Pty host exposure: the VS Code server hands its IPtyService to the embedder,
   so API-created terminals are ordinary persistent VS Code terminals instead
-  of a parallel implementation. They carry API_TERMINAL_WORKSPACE_ID -
-  belonging to no window, they belong to whichever window asks: layout merge
-  adopts them (except while detaching, so Detach Session is not silently
-  undone) and inventory events reach every client, not just the owning
-  workspace's. Keep the id in sync with routes/api/terminals.ts; a test pins
-  the two together.
+  of a parallel implementation. The API can explicitly ask its inventory for
+  every persistent terminal without changing the editor's orphan-only restore
+  query. API-created terminals carry
+  API_TERMINAL_WORKSPACE_ID - belonging to no window, they belong to whichever
+  window asks: layout merge adopts them (except while detaching, so Detach
+  Session is not silently undone) and inventory events reach every client, not
+  just the owning workspace's. Keep the id in sync with
+  routes/api/terminals.ts; a test pins the two together.
+- Flow control: terminal output is a broadcast but the pty owns one
+  acknowledgement counter. The existing frontend lazily becomes the default
+  consumer on its first acknowledgement and the API explicitly registers its
+  own, so only one consumer advances that counter and a second attachment
+  cannot double-ack bytes the browser already consumed.
 - Home-menu entry for managing API keys; the command itself lives in the
   composery-api builtin extension.
 
+--- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
++++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
+@@ -339,1 +339,3 @@ export interface IPtyService {
+-	listProcesses(): Promise<IProcessDetails[]>;
++	listProcesses(includeAttached?: boolean): Promise<IProcessDetails[]>;
++	registerDataConsumer(id: number, consumerId: string): Promise<void>;
++	unregisterDataConsumer(id: number, consumerId: string): Promise<void>;
+@@ -351,7 +353,7 @@ export interface IPtyService {
+ 	clearBuffer(id: number): Promise<void>;
+ 	getInitialCwd(id: number): Promise<string>;
+ 	getCwd(id: number): Promise<string>;
+-	acknowledgeDataEvent(id: number, charCount: number): Promise<void>;
++	acknowledgeDataEvent(id: number, charCount: number, consumerId?: string): Promise<void>;
+ 	setNextCommandId(id: number, commandLine: string, commandId: string): Promise<void>;
+ 	setUnicodeVersion(id: number, version: '6' | '11'): Promise<void>;
+ 	processBinary(id: number, data: string): Promise<void>;
+@@ -374,7 +376,7 @@ export interface IPtyService {
+ 	 * Serializes and returns terminal state.
+ 	 * @param ids The persistent terminal IDs to serialize.
+ 	 */
+-	serializeTerminalState(ids: number[]): Promise<string>;
++	serializeTerminalState(ids: number[], checkOrphan?: boolean): Promise<string>;
+ 	/**
+ 	 * Revives a workspaces terminal processes, these can then be reconnected to using the normal
+ 	 * flow for restoring terminals after reloading.
 --- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
 +++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -14,6 +14,7 @@ import { ILogService, LogLevel } from '../../log/common/log.js';
+ import { RequestStore } from '../common/requestStore.js';
+ import { IProcessDataEvent, IProcessReadyEvent, IPtyService, IRawTerminalInstanceLayoutInfo, IReconnectConstants, IShellLaunchConfig, ITerminalInstanceLayoutInfoById, ITerminalLaunchError, ITerminalsLayoutInfo, ITerminalTabLayoutInfoById, TerminalIcon, IProcessProperty, TitleEventSource, ProcessPropertyType, IProcessPropertyMap, IFixedTerminalDimensions, IPersistentTerminalProcessLaunchConfig, ICrossVersionSerializedTerminalState, ISerializedTerminalState, ITerminalProcessOptions, IPtyHostLatencyMeasurement, type IPtyServiceContribution, PosixShellType, ITerminalLaunchResult } from '../common/terminal.js';
+ import { TerminalDataBufferer } from '../common/terminalDataBuffering.js';
++import { TerminalDataFlowControl } from '../common/terminalDataFlowControl.js';
+ import { escapeNonWindowsPath } from '../common/terminalEnvironment.js';
+ import type { ISerializeOptions, SerializeAddon as XtermSerializeAddon } from '@xterm/addon-serialize';
+ import type { Unicode11Addon as XtermUnicode11Addon } from '@xterm/addon-unicode11';
 @@ -91,12 +91,29 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
  
  type WorkspaceId = string;
@@ -49,7 +89,71 @@ The Composery automation API, server to menu.
  			continue;
  		}
  		knownIds.add(id);
-@@ -630,7 +647,7 @@ export class PtyService extends Disposable implements IPtyService {
+@@ -230,16 +247,16 @@ export class PtyService extends Disposable implements IPtyService {
+ 	}
+ 
+ 	@traceRpc
+-	async serializeTerminalState(ids: number[]): Promise<string> {
++	async serializeTerminalState(ids: number[], checkOrphan: boolean = true): Promise<string> {
+ 		const promises: Promise<ISerializedTerminalState>[] = [];
+ 		for (const [persistentProcessId, persistentProcess] of this._ptys.entries()) {
+ 			// Only serialize persistent processes that have had data written or performed a replay
+ 			if (persistentProcess.hasWrittenData && ids.indexOf(persistentProcessId) !== -1) {
+ 				promises.push(Promises.withAsyncBody<ISerializedTerminalState>(async r => {
+ 					r({
+ 						id: persistentProcessId,
+ 						shellLaunchConfig: persistentProcess.shellLaunchConfig,
+-						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess),
++						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess, false, checkOrphan),
+ 						processLaunchConfig: persistentProcess.processLaunchOptions,
+ 						unicodeVersion: persistentProcess.unicodeVersion,
+ 						replayEvent: await persistentProcess.serializeNormalBuffer(),
+@@ -372,6 +389,16 @@ export class PtyService extends Disposable implements IPtyService {
+ 		}
+ 	}
+ 
++	@traceRpc
++	async registerDataConsumer(id: number, consumerId: string): Promise<void> {
++		this._throwIfNoPty(id).registerDataConsumer(consumerId);
++	}
++
++	@traceRpc
++	async unregisterDataConsumer(id: number, consumerId: string): Promise<void> {
++		this._ptys.get(id)?.unregisterDataConsumer(consumerId);
++	}
++
+ 	@traceRpc
+ 	async updateTitle(id: number, title: string, titleSource: TitleEventSource): Promise<void> {
+ 		this._throwIfNoPty(id).setTitle(title, titleSource);
+@@ -415,13 +442,13 @@ export class PtyService extends Disposable implements IPtyService {
+ 	}
+ 
+ 	@traceRpc
+-	async listProcesses(): Promise<IProcessDetails[]> {
++	async listProcesses(includeAttached: boolean = false): Promise<IProcessDetails[]> {
+ 		const persistentProcesses = Array.from(this._ptys.entries()).filter(([_, pty]) => pty.shouldPersistTerminal);
+ 
+ 		this._logService.info(`Listing ${persistentProcesses.length} persistent terminals, ${this._ptys.size} total terminals`);
+-		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData));
++		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData, false, !includeAttached));
+ 		const allTerminals = await Promise.all(promises);
+-		return allTerminals.filter(entry => entry.isOrphan);
++		return includeAttached ? allTerminals : allTerminals.filter(entry => entry.isOrphan);
+ 	}
+ 
+ 	@traceRpc
+@@ -474,8 +501,8 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return this._throwIfNoPty(id).getCwd();
+ 	}
+ 	@traceRpc
+-	async acknowledgeDataEvent(id: number, charCount: number): Promise<void> {
+-		return this._throwIfNoPty(id).acknowledgeDataEvent(charCount);
++	async acknowledgeDataEvent(id: number, charCount: number, consumerId: string = 'vscode'): Promise<void> {
++		return this._throwIfNoPty(id).acknowledgeDataEvent(charCount, consumerId);
+ 	}
+ 	@traceRpc
+ 	async setUnicodeVersion(id: number, version: '6' | '11'): Promise<void> {
+@@ -630,7 +659,7 @@ export class PtyService extends Disposable implements IPtyService {
  			}
  			doneSet.add(persistentProcessId);
  			const persistentProcess = this._throwIfNoPty(persistentProcessId);
@@ -58,7 +162,15 @@ The Composery automation API, server to menu.
  				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
  			}
  			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
-@@ -752,6 +769,7 @@ class PersistentTerminalProcess extends Disposable {
+@@ -687,6 +716,7 @@ enum InteractionState {
+ class PersistentTerminalProcess extends Disposable {
+ 
+ 	private readonly _bufferer: TerminalDataBufferer;
++	private readonly _dataFlowControl: TerminalDataFlowControl;
+ 
+ 	private readonly _pendingCommands = new Map<number, { resolve: (data: unknown) => void; reject: (err: unknown) => void }>();
+ 
+@@ -752,6 +782,7 @@ class PersistentTerminalProcess extends Disposable {
  	get color(): string | undefined { return this._color; }
  	get fixedDimensions(): IFixedTerminalDimensions | undefined { return this._fixedDimensions; }
  	get hasChildProcesses(): boolean { return this._terminalProcess.hasChildProcesses; }
@@ -66,6 +178,106 @@ The Composery automation API, server to menu.
  
  	setTitle(title: string, titleSource: TitleEventSource): void {
  		if (titleSource === TitleEventSource.Api) {
+@@ -779,6 +810,7 @@ class PersistentTerminalProcess extends Disposable {
+ 		fixedDimensions?: IFixedTerminalDimensions
+ 	) {
+ 		super();
++		this._dataFlowControl = new TerminalDataFlowControl(charCount => this._terminalProcess.acknowledgeDataEvent(charCount));
+ 		this._interactionState = new MutationLogger(`Persistent process "${this._persistentProcessId}" interaction state`, InteractionState.None, this._logService);
+ 		this._wasRevived = reviveBuffer !== undefined;
+ 		this._serializer = new XtermSerializer(
+@@ -819,8 +851,11 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._bufferer = new TerminalDataBufferer((_, data) => this._onProcessData.fire(data));
+ 		this._register(this._bufferer.startBuffering(this._persistentProcessId, this._terminalProcess.onProcessData));
+ 
+-		// Data recording for reconnect
+-		this._register(this.onProcessData(e => this._serializer.handleData(e)));
++		// Data recording for reconnect and one shared flow-control sequence.
++		this._register(this.onProcessData(e => {
++			this._dataFlowControl.acceptData(e.length);
++			this._serializer.handleData(e);
++		}));
+ 	}
+ 
+ 	async attach(): Promise<void> {
+@@ -843,6 +879,14 @@ class PersistentTerminalProcess extends Disposable {
+ 		return this._serializer.generateReplayEvent(true, this._interactionState.value !== InteractionState.Session);
+ 	}
+ 
++	registerDataConsumer(consumerId: string): void {
++		this._dataFlowControl.register(consumerId);
++	}
++
++	unregisterDataConsumer(consumerId: string): void {
++		this._dataFlowControl.unregister(consumerId);
++	}
++
+ 	async refreshProperty<T extends ProcessPropertyType>(type: T): Promise<IProcessPropertyMap[T]> {
+ 		return this._terminalProcess.refreshProperty(type);
+ 	}
+@@ -928,11 +972,11 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._serializer.setNextCommandId?.(commandLine, commandId);
+ 	}
+ 
+-	acknowledgeDataEvent(charCount: number): void {
++	acknowledgeDataEvent(charCount: number, consumerId: string): void {
+ 		if (this._inReplay) {
+ 			return;
+ 		}
+-		return this._terminalProcess.acknowledgeDataEvent(charCount);
++		return this._dataFlowControl.acknowledge(consumerId, charCount);
+ 	}
+ 	getInitialCwd(): Promise<string> {
+ 		return this._terminalProcess.getInitialCwd();
+@@ -953,6 +997,7 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._logService.info(`Persistent process "${this._persistentProcessId}": Replaying ${dataLength} chars and ${ev.events.length} size events`);
+ 		this._onProcessReplay.fire(ev);
+ 		this._terminalProcess.clearUnacknowledgedChars();
++		this._dataFlowControl.resetAfterReplay();
+		this._onPersistentProcessReady.fire();
+	}
+
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
+@@ -224,8 +224,14 @@ export class PtyHostService extends Disposable implements IPtyHostService {
+ 	shutdownAll(): Promise<void> {
+ 		return this._proxy.shutdownAll();
+ 	}
+-	listProcesses(): Promise<IProcessDetails[]> {
+-		return this._proxy.listProcesses();
++	listProcesses(includeAttached?: boolean): Promise<IProcessDetails[]> {
++		return this._proxy.listProcesses(includeAttached);
++	}
++	registerDataConsumer(id: number, consumerId: string): Promise<void> {
++		return this._proxy.registerDataConsumer(id, consumerId);
++	}
++	unregisterDataConsumer(id: number, consumerId: string): Promise<void> {
++		return this._proxy.unregisterDataConsumer(id, consumerId);
+ 	}
+ 	async getPerformanceMarks(): Promise<performance.PerformanceMark[]> {
+ 		return this._optionalProxy?.getPerformanceMarks() ?? [];
+@@ -259,8 +265,8 @@ export class PtyHostService extends Disposable implements IPtyHostService {
+ 	clearBuffer(id: number): Promise<void> {
+ 		return this._proxy.clearBuffer(id);
+ 	}
+-	acknowledgeDataEvent(id: number, charCount: number): Promise<void> {
+-		return this._proxy.acknowledgeDataEvent(id, charCount);
++	acknowledgeDataEvent(id: number, charCount: number, consumerId?: string): Promise<void> {
++		return this._proxy.acknowledgeDataEvent(id, charCount, consumerId);
+ 	}
+ 	setUnicodeVersion(id: number, version: '6' | '11'): Promise<void> {
+ 		return this._proxy.setUnicodeVersion(id, version);
+@@ -345,8 +351,8 @@ export class PtyHostService extends Disposable implements IPtyHostService {
+ 		return this._proxy.freePortKillProcess(port);
+ 	}
+ 
+-	async serializeTerminalState(ids: number[]): Promise<string> {
+-		return this._proxy.serializeTerminalState(ids);
++	async serializeTerminalState(ids: number[], checkOrphan?: boolean): Promise<string> {
++		return this._proxy.serializeTerminalState(ids, checkOrphan);
+ 	}
+ 
+ 	async reviveTerminalProcesses(workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string) {
 --- a/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
 +++ b/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
 @@ -33,6 +33,7 @@ import { IProductService } from '../../platform/product/common/productService.js
@@ -106,6 +318,41 @@ The Composery automation API, server to menu.
  import { IGetTerminalLayoutInfoArgs, ISetTerminalLayoutInfoArgs } from '../../platform/terminal/common/terminalProcess.js';
  import { IWorkspaceFolder } from '../../platform/workspace/common/workspace.js';
  import { createURITransformer } from '../../base/common/uriTransformer.js';
+@@ -281,5 +282,21 @@
+ 	) {
+ 		super();
++		this._register(this._ptyHostService.onProcessReady(e => {
++			if (this._processWorkspaces.has(e.id)) {
++				return;
++			}
++			void this._ptyHostService.listProcesses(true).then(processes => {
++				const process = processes.find(process => process.id === e.id);
++				if (process?.workspaceId !== API_TERMINAL_WORKSPACE_ID || this._announcedPtys.has(e.id)) {
++					return;
++				}
++				this._processWorkspaces.set(e.id, { workspaceId: process.workspaceId, persistent: true });
++				this._announcedPtys.add(e.id);
++				this._onPersistentTerminalInventoryChange.fire({ workspaceId: process.workspaceId });
++			}).catch(error => {
++				this._logService.warn(`Could not announce API terminal "${e.id}"`, error);
++			});
++		}));
+ 		this._register(this._ptyHostService.onProcessReplay(e => {
+ 			const target = this._startState.target(e.id);
+ 			if (target) {
+@@ -319,7 +320,11 @@
+ 				if (detached.dimensions) {
+ 					await this._ptyHostService.resize(args[0], detached.dimensions.cols, detached.dimensions.rows, detached.dimensions.pixelWidth, detached.dimensions.pixelHeight);
+ 				}
+-				return detached.final ? this._ptyHostService.detachFromProcess(args[0], args[1]) : undefined;
++				if (detached.final) {
++					await this._ptyHostService.unregisterDataConsumer(args[0], 'vscode');
++					return this._ptyHostService.detachFromProcess(args[0], args[1]);
++				}
++				return;
+ 			}
+ 
+ 			case RemoteTerminalChannelRequest.ListProcesses: return this._ptyHostService.listProcesses.apply(this._ptyHostService, args);
 @@ -476,7 +477,12 @@
  
  	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
@@ -120,6 +367,14 @@ The Composery automation API, server to menu.
  			const result = combinedDisposable(subscription, toDisposable(() => {
  				this._layouts.delete(clientId);
  				for (const clients of this._workspaceClients.values()) {
+@@ -488,6 +494,7 @@
+						void this._ptyHostService.resize(detached.id, detached.dimensions.cols, detached.dimensions.rows, detached.dimensions.pixelWidth, detached.dimensions.pixelHeight);
+ 					}
+ 					if (detached.final) {
++						void this._ptyHostService.unregisterDataConsumer(detached.id, 'vscode');
+ 						void this._ptyHostService.detachFromProcess(detached.id);
+ 					}
+ 				}
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
 @@ -102,6 +102,14 @@ export class CodeServerClient extends Disposable {

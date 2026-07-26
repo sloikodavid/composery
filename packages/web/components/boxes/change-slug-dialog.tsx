@@ -60,7 +60,13 @@ export function ChangeSlugDialog({
 						<Button
 							disabled={busy === "slug" || !isValidSlug(newSlug)}
 							onClick={() =>
-								run("slug", "Slug changed", async () => {
+								// "started", not "changed". The mutation only queues the work -
+								// new DNS records and a proxy reload happen after it returns, and
+								// the box keeps its old slug until both land. This used to say
+								// "Slug changed", so an owner whose change then failed and rolled
+								// back had been told it succeeded and was told nothing after.
+								// The outcome now shows on the box page itself.
+								run("slug", "Slug change started", async () => {
 									await onSubmit(newSlug);
 									setNewSlug("");
 									setOpen(false);

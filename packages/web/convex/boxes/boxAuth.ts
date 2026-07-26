@@ -318,6 +318,9 @@ export const reconcilePassword = internalAction({
 		try {
 			await startBoxOperation(ctx, box._id, "change_password", {
 				idempotencyKey: args.idempotencyKey,
+				// The owner changed the password on the box itself; this reconciles the
+				// hash we hold with what they set, so it is their action, not ours.
+				trigger: "owner",
 				workflowArgs: { runtimeAuthHash: args.runtimeAuthHash }
 			});
 		} catch (error) {

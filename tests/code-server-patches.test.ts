@@ -3857,8 +3857,8 @@ describe("api terminals", () => {
 	const terminals = readRepoFile(
 		"packages/ide/overlay/src/node/routes/api/terminals.ts"
 	);
-	const session = readRepoFile(
-		"packages/ide/overlay/src/node/routes/api/session.ts"
+	const flowControl = readRepoFile(
+		"packages/ide/overlay/lib/vscode/src/vs/platform/terminal/common/terminalDataFlowControl.ts"
 	);
 
 	test("the workspace sentinel is identical on both sides", () => {
@@ -3875,7 +3875,7 @@ describe("api terminals", () => {
 
 	test("the API terminal env matches what an editor terminal is given", () => {
 		// addTerminalEnvironmentKeys lives in the workbench bundle, which this
-		// server cannot import, so session.ts sets the keys itself. Read the real
+		// server cannot import, so terminals.ts sets the keys itself. Read the real
 		// upstream function and require the same ones, or an API terminal quietly
 		// renders differently from the identical terminal opened with `+`.
 		const upstream = readRepoFile(
@@ -3893,7 +3893,7 @@ describe("api terminals", () => {
 			.filter((key) => key !== "TERM_PROGRAM_VERSION" && key !== "LANG");
 		expect(keys.length).toBeGreaterThan(0);
 		for (const key of keys) {
-			expect(session, `session.ts is missing ${key}`).toContain(key);
+			expect(terminals, `terminals.ts is missing ${key}`).toContain(key);
 		}
 	});
 
@@ -3912,12 +3912,92 @@ describe("api terminals", () => {
 
 	test("the pty host is reached through the server API, not rebuilt", () => {
 		// The point of the patch: one field exposing VS Code's own pty host. If
-		// session.ts ever spawns its own pty again it is a parallel terminal
+		// terminals.ts ever spawns its own pty again it is a parallel terminal
 		// implementation, which is what this whole thing exists to avoid.
 		expect(addedLines(patch)).toContain("readonly ptyService: IPtyService");
-		expect(session).toContain("createProcess(");
-		expect(session).not.toContain("node-pty");
-		expect(session).not.toContain("spawn(");
+		expect(terminals).toContain("createProcess(");
+		expect(terminals).not.toContain("node-pty");
+		expect(terminals).not.toContain("child_process");
+		expect(terminals).not.toContain("spawn(");
+	});
+
+	test("API terminals announce themselves to live editor clients", () => {
+		const added = addedLines(patch);
+		expect(added).toContain(
+			"this._register(this._ptyHostService.onProcessReady"
+		);
+		expect(added).toContain("this._ptyHostService.listProcesses(true)");
+		expect(added).toContain(
+			"this._onPersistentTerminalInventoryChange.fire({ workspaceId: process.workspaceId })"
+		);
+	});
+
+	test("a second output consumer cannot acknowledge broadcast bytes twice", () => {
+		const added = addedLines(patch);
+		expect(added).toContain(
+			"registerDataConsumer(id: number, consumerId: string)"
+		);
+		expect(added).toContain(
+			"acknowledgeDataEvent(id: number, charCount: number, consumerId?: string)"
+		);
+		expect(
+			added.match(/unregisterDataConsumer\([^;\n]*'vscode'\)/g)
+		).toHaveLength(2);
+		expect(flowControl).toContain("consumerId === this._leader");
+		expect(flowControl).toContain("this._acknowledge(delta)");
+		// Nothing arbitrates a counter it is never told about.
+		expect(added).toContain("this._dataFlowControl.acceptData(e.length)");
+	});
+
+	test("the API never takes the consumer id the editor's own frontends share", () => {
+		// One id covers every VS Code frontend, because they have no registration
+		// call and the pty host names them. An API attach reusing it would land in
+		// that same slot, so either side detaching would strip the other's flow
+		// control - and the pty would then pause on bytes nobody can acknowledge.
+		const added = addedLines(patch);
+		const unregistered = [
+			...added.matchAll(/unregisterDataConsumer\([^;\n]*'([^']+)'\)/g)
+		].map((match) => match[1]);
+		const fallback =
+			/acknowledgeDataEvent\(id: number, charCount: number, consumerId: string = '([^']+)'\)/.exec(
+				added
+			)?.[1];
+
+		expect(fallback).toBeDefined();
+		expect(new Set([...unregistered, fallback]).size).toBe(1);
+
+		const apiIds = [...terminals.matchAll(/consumerId = `([^`$]+)\$\{/g)].map(
+			(match) => match[1]
+		);
+		expect(apiIds).toHaveLength(2);
+		for (const id of apiIds) expect(id).not.toBe(fallback);
+	});
+
+	test("the orphan check keeps upstream's default and its own polarity", () => {
+		// terminal.diff's fourth `_buildProcessDetails` argument is `checkOrphan`,
+		// where true means run the check - and that check asks every renderer and
+		// waits on a 4s barrier for an answer. A pass-through named for the
+		// opposite meaning inverts both callers at once: the editor quietly loses
+		// a check it had, and the API pays four seconds for one it never wanted.
+		const added = addedLines(patch);
+		expect(added).toContain(
+			"async serializeTerminalState(ids: number[], checkOrphan: boolean = true)"
+		);
+		expect(added).not.toMatch(/skipOrphan/i);
+		expect(terminals).toContain("serializeTerminalState([id], false)");
+	});
+
+	test("websocket attach subscribes to replay before asking the pty to emit it", () => {
+		const route = terminals.slice(
+			terminals.indexOf("wsRouter.ws(`${apiBasePath}/terminals/:id`")
+		);
+		const replay = route.indexOf("pty.onProcessReplay");
+		const start = route.indexOf(".then(() => pty.start(id))");
+		expect(replay).toBeGreaterThan(-1);
+		expect(start).toBeGreaterThan(replay);
+		expect(route).toContain(
+			"for (const replay of event.events) send(replay.data, false)"
+		);
 	});
 });
 

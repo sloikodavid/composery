@@ -2,17 +2,16 @@ import * as express from "express"
 import { httpAuth } from "./auth"
 import { apiConfig } from "./config"
 import { apiBasePath } from "./constants"
-import { router as execRouter } from "./exec"
-import { wsRouter as sessionWsRouter } from "./session"
+import { router as terminalRouter, wsRouter as terminalWsRouter } from "./terminals"
 
 export const enabled = apiConfig.enabled
 export const router = express.Router()
-export const wsRouter = sessionWsRouter
+export const wsRouter = terminalWsRouter
 
 if (apiConfig.enabled) {
   const v1 = express.Router()
   v1.use(httpAuth())
-  v1.use(execRouter)
+  v1.use(terminalRouter)
   router.use(apiBasePath, v1)
 } else {
   router.use(apiBasePath, (_req, res) => {

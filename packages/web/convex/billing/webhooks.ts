@@ -2,6 +2,7 @@ import type { PolarWebhookEvent } from "@convex-dev/polar";
 import type { HttpRouter } from "convex/server";
 import { components, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
@@ -13,7 +14,17 @@ import {
 	revokePolarSubscription
 } from "./polar";
 
-type RouteCtx = Parameters<typeof startBoxOperation>[0];
+// What these handlers need from their context, and nothing more: they read and
+// they write. Polar dispatches them with either a mutation or an action context,
+// and an action's signatures are the narrower pair, so naming those accepts both.
+//
+// Spelled out rather than borrowed from `startBoxOperation`'s parameter, which is
+// what it used to be: that tied every reader here to whatever one helper happened
+// to require, so narrowing the helper broke handlers that never called it.
+type RouteCtx = {
+	runQuery: ActionCtx["runQuery"];
+	runMutation: ActionCtx["runMutation"];
+};
 type PolarSubscription = Extract<
 	PolarWebhookEvent,
 	{ type: "subscription.active" }
@@ -114,7 +125,8 @@ async function startDeleteWorkflow(
 	subscriptionId: string
 ) {
 	await startBoxOperation(ctx, boxId, "delete", {
-		idempotencyKey: `delete:${subscriptionId}`
+		idempotencyKey: `delete:${subscriptionId}`,
+		trigger: "system:subscription_revoked"
 	});
 }
 

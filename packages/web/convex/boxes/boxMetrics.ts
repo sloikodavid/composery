@@ -25,12 +25,18 @@ export const METRICS_POLL_INTERVAL_MS =
 	METRICS_POLL_INTERVAL_MINUTES * 60 * 1000;
 
 const METRICS_SERIES_WINDOW_MS = 24 * 60 * 60 * 1000;
-const RAW_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
-const ROLLUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+// The annotated windows in this file are exported only because the operator
+// runbook states them: `// runbook:` is what binds a number in the doc to the
+// constant that produces it, and the test that pins the pair reads the value.
+// runbook: Raw metrics retention
+export const RAW_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
+// runbook: Hourly metrics retention
+export const ROLLUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const ROLLUP_BOX_BATCH = 200;
 const ROLLUP_SAMPLE_LIMIT = Math.ceil(HOUR_MS / METRICS_POLL_INTERVAL_MS) + 18;
-const FLAG_COOLOFF_MS = 6 * 60 * 60 * 1000;
+// runbook: Repeat flag cooloff per box/signal
+export const FLAG_COOLOFF_MS = 6 * 60 * 60 * 1000;
 const RETENTION_DELETE_BATCH = 1000;
 const POLL_TARGET_PAGE_SIZE = 200;
 

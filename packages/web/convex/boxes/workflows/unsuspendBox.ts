@@ -2,10 +2,7 @@ import { internal } from "../../_generated/api";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
 export const unsuspendBox = defineBoxWorkflow({
-	onFailure: {
-		eventType: "box.unsuspend_failed",
-		targetBoxStatus: "suspended"
-	},
+	type: "unsuspend",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

@@ -8,6 +8,7 @@ import {
 } from "convex/react";
 import { useState, type ReactNode } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { BoxStatusAction } from "@/components/boxes/status-action";
 import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
 import { FlagsTable } from "@/components/boxes/flags-table";
@@ -17,6 +18,7 @@ import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
+import { failureNotice } from "@/lib/operation-failure";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
@@ -300,6 +302,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 	const repair = useAction(api.staff.boxes.repair);
 	const updateBox = useAction(api.staff.boxes.update);
 	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
+	const cancelOperation = useAction(api.staff.boxes.cancelOperation);
 	const runtimeLogs = useAction(api.staff.boxes.runtimeLogs);
 	const setUserSuspended = useAction(api.staff.users.setUserSuspended);
 	const { busy, run } = useBusyAction();
@@ -544,6 +547,35 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 										Revoke comp
 									</AnimatedIconButton>
 								) : null}
+								{/* Only while an operation actually holds the box's lock. It is the
+							    documented way out of a wedged operation - the alert about one
+							    points here - and before it existed the only way to free the box
+							    was editing its row in the Convex dashboard. */}
+								{detail.activeOperation ? (
+									<ConfirmDialog
+										confirmLabel="Cancel operation"
+										description={`Stops the ${detail.activeOperation.type} operation and records it as failed, which frees the box for other actions. Only do this once you have established it is wedged rather than working - cancelling a repair part-way leaves its files on the parking volume for the next repair to resume from.`}
+										destructive
+										onConfirm={() =>
+											run("cancel", "Operation cancelled", () =>
+												cancelOperation({ boxId: box.id })
+											)
+										}
+										title="Cancel operation"
+									>
+										{(openConfirm) => (
+											<AnimatedIconButton
+												disabled={busy === "cancel"}
+												icon="x"
+												iconPosition="start"
+												onClick={openConfirm}
+												variant="destructive"
+											>
+												Cancel {detail.activeOperation?.type}
+											</AnimatedIconButton>
+										)}
+									</ConfirmDialog>
+								) : null}
 								<ConsoleBoxSnapshots boxId={box.id} status={box.status} />
 								<UpdateDialog
 									boxStatus={box.status}
@@ -587,6 +619,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 			{box.status !== "deleted" ? (
 				<MonitorCard
 					className="h-112"
+					failure={failureNotice(detail.failure, "staff")}
 					loadLogs={() => runtimeLogs({ boxId: box.id })}
 					note={detail.suspendedReason ?? undefined}
 					onRangeChange={setRange}

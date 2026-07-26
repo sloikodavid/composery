@@ -229,6 +229,10 @@ packages/
                   softKeyboard.ts
                   stickyModifiers.ts
                   touchGate.ts
+              platform/
+                terminal/
+                  common/
+                    terminalDataFlowControl.ts
               workbench/
                 browser/
                   media/
@@ -278,11 +282,9 @@ packages/
               auth.ts
               config.ts
               constants.ts
-              exec.ts
               index.ts
               keystore.ts
               ratelimit.ts
-              session.ts
               terminals.ts
             authPage.ts
             changePassword.ts
@@ -658,6 +660,7 @@ packages/
         boxAuth.ts
         boxCapacity.test.ts
         boxCapacity.ts
+        boxCleanup.test.ts
         boxCleanup.ts
         boxEvents.ts
         boxHealth.ts
@@ -668,6 +671,8 @@ packages/
         boxOperationRules.test.ts
         boxOperationRules.ts
         boxOperations.ts
+        boxOperationSweep.test.ts
+        boxOperationSweep.ts
         boxQueries.test.ts
         boxQueries.ts
         boxRecovery.ts
@@ -756,6 +761,8 @@ packages/
       logo-data.ts
       nav-links.ts
       openapi.ts
+      operation-failure.test.ts
+      operation-failure.ts
       polar-dashboard.test.ts
       polar-dashboard.ts
       repair-status.test.ts
@@ -900,6 +907,7 @@ scripts/
     app.html
     server.mjs
   cli.mjs
+  runbook.d.mts
   runbook.mjs
   setup.mjs
   smoke.mjs
@@ -967,7 +975,9 @@ tests/
   narrow-layout-reconciliation.test.ts
   password-check.test.ts
   runbook-script.test.ts
+  runbook-windows.test.ts
   runtime-init.test.ts
+  terminal-data-flow-control.test.ts
   terminal-sync.test.ts
   toolchain-pins.test.ts
   touch-editor-selection.test.ts

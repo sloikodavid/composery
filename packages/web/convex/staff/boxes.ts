@@ -1,3 +1,4 @@
+import type { WorkflowId } from "@convex-dev/workflow";
 import { ConvexError, v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { components, internal } from "../_generated/api";
@@ -21,22 +22,20 @@ import {
 	vRecoveryStatus,
 	type RecoveryStatus
 } from "../boxes/boxRecoveryTypes";
-import {
-	beginBoxOperationRecord,
-	startBoxOperation,
-	startBoxSuspension
-} from "../boxes/boxOperations";
+import { startBoxOperation, startBoxSuspension } from "../boxes/boxOperations";
 import { currentSuspensionReason } from "../boxes/boxQueries";
 import { appendBoxEvent } from "../boxes/boxEvents";
 import { assertSlugAvailable } from "../boxes/slugAvailability";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { readGlobalSettings } from "../settings";
-import { startWorkflow } from "../boxes/workflows/boxWorkflow";
+import { workflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
 import {
+	activeOperation,
 	boxRuntimeStanding,
+	latestFailure,
 	latestRepair,
 	latestUpdate,
 	staffBox
@@ -303,6 +302,8 @@ export const boxDetail = query({
 			user: user ? publicUser(user) : null,
 			subscription,
 			suspendedReason,
+			activeOperation: await activeOperation(ctx.db, box._id),
+			failure: await latestFailure(ctx.db, box._id),
 			repair: await latestRepair(ctx.db, box._id),
 			update: await latestUpdate(ctx.db, box._id),
 			// Read the same standing the owner page reads, so staff are never told a
@@ -349,7 +350,8 @@ export const retryProvisionBox = mutation({
 	handler: async (ctx, args) => {
 		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "provision", {
-			idempotencyKey: `staff-provision:${args.boxId}`
+			idempotencyKey: `staff-provision:${args.boxId}`,
+			trigger: "staff"
 		});
 	}
 });
@@ -413,11 +415,10 @@ export const grantComp = mutation({
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
 
-		const operationId = await beginBoxOperationRecord(ctx, box, {
-			type: "provision",
+		const operationId = await startBoxOperation(ctx, boxId, "provision", {
 			idempotencyKey: `provision:${boxId}`,
-			targetStatus: "provisioning",
-			metadata: { compedBy: staffUser.clerk_user_id, reason }
+			metadata: { compedBy: staffUser.clerk_user_id, reason },
+			trigger: "staff"
 		});
 		if (!operationId)
 			throw new ConvexError("Provision operation already exists.");
@@ -426,12 +427,6 @@ export const grantComp = mutation({
 			message: `Comped by ${staffUser.email}: ${reason}`,
 			metadata: { operationId, compedBy: staffUser.clerk_user_id }
 		});
-
-		await startWorkflow(
-			ctx,
-			internal.boxes.workflows.provisionBox.provisionBox,
-			{ boxId, operationId }
-		);
 
 		return { boxId };
 	}
@@ -451,7 +446,8 @@ export const revokeComp = mutation({
 			throw new ConvexError("This box is not a comp.");
 		}
 		await startBoxOperation(ctx, box._id, "delete", {
-			idempotencyKey: boxDeletionIdempotencyKey(box)
+			idempotencyKey: boxDeletionIdempotencyKey(box),
+			trigger: "staff"
 		});
 	}
 });
@@ -463,7 +459,8 @@ export const resetBox = mutation({
 	handler: async (ctx, args) => {
 		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "reset", {
-			idempotencyKey: `staff-reset:${args.boxId}`
+			idempotencyKey: `staff-reset:${args.boxId}`,
+			trigger: "staff"
 		});
 	}
 });
@@ -481,6 +478,7 @@ export const changeBoxSlug = mutation({
 		await startBoxOperation(ctx, args.boxId, "change_slug", {
 			idempotencyKey: `staff-change-slug:${args.boxId}:${newSlug}`,
 			reservedSlug: newSlug,
+			trigger: "staff",
 			metadata: { newSlug },
 			workflowArgs: { newSlug }
 		});
@@ -494,7 +492,8 @@ export const stopBox = mutation({
 	handler: async (ctx, args) => {
 		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "stop", {
-			idempotencyKey: `staff-stop:${args.boxId}`
+			idempotencyKey: `staff-stop:${args.boxId}`,
+			trigger: "staff"
 		});
 	}
 });
@@ -506,7 +505,8 @@ export const startBox = mutation({
 	handler: async (ctx, args) => {
 		await requireCapability(ctx, "box_operations");
 		await startBoxOperation(ctx, args.boxId, "start", {
-			idempotencyKey: `staff-start:${args.boxId}`
+			idempotencyKey: `staff-start:${args.boxId}`,
+			trigger: "staff"
 		});
 	}
 });
@@ -563,7 +563,8 @@ export const repair = action({
 		// this same key while the failed operation is settled, so it starts a fresh
 		// repair that resumes from the box's parking volume.
 		const operationId = await startBoxOperation(ctx, box._id, "repair", {
-			idempotencyKey: `staff-repair:${box._id}`
+			idempotencyKey: `staff-repair:${box._id}`,
+			trigger: "staff"
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
@@ -582,14 +583,50 @@ export const update = action({
 		if (!box) throw new ConvexError("Box not found.");
 		// Staff and owner keys are separate so a staff update is not deduplicated
 		// against an owner's in-flight one and silently reported as started.
-		// `beginBoxOperation` still refuses a second concurrent operation on the
-		// box, so the two cannot overlap - one of them is told the box is busy.
+		// `startOperation` still refuses a second concurrent operation on the box, so
+		// the two cannot overlap - one of them is told the box is busy.
 		const operationId = await startBoxOperation(ctx, box._id, "update", {
-			idempotencyKey: `staff-update:${box._id}`
+			idempotencyKey: `staff-update:${box._id}`,
+			trigger: "staff"
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being updated.");
 		}
+	}
+});
+
+// Free a box whose operation is wedged. The lever the long-running-operation
+// alert points at, and the only supported way out of that state - before this
+// existed the box could only be freed by editing its row in the Convex dashboard.
+//
+// Stops the workflow before recording the failure, so a workflow that is somehow
+// still alive cannot write the box's status after we have decided its operation
+// failed. The box lands in the same status an ordinary failure of that operation
+// leaves it in, so a cancelled repair reads as `repair_failed` and can be retried.
+export const cancelOperation = action({
+	args: { boxId: v.id("boxes") },
+	handler: async (ctx, args): Promise<void> => {
+		await requireCapabilityInAction(ctx, "box_operations");
+		const operation = await ctx.runQuery(
+			internal.boxes.boxOperationSweep.activeOperationForBox,
+			{ boxId: args.boxId }
+		);
+		if (!operation) {
+			throw new ConvexError("This box has no operation in progress.");
+		}
+
+		if (operation.workflowId) {
+			await workflow
+				.cancel(ctx, operation.workflowId as WorkflowId)
+				.catch(() => undefined);
+		}
+		await ctx.runMutation(
+			internal.boxes.boxOperationSweep.failOrphanedOperation,
+			{
+				error: `The ${operation.type} operation was cancelled by staff after it stopped making progress.`,
+				operationId: operation.operationId
+			}
+		);
 	}
 });
 
@@ -604,7 +641,8 @@ export const suspendBox = action({
 			boxId: args.boxId,
 			idempotencyKeyPrefix: "staff-suspend",
 			reason: args.reason,
-			suspend: true
+			suspend: true,
+			trigger: "staff"
 		});
 	}
 });
@@ -618,7 +656,8 @@ export const unsuspendBox = action({
 		await startBoxSuspension(ctx, {
 			boxId: args.boxId,
 			idempotencyKeyPrefix: "staff-unsuspend",
-			suspend: false
+			suspend: false,
+			trigger: "staff"
 		});
 	}
 });
@@ -649,7 +688,7 @@ export const createBoxSnapshot = mutation({
 		await requireCapability(ctx, "box_operations");
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
-		await startManualSnapshot(ctx, box, "staff-snapshot");
+		await startManualSnapshot(ctx, box, "staff-snapshot", "staff");
 	}
 });
 
@@ -668,6 +707,7 @@ export const restoreSnapshot = mutation({
 		if (!box) throw new ConvexError("Box not found.");
 		const operationId = await startBoxOperation(ctx, box._id, "restore", {
 			idempotencyKey: `staff-restore:${box._id}:${args.snapshotId}`,
+			trigger: "staff",
 			workflowArgs: { snapshotRowId: args.snapshotId }
 		});
 		if (!operationId) {

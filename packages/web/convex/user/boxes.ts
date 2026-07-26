@@ -19,6 +19,7 @@ import { startBoxOperation } from "../boxes/boxOperations";
 import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
 import {
 	boxRuntimeStanding,
+	latestFailure,
 	latestRepair,
 	latestUpdate,
 	safeBox
@@ -166,6 +167,7 @@ export const getById = query({
 			box: safeBox(box),
 			subscription,
 			suspendedReason,
+			failure: await latestFailure(ctx.db, box._id),
 			repair: await latestRepair(ctx.db, box._id),
 			update: await latestUpdate(ctx.db, box._id),
 			runtime: await boxRuntimeStanding(ctx.db, box)
@@ -282,7 +284,8 @@ export const repair = action({
 		// this same key while the failed operation is settled, so it starts a fresh
 		// repair that resumes from the box's parking volume.
 		const operationId = await startBoxOperation(ctx, box._id, "repair", {
-			idempotencyKey: `repair:${box._id}`
+			idempotencyKey: `repair:${box._id}`,
+			trigger: "owner"
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
@@ -304,7 +307,8 @@ export const update = action({
 		// container recreate behind the first. A retry after a failure reuses the
 		// key once the failed operation has settled, so it starts a fresh attempt.
 		const operationId = await startBoxOperation(ctx, box._id, "update", {
-			idempotencyKey: `update:${box._id}`
+			idempotencyKey: `update:${box._id}`,
+			trigger: "owner"
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being updated.");
@@ -321,7 +325,8 @@ export const retryProvision = mutation({
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
 
 		await startBoxOperation(ctx, box._id, "provision", {
-			idempotencyKey: `provision:${box._id}`
+			idempotencyKey: `provision:${box._id}`,
+			trigger: "owner"
 		});
 	}
 });
@@ -335,7 +340,8 @@ export const stop = mutation({
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
 
 		await startBoxOperation(ctx, box._id, "stop", {
-			idempotencyKey: `stop:${box._id}`
+			idempotencyKey: `stop:${box._id}`,
+			trigger: "owner"
 		});
 	}
 });
@@ -349,7 +355,8 @@ export const start = mutation({
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
 
 		await startBoxOperation(ctx, box._id, "start", {
-			idempotencyKey: `start:${box._id}`
+			idempotencyKey: `start:${box._id}`,
+			trigger: "owner"
 		});
 	}
 });
@@ -368,7 +375,8 @@ export const reset = mutation({
 		await assertTlsReissueBudget(ctx, box._id);
 
 		await startBoxOperation(ctx, box._id, "reset", {
-			idempotencyKey: `reset:${box._id}`
+			idempotencyKey: `reset:${box._id}`,
+			trigger: "owner"
 		});
 	}
 });
@@ -388,6 +396,7 @@ export const changeSlug = mutation({
 
 		await startBoxOperation(ctx, box._id, "change_slug", {
 			idempotencyKey: `change_slug:${box._id}:${newSlug}`,
+			trigger: "owner",
 			reservedSlug: newSlug,
 			metadata: { oldSlug: box.slug, newSlug },
 			workflowArgs: { newSlug }
@@ -425,7 +434,7 @@ export const createSnapshot = mutation({
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
-		await startManualSnapshot(ctx, box, "snapshot");
+		await startManualSnapshot(ctx, box, "snapshot", "owner");
 	}
 });
 
@@ -445,6 +454,7 @@ export const restoreSnapshot = mutation({
 		}
 		const operationId = await startBoxOperation(ctx, box._id, "restore", {
 			idempotencyKey: `restore:${box._id}:${args.snapshotId}`,
+			trigger: "owner",
 			workflowArgs: { snapshotRowId: args.snapshotId }
 		});
 		if (!operationId) {

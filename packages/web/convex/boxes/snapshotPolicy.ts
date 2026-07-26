@@ -106,6 +106,7 @@ export function validateSnapshotPolicy(policy: SnapshotPolicy) {
 // not operator policy.
 export const SNAPSHOT_SCHEDULE_STAGGER_MS = 20 * 1000;
 
+// runbook: Incomplete snapshot-row retention
 export const SNAPSHOT_INCOMPLETE_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export const SNAPSHOT_RETENTION_SWEEP_BATCH = 200;
@@ -113,6 +114,7 @@ export const SNAPSHOT_RETENTION_SWEEP_BATCH = 200;
 export const SNAPSHOT_POLL_FAST_MS = 10 * 1000;
 export const SNAPSHOT_POLL_SLOW_MS = 30 * 1000;
 export const SNAPSHOT_POLL_FAST_WINDOW_MS = 60 * 1000;
+// runbook: Snapshot capture deadline
 export const SNAPSHOT_CAPTURE_DEADLINE_MS = 60 * 60 * 1000;
 
 export function snapshotExpiry(

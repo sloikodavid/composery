@@ -32,14 +32,20 @@ export async function getLLMText(page: (typeof source)["$inferPage"]) {
 	let processed = await page.data.getText("processed");
 
 	// The endpoint reference is a rendered component, so a plain-Markdown reader
-	// would get a tag where the endpoint should be. Those readers are machines;
-	// hand them the spec that component renders.
-	if (API_OPERATION.test(processed)) {
+	// would get a tag where each endpoint should be. Those readers are machines:
+	// leave the method and path in place so the prose around them still refers to
+	// something, and hand over the whole spec once at the end.
+	// `includes` rather than `.test()` - API_OPERATION is global, and a global
+	// regex carries `lastIndex` between calls.
+	if (processed.includes("<APIOperation")) {
 		const { bundled } = await openapi.getSchema(SPEC_ID);
-		processed = processed.replace(
+		const body = processed.replace(
 			API_OPERATION,
-			`\`\`\`json\n${JSON.stringify(bundled, null, 2)}\n\`\`\``
+			(_tag, path: string, method: string) =>
+				`\`${method.toUpperCase()} ${path}\``
 		);
+
+		processed = `${body}\n\n## OpenAPI\n\n\`\`\`json\n${JSON.stringify(bundled, null, 2)}\n\`\`\``;
 	}
 
 	return `# ${page.data.title} (${page.url})

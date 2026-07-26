@@ -319,7 +319,7 @@ async function assertIdeGatesWhenPersistenceNotReady(cookies) {
 }
 
 async function assertApiSmoke() {
-	log("checking the automation API: mint key, exec, headers, revoke");
+	log("checking the automation API: mint key, terminals, headers, revoke");
 
 	const created = JSON.parse(
 		execSh("composery api key create --name smoke --json", {
@@ -337,8 +337,8 @@ async function assertApiSmoke() {
 	}
 	const key = created.secret;
 
-	const unauthorized = await request("/_composery/api/v1/exec", {
-		body: JSON.stringify({ command: "echo nope" }),
+	const unauthorized = await request("/_composery/api/v1/terminals", {
+		body: JSON.stringify({ command: "echo nope", wait: true }),
 		headers: { "content-type": "application/json" },
 		method: "POST"
 	});
@@ -349,27 +349,27 @@ async function assertApiSmoke() {
 	}
 
 	const marker = `composery-api-smoke-${RUN_ID}`;
-	const execResponse = await request("/_composery/api/v1/exec", {
-		body: JSON.stringify({ command: `echo ${marker}` }),
+	const terminalResponse = await request("/_composery/api/v1/terminals", {
+		body: JSON.stringify({ command: `echo ${marker}`, wait: true }),
 		headers: {
 			authorization: `Bearer ${key}`,
 			"content-type": "application/json"
 		},
 		method: "POST"
 	});
-	if (execResponse.statusCode !== 200) {
+	if (terminalResponse.statusCode !== 200) {
 		throw new Error(
-			`Expected 200 from /_composery/api/v1/exec, got ${execResponse.statusCode}.`
+			`Expected 200 from a waited terminal, got ${terminalResponse.statusCode}.`
 		);
 	}
-	const result = JSON.parse(execResponse.body);
-	assertContains("exec stdout", result.stdout, marker);
+	const result = JSON.parse(terminalResponse.body);
+	assertContains("terminal output", result.output, marker);
 	if (result.exit_code !== 0) {
 		throw new Error(`Expected exit_code 0, got ${result.exit_code}.`);
 	}
 
-	const viaApiKeyHeader = await request("/_composery/api/v1/exec", {
-		body: JSON.stringify({ command: "true" }),
+	const viaApiKeyHeader = await request("/_composery/api/v1/terminals", {
+		body: JSON.stringify({ command: "true", wait: true }),
 		headers: { "content-type": "application/json", "x-api-key": key },
 		method: "POST"
 	});
@@ -380,25 +380,43 @@ async function assertApiSmoke() {
 	}
 
 	const ptyMarker = `composery-pty-${RUN_ID}`;
-	const ptyOutput = await runPtyOverWebsocket(key, `echo ${ptyMarker}`);
+	const ptyOutput = await runPtyOverWebsocket(
+		key,
+		`sleep 1 && echo ${ptyMarker}`
+	);
 	assertContains("PTY websocket output", ptyOutput, ptyMarker);
 
-	const badKeyUpgrade = await ptyWebsocket("composery_not-a-real-key", "true");
+	const badKeyTerminal = await createApiTerminal(key, "sleep 5");
+	const badKeyUpgrade = await ptyWebsocket(
+		"composery_not-a-real-key",
+		badKeyTerminal
+	);
 	if (badKeyUpgrade.status === 101) {
 		throw new Error("PTY websocket upgraded with an invalid key.");
 	}
+	await request(`/_composery/api/v1/terminals/${badKeyTerminal}`, {
+		headers: { authorization: `Bearer ${key}` },
+		method: "DELETE"
+	});
 
 	// The socket streams an ordinary editor terminal; it does not own it. Dropping
 	// the connection must stop the streaming and nothing else, or a command
 	// started over HTTP could never be picked up in the editor afterwards. Prove
 	// it from outside: detach while the command is still running and watch it
 	// finish anyway. (docs/api.mdx makes this promise; nothing else checks it.)
+	// The output volume is the point. The pty pauses once it is more than
+	// FlowControlConstants.HighWatermarkChars (100,000) ahead of what has been
+	// acknowledged, and with the socket gone there is no consumer left to do the
+	// acknowledging - so a quiet command finishes whether or not that is handled
+	// and proves nothing. `seq 1 50000` is a little under 300,000 characters.
 	const detachedMarker = `/tmp/composery-detached-${RUN_ID}`;
-	const detached = await ptyWebsocket(
+	const detachedTerminal = await createApiTerminal(
 		key,
-		`sleep 3 && touch ${detachedMarker}`,
-		{ detachOnUpgrade: true }
+		`sleep 3 && seq 1 50000 && touch ${detachedMarker}`
 	);
+	const detached = await ptyWebsocket(key, detachedTerminal, {
+		detachOnUpgrade: true
+	});
 	if (detached.status !== 101) {
 		throw new Error(
 			`Expected the detached terminal to upgrade (101), got ${detached.status}.`
@@ -407,8 +425,8 @@ async function assertApiSmoke() {
 	await waitForContainerFile(detachedMarker);
 
 	execSh(`composery api key revoke ${created.id}`, { user: "user" });
-	const afterRevoke = await request("/_composery/api/v1/exec", {
-		body: JSON.stringify({ command: "true" }),
+	const afterRevoke = await request("/_composery/api/v1/terminals", {
+		body: JSON.stringify({ command: "true", wait: true }),
 		headers: {
 			authorization: `Bearer ${key}`,
 			"content-type": "application/json"
@@ -423,8 +441,8 @@ async function assertApiSmoke() {
 
 	let throttled = false;
 	for (let attempt = 0; attempt < 40 && !throttled; attempt += 1) {
-		const response = await request("/_composery/api/v1/exec", {
-			body: JSON.stringify({ command: "true" }),
+		const response = await request("/_composery/api/v1/terminals", {
+			body: JSON.stringify({ command: "true", wait: true }),
 			headers: {
 				authorization: "Bearer composery_definitely-not-a-real-key",
 				"content-type": "application/json"
@@ -816,8 +834,30 @@ function parseHttpHeaders(response) {
 	return { headers, status: lines[0] ?? "" };
 }
 
+async function createApiTerminal(key, command) {
+	const response = await request("/_composery/api/v1/terminals", {
+		body: JSON.stringify({ command }),
+		headers: {
+			authorization: `Bearer ${key}`,
+			"content-type": "application/json"
+		},
+		method: "POST"
+	});
+	if (response.statusCode !== 201) {
+		throw new Error(
+			`Expected terminal creation to return 201, got ${response.statusCode}.`
+		);
+	}
+	const terminal = JSON.parse(response.body);
+	if (!Number.isSafeInteger(terminal.id)) {
+		throw new Error("Terminal creation did not return a numeric id.");
+	}
+	return terminal.id;
+}
+
 async function runPtyOverWebsocket(key, command) {
-	const { status, output } = await ptyWebsocket(key, command);
+	const id = await createApiTerminal(key, command);
+	const { status, output } = await ptyWebsocket(key, id);
 	if (status !== 101) {
 		throw new Error(`Expected PTY websocket to upgrade (101), got ${status}.`);
 	}
@@ -827,11 +867,10 @@ async function runPtyOverWebsocket(key, command) {
 // Minimal RFC 6455 client: manual frame decode of the server's unmasked
 // text/binary frames. `detachOnUpgrade` hangs up the moment the upgrade lands,
 // leaving the terminal running with nobody reading it.
-function ptyWebsocket(key, command, { detachOnUpgrade = false } = {}) {
+function ptyWebsocket(key, id, { detachOnUpgrade = false } = {}) {
 	return new Promise((resolvePromise, reject) => {
-		const query = command ? `?cmd=${encodeURIComponent(command)}` : "";
 		const handshake = [
-			`GET /_composery/api/v1/exec${query} HTTP/1.1`,
+			`GET /_composery/api/v1/terminals/${id} HTTP/1.1`,
 			`Host: 127.0.0.1:${config.port}`,
 			"Upgrade: websocket",
 			"Connection: Upgrade",

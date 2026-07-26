@@ -3,10 +3,7 @@ import { createRuntime } from "./runtimeLifecycle";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
 export const provisionBox = defineBoxWorkflow({
-	onFailure: {
-		eventType: "box.provisioning_failed",
-		targetBoxStatus: "provisioning_failed"
-	},
+	type: "provision",
 	run: async (step, args) => {
 		try {
 			const box = await step.runQuery(

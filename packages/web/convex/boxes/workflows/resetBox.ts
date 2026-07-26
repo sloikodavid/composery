@@ -3,7 +3,7 @@ import { rebuildRuntime } from "./runtimeLifecycle";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
 export const resetBox = defineBoxWorkflow({
-	onFailure: { eventType: "box.reset_failed", targetBoxStatus: "reset_failed" },
+	type: "reset",
 	run: async (step, args) => {
 		const box = await step.runQuery(
 			internal.boxes.boxQueries.getBoxLifecycleSnapshot,

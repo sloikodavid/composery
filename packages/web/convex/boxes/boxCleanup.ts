@@ -82,16 +82,24 @@ export const deleteRuntimeData = internalMutation({
 			.query("box_metrics_hourly")
 			.withIndex("box_id_hour_start", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
+		// Health tracking is about a box that answers; a deleted box does not. The
+		// row is also what automatic repair's failure count lives in, so leaving it
+		// behind keeps a count for a box that can never be probed again.
+		const health = await ctx.db
+			.query("box_health")
+			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.take(DELETE_BATCH_SIZE);
 		for (const row of [
 			...authCodes,
 			...authGrants,
 			...metrics,
-			...hourlyMetrics
+			...hourlyMetrics,
+			...health
 		]) {
 			await ctx.db.delete(row._id);
 		}
 		if (
-			[authCodes, authGrants, metrics, hourlyMetrics].some(
+			[authCodes, authGrants, metrics, hourlyMetrics, health].some(
 				(rows) => rows.length === DELETE_BATCH_SIZE
 			)
 		) {
@@ -300,6 +308,10 @@ export const purgeBox = internalMutation({
 			.query("box_flags")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
+		const health = await ctx.db
+			.query("box_health")
+			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.take(DELETE_BATCH_SIZE);
 		const intents = await ctx.db
 			.query("box_checkout_intents")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
@@ -316,7 +328,8 @@ export const purgeBox = internalMutation({
 			...events,
 			...metrics,
 			...hourlyMetrics,
-			...flags
+			...flags,
+			...health
 		];
 		for (const row of rows) await ctx.db.delete(row._id);
 		for (const intent of intents) {

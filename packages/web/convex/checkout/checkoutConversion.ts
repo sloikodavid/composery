@@ -1,15 +1,13 @@
 import { ConvexError, v } from "convex/values";
-import { internal } from "../_generated/api";
 import { internalMutation } from "../_generated/server";
 import { appendBoxEvent } from "../boxes/boxEvents";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
-import { beginBoxOperationRecord } from "../boxes/boxOperations";
+import { startBoxOperation } from "../boxes/boxOperations";
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch
 } from "../boxes/boxRetention";
-import { startWorkflow } from "../boxes/workflows/boxWorkflow";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "./checkoutIntents";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
 import { readGlobalSettings } from "../settings";
@@ -172,13 +170,12 @@ export const convertCheckoutIntentToBox = internalMutation({
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
 
-		const operationId = await beginBoxOperationRecord(ctx, box, {
-			type: "provision",
+		const operationId = await startBoxOperation(ctx, boxId, "provision", {
 			idempotencyKey: `provision:${boxId}`,
-			targetStatus: "provisioning",
 			metadata: {
 				[CHECKOUT_INTENT_METADATA_KEYS.intentId]: intent._id
-			}
+			},
+			trigger: "owner"
 		});
 		if (!operationId)
 			throw new ConvexError("Provision operation already exists.");
@@ -186,15 +183,6 @@ export const convertCheckoutIntentToBox = internalMutation({
 		await appendBoxEvent(ctx, box, "box.provisioning_started", {
 			metadata: { operationId }
 		});
-
-		await startWorkflow(
-			ctx,
-			internal.boxes.workflows.provisionBox.provisionBox,
-			{
-				boxId,
-				operationId
-			}
-		);
 
 		return { boxId, unfulfilled: null };
 	}

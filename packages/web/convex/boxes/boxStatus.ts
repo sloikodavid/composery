@@ -1,10 +1,21 @@
+import { vResultValidator, vWorkflowId } from "@convex-dev/workflow";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalMutation } from "../_generated/server";
-import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
+import type { Id } from "../_generated/dataModel";
+import { internalMutation, type MutationCtx } from "../_generated/server";
+import {
+	vBoxFailureStatus,
+	vServerLocation,
+	vServerType,
+	type BoxFailureStatus
+} from "../schema";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import { consoleBoxPath } from "../../lib/box-route";
 import { appendBoxEvent } from "./boxEvents";
+import {
+	isActiveOperationStatus,
+	OPERATION_FAILURE
+} from "./boxOperationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
 import { deletedBoxDataPatch } from "./boxRetention";
 import { assertSlugAvailable } from "./slugAvailability";
@@ -189,6 +200,124 @@ export const settleOperation = internalMutation({
 	}
 });
 
+// The workflow component calls this on every terminal outcome of every box
+// workflow - success, failure, or cancellation.
+//
+// Normally it finds nothing to do: the workflow body closed its own operation, or
+// `defineBoxWorkflow`'s catch already recorded the failure. It exists for the
+// outcomes that catch cannot see, and each one used to leave the box unusable
+// forever because an active operation blocks every later action on it:
+//
+//   * the workflow was cancelled from outside, so no user code ran at all;
+//   * the workflow failed in a way that never reached the catch (a step throwing
+//     during the catch's own mutation, an out-of-retries workpool failure);
+//   * the catch ran but its own recording mutation failed - which is why
+//     `recordOperationFailure` no longer throws on a missing box.
+//
+// So this is the one place that can promise the invariant "a finished workflow
+// leaves no active operation", and it is the component, not our code, that
+// promises to call it.
+export const finishBoxOperation = internalMutation({
+	args: {
+		workflowId: vWorkflowId,
+		result: vResultValidator,
+		context: v.object({
+			boxId: v.id("boxes"),
+			operationId: v.id("box_operations")
+		})
+	},
+	handler: async (ctx, args) => {
+		const operation = await ctx.db.get(args.context.operationId);
+		if (!operation || !isActiveOperationStatus(operation.status)) return;
+
+		// Reached only when the body left the operation open, which means it did not
+		// get to record an outcome either. Say what the component told us rather than
+		// inventing a reason.
+		//
+		// Note the "success" case is still recorded as a failure. Every box workflow
+		// ends by settling its own operation, so a success that left one open means
+		// that final step did not commit and we do not actually know what state the
+		// box is in. Closing it as succeeded would assert something unverified; a
+		// visible failure the owner can retry from is the honest reading, and it is
+		// the difference between a box someone fixes and a box that silently lies
+		// about having worked.
+		const error =
+			args.result.kind === "failed"
+				? args.result.error
+				: args.result.kind === "canceled"
+					? "The operation was cancelled before it finished."
+					: "The operation stopped without recording an outcome.";
+
+		await recordOperationFailure(ctx, {
+			boxId: args.context.boxId,
+			error,
+			eventType: OPERATION_FAILURE[operation.type].eventType,
+			operationId: args.context.operationId,
+			targetBoxStatus: OPERATION_FAILURE[operation.type].boxStatus
+		});
+	}
+});
+
+// Record a failed operation: put the box into the status that failure leaves it
+// in, close the operation with its error, log the event, and alert staff.
+//
+// Deliberately tolerant of a missing box. It used to throw `Box not found`, which
+// meant a box deleted while one of its operations was in flight left that
+// operation active forever - and an active operation blocks every later action on
+// the box. Closing the operation is the part that must always happen; the event
+// and the alert need a box to hang off and are skipped without one.
+export async function recordOperationFailure(
+	ctx: MutationCtx,
+	input: {
+		boxId: Id<"boxes">;
+		error: string;
+		eventType: string;
+		operationId: Id<"box_operations">;
+		targetBoxStatus?: BoxFailureStatus;
+	}
+) {
+	const box = await ctx.db.get(input.boxId);
+	const operation = await ctx.db.get(input.operationId);
+	const timestamp = Date.now();
+
+	if (box && input.targetBoxStatus) {
+		await ctx.db.patch(input.boxId, {
+			status: input.targetBoxStatus,
+			updated_at: timestamp
+		});
+	}
+
+	await ctx.db.patch(input.operationId, {
+		status: "failed",
+		finished_at: timestamp,
+		last_error: input.error,
+		updated_at: timestamp
+	});
+	if (!box) return;
+
+	await appendBoxEvent(ctx, box, input.eventType, {
+		message: input.error
+	});
+
+	const operationType = operation?.type ?? "unknown";
+	const critical = new Set([
+		"provision",
+		"delete",
+		"reset",
+		"restore",
+		"repair",
+		// An update recreates the container of a box that was working, so a
+		// failure can leave it not serving - the same blast radius as a repair.
+		"update"
+	]).has(operationType);
+	await sendStaffAlert(ctx, {
+		key: `box-operation-failed:${input.operationId}`,
+		severity: critical ? "critical" : "warning",
+		subject: `Box ${box.slug}: ${operationType} failed`,
+		text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${input.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
+	});
+}
+
 export const markOperationFailed = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
@@ -198,45 +327,7 @@ export const markOperationFailed = internalMutation({
 		targetBoxStatus: v.optional(vBoxFailureStatus)
 	},
 	handler: async (ctx, args) => {
-		const box = await ctx.db.get(args.boxId);
-		if (!box) throw new ConvexError("Box not found.");
-		const operation = await ctx.db.get(args.operationId);
-		const timestamp = Date.now();
-
-		if (args.targetBoxStatus) {
-			await ctx.db.patch(args.boxId, {
-				status: args.targetBoxStatus,
-				updated_at: timestamp
-			});
-		}
-
-		await ctx.db.patch(args.operationId, {
-			status: "failed",
-			finished_at: timestamp,
-			last_error: args.error,
-			updated_at: timestamp
-		});
-		await appendBoxEvent(ctx, box, args.eventType, {
-			message: args.error
-		});
-
-		const operationType = operation?.type ?? "unknown";
-		const critical = new Set([
-			"provision",
-			"delete",
-			"reset",
-			"restore",
-			"repair",
-			// An update recreates the container of a box that was working, so a
-			// failure can leave it not serving - the same blast radius as a repair.
-			"update"
-		]).has(operationType);
-		await sendStaffAlert(ctx, {
-			key: `box-operation-failed:${args.operationId}`,
-			severity: critical ? "critical" : "warning",
-			subject: `Box ${box.slug}: ${operationType} failed`,
-			text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${args.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
-		});
+		await recordOperationFailure(ctx, args);
 	}
 });
 
