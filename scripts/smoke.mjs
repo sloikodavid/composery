@@ -568,7 +568,7 @@ async function assertPersistenceAppliesChanges() {
 
 	log("checking custom exclusions are ignored and not pruned");
 	execSh(
-		'tmp="$(mktemp)"; jq \'.exclusions += ["/excluded-smoke"]\' /data/persistence/config.json > "$tmp"; mv "$tmp" /data/persistence/config.json'
+		'tmp="$(mktemp)"; jq \'.exclude += ["/excluded-smoke"]\' /data/persistence/config.json > "$tmp"; mv "$tmp" /data/persistence/config.json'
 	);
 	restartContainer();
 	await waitForHttp("/_composery/healthz", DEFAULT_ATTEMPTS.readiness);

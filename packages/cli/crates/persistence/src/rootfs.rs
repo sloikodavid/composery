@@ -34,6 +34,16 @@ pub fn rootfs_walker(start: &Path) -> WalkDir {
         .same_file_system(true)
 }
 
+/// Whether `WalkDir::same_file_system(true)` will descend into an entry.
+///
+/// Callers that prune an excluded directory with `skip_current_dir()` must
+/// only do so when WalkDir actually pushed that directory. A mount point is
+/// yielded but not pushed; skipping it again would pop its parent and silently
+/// abandon every later sibling in the walk.
+pub fn walker_will_descend(walker_device: u64, entry_device: u64) -> bool {
+    walker_device == entry_device
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileKind {
@@ -765,6 +775,7 @@ fn make_dev(major: u64, minor: u64) -> libc::dev_t {
 mod tests {
     use super::{
         FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink, rootfs_walker,
+        walker_will_descend,
     };
     use std::{
         collections::BTreeSet,
@@ -799,6 +810,12 @@ mod tests {
         assert!(seen.contains(&root.join("a")));
         assert!(seen.contains(&root.join("a/b")));
         assert!(seen.contains(&root.join("a/file")));
+    }
+
+    #[test]
+    fn mount_entry_is_not_pruned_twice() {
+        assert!(walker_will_descend(7, 7));
+        assert!(!walker_will_descend(7, 8));
     }
 
     #[test]

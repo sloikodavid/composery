@@ -6,6 +6,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     ffi::OsStr,
     io::ErrorKind,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -337,6 +338,7 @@ fn run_loop(runtime: WatchRuntime) -> Result<()> {
         &runtime.root,
         &runtime.root,
         &runtime,
+        false,
     )?;
     publish_metrics(&runtime, &table);
 
@@ -370,6 +372,7 @@ fn run_loop(runtime: WatchRuntime) -> Result<()> {
                     &runtime.root,
                     &runtime.root,
                     &runtime,
+                    false,
                 )?;
                 runtime.metrics.set_shed(false);
                 runtime.lifecycle.set(LifecycleState::Running);
@@ -460,20 +463,27 @@ fn watch_new_directory(
     {
         let _ = inotify.watches().remove(evicted);
     }
-    register_existing_dirs(inotify, table, &runtime.root, start, runtime)
+    register_existing_dirs(inotify, table, &runtime.root, start, runtime, true)
 }
 
 /// Walk `start` and watch every directory until the budget is reached, then
 /// stop descending - the audit covers whatever is left. Directories that
 /// vanish mid-walk (transient temp dirs) are skipped quietly; a real, durable
-/// failure to watch still surfaces.
+/// failure to watch still surfaces. For a newly arrived directory, queue
+/// existing descendants as the watches are installed: files can be created
+/// before the parent CREATE/MOVED_TO event is read, so no later inotify event
+/// is guaranteed for them.
 fn register_existing_dirs(
     inotify: &mut Inotify,
     table: &mut WatchTable<WatchDescriptor>,
     root: &Path,
     start: &Path,
     runtime: &WatchRuntime,
+    queue_existing_descendants: bool,
 ) -> Result<()> {
+    let walker_device = std::fs::metadata(start)
+        .with_context(|| format!("stat watch subtree {}", start.display()))?
+        .dev();
     let mut entries = rootfs::rootfs_walker(start).into_iter();
     loop {
         if table.is_full() {
@@ -486,15 +496,28 @@ fn register_existing_dirs(
             Some(Err(error)) if is_transient_walk_error(&error) => continue,
             Some(Err(error)) => return Err(error).context("walk for watch registration"),
         };
-        if !entry.file_type().is_dir() {
-            continue;
-        }
-        if entry.path() != root {
+        let public = if entry.path() != root {
             let public = public_path(root, entry.path())?;
             if crate::public::is_excluded(&public, &runtime.config) {
-                entries.skip_current_dir();
+                if entry.file_type().is_dir()
+                    && rootfs::walker_will_descend(walker_device, entry.metadata()?.dev())
+                {
+                    entries.skip_current_dir();
+                }
                 continue;
             }
+            Some(public)
+        } else {
+            None
+        };
+        if queue_existing_descendants
+            && entry.path() != start
+            && let Some(public) = public
+        {
+            let _ = runtime.dirty_tx.send(public);
+        }
+        if !entry.file_type().is_dir() {
+            continue;
         }
         match inotify.watches().add(entry.path(), watch_mask()) {
             Ok(descriptor) => table.insert(descriptor, entry.path().to_path_buf()),
@@ -710,6 +733,42 @@ mod tests {
 
         let public = wait_for_candidate(rx);
         assert_eq!(public.as_bytes(), b"/etc/hello.txt");
+    }
+
+    #[test]
+    fn watcher_emits_prepopulated_moved_directory_contents() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let staged = temp.path().join("staged");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(staged.join("nested")).unwrap();
+        fs::write(staged.join("nested/file.txt"), "already present").unwrap();
+        let pending = Arc::new(AtomicU64::new(0));
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(pending);
+        let (error_tx, _error_rx) = mpsc::channel();
+        let _watcher = Watcher::start(
+            root.clone(),
+            Config::default(),
+            dirty_tx,
+            LifecycleStatus::new(LifecycleState::Initializing),
+            WatchMetrics::new(),
+            temp.path().join("watch-error.log"),
+            error_tx,
+        )
+        .unwrap();
+
+        fs::rename(&staged, root.join("arrived")).unwrap();
+
+        let mut found_file = false;
+        for _ in 0..50 {
+            if let Ok(path) = rx.recv_timeout(Duration::from_millis(100))
+                && path.as_bytes() == b"/arrived/nested/file.txt"
+            {
+                found_file = true;
+                break;
+            }
+        }
+        assert!(found_file, "pre-existing moved-in file was not emitted");
     }
 
     #[test]

@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -140,6 +141,9 @@ pub fn run_once(
     let hardlink_groups = hardlink_groups(baseline);
     let mut work_started = Instant::now();
     let budget = Duration::from_millis(config.audit.max_work_ms_per_tick.max(1));
+    let walker_device = fs::metadata(root)
+        .with_context(|| format!("stat audit root {}", root.display()))?
+        .dev();
 
     let mut entries = rootfs::rootfs_walker(root).into_iter();
     while let Some(entry) = entries.next() {
@@ -152,7 +156,9 @@ pub fn run_once(
         }
         let public = public_path(root, entry.path())?;
         if crate::public::is_excluded(&public, config) {
-            if entry.file_type().is_dir() {
+            if entry.file_type().is_dir()
+                && rootfs::walker_will_descend(walker_device, entry.metadata()?.dev())
+            {
                 entries.skip_current_dir();
             }
             continue;
