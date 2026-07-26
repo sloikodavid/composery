@@ -17,7 +17,12 @@ import {
 import { boxMetricsSamples, vMetricsRange } from "../boxes/boxMetrics";
 import { startBoxOperation } from "../boxes/boxOperations";
 import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
-import { latestRepair, safeBox } from "../boxes/boxViews";
+import {
+	boxRuntimeStanding,
+	latestRepair,
+	latestUpdate,
+	safeBox
+} from "../boxes/boxViews";
 import { ownerCanReadBox } from "../boxes/boxAccess";
 import {
 	markSnapshotDeleting,
@@ -161,7 +166,9 @@ export const getById = query({
 			box: safeBox(box),
 			subscription,
 			suspendedReason,
-			repair: await latestRepair(ctx.db, box._id)
+			repair: await latestRepair(ctx.db, box._id),
+			update: await latestUpdate(ctx.db, box._id),
+			runtime: await boxRuntimeStanding(ctx.db, box)
 		};
 	}
 });
@@ -279,6 +286,28 @@ export const repair = action({
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
+		}
+	}
+});
+
+export const update = action({
+	args: { slug: v.string() },
+	handler: async (ctx, args): Promise<void> => {
+		const user = await requireActiveUserInAction(ctx);
+		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+			userId: user.clerk_user_id,
+			slug: sanitizeSlug(args.slug)
+		});
+		if (!box) throw new ConvexError("Box not found.");
+		// Keyed per box rather than per target image on purpose. Two presses of
+		// Update are the same request, and the second must not queue a second
+		// container recreate behind the first. A retry after a failure reuses the
+		// key once the failed operation has settled, so it starts a fresh attempt.
+		const operationId = await startBoxOperation(ctx, box._id, "update", {
+			idempotencyKey: `update:${box._id}`
+		});
+		if (!operationId) {
+			throw new ConvexError("This box is already being updated.");
 		}
 	}
 });

@@ -13,7 +13,7 @@ A secure cloud computer with a powerful UI, usable from any phone or browser.
 - The [persistence](docs/persistence.md) daemon writes your root-filesystem
   deltas to one volume at `/data`, so the container restarts like a machine
   rebooting, not like a container resetting.
-- A small [automation API](docs/api.md) runs commands on the instance from
+- A small [automation API](docs/api.mdx) runs commands on the instance from
   `curl`, CI, or scripts, authenticated by keys you mint on the instance.
 - The IDE is a self-hostable hard fork of
   [code-server](https://github.com/coder/code-server), reworked for phones,
@@ -47,7 +47,7 @@ Rendered at [composery.io/docs](https://www.composery.io/docs), source in
   container hosts.
 - [Configuration](docs/configuration.md) - runtime environment variables.
 - [Persistence](docs/persistence.md) - what survives a restart and how.
-- [API](docs/api.md) - run commands against an instance remotely.
+- [API](docs/api.mdx) - run commands against an instance remotely.
 
 ## Composery Cloud
 

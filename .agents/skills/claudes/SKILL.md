@@ -1,6 +1,6 @@
 ---
 name: claudes
-description: Operate Claude CLI subagents reliably across operating systems and environments, including runtime discovery, authentication checks, launch, detached monitoring, limit recovery, session resume, worktree isolation, brief writing, and result review. Use when delegating work to one or more `claude -p` agents or recovering a previous Claude subagent run.
+description: Operate non-standard Claude CLI subagents via the `claude -p` method reliably. Use when dealing with non-standard `claude -p` agents or recovering a previous non-standard Claude subagent run.
 ---
 
 # Run Claude CLI subagents

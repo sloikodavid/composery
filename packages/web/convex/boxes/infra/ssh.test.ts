@@ -151,25 +151,46 @@ describe("runtime bootstrap and repair scripts", () => {
 		runtimeImage: "ghcr.io/sloikodavid/composery@sha256:abc",
 		runtimePort: 8080
 	});
-	const repair = bootstrapScript({ ...artifacts, repair: true });
+	const repair = bootstrapScript({ ...artifacts, type: "repair" });
 	const bootstrap = bootstrapScript(artifacts);
+	const update = bootstrapScript({ ...artifacts, type: "update" });
 
 	// Force-recreate is the entire difference between a repair and a no-op: a
 	// wedged container whose config still matches is exactly what `up -d` skips.
+	// An update always changes the compose file's image reference, so compose
+	// recreates the service on its own; forcing it would only restart the
+	// containers that did not change.
 	it("force-recreates every container only when repairing", () => {
 		expect(repair).toContain("up -d --force-recreate");
 		expect(bootstrap).toContain("up -d\n");
 		expect(bootstrap).not.toContain("--force-recreate");
+		expect(update).not.toContain("--force-recreate");
 	});
 
 	// The promise the owner is shown is "your box is fixed". `up -d` returning
 	// only means the container was created, so a repair that stops there would
-	// report success over a crash-looping editor.
-	it("waits for the editor to answer before calling a repair done", () => {
-		expect(repair).toContain("systemctl is-active --quiet ide.service");
-		expect(repair).toContain("exit 1");
-		expect(repair.trimEnd().endsWith("exit 1")).toBe(true);
+	// report success over a crash-looping editor. An update makes the same
+	// promise about a box that was working before it started, so it waits too -
+	// and that wait is what lets a failed update leave the row on the last image
+	// known to serve.
+	it("waits for the editor to answer before calling a repair or update done", () => {
+		for (const script of [repair, update]) {
+			expect(script).toContain("systemctl is-active --quiet ide.service");
+			expect(script).toContain("exit 1");
+			expect(script.trimEnd().endsWith("exit 1")).toBe(true);
+		}
 		expect(bootstrap).not.toContain("ide.service");
+	});
+
+	// An update exists to move the box to a new image. If that image cannot be
+	// pulled there is nothing to update to, and a tolerant pull would restart the
+	// box on the image it already had - which then reports success and lets the
+	// caller advance the row to a digest the host never ran. Repair's tolerance
+	// is right for repair and wrong here.
+	it("requires the pull to succeed when updating, unlike repairing", () => {
+		expect(update).toMatch(/ pull\n/);
+		expect(update).not.toMatch(/ pull \|\| echo /);
+		expect(repair).toMatch(/ pull \|\| echo /);
 	});
 
 	it("rewrites all three runtime files and re-pulls the image", () => {

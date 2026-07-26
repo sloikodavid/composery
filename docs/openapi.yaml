@@ -1,0 +1,183 @@
+# The instance automation API, rendered into docs/api.mdx by fumadocs-openapi.
+# tests/api-openapi.test.ts pins this file to the route that serves it
+# (packages/ide/overlay/src/node/routes/api/) - the path, the status codes, the
+# request fields, and the response shape are all checked against the source.
+# The websocket half of the API is not here: OpenAPI has no way to describe it.
+openapi: 3.1.0
+
+info:
+  title: Composery instance API
+  version: v1
+  description: |
+    Runs commands on a single Composery instance, as the editor user. Every
+    instance serves this on its own URL, on the same port as the editor.
+
+    There is no control plane here - no create, stop, or delete of instances.
+    Keys are minted on the instance itself; see the page above.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://{instance}
+    description: Your instance
+    variables:
+      instance:
+        default: your-instance.example.com
+        description: The hostname you reach the editor on.
+
+security:
+  - bearerAuth: []
+  - apiKeyHeader: []
+
+paths:
+  /_composery/api/v1/exec:
+    post:
+      summary: Run a command
+      operationId: exec
+      description: |
+        Runs the command in a login shell (`$SHELL -l -c`) as the editor user and
+        returns once it exits. Output is capped and the run is time-bounded,
+        because a synchronous request cannot stream forever - for long or
+        interactive work, open the websocket instead.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Makes a retry return the first result instead of re-running. A retry
+            that arrives while the first is still running waits for it. Results
+            are remembered for 5 minutes. Reusing a key with a different body is
+            a `409`.
+          schema:
+            type: string
+          example: build-2f0c1a
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecRequest"
+            example:
+              command: pnpm build
+              cwd: ~/app
+              timeout: 600
+      responses:
+        "200":
+          description: The command exited. A non-zero `exit_code` is still a `200`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecResult"
+        "400":
+          description: No `command`, or `env` is not an object of strings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |
+            Invalid or missing API key - also what an instance with no keys
+            returns for every request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The API is switched off (`COMPOSERY_DISABLE_API`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The `Idempotency-Key` was already used for a different request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: |
+            Over the per-key rate limit, too many concurrent execs, or too many
+            failed authentications from this address.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: The command could not be started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: The key store could not be read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "`Authorization: Bearer composery_...`"
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: The same key, for clients that cannot set `Authorization`.
+
+  schemas:
+    ExecRequest:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          description: The command line to run.
+          examples: ["pnpm build"]
+        cwd:
+          type: string
+          description: Working directory. `~` and `~/...` expand. Defaults to `$HOME`.
+          examples: ["~/app"]
+        env:
+          type: object
+          additionalProperties:
+            type: string
+          description: Variables laid over the instance environment.
+          examples: [{ CI: "1" }]
+        timeout:
+          type: number
+          description: |
+            Seconds before the command is stopped, capped at the instance's own
+            ceiling. Defaults to `COMPOSERY_API_EXEC_TIMEOUT`.
+          exclusiveMinimum: 0
+          examples: [600]
+
+    ExecResult:
+      type: object
+      required: [stdout, stderr, exit_code, timed_out, truncated]
+      properties:
+        stdout:
+          type: string
+        stderr:
+          type: string
+        exit_code:
+          type: integer
+          description: "`-1` if the process was killed before reporting one."
+        timed_out:
+          type: boolean
+          description: The `timeout` elapsed and the command was stopped.
+        truncated:
+          type: boolean
+          description: |
+            Combined output hit `COMPOSERY_API_EXEC_MAX_OUTPUT` and the rest was
+            dropped.
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string

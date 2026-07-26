@@ -175,9 +175,9 @@ describe("runtime process managers", () => {
 		// the kernel has mounted the delta (the post-pivot re-exec into finalize),
 		// so it always runs once the delta is live for either engine.
 		expect(entrypoint).toContain("/opt/composery/remove-password.sh");
-		expect(entrypoint.indexOf("/opt/composery/remove-password.sh")).toBeLessThan(
-			entrypoint.indexOf("persistence select-engine")
-		);
+		expect(
+			entrypoint.indexOf("/opt/composery/remove-password.sh")
+		).toBeLessThan(entrypoint.indexOf("persistence select-engine"));
 		expect(entrypoint.indexOf("composery persistence apply")).toBeLessThan(
 			entrypoint.lastIndexOf("finalize")
 		);
@@ -286,6 +286,62 @@ describe("runtime process managers", () => {
 
 		expect(documented.length).toBeGreaterThan(20);
 		expect(documented.filter((name) => !wired.has(name))).toEqual([]);
+	});
+
+	// The cloud configuration surface is a third copy of these names, after the
+	// docs and the code that reads them. A key offered there but not wired is a
+	// switch an owner flips that does nothing at all - the same inert-path failure
+	// the test above exists to catch, one layer further out. The managed and
+	// infrastructure variables are checked from the other direction: offering any
+	// of them would let a saved configuration take a box off its own password or
+	// detach it from the control plane.
+	test("only offers box configuration for variables that are documented and wired", async () => {
+		const { RUNTIME_CONFIG_KEYS } =
+			await import("../packages/web/convex/boxes/runtimeConfig");
+		const documented = new Set(
+			[
+				...readRepoFile("docs/configuration.md").matchAll(
+					/`(COMPOSERY_[A-Z_]+)`/g
+				)
+			].flatMap((match) => match[1] ?? [])
+		);
+		const wired = envNamesUnder([
+			"Dockerfile",
+			"packages/cli/crates",
+			"packages/ide/overlay/src",
+			"packages/ide/patches",
+			"packages/ide/scripts",
+			"rootfs",
+			"scripts"
+		]);
+
+		const offered = RUNTIME_CONFIG_KEYS.filter((key: string) =>
+			key.startsWith("COMPOSERY_")
+		);
+		expect(offered.length).toBeGreaterThan(10);
+		expect(offered.filter((key: string) => !documented.has(key))).toEqual([]);
+		expect(offered.filter((key: string) => !wired.has(key))).toEqual([]);
+
+		// Variables the website owns, or that the rendered compose file and
+		// Caddyfile are written against. None may be owner-configurable.
+		for (const managed of [
+			"COMPOSERY_HASHED_PASSWORD",
+			"COMPOSERY_PASSWORD",
+			"COMPOSERY_REMOVE_PASSWORD",
+			"COMPOSERY_CLOUD_BOX_ID",
+			"COMPOSERY_CLOUD_ORIGIN",
+			// Written by the website so a box knows which digest it was started as.
+			// An owner who could set it would make their box report a version it is
+			// not running.
+			"COMPOSERY_RUNTIME_IMAGE",
+			"COMPOSERY_INIT",
+			"COMPOSERY_IDE_PORT",
+			"COMPOSERY_DOCKER_VOLUME_PATH",
+			"COMPOSERY_PERSISTENCE",
+			"COMPOSERY_CONFIG"
+		]) {
+			expect(RUNTIME_CONFIG_KEYS).not.toContain(managed);
+		}
 	});
 
 	test("bridges cloud identity and the managed password into the IDE service", () => {

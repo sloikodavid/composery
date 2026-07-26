@@ -11,7 +11,7 @@ use std::{
 use crate::{
     baseline::{BaselineDb, BaselineRecord},
     config::Config,
-    metadata::{MetadataRecord, MetadataStore},
+    metadata::{self, MetadataRecord, MetadataStore},
     paths::Paths,
     public::{self, PublicPath},
     rootfs::{self, FileKind, FsFacts},
@@ -393,7 +393,7 @@ fn hardlink_key(live: &FsFacts) -> Option<String> {
 
 fn metadata_record(public_path: &PublicPath, live: &FsFacts) -> Result<MetadataRecord> {
     let mut record = MetadataRecord {
-        version: 1,
+        version: metadata::FORMAT_VERSION,
         path: String::new(),
         path_bytes_b64: String::new(),
         kind: live.kind.as_str().to_string(),

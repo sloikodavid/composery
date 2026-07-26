@@ -1,34 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { vBoxStatus, type BoxStatus } from "../schema";
+import {
+	vBoxOperationType,
+	vBoxStatus,
+	type BoxOperationType,
+	type BoxStatus
+} from "../schema";
 import {
 	OPERATION_ALLOWED_STATUSES,
 	isActiveOperationStatus,
 	isOperationAllowed
 } from "./boxOperationRules";
 
-// Derived from the schema so new statuses can't silently drift out of coverage.
+// Both derived from the schema so a new status or operation type cannot silently
+// drift out of coverage. Restating either list here would mean a new operation
+// gets an empty allowlist and is simply never permitted, with every test still
+// green.
 const EVERY_STATUS: BoxStatus[] = vBoxStatus.members.map(
+	(member) => member.value
+);
+const EVERY_OPERATION: BoxOperationType[] = vBoxOperationType.members.map(
 	(member) => member.value
 );
 
 describe("OPERATION_ALLOWED_STATUSES", () => {
 	it("covers every operation type", () => {
 		expect(Object.keys(OPERATION_ALLOWED_STATUSES).sort()).toEqual(
-			[
-				"provision",
-				"delete",
-				"reset",
-				"stop",
-				"start",
-				"change_password",
-				"change_slug",
-				"suspend",
-				"unsuspend",
-				"restore",
-				"snapshot",
-				"repair"
-			].sort()
+			[...EVERY_OPERATION].sort()
 		);
+	});
+
+	it("gives every operation at least one status it can start from", () => {
+		for (const type of EVERY_OPERATION) {
+			expect(OPERATION_ALLOWED_STATUSES[type].length).toBeGreaterThan(0);
+		}
 	});
 
 	it("never references an unknown box status", () => {
@@ -109,6 +113,27 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 	it("allows deleting a box that is mid-repair or repair_failed", () => {
 		expect(isOperationAllowed("repairing", "delete")).toBe(true);
 		expect(isOperationAllowed("repair_failed", "delete")).toBe(true);
+	});
+
+	// Update recreates the container on a new image, so it needs a live host to
+	// reach over SSH, exactly like Repair. Retrying from its own failed state
+	// covers the transient case (registry unreachable, pull timed out).
+	it("updates a running box or retries a failed update, but not an off box", () => {
+		expect(isOperationAllowed("running", "update")).toBe(true);
+		expect(isOperationAllowed("update_failed", "update")).toBe(true);
+		expect(isOperationAllowed("stopped", "update")).toBe(false);
+		expect(isOperationAllowed("suspended", "update")).toBe(false);
+		expect(isOperationAllowed("updating", "update")).toBe(false);
+		expect(isOperationAllowed("provisioning_failed", "update")).toBe(false);
+	});
+
+	// The rollback path. A box broken by an update is recovered by repairing it:
+	// Repair renders the compose file from `box.runtime_image`, which an update
+	// only advances after the new image has answered, so repairing a failed
+	// update reinstates the last image known to serve. If this ever returns
+	// false, a failed update has no recovery that keeps the box's files.
+	it("repairs a box left broken by a failed update", () => {
+		expect(isOperationAllowed("update_failed", "repair")).toBe(true);
 	});
 
 	it("allows deleting from every live state except deleting/deleted", () => {

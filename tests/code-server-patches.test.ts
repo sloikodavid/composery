@@ -2179,12 +2179,36 @@ describe("narrow overlay", () => {
 		);
 	});
 
-	// A wrong relative import path in a patch (or a stale one after the gate file
-	// moves) only explodes at Docker-build time. Resolve every touchGate import
-	// the stack adds against the file the gate patch actually creates.
-	test("every patched touchGate import resolves to the gate file", () => {
-		const gateFile = "lib/vscode/src/vs/base/browser/touchGate.ts";
-		expect(existsSync(resolve(repoRoot, TOUCH_GATE))).toBe(true);
+	// A wrong relative import path in a patch - a typo, or a stale one after the
+	// imported file moves - only explodes at Docker-build time, and only for the
+	// one import someone happened to notice. So resolve every relative import the
+	// stack adds against the tree the build actually assembles: upstream, plus the
+	// overlay copied over it, plus whatever the series itself creates.
+	test("every patched relative import resolves in the assembled tree", () => {
+		// The specifiers are runtime `.js`; the sources are `.ts`, or `.css` for a
+		// style side-effect import.
+		const EXTENSIONS = [".ts", ".d.ts", ".js", ".css"];
+		const created = new Set(
+			seriesNames.flatMap((name) =>
+				[
+					...readRepoFile(`${PATCHES_DIR}/${name}`).matchAll(
+						/^--- \/dev\/null\n\+\+\+ b\/(.+)$/gm
+					)
+				].map((match) => match[1])
+			)
+		);
+
+		const resolves = (path: string) =>
+			EXTENSIONS.some(
+				(extension) =>
+					existsSync(
+						resolve(repoRoot, "packages/ide/upstream", path + extension)
+					) ||
+					existsSync(
+						resolve(repoRoot, "packages/ide/overlay", path + extension)
+					) ||
+					created.has(path + extension)
+			);
 
 		let imports = 0;
 		for (const name of seriesNames) {
@@ -2193,18 +2217,25 @@ describe("narrow overlay", () => {
 				const file = /^\+\+\+ b\/(.+)$/.exec(line);
 				if (file?.[1]) target = file[1];
 
-				const imported = /^\+import .* from '(\S*touchGate\.js)';$/.exec(line);
-				const importPath = imported?.[1];
+				// Both `import x from './y.js'` and a bare `import './y.js'`.
+				const importPath = /^\+\s*(?:import|export)\b[^']*'(\.[^']*)';$/.exec(
+					line
+				)?.[1];
 				if (!importPath) continue;
 
 				imports++;
+				const joined = posix.join(posix.dirname(target), importPath);
 				expect(
-					posix.join(posix.dirname(target), importPath),
-					`${name} imports touchGate from ${target}`
-				).toBe(gateFile.replace(/\.ts$/, ".js"));
+					resolves(joined.replace(/\.js$/, "")),
+					`${name}: ${target} imports ${importPath}, which resolves to nothing`
+				).toBe(true);
 			}
 		}
-		expect(imports).toBeGreaterThan(0);
+		// The gates are the imports most likely to move; assert the stack still has
+		// enough of them that an emptied loop cannot pass as a green check.
+		expect(imports).toBeGreaterThan(50);
+		expect(existsSync(resolve(repoRoot, TOUCH_GATE))).toBe(true);
+		expect(existsSync(resolve(repoRoot, NARROW_GATE))).toBe(true);
 	});
 });
 
@@ -2466,13 +2497,37 @@ describe("composery shortcuts", () => {
 // and a mocked composery CLI.
 // ---------------------------------------------------------------------------
 
+type ApiKeysItem = {
+	buttons?: Array<{ iconPath: { id: string }; tooltip: string }>;
+	description?: string;
+	detail?: string;
+	kind?: number;
+	label: string;
+};
+
+// A pick is either a label to accept, or a label whose item button to press.
+type ApiKeysPick = string | { button: string };
+
 type ApiKeysHarness = {
 	clipboard: string[];
 	commands: Map<string, () => Promise<void>>;
 	errors: string[];
 	execCalls: string[][];
+	shown: Array<{
+		items: ApiKeysItem[];
+		placeholder: string | undefined;
+		title: string | undefined;
+	}>;
 	warnings: string[];
 };
+
+function firstShown(harness: ApiKeysHarness) {
+	const [shown] = harness.shown;
+	if (!shown) {
+		throw new Error("The picker was never shown");
+	}
+	return shown;
+}
 
 function loadApiKeysExtension({
 	env = {},
@@ -2484,7 +2539,7 @@ function loadApiKeysExtension({
 	env?: Record<string, string>;
 	inputText?: string;
 	modalAction?: string;
-	picks?: string[];
+	picks?: ApiKeysPick[];
 	responses?: unknown[];
 }): { run: () => Promise<void>; harness: ApiKeysHarness } {
 	const extension = readRepoFile(
@@ -2495,6 +2550,7 @@ function loadApiKeysExtension({
 		commands: new Map(),
 		errors: [],
 		execCalls: [],
+		shown: [],
 		warnings: []
 	};
 	const vscode = {
@@ -2512,7 +2568,77 @@ function loadApiKeysExtension({
 				}
 			}
 		},
+		QuickPickItemKind: { Default: 0, Separator: -1 },
+		ThemeIcon: class {
+			id: string;
+			constructor(id: string) {
+				this.id = id;
+			}
+		},
 		window: {
+			// Drives one scripted pick per show(): the extension registers its
+			// handlers before showing, so firing from show() needs no scheduling.
+			createQuickPick() {
+				const handlers: {
+					accept?: () => void;
+					button?: (event: { button: unknown; item: ApiKeysItem }) => void;
+					hide?: () => void;
+				} = {};
+				const picker = {
+					items: [] as ApiKeysItem[],
+					placeholder: undefined as string | undefined,
+					selectedItems: [] as ApiKeysItem[],
+					title: undefined as string | undefined,
+					dispose() {},
+					hide() {
+						handlers.hide?.();
+					},
+					onDidAccept(callback: () => void) {
+						handlers.accept = callback;
+						return { dispose() {} };
+					},
+					onDidHide(callback: () => void) {
+						handlers.hide = callback;
+						return { dispose() {} };
+					},
+					onDidTriggerItemButton(
+						callback: (event: { button: unknown; item: ApiKeysItem }) => void
+					) {
+						handlers.button = callback;
+						return { dispose() {} };
+					},
+					show() {
+						harness.shown.push({
+							items: picker.items,
+							placeholder: picker.placeholder,
+							title: picker.title
+						});
+						const pick = picks.shift();
+						if (pick === undefined) {
+							picker.hide();
+							return;
+						}
+						const label = typeof pick === "string" ? pick : pick.button;
+						const item = picker.items.find((entry) => entry.label === label);
+						if (!item) {
+							throw new Error(`No quick pick item labelled "${label}"`);
+						}
+						if (typeof pick === "string") {
+							picker.selectedItems = [item];
+							handlers.accept?.();
+							return;
+						}
+						// A button the row never rendered cannot be pressed, so a
+						// scripted press has to fail rather than fire the handler.
+						const [button] = item.buttons ?? [];
+						if (!button) {
+							throw new Error(`No item button on "${label}"`);
+						}
+						handlers.button?.({ button, item });
+					}
+				};
+				return picker;
+			},
 			showErrorMessage(message: string) {
 				harness.errors.push(message);
 				return Promise.resolve(undefined);
@@ -2522,14 +2648,6 @@ function loadApiKeysExtension({
 			},
 			showInputBox() {
 				return Promise.resolve(inputText);
-			},
-			showQuickPick(items: Array<{ label: string }>) {
-				const pick = picks.shift();
-				return Promise.resolve(
-					pick === undefined
-						? undefined
-						: items.find((item) => item.label === pick)
-				);
 			},
 			showWarningMessage(message: string) {
 				harness.warnings.push(message);
@@ -2673,6 +2791,98 @@ describe("composery api keys", () => {
 		]);
 	});
 
+	test("every listed key advertises its revoke button below a separator", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			responses: [
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "composery_abcd1234"
+						},
+						{
+							created_at: 1752710400,
+							id: "k2",
+							name: "deploy",
+							prefix: "composery_efgh5678"
+						}
+					]
+				}
+			]
+		});
+
+		await run();
+
+		const { items } = firstShown(harness);
+		expect(items.map((item) => item.label)).toEqual([
+			"$(add) Create API Key",
+			"",
+			"ci",
+			"deploy"
+		]);
+		// The separator only groups; the create action never carries a revoke.
+		expect(items[1]?.kind).toBe(-1);
+		expect(items[0]?.buttons).toBeUndefined();
+		for (const item of items.slice(2)) {
+			expect(item.buttons).toEqual([
+				{ iconPath: { id: "trash" }, tooltip: "Revoke Key" }
+			]);
+		}
+	});
+
+	test("an empty list drops the separator and says so", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			responses: [{ keys: [] }]
+		});
+
+		await run();
+
+		const { items, placeholder } = firstShown(harness);
+		expect(items.map((item) => item.label)).toEqual(["$(add) Create API Key"]);
+		expect(placeholder).toBe("No API keys yet - create one to enable the API");
+	});
+
+	test("the revoke button revokes the key it sits on", async () => {
+		const { harness, run } = loadApiKeysExtension({
+			modalAction: "Revoke",
+			picks: [{ button: "deploy" }],
+			responses: [
+				{
+					keys: [
+						{
+							created_at: 1752710400,
+							id: "k1",
+							name: "ci",
+							prefix: "composery_abcd1234"
+						},
+						{
+							created_at: 1752710400,
+							id: "k2",
+							name: "deploy",
+							prefix: "composery_efgh5678"
+						}
+					]
+				},
+				{ id: "k2", revoked: true },
+				{ keys: [] }
+			]
+		});
+
+		await run();
+
+		expect(harness.warnings[0]).toBe('Revoke API key "deploy"?');
+		expect(harness.execCalls[1]).toEqual([
+			"composery",
+			"api",
+			"key",
+			"revoke",
+			"k2",
+			"--json"
+		]);
+	});
+
 	test("a dismissed confirmation revokes nothing", async () => {
 		const { harness, run } = loadApiKeysExtension({
 			picks: ["ci"],
@@ -2759,11 +2969,17 @@ type UpdatesHarness = {
 
 function loadUpdatesExtension({
 	action,
+	cloudBoxId,
+	cloudOrigin,
+	fleet,
 	release,
 	source = "https://github.com/sloikodavid/composery.git",
 	version = "1.2.3"
 }: {
 	action?: string;
+	cloudBoxId?: string;
+	cloudOrigin?: string;
+	fleet?: { version?: string | null };
 	release?: UpdatesRelease;
 	source?: string;
 	version?: string;
@@ -2818,12 +3034,14 @@ function loadUpdatesExtension({
 	} = { exports: {} };
 	const context = vm.createContext({
 		AbortSignal: { timeout: () => ({}) },
+		URL,
 		fetch: (url: string) => {
 			harness.fetchCalls.push(url);
+			const body = url.includes("/api/cloud/") ? fleet : release;
 			return Promise.resolve({
-				ok: release !== undefined,
+				ok: body !== undefined,
 				json() {
-					return Promise.resolve(release);
+					return Promise.resolve(body);
 				}
 			});
 		},
@@ -2831,7 +3049,9 @@ function loadUpdatesExtension({
 		process: {
 			env: {
 				COMPOSERY_BUILD_SOURCE: source,
-				COMPOSERY_BUILD_VERSION: version
+				COMPOSERY_BUILD_VERSION: version,
+				COMPOSERY_CLOUD_BOX_ID: cloudBoxId,
+				COMPOSERY_CLOUD_ORIGIN: cloudOrigin
 			}
 		},
 		require(name: string) {
@@ -2976,6 +3196,197 @@ describe("composery updates", () => {
 		expect(harness.messages).toEqual([
 			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
 		]);
+	});
+
+	// A cloud box runs what the fleet's runtime channel resolved to, which lags
+	// the latest GitHub release on purpose, and its owner cannot pull an image -
+	// the website updates the box over SSH. Both halves of the GitHub answer are
+	// therefore wrong there: the version it compares against, and the page it
+	// offers to open.
+	const CLOUD = {
+		cloudBoxId: "k17abc",
+		cloudOrigin: "https://www.composery.io"
+	};
+
+	test("a cloud box asks the website and offers its own box page", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			...CLOUD,
+			action: "View Box",
+			fleet: { version: "1.3.0" },
+			release: {
+				html_url:
+					"https://github.com/sloikodavid/composery/releases/tag/v9.9.9",
+				prerelease: false,
+				tag_name: "v9.9.9"
+			}
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+
+		// The GitHub release is deliberately newer than the fleet's: whichever
+		// version is announced says which oracle was consulted.
+		expect(harness.fetchCalls).toEqual([
+			"https://www.composery.io/api/cloud/runtime"
+		]);
+		expect(harness.messages).toEqual([
+			"Composery 1.3.0 is available for this box. You have 1.2.3. Update it from the box's page on Composery Cloud."
+		]);
+		expect(harness.opened).toEqual(["https://www.composery.io/boxes/k17abc"]);
+	});
+
+	test("a cloud box that is on the fleet release says only that", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			...CLOUD,
+			fleet: { version: "1.2.3" }
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.messages).toEqual([
+			"Composery 1.2.3 is the current Composery Cloud release."
+		]);
+	});
+
+	test("an unreachable website never falls back to GitHub", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			...CLOUD,
+			release: {
+				html_url:
+					"https://github.com/sloikodavid/composery/releases/tag/v1.3.0",
+				prerelease: false,
+				tag_name: "v1.3.0"
+			}
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.fetchCalls).toEqual([
+			"https://www.composery.io/api/cloud/runtime",
+			"https://www.composery.io/api/cloud/runtime"
+		]);
+		expect(harness.messages).toEqual([
+			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
+		]);
+	});
+
+	test("a fleet release the website has not cached yet is not 'up to date'", async () => {
+		const { activate, harness } = loadUpdatesExtension({
+			...CLOUD,
+			fleet: { version: null }
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.messages).toEqual([
+			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
+		]);
+	});
+
+	test("a cloud box with no origin checks nothing at all", async () => {
+		// Half a pair is a misconfigured cloud box, not a self-hosted one. Asking
+		// GitHub would answer a question about an image this owner cannot install.
+		const { activate, harness } = loadUpdatesExtension({
+			cloudBoxId: CLOUD.cloudBoxId,
+			release: {
+				html_url:
+					"https://github.com/sloikodavid/composery/releases/tag/v1.3.0",
+				prerelease: false,
+				tag_name: "v1.3.0"
+			}
+		});
+
+		activate({ subscriptions: [] });
+		await flushUpdatesExtension();
+		harness.commands.get("composery.checkForUpdates")?.();
+		await flushUpdatesExtension();
+
+		expect(harness.fetchCalls).toEqual([]);
+		expect(harness.messages).toEqual([
+			"Couldn't check for updates. You have Composery 1.2.3. Try again later."
+		]);
+	});
+
+	test("the box's two cloud URLs match what the website serves", () => {
+		// Neither the endpoint nor the box path can be imported here (the box runs
+		// them as plain CommonJS against a website in another package), so pin the
+		// spellings to the files that answer them.
+		expect(
+			existsSync(
+				resolve(repoRoot, "packages/web/app/api/cloud/runtime/route.ts")
+			)
+		).toBe(true);
+		expect(extension).toContain('new URL("/api/cloud/runtime"');
+		expect(readRepoFile("packages/web/lib/box-route.ts")).toContain(
+			"return `/boxes/${boxId}`"
+		);
+		expect(extension).toContain("`/boxes/${CLOUD_BOX_ID}`");
+	});
+
+	test("the public endpoint exposes the fleet release and nothing about the fleet", () => {
+		// Unauthenticated and reachable by anyone, so what it can read is the
+		// guard. It carries the current image digest and version label, because a
+		// box compares its own COMPOSERY_RUNTIME_IMAGE against that digest and the
+		// two Composery surfaces must not disagree about the same box. The digest
+		// is the content address of a public image, not a credential.
+		//
+		// What must never appear is anything about the *fleet's policy*: the
+		// minimum-version floor and its deadline are staff decisions, and a route
+		// that reached for the settings object would hand them out. Comments are
+		// stripped first because they name those things to explain their absence,
+		// and an assertion that cannot tell prose from code would report on the
+		// wrong thing.
+		const route = readRepoFile(
+			"packages/web/app/api/cloud/runtime/route.ts"
+		).replace(/^\s*\/\/.*$/gm, "");
+		expect(route).toContain("api.boxes.runtimeRelease.fleetVersion");
+		for (const withheld of ["deadline", "minimum", "readGlobalSettings"]) {
+			expect(route, withheld).not.toContain(withheld);
+		}
+
+		const query = readRepoFile("packages/web/convex/boxes/runtimeRelease.ts");
+		const start = query.indexOf("export const fleetVersion");
+		expect(start).toBeGreaterThanOrEqual(0);
+		// Comments stripped for the same reason as the route above: this query's
+		// own comment names the floor and its deadline to explain why neither is
+		// returned, and an assertion that cannot tell prose from code would fail on
+		// the explanation rather than on the behaviour.
+		const body = query
+			.slice(start, query.indexOf("\n});", start))
+			.replace(/^\s*\/\/.*$/gm, "");
+		// The `returns` validator is the real gate: whatever the handler builds,
+		// Convex will not send a field this does not name.
+		expect(body).toContain("settings.runtimeRelease?.version ?? null");
+		expect(body).toContain("settings.runtimeRelease?.image ?? null");
+		for (const withheld of ["minimumRuntime", "deadline", "checkout"]) {
+			expect(body, withheld).not.toContain(withheld);
+		}
+	});
+
+	// The box can only compare digests if the website tells it which one it was
+	// started as; an image cannot contain its own digest. This pins the two ends
+	// of that: the env file the website renders, and the variable the extension
+	// reads.
+	test("the website tells a cloud box which digest it is running", () => {
+		const artifacts = readRepoFile(
+			"packages/web/convex/boxes/infra/runtimeArtifacts.ts"
+		);
+		expect(artifacts).toContain("COMPOSERY_RUNTIME_IMAGE=");
+		// Managed, so a box owner's own configuration can never overwrite it and
+		// make the box lie about what it runs.
+		expect(artifacts).toMatch(
+			/MANAGED_ENV_KEYS[\s\S]*"COMPOSERY_RUNTIME_IMAGE"/
+		);
+		expect(extension).toContain("process.env.COMPOSERY_RUNTIME_IMAGE");
 	});
 });
 

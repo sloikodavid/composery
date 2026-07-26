@@ -22,6 +22,8 @@ export const vBoxStatus = v.union(
 	v.literal("reset_failed"),
 	v.literal("repairing"),
 	v.literal("repair_failed"),
+	v.literal("updating"),
+	v.literal("update_failed"),
 	v.literal("restoring"),
 	v.literal("restore_failed"),
 	v.literal("suspending"),
@@ -34,12 +36,38 @@ export const vBoxStatus = v.union(
 
 export type BoxStatus = Infer<typeof vBoxStatus>;
 
+export const BOX_STATUSES: BoxStatus[] = vBoxStatus.members.map(
+	(member) => member.value
+);
+
+// "Every box status except these."
+//
+// Several rules mean "all live boxes": which ones hold a server against
+// capacity, which ones keep their slug reserved, which ones a subscription is
+// reconciled against, which ones roll metrics up. Each of those was a
+// hand-written subset of the union, and a subset is exactly what the type
+// checker cannot check - so every status added since has had to be pasted into
+// all of them by hand, and `repair_failed` had already fallen out of the metrics
+// rollup that way.
+//
+// The direction of the failure is what makes this worth deriving rather than
+// remembering: a status missing from one of these lists means a box that quietly
+// stops counting against capacity, or stops holding its own slug so someone else
+// can claim it. Naming the exclusions inverts that - a new status is in every
+// list by default and only leaves one deliberately.
+export function boxStatusesExcept(
+	...excluded: readonly BoxStatus[]
+): BoxStatus[] {
+	return BOX_STATUSES.filter((status) => !excluded.includes(status));
+}
+
 export const vBoxBeginStatus = v.union(
 	v.literal("provisioning"),
 	v.literal("stopping"),
 	v.literal("starting"),
 	v.literal("resetting"),
 	v.literal("repairing"),
+	v.literal("updating"),
 	v.literal("restoring"),
 	v.literal("suspending"),
 	v.literal("suspended"),
@@ -52,6 +80,7 @@ export const vBoxFailureStatus = v.union(
 	v.literal("provisioning_failed"),
 	v.literal("reset_failed"),
 	v.literal("repair_failed"),
+	v.literal("update_failed"),
 	v.literal("restore_failed"),
 	v.literal("delete_failed"),
 	v.literal("running"),
@@ -71,7 +100,9 @@ export const vBoxOperationType = v.union(
 	v.literal("unsuspend"),
 	v.literal("restore"),
 	v.literal("snapshot"),
-	v.literal("repair")
+	v.literal("repair"),
+	v.literal("update"),
+	v.literal("change_config")
 );
 
 export const vBoxOperationStatus = v.union(
@@ -136,6 +167,17 @@ export const vSnapshotPolicy = v.object({
 	automatic_retention_days: v.number()
 });
 export type StoredSnapshotPolicy = Infer<typeof vSnapshotPolicy>;
+
+// What the deployment's RUNTIME_IMAGE channel last resolved to, refreshed on a
+// schedule and cached fleet-wide. Every box compares its own `runtime_image`
+// against `image` here; `version` is the label read off that digest and exists
+// only so the interface can say "0.2.1" instead of a hash.
+export const vRuntimeRelease = v.object({
+	image: v.string(),
+	version: v.union(v.string(), v.null()),
+	checked_at: v.number()
+});
+export type StoredRuntimeRelease = Infer<typeof vRuntimeRelease>;
 
 export const vSnapshotClass = v.union(
 	v.literal("manual"),
@@ -236,7 +278,18 @@ export default defineSchema({
 		comped_at: v.optional(v.number()),
 		comp_reason: v.optional(v.string()),
 		runtime_image: v.optional(v.string()),
+		// The version label of `runtime_image`, recorded beside it so a box can say
+		// what it runs without the interface asking a registry per page view. Null
+		// where the registry would not tell us; the digest above is what every
+		// comparison actually uses.
+		runtime_version: v.optional(v.string()),
 		runtime_auth_hash: v.optional(v.string()),
+		// The owner's own environment variables for this box, already validated
+		// against the allowlist in `boxes/runtimeConfig.ts`. Held on the row rather
+		// than applied once, because every path that rewrites the box's env file
+		// renders it from here - so a Reset, Repair, update, or password change
+		// cannot quietly revert what the owner configured.
+		runtime_config: v.optional(v.record(v.string(), v.string())),
 		password_setup_pending_at: v.optional(v.number()),
 		hetzner_server_id: v.optional(v.number()),
 		hetzner_server_type: v.optional(vServerType),
@@ -339,6 +392,18 @@ export default defineSchema({
 		.index("box_id_created_at", ["box_id", "created_at"])
 		.index("user_id", ["user_id"])
 		.index("type", ["type"]),
+
+	// One row per box, tracking whether it is answering. Only the running count
+	// matters: automatic repair fires on a box that has been unreachable for
+	// several consecutive checks, so a single number and the last time it was fine
+	// is the whole state. Deliberately not an event stream - the cost of this has
+	// to stay flat in the number of boxes, not grow with how long they run.
+	box_health: defineTable({
+		box_id: v.id("boxes"),
+		consecutive_failures: v.number(),
+		last_ok_at: v.optional(v.number()),
+		updated_at: v.number()
+	}).index("box_id", ["box_id"]),
 
 	box_metrics: defineTable({
 		box_id: v.id("boxes"),
@@ -452,6 +517,13 @@ export default defineSchema({
 		max_active_checkout_intents_per_user: v.optional(v.number()),
 		thresholds: v.optional(v.array(vThreshold)),
 		snapshot_policy: v.optional(vSnapshotPolicy),
+		runtime_release: v.optional(vRuntimeRelease),
+		// The floor below which a box is not allowed to stay: a digest, plus the
+		// moment owners of older boxes stop being asked and start being updated.
+		// Absent means no floor - every update is the owner's choice.
+		minimum_runtime_image: v.optional(v.string()),
+		minimum_runtime_version: v.optional(v.string()),
+		minimum_runtime_deadline: v.optional(v.number()),
 		capacity_alert_reason: v.optional(
 			v.union(v.literal("server_limit"), v.literal("snapshot_limit"))
 		),

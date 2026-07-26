@@ -17,19 +17,21 @@
 		"dev:tree": "node scripts/tree.mjs --watch",
 		"theme": "node scripts/color-console/server.mjs",
 		"check": "pnpm check:portable && pnpm check:cli && pnpm check:renovate",
-		"check:portable": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:ide && pnpm check:shared && pnpm check:native-config",
+		"check:portable": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:runbook && pnpm check:ide && pnpm check:shared && pnpm check:native-config",
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",
 		"check:lint": "eslint . --max-warnings 0 && pnpm -r --if-present run check:lint",
 		"check:format": "prettier --check .",
 		"check:test": "vitest run",
 		"check:tree": "node scripts/tree.mjs",
+		"check:runbook": "node scripts/runbook.mjs",
 		"check:renovate": "pnpm dlx --package renovate renovate-config-validator renovate.json",
 		"check:ide": "pnpm --filter ide check",
 		"check:cli": "node scripts/cli.mjs",
 		"check:shared": "pnpm --filter shared check",
 		"check:native-config": "pnpm --filter mobile check:native-config",
-		"fix": "pnpm fix:tree && pnpm fix:lint && pnpm fix:format && pnpm fix:cli",
+		"fix": "pnpm fix:tree && pnpm fix:runbook && pnpm fix:lint && pnpm fix:format && pnpm fix:cli",
 		"fix:tree": "node scripts/tree.mjs --write",
+		"fix:runbook": "node scripts/runbook.mjs --write",
 		"fix:lint": "eslint . --fix && pnpm -r --if-present run fix:lint",
 		"fix:format": "prettier --write .",
 		"fix:cli": "node scripts/cli.mjs --fix",
@@ -55,6 +57,7 @@
 		"prettier": "catalog:",
 		"typescript": "catalog:",
 		"typescript-eslint": "8.65.0",
-		"vitest": "catalog:"
+		"vitest": "catalog:",
+		"yaml": "^2.9.0"
 	}
 }

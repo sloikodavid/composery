@@ -106,11 +106,13 @@ export const recordServerRebuilt = internalMutation({
 export const setRuntimeImage = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
-		runtimeImage: v.string()
+		runtimeImage: v.string(),
+		runtimeVersion: v.optional(v.union(v.string(), v.null()))
 	},
 	handler: async (ctx, args) => {
 		await ctx.db.patch(args.boxId, {
 			runtime_image: args.runtimeImage,
+			runtime_version: args.runtimeVersion ?? undefined,
 			updated_at: Date.now()
 		});
 	}
@@ -224,7 +226,10 @@ export const markOperationFailed = internalMutation({
 			"delete",
 			"reset",
 			"restore",
-			"repair"
+			"repair",
+			// An update recreates the container of a box that was working, so a
+			// failure can leave it not serving - the same blast radius as a repair.
+			"update"
 		]).has(operationType);
 		await sendStaffAlert(ctx, {
 			key: `box-operation-failed:${args.operationId}`,
@@ -325,6 +330,79 @@ export const markRepairSucceeded = internalMutation({
 			updated_at: timestamp
 		});
 		await appendBoxEvent(ctx, box, "box.repair_succeeded");
+	}
+});
+
+// The end of an update, and the only place `runtime_image` advances for one.
+//
+// Advancing the row is deliberately the *last* thing that happens, in the same
+// transaction that settles the operation: until the new image has pulled,
+// recreated the container, and answered as a serving editor, the row keeps
+// naming the image that last worked. That is what makes a failed update
+// recoverable without a dedicated rollback path - Repair renders the compose
+// file from this field, so repairing a box whose update died puts the old image
+// back. Writing the digest earlier (when the workflow resolves it, or before the
+// SSH step) would make Repair reinstall the image that just broke the box, and
+// would turn an automatic repair into a loop that reapplies the failure.
+export const markUpdateSucceeded = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		operationId: v.id("box_operations"),
+		runtimeImage: v.string(),
+		runtimeVersion: v.union(v.string(), v.null())
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		const timestamp = Date.now();
+		await ctx.db.patch(args.boxId, {
+			status: "running",
+			runtime_image: args.runtimeImage,
+			runtime_version: args.runtimeVersion ?? undefined,
+			updated_at: timestamp
+		});
+		await ctx.db.patch(args.operationId, {
+			status: "succeeded",
+			finished_at: timestamp,
+			updated_at: timestamp
+		});
+		await appendBoxEvent(ctx, box, "box.update_succeeded", {
+			metadata: { from: box.runtime_image, to: args.runtimeImage }
+		});
+	}
+});
+
+// The end of a configuration change, and the only place `runtime_config`
+// advances. Written last, after the editor has answered on the new environment,
+// for the same reason `markUpdateSucceeded` holds back the image digest: the row
+// is what every later env-file render reads, so it must only ever hold a
+// configuration the box has actually booted with.
+export const markConfigApplied = internalMutation({
+	args: {
+		boxId: v.id("boxes"),
+		config: v.record(v.string(), v.string()),
+		operationId: v.id("box_operations")
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.db.get(args.boxId);
+		if (!box) throw new ConvexError("Box not found.");
+
+		const timestamp = Date.now();
+		await ctx.db.patch(args.boxId, {
+			runtime_config: args.config,
+			updated_at: timestamp
+		});
+		await ctx.db.patch(args.operationId, {
+			status: "succeeded",
+			finished_at: timestamp,
+			updated_at: timestamp
+		});
+		// The keys, never the values: a box's configuration can hold a GitHub token
+		// and an event log is read by staff.
+		await appendBoxEvent(ctx, box, "box.config_applied", {
+			metadata: { keys: Object.keys(args.config).sort() }
+		});
 	}
 });
 

@@ -58,6 +58,34 @@ describe("parseImageReference", () => {
 		});
 	});
 
+	// Everything resolved after provisioning is a digest reference, so this is the
+	// path that matters most. Splitting on the last colon instead would yield the
+	// repository "composery@sha256" and the tag "abc" - a perfectly well-formed
+	// URL for an image that does not exist, so the failure would be a 404 far from
+	// its cause rather than anything that names the real problem.
+	it("splits a digest reference on the @, not the last colon", () => {
+		expect(
+			parseImageReference("ghcr.io/sloikodavid/composery@sha256:abc123")
+		).toEqual({
+			registry: "ghcr.io",
+			repository: "sloikodavid/composery",
+			reference: "sha256:abc123"
+		});
+	});
+
+	it("handles a digest on Docker Hub and on a host with a port", () => {
+		expect(parseImageReference("nginx@sha256:def")).toEqual({
+			registry: "docker.io",
+			repository: "library/nginx",
+			reference: "sha256:def"
+		});
+		expect(parseImageReference("registry:5000/team/img@sha256:def")).toEqual({
+			registry: "registry:5000",
+			repository: "team/img",
+			reference: "sha256:def"
+		});
+	});
+
 	it("does not add library/ to a non-Docker-Hub registry", () => {
 		const parsed = parseImageReference("ghcr.io/nginx");
 		expect(parsed.repository).toBe("nginx");
@@ -73,6 +101,12 @@ describe("runtimeImageManifestUrl", () => {
 		expect(runtimeImageManifestUrl("nginx")).toBe(
 			"https://registry-1.docker.io/v2/library/nginx/manifests/latest"
 		);
+	});
+
+	it("addresses a digest reference by its digest", () => {
+		expect(
+			runtimeImageManifestUrl("ghcr.io/sloikodavid/composery@sha256:abc123")
+		).toBe("https://ghcr.io/v2/sloikodavid/composery/manifests/sha256:abc123");
 	});
 
 	it("uses Docker Hub's registry API host for Docker Hub references", () => {

@@ -1,12 +1,42 @@
 use anyhow::Result;
 use clap::Parser;
+use std::sync::OnceLock;
 
 use crate::commands;
+
+/// What `composery --version` reports.
+///
+/// Read from the environment at runtime, not from `CARGO_PKG_VERSION`. The
+/// product version lives in the repository's root `package.json`; the release
+/// workflow derives the image tags and this variable from it, and the image sets
+/// it for every process in the container. Taking it from Cargo instead would put
+/// a second copy of the release number in `Cargo.toml` where nothing updates it,
+/// which is how a box came to be able to announce one version in its editor and
+/// a different one here.
+///
+/// Compile-time (`option_env!`) would need the version plumbed into the Rust
+/// build stage, and that stage is cached by cargo-chef precisely so a source
+/// change does not rebuild every dependency; feeding it a value that changes
+/// every release would throw that cache away for nothing.
+///
+/// Outside the image there is no release, so "unknown" is the honest answer -
+/// the same word the editor's update notifier uses for a build with no release
+/// version, and for the same reason.
+fn version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        std::env::var("COMPOSERY_BUILD_VERSION")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "unknown".to_string())
+    })
+}
 
 #[derive(Debug, Parser)]
 #[command(
     name = "composery",
-    version,
+    version = version(),
     about = "Composery control CLI",
     subcommand_required = true,
     arg_required_else_help = true,

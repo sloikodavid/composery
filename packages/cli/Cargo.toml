@@ -3,7 +3,13 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+# Deliberately inert, like every other private workspace package here. These
+# crates are never published, and the product version lives in exactly one place
+# - the repository's root package.json, which the release workflow reads. The
+# binary reports that version at runtime (see crates/composery/src/cli.rs), so
+# nothing needs this number to be accurate and nobody has to remember to bump it.
+# A test keeps it at 0.0.0 so a second real version cannot creep back in.
+version = "0.0.0"
 edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0"

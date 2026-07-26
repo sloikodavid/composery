@@ -4,13 +4,15 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import {
 	AnimatedIconAnchor,
-	AnimatedIconButton
+	AnimatedIconButton,
+	AnimatedIconLink
 } from "@/components/animated-icon";
 import { BoxStatusAction } from "@/components/boxes/status-action";
 import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
 import { MonitorCard } from "@/components/boxes/monitor-card";
 import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
+import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
 	type MetricsRange
@@ -20,6 +22,7 @@ import { Card, CardContent } from "@/components/base/card";
 import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
+import { boxPath } from "@/lib/box-route";
 import { formatDate } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +40,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 	const retryProvision = useMutation(api.user.boxes.retryProvision);
 	const changeSlug = useMutation(api.user.boxes.changeSlug);
 	const repair = useAction(api.user.boxes.repair);
+	const updateBox = useAction(api.user.boxes.update);
 	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.user.boxes.runtimeLogs);
 	const { busy, run } = useBusyAction();
@@ -133,10 +137,28 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 				>
 					Change password
 				</AnimatedIconAnchor>
+				<AnimatedIconLink
+					className={cn(buttonVariants({ variant: "outline" }))}
+					href={`${boxPath(boxId)}/configuration`}
+					icon="pen-tool"
+					iconPosition="start"
+				>
+					Configure
+				</AnimatedIconLink>
 				<ChangeSlugDialog
 					onSubmit={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
 				/>
 				<BoxSnapshots slug={box.slug} status={box.status} />
+				<UpdateDialog
+					boxStatus={box.status}
+					busy={busy}
+					onUpdate={() =>
+						run("update", "Update started", () => updateBox({ slug: box.slug }))
+					}
+					runtime={detail.runtime}
+					slug={box.slug}
+					update={detail.update}
+				/>
 				<RepairDialog
 					boxStatus={box.status}
 					busy={busy}

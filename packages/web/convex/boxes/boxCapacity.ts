@@ -1,27 +1,12 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
-import type { BoxStatus } from "../schema";
+import { boxStatusesExcept, type BoxStatus } from "../schema";
 import type { SnapshotPolicy } from "./snapshotPolicy";
 
-export const CAPACITY_BOX_STATUSES = [
-	"provisioning",
-	"running",
-	"provisioning_failed",
-	"stopping",
-	"stopped",
-	"starting",
-	"resetting",
-	"reset_failed",
-	"repairing",
-	"repair_failed",
-	"restoring",
-	"restore_failed",
-	"suspending",
-	"suspended",
-	"unsuspending",
-	"deleting",
-	"delete_failed"
-] as const satisfies readonly BoxStatus[];
+// Every status but "deleted" holds a Hetzner server, so every one of them counts
+// against the allocation.
+export const CAPACITY_BOX_STATUSES: readonly BoxStatus[] =
+	boxStatusesExcept("deleted");
 
 const SNAPSHOT_COMMITMENT_STATUSES = new Set<Doc<"box_snapshots">["status"]>([
 	"pending",

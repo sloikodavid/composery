@@ -94,6 +94,33 @@ crons.daily(
 	{}
 );
 
+// Aligned with metrics polling: both sweep every running box, and the
+// consecutive-failure count automatic repair gates on is expressed in these
+// ticks (see boxes/autoRepair.ts).
+crons.interval(
+	"sweep box health",
+	{ minutes: 10 },
+	internal.boxes.autoRepair.sweepBoxHealth,
+	{}
+);
+
+// Hourly rather than per box or per page view: one registry round trip answers
+// "what does the channel resolve to now" for the entire fleet.
+crons.hourly(
+	"refresh runtime release",
+	{ minuteUTC: 26 },
+	internal.boxes.runtimeRelease.refreshRuntimeRelease,
+	{}
+);
+
+// Reads the refreshed release, so it runs after it within the same hour.
+crons.hourly(
+	"update boxes past their floor deadline",
+	{ minuteUTC: 41 },
+	internal.boxes.runtimeFloor.updateBoxesPastDeadline,
+	{}
+);
+
 crons.daily(
 	"snapshot running boxes",
 	{ hourUTC: 3, minuteUTC: 7 },
@@ -109,7 +136,7 @@ crons.daily(
 
 // Runs after the snapshot/expiry crons so it reconciles the settled state.
 crons.daily(
-	"reconcile hetzner resources",
+	"reconcile Hetzner resources",
 	{ hourUTC: 5, minuteUTC: 17 },
 	internal.boxes.reconcile.reconcileHetznerResources
 );

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -12,6 +12,50 @@ use std::{
 
 #[cfg(unix)]
 use crate::{public::PublicPath, rootfs::XattrRecord};
+
+/// The `metadata.jsonl` record format this build writes and knows how to read.
+///
+/// The volume is self-describing on purpose: every record carries the version it
+/// was written under, so the reader can decide rather than the image having to
+/// declare a format out of band. That is why nothing else - no OCI label, no
+/// deployment variable - restates this number; a second copy could disagree with
+/// the code that actually parses the records.
+pub const FORMAT_VERSION: u8 = 1;
+
+/// Reject a record this build cannot read, rather than parsing it as if it were
+/// ours. Serde fills unknown fields in and ignores extra ones, so a record
+/// written by a newer Composery deserializes perfectly happily and is then
+/// applied with the wrong meaning - wrong modes, owners, and xattrs written onto
+/// a live root filesystem, with nothing to notice it. Refusing to start is
+/// recoverable; a silently misapplied delta is not.
+///
+/// Newer versions are the case that actually happens (a box was downgraded, or a
+/// volume moved to an older image), so it gets its own message. A future build
+/// that can read more than one version replaces the equality check with the set
+/// it supports; it must keep accepting every older version it can still read, or
+/// upgrades break.
+fn check_supported_version(version: u8, path: &Path, line: usize) -> Result<()> {
+    if version == FORMAT_VERSION {
+        return Ok(());
+    }
+    if version > FORMAT_VERSION {
+        bail!(
+            "{} line {} was written by a newer Composery (metadata format {}, this build reads {}). \
+             Start this box on the image that wrote its volume, or restore a backup taken before the downgrade.",
+            path.display(),
+            line,
+            version,
+            FORMAT_VERSION
+        );
+    }
+    bail!(
+        "{} line {} declares unknown metadata format {} (this build reads {}).",
+        path.display(),
+        line,
+        version,
+        FORMAT_VERSION
+    )
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -194,6 +238,7 @@ fn load_compacted(path: &Path) -> Result<BTreeMap<Vec<u8>, MetadataRecord>> {
         }
         let record: MetadataRecord = serde_json::from_str(&line)
             .with_context(|| format!("parse {} line {}", path.display(), index + 1))?;
+        check_supported_version(record.version, path, index + 1)?;
         records.insert(record.key()?, record);
     }
     Ok(records)
@@ -261,12 +306,15 @@ fn ensure_real_dir(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MetadataRecord, MetadataStore, compact, load, remove, remove_subtree, upsert};
+    use super::{
+        FORMAT_VERSION, MetadataRecord, MetadataStore, compact, load, remove, remove_subtree,
+        replace, upsert,
+    };
     use std::{fs, os::unix::fs::symlink};
 
     fn record(path: &str) -> MetadataRecord {
         let mut record = MetadataRecord {
-            version: 1,
+            version: FORMAT_VERSION,
             path: String::new(),
             path_bytes_b64: String::new(),
             kind: "file".into(),
@@ -457,6 +505,62 @@ mod tests {
 
         assert!(error.contains("real file"));
         assert_eq!(fs::read_to_string(outside).unwrap(), "outside");
+    }
+
+    #[test]
+    fn metadata_reads_refuse_a_record_written_by_a_newer_build() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        // What a downgraded box finds on its volume. Every field this build
+        // knows is present and valid, and serde ignores the extra one, so the
+        // record deserializes perfectly - the version is the only thing that
+        // says it does not mean what this build would take it to mean.
+        fs::write(
+            &path,
+            r#"{"version":2,"path":"/a","pathBytesB64":"L2E=","kind":"file","mode":420,"somethingNew":true}
+"#,
+        )
+        .unwrap();
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.contains("newer Composery"), "{error}");
+        assert!(error.contains("metadata format 2"), "{error}");
+    }
+
+    #[test]
+    fn metadata_reads_refuse_an_unknown_older_format() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        fs::write(
+            &path,
+            r#"{"version":0,"path":"/a","pathBytesB64":"L2E=","kind":"file"}
+"#,
+        )
+        .unwrap();
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.contains("unknown metadata format 0"), "{error}");
+    }
+
+    #[test]
+    fn the_writer_stamps_the_version_the_reader_accepts() {
+        // The guard above is only worth having if what we write passes it. If
+        // the writer's stamp and the reader's accepted set ever drift, every
+        // box refuses to boot on its own metadata - so pin them together rather
+        // than trusting two independent literals to stay equal.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+
+        replace(&path, &[record("/a")]).unwrap();
+
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(
+            written.contains(&format!("\"version\":{FORMAT_VERSION}")),
+            "{written}"
+        );
+        assert_eq!(load(&path).unwrap().len(), 1);
     }
 
     #[test]

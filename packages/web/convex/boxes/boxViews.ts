@@ -1,6 +1,8 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { cloudUrl } from "../env";
+import { readGlobalSettings } from "../settings";
+import { runtimeStanding } from "./runtimeRelease";
 
 type OperationSummary = {
 	status: Doc<"box_operations">["status"];
@@ -38,6 +40,29 @@ export function latestRepair(db: DatabaseReader, boxId: Id<"boxes">) {
 	return latestOperationSummary(db, boxId, "repair");
 }
 
+// The same for Update. A failed update leaves the box's row on the image that
+// last served (see workflows/updateBox.ts), so the status says an attempt failed
+// and this record is the only thing that says why.
+export function latestUpdate(db: DatabaseReader, boxId: Id<"boxes">) {
+	return latestOperationSummary(db, boxId, "update");
+}
+
+// A box's version standing, read once against the cached fleet release so the
+// owner page and the staff console cannot disagree about whether an update is
+// available or overdue.
+export async function boxRuntimeStanding(
+	db: DatabaseReader,
+	box: Doc<"boxes">
+) {
+	const settings = await readGlobalSettings({ db });
+	return runtimeStanding({
+		boxImage: box.runtime_image,
+		boxVersion: box.runtime_version,
+		fleet: settings.runtimeRelease,
+		minimum: settings.minimumRuntime
+	});
+}
+
 export function safeBox(box: Doc<"boxes">) {
 	return {
 		id: box._id,
@@ -50,7 +75,8 @@ export function safeBox(box: Doc<"boxes">) {
 		deletedAt: box.deleted_at,
 		purgeAt: box.purge_at,
 		polarSubscriptionId: box.polar_subscription_id ?? null,
-		comp: box.comped_at !== undefined
+		comp: box.comped_at !== undefined,
+		runtimeVersion: box.runtime_version ?? null
 	};
 }
 

@@ -1,8 +1,10 @@
 import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
 
-// What the Repair dialog makes of a runtime inspection. `muted` means "we could
-// not read this", never "this is fine" - `summarize` leans on that distinction
-// to keep an unread box from reporting itself healthy.
+// What a box dialog makes of a state it read rather than one it controls.
+// `muted` means "we could not read this", never "this is fine" - `summarize`
+// leans on that distinction to keep an unread box from reporting itself healthy,
+// and `lib/runtime-update` leans on it to keep a box we cannot compare from
+// reporting itself up to date. `components/boxes/tone-icon` draws it.
 export type Tone = "ok" | "warn" | "bad" | "muted";
 
 export type Check = {

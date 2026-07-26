@@ -35,7 +35,12 @@ import { readGlobalSettings } from "../settings";
 import { startWorkflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
-import { latestRepair, staffBox } from "../boxes/boxViews";
+import {
+	boxRuntimeStanding,
+	latestRepair,
+	latestUpdate,
+	staffBox
+} from "../boxes/boxViews";
 import {
 	markSnapshotDeleting,
 	snapshotView,
@@ -298,7 +303,11 @@ export const boxDetail = query({
 			user: user ? publicUser(user) : null,
 			subscription,
 			suspendedReason,
-			repair: await latestRepair(ctx.db, box._id)
+			repair: await latestRepair(ctx.db, box._id),
+			update: await latestUpdate(ctx.db, box._id),
+			// Read the same standing the owner page reads, so staff are never told a
+			// different story about the version a box is on than its owner is.
+			runtime: await boxRuntimeStanding(ctx.db, box)
 		};
 	}
 });
@@ -558,6 +567,28 @@ export const repair = action({
 		});
 		if (!operationId) {
 			throw new ConvexError("This box is already being repaired.");
+		}
+	}
+});
+
+export const update = action({
+	args: { boxId: v.id("boxes") },
+	handler: async (ctx, args): Promise<void> => {
+		await requireCapabilityInAction(ctx, "box_operations");
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		if (!box) throw new ConvexError("Box not found.");
+		// Staff and owner keys are separate so a staff update is not deduplicated
+		// against an owner's in-flight one and silently reported as started.
+		// `beginBoxOperation` still refuses a second concurrent operation on the
+		// box, so the two cannot overlap - one of them is told the box is busy.
+		const operationId = await startBoxOperation(ctx, box._id, "update", {
+			idempotencyKey: `staff-update:${box._id}`
+		});
+		if (!operationId) {
+			throw new ConvexError("This box is already being updated.");
 		}
 	}
 });

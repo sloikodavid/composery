@@ -17,6 +17,7 @@ import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
+import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
 	type MetricsRange
@@ -297,6 +298,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 	const suspendBox = useAction(api.staff.boxes.suspendBox);
 	const unsuspendBox = useAction(api.staff.boxes.unsuspendBox);
 	const repair = useAction(api.staff.boxes.repair);
+	const updateBox = useAction(api.staff.boxes.update);
 	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
 	const runtimeLogs = useAction(api.staff.boxes.runtimeLogs);
 	const setUserSuspended = useAction(api.staff.users.setUserSuspended);
@@ -543,6 +545,18 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 									</AnimatedIconButton>
 								) : null}
 								<ConsoleBoxSnapshots boxId={box.id} status={box.status} />
+								<UpdateDialog
+									boxStatus={box.status}
+									busy={busy}
+									onUpdate={() =>
+										run("update", "Update started", () =>
+											updateBox({ boxId: box.id })
+										)
+									}
+									runtime={detail.runtime}
+									slug={box.slug}
+									update={detail.update}
+								/>
 								<RepairDialog
 									boxStatus={box.status}
 									busy={busy}

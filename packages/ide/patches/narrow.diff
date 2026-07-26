@@ -17,6 +17,20 @@ workbench part fullscreen at a time, and one editor group.
   into existence once one does not appear rather than dereferencing the group
   it never got, falling back to SIDE_GROUP as it already does for a column
   out of range.
+- Activity bar: `composery.activityBar.narrowLocation` (default `bottom`) is
+  the narrow viewport's own activity bar location, independent of
+  `workbench.activityBar.location` - one phone and one desktop browser share a
+  box's settings file, so a single key would have had them moving each other's
+  activity bar. narrowActivityBar.ts mirrors the narrow value onto the upstream
+  key in the memory target so every existing reader and change listener needs no
+  teaching, and configurationService.ts redirects writes of the upstream key to
+  the narrow one while narrow, so repositioning from the phone stays there.
+  workbench.ts installs the mirror between initServices and initLayout: any later
+  and the first mirror fires a layout listener that dereferences a grid
+  createWorkbenchLayout has not built yet.
+  sidebarPart.ts keys its remembered last-visible-position storage off the same
+  question, so hiding and unhiding the activity bar on a phone cannot restore the
+  wide position into the narrow setting.
 - Titlebar: the left flex region shrinks below the menubar's intrinsic width
   and the menubar flexes from zero, so MenuBar measures its real allocation
   and moves labels into overflow instead of pushing the title off-screen.
@@ -419,6 +433,29 @@ workbench part fullscreen at a time, and one editor group.
  .monaco-workbench .part.titlebar > .titlebar-container.has-center > .titlebar-center {
  	order: 1;
  	width: 60%;
+--- a/lib/vscode/src/vs/workbench/browser/workbench.ts
++++ b/lib/vscode/src/vs/workbench/browser/workbench.ts
+@@ -50,6 +50,7 @@ import { AccessibleViewRegistry } from '../../platform/accessibility/browser/acce
+ import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
+ import { IMarkdownRendererService } from '../../platform/markdown/browser/markdownRenderer.js';
+ import { EditorMarkdownCodeBlockRenderer } from '../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
++import { installNarrowActivityBarLocation } from './narrowActivityBar.js';
+ 
+ export interface IWorkbenchOptions {
+ 
+@@ -155,6 +156,12 @@ export class Workbench extends Layout {
+ 				setHoverDelegateFactory((placement, enableInstantHover) => instantiationService.createInstance(WorkbenchHoverDelegate, placement, { instantHover: enableInstantHover }, {}));
+ 				setBaseLayerHoverDelegate(hoverService);
+ 
++				// Composery: mirror the narrow-viewport activity bar location onto the setting the
++				// workbench reads, before initLayout seeds its state from that setting and subscribes
++				// to it. See narrowActivityBar.ts - any later and the first mirror runs a layout
++				// listener that dereferences a grid createWorkbenchLayout has not built yet.
++				this._register(installNarrowActivityBarLocation(configurationService));
++
+ 				// Layout
+ 				this.initLayout(accessor);
+ 
 --- a/lib/vscode/src/vs/workbench/common/editor.ts
 +++ b/lib/vscode/src/vs/workbench/common/editor.ts
 @@ -1186,7 +1186,14 @@ export interface IEditorWillMoveEvent extends IEditorIdentifier {
@@ -541,3 +578,78 @@ workbench part fullscreen at a time, and one editor group.
  				editorGroupService.addGroup(editorGroups[i - 1], preferredSideBySideGroupDirection(configurationService));
  			}
  		}
+--- a/lib/vscode/src/vs/workbench/services/configuration/browser/configurationService.ts
++++ b/lib/vscode/src/vs/workbench/services/configuration/browser/configurationService.ts
+@@ -46,6 +46,8 @@ import { IJSONEditingService } from '../common/jsonEditing.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../environment/browser/environmentService.js';
+ import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
+ import { mainWindow } from '../../../../base/browser/window.js';
++import { activityBarLocationKey } from '../../../browser/narrowActivityBar.js';
++import { LayoutSettings } from '../../layout/browser/layoutService.js';
+ import { runWhenWindowIdle } from '../../../../base/browser/dom.js';
+ import { renderAsPlaintext } from '../../../../base/browser/markdownRenderer.js';
+ import { fixSettingLinks } from '../../preferences/common/preferencesModels.js';
+@@ -343,6 +344,16 @@ export class WorkspaceService extends Disposable implements IWorkbenchConfigurat
+ 		const target: ConfigurationTarget | undefined = (overrides ? arg4 : arg3) as ConfigurationTarget | undefined;
+ 		const targets: ConfigurationTarget[] = target ? [target] : [];
+ 
++		// Composery: on a narrow viewport the activity bar location is its own setting, so every
++		// write of the upstream key - the "Move Activity Bar to ..." actions, the settings editor,
++		// an extension - lands there instead and leaves the wide setting alone. Off a narrow
++		// viewport activityBarLocationKey hands back the key it was given, so this is a no-op.
++		// MEMORY is how narrowActivityBar.ts mirrors the narrow value back onto the upstream key
++		// for the readers, and is the one write that must not be redirected into itself.
++		if (key === LayoutSettings.ACTIVITY_BAR_LOCATION && target !== ConfigurationTarget.MEMORY) {
++			key = activityBarLocationKey();
++		}
++
+ 		if (overrides?.overrideIdentifiers) {
+ 			overrides.overrideIdentifiers = distinct(overrides.overrideIdentifiers);
+ 			overrides.overrideIdentifiers = overrides.overrideIdentifiers.length ? overrides.overrideIdentifiers : undefined;
+--- a/lib/vscode/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/lib/vscode/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -43,6 +43,8 @@ export const enum ZenModeSettings {
+ 
+ export const enum LayoutSettings {
+ 	ACTIVITY_BAR_LOCATION = 'workbench.activityBar.location',
++	// Composery: the narrow-viewport counterpart of ACTIVITY_BAR_LOCATION, owned by narrowActivityBar.ts.
++	NARROW_ACTIVITY_BAR_LOCATION = 'composery.activityBar.narrowLocation',
+ 	ACTIVITY_BAR_AUTO_HIDE = 'workbench.activityBar.autoHide',
+ 	ACTIVITY_BAR_COMPACT = 'workbench.activityBar.compact',
+ 	EDITOR_TABS_MODE = 'workbench.editor.showTabs',
+--- a/lib/vscode/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+@@ -6,6 +6,7 @@
+ import './media/sidebarpart.css';
+ import './sidebarActions.js';
+ import { ActivityBarPosition, IWorkbenchLayoutService, LayoutSettings, Parts, Position as SideBarPosition } from '../../../services/layout/browser/layoutService.js';
++import { activityBarLocationDefault, activityBarLocationKey } from '../../narrowActivityBar.js';
+ import { SidebarFocusContext, ActiveViewletContext } from '../../../common/contextkeys.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+@@ -275,16 +276,22 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	private rememberActivityBarVisiblePosition(): void {
+ 		const activityBarPosition = this.configurationService.getValue<string>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+ 		if (activityBarPosition !== ActivityBarPosition.HIDDEN) {
+-			this.storageService.store(LayoutSettings.ACTIVITY_BAR_LOCATION, activityBarPosition, StorageScope.PROFILE, StorageTarget.USER);
++			// Composery: the two viewports remember their own last visible position, because one
++			// client is both over its lifetime - a phone rotated into landscape, a desktop window
++			// dragged narrow. A single key would restore the wide position into the narrow setting
++			// on the next unhide, which is the one thing splitting the settings is for.
++			this.storageService.store(activityBarLocationKey(), activityBarPosition, StorageScope.PROFILE, StorageTarget.USER);
+ 		}
+ 	}
+ 
+ 	private getRememberedActivityBarVisiblePosition(): ActivityBarPosition {
+-		const activityBarPosition = this.storageService.get(LayoutSettings.ACTIVITY_BAR_LOCATION, StorageScope.PROFILE);
++		const activityBarPosition = this.storageService.get(activityBarLocationKey(), StorageScope.PROFILE);
+ 		switch (activityBarPosition) {
+ 			case ActivityBarPosition.TOP: return ActivityBarPosition.TOP;
+ 			case ActivityBarPosition.BOTTOM: return ActivityBarPosition.BOTTOM;
+-			default: return ActivityBarPosition.DEFAULT;
++			// Composery: with nothing remembered, unhiding lands on the governing setting's own
++			// default - on a narrow viewport that is not `default`.
++			default: return activityBarLocationDefault();
+ 		}
+ 	}
+ 

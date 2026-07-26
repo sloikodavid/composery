@@ -1,5 +1,6 @@
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
 
 /* Remap fumadocs' fd-* tokens onto our palette. Must be plain (unlayered) rules,
    not `@theme inline` - inline never emits the variables, so neutral.css's gray

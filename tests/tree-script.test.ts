@@ -18,11 +18,17 @@ describe("tree path discovery", () => {
 	// against the real directory and took its spelling, so a committed case-only
 	// rename kept its pre-rename name on Windows and macOS and no case-sensitive
 	// checkout could ever agree. Names come from the index, exactly as stored.
+	//
+	// The fixture is a path whose *directory* segment is upper-case, because
+	// re-resolving a directory is the failure this guards. It deliberately names
+	// a path the repository cannot rename away from - an earlier version pinned a
+	// file under `prompts/` that was later moved, which left the test asserting
+	// the presence of a file no longer in the index.
 	test("reports the index's spelling, not the working tree's", () => {
 		const files = gitFiles();
 
-		expect(files).toContain("prompts/REFACTOR.md");
-		expect(files).not.toContain("prompts/refactor.md");
+		expect(files).toContain(".github/ISSUE_TEMPLATE/bug.yml");
+		expect(files).not.toContain(".github/issue_template/bug.yml");
 	});
 });
 

@@ -19,19 +19,38 @@ export function renderCaddyfile(domain: string, runtimePort: number) {
 `;
 }
 
+// The box's env file: the three variables the website manages, then whatever the
+// owner has configured.
+//
+// `config` is written last but can never shadow a managed variable, because
+// `normalizeRuntimeConfig` only admits keys on its allowlist and none of the
+// three below are on it. The ordering is therefore presentational, not a
+// precedence mechanism - do not turn it into one.
+//
+// This function is the reason a saved configuration survives the box's
+// lifecycle. Every path that rewrites the env file goes through here from the
+// box row: bootstrap, repair, reset, an update, and a password change. If the
+// owner's variables were held anywhere but the row - passed once at save time
+// and not stored - the next Reset or Repair would render an env file without
+// them and quietly revert every setting the owner had made.
 export function renderComposeryEnv({
 	cloudBoxId,
 	cloudOrigin,
-	runtimeAuthHash
+	config,
+	runtimeAuthHash,
+	runtimeImage
 }: {
 	cloudBoxId?: string;
 	cloudOrigin?: string;
+	config?: Readonly<Record<string, string>>;
 	runtimeAuthHash?: string;
+	runtimeImage?: string;
 }) {
 	if (Boolean(cloudBoxId) !== Boolean(cloudOrigin)) {
 		throw new Error("Cloud box id and origin must be configured together.");
 	}
-	return [
+
+	const managed = [
 		runtimeAuthHash
 			? `COMPOSERY_HASHED_PASSWORD=${quoteEnvFileValue(runtimeAuthHash)}`
 			: undefined,
@@ -40,12 +59,57 @@ export function renderComposeryEnv({
 			: undefined,
 		cloudOrigin
 			? `COMPOSERY_CLOUD_ORIGIN=${quoteEnvFileValue(cloudOrigin)}`
+			: undefined,
+		// The digest this container was started as, told to the box rather than
+		// derived by it.
+		//
+		// An image cannot contain its own digest: the digest is the hash of the
+		// manifest, which covers the config holding the image's own environment and
+		// labels, so writing the answer in changes it. That fixed point is why the
+		// build can only stamp a version *label* (COMPOSERY_BUILD_VERSION), and why
+		// the box could otherwise only compare labels while the website compares
+		// digests - leaving the editor able to say "current" about a rebuild the
+		// box page correctly offered an update for.
+		//
+		// There is no chicken and egg here though, because the box does not have to
+		// work it out. The website resolved this digest and wrote it into the very
+		// compose file that starts the container, so it is exactly what Docker
+		// pulled. Passing the same string through the env file costs nothing and
+		// lets both surfaces answer from the same fact.
+		runtimeImage
+			? `COMPOSERY_RUNTIME_IMAGE=${quoteEnvFileValue(runtimeImage)}`
 			: undefined
-	]
-		.filter(Boolean)
-		.join("\n")
-		.concat("\n");
+	].filter(Boolean) as string[];
+
+	// Sorted so an unchanged configuration renders an identical file every time.
+	// Compose decides whether to recreate a container partly from this file, and
+	// a stable order keeps a repair or a password change from looking like a
+	// configuration change.
+	const owner = Object.keys(config ?? {})
+		.sort()
+		.map((key) => {
+			if (MANAGED_ENV_KEYS.has(key)) {
+				throw new Error(
+					`${key} is managed by Composery and cannot be set as box configuration.`
+				);
+			}
+			return `${key}=${quoteEnvFileValue((config ?? {})[key])}`;
+		});
+
+	return [...managed, ...owner].join("\n").concat("\n");
 }
+
+// Belt and braces against the allowlist being widened carelessly later. The
+// allowlist is the real gate; this makes the consequence of getting it wrong a
+// loud failure at render time rather than a box that silently loses its password
+// or its link to the control plane.
+const MANAGED_ENV_KEYS = new Set([
+	"COMPOSERY_HASHED_PASSWORD",
+	"COMPOSERY_PASSWORD",
+	"COMPOSERY_CLOUD_BOX_ID",
+	"COMPOSERY_CLOUD_ORIGIN",
+	"COMPOSERY_RUNTIME_IMAGE"
+]);
 
 function quoteEnvFileValue(value: string) {
 	if (/[\r\n']/.test(value)) {
@@ -105,6 +169,7 @@ volumes:
 export function renderRuntimeArtifacts({
 	cloudBoxId,
 	cloudOrigin,
+	config,
 	domain,
 	runtimeAuthHash,
 	runtimeImage,
@@ -112,6 +177,7 @@ export function renderRuntimeArtifacts({
 }: {
 	cloudBoxId?: string;
 	cloudOrigin?: string;
+	config?: Readonly<Record<string, string>>;
 	domain: string;
 	runtimeAuthHash?: string;
 	runtimeImage: string;
@@ -120,6 +186,12 @@ export function renderRuntimeArtifacts({
 	return {
 		caddyfile: renderCaddyfile(domain, runtimePort),
 		compose: renderCompose(runtimeImage, runtimePort),
-		env: renderComposeryEnv({ cloudBoxId, cloudOrigin, runtimeAuthHash })
+		env: renderComposeryEnv({
+			cloudBoxId,
+			cloudOrigin,
+			config,
+			runtimeAuthHash,
+			runtimeImage
+		})
 	};
 }

@@ -1,7 +1,7 @@
 const vscode = require("vscode");
 const { execFile } = require("child_process");
 
-// A guided front for `composery api key ...` (docs/api.md). The CLI stays the
+// A guided front for `composery api key ...` (docs/api.mdx). The CLI stays the
 // single writer of the key store; anyone who can run this command can also open
 // the editor terminal, so the authorization boundary is unchanged.
 const COMMAND = "composery.manageApiKeys";
@@ -73,31 +73,65 @@ async function revokeKey(key) {
 	}
 }
 
+// Revoking is the only thing a listed key can do, so it rides a per-item trash
+// button the way upstream pickers carry theirs (prompt files, MCP servers): the
+// row shows what selecting it does before it is selected. touch.css keeps those
+// buttons visible where there is no hover, so the affordance survives on a phone.
+function pickKey(keys) {
+	return new Promise((resolve) => {
+		const picker = vscode.window.createQuickPick();
+		const create = { alwaysShow: true, label: "$(add) Create API Key" };
+		const revoke = {
+			iconPath: new vscode.ThemeIcon("trash"),
+			tooltip: "Revoke Key"
+		};
+		picker.title = "API Keys";
+		picker.placeholder = keys.length
+			? "Create a key, or revoke one"
+			: "No API keys yet - create one to enable the API";
+		picker.items = [
+			create,
+			// Unlabelled: it only separates the action from the list it acts on.
+			...(keys.length
+				? [{ kind: vscode.QuickPickItemKind.Separator, label: "" }]
+				: []),
+			...keys.map((key) => ({
+				buttons: [revoke],
+				description: `${key.prefix}...`,
+				detail: `Created ${new Date(key.created_at * 1000).toISOString().slice(0, 10)}`,
+				key,
+				label: key.name
+			}))
+		];
+
+		let result;
+		picker.onDidAccept(() => {
+			const [item] = picker.selectedItems;
+			if (item) {
+				result = item === create ? { create: true } : { key: item.key };
+			}
+			picker.hide();
+		});
+		picker.onDidTriggerItemButton((event) => {
+			result = { key: event.item.key };
+			picker.hide();
+		});
+		picker.onDidHide(() => {
+			picker.dispose();
+			resolve(result);
+		});
+		picker.show();
+	});
+}
+
 async function manageKeys() {
 	for (;;) {
 		const { keys } = await cli(["api", "key", "list"]);
-		const create = { label: "$(add) Create API Key" };
-		const choice = await vscode.window.showQuickPick(
-			[
-				create,
-				...keys.map((key) => ({
-					label: key.name,
-					description: `${key.prefix}...`,
-					detail: `Created ${new Date(key.created_at * 1000).toISOString().slice(0, 10)}`,
-					key
-				}))
-			],
-			{
-				title: "API Keys",
-				placeHolder: keys.length
-					? "Create a key, or pick one to revoke"
-					: "No API keys yet - create one to enable the API"
-			}
-		);
+		const choice = await pickKey(keys);
 		if (!choice) {
 			return;
 		}
-		if (choice === create) {
+		if (choice.create) {
 			await createKey();
 		} else {
 			await revokeKey(choice.key);

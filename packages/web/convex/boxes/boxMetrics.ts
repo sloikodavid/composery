@@ -6,7 +6,11 @@ import {
 	internalQuery,
 	type DatabaseReader
 } from "../_generated/server";
-import type { BoxFlagSignal, BoxStatus } from "../schema";
+import {
+	boxStatusesExcept,
+	type BoxFlagSignal,
+	type BoxStatus
+} from "../schema";
 import { readGlobalSettings } from "../settings";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import { consoleBoxPath } from "../../lib/box-route";
@@ -72,24 +76,10 @@ function presentThresholds(
 
 export const POLLED_STATUSES = ["running", "stopped", "suspended"] as const;
 
-const ROLLUP_BOX_STATUSES: readonly BoxStatus[] = [
-	"provisioning",
-	"running",
-	"provisioning_failed",
-	"stopping",
-	"stopped",
-	"starting",
-	"resetting",
-	"reset_failed",
-	"repairing",
-	"restoring",
-	"restore_failed",
-	"suspending",
-	"suspended",
-	"unsuspending",
-	"deleting",
-	"delete_failed"
-];
+// A deleted box has no samples left to roll up; every other status can.
+// Previously spelled out, which is how `repair_failed` came to be missing from
+// it - the rollup simply skipped those boxes.
+const ROLLUP_BOX_STATUSES: readonly BoxStatus[] = boxStatusesExcept("deleted");
 
 export const vPolledStatus = v.union(
 	v.literal("running"),

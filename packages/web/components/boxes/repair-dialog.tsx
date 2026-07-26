@@ -1,12 +1,6 @@
 "use client";
 
-import {
-	CircleCheckIcon,
-	CircleHelpIcon,
-	CircleXIcon,
-	LoaderIcon,
-	TriangleAlertIcon
-} from "lucide-react";
+import { LoaderIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
@@ -18,12 +12,12 @@ import {
 	DialogHeader,
 	DialogTitle
 } from "@/components/base/dialog";
+import { ToneIcon } from "@/components/boxes/tone-icon";
 import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
 import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
-import type { BoxStatus } from "@/convex/schema";
+import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
 import { errorMessage } from "@/lib/error-message";
 import { CHECKS, type Tone, buildChecks, summarize } from "@/lib/repair-status";
-import { cn } from "@/lib/utils";
 
 const TONE_BADGE = {
 	ok: "success",
@@ -32,46 +26,36 @@ const TONE_BADGE = {
 	muted: "secondary"
 } as const;
 
-function ToneIcon({ tone, className }: { tone: Tone; className?: string }) {
-	const base = cn("size-4 shrink-0", className);
-	if (tone === "ok") {
-		return <CircleCheckIcon className={cn(base, "text-success")} />;
-	}
-	if (tone === "warn") {
-		return <TriangleAlertIcon className={cn(base, "text-warning")} />;
-	}
-	if (tone === "bad") {
-		return <CircleXIcon className={cn(base, "text-destructive")} />;
-	}
-	return <CircleHelpIcon className={cn(base, "text-muted-foreground")} />;
-}
-
 // The last repair this box attempted. The dialog reads this record for the
 // precise progress and the error text behind a failure.
+//
+// The status is the schema's own union rather than restated literals. It used to
+// restate them and included a "cancelled" the schema has never had, so that
+// branch could not run - and, worse, the restatement meant adding a real status
+// would have compiled here and silently fallen through to it.
 export type RepairOperation = {
-	status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+	status: BoxOperationStatus;
 	error: string | null;
 	finishedAt: number | null;
 };
 
 function repairNotice(repair: RepairOperation | null) {
 	if (!repair) return null;
-	if (repair.status === "pending" || repair.status === "running") {
-		return {
-			tone: "muted" as Tone,
-			text: "Repairing this box now. The checks above update when it finishes."
-		};
+	switch (repair.status) {
+		case "pending":
+		case "running":
+			return {
+				tone: "muted" as Tone,
+				text: "Repairing this box now. The checks above update when it finishes."
+			};
+		case "failed":
+			return {
+				tone: "bad" as Tone,
+				text: `The last repair failed: ${repair.error ?? "no reason recorded"}. Your files are safe on the parking volume; repair again to resume.`
+			};
+		case "succeeded":
+			return { tone: "ok" as Tone, text: "The last repair finished." };
 	}
-	if (repair.status === "failed") {
-		return {
-			tone: "bad" as Tone,
-			text: `The last repair failed: ${repair.error ?? "no reason recorded"}. Your files are safe on the parking volume; repair again to resume.`
-		};
-	}
-	if (repair.status === "succeeded") {
-		return { tone: "ok" as Tone, text: "The last repair finished." };
-	}
-	return { tone: "muted" as Tone, text: "The last repair was cancelled." };
 }
 
 function unavailableReason(boxStatus: BoxStatus) {

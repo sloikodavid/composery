@@ -4,8 +4,8 @@ description: Deploy Composery with one container, one persistent /data volume, a
 ---
 
 Every Composery deployment is the same shape: **one container, one persistent volume at
-`/data`, one HTTP edge.** The [persistence](../persistence.md) daemon rebuilds the root
-filesystem from `/data` on boot, so the only hard requirement is a writable disk mounted
+`/data`, one HTTP edge.** [Persistence](../persistence.md) keeps the root filesystem's
+changes on `/data`, so the only hard requirement is a writable disk mounted
 there. Composery cannot externalize its state to a managed database, so platforms with an
 ephemeral filesystem and no attachable disk are [not viable](#not-viable).
 
@@ -49,8 +49,8 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 ## Updating
 
 Composery ships as a single rolling image; there is no migration step to run on upgrade.
-The [persistence](../persistence.md) daemon re-applies your saved deltas over each new
-image's baseline on boot, so an upgrade keeps your state:
+[Persistence](../persistence.md) lays your saved deltas over each new image's baseline, so
+an upgrade keeps your state:
 
 - your `/data` volume is never touched by an upgrade;
 - files you changed keep your version;
@@ -77,9 +77,54 @@ Choose how eagerly you take upgrades with the image tag:
 - `ghcr.io/sloikodavid/composery:0.1.0` - an exact build that changes only when you change
   the tag.
 
-Back up the `/data` volume before a major upgrade. Your changes are stored as deltas against
-the image baseline, so a volume backup is the clean way back if a major jump does not suit
-you.
+Back up the `/data` volume before a major upgrade - your changes are stored as deltas
+against the image baseline, so a volume backup is the clean way back if a major jump does
+not suit you. See [Backing up the volume](#backing-up-the-volume) for how to copy it
+without losing the delta.
+
+## Backing up the volume
+
+Copy the volume with a tool that preserves extended attributes, and copy it as root.
+
+Under the overlay engine - the default anywhere the container is privileged, which includes
+every recipe here that owns its host - the delta _is_ an overlayfs upper layer, so the
+filesystem attributes are the data. Deletions are recorded as `0:0` character device nodes
+and hidden directories as a `trusted.overlay.opaque` extended attribute. A copy that drops
+those does not fail; it silently returns files you deleted and hides files the new image
+ships. `cp -a`, `docker cp`, and a plain `tar` all drop them, and reading the `trusted.*`
+namespace needs root in the first place.
+
+Stop the container first so nothing is mid-write, then copy the volume's contents from the
+host:
+
+```bash
+docker compose stop
+sudo rsync -aHAXS --numeric-ids --delete \
+  "$(docker volume inspect composery_data --format '{{ .Mountpoint }}')/" \
+  ./composery-data-backup/
+docker compose start
+```
+
+Those flags are the same set Composery uses internally to move a box's files between hosts:
+`-a` (recursive, symlinks, permissions, times, owner, devices), `-H` (hardlinks), `-A`
+(ACLs), `-X` (all extended-attribute namespaces, including `trusted.*` when run as root),
+`-S` (sparse files), and `--numeric-ids` (no uid/gid remapping).
+
+Restore by copying it back the same way, into a stopped container's volume:
+
+```bash
+docker compose stop
+sudo rsync -aHAXS --numeric-ids --delete \
+  ./composery-data-backup/ \
+  "$(docker volume inspect composery_data --format '{{ .Mountpoint }}')/"
+docker compose start
+```
+
+On a managed platform that cannot grant container privileges you get the copy engine
+instead, where the delta is ordinary files plus a JSON metadata sidecar and any faithful
+file copy will do. Use the platform's own volume backup or snapshot feature; you have no
+host to run the commands above on. See [Persistence](../persistence.md#engines) for which
+engine a target gets, and `composery persistence status` for which one an instance chose.
 
 ## Hardening
 
@@ -95,7 +140,8 @@ boundary - Composery is intentionally root-capable inside the container:
   restart;
 - keep the image [updated](#updating);
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;
-- back up the named Docker volume or the mounted `/data` disk before major upgrades.
+- [back up](#backing-up-the-volume) the named Docker volume or the mounted `/data` disk
+  before major upgrades.
 
 ## Forgotten password
 

@@ -2,30 +2,14 @@ import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { isValidSlug } from "../../lib/box-slug";
+import { boxStatusesExcept } from "../schema";
 
 type ReadCtx = { db: DatabaseReader };
 
 // "deleted" is the only status excluded, so a slug frees up once its box is
 // gone but stays reserved through every active, failed, or suspended state.
-export const SLUG_OCCUPYING_STATUSES: readonly Doc<"boxes">["status"][] = [
-	"provisioning",
-	"running",
-	"provisioning_failed",
-	"stopping",
-	"stopped",
-	"starting",
-	"resetting",
-	"reset_failed",
-	"repairing",
-	"repair_failed",
-	"restoring",
-	"restore_failed",
-	"suspending",
-	"suspended",
-	"unsuspending",
-	"deleting",
-	"delete_failed"
-];
+export const SLUG_OCCUPYING_STATUSES: readonly Doc<"boxes">["status"][] =
+	boxStatusesExcept("deleted");
 
 async function activeBoxWithSlug(
 	ctx: ReadCtx,

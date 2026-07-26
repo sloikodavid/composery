@@ -81,15 +81,16 @@ export async function createRuntime(
 // Rebuild the existing VPS disk from the base image, preserving the server and
 // Primary IP resources while still removing any host-level damage.
 export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
-	const runtimeImage = await step.runAction(
-		internal.boxes.infra.runtimeImages.resolveConfiguredRuntimeImage,
+	const release = await step.runAction(
+		internal.boxes.infra.runtimeImages.resolveConfiguredRuntimeRelease,
 		{},
 		{ retry: true }
 	);
 
 	await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
 		boxId: box._id,
-		runtimeImage
+		runtimeImage: release.image,
+		runtimeVersion: release.version
 	});
 
 	const server = await step.runAction(

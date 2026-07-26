@@ -392,7 +392,7 @@ async function assertApiSmoke() {
 	// the connection must stop the streaming and nothing else, or a command
 	// started over HTTP could never be picked up in the editor afterwards. Prove
 	// it from outside: detach while the command is still running and watch it
-	// finish anyway. (docs/api.md makes this promise; nothing else checks it.)
+	// finish anyway. (docs/api.mdx makes this promise; nothing else checks it.)
 	const detachedMarker = `/tmp/composery-detached-${RUN_ID}`;
 	const detached = await ptyWebsocket(
 		key,

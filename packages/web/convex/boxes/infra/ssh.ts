@@ -86,26 +86,42 @@ ${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
 ${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}`;
 }
 
-// Writes the runtime files and brings the stack up. `repair` restarts every
-// container even when its config is unchanged - healing a wedged or crashed one
-// - and then holds until the editor answers, so the operation only reports
-// success once the box is genuinely back. Named volumes (the box's files)
-// survive either way.
+// Writes the runtime files and brings the stack up. The three callers differ on
+// exactly three axes, so one function decides all of them and no caller can
+// assemble a combination nobody reasoned about:
+//
+//   - **bootstrap** - a first boot. The pull is a precondition (there is no
+//     local image to fall back to), nothing needs force-recreating because
+//     nothing is running, and there is no promise to keep about the editor.
+//   - **repair** - "get this box serving again". Force-recreate restarts a
+//     wedged container whose config still matches, which is exactly what
+//     `up -d` skips, and the pull is tolerant (below).
+//   - **update** - "move this box to a new image". The pull is a precondition
+//     again: if the new image cannot be fetched there is nothing to update to,
+//     and continuing would restart the box on its old image and then report the
+//     new one as running. Compose recreates the service whose image reference
+//     changed, so force-recreate would only add an unnecessary restart of the
+//     containers that did not change.
+//
+// Both repair and update hold until the editor answers, so success means the
+// box genuinely serves. Named volumes (the box's files) survive all three.
+export type BootstrapType = "bootstrap" | "repair" | "update";
+
 export function bootstrapScript({
 	caddyfile,
 	compose,
 	env,
-	repair = false
+	type = "bootstrap"
 }: {
 	caddyfile: string;
 	compose: string;
 	env: string;
-	repair?: boolean;
+	type?: BootstrapType;
 }) {
 	return `set -euo pipefail
 ${writeRuntimeFilesScript({ caddyfile, compose, env })}
 ${
-	repair
+	type === "repair"
 		? // Repair exists to get a broken box serving again, so a pull is an
 			// upgrade attempt, not a precondition: under `set -e` an unreachable
 			// registry or a pruned digest would abort before anything restarts and
@@ -115,8 +131,8 @@ ${
 			`docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull || echo "Could not pull the runtime image; repairing with the image already on this host." >&2`
 		: `docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} pull`
 }
-docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${repair ? " --force-recreate" : ""}
-${repair ? AWAIT_IDE : ""}`;
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${type === "repair" ? " --force-recreate" : ""}
+${type === "bootstrap" ? "" : AWAIT_IDE}`;
 }
 
 // The whole stderr stream is not an error message. `docker compose` narrates
@@ -136,15 +152,22 @@ export function sshFailure(stderr: string, code: number | null) {
 export const PARKING_MOUNT = "/mnt/composery-parking";
 
 // The fidelity flags a Repair's copies stand or fall on. The box's files are a
-// persistence delta, not ordinary files: it stores xattrs (including the
-// `trusted.overlay.*` set on the overlay upper), ACLs, file capabilities,
-// hardlinks, device nodes - the whiteouts are character devices 0:0 - and sparse
-// files. `cp -a` silently drops most of these and the box comes back subtly
-// corrupted, so every copy uses one shared flag set: -a (recursive, symlinks,
-// perms, times, group, owner, devices), -H (hardlinks), -A (ACLs), -X (all
-// xattr namespaces - as root this includes `trusted.*`), -S (sparse), and
-// --numeric-ids (no uid/gid remapping). One constant so the copy and its
-// verification can never disagree about what "faithful" means.
+// persistence delta, not ordinary files, and on a cloud box the delta is an
+// overlayfs upper layer: `renderCompose` runs the container privileged, so the
+// engine probe succeeds and every box here runs `overlay` rather than `copy`.
+// That makes these flags load-bearing rather than defensive - under overlay the
+// filesystem attributes *are* the data. It stores xattrs (including the
+// `trusted.overlay.*` set on the upper, where `opaque` is what hides a
+// directory), ACLs, file capabilities, hardlinks, device nodes - the whiteouts
+// recording deletions are character devices 0:0 - and sparse files. `cp -a`
+// silently drops most of these and the box comes back subtly corrupted:
+// deleted files returning, new image content hidden. So every copy uses one
+// shared flag set: -a (recursive, symlinks, perms, times, group, owner,
+// devices), -H (hardlinks), -A (ACLs), -X (all xattr namespaces - as root this
+// includes `trusted.*`), -S (sparse), and --numeric-ids (no uid/gid remapping).
+// One constant so the copy and its verification can never disagree about what
+// "faithful" means. `docs/self-hosting/index.md` documents the same set as the
+// volume backup recipe, for the same reason.
 const RSYNC_FIDELITY_FLAGS = "-aHAXS --numeric-ids";
 
 // rsync is tiny and usually preinstalled on the Docker-CE host image, but not
@@ -451,16 +474,25 @@ export const inspectRuntime = internalAction({
 
 // The runtime files a box's SSH scripts write, built from its current row. One
 // place so bootstrap and a repair's steps can never render them differently.
-function runtimeArtifactsForBox(box: Doc<"boxes">) {
-	if (!box.runtime_image) {
+//
+// `runtimeImage` overrides the row for the one operation that is deliberately
+// writing a compose file the row does not describe yet: an update renders the
+// image it is moving *to*, while `box.runtime_image` still records the last
+// image known to serve. The row is only advanced once the new one has answered
+// (see `updateBox`), which is what makes a failed update leave a compose file
+// Repair can roll back from.
+function runtimeArtifactsForBox(box: Doc<"boxes">, runtimeImage?: string) {
+	const image = runtimeImage ?? box.runtime_image;
+	if (!image) {
 		throw new Error("Box has no runtime image.");
 	}
 	return renderRuntimeArtifacts({
 		cloudBoxId: box._id,
 		cloudOrigin: websiteOrigin(),
+		config: box.runtime_config,
 		domain: runtimeDomain(box.slug),
 		runtimeAuthHash: box.runtime_auth_hash,
-		runtimeImage: box.runtime_image,
+		runtimeImage: image,
 		runtimePort: runtimePort()
 	});
 }
@@ -485,7 +517,40 @@ export const repairRuntime = internalAction({
 
 		await runSsh(
 			sshTarget(box.hetzner_ipv4),
-			bootstrapScript({ ...artifacts, repair: true })
+			bootstrapScript({ ...artifacts, type: "repair" })
+		);
+	}
+});
+
+// Move a running box to `runtimeImage`, keeping its files. The named volumes are
+// untouched and the host is not rebuilt, so this is a container recreate: write
+// the compose file naming the new image, pull it, bring the stack up, and hold
+// until the editor answers.
+//
+// The image is passed in rather than read from the row on purpose. The caller
+// only advances `box.runtime_image` after this returns, so if any step here
+// throws, the row still names the image that last served and Repair - which
+// renders from the row - rewrites the old compose file and puts the box back.
+// That is the whole rollback mechanism; there is no separate one.
+export const updateRuntime = internalAction({
+	args: {
+		boxId: v.id("boxes"),
+		runtimeImage: v.string()
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+
+		if (!box.hetzner_ipv4) {
+			throw new Error("Box has no Hetzner IPv4 for update.");
+		}
+		const artifacts = runtimeArtifactsForBox(box, args.runtimeImage);
+
+		await runSsh(
+			sshTarget(box.hetzner_ipv4),
+			bootstrapScript({ ...artifacts, type: "update" })
 		);
 	}
 });
@@ -509,6 +574,56 @@ export const bootstrapRuntime = internalAction({
 	}
 });
 
+// Apply an owner's configuration: rewrite the env file with it, recreate the
+// editor's container so the new environment is actually read, and hold until the
+// editor answers.
+//
+// The container recreate is not optional. Every variable here is read from
+// `process.env` when the editor process starts, so a saved configuration that
+// did not restart the container would be a setting the interface reports as
+// applied and the box does not have - the inert path this repo treats as worse
+// than a failure.
+//
+// Only the `composery` service is recreated (`--no-deps`), so Caddy and its TLS
+// state are left alone; the second `up -d` puts back anything that stopped.
+// Like an update, the config is passed in rather than read from the row: the
+// caller advances the row only after this returns, so a failed apply leaves the
+// box - and every later Repair, which renders from the row - on the last
+// configuration known to boot.
+export const applyRuntimeConfig = internalAction({
+	args: {
+		boxId: v.id("boxes"),
+		config: v.record(v.string(), v.string())
+	},
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+
+		if (!box.hetzner_ipv4) {
+			throw new Error("Box has no Hetzner IPv4 for configuration.");
+		}
+
+		const env = renderComposeryEnv({
+			cloudBoxId: box._id,
+			cloudOrigin: websiteOrigin(),
+			config: args.config,
+			runtimeAuthHash: box.runtime_auth_hash,
+			runtimeImage: box.runtime_image
+		});
+
+		await runSsh(
+			sshTarget(box.hetzner_ipv4),
+			`set -euo pipefail
+${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d --force-recreate --no-deps composery
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d
+${AWAIT_IDE}`
+		);
+	}
+});
+
 export const rewritePasswordAndRestart = internalAction({
 	args: {
 		boxId: v.id("boxes"),
@@ -527,7 +642,9 @@ export const rewritePasswordAndRestart = internalAction({
 		const env = renderComposeryEnv({
 			cloudBoxId: box._id,
 			cloudOrigin: websiteOrigin(),
-			runtimeAuthHash: args.runtimeAuthHash
+			config: box.runtime_config,
+			runtimeAuthHash: args.runtimeAuthHash,
+			runtimeImage: box.runtime_image
 		});
 		await runSsh(
 			sshTarget(box.hetzner_ipv4),

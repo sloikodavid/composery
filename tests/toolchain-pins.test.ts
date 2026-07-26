@@ -30,6 +30,58 @@ describe("toolchain pins", () => {
 		expect(source).toContain("{ ...scratch, env: npmEnv }");
 	});
 
+	// One product, one version number, and releasing means editing one file.
+	//
+	// The root package.json is the source: the release workflow reads it, refuses
+	// anything that is not plain semver, and derives the git tag, the
+	// `:latest`/`:X.Y`/`:X.Y.Z` image tags, and COMPOSERY_BUILD_VERSION - which
+	// becomes the image's org.opencontainers.image.version label and everything
+	// the update system compares.
+	//
+	// Every other `version` field in the repository belongs to a private,
+	// unpublished workspace package and must stay 0.0.0. That is the point of this
+	// test: it does not ask two numbers to agree, it asks that a second real
+	// number never appears. Keeping copies in sync is friction paid on every
+	// release forever, and a contributor who bumps one and not the other ships a
+	// box that reports one version in its editor and another from its own CLI.
+	// Nothing here needs a real number - the Rust binary reads the version from
+	// the environment at runtime - so the honest state for all of them is "not a
+	// version".
+	//
+	// The mobile app is excluded because it genuinely has its own release train:
+	// EAS owns its version remotely (`appVersionSource: "remote"`), and it ships
+	// on the app stores' cadence against whatever box it connects to.
+	test("only the root package.json carries a real version", () => {
+		const productVersion = (
+			JSON.parse(readRepoFile("package.json")) as { version: string }
+		).version;
+		expect(productVersion).toMatch(/^\d+\.\d+\.\d+$/);
+
+		const inert = [
+			"packages/web/package.json",
+			"packages/ide/package.json",
+			"packages/shared/package.json",
+			"packages/mobile/package.json"
+		];
+		for (const path of inert) {
+			const version = (JSON.parse(readRepoFile(path)) as { version?: string })
+				.version;
+			expect(version, path).toBe("0.0.0");
+		}
+
+		// The Rust workspace version reaches users through `composery --version`
+		// unless the binary overrides it, so this pair has to hold together: the
+		// manifest stays inert *and* the override exists.
+		expect(
+			/^version = "([^"]+)"$/m.exec(
+				readRepoFile("packages/cli/Cargo.toml")
+			)?.[1]
+		).toBe("0.0.0");
+		const cli = readRepoFile("packages/cli/crates/composery/src/cli.rs");
+		expect(cli).toContain("version = version()");
+		expect(cli).toContain('std::env::var("COMPOSERY_BUILD_VERSION")');
+	});
+
 	test(".nvmrc is exact semver", () => {
 		expect(nodeVersion).toMatch(/^\d+\.\d+\.\d+$/);
 	});

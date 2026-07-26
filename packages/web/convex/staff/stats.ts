@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { requireCapability } from "../authorization";
-import type { BoxStatus } from "../schema";
+import { BOX_STATUSES, type BoxStatus } from "../schema";
 import { CAPACITY_BOX_STATUSES } from "../boxes/boxCapacity";
 
 const COUNT_CAP = 1_000;
@@ -29,13 +29,11 @@ type CappedCount = {
 	value: number;
 };
 
-const FAILED_STATUSES: BoxStatus[] = [
-	"provisioning_failed",
-	"reset_failed",
-	"repair_failed",
-	"restore_failed",
-	"delete_failed"
-];
+// Every failed status is named `<operation>_failed`, so derive rather than list:
+// a new operation's failure state counts here the day it exists.
+const FAILED_STATUSES: BoxStatus[] = BOX_STATUSES.filter((status) =>
+	status.endsWith("_failed")
+);
 
 function cappedCount(rowCount: number, cap: number): CappedCount {
 	return {

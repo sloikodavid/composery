@@ -9,7 +9,7 @@ It's like VS Code, but it sits on a server, and is thus reachable from any brows
 
 - You are `user`, a normal account with passwordless `sudo` - root whenever you need it.
 - `cron` runs, so `crontab -e` schedules jobs.
-- For incoming network requests, see [webhooks](api.md#webhooks).
+- For incoming network requests, see [webhooks](api.mdx#webhooks).
 
 Your changes persist across restarts through the [persistence](persistence.md) daemon,
 which writes only your deltas to `/data`. Configure the runtime with

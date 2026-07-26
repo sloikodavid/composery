@@ -17,15 +17,16 @@ export const provisionBox = defineBoxWorkflow({
 				throw new Error("Box has no runtime image to provision.");
 			}
 
-			const runtimeImage = await step.runAction(
-				internal.boxes.infra.runtimeImages.resolveRuntimeImage,
+			const release = await step.runAction(
+				internal.boxes.infra.runtimeImages.resolveRuntimeRelease,
 				{ image: box.runtime_image },
 				{ retry: true }
 			);
 
 			await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
 				boxId: args.boxId,
-				runtimeImage
+				runtimeImage: release.image,
+				runtimeVersion: release.version
 			});
 
 			await createRuntime(step, args.boxId, box.slug);

@@ -1,6 +1,6 @@
 ---
 title: Maintenance
-description: Runtime settings, fixed retention windows, and scheduled backend work.
+description: Runtime settings, runtime image versions, fixed retention windows, and scheduled backend work.
 ---
 
 This page contains operational timing and retention behavior that matters when
@@ -17,12 +17,112 @@ deployment:
 - the Hetzner server and snapshot allocations assigned to this deployment;
 - per-user concurrent unpaid checkout reservations;
 - snapshot caps, minimum interval, and retention;
-- abuse/resource thresholds; and
-- automatic suspension enabled/disabled.
+- abuse/resource thresholds;
+- automatic suspension enabled/disabled; and
+- the minimum runtime version the fleet may run.
 
 Checkout fails closed until both Hetzner allocations are configured. Read
 [Operations](./operations.md) before changing allocations or destructive
 behavior.
+
+## Runtime image versions
+
+### Where the version comes from
+
+There is one product version, and it lives in the **root `package.json`**. Nothing
+else declares it and nothing derives it from a tag.
+
+The release workflow reads that field, refuses it unless it is plain `X.Y.Z`, and
+derives everything else from it: the git tag `vX.Y.Z`, the image tags `:latest`,
+`:X.Y` and `:X.Y.Z`, and the `COMPOSERY_BUILD_VERSION` build argument. That
+argument becomes both the image's `org.opencontainers.image.version` label - which
+is the version the website reads and shows an owner - and the environment variable
+the editor's own update notifier compares. A build that is not a release is
+stamped `preview-<sha>` instead, and every version surface treats that as "not
+release-comparable" rather than guessing.
+
+So: **to cut a release, bump the root `package.json` and nothing else.** To find
+out what a given box runs, read its box page; to find out what the fleet is on,
+read the staff console.
+
+### Versions that are not that one
+
+Every other `version` field in the repository - `packages/web`, `packages/ide`,
+`packages/shared`, `packages/mobile`, and the Rust workspace in
+`packages/cli/Cargo.toml` - belongs to a private, unpublished package and is
+pinned at `0.0.0` on purpose. None of them is a release input, and a test in
+`tests/toolchain-pins.test.ts` keeps them inert so a second real version cannot
+creep back in.
+
+That test deliberately does **not** ask two numbers to agree. Keeping copies in
+sync is friction paid on every release forever, and the failure it invites is
+silent: bump one and not the other and a box reports one version in its editor
+and a different one from its own CLI. `composery --version` avoids the problem
+rather than policing it - the binary reads `COMPOSERY_BUILD_VERSION` from its
+environment at runtime, so it reports whatever the image it is running in was
+built as, and answers `unknown` outside an image because an unreleased build has
+no version to claim.
+
+The **mobile app** is the one genuine exception, and it is not drift: EAS owns
+its version remotely (`appVersionSource: "remote"` with `autoIncrement`), and the
+app ships on the app stores' cadence against whatever box it connects to.
+
+### How a box's version is compared
+
+`RUNTIME_IMAGE` names a channel, not a version. A box resolves it to an
+immutable digest when it provisions and records that digest, so the tag can move
+afterwards without changing what any existing box runs. Only two operations
+re-resolve the channel: Reset, which rebuilds the host and does not keep the
+box's files, and Update, which keeps them.
+
+Compare digests, never version strings. The digest is what a box runs; the
+`org.opencontainers.image.version` label on it is the human-readable name shown
+in the interface and nothing else decides from it. This holds whatever the
+channel points at - a moving tag, a pinned minor line, or a digest during a
+rollback - so no surface needs to special-case one of them.
+
+The console owns the **minimum runtime version**, the floor below which a box is
+not allowed to stay. Above the floor a box updates only when its owner asks; at
+or below it the owner is warned with a deadline and the box is updated
+automatically once that deadline passes. No box's container restarts without
+either an owner action or an expired floor deadline.
+
+### The floor is a support obligation
+
+Composery drives a box over SSH and parses its internals - service states, the
+persistence engine the box chose, the environment the editor process started
+with. Those readers live in `packages/web/convex/boxes/infra/`.
+
+**Every runtime version at or above the floor has to keep working with them.**
+Changing what a box prints - a CLI's output shape, a service name, a variable
+the editor is started with - is a compatibility break for every box that has not
+updated yet, not just for the release that introduces it. The safe order is:
+ship the new shape while the readers still accept the old one, wait for the
+fleet to move, then raise the floor, and only then remove the old parsing path.
+Raising the floor is what retires a compatibility path; the deployment that adds
+a new one never does.
+
+This is also why boxes do not get a version or channel choice. The
+compatibility window is bounded by the floor and nothing else, so a box that
+could sit arbitrarily far behind would widen it without limit.
+
+### Persistence across an image change
+
+Cloud boxes run the overlay engine, so a box's delta is an overlayfs upper layer
+on its volume, and changing the image is the case that engine is built for: the
+new image ships a new lower, and the boot-time hygiene pass reconciles the
+upper's deletion markers against the previous and current image baselines before
+mounting. The policy is documented in
+`packages/cli/crates/persistence/src/overlay.rs` and exercised against real
+booted containers by `tests/overlay-engine/run.sh`. An update is therefore not a
+special case for persistence; it is the upgrade path that engine already
+implements.
+
+The reverse is not symmetrical. Re-pinning an older image points an older reader
+at a delta a newer one has already written. Where that reader can detect the
+mismatch it refuses to start and says so, which is recoverable; where it cannot,
+it misreads. Treat any release that changes the delta's on-disk shape as a floor
+move with its own migration plan, never as an ordinary update.
 
 ## Fixed windows
 
@@ -33,6 +133,10 @@ define evidence retention, retry cadence, or background workload:
 | ---------------------------------- | ----------------------------------- |
 | Unpaid checkout reservation        | 1 hour                              |
 | Metrics polling                    | 10 minutes                          |
+| Box health probe                   | 10 minutes                          |
+| Consecutive failures before repair | 3 probes (~30 minutes)              |
+| Automatic repair quiet window      | 2 hours after an owner action       |
+| Automatic repairs per box          | 2 per 24 hours                      |
 | Raw metrics retention              | 2 days                              |
 | Hourly metrics retention           | 30 days                             |
 | Repeat flag cooloff per box/signal | 6 hours                             |
@@ -54,34 +158,64 @@ refund behavior are specified once in [Operations](./operations.md),
 Convex owns every periodic backend job; no separate worker service is required.
 All fixed times are UTC.
 
-| Job                                       | Schedule         |
-| ----------------------------------------- | ---------------- |
-| Release expired checkout intents          | Every 15 minutes |
-| Delete expired box authorization          | Every 15 minutes |
-| Reconcile calculated capacity-alert state | Every 15 minutes |
-| Retry unsent staff alerts                 | Every 15 minutes |
-| Poll box metrics                          | Every 10 minutes |
-| Reconcile Polar subscriptions             | Hourly at :11    |
-| Continue pending account deletion         | Hourly at :19    |
-| Roll up hourly metrics                    | Hourly at :04    |
-| Snapshot running boxes                    | Daily at 03:07   |
-| Delete old metrics                        | Daily at 04:23   |
-| Normalize deleted boxes                   | Daily at 04:29   |
-| Purge deleted boxes                       | Daily at 04:31   |
-| Purge checkout records                    | Daily at 04:37   |
-| Purge deleted accounts                    | Daily at 04:39   |
-| Delete expired snapshots                  | Daily at 04:41   |
-| Purge staff-alert records                 | Daily at 04:43   |
-| Reconcile Hetzner resources               | Daily at 05:17   |
+<!-- cron-schedule:start -->
 
-The schedule is defined in **packages/web/convex/crons.ts**. A schedule change
-must update this table in the same commit because the table is the operator's
-UTC runbook, not an implementation inventory.
+| Job                                      | Schedule         |
+| ---------------------------------------- | ---------------- |
+| Release expired checkout intents         | Every 15 minutes |
+| Delete expired box authorization records | Every 15 minutes |
+| Reconcile capacity alerts                | Every 15 minutes |
+| Retry staff alerts                       | Every 15 minutes |
+| Subscription deletion reconciliation     | Hourly at :11    |
+| Account deletion finalization            | Hourly at :19    |
+| Poll box metrics                         | Every 10 minutes |
+| Roll up hourly box metrics               | Hourly at :04    |
+| Delete old box metrics                   | Daily at 04:23   |
+| Normalize deleted boxes                  | Daily at 04:29   |
+| Purge expired deleted boxes              | Daily at 04:31   |
+| Purge expired checkout records           | Daily at 04:37   |
+| Purge expired deleted accounts           | Daily at 04:39   |
+| Purge expired staff alerts               | Daily at 04:43   |
+| Sweep box health                         | Every 10 minutes |
+| Refresh runtime release                  | Hourly at :26    |
+| Update boxes past their floor deadline   | Hourly at :41    |
+| Snapshot running boxes                   | Daily at 03:07   |
+| Delete expired snapshots                 | Daily at 04:41   |
+| Reconcile Hetzner resources              | Daily at 05:17   |
+
+<!-- cron-schedule:finish -->
+
+The table above is generated from **packages/web/convex/crons.ts** by
+`scripts/runbook.mjs`; do not edit it by hand. `pnpm check:runbook` fails when it
+has drifted and `pnpm fix:runbook` rewrites it. Job names are Convex's own, so
+what you read here is what appears in the dashboard and the logs.
 
 Hetzner reconciliation deletes untracked product snapshot images only after a
 two-hour grace period. It never deletes an untracked server automatically; it
 records and alerts on the server for manual review. Polar and Hetzner
 reconciliation failures also create rate-limited staff alerts.
+
+## Automatic repair
+
+A box that stops answering its health probe is repaired without its owner asking,
+but only after every gate in `packages/web/convex/boxes/autoRepair.ts` passes. The
+gates exist because a Composery box is a root-capable machine its owner is
+supposed to break, so "not serving" is a normal state for someone mid-experiment
+and an unconditional healer would fight them:
+
+- the box must have failed several consecutive probes, not one;
+- no owner-initiated operation may have run recently - the owner's hand on the
+  box always takes precedence over ours;
+- the box's status must independently allow a repair, which already excludes a
+  stopped, suspended, or mid-operation box;
+- and a box may only be repaired automatically twice in a day. Past that it is a
+  person's problem: each repair parks the box's files on a Hetzner Volume and
+  takes the box down while it runs, so an unbounded healer is an unbounded bill.
+
+Every automatic repair records `triggered_by` in its operation metadata, so a
+box's history distinguishes one the fleet started from one its owner asked for.
+Failures alert through the normal operation-failure path; nothing is retried
+outside the window count above.
 
 ## Retained deleted data
 

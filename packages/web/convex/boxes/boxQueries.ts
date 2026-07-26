@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import { sanitizeSlug } from "../../lib/box-slug";
+import { boxStatusesExcept, vBoxStatus } from "../schema";
 
 // Resolve a (sanitized) slug to its box for query and mutation handlers. The
 // owner and staff read paths all start here instead of repeating the index scan.
@@ -13,27 +14,14 @@ export async function findBoxBySlug(ctx: QueryCtx, slug: string) {
 		.first();
 }
 
-export const vSubscriptionReconciliationStatus = v.union(
-	v.literal("provisioning"),
-	v.literal("running"),
-	v.literal("provisioning_failed"),
-	v.literal("stopping"),
-	v.literal("stopped"),
-	v.literal("starting"),
-	v.literal("resetting"),
-	v.literal("reset_failed"),
-	v.literal("repairing"),
-	v.literal("repair_failed"),
-	v.literal("restoring"),
-	v.literal("restore_failed"),
-	v.literal("suspending"),
-	v.literal("suspended"),
-	v.literal("unsuspending"),
-	v.literal("delete_failed")
+// Which statuses a subscription is reconciled against: everything except a box
+// that is already on its way out. Derived rather than spelled out so a new
+// status is reconciled by default - a box silently skipped by reconciliation is
+// a box whose billing state stops being checked.
+export const SUBSCRIPTION_RECONCILIATION_STATUSES = boxStatusesExcept(
+	"deleting",
+	"deleted"
 );
-
-export const SUBSCRIPTION_RECONCILIATION_STATUSES =
-	vSubscriptionReconciliationStatus.members.map((member) => member.value);
 
 const SUBSCRIPTION_RECONCILIATION_PAGE_SIZE = 200;
 const USER_SUSPENSION_BOX_PAGE_SIZE = 100;
@@ -135,7 +123,7 @@ export const boxesForUserStatusPage = internalQuery({
 export const boxesForSubscriptionReconciliationPage = internalQuery({
 	args: {
 		cursor: v.union(v.string(), v.null()),
-		status: vSubscriptionReconciliationStatus
+		status: vBoxStatus
 	},
 	handler: async (ctx, args) => {
 		return await ctx.db

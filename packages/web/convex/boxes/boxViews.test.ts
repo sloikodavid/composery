@@ -39,8 +39,20 @@ describe("safeBox", () => {
 			provisionedAt: undefined,
 			deletedAt: undefined,
 			polarSubscriptionId: "sub_1",
-			comp: false
+			comp: false,
+			runtimeVersion: null
 		});
+	});
+
+	// A box provisioned before versions were recorded has a digest but no label.
+	// The owner view has to say "unknown", not omit the field, or the interface
+	// cannot tell "no version recorded" from "not loaded yet".
+	it("reports a null version for a box with no recorded one", () => {
+		process.env.CLOUD_DOMAIN = "composery.cloud";
+		expect(safeBox(box()).runtimeVersion).toBe(null);
+		expect(safeBox(box({ runtime_version: "0.2.1" })).runtimeVersion).toBe(
+			"0.2.1"
+		);
 	});
 
 	it("marks a comp box and nulls its absent subscription", () => {

@@ -186,6 +186,13 @@ const BOX_OPERATION_PLANS = {
 	repair: {
 		targetStatus: "repairing",
 		workflow: internal.boxes.workflows.repairBox.repairBox
+	},
+	update: {
+		targetStatus: "updating",
+		workflow: internal.boxes.workflows.updateBox.updateBox
+	},
+	change_config: {
+		workflow: internal.boxes.workflows.changeBoxConfig.changeBoxConfig
 	}
 } satisfies Record<
 	OperationType,

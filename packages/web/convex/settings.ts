@@ -4,7 +4,12 @@ import {
 	type DatabaseReader,
 	type DatabaseWriter
 } from "./_generated/server";
-import type { StoredSnapshotPolicy, StoredThreshold } from "./schema";
+import type { Doc } from "./_generated/dataModel";
+import type {
+	StoredRuntimeRelease,
+	StoredSnapshotPolicy,
+	StoredThreshold
+} from "./schema";
 import {
 	resolveThresholds,
 	thresholdsToStored,
@@ -43,8 +48,30 @@ export async function readGlobalSettings(ctx: { db: DatabaseReader }) {
 			DEFAULT_MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 		thresholds: resolveThresholds(settings?.thresholds),
 		snapshotPolicy: resolveSnapshotPolicy(settings?.snapshot_policy),
+		runtimeRelease: settings?.runtime_release ?? null,
+		minimumRuntime: resolveMinimumRuntime(settings),
 		updatedAt: settings?.updated_at ?? null,
 		updatedBy: settings?.updated_by ?? null
+	};
+}
+
+export type MinimumRuntime = {
+	deadline: number | null;
+	image: string;
+	version: string | null;
+};
+
+// The floor, or null when none is set. It only exists once an image is named:
+// a deadline with no image would silently apply to nothing, and a version
+// string alone is a label, not something a box can be compared against.
+function resolveMinimumRuntime(
+	settings: Doc<"settings"> | null
+): MinimumRuntime | null {
+	if (!settings?.minimum_runtime_image) return null;
+	return {
+		image: settings.minimum_runtime_image,
+		version: settings.minimum_runtime_version ?? null,
+		deadline: settings.minimum_runtime_deadline ?? null
 	};
 }
 
@@ -58,6 +85,10 @@ async function patchGlobalSettings(
 		max_active_checkout_intents_per_user?: number;
 		thresholds?: StoredThreshold[];
 		snapshot_policy?: StoredSnapshotPolicy;
+		runtime_release?: StoredRuntimeRelease;
+		minimum_runtime_image?: string;
+		minimum_runtime_version?: string;
+		minimum_runtime_deadline?: number;
 	},
 	updatedBy?: string
 ) {
@@ -83,6 +114,10 @@ async function patchGlobalSettings(
 			patch.max_active_checkout_intents_per_user,
 		thresholds: patch.thresholds,
 		snapshot_policy: patch.snapshot_policy,
+		runtime_release: patch.runtime_release,
+		minimum_runtime_image: patch.minimum_runtime_image,
+		minimum_runtime_version: patch.minimum_runtime_version,
+		minimum_runtime_deadline: patch.minimum_runtime_deadline,
 		updated_at: now,
 		updated_by: updatedBy
 	});
@@ -181,6 +216,58 @@ export const setMaxActiveCheckoutIntentsPerUser = internalMutation({
 			{ max_active_checkout_intents_per_user: args.max },
 			args.updatedBy
 		);
+	}
+});
+
+export const recordRuntimeRelease = internalMutation({
+	args: {
+		image: v.string(),
+		version: v.union(v.string(), v.null())
+	},
+	handler: async (ctx, args) => {
+		// Written by the schedule, not by a person, so it deliberately does not
+		// touch `updated_by` - a refresh is not a staff edit of the settings.
+		await patchGlobalSettings(ctx, {
+			runtime_release: {
+				image: args.image,
+				version: args.version,
+				checked_at: Date.now()
+			}
+		});
+	}
+});
+
+export const setMinimumRuntime = internalMutation({
+	args: {
+		deadline: v.optional(v.number()),
+		image: v.string(),
+		version: v.union(v.string(), v.null()),
+		updatedBy: v.optional(v.string())
+	},
+	handler: async (ctx, args) => {
+		await patchGlobalSettings(
+			ctx,
+			{
+				minimum_runtime_image: args.image,
+				minimum_runtime_version: args.version ?? undefined,
+				minimum_runtime_deadline: args.deadline
+			},
+			args.updatedBy
+		);
+
+		const actor = args.updatedBy ?? "system";
+		const deadline = args.deadline
+			? new Date(args.deadline).toISOString()
+			: "no deadline";
+		await sendStaffAlert(ctx, {
+			key: `minimum-runtime-set:${args.image}:${args.deadline ?? "none"}`,
+			severity: "warning",
+			subject: "Minimum runtime version raised",
+			// Raising the floor is what retires a compatibility path, so the alert
+			// names the obligation rather than just the value: until every box has
+			// crossed it, the control plane still has to read older boxes.
+			text: `${actor} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/boxes/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
+		});
 	}
 });
 

@@ -4,6 +4,8 @@
 - Every version pin needs a Renovate path or a stated reason it cannot have one. Action refs carry `@<sha> # vX.Y.Z`, Docker refs carry `tag@digest` (a bare digest hides the version from Renovate), and a bare `ARG` carries a `# renovate:` comment naming its datasource. Pins Renovate cannot see - a version repeated in a second file - are tied to the managed copy by a test. Pins it should not chase stay unmanaged on purpose: apt packages track Debian, runner labels track GitHub. `renovate.json` groups pins that must move together.
 - Use `tmp/` for scratch files and artifacts (gitignored).
 - No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
+- When one value ends up in two places, prefer in this order: remove the second copy, derive it from the first, pin the pair with a test. The test is the last resort, not the default. It makes the duplication permanent and charges every later change for it, and its usual outcome is that someone satisfies the test rather than asking why there are two copies - so it earns its place only where the duplication genuinely cannot be removed, as with a pin an external tool has to read. The same ordering applies to a value that has to be _right_ rather than merely equal: prefer having the code read it at runtime from the one place that owns it over asking a person to keep a copy accurate.
+- A convention here solves a specific problem; check that problem is yours before applying it. Matching the shape of a rule is not the same as meeting its reason, and a rule that manages an unavoidable duplication must never be cited to justify creating one.
 - Collapse flashy or out-of-place words for consistency: Delete/Erase->Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
 - The container is not a boundary against the person using it: it is privileged and root-capable, and cloud box owners control their host too (the Hetzner firewall is the real boundary — see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own box is a supported surface, so every env-driven feature must behave correctly when they do.
 - Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the box password never requires a Composery website account — proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
@@ -15,7 +17,7 @@
 - Silent success is the worst outcome here, worse than a crash. A password that reverts at the next restart, a documented variable nothing reads, a repair job verifying the wrong name: each looked healthy for exactly as long as nobody checked. Make the inert path say so.
 - Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
 - Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
-- Fix the class, not the instance. A bug found by reading is usually one of several; prefer a lint or regen test that catches the next one to a hand-patch of the one you saw.
+- Fix the class, not the instance. A bug found by reading is usually one of several; prefer a lint or regen test that catches the next one to a hand-patch of the one you saw. Where the class can be designed out instead - one source of truth, a derived value, a state made unrepresentable - do that and the test becomes unnecessary. A guard against a mistake nobody can make any more is the best outcome; a guard that makes the mistake permanently possible is the worst.
 - Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem — if cost scales with a workload's shape, that is the bug, not the workload.
 
 ## IDE / upstream naming
@@ -125,10 +127,11 @@ docs/
     railway.md
     render.md
     vps.md
-  api.md
+  api.mdx
   configuration.md
   index.md
   meta.json
+  openapi.yaml
   persistence.md
 packages/
   cli/
@@ -231,6 +234,7 @@ packages/
                   media/
                     keybar.css
                   keybar.ts
+                  narrowActivityBar.ts
                   narrowGate.ts
       src/
         browser/
@@ -414,6 +418,11 @@ packages/
               box-actions.tsx
               box-detail.tsx
               box-snapshots.tsx
+            configuration/
+              _components/
+                box-configuration.tsx
+                config-field.tsx
+              page.tsx
             page.tsx
           new/
             page.tsx
@@ -477,6 +486,8 @@ packages/
               route.ts
             password/
               route.ts
+          runtime/
+            route.ts
         search/
           route.ts
       boxes/
@@ -541,6 +552,8 @@ packages/
         status-action.tsx
         status-button.tsx
         status-text.tsx
+        tone-icon.tsx
+        update-dialog.tsx
       icons/
         arrow-right.tsx
         arrow-up-right.tsx
@@ -576,6 +589,7 @@ packages/
         x-logo.tsx
         x.tsx
       animated-icon.tsx
+      api-operation.tsx
       brand-icon.tsx
       confirm-dialog.tsx
       copy-email.tsx
@@ -589,6 +603,7 @@ packages/
       logo.tsx
       mdx.tsx
       open-in.tsx
+      openapi-page.tsx
       page-template.tsx
       sort-header.tsx
       theme-provider.tsx
@@ -622,6 +637,7 @@ packages/
         workflows/
           boxWorkflow.test.ts
           boxWorkflow.ts
+          changeBoxConfig.ts
           changeBoxPassword.ts
           changeBoxSlug.ts
           deleteBox.ts
@@ -634,6 +650,9 @@ packages/
           stopBox.ts
           suspendBox.ts
           unsuspendBox.ts
+          updateBox.ts
+        autoRepair.test.ts
+        autoRepair.ts
         boxAccess.test.ts
         boxAccess.ts
         boxAuth.ts
@@ -665,6 +684,11 @@ packages/
         metricThresholds.ts
         reconcile.test.ts
         reconcile.ts
+        runtimeConfig.test.ts
+        runtimeConfig.ts
+        runtimeFloor.ts
+        runtimeRelease.test.ts
+        runtimeRelease.ts
         slugAvailability.test.ts
         slugAvailability.ts
         snapshotPolicy.test.ts
@@ -682,6 +706,7 @@ packages/
         stats.ts
         users.ts
       user/
+        boxConfig.ts
         boxes.ts
         checkout.ts
       accountDeletion.ts
@@ -730,11 +755,14 @@ packages/
       links.ts
       logo-data.ts
       nav-links.ts
+      openapi.ts
       polar-dashboard.test.ts
       polar-dashboard.ts
       repair-status.test.ts
       repair-status.ts
       route-guards.ts
+      runtime-update.test.ts
+      runtime-update.ts
       shared.ts
       source.ts
       table-columns.test.ts
@@ -872,6 +900,7 @@ scripts/
     app.html
     server.mjs
   cli.mjs
+  runbook.mjs
   setup.mjs
   smoke.mjs
   tree.d.mts
@@ -922,6 +951,7 @@ tests/
     run.sh
   support/
     patchSource.ts
+  api-openapi.test.ts
   auth-routes.test.ts
   brand-copy.test.ts
   code-server-patches.test.ts
@@ -936,6 +966,7 @@ tests/
   narrow-editor-groups.test.ts
   narrow-layout-reconciliation.test.ts
   password-check.test.ts
+  runbook-script.test.ts
   runtime-init.test.ts
   terminal-sync.test.ts
   toolchain-pins.test.ts
