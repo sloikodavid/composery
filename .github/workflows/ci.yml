@@ -29,7 +29,7 @@ jobs:
   # Named for the OS rather than the script: this job also builds, so `portable`
   # would name only its first step.
   windows-macos:
-    name: ${{ matrix.os }}
+    name: checks / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -48,18 +48,23 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check:portable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check repository
+        run: pnpm check:portable
       # The two artifacts a contributor builds from their own machine. The image
       # (build:docker) is Linux-only by nature and stays on the linux job.
-      - run: pnpm build:web
+      - name: Build website
+        run: pnpm build:web
         env:
           NEXT_PUBLIC_CONVEX_URL: https://convex.invalid
-      - run: pnpm build:mobile
+      - name: Build mobile app
+        run: pnpm build:mobile
 
   # Everything the other job cannot run: the full check + build set, plus the
   # Linux-only gates (workflow lint, quilt patch stack, cargo, image build).
   linux:
+    name: checks / linux
     # GA image. ubuntu-26.04 exists but is public preview (June 2026, no GA date)
     # - preview images change without a deprecation window, and this job gates
     # releases. Move when it goes GA.
@@ -78,8 +83,10 @@ jobs:
       # the CI files are the one part of the repo `pnpm check` cannot see.
       # Needs no config: every label this repo runs on is in actionlint's own
       # list, so a typo'd or retired one fails here.
-      - uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs
+      - name: Validate workflows
+        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # v1.7.12
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git-lfs
       # No patch-stack gate here on purpose. A hand-written quilt push in this
       # file was a third copy of build.sh's assembly and drifted from it: build.sh
       # moved our patches into a composery/ subdirectory (our clipboard.diff had
@@ -96,7 +103,8 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: packages/cli
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       # A check can accidentally become inert while its fixer remains correct.
       # Run every canonical writer, then reject any tracked or untracked source
       # change it found. Ignored build output is intentionally outside the
@@ -111,13 +119,15 @@ jobs:
             git status --short --untracked-files=all --ignore-submodules=dirty >&2
             exit 1
           fi
-      - run: pnpm check
+      - name: Check repository
+        run: pnpm check
       # Run the whole build so every build:* target is covered with no list here to
       # drift. Catches bundling errors tsc can't (web's SSR/prerender, e.g.
       # ConvexReactClient's URL validation; mobile's Metro export) and builds the
       # image; smoke.yml is what boots and exercises it. No real secret needed:
       # nothing here reads a runtime value.
-      - run: pnpm build
+      - name: Build website, mobile app, and image
+        run: pnpm build
         env:
           NEXT_PUBLIC_CONVEX_URL: https://convex.invalid
 
@@ -130,8 +140,8 @@ jobs:
   # validation jobs. `always()` makes a failed, cancelled, or skipped dependency
   # produce a red check instead of a skipped check that some external systems
   # interpret as acceptable.
-  promote:
-    name: promote
+  all-checks:
+    name: all checks
     if: always()
     needs:
       - windows-macos
@@ -139,7 +149,7 @@ jobs:
       - smoke
     runs-on: ubuntu-24.04
     steps:
-      - name: Require every validation tier
+      - name: Confirm every check passed
         env:
           LINUX: ${{ needs.linux.result }}
           PORTABLE: ${{ needs.windows-macos.result }}
@@ -150,22 +160,3 @@ jobs:
           [[ "$LINUX" == "success" ]]
           [[ "$PORTABLE" == "success" ]]
           [[ "$SMOKE" == "success" ]]
-
-  # `deploy` is a release pointer, not a development branch. Vercel tracks it
-  # as Production and packages/web/vercel.json rejects every other Git branch.
-  # A normal push is deliberately non-forced: if anything moved the pointer
-  # away from main's linear history, deployment stops instead of hiding drift.
-  deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: promote
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - name: Promote the green commit
-        env:
-          COMMIT: ${{ github.sha }}
-        run: git push origin "$COMMIT:refs/heads/deploy"

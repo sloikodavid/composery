@@ -4,9 +4,10 @@ description: Configure and deploy the Next.js app to Vercel Production, plus coo
 ---
 
 You only deploy production from the CI-owned git branch `deploy`. CI
-fast-forwards that branch to the exact `main` commit after every validation tier
-passes; nobody pushes it manually. Local development never goes through Vercel;
-it uses `pnpm run dev` with `.env.local` (see
+finishes in the fail-closed `all checks` result; the separate `deploy` workflow
+then fast-forwards `deploy` to that exact `main` commit. Nobody pushes it
+manually. Local development never goes through Vercel; it uses `pnpm run dev`
+with `.env.local` (see
 [index](../index.md#local-development)). So Vercel only needs Production
 configuration.
 
@@ -42,7 +43,10 @@ Project settings:
 `packages/web/vercel.json` also sets `git.deploymentEnabled` to `true` only for
 `deploy` and `false` for `*`. This is the executable half of the boundary:
 `main`, pull requests, and failed commits cannot start a Vercel or Convex
-deployment even if a dashboard branch setting is changed accidentally.
+deployment even if a dashboard branch setting is changed accidentally. It also
+sets `github.silent` because there is no preview deployment for a pull-request
+comment to announce; the GitHub check remains the visible record that Vercel
+correctly ignored the branch.
 
 Plus the two project-level settings `packages/web/vercel.json` cannot encode
 (covered in [index](../index.md#production-deploy)): **Root Directory** = `packages/web`, and

@@ -96,16 +96,16 @@ gh label create dependencies --color 0366d6 --description "Dependency updates"
 Branch protection is a repository ruleset (Settings -> Rules -> Rulesets)
 named `Protect main`, targeting `refs/heads/main`, with no bypass actors:
 
-| Rule                   | Parameters          |
-| ---------------------- | ------------------- |
-| Require a pull request | 1 approving review  |
-| Required status checks | `promote` and `cla` |
-| Require linear history | -                   |
-| Restrict deletions     | -                   |
-| Block force pushes     | -                   |
+| Rule                   | Parameters             |
+| ---------------------- | ---------------------- |
+| Require a pull request | 1 approving review     |
+| Required status checks | `all checks` and `cla` |
+| Require linear history | -                      |
+| Restrict deletions     | -                      |
+| Block force pushes     | -                      |
 
 Required status check contexts must exactly equal the check-run names GitHub
-reports on a commit, not workflow file names. `promote` is the one fail-closed
+reports on a commit, not workflow file names. `all checks` is the one fail-closed
 result over Linux, Windows, macOS, both smoke architectures, and the source-drift
 check; a failed, cancelled, or skipped dependency makes it fail rather than
 skip. Read the exact names off any recent commit before saving:
@@ -129,7 +129,8 @@ their `permissions:` blocks, which is why none of this needs org-level policy:
 
 | Workflow             | Trigger                               | Elevated permissions and why                                                                        |
 | -------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`, call | only the post-validation deploy job gets `contents: write`, to fast-forward the `deploy` branch     |
+| `ci.yml`             | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result       |
+| `deploy.yml`         | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run   |
 | `smoke.yml`          | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state       |
 | `smoke-nightly.yml`  | schedule, dispatch                    | none - uncached image smoke                                                                         |
 | `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                             |
@@ -248,7 +249,8 @@ approval held for majors and for `packages/ide/upstream` submodule bumps
 
 The production website deploys from the CI-owned `deploy` branch through the
 Vercel GitHub App, installed during `vercel link`. A non-forced push advances
-that branch only after `promote` succeeds, and `packages/web/vercel.json`
+that branch only when the separate `deploy` workflow observes a successful
+same-repository push run of `ci`; `packages/web/vercel.json`
 rejects Git deployments from every other branch. That connection and everything
 after it is [Web / Vercel](../web/services/vercel.md).
 

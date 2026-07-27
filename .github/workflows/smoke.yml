@@ -50,9 +50,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - name: Run smoke suite
+      - name: Smoke-test image
         run: pnpm smoke
-      - uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      - name: Report image vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         if: matrix.arch == 'amd64'
         with:
           image-ref: ${{ env.SMOKE_IMAGE_TAG }}

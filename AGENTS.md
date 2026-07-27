@@ -69,6 +69,7 @@
   workflows/
     ci.yml
     cla.yml
+    deploy.yml
     mobile-e2e.yml
     mobile-preview.yml
     mobile-release.yml

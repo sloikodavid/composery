@@ -19,6 +19,7 @@ const ciWorkflow = readRepoFile(".github/workflows/ci.yml");
 
 type WorkflowJob = {
 	if?: string;
+	name?: string;
 	needs?: string | string[];
 	permissions?: Record<string, string>;
 	steps?: Array<Record<string, unknown>>;
@@ -67,25 +68,41 @@ const checkTargets = Object.keys(scripts).filter(
 const portableTargets = targetsOf(scripts["check:portable"] ?? "");
 
 describe("cross-platform checks", () => {
-	test("one fail-closed promotion check owns every automatic deployment", () => {
+	test("one fail-closed check separates validation from deployment", () => {
 		const ci = workflow(".github/workflows/ci.yml");
-		const promote = ci.jobs.promote;
+		const allChecks = ci.jobs["all-checks"];
 
-		expect(promote?.if).toBe("always()");
-		expect(new Set(promote?.needs)).toEqual(
+		expect(allChecks?.if).toBe("always()");
+		expect(new Set(allChecks?.needs)).toEqual(
 			new Set(["windows-macos", "linux", "smoke"])
 		);
-		expect(dependsOn(ci.jobs, "deploy", "promote")).toBe(true);
-		expect(ci.jobs.deploy?.permissions).toEqual({ contents: "write" });
-		const deploy = ci.jobs.deploy?.steps?.find(
-			(step) => step.name === "Promote the green commit"
-		);
-		expect(deploy?.run).toContain("refs/heads/deploy");
+		expect(allChecks?.name).toBe("all checks");
+		expect(ci.jobs.linux?.name).toBe("checks / linux");
+		expect(ci.jobs["windows-macos"]?.name).toBe("checks / ${{ matrix.os }}");
 
 		const writable = Object.entries(ci.jobs)
 			.filter(([, job]) => job.permissions?.contents === "write")
 			.map(([name]) => name);
-		expect(writable).toEqual(["deploy"]);
+		expect(writable).toEqual([]);
+
+		const deployWorkflow = workflow(".github/workflows/deploy.yml");
+		expect(deployWorkflow.on?.workflow_run).toEqual({
+			workflows: ["ci"],
+			types: ["completed"],
+			branches: ["main"]
+		});
+		const production = deployWorkflow.jobs.production;
+		expect(production?.if).toContain(
+			"github.event.workflow_run.conclusion == 'success'"
+		);
+		expect(production?.if).toContain(
+			"github.event.workflow_run.head_repository.full_name == github.repository"
+		);
+		expect(production?.permissions).toEqual({ contents: "write" });
+		const deploy = production?.steps?.find(
+			(step) => step.name === "Advance production"
+		);
+		expect(deploy?.run).toContain("refs/heads/deploy");
 
 		const drift = ci.jobs.linux?.steps?.find(
 			(step) => step.name === "Check for source drift"
@@ -96,11 +113,13 @@ describe("cross-platform checks", () => {
 
 		const vercel = JSON.parse(readRepoFile("packages/web/vercel.json")) as {
 			git?: { deploymentEnabled?: Record<string, boolean> };
+			github?: { silent?: boolean };
 		};
 		expect(vercel.git?.deploymentEnabled).toEqual({
 			"*": false,
 			deploy: true
 		});
+		expect(vercel.github?.silent).toBe(true);
 	});
 
 	test("every publication workflow depends on the complete CI tier", () => {
