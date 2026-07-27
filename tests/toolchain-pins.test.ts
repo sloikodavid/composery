@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
+import { parse } from "yaml";
 
 import { repoRoot, readRepoFile } from "./support/patchSource.ts";
 
@@ -131,18 +132,25 @@ describe("toolchain pins", () => {
 		const cargoVersion = /^rust-version = "([^"]+)"$/m.exec(
 			readRepoFile("packages/cli/Cargo.toml")
 		)?.[1];
-		const ciVersion = /^\s+- uses: dtolnay\/rust-toolchain@(\S+)$/m.exec(
-			readRepoFile(".github/workflows/ci.yml")
-		)?.[1];
+		const ci = parse(readRepoFile(".github/workflows/ci.yml")) as {
+			jobs: Record<string, { steps?: Array<{ uses?: string }> }>;
+		};
+		const ciVersions = Object.values(ci.jobs)
+			.flatMap((job) => job.steps ?? [])
+			.flatMap(
+				(step) =>
+					/^dtolnay\/rust-toolchain@(\S+)$/.exec(step.uses ?? "")?.[1] ?? []
+			);
 		const imageVersion = /^FROM rust:(\d+\.\d+\.\d+)-/m.exec(
 			readRepoFile("Dockerfile")
 		)?.[1];
 
 		expect(cargoVersion).toBeDefined();
+		expect(ciVersions).toHaveLength(1);
 		// Cargo states a minimum (major.minor); CI and the image are exact and must
 		// satisfy it, so compare on the major.minor they share.
 		const minor = (value?: string) => value?.split(".").slice(0, 2).join(".");
-		expect(minor(ciVersion)).toBe(cargoVersion);
+		expect(minor(ciVersions[0])).toBe(cargoVersion);
 		expect(minor(imageVersion)).toBe(cargoVersion);
 	});
 
