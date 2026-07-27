@@ -4,13 +4,13 @@ import {
 	capacityAvailability,
 	reservedSnapshotCommitments,
 	snapshotSlotsPerBox
-} from "./boxCapacity";
+} from "./capacity";
 import { vBoxStatus } from "../schema";
 
 describe("box capacity", () => {
 	// These lists are hand-written subsets of the status union, so the type
 	// checker cannot notice a missing one - a new status would silently stop
-	// occupying capacity and the fleet would be over-provisioned by exactly the
+	// occupying capacity and the fleet would be over-committed by exactly the
 	// boxes in it. Pin the rule instead: every status that is not "deleted"
 	// holds a server.
 	it("counts every live status against capacity", () => {

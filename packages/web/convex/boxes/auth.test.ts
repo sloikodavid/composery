@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { isBoxIdeRedirect } from "./boxAuth";
+import { isBoxIdeRedirect } from "./auth";
 
 const previousDomain = process.env.CLOUD_DOMAIN;
 

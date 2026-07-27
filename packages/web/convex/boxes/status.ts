@@ -11,13 +11,15 @@ import {
 } from "../schema";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import { consoleBoxPath } from "../../lib/box-route";
-import { appendBoxEvent } from "./boxEvents";
+import { operationLabel } from "../../lib/operation-failure";
+import { appendBoxEvent } from "./events";
 import {
+	boxEventType,
 	isActiveOperationStatus,
-	OPERATION_FAILURE
-} from "./boxOperationRules";
+	OPERATION_FAILURE_STATUS
+} from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
-import { deletedBoxDataPatch } from "./boxRetention";
+import { deletedBoxDataPatch } from "./retention";
 import { assertSlugAvailable } from "./slugAvailability";
 
 export const markOperationRunning = internalMutation({
@@ -142,7 +144,7 @@ export const recordDnsCreated = internalMutation({
 	}
 });
 
-export const markProvisionSucceeded = internalMutation({
+export const markCreateSucceeded = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
 		operationId: v.id("box_operations")
@@ -154,7 +156,7 @@ export const markProvisionSucceeded = internalMutation({
 		const timestamp = Date.now();
 		await ctx.db.patch(args.boxId, {
 			status: "running",
-			provisioned_at: timestamp,
+			ready_at: timestamp,
 			updated_at: timestamp
 		});
 		await ctx.db.patch(args.operationId, {
@@ -162,7 +164,7 @@ export const markProvisionSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.running");
+		await appendBoxEvent(ctx, box, boxEventType("create", "succeeded"));
 	}
 });
 
@@ -239,9 +241,9 @@ export const finishBoxOperation = internalMutation({
 		await recordOperationFailure(ctx, {
 			boxId: args.context.boxId,
 			error,
-			eventType: OPERATION_FAILURE[operation.type].eventType,
+			eventType: boxEventType(operation.type, "failed"),
 			operationId: args.context.operationId,
-			targetBoxStatus: OPERATION_FAILURE[operation.type].boxStatus
+			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
 		});
 	}
 });
@@ -287,9 +289,11 @@ export async function recordOperationFailure(
 		message: input.error
 	});
 
-	const operationType = operation?.type ?? "unknown";
+	const operationType = operation
+		? operationLabel(operation.type, true)
+		: "unknown";
 	const critical = new Set([
-		"provision",
+		"create",
 		"delete",
 		"reset",
 		"restore",
@@ -344,7 +348,11 @@ export const updateRuntimeAuthHash = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.password_changed");
+		await appendBoxEvent(
+			ctx,
+			box,
+			boxEventType("change_password", "succeeded")
+		);
 	}
 });
 
@@ -375,7 +383,7 @@ export const swapSlug = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.slug_changed", {
+		await appendBoxEvent(ctx, box, boxEventType("change_slug", "succeeded"), {
 			metadata: {
 				oldSlug,
 				newSlug: args.newSlug,
@@ -408,7 +416,7 @@ export const markRepairSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.repair_succeeded");
+		await appendBoxEvent(ctx, box, boxEventType("repair", "succeeded"));
 	}
 });
 
@@ -446,7 +454,7 @@ export const markUpdateSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.update_succeeded", {
+		await appendBoxEvent(ctx, box, boxEventType("update", "succeeded"), {
 			metadata: { from: box.runtime_image, to: args.runtimeImage }
 		});
 	}
@@ -479,7 +487,7 @@ export const markConfigApplied = internalMutation({
 		});
 		// The keys, never the values: a box's configuration can hold a GitHub token
 		// and an event log is read by staff.
-		await appendBoxEvent(ctx, box, "box.config_applied", {
+		await appendBoxEvent(ctx, box, boxEventType("change_config", "succeeded"), {
 			metadata: { keys: Object.keys(args.config).sort() }
 		});
 	}
@@ -504,7 +512,7 @@ export const markResetSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.reset_succeeded");
+		await appendBoxEvent(ctx, box, boxEventType("reset", "succeeded"));
 	}
 });
 
@@ -596,27 +604,19 @@ export const markDeleted = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, "box.deleted");
-		await ctx.scheduler.runAfter(
-			0,
-			internal.boxes.boxCleanup.deleteRuntimeData,
-			{
-				boxId: box._id
-			}
-		);
-		await ctx.scheduler.runAfter(
-			0,
-			internal.boxes.boxCleanup.sanitizeOperations,
-			{
-				boxId: box._id
-			}
-		);
-		await ctx.scheduler.runAfter(0, internal.boxes.boxCleanup.sanitizeEvents, {
+		await appendBoxEvent(ctx, box, boxEventType("delete", "succeeded"));
+		await ctx.scheduler.runAfter(0, internal.boxes.cleanup.deleteRuntimeData, {
+			boxId: box._id
+		});
+		await ctx.scheduler.runAfter(0, internal.boxes.cleanup.sanitizeOperations, {
+			boxId: box._id
+		});
+		await ctx.scheduler.runAfter(0, internal.boxes.cleanup.sanitizeEvents, {
 			boxId: box._id
 		});
 		await ctx.scheduler.runAfter(
 			0,
-			internal.boxes.boxCleanup.startCheckoutRetention,
+			internal.boxes.cleanup.startCheckoutRetention,
 			{
 				boxId: box._id,
 				deletedAt: timestamp
@@ -625,10 +625,9 @@ export const markDeleted = internalMutation({
 
 		// Snapshot images survive server deletion, so drop them now rather than
 		// letting them linger and bill.
-		await ctx.runMutation(
-			internal.boxes.boxSnapshots.cascadeDeleteBoxSnapshots,
-			{ boxId: box._id }
-		);
+		await ctx.runMutation(internal.boxes.snapshots.cascadeDeleteBoxSnapshots, {
+			boxId: box._id
+		});
 		if (parkingVolumeId !== undefined) {
 			await ctx.scheduler.runAfter(
 				0,

@@ -15,7 +15,7 @@ import {
 	type SnapshotPolicy
 } from "../boxes/snapshotPolicy";
 import type { BoxFlagSignal } from "../schema";
-import { readCapacityUsage } from "../boxes/boxCapacity";
+import { readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 
 export const get = query({

@@ -6,7 +6,7 @@ import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../../_generated/server";
 import { requiredEnv, runtimeDomain, websiteOrigin } from "../../env";
-import { vRecoveryStatus, type RecoveryStatus } from "../boxRecoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "../recoveryTypes";
 import {
 	COMPOSERY_CADDYFILE_PATH,
 	COMPOSERY_COMPOSE_PATH,
@@ -454,7 +454,7 @@ export const inspectRuntime = internalAction({
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box.hetzner_ipv4) return UNREACHABLE_STATUS;
@@ -506,7 +506,7 @@ export const repairRuntime = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -539,7 +539,7 @@ export const updateRuntime = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -561,7 +561,7 @@ export const bootstrapRuntime = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -597,7 +597,7 @@ export const applyRuntimeConfig = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -631,7 +631,7 @@ export const rewritePasswordAndRestart = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -679,7 +679,7 @@ export const fetchRuntimeLogs = internalAction({
 	},
 	handler: async (ctx, args): Promise<string> => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -703,7 +703,7 @@ export const reloadSlug = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -743,7 +743,7 @@ export const requireReachableHost = internalAction({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);
@@ -762,7 +762,7 @@ export const measureParkingUsage = internalAction({
 	returns: v.object({ usedBytes: v.number() }),
 	handler: async (ctx, args): Promise<{ usedBytes: number }> => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);
@@ -782,7 +782,7 @@ export const copyToParking = internalAction({
 	args: { boxId: v.id("boxes"), volumeId: v.number() },
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);
@@ -799,7 +799,7 @@ export const copyFromParking = internalAction({
 	args: { boxId: v.id("boxes"), volumeId: v.number() },
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);
@@ -819,7 +819,7 @@ async function verifyParking(
 	volumeId: number
 ) {
 	const box = await ctx.runQuery(
-		internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+		internal.boxes.queries.getBoxLifecycleSnapshot,
 		{ boxId }
 	);
 	const host = requireBoxHost(box);
@@ -855,7 +855,7 @@ export const unmountParking = internalAction({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args) => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);

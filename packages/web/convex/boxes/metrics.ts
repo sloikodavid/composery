@@ -360,7 +360,7 @@ export const deleteOldSamples = internalMutation({
 		) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxMetrics.deleteOldSamples,
+				internal.boxes.metrics.deleteOldSamples,
 				{}
 			);
 		}
@@ -418,7 +418,7 @@ export const rollupHourlyMetrics = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxMetrics.rollupHourlyMetrics,
+				internal.boxes.metrics.rollupHourlyMetrics,
 				{ cursor: page.continueCursor, hourStart, statusIndex }
 			);
 			return;
@@ -427,7 +427,7 @@ export const rollupHourlyMetrics = internalMutation({
 		if (statusIndex + 1 < ROLLUP_BOX_STATUSES.length) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxMetrics.rollupHourlyMetrics,
+				internal.boxes.metrics.rollupHourlyMetrics,
 				{ hourStart, statusIndex: statusIndex + 1 }
 			);
 		}

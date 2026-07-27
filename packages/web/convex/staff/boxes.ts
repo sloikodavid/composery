@@ -17,16 +17,14 @@ import {
 	requireCapability,
 	requireCapabilityInAction
 } from "../authorization";
-import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
-import {
-	vRecoveryStatus,
-	type RecoveryStatus
-} from "../boxes/boxRecoveryTypes";
-import { startBoxOperation, startBoxSuspension } from "../boxes/boxOperations";
-import { currentSuspensionReason } from "../boxes/boxQueries";
-import { appendBoxEvent } from "../boxes/boxEvents";
+import { fetchRuntimeLogsSafely } from "../boxes/logs";
+import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
+import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
+import { currentSuspensionReason } from "../boxes/queries";
+import { appendBoxEvent } from "../boxes/events";
+import { boxEventType } from "../boxes/operationRules";
 import { assertSlugAvailable } from "../boxes/slugAvailability";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { readGlobalSettings } from "../settings";
 import { workflow } from "../boxes/workflows/boxWorkflow";
@@ -39,13 +37,14 @@ import {
 	latestRepair,
 	latestUpdate,
 	staffBox
-} from "../boxes/boxViews";
+} from "../boxes/views";
 import {
 	markSnapshotDeleting,
 	snapshotView,
 	startManualSnapshot
-} from "../boxes/boxSnapshots";
+} from "../boxes/snapshots";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
+import { operationLabel } from "../../lib/operation-failure";
 
 const STAFF_BOX_LIST_LIMIT = 50;
 const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
@@ -83,7 +82,7 @@ function addBoxCandidate(
 	if (box) candidates.set(box._id, box);
 }
 
-export const searchBoxes = query({
+export const search = query({
 	args: {
 		query: v.optional(v.string())
 	},
@@ -278,7 +277,7 @@ export const dismissAllFailedOperationsBatch = internalMutation({
 	}
 });
 
-export const boxDetail = query({
+export const getById = query({
 	args: {
 		boxId: v.string()
 	},
@@ -343,14 +342,14 @@ export const auditEvents = query({
 	}
 });
 
-export const retryProvisionBox = mutation({
+export const retryCreate = mutation({
 	args: {
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
 		await requireCapability(ctx, "box_operations");
-		await startBoxOperation(ctx, args.boxId, "provision", {
-			idempotencyKey: `staff-provision:${args.boxId}`,
+		await startBoxOperation(ctx, args.boxId, "create", {
+			idempotencyKey: `staff-create:${args.boxId}`,
 			trigger: "staff"
 		});
 	}
@@ -402,7 +401,7 @@ export const grantComp = mutation({
 		const boxId = await ctx.db.insert("boxes", {
 			user_id: targetUser.clerk_user_id,
 			slug,
-			status: "provisioning",
+			status: "creating",
 			runtime_image: requiredEnv("RUNTIME_IMAGE"),
 			comped_by: staffUser.clerk_user_id,
 			comped_at: timestamp,
@@ -415,15 +414,15 @@ export const grantComp = mutation({
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
 
-		const operationId = await startBoxOperation(ctx, boxId, "provision", {
-			idempotencyKey: `provision:${boxId}`,
+		const operationId = await startBoxOperation(ctx, boxId, "create", {
+			idempotencyKey: `create:${boxId}`,
 			metadata: { compedBy: staffUser.clerk_user_id, reason },
 			trigger: "staff"
 		});
 		if (!operationId)
 			throw new ConvexError("Provision operation already exists.");
 
-		await appendBoxEvent(ctx, box, "box.provisioning_started", {
+		await appendBoxEvent(ctx, box, boxEventType("create", "started"), {
 			message: `Comped by ${staffUser.email}: ${reason}`,
 			metadata: { operationId, compedBy: staffUser.clerk_user_id }
 		});
@@ -452,7 +451,7 @@ export const revokeComp = mutation({
 	}
 });
 
-export const resetBox = mutation({
+export const reset = mutation({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -465,7 +464,7 @@ export const resetBox = mutation({
 	}
 });
 
-export const changeBoxSlug = mutation({
+export const changeSlug = mutation({
 	args: {
 		boxId: v.id("boxes"),
 		newSlug: v.string()
@@ -485,7 +484,7 @@ export const changeBoxSlug = mutation({
 	}
 });
 
-export const stopBox = mutation({
+export const stop = mutation({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -498,7 +497,7 @@ export const stopBox = mutation({
 	}
 });
 
-export const startBox = mutation({
+export const start = mutation({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -522,7 +521,7 @@ export const runtimeLogs = action({
 		await requireCapabilityInAction(ctx, "box_operations");
 
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
@@ -538,11 +537,11 @@ export const recoveryStatus = action({
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
-		return await ctx.runAction(internal.boxes.boxRecovery.status, {
+		return await ctx.runAction(internal.boxes.recovery.status, {
 			boxId: box._id
 		});
 	}
@@ -553,7 +552,7 @@ export const repair = action({
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
@@ -577,7 +576,7 @@ export const update = action({
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
@@ -608,7 +607,7 @@ export const cancelOperation = action({
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const operation = await ctx.runQuery(
-			internal.boxes.boxOperationSweep.activeOperationForBox,
+			internal.boxes.operationSweep.activeOperationForBox,
 			{ boxId: args.boxId }
 		);
 		if (!operation) {
@@ -620,17 +619,14 @@ export const cancelOperation = action({
 				.cancel(ctx, operation.workflowId as WorkflowId)
 				.catch(() => undefined);
 		}
-		await ctx.runMutation(
-			internal.boxes.boxOperationSweep.failOrphanedOperation,
-			{
-				error: `The ${operation.type} operation was cancelled by staff after it stopped making progress.`,
-				operationId: operation.operationId
-			}
-		);
+		await ctx.runMutation(internal.boxes.operationSweep.failOrphanedOperation, {
+			error: `The ${operationLabel(operation.type, true)} operation was cancelled by staff after it stopped making progress.`,
+			operationId: operation.operationId
+		});
 	}
 });
 
-export const suspendBox = action({
+export const suspend = action({
 	args: {
 		boxId: v.id("boxes"),
 		reason: v.optional(v.string())
@@ -647,7 +643,7 @@ export const suspendBox = action({
 	}
 });
 
-export const unsuspendBox = action({
+export const unsuspend = action({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -662,7 +658,7 @@ export const unsuspendBox = action({
 	}
 });
 
-export const boxSnapshots = query({
+export const snapshots = query({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -680,7 +676,7 @@ export const boxSnapshots = query({
 	}
 });
 
-export const createBoxSnapshot = mutation({
+export const createSnapshot = mutation({
 	args: {
 		boxId: v.id("boxes")
 	},
@@ -725,7 +721,7 @@ export const deleteSnapshot = mutation({
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) throw new ConvexError("Snapshot not found.");
 		await markSnapshotDeleting(ctx, args.snapshotId);
-		await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId
 		});
 	}

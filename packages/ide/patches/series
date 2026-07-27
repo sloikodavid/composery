@@ -15,6 +15,7 @@ custom-editors.diff
 clipboard.diff
 terminal.diff
 api.diff
+terminal-viewport.diff
 updates.diff
 web-client.diff
 path-prefix.diff

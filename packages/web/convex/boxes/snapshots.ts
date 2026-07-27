@@ -10,9 +10,10 @@ import {
 import { vSnapshotClass, type OperationTrigger } from "../schema";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
-import { appendBoxEvent } from "./boxEvents";
+import { appendBoxEvent } from "./events";
+import { boxEventType } from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
-import { startBoxOperation } from "./boxOperations";
+import { startBoxOperation } from "./operations";
 import {
 	SNAPSHOT_INCOMPLETE_RETENTION_MS,
 	SNAPSHOT_RETENTION_SWEEP_BATCH,
@@ -174,7 +175,7 @@ async function prepareSnapshotCapacity(
 ) {
 	const plan = await snapshotCapacityPlan(ctx, boxId, cls, policy);
 	for (const snapshotRowId of plan.evictions) {
-		await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId
 		});
 	}
@@ -306,7 +307,7 @@ export const completeSnapshot = internalMutation({
 
 		const box = await ctx.db.get(snapshot.box_id);
 		if (box) {
-			await appendBoxEvent(ctx, box, "box.snapshot_created", {
+			await appendBoxEvent(ctx, box, boxEventType("snapshot", "succeeded"), {
 				metadata: { class: snapshot.class, sizeBytes: args.sizeBytes ?? null }
 			});
 		}
@@ -344,7 +345,7 @@ export const markRestoreSucceeded = internalMutation({
 		});
 		const box = await ctx.db.get(args.boxId);
 		if (box) {
-			await appendBoxEvent(ctx, box, "box.snapshot_restored", {
+			await appendBoxEvent(ctx, box, boxEventType("restore", "succeeded"), {
 				metadata: { snapshotRowId: args.snapshotRowId }
 			});
 		}
@@ -421,7 +422,7 @@ export const runDelete = internalAction({
 	args: { snapshotRowId: v.id("box_snapshots") },
 	handler: async (ctx, args) => {
 		const target = await ctx.runMutation(
-			internal.boxes.boxSnapshots.claimSnapshotDelete,
+			internal.boxes.snapshots.claimSnapshotDelete,
 			{ snapshotRowId: args.snapshotRowId }
 		);
 		if (!target) return;
@@ -431,7 +432,7 @@ export const runDelete = internalAction({
 				imageId: target.imageId
 			});
 		}
-		await ctx.runMutation(internal.boxes.boxSnapshots.removeSnapshotRow, {
+		await ctx.runMutation(internal.boxes.snapshots.removeSnapshotRow, {
 			snapshotRowId: args.snapshotRowId
 		});
 	}
@@ -452,7 +453,7 @@ export const cascadeDeleteBoxSnapshots = internalMutation({
 			});
 
 		for (const row of page.page) {
-			await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+			await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 				snapshotRowId: row._id
 			});
 		}
@@ -460,7 +461,7 @@ export const cascadeDeleteBoxSnapshots = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxSnapshots.cascadeDeleteBoxSnapshots,
+				internal.boxes.snapshots.cascadeDeleteBoxSnapshots,
 				{
 					boxId: args.boxId,
 					cursor: page.continueCursor
@@ -505,18 +506,18 @@ export const deleteExpiredSnapshots = internalAction({
 	args: {},
 	handler: async (ctx) => {
 		const claim = await ctx.runMutation(
-			internal.boxes.boxSnapshots.claimExpiredSnapshots,
+			internal.boxes.snapshots.claimExpiredSnapshots,
 			{ limit: SNAPSHOT_RETENTION_SWEEP_BATCH }
 		);
 		for (const snapshotRowId of claim.snapshotRowIds) {
-			await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+			await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 				snapshotRowId
 			});
 		}
 		if (claim.hasMore) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxSnapshots.deleteExpiredSnapshots,
+				internal.boxes.snapshots.deleteExpiredSnapshots,
 				{}
 			);
 		}
@@ -556,7 +557,7 @@ export const scheduleAutomaticSnapshots = internalAction({
 			continueCursor: string;
 			isDone: boolean;
 			page: Id<"boxes">[];
-		} = await ctx.runQuery(internal.boxes.boxSnapshots.runningBoxIdsPage, {
+		} = await ctx.runQuery(internal.boxes.snapshots.runningBoxIdsPage, {
 			cursor: args.cursor ?? null
 		});
 
@@ -564,7 +565,7 @@ export const scheduleAutomaticSnapshots = internalAction({
 		for (const [index, boxId] of page.page.entries()) {
 			await ctx.scheduler.runAfter(
 				snapshotScheduleDelayMs(scheduledOffset + index),
-				internal.boxes.boxSnapshots.startAutomaticSnapshot,
+				internal.boxes.snapshots.startAutomaticSnapshot,
 				{ boxId }
 			);
 		}
@@ -572,7 +573,7 @@ export const scheduleAutomaticSnapshots = internalAction({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxSnapshots.scheduleAutomaticSnapshots,
+				internal.boxes.snapshots.scheduleAutomaticSnapshots,
 				{
 					cursor: page.continueCursor,
 					scheduledCount: scheduledOffset + page.page.length

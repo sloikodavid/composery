@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
 	try {
 		const authorization = await fetchAction(
-			api.boxes.boxAuth.createAuthorizationCode,
+			api.boxes.auth.createAuthorizationCode,
 			{
 				boxId: boxId as Id<"boxes">,
 				codeChallenge,

@@ -13,7 +13,7 @@ import { isSlugAvailable } from "../boxes/slugAvailability";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 
 type CheckoutResult = {

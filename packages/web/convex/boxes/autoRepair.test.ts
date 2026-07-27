@@ -10,7 +10,7 @@ import {
 	autoRepairDecision,
 	type AutoRepairFacts
 } from "./autoRepair";
-import { OPERATION_ALLOWED_STATUSES } from "./boxOperationRules";
+import { OPERATION_ALLOWED_STATUSES } from "./operationRules";
 
 const NOW = 10_000_000_000;
 
@@ -100,7 +100,7 @@ describe("autoRepairDecision", () => {
 			"suspended",
 			"repairing",
 			"updating",
-			"provisioning_failed",
+			"create_failed",
 			"deleting",
 			"deleted"
 		] as const) {

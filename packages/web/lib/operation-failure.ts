@@ -1,4 +1,37 @@
-import type { BoxOperationType } from "@/convex/schema";
+// Relative, not the `@/` alias: this file is imported by Convex functions as well
+// as by the app, and the Convex tsconfig has no path aliases. Every other lib
+// module Convex reaches for (box-route, box-slug, box-billing, cloud-legal)
+// obeys the same boundary.
+import type { BoxOperationType } from "../convex/schema";
+
+// What each operation is called in the interface.
+//
+// The console used to render `operation.type` straight from the row, so a staff
+// page said "change_config" and a staff email said "A change_config operation".
+// Identifiers and prose are separate vocabularies; this is the bridge.
+export const OPERATION_LABEL: Record<BoxOperationType, string> = {
+	create: "Create",
+	delete: "Remove",
+	reset: "Reset",
+	stop: "Stop",
+	start: "Start",
+	change_password: "Password change",
+	change_slug: "Slug change",
+	change_config: "Configuration change",
+	suspend: "Suspend",
+	unsuspend: "Unsuspend",
+	restore: "Restore",
+	snapshot: "Snapshot",
+	repair: "Repair",
+	update: "Update"
+};
+
+// The same names inside a sentence ("the slug change failed"), where a leading
+// capital would read as a proper noun.
+export function operationLabel(type: BoxOperationType, sentence = false) {
+	const label = OPERATION_LABEL[type];
+	return sentence ? label.toLowerCase() : label;
+}
 
 export type OperationFailure = {
 	error: string | null;
@@ -19,7 +52,7 @@ export type FailureNotice = {
 // One table, keyed by operation type and exhaustive by `satisfies`, because the
 // alternative was what this replaced: Repair and Update each explained their own
 // failure inside their own dialog, and every other operation explained nothing.
-// An owner whose reset, restore, provisioning, slug change or configuration apply
+// An owner whose reset, restore, creation, slug change or configuration apply
 // failed saw a status word and no reason anywhere in the interface.
 //
 // `owned: false` means the failure is not the owner's to act on and is not shown
@@ -27,10 +60,10 @@ export type FailureNotice = {
 // (a full Hetzner snapshot limit, typically), and the snapshot list already shows
 // the failed row; a delete failing is entirely ours.
 const FAILURE_NOTICES = {
-	provision: {
+	create: {
 		owned: true,
 		title: "This box could not be created.",
-		hint: "Retry provisioning, or contact support if it keeps failing - you are not charged for a box that never started."
+		hint: "Try creating it again, or contact support if it keeps failing - you are not charged for a box that never started."
 	},
 	reset: {
 		owned: true,
@@ -54,8 +87,8 @@ const FAILURE_NOTICES = {
 	},
 	change_slug: {
 		owned: true,
-		title: "The address change did not finish.",
-		hint: "The box is still reachable at its old address. You can try the change again."
+		title: "The slug change did not finish.",
+		hint: "The box is still reachable at its old slug. You can try the change again."
 	},
 	change_config: {
 		owned: true,

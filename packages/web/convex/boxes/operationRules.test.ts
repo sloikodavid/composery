@@ -9,7 +9,7 @@ import {
 	OPERATION_ALLOWED_STATUSES,
 	isActiveOperationStatus,
 	isOperationAllowed
-} from "./boxOperationRules";
+} from "./operationRules";
 
 // Both derived from the schema so a new status or operation type cannot silently
 // drift out of coverage. Restating either list here would mean a new operation
@@ -88,15 +88,15 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 		expect(isOperationAllowed("suspended", "restore")).toBe(false);
 	});
 
-	it("retries provisioning from provisioning or provisioning_failed", () => {
-		expect(isOperationAllowed("provisioning", "provision")).toBe(true);
-		expect(isOperationAllowed("provisioning_failed", "provision")).toBe(true);
-		expect(isOperationAllowed("running", "provision")).toBe(false);
+	it("retries creation from creating or create_failed", () => {
+		expect(isOperationAllowed("creating", "create")).toBe(true);
+		expect(isOperationAllowed("create_failed", "create")).toBe(true);
+		expect(isOperationAllowed("running", "create")).toBe(false);
 	});
 
 	// Repair needs a running box with real files and a reachable host, and must
 	// be retryable from its own failed state so a crashed repair can resume from
-	// its parking volume. A box that never provisioned has no files worth keeping,
+	// its parking volume. A box that never finished being created has no files worth keeping,
 	// so it is excluded; a powered-off box (stopped, suspended) has no host to
 	// reach over SSH, which is every repair step.
 	it("repairs a usable box or retries a failed repair, but not empty or off boxes", () => {
@@ -104,7 +104,7 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 		expect(isOperationAllowed("repair_failed", "repair")).toBe(true);
 		expect(isOperationAllowed("reset_failed", "repair")).toBe(true);
 		expect(isOperationAllowed("restore_failed", "repair")).toBe(true);
-		expect(isOperationAllowed("provisioning_failed", "repair")).toBe(false);
+		expect(isOperationAllowed("create_failed", "repair")).toBe(false);
 		expect(isOperationAllowed("stopped", "repair")).toBe(false);
 		expect(isOperationAllowed("suspended", "repair")).toBe(false);
 		expect(isOperationAllowed("repairing", "repair")).toBe(false);
@@ -124,7 +124,7 @@ describe("isOperationAllowed (state-machine transitions)", () => {
 		expect(isOperationAllowed("stopped", "update")).toBe(false);
 		expect(isOperationAllowed("suspended", "update")).toBe(false);
 		expect(isOperationAllowed("updating", "update")).toBe(false);
-		expect(isOperationAllowed("provisioning_failed", "update")).toBe(false);
+		expect(isOperationAllowed("create_failed", "update")).toBe(false);
 	});
 
 	// The rollback path. A box broken by an update is recovered by repairing it:

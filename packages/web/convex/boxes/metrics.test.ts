@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rollupMetricMeans, type RollupMetricSample } from "./boxMetrics";
+import { rollupMetricMeans, type RollupMetricSample } from "./metrics";
 
 function sample(value: number): RollupMetricSample {
 	return {

@@ -17,7 +17,7 @@ export const captureSnapshot = defineBoxWorkflow({
 	type: "snapshot",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box.hetzner_server_id) {
@@ -25,7 +25,7 @@ export const captureSnapshot = defineBoxWorkflow({
 		}
 
 		const { snapshotRowId } = await step.runMutation(
-			internal.boxes.boxSnapshots.beginSnapshot,
+			internal.boxes.snapshots.beginSnapshot,
 			{ boxId: args.boxId, class: args.class }
 		);
 
@@ -39,7 +39,7 @@ export const captureSnapshot = defineBoxWorkflow({
 				},
 				{ retry: true }
 			);
-			await step.runMutation(internal.boxes.boxSnapshots.markCreating, {
+			await step.runMutation(internal.boxes.snapshots.markCreating, {
 				snapshotRowId,
 				imageId,
 				actionId
@@ -71,7 +71,7 @@ export const captureSnapshot = defineBoxWorkflow({
 				{ imageId },
 				{ retry: true }
 			);
-			await step.runMutation(internal.boxes.boxSnapshots.completeSnapshot, {
+			await step.runMutation(internal.boxes.snapshots.completeSnapshot, {
 				snapshotRowId,
 				operationId: args.operationId,
 				sizeBytes: image.imageSizeGb
@@ -79,7 +79,7 @@ export const captureSnapshot = defineBoxWorkflow({
 					: undefined
 			});
 		} catch (error) {
-			await step.runMutation(internal.boxes.boxSnapshots.failSnapshot, {
+			await step.runMutation(internal.boxes.snapshots.failSnapshot, {
 				snapshotRowId,
 				error: operationError(error)
 			});
@@ -95,7 +95,7 @@ export const restoreBox = defineBoxWorkflow({
 	type: "restore",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box.hetzner_server_id) {
@@ -103,7 +103,7 @@ export const restoreBox = defineBoxWorkflow({
 		}
 
 		const target = await step.runQuery(
-			internal.boxes.boxSnapshots.snapshotRestoreTarget,
+			internal.boxes.snapshots.snapshotRestoreTarget,
 			{ snapshotRowId: args.snapshotRowId }
 		);
 		if (!target) throw new Error("Snapshot is not restorable.");
@@ -119,7 +119,7 @@ export const restoreBox = defineBoxWorkflow({
 			{ boxId: args.boxId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.boxSnapshots.markRestoreSucceeded, {
+		await step.runMutation(internal.boxes.snapshots.markRestoreSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId,
 			snapshotRowId: args.snapshotRowId

@@ -1,8 +1,8 @@
 import { internalAction, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { readGlobalSettings } from "../settings";
-import { startBoxOperation } from "./boxOperations";
-import { isOperationAllowed } from "./boxOperationRules";
+import { startBoxOperation } from "./operations";
+import { isOperationAllowed } from "./operationRules";
 import { floorDeadlinePassed, runtimeStanding } from "./runtimeRelease";
 
 // Boxes whose floor deadline has passed and which are still below it.

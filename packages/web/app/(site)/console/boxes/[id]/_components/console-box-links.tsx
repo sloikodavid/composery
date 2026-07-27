@@ -14,7 +14,7 @@ export function ConsoleBoxLinks({
 	boxId: string;
 	showSlug?: boolean;
 }) {
-	const detail = useQuery(api.staff.boxes.boxDetail, { boxId });
+	const detail = useQuery(api.staff.boxes.getById, { boxId });
 	if (!detail) return null;
 	const slug = detail.box.slug;
 

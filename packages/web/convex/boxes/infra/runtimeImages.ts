@@ -25,7 +25,7 @@ export type ParsedImageReference = {
 // colon. Getting that wrong is silent rather than loud: `sha256:abc` would parse
 // as the tag `abc` on a repository named `repo@sha256`, which is a well-formed
 // registry URL for something that does not exist. Every reference this resolves
-// after provisioning is a digest, so that path has to be the correct one.
+// after creation is a digest, so that path has to be the correct one.
 export function parseImageReference(image: string): ParsedImageReference {
 	const slash = image.indexOf("/");
 	const firstSegment = slash === -1 ? "" : image.slice(0, slash);

@@ -31,7 +31,7 @@ export const changeBoxConfig = defineBoxWorkflow({
 			{ retry: true }
 		);
 
-		await step.runMutation(internal.boxes.boxStatus.markConfigApplied, {
+		await step.runMutation(internal.boxes.status.markConfigApplied, {
 			boxId: args.boxId,
 			operationId: args.operationId,
 			config: args.config

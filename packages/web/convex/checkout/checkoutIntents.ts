@@ -10,13 +10,13 @@ import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
-} from "../boxes/boxRetention";
+} from "../boxes/retention";
 import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
 import { CLOUD_TERMS_VERSION } from "../../lib/cloud-legal";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 
 // Polar checkout metadata keys. Set when creating a checkout and read back from

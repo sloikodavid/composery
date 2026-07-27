@@ -9,13 +9,13 @@ export const deleteBox = defineBoxWorkflow({
 	type: "delete",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
 		await deleteRuntime(step, box);
 
-		await step.runMutation(internal.boxes.boxStatus.markDeleted, {
+		await step.runMutation(internal.boxes.status.markDeleted, {
 			boxId: args.boxId,
 			operationId: args.operationId
 		});

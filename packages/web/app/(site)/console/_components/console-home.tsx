@@ -42,7 +42,7 @@ import { formatDate, formatDateTime } from "@/lib/datetime";
 import { consoleBoxPath } from "@/lib/box-route";
 
 type ConsoleBox = NonNullable<
-	ReturnType<typeof useQuery<typeof api.staff.boxes.searchBoxes>>
+	ReturnType<typeof useQuery<typeof api.staff.boxes.search>>
 >[number];
 
 type CheckoutIntent = NonNullable<
@@ -250,7 +250,7 @@ function GlobalMetricsPanel() {
 
 export function ConsoleHome() {
 	const [query, setQuery] = useState("");
-	const boxes = useQuery(api.staff.boxes.searchBoxes, { query });
+	const boxes = useQuery(api.staff.boxes.search, { query });
 	const intents = useQuery(api.staff.checkout.activeCheckoutIntents, {
 		query
 	});
@@ -386,7 +386,7 @@ export function ConsoleHome() {
 										<TableCell>{box.userEmail || box.userId}</TableCell>
 										<TableCell>{formatDate(box.createdAt)}</TableCell>
 										<TableCell>
-											<StatusText status={box.status} />
+											<StatusText kind="box" status={box.status} />
 										</TableCell>
 										<TableCell className="pr-4">
 											<div className="flex items-center justify-end gap-1">
@@ -491,6 +491,7 @@ export function ConsoleHome() {
 									<TableCell>{formatDateTime(intent.expiresAt)}</TableCell>
 									<TableCell>
 										<StatusText
+											kind="foreign"
 											status={intent.polarCheckoutStatus ?? "active"}
 										/>
 									</TableCell>

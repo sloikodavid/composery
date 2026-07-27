@@ -8,7 +8,7 @@ import {
 	retainedOperationMetadata,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
-} from "./boxRetention";
+} from "./retention";
 
 describe("box retention", () => {
 	it("keeps a deleted box audit tombstone for exactly 180 days", () => {

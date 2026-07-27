@@ -1,7 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { ideUrl } from "../env";
-import { ACTIVE_OPERATION_STATUSES } from "./boxOperationRules";
+import { ACTIVE_OPERATION_STATUSES } from "./operationRules";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
 
@@ -78,7 +78,7 @@ export async function activeOperation(db: DatabaseReader, boxId: Id<"boxes">) {
 // that something has since succeeded past is history, not the box's current state,
 // and this self-clears the moment anything else finishes. That is what lets one
 // notice cover every operation instead of a per-operation dialog each owner has to
-// think to open - repair and update had one, and reset, restore, provisioning,
+// think to open - repair and update had one, and reset, restore, creation,
 // slug changes and configuration applies had nothing at all.
 export async function latestFailure(
 	db: DatabaseReader,
@@ -125,7 +125,7 @@ export function safeBox(box: Doc<"boxes">) {
 		runtimeUrl: ideUrl(box.slug),
 		createdAt: box.created_at,
 		updatedAt: box.updated_at,
-		provisionedAt: box.provisioned_at,
+		readyAt: box.ready_at,
 		deletedAt: box.deleted_at,
 		purgeAt: box.purge_at,
 		polarSubscriptionId: box.polar_subscription_id ?? null,

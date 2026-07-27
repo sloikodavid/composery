@@ -17,15 +17,12 @@ export async function POST(request: Request) {
 	}
 
 	try {
-		const result = await fetchAction(
-			api.boxes.boxAuth.exchangeAuthorizationCode,
-			{
-				boxId: body.boxId as Id<"boxes">,
-				code: body.code,
-				codeVerifier: body.codeVerifier,
-				redirectUri: body.redirectUri
-			}
-		);
+		const result = await fetchAction(api.boxes.auth.exchangeAuthorizationCode, {
+			boxId: body.boxId as Id<"boxes">,
+			code: body.code,
+			codeVerifier: body.codeVerifier,
+			redirectUri: body.redirectUri
+		});
 		return response(result, 200);
 	} catch {
 		return response({ error: "Invalid or expired authorization code." }, 401);

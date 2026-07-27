@@ -5,7 +5,7 @@ import { BoxActionsBar } from "@/components/boxes/actions-bar";
 import { api } from "@/convex/_generated/api";
 
 export function ConsoleBoxActions({ boxId }: { boxId: string }) {
-	const detail = useQuery(api.staff.boxes.boxDetail, { boxId });
+	const detail = useQuery(api.staff.boxes.getById, { boxId });
 	if (!detail?.box.runtimeUrl) return null;
 
 	return <BoxActionsBar runtimeUrl={detail.box.runtimeUrl} />;

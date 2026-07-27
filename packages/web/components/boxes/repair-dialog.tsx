@@ -13,8 +13,8 @@ import {
 	DialogTitle
 } from "@/components/base/dialog";
 import { ToneIcon } from "@/components/boxes/tone-icon";
-import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
-import type { RecoveryStatus } from "@/convex/boxes/boxRecoveryTypes";
+import { isOperationAllowed } from "@/convex/boxes/operationRules";
+import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
 import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
 import { errorMessage } from "@/lib/error-message";
 import { CHECKS, type Tone, buildChecks, summarize } from "@/lib/repair-status";

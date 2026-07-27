@@ -1,23 +1,25 @@
 # Conventions
 
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- Every version pin needs a Renovate path or a stated reason it cannot have one. Action refs carry `@<sha> # vX.Y.Z`, Docker refs carry `tag@digest` (a bare digest hides the version from Renovate), and a bare `ARG` carries a `# renovate:` comment naming its datasource. Pins Renovate cannot see - a version repeated in a second file - are tied to the managed copy by a test. Pins it should not chase stay unmanaged on purpose: apt packages track Debian, runner labels track GitHub. `renovate.json` groups pins that must move together.
+- Every version pin needs a Renovate path or a stated reason it cannot have one: actions carry `@<sha> # vX.Y.Z`, Docker carries `tag@digest`, a bare `ARG` carries a `# renovate:` datasource comment. Some pins stay unmanaged on purpose - apt tracks Debian, runner labels track GitHub. See `renovate.json`.
 - Use `tmp/` for scratch files and artifacts (gitignored).
-- No abstraction/extraction for confirmed single-use code. Dedupe shared hardcoded values so they can't drift.
-- When one value ends up in two places, prefer in this order: remove the second copy, derive it from the first, pin the pair with a test. The test is the last resort, not the default. It makes the duplication permanent and charges every later change for it, and its usual outcome is that someone satisfies the test rather than asking why there are two copies - so it earns its place only where the duplication genuinely cannot be removed, as with a pin an external tool has to read. The same ordering applies to a value that has to be _right_ rather than merely equal: prefer having the code read it at runtime from the one place that owns it over asking a person to keep a copy accurate.
-- A convention here solves a specific problem; check that problem is yours before applying it. Matching the shape of a rule is not the same as meeting its reason, and a rule that manages an unavoidable duplication must never be cited to justify creating one.
-- Collapse flashy or out-of-place words for consistency: Delete/Erase->Remove, Open->Start, Close->Stop, Complete/End->Finish, Spawn/Provision->Create, Mode->Type, Material->Contents, Kind->Type, Verify->Check?, Policy->Config?, Main->Index.
+- No abstraction for confirmed single-use code.
+- When one value ends up in two places: remove the second copy, else derive it from the first, else pin the pair with a test - in that order. The test is the last resort, because it makes the duplication permanent and invites satisfying the test instead of asking why there are two copies. It earns its place only where an external tool has to read the copy.
+- A rule here solves a specific problem; check that problem is yours before applying it. In particular, a rule that manages unavoidable duplication never justifies creating some.
+- One name per concept, the plainest one: Create (not Provision/Spawn), Delete (not Erase/Destroy), Start (not Open/Boot), Stop (not Close/Halt), Finish (not Complete/End), Type (not Mode/Kind), Contents (not Material), Index (not Main). Where an external API forces its own word, keep theirs at the boundary and ours everywhere inside.
+- An action is named for what it acts on. Acting on a whole thing takes the bare verb (`repair`, `reset`, `update`); acting on one of its attributes takes verb + attribute (`change_slug`, `change_password`). That rule decides operation types, event names, function names, and button labels alike, so a name that needs an exception is usually the wrong name.
+- Identifiers and prose are separate vocabularies. Never build user-visible text by reformatting an identifier: a stored value that also has to read well in English can be neither consistent nor readable. Map identifiers to labels explicitly.
 - The container is not a boundary against the person using it: it is privileged and root-capable, and cloud box owners control their host too (the Hetzner firewall is the real boundary — see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own box is a supported surface, so every env-driven feature must behave correctly when they do.
 - Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the box password never requires a Composery website account — proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
 
 ## Correctness
 
-- Check claims against the artifact, not the source you assume produces it. A patch or generator may already override what the upstream file says, and a grep that misses one spelling reads as proof of absence. Run the generator, read the built tree, query the deployment.
+- Check claims against the artifact, not the source you assume produces it: run the generator, read the built tree, query the deployment. A grep that misses one spelling reads as proof of absence.
 - A check that cannot fail is worse than no check: it reports success forever. Before trusting a new test or guard, break what it guards and watch it fail. Substring assertions are the usual culprit — `HASHED_PASSWORD` matches inside `COMPOSERY_HASHED_PASSWORD`.
-- Silent success is the worst outcome here, worse than a crash. A password that reverts at the next restart, a documented variable nothing reads, a repair job verifying the wrong name: each looked healthy for exactly as long as nobody checked. Make the inert path say so.
+- Silent success is worse than a crash. A documented variable nothing reads, a repair job checking the wrong name, a gate no sweep can reach: each looks healthy for exactly as long as nobody checks. Make the inert path say so.
 - Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
 - Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
-- Fix the class, not the instance. A bug found by reading is usually one of several; prefer a lint or regen test that catches the next one to a hand-patch of the one you saw. Where the class can be designed out instead - one source of truth, a derived value, a state made unrepresentable - do that and the test becomes unnecessary. A guard against a mistake nobody can make any more is the best outcome; a guard that makes the mistake permanently possible is the worst.
+- Fix the class, not the instance. A bug found by reading is usually one of several. Best is designing the class out - one source of truth, a derived value, a state made unrepresentable - so no guard is needed; next best is a test that catches the next instance; worst is a hand-patch of the one you saw.
 - Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem — if cost scales with a workload's shape, that is the bug, not the workload.
 
 ## IDE / upstream naming
@@ -310,6 +312,7 @@ packages/
       qr-action.diff
       readiness.diff
       series
+      terminal-viewport.diff
       terminal.diff
       touch.diff
       updates.diff
@@ -643,8 +646,8 @@ packages/
           changeBoxConfig.ts
           changeBoxPassword.ts
           changeBoxSlug.ts
+          createBox.ts
           deleteBox.ts
-          provisionBox.ts
           repairBox.ts
           resetBox.ts
           runtimeLifecycle.ts
@@ -654,43 +657,40 @@ packages/
           suspendBox.ts
           unsuspendBox.ts
           updateBox.ts
+        access.test.ts
+        access.ts
+        auth.test.ts
+        auth.ts
         autoRepair.test.ts
         autoRepair.ts
-        boxAccess.test.ts
-        boxAccess.ts
-        boxAuth.test.ts
-        boxAuth.ts
-        boxCapacity.test.ts
-        boxCapacity.ts
-        boxCleanup.test.ts
-        boxCleanup.ts
-        boxEvents.ts
-        boxHealth.ts
-        boxLogs.ts
-        boxMetrics.test.ts
-        boxMetrics.ts
-        boxMetricsPoll.ts
-        boxOperationRules.test.ts
-        boxOperationRules.ts
-        boxOperations.ts
-        boxOperationSweep.test.ts
-        boxOperationSweep.ts
-        boxQueries.test.ts
-        boxQueries.ts
-        boxRecovery.ts
-        boxRecoveryTypes.ts
-        boxRetention.test.ts
-        boxRetention.ts
-        boxSnapshots.ts
-        boxStatus.ts
-        boxViews.test.ts
-        boxViews.ts
+        capacity.test.ts
+        capacity.ts
         capacityAlerts.test.ts
         capacityAlerts.ts
+        cleanup.test.ts
+        cleanup.ts
+        events.ts
+        health.ts
+        logs.ts
+        metrics.test.ts
+        metrics.ts
+        metricsPoll.ts
         metricThresholds.test.ts
         metricThresholds.ts
+        operationRules.test.ts
+        operationRules.ts
+        operations.ts
+        operationSweep.test.ts
+        operationSweep.ts
+        queries.test.ts
+        queries.ts
         reconcile.test.ts
         reconcile.ts
+        recovery.ts
+        recoveryTypes.ts
+        rename.ts
+        retention.test.ts
+        retention.ts
         runtimeConfig.test.ts
         runtimeConfig.ts
         runtimeFloor.ts
@@ -700,6 +700,10 @@ packages/
         slugAvailability.ts
         snapshotPolicy.test.ts
         snapshotPolicy.ts
+        snapshots.ts
+        status.ts
+        views.test.ts
+        views.ts
       checkout/
         checkoutConversion.ts
         checkoutIntents.test.ts
@@ -982,6 +986,7 @@ tests/
   runtime-init.test.ts
   terminal-data-flow-control.test.ts
   terminal-sync.test.ts
+  terminal-viewport.test.ts
   toolchain-pins.test.ts
   touch-editor-selection.test.ts
   touch-list-focus.test.ts

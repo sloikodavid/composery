@@ -121,12 +121,14 @@ the whole request is valid.
 ## Attach over WebSocket
 
 `WS /_composery/api/v1/terminals/{id}` attaches to an existing terminal.
-Binary frames from the server are raw terminal output; incoming frames are
-terminal input. The attach first replays existing scrollback and then follows
-the live tail. On exit, the server sends `{"exit":{"code":N}}` and closes.
+Binary frames from the server are raw terminal output. Binary frames from the
+client are terminal input, while client text frames are control messages. The
+attach first replays existing scrollback and then follows the live tail. On
+exit, the server sends `{"exit":{"code":N}}` and closes.
 
 ```bash
-websocat -H "Authorization: Bearer composery_..." \
+websocat --protocol composery-terminal-v1 \
+  -H "Authorization: Bearer composery_..." \
   "wss://<your-instance>/_composery/api/v1/terminals/7"
 ```
 
@@ -134,6 +136,18 @@ Disconnecting only detaches this stream. The terminal stays in the editor,
 running: a command started here keeps going with nobody attached, and you can
 pick it up in the editor or attach again later. Closing it in the editor stops
 it, the way it stops any terminal, and so does `DELETE`.
+
+Terminal emulators must negotiate the `composery-terminal-v1` WebSocket
+subprotocol; the server rejects attachments without it. Clients may include
+their initial grid as `?cols=80&rows=24`. Binary client frames are terminal
+input and text client frames are control messages:
+
+```json
+{ "type": "resize", "cols": 80, "rows": 24 }
+```
+
+Each resize also makes that WebSocket the terminal's active viewport. When it
+disconnects, the server restores the most recently active attached viewport.
 
 The pty host arbitrates its single flow-control counter across the browser and
 API attachments, so the same broadcast output is never acknowledged twice, and a

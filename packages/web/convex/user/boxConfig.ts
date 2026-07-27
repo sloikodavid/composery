@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { requireActiveUser, requireIdentity } from "../authorization";
-import { findBoxBySlug } from "../boxes/boxQueries";
+import { findBoxBySlug } from "../boxes/queries";
 import {
 	RUNTIME_CONFIG_FIELDS,
 	RuntimeConfigError,
@@ -9,8 +9,8 @@ import {
 	applySecretIntent,
 	normalizeRuntimeConfig
 } from "../boxes/runtimeConfig";
-import { startBoxOperation } from "../boxes/boxOperations";
-import { isOperationAllowed } from "../boxes/boxOperationRules";
+import { startBoxOperation } from "../boxes/operations";
+import { isOperationAllowed } from "../boxes/operationRules";
 import { sanitizeSlug } from "../../lib/box-slug";
 
 // The box needs these values, the owner set them, and nobody needs to read them
@@ -80,7 +80,7 @@ export const save = mutation({
 		});
 
 		const operationId = await startBoxOperation(ctx, box._id, "change_config", {
-			idempotencyKey: `config:${box._id}:${Date.now()}`,
+			idempotencyKey: `change-config:${box._id}:${Date.now()}`,
 			trigger: "owner",
 			// The attempted configuration lives on the operation so a failed apply is
 			// still recoverable for support, even though the box row deliberately

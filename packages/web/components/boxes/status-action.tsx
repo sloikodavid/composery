@@ -2,6 +2,7 @@
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { StatusButton } from "@/components/boxes/status-button";
+import type { BoxStatus } from "@/convex/schema";
 
 type ConfirmAction = { onConfirm: () => void };
 type ClickAction = { disabled?: boolean; onClick: () => void };
@@ -18,7 +19,7 @@ export function BoxStatusAction({
 	unsuspend
 }: {
 	start: ClickAction;
-	status: string;
+	status: BoxStatus;
 	stop: ConfirmAction;
 	retry: ClickAction;
 	unsuspend?: ClickAction;
@@ -62,13 +63,13 @@ export function BoxStatusAction({
 		);
 	}
 
-	if (status === "provisioning_failed") {
+	if (status === "create_failed") {
 		return (
 			<StatusButton
 				action={{
 					disabled: retry.disabled,
 					icon: "rotate-cw",
-					label: "Retry provisioning",
+					label: "Create again",
 					onClick: retry.onClick
 				}}
 				status={status}

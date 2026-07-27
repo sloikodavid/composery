@@ -18,7 +18,7 @@ export const changeBoxSlug = defineBoxWorkflow({
 	type: "change_slug",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		let dns: { aRecordId: string; aaaaRecordId: string } | null = null;
@@ -49,7 +49,7 @@ export const changeBoxSlug = defineBoxWorkflow({
 				{ retry: true }
 			);
 
-			await step.runMutation(internal.boxes.boxStatus.swapSlug, {
+			await step.runMutation(internal.boxes.status.swapSlug, {
 				boxId: args.boxId,
 				operationId: args.operationId,
 				newSlug: args.newSlug,

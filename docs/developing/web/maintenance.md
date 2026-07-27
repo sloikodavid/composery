@@ -70,7 +70,7 @@ app ships on the app stores' cadence against whatever box it connects to.
 ### How a box's version is compared
 
 `RUNTIME_IMAGE` names a channel, not a version. A box resolves it to an
-immutable digest when it provisions and records that digest, so the tag can move
+immutable digest when it is created and records that digest, so the tag can move
 afterwards without changing what any existing box runs. Only two operations
 re-resolve the channel: Reset, which rebuilds the host and does not keep the
 box's files, and Update, which keeps them.

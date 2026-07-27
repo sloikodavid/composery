@@ -1,8 +1,8 @@
 import { components, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "../boxes/boxQueries";
-import { startBoxOperation } from "../boxes/boxOperations";
+import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "../boxes/queries";
+import { startBoxOperation } from "../boxes/operations";
 
 type ReconciliationPage = {
 	continueCursor: string;
@@ -51,7 +51,7 @@ export const deleteBoxesWithoutActiveSubscriptions = internalAction({
 
 				for (;;) {
 					const page: ReconciliationPage = await ctx.runQuery(
-						internal.boxes.boxQueries.boxesForSubscriptionReconciliationPage,
+						internal.boxes.queries.boxesForSubscriptionReconciliationPage,
 						{ cursor, status }
 					);
 					for (const box of page.page) {

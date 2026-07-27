@@ -17,7 +17,7 @@ import {
 	type SelectTriggerVariant,
 	SelectValue
 } from "@/components/base/select";
-import type { RolledMetric } from "@/convex/boxes/boxMetrics";
+import type { RolledMetric } from "@/convex/boxes/metrics";
 import { cn } from "@/lib/utils";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 

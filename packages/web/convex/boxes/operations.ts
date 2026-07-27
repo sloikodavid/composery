@@ -17,7 +17,7 @@ import {
 import {
 	ACTIVE_OPERATION_STATUSES,
 	isOperationAllowed
-} from "./boxOperationRules";
+} from "./operationRules";
 import { assertSlugAvailable } from "./slugAvailability";
 import { startWorkflow } from "./workflows/boxWorkflow";
 
@@ -71,9 +71,9 @@ async function findActiveOperationForBox(ctx: ReadDbCtx, boxId: Id<"boxes">) {
 // until it has a plan. Callers only supply what genuinely varies - the
 // idempotency key, and any reserved slug, metadata, or workflow arguments.
 const BOX_OPERATION_PLANS = {
-	provision: {
-		targetStatus: "provisioning",
-		workflow: internal.boxes.workflows.provisionBox.provisionBox
+	create: {
+		targetStatus: "creating",
+		workflow: internal.boxes.workflows.createBox.createBox
 	},
 	delete: {
 		targetStatus: "deleting",
@@ -249,7 +249,7 @@ export async function startBoxOperation(
 		workflowArgs?: Record<string, unknown>;
 	}
 ): Promise<Id<"box_operations"> | null> {
-	return await ctx.runMutation(internal.boxes.boxOperations.startOperation, {
+	return await ctx.runMutation(internal.boxes.operations.startOperation, {
 		boxId,
 		idempotencyKey: options.idempotencyKey,
 		metadata: options.metadata,

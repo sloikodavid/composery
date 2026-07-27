@@ -53,7 +53,7 @@ describe("failureNotice", () => {
 	// notice states a problem and stops, which is the shape of an error message
 	// nobody can use.
 	it.each([
-		"provision",
+		"create",
 		"reset",
 		"restore",
 		"repair",

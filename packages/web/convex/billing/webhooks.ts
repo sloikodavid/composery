@@ -3,7 +3,7 @@ import type { HttpRouter } from "convex/server";
 import { components, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { startBoxOperation } from "../boxes/boxOperations";
+import { startBoxOperation } from "../boxes/operations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { TERMS_FIELD_SLUG } from "../../lib/cloud-legal";
@@ -242,7 +242,7 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 
 				const intentId = await intentIdFromOrder(ctx, order);
 				const boxId = await ctx.runQuery(
-					internal.boxes.boxQueries.boxIdBySubscription,
+					internal.boxes.queries.boxIdBySubscription,
 					{ subscriptionId: order.subscriptionId }
 				);
 				if (!intentId && !boxId) return;
@@ -265,7 +265,7 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 				await syncSubscription(ctx, event.data);
 
 				const boxId = await ctx.runQuery(
-					internal.boxes.boxQueries.boxIdBySubscription,
+					internal.boxes.queries.boxIdBySubscription,
 					{
 						subscriptionId: event.data.id
 					}

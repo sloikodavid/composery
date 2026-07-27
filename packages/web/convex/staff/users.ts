@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { action, internalMutation, mutation } from "../_generated/server";
 import { requireCapability, requireCapabilityInAction } from "../authorization";
-import { startBoxSuspension } from "../boxes/boxOperations";
+import { startBoxSuspension } from "../boxes/operations";
 import { isInternalRole } from "../roles";
 
 const USER_BOX_ACTION_FAILURE_EXAMPLES = 5;
@@ -70,7 +70,7 @@ export const setUserSuspended = action({
 				continueCursor: string;
 				isDone: boolean;
 				page: Doc<"boxes">[];
-			} = await ctx.runQuery(internal.boxes.boxQueries.boxesForUserStatusPage, {
+			} = await ctx.runQuery(internal.boxes.queries.boxesForUserStatusPage, {
 				clerkUserId: args.clerkUserId,
 				cursor,
 				status

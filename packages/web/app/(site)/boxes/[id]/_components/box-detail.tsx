@@ -38,7 +38,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 	const stopBox = useMutation(api.user.boxes.stop);
 	const startBox = useMutation(api.user.boxes.start);
 	const resetBox = useMutation(api.user.boxes.reset);
-	const retryProvision = useMutation(api.user.boxes.retryProvision);
+	const retryCreate = useMutation(api.user.boxes.retryCreate);
 	const changeSlug = useMutation(api.user.boxes.changeSlug);
 	const repair = useAction(api.user.boxes.repair);
 	const updateBox = useAction(api.user.boxes.update);
@@ -87,10 +87,10 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 			<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
 				<BoxStatusAction
 					retry={{
-						disabled: busy === "retry",
+						disabled: busy === "create",
 						onClick: () =>
-							run("retry", "Retrying provisioning", () =>
-								retryProvision({ slug: box.slug })
+							run("create", "Creating box", () =>
+								retryCreate({ slug: box.slug })
 							)
 					}}
 					start={{
@@ -149,13 +149,14 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 				</AnimatedIconLink>
 				<ChangeSlugDialog
 					onSubmit={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
+					slug={box.slug}
 				/>
 				<BoxSnapshots slug={box.slug} status={box.status} />
 				<UpdateDialog
 					boxStatus={box.status}
 					busy={busy}
 					onUpdate={() =>
-						run("update", "Update started", () => updateBox({ slug: box.slug }))
+						run("update", "Updating box", () => updateBox({ slug: box.slug }))
 					}
 					runtime={detail.runtime}
 					slug={box.slug}
@@ -166,7 +167,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					busy={busy}
 					check={() => recoveryStatus({ slug: box.slug })}
 					onRepair={() =>
-						run("repair", "Repair started", () => repair({ slug: box.slug }))
+						run("repair", "Repairing box", () => repair({ slug: box.slug }))
 					}
 					repair={detail.repair}
 					slug={box.slug}

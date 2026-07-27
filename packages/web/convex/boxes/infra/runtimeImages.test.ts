@@ -58,7 +58,7 @@ describe("parseImageReference", () => {
 		});
 	});
 
-	// Everything resolved after provisioning is a digest reference, so this is the
+	// Everything resolved after creation is a digest reference, so this is the
 	// path that matters most. Splitting on the last colon instead would yield the
 	// repository "composery@sha256" and the tag "abc" - a perfectly well-formed
 	// URL for an image that does not exist, so the failure would be a 404 far from

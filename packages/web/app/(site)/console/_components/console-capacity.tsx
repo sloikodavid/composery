@@ -5,7 +5,7 @@ import { useState } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
-import type { CapacityUsage } from "@/convex/boxes/boxCapacity";
+import type { CapacityUsage } from "@/convex/boxes/capacity";
 import { useBusyAction } from "@/hooks/use-busy-action";
 
 function draftValue(value: number | null) {

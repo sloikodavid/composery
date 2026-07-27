@@ -12,8 +12,8 @@ export function ConsoleBoxSnapshots({
 	boxId: Id<"boxes">;
 	status: string;
 }) {
-	const snapshots = useQuery(api.staff.boxes.boxSnapshots, { boxId });
-	const createSnapshot = useMutation(api.staff.boxes.createBoxSnapshot);
+	const snapshots = useQuery(api.staff.boxes.snapshots, { boxId });
+	const createSnapshot = useMutation(api.staff.boxes.createSnapshot);
 	const restoreSnapshot = useMutation(api.staff.boxes.restoreSnapshot);
 	const deleteSnapshot = useMutation(api.staff.boxes.deleteSnapshot);
 

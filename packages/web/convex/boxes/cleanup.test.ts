@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import schema from "../schema";
-import { DELETE_ATTEMPTS_BEFORE_ALERT, deleteNeedsPerson } from "./boxCleanup";
-import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "./boxQueries";
+import { DELETE_ATTEMPTS_BEFORE_ALERT, deleteNeedsPerson } from "./cleanup";
+import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "./queries";
 
 // `purgeBox` is the end of a box's life: after it, nothing box-shaped is supposed
 // to remain. Every table keyed by `box_id` therefore has to be handled there, and
@@ -25,10 +25,7 @@ function tablesKeyedByBox() {
 }
 
 function purgeBoxSource() {
-	const source = readFileSync(
-		new URL("./boxCleanup.ts", import.meta.url),
-		"utf8"
-	);
+	const source = readFileSync(new URL("./cleanup.ts", import.meta.url), "utf8");
 	const start = source.indexOf("export const purgeBox");
 	expect(start).toBeGreaterThan(-1);
 	const end = source.indexOf("\nexport const ", start + 1);
@@ -79,7 +76,7 @@ describe("finishFailedDeletions never abandons a box", () => {
 	// kind that clears on its own.
 	it("starts a delete on every pass, including past the alert threshold", () => {
 		const source = readFileSync(
-			new URL("./boxCleanup.ts", import.meta.url),
+			new URL("./cleanup.ts", import.meta.url),
 			"utf8"
 		);
 		const start = source.indexOf("export const finishFailedDeletions");
@@ -109,9 +106,7 @@ describe("delete_failed has one owner", () => {
 	// way out, and its subscription still has to be checked.
 	it("still reconciles boxes that failed something other than deletion", () => {
 		expect(SUBSCRIPTION_RECONCILIATION_STATUSES).toContain("repair_failed");
-		expect(SUBSCRIPTION_RECONCILIATION_STATUSES).toContain(
-			"provisioning_failed"
-		);
+		expect(SUBSCRIPTION_RECONCILIATION_STATUSES).toContain("create_failed");
 		expect(SUBSCRIPTION_RECONCILIATION_STATUSES).toContain("running");
 	});
 });

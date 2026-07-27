@@ -2,7 +2,8 @@ import { logger } from "@coder/logger"
 import * as crypto from "crypto"
 import * as express from "express"
 import * as path from "path"
-import { wss, Router as WsRouter, type WebsocketRequest } from "../../wsRouter"
+import Websocket from "ws"
+import { Router as WsRouter, type WebsocketRequest } from "../../wsRouter"
 import { ensureVSCodeLoaded, ptyService } from "../vscode"
 import { authenticate, type ApiRequest } from "./auth"
 import { apiConfig, MAX_TERMINAL_TIMEOUT_SEC } from "./config"
@@ -15,6 +16,11 @@ import { sessions } from "./ratelimit"
 // lib/vscode/src/vs/platform/terminal/node/ptyService.ts (api.diff);
 // a test pins the two together.
 export const API_TERMINAL_WORKSPACE_ID = "composery-api-terminal"
+export const TERMINAL_VIEWPORT_PROTOCOL = "composery-terminal-v1"
+const terminalWebsocketServer = new Websocket.Server({
+  noServer: true,
+  handleProtocols: (protocols) => (protocols.has(TERMINAL_VIEWPORT_PROTOCOL) ? TERMINAL_VIEWPORT_PROTOCOL : false),
+})
 
 // TitleEventSource.Api in lib/vscode/src/vs/platform/terminal/common/terminal.ts.
 // Declared rather than imported, like the service shape below, and it is the
@@ -104,6 +110,9 @@ export interface PtyService {
   clearBuffer(id: number): Promise<void>
   registerDataConsumer(id: number, consumerId: string): Promise<void>
   unregisterDataConsumer(id: number, consumerId: string): Promise<void>
+  registerTerminalViewport(id: number, viewportId: string): Promise<void>
+  unregisterTerminalViewport(id: number, viewportId: string): Promise<void>
+  activateTerminalViewport(id: number, viewportId: string, cols: number, rows: number): Promise<void>
   acknowledgeDataEvent(id: number, charCount: number, consumerId: string): Promise<void>
   updateTitle(id: number, title: string, titleSource: number): Promise<void>
   updateIcon(id: number, userInitiated: boolean, icon: unknown, color?: string): Promise<void>
@@ -168,6 +177,12 @@ interface OutputBuffer {
   length: number
 }
 
+interface TerminalViewportResize {
+  type: "resize"
+  cols: number
+  rows: number
+}
+
 interface ResolvedCreate {
   command?: string
   cwd: string
@@ -198,6 +213,39 @@ function resolveDimension(value: unknown, fallback: number): number {
     throw new Error("cols and rows must be integers from 1 to 1000")
   }
   return value
+}
+
+function optionalWebsocketDimensions(req: WebsocketRequest): { cols: number; rows: number } | undefined {
+  const params = new URL(req.url || "", "http://localhost").searchParams
+  const cols = params.get("cols")
+  const rows = params.get("rows")
+  if (cols === null && rows === null) return undefined
+  if (cols === null || rows === null) throw new Error("cols and rows must be provided together")
+  return {
+    cols: resolveDimension(Number(cols), 80),
+    rows: resolveDimension(Number(rows), 24),
+  }
+}
+
+export function parseTerminalViewportMessage(data: string): TerminalViewportResize {
+  let message: unknown
+  try {
+    message = JSON.parse(data)
+  } catch {
+    throw new Error("terminal viewport control messages must be valid JSON")
+  }
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    throw new Error("terminal viewport control message must be an object")
+  }
+  const value = message as Record<string, unknown>
+  if (value.type !== "resize") {
+    throw new Error('terminal viewport control message type must be "resize"')
+  }
+  return {
+    type: "resize",
+    cols: resolveDimension(value.cols, 80),
+    rows: resolveDimension(value.rows, 24),
+  }
 }
 
 function resolveCwd(cwd: unknown): string {
@@ -718,8 +766,25 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
     endWithStatus(req, 404, "Terminal Not Found")
     return
   }
+  const protocolHeader = req.headers["sec-websocket-protocol"]
+  const requestedProtocols =
+    typeof protocolHeader === "string"
+      ? protocolHeader.split(",").map((protocol) => protocol.trim())
+      : (protocolHeader ?? [])
+  if (!requestedProtocols.includes(TERMINAL_VIEWPORT_PROTOCOL)) {
+    endWithStatus(req, 400, "Terminal Protocol Required")
+    return
+  }
   if (!sessions.tryAcquire(auth.id)) {
     endWithStatus(req, 429, "Too Many Terminal Streams")
+    return
+  }
+  let initialDimensions: { cols: number; rows: number } | undefined
+  try {
+    initialDimensions = optionalWebsocketDimensions(req)
+  } catch (error) {
+    sessions.release(auth.id)
+    endWithStatus(req, 400, error instanceof Error ? error.message : "Bad Request")
     return
   }
 
@@ -731,8 +796,9 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
   }
 
   try {
-    wss.handleUpgrade(req, req.ws, req.head, (ws) => {
+    terminalWebsocketServer.handleUpgrade(req, req.ws, req.head, (ws) => {
       const consumerId = `api-ws:${crypto.randomUUID()}`
+      let viewportRegistered = false
       let stopped = false
       const stopStreaming = () => {
         if (stopped) return
@@ -740,6 +806,10 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
         release()
         for (const listener of listeners) listener.dispose()
         void pty.unregisterDataConsumer(id, consumerId).catch(() => {})
+        if (viewportRegistered) {
+          viewportRegistered = false
+          void pty.unregisterTerminalViewport(id, consumerId).catch(() => {})
+        }
       }
       const send = (data: string, acknowledge: boolean) => {
         ws.send(Buffer.from(data, "utf8"), (error) => {
@@ -772,13 +842,42 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
         }),
       ]
 
-      ws.on("message", (data: Buffer) => void pty.input(id, data.toString("utf8")))
+      let ready: Promise<unknown>
+      ws.on("message", (data: Buffer, isBinary: boolean) => {
+        void ready
+          .then(() => {
+            if (isBinary) {
+              return pty.input(id, data.toString("utf8"))
+            }
+            const message = parseTerminalViewportMessage(data.toString("utf8"))
+            return pty.activateTerminalViewport(id, consumerId, message.cols, message.rows)
+          })
+          .catch((error) => {
+            logger.warn(`API terminal viewport message rejected: ${error instanceof Error ? error.message : error}`)
+            try {
+              ws.close(1003, "Invalid terminal viewport message")
+            } catch {}
+            stopStreaming()
+          })
+      })
       ws.on("close", stopStreaming)
       ws.on("error", stopStreaming)
 
-      void pty
+      ready = pty
         .registerDataConsumer(id, consumerId)
-        .then(() => pty.start(id))
+        .then(async () => {
+          await pty.registerTerminalViewport(id, consumerId)
+          viewportRegistered = true
+          if (stopped) {
+            viewportRegistered = false
+            await pty.unregisterTerminalViewport(id, consumerId)
+            return
+          }
+          if (initialDimensions) {
+            await pty.activateTerminalViewport(id, consumerId, initialDimensions.cols, initialDimensions.rows)
+          }
+        })
+        .then(() => (stopped ? undefined : pty.start(id)))
         .then((result) => {
           if (result && "message" in result) throw new Error(result.message)
         })

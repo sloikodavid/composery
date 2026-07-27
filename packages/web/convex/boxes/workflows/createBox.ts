@@ -2,12 +2,12 @@ import { internal } from "../../_generated/api";
 import { createRuntime } from "./runtimeLifecycle";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
-export const provisionBox = defineBoxWorkflow({
-	type: "provision",
+export const createBox = defineBoxWorkflow({
+	type: "create",
 	run: async (step, args) => {
 		try {
 			const box = await step.runQuery(
-				internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+				internal.boxes.queries.getBoxLifecycleSnapshot,
 				{ boxId: args.boxId }
 			);
 			if (!box.runtime_image) {
@@ -20,7 +20,7 @@ export const provisionBox = defineBoxWorkflow({
 				{ retry: true }
 			);
 
-			await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
+			await step.runMutation(internal.boxes.status.setRuntimeImage, {
 				boxId: args.boxId,
 				runtimeImage: release.image,
 				runtimeVersion: release.version
@@ -28,13 +28,13 @@ export const provisionBox = defineBoxWorkflow({
 
 			await createRuntime(step, args.boxId, box.slug);
 
-			await step.runMutation(internal.boxes.boxStatus.markProvisionSucceeded, {
+			await step.runMutation(internal.boxes.status.markCreateSucceeded, {
 				boxId: args.boxId,
 				operationId: args.operationId
 			});
 		} catch (provisionError) {
 			const failedBox = await step.runQuery(
-				internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+				internal.boxes.queries.getBoxLifecycleSnapshot,
 				{ boxId: args.boxId }
 			);
 			// A comp was never paid for, so there is nothing to refund - let it fail

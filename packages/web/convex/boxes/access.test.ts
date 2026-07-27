@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ownerCanReadBox } from "./boxAccess";
+import { ownerCanReadBox } from "./access";
 
 describe("ownerCanReadBox", () => {
 	it("allows the owner to read a live box", () => {

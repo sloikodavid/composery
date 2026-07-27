@@ -97,10 +97,10 @@ export function SnapshotsDialog({
 
 					<div className="flex justify-end">
 						<AnimatedIconButton
-							disabled={!canTake || busy === "take"}
+							disabled={!canTake || busy === "snapshot"}
 							icon="download"
 							iconPosition="start"
-							onClick={() => run("take", "Snapshot started", onTake)}
+							onClick={() => run("snapshot", "Taking snapshot", onTake)}
 						>
 							New snapshot
 						</AnimatedIconButton>
@@ -161,7 +161,10 @@ export function SnapshotsDialog({
 														{formatSize(snapshot.sizeBytes)}
 													</TableCell>
 													<TableCell>
-														<StatusText status={snapshot.status} />
+														<StatusText
+															kind="snapshot"
+															status={snapshot.status}
+														/>
 													</TableCell>
 													<TableCell className="pr-4 text-right">
 														<div className="flex items-center justify-end gap-1">
@@ -193,7 +196,7 @@ export function SnapshotsDialog({
 																description="Permanently removes this snapshot. This can't be undone."
 																destructive
 																onConfirm={() =>
-																	run("delete", "Snapshot deleted", () =>
+																	run("delete", "Removing snapshot", () =>
 																		onDelete(snapshot.id)
 																	)
 																}

@@ -4,8 +4,8 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { fetchServerMetricsSample } from "./infra/hetznerVps";
-import { METRICS_POLL_INTERVAL_MS, POLLED_STATUSES } from "./boxMetrics";
-import { startBoxSuspension } from "./boxOperations";
+import { METRICS_POLL_INTERVAL_MS, POLLED_STATUSES } from "./metrics";
+import { startBoxSuspension } from "./operations";
 
 const POLL_CONCURRENCY = 10;
 
@@ -32,7 +32,7 @@ async function pollTargets(ctx: ActionCtx, targets: PollTarget[]) {
 						METRICS_POLL_INTERVAL_MS
 					);
 					const { suspendFlagId, suspendReason } = await ctx.runMutation(
-						internal.boxes.boxMetrics.recordSample,
+						internal.boxes.metrics.recordSample,
 						{ boxId: target.boxId, ...sample }
 					);
 
@@ -61,7 +61,7 @@ export const pollBoxMetrics = internalAction({
 
 			for (;;) {
 				const page: PollTargetsPage = await ctx.runQuery(
-					internal.boxes.boxMetrics.pollTargetsPage,
+					internal.boxes.metrics.pollTargetsPage,
 					{ cursor, status }
 				);
 				await pollTargets(ctx, page.page);

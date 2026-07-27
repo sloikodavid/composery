@@ -8,14 +8,14 @@ import {
 	type ActionCtx
 } from "./_generated/server";
 import { revokePolarSubscription } from "./billing/polar";
-import { startBoxOperation } from "./boxes/boxOperations";
+import { startBoxOperation } from "./boxes/operations";
 import { reconcileCapacityAlert } from "./boxes/capacityAlerts";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
-} from "./boxes/boxRetention";
+} from "./boxes/retention";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,

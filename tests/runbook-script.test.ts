@@ -43,7 +43,7 @@ describe("cron runbook generation", () => {
 	// resolved value is the real one.
 	test("resolves a schedule written as a shared constant", () => {
 		const minutes = /METRICS_POLL_INTERVAL_MINUTES = (\d+)/.exec(
-			readRepoFile("packages/web/convex/boxes/boxMetrics.ts")
+			readRepoFile("packages/web/convex/boxes/metrics.ts")
 		)?.[1];
 
 		expect(minutes).toBeDefined();

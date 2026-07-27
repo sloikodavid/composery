@@ -87,7 +87,11 @@ export function BoxList() {
 								<span className={`${DATE_COL} text-muted-foreground`}>
 									{formatDate(box.createdAt)}
 								</span>
-								<StatusText className={STATUS_COL} status={box.status} />
+								<StatusText
+									className={STATUS_COL}
+									kind="box"
+									status={box.status}
+								/>
 								<AnimatedIconAnchor
 									aria-label={`Open ${box.slug}`}
 									className={buttonVariants({

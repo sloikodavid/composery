@@ -13,11 +13,11 @@ import {
 	type BoxStatus,
 	type OperationTrigger
 } from "../schema";
-import { startBoxOperation } from "./boxOperations";
+import { startBoxOperation } from "./operations";
 import {
 	isOperationAllowed,
 	OPERATION_ALLOWED_STATUSES
-} from "./boxOperationRules";
+} from "./operationRules";
 
 // Automatic repair: the fleet heals a box that has stopped serving, without its
 // owner having to notice and press Repair.
@@ -282,7 +282,7 @@ export const sweepBoxHealth = internalAction({
 		for (const box of boxes) {
 			try {
 				const { reachable } = await ctx.runAction(
-					internal.boxes.boxHealth.probeRuntime,
+					internal.boxes.health.probeRuntime,
 					{ boxId: box.boxId }
 				);
 				await ctx.runMutation(internal.boxes.autoRepair.recordProbe, {

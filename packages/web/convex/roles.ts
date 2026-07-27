@@ -7,7 +7,7 @@ export const USER_CAPABILITIES = [
 	"user_moderation",
 	"settings_management",
 	"checkout_management",
-	// Minting a free box provisions real infrastructure that costs money, so it
+	// Minting a free box creates real infrastructure that costs money, so it
 	// gates separately from ordinary checkout/box powers - a role can hold those
 	// without being able to hand out comps.
 	"box_comp",

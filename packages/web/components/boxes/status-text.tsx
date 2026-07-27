@@ -19,59 +19,86 @@ import { RunningIndicator } from "@/components/boxes/running-indicator";
 import { cn } from "@/lib/utils";
 
 type Tone = "neutral" | "success" | "warning" | "danger";
+type Entry = { label: string; tone: Tone };
 
-// Every status we define ourselves, keyed by the schema's own unions rather than
-// by string: adding one to the schema fails the build here instead of silently
-// rendering as a neutral "Zap off". The three sets overlap (running, pending,
-// failed, deleting) and agree on tone where they do.
-type OwnStatus = BoxStatus | BoxOperationStatus | SnapshotStatus;
-
-const OWN_TONES: Record<OwnStatus, Tone> = {
-	// Box lifecycle
-	provisioning: "warning",
-	running: "success",
-	provisioning_failed: "danger",
-	stopping: "warning",
-	stopped: "danger",
-	starting: "warning",
-	resetting: "warning",
-	reset_failed: "danger",
-	repairing: "warning",
-	repair_failed: "danger",
-	updating: "warning",
-	update_failed: "danger",
-	restoring: "warning",
-	restore_failed: "danger",
-	suspending: "warning",
-	suspended: "warning",
-	unsuspending: "warning",
-	deleting: "warning",
-	delete_failed: "danger",
-	deleted: "neutral",
-	// Box operations
-	pending: "warning",
-	succeeded: "success",
-	failed: "danger",
-	// Snapshots
-	creating: "warning",
-	complete: "success"
+// A box, an operation, a snapshot and a Polar record each have their own set of
+// statuses, and this renders all four. They are kept as four maps rather than one.
+//
+// They used to be flattened into a single `Record<BoxStatus | BoxOperationStatus |
+// SnapshotStatus, Tone>`, which forced any word appearing in two of them to be a
+// single row with a single tone and a single label. That reads as economy and is
+// really a constraint: a box that is `creating` and a snapshot that is `creating`
+// are different events that only happen to want the same English word today, and
+// the shared row is what would stop one of them being reworded later. It also made
+// the component's own prop `status: string`, so nothing checked that a snapshot
+// status was not being passed where a box status belonged.
+//
+// Four maps, four exhaustive unions, one `kind` on the prop. A status added to any
+// schema union fails the build in exactly one map, and each vocabulary is free to
+// word itself.
+const BOX: Record<BoxStatus, Entry> = {
+	creating: { label: "Creating", tone: "warning" },
+	running: { label: "Running", tone: "success" },
+	create_failed: { label: "Couldn't create", tone: "danger" },
+	stopping: { label: "Stopping", tone: "warning" },
+	stopped: { label: "Stopped", tone: "danger" },
+	starting: { label: "Starting", tone: "warning" },
+	resetting: { label: "Resetting", tone: "warning" },
+	reset_failed: { label: "Couldn't reset", tone: "danger" },
+	repairing: { label: "Repairing", tone: "warning" },
+	repair_failed: { label: "Couldn't repair", tone: "danger" },
+	updating: { label: "Updating", tone: "warning" },
+	update_failed: { label: "Couldn't update", tone: "danger" },
+	restoring: { label: "Restoring", tone: "warning" },
+	restore_failed: { label: "Couldn't restore", tone: "danger" },
+	suspending: { label: "Suspending", tone: "warning" },
+	suspended: { label: "Suspended", tone: "warning" },
+	unsuspending: { label: "Unsuspending", tone: "warning" },
+	deleting: { label: "Removing", tone: "warning" },
+	delete_failed: { label: "Couldn't remove", tone: "danger" },
+	deleted: { label: "Removed", tone: "neutral" }
 };
 
-// Polar's checkout and subscription statuses. Someone else's vocabulary, so this
-// one stays open and unknown falls back to neutral. Spinning and icon overrides
-// live in their own maps below.
-const STATUS_TONES: Record<string, Tone> = {
-	...OWN_TONES,
-	active: "warning",
-	open: "warning",
-	confirmed: "success",
-	converted: "success",
-	expired: "neutral",
-	released: "neutral"
+const OPERATION: Record<BoxOperationStatus, Entry> = {
+	pending: { label: "Pending", tone: "warning" },
+	running: { label: "Running", tone: "warning" },
+	succeeded: { label: "Succeeded", tone: "success" },
+	failed: { label: "Failed", tone: "danger" }
 };
 
-const SPINNING_STATUSES = new Set([
-	"provisioning",
+const SNAPSHOT: Record<SnapshotStatus, Entry> = {
+	pending: { label: "Pending", tone: "warning" },
+	creating: { label: "Capturing", tone: "warning" },
+	complete: { label: "Complete", tone: "success" },
+	failed: { label: "Failed", tone: "danger" },
+	deleting: { label: "Removing", tone: "warning" }
+};
+
+// Polar's vocabulary, which we do not own and cannot make exhaustive. It is the
+// only one allowed to fall back, and the fallback title-cases rather than guesses
+// a tone.
+const FOREIGN: Record<string, Entry> = {
+	active: { label: "Active", tone: "warning" },
+	open: { label: "Open", tone: "warning" },
+	confirmed: { label: "Confirmed", tone: "success" },
+	converted: { label: "Converted", tone: "success" },
+	expired: { label: "Expired", tone: "neutral" },
+	released: { label: "Released", tone: "neutral" }
+};
+
+function foreignEntry(status: string): Entry {
+	const text = status.replace(/_/g, " ");
+	return {
+		label: text.charAt(0).toUpperCase() + text.slice(1),
+		tone: "neutral"
+	};
+}
+
+// Statuses that mean "something is happening right now" and so spin. Named per
+// vocabulary for the same reason as the labels: a box that is `running` is at
+// rest, an operation that is `running` is in flight.
+const SPINNING_BOX = new Set<BoxStatus>([
+	"creating",
 	"stopping",
 	"starting",
 	"resetting",
@@ -80,17 +107,23 @@ const SPINNING_STATUSES = new Set([
 	"restoring",
 	"suspending",
 	"unsuspending",
-	"deleting",
+	"deleting"
+]);
+const SPINNING_OPERATION = new Set<BoxOperationStatus>(["pending", "running"]);
+const SPINNING_SNAPSHOT = new Set<SnapshotStatus>([
 	"pending",
-	"creating"
+	"creating",
+	"deleting"
 ]);
 
-// Per-status icon overrides. Terminal / inert states get distinct glyphs;
-// everything else falls back to its tone's default icon.
-const STATUS_ICONS: Record<string, LucideIcon> = {
+// Terminal / inert states with a glyph of their own; everything else falls back
+// to its tone's icon.
+const BOX_ICONS: Partial<Record<BoxStatus, LucideIcon>> = {
 	stopped: UnplugIcon,
 	suspended: ConstructionIcon,
-	deleted: Trash2Icon,
+	deleted: Trash2Icon
+};
+const FOREIGN_ICONS: Record<string, LucideIcon> = {
 	expired: Undo2Icon,
 	released: Undo2Icon
 };
@@ -109,37 +142,65 @@ const TONE_COLOR: Record<Tone, string> = {
 	danger: "text-destructive"
 };
 
-function humanize(status: string) {
-	const text = status.replace(/_/g, " ");
-	return text.charAt(0).toUpperCase() + text.slice(1);
+export type StatusTextProps = { className?: string } & (
+	| { kind: "box"; status: BoxStatus }
+	| { kind: "operation"; status: BoxOperationStatus }
+	| { kind: "snapshot"; status: SnapshotStatus }
+	| { kind: "foreign"; status: string }
+);
+
+function resolve(props: StatusTextProps): {
+	entry: Entry;
+	icon: LucideIcon | undefined;
+	spinning: boolean;
+} {
+	switch (props.kind) {
+		case "box":
+			return {
+				entry: BOX[props.status],
+				icon: BOX_ICONS[props.status],
+				spinning: SPINNING_BOX.has(props.status)
+			};
+		case "operation":
+			return {
+				entry: OPERATION[props.status],
+				icon: undefined,
+				spinning: SPINNING_OPERATION.has(props.status)
+			};
+		case "snapshot":
+			return {
+				entry: SNAPSHOT[props.status],
+				icon: undefined,
+				spinning: SPINNING_SNAPSHOT.has(props.status)
+			};
+		case "foreign":
+			return {
+				entry: FOREIGN[props.status] ?? foreignEntry(props.status),
+				icon: FOREIGN_ICONS[props.status],
+				spinning: false
+			};
+	}
 }
 
-export function StatusText({
-	className,
-	status
-}: {
-	className?: string;
-	status: string;
-}) {
-	const tone = STATUS_TONES[status] ?? "neutral";
-	const spinning = SPINNING_STATUSES.has(status);
-	const Icon =
-		STATUS_ICONS[status] ?? (spinning ? LoaderIcon : TONE_ICON[tone]);
+export function StatusText(props: StatusTextProps) {
+	const { entry, icon, spinning } = resolve(props);
+	const Icon = icon ?? (spinning ? LoaderIcon : TONE_ICON[entry.tone]);
+	const live = props.kind === "box" && props.status === "running";
 
 	return (
-		<span className={cn("inline-flex items-center gap-1.5", className)}>
-			{status === "running" ? (
+		<span className={cn("inline-flex items-center gap-1.5", props.className)}>
+			{live ? (
 				<RunningIndicator />
 			) : (
 				<Icon
 					className={cn(
 						"size-3.5",
-						TONE_COLOR[tone],
+						TONE_COLOR[entry.tone],
 						spinning && "animate-spin"
 					)}
 				/>
 			)}
-			{humanize(status)}
+			{entry.label}
 		</span>
 	);
 }

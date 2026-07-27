@@ -9,14 +9,14 @@ import {
 import { consoleBoxPath } from "../../lib/box-route";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
-import { startBoxOperation } from "./boxOperations";
+import { startBoxOperation } from "./operations";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
 	deletedBoxDataPatch,
 	retainedOperationMetadata,
 	terminalCheckoutSecretPatch
-} from "./boxRetention";
+} from "./retention";
 
 const DELETE_BATCH_SIZE = 100;
 const CLEANUP_RETRY_MS = 24 * 60 * 60 * 1000;
@@ -121,16 +121,16 @@ export const finishFailedDeletions = internalAction({
 	args: {},
 	handler: async (ctx) => {
 		const pending = await ctx.runQuery(
-			internal.boxes.boxCleanup.boxesFailedToDelete,
+			internal.boxes.cleanup.boxesFailedToDelete,
 			{}
 		);
 
 		for (const box of pending) {
 			if (deleteNeedsPerson(box.failedDeletes)) {
-				await ctx.runMutation(
-					internal.boxes.boxCleanup.alertDeletionNeedsPerson,
-					{ boxId: box.boxId, failedDeletes: box.failedDeletes }
-				);
+				await ctx.runMutation(internal.boxes.cleanup.alertDeletionNeedsPerson, {
+					boxId: box.boxId,
+					failedDeletes: box.failedDeletes
+				});
 			}
 
 			try {
@@ -159,28 +159,24 @@ export const normalizeDeletedBoxes = internalMutation({
 			await ctx.db.patch(box._id, deletedBoxDataPatch(deletedAt));
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.deleteRuntimeData,
+				internal.boxes.cleanup.deleteRuntimeData,
 				{
 					boxId: box._id
 				}
 			);
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.sanitizeOperations,
+				internal.boxes.cleanup.sanitizeOperations,
 				{
 					boxId: box._id
 				}
 			);
+			await ctx.scheduler.runAfter(0, internal.boxes.cleanup.sanitizeEvents, {
+				boxId: box._id
+			});
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.sanitizeEvents,
-				{
-					boxId: box._id
-				}
-			);
-			await ctx.scheduler.runAfter(
-				0,
-				internal.boxes.boxCleanup.startCheckoutRetention,
+				internal.boxes.cleanup.startCheckoutRetention,
 				{
 					boxId: box._id,
 					deletedAt
@@ -190,7 +186,7 @@ export const normalizeDeletedBoxes = internalMutation({
 		if (boxes.length === DELETE_BATCH_SIZE) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.normalizeDeletedBoxes,
+				internal.boxes.cleanup.normalizeDeletedBoxes,
 				{}
 			);
 		}
@@ -239,7 +235,7 @@ export const deleteRuntimeData = internalMutation({
 		) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.deleteRuntimeData,
+				internal.boxes.cleanup.deleteRuntimeData,
 				{
 					boxId: args.boxId
 				}
@@ -268,7 +264,7 @@ export const startCheckoutRetention = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.startCheckoutRetention,
+				internal.boxes.cleanup.startCheckoutRetention,
 				{
 					boxId: args.boxId,
 					deletedAt: args.deletedAt,
@@ -308,7 +304,7 @@ export const purgeExpiredCheckoutRecords = internalMutation({
 		if (intents.length === DELETE_BATCH_SIZE) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.purgeExpiredCheckoutRecords,
+				internal.boxes.cleanup.purgeExpiredCheckoutRecords,
 				{}
 			);
 		}
@@ -336,7 +332,7 @@ export const sanitizeOperations = internalMutation({
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.sanitizeOperations,
+				internal.boxes.cleanup.sanitizeOperations,
 				{
 					boxId: args.boxId,
 					cursor: page.continueCursor
@@ -363,14 +359,10 @@ export const sanitizeEvents = internalMutation({
 			});
 		}
 		if (!page.isDone) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.boxes.boxCleanup.sanitizeEvents,
-				{
-					boxId: args.boxId,
-					cursor: page.continueCursor
-				}
-			);
+			await ctx.scheduler.runAfter(0, internal.boxes.cleanup.sanitizeEvents, {
+				boxId: args.boxId,
+				cursor: page.continueCursor
+			});
 		}
 	}
 });
@@ -388,14 +380,14 @@ export const scheduleExpiredBoxPurges = internalMutation({
 			)
 			.paginate({ cursor: args.cursor ?? null, numItems: DELETE_BATCH_SIZE });
 		for (const box of page.page) {
-			await ctx.scheduler.runAfter(0, internal.boxes.boxCleanup.purgeBox, {
+			await ctx.scheduler.runAfter(0, internal.boxes.cleanup.purgeBox, {
 				boxId: box._id
 			});
 		}
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.boxCleanup.scheduleExpiredBoxPurges,
+				internal.boxes.cleanup.scheduleExpiredBoxPurges,
 				{ cursor: page.continueCursor }
 			);
 		}
@@ -473,7 +465,7 @@ export const purgeBox = internalMutation({
 			});
 		}
 		for (const snapshot of snapshots) {
-			await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+			await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 				snapshotRowId: snapshot._id
 			});
 		}
@@ -481,7 +473,7 @@ export const purgeBox = internalMutation({
 		if (rows.length > 0 || intents.length > 0 || snapshots.length > 0) {
 			await ctx.scheduler.runAfter(
 				snapshots.length > 0 ? 60_000 : 0,
-				internal.boxes.boxCleanup.purgeBox,
+				internal.boxes.cleanup.purgeBox,
 				{ boxId: args.boxId }
 			);
 			return;

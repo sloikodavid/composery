@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasCurrentSuspension } from "./boxQueries";
+import { hasCurrentSuspension } from "./queries";
 
 describe("hasCurrentSuspension", () => {
 	it("shows a reason only while suspension is current", () => {

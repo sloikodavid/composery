@@ -1,15 +1,16 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation } from "../_generated/server";
-import { appendBoxEvent } from "../boxes/boxEvents";
+import { appendBoxEvent } from "../boxes/events";
+import { boxEventType } from "../boxes/operationRules";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
-import { startBoxOperation } from "../boxes/boxOperations";
+import { startBoxOperation } from "../boxes/operations";
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch
-} from "../boxes/boxRetention";
+} from "../boxes/retention";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "./checkoutIntents";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/boxCapacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { sendStaffAlert } from "../staffAlerts";
 
@@ -147,7 +148,7 @@ export const convertCheckoutIntentToBox = internalMutation({
 		const boxId = await ctx.db.insert("boxes", {
 			user_id: intent.user_id,
 			slug: intent.slug,
-			status: "provisioning",
+			status: "creating",
 			polar_customer_id: args.polarCustomerId,
 			polar_subscription_id: args.polarSubscriptionId,
 			runtime_image: args.runtimeImage,
@@ -170,8 +171,8 @@ export const convertCheckoutIntentToBox = internalMutation({
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
 
-		const operationId = await startBoxOperation(ctx, boxId, "provision", {
-			idempotencyKey: `provision:${boxId}`,
+		const operationId = await startBoxOperation(ctx, boxId, "create", {
+			idempotencyKey: `create:${boxId}`,
 			metadata: {
 				[CHECKOUT_INTENT_METADATA_KEYS.intentId]: intent._id
 			},
@@ -180,7 +181,7 @@ export const convertCheckoutIntentToBox = internalMutation({
 		if (!operationId)
 			throw new ConvexError("Provision operation already exists.");
 
-		await appendBoxEvent(ctx, box, "box.provisioning_started", {
+		await appendBoxEvent(ctx, box, boxEventType("create", "started"), {
 			metadata: { operationId }
 		});
 

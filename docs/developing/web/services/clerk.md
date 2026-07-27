@@ -81,7 +81,7 @@ users return to the box without seeing another prompt. Do not configure a Clerk
 force redirect because it overrides the transaction return path.
 
 The code, PKCE challenge, grant, and their lifetimes live in
-`convex/boxes/boxAuth.ts`; read them there rather than restating them. The raw
+`convex/boxes/auth.ts`; read them there rather than restating them. The raw
 password never leaves the box origin, so Clerk only ever proves who owns the
 box.
 

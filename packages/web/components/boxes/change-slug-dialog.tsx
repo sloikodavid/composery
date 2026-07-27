@@ -19,9 +19,11 @@ import { isValidSlug, sanitizeSlug } from "@/lib/box-slug";
 // Owner and console box pages share this dialog; the caller's onSubmit performs
 // the slug change (and any post-change navigation).
 export function ChangeSlugDialog({
-	onSubmit
+	onSubmit,
+	slug
 }: {
 	onSubmit: (newSlug: string) => Promise<unknown>;
+	slug: string;
 }) {
 	const [open, setOpen] = useState(false);
 	const [newSlug, setNewSlug] = useState("");
@@ -40,7 +42,7 @@ export function ChangeSlugDialog({
 			<Dialog onOpenChange={setOpen} open={open}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Change slug</DialogTitle>
+						<DialogTitle>Change slug for {slug}</DialogTitle>
 						<DialogDescription>
 							This changes the box URL. Pipelines and bookmarks using the
 							current address will stop working.
@@ -60,13 +62,13 @@ export function ChangeSlugDialog({
 						<Button
 							disabled={busy === "slug" || !isValidSlug(newSlug)}
 							onClick={() =>
-								// "started", not "changed". The mutation only queues the work -
-								// new DNS records and a proxy reload happen after it returns, and
-								// the box keeps its old slug until both land. This used to say
-								// "Slug changed", so an owner whose change then failed and rolled
-								// back had been told it succeeded and was told nothing after.
-								// The outcome now shows on the box page itself.
-								run("slug", "Slug change started", async () => {
+								// In progress, not done. The mutation only queues the work - new DNS
+								// records and a proxy reload happen after it returns, and the box
+								// keeps its old slug until both land. This used to say "Slug
+								// changed", so an owner whose change then failed and rolled back
+								// had been told it succeeded and was told nothing after. The
+								// outcome now shows on the box page itself.
+								run("slug", "Changing slug", async () => {
 									await onSubmit(newSlug);
 									setNewSlug("");
 									setOpen(false);

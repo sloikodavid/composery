@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Doc } from "../_generated/dataModel";
-import { safeBox, staffBox } from "./boxViews";
+import { safeBox, staffBox } from "./views";
 
 const previousDomain = process.env.CLOUD_DOMAIN;
 afterEach(() => {
@@ -36,7 +36,7 @@ describe("safeBox", () => {
 			runtimeUrl: "https://my-box.composery.cloud/ide/",
 			createdAt: 1_000,
 			updatedAt: 2_000,
-			provisionedAt: undefined,
+			readyAt: undefined,
 			deletedAt: undefined,
 			polarSubscriptionId: "sub_1",
 			comp: false,
@@ -44,7 +44,7 @@ describe("safeBox", () => {
 		});
 	});
 
-	// A box provisioned before versions were recorded has a digest but no label.
+	// A box created before versions were recorded has a digest but no label.
 	// The owner view has to say "unknown", not omit the field, or the interface
 	// cannot tell "no version recorded" from "not loaded yet".
 	it("reports a null version for a box with no recorded one", () => {
@@ -73,12 +73,12 @@ describe("safeBox", () => {
 		expect(staff.compReason).toBe("beta tester");
 	});
 
-	it("surfaces provisioned/deleted timestamps when present", () => {
+	it("surfaces ready/deleted timestamps when present", () => {
 		process.env.CLOUD_DOMAIN = "composery.cloud";
 		const view = safeBox(
-			box({ provisioned_at: 1_500, deleted_at: 9_000, status: "deleted" })
+			box({ ready_at: 1_500, deleted_at: 9_000, status: "deleted" })
 		);
-		expect(view.provisionedAt).toBe(1_500);
+		expect(view.readyAt).toBe(1_500);
 		expect(view.deletedAt).toBe(9_000);
 		expect(view.status).toBe("deleted");
 		expect(staffBox(box({ status: "deleted" })).runtimeUrl).toBeNull();

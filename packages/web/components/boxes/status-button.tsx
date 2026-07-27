@@ -7,6 +7,7 @@ import {
 } from "@/components/animated-icon";
 import { StatusText } from "@/components/boxes/status-text";
 import { Button } from "@/components/base/button";
+import type { BoxStatus } from "@/convex/schema";
 
 type StatusAction = {
 	disabled?: boolean;
@@ -21,14 +22,14 @@ export function StatusButton({
 	status
 }: {
 	action?: StatusAction;
-	status: string;
+	status: BoxStatus;
 }) {
 	const { handlers, iconRef } = useAnimatedIconHandlers<HTMLButtonElement>({});
 
 	if (!action) {
 		return (
 			<Button disabled variant="outline">
-				<StatusText status={status} />
+				<StatusText kind="box" status={status} />
 			</Button>
 		);
 	}
@@ -43,7 +44,7 @@ export function StatusButton({
 			{...handlers}
 		>
 			<span className="inline-flex items-center gap-1.5 transition-opacity group-hover/button:opacity-0 group-focus-visible/button:opacity-0">
-				<StatusText status={status} />
+				<StatusText kind="box" status={status} />
 			</span>
 			<span className="absolute inset-0 inline-flex items-center justify-center gap-1.5 rounded-[inherit] opacity-0 transition-opacity group-hover/button:opacity-100 group-focus-visible/button:opacity-100">
 				<AnimatedIcon

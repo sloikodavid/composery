@@ -4010,7 +4010,7 @@ describe("api terminals", () => {
 			terminals.indexOf("wsRouter.ws(`${apiBasePath}/terminals/:id`")
 		);
 		const replay = route.indexOf("pty.onProcessReplay");
-		const start = route.indexOf(".then(() => pty.start(id))");
+		const start = route.indexOf("pty.start(id)");
 		expect(replay).toBeGreaterThan(-1);
 		expect(start).toBeGreaterThan(replay);
 		expect(route).toContain(

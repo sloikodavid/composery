@@ -5,7 +5,7 @@ import {
 	readCapacityUsage,
 	type CapacityLimitBlockReason,
 	type CapacityUsage
-} from "./boxCapacity";
+} from "./capacity";
 
 type CapacityAlertTransition =
 	| { type: "none" }

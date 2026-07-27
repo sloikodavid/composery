@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { vRecoveryStatus, type RecoveryStatus } from "./boxRecoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "./recoveryTypes";
 
 // Probes the public URL and inspects the host over SSH in parallel, so the
 // Repair dialog can show one honest picture of every layer. Read-only: the
@@ -11,7 +11,7 @@ export const status = internalAction({
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const [http, host] = await Promise.all([
-			ctx.runAction(internal.boxes.boxHealth.probeRuntime, args),
+			ctx.runAction(internal.boxes.health.probeRuntime, args),
 			ctx.runAction(internal.boxes.infra.ssh.inspectRuntime, args)
 		]);
 		return { ...host, httpReachable: http.reachable };

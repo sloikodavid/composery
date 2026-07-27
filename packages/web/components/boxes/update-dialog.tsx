@@ -10,7 +10,7 @@ import {
 	DialogTitle
 } from "@/components/base/dialog";
 import { ToneIcon } from "@/components/boxes/tone-icon";
-import { isOperationAllowed } from "@/convex/boxes/boxOperationRules";
+import { isOperationAllowed } from "@/convex/boxes/operationRules";
 import type { RuntimeStanding } from "@/convex/boxes/runtimeRelease";
 import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
 import { formatDateTime } from "@/lib/datetime";

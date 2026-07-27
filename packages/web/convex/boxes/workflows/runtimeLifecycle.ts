@@ -41,7 +41,7 @@ export async function deleteRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 }
 
 // Create a server and DNS, then bootstrap the runtime, recording each step.
-// Shared by provisionBox and resetBox.
+// Shared by createBox and resetBox.
 export async function createRuntime(
 	step: WorkflowCtx,
 	boxId: Id<"boxes">,
@@ -53,7 +53,7 @@ export async function createRuntime(
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.boxStatus.recordServerCreated, {
+	await step.runMutation(internal.boxes.status.recordServerCreated, {
 		boxId,
 		serverId: server.serverId,
 		serverType: server.serverType,
@@ -68,7 +68,7 @@ export async function createRuntime(
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.boxStatus.recordDnsCreated, {
+	await step.runMutation(internal.boxes.status.recordDnsCreated, {
 		boxId,
 		aRecordId: dns.aRecordId,
 		aaaaRecordId: dns.aaaaRecordId
@@ -90,7 +90,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.boxStatus.setRuntimeImage, {
+	await step.runMutation(internal.boxes.status.setRuntimeImage, {
 		boxId: box._id,
 		runtimeImage: release.image,
 		runtimeVersion: release.version
@@ -102,7 +102,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.boxStatus.recordServerRebuilt, {
+	await step.runMutation(internal.boxes.status.recordServerRebuilt, {
 		boxId: box._id,
 		serverId: server.serverId,
 		serverType: server.serverType,

@@ -30,7 +30,7 @@ export const updateBox = defineBoxWorkflow({
 	type: "update",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -48,7 +48,7 @@ export const updateBox = defineBoxWorkflow({
 		// anyway would drop the owner's terminals for no change at all.
 		if (box.runtime_image === release.image) {
 			await step.runMutation(
-				internal.boxes.boxStatus.setBoxStatusWithOperationSucceeded,
+				internal.boxes.status.setBoxStatusWithOperationSucceeded,
 				{
 					boxId: args.boxId,
 					operationId: args.operationId,
@@ -65,7 +65,7 @@ export const updateBox = defineBoxWorkflow({
 			{ retry: true }
 		);
 
-		await step.runMutation(internal.boxes.boxStatus.markUpdateSucceeded, {
+		await step.runMutation(internal.boxes.status.markUpdateSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId,
 			runtimeImage: release.image,

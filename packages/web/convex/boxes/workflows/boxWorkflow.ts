@@ -3,7 +3,7 @@ import { type ObjectType, type PropertyValidators, v } from "convex/values";
 import { components, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type { BoxOperationType } from "../../schema";
-import { OPERATION_FAILURE } from "../boxOperationRules";
+import { boxEventType, OPERATION_FAILURE_STATUS } from "../operationRules";
 
 export const workflow = new WorkflowManager(components.workflow);
 
@@ -27,7 +27,7 @@ export async function startWorkflow(
 		// see: a workflow cancelled from outside, or one whose failure-recording
 		// mutation itself threw. Without it those leave the operation active
 		// forever, and an active operation blocks every later action on the box.
-		onComplete: internal.boxes.boxStatus.finishBoxOperation,
+		onComplete: internal.boxes.status.finishBoxOperation,
 		context
 	});
 }
@@ -65,7 +65,7 @@ export function defineBoxWorkflow<
 	type: BoxOperationType;
 	run: (step: WorkflowCtx, args: BoxWorkflowArgs<Extra>) => Promise<void>;
 }) {
-	const failure = OPERATION_FAILURE[config.type];
+	const failureStatus = OPERATION_FAILURE_STATUS[config.type];
 
 	return workflow.define({
 		args: {
@@ -75,24 +75,24 @@ export function defineBoxWorkflow<
 		},
 		handler: async (step, args) => {
 			const typedArgs = args as BoxWorkflowArgs<Extra>;
-			await step.runMutation(internal.boxes.boxStatus.markOperationRunning, {
+			await step.runMutation(internal.boxes.status.markOperationRunning, {
 				operationId: typedArgs.operationId
 			});
 
 			try {
 				await config.run(step, typedArgs);
 			} catch (error) {
-				await step.runMutation(internal.boxes.boxStatus.markOperationFailed, {
+				await step.runMutation(internal.boxes.status.markOperationFailed, {
 					boxId: typedArgs.boxId,
 					operationId: typedArgs.operationId,
 					error: operationError(error),
-					eventType: failure.eventType,
-					targetBoxStatus: failure.boxStatus
+					eventType: boxEventType(config.type, "failed"),
+					targetBoxStatus: failureStatus
 				});
 				throw error;
 			}
 
-			await step.runMutation(internal.boxes.boxStatus.settleOperation, {
+			await step.runMutation(internal.boxes.status.settleOperation, {
 				operationId: typedArgs.operationId
 			});
 		}

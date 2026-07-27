@@ -67,14 +67,14 @@ describe("IDE public path boundary", () => {
 	test("cloud authorization receives its callback from the IDE", () => {
 		const cloudAuth = read("packages/ide/overlay/src/node/routes/cloudAuth.ts");
 		const authorize = read("packages/web/app/boxes/authorize/route.ts");
-		const boxAuth = read("packages/web/convex/boxes/boxAuth.ts");
+		const auth = read("packages/web/convex/boxes/auth.ts");
 
 		expect(cloudAuth).toContain(
 			'authorization.searchParams.set("redirect_uri", callbackUrl(req))'
 		);
 		expect(authorize).toContain('url.searchParams.get("redirect_uri")');
-		expect(boxAuth).toContain("redirectUri: args.redirectUri");
-		expect(boxAuth).not.toContain("_composery/cloud/callback");
+		expect(auth).toContain("redirectUri: args.redirectUri");
+		expect(auth).not.toContain("_composery/cloud/callback");
 	});
 
 	test("no deployment config enables the removed host-domain proxy", () => {

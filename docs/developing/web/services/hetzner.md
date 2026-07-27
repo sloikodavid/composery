@@ -242,7 +242,7 @@ is not involved at all - Hetzner snapshots the disk at the hypervisor - so no
 credential, encryption key, or pipeline lives on the box, and a box with full
 root cannot read, list, overwrite, or delete its own snapshots. All snapshot API
 calls are in `convex/boxes/infra/hetznerVps.ts`, alongside the rest of the
-Hetzner client; row state and retention live in `convex/boxes/boxSnapshots.ts`.
+Hetzner client; row state and retention live in `convex/boxes/snapshots.ts`.
 
 There are **no new environment variables.** Snapshots reuse the existing
 `HETZNER_CLOUD_TOKEN` already set above.

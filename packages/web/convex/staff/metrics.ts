@@ -15,7 +15,7 @@ import {
 	type MetricsRange,
 	vRolledMetric,
 	type RolledMetric
-} from "../boxes/boxMetrics";
+} from "../boxes/metrics";
 
 const FLAG_LIST_LIMIT = 50;
 const FLAG_DISMISS_BATCH = 100;

@@ -1,6 +1,6 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
-import { METRICS_POLL_INTERVAL_MINUTES } from "./boxes/boxMetrics";
+import { METRICS_POLL_INTERVAL_MINUTES } from "./boxes/metrics";
 
 const crons = cronJobs();
 
@@ -13,7 +13,7 @@ crons.interval(
 crons.interval(
 	"delete expired box authorization records",
 	{ minutes: 15 },
-	internal.boxes.boxAuth.deleteExpiredAuthRecords
+	internal.boxes.auth.deleteExpiredAuthRecords
 );
 
 crons.interval(
@@ -42,52 +42,52 @@ crons.hourly(
 
 // A deletion that stopped part-way leaves the record claiming a box exists when
 // its server is already gone, and nothing else re-drives one - see
-// boxes/boxCleanup.ts. Runs after the two sweeps that can put a box into
+// boxes/cleanup.ts. Runs after the two sweeps that can put a box into
 // delete_failed in the first place.
 crons.hourly(
 	"finish failed box deletions",
 	{ minuteUTC: 27 },
-	internal.boxes.boxCleanup.finishFailedDeletions,
+	internal.boxes.cleanup.finishFailedDeletions,
 	{}
 );
 
 crons.interval(
 	"poll box metrics",
 	{ minutes: METRICS_POLL_INTERVAL_MINUTES },
-	internal.boxes.boxMetricsPoll.pollBoxMetrics
+	internal.boxes.metricsPoll.pollBoxMetrics
 );
 
 crons.hourly(
 	"roll up hourly box metrics",
 	{ minuteUTC: 4 },
-	internal.boxes.boxMetrics.rollupHourlyMetrics,
+	internal.boxes.metrics.rollupHourlyMetrics,
 	{}
 );
 
 crons.daily(
 	"delete old box metrics",
 	{ hourUTC: 4, minuteUTC: 23 },
-	internal.boxes.boxMetrics.deleteOldSamples
+	internal.boxes.metrics.deleteOldSamples
 );
 
 crons.daily(
 	"normalize deleted boxes",
 	{ hourUTC: 4, minuteUTC: 29 },
-	internal.boxes.boxCleanup.normalizeDeletedBoxes,
+	internal.boxes.cleanup.normalizeDeletedBoxes,
 	{}
 );
 
 crons.daily(
 	"purge expired deleted boxes",
 	{ hourUTC: 4, minuteUTC: 31 },
-	internal.boxes.boxCleanup.scheduleExpiredBoxPurges,
+	internal.boxes.cleanup.scheduleExpiredBoxPurges,
 	{}
 );
 
 crons.daily(
 	"purge expired checkout records",
 	{ hourUTC: 4, minuteUTC: 37 },
-	internal.boxes.boxCleanup.purgeExpiredCheckoutRecords,
+	internal.boxes.cleanup.purgeExpiredCheckoutRecords,
 	{}
 );
 
@@ -117,12 +117,12 @@ crons.interval(
 
 // An operation nothing will ever finish holds its box's lock for ever, and every
 // later action on that box is refused as "busy". Nothing should reach that state -
-// see boxes/boxOperationSweep.ts - so this normally finds nothing, which is
+// see boxes/operationSweep.ts - so this normally finds nothing, which is
 // exactly why it has to run rather than be assumed.
 crons.interval(
 	"sweep stuck box operations",
 	{ minutes: 15 },
-	internal.boxes.boxOperationSweep.sweepStuckOperations,
+	internal.boxes.operationSweep.sweepStuckOperations,
 	{}
 );
 
@@ -146,14 +146,14 @@ crons.hourly(
 crons.daily(
 	"snapshot running boxes",
 	{ hourUTC: 3, minuteUTC: 7 },
-	internal.boxes.boxSnapshots.scheduleAutomaticSnapshots,
+	internal.boxes.snapshots.scheduleAutomaticSnapshots,
 	{}
 );
 
 crons.daily(
 	"delete expired snapshots",
 	{ hourUTC: 4, minuteUTC: 41 },
-	internal.boxes.boxSnapshots.deleteExpiredSnapshots
+	internal.boxes.snapshots.deleteExpiredSnapshots
 );
 
 // Runs after the snapshot/expiry crons so it reconciles the settled state.

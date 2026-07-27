@@ -12,9 +12,9 @@ export const vCheckoutIntentStatus = v.union(
 );
 
 export const vBoxStatus = v.union(
-	v.literal("provisioning"),
+	v.literal("creating"),
 	v.literal("running"),
-	v.literal("provisioning_failed"),
+	v.literal("create_failed"),
 	v.literal("stopping"),
 	v.literal("stopped"),
 	v.literal("starting"),
@@ -62,7 +62,7 @@ export function boxStatusesExcept(
 }
 
 export const vBoxBeginStatus = v.union(
-	v.literal("provisioning"),
+	v.literal("creating"),
 	v.literal("stopping"),
 	v.literal("starting"),
 	v.literal("resetting"),
@@ -77,7 +77,7 @@ export const vBoxBeginStatus = v.union(
 );
 
 export const vBoxFailureStatus = v.union(
-	v.literal("provisioning_failed"),
+	v.literal("create_failed"),
 	v.literal("reset_failed"),
 	v.literal("repair_failed"),
 	v.literal("update_failed"),
@@ -91,7 +91,7 @@ export const vBoxFailureStatus = v.union(
 export type BoxFailureStatus = Infer<typeof vBoxFailureStatus>;
 
 export const vBoxOperationType = v.union(
-	v.literal("provision"),
+	v.literal("create"),
 	v.literal("delete"),
 	v.literal("reset"),
 	v.literal("stop"),
@@ -116,6 +116,9 @@ export const vBoxOperationStatus = v.union(
 
 export type BoxOperationType = Infer<typeof vBoxOperationType>;
 export type BoxOperationStatus = Infer<typeof vBoxOperationStatus>;
+
+export const BOX_OPERATION_STATUSES: BoxOperationStatus[] =
+	vBoxOperationStatus.members.map((member) => member.value);
 
 // Who started an operation. Recorded on every one, because "who did this" is a
 // question a box's history has to be able to answer - in support, in the console,
@@ -235,6 +238,10 @@ export const vSnapshotStatus = v.union(
 
 export type SnapshotStatus = Infer<typeof vSnapshotStatus>;
 
+export const SNAPSHOT_STATUSES: SnapshotStatus[] = vSnapshotStatus.members.map(
+	(member) => member.value
+);
+
 export const vStaffAlertSeverity = v.union(
 	v.literal("warning"),
 	v.literal("critical"),
@@ -350,7 +357,7 @@ export default defineSchema({
 		parking_volume_stage: v.optional(vParkingVolumeStage),
 		created_at: v.number(),
 		updated_at: v.number(),
-		provisioned_at: v.optional(v.number()),
+		ready_at: v.optional(v.number()),
 		deleted_at: v.optional(v.number()),
 		purge_at: v.optional(v.number())
 	})

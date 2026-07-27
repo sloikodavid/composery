@@ -11,6 +11,12 @@ import {
 } from "lucide-react";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import {
+	BOX_OPERATION_STATUSES,
+	BOX_STATUSES,
+	SNAPSHOT_STATUSES,
+	type BoxStatus
+} from "@/convex/schema";
 import { LogoExport } from "./_components/logo-export";
 import { LogoShowcase } from "./_components/logo-showcase";
 import {
@@ -23,7 +29,10 @@ import {
 } from "./_components/design-demos";
 import { ToastDemo } from "./_components/toast-demo";
 import { PageTemplate } from "@/components/page-template";
-import { StatusText } from "@/components/boxes/status-text";
+import {
+	StatusText,
+	type StatusTextProps
+} from "@/components/boxes/status-text";
 import { Badge } from "@/components/base/badge";
 import { Button } from "@/components/base/button";
 import { Card, CardContent } from "@/components/base/card";
@@ -93,52 +102,41 @@ const icons = [
 	{ Icon: XIcon, name: "x" }
 ];
 
-// Every status the UI can show, grouped by source so the full palette is
-// visible at a glance.
-const STATUS_GROUPS: { label: string; statuses: string[] }[] = [
+// Every status the UI can show, grouped by the vocabulary it belongs to.
+//
+// Derived from the schema's own unions, not listed. The hand-written version had
+// already fallen behind - it was missing every repair and update status while
+// claiming to show them all, which is the one thing a palette page must not do.
+// Polar's set is the only one written out, because it is not ours to enumerate.
+const STATUS_GROUPS: { label: string; items: StatusTextProps[] }[] = [
 	{
 		label: "Box lifecycle",
-		statuses: [
-			"provisioning",
-			"running",
-			"provisioning_failed",
-			"stopping",
-			"stopped",
-			"starting",
-			"resetting",
-			"reset_failed",
-			"restoring",
-			"restore_failed",
-			"suspending",
-			"suspended",
-			"unsuspending",
-			"deleting",
-			"delete_failed",
-			"deleted"
-		]
+		items: BOX_STATUSES.map((status) => ({ kind: "box", status }))
 	},
 	{
 		label: "Operations",
-		statuses: ["pending", "running", "succeeded", "failed"]
+		items: BOX_OPERATION_STATUSES.map((status) => ({
+			kind: "operation",
+			status
+		}))
 	},
 	{
 		label: "Snapshots",
-		statuses: ["pending", "creating", "complete", "failed", "deleting"]
+		items: SNAPSHOT_STATUSES.map((status) => ({ kind: "snapshot", status }))
 	},
 	{
 		label: "External (Polar)",
-		statuses: [
+		items: [
 			"active",
 			"open",
 			"confirmed",
 			"converted",
 			"expired",
 			"released"
-		]
+		].map((status) => ({ kind: "foreign", status }))
 	}
 ];
-
-const TABLE_ROWS = [
+const TABLE_ROWS: { name: string; status: BoxStatus; created: string }[] = [
 	{ name: "alpha", status: "running", created: "2026-06-01" },
 	{ name: "beta", status: "stopped", created: "2026-06-15" },
 	{ name: "gamma", status: "suspended", created: "2026-06-28" }
@@ -372,7 +370,7 @@ export default async function DesignPage() {
 												{row.name}
 											</TableCell>
 											<TableCell>
-												<StatusText status={row.status} />
+												<StatusText kind="box" status={row.status} />
 											</TableCell>
 											<TableCell className="text-muted-foreground">
 												{row.created}
@@ -430,8 +428,8 @@ export default async function DesignPage() {
 							<div className="space-y-1.5" key={group.label}>
 								<p className="text-xs text-muted-foreground">{group.label}</p>
 								<div className="flex flex-wrap gap-x-6 gap-y-2">
-									{group.statuses.map((status) => (
-										<StatusText key={status} status={status} />
+									{group.items.map((item) => (
+										<StatusText key={item.status} {...item} />
 									))}
 								</div>
 							</div>

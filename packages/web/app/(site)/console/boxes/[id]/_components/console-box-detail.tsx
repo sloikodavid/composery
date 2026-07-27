@@ -18,7 +18,11 @@ import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
-import { failureNotice } from "@/lib/operation-failure";
+import {
+	failureNotice,
+	operationLabel,
+	OPERATION_LABEL
+} from "@/lib/operation-failure";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
@@ -40,17 +44,21 @@ import {
 } from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { BoxOperationStatus, BoxOperationType } from "@/convex/schema";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
 
+// Typed off the schema's own unions rather than restating them as `string`: this
+// row is what the console renders, and a loose type here is what let raw
+// identifiers reach the page in the first place.
 type OperationRow = {
 	_id: string;
 	created_at: number;
 	last_error?: string;
 	metadata?: Record<string, unknown>;
-	status: string;
-	type: string;
+	status: BoxOperationStatus;
+	type: BoxOperationType;
 };
 
 type EventRow = {
@@ -61,7 +69,7 @@ type EventRow = {
 };
 
 const OPERATION_SORT = {
-	type: (operation: OperationRow) => operation.type,
+	type: (operation: OperationRow) => OPERATION_LABEL[operation.type],
 	status: (operation: OperationRow) => operation.status,
 	created_at: (operation: OperationRow) => operation.created_at
 };
@@ -152,7 +160,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 										<TableCell className="pl-4">
 											<div className="min-w-0">
 												<p className="font-medium wrap-break-word text-foreground">
-													{operation.type}
+													{OPERATION_LABEL[operation.type]}
 												</p>
 												{detail ? (
 													<p className="wrap-break-word whitespace-normal text-muted-foreground">
@@ -165,12 +173,12 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 											{formatDateTime(operation.created_at)}
 										</TableCell>
 										<TableCell>
-											<StatusText status={operation.status} />
+											<StatusText kind="operation" status={operation.status} />
 										</TableCell>
 										<TableCell className="pr-4 text-right">
 											<OpenInConvex
 												iconOnly
-												label={`Open ${operation.type} operation in Convex`}
+												label={`Open ${operationLabel(operation.type, true)} operation in Convex`}
 												table="box_operations"
 												value={operation._id}
 											/>
@@ -282,7 +290,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 
 export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
-	const detail = useQuery(api.staff.boxes.boxDetail, { boxId });
+	const detail = useQuery(api.staff.boxes.getById, { boxId });
 	const metricsSeries = useQuery(
 		api.staff.metrics.series,
 		detail ? { boxId: detail.box.id, range } : "skip"
@@ -291,14 +299,14 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 		api.staff.metrics.flags,
 		detail ? { boxId: detail.box.id } : "skip"
 	);
-	const retryProvision = useMutation(api.staff.boxes.retryProvisionBox);
+	const retryCreate = useMutation(api.staff.boxes.retryCreate);
 	const revokeComp = useMutation(api.staff.boxes.revokeComp);
-	const resetBox = useMutation(api.staff.boxes.resetBox);
-	const stopBox = useMutation(api.staff.boxes.stopBox);
-	const startBox = useMutation(api.staff.boxes.startBox);
-	const changeSlug = useMutation(api.staff.boxes.changeBoxSlug);
-	const suspendBox = useAction(api.staff.boxes.suspendBox);
-	const unsuspendBox = useAction(api.staff.boxes.unsuspendBox);
+	const resetBox = useMutation(api.staff.boxes.reset);
+	const stopBox = useMutation(api.staff.boxes.stop);
+	const startBox = useMutation(api.staff.boxes.start);
+	const changeSlug = useMutation(api.staff.boxes.changeSlug);
+	const suspendBox = useAction(api.staff.boxes.suspend);
+	const unsuspendBox = useAction(api.staff.boxes.unsuspend);
 	const repair = useAction(api.staff.boxes.repair);
 	const updateBox = useAction(api.staff.boxes.update);
 	const recoveryStatus = useAction(api.staff.boxes.recoveryStatus);
@@ -465,10 +473,10 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 							<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
 								<BoxStatusAction
 									retry={{
-										disabled: busy === "provision",
+										disabled: busy === "create",
 										onClick: () =>
-											run("provision", "Retrying provisioning", () =>
-												retryProvision({ boxId: box.id })
+											run("create", "Creating box", () =>
+												retryCreate({ boxId: box.id })
 											)
 									}}
 									start={{
@@ -498,6 +506,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 								/>
 								<ChangeSlugDialog
 									onSubmit={(newSlug) => changeSlug({ boxId: box.id, newSlug })}
+									slug={box.slug}
 								/>
 								{user?.suspended ? (
 									<AnimatedIconButton
@@ -554,10 +563,10 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 								{detail.activeOperation ? (
 									<ConfirmDialog
 										confirmLabel="Cancel operation"
-										description={`Stops the ${detail.activeOperation.type} operation and records it as failed, which frees the box for other actions. Only do this once you have established it is wedged rather than working - cancelling a repair part-way leaves its files on the parking volume for the next repair to resume from.`}
+										description={`Stops the ${operationLabel(detail.activeOperation.type, true)} operation and records it as failed, which frees the box for other actions. Only do this once you have established it is wedged rather than working - cancelling a repair part-way leaves its files on the parking volume for the next repair to resume from.`}
 										destructive
 										onConfirm={() =>
-											run("cancel", "Operation cancelled", () =>
+											run("cancel", "Cancelling operation", () =>
 												cancelOperation({ boxId: box.id })
 											)
 										}
@@ -571,7 +580,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 												onClick={openConfirm}
 												variant="destructive"
 											>
-												Cancel {detail.activeOperation?.type}
+												Cancel operation
 											</AnimatedIconButton>
 										)}
 									</ConfirmDialog>
@@ -581,7 +590,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 									boxStatus={box.status}
 									busy={busy}
 									onUpdate={() =>
-										run("update", "Update started", () =>
+										run("update", "Updating box", () =>
 											updateBox({ boxId: box.id })
 										)
 									}
@@ -594,7 +603,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 									busy={busy}
 									check={() => recoveryStatus({ boxId: box.id })}
 									onRepair={() =>
-										run("repair", "Repair started", () =>
+										run("repair", "Repairing box", () =>
 											repair({ boxId: box.id })
 										)
 									}

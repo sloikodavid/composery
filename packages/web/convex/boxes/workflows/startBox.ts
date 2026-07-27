@@ -5,7 +5,7 @@ export const startBox = defineBoxWorkflow({
 	type: "start",
 	run: async (step, args) => {
 		const box = await step.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 
@@ -16,7 +16,7 @@ export const startBox = defineBoxWorkflow({
 		);
 
 		await step.runMutation(
-			internal.boxes.boxStatus.setBoxStatusWithOperationSucceeded,
+			internal.boxes.status.setBoxStatusWithOperationSucceeded,
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,

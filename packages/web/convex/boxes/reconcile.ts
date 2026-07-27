@@ -9,7 +9,7 @@ import { sendStaffAlert } from "../staffAlerts";
 
 // Grace window before a Hetzner resource is eligible for reclaim. A snapshot
 // image exists for a few seconds before its row is patched with the id, and a
-// freshly created server exists for minutes before provisioning records it on
+// freshly created server exists for minutes before creation records it on
 // the box - the window keeps reconciliation off anything mid-flight.
 export const RECONCILE_MIN_AGE_MS = 2 * 60 * 60 * 1000;
 

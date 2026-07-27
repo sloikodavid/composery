@@ -233,8 +233,12 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 					</p>
 					<p className="mt-1 text-muted-foreground">
 						This box is{" "}
-						<StatusText className="align-middle" status={box.status} />. The
-						values below are the ones it will start with.
+						<StatusText
+							className="align-middle"
+							kind="box"
+							status={box.status}
+						/>
+						. The values below are the ones it will start with.
 					</p>
 				</Notice>
 			)}

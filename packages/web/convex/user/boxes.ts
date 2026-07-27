@@ -9,27 +9,24 @@ import {
 	requireActiveUserInAction,
 	requireIdentity
 } from "../authorization";
-import { fetchRuntimeLogsSafely } from "../boxes/boxLogs";
-import {
-	vRecoveryStatus,
-	type RecoveryStatus
-} from "../boxes/boxRecoveryTypes";
-import { boxMetricsSamples, vMetricsRange } from "../boxes/boxMetrics";
-import { startBoxOperation } from "../boxes/boxOperations";
-import { currentSuspensionReason, findBoxBySlug } from "../boxes/boxQueries";
+import { fetchRuntimeLogsSafely } from "../boxes/logs";
+import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
+import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
+import { startBoxOperation } from "../boxes/operations";
+import { currentSuspensionReason, findBoxBySlug } from "../boxes/queries";
 import {
 	boxRuntimeStanding,
 	latestFailure,
 	latestRepair,
 	latestUpdate,
 	safeBox
-} from "../boxes/boxViews";
-import { ownerCanReadBox } from "../boxes/boxAccess";
+} from "../boxes/views";
+import { ownerCanReadBox } from "../boxes/access";
 import {
 	markSnapshotDeleting,
 	snapshotView,
 	startManualSnapshot
-} from "../boxes/boxSnapshots";
+} from "../boxes/snapshots";
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
 import { boxPath } from "../../lib/box-route";
@@ -206,7 +203,7 @@ export const customerPortalUrl = action({
 		const user = await requireActiveUserInAction(ctx);
 
 		const box: Doc<"boxes"> | null = await ctx.runQuery(
-			internal.boxes.boxQueries.boxByOwnerSlug,
+			internal.boxes.queries.boxByOwnerSlug,
 			{
 				userId: user.clerk_user_id,
 				slug: sanitizeSlug(args.slug)
@@ -240,7 +237,7 @@ export const runtimeLogs = action({
 		const user = await requireActiveUserInAction(ctx);
 
 		const box: Doc<"boxes"> | null = await ctx.runQuery(
-			internal.boxes.boxQueries.boxByOwnerSlug,
+			internal.boxes.queries.boxByOwnerSlug,
 			{
 				userId: user.clerk_user_id,
 				slug: sanitizeSlug(args.slug)
@@ -258,12 +255,12 @@ export const recoveryStatus = action({
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
 			userId: user.clerk_user_id,
 			slug: sanitizeSlug(args.slug)
 		});
 		if (!box) throw new ConvexError("Box not found.");
-		return await ctx.runAction(internal.boxes.boxRecovery.status, {
+		return await ctx.runAction(internal.boxes.recovery.status, {
 			boxId: box._id
 		});
 	}
@@ -273,7 +270,7 @@ export const repair = action({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<void> => {
 		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
 			userId: user.clerk_user_id,
 			slug: sanitizeSlug(args.slug)
 		});
@@ -297,7 +294,7 @@ export const update = action({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<void> => {
 		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.boxQueries.boxByOwnerSlug, {
+		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
 			userId: user.clerk_user_id,
 			slug: sanitizeSlug(args.slug)
 		});
@@ -316,7 +313,7 @@ export const update = action({
 	}
 });
 
-export const retryProvision = mutation({
+export const retryCreate = mutation({
 	args: {
 		slug: v.string()
 	},
@@ -324,8 +321,8 @@ export const retryProvision = mutation({
 		const user = await requireActiveUser(ctx);
 		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
 
-		await startBoxOperation(ctx, box._id, "provision", {
-			idempotencyKey: `provision:${box._id}`,
+		await startBoxOperation(ctx, box._id, "create", {
+			idempotencyKey: `create:${box._id}`,
 			trigger: "owner"
 		});
 	}
@@ -395,7 +392,7 @@ export const changeSlug = mutation({
 		await assertTlsReissueBudget(ctx, box._id);
 
 		await startBoxOperation(ctx, box._id, "change_slug", {
-			idempotencyKey: `change_slug:${box._id}:${newSlug}`,
+			idempotencyKey: `change-slug:${box._id}:${newSlug}`,
 			trigger: "owner",
 			reservedSlug: newSlug,
 			metadata: { oldSlug: box.slug, newSlug },
@@ -471,7 +468,7 @@ export const deleteSnapshot = mutation({
 		const user = await requireActiveUser(ctx);
 		await requireOwnedSnapshot(ctx, user.clerkUserId, args.snapshotId);
 		await markSnapshotDeleting(ctx, args.snapshotId);
-		await ctx.scheduler.runAfter(0, internal.boxes.boxSnapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId
 		});
 	}

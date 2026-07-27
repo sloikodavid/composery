@@ -8,14 +8,17 @@ import {
 	internalQuery
 } from "../_generated/server";
 import { consoleBoxPath } from "../../lib/box-route";
+import { operationLabel } from "../../lib/operation-failure";
+import { vBoxOperationType } from "../schema";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
 import {
 	ACTIVE_OPERATION_STATUSES,
+	boxEventType,
 	isActiveOperationStatus,
-	OPERATION_FAILURE
-} from "./boxOperationRules";
-import { recordOperationFailure } from "./boxStatus";
-import { activeOperation } from "./boxViews";
+	OPERATION_FAILURE_STATUS
+} from "./operationRules";
+import { recordOperationFailure } from "./status";
+import { activeOperation } from "./views";
 import { workflow } from "./workflows/boxWorkflow";
 
 // The backstop for the operation lock.
@@ -128,13 +131,12 @@ export const failOrphanedOperation = internalMutation({
 		const operation = await ctx.db.get(args.operationId);
 		if (!operation || !isActiveOperationStatus(operation.status)) return;
 
-		const failure = OPERATION_FAILURE[operation.type];
 		await recordOperationFailure(ctx, {
 			boxId: operation.box_id,
 			error: args.error,
-			eventType: failure.eventType,
+			eventType: boxEventType(operation.type, "failed"),
 			operationId: args.operationId,
-			targetBoxStatus: failure.boxStatus
+			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
 		});
 	}
 });
@@ -144,7 +146,7 @@ export const alertLongRunningOperation = internalMutation({
 		boxId: v.id("boxes"),
 		createdAt: v.number(),
 		operationId: v.id("box_operations"),
-		type: v.string()
+		type: vBoxOperationType
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
@@ -153,8 +155,8 @@ export const alertLongRunningOperation = internalMutation({
 		await sendStaffAlert(ctx, {
 			key: `box-operation-long-running:${args.operationId}`,
 			severity: "warning",
-			subject: `Box ${box.slug}: ${args.type} has been running ${hours}h`,
-			text: `A ${args.type} operation on box ${box.slug} (${box._id}) has been running for ${hours} hours and its workflow still reports itself in progress.\n\nWhile it stays open no other action on this box can start. If it is wedged rather than working, cancel it from the box's console page; that records it as failed and frees the box.\n\n${staffConsoleUrl(consoleBoxPath(box._id))}`
+			subject: `Box ${box.slug}: ${operationLabel(args.type, true)} has been running ${hours}h`,
+			text: `A ${operationLabel(args.type, true)} operation on box ${box.slug} (${box._id}) has been running for ${hours} hours and its workflow still reports itself in progress.\n\nWhile it stays open no other action on this box can start. If it is wedged rather than working, cancel it from the box's console page; that records it as failed and frees the box.\n\n${staffConsoleUrl(consoleBoxPath(box._id))}`
 		});
 	}
 });
@@ -164,7 +166,7 @@ export const sweepStuckOperations = internalAction({
 	handler: async (ctx) => {
 		const now = Date.now();
 		const operations = await ctx.runQuery(
-			internal.boxes.boxOperationSweep.activeOperationsBefore,
+			internal.boxes.operationSweep.activeOperationsBefore,
 			{ before: now - OPERATION_ORPHAN_GRACE_MS }
 		);
 
@@ -185,7 +187,7 @@ export const sweepStuckOperations = internalAction({
 
 				if (liveness.orphaned) {
 					await ctx.runMutation(
-						internal.boxes.boxOperationSweep.failOrphanedOperation,
+						internal.boxes.operationSweep.failOrphanedOperation,
 						{ error: liveness.error, operationId: operation.operationId }
 					);
 					continue;
@@ -193,7 +195,7 @@ export const sweepStuckOperations = internalAction({
 
 				if (now - operation.createdAt >= OPERATION_RUNNING_ALERT_MS) {
 					await ctx.runMutation(
-						internal.boxes.boxOperationSweep.alertLongRunningOperation,
+						internal.boxes.operationSweep.alertLongRunningOperation,
 						{
 							boxId: operation.boxId,
 							createdAt: operation.createdAt,

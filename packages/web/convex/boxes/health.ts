@@ -16,7 +16,7 @@ export const probeRuntime = internalAction({
 	}),
 	handler: async (ctx, args): Promise<{ reachable: boolean }> => {
 		const box = await ctx.runQuery(
-			internal.boxes.boxQueries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		try {
