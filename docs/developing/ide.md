@@ -23,12 +23,44 @@ colours deliberately share the website's semantic status roles. `theme.ts` is
 the generated TypeScript form; `index.ts` re-exports both areas and derives the
 logo and app colours from the website area.
 
-Run `pnpm dev:theme` for the local editor, or edit `theme.json` directly, then
-run `pnpm assets`. Its Website and IDE previews are representative component and
-workbench states, not copied production screens. Every control paints a preview
-state and feeds the corresponding generated artifact. The asset build regenerates
-the TypeScript exports, editor themes, CSS, favicons, launcher icons, and splash
-screens.
+Run `pnpm dev:colors` for the local editor, or edit `theme.json` directly, then
+run `pnpm assets`. It lists every role in one place, grouped by what the role
+does rather than by which surface uses it, and switches its own chrome and the
+preview between light and dark together. Its web and ide previews are
+representative component and workbench states, not copied production screens.
+Every control paints a preview state and feeds the corresponding generated
+artifact. The asset build regenerates the TypeScript exports, editor themes, CSS,
+favicons, launcher icons, and splash screens.
+
+Roles holding the same value in a scheme are linked, so a palette stays
+consistent by default. Editing any of them - picker, hex field or reset - moves
+the whole group:
+
+- The **link button** shows how many roles share the value and names them on
+  hover. Click it to detach that role: it stops following the group and the group
+  stops following it. Click again to link it back up.
+- **Hide linked** collapses each group to one row, for a list of distinct values;
+  **Only this tab** narrows the list to the web or ide tab you are on.
+- **Ctrl+Z** undoes a whole gesture, **Ctrl+Y** or **Ctrl+Shift+Z** redoes it.
+  The buttons name what they would undo, and a gesture that ends where it started
+  leaves no entry behind.
+- **Reset all** puts every role in both schemes back to the last save.
+- **Transfer** shows the whole set exactly as a save writes it to `theme.json`,
+  selected and ready to copy; or paste one in and apply. Applying stays off until
+  the text is both readable and different, and an import that omits a role or
+  carries a value that is not a colour says which one.
+- Pasted values are cleaned up: `0a0a0a`, `0xff0000`, `#FFF` and a quoted CSS
+  declaration all land as canonical hex.
+
+The scheme, tab, filters and detached roles are kept in `localStorage`, so a
+reload puts you back where you were. Nothing about the session reaches
+`theme.json`. The record also carries the custom properties the last paint set,
+which a small script in the `<head>` replays before anything renders - otherwise
+the first frame is the browser's white canvas and the chrome reflows once the
+palette arrives over the network.
+
+Every IDE role must be read by `scripts/theme.mjs`; a test compares the two, so a
+role nobody consumes fails rather than sitting inert.
 
 - **Editor themes**.
   `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.

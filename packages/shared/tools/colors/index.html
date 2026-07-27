@@ -1,0 +1,1969 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Colors</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			:root {
+				font:
+					13px/1.45 Inter,
+					ui-sans-serif,
+					system-ui,
+					sans-serif;
+				background: var(--background);
+				color: var(--foreground);
+			}
+			body {
+				display: flex;
+				flex-direction: column;
+				height: 100vh;
+				margin: 0;
+			}
+			button,
+			input {
+				font: inherit;
+			}
+			input[type="checkbox"] {
+				width: 14px;
+				height: 14px;
+				accent-color: var(--foreground);
+			}
+			button {
+				color: inherit;
+			}
+			.toolbar {
+				flex-wrap: wrap;
+				position: sticky;
+				top: 0;
+				z-index: 10;
+				display: flex;
+				min-height: 54px;
+				align-items: center;
+				gap: 16px;
+				padding: 8px 14px;
+				border-bottom: 1px solid var(--border);
+				background: var(--muted);
+			}
+			h1 {
+				margin: 0 auto 0 0;
+				font-size: 16px;
+				font-weight: 650;
+			}
+			.segment {
+				display: flex;
+				gap: 2px;
+				padding: 3px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--background);
+			}
+			.segment button,
+			.primary {
+				min-height: 30px;
+				padding: 5px 10px;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				cursor: pointer;
+			}
+			.history {
+				display: flex;
+				gap: 2px;
+			}
+			.history button {
+				min-width: 30px;
+				min-height: 30px;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 15px;
+			}
+			.history button:hover:not(:disabled) {
+				background: var(--accent);
+				color: var(--foreground);
+			}
+			.history button:disabled {
+				cursor: default;
+				opacity: 0.35;
+			}
+			.segment button[aria-pressed="true"] {
+				background: var(--accent);
+				color: var(--accent-foreground);
+				box-shadow: 0 0 0 1px var(--border);
+			}
+			.primary {
+				min-width: 64px;
+				background: var(--primary);
+				color: var(--primary-foreground);
+				font-weight: 650;
+			}
+			.primary:disabled {
+				cursor: default;
+				opacity: 0.45;
+			}
+			.layout {
+				display: grid;
+				grid-template-columns: 420px minmax(640px, 1fr);
+				flex: 1;
+				min-height: 0;
+			}
+			.controls {
+				overflow: auto;
+				scrollbar-gutter: stable;
+				padding: 16px 14px;
+				border-right: 1px solid var(--border);
+				background: var(--muted);
+			}
+			.group + .group {
+				margin-top: 22px;
+			}
+			.group h2 {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 8px;
+				margin: 0 0 7px;
+				color: var(--muted-foreground);
+				font-size: 11px;
+				font-weight: 650;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+			}
+			.role {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) 26px 34px 94px 26px 22px;
+				align-items: center;
+				gap: 6px;
+				min-height: 34px;
+			}
+			.role[hidden],
+			.group[hidden] {
+				display: none;
+			}
+			.area {
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				color: var(--muted-foreground);
+				font-size: 9px;
+				font-weight: 650;
+				letter-spacing: 0.03em;
+				text-align: center;
+			}
+			.link {
+				width: 26px;
+				height: 22px;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 11px;
+			}
+			.link:hover {
+				background: var(--accent);
+				color: var(--foreground);
+			}
+			.link.loose {
+				color: var(--destructive);
+			}
+			.filter {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				color: var(--muted-foreground);
+			}
+			.plain {
+				min-height: 30px;
+				padding: 5px 10px;
+				border: 1px solid var(--border);
+				border-radius: 5px;
+				background: transparent;
+				cursor: pointer;
+			}
+			.plain:hover:not(:disabled) {
+				background: var(--accent);
+			}
+			.plain:disabled {
+				cursor: default;
+				opacity: 0.45;
+			}
+			#transfer {
+				width: min(680px, 90vw);
+				padding: 16px;
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+			}
+			#transfer::backdrop {
+				background: var(--overlay);
+			}
+			#transfer h2 {
+				margin: 0 0 10px;
+				font-size: 14px;
+			}
+			#transfer-text {
+				width: 100%;
+				height: 46vh;
+				padding: 10px;
+				border: 1px solid var(--input);
+				border-radius: 6px;
+				outline: none;
+				background: var(--background);
+				color: var(--foreground);
+				font:
+					12px/1.5 ui-monospace,
+					"SFMono-Regular",
+					Consolas,
+					monospace;
+				resize: vertical;
+			}
+			#transfer-status {
+				min-height: 20px;
+				margin: 8px 0 0;
+				color: var(--muted-foreground);
+			}
+			#transfer-status.error {
+				color: var(--destructive);
+			}
+			.transfer-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 8px;
+				margin-top: 10px;
+			}
+			.role-name {
+				overflow: hidden;
+				color: var(--foreground);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.swatch {
+				width: 34px;
+				height: 26px;
+				padding: 0;
+				border: 1px solid var(--border);
+				border-radius: 5px;
+				cursor: pointer;
+			}
+			.reset {
+				width: 22px;
+				height: 22px;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 14px;
+			}
+			.reset:hover:not(:disabled) {
+				background: var(--accent);
+				color: var(--foreground);
+			}
+			.reset:disabled {
+				cursor: default;
+				opacity: 0.35;
+			}
+
+			/* Hex-first picker: the native one opens in RGB and cannot be told otherwise. */
+			#picker {
+				position: fixed;
+				inset: auto;
+				width: 264px;
+				margin: 0;
+				padding: 12px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 14px 40px
+					color-mix(in srgb, var(--overlay) 65%, transparent);
+			}
+			#picker .sv {
+				position: relative;
+				height: 176px;
+				border-radius: 5px;
+				cursor: crosshair;
+				touch-action: none;
+			}
+			#picker .sv i {
+				position: absolute;
+				width: 16px;
+				height: 16px;
+				border: 2px solid #ffffff;
+				border-radius: 50%;
+				box-shadow: 0 0 0 1px #00000080;
+				pointer-events: none;
+				translate: -50% -50%;
+			}
+			#picker input[type="range"] {
+				width: 100%;
+				height: 18px;
+				margin: 12px 0 0;
+				appearance: none;
+				border-radius: 9px;
+			}
+			#picker input[type="range"]::-webkit-slider-thumb {
+				width: 18px;
+				height: 18px;
+				appearance: none;
+				border: 3px solid #ffffff;
+				border-radius: 50%;
+				box-shadow: 0 0 0 1px #00000080;
+			}
+			#picker input[type="text"] {
+				width: 100%;
+				height: 32px;
+				margin-top: 12px;
+				font-size: 14px;
+				text-align: center;
+			}
+			input[type="text"] {
+				width: 94px;
+				height: 27px;
+				padding: 3px 6px;
+				border: 1px solid var(--input);
+				border-radius: 5px;
+				outline: none;
+				background: var(--background);
+				color: var(--foreground);
+				font:
+					12px/1.2 ui-monospace,
+					"SFMono-Regular",
+					Consolas,
+					monospace;
+			}
+			input[type="text"]:focus {
+				border-color: var(--ring);
+			}
+			input[type="text"].invalid {
+				border-color: var(--destructive);
+				color: var(--destructive);
+			}
+			#status {
+				min-height: 20px;
+				margin: 16px 0 0;
+				color: var(--muted-foreground);
+			}
+			#status.error {
+				color: var(--destructive);
+			}
+			.stage {
+				display: grid;
+				min-width: 0;
+				overflow: hidden;
+				padding: 24px;
+				background: var(--background);
+			}
+			.preview {
+				min-height: 0;
+				overflow: hidden;
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				box-shadow: 0 18px 55px
+					color-mix(in srgb, var(--overlay) 45%, transparent);
+			}
+
+			/* Website preview: shapes mirror the real primitives without copying a page. */
+			.site {
+				display: flex;
+				flex-direction: column;
+				height: 100%;
+				background: var(--background);
+				color: var(--foreground);
+				font-size: 14px;
+			}
+			.site-header {
+				display: flex;
+				height: 58px;
+				align-items: center;
+				gap: 8px;
+				padding: 0 22px;
+				border-bottom: 1px solid var(--border);
+				background: var(--background);
+			}
+			.brand {
+				margin-right: auto;
+				font-size: 16px;
+				font-weight: 700;
+			}
+			.site-button {
+				display: inline-flex;
+				height: 32px;
+				align-items: center;
+				justify-content: center;
+				padding: 0 13px;
+				border: 1px solid transparent;
+				border-radius: 18px;
+				font-weight: 600;
+			}
+			.site-button.primary {
+				background: var(--primary);
+				color: var(--primary-foreground);
+			}
+			.site-button.outline {
+				border-color: var(--border);
+				background: var(--background);
+			}
+			.site-button.secondary {
+				background: var(--secondary);
+				color: var(--secondary-foreground);
+			}
+			.site-button.destructive {
+				background: color-mix(in srgb, var(--destructive) 12%, transparent);
+				color: var(--destructive);
+			}
+			.site-button.ghost {
+				background: color-mix(in srgb, var(--foreground) 6%, transparent);
+			}
+			.hero {
+				padding: clamp(16px, 4vh, 42px) 32px clamp(14px, 3vh, 30px);
+				text-align: center;
+			}
+			.eyebrow {
+				color: var(--info);
+				font-size: 12px;
+				font-weight: 650;
+			}
+			.hero h2 {
+				max-width: 720px;
+				margin: 8px auto;
+				font-size: 34px;
+				line-height: 1.08;
+				letter-spacing: -0.035em;
+			}
+			.hero p {
+				max-width: 600px;
+				margin: 0 auto 18px;
+				color: var(--muted-foreground);
+			}
+			.row {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				gap: 8px;
+			}
+			.hero .row {
+				justify-content: center;
+			}
+			.site-content {
+				display: grid;
+				flex: 1;
+				grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+				gap: 18px;
+				min-height: 0;
+				padding: 0 24px 24px;
+			}
+			.site-card {
+				display: flex;
+				flex-direction: column;
+				min-height: 0;
+				overflow: hidden;
+				border: 1px solid var(--border);
+				border-radius: 22px;
+				background: var(--card);
+				color: var(--card-foreground);
+			}
+			.card-pad {
+				padding: 20px;
+			}
+			.card-title {
+				font-size: 16px;
+				font-weight: 650;
+			}
+			.muted {
+				color: var(--muted-foreground);
+			}
+			.status {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 12px;
+				font-weight: 600;
+			}
+			.status::before {
+				width: 7px;
+				height: 7px;
+				border-radius: 50%;
+				background: currentColor;
+				content: "";
+			}
+			.success {
+				color: var(--success);
+			}
+			.warning {
+				color: var(--warning);
+			}
+			.destructive-text {
+				color: var(--destructive);
+			}
+			.info {
+				color: var(--info);
+			}
+			.metrics {
+				display: grid;
+				grid-template-columns: repeat(3, 1fr);
+				gap: 10px;
+				margin: 18px 0;
+			}
+			.metric {
+				padding: 12px;
+				border-radius: 14px;
+				background: var(--muted);
+			}
+			.metric b {
+				display: block;
+				margin-top: 3px;
+				font-size: 18px;
+			}
+			.chart {
+				display: flex;
+				height: 54px;
+				align-items: end;
+				gap: 7px;
+				margin: -4px 0 18px;
+				padding: 8px 10px 0;
+				border-bottom: 1px solid var(--border);
+			}
+			.chart i {
+				flex: 1;
+				min-width: 10px;
+				border-radius: 3px 3px 0 0;
+			}
+			.site-input {
+				height: 32px;
+				flex: 1;
+				min-width: 150px;
+				padding: 0 12px;
+				border: 1px solid var(--input);
+				border-radius: 16px;
+				background: var(--background);
+				color: var(--foreground);
+				box-shadow: 0 0 0 1px transparent;
+			}
+			.site-input.focused {
+				border-color: var(--ring);
+				box-shadow: 0 0 0 1px var(--ring);
+			}
+			.table {
+				flex: 1;
+				overflow: hidden;
+				border-top: 1px solid var(--border);
+			}
+			.table-row {
+				display: grid;
+				grid-template-columns: minmax(130px, 1fr) 110px 100px;
+				align-items: center;
+				min-height: 48px;
+				padding: 0 20px;
+				border-bottom: 1px solid var(--border);
+			}
+			.table-row:last-child {
+				border-bottom: 0;
+			}
+			.table-head {
+				min-height: 38px;
+				color: var(--muted-foreground);
+				font-size: 12px;
+			}
+			.stack {
+				display: grid;
+				grid-template-rows: auto auto minmax(120px, 1fr);
+				gap: 18px;
+				min-height: 0;
+			}
+			.popover {
+				padding: 8px;
+				border: 1px solid var(--border);
+				border-radius: 18px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 12px 32px
+					color-mix(in srgb, var(--overlay) 55%, transparent);
+			}
+			.menu-item {
+				padding: 8px 10px;
+				border-radius: 12px;
+			}
+			.menu-item.selected {
+				background: var(--accent);
+				color: var(--accent-foreground);
+			}
+			.menu-separator {
+				height: 1px;
+				margin: 5px -2px;
+				background: var(--border);
+			}
+			.toast {
+				display: grid;
+				grid-template-columns: 18px 1fr;
+				gap: 9px;
+				padding: 14px;
+				border: 1px solid var(--border);
+				border-radius: 14px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 10px 28px
+					color-mix(in srgb, var(--overlay) 45%, transparent);
+			}
+			.dialog-demo {
+				position: relative;
+				min-height: 0;
+				overflow: hidden;
+				border: 1px solid var(--border);
+				border-radius: 22px;
+				background: var(--background);
+			}
+			.dialog-overlay {
+				position: absolute;
+				inset: 0;
+				display: grid;
+				place-items: center;
+				padding: 18px;
+				background: var(--overlay);
+			}
+			.dialog {
+				width: min(330px, 100%);
+				padding: 18px;
+				border: 1px solid var(--border);
+				border-radius: 22px;
+				background: var(--card);
+				color: var(--card-foreground);
+				box-shadow: 0 18px 46px
+					color-mix(in srgb, var(--overlay) 70%, transparent);
+			}
+
+			/* IDE preview: every custom IDE role is visible here. */
+			.ide {
+				position: relative;
+				display: grid;
+				grid-template-rows: 32px 1fr 22px;
+				height: 100%;
+				background: var(--ide-editor);
+				color: var(--ide-foreground);
+				font:
+					12px/1.45 -apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
+			.ide-titlebar {
+				display: grid;
+				grid-template-columns: 1fr minmax(220px, 380px) 1fr;
+				align-items: center;
+				gap: 8px;
+				padding: 0 9px;
+				border-bottom: 1px solid var(--ide-border);
+				background: var(--ide-title-bar);
+			}
+			.ide-menu {
+				display: flex;
+				gap: 2px;
+			}
+			.ide-menu span {
+				padding: 3px 7px;
+				border-radius: 4px;
+			}
+			.ide-menu .hovered {
+				background: var(--ide-hover);
+			}
+			.command-center {
+				height: 23px;
+				padding: 2px 12px;
+				border: 1px solid var(--ide-input-border);
+				border-radius: 6px;
+				background: var(--ide-widget);
+				color: var(--ide-placeholder);
+				text-align: center;
+			}
+			.window-actions {
+				justify-self: end;
+				color: var(--ide-title-bar-foreground);
+			}
+			.ide-main {
+				display: grid;
+				grid-template-columns: 48px 220px minmax(0, 1fr);
+				min-height: 0;
+			}
+			.activity {
+				border-right: 1px solid var(--ide-border);
+				background: var(--ide-activity-bar);
+			}
+			.activity div {
+				display: grid;
+				height: 48px;
+				place-items: center;
+				border-left: 2px solid transparent;
+				color: var(--ide-activity-bar-inactive);
+				font-size: 18px;
+			}
+			.activity .active {
+				border-left-color: var(--ide-focus);
+				color: var(--ide-foreground);
+			}
+			.ide-sidebar {
+				display: grid;
+				grid-template-rows: 34px 24px 1fr;
+				min-height: 0;
+				border-right: 1px solid var(--ide-border);
+				background: var(--ide-side-bar);
+			}
+			.sidebar-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0 12px 0 18px;
+				color: var(--ide-muted-foreground);
+				font-size: 11px;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+			}
+			.tree-section {
+				padding: 4px 8px;
+				font-size: 11px;
+				font-weight: 700;
+			}
+			.tree-row {
+				display: flex;
+				height: 23px;
+				align-items: center;
+				gap: 6px;
+				padding-right: 8px;
+				white-space: nowrap;
+			}
+			.tree-row.selected,
+			.tree-row:hover {
+				background: var(--ide-hover);
+			}
+			.tree-row.selected {
+				outline: 1px solid var(--ide-focus);
+				outline-offset: -1px;
+			}
+			.tree-row.ignored {
+				color: var(--ide-ignored);
+			}
+			.git {
+				margin-left: auto;
+				font-weight: 700;
+			}
+			.editor-column {
+				display: grid;
+				grid-template-rows: 35px 24px 1fr 190px;
+				min-width: 0;
+				background: var(--ide-editor);
+			}
+			.tabs {
+				display: flex;
+				background: var(--ide-tab-bar);
+			}
+			.ide-tab {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				padding: 0 13px;
+				border-right: 1px solid var(--ide-tab-border);
+				background: var(--ide-tab-inactive);
+				color: var(--ide-tab-inactive-foreground);
+			}
+			.ide-tab.active {
+				background: var(--ide-tab-active);
+				color: var(--ide-tab-active-foreground);
+				box-shadow: inset 0 1px var(--ide-focus);
+			}
+			.breadcrumbs {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				padding: 0 15px;
+				background: var(--ide-breadcrumb);
+				color: var(--ide-breadcrumb-foreground);
+			}
+			.code-area {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) 70px;
+				min-height: 0;
+				overflow: hidden;
+				font:
+					12.5px/20px "Cascadia Mono",
+					Consolas,
+					monospace;
+			}
+			.code-lines {
+				padding: 8px 0;
+			}
+			.code-line {
+				display: grid;
+				grid-template-columns: 46px 10px 1fr;
+				min-height: 20px;
+				white-space: pre;
+			}
+			.code-line.current {
+				background: var(--ide-hover);
+			}
+			.line-number {
+				padding-right: 12px;
+				color: var(--ide-line-number);
+				text-align: right;
+			}
+			.gutter.added {
+				background: var(--success);
+			}
+			.gutter.changed {
+				background: var(--warning);
+			}
+			.kw {
+				color: var(--ide-keyword);
+			}
+			.str {
+				color: var(--ide-string);
+			}
+			.num {
+				color: var(--ide-number);
+			}
+			.fn {
+				color: var(--ide-function);
+			}
+			.typ {
+				color: var(--ide-type);
+			}
+			.variable {
+				color: var(--ide-variable);
+			}
+			.punctuation {
+				color: var(--ide-punctuation);
+			}
+			.comment {
+				color: var(--ide-comment);
+			}
+			.invalid-token {
+				color: var(--destructive);
+				text-decoration: wavy underline;
+			}
+			.minimap {
+				position: relative;
+				padding: 12px 9px;
+				border-left: 1px solid var(--ide-border);
+			}
+			.slider {
+				position: absolute;
+				top: 8px;
+				right: 3px;
+				bottom: 40%;
+				width: 9px;
+				border-radius: 5px;
+				background: var(--ide-scrollbar);
+			}
+			.selected-code {
+				background: var(--ide-selection);
+			}
+			.found {
+				background: color-mix(in srgb, var(--ide-find-match) 40%, transparent);
+			}
+			.caret {
+				display: inline-block;
+				width: 2px;
+				height: 15px;
+				translate: 0 3px;
+				background: var(--ide-cursor);
+			}
+			.guide {
+				display: inline-block;
+				width: 20px;
+				border-left: 1px solid var(--ide-indent-guide);
+			}
+			.op {
+				color: var(--ide-operator);
+			}
+			.prop {
+				color: var(--ide-property);
+			}
+			.param {
+				color: var(--ide-parameter);
+			}
+			.tag {
+				color: var(--ide-tag);
+			}
+			.ide-link {
+				color: var(--ide-link);
+				text-decoration: underline;
+			}
+			.minimap i {
+				display: block;
+				height: 3px;
+				margin-bottom: 3px;
+				border-radius: 2px;
+				opacity: 0.75;
+			}
+			.panel {
+				display: grid;
+				grid-template-rows: 32px 1fr;
+				border-top: 1px solid var(--ide-border);
+				background: var(--ide-panel);
+			}
+			.panel-tabs {
+				display: flex;
+				align-items: center;
+				gap: 18px;
+				padding: 0 14px;
+				color: var(--ide-muted-foreground);
+			}
+			.panel-tabs .active {
+				height: 32px;
+				padding-top: 8px;
+				border-bottom: 1px solid var(--ide-focus);
+				color: var(--ide-foreground);
+			}
+			.terminal {
+				padding: 7px 14px;
+				background: var(--ide-editor);
+				font:
+					12px/19px "Cascadia Mono",
+					Consolas,
+					monospace;
+				white-space: pre;
+			}
+			.ansi-strip {
+				display: flex;
+				gap: 4px;
+				margin-top: 5px;
+			}
+			.ansi-strip i {
+				width: 25px;
+				height: 11px;
+				border: 1px solid var(--ide-border);
+			}
+			.ide-statusbar {
+				display: flex;
+				align-items: center;
+				gap: 15px;
+				padding: 0 8px;
+				background: var(--ide-status-bar);
+				color: var(--ide-status-bar-foreground);
+			}
+			.ide-statusbar .right {
+				margin-left: auto;
+			}
+			.quick-input {
+				position: absolute;
+				top: 64px;
+				left: 50%;
+				width: min(460px, 55%);
+				translate: -50% 0;
+				overflow: hidden;
+				border: 1px solid var(--ide-border);
+				border-radius: 8px;
+				background: var(--ide-widget);
+				box-shadow: 0 14px 42px var(--ide-shadow);
+			}
+			.quick-input .field {
+				margin: 8px;
+				padding: 6px 9px;
+				border: 1px solid var(--ide-focus);
+				border-radius: 4px;
+				background: var(--ide-editor);
+			}
+			.quick-row {
+				display: flex;
+				justify-content: space-between;
+				padding: 6px 12px;
+				color: var(--ide-muted-foreground);
+			}
+			.quick-row.selected {
+				background: var(--ide-hover);
+				color: var(--ide-foreground);
+			}
+			.notification {
+				position: absolute;
+				right: 14px;
+				bottom: 36px;
+				width: 320px;
+				padding: 13px;
+				border: 1px solid var(--ide-border);
+				border-radius: 6px;
+				background: var(--ide-widget);
+				box-shadow: 0 10px 30px var(--ide-shadow);
+			}
+			.notification .actions {
+				display: flex;
+				justify-content: end;
+				gap: 6px;
+				margin-top: 10px;
+			}
+
+			@media (max-width: 950px) {
+				body {
+					height: auto;
+				}
+				.layout {
+					display: block;
+				}
+				.controls {
+					overflow: visible;
+					border-right: 0;
+					border-bottom: 1px solid var(--border);
+				}
+				.stage {
+					overflow-x: auto;
+				}
+			}
+		</style>
+		<script>
+			// The palette arrives over the network; without this the first frame is
+			// the browser's white canvas. Remembered alongside the session state.
+			window.COLORS_STORE = "composery-colors";
+			try {
+				const last = JSON.parse(
+					localStorage.getItem(window.COLORS_STORE) ?? "{}"
+				);
+				const root = document.documentElement;
+				root.style.colorScheme = last.scheme === "dark" ? "dark" : "light";
+				for (const [name, value] of Object.entries(last.vars ?? {}))
+					root.style.setProperty(name, value);
+				// Exactly the properties the last paint set, so the chrome does not
+				// reflow once the real palette lands.
+
+				if (!last.vars) {
+					root.style.setProperty("--background", "#ffffff");
+					root.style.setProperty("--foreground", "#000000");
+				}
+			} catch {}
+		</script>
+	</head>
+	<body>
+		<header class="toolbar">
+			<h1>Colors</h1>
+			<label class="filter"
+				><input id="only-area" type="checkbox" /> Only this tab</label
+			>
+			<label class="filter"
+				><input id="hide-linked" type="checkbox" /> Hide linked</label
+			>
+			<div class="history">
+				<button id="undo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+				<button id="redo" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+			</div>
+			<div class="segment" id="area" aria-label="Preview">
+				<button data-value="web" aria-pressed="true">web</button>
+				<button data-value="ide" aria-pressed="false">ide</button>
+			</div>
+			<div class="segment" id="scheme" aria-label="Scheme">
+				<button data-value="light" aria-pressed="true">Light</button>
+				<button data-value="dark" aria-pressed="false">Dark</button>
+			</div>
+			<button class="plain" id="reset-all">Reset all</button>
+			<button class="plain" id="transfer-open">Transfer</button>
+			<button class="primary" id="save">Save</button>
+		</header>
+		<main class="layout">
+			<aside class="controls">
+				<div id="roles"></div>
+				<p id="status"></p>
+			</aside>
+			<section class="stage" id="stage"></section>
+		</main>
+		<dialog id="transfer">
+			<h2>Every colour, as saved</h2>
+			<textarea id="transfer-text" spellcheck="false"></textarea>
+			<p id="transfer-status"></p>
+			<div class="transfer-actions">
+				<button class="plain" id="transfer-close">Close</button>
+				<button class="primary" id="transfer-apply">Apply</button>
+			</div>
+		</dialog>
+		<div id="picker" popover>
+			<div class="sv"><i></i></div>
+			<input class="hue" type="range" min="0" max="360" aria-label="Hue" />
+			<input class="alpha" type="range" min="0" max="255" aria-label="Alpha" />
+			<input class="hex" type="text" spellcheck="false" aria-label="Hex" />
+		</div>
+		<script type="module">
+			const theme = await fetch("/theme").then((response) => response.json());
+			const roles = document.querySelector("#roles");
+			const stage = document.querySelector("#stage");
+			const status = document.querySelector("#status");
+			let saved = structuredClone(theme);
+
+			// What you were last looking at, so a reload puts you back.
+			const STORE = window.COLORS_STORE;
+			const remembered = (() => {
+				try {
+					return JSON.parse(localStorage.getItem(STORE) ?? "{}");
+				} catch {
+					return {};
+				}
+			})();
+			let area = remembered.area === "ide" ? "ide" : "web";
+			let scheme = remembered.scheme === "dark" ? "dark" : "light";
+			let hideLinked = remembered.hideLinked === true;
+			let onlyArea = remembered.onlyArea === true;
+			const detached = new Set(
+				Array.isArray(remembered.detached) ? remembered.detached : []
+			);
+
+			function remember() {
+				localStorage.setItem(
+					STORE,
+					JSON.stringify({
+						area,
+						scheme,
+						hideLinked,
+						onlyArea,
+						detached: [...detached],
+						vars: painted
+					})
+				);
+			}
+
+			const rows = [];
+			const sections = [];
+			const labels = new Map();
+			const seen = new Set();
+			const history = [];
+			const future = [];
+			const undoButton = document.querySelector("#undo");
+			const redoButton = document.querySelector("#redo");
+			const resetAllButton = document.querySelector("#reset-all");
+			let editing = [];
+			let pending = null;
+			let painted = {};
+
+			const snapshot = () => structuredClone(theme);
+			const startEdit = (label) => (pending = label);
+
+			function commitOnce() {
+				if (pending === null) return;
+				history.push({ theme: snapshot(), label: pending });
+				pending = null;
+				if (history.length > 200) history.shift();
+				future.length = 0;
+			}
+
+			// A gesture that ends where it started leaves no entry behind.
+			function settle() {
+				pending = null;
+				const top = history.at(-1);
+				if (!top || JSON.stringify(top.theme) !== JSON.stringify(theme)) return;
+				history.pop();
+				paint();
+			}
+
+			function apply(next) {
+				for (const source of ["web", "ide"])
+					for (const values of ["light", "dark"])
+						Object.assign(theme[source][values], next[source][values]);
+			}
+
+			function step(from, to) {
+				const previous = from.pop();
+				if (!previous) return;
+				to.push({ theme: snapshot(), label: previous.label });
+				apply(previous.theme);
+				document.activeElement?.blur();
+				pending = null;
+				paint();
+			}
+
+			undoButton.onclick = () => step(history, future);
+			redoButton.onclick = () => step(future, history);
+			addEventListener("keydown", (event) => {
+				if (!event.ctrlKey && !event.metaKey) return;
+				const key = event.key.toLowerCase();
+				const redo = key === "y" || (key === "z" && event.shiftKey);
+				if (!redo && key !== "z") return;
+				event.preventDefault();
+				step(redo ? future : history, redo ? history : future);
+			});
+
+			// Every role in one list, grouped by what it does, not by surface.
+			const GROUPS = [
+				[
+					"Surfaces",
+					[
+						["web", "background", "Page"],
+						["web", "card", "Card"],
+						["web", "popover", "Popover"],
+						["web", "secondary", "Secondary"],
+						["web", "muted", "Muted"],
+						["web", "accent", "Accent"],
+						["ide", "editor", "Editor"],
+						["ide", "titleBar", "Title bar"],
+						["ide", "activityBar", "Activity bar"],
+						["ide", "sideBar", "Side bar"],
+						["ide", "panel", "Panel"],
+						["ide", "statusBar", "Status bar"],
+						["ide", "breadcrumb", "Breadcrumb"],
+						["ide", "tabBar", "Tab bar"],
+						["ide", "tabActive", "Active tab"],
+						["ide", "tabInactive", "Inactive tab"],
+						["ide", "widget", "Widget"],
+						["ide", "inputBackground", "Editor input"],
+						["ide", "dropdown", "Dropdown"],
+						["ide", "badge", "Badge"],
+						["ide", "secondaryButton", "Secondary button"],
+						["ide", "hover", "Hover / list selection"]
+					]
+				],
+				[
+					"Text",
+					[
+						["web", "foreground", "Page text"],
+						["web", "cardForeground", "Card text"],
+						["web", "popoverForeground", "Popover text"],
+						["web", "secondaryForeground", "Secondary text"],
+						["web", "mutedForeground", "Muted text"],
+						["web", "accentForeground", "Accent text"],
+						["ide", "foreground", "Editor text"],
+						["ide", "mutedForeground", "Editor muted text"],
+						["ide", "titleBarForeground", "Title bar text"],
+						["ide", "activityBarInactive", "Activity bar inactive"],
+						["ide", "statusBarForeground", "Status bar text"],
+						["ide", "breadcrumbForeground", "Breadcrumb text"],
+						["ide", "tabActiveForeground", "Active tab text"],
+						["ide", "tabInactiveForeground", "Inactive tab text"],
+						["ide", "placeholder", "Placeholder"],
+						["ide", "badgeForeground", "Badge text"]
+					]
+				],
+				[
+					"Actions",
+					[
+						["web", "primary", "Primary"],
+						["web", "primaryForeground", "Primary text"],
+						["ide", "primary", "Editor primary"],
+						["ide", "primaryForeground", "Editor primary text"],
+						["ide", "link", "Link"]
+					]
+				],
+				[
+					"Status",
+					[
+						["web", "success", "Success"],
+						["web", "warning", "Warning"],
+						["web", "destructive", "Destructive"],
+						["web", "info", "Info"],
+						["ide", "gutterAdded", "Gutter added"],
+						["ide", "gutterModified", "Gutter modified"],
+						["ide", "gutterDeleted", "Gutter deleted"],
+						["ide", "diffInserted", "Diff inserted"],
+						["ide", "diffRemoved", "Diff removed"],
+						["ide", "ignored", "Ignored file"]
+					]
+				],
+				[
+					"Structure",
+					[
+						["web", "border", "Border"],
+						["web", "input", "Input border"],
+						["web", "ring", "Focus ring"],
+						["web", "overlay", "Overlay"],
+						["ide", "border", "Editor border"],
+						["ide", "tabBorder", "Tab border"],
+						["ide", "inputBorder", "Editor input border"],
+						["ide", "focus", "Editor focus"],
+						["ide", "shadow", "Widget shadow"]
+					]
+				],
+				[
+					"Editing",
+					[
+						["ide", "selection", "Selection"],
+						["ide", "selectionHighlight", "Selection highlight"],
+						["ide", "wordHighlight", "Word highlight"],
+						["ide", "cursor", "Cursor"],
+						["ide", "findMatch", "Find match"],
+						["ide", "findMatchHighlight", "Find match highlight"],
+						["ide", "indentGuide", "Indent guide"],
+						["ide", "activeIndentGuide", "Active indent guide"],
+						["ide", "whitespace", "Whitespace"],
+						["ide", "ruler", "Ruler"],
+						["ide", "bracketMatch", "Bracket match"],
+						["ide", "scrollbar", "Scrollbar"],
+						["ide", "scrollbarHover", "Scrollbar hover"],
+						["ide", "scrollbarActive", "Scrollbar active"],
+						["ide", "lineNumber", "Line number"]
+					]
+				],
+				[
+					"Syntax",
+					[
+						["ide", "keyword", "Keyword"],
+						["ide", "operator", "Operator"],
+						["ide", "string", "String"],
+						["ide", "escape", "Escape"],
+						["ide", "regex", "Regex"],
+						["ide", "number", "Number"],
+						["ide", "function", "Function"],
+						["ide", "decorator", "Decorator"],
+						["ide", "type", "Type"],
+						["ide", "namespace", "Namespace"],
+						["ide", "tag", "Tag"],
+						["ide", "attribute", "Attribute"],
+						["ide", "variable", "Variable"],
+						["ide", "property", "Property"],
+						["ide", "parameter", "Parameter"],
+						["ide", "constant", "Constant"],
+						["ide", "label", "Label"],
+						["ide", "punctuation", "Punctuation"],
+						["ide", "comment", "Comment"]
+					]
+				],
+				[
+					"Terminal",
+					[
+						["ide", "ansiBlack", "ANSI black"],
+						["ide", "ansiMagenta", "ANSI magenta"],
+						["ide", "ansiCyan", "ANSI cyan"],
+						["ide", "ansiWhite", "ANSI white"],
+						["ide", "ansiBrightBlack", "ANSI bright black"],
+						["ide", "ansiBrightRed", "ANSI bright red"],
+						["ide", "ansiBrightGreen", "ANSI bright green"],
+						["ide", "ansiBrightYellow", "ANSI bright yellow"],
+						["ide", "ansiBrightBlue", "ANSI bright blue"],
+						["ide", "ansiBrightMagenta", "ANSI bright magenta"],
+						["ide", "ansiBrightCyan", "ANSI bright cyan"],
+						["ide", "ansiBrightWhite", "ANSI bright white"]
+					]
+				],
+				[
+					"Charts",
+					[
+						["web", "chart1", "Chart 1"],
+						["web", "chart2", "Chart 2"],
+						["web", "chart3", "Chart 3"],
+						["web", "chart4", "Chart 4"],
+						["web", "chart5", "Chart 5"]
+					]
+				]
+			];
+
+			const WEBSITE = `
+				<div class="preview site">
+					<div class="site-header">
+						<span class="brand">◈ Composery</span>
+						<span class="site-button ghost">Pricing</span>
+						<span class="site-button ghost">Docs</span>
+						<span class="site-button outline">Sign in</span>
+					</div>
+					<section class="hero">
+						<div class="eyebrow">Always-on development environment</div>
+						<h2>A secure cloud computer for long-running work</h2>
+						<p>Use the same workspace from a browser or phone, with the controls and feedback a real product surface needs.</p>
+						<div class="row">
+							<span class="site-button primary">Create a box</span>
+							<span class="site-button outline">Read the docs</span>
+							<span class="site-button secondary">View pricing</span>
+						</div>
+					</section>
+					<div class="site-content">
+						<div class="site-card">
+							<div class="card-pad">
+								<div class="row">
+									<span class="card-title">quiet-harbour</span>
+									<span class="status success">Running</span>
+									<span class="site-button outline" style="margin-left:auto">Open</span>
+								</div>
+								<p class="muted">A dedicated development box in Dublin.</p>
+								<div class="metrics">
+									<div class="metric"><span class="muted">CPU</span><b>18%</b></div>
+									<div class="metric"><span class="muted">Memory</span><b>2.4 GB</b></div>
+									<div class="metric"><span class="muted">Disk</span><b>41%</b></div>
+								</div>
+								<div class="chart" aria-label="Five chart colors">
+									<i style="height:35%;background:var(--chart5)"></i>
+									<i style="height:58%;background:var(--chart4)"></i>
+									<i style="height:43%;background:var(--chart3)"></i>
+									<i style="height:82%;background:var(--chart2)"></i>
+									<i style="height:68%;background:var(--chart1)"></i>
+								</div>
+								<div class="row">
+									<div class="site-input">quiet-harbour</div>
+									<div class="site-input focused">eu-west</div>
+									<span class="site-button primary">Save</span>
+								</div>
+							</div>
+							<div class="table">
+								<div class="table-row table-head"><span>Snapshot</span><span>Status</span><span>Created</span></div>
+								<div class="table-row"><b>before-update</b><span class="status success">Ready</span><span class="muted">Today</span></div>
+								<div class="table-row"><b>nightly</b><span class="status warning">Creating</span><span class="muted">Yesterday</span></div>
+								<div class="table-row"><b>failed-build</b><span class="status destructive-text">Failed</span><span class="muted">Mon</span></div>
+							</div>
+						</div>
+						<div class="stack">
+							<div class="popover">
+								<div class="menu-item selected">Open in editor</div>
+								<div class="menu-item">Take snapshot</div>
+								<div class="menu-item">Configuration</div>
+								<div class="menu-separator"></div>
+								<div class="menu-item destructive-text">Delete box</div>
+							</div>
+							<div class="toast">
+								<b class="info">ⓘ</b>
+								<div><b>Update available</b><div class="muted">Reload when your current task is safe.</div></div>
+							</div>
+							<div class="dialog-demo">
+								<div class="dialog-overlay">
+									<div class="dialog">
+										<div class="card-title">Delete quiet-harbour?</div>
+										<p class="muted">This permanently removes the box and its snapshots.</p>
+										<div class="row" style="justify-content:flex-end">
+											<span class="site-button outline">Cancel</span>
+											<span class="site-button destructive">Delete</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>`;
+
+			const IDE = `
+				<div class="preview ide">
+					<div class="ide-titlebar">
+						<div class="ide-menu"><span class="hovered">File</span><span>Edit</span><span>View</span><span>Terminal</span></div>
+						<div class="command-center">⌕ composery</div>
+						<div class="window-actions">—　□　×</div>
+					</div>
+					<div class="ide-main">
+						<div class="activity"><div class="active">▱</div><div>⌕</div><div>⑂</div><div>▷</div><div>⚙</div></div>
+						<div class="ide-sidebar">
+							<div class="sidebar-title"><span>Explorer</span><span>•••</span></div>
+							<div class="tree-section">⌄ COMPOSERY</div>
+							<div>
+								<div class="tree-row" style="padding-left:12px">⌄ packages</div>
+								<div class="tree-row selected" style="padding-left:25px">⌄ shared <span class="git warning">M</span></div>
+								<div class="tree-row" style="padding-left:40px">theme.json <span class="git warning">M</span></div>
+								<div class="tree-row" style="padding-left:40px">theme.ts <span class="git success">U</span></div>
+								<div class="tree-row" style="padding-left:40px">index.ts</div>
+								<div class="tree-row ignored" style="padding-left:25px">node_modules</div>
+								<div class="tree-row" style="padding-left:12px">README.md</div>
+							</div>
+						</div>
+						<div class="editor-column">
+							<div class="tabs"><div class="ide-tab active">theme.ts　●</div><div class="ide-tab">index.ts　×</div><div class="ide-tab">server.mjs　×</div></div>
+							<div class="breadcrumbs">packages › shared › <span class="typ">theme.ts</span> › <span class="fn">applyTheme</span></div>
+							<div class="code-area">
+								<div class="code-lines">
+									<div class="code-line"><span class="line-number">1</span><i></i><span><span class="kw">import</span> <span class="punctuation">{</span> <span class="typ">Theme</span> <span class="punctuation">}</span> <span class="kw">from</span> <span class="str">"./types"</span><span class="punctuation">;</span></span></div>
+									<div class="code-line"><span class="line-number">2</span><i></i><span></span></div>
+									<div class="code-line"><span class="line-number">3</span><i class="gutter changed"></i><span><span class="kw">export function</span> <span class="fn">applyTheme</span><span class="punctuation">(</span><span class="param">theme</span><span class="punctuation">:</span> <span class="typ">Theme</span><span class="punctuation">) {</span></span></div>
+									<div class="code-line"><span class="line-number">4</span><i></i><span><b class="guide"></b><span class="kw">const</span> <span class="variable">schemes</span> <span class="op">=</span> <span class="punctuation">[</span><span class="str">"light"</span><span class="punctuation">,</span> <span class="str">"dark"</span><span class="punctuation">];</span></span></div>
+									<div class="code-line"><span class="line-number">5</span><i class="gutter added"></i><span><b class="guide"></b><span class="kw">for</span> <span class="punctuation">(</span><span class="kw">const</span> <span class="variable">scheme</span> <span class="op">of</span> <span class="variable">schemes</span><span class="punctuation">) {</span></span></div>
+									<div class="code-line current"><span class="line-number">6</span><i></i><span><b class="guide"></b><b class="guide"></b><span class="fn">paint</span><span class="punctuation">(</span><span class="variable">theme</span><span class="punctuation">.</span><span class="prop">colors</span><span class="punctuation">,</span> <span class="num">0.85</span><span class="punctuation">);</span><b class="caret"></b></span></div>
+									<div class="code-line"><span class="line-number">7</span><i></i><span><b class="guide"></b><span class="punctuation">}</span></span></div>
+									<div class="code-line"><span class="line-number">8</span><i></i><span><span class="punctuation">}</span></span></div>
+									<div class="code-line"><span class="line-number">9</span><i></i><span></span></div>
+									<div class="code-line"><span class="line-number">10</span><i></i><span><span class="comment">// Diagnostics and diffs share </span><span class="selected-code"><span class="comment">product status roles</span></span><span class="comment">.</span></span></div>
+									<div class="code-line"><span class="line-number">11</span><i></i><span><span class="punctuation">&lt;</span><span class="tag">section</span> <span class="prop">class</span><span class="op">=</span><span class="found"><span class="str">"stage"</span></span><span class="punctuation">&gt;</span><span class="invalid-token">missingTheme</span><span class="punctuation">&lt;/</span><span class="tag">section</span><span class="punctuation">&gt;</span></span></div>
+								</div>
+								<div class="minimap"><b class="slider"></b><i class="kw" style="background:currentColor;width:85%"></i><i class="typ" style="background:currentColor;width:55%"></i><i class="str" style="background:currentColor;width:75%"></i><i class="fn" style="background:currentColor;width:60%"></i><i class="num" style="background:currentColor;width:38%"></i><i class="comment" style="background:currentColor;width:90%"></i></div>
+							</div>
+							<div class="panel">
+								<div class="panel-tabs"><span>Problems</span><span>Output</span><span class="active">Terminal</span><span>Ports</span></div>
+								<div class="terminal"><span class="str">user@box</span><span class="punctuation">:</span><span class="typ">~/composery</span><span class="punctuation">$</span> pnpm check
+<span class="success">✓</span> 1,215 tests passed
+<span class="warning">⚠</span> 2 files modified
+<span class="destructive-text">✗</span> one invalid token
+<span class="info">ℹ</span> editor theme regenerated
+<span class="ansi-strip"><i style="background:var(--ide-ansi-black)"></i><i style="background:var(--destructive)"></i><i style="background:var(--success)"></i><i style="background:var(--warning)"></i><i style="background:var(--info)"></i><i style="background:var(--ide-ansi-magenta)"></i><i style="background:var(--ide-ansi-cyan)"></i><i style="background:var(--ide-ansi-white)"></i></span><span class="ansi-strip"><i style="background:var(--ide-ansi-bright-black)"></i><i style="background:var(--ide-ansi-bright-red)"></i><i style="background:var(--ide-ansi-bright-green)"></i><i style="background:var(--ide-ansi-bright-yellow)"></i><i style="background:var(--ide-ansi-bright-blue)"></i><i style="background:var(--ide-ansi-bright-magenta)"></i><i style="background:var(--ide-ansi-bright-cyan)"></i><i style="background:var(--ide-ansi-bright-white)"></i></span></div>
+							</div>
+						</div>
+					</div>
+					<div class="ide-statusbar"><span>⑂ main*</span><span>↻ 0↓ 2↑</span><span>✕ 1</span><span class="right">Ln 3, Col 18　UTF-8　TypeScript</span></div>
+					<div class="quick-input">
+						<div class="field">&gt; theme</div>
+						<div class="quick-row selected"><span>Preferences: Color Theme</span><span>Ctrl+K Ctrl+T</span></div>
+						<div class="quick-row"><span>Inspect Editor Tokens and Scopes</span></div>
+						<div class="quick-row"><span>Open Settings (JSON)</span><span>Ctrl+,</span></div>
+					</div>
+					<div class="notification">
+						<div><span class="info">ⓘ</span> A new Composery build is available. <span class="ide-link">Release notes</span></div>
+						<div class="actions"><span class="site-button outline">Later</span><span class="site-button primary">Reload</span></div>
+					</div>
+				</div>`;
+
+			function setPressed(container, selected) {
+				for (const button of container.querySelectorAll("button"))
+					button.setAttribute(
+						"aria-pressed",
+						String(button.dataset.value === selected)
+					);
+			}
+
+			// Pasted colours arrive with quotes, semicolons, 0x, or no hash at all.
+			function normalize(value) {
+				const digits = value
+					.trim()
+					.toLowerCase()
+					.replace(/[\s"'`;,]/g, "")
+					.replace(/^(?:#|0x)+/, "");
+				if (!/^[0-9a-f]+$/.test(digits)) return null;
+				if (digits.length === 3 || digits.length === 4)
+					return `#${[...digits].map((character) => character + character).join("")}`;
+				return digits.length === 6 || digits.length === 8 ? `#${digits}` : null;
+			}
+
+			function toHsv(hex) {
+				const [red, green, blue] = [1, 3, 5].map(
+					(index) => parseInt(hex.slice(index, index + 2), 16) / 255
+				);
+				const value = Math.max(red, green, blue);
+				const span = value - Math.min(red, green, blue);
+				const hue =
+					span === 0
+						? 0
+						: value === red
+							? (green - blue) / span + (green < blue ? 6 : 0)
+							: value === green
+								? (blue - red) / span + 2
+								: (red - green) / span + 4;
+				return [hue * 60, value === 0 ? 0 : span / value, value];
+			}
+
+			function toHex([hue, saturation, value]) {
+				const channel = (offset) => {
+					const k = (offset + hue / 60) % 6;
+					const c =
+						value * (1 - saturation * Math.max(0, Math.min(k, 4 - k, 1)));
+					return Math.round(c * 255)
+						.toString(16)
+						.padStart(2, "0");
+				};
+				return `#${channel(5)}${channel(3)}${channel(1)}`;
+			}
+
+			const picker = document.querySelector("#picker");
+			const sv = picker.querySelector(".sv");
+			const knob = picker.querySelector(".sv i");
+			const hue = picker.querySelector(".hue");
+			const alpha = picker.querySelector(".alpha");
+			const hexField = picker.querySelector(".hex");
+			let hsv = [0, 0, 0];
+			let emit = () => {};
+
+			// The hue rail comes from the same conversion the picker writes with.
+			hue.style.background = `linear-gradient(to right, ${[
+				0, 60, 120, 180, 240, 300, 360
+			]
+				.map((degrees) => toHex([degrees, 1, 1]))
+				.join(", ")})`;
+
+			function refreshPicker() {
+				const base = toHex([hsv[0], 1, 1]);
+				const hex = toHex(hsv);
+				sv.style.background = `linear-gradient(to top, #000, #0000), linear-gradient(to right, #fff, #fff0), ${base}`;
+				knob.style.left = `${hsv[1] * 100}%`;
+				knob.style.top = `${(1 - hsv[2]) * 100}%`;
+				knob.style.background = hex;
+				alpha.style.background = `linear-gradient(to right, ${hex}00, ${hex}), repeating-conic-gradient(#737373 0 25%, #262626 0 50%) 0 0/12px 12px`;
+			}
+
+			function emitPicker() {
+				const suffix =
+					Number(alpha.value) === 255
+						? ""
+						: Number(alpha.value).toString(16).padStart(2, "0");
+				const next = toHex(hsv) + suffix;
+				hexField.value = next;
+				refreshPicker();
+				emit(next);
+			}
+
+			function openPicker(anchor, current, onChange) {
+				hsv = toHsv(current);
+				hue.value = String(Math.round(hsv[0]));
+				alpha.value = String(
+					current.length === 9 ? parseInt(current.slice(7), 16) : 255
+				);
+				hexField.value = current;
+				emit = onChange;
+				refreshPicker();
+				picker.showPopover();
+				const box = anchor.getBoundingClientRect();
+				picker.style.left = `${Math.min(box.left, innerWidth - 280)}px`;
+				picker.style.top = `${Math.min(box.bottom + 6, innerHeight - 300)}px`;
+			}
+
+			sv.onpointerdown = (event) => {
+				sv.setPointerCapture(event.pointerId);
+				const track = ({ clientX, clientY }) => {
+					const box = sv.getBoundingClientRect();
+					const clamp = (value) => Math.min(1, Math.max(0, value));
+					hsv = [
+						hsv[0],
+						clamp((clientX - box.left) / box.width),
+						1 - clamp((clientY - box.top) / box.height)
+					];
+					emitPicker();
+				};
+				sv.onpointermove = track;
+				track(event);
+			};
+			sv.onpointerup = () => (sv.onpointermove = null);
+			// The picker is anchored on open, so scrolling it out from under is a dismissal.
+			roles.parentElement.onscroll = () => picker.hidePopover();
+			picker.addEventListener("toggle", (event) => {
+				if (event.newState === "closed") settle();
+			});
+			hue.oninput = () => {
+				hsv = [Number(hue.value), hsv[1], hsv[2]];
+				emitPicker();
+			};
+			alpha.oninput = emitPicker;
+			hexField.oninput = () => {
+				const next = normalize(hexField.value);
+				hexField.classList.toggle("invalid", !next);
+				if (!next) return;
+				hsv = toHsv(next);
+				hue.value = String(Math.round(hsv[0]));
+				alpha.value = String(
+					next.length === 9 ? parseInt(next.slice(7), 16) : 255
+				);
+				refreshPicker();
+				emit(next);
+			};
+
+			// Roles holding the same value in this scheme move together, unless the
+			// user has detached one to give it a life of its own.
+			function linkedRoles(source, key) {
+				if (detached.has(`${source}.${key}`)) return [[source, key]];
+				const value = theme[source][scheme][key];
+				const found = [];
+				for (const area of ["web", "ide"])
+					for (const [name, current] of Object.entries(theme[area][scheme]))
+						if (current === value && !detached.has(`${area}.${name}`))
+							found.push([area, name]);
+				return found;
+			}
+
+			// Painted on the root, so the editor wears the scheme it is editing.
+			function paint() {
+				const root = document.documentElement;
+				root.style.colorScheme = scheme;
+				painted = {};
+				for (const [prefix, values] of [
+					["-", theme.web[scheme]],
+					["-ide-", theme.ide[scheme]]
+				])
+					for (const [key, value] of Object.entries(values))
+						painted[
+							`-${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`
+						] = value;
+				for (const [name, value] of Object.entries(painted))
+					root.style.setProperty(name, value);
+				seen.clear();
+				for (const section of sections) section.visible = 0;
+
+				for (const refresh of rows) refresh();
+				for (const section of sections)
+					section.group.hidden = section.visible === 0;
+				remember();
+				undoButton.disabled = history.length === 0;
+				redoButton.disabled = future.length === 0;
+				undoButton.title = history.length
+					? `Undo ${history.at(-1).label} (Ctrl+Z)`
+					: "Nothing to undo";
+				redoButton.title = future.length
+					? `Redo ${future.at(-1).label} (Ctrl+Y)`
+					: "Nothing to redo";
+				resetAllButton.disabled =
+					JSON.stringify(theme) === JSON.stringify(saved);
+			}
+
+			function renderControls() {
+				roles.replaceChildren();
+				rows.length = 0;
+				sections.length = 0;
+				for (const [title, entries] of GROUPS) {
+					const group = document.createElement("section");
+					group.className = "group";
+					const heading = document.createElement("h2");
+					heading.textContent = title;
+					group.append(heading);
+					const tally = { group, visible: 0 };
+					sections.push(tally);
+					for (const [source, key, label] of entries) {
+						labels.set(`${source}.${key}`, label);
+						const row = document.createElement("div");
+						row.className = "role";
+						const name = document.createElement("span");
+						name.className = "role-name";
+						name.title = label;
+						name.textContent = label;
+						const tag = document.createElement("b");
+						tag.className = "area";
+						tag.textContent = source;
+						const swatch = document.createElement("button");
+						swatch.type = "button";
+						swatch.className = "swatch";
+						swatch.setAttribute("aria-label", `${label} color picker`);
+						const text = document.createElement("input");
+						text.type = "text";
+						text.spellcheck = false;
+						text.setAttribute("aria-label", `${label} hex color`);
+						const link = document.createElement("button");
+						link.type = "button";
+						link.className = "link";
+						const reset = document.createElement("button");
+						reset.type = "button";
+						reset.className = "reset";
+						reset.textContent = "↺";
+						reset.title = "Reset this colour and everything linked to it";
+						const id = `${source}.${key}`;
+						const current = () => theme[source][scheme][key];
+						const refresh = () => {
+							const value = current();
+							swatch.style.background = `linear-gradient(${value}, ${value}), repeating-conic-gradient(#737373 0 25%, #262626 0 50%) 0 0/8px 8px`;
+							if (document.activeElement !== text) {
+								text.value = value;
+								text.classList.remove("invalid");
+							}
+							const loose = detached.has(id);
+							const shared = linkedRoles(source, key);
+							link.textContent = loose
+								? "⊘"
+								: shared.length > 1
+									? String(shared.length)
+									: "·";
+							link.classList.toggle("loose", loose);
+							link.title = loose
+								? "Detached - edits here move nothing else. Click to link it back up."
+								: shared.length > 1
+									? `Linked with ${shared
+											.filter((role) => `${role[0]}.${role[1]}` !== id)
+											.map((role) => labels.get(role.join(".")))
+											.join(", ")}. Click to detach this one.`
+									: "Nothing else holds this value. Click to keep it that way.";
+							reset.disabled = shared.every(
+								([peerSource, peerKey]) =>
+									theme[peerSource][scheme][peerKey] ===
+									saved[peerSource][scheme][peerKey]
+							);
+							// "Hide linked" keeps the first row of each group of equal values,
+							// counted over the rows the surface filter is letting through.
+							const elsewhere = onlyArea && source !== area;
+							let first = false;
+							if (!elsewhere) {
+								first = loose || !seen.has(value);
+								if (!loose) seen.add(value);
+							}
+							row.hidden = elsewhere || (hideLinked && !first);
+							if (!row.hidden) tally.visible += 1;
+						};
+						rows.push(refresh);
+						// An edit that changes nothing must not land in the history.
+						const update = (next) => {
+							if (
+								editing.every(
+									([peerSource, peerKey]) =>
+										theme[peerSource][scheme][peerKey] === next
+								)
+							)
+								return;
+							commitOnce();
+							for (const [peerSource, peerKey] of editing)
+								theme[peerSource][scheme][peerKey] = next;
+							paint();
+						};
+						const startOn = (peers) => {
+							settle();
+							editing = peers;
+							startEdit(
+								peers.length > 1
+									? `${label} and ${peers.length - 1} linked`
+									: label
+							);
+						};
+						swatch.onclick = () => {
+							startOn(linkedRoles(source, key));
+							openPicker(swatch, current(), update);
+						};
+						text.onfocus = () => startOn(linkedRoles(source, key));
+						text.onblur = settle;
+						link.onclick = () => {
+							if (detached.has(id)) detached.delete(id);
+							else detached.add(id);
+							remember();
+							paint();
+						};
+						reset.onclick = () => {
+							const peers = linkedRoles(source, key);
+							if (
+								peers.every(
+									([peerSource, peerKey]) =>
+										theme[peerSource][scheme][peerKey] ===
+										saved[peerSource][scheme][peerKey]
+								)
+							)
+								return;
+							settle();
+							startEdit(`reset ${label}`);
+							commitOnce();
+							for (const [peerSource, peerKey] of peers)
+								theme[peerSource][scheme][peerKey] =
+									saved[peerSource][scheme][peerKey];
+							paint();
+						};
+						text.oninput = () => {
+							const next = normalize(text.value);
+							text.classList.toggle("invalid", !next);
+							if (next) update(next);
+						};
+						text.onchange = () => {
+							const next = normalize(text.value);
+							text.value = next ?? current();
+							text.classList.remove("invalid");
+						};
+						row.append(name, tag, swatch, text, link, reset);
+						group.append(row);
+					}
+					roles.append(group);
+				}
+			}
+
+			function render() {
+				picker.hidePopover();
+				stage.innerHTML = area === "web" ? WEBSITE : IDE;
+				paint();
+				setPressed(document.querySelector("#area"), area);
+				setPressed(document.querySelector("#scheme"), scheme);
+			}
+
+			document.querySelector("#area").onclick = (event) => {
+				const button = event.target.closest("button[data-value]");
+				if (!button) return;
+				area = button.dataset.value;
+				remember();
+				render();
+			};
+			document.querySelector("#scheme").onclick = (event) => {
+				const button = event.target.closest("button[data-value]");
+				if (!button) return;
+				scheme = button.dataset.value;
+				remember();
+				render();
+			};
+			document.querySelector("#save").onclick = async () => {
+				const save = document.querySelector("#save");
+				save.disabled = true;
+				status.className = "";
+				status.textContent = "Saving…";
+				const response = await fetch("/theme", {
+					method: "PUT",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(theme)
+				});
+				if (response.ok) saved = structuredClone(theme);
+				status.textContent = response.ok
+					? "Saved and regenerated."
+					: await response.text();
+				status.className = response.ok ? "" : "error";
+				save.disabled = false;
+				paint();
+			};
+			const hideLinkedBox = document.querySelector("#hide-linked");
+			const onlyAreaBox = document.querySelector("#only-area");
+			hideLinkedBox.checked = hideLinked;
+			onlyAreaBox.checked = onlyArea;
+			hideLinkedBox.onchange = (event) => {
+				hideLinked = event.target.checked;
+				remember();
+				paint();
+			};
+			onlyAreaBox.onchange = (event) => {
+				onlyArea = event.target.checked;
+				remember();
+				paint();
+			};
+
+			resetAllButton.onclick = () => {
+				if (JSON.stringify(theme) === JSON.stringify(saved)) return;
+				settle();
+				startEdit("reset all");
+				commitOnce();
+				apply(saved);
+				paint();
+			};
+
+			// The transfer text is exactly what a save writes to theme.json.
+			const transfer = document.querySelector("#transfer");
+			const transferText = document.querySelector("#transfer-text");
+			const transferStatus = document.querySelector("#transfer-status");
+			const say = (message, bad) => {
+				transferStatus.textContent = message;
+				transferStatus.className = bad ? "error" : "";
+			};
+
+			function readTransfer(text) {
+				const next = JSON.parse(text);
+				const clean = { web: {}, ide: {} };
+				for (const source of ["web", "ide"])
+					for (const values of ["light", "dark"]) {
+						const from = next?.[source]?.[values];
+						const keys = Object.keys(theme[source][values]);
+						if (!from || Object.keys(from).length !== keys.length)
+							throw new Error(`${source}.${values} does not list every role`);
+						clean[source][values] = {};
+						for (const key of keys) {
+							const value = normalize(String(from[key] ?? ""));
+							if (!value)
+								throw new Error(`${source}.${values}.${key} is not a colour`);
+							clean[source][values][key] = value;
+						}
+					}
+				return clean;
+			}
+
+			const applyButton = document.querySelector("#transfer-apply");
+
+			// Apply stays off until the text is both readable and different.
+			function reviewTransfer() {
+				let next;
+				try {
+					next = readTransfer(transferText.value);
+				} catch (error) {
+					applyButton.disabled = true;
+					say(String(error?.message ?? error), true);
+					return null;
+				}
+				const same = JSON.stringify(next) === JSON.stringify(theme);
+				applyButton.disabled = same;
+				say(
+					same
+						? "Unchanged - select all to copy it out, or paste a set over it."
+						: "Ready to apply."
+				);
+				return same ? null : next;
+			}
+
+			document.querySelector("#transfer-open").onclick = () => {
+				transferText.value = `${JSON.stringify(theme, null, "\t")}\n`;
+				reviewTransfer();
+				transfer.showModal();
+				transferText.select();
+			};
+			document.querySelector("#transfer-close").onclick = () =>
+				transfer.close();
+			transferText.oninput = reviewTransfer;
+			applyButton.onclick = () => {
+				const next = reviewTransfer();
+				if (!next) return;
+				settle();
+				startEdit("import");
+				commitOnce();
+				apply(next);
+				paint();
+				transfer.close();
+			};
+			renderControls();
+			render();
+		</script>
+	</body>
+</html>

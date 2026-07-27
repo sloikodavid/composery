@@ -101,40 +101,47 @@ function contrast(first, second) {
 function syntaxRole(scopes) {
 	const matches = (pattern) => scopes.some((scope) => pattern.test(scope));
 	if (matches(/^comment/)) return "comment";
-	if (
-		matches(
-			/^(string|.*regexp|.*regex|constant\.character\.escape|markup\.inline\.raw)/
-		)
-	)
-		return "string";
+	if (matches(/^constant\.character\.escape/)) return "escape";
+	if (matches(/^.*regexp|^.*regex/)) return "regex";
+	if (matches(/^(string|markup\.inline\.raw)/)) return "string";
+	if (matches(/^(entity\.name\.function\.decorator|meta\.decorator)/))
+		return "decorator";
 	if (
 		matches(
 			/^(entity\.name\.function|support\.function|meta\.function-call|entity\.name\.method)/
 		)
 	)
 		return "function";
+	if (matches(/^entity\.name\.namespace/)) return "namespace";
+	if (matches(/^(entity\.name\.tag|entity\.name\.selector)/)) return "tag";
 	if (
 		matches(
-			/^(entity\.name\.tag|entity\.name\.selector|support\.class|entity\.name\.type|support\.type|meta\.type|entity\.name\.namespace|storage\.type)/
+			/^(support\.class|entity\.name\.type|support\.type|meta\.type|storage\.type)/
 		)
 	)
 		return "type";
 	if (matches(/^(constant\.numeric|keyword\.other\.unit)/)) return "number";
+	if (matches(/^keyword\.operator/)) return "operator";
 	if (
 		matches(
 			/^(keyword|storage\.modifier|constant\.language|modifier|meta\.preprocessor)/
 		)
 	)
 		return "keyword";
+	if (matches(/^variable\.parameter/)) return "parameter";
 	if (
 		matches(
-			/^(variable|entity\.other\.attribute-name|meta\.object-literal|.*dictionary\.key|entity\.name\.label|support\.constant|constant\.other)/
+			/^(meta\.object-literal|.*dictionary\.key|variable\.other\.property|support\.variable\.property)/
 		)
 	)
-		return "variable";
+		return "property";
+	if (matches(/^entity\.other\.attribute-name/)) return "attribute";
+	if (matches(/^entity\.name\.label/)) return "label";
+	if (matches(/^(support\.constant|constant\.other)/)) return "constant";
+	if (matches(/^variable/)) return "variable";
 	if (
 		matches(
-			/^(punctuation|keyword\.operator|meta\.embedded|meta\.template|source\.groovy\.embedded)/
+			/^(punctuation|meta\.embedded|meta\.template|source\.groovy\.embedded)/
 		)
 	)
 		return "punctuation";
@@ -144,8 +151,12 @@ function syntaxRole(scopes) {
 function semanticRole(key) {
 	const name = key.toLowerCase();
 	if (name.includes("comment")) return "comment";
+	if (name.includes("regexp")) return "regex";
 	if (name.includes("string")) return "string";
 	if (name.includes("number")) return "number";
+	if (name.includes("decorator")) return "decorator";
+	if (name.includes("namespace")) return "namespace";
+	if (name.includes("label")) return "label";
 	if (
 		name.includes("function") ||
 		name.includes("method") ||
@@ -160,43 +171,44 @@ function semanticRole(key) {
 		name.includes("type")
 	)
 		return "type";
-	if (name.includes("keyword") || name.includes("operator")) return "keyword";
-	if (
-		name.includes("variable") ||
-		name.includes("property") ||
-		name.includes("parameter")
-	)
-		return "variable";
+	if (name.includes("operator")) return "operator";
+	if (name.includes("keyword")) return "keyword";
+	if (name.includes("parameter")) return "parameter";
+	if (name.includes("property")) return "property";
+	if (name.includes("variable")) return "variable";
 	return null;
 }
 
 function retint(base, web, ide, scheme) {
 	const colors = { ...base.colors };
-	const dark = scheme === "dark";
 
 	set(
 		colors,
-		[
-			"activityBar.background",
-			"activityBarTop.background",
-			"breadcrumb.background",
-			"panel.background",
-			"sideBar.background",
-			"sideBarSectionHeader.background",
-			"statusBar.background",
-			"statusBar.noFolderBackground",
-			"titleBar.activeBackground",
-			"titleBar.inactiveBackground"
-		],
-		ide.chrome
+		["titleBar.activeBackground", "titleBar.inactiveBackground"],
+		ide.titleBar
 	);
+	set(
+		colors,
+		["activityBar.background", "activityBarTop.background"],
+		ide.activityBar
+	);
+	set(
+		colors,
+		["sideBar.background", "sideBarSectionHeader.background"],
+		ide.sideBar
+	);
+	set(colors, ["panel.background"], ide.panel);
+	set(
+		colors,
+		["statusBar.background", "statusBar.noFolderBackground"],
+		ide.statusBar
+	);
+	set(colors, ["breadcrumb.background"], ide.breadcrumb);
 	set(colors, ["editor.background", "terminal.background"], ide.editor);
 	set(
 		colors,
 		[
-			"editorGroupHeader.tabsBackground",
 			"editorWidget.background",
-			"input.background",
 			"menu.background",
 			"notificationCenterHeader.background",
 			"notifications.background",
@@ -204,12 +216,30 @@ function retint(base, web, ide, scheme) {
 			"peekViewResult.background",
 			"peekViewTitle.background",
 			"quickInput.background",
-			"tab.activeBackground",
-			"tab.inactiveBackground",
-			"tab.unfocusedActiveBackground",
-			"tab.unfocusedInactiveBackground"
+			"textBlockQuote.background",
+			"textCodeBlock.background",
+			"welcomePage.tileBackground"
 		],
-		ide.surface
+		ide.widget
+	);
+	set(colors, ["editorGroupHeader.tabsBackground"], ide.tabBar);
+	set(
+		colors,
+		["tab.activeBackground", "tab.unfocusedActiveBackground"],
+		ide.tabActive
+	);
+	set(
+		colors,
+		["tab.inactiveBackground", "tab.unfocusedInactiveBackground"],
+		ide.tabInactive
+	);
+	set(colors, ["checkbox.background", "input.background"], ide.inputBackground);
+	set(colors, ["dropdown.background"], ide.dropdown);
+	set(colors, ["badge.background"], ide.badge);
+	set(
+		colors,
+		["actionBar.toggledBackground", "button.secondaryBackground"],
+		ide.secondaryButton
 	);
 	set(
 		colors,
@@ -235,51 +265,42 @@ function retint(base, web, ide, scheme) {
 			"icon.foreground",
 			"sideBar.foreground",
 			"sideBarSectionHeader.foreground",
-			"terminal.foreground",
-			"titleBar.activeForeground"
+			"badge.foreground",
+			"terminal.foreground"
 		],
 		ide.foreground
 	);
+	set(colors, ["titleBar.activeForeground"], ide.titleBarForeground);
 	set(
 		colors,
-		[
-			"activityBarBadge.foreground",
-			"button.foreground",
-			"statusBarItem.remoteForeground"
-		],
+		["button.foreground", "statusBarItem.remoteForeground"],
 		ide.primaryForeground
 	);
+	set(colors, ["activityBarBadge.foreground"], ide.badgeForeground);
 	set(
 		colors,
 		[
-			"activityBar.inactiveForeground",
 			"descriptionForeground",
-			"editorLineNumber.foreground",
-			"input.placeholderForeground",
 			"panelTitle.inactiveForeground",
 			"sideBarTitle.foreground",
-			"statusBar.foreground",
-			"tab.inactiveForeground",
-			"titleBar.inactiveForeground",
 			"welcomePage.progress.foreground"
 		],
 		ide.mutedForeground
 	);
+	set(colors, ["activityBar.inactiveForeground"], ide.activityBarInactive);
+	set(colors, ["statusBar.foreground"], ide.statusBarForeground);
+	set(colors, ["breadcrumb.foreground"], ide.breadcrumbForeground);
+	set(colors, ["tab.activeForeground"], ide.tabActiveForeground);
 	set(
 		colors,
 		[
-			"actionBar.toggledBackground",
-			"badge.background",
-			"button.secondaryBackground",
-			"checkbox.background",
-			"dropdown.background",
-			"input.background",
-			"textBlockQuote.background",
-			"textCodeBlock.background",
-			"welcomePage.tileBackground"
+			"tab.inactiveForeground",
+			"tab.unfocusedInactiveForeground",
+			"titleBar.inactiveForeground"
 		],
-		ide.surface
+		ide.tabInactiveForeground
 	);
+	set(colors, ["input.placeholderForeground"], ide.placeholder);
 	set(
 		colors,
 		[
@@ -298,26 +319,26 @@ function retint(base, web, ide, scheme) {
 		colors,
 		[
 			"activityBar.border",
-			"checkbox.border",
-			"dropdown.border",
 			"editorGroup.border",
-			"editorGroupHeader.tabsBorder",
 			"editorOverviewRuler.border",
 			"editorWidget.border",
-			"input.border",
 			"menu.border",
 			"notifications.border",
 			"panel.border",
-			"panelInput.border",
 			"pickerGroup.border",
 			"sideBar.border",
 			"sideBarSectionHeader.border",
-			"tab.border",
 			"titleBar.border",
 			"widget.border"
 		],
 		ide.border
 	);
+	set(
+		colors,
+		["checkbox.border", "dropdown.border", "input.border", "panelInput.border"],
+		ide.inputBorder
+	);
+	set(colors, ["editorGroupHeader.tabsBorder", "tab.border"], ide.tabBorder);
 	set(
 		colors,
 		[
@@ -333,15 +354,79 @@ function retint(base, web, ide, scheme) {
 	colors["editorLineNumber.foreground"] = ide.lineNumber;
 	colors["gitDecoration.ignoredResourceForeground"] = ide.ignored;
 
+	set(
+		colors,
+		[
+			"editor.selectionBackground",
+			"input.selectionBackground",
+			"selection.background",
+			"terminal.selectionBackground"
+		],
+		ide.selection
+	);
+	set(
+		colors,
+		[
+			"editor.selectionHighlightBackground",
+			"terminal.inactiveSelectionBackground"
+		],
+		ide.selectionHighlight
+	);
+	set(
+		colors,
+		["editor.wordHighlightBackground", "editor.wordHighlightStrongBackground"],
+		ide.wordHighlight
+	);
+	set(
+		colors,
+		["editorCursor.foreground", "terminalCursor.foreground"],
+		ide.cursor
+	);
+	set(
+		colors,
+		["editor.findMatchBackground", "terminal.findMatchBackground"],
+		appendAlpha(ide.findMatch, "66")
+	);
+	set(
+		colors,
+		[
+			"editor.findMatchHighlightBackground",
+			"editor.findRangeHighlightBackground",
+			"terminal.findMatchHighlightBackground"
+		],
+		ide.findMatchHighlight
+	);
+	set(
+		colors,
+		["editorIndentGuide.background1", "tree.indentGuidesStroke"],
+		ide.indentGuide
+	);
+	set(colors, ["editorIndentGuide.activeBackground1"], ide.activeIndentGuide);
+	set(colors, ["editorWhitespace.foreground"], ide.whitespace);
+	set(colors, ["editorRuler.foreground"], ide.ruler);
+	set(colors, ["editorBracketMatch.border"], ide.bracketMatch);
+	colors["editorBracketMatch.background"] = appendAlpha(ide.editor, "00");
+	set(colors, ["scrollbarSlider.background"], ide.scrollbar);
+	set(colors, ["scrollbarSlider.hoverBackground"], ide.scrollbarHover);
+	set(colors, ["scrollbarSlider.activeBackground"], ide.scrollbarActive);
+	set(
+		colors,
+		[
+			"editorLink.activeForeground",
+			"textLink.activeForeground",
+			"textLink.foreground",
+			"welcomePage.progress.background"
+		],
+		ide.link
+	);
+
 	const statuses = {
 		success: [
-			"editorGutter.addedBackground",
 			"gitDecoration.addedResourceForeground",
 			"gitDecoration.untrackedResourceForeground",
 			"ports.iconRunningProcessForeground"
 		],
 		warning: [
-			"editorGutter.modifiedBackground",
 			"editorWarning.foreground",
 			"gitDecoration.conflictingResourceForeground",
 			"gitDecoration.modifiedResourceForeground",
@@ -350,7 +435,6 @@ function retint(base, web, ide, scheme) {
 		],
 		destructive: [
 			"editorError.foreground",
-			"editorGutter.deletedBackground",
 			"errorForeground",
 			"gitDecoration.deletedResourceForeground",
 			"gitDecoration.stageDeletedResourceForeground",
@@ -365,21 +449,33 @@ function retint(base, web, ide, scheme) {
 	for (const [role, keys] of Object.entries(statuses))
 		set(colors, keys, web[role]);
 
-	for (const [key, role] of [
-		["diffEditor.insertedTextBackground", "success"],
-		["diffEditor.insertedLineBackground", "success"],
-		["diffEditorGutter.insertedLineBackground", "success"],
-		["diffEditor.removedTextBackground", "destructive"],
-		["diffEditor.removedLineBackground", "destructive"],
-		["diffEditorGutter.removedLineBackground", "destructive"]
-	])
-		colors[key] = appendAlpha(web[role], dark ? "26" : "1f");
+	set(colors, ["editorGutter.addedBackground"], ide.gutterAdded);
+	set(colors, ["editorGutter.modifiedBackground"], ide.gutterModified);
+	set(colors, ["editorGutter.deletedBackground"], ide.gutterDeleted);
+	set(
+		colors,
+		[
+			"diffEditor.insertedLineBackground",
+			"diffEditor.insertedTextBackground",
+			"diffEditorGutter.insertedLineBackground"
+		],
+		ide.diffInserted
+	);
+	set(
+		colors,
+		[
+			"diffEditor.removedLineBackground",
+			"diffEditor.removedTextBackground",
+			"diffEditorGutter.removedLineBackground"
+		],
+		ide.diffRemoved
+	);
 	colors["diffEditorOverview.insertedForeground"] = appendAlpha(
-		web.success,
+		ide.gutterAdded,
 		"80"
 	);
 	colors["diffEditorOverview.removedForeground"] = appendAlpha(
-		web.destructive,
+		ide.gutterDeleted,
 		"80"
 	);
 
@@ -389,17 +485,42 @@ function retint(base, web, ide, scheme) {
 		["Yellow", "warning"],
 		["Blue", "info"]
 	])
-		for (const bright of ["", "Bright"])
-			colors[`terminal.ansi${bright}${ansi}`] = web[role];
-	for (const [ansi, role] of [
-		["Black", "ansiBlack"],
-		["Magenta", "ansiMagenta"],
-		["Cyan", "ansiCyan"],
-		["White", "ansiWhite"]
-	])
-		for (const bright of ["", "Bright"])
-			colors[`terminal.ansi${bright}${ansi}`] = ide[role];
-	colors["terminal.ansiBrightBlack"] = ide.ansiBrightBlack;
+		colors[`terminal.ansi${ansi}`] = web[role];
+	set(colors, ["terminal.ansiBlack"], ide.ansiBlack);
+	set(colors, ["terminal.ansiMagenta"], ide.ansiMagenta);
+	set(colors, ["terminal.ansiCyan"], ide.ansiCyan);
+	set(colors, ["terminal.ansiWhite"], ide.ansiWhite);
+	set(colors, ["terminal.ansiBrightBlack"], ide.ansiBrightBlack);
+	set(colors, ["terminal.ansiBrightRed"], ide.ansiBrightRed);
+	set(colors, ["terminal.ansiBrightGreen"], ide.ansiBrightGreen);
+	set(colors, ["terminal.ansiBrightYellow"], ide.ansiBrightYellow);
+	set(colors, ["terminal.ansiBrightBlue"], ide.ansiBrightBlue);
+	set(colors, ["terminal.ansiBrightMagenta"], ide.ansiBrightMagenta);
+	set(colors, ["terminal.ansiBrightCyan"], ide.ansiBrightCyan);
+	set(colors, ["terminal.ansiBrightWhite"], ide.ansiBrightWhite);
+
+	// Spelled out so every role is greppable; a dead role fails the wiring test.
+	const syntax = {
+		keyword: ide.keyword,
+		operator: ide.operator,
+		string: ide.string,
+		escape: ide.escape,
+		regex: ide.regex,
+		number: ide.number,
+		function: ide.function,
+		decorator: ide.decorator,
+		type: ide.type,
+		namespace: ide.namespace,
+		tag: ide.tag,
+		attribute: ide.attribute,
+		variable: ide.variable,
+		property: ide.property,
+		parameter: ide.parameter,
+		constant: ide.constant,
+		label: ide.label,
+		punctuation: ide.punctuation,
+		comment: ide.comment
+	};
 
 	const tokenColors = base.tokenColors.map((rule) => {
 		const scopes = Array.isArray(rule.scope)
@@ -421,7 +542,7 @@ function retint(base, web, ide, scheme) {
 						? "destructive"
 						: null;
 		const role = syntaxRole(scopes);
-		const foreground = status ? web[status] : role ? ide[role] : null;
+		const foreground = status ? web[status] : role ? syntax[role] : null;
 		return foreground && rule.settings?.foreground
 			? {
 					...rule,
@@ -436,8 +557,8 @@ function retint(base, web, ide, scheme) {
 			return [
 				key,
 				typeof value === "string"
-					? ide[role]
-					: { ...value, foreground: ide[role] }
+					? syntax[role]
+					: { ...value, foreground: syntax[role] }
 			];
 		})
 	);
@@ -496,7 +617,7 @@ for (const scheme of ["light", "dark"]) {
 await emit(
 	themeSourcePath,
 	`// AUTO-GENERATED by packages/shared/scripts/theme.mjs from theme.json.
-// Edit the theme with \`pnpm dev:theme\` or edit theme.json directly.
+// Edit the theme with \`pnpm dev:colors\` or edit theme.json directly.
 export const theme = ${JSON.stringify(webTheme, null, "\t")} as const;
 export const ideTheme = ${JSON.stringify(ideTheme, null, "\t")} as const;
 `

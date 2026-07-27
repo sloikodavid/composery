@@ -9,13 +9,13 @@
 		"node": ">=24.18.0 <25"
 	},
 	"scripts": {
-		"dev": "concurrently -n tree,docker,convex,next,mobile,theme -c green,blue,yellow,yellow,magenta,cyan \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:mobile\" \"pnpm dev:theme\"",
+		"dev": "concurrently -n tree,docker,convex,next,mobile,colors -c green,blue,yellow,yellow,magenta,cyan \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:mobile\" \"pnpm dev:colors\"",
 		"dev:next": "pnpm --filter web dev:next",
 		"dev:convex": "pnpm --filter web dev:convex",
 		"dev:mobile": "pnpm --filter mobile dev",
 		"dev:docker": "docker compose --progress=plain -f compose.dev.yml up --build",
 		"dev:tree": "node scripts/tree.mjs --watch",
-		"dev:theme": "pnpm --filter shared dev:theme",
+		"dev:colors": "pnpm --filter shared dev:colors",
 		"check": "pnpm check:portable && pnpm check:cli && pnpm check:renovate",
 		"check:portable": "pnpm check:types && pnpm check:lint && pnpm check:format && pnpm check:test && pnpm check:tree && pnpm check:runbook && pnpm check:ide && pnpm check:shared && pnpm check:native-config",
 		"check:types": "tsc --noEmit && pnpm -r --if-present run check:types",

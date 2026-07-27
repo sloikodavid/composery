@@ -103,7 +103,7 @@ const server = createServer(async (request, response) => {
 		}
 		if (request.method === "PUT" && request.url === "/theme") {
 			if (!origins.has(request.headers.origin))
-				throw new Error("request did not come from this theme editor");
+				throw new Error("request did not come from this colors editor");
 			await saveTheme(await readBody(request));
 			response.writeHead(204);
 			return response.end();
@@ -117,5 +117,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () =>
-	console.log(`theme: http://127.0.0.1:${port}`)
+	console.log(`colors: http://127.0.0.1:${port}`)
 );

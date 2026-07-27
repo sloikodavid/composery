@@ -435,12 +435,12 @@ packages/
       sync.mjs
       theme.mjs
     tools/
-      palette/
+      colors/
         index.html
         server.mjs
     index.ts
     package.json
-    palette.json
+    theme.json
     theme.ts
   web/
     app/
@@ -1004,7 +1004,6 @@ tests/
   narrow-back.test.ts
   narrow-editor-groups.test.ts
   narrow-layout-reconciliation.test.ts
-  palette.test.ts
   password-check.test.ts
   runbook-script.test.ts
   runbook-windows.test.ts
@@ -1013,6 +1012,7 @@ tests/
   terminal-clients.test.ts
   terminal-sync.test.ts
   terminal-touch-selection.test.ts
+  theme.test.ts
   toolchain-pins.test.ts
   touch-editor-selection.test.ts
   touch-list-focus.test.ts
