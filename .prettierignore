@@ -4,6 +4,13 @@ coverage/
 vendor/
 tmp/
 pnpm-lock.yaml
+# Ours, but not written for this repo's formatter. Every file here is copied
+# into someone else's tree and has to read like its neighbours: overlay/src/
+# lands in code-server's src/ (two spaces, no semicolons) and
+# overlay/lib/vscode/src/ inside VS Code's (single quotes, upstream wrapping).
+# Formatting them to this repo's style rewrote 869 lines of one route file into
+# a style unlike every file around it. The compiler still covers what it can -
+# see the overlay pass in packages/ide/scripts/types.mjs.
 packages/ide/overlay/
 packages/ide/upstream/
 packages/ide/build/

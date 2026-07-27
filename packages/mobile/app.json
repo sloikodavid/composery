@@ -25,7 +25,7 @@
 			"package": "io.composery",
 			"allowBackup": false,
 			"adaptiveIcon": {
-				"backgroundColor": "#242121",
+				"backgroundColor": "#0a0a0a",
 				"foregroundImage": "./assets/images/android-icon-foreground.png",
 				"backgroundImage": "./assets/images/android-icon-background.png",
 				"monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -68,11 +68,11 @@
 			[
 				"expo-splash-screen",
 				{
-					"backgroundColor": "#cdc9c4",
+					"backgroundColor": "#ffffff",
 					"image": "./assets/images/splash-icon.png",
 					"imageWidth": 76,
 					"dark": {
-						"backgroundColor": "#1d1b1b",
+						"backgroundColor": "#0a0a0a",
 						"image": "./assets/images/splash-icon-dark.png"
 					}
 				}

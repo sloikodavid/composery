@@ -46,7 +46,7 @@ const LEGAL_LINKS: FooterLink[] = [
 
 export function Footer() {
 	return (
-		<footer className="border-t border-border bg-card">
+		<footer className="border-t border-border bg-background">
 			<div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
 				<div className="max-w-sm space-y-3">
 					<Logo size="h-12" />

@@ -7,8 +7,9 @@
 		".": "./index.ts"
 	},
 	"scripts": {
-		"build": "node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs",
-		"check": "node scripts/sync.mjs --check"
+		"build": "node scripts/theme.mjs && node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs",
+		"check": "node scripts/theme.mjs --check && node scripts/sync.mjs --check",
+		"dev:theme": "node tools/theme/server.mjs"
 	},
 	"devDependencies": {
 		"fontkit": "^2.0.4",

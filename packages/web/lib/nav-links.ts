@@ -19,8 +19,7 @@ const USER_LINKS: NavLink[] = [
 	{ href: "/boxes", icon: "washing-machine", label: "Boxes" }
 ];
 const STAFF_LINKS: NavLink[] = [
-	{ href: "/console", icon: "layout-grid", label: "Console" },
-	{ href: "/design", icon: "pen-tool", label: "Design" }
+	{ href: "/console", icon: "layout-grid", label: "Console" }
 ];
 
 export function useAuthedNavLinks(): NavLink[] {

@@ -9,7 +9,7 @@ export const repoRoot = resolve(import.meta.dirname, "..", "..");
 
 // "Whatever is called patch" was not a usable rule. The Windows runner resolves
 // PATH to Strawberry Perl's patch 2.5.9 (C:\Strawberry\c\bin), which aborts on
-// product.diff's theme section - "Assertation failed!", patch.c:354, expression
+// brand.diff's theme section - "Assertation failed!", patch.c:354, expression
 // `hunk` - after writing a partial file. Nor is a version string: 2.5.9 predates
 // the "GNU patch" banner and announces itself as plain "patch 2.5.9", which is
 // the same shape as Apple's "patch 2.0-12u11-Apple" - and that one applies the
@@ -177,6 +177,18 @@ export function extractAddedConst(patch: string, name: string): string {
 		throw new Error(`Could not parse added const ${name}`);
 	}
 	return source.slice(start, end + 1);
+}
+
+// An overlay TypeScript module as runnable CommonJS, for the files a test wants
+// to execute rather than read. The shipped code, not a paraphrase of it: its
+// imports become require() calls the caller resolves.
+export function transpileToCommonJs(source: string): string {
+	return ts.transpileModule(source, {
+		compilerOptions: {
+			module: ts.ModuleKind.CommonJS,
+			target: ts.ScriptTarget.ES2022
+		}
+	}).outputText;
 }
 
 // Compile extracted TypeScript snippets and expose the named bindings, so tests

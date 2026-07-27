@@ -45,9 +45,8 @@ import { XIcon } from "@/components/icons/x";
 import { Button } from "@/components/base/button";
 import { cn } from "@/lib/utils";
 
-// Every @lucide-animated glyph the app can name. Adding one is a line here; the
-// name union and the /design gallery both read off this map, so neither can
-// drift from what is actually registered.
+// Every @lucide-animated glyph the app can name. Adding one line here updates
+// the name union and makes the glyph available to every interactive caller.
 const ICONS = {
 	"arrow-right": ArrowRightIcon,
 	"arrow-up-right": ArrowUpRightIcon,

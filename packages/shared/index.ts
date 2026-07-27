@@ -1,3 +1,7 @@
+import { ideTheme, theme } from "./theme.ts";
+
+export { ideTheme, theme } from "./theme.ts";
+
 // The single source of truth for who/what this project is: brand, identity, and
 // the pure (zero-dependency) icon-SVG builders derived from them. Everything here
 // is plain data or pure string functions, so every surface imports it DIRECTLY -
@@ -19,198 +23,8 @@ export const ICON_WIDTH = 20;
 export const ICON_HEIGHT = 20;
 export const ICON_CROP_VIEWBOX = ICON_VIEWBOX;
 
-// The product palette. Edit it through `pnpm theme` (scripts/color-console) rather
-// than by hand: the console writes this block, the IDE theme JSONs, the patch pins
-// and every generated asset in one pass, so no surface can be left behind.
-//
-// Surfaces sit ABOVE the page, never below it: `card` (the elevated surface - site
-// header, footer, docs sidebar, cards, inputs, the outline button fill) is lighter
-// than `background` in light and dark alike, and `popover` is one step further up
-// for things that float (dialogs, menus, toasts). Against the page an outline
-// control then reads as the familiar near-white chip without ever being white.
-export const theme = {
-	light: {
-		background: "#cdc9c4",
-		foreground: "#323229",
-		card: "#d7d3cf",
-		cardForeground: "#323229",
-		popover: "#dedbd7",
-		popoverForeground: "#323229",
-		primary: "#323229",
-		primaryForeground: "#cdc9c4",
-		secondary: "#c6c1bc",
-		secondaryForeground: "#323229",
-		muted: "#c6c1bc",
-		mutedForeground: "#6b6456",
-		accent: "#c6c1bc",
-		accentForeground: "#323229",
-		destructive: "#8a372e",
-		success: "#415331",
-		warning: "#513c2c",
-		info: "#3d4f5c",
-		border: "#00000017",
-		input: "#00000017",
-		ring: "#6b6456",
-		overlay: "rgba(0, 0, 0, 0.4)",
-		shadow: "#00000014",
-		chart1: "#323229",
-		chart2: "#513c2c",
-		chart3: "#8a372e",
-		chart4: "#415331",
-		chart5: "#6b6456"
-	},
-	dark: {
-		background: "#1d1b1b",
-		foreground: "#c1b5a9",
-		card: "#242121",
-		cardForeground: "#c1b5a9",
-		popover: "#2a2725",
-		popoverForeground: "#c1b5a9",
-		primary: "#c1b5a9",
-		primaryForeground: "#1d1b1b",
-		secondary: "#2d2925",
-		secondaryForeground: "#c1b5a9",
-		muted: "#2d2925",
-		mutedForeground: "#7e7467",
-		accent: "#2d2925",
-		accentForeground: "#c1b5a9",
-		destructive: "#c15145",
-		success: "#90ae75",
-		warning: "#b38e72",
-		info: "#8ba3b3",
-		border: "#ffffff14",
-		input: "#ffffff14",
-		ring: "#7e7467",
-		overlay: "rgba(0, 0, 0, 0.4)",
-		shadow: "#0000001f",
-		chart1: "#c1b5a9",
-		chart2: "#b38e72",
-		chart3: "#c15145",
-		chart4: "#90ae75",
-		chart5: "#7e7467"
-	}
-} as const;
-
-// What the editor needs on top of the shared palette. Anything the IDE can take
-// straight from `theme` is NOT repeated here - a role earns a line only where the
-// editor genuinely differs (its chrome is flush with the editor, not raised like
-// the site's) or where the surface has no web equivalent at all (syntax, ANSI).
-// Roles listed in `ideLinked` below are kept equal to their `theme` counterpart
-// by the console, so they move together until you unlink them there.
-export const ideTheme = {
-	light: {
-		chrome: "#cdc9c4",
-		editor: "#cdc9c4",
-		surface: "#c8c4be",
-		hover: "#c6c1bc",
-		lineNumber: "#6b6456",
-		ignored: "#6f6758",
-		focus: "#323229",
-		keyword: "#6f604d",
-		string: "#415331",
-		number: "#873a2b",
-		type: "#433223",
-		variable: "#323229",
-		punctuation: "#6b6456",
-		comment: "#275e91",
-		invalid: "#803a14",
-		ansiBlack: "#433223",
-		ansiRed: "#8a372e",
-		ansiGreen: "#415331",
-		ansiYellow: "#6f604d",
-		ansiBlue: "#433223",
-		ansiMagenta: "#873a2b",
-		ansiCyan: "#433223",
-		ansiWhite: "#c6c1bc",
-		ansiBrightBlack: "#6b6456"
-	},
-	dark: {
-		chrome: "#1d1b1b",
-		editor: "#1d1b1b",
-		surface: "#181616",
-		hover: "#2d2925",
-		lineNumber: "#7e7467",
-		ignored: "#867e75",
-		focus: "#c1b5a9",
-		keyword: "#918473",
-		string: "#90ae75",
-		number: "#9b745f",
-		type: "#ada294",
-		variable: "#c1b5a9",
-		punctuation: "#7e7467",
-		comment: "#7c9abb",
-		invalid: "#cea36f",
-		ansiBlack: "#181616",
-		ansiRed: "#c15145",
-		ansiGreen: "#90ae75",
-		ansiYellow: "#918473",
-		ansiBlue: "#ada294",
-		ansiMagenta: "#9b745f",
-		ansiCyan: "#ada294",
-		ansiWhite: "#ada294",
-		ansiBrightBlack: "#7b746b"
-	}
-} as const;
-
-// Which `theme` role each IDE role can follow. This is the pairing, not the
-// state: a role missing here (syntax, ANSI) is IDE-only by definition and can
-// never link, and re-linking a role in the console restores the pairing named
-// here.
-export const IDE_THEME_LINKS = {
-	chrome: "background",
-	editor: "background",
-	surface: "card",
-	hover: "accent",
-	lineNumber: "mutedForeground",
-	ignored: "mutedForeground",
-	focus: "foreground",
-	variable: "foreground",
-	punctuation: "mutedForeground",
-	string: "success",
-	number: "destructive",
-	invalid: "destructive",
-	ansiRed: "destructive",
-	ansiGreen: "success",
-	ansiBrightBlack: "mutedForeground"
-} as const;
-
-// Which links are live right now, per scheme. Membership is the whole state:
-// a listed role takes its value from `theme` and the console keeps its entry in
-// `ideTheme` equal to the source, so every consumer still reads a real colour
-// and never has to resolve anything. Dropping a role from this list is what
-// "unlink" means - the value it was showing becomes its own to edit.
-export const ideLinked = {
-	light: [
-		"chrome",
-		"editor",
-		"hover",
-		"focus",
-		"variable",
-		"punctuation",
-		"string",
-		"ansiGreen",
-		"ansiRed",
-		"lineNumber"
-	],
-	dark: [
-		"chrome",
-		"editor",
-		"hover",
-		"focus",
-		"variable",
-		"punctuation",
-		"string",
-		"ansiGreen",
-		"ansiRed",
-		"lineNumber"
-	]
-} as const;
-
-export const BRAND_IDE_THEME = ideTheme;
-
-// Marks, icons and app chrome are the same palette as the UI theme above, not a
-// second greyscale one: every value here is a pick from `theme`, so the logo, the
-// favicons, the launcher icon and the splash cannot drift away from the product.
+// Marks, icons and app chrome derive from the UI palette so they cannot drift
+// into a second greyscale or status palette.
 export const brandColors = {
 	icon: {
 		light: theme.light.primary,
@@ -240,6 +54,7 @@ export const brandColors = {
 // SCREAMING_CASE aliases: the app-facing name for the palette/theme.
 export const BRAND_COLORS = brandColors;
 export const BRAND_THEME = theme;
+export const BRAND_IDE_THEME = ideTheme;
 
 // --- Icon SVG builders (pure, zero-dep) ------------------------------------
 

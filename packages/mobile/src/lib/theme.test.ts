@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { BRAND_THEME } from "shared";
 
 import { dark, light, themeForScheme, type Palette } from "./theme";
 
@@ -29,11 +30,11 @@ describe("theme palette", () => {
 	});
 
 	test("primary light matches the shared brand palette", () => {
-		expect(light.primary).toBe("#323229");
+		expect(light.primary).toBe(BRAND_THEME.light.primary);
 	});
 
 	test("primary dark matches the shared brand palette", () => {
-		expect(dark.primary).toBe("#c1b5a9");
+		expect(dark.primary).toBe(BRAND_THEME.dark.primary);
 	});
 
 	test("selects the palette for a React Native color scheme", () => {

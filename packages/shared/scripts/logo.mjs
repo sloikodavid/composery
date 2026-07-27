@@ -5,10 +5,10 @@
 // rasterizes reliably (unlike SVG-with-webfont, which canvas drops in Safari).
 //
 // The styled text uses fill="currentColor" so a single logo adapts to light/dark
-// (it follows the text color). The web header, the design-page exporter, and the
-// code-server overlay all consume this one output, so the logo spacing is
-// defined here, once. Outputs: web/lib/logo-data.ts (TS data) and the
-// editor overlay's composery-logo.svg.
+// (it follows the text color). The web header, public brand assets, and the IDE
+// overlay all consume this one output, so the logo spacing is defined here,
+// once. Outputs: web/lib/logo-data.ts (TS data) and the editor overlay's
+// composery-logo.svg.
 //
 // The app's live UI ships Inter Variable. The logo is outlined, so use Inter
 // Display SemiBold to bake in the display optical design deterministically.
@@ -104,7 +104,7 @@ await writeFormatted(
 // The Composery logo: the icon plus styled text outlined from Inter Display
 // SemiBold, so the asset is self-contained and font-free. The styled text is
 // fill="currentColor", so it follows the text color (dark on light, light on
-// dark). Regenerate after the icon or logo text changes: \`pnpm brand\`.
+// dark). Regenerate after the icon or logo text changes: \`pnpm assets\`.
 export const LOGO_INNER = ${JSON.stringify(inner)};
 export const LOGO_VIEWBOX = ${JSON.stringify(viewBox)};
 export const LOGO_WIDTH = ${width};

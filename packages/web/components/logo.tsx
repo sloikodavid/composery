@@ -11,20 +11,13 @@ import { useTheme } from "next-themes";
 import Link from "next/link";
 import { type ComponentProps, type ReactNode, useId } from "react";
 import { toast } from "sonner";
-import {
-	copySvg,
-	ICON_DARK_ASSET,
-	ICON_LIGHT_ASSET,
-	LOGO_DARK_ASSET,
-	LOGO_LIGHT_ASSET
-} from "@/lib/brand-assets";
+import { BRAND_ASSETS, copySvg } from "@/lib/brand-assets";
 import { LOGO_INNER, LOGO_VIEWBOX } from "@/lib/logo-data";
 import { cn } from "@/lib/utils";
 
-// The plain mark - just an inline SVG. Standalone renders (brand-page previews,
-// the design showcase) use this directly and keep the browser's native
-// right-click. The brand menu lives on LogoMenu, wrapped only around the real
-// clickable logo below.
+// The plain mark - just an inline SVG. The /brand previews use this directly
+// and keep the browser's native right-click. The brand menu lives on LogoMenu,
+// wrapped only around the real clickable logo below.
 export function LogoLockup({ className }: { className?: string }) {
 	const holesId = useId().replace(/[^A-Za-z0-9_-]/g, "");
 	const inner = LOGO_INNER.replaceAll("composery-logo-icon-holes", holesId);
@@ -53,9 +46,7 @@ const MENU_ITEM =
 function LogoMenu({ children }: { children: ReactNode }) {
 	const { resolvedTheme } = useTheme();
 	// Copy the variant that matches what's on screen (white on dark, black on light).
-	const dark = resolvedTheme === "dark";
-	const logoAsset = dark ? LOGO_DARK_ASSET : LOGO_LIGHT_ASSET;
-	const iconAsset = dark ? ICON_DARK_ASSET : ICON_LIGHT_ASSET;
+	const assets = BRAND_ASSETS[resolvedTheme === "dark" ? "dark" : "light"];
 
 	const copyLink = async () => {
 		try {
@@ -94,14 +85,14 @@ function LogoMenu({ children }: { children: ReactNode }) {
 						<ContextMenu.Separator className="-mx-1 my-1 h-px bg-border/50" />
 						<ContextMenu.Item
 							className={MENU_ITEM}
-							onClick={() => copySvg(logoAsset)}
+							onClick={() => copySvg(assets.logo)}
 						>
 							<CopyIcon />
 							Copy logo SVG
 						</ContextMenu.Item>
 						<ContextMenu.Item
 							className={MENU_ITEM}
-							onClick={() => copySvg(iconAsset)}
+							onClick={() => copySvg(assets.icon)}
 						>
 							<CopyIcon />
 							Copy icon SVG

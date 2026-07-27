@@ -81,8 +81,8 @@ pnpm build
 pnpm smoke
 ```
 
-`pnpm dev` starts the tree watcher, development container, Convex, Next.js, and
-mobile client. Run narrower scripts while iterating, such as
+`pnpm dev` starts the tree watcher, development container, Convex, Next.js,
+mobile client, and local theme editor. Run narrower scripts while iterating, such as
 `pnpm --filter web check`, but run the root `pnpm check` before opening a pull request. The root
 gate covers TypeScript, ESLint, Prettier, Vitest, the generated repository tree,
 Renovate config, the IDE patch stack, Rust formatting/lints/tests, and brand

@@ -1,6 +1,6 @@
 ---
 title: IDE
-description: Brand palette and upstream / VS Code bump runbook for the editor fork in packages/ide.
+description: Shared theme and upstream / VS Code bump runbook for the editor fork in packages/ide.
 ---
 
 Runbook for values and generated artifacts in `packages/ide/` that drift: things
@@ -14,30 +14,30 @@ paths, product metadata, settings files, cookies, sockets, and product-specific
 environment variables use Composery names. `code-server` stays only as upstream
 provenance: the submodule source, patch coordinates, and source URL metadata.
 
-## Brand palette
+## Shared theme
 
-The Composery palette is shared from `packages/shared/index.ts` - `theme` for the
-roles every surface shares, `ideTheme` for what only the editor has (chrome that
-sits flush with the canvas, syntax, ANSI) - along with the same icon geometry
-across web, mobile, and the editor.
+`packages/shared/theme.json` is the editable source for the website theme and
+the IDE theme. The IDE has its own workbench, editor, syntax, and terminal roles;
+only diagnostics, Git decorations, diff markers, and the matching ANSI status
+colours deliberately share the website's semantic status roles. `theme.ts` is
+the generated TypeScript form; `index.ts` re-exports both areas and derives the
+logo and app colours from the website area.
 
-Edit colours through `pnpm theme`, the colour console in `scripts/color-console/`.
-It shows every role with live website, mobile and editor previews plus a contrast
-table, and applying an edit fans it out in one pass: both palettes in
-`index.ts`, the two theme JSONs role by role, the first-paint pins in the patch
-stack, the hand-synced copies below, and the generators. Editing a colour by hand
-means doing that fan-out yourself. Regenerate derived files instead of
-hand-copying brand values:
+Run `pnpm dev:theme` for the local editor, or edit `theme.json` directly, then
+run `pnpm assets`. Its Website and IDE previews are representative component and
+workbench states, not copied production screens. Every control paints a preview
+state and feeds the corresponding generated artifact. The asset build regenerates
+the TypeScript exports, editor themes, CSS, favicons, launcher icons, and splash
+screens.
 
 - **Editor themes**.
   `packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-{dark,light}.json`.
-  Hand-authored builtin themes, VS Code Dark/Light Modern retinted to the
-  Composery brand while syntax `tokenColors` stay Modern. Not generated: the
-  brand palette is a reference, and the "default color theme" tests in
-  `tests/code-server-patches.test.ts` assert the handful of genuinely shared
-  keys (backgrounds, foregrounds, buttons, borders) still match
-  `packages/shared/index.ts`. The true editor default via
-  `packages/ide/patches/product.diff`, which points
+  Generated from the pinned VS Code Dark/Light Modern themes. Product chrome
+  and syntax follow the IDE roles; diagnostics, Git decorations, diff markers,
+  and ANSI red/green/yellow/blue share the website
+  success/destructive/warning/info roles. Diff and invalid scopes are status
+  colours by meaning. The true editor default is set via
+  `packages/ide/patches/brand.diff`, which points
   `ThemeSettingDefaults.COLOR_THEME_DARK` and `COLOR_THEME_LIGHT` at them (no
   `configurationDefaults`, no `initialColorTheme` hack). Keep light and dark
   symmetric: every chrome key one theme retints, the other should too.
@@ -49,7 +49,7 @@ hand-copying brand values:
   the "Preparing workspace" page shown until the workspace is ready, wired in by
   our owned `packages/ide/overlay/src/node/routes/index.ts` (the `persistenceGate`).
 - **Logo**.
-  `packages/ide/patches/product.diff` and
+  `packages/ide/patches/brand.diff` and
   `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
   and styled text fill).
 - **Auth backend (register / change-password / cloud flow)**.
@@ -69,15 +69,12 @@ hand-copying brand values:
   `packages/shared/scripts/icons.mjs`, fed by `packages/shared/index.ts`.
 
 The `COLOR_THEME_*_INITIAL_COLORS` first-paint snapshot also lives in
-`product.diff`, hand-maintained like every other patch. Themes load
+`brand.diff`. Themes load
 asynchronously and frame one needs colors before the JSON parses, so VS Code
 keeps a synchronous snapshot; this is upstream's mechanism, not ours. The patch
-retints upstream's snapshot values with the theme JSONs' values (keys the
-themes do not define keep upstream's line), and the "default color theme" tests
-in `tests/code-server-patches.test.ts` apply the patch and fail on any key that
-drifts from the theme JSONs - so it cannot silently fall behind. When the
-themes change, update the patch's color lines too, and confirm no `#0078D4`
-dark or `#005FB8` light survives.
+must match the generated theme JSONs for every overlapping key; the "default
+color theme" tests apply the patch and compare the built result, so a stale
+first frame fails rather than silently flashing another palette.
 
 ## Upstream / VS Code Bumps
 
@@ -100,11 +97,13 @@ There are two kinds of customization, kept deliberately separate:
   server modules and routes, browser assets/pages, and extensions. Never place
   a modified copy of an upstream file here.
 - **Rebrand** (`packages/ide/scripts/rebrand.mjs`) is a generated transformation over the
-  assembled tree. It owns systematic product names and product-specific env vars:
+  assembled tree. It owns every product name and product-specific env var:
   `COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`,
   `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`,
   `COMPOSERY_GITHUB_TOKEN`, `COMPOSERY_SESSION_LIFETIME`, and the narrower
-  `COMPOSERY_*` toggles.
+  `COMPOSERY_*` toggles. No patch renames anything - a hunk anchors on
+  upstream's spelling (`CS_DISABLE_FILE_UPLOADS`) and the rule rewrites it
+  afterwards, so there is exactly one place to look for where a name comes from.
 
 This is intentionally source-build territory. An upstream bump is never just
 the submodule pointer: the patch stack is applied against that source at build

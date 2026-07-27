@@ -21,6 +21,7 @@ import {
 	addedLines,
 	applyPatch,
 	evaluatePatchSnippets,
+	transpileToCommonJs,
 	postImageLines,
 	readRepoFile,
 	repoRoot
@@ -35,6 +36,9 @@ const OVERLAY_VSCODE_SRC = "packages/ide/overlay/lib/vscode/src";
 const TOUCH_GATE = `${OVERLAY_VSCODE_SRC}/vs/base/browser/touchGate.ts`;
 const NARROW_GATE = `${OVERLAY_VSCODE_SRC}/vs/workbench/browser/narrowGate.ts`;
 const SOFT_KEYBOARD = `${OVERLAY_VSCODE_SRC}/vs/base/browser/softKeyboard.ts`;
+// The small-surface shell is a bundled entry point of its own, so it is ordinary
+// overlay source that imports the gates rather than a verbatim-copied asset.
+const SHELL = `${OVERLAY_VSCODE_SRC}/vs/code/browser/workbench/shell.ts`;
 
 // Selectors are wrapped for readability in one sheet and not the other; compare
 // them as the browser does, on whitespace-insensitive text.
@@ -976,7 +980,20 @@ function runNarrowViewportVars({
 	setVisualViewportHeight(height: number): void;
 	fireVisualViewportResize(): void;
 } {
-	const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+	// The shipped module, transpiled but not rewritten, with its two gate imports
+	// resolved from the real gate sources - so this exercises the same code the
+	// bundler emits rather than a copy that has to be kept in step with it.
+	const shellJs = transpileToCommonJs(readRepoFile(SHELL));
+	const requireGate = (specifier: string) =>
+		specifier.endsWith("touchGate.js")
+			? evaluatePatchSnippets<{ TOUCH_QUERY: string }>(
+					[readRepoFile(TOUCH_GATE).replace(/^export /gm, "")],
+					["TOUCH_QUERY"]
+				)
+			: evaluatePatchSnippets<{ NARROW_QUERY: string }>(
+					[readRepoFile(NARROW_GATE).replace(/^export /gm, "")],
+					["NARROW_QUERY"]
+				);
 	const properties = new Map<string, string>();
 	const visualViewportListeners: { type: string; listener: () => void }[] = [];
 	const viewportObject = visualViewport
@@ -997,6 +1014,8 @@ function runNarrowViewportVars({
 		}
 	};
 	const context = vm.createContext({
+		exports: {},
+		require: requireGate,
 		HTMLElement: class HTMLElement {},
 		KeyboardEvent: class KeyboardEvent {
 			constructor() {}
@@ -1180,7 +1199,7 @@ describe("soft keyboard", () => {
 		expect(users.sort()).toEqual(
 			[
 				`${ASSETS}/narrow.css`, // declares the host channel's default
-				`${ASSETS}/shell.js`, // publishes the open verdict
+				SHELL, // publishes the open verdict
 				SOFT_KEYBOARD // the only reader
 			].sort()
 		);
@@ -1254,7 +1273,7 @@ describe("narrow overlay", () => {
 	// so a value of its own here overwrote the host's within a frame and left
 	// iOS-in-app with no keyboard signal at all.
 	test("leaves the native keyboard inset to the host that measures it", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 		const run = runNarrowViewportVars({
 			innerHeight: 800,
 			visualViewport: { height: 520, offsetTop: 0 }
@@ -1504,7 +1523,7 @@ describe("narrow overlay", () => {
 	// listens for the same protocol strings (in the InstanceView the WebView lives
 	// in - the route itself is only a focus marker).
 	test("overlay-back protocol matches between shell.js and the mobile app", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 		const instanceView = readRepoFile(
 			"packages/mobile/src/components/instance-view.tsx"
 		);
@@ -1518,11 +1537,11 @@ describe("narrow overlay", () => {
 	// "composery:back" so the app leaves. Same entry point on both sides, or every
 	// press in the IDE goes straight back to the instances list.
 	test("the native back call matches between shell.js and the mobile app", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 		const webScripts = readRepoFile("packages/mobile/src/web/back-button.ts");
 
-		expect(shellJs).toContain("window.__composeryNativeBack = function");
-		expect(shellJs).toContain('postNative("composery:back")');
+		expect(shellJs).toContain("hostWindow.__composeryNativeBack = function");
+		expect(shellJs).toContain("postNative('composery:back')");
 		expect(webScripts).toContain("window.__composeryNativeBack()");
 	});
 
@@ -1542,9 +1561,9 @@ describe("narrow overlay", () => {
 	// Rotation can make a phone wider than the narrow layout breakpoint while
 	// Android hardware Back still needs to dismiss dialogs and menus in the IDE.
 	test("overlay back guards survive wide coarse-pointer orientation", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 
-		expect(shellJs).toContain('window.matchMedia("(pointer: coarse)")');
+		expect(shellJs).toContain("window.matchMedia('(pointer: coarse)')");
 		expect(shellJs).toContain("if (!narrow.matches && !coarsePointer.matches)");
 	});
 
@@ -1552,10 +1571,10 @@ describe("narrow overlay", () => {
 	// leave the page: shell.js dispatches the close event and the layout patch
 	// listens for it - same literal on both sides or back exits the IDE.
 	test("narrow close-part event matches between shell.js and the layout patch", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 		const layoutPatch = readRepoFile(`${PATCHES_DIR}/narrow.diff`);
 
-		expect(shellJs).toContain('"composery-narrow-close-part"');
+		expect(shellJs).toContain("'composery-narrow-close-part'");
 		expect(addedLines(layoutPatch)).toContain("'composery-narrow-close-part'");
 	});
 
@@ -1777,13 +1796,13 @@ describe("narrow overlay", () => {
 	// shell.js detects an open part via the workbench part-hidden classes; those
 	// literals belong to upstream layout.ts and must survive upstream bumps.
 	test("shell.js part-hidden classes exist upstream", () => {
-		const shellJs = readRepoFile(`${ASSETS}/shell.js`);
+		const shellJs = readRepoFile(SHELL);
 		const layoutTs = readRepoFile(
 			"packages/ide/upstream/lib/vscode/src/vs/workbench/browser/layout.ts"
 		);
 
 		for (const hiddenClass of ["nosidebar", "nopanel", "noauxiliarybar"]) {
-			expect(shellJs).toContain(`"${hiddenClass}"`);
+			expect(shellJs).toContain(`'${hiddenClass}'`);
 			expect(layoutTs).toContain(`'${hiddenClass}'`);
 		}
 	});
@@ -1826,7 +1845,7 @@ describe("narrow overlay", () => {
 	// tap-dead. Touch scrolling is native overflow instead, mirrored back into the
 	// DomScrollableElement so wheel scrolling stays consistent.
 	test("welcome page scrolls natively on touch and stays clickable", () => {
-		const welcome = readRepoFile(`${PATCHES_DIR}/product.diff`);
+		const welcome = readRepoFile(`${PATCHES_DIR}/defaults.diff`);
 		const welcomeAdded = addedLines(welcome);
 
 		expect(welcomeAdded).not.toContain("Gesture.addTarget");
@@ -1846,7 +1865,7 @@ describe("narrow overlay", () => {
 	// wrongly - the titlebar icon must be a mask filled from a titlebar theme
 	// colour, with no theme-class fork left behind.
 	test("titlebar logo is masked with the titlebar foreground for every theme", () => {
-		const logoPatch = readRepoFile(`${PATCHES_DIR}/product.diff`);
+		const logoPatch = readRepoFile(`${PATCHES_DIR}/brand.diff`);
 		const logoAdded = addedLines(logoPatch);
 
 		expect(logoAdded).toContain(
@@ -1855,7 +1874,7 @@ describe("narrow overlay", () => {
 		expect(logoAdded).toContain(
 			"mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;"
 		);
-		// Scoped to the titlebar sections: product.diff also carries the theme
+		// Scoped to the titlebar sections: brand.diff also carries the theme
 		// defaults, which legitimately name the composery-themes extension.
 		const titlebarSections = logoPatch
 			.split(/^(?=--- a\/)/m)
@@ -1883,7 +1902,7 @@ describe("narrow overlay", () => {
 		expect(iconPath).toBeDefined();
 		expect(holesPath).toBeDefined();
 
-		const added = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
+		const added = addedLines(readRepoFile(`${PATCHES_DIR}/brand.diff`));
 		const marks = [...added.matchAll(/<path d="([^"]+)"[^>]*clip-path=/g)];
 		const holes = [...added.matchAll(/clip-rule="evenodd" d="([^"]+)"/g)];
 
@@ -2221,7 +2240,9 @@ describe("narrow overlay", () => {
 
 	test("nested menus retain focus and home actions stay at the File root", () => {
 		const touchMenu = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
-		const homeActions = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
+		const homeActions = addedLines(
+			readRepoFile(`${PATCHES_DIR}/defaults.diff`)
+		);
 
 		expect(touchMenu).toContain("EventType.FOCUS_IN");
 		expect(touchMenu).toContain("this.hideScheduler.cancel()");
@@ -2250,10 +2271,14 @@ describe("narrow overlay", () => {
 		expect(patch).toContain("isTouch(getActiveWindow())");
 	});
 
-	// The two gates are defined once in the gate patches but mirrored - CSS and
-	// overlay JS cannot import TS - in touch.css/.js, narrow.css/.js, and the
-	// webview iframe CSS. Extract the canonical values from the gate patches and
-	// require every mirror to match, so a query or breakpoint tweak cannot drift.
+	// The two gates are defined once and mirrored into the stylesheets, because
+	// CSS cannot import a constant. Extract the canonical values and require
+	// every mirror to match, so a query or breakpoint tweak cannot drift.
+	//
+	// shell.ts is deliberately NOT a mirror any more: it is a bundled entry point
+	// (shell-entry.diff), so it imports the gates like any other module. Asserting
+	// that it imports them is the whole check - a restated query there would be a
+	// copy this test could only ever notice after it had already diverged.
 	test("overlay assets and patches mirror the canonical gate queries", () => {
 		const touchQuery = /TOUCH_QUERY = '([^']+)'/.exec(
 			readRepoFile(TOUCH_GATE)
@@ -2271,8 +2296,6 @@ describe("narrow overlay", () => {
 		for (const line of touchMedia) {
 			expect(line).toBe(`@media ${touchQuery} {`);
 		}
-		expect(readRepoFile(`${ASSETS}/shell.js`)).toContain(`"${touchQuery}"`);
-
 		const narrowMedia = readRepoFile(`${ASSETS}/narrow.css`)
 			.split("\n")
 			.filter((line) => line.startsWith("@media"));
@@ -2280,12 +2303,20 @@ describe("narrow overlay", () => {
 		for (const line of narrowMedia) {
 			expect(line).toBe(`@media (max-width: ${narrowWidth}px) {`);
 		}
-		expect(readRepoFile(`${ASSETS}/shell.js`)).toContain(
-			`NARROW_MAX_WIDTH = ${narrowWidth}`
-		);
-		expect(readRepoFile(`${PATCHES_DIR}/web-client.diff`)).toContain(
+		expect(readRepoFile(`${PATCHES_DIR}/narrow.diff`)).toContain(
 			`@media (max-width: ${narrowWidth}px)`
 		);
+
+		// The shell imports both gates rather than restating either.
+		const shell = readRepoFile(SHELL);
+		expect(shell).toContain(
+			"import { TOUCH_QUERY } from '../../../base/browser/touchGate.js'"
+		);
+		expect(shell).toContain(
+			"import { NARROW_QUERY } from '../../../workbench/browser/narrowGate.js'"
+		);
+		expect(shell).not.toContain(touchQuery!);
+		expect(shell).not.toContain(`NARROW_MAX_WIDTH = ${narrowWidth}`);
 	});
 
 	// A wrong relative import path in a patch - a typo, or a stale one after the
@@ -2376,13 +2407,13 @@ const viewportMetas = (source: string) =>
 describe("mobile viewport contract", () => {
 	// Read the metas, not the file. Asserting the two parts appear *somewhere* in
 	// the text passes just as happily on a file that declares three viewports and
-	// fixes one - and web-client.diff is exactly that shape, since a patch also
+	// fixes one - and workbench-page.diff is exactly that shape, since a patch also
 	// carries the upstream lines it replaces.
 	const surfaces: [path: string, read: (text: string) => string][] = [
 		["packages/ide/overlay/src/browser/pages/error.html", (text) => text],
 		["packages/ide/overlay/src/browser/pages/auth.html", (text) => text],
 		["packages/ide/overlay/src/node/persistence/readiness.ts", (text) => text],
-		[`${PATCHES_DIR}/web-client.diff`, addedLines]
+		[`${PATCHES_DIR}/workbench-page.diff`, addedLines]
 	];
 
 	test.each(surfaces)("%s declares the shared viewport parts", (path, read) => {
@@ -2408,11 +2439,17 @@ describe("mobile viewport contract", () => {
 			)
 		).toEqual([]);
 
-		// One added viewport meta in the whole patch - the workbench page. A second
-		// would mean a webview page grew one back.
-		const patch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
+		// One added viewport meta in the whole stack - the workbench page. The
+		// webview page is the one that must never grow one back: Chromium ignores
+		// a viewport meta in a nested browsing context, so declaring one there
+		// only looks like it does something. Its styles live in narrow.diff, so
+		// check both patches, not just the page that is allowed the meta.
+		const patch = readRepoFile(`${PATCHES_DIR}/workbench-page.diff`);
 		expect(viewportMetas(addedLines(patch))).toHaveLength(1);
 		expect(patch).not.toContain("pre/fake.html");
+		expect(
+			viewportMetas(addedLines(readRepoFile(`${PATCHES_DIR}/narrow.diff`)))
+		).toEqual([]);
 	});
 });
 
@@ -2420,7 +2457,7 @@ describe("adaptive favicon", () => {
 	test.each([
 		"packages/ide/overlay/src/browser/pages/auth.html",
 		"packages/ide/overlay/src/browser/pages/error.html",
-		`${PATCHES_DIR}/web-client.diff`
+		`${PATCHES_DIR}/workbench-page.diff`
 	])(
 		"%s declares the sized ICO fallback before the adaptive SVG favicon",
 		(path) => {
@@ -2463,7 +2500,7 @@ describe("adaptive favicon", () => {
 			"packages/ide/overlay/src/browser/pages/error.html",
 			"src/browser/pages/favicon.js"
 		],
-		[`${PATCHES_DIR}/web-client.diff`, "src/browser/pages/favicon.js"]
+		[`${PATCHES_DIR}/workbench-page.diff`, "src/browser/pages/favicon.js"]
 	])(
 		"%s hands the SVG favicon the scheme-pinned pair and the script that swaps it",
 		(path, script) => {
@@ -2508,7 +2545,7 @@ describe("composery agent setup", () => {
 	const extension = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-agents/extension.js"
 	);
-	const welcome = readRepoFile(`${PATCHES_DIR}/product.diff`);
+	const welcome = readRepoFile(`${PATCHES_DIR}/defaults.diff`);
 
 	const extensionIds = [...extension.matchAll(/\bid:\s*"([a-z]+)"/g)].map(
 		(match) => match[1]
@@ -2566,7 +2603,9 @@ describe("composery shortcuts", () => {
 	const manifest = readRepoFile(
 		"packages/ide/overlay/lib/vscode/extensions/composery-shortcuts/package.json"
 	);
-	const shortcutsPatch = readRepoFile(`${PATCHES_DIR}/product.diff`);
+	const bridge = readRepoFile(
+		"packages/ide/overlay/lib/vscode/src/vs/workbench/contrib/terminal/browser/shortcuts.contribution.ts"
+	);
 
 	function loadShortcutStorage(
 		env: Record<string, string>,
@@ -2638,7 +2677,7 @@ describe("composery shortcuts", () => {
 			"composery.shortcuts.resolveVariables"
 		]) {
 			expect(extension).toContain(command);
-			expect(shortcutsPatch).toContain(command);
+			expect(bridge).toContain(command);
 		}
 	});
 
@@ -3315,9 +3354,16 @@ describe("composery updates", () => {
 		expect(updatesAdded).not.toContain("updateEndpoint");
 		const qrAction = readRepoFile(`${PATCHES_DIR}/qr-action.diff`);
 		expect(qrAction).not.toContain("checkForUpdates");
-		expect(readRepoFile(`${PATCHES_DIR}/product.diff`)).not.toContain(
-			"checkUpdates"
-		);
+		// Composery has exactly one update mechanism, so no patch but updates.diff
+		// may mention the loop it replaced. Named per-patch this only ever checked
+		// wherever the remnant happened to live last; scanning the series catches
+		// it wherever a future split puts it.
+		for (const name of seriesNames.filter((n) => n !== "updates.diff")) {
+			expect(
+				readRepoFile(`${PATCHES_DIR}/${name}`),
+				`${name} reintroduces the old update loop`
+			).not.toContain("checkUpdates");
+		}
 	});
 
 	test("startup check announces a newer stable release and opens it", async () => {
@@ -3649,7 +3695,7 @@ describe("default color theme", () => {
 
 	// Apply the patch's theme-service section alone onto the pristine upstream
 	// file, so the assertions run against exactly what the build tree contains
-	// after quilt. product.diff spans many files; only this one is seeded.
+	// after quilt. brand.diff spans many files; only this one is seeded.
 	const patchedThemeService = (): string => {
 		const shadow = mkdtempSync(resolve(tmpdir(), "composery-theme-"));
 		try {
@@ -3659,7 +3705,7 @@ describe("default color theme", () => {
 				resolve(repoRoot, "packages/ide/upstream", themeServiceRel),
 				dst
 			);
-			const section = readRepoFile(`${PATCHES_DIR}/product.diff`)
+			const section = readRepoFile(`${PATCHES_DIR}/brand.diff`)
 				.split(/^(?=--- a\/)/m)
 				.filter((part) => part.startsWith(`--- a/${themeServiceRel}`))
 				.join("");
@@ -3710,7 +3756,7 @@ describe("default color theme", () => {
 		expect(compared).toBeGreaterThan(100);
 	});
 
-	// The theme JSONs are hand-authored; only where they genuinely share the
+	// The theme JSONs are generated; only where they genuinely share the
 	// brand palette must they match it (a check instead of a generator). The
 	// palette is read from the generated web brand.css, which sync.mjs --check
 	// pins to packages/shared/index.ts.
@@ -3758,7 +3804,7 @@ describe("terminal edge padding", () => {
 	});
 
 	test("patch pads the shared .xterm rule top and bottom", () => {
-		const added = addedLines(readRepoFile(`${PATCHES_DIR}/product.diff`));
+		const added = addedLines(readRepoFile(`${PATCHES_DIR}/defaults.diff`));
 		expect(added).toContain("padding-top: 4px;");
 		expect(added).toContain("padding-bottom: 4px;");
 	});
@@ -3774,7 +3820,7 @@ describe("terminal edge padding", () => {
 // Columns are not part of this: Buffer#_reflow returns immediately unless the
 // column count changed, so a keyboard rewraps nothing.
 describe("terminal resize scroll", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/terminal-clients.diff`);
+	const patch = readRepoFile(`${PATCHES_DIR}/xterm-resize-scroll.diff`);
 
 	// Run the SHIPPED resize() rather than restating its arithmetic. The stand-in
 	// xterm moves the viewport on resize the way xterm does and records what it is
@@ -3848,11 +3894,9 @@ describe("terminal resize scroll", () => {
 // excluded" and reads 0 under interactive-widget=resizes-content.
 describe("soft-keyboard open signal", () => {
 	test("shell.js publishes the keyboard-open signal from a viewport baseline", () => {
-		const narrow = readRepoFile(
-			"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/shell.js"
-		);
+		const narrow = readRepoFile(SHELL);
 
-		expect(narrow).toContain('"--composery-touch-keyboard-open"');
+		expect(narrow).toContain("'--composery-touch-keyboard-open'");
 		expect(narrow).toContain(
 			"keyboardBaselineHeight - height >= KEYBOARD_MIN_INSET"
 		);
@@ -3892,7 +3936,7 @@ describe("app scheme override", () => {
 	const pages: [name: string, source: () => string][] = [
 		[
 			"workbench first paint",
-			() => readRepoFile(`${PATCHES_DIR}/web-client.diff`)
+			() => readRepoFile(`${PATCHES_DIR}/workbench-page.diff`)
 		],
 		[
 			"auth and error pages",
@@ -3972,7 +4016,7 @@ describe("overlay never shadows an upstream file", () => {
 // in an upstream file none of us reads by accident, and a wrong one is only
 // visible after installing the app.
 describe("PWA install metadata", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/web-client.diff`);
+	const patch = readRepoFile(`${PATCHES_DIR}/workbench-page.diff`);
 	const added = addedLines(patch);
 	const removed = patch
 		.split(/\r?\n/)
@@ -4206,7 +4250,7 @@ describe("default layout", () => {
 				resolve(repoRoot, "packages/ide/upstream", compositeBarRel),
 				dst
 			);
-			const section = readRepoFile(`${PATCHES_DIR}/product.diff`)
+			const section = readRepoFile(`${PATCHES_DIR}/defaults.diff`)
 				.split(/^(?=--- a\/)/m)
 				.filter((part) => part.startsWith(`--- a/${compositeBarRel}`))
 				.join("");

@@ -18,7 +18,7 @@ case "${removal,,}" in
 esac
 
 # HOME is root's here, so the IDE's own config location is spelled out. Keep it
-# in step with paths.config in patches/naming.diff.
+# in step with paths.config, which packages/ide/scripts/rebrand.mjs sets.
 config_path="${COMPOSERY_CONFIG:-/home/user/.config/composery/config.yaml}"
 if [ -f "$config_path" ]; then
   # The config is a flat js-yaml dump, so each password key is one line.

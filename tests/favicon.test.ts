@@ -32,9 +32,9 @@ const pageIconLinks = (page: string) =>
 		readRepoFile(`packages/ide/overlay/src/browser/pages/${page}`)
 	).join("\n");
 
-// The icon links exactly as web-client.diff adds them to the workbench.
+// The icon links exactly as workbench-page.diff adds them to the workbench.
 const workbenchIconLinks = iconLinks(
-	addedLines(readRepoFile("packages/ide/patches/web-client.diff"))
+	addedLines(readRepoFile("packages/ide/patches/workbench-page.diff"))
 ).join("\n");
 
 type Harness = {

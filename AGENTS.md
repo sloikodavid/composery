@@ -29,7 +29,7 @@
 
 - Repo packages stay domain nouns (`ide`, `web`, `mobile`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list — a test pins it to real wiring, so add there rather than enumerating names here.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
-- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. Put systematic product renames there so bumps fail loudly and do not scatter broad rename hunks across upstream files.
+- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. It owns _every_ rename, without exception: no patch in the series renames an upstream identifier, string or environment variable, and a hunk that would only rename belongs there as a rule. A patch anchors on upstream's spelling and lets the rewrite happen afterwards - so `CS_DISABLE_FILE_UPLOADS` in a hunk is what ships as `COMPOSERY_DISABLE_FILE_UPLOADS`. This absolute rule replaces a split that left a name's home unknowable: two-thirds of the old `naming.diff` was doing work rebrand already did, while its siblings (`PASSWORD`, `LOG_LEVEL`, `GITHUB_TOKEN`) were rebrand's alone. Variables Composery introduces outright have no upstream spelling to rename, so those are written directly where they are read.
 - No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
 - The `composery` prefix is namespacing, not decoration: use `composery`/`composery-` only for identifiers injected into a shared upstream namespace (CSS classes, custom properties, DOM attributes, command/setting/contribution/extension IDs). Never on things we own outright - TS files, symbols, types, or patch filenames.
 
@@ -221,7 +221,6 @@ packages/
                       geist-mono.woff2
                       inter.woff2
                       narrow.css
-                      shell.js
                       touch.css
           src/
             vs/
@@ -232,6 +231,10 @@ packages/
                   stickyModifiers.ts
                   touchGate.ts
                   touchSelectionHandles.ts
+              code/
+                browser/
+                  workbench/
+                    shell.ts
               platform/
                 terminal/
                   common/
@@ -246,6 +249,7 @@ packages/
                 contrib/
                   terminal/
                     browser/
+                      shortcuts.contribution.ts
                       xtermCell.ts
                   terminalContrib/
                     touchSelection/
@@ -309,27 +313,36 @@ packages/
     patches/
       api.diff
       auth.diff
+      bfcache-reload.diff
+      brand.diff
       clipboard.diff
       custom-editors.diff
+      defaults.diff
+      dependency-pins.diff
       editcontext-android.diff
-      hardening.diff
+      env-config.diff
       local-media-preview.diff
       loopback-callback.diff
-      naming.diff
       narrow.diff
       node-engine.diff
-      path-prefix.diff
-      product.diff
+      proxy-root.diff
       qr-action.diff
       readiness.diff
+      request-host-trust.diff
       series
       sessions.diff
+      shell-entry.diff
+      shortcuts-bridge.diff
+      static-stamp.diff
       terminal-clients.diff
       terminal.diff
       touch.diff
       updates.diff
-      web-client.diff
+      vscode-duplicate-mount.diff
+      webkit-paste.diff
       window-focus-resample.diff
+      workbench-page.diff
+      xterm-resize-scroll.diff
     scripts/
       build.sh
       rebrand.mjs
@@ -420,8 +433,15 @@ packages/
       icons.mjs
       logo.mjs
       sync.mjs
+      theme.mjs
+    tools/
+      palette/
+        index.html
+        server.mjs
     index.ts
     package.json
+    palette.json
+    theme.ts
   web/
     app/
       (site)/
@@ -470,13 +490,6 @@ packages/
               page.tsx
           page.tsx
         cookies/
-          page.tsx
-        design/
-          _components/
-            design-demos.tsx
-            logo-export.tsx
-            logo-showcase.tsx
-            toast-demo.tsx
           page.tsx
         licenses/
           page.tsx
@@ -763,6 +776,7 @@ packages/
       box-route.ts
       box-slug.test.ts
       box-slug.ts
+      brand-assets.test.ts
       brand-assets.ts
       clerk-appearance.test.ts
       clerk-appearance.ts
@@ -921,9 +935,6 @@ rootfs/
         composery-text-editor.desktop
         composery-url-handler.desktop
 scripts/
-  color-console/
-    app.html
-    server.mjs
   cli.mjs
   runbook.d.mts
   runbook.mjs
@@ -981,8 +992,8 @@ tests/
   api-openapi.test.ts
   auth-routes.test.ts
   brand-copy.test.ts
+  brand-page.test.ts
   code-server-patches.test.ts
-  color-console.test.ts
   cross-platform.test.ts
   desktop-integration.test.ts
   docs-links.test.ts
@@ -993,6 +1004,7 @@ tests/
   narrow-back.test.ts
   narrow-editor-groups.test.ts
   narrow-layout-reconciliation.test.ts
+  palette.test.ts
   password-check.test.ts
   runbook-script.test.ts
   runbook-windows.test.ts

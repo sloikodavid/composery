@@ -39,7 +39,7 @@ function sourceFiles() {
 
 describe("animated icon registry", () => {
 	// An icon file nobody registered renders nowhere and reads as live code. This
-	// is how `arrow-left` sat unused behind the design gallery.
+	// is how `arrow-left` once sat unused behind a deleted showcase page.
 	it("registers every glyph in components/icons", () => {
 		const expected = glyphFiles()
 			.map((file) => file.replace(/\.tsx$/, ""))
@@ -49,7 +49,7 @@ describe("animated icon registry", () => {
 
 	// The registry is the only way in: call sites name an icon, they don't import
 	// one. Keeps `CheckIcon` from meaning two different components depending on
-	// the import line, and keeps the /design gallery honest.
+	// the import line.
 	it("is the only importer of a glyph module", () => {
 		const offenders = sourceFiles().filter((file) => {
 			if (file.startsWith("components/icons/")) return false;

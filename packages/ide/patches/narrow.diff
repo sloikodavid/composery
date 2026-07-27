@@ -36,6 +36,16 @@ workbench part fullscreen at a time, and one editor group.
   and moves labels into overflow instead of pushing the title off-screen.
 - Extension editor: feature tables get a picker (styled by narrow.css) and
   horizontal scrolling, so wide columns stay reachable.
+- Webview content: narrow-width rules in the default stylesheet the webview pre
+  page injects into extension content. Frame-independent on purpose - no
+  viewport meta and no safe-area padding, because Chromium honours neither in a
+  nested browsing context (measured on Android Chrome 134: a subframe declaring
+  `width=500, viewport-fit=cover` laid out at the parent's 411px and read
+  env(safe-area-inset-*) as 0 while the top frame read a real 24px bottom
+  inset). What is left is border-box + max-width, so the 20px body padding
+  cannot overflow a narrow viewport, plus the text-size rules. These styles live
+  in a template literal inside the page's inline script, so the CSP hash beside
+  them covers them; the patch-stack test recomputes it.
 
 --- a/lib/vscode/src/vs/workbench/browser/layout.ts
 +++ b/lib/vscode/src/vs/workbench/browser/layout.ts
@@ -653,3 +663,34 @@ workbench part fullscreen at a time, and one editor group.
  		}
  	}
  
+--- a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-A6/szVNdTzyi4hDa+9OLbzS8tSd2iUV4CqimLNWex2Y=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-DK8IYscPwU1YYkFAEiG8aBDHYfkZXeFsG/Odp3sfsDw=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -117,6 +117,19 @@
+ 				padding: 0 20px;
+ 			}
+ 
++			@media (max-width: 768px) {
++				body {
++					box-sizing: border-box;
++					max-width: 100%;
++					-webkit-text-size-adjust: 100%;
++					text-size-adjust: 100%;
++				}
++
++				input, textarea, select {
++					font-size: max(16px, 1em);
++				}
++			}
++
+ 			img, video {
+ 				max-width: 100%;
+ 				max-height: 100%;

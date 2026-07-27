@@ -89,7 +89,7 @@ describe("IDE public path boundary", () => {
 			const source = textUnder(path);
 			expect(source, path).not.toContain("proxy-domain");
 		}
-		const patch = read("packages/ide/patches/path-prefix.diff");
+		const patch = read("packages/ide/patches/proxy-root.diff");
 		expect(patch).toContain("--- a/src/node/routes/domainProxy.ts");
 		expect(patch).toContain("+++ /dev/null");
 	});

@@ -159,6 +159,20 @@ const replacements = [
 	["code-server.service", "ide.service"],
 	["code-server-nfpm", "ide-nfpm"],
 	["code-server.sh", "ide.sh"],
+	// Values the generic rule below would get wrong. It renders "Composery",
+	// which is right for prose and wrong for a path segment: these two decide
+	// ~/.config/composery and ~/.local/share/composery, and a capitalised
+	// directory is a different directory. Scoped to their whole call so no
+	// other "code-server" is caught by the casing.
+	[
+		'envPaths("code-server", { suffix: "" })',
+		'envPaths("composery", { suffix: "" })'
+	],
+	['path.join(p, "code-server")', 'path.join(p, "composery")'],
+	// Lowercase "coder/coder" survives every rule here: a bare `coder` rule is
+	// forbidden as too broad (assertRebrandRulesAreScoped), and `Coder` is
+	// case-sensitive. Name the one help string it appears in instead.
+	["coder/coder override", "Composery override"],
 	["code-server", "Composery"],
 	["Code-server", "Composery"],
 	["Code Server", "Composery"],

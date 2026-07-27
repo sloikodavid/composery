@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { BRAND_COLORS, ICON_SVG } from "shared";
+import { BRAND_COLORS, BRAND_THEME, ICON_SVG } from "shared";
 import {
 	LOGO_HEIGHT,
 	LOGO_INNER,
@@ -8,10 +8,12 @@ import {
 } from "@/lib/logo-data";
 
 // Concrete, font-free, self-contained SVGs of the Composery marks, shared by the
-// public /brand page export UI and the logo right-click menu. The on-page logo
-// is fill="currentColor"; downloadable/copyable assets materialize a fixed color
-// so the file looks right on its own (dark text on light, light text on dark).
+// public /brand page and the logo right-click menu. The asset catalog owns the
+// fixed mark color and matching preview surface together, so callers cannot
+// accidentally show or copy a different scheme.
 export type BrandAsset = { height: number; svg: string; width: number };
+export type BrandAssetScheme = "light" | "dark";
+export type BrandAssetType = "logo" | "icon";
 
 function iconAsset(fill: string): BrandAsset {
 	return {
@@ -29,12 +31,33 @@ function logoAsset(fill: string): BrandAsset {
 	};
 }
 
-// Two fills per mark: pure black for light backgrounds, pure white for dark
-// ones. The SVGs have no background - they download transparent.
-export const ICON_LIGHT_ASSET = iconAsset(BRAND_COLORS.surface.ink);
-export const ICON_DARK_ASSET = iconAsset(BRAND_COLORS.surface.paper);
-export const LOGO_LIGHT_ASSET = logoAsset(BRAND_COLORS.surface.ink);
-export const LOGO_DARK_ASSET = logoAsset(BRAND_COLORS.surface.paper);
+// The SVGs are transparent. Preview colors derive from the same shared theme
+// that generated their fills rather than restating approximations in /brand.
+export const BRAND_ASSETS = {
+	light: {
+		background: BRAND_THEME.light.background,
+		checker: BRAND_THEME.light.muted,
+		color: BRAND_COLORS.surface.ink,
+		icon: iconAsset(BRAND_COLORS.surface.ink),
+		logo: logoAsset(BRAND_COLORS.surface.ink)
+	},
+	dark: {
+		background: BRAND_THEME.dark.background,
+		checker: BRAND_THEME.dark.muted,
+		color: BRAND_COLORS.surface.paper,
+		icon: iconAsset(BRAND_COLORS.surface.paper),
+		logo: logoAsset(BRAND_COLORS.surface.paper)
+	}
+} as const satisfies Record<
+	BrandAssetScheme,
+	{
+		background: string;
+		checker: string;
+		color: string;
+		icon: BrandAsset;
+		logo: BrandAsset;
+	}
+>;
 
 export async function copySvg(asset: BrandAsset) {
 	try {

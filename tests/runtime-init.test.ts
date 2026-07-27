@@ -139,15 +139,17 @@ describe("runtime process managers", () => {
 	});
 
 	test("uses Host instead of client-controlled forwarded host headers", () => {
-		const hardeningPatch = readRepoFile("packages/ide/patches/hardening.diff");
+		const hostPatch = readRepoFile(
+			"packages/ide/patches/request-host-trust.diff"
+		);
 
-		expect(hardeningPatch).toContain(
+		expect(hostPatch).toContain(
 			'+  const [host] = splitOnFirstEquals(getFirstHeader(req, "host") || "")'
 		);
-		expect(hardeningPatch).toContain(
+		expect(hostPatch).toContain(
 			'-  const forwardedRaw = getFirstHeader(req, "forwarded")'
 		);
-		expect(hardeningPatch).toContain(
+		expect(hostPatch).toContain(
 			'-  const xHost = getFirstHeader(req, "x-forwarded-host")'
 		);
 	});
@@ -187,8 +189,9 @@ describe("runtime process managers", () => {
 		expect(entrypoint).toContain(
 			'if [ "${PORT:-8080}" = "${COMPOSERY_IDE_PORT:-8081}" ]'
 		);
-		// The config path has to track paths.config in patches/naming.diff.
-		expect(readRepoFile("packages/ide/patches/naming.diff")).toContain(
+		// The config path has to track paths.config, which rebrand.mjs now sets:
+		// the patch stack renames nothing, so the rule is the only home for it.
+		expect(readRepoFile("packages/ide/scripts/rebrand.mjs")).toContain(
 			'envPaths("composery", { suffix: "" })'
 		);
 		expect(removal).toContain(

@@ -7,11 +7,35 @@ import { readFileSync } from "node:fs";
 import { type DOMWindow, JSDOM } from "jsdom";
 import { afterEach, describe, expect, test } from "vitest";
 
-const SHELL_JS = new URL(
-	"../packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/shell.js",
-	import.meta.url
-);
-const source = readFileSync(SHELL_JS, "utf8");
+import { transpileToCommonJs } from "./support/patchSource.js";
+
+// The shell is a bundled entry point, so it is TypeScript that imports the two
+// gates. Transpile it and resolve those imports the way the bundler does, then
+// run the result - still the shipped code, not a copy of it.
+const OVERLAY_VSCODE_SRC = "../packages/ide/overlay/lib/vscode/src/vs";
+const read = (path: string) =>
+	readFileSync(new URL(path, import.meta.url), "utf8");
+const gates: Record<string, string> = {
+	TOUCH_QUERY: /TOUCH_QUERY = '([^']+)'/.exec(
+		read(`${OVERLAY_VSCODE_SRC}/base/browser/touchGate.ts`)
+	)?.[1] as string,
+	NARROW_QUERY: `(max-width: ${
+		/NARROW_MAX_WIDTH = (\d+)/.exec(
+			read(`${OVERLAY_VSCODE_SRC}/workbench/browser/narrowGate.ts`)
+		)?.[1]
+	}px)`
+};
+const source = [
+	// The transpiled module opens with a CommonJS preamble; give it somewhere to
+	// put its exports and a require() that answers with the real gate values.
+	`const exports = {};`,
+	`const require = (specifier) => specifier.endsWith("touchGate.js")`,
+	`	? { TOUCH_QUERY: ${JSON.stringify(gates.TOUCH_QUERY)} }`,
+	`	: { NARROW_QUERY: ${JSON.stringify(gates.NARROW_QUERY)} };`,
+	transpileToCommonJs(
+		read(`${OVERLAY_VSCODE_SRC}/code/browser/workbench/shell.ts`)
+	)
+].join("\n");
 
 // Longer than shell.js's own DISMISS_GRACE, so a layer that ignored its Escape
 // has been given up on by the time we look.

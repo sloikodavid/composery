@@ -34,21 +34,56 @@ function run(command, args, options = {}) {
 // trees too.
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
-// Code-server-side patches in series order. "src" entries also span
-// lib/vscode; only their src/ sections apply here, because lib/vscode is not
-// part of this tree. Order matters: later patches' contexts build on earlier
-// ones (readiness anchors on routes auth adds).
-const SERVER_PATCHES = [
-	["naming.diff", "full"],
-	["hardening.diff", "src"],
-	["auth.diff", "src"],
-	["readiness.diff", "full"],
-	["node-engine.diff", "full"],
-	["api.diff", "src"],
-	["updates.diff", "src"],
-	["sessions.diff", "full"],
-	["path-prefix.diff", "src"]
+// The files this tree actually holds (see the git archive below). Everything
+// else a patch touches - lib/vscode, ci/build - is not here to be checked.
+const TREE_PATHS = [
+	"package.json",
+	"package-lock.json",
+	"tsconfig.json",
+	"src/",
+	"typings/"
 ];
+const inTree = (path) =>
+	TREE_PATHS.some((root) =>
+		root.endsWith("/") ? path.startsWith(root) : path === root
+	);
+
+// Every path a patch touches, from its file markers, deletions included.
+function pathsOf(patchPath) {
+	return [
+		...new Set(
+			readFileSync(patchPath, "utf8")
+				.split("\n")
+				.filter((line) => line.startsWith("--- ") || line.startsWith("+++ "))
+				.map((line) => /^(?:---|\+\+\+) (?:[ab]\/)?(\S+)/.exec(line)?.[1])
+				.filter((path) => path && path !== "/dev/null")
+		)
+	];
+}
+
+// Which patches this tree can check, and whether each applies whole or sliced,
+// read off the series and the patches themselves. Both facts are already
+// written down in the patch's own file markers, so a hand-kept list here was a
+// second copy that could only ever drift one way: add a patch touching src/,
+// forget this list, and the typecheck goes on passing against a tree missing
+// it. Series order is kept because later patches' contexts build on earlier
+// ones (readiness anchors on routes auth adds).
+const SERVER_PATCHES = readFileSync(
+	join(PACKAGE_ROOT, "patches/series"),
+	"utf8"
+)
+	.split(/\r?\n/)
+	.filter((name) => name && !name.startsWith("#"))
+	.flatMap((name) => {
+		const paths = pathsOf(join(PACKAGE_ROOT, "patches", name));
+		const present = paths.filter(inTree);
+		const absent = paths.filter((path) => !inTree(path));
+		// Nothing here to check, or nothing a src/ slice could keep.
+		if (!present.some((path) => path.startsWith("src/"))) {
+			return absent.length === 0 && present.length > 0 ? [[name, "full"]] : [];
+		}
+		return [[name, absent.length === 0 ? "full" : "src"]];
+	});
 const SCRATCH = join(
 	REPO_ROOT,
 	"tmp",
@@ -222,6 +257,87 @@ for (const entry of readdirSync(join(OVERLAY, "src"))) {
 		recursive: true
 	});
 }
+
+// The VS Code-side overlay, as far as it can be checked without VS Code itself.
+//
+// These files are ours but they live inside upstream's source tree, so most of
+// them import VS Code proper and can only be compiled by the assembled build.
+// The ones that import nothing outside the overlay are a different case: they
+// were simply never compiled by anything short of Docker, which for shell.ts -
+// the whole small-surface runtime - meant a type error surfaced minutes into an
+// image build or not at all.
+//
+// Self-containment is computed, not listed, so a new overlay module joins this
+// check by being written rather than by being remembered. The rest are named in
+// the console line below rather than passing silently, because "checked nothing"
+// and "checked everything" must not look the same.
+function overlayVSCodeSources(dir) {
+	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) return overlayVSCodeSources(path);
+		return entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
+	});
+}
+
+const OVERLAY_VSCODE_SRC = join(OVERLAY, "lib/vscode/src");
+const overlaySources = overlayVSCodeSources(OVERLAY_VSCODE_SRC);
+const selfContained = overlaySources.filter((path) => {
+	const imports = [
+		...readFileSync(path, "utf8").matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)
+	].map((match) => match[1]);
+	return imports.every(
+		(specifier) =>
+			specifier.startsWith(".") &&
+			existsSync(resolve(dirname(path), specifier.replace(/\.js$/, ".ts")))
+	);
+});
+const deferred = overlaySources.filter((path) => !selfContained.includes(path));
+const rel = (path) =>
+	path.slice(OVERLAY_VSCODE_SRC.length + 1).replaceAll("\\", "/");
+console.log(
+	`\noverlay VS Code sources: ${selfContained.length} checked here, ` +
+		`${deferred.length} only by the image build (they import VS Code):\n  ` +
+		deferred.map(rel).join("\n  ")
+);
+
+// VS Code's own compiler options, so a file that passes here passes there.
+const overlayTsconfig = join(SCRATCH, "tsconfig.overlay.json");
+writeFileSync(
+	overlayTsconfig,
+	JSON.stringify(
+		{
+			compilerOptions: {
+				module: "nodenext",
+				moduleResolution: "nodenext",
+				moduleDetection: "legacy",
+				experimentalDecorators: true,
+				noImplicitReturns: true,
+				noImplicitOverride: true,
+				noUnusedLocals: true,
+				noUncheckedSideEffectImports: true,
+				allowUnreachableCode: false,
+				strict: true,
+				exactOptionalPropertyTypes: false,
+				useUnknownInCatchVariables: false,
+				forceConsistentCasingInFileNames: true,
+				target: "ES2024",
+				useDefineForClassFields: false,
+				skipLibCheck: true,
+				noEmit: true,
+				types: [],
+				lib: ["ES2024", "ESNext.Disposable", "DOM", "DOM.Iterable"]
+			},
+			files: selfContained
+		},
+		null,
+		"\t"
+	)
+);
+run(process.execPath, [
+	join(REPO_ROOT, "node_modules/typescript/bin/tsc"),
+	"-p",
+	overlayTsconfig
+]);
 
 run("node", [join(PACKAGE_ROOT, "scripts/rebrand.mjs"), SCRATCH]);
 

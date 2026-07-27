@@ -1,12 +1,12 @@
-Workbench path-boundary cleanup.
+Root path proxies are the only proxy boundary.
 
-- Keep the browser port-proxy URL root-relative even though the workbench is
+- The browser's port-proxy URL stays root-relative even though the workbench is
   mounted below /ide. COMPOSERY_PROXY_URI remains the supported override; the
   image's VSCODE_PROXY_URI supplies the uniform default.
-- Remove domainProxy and --proxy-domain with it. Root path proxies are the
-  supported boundary, so the flag could no longer proxy anything - it only
-  rewrote the Ports tab at a host scheme nothing serves.
-- Remove the dead /vscode duplicate workbench mount from Coder v1.
+- domainProxy and --proxy-domain go with it. Once root path proxies are the
+  supported boundary the flag can no longer proxy anything: it only rewrote the
+  Ports tab at a host scheme nothing serves, and lent its name to an
+  origin-trust comment describing rules of its own.
 
 --- a/lib/vscode/src/vs/server/node/webClientServer.ts
 +++ b/lib/vscode/src/vs/server/node/webClientServer.ts
@@ -160,22 +160,6 @@ Workbench path-boundary cleanup.
    app.router.all("/proxy/:port{/*path}", async (req, res) => {
      await pathProxy.proxy(req, res)
    })
-@@ -224,13 +220,8 @@ export const register = async (
-     app.wsRouter.use(api.wsRouter.router)
-   }
- 
--  // For historic reasons we also load at /vscode because the root was replaced
--  // by a plugin in v1 of Coder.  The plugin system (which was for internal use
--  // only) has been removed, but leave the additional route for now.
--  for (const routePrefix of ["/vscode", "/"]) {
--    app.router.use(routePrefix, vscode.router)
--    app.wsRouter.use(routePrefix, vscode.wsRouter.router)
--  }
-+  app.router.use("/", vscode.router)
-+  app.wsRouter.use("/", vscode.wsRouter.router)
- 
-   app.router.use(() => {
-     throw new HttpError("Not Found", HttpCode.NotFound)
 --- a/src/node/cli.ts
 +++ b/src/node/cli.ts
 @@ -87,7 +87,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {

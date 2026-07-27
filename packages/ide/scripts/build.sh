@@ -65,7 +65,7 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # cached long-term by browsers. code-server stamps it with `git rev-parse HEAD`, assuming its
 # repo commit moves when patches change - our fork pins that commit forever, so every release
 # would ship different code under identical URLs and clients would keep stale caches. Stamp a
-# content hash of everything we lay on top instead (web-client.diff makes the build honor it):
+# content hash of everything we lay on top instead (workbench-page.diff makes the build honor it):
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
 # scripts/ and ../shared/index.ts are hashed too: rebrand.mjs rewrites the
 # assembled tree from both, so a rename-rule or brand-constant change alters

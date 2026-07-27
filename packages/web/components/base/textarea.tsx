@@ -8,7 +8,8 @@ const textareaVariants = cva(
 	{
 		variants: {
 			variant: {
-				outline: "border border-border bg-card px-2.5 py-1.5",
+				outline:
+					"border border-border bg-background px-2.5 py-1.5 dark:bg-input/30",
 				secondary:
 					"border border-transparent bg-input/50 px-2.5 py-1.5 dark:bg-input/30"
 			}
