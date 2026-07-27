@@ -12,6 +12,7 @@
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - A directory is part of a name: inside `convex/boxes/` and `components/boxes/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
 - The same operation is named the same on both sides. `api.user.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
+- Cloud box runtime settings are defined once in `convex/boxes/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
 
 ## Components
 

@@ -10,6 +10,7 @@ import {
 } from "../_generated/server";
 import { requireActiveUserInAction } from "../authorization";
 import { cloudUrl } from "../env";
+import { vBoxAuthorizationType } from "../schema";
 import { startBoxOperation } from "./operations";
 
 const AUTHORIZATION_CODE_TTL_MS = 2 * 60_000;
@@ -66,7 +67,8 @@ export const createAuthorizationCode = action({
 	args: {
 		boxId: v.id("boxes"),
 		codeChallenge: v.string(),
-		redirectUri: v.string()
+		redirectUri: v.string(),
+		type: vBoxAuthorizationType
 	},
 	returns: v.object({ code: v.string(), redirectUri: v.string() }),
 	handler: async (ctx, args) => {
@@ -93,7 +95,8 @@ export const createAuthorizationCode = action({
 			boxId: box._id,
 			codeHash: await sha256(code),
 			codeChallenge: args.codeChallenge,
-			redirectUri: args.redirectUri
+			redirectUri: args.redirectUri,
+			type: args.type
 		});
 		return { code, redirectUri: args.redirectUri };
 	}
@@ -104,9 +107,13 @@ export const exchangeAuthorizationCode = action({
 		boxId: v.id("boxes"),
 		code: v.string(),
 		codeVerifier: v.string(),
-		redirectUri: v.string()
+		redirectUri: v.string(),
+		type: vBoxAuthorizationType
 	},
-	returns: v.object({ grant: v.string() }),
+	returns: v.union(
+		v.object({ type: v.literal("password"), grant: v.string() }),
+		v.object({ type: v.literal("session") })
+	),
 	handler: async (ctx, args) => {
 		if (
 			!BASE64URL_SHA256_PATTERN.test(args.code) ||
@@ -115,15 +122,18 @@ export const exchangeAuthorizationCode = action({
 		) {
 			throw new ConvexError("Invalid authorization code.");
 		}
-		const grant = base64url(bytes(32));
+		const grant = args.type === "password" ? base64url(bytes(32)) : undefined;
 		await ctx.runMutation(internal.boxes.auth.exchangeCode, {
 			boxId: args.boxId,
 			codeHash: await sha256(args.code),
 			codeChallenge: await sha256(args.codeVerifier),
 			redirectUri: args.redirectUri,
-			grantHash: await sha256(grant)
+			type: args.type,
+			grantHash: grant ? await sha256(grant) : undefined
 		});
-		return { grant };
+		return grant
+			? ({ type: "password", grant } as const)
+			: ({ type: "session" } as const);
 	}
 });
 
@@ -187,20 +197,33 @@ export const applyPasswordChange = internalMutation({
 		if (!box || box.deleted_at) {
 			throw new ConvexError("Box not found.");
 		}
-		// The stored hash is itself the box's credential - the session cookie is
-		// that same string - so presenting it proves no more and no less than
-		// already holding the box password. This grants nothing new; it only
-		// keeps Convex in step with a change the box has already made.
+		// The box sends its configured hash only after validating the current
+		// password locally. The browser's signed session never contains this hash.
+		// Matching it here prevents a stale or different box from changing the
+		// control-plane value; this only records a change already made on the box.
 		if (box.runtime_auth_hash !== args.currentRuntimeAuthHash) {
 			throw new ConvexError("Current password does not match.");
 		}
 		if (box.runtime_auth_hash === args.runtimeAuthHash) return;
-		// Deliberately no reconcile: the box wrote this password itself, so
-		// pushing it back over SSH would restart the box for no reason.
+		const timestamp = Date.now();
 		await ctx.db.patch(box._id, {
 			runtime_auth_hash: args.runtimeAuthHash,
-			updated_at: Date.now()
+			updated_at: timestamp
 		});
+		// Reconcile even though the box already applied this itself. A cloud box
+		// reads its password from COMPOSERY_HASHED_PASSWORD in the env file we
+		// render, which still holds the old hash: without this the new password
+		// works until the next restart and then silently reverts.
+		await ctx.scheduler.runAfter(
+			PASSWORD_RECONCILE_DELAY_MS,
+			internal.boxes.auth.reconcilePassword,
+			{
+				boxId: box._id,
+				idempotencyKey: `password:${box._id}:${timestamp}`,
+				runtimeAuthHash: args.runtimeAuthHash,
+				attempt: 1
+			}
+		);
 	}
 });
 
@@ -214,7 +237,8 @@ export const storeAuthorizationCode = internalMutation({
 		boxId: v.id("boxes"),
 		codeHash: v.string(),
 		codeChallenge: v.string(),
-		redirectUri: v.string()
+		redirectUri: v.string(),
+		type: vBoxAuthorizationType
 	},
 	handler: async (ctx, args) => {
 		const timestamp = Date.now();
@@ -223,6 +247,7 @@ export const storeAuthorizationCode = internalMutation({
 			code_hash: args.codeHash,
 			code_challenge: args.codeChallenge,
 			redirect_uri: args.redirectUri,
+			type: args.type,
 			expires_at: timestamp + AUTHORIZATION_CODE_TTL_MS,
 			created_at: timestamp
 		});
@@ -235,7 +260,8 @@ export const exchangeCode = internalMutation({
 		codeHash: v.string(),
 		codeChallenge: v.string(),
 		redirectUri: v.string(),
-		grantHash: v.string()
+		type: vBoxAuthorizationType,
+		grantHash: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const code = await ctx.db
@@ -249,15 +275,27 @@ export const exchangeCode = internalMutation({
 			code.consumed_at ||
 			code.expires_at <= timestamp ||
 			code.code_challenge !== args.codeChallenge ||
-			code.redirect_uri !== args.redirectUri
+			code.redirect_uri !== args.redirectUri ||
+			code.type !== args.type
 		) {
 			throw new ConvexError("Invalid or expired authorization code.");
 		}
 
+		const grantHash = args.grantHash;
+		if (args.type === "session") {
+			if (grantHash !== undefined) {
+				throw new ConvexError("Invalid authorization capability.");
+			}
+			await ctx.db.patch(code._id, { consumed_at: timestamp });
+			return;
+		}
+		if (!grantHash) {
+			throw new ConvexError("Invalid authorization capability.");
+		}
 		await ctx.db.patch(code._id, { consumed_at: timestamp });
 		await ctx.db.insert("box_auth_grants", {
 			box_id: args.boxId,
-			token_hash: args.grantHash,
+			token_hash: grantHash,
 			expires_at: timestamp + SETUP_GRANT_TTL_MS,
 			created_at: timestamp
 		});

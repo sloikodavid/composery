@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import * as path from "path";
+import { cloudConfig } from "../cloud";
 import { rootPath } from "../constants";
 import { replaceTemplates } from "../http";
 import { escapeHtml } from "../util";
@@ -13,13 +14,23 @@ export interface AuthPage {
 	error?: string;
 }
 
-// Mirrors cloudAuth's config detection without importing it (cloudAuth
-// imports renderAuthPage, so that would be a require cycle).
-const isCloudBox = !!process.env.COMPOSERY_CLOUD_BOX_ID?.trim();
+// The one rule for "where do we send the user afterwards": a path on this box,
+// never somewhere else and never a query or fragment we would have to re-parse.
+// Anything else is the workbench root.
+export const returnPath = (value: unknown): string =>
+	typeof value === "string" &&
+	value.length <= 512 &&
+	value.startsWith("/") &&
+	!value.startsWith("//") &&
+	!value.includes("\\") &&
+	!value.includes("?") &&
+	!value.includes("#")
+		? value
+		: "/";
 
-// Every auth page is the same shell (head, CSP, logo, hidden inputs, error
-// slot, auth.js) around a per-page fields fragment. The shell, the error
-// markup, and the template pass live here so the routes cannot drift.
+// Every auth page is the same shell (head, CSP, logo, error slot, auth.js)
+// around a per-page fields fragment. The shell, the error markup, and the
+// template pass live here so the routes cannot drift.
 export const renderAuthPage = async (
 	req: Parameters<typeof replaceTemplates>[0],
 	{ page, title, formLabel, error }: AuthPage
@@ -35,19 +46,25 @@ export const renderAuthPage = async (
 	]);
 	// /change-password takes the current password on every deployment, so the
 	// link follows one rule: shown unless the environment owns the password.
-	const changePasswordLink = isEnvPasswordManaged(req)
+	const changePasswordLink = isEnvPasswordManaged(req.args)
 		? ""
 		: '<a class="link auth-link" href="{{BASE}}/change-password">Change password</a>';
 	// Only cloud boxes can recover a password you cannot produce, by proving
 	// box ownership through the website.
 	const forgotPasswordLink =
-		isCloudBox && page === "change-password"
-			? '<a class="link auth-link" href="{{BASE}}/_composery/cloud/authorize">Forgot password?</a>'
+		cloudConfig && page === "change-password"
+			? '<a class="link auth-link" href="{{BASE}}/_composery/cloud/authorize?type=password">Forgot password?</a>'
+			: "";
+	const cloudSignIn =
+		cloudConfig && page === "login"
+			? `<a class="cloud-sign-in" href="{{BASE}}/_composery/cloud/authorize?type=session&amp;to=${encodeURIComponent(
+					returnPath(req.query.to)
+				)}">Continue with Composery</a>`
 			: "";
 	// The way back from every other page. Gated on a password existing, so
 	// first-run registration does not offer a sign-in that cannot succeed.
 	const signInLink =
-		page !== "login" && hasPassword(req)
+		page !== "login" && hasPassword(req.args)
 			? '<a class="link auth-link" href="{{BASE}}/login">Sign in</a>'
 			: "";
 	return replaceTemplates(
@@ -71,6 +88,7 @@ export const renderAuthPage = async (
 			.replace(/{{CHANGE_PASSWORD_LINK}}/, () => changePasswordLink)
 			.replace(/{{FORGOT_PASSWORD_LINK}}/, () => forgotPasswordLink)
 			.replace(/{{SIGN_IN_LINK}}/, () => signInLink)
+			.replace(/{{CLOUD_SIGN_IN}}/, () => cloudSignIn)
 			.replace(/{{PASSWORD_CHECK_SCRIPT}}/, () =>
 				page === "register" || page === "change-password"
 					? '<script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/password-check.js"></script>'

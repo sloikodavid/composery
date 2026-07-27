@@ -1,8 +1,9 @@
 import { constants, promises as fs } from "fs";
 import { dump, load } from "js-yaml";
 import * as path from "path";
-import * as express from "express";
-import { getPasswordMethod, handlePasswordValidation } from "../util";
+import safeCompare from "safe-compare";
+import { cloudConfig } from "../cloud";
+import { isHashMatch } from "../util";
 
 type ConfigFile = {
 	auth?: string;
@@ -10,11 +11,41 @@ type ConfigFile = {
 	"hashed-password"?: string;
 };
 
-export const hasPassword = (req: express.Request): boolean =>
-	!!(req.args.password || req.args["hashed-password"]);
+// Structural rather than `DefaultedArgs`, so cli.ts can ask these questions
+// while it is still building that object - and so this file never has to
+// import back into the module that imports it.
+export type PasswordArgs = {
+	config?: string;
+	password?: string;
+	"hashed-password"?: string;
+	usingEnvPassword?: boolean;
+	usingEnvHashedPassword?: boolean;
+};
 
-export const isEnvPasswordManaged = (req: express.Request): boolean =>
-	!!(req.args.usingEnvPassword || req.args.usingEnvHashedPassword);
+export const hasPassword = (args: PasswordArgs): boolean =>
+	!!(args.password || args["hashed-password"]);
+
+// Whether a password written here would be overruled by the environment at the
+// next restart. A cloud box's COMPOSERY_HASHED_PASSWORD is not such a value:
+// the website renders it from the hash it holds, and both local paths that
+// write a password (register with a setup grant, change-password) record the
+// new hash there first, so the reconcile carries the change back into the
+// environment. Everything else in the environment - including a plaintext
+// COMPOSERY_PASSWORD an owner sets on their own cloud box - takes back over.
+export const isEnvPasswordManaged = (args: PasswordArgs): boolean =>
+	!!args.usingEnvPassword || !!(args.usingEnvHashedPassword && !cloudConfig);
+
+/** Whether `password` is the box's configured password. */
+export const isPasswordValid = async (
+	args: PasswordArgs,
+	password: string
+): Promise<boolean> => {
+	const hashedPassword = args["hashed-password"];
+	if (hashedPassword) {
+		return await isHashMatch(password, hashedPassword);
+	}
+	return !!args.password && !!password && safeCompare(password, args.password);
+};
 
 let passwordConfigWriteQueue: Promise<void> = Promise.resolve();
 
@@ -81,11 +112,11 @@ const writeConfigAtomically = async (
 };
 
 export const writeHashedPassword = async (
-	req: express.Request,
+	args: PasswordArgs,
 	hashedPassword: string,
 	options?: { allowExisting?: boolean }
 ): Promise<boolean> => {
-	const configPath = req.args.config;
+	const configPath = args.config;
 	if (!configPath) {
 		throw new Error("Missing config path");
 	}
@@ -106,26 +137,10 @@ export const writeHashedPassword = async (
 		// Write atomically so a crash mid-write can't corrupt the auth config.
 		await writeConfigAtomically(configPath, config);
 
-		req.args.password = undefined;
-		req.args["hashed-password"] = hashedPassword;
-		req.args.usingEnvPassword = false;
-		req.args.usingEnvHashedPassword = false;
+		args.password = undefined;
+		args["hashed-password"] = hashedPassword;
+		args.usingEnvPassword = false;
+		args.usingEnvHashedPassword = false;
 		return true;
 	});
-};
-
-export const validateExistingPassword = async (
-	req: express.Request,
-	password: string
-): Promise<boolean> => {
-	const hashedPasswordFromArgs = req.args["hashed-password"];
-	const passwordMethod = getPasswordMethod(hashedPasswordFromArgs);
-	const { isPasswordValid } = await handlePasswordValidation({
-		passwordMethod,
-		hashedPasswordFromArgs,
-		passwordFromRequestBody: password,
-		passwordFromArgs: req.args.password
-	});
-
-	return isPasswordValid;
 };

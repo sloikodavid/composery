@@ -3,8 +3,9 @@ Workbench path-boundary cleanup.
 - Keep the browser port-proxy URL root-relative even though the workbench is
   mounted below /ide. COMPOSERY_PROXY_URI remains the supported override; the
   image's VSCODE_PROXY_URI supplies the uniform default.
-- Remove domainProxy. Composery never configures --proxy-domain; root path
-  proxies are the supported boundary.
+- Remove domainProxy and --proxy-domain with it. Root path proxies are the
+  supported boundary, so the flag could no longer proxy anything - it only
+  rewrote the Ports tab at a host scheme nothing serves.
 - Remove the dead /vscode duplicate workbench mount from Coder v1.
 
 --- a/lib/vscode/src/vs/server/node/webClientServer.ts
@@ -175,3 +176,86 @@ Workbench path-boundary cleanup.
  
    app.router.use(() => {
      throw new HttpError("Not Found", HttpCode.NotFound)
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -87,7 +87,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
+   "socket-mode"?: string
+   "trusted-origins"?: string[]
+   version?: boolean
+-  "proxy-domain"?: string[]
+   "skip-auth-preflight"?: boolean
+   "reuse-window"?: boolean
+   "new-window"?: boolean
+@@ -265,7 +264,6 @@ export const options: Options<Required<UserProvidedArgs>> = {
+     type: "string",
+     description: "GitHub authentication token (can only be passed in via $GITHUB_TOKEN or the config file).",
+   },
+-  "proxy-domain": { type: "string[]", description: "Domain used for proxying ports." },
+   "skip-auth-preflight": {
+     type: "boolean",
+     description: "Allows preflight requests through proxy without authentication.",
+@@ -510,7 +508,6 @@ export interface DefaultedArgs extends ConfigArgs {
+   }
+   host: string
+   port: number
+-  "proxy-domain": string[]
+   verbose: boolean
+   usingEnvPassword: boolean
+   usingEnvHashedPassword: boolean
+@@ -671,25 +668,6 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   delete process.env.HASHED_PASSWORD
+   delete process.env.GITHUB_TOKEN
+ 
+-  // Filter duplicate proxy domains and remove any leading `*.`.
+-  const proxyDomains = new Set((args["proxy-domain"] || []).map((d) => d.replace(/^\*\./, "")))
+-  const finalProxies = []
+-
+-  for (const proxyDomain of proxyDomains) {
+-    if (!proxyDomain.includes("{{port}}")) {
+-      finalProxies.push("{{port}}." + proxyDomain)
+-    } else {
+-      finalProxies.push(proxyDomain)
+-    }
+-  }
+-
+-  // all proxies are of format anyprefix-{{port}}-anysuffix.{{host}}, where {{host}} is optional
+-  // e.g. code-8080.domain.tld would match for code-{{port}}.domain.tld and code-{{port}}.{{host}}
+-  if (finalProxies.length > 0 && !process.env.VSCODE_PROXY_URI) {
+-    process.env.VSCODE_PROXY_URI = `//${finalProxies[0]}`
+-  }
+-  args["proxy-domain"] = finalProxies
+-
+   args["app-name"] ??= "Composery"
+ 
+   args._ = getResolvedPathsFromArgs(args)
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -292,7 +292,7 @@ export function ensureOrigin(req: express.Request, _?: express.Response, next?:
+ /**
+  * Return true if the origin matches any trusted origin.  Entries are matched
+  * as exact strings, the special wildcard `"*"`, or `*.example.com`-style
+- * domain wildcards (same as --proxy-domain).
++ * domain wildcards.
+  */
+ export function isTrustedOrigin(origin: string, trustedOrigins: string[]): boolean {
+   return trustedOrigins.some((trusted) => {
+--- a/src/node/main.ts
++++ b/src/node/main.ts
+@@ -3,7 +3,6 @@ import http from "http"
+ import * as os from "os"
+ import * as path from "path"
+ import { Disposable } from "../common/emitter"
+-import { plural } from "../common/util"
+ import { createApp, ensureAddress } from "./app"
+ import { AuthType, DefaultedArgs, Feature, toCodeArgs, UserProvidedArgs } from "./cli"
+ import { commit, version, vsRootPath } from "./constants"
+@@ -200,9 +199,6 @@ export const runCodeServer = async (
+ 
+   if (args["disable-proxy"]) {
+     logger.info("  - Proxy disabled")
+-  } else if (args["proxy-domain"].length > 0) {
+-    logger.info(`  - ${plural(args["proxy-domain"].length, "Proxying the following domain")}:`)
+-    args["proxy-domain"].forEach((domain) => logger.info(`    - ${domain}`))
+   }
+   if (args["skip-auth-preflight"]) {
+     logger.info("  - Skipping authentication for preflight requests")

@@ -81,6 +81,15 @@ but cannot inspect its document. WebView behavior therefore also has unit tests
 for navigation classification and must be exercised manually for touch,
 keyboard, external-link, login, and local-network paths.
 
+Cloud sign-in has one intentional exception to the ordinary external-link
+rule. The box first records its PKCE transaction in the main IDE WebView, then
+the Composery authorization page opens in a separate full-screen WebView. That
+view shares the platform cookie store so the one-time callback can return to
+the box, but receives none of the IDE WebView's injected scripts or native
+bridge. Test successful **Continue with Composery**, password recovery, cancel,
+and failed authorization on both platforms; every unrelated cross-origin link
+must still open through the operating system.
+
 ## Preview APK
 
 Check login and project linkage, then build:

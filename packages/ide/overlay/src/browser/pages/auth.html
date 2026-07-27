@@ -25,7 +25,7 @@
 		<meta id="composery-options" data-settings="{{OPTIONS}}" />
 	</head>
 	<body>
-		<main class="page">
+		<main class="page" data-base="{{BASE}}">
 			<form class="auth-form" method="post" autocomplete="on" aria-label="{{FORM_LABEL}}">
 				<a
 					class="auth-logo-link"
@@ -46,8 +46,6 @@
 					tabindex="-1"
 					aria-hidden="true"
 				/>
-				<input id="base" type="hidden" name="base" value="{{BASE}}" />
-				<input id="href" type="hidden" name="href" value="" />
 				{{FIELDS}}
 			</form>
 		</main>

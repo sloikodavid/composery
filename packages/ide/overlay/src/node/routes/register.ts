@@ -1,10 +1,11 @@
 import { Router } from "express";
+import { cloudConfig } from "../cloud";
 import { ensureOrigin, getCookieOptions, redirect } from "../http";
+import { setSessionCookie } from "../session";
 import { hash, sanitizeString } from "../util";
-import { renderAuthPage } from "./authPage";
+import { renderAuthPage, returnPath } from "./authPage";
 import {
 	clearCloudSetupGrant,
-	cloudConfig,
 	hasCloudSetupGrant,
 	installCloudPassword
 } from "./cloudAuth";
@@ -39,12 +40,12 @@ router.use((req, res, next) => {
 		// COMPOSERY_PASSWORD on a cloud box. It outranks whatever the grant
 		// would write here and takes back over at the next restart, so say so
 		// rather than store a password that silently stops working.
-		if (isEnvPasswordManaged(req)) {
+		if (isEnvPasswordManaged(req.args)) {
 			return redirect(req, res, "login", { error: "env-managed" });
 		}
 		return next();
 	}
-	if (isEnvPasswordManaged(req) || hasPassword(req)) {
+	if (isEnvPasswordManaged(req.args) || hasPassword(req.args)) {
 		return redirect(req, res, "login", { error: undefined });
 	}
 	if (cloudConfig) {
@@ -61,7 +62,7 @@ router.get("/", async (req, res) => {
 		typeof req.query.error === "string"
 			? errorMessage(req.query.error)
 			: undefined;
-	const title = hasPassword(req) ? "Change password" : "Create password";
+	const title = hasPassword(req.args) ? "Change password" : "Create password";
 	res.send(
 		await renderAuthPage(req, {
 			page: "register",
@@ -84,13 +85,13 @@ router.post("/", ensureOrigin, async (req, res) => {
 	if (password !== confirmPassword) {
 		return redirect(req, res, "register", { error: "mismatch" });
 	}
-	const to = (typeof req.query.to === "string" && req.query.to) || "/";
+	const to = returnPath(req.query.to);
 	const hashedPassword = await hash(password);
 	if (cloudConfig) {
 		try {
 			await installCloudPassword(req, hashedPassword);
 		} catch {
-			clearCloudSetupGrant(res);
+			clearCloudSetupGrant(req, res);
 			return redirect(req, res, "_composery/cloud/authorize", {
 				error: "unavailable"
 			});
@@ -98,14 +99,14 @@ router.post("/", ensureOrigin, async (req, res) => {
 	}
 	// The cloud setup grant authorizes overwriting an existing password (the
 	// change/recovery flow); self-hosted first-run registration must not.
-	const didWritePassword = await writeHashedPassword(req, hashedPassword, {
+	const didWritePassword = await writeHashedPassword(req.args, hashedPassword, {
 		allowExisting: !!cloudConfig
 	});
 	if (!didWritePassword) {
 		return redirect(req, res, "login", { to, error: "configured" });
 	}
 
-	res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req));
-	if (cloudConfig) clearCloudSetupGrant(res);
+	setSessionCookie(req, res, getCookieOptions(req));
+	if (cloudConfig) clearCloudSetupGrant(req, res);
 	return redirect(req, res, to, { to: undefined, error: undefined });
 });

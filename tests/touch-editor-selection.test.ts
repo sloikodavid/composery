@@ -1,79 +1,17 @@
+// What the editor still owns of touch selection now that the grips themselves are shared
+// (touch-selection-handles.test.ts drives those): where its selection edges are in client
+// coordinates, which end a drag anchors, and which end the finger holds after crossing it.
+// The code is extracted from the patch it ships in, so these exercise the shipped source.
 import { describe, expect, test } from "vitest";
 
 import {
 	addedLines,
 	evaluatePatchSnippets,
-	extractAddedFunction,
 	extractAddedMethod,
 	readRepoFile
 } from "./support/patchSource.ts";
 
 const patch = readRepoFile("packages/ide/patches/touch.diff");
-
-interface Point {
-	x: number;
-	y: number;
-}
-
-interface Geometry {
-	getTouchHandleGrabOffset: (pointer: Point, selectionPoint: Point) => Point;
-	getTouchHandleSelectionPoint: (pointer: Point, grabOffset: Point) => Point;
-	getTouchRangeHandleLayout: (
-		selectionEmpty: boolean,
-		movingBeforeAnchor: boolean
-	) => {
-		activeKind: "start" | "end";
-		fixedKind: "start" | "end";
-		showFixed: boolean;
-	};
-}
-
-function loadGeometry(source: string): Geometry {
-	return evaluatePatchSnippets<Geometry>(
-		[
-			extractAddedFunction(source, "getTouchHandleGrabOffset"),
-			extractAddedFunction(source, "getTouchHandleSelectionPoint"),
-			extractAddedFunction(source, "getTouchRangeHandleLayout")
-		],
-		[
-			"getTouchHandleGrabOffset",
-			"getTouchHandleSelectionPoint",
-			"getTouchRangeHandleLayout"
-		]
-	);
-}
-
-function loadScheduler(source: string): {
-	Harness: new () => {
-		updates: number;
-		_scheduleTouchHandleUpdate(): void;
-	};
-	scheduled: Array<() => void>;
-} {
-	return evaluatePatchSnippets(
-		[
-			`const scheduled: Array<() => void> = [];
-			const dom = {
-				getWindow() {
-					return {
-						requestAnimationFrame(callback: () => void) {
-							scheduled.push(callback);
-							return scheduled.length;
-						}
-					};
-				}
-			};`,
-			`class Harness {
-				_handleUpdateFrame: number | undefined;
-				updates = 0;
-				viewHelper = { viewDomNode: {} };
-				_updateTouchHandles() { this.updates++; }
-				${extractAddedMethod(source, "_scheduleTouchHandleUpdate")}
-			}`
-		],
-		["Harness", "scheduled"]
-	);
-}
 
 function extractAddedOverrideMethod(source: string, name: string): string {
 	const added = addedLines(source);
@@ -94,384 +32,192 @@ function extractAddedOverrideMethod(source: string, name: string): string {
 	throw new Error(`Could not parse added override ${name}`);
 }
 
-describe("touch editor selection handles", () => {
-	test("preserves the finger-to-tip offset instead of jumping on first move", () => {
-		const geometry = loadGeometry(patch);
-		const grab = geometry.getTouchHandleGrabOffset(
-			{ x: 149, y: 338 },
-			{ x: 140, y: 320 }
-		);
+interface Position {
+	lineNumber: number;
+	column: number;
+}
 
-		expect(grab).toEqual({ x: 9, y: 18 });
-		expect(
-			geometry.getTouchHandleSelectionPoint({ x: 149, y: 338 }, grab)
-		).toEqual({ x: 140, y: 320 });
-		expect(
-			geometry.getTouchHandleSelectionPoint({ x: 181, y: 379 }, grab)
-		).toEqual({ x: 172, y: 361 });
-	});
+interface Harness {
+	_lastPointerType: string;
+	_editorFocused: boolean;
+	_primarySelection: unknown;
+	_primaryModelSelection: unknown;
+	_touchDragAnchor: Position | null;
+	updates: number;
+	focuses: number;
+	selections: Array<[Position, Position]>;
+	targetAt: (x: number, y: number) => { position: Position } | null;
+	outsideRenderedLine: boolean;
+	_getTouchSelectionEdges(): Record<string, unknown> | null;
+	_startTouchSelectionDrag(kind: string): void;
+	_dragTouchSelectionTo(x: number, y: number): string | undefined;
+	handleEvents(events: unknown[]): void;
+}
 
-	test("the geometry check rejects the old plus-offset failure mode", () => {
-		const mutant = patch.replace(
-			"x: pointer.x - grabOffset.x, y: pointer.y - grabOffset.y",
-			"x: pointer.x + grabOffset.x, y: pointer.y + grabOffset.y"
-		);
-		expect(mutant).not.toBe(patch);
-		const geometry = loadGeometry(mutant);
+// The stand-ins are the editor's own shapes: a selection knows its ends and whether it is
+// empty, the layout answers in content coordinates, and the lines' rect carries the scroll.
+const LINES_RECT = { left: 30, top: 200 };
+const LINE_HEIGHT = 19;
+const BIG_NUMBERS_DELTA = 1000;
 
-		expect(
-			geometry.getTouchHandleSelectionPoint({ x: 149, y: 338 }, { x: 9, y: 18 })
-		).not.toEqual({ x: 140, y: 320 });
-	});
+function selection(start: Position, end: Position): unknown {
+	return {
+		start,
+		end,
+		isEmpty: () =>
+			start.lineNumber === end.lineNumber && start.column === end.column,
+		getPosition: () => end,
+		getSelectionStart: () => start,
+		getStartPosition: () => start,
+		getEndPosition: () => end
+	};
+}
 
-	test("the captured handle stays active across crossing and collapse", () => {
-		const { getTouchRangeHandleLayout } = loadGeometry(patch);
-
-		expect(getTouchRangeHandleLayout(false, true)).toEqual({
-			activeKind: "start",
-			fixedKind: "end",
-			showFixed: true
-		});
-		expect(getTouchRangeHandleLayout(false, false)).toEqual({
-			activeKind: "end",
-			fixedKind: "start",
-			showFixed: true
-		});
-		expect(getTouchRangeHandleLayout(true, true)).toEqual({
-			activeKind: "start",
-			fixedKind: "end",
-			showFixed: false
-		});
-	});
-
-	test("collapse visibility is mutation-checked", () => {
-		const mutant = patch.replace(
-			"showFixed: !selectionEmpty",
-			"showFixed: true"
-		);
-		expect(mutant).not.toBe(patch);
-		expect(
-			loadGeometry(mutant).getTouchRangeHandleLayout(true, true).showFixed
-		).toBe(true);
-	});
-
-	test("drag cleanup releases capture, stops auto-scroll, and schedules repaint", () => {
-		const stop = extractAddedMethod(patch, "_stopHandleDrag");
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => {
-				_activeHandleDrag: unknown;
-				stops: number;
-				updates: number;
-				_stopHandleDrag(): void;
+function load(source: string): Harness {
+	const { Harness } = evaluatePatchSnippets<{ Harness: new () => Harness }>(
+		[
+			`const Position = {
+				// Upstream's ordering, restated: line first, then column.
+				isBeforeOrEqual: (a, b) => a.lineNumber < b.lineNumber || (a.lineNumber === b.lineNumber && a.column <= b.column)
 			};
-		}>(
-			[
-				`class Harness {
-					_activeHandleDrag: any = null;
-					stops = 0;
-					updates = 0;
-					_stopHandleAutoScroll() { this.stops++; }
-					_scheduleTouchHandleUpdate() { this.updates++; }
-					${stop}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
-		let captured = true;
-		let releases = 0;
-		harness._activeHandleDrag = {
-			pointerId: 7,
-			handle: {
-				hasPointerCapture: (id: number) => id === 7 && captured,
-				releasePointerCapture: () => {
-					captured = false;
-					releases++;
-				}
-			}
-		};
+			const Selection = { fromPositions: (a, b) => [a, b ?? a] };`,
+			`class Harness {
+				_lastPointerType = 'touch';
+				_editorFocused = true;
+				_primarySelection = null;
+				_primaryModelSelection = null;
+				_touchDragAnchor = null;
+				updates = 0;
+				focuses = 0;
+				selections = [];
+				outsideRenderedLine = false;
+				targetAt = () => null;
+				_touchHandles = { scheduleUpdate: () => { this.updates++; } };
+				viewHelper = {
+					focusTextArea: () => { this.focuses++; },
+					linesContentDomNode: { getBoundingClientRect: () => (${JSON.stringify(LINES_RECT)}) },
+					visibleRangeForPosition: (lineNumber, column) => ({ left: column * 7, outsideRenderedLine: this.outsideRenderedLine })
+				};
+				_context = {
+					viewLayout: {
+						getLineHeightForLineNumber: () => ${LINE_HEIGHT},
+						getVerticalOffsetForLineNumber: (lineNumber) => ${BIG_NUMBERS_DELTA} + lineNumber * ${LINE_HEIGHT},
+						getLinesViewportData: () => ({ bigNumbersDelta: ${BIG_NUMBERS_DELTA} })
+					},
+					viewModel: { coordinatesConverter: { convertViewPositionToModelPosition: (p) => p } }
+				};
+				viewController = { setSelection: (s) => { this.selections.push(s); } };
+				getTargetAtClientPoint(x, y) { return this.targetAt(x, y); }
+				${extractAddedOverrideMethod(source, "handleEvents").replace("super.handleEvents(events);", "")}
+				${extractAddedMethod(source, "_getTouchSelectionEdges")}
+				${extractAddedMethod(source, "_touchSelectionEdgeAt")}
+				${extractAddedMethod(source, "_startTouchSelectionDrag")}
+				${extractAddedMethod(source, "_dragTouchSelectionTo")}
+			}`
+		],
+		["Harness"]
+	);
+	return new Harness();
+}
 
-		harness._stopHandleDrag();
+const at = (lineNumber: number, column: number): Position => ({
+	lineNumber,
+	column
+});
 
-		expect(harness._activeHandleDrag).toBeNull();
-		expect(captured).toBe(false);
-		expect(releases).toBe(1);
-		expect(harness.stops).toBe(1);
-		expect(harness.updates).toBe(1);
+describe("touch editor selection", () => {
+	test("only a focused editor under a finger carries grips", () => {
+		const harness = load(patch);
+		harness._primarySelection = selection(at(3, 2), at(3, 6));
+
+		expect(harness._getTouchSelectionEdges()).not.toBeNull();
+
+		harness._lastPointerType = "mouse";
+		expect(harness._getTouchSelectionEdges()).toBeNull();
+
+		harness._lastPointerType = "touch";
+		harness._editorFocused = false;
+		expect(harness._getTouchSelectionEdges()).toBeNull();
 	});
 
-	test("menu suppression immediately hides every handle", () => {
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => {
-				_handlesSuppressed: boolean;
-				_caretHandle: { style: { display: string } };
-				_startHandle: { style: { display: string } };
-				_endHandle: { style: { display: string } };
-				_suppressTouchHandles(): void;
-			};
-		}>(
-			[
-				`class Harness {
-					_handlesSuppressed = false;
-					_caretHandle = { style: { display: 'block' } };
-					_startHandle = { style: { display: 'block' } };
-					_endHandle = { style: { display: 'block' } };
-					${extractAddedMethod(patch, "_hideTouchHandles")}
-					${extractAddedMethod(patch, "_suppressTouchHandles")}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
+	test("a collapsed selection is a caret, a range is two ends", () => {
+		const harness = load(patch);
 
-		harness._suppressTouchHandles();
-
-		expect(harness._handlesSuppressed).toBe(true);
-		expect(harness._caretHandle.style.display).toBe("none");
-		expect(harness._startHandle.style.display).toBe("none");
-		expect(harness._endHandle.style.display).toBe("none");
-	});
-
-	test("unfocused and menu-owned editors cannot repaint handles", () => {
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => {
-				_editorFocused: boolean;
-				_handlesSuppressed: boolean;
-				hides: number;
-				_updateTouchHandles(): void;
-			};
-		}>(
-			[
-				`const Position = { isBeforeOrEqual: () => true };
-				class Harness {
-					_lastPointerType = 'touch';
-					_editorFocused = false;
-					_handlesSuppressed = false;
-					_primarySelection = {};
-					_activeHandleDrag = null;
-					hides = 0;
-					_hideTouchHandles() { this.hides++; }
-					_setRangeHandleKind() {}
-					_positionHandle() {}
-					${extractAddedMethod(patch, "_updateTouchHandles")}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
-
-		harness._updateTouchHandles();
-		harness._editorFocused = true;
-		harness._handlesSuppressed = true;
-		harness._updateTouchHandles();
-
-		expect(harness.hides).toBe(2);
-	});
-
-	test("cursor and scroll bursts coalesce into one scheduled geometry update", () => {
-		const { Harness, scheduled } = loadScheduler(patch);
-		const harness = new Harness();
-
-		harness._scheduleTouchHandleUpdate();
-		harness._scheduleTouchHandleUpdate();
-		harness._scheduleTouchHandleUpdate();
-
-		expect(scheduled).toHaveLength(1);
-		scheduled[0]!();
-		expect(harness.updates).toBe(1);
-	});
-
-	// The handles sit at model positions rendered into the lines, so anything the view
-	// reports can move them - a scroll, a re-tokenized line, a zone opening, a
-	// decoration widening a line. Enumerating the events that matter is a list that
-	// goes stale on the next upstream bump and fails silently when it does, so repaint
-	// after whatever the view just handled and let the frame guard collapse the burst.
-	test("any view event batch the editor handles schedules a handle repaint", () => {
-		const { Harness } = evaluatePatchSnippets<{
-			Harness: new () => {
-				updates: number;
-				handled: object[][];
-				handleEvents(events: object[]): void;
-			};
-		}>(
-			[
-				`class Base {
-					handled: object[][] = [];
-					handleEvents(events: object[]) { this.handled.push(events); }
-				}
-				class Harness extends Base {
-					updates = 0;
-					_scheduleTouchHandleUpdate() { this.updates++; }
-					${extractAddedOverrideMethod(patch, "handleEvents")}
-				}`
-			],
-			["Harness"]
-		);
-		const harness = new Harness();
-
-		harness.handleEvents([{ type: "scroll" }, { type: "tokens" }]);
-		harness.handleEvents([{ type: "zones" }]);
-
-		// Upstream's own dispatch still runs - the override adds to it, never replaces it.
-		expect(harness.handled).toEqual([
-			[{ type: "scroll" }, { type: "tokens" }],
-			[{ type: "zones" }]
+		harness._primarySelection = selection(at(3, 4), at(3, 4));
+		expect(Object.keys(harness._getTouchSelectionEdges() ?? {})).toEqual([
+			"caret"
 		]);
+
+		harness._primarySelection = selection(at(3, 2), at(4, 6));
+		expect(Object.keys(harness._getTouchSelectionEdges() ?? {})).toEqual([
+			"start",
+			"end"
+		]);
+	});
+
+	test("an edge is reported where it is on screen, and not at all off it", () => {
+		const harness = load(patch);
+		harness._primarySelection = selection(at(3, 2), at(3, 2));
+
+		expect(harness._getTouchSelectionEdges()?.caret).toEqual({
+			// The lines' own rect carries the scroll, so the edge is the content offset
+			// (minus the big-numbers delta) laid onto it.
+			x: LINES_RECT.left + 2 * 7,
+			y: LINES_RECT.top + 3 * LINE_HEIGHT + LINE_HEIGHT,
+			height: LINE_HEIGHT
+		});
+
+		harness.outsideRenderedLine = true;
+		expect(harness._getTouchSelectionEdges()?.caret).toBeUndefined();
+	});
+
+	test("a drag pins the far end and focuses the editor", () => {
+		const harness = load(patch);
+		harness._primaryModelSelection = selection(at(2, 1), at(5, 9));
+
+		harness._startTouchSelectionDrag("start");
+		expect(harness._touchDragAnchor).toEqual(at(5, 9));
+
+		harness._startTouchSelectionDrag("end");
+		expect(harness._touchDragAnchor).toEqual(at(2, 1));
+
+		// A caret has no far end to pin - it drags alone.
+		harness._startTouchSelectionDrag("caret");
+		expect(harness._touchDragAnchor).toBeNull();
+		expect(harness.focuses).toBe(3);
+	});
+
+	test("dragging past the anchor hands the finger the other end", () => {
+		const harness = load(patch);
+		harness._primaryModelSelection = selection(at(2, 1), at(5, 9));
+		harness._startTouchSelectionDrag("end");
+
+		harness.targetAt = () => ({ position: at(7, 3) });
+		expect(harness._dragTouchSelectionTo(120, 400)).toBe("end");
+		expect(harness.selections.at(-1)).toEqual([at(2, 1), at(7, 3)]);
+
+		harness.targetAt = () => ({ position: at(1, 2) });
+		expect(harness._dragTouchSelectionTo(40, 210)).toBe("start");
+		expect(harness.selections.at(-1)).toEqual([at(2, 1), at(1, 2)]);
+	});
+
+	test("a caret drag stays a caret, and a drag off the lines changes nothing", () => {
+		const harness = load(patch);
+		harness._startTouchSelectionDrag("caret");
+
+		harness.targetAt = () => ({ position: at(4, 2) });
+		expect(harness._dragTouchSelectionTo(60, 300)).toBe("caret");
+		expect(harness.selections.at(-1)).toEqual([at(4, 2), at(4, 2)]);
+
+		harness.targetAt = () => null;
+		expect(harness._dragTouchSelectionTo(0, 0)).toBeUndefined();
+		expect(harness.selections).toHaveLength(1);
+	});
+
+	test("any view event batch the editor handles schedules a repaint", () => {
+		const harness = load(patch);
+		harness.handleEvents([]);
+		harness.handleEvents([{}, {}]);
 		expect(harness.updates).toBe(2);
-	});
-
-	test("the coalescing guard is mutation-checked", () => {
-		const mutant = patch.replace(
-			"if (this._handleUpdateFrame !== undefined) {",
-			"if (false) {"
-		);
-		expect(mutant).not.toBe(patch);
-		const { Harness, scheduled } = loadScheduler(mutant);
-		const harness = new Harness();
-
-		harness._scheduleTouchHandleUpdate();
-		harness._scheduleTouchHandleUpdate();
-
-		expect(scheduled).toHaveLength(2);
-	});
-
-	// The start handle offsets its body one full width left of its tip, so at
-	// column 1 the body falls outside .lines-content and the overflow guard hides
-	// it. It is mirrored rather than clamped so the tip stays on the selection edge.
-	function loadHandlePlacement() {
-		return evaluatePatchSnippets<{
-			Harness: new () => {
-				_positionHandle(handle: FakeHandle, position: unknown): void;
-				_getHandleSelectionClientPoint(
-					handle: FakeHandle,
-					kind: string,
-					position: unknown
-				): { x: number; y: number };
-				left: number;
-			};
-		}>(
-			[
-				`class Harness {
-					left = 0;
-					_caretHandle = { id: 'caret' };
-					viewHelper = { visibleRangeForPosition: () => ({ left: this.left, outsideRenderedLine: false }) };
-					_context = { viewLayout: {
-						getLineHeightForLineNumber: () => 20,
-						getVerticalOffsetForLineNumber: () => 100,
-						getLinesViewportData: () => ({ bigNumbersDelta: 0 })
-					} };
-					_getHandleKind(handle) {
-						if (handle === this._caretHandle) return 'caret';
-						return handle.classList.contains('composery-touch-range-handle-start') ? 'start' : 'end';
-					}
-					${extractAddedMethod(patch, "_positionHandle")}
-					${extractAddedMethod(patch, "_getHandleSelectionClientPoint")}
-				}`,
-				`const TOUCH_HANDLE_WIDTH = 22;`,
-				`const TOUCH_HANDLE_FLIPPED_CLASS = 'composery-touch-range-handle-flipped';`
-			],
-			["Harness"]
-		);
-	}
-
-	interface FakeHandle {
-		classList: {
-			contains(name: string): boolean;
-			toggle(name: string, force: boolean): void;
-		};
-		style: Record<string, string>;
-		getBoundingClientRect(): { left: number; right: number; top: number };
-	}
-
-	function fakeHandle(kind: "start" | "end"): FakeHandle {
-		const classes = new Set([`composery-touch-range-handle-${kind}`]);
-		return {
-			classList: {
-				contains: (name: string) => classes.has(name),
-				toggle: (name: string, force: boolean) => {
-					if (force) classes.add(name);
-					else classes.delete(name);
-				}
-			},
-			style: {},
-			getBoundingClientRect: () => ({ left: 200, right: 222, top: 50 })
-		};
-	}
-
-	const FLIPPED = "composery-touch-range-handle-flipped";
-
-	test("the start handle mirrors at column 1 so it is not clipped away", () => {
-		const { Harness } = loadHandlePlacement();
-		const harness = new Harness();
-		const handle = fakeHandle("start");
-
-		harness.left = 0;
-		harness._positionHandle(handle, { lineNumber: 1, column: 1 });
-
-		expect(handle.classList.contains(FLIPPED)).toBe(true);
-	});
-
-	test("the start handle keeps its normal shape once there is room", () => {
-		const { Harness } = loadHandlePlacement();
-		const harness = new Harness();
-		const handle = fakeHandle("start");
-
-		harness.left = 22;
-		harness._positionHandle(handle, { lineNumber: 1, column: 4 });
-
-		expect(handle.classList.contains(FLIPPED)).toBe(false);
-	});
-
-	test("the end handle never mirrors - its body already opens rightwards", () => {
-		const { Harness } = loadHandlePlacement();
-		const harness = new Harness();
-		const handle = fakeHandle("end");
-
-		harness.left = 0;
-		harness._positionHandle(handle, { lineNumber: 1, column: 1 });
-
-		// Mirroring here would push the body left and cause the very clip we fix.
-		expect(handle.classList.contains(FLIPPED)).toBe(false);
-	});
-
-	test("mirroring moves the drag anchor to the tip's new corner", () => {
-		const { Harness } = loadHandlePlacement();
-		const harness = new Harness();
-		const handle = fakeHandle("start");
-		const position = { lineNumber: 1, column: 1 };
-
-		harness.left = 200;
-		harness._positionHandle(handle, position);
-		const upright = harness._getHandleSelectionClientPoint(
-			handle,
-			"start",
-			position
-		);
-
-		harness.left = 0;
-		harness._positionHandle(handle, position);
-		const mirrored = harness._getHandleSelectionClientPoint(
-			handle,
-			"start",
-			position
-		);
-
-		// Upright, the tip is the box's right edge; mirrored, it is the left edge.
-		expect(upright.x).toBe(222);
-		expect(mirrored.x).toBe(200);
-	});
-
-	test("all external interaction-loss paths stop the active drag", () => {
-		for (const marker of [
-			"'lostpointercapture'",
-			"targetWindow, 'blur'",
-			"'visibilitychange'",
-			"public override onFocusChanged"
-		]) {
-			expect(patch).toContain(marker);
-			expect(patch.replace(marker, "removed-cleanup-path")).not.toContain(
-				marker
-			);
-		}
 	});
 });

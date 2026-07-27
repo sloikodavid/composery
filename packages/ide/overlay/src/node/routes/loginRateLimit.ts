@@ -7,7 +7,7 @@ type SourceLimit = {
 	minute: RateLimiter;
 };
 
-export class LoginRateLimit {
+class LoginRateLimit {
 	private readonly sources = new Map<string, SourceLimit>();
 	private readonly global = new RateLimiter({
 		// A high box-wide ceiling protects Argon2 capacity during a distributed
@@ -58,6 +58,11 @@ export class LoginRateLimit {
 		}
 	}
 }
+
+// One budget for every password guess, wherever the box offers to check one:
+// /login and the current-password step of /change-password are the same oracle,
+// so a guess at either has to cost the same token.
+export const loginRateLimit = new LoginRateLimit();
 
 // Caddy is the only process able to reach the IDE loopback listener. It appends
 // the connecting address to X-Forwarded-For, so the last value cannot be chosen

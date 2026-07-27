@@ -1,7 +1,7 @@
 {
 	"name": "composery-agents",
 	"displayName": "Composery Agents",
-	"description": "One-step setup for popular terminal AI coding agents from the Composery welcome page.",
+	"description": "CLI-first setup for popular terminal AI coding agents, with optional owner-provided editor extensions.",
 	"version": "0.1.0",
 	"publisher": "composery",
 	"license": "Apache-2.0",

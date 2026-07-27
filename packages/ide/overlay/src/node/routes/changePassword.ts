@@ -1,13 +1,15 @@
 import { Router } from "express";
+import { cloudConfig } from "../cloud";
 import { ensureOrigin, getCookieOptions, redirect } from "../http";
+import { setSessionCookie } from "../session";
 import { hash, sanitizeString } from "../util";
 import { renderAuthPage } from "./authPage";
-import { changeCloudPassword, cloudConfig } from "./cloudAuth";
-import { RateLimiter } from "./login";
+import { changeCloudPassword } from "./cloudAuth";
+import { loginRateLimit, loginSource } from "./loginRateLimit";
 import {
 	hasPassword,
 	isEnvPasswordManaged,
-	validateExistingPassword,
+	isPasswordValid,
 	writeHashedPassword
 } from "./passwordConfig";
 
@@ -24,7 +26,9 @@ const errorMessage = (error: unknown): string | undefined => {
 		case "rate-limit":
 			return "Too many attempts. Try again later.";
 		case "unavailable":
-			return "Could not reach Composery to record the change. Try again.";
+			// True whether Composery could not be reached or refused the change
+			// (which is what an owner-supplied COMPOSERY_HASHED_PASSWORD does).
+			return "Composery did not record the change. Try again.";
 		default:
 			return undefined;
 	}
@@ -32,22 +36,17 @@ const errorMessage = (error: unknown): string | undefined => {
 
 export const router = Router();
 
-// Reuses login's limiter shape (2/min + 12/hr, shared across sources): the
-// current-password check below is the same guessing oracle as /login, so it
-// must not be a way around login's rate limit.
-const limiter = new RateLimiter();
-
 router.use(async (req, res, next) => {
 	// Cloud boxes change their password here too, on the same terms as
 	// self-hosted: prove the current one. The grant flow stays the recovery
 	// path for a password you cannot produce, reached from the link this page
 	// renders, so holding the box password never requires a website account.
-	if (isEnvPasswordManaged(req)) {
+	if (isEnvPasswordManaged(req.args)) {
 		res.status(404).send("Not found");
 		return;
 	}
 
-	if (!hasPassword(req)) {
+	if (!hasPassword(req.args)) {
 		return redirect(req, res, "register", { error: undefined });
 	}
 
@@ -72,25 +71,26 @@ router.get("/", async (req, res) => {
 });
 
 // Answers the current-password step where the user is standing, instead of
-// taking three stages of input and only rejecting at the final POST. Shares the
-// limiter with the submit below, so proving a guess here costs the same token
-// and this cannot become a way around login's rate limit.
+// taking three stages of input and only rejecting at the final POST. Spends
+// login's own per-source budget, because a guess here is the same oracle as a
+// guess at /login and must not be a way around its rate limit.
 // Answers with an explicit result body rather than a bare status: unrelated
 // middleware also answers 401/404, and a client keying "wrong password" off a
 // status alone would reject on any of them. Only { valid: false } from here is
 // a rejection.
 router.post("/verify", ensureOrigin, async (req, res) => {
 	const currentPassword = sanitizeString(req.body?.currentPassword);
+	const source = loginSource(req);
 	res.setHeader("Cache-Control", "no-store");
-	if (!limiter.canTry()) {
+	if (!loginRateLimit.canTry(source)) {
 		return res.json({ valid: false, reason: "rate-limit" });
 	}
 	if (!currentPassword) {
 		return res.json({ valid: false, reason: "missing" });
 	}
-	if (!(await validateExistingPassword(req, currentPassword))) {
+	if (!(await isPasswordValid(req.args, currentPassword))) {
 		// Only failures consume a token, mirroring login.
-		limiter.removeToken();
+		loginRateLimit.recordFailure(source);
 		return res.json({ valid: false, reason: "incorrect" });
 	}
 	return res.json({ valid: true });
@@ -100,7 +100,8 @@ router.post("/", ensureOrigin, async (req, res) => {
 	const currentPassword = sanitizeString(req.body?.currentPassword);
 	const newPassword = sanitizeString(req.body?.newPassword);
 	const confirmPassword = sanitizeString(req.body?.confirmPassword);
-	if (!limiter.canTry()) {
+	const source = loginSource(req);
+	if (!loginRateLimit.canTry(source)) {
 		return redirect(req, res, "change-password", { error: "rate-limit" });
 	}
 
@@ -108,9 +109,9 @@ router.post("/", ensureOrigin, async (req, res) => {
 		return redirect(req, res, "change-password", { error: "missing-current" });
 	}
 
-	if (!(await validateExistingPassword(req, currentPassword))) {
+	if (!(await isPasswordValid(req.args, currentPassword))) {
 		// Only failures consume a token, mirroring login.
-		limiter.removeToken();
+		loginRateLimit.recordFailure(source);
 		return redirect(req, res, "change-password", { error: "incorrect-current" });
 	}
 
@@ -124,7 +125,9 @@ router.post("/", ensureOrigin, async (req, res) => {
 	const hashedPassword = await hash(newPassword);
 	// Tell the website before writing locally. If it refuses, the box keeps the
 	// password Convex still believes in, instead of holding one the next
-	// bootstrap would silently restore over.
+	// bootstrap would silently restore over. It refuses when the hash the box
+	// holds is not the one Convex does - which is how an owner-supplied
+	// COMPOSERY_HASHED_PASSWORD on a cloud box stops the change here.
 	if (cloudConfig) {
 		const currentHash = req.args["hashed-password"];
 		try {
@@ -133,11 +136,7 @@ router.post("/", ensureOrigin, async (req, res) => {
 			return redirect(req, res, "change-password", { error: "unavailable" });
 		}
 	}
-	await writeHashedPassword(req, hashedPassword, { allowExisting: true });
-	res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req));
-	return redirect(req, res, "", {
-		base: undefined,
-		href: undefined,
-		error: undefined
-	});
+	await writeHashedPassword(req.args, hashedPassword, { allowExisting: true });
+	setSessionCookie(req, res, getCookieOptions(req));
+	return redirect(req, res, "", { error: undefined });
 });

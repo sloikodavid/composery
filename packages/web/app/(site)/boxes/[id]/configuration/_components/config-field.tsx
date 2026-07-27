@@ -208,9 +208,9 @@ export function ConfigField({
 					{/* Empty is a real answer: the box has its own default for every
 					    optional variable, and an owner must be able to go back to it. */}
 					<SelectItem value="">Not set</SelectItem>
-					{field.values.map((option) => (
-						<SelectItem key={option} value={option}>
-							{option}
+					{field.options.map((option) => (
+						<SelectItem key={option.value} value={option.value}>
+							{option.label}
 						</SelectItem>
 					))}
 				</SelectContent>

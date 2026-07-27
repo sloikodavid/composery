@@ -4,16 +4,32 @@ Password lifecycle: first boot has no password - register (or the cloud
 authorize flow) creates it, change-password changes it, and the server treats
 the no-password state as unauthenticated instead of refusing to start. login
 renders through the shared auth shell (renderAuthPage) with redirect-style
-errors and per-source rate limiting; env passwords stay mutually exclusive;
-the generated-password default config is gone (register owns creation).
-Deletes upstream's standalone login/error pages - the overlay auth shell
-replaces them (error.html/global.css are re-provided by the overlay).
+errors; env passwords stay mutually exclusive; the generated-password default
+config is gone (register owns creation). Deletes upstream's standalone
+login/error pages - the overlay auth shell replaces them (error.html and
+global.css are re-provided by the overlay).
+
+Checking a password collapses to one overlay function. Upstream carried a
+PasswordMethod dispatch (legacy SHA-256, a cookie-validation twin, and an
+argon2 hash computed on every attempt whose only consumer was the cookie this
+stack no longer sets) for a product with no legacy passwords to support. What
+survives is `isPasswordValid(args, password)`. Because argon2 is now the only
+format, a hashed-password in any other shape stops the box at start: nothing
+could ever match it, so accepting it means looking configured while refusing
+every sign-in.
+
+/login and the current-password step of /change-password answer the same
+question, so they share one per-source budget rather than each holding a
+limiter that the other is a way around.
 
 Workbench commands: Sign Out and Change Password are registered when the
-matching endpoint is in product.json (change-password only while the password
-is server-managed, not env-managed), both routed through openAuthEndpoint,
+matching endpoint is in product.json, both routed through openAuthEndpoint,
 which suppresses beforeunload for the deliberate navigation. The endpoints
-resolve against window.top so they work embedded.
+resolve against window.top so they work embedded. Whether change-password
+exists at all is one predicate (isEnvPasswordManaged) shared by the command,
+the route guard and the link on the sign-in page - a cloud box's own
+COMPOSERY_HASHED_PASSWORD is not "the environment owns this", because the
+change is recorded with the website first and reconciled back into it.
 
 COMPOSERY_DISABLE_AUTH turns sign-in off for deployments with their own gate
 in front (a private network, an SSO proxy, a throwaway local box). Upstream
@@ -84,15 +100,13 @@ and a configured-but-ignored password says so.
  		if (this.productService.serviceWorker) {
  			await this.registerServiceWorker(this.productService.serviceWorker);
  		}
-@@ -145,23 +150,47 @@ export class CodeServerClient extends Disposable {
+@@ -145,23 +150,45 @@ export class CodeServerClient extends Disposable {
  		updateLoop();
  	}
  
 +	private openAuthEndpoint(endpoint: string) {
 +		const targetWindow = window.top || window;
 +		const authUrl = new URL(endpoint, targetWindow.location.href);
-+		authUrl.searchParams.set('base', this.productService.rootEndpoint || '.');
-+		authUrl.searchParams.set('href', targetWindow.location.href);
 +		const skipBeforeUnload = (event: BeforeUnloadEvent) => event.stopImmediatePropagation();
 +		window.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
 +		targetWindow.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
@@ -455,16 +469,17 @@ and a configured-but-ignored password says so.
 -</html>
 --- a/src/node/cli.ts
 +++ b/src/node/cli.ts
-@@ -2,7 +2,7 @@ import { field, Level, logger } from "@coder/logger"
+@@ -2,7 +2,8 @@ import { field, Level, logger } from "@coder/logger"
  import { promises as fs } from "fs"
  import { load } from "js-yaml"
  import * as path from "path"
 -import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
++import { isEnvPasswordManaged } from "./routes/passwordConfig"
 +import { generateCertificate, paths, splitOnFirstEquals } from "./util"
  import { EditorSessionManagerClient } from "./vscodeSocket"
  
  export enum Feature {
-@@ -58,6 +58,7 @@ export interface UserProvidedCodeArgs {
+@@ -58,6 +59,7 @@ export interface UserProvidedCodeArgs {
    "link-protection-trusted-domains"?: string[]
    // locale is used by both VS Code and code-server.
    locale?: string
@@ -472,7 +487,7 @@ and a configured-but-ignored password says so.
  }
  
  /**
-@@ -93,7 +94,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
+@@ -93,7 +95,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
    "ignore-last-opened"?: boolean
    verbose?: boolean
    "app-name"?: string
@@ -480,7 +495,7 @@ and a configured-but-ignored password says so.
    "abs-proxy-base-path"?: string
    i18n?: string
    "idle-timeout-seconds"?: number
-@@ -174,6 +174,9 @@ export const options: Options<Required<UserProvidedArgs>> = {
+@@ -174,6 +175,9 @@ export const options: Options<Required<UserProvidedArgs>> = {
    "session-socket": {
      type: "string",
    },
@@ -490,7 +505,7 @@ and a configured-but-ignored password says so.
    "cookie-suffix": {
      type: "string",
      description:
-@@ -295,13 +298,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
+@@ -295,13 +299,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
      type: "string",
      short: "an",
      description:
@@ -505,7 +520,7 @@ and a configured-but-ignored password says so.
    },
    "abs-proxy-base-path": {
      type: "string",
-@@ -596,6 +593,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -596,6 +594,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
      args.auth = AuthType.Password
    }
  
@@ -519,7 +534,7 @@ and a configured-but-ignored password says so.
    const addr = bindAddrFromAllSources(configArgs || {}, cliArgs)
    args.host = addr.host
    args.port = addr.port
-@@ -611,6 +615,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -611,6 +616,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    let usingEnvPassword = !!process.env.PASSWORD
    if (process.env.PASSWORD) {
      args.password = process.env.PASSWORD
@@ -527,7 +542,7 @@ and a configured-but-ignored password says so.
    }
  
    if (process.env.COMPOSERY_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
-@@ -632,6 +637,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -632,9 +638,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
    if (process.env.HASHED_PASSWORD) {
      args["hashed-password"] = process.env.HASHED_PASSWORD
@@ -535,7 +550,19 @@ and a configured-but-ignored password says so.
      usingEnvPassword = false
    }
  
-@@ -699,18 +705,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
++  // A hash in any other format is not a weaker password, it is no password at
++  // all - nothing can match it and the box locks everyone out while looking
++  // configured. Refuse to start instead of failing every sign-in silently.
++  if (args["hashed-password"] && !args["hashed-password"].startsWith("$argon2")) {
++    throw new Error(
++      "hashed-password must be an argon2 hash starting with $argon2; generate one with `echo -n yourpassword | npx argon2-cli -e`.",
++    )
++  }
++
+   if (process.env.COMPOSERY_COOKIE_SUFFIX) {
+     args["cookie-suffix"] = process.env.COMPOSERY_COOKIE_SUFFIX
+   }
+@@ -699,18 +715,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
  /**
   * Helper function to return the default config file.
   *
@@ -555,7 +582,7 @@ and a configured-but-ignored password says so.
  cert: false
  `
  }
-@@ -735,8 +738,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
+@@ -735,8 +748,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
    await fs.mkdir(path.dirname(configPath), { recursive: true })
  
    try {
@@ -565,25 +592,13 @@ and a configured-but-ignored password says so.
        flag: "wx", // wx means to fail if the path exists.
      })
      logger.info(`Wrote default config file to ${configPath}`)
-@@ -925,5 +927,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
+@@ -925,5 +937,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
      version: !!args.version,
      port: args.port?.toString(),
      log: args.log ? [args.log] : undefined,
-+    "change-password": args.auth === AuthType.Password && !args.usingEnvPassword && !args.usingEnvHashedPassword,
++    "change-password": args.auth === AuthType.Password && !isEnvPasswordManaged(args),
    }
  }
---- a/src/node/http.ts
-+++ b/src/node/http.ts
-@@ -122,6 +122,9 @@ export const authenticated = async (req: express.Request): Promise<boolean> => {
-     case AuthType.Password: {
-       // The password is stored in the cookie after being hashed.
-       const hashedPasswordFromArgs = req.args["hashed-password"]
-+      if (!req.args.password && !hashedPasswordFromArgs) {
-+        return false
-+      }
-       const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
-       const isCookieValidArgs: IsCookieValidArgs = {
-         passwordMethod,
 --- a/src/node/main.ts
 +++ b/src/node/main.ts
 @@ -133,12 +133,6 @@ export const runCodeServer = async (
@@ -664,40 +679,46 @@ and a configured-but-ignored password says so.
  
 --- a/src/node/routes/login.ts
 +++ b/src/node/routes/login.ts
-@@ -1,11 +1,12 @@
+@@ -1,65 +1,50 @@
  import { Router, Request } from "express"
 -import { promises as fs } from "fs"
- import { RateLimiter as Limiter } from "limiter"
+-import { RateLimiter as Limiter } from "limiter"
 -import * as path from "path"
 -import { rootPath } from "../constants"
 -import { authenticated, getCookieOptions, redirect, replaceTemplates } from "../http"
++import { cloudConfig } from "../cloud"
 +import { authenticated, getCookieOptions, redirect } from "../http"
  import i18n from "../i18n"
 -import { getPasswordMethod, handlePasswordValidation, sanitizeString, escapeHtml } from "../util"
-+import { getPasswordMethod, handlePasswordValidation, sanitizeString } from "../util"
-+import { renderAuthPage } from "./authPage"
-+import { cloudConfig } from "./cloudAuth"
-+import { hasPassword } from "./passwordConfig"
-+import { LoginRateLimit, loginSource } from "./loginRateLimit"
- 
- // RateLimiter wraps around the limiter library for logins.
- // It allows 2 logins every minute plus 12 logins every hour.
-@@ -26,40 +27,44 @@ export class RateLimiter {
- }
+-
+-// RateLimiter wraps around the limiter library for logins.
+-// It allows 2 logins every minute plus 12 logins every hour.
+-export class RateLimiter {
+-  private readonly minuteLimiter = new Limiter({ tokensPerInterval: 2, interval: "minute" })
+-  private readonly hourLimiter = new Limiter({ tokensPerInterval: 12, interval: "hour" })
+-
+-  public canTry(): boolean {
+-    // Note: we must check using >= 1 because technically when there are no tokens left
+-    // you get back a number like 0.00013333333333333334
+-    // which would cause fail if the logic were > 0
+-    return this.minuteLimiter.getTokensRemaining() >= 1 || this.hourLimiter.getTokensRemaining() >= 1
+-  }
+-
+-  public removeToken(): boolean {
+-    return this.minuteLimiter.tryRemoveTokens(1) || this.hourLimiter.tryRemoveTokens(1)
+-  }
+-}
++import { setSessionCookie } from "../session"
++import { sanitizeString } from "../util"
++import { renderAuthPage, returnPath } from "./authPage"
++import { loginRateLimit, loginSource } from "./loginRateLimit"
++import { hasPassword, isPasswordValid } from "./passwordConfig"
  
  const getRoot = async (req: Request, error?: Error): Promise<string> => {
 -  const content = await fs.readFile(path.join(rootPath, "src/browser/pages/login.html"), "utf8")
 -  const locale = req.args["locale"] || "en"
 -  i18n.changeLanguage(locale)
 -  const welcomeText = req.args["welcome-text"] || (i18n.t("WELCOME", { app: req.args["app-name"] }) as string)
--
--  // Determine password message using i18n
--  let passwordMsg = i18n.t("LOGIN_PASSWORD")
--  if (req.args.usingEnvPassword) {
--    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
--  } else if (req.args.usingEnvHashedPassword) {
--    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
--  }
 +  i18n.changeLanguage(req.args["locale"] || "en")
 +  const displayError = error || getErrorFromQuery(req)
 +  return renderAuthPage(req, {
@@ -708,17 +729,12 @@ and a configured-but-ignored password says so.
 +  })
 +}
  
--  return replaceTemplates(
--    req,
--    content
--      .replace(/{{I18N_LOGIN_TITLE}}/g, i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }))
--      .replace(/{{WELCOME_TEXT}}/g, welcomeText)
--      .replace(/{{PASSWORD_MSG}}/g, passwordMsg)
--      .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
--      .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
--      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
--      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
--  )
+-  // Determine password message using i18n
+-  let passwordMsg = i18n.t("LOGIN_PASSWORD")
+-  if (req.args.usingEnvPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
+-  } else if (req.args.usingEnvHashedPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
 +const getErrorFromQuery = (req: Request): Error | undefined => {
 +  switch (req.query.error) {
 +    case "configured":
@@ -733,17 +749,29 @@ and a configured-but-ignored password says so.
 +      return new Error(i18n.t("INCORRECT_PASSWORD") as string)
 +    default:
 +      return undefined
-+  }
+   }
+-
+-  return replaceTemplates(
+-    req,
+-    content
+-      .replace(/{{I18N_LOGIN_TITLE}}/g, i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }))
+-      .replace(/{{WELCOME_TEXT}}/g, welcomeText)
+-      .replace(/{{PASSWORD_MSG}}/g, passwordMsg)
+-      .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
+-      .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
+-      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
+-      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
+-  )
  }
  
 -const limiter = new RateLimiter()
-+const limiter = new LoginRateLimit()
- 
+-
  export const router = Router()
  
  router.use(async (req, res, next) => {
-   const to = (typeof req.query.to === "string" && req.query.to) || "/"
-+  if (!hasPassword(req)) {
+-  const to = (typeof req.query.to === "string" && req.query.to) || "/"
++  const to = returnPath(req.query.to)
++  if (!hasPassword(req.args)) {
 +    return redirect(req, res, cloudConfig ? "_composery/cloud/authorize" : "register", { to, error: undefined })
 +  }
    if (await authenticated(req)) {
@@ -752,10 +780,15 @@ and a configured-but-ignored password says so.
    }
    next()
  })
-@@ -72,50 +77,46 @@ router.post<{}, string, { password?: string; base?: string } | undefined, { to?:
-   const password = sanitizeString(req.body?.password)
-   const hashedPasswordFromArgs = req.args["hashed-password"]
+@@ -68,54 +53,39 @@ router.get("/", async (req, res) => {
+   res.send(await getRoot(req))
+ })
  
+-router.post<{}, string, { password?: string; base?: string } | undefined, { to?: string }>("/", async (req, res) => {
++router.post<{}, string, { password?: string } | undefined, { to?: string }>("/", async (req, res) => {
+   const password = sanitizeString(req.body?.password)
+-  const hashedPasswordFromArgs = req.args["hashed-password"]
+-
 -  try {
 -    // Check to see if they exceeded their login attempts
 -    if (!limiter.canTry()) {
@@ -765,7 +798,7 @@ and a configured-but-ignored password says so.
 -    if (!password) {
 -      throw new Error(i18n.t("MISS_PASSWORD") as string)
 -    }
--
+ 
 -    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
 -    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
 -      passwordMethod,
@@ -778,15 +811,29 @@ and a configured-but-ignored password says so.
 -      // The hash does not add any actual security but we do it for
 -      // obfuscation purposes (and as a side effect it handles escaping).
 -      res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
--
++  // Check to see if they exceeded their login attempts. The budget is shared
++  // with the current-password step of /change-password: both answer the same
++  // question, so neither can be a way around the other's limit.
++  const source = loginSource(req)
++  if (!loginRateLimit.canTry(source)) {
++    return redirect(req, res, "login", { error: "rate-limit" })
++  }
+ 
 -      const to = (typeof req.query.to === "string" && req.query.to) || "/"
 -      return redirect(req, res, to, { to: undefined })
 -    }
--
++  if (!password) {
++    return redirect(req, res, "login", { error: "missing" })
++  }
+ 
 -    // Note: successful logins should not count against the RateLimiter
 -    // which is why this logic must come after the successful login logic
 -    limiter.removeToken()
--
++  if (await isPasswordValid(req.args, password)) {
++    setSessionCookie(req, res, getCookieOptions(req))
++    return redirect(req, res, returnPath(req.query.to), { to: undefined, error: undefined })
++  }
+ 
 -    console.error(
 -      "Failed login attempt",
 -      JSON.stringify({
@@ -796,41 +843,9 @@ and a configured-but-ignored password says so.
 -        timestamp: Math.floor(new Date().getTime() / 1000),
 -      }),
 -    )
--
--    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
--  } catch (error: any) {
--    const renderedHtml = await getRoot(req, error)
--    res.send(renderedHtml)
-+  // Check to see if they exceeded their login attempts
-+  const source = loginSource(req)
-+  if (!limiter.canTry(source)) {
-+    return redirect(req, res, "login", { error: "rate-limit" })
-+  }
-+
-+  if (!password) {
-+    return redirect(req, res, "login", { error: "missing" })
-+  }
-+
-+  const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
-+  const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
-+    passwordMethod,
-+    hashedPasswordFromArgs,
-+    passwordFromRequestBody: password,
-+    passwordFromArgs: req.args.password,
-+  })
-+
-+  if (isPasswordValid) {
-+    // The hash does not add any actual security but we do it for
-+    // obfuscation purposes (and as a side effect it handles escaping).
-+    res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
-+
-+    const to = (typeof req.query.to === "string" && req.query.to) || "/"
-+    return redirect(req, res, to, { to: undefined, error: undefined })
-   }
-+
-+  // Note: successful logins should not count against the RateLimiter
++  // Note: successful logins should not count against the rate limit
 +  // which is why this logic must come after the successful login logic
-+  limiter.recordFailure(source)
++  loginRateLimit.recordFailure(source)
 +
 +  console.error(
 +    "Failed login attempt",
@@ -841,20 +856,31 @@ and a configured-but-ignored password says so.
 +      timestamp: Math.floor(new Date().getTime() / 1000),
 +    }),
 +  )
-+
+ 
+-    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
+-  } catch (error: any) {
+-    const renderedHtml = await getRoot(req, error)
+-    res.send(renderedHtml)
+-  }
 +  return redirect(req, res, "login", { error: "incorrect" })
  })
 --- a/src/node/util.ts
 +++ b/src/node/util.ts
-@@ -7,7 +7,6 @@ import * as net from "net"
+@@ -1,13 +1,10 @@
+ import * as argon2 from "argon2"
+ import * as cp from "child_process"
+-import * as crypto from "crypto"
+ import envPaths from "env-paths"
+ import { promises as fs } from "fs"
+ import * as net from "net"
  import * as os from "os"
  import * as path from "path"
- import safeCompare from "safe-compare"
+-import safeCompare from "safe-compare"
 -import * as util from "util"
  import xdgBasedir from "xdg-basedir"
  
  export interface Paths {
-@@ -131,12 +130,6 @@ DNS.1 = ${hostname}
+@@ -131,12 +128,6 @@ DNS.1 = ${hostname}
    }
  }
  
@@ -867,3 +893,146 @@ and a configured-but-ignored password says so.
  /**
   * Used to hash the password.
   */
+@@ -154,142 +145,6 @@ export const isHashMatch = async (password: string, hash: string) => {
+   return await argon2.verify(hash, password)
+ }
+ 
+-/**
+- * Used to hash the password using the sha256
+- * algorithm. We only use this to for checking
+- * the hashed-password set in the config.
+- *
+- * Kept for legacy reasons.
+- */
+-export const hashLegacy = (str: string): string => {
+-  return crypto.createHash("sha256").update(str).digest("hex")
+-}
+-
+-/**
+- * Used to check if the password matches the hash using
+- * the hashLegacy function
+- */
+-export const isHashLegacyMatch = (password: string, hashPassword: string) => {
+-  const hashedWithLegacy = hashLegacy(password)
+-  return safeCompare(hashedWithLegacy, hashPassword)
+-}
+-
+-export type PasswordMethod = "SHA256" | "ARGON2" | "PLAIN_TEXT"
+-
+-/**
+- * Used to determine the password method.
+- *
+- * There are three options for the return value:
+- * 1. "SHA256" -> the legacy hashing algorithm
+- * 2. "ARGON2" -> the newest hashing algorithm
+- * 3. "PLAIN_TEXT" -> regular ol' password with no hashing
+- *
+- * @returns {PasswordMethod} "SHA256" | "ARGON2" | "PLAIN_TEXT"
+- */
+-export function getPasswordMethod(hashedPassword: string | undefined): PasswordMethod {
+-  if (!hashedPassword) {
+-    return "PLAIN_TEXT"
+-  }
+-
+-  // This is the new hashing algorithm
+-  if (hashedPassword.includes("$argon")) {
+-    return "ARGON2"
+-  }
+-
+-  // This is the legacy hashing algorithm
+-  return "SHA256"
+-}
+-
+-type PasswordValidation = {
+-  isPasswordValid: boolean
+-  hashedPassword: string
+-}
+-
+-type HandlePasswordValidationArgs = {
+-  /** The PasswordMethod */
+-  passwordMethod: PasswordMethod
+-  /** The password provided by the user */
+-  passwordFromRequestBody: string
+-  /** The password set in PASSWORD or config */
+-  passwordFromArgs: string | undefined
+-  /** The hashed-password set in HASHED_PASSWORD or config */
+-  hashedPasswordFromArgs: string | undefined
+-}
+-
+-/**
+- * Checks if a password is valid and also returns the hash
+- * using the PasswordMethod
+- */
+-export async function handlePasswordValidation({
+-  passwordMethod,
+-  passwordFromArgs,
+-  passwordFromRequestBody,
+-  hashedPasswordFromArgs,
+-}: HandlePasswordValidationArgs): Promise<PasswordValidation> {
+-  const passwordValidation = <PasswordValidation>{
+-    isPasswordValid: false,
+-    hashedPassword: "",
+-  }
+-
+-  switch (passwordMethod) {
+-    case "PLAIN_TEXT": {
+-      const isValid = passwordFromArgs ? safeCompare(passwordFromRequestBody, passwordFromArgs) : false
+-      passwordValidation.isPasswordValid = isValid
+-
+-      const hashedPassword = await hash(passwordFromRequestBody)
+-      passwordValidation.hashedPassword = hashedPassword
+-      break
+-    }
+-    case "SHA256": {
+-      const isValid = isHashLegacyMatch(passwordFromRequestBody, hashedPasswordFromArgs || "")
+-      passwordValidation.isPasswordValid = isValid
+-
+-      passwordValidation.hashedPassword = hashedPasswordFromArgs || (await hashLegacy(passwordFromRequestBody))
+-      break
+-    }
+-    case "ARGON2": {
+-      const isValid = await isHashMatch(passwordFromRequestBody, hashedPasswordFromArgs || "")
+-      passwordValidation.isPasswordValid = isValid
+-
+-      passwordValidation.hashedPassword = hashedPasswordFromArgs || ""
+-      break
+-    }
+-    default:
+-      break
+-  }
+-
+-  return passwordValidation
+-}
+-
+-export type IsCookieValidArgs = {
+-  passwordMethod: PasswordMethod
+-  cookieKey: string
+-  hashedPasswordFromArgs: string | undefined
+-  passwordFromArgs: string | undefined
+-}
+-
+-/** Checks if a req.cookies.key is valid using the PasswordMethod */
+-export async function isCookieValid({
+-  passwordFromArgs = "",
+-  cookieKey,
+-  hashedPasswordFromArgs = "",
+-  passwordMethod,
+-}: IsCookieValidArgs): Promise<boolean> {
+-  let isValid = false
+-  switch (passwordMethod) {
+-    case "PLAIN_TEXT":
+-      isValid = await isHashMatch(passwordFromArgs, cookieKey)
+-      break
+-    case "ARGON2":
+-    case "SHA256":
+-      isValid = safeCompare(cookieKey, hashedPasswordFromArgs)
+-      break
+-    default:
+-      break
+-  }
+-  return isValid
+-}
+-
+ /** Ensures that the input is sanitized by checking
+  * - it's a string
+  * - greater than 0 characters

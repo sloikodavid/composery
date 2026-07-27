@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 const BOX_ID_PATTERN = /^[a-z0-9]+$/;
 const CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
+const AUTHORIZATION_TYPES = new Set(["password", "session"]);
 
 function error(message: string, status = 400) {
 	return new NextResponse(message, {
@@ -27,10 +28,12 @@ export async function GET(request: Request) {
 	const codeChallenge = url.searchParams.get("code_challenge") ?? "";
 	const state = url.searchParams.get("state") ?? "";
 	const redirectUri = url.searchParams.get("redirect_uri") ?? "";
+	const type = url.searchParams.get("type") ?? "password";
 	if (
 		!BOX_ID_PATTERN.test(boxId) ||
 		!CHALLENGE_PATTERN.test(codeChallenge) ||
 		!STATE_PATTERN.test(state) ||
+		!AUTHORIZATION_TYPES.has(type) ||
 		redirectUri.length > 512
 	) {
 		return error("Invalid box authorization request.");
@@ -54,7 +57,8 @@ export async function GET(request: Request) {
 			{
 				boxId: boxId as Id<"boxes">,
 				codeChallenge,
-				redirectUri
+				redirectUri,
+				type: type as "password" | "session"
 			},
 			{ token }
 		);

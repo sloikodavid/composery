@@ -15,6 +15,7 @@ import {
 	Dimensions,
 	Keyboard,
 	type KeyboardEvent,
+	Modal,
 	Platform,
 	Text,
 	useColorScheme,
@@ -37,7 +38,11 @@ import {
 	type ProbeResult
 } from "@/lib/probe";
 import { useTheme, type Theme } from "@/lib/use-theme";
-import { classifyWebViewNavigation } from "@/lib/webview-navigation";
+import {
+	classifyWebViewNavigation,
+	isCloudAuthorizationRequest,
+	isCloudAuthorizationSuccess
+} from "@/lib/webview-navigation";
 import { openExternalUrl } from "@/lib/open-url";
 import {
 	buildBeforeLoad,
@@ -96,6 +101,9 @@ export function InstanceView({
 	const [webLoading, setWebLoading] = useState(true);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [reloadKey, setReloadKey] = useState(0);
+	const [cloudAuthorizationUrl, setCloudAuthorizationUrl] = useState<
+		string | null
+	>(null);
 	// The page's latest report of whether it has a layer open (menu, dialog,
 	// full-screen part). A hint for the back press below, not the authority - the
 	// page decides, and both stale directions correct themselves.
@@ -536,7 +544,16 @@ export function InstanceView({
 								});
 								if (target === "inside") return true;
 								if (target === "external") {
-									void openExternalUrl(request.url);
+									if (
+										isCloudAuthorizationRequest({
+											instanceUrl: instance.url,
+											requestUrl: request.url
+										})
+									) {
+										setCloudAuthorizationUrl(request.url);
+									} else {
+										void openExternalUrl(request.url);
+									}
 								}
 								return false;
 							}}
@@ -612,6 +629,86 @@ export function InstanceView({
 			) : (
 				<ChromeLoading theme={theme} onBack={onLeave} />
 			)}
+			<Modal
+				animationType="slide"
+				onRequestClose={() => setCloudAuthorizationUrl(null)}
+				presentationStyle="fullScreen"
+				visible={cloudAuthorizationUrl !== null}
+			>
+				<View
+					style={{
+						flex: 1,
+						backgroundColor: theme.background,
+						paddingTop: insets.top,
+						paddingBottom: insets.bottom
+					}}
+				>
+					<View
+						style={{
+							alignItems: "center",
+							borderBottomColor: theme.border,
+							borderBottomWidth: 1,
+							flexDirection: "row",
+							gap: 12,
+							paddingHorizontal: 16,
+							paddingVertical: 10
+						}}
+					>
+						<BackButton
+							onPress={() => setCloudAuthorizationUrl(null)}
+							testID="cloud-authorization-back"
+						/>
+						<Text
+							style={{
+								...heading("semibold"),
+								color: theme.foreground,
+								fontSize: 17
+							}}
+						>
+							Continue with Composery
+						</Text>
+					</View>
+					{cloudAuthorizationUrl && instance ? (
+						<WebView
+							source={{ uri: cloudAuthorizationUrl }}
+							// This is deliberately a separate browser surface: it shares
+							// cookies so the PKCE callback can finish on the box, but gets
+							// none of the IDE WebView's injected scripts or native bridge.
+							sharedCookiesEnabled
+							thirdPartyCookiesEnabled
+							setSupportMultipleWindows={false}
+							javaScriptEnabled
+							domStorageEnabled
+							onLoadEnd={(event) => {
+								if (
+									isCloudAuthorizationSuccess({
+										instanceUrl: instance.url,
+										requestUrl: event.nativeEvent.url
+									})
+								) {
+									setCloudAuthorizationUrl(null);
+									retry();
+								}
+							}}
+							onShouldStartLoadWithRequest={(request) => {
+								try {
+									const protocol = new URL(request.url).protocol;
+									if (protocol === "http:" || protocol === "https:") {
+										return true;
+									}
+									if (protocol === "mailto:" || protocol === "tel:") {
+										void openExternalUrl(request.url);
+									}
+								} catch {
+									// A malformed URL cannot become the auth document.
+								}
+								return false;
+							}}
+							testID="cloud-authorization-webview"
+						/>
+					) : null}
+				</View>
+			</Modal>
 		</View>
 	);
 }

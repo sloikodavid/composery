@@ -572,7 +572,7 @@ we ship.
  		const gettingStartedPage = $('.gettingStarted', {}, this.categoriesPageScrollbar.getDomNode(), this.stepsSlide);
  		this.container.appendChild(gettingStartedPage);
  
-@@ -930,66 +941,76 @@ export class GettingStartedPage extends EditorPane {
+@@ -930,66 +941,112 @@ export class GettingStartedPage extends EditorPane {
  
  		let gettingStartedCoder: HTMLElement = $('.header', {});
  		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
@@ -585,6 +585,41 @@ we ship.
 +				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
 +				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
 +			];
++			const moreAgents = $('button.composery-agent', {
++				title: 'Set up more agents',
++				style: [
++					'display: flex',
++					'align-items: center',
++					'gap: 12px',
++					'padding: 12px 14px',
++					'border-radius: 8px',
++					'border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25))',
++					'cursor: pointer',
++					'color: inherit',
++					'background: transparent',
++					'font: inherit',
++					'text-align: left',
++				].join(';'),
++			},
++				$('span', {
++					class: ThemeIcon.asClassName(Codicon.ellipsis),
++					style: [
++						'width: 28px',
++						'font-size: 24px',
++						'flex-shrink: 0',
++						'color: var(--vscode-textLink-foreground)',
++					].join(';'),
++				}),
++				$('span', {
++					style: 'display: flex;flex-direction: column;min-width: 0;',
++				},
++					$('span', { style: 'font-weight: 600;' }, 'More agents…'),
++					$('span', { style: 'font-size: 12px;opacity: 0.7;' }, 'Browse 9 more choices'),
++				),
++			);
++			moreAgents.addEventListener('click', () => {
++				this.commandService.executeCommand('composery.installAgent', 'additional');
++			});
 +			gettingStartedCoder = $('.gettingStartedCategory.composery-agent-category', {},
  				$('h2', {
 -					style: 'margin-bottom: 12px',
@@ -702,11 +737,12 @@ we ship.
 +						});
 +						return card;
  					}),
++					moreAgents,
 -					),
  				),
  			);
  		}
-@@ -1703,6 +1724,7 @@ export class GettingStartedPage extends EditorPane {
+@@ -1703,6 +1760,7 @@ export class GettingStartedPage extends EditorPane {
  		);
  		this.detailsScrollbar.value = new DomScrollableElement(stepsContainer, { className: 'steps-container' });
  		const stepListComponent = this.detailsScrollbar.value.getDomNode();

@@ -51,7 +51,7 @@ export type RuntimeConfigField =
 			key: string;
 			label: string;
 			description: string;
-			values: readonly string[];
+			options: readonly { label: string; value: string }[];
 	  }
 	| {
 			kind: "string";
@@ -124,7 +124,27 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 		key: "COMPOSERY_LOG_LEVEL",
 		label: "Log level",
 		description: "How much the editor writes to its log.",
-		values: ["trace", "debug", "info", "warn", "error"]
+		options: [
+			{ label: "Trace", value: "trace" },
+			{ label: "Debug", value: "debug" },
+			{ label: "Info", value: "info" },
+			{ label: "Warning", value: "warn" },
+			{ label: "Error", value: "error" }
+		]
+	},
+	{
+		kind: "enum",
+		key: "COMPOSERY_SESSION_LIFETIME",
+		label: "Sign-in frequency",
+		description:
+			"How long a sign-in remains valid. The default is 8 hours. Every browser session asks again after the browser or mobile app closes, with a 30-day safety cap while it remains open.",
+		options: [
+			{ label: "Every browser session", value: "browser" },
+			{ label: "Every 8 hours", value: "8h" },
+			{ label: "Every day", value: "1d" },
+			{ label: "Every 7 days", value: "7d" },
+			{ label: "Every 30 days", value: "30d" }
+		]
 	},
 	{
 		kind: "string",
@@ -344,9 +364,10 @@ function normalizeValue(field: RuntimeConfigField, raw: string): string {
 	}
 
 	if (field.kind === "enum") {
-		if (!field.values.includes(value)) {
+		const values = field.options.map((option) => option.value);
+		if (!values.includes(value)) {
 			throw new RuntimeConfigError(
-				`${field.key} must be one of ${field.values.join(", ")}.`
+				`${field.key} must be one of ${values.join(", ")}.`
 			);
 		}
 		return value;

@@ -52,14 +52,13 @@ hand-copying brand values:
   `packages/ide/patches/product.diff` and
   `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
   and styled text fill).
-- **Auth backend (register / change-password / login flow)**.
-  `packages/ide/overlay/src/node/routes/{register,changePassword,passwordConfig,login}.ts`
-  and `packages/ide/overlay/src/node/{cli,http,main}.ts` - whole owned files, not
-  patches. Readable and editable directly.
-- **Upstream server customizations** (`toLocalBrowserAddress`,
-  no-generated-password, `change-password` CLI flag, auth routes).
-  `packages/ide/overlay/src/node/{cli,http,main,util,wrapper,routes/...}.ts` -
-  whole owned files.
+- **Auth backend (register / change-password / cloud flow)**.
+  New modules and routes live in
+  `packages/ide/overlay/src/node/{session.ts,routes/...}`. Changes to upstream
+  authentication and login files live in the concern-specific
+  `packages/ide/patches/{auth,sessions}.diff` patches. `sessions.diff` is the
+  boundary that validates the signed, expiring Composery session format every
+  sign-in path issues.
 - **Product rebrand**.
   `packages/ide/scripts/rebrand.mjs` runs after quilt and overlay, before the upstream
   build. It rewrites the assembled tree from upstream product names to Composery
@@ -92,22 +91,20 @@ release.
 
 There are two kinds of customization, kept deliberately separate:
 
-- **Patches** (`packages/ide/patches/`) are VS Code-side only (`lib/vscode/*`):
-  brand svgs, welcome, touch/narrow, theme cache, clipboard, etc. These must be
-  patches because the VS Code build minifies/relocates the source, so a whole
-  owned file would not survive the build. Upstream's own patches apply
-  **unmodified** - we do not
-  fork them.
-- **Overlay** (`packages/ide/overlay/`) is whole owned files, path-mirrored onto
-  the tree after quilt push. This carries our owned upstream-server `src/node/*`
-  customizations (cli, http, main, util, wrapper, routes, persistence, the auth
-  backend) and all browser assets/pages/extensions. Whole files, not diffs -
-  readable and diffable directly.
+- **Patches** (`packages/ide/patches/`) modify files that exist upstream, in
+  either code-server's `src/` or VS Code's `lib/vscode/*`. Each patch owns one
+  concern and applies at fuzz 0, so an upstream move fails loudly instead of
+  leaving a customization inert.
+- **Overlay** (`packages/ide/overlay/`) contains only files that do not exist
+  upstream, path-mirrored onto the tree after quilt push. It carries new
+  server modules and routes, browser assets/pages, and extensions. Never place
+  a modified copy of an upstream file here.
 - **Rebrand** (`packages/ide/scripts/rebrand.mjs`) is a generated transformation over the
   assembled tree. It owns systematic product names and product-specific env vars:
   `COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`,
   `COMPOSERY_EXTENSIONS_GALLERY`, `COMPOSERY_LOG_LEVEL`,
-  `COMPOSERY_GITHUB_TOKEN`, and the narrower `COMPOSERY_*` toggles.
+  `COMPOSERY_GITHUB_TOKEN`, `COMPOSERY_SESSION_LIFETIME`, and the narrower
+  `COMPOSERY_*` toggles.
 
 This is intentionally source-build territory. An upstream bump is never just
 the submodule pointer: the patch stack is applied against that source at build
@@ -122,10 +119,10 @@ versions. On each bump:
   Patches can fail loudly or silently no-op if upstream moved the code they
   target. The authoring recipe is in `packages/ide/scripts/build.sh`; do not duplicate
   it here.
-- Re-merge the overlay `src/node` files.
-  Diff each owned file against the new upstream version and re-apply our changes.
-  Easier than patches: you see the whole file, and `git diff` against the new
-  upstream shows exactly what moved.
+- Re-check overlay collisions.
+  Every overlay path must remain absent upstream. If upstream adds a file at one
+  of those paths, move our concern into a patch or choose a genuinely owned new
+  module rather than masking the upstream file.
 - Re-run the rebrand check.
   `pnpm check:ide` assembles the server tree, runs `rebrand.mjs`, and typechecks
   it. If upstream introduces new live product names, add an explicit replacement

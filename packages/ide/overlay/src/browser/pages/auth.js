@@ -1,7 +1,4 @@
 (() => {
-	const href = document.getElementById("href")
-	if (href) href.value = location.href
-
 	// Staged single-input flow: every auth page is a list of [data-stage]
 	// sections showing one input at a time. The crumb row labels the input and
 	// navigates back; the status beside it carries live guidance. On the password

@@ -64,6 +64,18 @@ describe("normalizeRuntimeConfig", () => {
 		).toThrow(/must be one of/);
 	});
 
+	it("accepts only server-enforced IDE session lifetimes", () => {
+		expect(
+			normalizeRuntimeConfig({ COMPOSERY_SESSION_LIFETIME: "browser" })
+		).toEqual({ COMPOSERY_SESSION_LIFETIME: "browser" });
+		expect(
+			normalizeRuntimeConfig({ COMPOSERY_SESSION_LIFETIME: "30d" })
+		).toEqual({ COMPOSERY_SESSION_LIFETIME: "30d" });
+		expect(() =>
+			normalizeRuntimeConfig({ COMPOSERY_SESSION_LIFETIME: "forever" })
+		).toThrow(/must be one of/);
+	});
+
 	// The env file is single-quoted shell. A value containing a quote or newline
 	// would close its own line and let the remainder become a separate assignment
 	// - a way to set a variable that is not on the allowlist at all.
@@ -105,6 +117,12 @@ describe("normalizeRuntimeConfig", () => {
 		for (const field of RUNTIME_CONFIG_FIELDS) {
 			expect(field.label.length).toBeGreaterThan(0);
 			expect(field.description.length).toBeGreaterThan(0);
+			if (field.kind === "enum") {
+				for (const option of field.options) {
+					expect(option.label.length).toBeGreaterThan(0);
+					expect(option.value.length).toBeGreaterThan(0);
+				}
+			}
 		}
 	});
 });

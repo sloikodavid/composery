@@ -466,6 +466,42 @@ button.crumb:hover {
 	margin-top: 8px;
 }
 
+.cloud-sign-in {
+	align-items: center;
+	border: 1px solid
+		var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: 10px;
+	box-sizing: border-box;
+	color: var(--vscode-foreground);
+	display: inline-flex;
+	font-size: 15px;
+	font-weight: 500;
+	height: 48px;
+	justify-content: center;
+	margin-top: 8px;
+	text-decoration: none;
+	transition:
+		background-color 200ms ease-out,
+		border-color 200ms ease-out,
+		box-shadow 200ms ease-out,
+		transform 80ms ease;
+	width: 100%;
+}
+
+.cloud-sign-in:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.cloud-sign-in:active {
+	transform: translateY(1px);
+}
+
+.cloud-sign-in:focus-visible {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+	outline: none;
+}
+
 .username {
 	height: 1px;
 	opacity: 0;
@@ -504,7 +540,8 @@ button.crumb:hover {
 	.auth-logo-link,
 	.crumb,
 	.auth-input,
-	.submit-button {
+	.submit-button,
+	.cloud-sign-in {
 		transition: none;
 	}
 }

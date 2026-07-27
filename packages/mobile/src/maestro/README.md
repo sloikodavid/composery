@@ -13,6 +13,8 @@ checks cover the WebView navigation boundary.
 - `instance-item`: instance row
 - `instance-menu-button`: instance overflow action
 - `instance-webview`: verified instance WebView
+- `cloud-authorization-webview`: isolated Composery account sign-in WebView
+- `cloud-authorization-back`: cancel cloud authorization
 - `instance-back-missing`: missing-instance back action
 - `scan-button`: QR scanner action
 - `scan-back`: scanner back action

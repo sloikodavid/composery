@@ -660,14 +660,26 @@ describe("cloud password setup", () => {
 		const cloudAuth = readRepoFile(
 			"packages/ide/overlay/src/node/routes/cloudAuth.ts"
 		);
+		const sessions = postImageLines(
+			readRepoFile(`${PATCHES_DIR}/sessions.diff`)
+		);
 
 		expect(cloudAuth).toContain('createHash("sha256")');
 		expect(cloudAuth).toContain('searchParams.set("code_challenge"');
 		expect(cloudAuth).toContain('searchParams.set("state"');
-		expect(cloudAuth).toContain("httpOnly: true");
-		expect(cloudAuth).toContain("secure: true");
-		expect(cloudAuth).toContain('sameSite: "lax"');
 		expect(cloudAuth).toContain("/api/cloud/auth/exchange");
+		// Every cookie this route sets or clears takes its attributes from the
+		// one helper, so none of them can drift out of step with the session
+		// cookie the rest of the auth flow issues.
+		expect(cloudAuth).not.toMatch(/httpOnly|sameSite|secure:/);
+		for (const attribute of [
+			"httpOnly: true",
+			'path: "/",',
+			'sameSite: "lax"',
+			"secure:"
+		]) {
+			expect(sessions, attribute).toContain(attribute);
+		}
 	});
 
 	test("renders authorization failures through the shared auth error slot", () => {
@@ -763,10 +775,24 @@ describe("touch link activation", () => {
 		);
 		// Any click that reaches a link on a touch screen is deliberate.
 		expect(source).toContain("if (isTouch(getWindow(this._xterm.element))) {");
+		// The tapped cell comes from the one place that answers that question, which
+		// terminal touch selection asks too - two copies would disagree by a cell.
+		expect(source).toContain(
+			"const cell = getBufferCellAt(this._xterm, clientX, clientY);"
+		);
+		expect(
+			readRepoFile(
+				`${OVERLAY_VSCODE_SRC}/vs/workbench/contrib/terminal/browser/xtermCell.ts`
+			)
+		).toContain("'.xterm-screen'");
 		// Tap listening waits for the terminal DOM and only ever engages on touch.
 		expect(source).toContain(
-			"const screen = xterm.raw.element?.querySelector('.xterm-screen');"
+			"this.add(dom.addDisposableListener(element, TouchEventType.Tap, (e: GestureEvent) => {"
 		);
+		// The link manager is read per tap, never captured while wiring: xtermOpen can run
+		// before xtermReady creates it, and capturing it there left every tap inert
+		// (device-verified - taps did nothing while the link quick pick still worked).
+		expect(source).toContain("this._linkManager?.openLinkAt(");
 		// Long-press fallback that reaches every detected link, not just tappable ones.
 		expect(source).toContain("MenuId.TerminalInstanceContext");
 	});
@@ -1274,17 +1300,74 @@ describe("narrow overlay", () => {
 		expect(touchGatePatch).not.toContain("visualViewport");
 	});
 
-	// The touch-editor patch creates the selection drag handles (caret + both range
+	// The shared handles module creates the selection drag grips (caret + both range
 	// ends) that only the touch overlay styles; the pair must name the same classes.
 	test("touch selection handles are styled by the touch overlay", () => {
-		const touchEditorPatch = readRepoFile(`${PATCHES_DIR}/touch.diff`);
+		const handles = readRepoFile(
+			`${OVERLAY_VSCODE_SRC}/vs/base/browser/touchSelectionHandles.ts`
+		);
 		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
 
-		expect(touchEditorPatch).toContain("composery-touch-caret-handle");
+		expect(handles).toContain("composery-touch-caret-handle");
 		expect(touchCss).toContain(".composery-touch-caret-handle");
-		expect(touchEditorPatch).toContain("composery-touch-range-handle-");
+		expect(handles).toContain("composery-touch-range-handle-${handle.kind}");
 		expect(touchCss).toContain(".composery-touch-range-handle-start");
 		expect(touchCss).toContain(".composery-touch-range-handle-end");
+		expect(handles).toContain(
+			"const FLIPPED_CLASS = 'composery-touch-range-handle-flipped';"
+		);
+		expect(touchCss).toContain(".composery-touch-range-handle-flipped");
+		// The grips hang off the workbench, which is also where the theme scopes the
+		// variables they are painted with.
+		expect(handles).toContain("closest<HTMLElement>('.monaco-workbench')");
+	});
+
+	// Device-verified: a context menu that takes DOM focus closes the soft keyboard, the
+	// grid under it resizes, and xterm answers a row-count change by dropping its selection
+	// - so the menu a long-press selection asked for destroyed that selection as it opened.
+	// A tapped menu has no use for focus; Escape still cancels through onDidCancel.
+	test("a touch context menu opens without taking focus", () => {
+		const source = addedLines(readRepoFile(`${PATCHES_DIR}/touch.diff`));
+
+		expect(source).toContain("if (!isTouch(mainWindow)) {");
+		expect(source).toContain("menu?.focus(!!delegate.autoSelectFirstItem);");
+		// The keyboard-driven path is untouched: a mouse or a key still focuses the menu.
+		expect(readRepoFile(`${PATCHES_DIR}/touch.diff`)).not.toContain(
+			"-\t\t\t\tmenu?.focus(!!delegate.autoSelectFirstItem);\n-\t\t\t},"
+		);
+	});
+
+	// Device-verified: xterm parks an invisible one-cell <textarea> in the grid for
+	// keystrokes and IME composition, and moves it under the cell that was touched last.
+	// While that shim was hit-testable, a hold landing on it targeted an editable element,
+	// which the gesture layer leaves to the OS text toolbar - so the terminal's own hold
+	// did nothing on exactly the cell the finger had just tapped. The editor parks the same
+	// kind of shim (a one-pixel strip on the cursor's line), so the rule covers both.
+	test("no hidden IME shim can swallow a hold", () => {
+		const touchCss = readRepoFile(`${ASSETS}/touch.css`);
+		const shims = [
+			".xterm-helper-textarea",
+			".inputarea",
+			".native-edit-context"
+		];
+		// The rule that takes them out of hit-testing, whatever order it lists them in.
+		const rule = [...flat(touchCss).matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(
+			(match) => /pointer-events:\s*none/.test(match[2] ?? "")
+		);
+
+		// Whole classes, not substrings: ".xterm-helper-textarea-off" contains
+		// ".xterm-helper-textarea" and would pass a rule that no longer matches the shim.
+		const selectors = (rule?.[1] ?? "").split(",").map((one) => one.trim());
+		for (const shim of shims) {
+			expect(
+				selectors.some((one) => one.endsWith(shim)),
+				`${shim} keeps its pointer events`
+			).toBe(true);
+		}
+		// Only where a finger is the pointer: a mouse keeps everything it can point at.
+		expect(touchCss.split("@media").slice(1).join("@media")).toContain(
+			shims[0]
+		);
 	});
 
 	// Touch selection is editor-driven: the browser's selection UI aims at the
@@ -1308,9 +1391,11 @@ describe("narrow overlay", () => {
 
 		// Range handles keep the far end anchored in model coordinates, so an edge
 		// auto-scroll can extend past the rendered lines.
-		expect(touchEditorPatch).toContain("_setSelectionFromClientPoint");
 		expect(touchEditorPatch).toContain(
-			"Selection.fromPositions(drag.anchor, modelPosition)"
+			"private _touchDragAnchor: Position | null;"
+		);
+		expect(touchEditorPatch).toContain(
+			"anchor ? Selection.fromPositions(anchor, position) : Selection.fromPositions(position)"
 		);
 
 		// The native-selection experiment is gone: no selectable lines, no browser
@@ -1569,6 +1654,12 @@ describe("narrow overlay", () => {
 		// terminalFocused tracks focus into any .xterm - the one surface whose keys earn
 		// the bar with no keyboard up.
 		expect(keybar).toContain("active.closest('.xterm')");
+		// A transient overlay taking focus is not the terminal losing it. Undocking there
+		// resizes the grid, and xterm drops its selection on a row-count change - which
+		// killed every long-press selection the moment its own menu opened over it.
+		expect(keybar).toContain(
+			"active.closest('.context-view, .quick-input-widget')"
+		);
 	});
 
 	// A short viewport drops to one row, and that row must be reachable: compact
@@ -2409,8 +2500,8 @@ describe("adaptive favicon", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Agent setup: the welcome card (patch) and the composery-agents extension are
-// two surfaces of one list; they must agree.
+// Agent setup: the welcome card owns only the small branded set; the extension
+// owns every setup command and the additional-agent picker.
 // ---------------------------------------------------------------------------
 
 describe("composery agent setup", () => {
@@ -2426,22 +2517,33 @@ describe("composery agent setup", () => {
 		(match) => match[1]
 	);
 
-	test("welcome card and extension cover the same agents in the same order", () => {
+	test("welcome cards are the extension's featured agents in the same order", () => {
 		expect(extensionIds.length).toBeGreaterThan(0);
-		expect(welcomeIds).toEqual(extensionIds);
+		expect(welcomeIds).toEqual(extensionIds.slice(0, welcomeIds.length));
+		expect(extensionIds.length).toBeGreaterThan(welcomeIds.length);
 	});
 
-	test("every agent ships a logo served from the welcome _static media path", () => {
+	test("every featured agent ships a logo served from the welcome _static media path", () => {
 		expect(welcome).toContain(
 			"url(./_static/src/browser/media/agents/${agent.id}.svg)"
 		);
-		for (const id of extensionIds) {
+		for (const id of welcomeIds) {
 			const logo = resolve(
 				repoRoot,
 				`packages/ide/overlay/src/browser/media/agents/${id}.svg`
 			);
 			expect(existsSync(logo)).toBe(true);
 		}
+	});
+
+	test("the additional agents share one logo-free welcome entry", () => {
+		expect(welcome).toContain("'More agents…'");
+		expect(welcome).toContain(
+			"this.commandService.executeCommand('composery.installAgent', 'additional')"
+		);
+		expect(extension.match(/\badditional:\s*true/g)).toHaveLength(
+			extensionIds.length - welcomeIds.length
+		);
 	});
 
 	test("welcome card dispatches installs through the composery-agents command", () => {

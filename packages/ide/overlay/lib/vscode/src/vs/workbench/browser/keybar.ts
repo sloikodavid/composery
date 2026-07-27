@@ -221,6 +221,14 @@ export class Keybar extends Disposable {
 			return;
 		}
 		const active = this.bar.ownerDocument.activeElement;
+		// A menu or a quick input taking focus is not the terminal losing it - the surface
+		// whose keys the bar carries is still underneath, waiting. Undocking here would
+		// resize the grid, and xterm drops its selection on any row-count change: a
+		// long-press selection died the moment the menu it was made for opened over it,
+		// so Copy found nothing to copy (device-verified).
+		if (active instanceof Element && active.closest('.context-view, .quick-input-widget')) {
+			return;
+		}
 		const focused = active instanceof Element && !!active.closest('.xterm');
 		if (focused === this.terminalFocused) {
 			return;

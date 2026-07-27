@@ -8,9 +8,8 @@ import { RateLimiter } from "limiter";
 // not depend on the user's browser reaching a third-party API cross-origin
 // (blocked or dropped behind strict networks and insecure-context boxes). The
 // box has reliable egress; one that genuinely cannot reach the API answers 502
-// and the client proceeds unchecked. Mounted unconditionally at
-// /_composery/pwned so both the register and change-password pages reach it
-// whatever the auth type.
+// and the client proceeds unchecked. Mounted at /_composery/pwned alongside the
+// pages that use it, so it exists exactly when they do.
 const RANGE_PREFIX = /^[A-F0-9]{5}$/;
 const rangeLimit = new RateLimiter({
 	tokensPerInterval: 120,

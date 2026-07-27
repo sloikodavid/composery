@@ -17,5 +17,6 @@ terminal.diff
 api.diff
 terminal-clients.diff
 updates.diff
+sessions.diff
 web-client.diff
 path-prefix.diff

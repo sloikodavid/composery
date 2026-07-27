@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { classifyWebViewNavigation } from "./webview-navigation";
+import {
+	classifyWebViewNavigation,
+	isCloudAuthorizationRequest,
+	isCloudAuthorizationSuccess
+} from "./webview-navigation";
 
 const instanceUrl = "https://box.example.com/ide/?folder=/workspace";
 
@@ -54,5 +58,63 @@ describe("classifyWebViewNavigation", () => {
 				requestUrl: "https://box.example.com/editor"
 			})
 		).toBe("inside");
+	});
+});
+
+describe("cloud authorization navigation", () => {
+	const authorization =
+		"https://composery.example/boxes/authorize?box_id=box&redirect_uri=" +
+		encodeURIComponent("https://box.example.com/ide/_composery/cloud/callback");
+
+	test("recognizes only a cloud request that returns to this instance", () => {
+		expect(
+			isCloudAuthorizationRequest({
+				instanceUrl,
+				requestUrl: authorization
+			})
+		).toBe(true);
+		expect(
+			isCloudAuthorizationRequest({
+				instanceUrl,
+				requestUrl: authorization.replace(
+					"box.example.com",
+					"other.example.com"
+				)
+			})
+		).toBe(false);
+		expect(
+			isCloudAuthorizationRequest({
+				instanceUrl,
+				requestUrl: authorization.replace("/boxes/authorize", "/phishing")
+			})
+		).toBe(false);
+	});
+
+	test("closes only after the callback reaches an authenticated box page", () => {
+		expect(
+			isCloudAuthorizationSuccess({
+				instanceUrl,
+				requestUrl: "https://box.example.com/ide/"
+			})
+		).toBe(true);
+		expect(
+			isCloudAuthorizationSuccess({
+				instanceUrl,
+				requestUrl: "https://box.example.com/ide/register"
+			})
+		).toBe(true);
+		expect(
+			isCloudAuthorizationSuccess({
+				instanceUrl,
+				requestUrl:
+					"https://box.example.com/ide/_composery/cloud/callback?code=x"
+			})
+		).toBe(false);
+		expect(
+			isCloudAuthorizationSuccess({
+				instanceUrl,
+				requestUrl: "https://box.example.com/ide/_composery/cloud/error"
+			})
+		).toBe(false);
 	});
 });

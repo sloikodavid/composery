@@ -1,12 +1,12 @@
 (() => {
-	// The breach range request goes to the box's own origin (register.ts relays
-	// it to the range API server-side), so the page never makes a cross-origin
-	// request. Base path comes from the hidden #base field the auth shell
-	// renders; it is "" at the server root.
+	// The breach range request goes to the box's own origin (pwned.ts relays it
+	// to the range API server-side), so the page never makes a cross-origin
+	// request. The relative root comes from the auth shell, which is the only
+	// thing that knows how deep the public mount put this page.
 	const rangeBase =
 		(typeof document !== "undefined" &&
-			document.getElementById("base")?.value) ||
-		""
+			document.querySelector(".page")?.dataset.base) ||
+		"."
 
 	const commonParts = [
 		"123456",

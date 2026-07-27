@@ -10,12 +10,16 @@ type PasswordCheck = {
 
 function loadPasswordCheck(
 	fetch: typeof globalThis.fetch,
-	{ subtle = true }: { subtle?: boolean } = {}
+	{ base = ".", subtle = true }: { base?: string; subtle?: boolean } = {}
 ) {
 	const window: { composeryPasswordCheck?: PasswordCheck } = {};
+	// The relay URL is relative to the auth shell, which is the only thing that
+	// knows how deep the public mount put the page.
+	const document = { querySelector: () => ({ dataset: { base } }) };
 	const context: Record<string, unknown> = {
 		AbortController,
 		DataView,
+		document,
 		fetch,
 		Set,
 		TextEncoder,
@@ -65,7 +69,7 @@ describe("IDE password guidance", () => {
 		const check = loadPasswordCheck(fetch);
 
 		await expect(check.checkPwned("password")).resolves.toBe(3_730_471);
-		expect(fetch).toHaveBeenCalledWith("/_composery/pwned/5BAA6", {
+		expect(fetch).toHaveBeenCalledWith("./_composery/pwned/5BAA6", {
 			signal: undefined
 		});
 	});
@@ -79,7 +83,7 @@ describe("IDE password guidance", () => {
 		const check = loadPasswordCheck(fetch, { subtle: false });
 
 		await expect(check.checkPwned("password")).resolves.toBe(3_730_471);
-		expect(fetch).toHaveBeenCalledWith("/_composery/pwned/5BAA6", {
+		expect(fetch).toHaveBeenCalledWith("./_composery/pwned/5BAA6", {
 			signal: undefined
 		});
 	});
@@ -97,7 +101,7 @@ describe("IDE password guidance", () => {
 
 		await expect(check.checkPwned(password)).resolves.toBe(42);
 		expect(fetch).toHaveBeenCalledWith(
-			`/_composery/pwned/${hash.slice(0, 5)}`,
+			`./_composery/pwned/${hash.slice(0, 5)}`,
 			{ signal: undefined }
 		);
 	});
@@ -116,8 +120,8 @@ describe("IDE password guidance", () => {
 		const pwned = readRepoFile("packages/ide/overlay/src/node/routes/pwned.ts");
 		const authPatch = readRepoFile("packages/ide/patches/auth.diff");
 		// A dedicated router in Composery's machine-endpoint namespace, mounted
-		// unconditionally so both password pages reach it. It validates the prefix
-		// and does the padded upstream fetch under a timeout - the box, not the
+		// alongside the password pages that use it. It validates the prefix and
+		// does the padded upstream fetch under a timeout - the box, not the
 		// browser, reaches the API.
 		expect(pwned).toContain('router.get("/:prefix"');
 		expect(pwned).toContain("api.pwnedpasswords.com/range/");
@@ -261,9 +265,9 @@ describe("IDE password guidance", () => {
 		);
 
 		expect(route).toContain('router.post("/verify"');
-		// Shares the submit limiter, so guessing here is not a way around login's.
-		expect(route).toContain("limiter.canTry()");
-		expect(route).toContain("limiter.removeToken()");
+		// Shares login's limiter, so guessing here is not a way around it.
+		expect(route).toContain("loginRateLimit.canTry(source)");
+		expect(route).toContain("loginRateLimit.recordFailure(source)");
 		// An explicit result body, because unrelated middleware also answers 401.
 		expect(route).toContain("valid: false");
 		expect(fields).toContain('data-verify="{{BASE}}/change-password/verify"');

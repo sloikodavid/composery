@@ -10,13 +10,13 @@ upstream's (isIOS || isAndroid+isMobile) leaves Android tablets (no "Mobi" UA
 token) and touch laptops on the legacy TouchHandler, which has none of this.
 Touch selection is model-driven: the browser's selection UI aims at the
 editor's hidden one-pixel input at garbage geometry (device-verified), so
-long-press word-selects through the model, custom caret/range handles adjust
-in model coordinates (edge auto-scroll can extend past rendered lines), and a
+long-press word-selects through the model, the shared selection handles
+(touchSelectionHandles.ts, the same grips the terminal uses) adjust it against
+a model-coordinate anchor that survives the drag's edge auto-scroll, and a
 hold inside a selection opens the IDE context menu. Pans are classified before
 the tap path can focus the hidden input; keyboard-driven layout preserves
 scroll; mouse presses fall through to the mousedown flow so click counts
-survive. A flick released from a handle does not fling the view - Gesture's
-inertia honours the ignore list.
+survive.
 
 Menus and lists. Long-press opens context menus wherever right-click does
 (editor tabs, composite bars, view panes, status bar, lists), with the native
@@ -24,7 +24,13 @@ context menu suppressed while a gesture-opened menu is up; menu placement
 respects the visual viewport; tap focuses lists/terminal on Tap, never on
 touchstart, so a scroll gesture cannot pop the keyboard; taps consumed by
 inline action controls do not also select the row; hover-revealed action bars
-stay visible (touch.css pairs each forced bar with the upstream hover rule).
+stay visible (touch.css pairs each forced bar with the upstream hover rule). A
+menu opened by a finger never takes DOM focus: focus is what closes the soft
+keyboard, that closing resizes whatever the menu was opened over, and a terminal
+answers a row-count change by dropping its selection - so the menu a long-press
+selection asked for used to destroy that selection as it opened (device-verified,
+and the keybar holds its dock through a menu for the same reason). Items are
+tapped, not walked with arrow keys, and Escape still cancels.
 
 Soft keyboard. Whether one is up, and how much it still covers, is answered in
 exactly one place (softKeyboard.ts) because no single measurement sees every
@@ -51,16 +57,28 @@ soft keyboard churns focus with no intent to dismiss (opening a menu blurs the
 field, the keyboard closing, iOS pulling focus to <body>), so a blur is not a
 dismissal and ignoreFocusOut is honoured. Nothing autofocuses a search field on
 touch (settings, keybindings, extensions, search, SCM - upstream exempted iOS
-only); editables keep the OS text-selection menu instead of the void.
+only); editables keep the OS text-selection menu instead of the void - all but the
+invisible IME shims the editor and the terminal park inside their own text, which
+touch.css takes out of hit-testing so a hold there reaches the surface it looks
+like it landed on (device-verified: it reached nothing at all before).
 
 Terminal. Focus on Tap; autocomplete=off so Android IMEs drop the suggestion
 strip over shell input; the initial hint is tappable (Gesture.ignoreTarget).
+Text selection is a whole contribution of ours in the overlay
+(terminal.touchSelection.contribution.ts) - a hold word-selects through xterm's
+own selection service, the shared handles adjust the range, and a hold on the
+selection lets the pane's menu open over it - so all this patch owes it is the
+contribution import, plus the selection service on the xterm-private surface and
+a selection-change refresh of the selection context keys, without which Copy sat
+disabled in the very menu the selection was made for (every other refresh hangs
+off a mouse or key event, and a hold produces neither).
 The keyboard resizes the grid like any other pane change - holding the scroll
 position across that is terminal.diff, which is not touch-gated.
 
 Links. A tap activates what a click activates: detected terminal links
-(url/localFile/localFolder - never 'word'), editor links via a cursor-on-link
-context menu entry, rendered-markdown links through Gesture Tap.
+(url/localFile/localFolder - never 'word') hit-tested through the shared cell
+geometry, editor links via a cursor-on-link context menu entry, rendered-markdown
+links through Gesture Tap.
 
 Chrome. Sash hit area widens on every coarse-pointer device (upstream: iOS
 only); selects use the native picker on touch; the footer collapses to give
@@ -122,7 +140,7 @@ short layouts its row back.
  		return;
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -10,12 +10,16 @@ import { Event as EventUtils } from '../common/event.js';
+@@ -10,12 +10,16 @@
  import { Disposable, IDisposable, markAsSingleton, toDisposable } from '../common/lifecycle.js';
  import { LinkedList } from '../common/linkedList.js';
  
@@ -140,7 +158,7 @@ short layouts its row back.
  }
  
  interface TouchData {
-@@ -27,6 +31,11 @@ interface TouchData {
+@@ -27,6 +31,11 @@
  	rollingTimestamps: number[];
  	rollingPageX: number[];
  	rollingPageY: number[];
@@ -152,7 +170,7 @@ short layouts its row back.
  }
  
  export interface GestureEvent extends MouseEvent {
-@@ -76,11 +85,16 @@ export class Gesture extends Disposable {
+@@ -76,11 +85,16 @@
  	private readonly targets = new LinkedList<HTMLElement>();
  	private readonly ignoreTargets = new LinkedList<HTMLElement>();
  	private handle: IDisposable | null;
@@ -169,7 +187,7 @@ short layouts its row back.
  	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
  
  
-@@ -95,6 +109,14 @@ export class Gesture extends Disposable {
+@@ -95,6 +109,14 @@
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
@@ -184,7 +202,7 @@ short layouts its row back.
  		}, { window: mainWindow, disposables: this._store }));
  	}
  
-@@ -152,15 +174,32 @@ export class Gesture extends Disposable {
+@@ -152,15 +174,32 @@
  	private onTouchStart(e: TouchEvent): void {
  		const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
  
@@ -218,7 +236,7 @@ short layouts its row back.
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +207,28 @@ export class Gesture extends Disposable {
+@@ -168,9 +207,28 @@
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -248,7 +266,7 @@ short layouts its row back.
  			const evt = this.newGestureEvent(EventType.Start, touch.target);
  			evt.pageX = touch.pageX;
  			evt.pageY = touch.pageY;
-@@ -201,23 +259,34 @@ export class Gesture extends Disposable {
+@@ -201,23 +259,34 @@
  			const data = this.activeTouches[touch.identifier],
  				holdTime = Date.now() - data.initialTimeStamp;
  
@@ -264,6 +282,11 @@ short layouts its row back.
 -			} else if (holdTime >= Gesture.HOLD_DELAY
 -				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
 -				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
+-
+-				const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
+-				evt.pageX = data.rollingPageX.at(-1)!;
+-				evt.pageY = data.rollingPageY.at(-1)!;
+-				this.dispatchEvent(evt);
 +			this.clearContextMenuTimer(data);
 +			if (data.contextMenuFired) {
 +				// Composery: the long-press already fired during the hold - the release must
@@ -277,11 +300,7 @@ short layouts its row back.
 +				delete this.activeTouches[touch.identifier];
 +				continue;
 +			}
- 
--				const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
--				evt.pageX = data.rollingPageX.at(-1)!;
--				evt.pageY = data.rollingPageY.at(-1)!;
--				this.dispatchEvent(evt);
++
 +			// Composery: a touch that never left the pan threshold is a press, long or short;
 +			// one that did is a scroll. Upstream asked the same question twice with a second,
 +			// looser 30px slop of its own - unreachable now that onTouchMove settles the
@@ -299,14 +318,14 @@ short layouts its row back.
  
  			} else if (activeTouchCount === 1) {
  				const finalX = data.rollingPageX.at(-1)!;
-@@ -228,14 +297,20 @@ export class Gesture extends Disposable {
+@@ -228,14 +297,20 @@
  				const deltaY = finalY - data.rollingPageY[0];
  
  				// We need to get all the dispatch targets on the start of the inertia event
 -				const dispatchTo = [...this.targets].filter(t => data.initialTarget instanceof Node && t.contains(data.initialTarget));
 +				// Composery: honour the ignore list here too - normal dispatch checks it, but
-+				// inertia dispatches directly, so a flick out of an ignored element (the
-+				// editor's caret handle) would still fling its gesture target.
++				// inertia dispatches directly, so a flick out of an ignored element (a native
++				// select, the terminal's initial hint) would still fling its gesture target.
 +				const owner = data.initialTarget instanceof Node ? data.initialTarget : undefined;
 +				const ignored = !!owner && [...this.ignoreTargets].some(t => t.contains(owner));
 +				const dispatchTo = ignored ? [] : [...this.targets].filter(t => !!owner && t.contains(owner));
@@ -322,7 +341,7 @@ short layouts its row back.
  				);
  			}
  
-@@ -252,6 +327,85 @@ export class Gesture extends Disposable {
+@@ -252,6 +327,85 @@
  		}
  	}
  
@@ -408,7 +427,7 @@ short layouts its row back.
  	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
  		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
  		event.initEvent(type, false, true);
-@@ -272,8 +426,8 @@ export class Gesture extends Disposable {
+@@ -272,8 +426,8 @@
  
  			this._lastSetTapCountTime = currentTime;
  			event.tapCount = setTapCount;
@@ -419,7 +438,7 @@ short layouts its row back.
  			this._lastSetTapCountTime = 0;
  		}
  
-@@ -306,7 +460,8 @@ export class Gesture extends Disposable {
+@@ -306,7 +460,8 @@
  		}
  	}
  
@@ -429,7 +448,7 @@ short layouts its row back.
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -329,13 +484,18 @@ export class Gesture extends Disposable {
+@@ -329,13 +484,18 @@
  			}
  
  			// dispatch translation event
@@ -450,7 +469,7 @@ short layouts its row back.
  			}
  		});
  	}
-@@ -354,6 +514,33 @@ export class Gesture extends Disposable {
+@@ -354,6 +514,33 @@
  
  			const data = this.activeTouches[touch.identifier];
  
@@ -1143,7 +1162,7 @@ short layouts its row back.
  }
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -5,32 +5,135 @@
+@@ -5,32 +5,84 @@
  
  import { BrowserFeatures } from '../../../base/browser/canIUse.js';
  import * as dom from '../../../base/browser/dom.js';
@@ -1153,6 +1172,7 @@ short layouts its row back.
  import { Disposable } from '../../../base/common/lifecycle.js';
 -import * as platform from '../../../base/common/platform.js';
 +import { isTouch } from '../../../base/browser/touchGate.js';
++import { ITouchSelectionEdge, TouchSelectionEdges, TouchSelectionHandleKind, TouchSelectionHandles } from '../../../base/browser/touchSelectionHandles.js';
 +import { softKeyboard } from '../../../base/browser/softKeyboard.js';
  import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
 +import { MouseTarget } from './mouseTarget.js';
@@ -1167,41 +1187,6 @@ short layouts its row back.
 +import { Position } from '../../common/core/position.js';
 +
 +const TOUCH_SELECTION_MENU_HOLD_TIME = 650;
-+const TOUCH_HANDLE_EDGE_SCROLL_ZONE = 44;
-+// Keep in step with the handle box in touch.css - a range handle offsets its body
-+// by exactly one width to put its tip on the selection edge.
-+const TOUCH_HANDLE_WIDTH = 22;
-+const TOUCH_HANDLE_FLIPPED_CLASS = 'composery-touch-range-handle-flipped';
-+const TOUCH_HANDLE_MAX_SCROLL_SPEED = 720;
-+
-+type TouchHandleKind = 'caret' | 'start' | 'end';
-+
-+interface TouchPoint {
-+	x: number;
-+	y: number;
-+}
-+
-+interface TouchRangeHandleLayout {
-+	activeKind: 'start' | 'end';
-+	fixedKind: 'start' | 'end';
-+	showFixed: boolean;
-+}
-+
-+function getTouchHandleGrabOffset(pointer: TouchPoint, selectionPoint: TouchPoint): TouchPoint {
-+	return { x: pointer.x - selectionPoint.x, y: pointer.y - selectionPoint.y };
-+}
-+
-+function getTouchHandleSelectionPoint(pointer: TouchPoint, grabOffset: TouchPoint): TouchPoint {
-+	return { x: pointer.x - grabOffset.x, y: pointer.y - grabOffset.y };
-+}
-+
-+function getTouchRangeHandleLayout(selectionEmpty: boolean, movingBeforeAnchor: boolean): TouchRangeHandleLayout {
-+	return {
-+		activeKind: movingBeforeAnchor ? 'start' : 'end',
-+		fixedKind: movingBeforeAnchor ? 'end' : 'start',
-+		showFixed: !selectionEmpty
-+	};
-+}
 +
 +interface TouchGestureState {
 +	startedOnText: boolean;
@@ -1226,19 +1211,12 @@ short layouts its row back.
 +	// Touch selection is driven entirely by the editor: the browser's own selection UI
 +	// cannot work here - it aims at the focused element, and the editor's focused
 +	// element is a hidden one-pixel input, not the rendered lines the finger is on.
-+	// So a long-press selects the word through the model, and these handles (the same
-+	// mechanism for the collapsed caret and both range ends) adjust it.
-+	private readonly _caretHandle: HTMLElement;
-+	private readonly _startHandle: HTMLElement;
-+	private readonly _endHandle: HTMLElement;
-+	private _activeHandleDrag: { pointerId: number; handle: HTMLElement; anchor: Position | null; grabOffset: TouchPoint } | null;
-+	private _handleUpdateFrame: number | undefined;
++	// So a long-press selects the word through the model, and the shared touch handles
++	// adjust it - this class only says where the selection is and moves it.
++	private readonly _touchHandles: TouchSelectionHandles;
++	/** The end of the selection a handle drag holds still, in model coordinates. */
++	private _touchDragAnchor: Position | null;
 +	private _editorFocused: boolean;
-+	private _handlesSuppressed: boolean;
-+	private _handleAutoScrollFrame: number | undefined;
-+	private _handleAutoScrollLastTime: number;
-+	private _handleClientX: number;
-+	private _handleClientY: number;
 +
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super(context, viewController, viewHelper);
@@ -1255,73 +1233,35 @@ short layouts its row back.
 +		this._touchGesture = null;
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
-+		this._activeHandleDrag = null;
-+		this._handleUpdateFrame = undefined;
++		this._touchDragAnchor = null;
 +		this._editorFocused = false;
-+		this._handlesSuppressed = false;
-+		this._handleAutoScrollFrame = undefined;
-+		this._handleAutoScrollLastTime = 0;
-+		this._handleClientX = 0;
-+		this._handleClientY = 0;
 +
-+		this._caretHandle = this._createTouchHandle('caret');
-+		this._startHandle = this._createTouchHandle('start');
-+		this._endHandle = this._createTouchHandle('end');
-+
-+		const targetWindow = dom.getWindow(this.viewHelper.viewDomNode);
-+		this._register(dom.addDisposableListener(targetWindow, 'blur', () => {
-+			this._suppressTouchHandles();
-+			this._stopHandleDrag();
-+		}));
-+		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode.ownerDocument, 'visibilitychange', () => {
-+			if (this.viewHelper.viewDomNode.ownerDocument.visibilityState !== 'visible') {
-+				this._suppressTouchHandles();
-+				this._stopHandleDrag();
++		this._touchHandles = this._register(new TouchSelectionHandles({
++			viewport: this.viewHelper.viewDomNode,
++			getEdges: () => this._getTouchSelectionEdges(),
++			startDrag: (kind) => this._startTouchSelectionDrag(kind),
++			dragTo: (x, y) => this._dragTouchSelectionTo(x, y),
++			stopDrag: () => { this._touchDragAnchor = null; },
++			scrollBy: (deltaY) => {
++				this._context.viewModel.viewLayout.deltaScrollNow(0, deltaY);
++				this.viewHelper.renderNow();
 +			}
 +		}));
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +156,205 @@ export class PointerEventHandler extends MouseHandler {
+@@ -53,18 +105,177 @@
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
 +	public override dispose(): void {
-+		this._stopHandleDrag();
-+		this._cancelTouchHandleUpdate();
 +		this._clearTouchMenuTimer();
-+		this._caretHandle.remove();
-+		this._startHandle.remove();
-+		this._endHandle.remove();
 +		super.dispose();
-+	}
-+
-+	private _createTouchHandle(kind: TouchHandleKind): HTMLElement {
-+		const handle = this.viewHelper.viewDomNode.ownerDocument.createElement('div');
-+		handle.className = kind === 'caret' ? 'composery-touch-caret-handle' : `composery-touch-caret-handle composery-touch-range-handle-${kind}`;
-+		handle.setAttribute('aria-hidden', 'true');
-+		handle.style.display = 'none';
-+		this._register(dom.addDisposableListener(handle, 'pointerdown', (event: PointerEvent) => this._onHandlePointerDown(event, handle), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'pointermove', (event: PointerEvent) => this._onHandlePointerMove(event), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'pointerup', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'pointercancel', (event: PointerEvent) => this._onHandlePointerUp(event), { passive: false }));
-+		this._register(dom.addDisposableListener(handle, 'lostpointercapture', (event: PointerEvent) => {
-+			if (this._activeHandleDrag?.pointerId === event.pointerId && this._activeHandleDrag.handle === handle) {
-+				this._stopHandleDrag();
-+			}
-+		}));
-+		this.viewHelper.linesContentDomNode.appendChild(handle);
-+		// The handles drag via pointer events; without this the same touches also reach
-+		// the Gesture singleton and pan the editor 1:1 with every drag (and fling it
-+		// through release inertia - Gesture skips both for ignored targets).
-+		this._register(Gesture.ignoreTarget(handle));
-+		return handle;
 +	}
 +
 +	private onTouchStart(event: GestureEvent): void {
 +		this._lastPointerType = 'touch';
-+		this._handlesSuppressed = false;
-+		this._scheduleTouchHandleUpdate();
++		this._touchHandles.reveal();
 +		this._clearTouchMenuTimer();
 +		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +		const modelPosition = target.position ? this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position) : null;
@@ -1371,7 +1311,7 @@ short layouts its row back.
 +			clientX: gesture.pageX - targetWindow.scrollX,
 +			clientY: gesture.pageY - targetWindow.scrollY
 +		});
-+		this._suppressTouchHandles();
++		this._touchHandles.suppress();
 +		super._onContextMenu(new EditorMouseEvent(browserEvent, false, this.viewHelper.viewDomNode), false);
 +	}
 +
@@ -1442,7 +1382,7 @@ short layouts its row back.
 +			return;
 +		}
 +
-+		this._suppressTouchHandles();
++		this._touchHandles.suppress();
 +		this._showTouchContextMenu(editorEvent);
 +		event.preventDefault();
 +		event.stopPropagation();
@@ -1488,7 +1428,7 @@ short layouts its row back.
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +364,20 @@ export class PointerEventHandler extends MouseHandler {
+@@ -74,13 +285,20 @@
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -1511,7 +1451,7 @@ short layouts its row back.
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,11 +390,297 @@ export class PointerEventHandler extends MouseHandler {
+@@ -93,11 +311,105 @@
  		}
  	}
  
@@ -1524,7 +1464,7 @@ short layouts its row back.
 +	// handled instead. The update is animation-frame coalesced, so a burst costs one pass.
 +	public override handleEvents(events: viewEvents.ViewEvent[]): void {
 +		super.handleEvents(events);
-+		this._scheduleTouchHandleUpdate();
++		this._touchHandles.scheduleUpdate();
 +	}
 +
 +	public override onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean {
@@ -1538,257 +1478,65 @@ short layouts its row back.
 +		super.onFocusChanged(e);
 +		this._editorFocused = e.isFocused;
 +		if (e.isFocused) {
-+			this._handlesSuppressed = false;
++			this._touchHandles.reveal();
 +		} else {
-+			this._stopHandleDrag();
++			this._touchHandles.suppress();
 +		}
 +		return false;
 +	}
 +
 +	// --- selection handles ---
 +
-+	private _scheduleTouchHandleUpdate(): void {
-+		if (this._handleUpdateFrame !== undefined) {
-+			return;
-+		}
-+		this._handleUpdateFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => {
-+			this._handleUpdateFrame = undefined;
-+			this._updateTouchHandles();
-+		});
-+	}
-+
-+	private _cancelTouchHandleUpdate(): void {
-+		if (this._handleUpdateFrame !== undefined) {
-+			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._handleUpdateFrame);
-+			this._handleUpdateFrame = undefined;
-+		}
-+	}
-+
-+	private _suppressTouchHandles(): void {
-+		this._handlesSuppressed = true;
-+		this._hideTouchHandles();
-+	}
-+
-+	private _hideTouchHandles(): void {
-+		this._caretHandle.style.display = 'none';
-+		this._startHandle.style.display = 'none';
-+		this._endHandle.style.display = 'none';
-+	}
-+
-+	private _updateTouchHandles(): void {
-+		const selection = this._lastPointerType === 'touch' && this._editorFocused && !this._handlesSuppressed ? this._primarySelection : null;
++	// Only a touch selection carries handles, and only while the editor owns the cursor
++	// they belong to.
++	private _getTouchSelectionEdges(): TouchSelectionEdges | null {
++		const selection = this._lastPointerType === 'touch' && this._editorFocused ? this._primarySelection : null;
 +		if (!selection) {
-+			this._hideTouchHandles();
-+			return;
++			return null;
 +		}
-+
-+		const drag = this._activeHandleDrag;
-+		if (drag?.anchor) {
-+			const activeHandle = drag.handle;
-+			const fixedHandle = activeHandle === this._startHandle ? this._endHandle : this._startHandle;
-+			const moving = selection.getPosition();
-+			const fixed = selection.getSelectionStart();
-+			const layout = getTouchRangeHandleLayout(selection.isEmpty(), Position.isBeforeOrEqual(moving, fixed));
-+			this._setRangeHandleKind(activeHandle, layout.activeKind);
-+			this._setRangeHandleKind(fixedHandle, layout.fixedKind);
-+			this._positionHandle(this._caretHandle, null);
-+			this._positionHandle(activeHandle, moving);
-+			this._positionHandle(fixedHandle, layout.showFixed ? fixed : null);
-+			return;
-+		}
-+
-+		this._setRangeHandleKind(this._startHandle, 'start');
-+		this._setRangeHandleKind(this._endHandle, 'end');
-+		this._positionHandle(this._caretHandle, selection.isEmpty() ? selection.getPosition() : null);
-+		this._positionHandle(this._startHandle, selection.isEmpty() ? null : selection.getStartPosition());
-+		this._positionHandle(this._endHandle, selection.isEmpty() ? null : selection.getEndPosition());
++		return selection.isEmpty()
++			? { caret: this._touchSelectionEdgeAt(selection.getPosition()) }
++			: { start: this._touchSelectionEdgeAt(selection.getStartPosition()), end: this._touchSelectionEdgeAt(selection.getEndPosition()) };
 +	}
 +
-+	private _setRangeHandleKind(handle: HTMLElement, kind: 'start' | 'end'): void {
-+		handle.className = `composery-touch-caret-handle composery-touch-range-handle-${kind}`;
++	private _touchSelectionEdgeAt(position: Position): ITouchSelectionEdge | undefined {
++		const visibleRange = this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column);
++		if (!visibleRange || visibleRange.outsideRenderedLine) {
++			return undefined;
++		}
++		const height = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
++		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + height;
++		// The lines are absolutely positioned and translated by the scroll, so their own
++		// rect already carries it: content coordinates plus that rect are client ones.
++		const rect = this.viewHelper.linesContentDomNode.getBoundingClientRect();
++		return { x: rect.left + visibleRange.left, y: rect.top + top, height };
 +	}
 +
-+	private _positionHandle(handle: HTMLElement, position: Position | null): void {
-+		const visibleRange = position ? this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column) : null;
-+		if (!position || !visibleRange || visibleRange.outsideRenderedLine) {
-+			handle.style.display = 'none';
-+			return;
-+		}
-+		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
-+		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + lineHeight;
-+		// Only the start handle hangs its body a full width to the LEFT of its tip, so
-+		// at column 1 the body lands outside .lines-content and the overflow-guard
-+		// clips it away - the selection looks like it has only one handle. Mirror it
-+		// instead of clamping: the tip must stay exactly on the selection edge or
-+		// dragging jumps, so flip the body the way Android and iOS do. The end handle
-+		// already opens rightwards and is never clipped here.
-+		handle.classList.toggle(
-+			TOUCH_HANDLE_FLIPPED_CLASS,
-+			this._getHandleKind(handle) === 'start' && visibleRange.left < TOUCH_HANDLE_WIDTH
-+		);
-+		handle.style.display = 'block';
-+		handle.style.transform = `translate(${Math.round(visibleRange.left)}px, ${Math.round(top)}px)`;
-+	}
-+
-+	private _getHandleKind(handle: HTMLElement): TouchHandleKind {
-+		if (handle === this._caretHandle) {
-+			return 'caret';
-+		}
-+		return handle.classList.contains('composery-touch-range-handle-start') ? 'start' : 'end';
-+	}
-+
-+	private _getHandleSelectionClientPoint(handle: HTMLElement, kind: TouchHandleKind, position: Position): TouchPoint {
-+		const rect = handle.getBoundingClientRect();
-+		// The tip is whichever box corner sits on the selection edge: a start handle opens
-+		// leftwards so its tip is on the right, an end handle the reverse, the caret hangs
-+		// centred - and a mirrored start handle opens rightwards, so its tip follows.
-+		const lineHeight = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
-+		return {
-+			x: kind === 'caret'
-+				? rect.left + rect.width / 2
-+				: kind === 'start' && !handle.classList.contains(TOUCH_HANDLE_FLIPPED_CLASS) ? rect.right : rect.left,
-+			y: rect.top - lineHeight / 2
-+		};
-+	}
-+
-+	private _onHandlePointerDown(event: PointerEvent, handle: HTMLElement): void {
-+		if (event.pointerType === 'mouse') {
-+			return;
-+		}
-+
-+		const modelSelection = this._primaryModelSelection;
-+		const viewSelection = this._primarySelection;
-+		if (!modelSelection || !viewSelection) {
-+			return;
-+		}
-+
-+		const kind = this._getHandleKind(handle);
-+		const viewPosition = kind === 'caret' ? viewSelection.getPosition() : kind === 'start' ? viewSelection.getStartPosition() : viewSelection.getEndPosition();
-+		const selectionPoint = this._getHandleSelectionClientPoint(handle, kind, viewPosition);
-+		event.preventDefault();
-+		event.stopPropagation();
-+		this._activeHandleDrag = {
-+			pointerId: event.pointerId,
-+			handle,
-+			// The fixed end of a range drag. Model coordinates survive scrolling, so a
-+			// drag can auto-scroll far beyond the rendered lines without losing it.
-+			anchor: kind === 'caret' ? null : kind === 'start' ? modelSelection.getEndPosition() : modelSelection.getStartPosition(),
-+			// A handle hangs below the text and is intentionally much larger than its
-+			// one-pixel selection tip. Preserve where the finger grabbed the handle so
-+			// its first move cannot jump to the next line or an adjacent column.
-+			grabOffset: getTouchHandleGrabOffset({ x: event.clientX, y: event.clientY }, selectionPoint)
-+		};
-+		handle.setPointerCapture(event.pointerId);
++	private _startTouchSelectionDrag(kind: TouchSelectionHandleKind): void {
++		const selection = this._primaryModelSelection;
++		// The end the drag holds still. Model coordinates survive scrolling, so a drag can
++		// auto-scroll far beyond the rendered lines without losing it.
++		this._touchDragAnchor = !selection || kind === 'caret'
++			? null
++			: kind === 'start' ? selection.getEndPosition() : selection.getStartPosition();
 +		this.viewHelper.focusTextArea();
-+		this._scheduleTouchHandleUpdate();
 +	}
 +
-+	private _onHandlePointerMove(event: PointerEvent): void {
-+		if (!this._activeHandleDrag || event.pointerId !== this._activeHandleDrag.pointerId) {
-+			return;
-+		}
-+
-+		event.preventDefault();
-+		event.stopPropagation();
-+		this._handleClientX = event.clientX;
-+		this._handleClientY = event.clientY;
-+		this._updateHandleAutoScroll(event.clientY);
-+		this._setSelectionFromClientPoint(event.clientX, event.clientY);
-+	}
-+
-+	private _clampClientYToView(clientY: number): number {
-+		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		return Math.max(rect.top + 1, Math.min(rect.bottom - 1, clientY));
-+	}
-+
-+	private _setSelectionFromClientPoint(clientX: number, clientY: number): void {
-+		const drag = this._activeHandleDrag;
-+		if (!drag) {
-+			return;
-+		}
-+		const selectionPoint = getTouchHandleSelectionPoint({ x: clientX, y: clientY }, drag.grabOffset);
-+		const target = this.getTargetAtClientPoint(selectionPoint.x, this._clampClientYToView(selectionPoint.y));
++	private _dragTouchSelectionTo(x: number, y: number): TouchSelectionHandleKind | undefined {
++		const target = this.getTargetAtClientPoint(x, y);
 +		if (!target?.position) {
-+			return;
++			return undefined;
 +		}
-+
-+		const modelPosition = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
-+		// Dragging one range handle keeps the other end anchored. The captured DOM
-+		// handle remains the moving endpoint when it crosses that anchor; only its
-+		// visual start/end role changes in _updateTouchHandles.
-+		this.viewController.setSelection(drag.anchor ? Selection.fromPositions(drag.anchor, modelPosition) : Selection.fromPositions(modelPosition));
-+	}
-+
-+	private _updateHandleAutoScroll(clientY: number): void {
-+		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		const distanceAbove = rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - clientY;
-+		const distanceBelow = clientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE);
-+		if (distanceAbove <= 0 && distanceBelow <= 0) {
-+			this._stopHandleAutoScroll();
-+			return;
-+		}
-+
-+		if (this._handleAutoScrollFrame !== undefined) {
-+			return;
-+		}
-+
-+		this._handleAutoScrollLastTime = Date.now();
-+		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
-+	}
-+
-+	private _runHandleAutoScroll(): void {
-+		this._handleAutoScrollFrame = undefined;
-+		if (!this._activeHandleDrag) {
-+			return;
-+		}
-+
-+		const rect = this.viewHelper.viewDomNode.getBoundingClientRect();
-+		const distanceAbove = Math.max(0, rect.top + TOUCH_HANDLE_EDGE_SCROLL_ZONE - this._handleClientY);
-+		const distanceBelow = Math.max(0, this._handleClientY - (rect.bottom - TOUCH_HANDLE_EDGE_SCROLL_ZONE));
-+		const direction = distanceAbove > 0 ? -1 : distanceBelow > 0 ? 1 : 0;
-+		if (direction === 0) {
-+			return;
-+		}
-+
-+		const edgeDistance = Math.min(TOUCH_HANDLE_EDGE_SCROLL_ZONE, Math.max(distanceAbove, distanceBelow));
-+		const now = Date.now();
-+		const elapsed = now - this._handleAutoScrollLastTime;
-+		this._handleAutoScrollLastTime = now;
-+		const speed = TOUCH_HANDLE_MAX_SCROLL_SPEED * Math.max(0.25, edgeDistance / TOUCH_HANDLE_EDGE_SCROLL_ZONE);
-+		this._context.viewModel.viewLayout.deltaScrollNow(0, direction * speed * (elapsed / 1000));
-+		this.viewHelper.renderNow();
-+		this._setSelectionFromClientPoint(this._handleClientX, this._handleClientY);
-+		this._handleAutoScrollFrame = dom.getWindow(this.viewHelper.viewDomNode).requestAnimationFrame(() => this._runHandleAutoScroll());
-+	}
-+
-+	private _stopHandleAutoScroll(): void {
-+		if (this._handleAutoScrollFrame !== undefined) {
-+			dom.getWindow(this.viewHelper.viewDomNode).cancelAnimationFrame(this._handleAutoScrollFrame);
-+			this._handleAutoScrollFrame = undefined;
-+		}
-+	}
-+
-+	private _onHandlePointerUp(event: PointerEvent): void {
-+		if (!this._activeHandleDrag || event.pointerId !== this._activeHandleDrag.pointerId) {
-+			return;
-+		}
-+		event.preventDefault();
-+		event.stopPropagation();
-+		this._stopHandleDrag();
-+	}
-+
-+	private _stopHandleDrag(): void {
-+		const drag = this._activeHandleDrag;
-+		this._activeHandleDrag = null;
-+		if (drag?.handle.hasPointerCapture(drag.pointerId)) {
-+			drag.handle.releasePointerCapture(drag.pointerId);
-+		}
-+		this._stopHandleAutoScroll();
-+		this._scheduleTouchHandleUpdate();
++		const position = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
++		const anchor = this._touchDragAnchor;
++		this.viewController.setSelection(anchor ? Selection.fromPositions(anchor, position) : Selection.fromPositions(position));
++		// Dragging one end past the other swaps which end the finger holds - the shapes
++		// follow, so the grips keep pointing into the selection.
++		return !anchor ? 'caret' : Position.isBeforeOrEqual(position, anchor) ? 'start' : 'end';
 +	}
 +
 +	protected override _onContextMenu(e: EditorMouseEvent, testEventTarget: boolean): void {
-+		this._suppressTouchHandles();
++		this._touchHandles.suppress();
 +		super._onContextMenu(e, testEventTarget);
 +	}
 +
@@ -1809,7 +1557,7 @@ short layouts its row back.
  		super._onMouseDown(e, pointerId);
  	}
  }
-@@ -111,7 +694,7 @@ class TouchHandler extends MouseHandler {
+@@ -111,7 +423,7 @@
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
@@ -1818,7 +1566,7 @@ short layouts its row back.
  	}
  
  	private onTap(event: GestureEvent): void {
-@@ -141,8 +724,12 @@ export class PointerHandler extends Disposable {
+@@ -141,8 +453,12 @@
  
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super();
@@ -1917,7 +1665,7 @@ short layouts its row back.
  import { Menu } from '../../../base/browser/ui/menu/menu.js';
  import { ActionRunner, IRunEvent, WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../base/common/actions.js';
  import { isCancellationError } from '../../../base/common/errors.js';
-@@ -49,7 +51,14 @@ export class ContextMenuHandler {
+@@ -49,7 +51,14 @@
  
  		let menu: Menu | undefined;
  
@@ -1933,7 +1681,7 @@ short layouts its row back.
  		this.contextViewService.showContextView({
  			getAnchor: () => delegate.getAnchor(),
  			canRelayout: false,
-@@ -94,9 +103,16 @@ export class ContextMenuHandler {
+@@ -94,9 +103,16 @@
  				);
  
  				menu.onDidCancel(() => this.contextViewService.hideContextView(true), null, menuDisposables);
@@ -1952,7 +1700,25 @@ short layouts its row back.
  				menuDisposables.add(addDisposableListener(targetWindow, EventType.MOUSE_DOWN, (e: MouseEvent) => {
  					if (e.defaultPrevented) {
  						return;
-@@ -140,7 +156,9 @@ export class ContextMenuHandler {
+@@ -125,7 +141,16 @@
+ 			},
+ 
+ 			focus: () => {
+-				menu?.focus(!!delegate.autoSelectFirstItem);
++				// Composery: on touch, taking DOM focus is what closes the soft keyboard - and
++				// that resizes whatever is underneath. Under a terminal it is fatal: xterm
++				// answers a row-count change by dropping its selection, so the menu a
++				// long-press selection had just asked for destroyed that selection as it
++				// opened, and Copy found nothing to copy (device-verified). A menu here is
++				// tapped, not walked with arrow keys, and Escape still cancels through
++				// onDidCancel - so it has nothing to gain from focus and a surface to break.
++				if (!isTouch(mainWindow)) {
++					menu?.focus(!!delegate.autoSelectFirstItem);
++				}
+ 			},
+ 
+ 			onHide: (didCancel?: boolean) => {
+@@ -140,7 +165,9 @@
  				this.blockDisposable = null;
  
  				if (!!this.lastContainer && (getActiveElement() === this.lastContainer || isAncestor(getActiveElement(), this.lastContainer))) {
@@ -2777,7 +2543,7 @@ short layouts its row back.
  		} else {
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
-@@ -8,6 +8,7 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+@@ -8,6 +8,7 @@
  import { DataTransfers } from '../../../../base/browser/dnd.js';
  import * as dom from '../../../../base/browser/dom.js';
  import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
@@ -2785,7 +2551,7 @@ short layouts its row back.
  import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
  import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
  import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
-@@ -1130,6 +1131,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1130,6 +1131,13 @@
  			throw new Error('xterm elements not set after open');
  		}
  
@@ -2799,7 +2565,7 @@ short layouts its row back.
  		this._setAriaLabel(xterm.raw, this._instanceId, this._title);
  
  		xterm.raw.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
-@@ -1202,7 +1210,10 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1202,9 +1210,18 @@
  				listener.dispose();
  			});
  		}));
@@ -2810,7 +2576,43 @@ short layouts its row back.
 +		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Tap, () => {
  			xterm.raw.focus();
  		}));
++		// Composery: every other refresh of the selection context keys hangs off a mouse or
++		// key event, so a selection made by a long-press - which produces neither, and does
++		// not focus the terminal either, since that would pop the keyboard over it - left
++		// Copy disabled in the very menu the selection was made for. The selection changing
++		// is the event that matters.
++		this._register(xterm.raw.onSelectionChange(() => this._refreshSelectionContextKey()));
  
+ 		// xterm.js currently drops selection on keyup as we need to handle this case.
+ 		this._register(dom.addDisposableListener(xterm.raw.element, 'keyup', () => {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
+@@ -17,6 +17,15 @@
+ 		_curAttrData: XtermAttributes;
+ 	};
+ 
++	// Composery: xterm's own selection, for the two things a touch selection needs and the
++	// public Terminal API does not expose: whether a point is inside the selection, and word
++	// selection under a press. Reimplementing either would mean a second copy of xterm's word
++	// rules (wordSeparator, wide characters, wrapped lines) that drifts from the real one.
++	_selectionService: {
++		isCellInSelection(x: number, y: number): boolean;
++		rightClickSelect(event: MouseEvent): void;
++	};
++
+ 	_renderService: {
+ 		dimensions: {
+ 			css: {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
+@@ -35,5 +35,7 @@
+ import '../terminalContrib/sendSignal/browser/terminal.sendSignal.contribution.js';
+ import '../terminalContrib/suggest/browser/terminal.suggest.contribution.js';
+ import '../terminalContrib/telemetry/browser/terminal.telemetry.contribution.js';
++// Composery: terminal text selection by touch (a whole contribution of ours, in the overlay).
++import '../terminalContrib/touchSelection/browser/terminal.touchSelection.contribution.js';
+ import '../terminalContrib/wslRecommendation/browser/terminal.wslRecommendation.contribution.js';
+ import '../terminalContrib/voice/browser/terminal.voice.contribution.js';
 --- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
 @@ -9,6 +9,7 @@ import { StandardMouseEvent } from '../../../../../base/browser/mouseEvent.js';
@@ -2838,7 +2640,7 @@ short layouts its row back.
  
  import type { Terminal as RawXtermTerminal } from '@xterm/xterm';
 +import * as dom from '../../../../../base/browser/dom.js';
-+import { EventType as TouchEventType, Gesture, GestureEvent } from '../../../../../base/browser/touch.js';
++import { EventType as TouchEventType, GestureEvent } from '../../../../../base/browser/touch.js';
 +import { isTouch } from '../../../../../base/browser/touchGate.js';
 +import { mainWindow } from '../../../../../base/browser/window.js';
  import { Event } from '../../../../../base/common/event.js';
@@ -2850,7 +2652,7 @@ short layouts its row back.
  import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
  import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
  import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
-@@ -16,6 +21,7 @@ import { KeybindingWeight } from '../../../../../platform/keybinding/common/keyb
+@@ -16,6 +21,7 @@
  import { accessibleViewCurrentProviderId, accessibleViewIsShown } from '../../../accessibility/browser/accessibilityConfiguration.js';
  import { ITerminalContribution, ITerminalInstance, IXtermTerminal, isDetachedTerminalInstance } from '../../../terminal/browser/terminal.js';
  import { registerActiveInstanceAction } from '../../../terminal/browser/terminalActions.js';
@@ -2858,31 +2660,32 @@ short layouts its row back.
  import { registerTerminalContribution, type IDetachedCompatibleTerminalContributionContext, type ITerminalContributionContext } from '../../../terminal/browser/terminalExtensions.js';
  import { isTerminalProcessManager } from '../../../terminal/common/terminal.js';
  import { TerminalContextKeys } from '../../../terminal/common/terminalContextKey.js';
-@@ -78,6 +84,23 @@ class TerminalLinkContribution extends DisposableStore implements ITerminalContr
- 			}));
- 		}
+@@ -80,6 +86,24 @@
  		linkManager.add(this._terminalLinkProviderService.onDidRemoveLinkProvider(() => linkManager.externalProvideLinksCb = undefined));
-+
-+		// Composery: no ctrl exists on a touch screen and the terminal is a Gesture
-+		// target (tap-to-focus), so taps never surface as clicks - listen for Tap on
-+		// the screen element once it exists and hit-test the tapped cell instead.
-+		const onceRender = xterm.raw.onRender(() => {
-+			onceRender.dispose();
-+			const screen = xterm.raw.element?.querySelector('.xterm-screen');
-+			if (!(screen instanceof HTMLElement) || !isTouch(dom.getWindow(screen))) {
-+				return;
-+			}
-+			this.add(Gesture.addTarget(screen));
-+			this.add(dom.addDisposableListener(screen, TouchEventType.Tap, (e: GestureEvent) => {
-+				const targetWindow = dom.getWindow(screen);
-+				linkManager.openLinkAt(e.pageX - targetWindow.scrollX, e.pageY - targetWindow.scrollY);
-+			}));
-+		});
-+		this.add(onceRender);
  	}
  
++	// Composery: no ctrl exists on a touch screen, and the terminal is already a Gesture
++	// target (terminalInstance, for tap-to-focus), so a tap arrives here as a gesture Tap
++	// rather than as a click - hit-test the cell it landed on. This waits for xtermOpen
++	// because that is when the terminal has a DOM element to listen on; the link manager
++	// is read per tap, since which of xtermReady and xtermOpen runs first depends on
++	// whether the terminal was attached before its xterm resolved (device-verified: it
++	// can be, and capturing the manager here left every tap inert).
++	xtermOpen(xterm: IXtermTerminal & { raw: RawXtermTerminal }): void {
++		const element = xterm.raw.element;
++		if (!element || !isTouch(dom.getWindow(element))) {
++			return;
++		}
++		this.add(dom.addDisposableListener(element, TouchEventType.Tap, (e: GestureEvent) => {
++			const targetWindow = dom.getWindow(element);
++			this._linkManager?.openLinkAt(e.pageX - targetWindow.scrollX, e.pageY - targetWindow.scrollY);
++		}));
++	}
++
  	async showLinkQuickpick(extended?: boolean): Promise<void> {
-@@ -132,6 +155,18 @@ registerActiveInstanceAction({
+ 		if (!this._terminalLinkQuickpick) {
+ 			this._terminalLinkQuickpick = this.add(this._instantiationService.createInstance(TerminalLinkQuickpick));
+@@ -132,6 +156,18 @@
  	],
  	run: (activeInstance) => TerminalLinkContribution.get(activeInstance)?.showLinkQuickpick()
  });
@@ -2913,7 +2716,15 @@ short layouts its row back.
  import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
  import { DisposableStore, dispose, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
  import { isMacintosh, OS } from '../../../../../base/common/platform.js';
-@@ -252,6 +253,40 @@ export class TerminalLinkManager extends DisposableStore {
+@@ -24,6 +25,7 @@
+ import { ILinkHoverTargetOptions, TerminalHover } from '../../../terminal/browser/widgets/terminalHoverWidget.js';
+ import { TerminalWidgetManager } from '../../../terminal/browser/widgets/widgetManager.js';
+ import { IXtermCore } from '../../../terminal/browser/xterm-private.js';
++import { getBufferCellAt } from '../../../terminal/browser/xtermCell.js';
+ import { ITerminalCapabilityStore } from '../../../../../platform/terminal/common/capabilities/capabilities.js';
+ import { ITerminalConfiguration, ITerminalProcessInfo, TERMINAL_CONFIG_SECTION } from '../../../terminal/common/terminal.js';
+ import type { ILink, ILinkProvider, IViewportRange, Terminal } from '@xterm/xterm';
+@@ -252,6 +254,32 @@
  		return links[0];
  	}
  
@@ -2922,21 +2733,13 @@ short layouts its row back.
 +	// link quick pick. Word links (workspace search) stay tap-inert on purpose: nearly
 +	// every cell holds a word, and a tap must keep meaning "focus the terminal".
 +	async openLinkAt(clientX: number, clientY: number): Promise<boolean> {
-+		interface XtermWithCore extends Terminal {
-+			_core: IXtermCore;
-+		}
-+		const cell = (this._xterm as XtermWithCore)._core._renderService.dimensions.css.cell;
-+		const screen = this._xterm.element?.querySelector('.xterm-screen');
-+		if (!screen || cell.width <= 0 || cell.height <= 0) {
++		const cell = getBufferCellAt(this._xterm, clientX, clientY);
++		if (!cell) {
 +			return false;
 +		}
-+		const rect = screen.getBoundingClientRect();
-+		const x = Math.floor((clientX - rect.left) / cell.width) + 1;
-+		const row = Math.floor((clientY - rect.top) / cell.height) + 1;
-+		if (x < 1 || x > this._xterm.cols || row < 1 || row > this._xterm.rows) {
-+			return false;
-+		}
-+		const y = this._xterm.buffer.active.viewportY + row;
++		// Link ranges are 1-based in both axes; buffer cells are 0-based.
++		const x = cell.x + 1;
++		const y = cell.y + 1;
 +		for (const type of ['url', 'localFile', 'localFolder'] as const) {
 +			const links = await this._getLinksForType(y, type);
 +			const link = links?.find(l =>
@@ -2954,7 +2757,7 @@ short layouts its row back.
  	async getLinks(): Promise<{ viewport: IDetectedLinks; all: Promise<IDetectedLinks> }> {
  		// Fetch and await the viewport results
  		const viewportLinksByLinePromises: Promise<IDetectedLinks | undefined>[] = [];
-@@ -447,6 +482,11 @@ export class TerminalLinkManager extends DisposableStore {
+@@ -447,6 +475,11 @@
  	}
  
  	protected _isLinkActivationModifierDown(event: MouseEvent): boolean {

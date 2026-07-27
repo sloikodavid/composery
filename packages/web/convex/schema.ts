@@ -11,6 +11,11 @@ export const vCheckoutIntentStatus = v.union(
 	v.literal("expired")
 );
 
+export const vBoxAuthorizationType = v.union(
+	v.literal("password"),
+	v.literal("session")
+);
+
 export const vBoxStatus = v.union(
 	v.literal("creating"),
 	v.literal("running"),
@@ -378,6 +383,7 @@ export default defineSchema({
 		code_hash: v.string(),
 		code_challenge: v.string(),
 		redirect_uri: v.string(),
+		type: vBoxAuthorizationType,
 		expires_at: v.number(),
 		consumed_at: v.optional(v.number()),
 		created_at: v.number()

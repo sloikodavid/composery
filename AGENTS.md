@@ -8,6 +8,7 @@
 - A rule here solves a specific problem; check that problem is yours before applying it. In particular, a rule that manages unavoidable duplication never justifies creating some.
 - One name per concept, the plainest one: Create (not Provision/Spawn), Delete (not Erase/Destroy), Start (not Open/Boot), Stop (not Close/Halt), Finish (not Complete/End), Type (not Mode/Kind), Contents (not Material), Index (not Main). Where an external API forces its own word, keep theirs at the boundary and ours everywhere inside.
 - An action is named for what it acts on. Acting on a whole thing takes the bare verb (`repair`, `reset`, `update`); acting on one of its attributes takes verb + attribute (`change_slug`, `change_password`). That rule decides operation types, event names, function names, and button labels alike, so a name that needs an exception is usually the wrong name.
+- When adding or changing an environment-driven IDE setting, update the canonical `docs/configuration.md` entry and decide whether a cloud box owner can set it through `packages/web/convex/boxes/runtimeConfig.ts`. If it is offered there, give enum values explicit user-facing labels and keep the runtime/configuration wiring test green; if it is not, record the managed or infrastructure reason beside that allowlist.
 - Identifiers and prose are separate vocabularies. Never build user-visible text by reformatting an identifier: a stored value that also has to read well in English can be neither consistent nor readable. Map identifiers to labels explicitly.
 - The container is not a boundary against the person using it: it is privileged and root-capable, and cloud box owners control their host too (the Hetzner firewall is the real boundary — see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own box is a supported surface, so every env-driven feature must behave correctly when they do.
 - Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the box password never requires a Composery website account — proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
@@ -205,7 +206,6 @@ packages/
               themes/
                 composery-dark.json
                 composery-light.json
-              NOTICE
               package.json
               README.md
             composery-updates/
@@ -231,6 +231,7 @@ packages/
                   softKeyboard.ts
                   stickyModifiers.ts
                   touchGate.ts
+                  touchSelectionHandles.ts
               platform/
                 terminal/
                   common/
@@ -242,6 +243,14 @@ packages/
                   keybar.ts
                   narrowActivityBar.ts
                   narrowGate.ts
+                contrib/
+                  terminal/
+                    browser/
+                      xtermCell.ts
+                  terminalContrib/
+                    touchSelection/
+                      browser/
+                        terminal.touchSelection.contribution.ts
       src/
         browser/
           media/
@@ -295,6 +304,8 @@ packages/
             passwordConfig.ts
             pwned.ts
             register.ts
+          cloud.ts
+          session.ts
     patches/
       api.diff
       auth.diff
@@ -312,8 +323,8 @@ packages/
       qr-action.diff
       readiness.diff
       series
+      sessions.diff
       terminal-clients.diff
-      terminal-viewport.diff
       terminal.diff
       touch.diff
       updates.diff
@@ -966,6 +977,7 @@ tests/
     run.sh
   support/
     patchSource.ts
+  agent-install.test.ts
   api-openapi.test.ts
   auth-routes.test.ts
   brand-copy.test.ts
@@ -985,13 +997,14 @@ tests/
   runbook-script.test.ts
   runbook-windows.test.ts
   runtime-init.test.ts
+  session.test.ts
   terminal-clients.test.ts
-  terminal-data-flow-control.test.ts
   terminal-sync.test.ts
-  terminal-viewport.test.ts
+  terminal-touch-selection.test.ts
   toolchain-pins.test.ts
   touch-editor-selection.test.ts
   touch-list-focus.test.ts
+  touch-selection-handles.test.ts
   tree-script.test.ts
 .dockerignore
 .easignore

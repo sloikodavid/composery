@@ -195,6 +195,8 @@ async function assertWebAppSmoke() {
 	const idePage = await fetchAuthedText("/ide/", cookies);
 	assertContains("default IDE page", idePage, "Composery");
 	await assertIdeScope(idePage, cookies);
+	await assertPortProxyAcceptsTheSession(cookies);
+	await assertSignOutClearsTheSession(cookies);
 
 	await assertWebsocketUpgrade(cookies);
 	await assertIdeGatesWhenPersistenceNotReady(cookies);
@@ -644,7 +646,6 @@ async function assertPasswordRemoval() {
 }
 
 async function login(cookies) {
-	const baseUrl = `http://127.0.0.1:${config.port}`;
 	const loginPage = await waitForHttp(
 		"/ide/login",
 		DEFAULT_ATTEMPTS.readiness,
@@ -655,8 +656,6 @@ async function login(cookies) {
 	storeCookies(cookies, loginPage.headers["set-cookie"]);
 
 	const body = new URLSearchParams({
-		base: ".",
-		href: `${baseUrl}/ide/login`,
 		password: config.password
 	}).toString();
 
@@ -672,6 +671,81 @@ async function login(cookies) {
 	storeCookies(cookies, response.headers["set-cookie"]);
 	if (!isHttpSuccess(response)) {
 		throw new Error(`Login failed with HTTP ${response.statusCode}.`);
+	}
+	assertSessionCookieScope(response.headers["set-cookie"]);
+}
+
+// The one thing the cookie jar above cannot check for itself: it replays every
+// cookie everywhere, while a browser obeys Path. Scoping the session to the
+// workbench mount kept it away from /proxy and /absproxy - which this same
+// server authenticates with it - and left Sign Out unable to clear a cookie
+// Composery sign-in had set at a different path.
+function assertSessionCookieScope(setCookie) {
+	const session = (Array.isArray(setCookie) ? setCookie : [setCookie]).find(
+		(value) => value?.startsWith("composery-session=")
+	);
+	if (!session) {
+		throw new Error("Sign-in did not set a session cookie.");
+	}
+	const attributes = session
+		.split(";")
+		.slice(1)
+		.map((part) => part.trim().toLowerCase());
+	if (!attributes.includes("path=/")) {
+		throw new Error(
+			`Expected the session cookie at Path=/, got ${session.split(";").slice(1).join(";")}.`
+		);
+	}
+	if (!attributes.includes("httponly")) {
+		throw new Error("Expected the session cookie to be HttpOnly.");
+	}
+	if (attributes.some((attribute) => attribute.startsWith("domain="))) {
+		throw new Error(
+			"Expected a host-only session cookie; Domain widens it to every sibling host."
+		);
+	}
+}
+
+async function assertPortProxyAcceptsTheSession(cookies) {
+	// Port 9 (discard) has nothing listening, so a signed-in request gets as far
+	// as a failed connection - anything but the sign-in redirect an unauthorized
+	// one gets. That difference is the whole check: the proxy is mounted above
+	// the workbench, so it only works while the session cookie reaches it.
+	const anonymous = await request("/proxy/9/");
+	if (anonymous.statusCode !== 302) {
+		throw new Error(
+			`Expected /proxy/9/ to redirect an anonymous request, got ${anonymous.statusCode}.`
+		);
+	}
+	const authorized = await request("/proxy/9/", { cookies });
+	if (authorized.statusCode === 302) {
+		throw new Error(
+			"Expected /proxy/9/ to accept the IDE session, got a sign-in redirect."
+		);
+	}
+}
+
+async function assertSignOutClearsTheSession(cookies) {
+	const response = await request("/ide/logout", { cookies });
+	const cleared = (response.headers["set-cookie"] ?? []).find((value) =>
+		value.startsWith("composery-session=;")
+	);
+	if (!cleared) {
+		throw new Error("Sign Out did not clear the session cookie.");
+	}
+	// Identical scope, or the browser keeps the original cookie alongside it.
+	if (!cleared.toLowerCase().includes("path=/;")) {
+		throw new Error(
+			`Sign Out cleared a differently scoped cookie: ${cleared}.`
+		);
+	}
+	const after = new Map(cookies);
+	storeCookies(after, response.headers["set-cookie"]);
+	const workbench = await request("/ide/", { cookies: after });
+	if (workbench.statusCode !== 302) {
+		throw new Error(
+			`Expected the workbench to ask for sign-in after Sign Out, got ${workbench.statusCode}.`
+		);
 	}
 }
 

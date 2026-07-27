@@ -755,18 +755,18 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  	}
  	acceptPtyHostResolvedVariables(requestId: number, resolved: string[]): Promise<void> {
  		return this._channel.call(RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables, [requestId, resolved]);
-@@ -281,7 +296,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -281,7 +296,6 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	setTerminalLayoutInfo(layout?: ITerminalsLayoutInfoById): Promise<void> {
- 		const workspace = this._workspaceContextService.getWorkspace();
+-		const workspace = this._workspaceContextService.getWorkspace();
  		const args: ISetTerminalLayoutInfoArgs = {
 -			workspaceId: workspace.id,
 +			workspaceId: this._workspaceId,
  			tabs: layout ? layout.tabs : [],
  			background: layout ? layout.background : null
  		};
-@@ -307,13 +322,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -307,13 +322,12 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined> {
- 		const workspace = this._workspaceContextService.getWorkspace();
+-		const workspace = this._workspaceContextService.getWorkspace();
  		const args: IGetTerminalLayoutInfoArgs = {
 -			workspaceId: workspace.id,
 +			workspaceId: this._workspaceId,

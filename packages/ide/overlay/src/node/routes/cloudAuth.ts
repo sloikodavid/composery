@@ -1,11 +1,16 @@
 import * as crypto from "crypto";
 import { Router, type Request, type Response } from "express";
 import { AuthType } from "../cli";
-import { redirect } from "../http";
-import { renderAuthPage } from "./authPage";
+import { cloudConfig } from "../cloud";
+import { constructRedirectPath, getCookieOptions, redirect } from "../http";
+import { setSessionCookie } from "../session";
+import { renderAuthPage, returnPath } from "./authPage";
+import { hasPassword } from "./passwordConfig";
 
 const AUTHORIZATION_COOKIE = "composery-cloud-authorization";
 const SETUP_COOKIE = "composery-cloud-setup";
+// Composery Cloud publishes every box's workbench at this mount; the website
+// refuses any other redirect target (see IDE_PATH in packages/shared).
 const CLOUD_CALLBACK_PATH = "/ide/_composery/cloud/callback";
 // Long enough to survive a Clerk sign-in (or sign-up) on the cloud side;
 // PKCE keeps a lingering transaction cookie harmless.
@@ -13,40 +18,14 @@ const AUTHORIZATION_MAX_AGE_MS = 10 * 60_000;
 const SETUP_MAX_AGE_MS = 10 * 60_000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43,128}$/;
 
-type CloudConfig = {
-	boxId: string;
-	origin: string;
-};
+type AuthorizationType = "password" | "session";
 
-function readCloudConfig(): CloudConfig | undefined {
-	const boxId = process.env.COMPOSERY_CLOUD_BOX_ID?.trim();
-	const rawOrigin = process.env.COMPOSERY_CLOUD_ORIGIN?.trim();
-	if (!boxId && !rawOrigin) return undefined;
-	if (!boxId || !rawOrigin) {
-		throw new Error(
-			"COMPOSERY_CLOUD_BOX_ID and COMPOSERY_CLOUD_ORIGIN must be configured together"
-		);
-	}
-	const origin = new URL(rawOrigin);
-	if (
-		origin.protocol !== "https:" ||
-		origin.pathname !== "/" ||
-		origin.search ||
-		origin.hash
-	) {
-		throw new Error("COMPOSERY_CLOUD_ORIGIN must be an HTTPS origin");
-	}
-	return { boxId, origin: origin.origin };
-}
-
-export const cloudConfig = readCloudConfig();
 export const router = Router();
 
 router.use((req, res, next) => {
-	// The grant flow's only job is setting the box password. With sign-in
-	// disabled it would pass the ownership check, report success, and gate
-	// nothing - a password that implies the box is protected when it is open to
-	// whoever reaches it. Land on the workbench the operator already opened.
+	// Neither cloud capability has work to do when sign-in is disabled: a local
+	// session gates nothing, while setting a password would imply protection the
+	// box is not applying. Land on the workbench the operator already opened.
 	if (req.args.auth !== AuthType.Password) {
 		return redirect(req, res, "");
 	}
@@ -61,43 +40,62 @@ function challenge(verifier: string) {
 	return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 
-type AuthorizationTransaction = { state: string; verifier: string };
+type AuthorizationTransaction = {
+	state: string;
+	to: string;
+	type: AuthorizationType;
+	verifier: string;
+};
+
+function isAuthorizationType(value: unknown): value is AuthorizationType {
+	return value === "password" || value === "session";
+}
 
 function authorizationTransactions(req: Request): AuthorizationTransaction[] {
 	const encoded = req.cookies?.[AUTHORIZATION_COOKIE];
-	if (typeof encoded !== "string" || encoded.length > 2048) return [];
+	if (typeof encoded !== "string" || encoded.length > 4096) return [];
 	try {
 		const parsed = JSON.parse(
 			Buffer.from(encoded, "base64url").toString("utf8")
 		) as unknown;
 		if (!Array.isArray(parsed)) return [];
-		return parsed.filter(
-			(value): value is AuthorizationTransaction =>
-				value !== null &&
-				typeof value === "object" &&
-				TOKEN_PATTERN.test((value as AuthorizationTransaction).state) &&
-				TOKEN_PATTERN.test((value as AuthorizationTransaction).verifier)
-		);
+		return parsed.flatMap((value): AuthorizationTransaction[] => {
+			if (value === null || typeof value !== "object") return [];
+			const transaction = value as Partial<AuthorizationTransaction>;
+			if (
+				!TOKEN_PATTERN.test(transaction.state ?? "") ||
+				!TOKEN_PATTERN.test(transaction.verifier ?? "") ||
+				!isAuthorizationType(transaction.type)
+			) {
+				return [];
+			}
+			return [
+				{
+					state: transaction.state as string,
+					to: transaction.type === "session" ? returnPath(transaction.to) : "/",
+					type: transaction.type,
+					verifier: transaction.verifier as string
+				}
+			];
+		});
 	} catch {
 		return [];
 	}
 }
 
 function setAuthorizationTransactions(
+	req: Request,
 	res: Response,
 	transactions: AuthorizationTransaction[]
 ) {
 	if (transactions.length === 0) {
-		res.clearCookie(AUTHORIZATION_COOKIE, restrictedCookie);
+		res.clearCookie(AUTHORIZATION_COOKIE, getCookieOptions(req));
 		return;
 	}
 	res.cookie(
 		AUTHORIZATION_COOKIE,
 		Buffer.from(JSON.stringify(transactions)).toString("base64url"),
-		{
-			...restrictedCookie,
-			maxAge: AUTHORIZATION_MAX_AGE_MS
-		}
+		{ ...getCookieOptions(req), maxAge: AUTHORIZATION_MAX_AGE_MS }
 	);
 }
 
@@ -107,20 +105,13 @@ function callbackUrl(req: Request) {
 	return `https://${host}${CLOUD_CALLBACK_PATH}`;
 }
 
-const restrictedCookie = {
-	httpOnly: true,
-	secure: true,
-	sameSite: "lax" as const,
-	path: "/ide/"
-};
-
 export function hasCloudSetupGrant(req: Request) {
 	const value = req.cookies?.[SETUP_COOKIE];
 	return typeof value === "string" && TOKEN_PATTERN.test(value);
 }
 
-export function clearCloudSetupGrant(res: Response) {
-	res.clearCookie(SETUP_COOKIE, restrictedCookie);
+export function clearCloudSetupGrant(req: Request, res: Response) {
+	res.clearCookie(SETUP_COOKIE, getCookieOptions(req));
 }
 
 router.get("/authorize", (req, res) => {
@@ -128,16 +119,32 @@ router.get("/authorize", (req, res) => {
 		res.status(404).send("Not found");
 		return;
 	}
+	const type = req.query.type ?? "password";
+	if (!isAuthorizationType(type)) {
+		res.status(400).send("Invalid authorization type");
+		return;
+	}
+	const to = type === "session" ? returnPath(req.query.to) : "/";
+	// A cloud session is signed by the box password, so a box that has not
+	// created one yet must finish the password capability first.
+	if (type === "session" && !hasPassword(req.args)) {
+		return redirect(req, res, "_composery/cloud/authorize", {
+			type: "password",
+			to: undefined
+		});
+	}
 	const verifier = randomToken();
 	const state = randomToken();
 	setAuthorizationTransactions(
+		req,
 		res,
-		[...authorizationTransactions(req), { state, verifier }].slice(-4)
+		[...authorizationTransactions(req), { state, to, type, verifier }].slice(-4)
 	);
 	const authorization = new URL("/boxes/authorize", cloudConfig.origin);
 	authorization.searchParams.set("box_id", cloudConfig.boxId);
 	authorization.searchParams.set("code_challenge", challenge(verifier));
 	authorization.searchParams.set("state", state);
+	authorization.searchParams.set("type", type);
 	authorization.searchParams.set("redirect_uri", callbackUrl(req));
 	res.setHeader("Cache-Control", "no-store");
 	res.setHeader("Referrer-Policy", "no-referrer");
@@ -152,20 +159,24 @@ router.get("/callback", async (req, res) => {
 	const code = typeof req.query.code === "string" ? req.query.code : "";
 	const state = typeof req.query.state === "string" ? req.query.state : "";
 	const transactions = authorizationTransactions(req);
-	const transaction = transactions.find((candidate) => candidate.state === state);
-	const verifier = transaction?.verifier;
+	const transaction = transactions.find(
+		(candidate) => candidate.state === state
+	);
 	setAuthorizationTransactions(
+		req,
 		res,
 		transactions.filter((candidate) => candidate.state !== state)
 	);
 	if (
 		!TOKEN_PATTERN.test(code) ||
 		!TOKEN_PATTERN.test(state) ||
-		!TOKEN_PATTERN.test(verifier ?? "")
+		!transaction ||
+		!TOKEN_PATTERN.test(transaction.verifier)
 	) {
 		redirect(req, res, "_composery/cloud/error");
 		return;
 	}
+	const verifier = transaction.verifier;
 
 	try {
 		const response = await fetch(
@@ -177,18 +188,28 @@ router.get("/callback", async (req, res) => {
 					boxId: cloudConfig.boxId,
 					code,
 					codeVerifier: verifier,
-					redirectUri: callbackUrl(req)
+					redirectUri: callbackUrl(req),
+					type: transaction.type
 				}),
 				signal: AbortSignal.timeout(15_000)
 			}
 		);
-		const body = (await response.json()) as { grant?: unknown };
-		if (!response.ok || typeof body.grant !== "string") throw new Error();
+		const body = (await response.json()) as {
+			grant?: unknown;
+			type?: unknown;
+		};
+		if (!response.ok || body.type !== transaction.type) throw new Error();
+		res.setHeader("Cache-Control", "no-store");
+		if (transaction.type === "session") {
+			setSessionCookie(req, res, getCookieOptions(req));
+			res.redirect(constructRedirectPath(req, {}, transaction.to));
+			return;
+		}
+		if (typeof body.grant !== "string") throw new Error();
 		res.cookie(SETUP_COOKIE, body.grant, {
-			...restrictedCookie,
+			...getCookieOptions(req),
 			maxAge: SETUP_MAX_AGE_MS
 		});
-		res.setHeader("Cache-Control", "no-store");
 		redirect(req, res, "register");
 	} catch {
 		redirect(req, res, "_composery/cloud/error");

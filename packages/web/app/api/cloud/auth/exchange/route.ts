@@ -21,7 +21,8 @@ export async function POST(request: Request) {
 			boxId: body.boxId as Id<"boxes">,
 			code: body.code,
 			codeVerifier: body.codeVerifier,
-			redirectUri: body.redirectUri
+			redirectUri: body.redirectUri,
+			type: body.type ?? "password"
 		});
 		return response(result, 200);
 	} catch {
@@ -34,6 +35,7 @@ function isExchangeRequest(value: unknown): value is {
 	code: string;
 	codeVerifier: string;
 	redirectUri: string;
+	type?: "password" | "session";
 } {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 	const body = value as Record<string, unknown>;
@@ -45,7 +47,10 @@ function isExchangeRequest(value: unknown): value is {
 		typeof body.codeVerifier === "string" &&
 		body.codeVerifier.length === 43 &&
 		typeof body.redirectUri === "string" &&
-		body.redirectUri.length <= 512
+		body.redirectUri.length <= 512 &&
+		(body.type === undefined ||
+			body.type === "password" ||
+			body.type === "session")
 	);
 }
 

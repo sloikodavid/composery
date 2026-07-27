@@ -46,6 +46,7 @@ const SERVER_PATCHES = [
 	["node-engine.diff", "full"],
 	["api.diff", "src"],
 	["updates.diff", "src"],
+	["sessions.diff", "full"],
 	["path-prefix.diff", "src"]
 ];
 const SCRATCH = join(

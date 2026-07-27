@@ -31,10 +31,13 @@
 }
 
 /*
- * Editor selection drag handles (touch.diff): the collapsed caret and both range
- * ends. The browser cannot provide these - its selection UI aims at the focused element,
- * and the editor's focused element is a hidden one-pixel input, never the rendered lines.
- * Visibility is driven from JS, which only shows them for touch pointers.
+ * Selection drag handles (touchSelectionHandles.ts): the collapsed caret and both range
+ * ends, for the editor and the terminal alike. The browser cannot provide these - its
+ * selection UI aims at the focused element, and neither host renders its text there (the
+ * editor focuses a hidden one-pixel input, the terminal a hidden textarea). Visibility and
+ * placement are driven from JS, which only shows them for touch pointers; the handles hang
+ * off .monaco-workbench in client coordinates, because the panes that own selections clip
+ * their overflow and a grip hangs below the line it marks.
  */
 .composery-touch-caret-handle {
 	background: var(--vscode-editorCursor-foreground);
@@ -51,7 +54,8 @@
 	top: 0;
 	touch-action: none;
 	width: 22px;
-	z-index: 50;
+	/* Above the workbench parts, below the menus and dialogs (2500+) that act on a selection. */
+	z-index: 2000;
 }
 
 .composery-touch-caret-handle::before {
@@ -82,9 +86,9 @@
 	margin-left: 0;
 }
 
-/* At column 1 the start handle's body would sit outside .lines-content and be
-   clipped by the overflow guard, hiding the handle. Mirror it so the tip stays on
-   the selection edge and the body opens rightwards instead. */
+/* At the pane's left edge the start handle's body would hang over whatever sits
+   beside it. Mirror it so the tip stays on the selection edge and the body opens
+   rightwards instead. */
 .composery-touch-range-handle-start.composery-touch-range-handle-flipped {
 	border-radius: 0 999px 999px 999px;
 	margin-left: 0;
@@ -220,16 +224,26 @@
 	 * (_renderAtTopLeft), or over the selected text when it is on-screen - so a select-all
 	 * or a keybar Ctrl+C (which refreshes that selection to copy) sprays the knobs across
 	 * the selection. Both are the same hidden input; both are redundant with the
-	 * model-driven caret/range handles the editor draws itself (touch.diff). Suppress the
-	 * native selection UI at the source: copy/cut read the editor model
+	 * model-driven caret/range handles the editor draws itself (the shared grips in
+	 * touchSelectionHandles.ts). Suppress the native selection UI at the source: copy/cut
+	 * read the editor model
 	 * (ensureClipboardGetsEditorData), not this selection, and the input's caret is
 	 * already transparent, so nothing visible is lost. Harmless on Android (it draws no
 	 * such handles); reasoned for iOS, not device-tested.
+	 *
+	 * The same shims must not take a touch either, and that one is device-verified. Each is
+	 * hit-testable where it is parked - the editor's on the cursor's line, xterm's under the
+	 * cell touched last - so a press landing on one targets an editable element, which the
+	 * gesture layer deliberately leaves to the OS text toolbar: the hold silently did
+	 * nothing at all on exactly the spot the finger had just tapped. They are focused
+	 * through code, never by pointing at them, so none of them needs pointer events.
 	 */
 	.monaco-workbench .monaco-editor .native-edit-context,
-	.monaco-workbench .monaco-editor .inputarea {
+	.monaco-workbench .monaco-editor .inputarea,
+	.xterm-helper-textarea {
 		-webkit-user-select: none;
 		user-select: none;
+		pointer-events: none;
 	}
 
 }
