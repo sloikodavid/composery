@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
+import { parse } from "yaml";
 
 import { repoRoot, readRepoFile } from "./support/patchSource.ts";
 
@@ -15,6 +16,38 @@ const rootPackage = JSON.parse(readRepoFile("package.json")) as {
 };
 const scripts = rootPackage.scripts;
 const ciWorkflow = readRepoFile(".github/workflows/ci.yml");
+
+type WorkflowJob = {
+	if?: string;
+	needs?: string | string[];
+	permissions?: Record<string, string>;
+	steps?: Array<Record<string, unknown>>;
+	uses?: string;
+};
+
+type Workflow = {
+	jobs: Record<string, WorkflowJob>;
+	on?: Record<string, unknown>;
+};
+
+function workflow(path: string): Workflow {
+	return parse(readRepoFile(path)) as Workflow;
+}
+
+function dependsOn(
+	jobs: Record<string, WorkflowJob>,
+	jobName: string,
+	required: string,
+	seen = new Set<string>()
+): boolean {
+	if (jobName === required) return true;
+	if (seen.has(jobName)) return false;
+	seen.add(jobName);
+
+	const value = jobs[jobName]?.needs;
+	const needs = typeof value === "string" ? [value] : (value ?? []);
+	return needs.some((name) => dependsOn(jobs, name, required, seen));
+}
 
 // Deliberately excluded from the cross-platform matrix:
 // - check:cli  cargo builds the persistence crate, which needs inotify/xattr.
@@ -34,6 +67,68 @@ const checkTargets = Object.keys(scripts).filter(
 const portableTargets = targetsOf(scripts["check:portable"] ?? "");
 
 describe("cross-platform checks", () => {
+	test("one fail-closed promotion check owns every automatic deployment", () => {
+		const ci = workflow(".github/workflows/ci.yml");
+		const promote = ci.jobs.promote;
+
+		expect(promote?.if).toBe("always()");
+		expect(new Set(promote?.needs)).toEqual(
+			new Set(["windows-macos", "linux", "smoke"])
+		);
+		expect(dependsOn(ci.jobs, "deploy", "promote")).toBe(true);
+		expect(ci.jobs.deploy?.permissions).toEqual({ contents: "write" });
+		const deploy = ci.jobs.deploy?.steps?.find(
+			(step) => step.name === "Promote the green commit"
+		);
+		expect(deploy?.run).toContain("refs/heads/deploy");
+
+		const writable = Object.entries(ci.jobs)
+			.filter(([, job]) => job.permissions?.contents === "write")
+			.map(([name]) => name);
+		expect(writable).toEqual(["deploy"]);
+
+		const drift = ci.jobs.linux?.steps?.find(
+			(step) => step.name === "Check for source drift"
+		);
+		expect(drift?.run).toContain("pnpm fix");
+		expect(drift?.run).toContain("git diff --exit-code");
+		expect(drift?.run).toContain("--untracked-files=all");
+
+		const vercel = JSON.parse(readRepoFile("packages/web/vercel.json")) as {
+			git?: { deploymentEnabled?: Record<string, boolean> };
+		};
+		expect(vercel.git?.deploymentEnabled).toEqual({
+			"*": false,
+			deploy: true
+		});
+	});
+
+	test("every publication workflow depends on the complete CI tier", () => {
+		const release = workflow(".github/workflows/release.yml");
+		expect(release.jobs.validate?.uses).toBe("./.github/workflows/ci.yml");
+		for (const job of ["plan", "build", "publish"])
+			expect(dependsOn(release.jobs, job, "validate"), job).toBe(true);
+
+		const mobileRelease = workflow(".github/workflows/mobile-release.yml");
+		expect(mobileRelease.jobs.ci?.uses).toBe("./.github/workflows/ci.yml");
+		for (const job of ["validate", "build-submit", "publish-apk"])
+			expect(dependsOn(mobileRelease.jobs, job, "ci"), job).toBe(true);
+
+		const preview = workflow(".github/workflows/mobile-preview.yml");
+		expect(preview.jobs.validate?.uses).toBe("./.github/workflows/ci.yml");
+		expect(dependsOn(preview.jobs, "build", "validate")).toBe(true);
+		expect(preview.jobs.build?.if).toContain(
+			"github.event.workflow_run.conclusion == 'success'"
+		);
+		expect(preview.jobs.build?.if).toContain(
+			"needs.validate.result == 'success'"
+		);
+
+		const smoke = workflow(".github/workflows/smoke.yml");
+		expect(smoke.on).not.toHaveProperty("push");
+		expect(smoke.on).not.toHaveProperty("pull_request");
+	});
+
 	test("formatting excludes Expo's generated native projects", () => {
 		const prettierIgnore = readRepoFile(".prettierignore");
 

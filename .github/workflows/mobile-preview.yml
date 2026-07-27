@@ -2,34 +2,55 @@ name: mobile-preview
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
-    paths:
-      - packages/mobile/**
-      - packages/shared/**
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .github/workflows/mobile-preview.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: mobile-preview-${{ github.ref }}
+  group: mobile-preview-${{ github.event.workflow_run.head_sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  validate:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ github.ref }}
+
   build:
+    needs: validate
+    if: >-
+      always() &&
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == github.event.repository.default_branch &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          vars.MOBILE_PREVIEW_ENABLED == 'true'
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          needs.validate.result == 'success'
+        )
+      )
     # A fresh fork does not fail every push before its Expo account exists.
-    # Manual runs always work; setting MOBILE_PREVIEW_ENABLED=true makes mobile
-    # changes on main produce an APK automatically.
-    if: github.event_name == 'workflow_dispatch' || vars.MOBILE_PREVIEW_ENABLED == 'true'
+    # Manual runs validate first; setting MOBILE_PREVIEW_ENABLED=true makes each
+    # fully green main commit produce an APK automatically.
     runs-on: ubuntu-24.04
     environment: mobile-preview
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_SHA }}
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -82,7 +103,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: composery-preview-${{ github.sha }}
+          name: composery-preview-${{ env.SOURCE_SHA }}
           path: |
             tmp/composery-preview.apk
             tmp/composery-preview.apk.sha256

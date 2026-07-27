@@ -26,9 +26,12 @@ GitHub Release or `latest` tag.
 2. Confirm CI and smoke checks pass on `main`.
 3. Open **Actions** -> **release** -> **Run workflow** and leave `ref` as `main`.
 
-The workflow verifies the current `main`, builds both architectures, publishes
-the multi-platform manifest, scans it, attests it, and creates tag `vX.Y.Z`.
-It publishes `<version>`, `<major>.<minor>`, `latest`, and the commit tag.
+The workflow reruns the complete CI tier, including both smoke architectures and
+the source-drift check, for the exact ref before it receives any package write
+permission. It then verifies the current `main`, builds both architectures,
+publishes the multi-platform manifest, scans it, attests it, and creates tag
+`vX.Y.Z`. It publishes `<version>`, `<major>.<minor>`, `latest`, and the commit
+tag.
 
 Do not create `v*` tags or stable image GitHub Releases manually; the image
 workflow owns them.

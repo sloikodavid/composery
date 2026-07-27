@@ -96,18 +96,19 @@ gh label create dependencies --color 0366d6 --description "Dependency updates"
 Branch protection is a repository ruleset (Settings -> Rules -> Rulesets)
 named `Protect main`, targeting `refs/heads/main`, with no bypass actors:
 
-| Rule                   | Parameters                                            |
-| ---------------------- | ----------------------------------------------------- |
-| Require a pull request | 1 approving review                                    |
-| Required status checks | the CI check, the smoke matrix, and `cla` (see below) |
-| Require linear history | -                                                     |
-| Restrict deletions     | -                                                     |
-| Block force pushes     | -                                                     |
+| Rule                   | Parameters          |
+| ---------------------- | ------------------- |
+| Require a pull request | 1 approving review  |
+| Required status checks | `promote` and `cla` |
+| Require linear history | -                   |
+| Restrict deletions     | -                   |
+| Block force pushes     | -                   |
 
 Required status check contexts must exactly equal the check-run names GitHub
-reports on a commit, not workflow file names. With the current workflows those
-are `check` (the `ci` workflow's job), `smoke / amd64` and `smoke / arm64`
-(the smoke matrix), and `cla`. Read them off any recent commit before saving:
+reports on a commit, not workflow file names. `promote` is the one fail-closed
+result over Linux, Windows, macOS, both smoke architectures, and the source-drift
+check; a failed, cancelled, or skipped dependency makes it fail rather than
+skip. Read the exact names off any recent commit before saving:
 
 ```bash
 gh api repos/<github-user>/composery/commits/main/check-runs \
@@ -128,19 +129,20 @@ their `permissions:` blocks, which is why none of this needs org-level policy:
 
 | Workflow             | Trigger                               | Elevated permissions and why                                                                               |
 | -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`       | none (`contents: read`) - typecheck/lint/test/build and generated native-config gates                      |
-| `smoke.yml`          | pull requests, pushes, call, dispatch | `security-events: write` - boots the image and uploads Trivy SARIF                                         |
+| `ci.yml`             | pull requests, pushes to `main`, call | only the post-validation deploy job gets `contents: write`, to fast-forward the `deploy` branch            |
+| `smoke.yml`          | call, dispatch                        | direct runs get `security-events: write` for Trivy SARIF; validation calls are read-only and do not upload |
 | `smoke-nightly.yml`  | schedule, dispatch                    | `security-events: write` - uncached image smoke                                                            |
 | `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                                    |
-| `mobile-preview.yml` | mobile pushes to `main`, dispatch     | none; uses protected `EXPO_TOKEN` to build an internal APK                                                 |
-| `mobile-release.yml` | `mobile-v*` tag                       | final job gets `contents: write` for the mobile GitHub Release and `id-token: write` for Google federation |
-| `release.yml`        | dispatch                              | image release, GHCR, provenance, and Trivy permissions                                                     |
+| `mobile-preview.yml` | successful `ci` completion, dispatch  | uses protected `EXPO_TOKEN`; automatic and manual builds both wait for the complete validation tier        |
+| `mobile-release.yml` | `mobile-v*` tag                       | revalidates the tag before EAS/Google; final job gets release and Google federation permissions            |
+| `release.yml`        | dispatch                              | revalidates the exact ref before image release, GHCR, provenance, and Trivy permissions                    |
 | `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                                     |
 
 Create GitHub environments under **Settings** -> **Environments**:
 
 - `mobile-preview`: secret `EXPO_TOKEN`. Repository variable
-  `MOBILE_PREVIEW_ENABLED=true` opts into automatic main-branch APK builds.
+  `MOBILE_PREVIEW_ENABLED=true` opts into automatic APK builds after a
+  successful `main` CI run.
 - `mobile-production`: required reviewers, secret `EXPO_TOKEN`, and variables
   `GCP_WORKLOAD_IDENTITY_PROVIDER` and
   `GCP_ANDROID_PUBLISHER_SERVICE_ACCOUNT`.
@@ -150,7 +152,7 @@ them absent; its normal CI and image workflows remain usable.
 
 Operational notes:
 
-- The matrix jobs run on the hosted `ubuntu-26.04` and `ubuntu-26.04-arm`
+- Linux image work runs on the hosted `ubuntu-24.04` and `ubuntu-24.04-arm`
   runners - both free for public repositories, nothing to provision.
 - Docker builds cache through the GitHub Actions cache (`type=gha`). The
   per-repository cache budget is limited and evicts least-recently-used
@@ -244,9 +246,11 @@ approval held for majors and for `packages/ide/upstream` submodule bumps
 
 ## Vercel connection
 
-The production website deploys from this repository's `main` branch through
-the Vercel GitHub App, installed during `vercel link`. That connection and
-everything after it is [Web / Vercel](../web/services/vercel.md).
+The production website deploys from the CI-owned `deploy` branch through the
+Vercel GitHub App, installed during `vercel link`. A non-forced push advances
+that branch only after `promote` succeeds, and `packages/web/vercel.json`
+rejects Git deployments from every other branch. That connection and everything
+after it is [Web / Vercel](../web/services/vercel.md).
 
 ## Running your own
 

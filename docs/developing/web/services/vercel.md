@@ -3,8 +3,10 @@ title: Vercel
 description: Configure and deploy the Next.js app to Vercel Production, plus cookieless analytics.
 ---
 
-You only deploy production from git (branch `main`). Local development never goes
-through Vercel; it uses `pnpm run dev` with `.env.local` (see
+You only deploy production from the CI-owned git branch `deploy`. CI
+fast-forwards that branch to the exact `main` commit after every validation tier
+passes; nobody pushes it manually. Local development never goes through Vercel;
+it uses `pnpm run dev` with `.env.local` (see
 [index](../index.md#local-development)). So Vercel only needs Production
 configuration.
 
@@ -27,11 +29,20 @@ Project settings:
 
   It deploys [Convex](./convex.md) first, injects the correct
   `NEXT_PUBLIC_CONVEX_URL` into the Next.js build, then builds the frontend.
+  That first step is why a post-build Vercel Deployment Check is insufficient:
+  the backend would already have changed. The `deploy` branch prevents the
+  build from starting until CI is green.
 
-- Project Settings -> Git: production branch = `main`.
+- Project Settings -> Environments -> Production -> Branch Tracking: production
+  branch = `deploy`.
 - Project Settings -> Build and Deployment -> Ignored Build Step = **Only build
-  production**. There is no preview Convex backend, so a non-`main` branch deploy
-  has nowhere correct to point.
+  production**. There is no preview Convex backend, so any other branch has
+  nowhere correct to point.
+
+`packages/web/vercel.json` also sets `git.deploymentEnabled` to `true` only for
+`deploy` and `false` for `*`. This is the executable half of the boundary:
+`main`, pull requests, and failed commits cannot start a Vercel or Convex
+deployment even if a dashboard branch setting is changed accidentally.
 
 Plus the two project-level settings `packages/web/vercel.json` cannot encode
 (covered in [index](../index.md#production-deploy)): **Root Directory** = `packages/web`, and
@@ -115,6 +126,7 @@ the Terms and Privacy pages and require express consent in both instances.
 - Vercel environment variables: https://vercel.com/docs/environment-variables
 - Vercel env CLI: https://vercel.com/docs/cli/env
 - Vercel custom domains: https://vercel.com/docs/domains/set-up-custom-domain
+- Vercel Git deployment configuration: https://vercel.com/docs/project-configuration/git-configuration
 - Next.js environment variables: https://nextjs.org/docs/app/guides/environment-variables
 - Vercel Web Analytics privacy: https://vercel.com/docs/analytics
 - Vercel Speed Insights privacy: https://vercel.com/docs/speed-insights/privacy-policy

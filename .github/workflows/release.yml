@@ -16,14 +16,13 @@ permissions:
   attestations: write
 
 jobs:
-  smoke:
-    uses: ./.github/workflows/smoke.yml
+  validate:
+    uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ inputs.ref }}
-      no_cache: true
 
   plan:
-    needs: smoke
+    needs: validate
     runs-on: ubuntu-24.04
     outputs:
       build_version: ${{ steps.plan.outputs.build_version }}

@@ -9,8 +9,8 @@ store, review, privacy, and recovery runbooks are under
 For a device/demo build, run **Actions** -> **mobile-preview** -> **Run
 workflow**, or run the EAS preview command from the mobile development guide.
 After GitHub environment `mobile-preview` has `EXPO_TOKEN`, setting repository
-variable `MOBILE_PREVIEW_ENABLED=true` also builds a preview APK whenever mobile
-code reaches `main`.
+variable `MOBILE_PREVIEW_ENABLED=true` also builds a preview APK after each
+successful `main` CI run. A manual run performs the same full validation first.
 
 Preview APKs are test artifacts, not public releases.
 
@@ -23,10 +23,11 @@ Preview APKs are test artifacts, not public releases.
 3. Verify the exact `main` commit and create annotated tag `mobile-vX.Y.Z`.
 4. Push the tag.
 
-The tag automatically starts `mobile-release`: it builds and submits the AAB/IPA
-to Play internal testing and TestFlight, waits for Play's Google-signed universal
-APK, verifies and installs that APK, runs Maestro, then publishes the GitHub
-Release assets.
+The tag automatically starts `mobile-release`: it first reruns the complete CI
+tier and source-drift check for the tagged commit, then builds and submits the
+AAB/IPA to Play internal testing and TestFlight, waits for Play's Google-signed
+universal APK, verifies and installs that APK, runs Maestro, and publishes the
+GitHub Release assets.
 
 Store production publication remains a deliberate console approval after human
 testing of those exact artifacts. Do not rebuild between internal testing and
