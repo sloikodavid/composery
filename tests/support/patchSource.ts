@@ -42,7 +42,10 @@ export const patchBin = (() => {
 })();
 
 export function applyPatch(patchFile: string, cwd: string): void {
-	execFileSync(patchBin, ["-p1", "--fuzz=0", "-i", patchFile], {
+	// BSD patch keeps a successfully emptied file unless -E is explicit, while
+	// GNU patch removes a file whose new path is /dev/null by default. Require
+	// the shared semantic instead of letting the rehearsal depend on its host.
+	execFileSync(patchBin, ["-p1", "-E", "--fuzz=0", "-i", patchFile], {
 		cwd,
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"]
