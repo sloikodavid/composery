@@ -56,8 +56,7 @@
       SKILL.md
     senior-buzzwords/
       SKILL.md
-    simplify-ide/
-      SKILL.md
+    simplify-ide.md
 .claude/
   skills
 .github/
@@ -313,6 +312,7 @@ packages/
       qr-action.diff
       readiness.diff
       series
+      terminal-clients.diff
       terminal-viewport.diff
       terminal.diff
       touch.diff
@@ -985,6 +985,7 @@ tests/
   runbook-script.test.ts
   runbook-windows.test.ts
   runtime-init.test.ts
+  terminal-clients.test.ts
   terminal-data-flow-control.test.ts
   terminal-sync.test.ts
   terminal-viewport.test.ts

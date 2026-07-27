@@ -85,33 +85,19 @@ function evaluateClientState(source = clientStateSource) {
 			attach(
 				id: number,
 				clientId: string,
-				makeController: boolean,
+				makeUiTarget: boolean,
 				streaming?: boolean
 			): void;
 			detach(
 				id: number,
 				clientId: string
-			): {
-				attached: boolean;
-				final: boolean;
-				nextController?: string;
-				dimensions?: { cols: number; rows: number };
-			};
+			): { attached: boolean; final: boolean };
 			detachClient(clientId: string): { id: number; final: boolean }[];
 			isAttached(id: number, clientId: string): boolean;
-			isController(id: number, clientId: string): boolean;
+			isUiTarget(id: number, clientId: string): boolean;
 			isStreaming(id: number, clientId: string): boolean;
+			takeUiControl(id: number, clientId: string): void;
 			markStreaming(id: number, clientId: string): void;
-			acknowledge(id: number, clientId: string, charCount: number): number;
-			recordDimensions(
-				id: number,
-				clientId: string,
-				dimensions: { cols: number; rows: number }
-			): boolean;
-			takeControl(
-				id: number,
-				clientId: string
-			): { cols: number; rows: number } | undefined;
 		};
 	}>([source], ["TerminalClientState"]).TerminalClientState;
 }
@@ -198,6 +184,27 @@ describe("authoritative terminal inventory", () => {
 		);
 	});
 
+	test("a backend answers to the same workspace id it reports", () => {
+		// The canonical id goes out on every request, so it is the id that comes
+		// back on a pty-host request. Upstream compares against the raw workspace
+		// id; left alone that comparison can never match and variable resolution
+		// silently never answers. One accessor, both directions.
+		expect(added).toContain("if (e.workspaceId !== this._getWorkspaceId()) {");
+		expect(added).toContain(
+			"protected override _getWorkspaceId(): string {\n\t\treturn getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace());"
+		);
+		expect(added).not.toContain(
+			"OnPtyHostRequestResolveVariablesEvent), event => ({ ...event,"
+		);
+		// Exactly one remap survives: a detach request names an instance by the
+		// URI the window built from its own workspace id.
+		expect(
+			added.match(
+				/workspaceId: this\._workspaceContextService\.getWorkspace\(\)\.id/g
+			)
+		).toHaveLength(1);
+	});
+
 	test("merges missing foreground and hidden processes without mutating client layout", () => {
 		const layout: Layout = {
 			workspaceId: "workspace-a",
@@ -239,38 +246,25 @@ describe("authoritative terminal inventory", () => {
 });
 
 describe("per-client terminal attachment state", () => {
-	test("only the final detach releases the pty and controller transfer restores cached dimensions", () => {
+	test("only the final detach releases the pty, and the UI target moves on", () => {
 		const State = evaluateClientState();
 		const state = new State();
 		state.attach(41, "phone", true);
 		state.attach(41, "laptop", false);
 		state.attach(41, "tablet", false);
-		expect(state.recordDimensions(41, "phone", { cols: 50, rows: 20 })).toBe(
-			true
-		);
-		expect(state.recordDimensions(41, "laptop", { cols: 120, rows: 40 })).toBe(
-			false
-		);
+		expect(state.isUiTarget(41, "phone")).toBe(true);
 
-		expect(state.detach(41, "phone")).toEqual({
-			attached: true,
-			final: false,
-			nextController: "laptop",
-			dimensions: { cols: 120, rows: 40 }
-		});
-		expect(state.isController(41, "laptop")).toBe(true);
-		expect(state.detach(41, "laptop")).toMatchObject({
+		expect(state.detach(41, "phone")).toEqual({ attached: true, final: false });
+		expect(state.isUiTarget(41, "laptop")).toBe(true);
+		expect(state.detach(41, "laptop")).toEqual({
 			attached: true,
 			final: false
 		});
-		expect(state.detach(41, "tablet")).toMatchObject({
-			attached: true,
-			final: true
-		});
+		expect(state.detach(41, "tablet")).toEqual({ attached: true, final: true });
 		expect(state.isAttached(41, "tablet")).toBe(false);
 	});
 
-	test("unknown clients cannot detach or resize a terminal", () => {
+	test("unknown clients cannot detach or take over a terminal", () => {
 		const State = evaluateClientState();
 		const state = new State();
 		state.attach(41, "phone", true);
@@ -279,35 +273,21 @@ describe("per-client terminal attachment state", () => {
 			attached: false,
 			final: false
 		});
-		expect(
-			state.recordDimensions(41, "stranger", { cols: 500, rows: 200 })
-		).toBe(false);
+		state.takeUiControl(41, "stranger");
+		expect(state.isUiTarget(41, "stranger")).toBe(false);
+		expect(state.isUiTarget(41, "phone")).toBe(true);
 		expect(state.isAttached(41, "phone")).toBe(true);
 	});
 
-	test("last input takes resize control", () => {
-		const State = evaluateClientState();
-		const state = new State();
-		state.attach(9, "phone", true);
-		state.attach(9, "laptop", false);
-		state.recordDimensions(9, "laptop", { cols: 160, rows: 50 });
-
-		expect(state.takeControl(9, "laptop")).toEqual({ cols: 160, rows: 50 });
-		expect(state.isController(9, "phone")).toBe(false);
-		expect(state.isController(9, "laptop")).toBe(true);
-	});
-
-	test("the fastest attached renderer advances ACKs without double-counting", () => {
+	test("last input takes the single-recipient events", () => {
 		const State = evaluateClientState();
 		const state = new State();
 		state.attach(9, "phone", true);
 		state.attach(9, "laptop", false);
 
-		expect(state.acknowledge(9, "phone", 5000)).toBe(5000);
-		expect(state.acknowledge(9, "laptop", 5000)).toBe(0);
-		expect(state.acknowledge(9, "laptop", 5000)).toBe(5000);
-		expect(state.acknowledge(9, "phone", 5000)).toBe(0);
-		expect(state.acknowledge(9, "stranger", 5000)).toBe(0);
+		state.takeUiControl(9, "laptop");
+		expect(state.isUiTarget(9, "phone")).toBe(false);
+		expect(state.isUiTarget(9, "laptop")).toBe(true);
 	});
 
 	test("disconnecting one client releases only its final attachments", () => {
@@ -318,8 +298,8 @@ describe("per-client terminal attachment state", () => {
 		state.attach(2, "phone", true);
 
 		expect(state.detachClient("phone")).toEqual([
-			{ id: 1, final: false, dimensions: undefined },
-			{ id: 2, final: true, dimensions: undefined }
+			{ id: 1, final: false },
+			{ id: 2, final: true }
 		]);
 		expect(state.isAttached(1, "laptop")).toBe(true);
 	});
@@ -352,20 +332,17 @@ describe("per-client terminal attachment state", () => {
 		expect(state.isStreaming(5, "laptop")).toBe(false);
 	});
 
-	test("the controller guard is mutation-tested", () => {
+	test("the attachment guard is mutation-tested", () => {
 		const mutated = clientStateSource.replace(
-			"return this.isController(id, clientId);",
-			"return true;"
+			"		if (this.isAttached(id, clientId)) {\n			this._uiTargets.set(id, clientId);",
+			"		if (true) {\n			this._uiTargets.set(id, clientId);"
 		);
+		expect(mutated).not.toBe(clientStateSource);
 		const MutatedState = evaluateClientState(mutated);
 		const state = new MutatedState();
 		state.attach(1, "phone", true);
-		state.attach(1, "laptop", false);
-		expect(() => {
-			if (state.recordDimensions(1, "laptop", { cols: 100, rows: 30 })) {
-				throw new Error("non-controller resize reached the pty host");
-			}
-		}).toThrow("non-controller resize reached the pty host");
+		state.takeUiControl(1, "stranger");
+		expect(state.isUiTarget(1, "stranger")).toBe(true);
 	});
 });
 
@@ -563,11 +540,37 @@ describe("renderer synchronization", () => {
 		expect(added).toContain(
 			"terminal.terminal.isOrphan = !this._clientState.isAttached"
 		);
-		expect(
-			added.match(
-				/workspaceId: this\._workspaceContextService\.getWorkspace\(\)\.id/g
-			)
-		).toHaveLength(3);
+	});
+
+	test("the inventory event carries no fact the receiver already knows", () => {
+		// The server only sends it to clients of that workspace, so a workspace
+		// check on the renderer compares a value with itself - a guard that cannot
+		// fail, kept alive by remapping the id on the way in just to satisfy it.
+		expect(added).toContain(
+			"onPersistentTerminalInventoryChange(() => this._onDidRequestTerminalSync.fire())"
+		);
+		expect(added).toContain("readonly onDidRequestTerminalSync?: Event<void>;");
+		expect(added).not.toContain(
+			"e.workspaceId === this._workspaceContextService.getWorkspace().id"
+		);
+	});
+
+	test("a request only one client can answer goes to that client", () => {
+		// A resolve-variables reply settles the request store, so exactly one
+		// client should send it - but a detach request names an instance of one
+		// particular window, and asking only the workspace leader leaves a drag
+		// between windows unanswered until the store times out.
+		expect(added).toContain(
+			"OnPtyHostRequestResolveVariablesEvent: return Event.filter(this._ptyHostService.onPtyHostRequestResolveVariables || Event.None, e => this._isWorkspaceLeader(e.workspaceId, ctx.clientId))"
+		);
+		expect(added).toContain(
+			"OnDidRequestDetach: return Event.filter(this._ptyHostService.onDidRequestDetach || Event.None, e => this._isWorkspaceClient(e.workspaceId, ctx.clientId))"
+		);
+		expect(added).toContain(
+			"this._clientState.isUiTarget(e.persistentProcessId, ctx.clientId)"
+		);
+		expect(added).toContain("this._clientState.isUiTarget(e.id, ctx.clientId)");
+		expect(added).toContain("this._layouts.delete(clientId)");
 	});
 
 	test("initial sync restores groups while background creation remains single-owned", () => {
@@ -581,11 +584,6 @@ describe("renderer synchronization", () => {
 			"this._backgroundedTerminalInstances.push(...revivedInstances"
 		);
 		expect(added).toContain("failOnAttachError: true");
-		expect(
-			added.match(
-				/return \{ message: `Could not find pty with id \$\{shellLaunchConfig\.attachPersistentProcess\.id\} to synchronize` \}/g
-			)
-		).toHaveLength(2);
 	});
 
 	test("initial reconnect sync runs before the listener, then catches up", () => {
@@ -597,7 +595,7 @@ describe("renderer synchronization", () => {
 		const initialIdx = added.indexOf(
 			"await this._syncRemoteTerminals(backend, true)"
 		);
-		const listenerIdx = added.indexOf("backend.onDidRequestTerminalSync(e =>");
+		const listenerIdx = added.indexOf("backend.onDidRequestTerminalSync(");
 		expect(initialIdx).toBeGreaterThanOrEqual(0);
 		expect(listenerIdx).toBeGreaterThan(initialIdx);
 		expect(
@@ -629,22 +627,6 @@ describe("renderer synchronization", () => {
 		expect("Could not find pty with id 7 to synchronize").toContain(sentinel!);
 	});
 
-	test("single-recipient events and client maps are released on disconnect", () => {
-		expect(added).toContain(
-			"this._clientState.isController(e.persistentProcessId, ctx.clientId)"
-		);
-		expect(added).toContain(
-			"this._clientState.isController(e.id, ctx.clientId)"
-		);
-		expect(added).toContain(
-			"this._isWorkspaceLeader(e.workspaceId, ctx.clientId)"
-		);
-		expect(added).toContain(
-			"this._workspaceClients.get(e.workspaceId)?.has(clientId) ?? false"
-		);
-		expect(added).toContain("this._layouts.delete(clientId)");
-	});
-
 	test("obsolete orphan probing and immortal parking are gone", () => {
 		expect(added).not.toContain("_isDetached");
 		expect(added).not.toContain("if (!await this.isOrphaned())");
@@ -666,8 +648,8 @@ describe("channel dispatch honours the client state machine", () => {
 					id: number,
 					forcePersist?: boolean
 				): Promise<void>;
-				resize(clientId: string, id: number, cols: number, rows: number): void;
 				input(clientId: string, id: number, data: string): Promise<void>;
+				uiTarget(id: number): string | undefined;
 				calls: string[];
 			};
 		}>(
@@ -679,7 +661,6 @@ describe("channel dispatch honours the client state machine", () => {
 					_ptyHostService = {
 						attachToProcess: async (id) => { this.calls.push('attach:' + id); },
 						detachFromProcess: async (id, forcePersist) => { this.calls.push('detach:' + id + ':' + Boolean(forcePersist)); },
-						resize: async (id, cols, rows) => { this.calls.push('resize:' + id + ':' + cols + 'x' + rows); },
 						input: async (id, data) => { this.calls.push('input:' + id + ':' + data); }
 					};
 					async attach(clientId, id) {
@@ -697,8 +678,11 @@ describe("channel dispatch honours the client state machine", () => {
 						const args = [id, data];
 						${extractAddedCaseBody(patch, "Input", "RemoteTerminalChannelRequest")}
 					}
-					resize(clientId, id, cols, rows) {
-						this._clientState.recordDimensions(id, clientId, { cols, rows });
+					uiTarget(id) {
+						for (const clientId of ['phone', 'laptop', 'stranger']) {
+							if (this._clientState.isUiTarget(id, clientId)) return clientId;
+						}
+						return undefined;
 					}
 				}`
 			],
@@ -714,7 +698,6 @@ describe("channel dispatch honours the client state machine", () => {
 		await channel.attach("laptop", 41);
 		await channel.detach("phone", 41);
 
-		expect(channel.calls).not.toContain("detach:41:false");
 		expect(channel.calls.filter((c) => c.startsWith("detach:"))).toHaveLength(
 			0
 		);
@@ -747,53 +730,31 @@ describe("channel dispatch honours the client state machine", () => {
 		);
 	});
 
-	test("losing the controller resizes the pty to the surviving client", async () => {
+	test("typing moves the single-recipient events without disturbing the pty", async () => {
 		const { Channel } = evaluateDispatch();
 		const channel = new Channel();
 
 		await channel.attach("phone", 41);
 		await channel.attach("laptop", 41);
-		channel.resize("laptop", 41, 100, 30);
-		channel.resize("phone", 41, 40, 20);
-		await channel.detach("phone", 41);
+		expect(channel.uiTarget(41)).toBe("phone");
 
-		// The phone owned the size; handing control back must not leave the laptop
-		// rendering into a 40-column pty.
-		expect(channel.calls).toContain("resize:41:100x30");
+		await channel.input("laptop", 41, "a");
+		expect(channel.uiTarget(41)).toBe("laptop");
+
+		// Input is a hot path: taking over must not cost a pty-host round trip.
+		expect(channel.calls.filter((c) => !c.startsWith("attach:"))).toEqual([
+			"input:41:a"
+		]);
 	});
 
-	test("a settled controller does not re-resize the pty on every keystroke", async () => {
+	test("input from a client that never attached is refused", async () => {
 		const { Channel } = evaluateDispatch();
 		const channel = new Channel();
 
-		await channel.attach("phone", 41); // first attach becomes the controller
-		await channel.attach("laptop", 41);
-		channel.resize("phone", 41, 80, 24);
-		channel.resize("laptop", 41, 120, 40);
-
-		// The controller typing must not resize: the pty already has its size, and a
-		// resize per keystroke is an extra pty-host round-trip on the hot path (and
-		// flushes the output batcher) that upstream never pays.
-		await channel.input("phone", 41, "a");
-		await channel.input("phone", 41, "b");
-		expect(channel.calls.filter((c) => c.startsWith("resize:"))).toHaveLength(
-			0
+		await channel.attach("phone", 41);
+		await expect(channel.input("stranger", 41, "a")).rejects.toThrow(
+			"is not attached to terminal"
 		);
-
-		// A different client typing takes control and asserts its size exactly once,
-		// then stops resizing once it is the settled controller.
-		await channel.input("laptop", 41, "c");
-		await channel.input("laptop", 41, "d");
-		expect(channel.calls.filter((c) => c.startsWith("resize:"))).toEqual([
-			"resize:41:120x40"
-		]);
-
-		// Every keystroke still reaches the pty regardless of the resize decision.
-		expect(channel.calls.filter((c) => c.startsWith("input:"))).toEqual([
-			"input:41:a",
-			"input:41:b",
-			"input:41:c",
-			"input:41:d"
-		]);
+		expect(channel.uiTarget(41)).toBe("phone");
 	});
 });

@@ -113,7 +113,8 @@ mode, owner, mtime, or xattrs - Composery stores the metadata delta without copy
 full file into `changed/`. This keeps a touched large image file from ballooning the
 `/data` volume.
 
-The active config lives at `/data/persistence/config.json` and records only your intent,
+The active config lives at `/data/persistence/config.json`. A new file starts with a
+removable `documentation` link, while its configurable values record only your intent,
 never the built-in policy. Two symmetric arrays: `exclude` adds paths to the boundary, and
 `persist` keeps a path the image excludes by default (it can never override an integrity
 exclusion). A new config contains neither — the image owns the default set, so a future

@@ -108,12 +108,10 @@ export interface PtyService {
   sendSignal(id: number, signal: string): Promise<void>
   resize(id: number, cols: number, rows: number): Promise<void>
   clearBuffer(id: number): Promise<void>
-  registerDataConsumer(id: number, consumerId: string): Promise<void>
-  unregisterDataConsumer(id: number, consumerId: string): Promise<void>
-  registerTerminalViewport(id: number, viewportId: string): Promise<void>
-  unregisterTerminalViewport(id: number, viewportId: string): Promise<void>
-  activateTerminalViewport(id: number, viewportId: string, cols: number, rows: number): Promise<void>
-  acknowledgeDataEvent(id: number, charCount: number, consumerId: string): Promise<void>
+  registerTerminalClient(id: number, clientId: string): Promise<void>
+  unregisterTerminalClient(id: number, clientId: string): Promise<void>
+  activateTerminalViewport(id: number, clientId: string, cols: number, rows: number): Promise<void>
+  acknowledgeDataEvent(id: number, charCount: number, clientId: string): Promise<void>
   updateTitle(id: number, title: string, titleSource: number): Promise<void>
   updateIcon(id: number, userInitiated: boolean, icon: unknown, color?: string): Promise<void>
   serializeTerminalState(ids: number[], checkOrphan?: boolean): Promise<string>
@@ -425,7 +423,7 @@ async function waitForExit(
   timeoutSec: number,
   cancelOnClose?: express.Response,
 ): Promise<WaitResult> {
-  const consumerId = `api-wait:${crypto.randomUUID()}`
+  const clientId = `api-wait:${crypto.randomUUID()}`
   const output: OutputBuffer = { chunks: [], length: 0 }
   let timedOut = false
   let truncated = false
@@ -438,7 +436,7 @@ async function waitForExit(
         if (from !== id) return
         const data = dataOf(event)
         truncated = appendOutput(output, data) || truncated
-        void pty.acknowledgeDataEvent(id, data.length, consumerId).catch((error) => {
+        void pty.acknowledgeDataEvent(id, data.length, clientId).catch((error) => {
           if (!settled) finish(undefined, error)
         })
       }),
@@ -455,7 +453,7 @@ async function waitForExit(
       if (timer) clearTimeout(timer)
       cancelOnClose?.off("close", onResponseClose)
       for (const listener of listeners) listener.dispose()
-      void pty.unregisterDataConsumer(id, consumerId).catch(() => {})
+      void pty.unregisterTerminalClient(id, clientId).catch(() => {})
       if (error) {
         reject(error)
         return
@@ -470,7 +468,7 @@ async function waitForExit(
 
     cancelOnClose?.on("close", onResponseClose)
     void pty
-      .registerDataConsumer(id, consumerId)
+      .registerTerminalClient(id, clientId)
       .then(async () => {
         const launch = await pty.start(id)
         if (launch && "message" in launch) {
@@ -797,19 +795,14 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
 
   try {
     terminalWebsocketServer.handleUpgrade(req, req.ws, req.head, (ws) => {
-      const consumerId = `api-ws:${crypto.randomUUID()}`
-      let viewportRegistered = false
+      const clientId = `api-ws:${crypto.randomUUID()}`
       let stopped = false
       const stopStreaming = () => {
         if (stopped) return
         stopped = true
         release()
         for (const listener of listeners) listener.dispose()
-        void pty.unregisterDataConsumer(id, consumerId).catch(() => {})
-        if (viewportRegistered) {
-          viewportRegistered = false
-          void pty.unregisterTerminalViewport(id, consumerId).catch(() => {})
-        }
+        void pty.unregisterTerminalClient(id, clientId).catch(() => {})
       }
       const send = (data: string, acknowledge: boolean) => {
         ws.send(Buffer.from(data, "utf8"), (error) => {
@@ -818,7 +811,7 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
             return
           }
           if (acknowledge) {
-            void pty.acknowledgeDataEvent(id, data.length, consumerId).catch(stopStreaming)
+            void pty.acknowledgeDataEvent(id, data.length, clientId).catch(stopStreaming)
           }
         })
       }
@@ -850,7 +843,7 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
               return pty.input(id, data.toString("utf8"))
             }
             const message = parseTerminalViewportMessage(data.toString("utf8"))
-            return pty.activateTerminalViewport(id, consumerId, message.cols, message.rows)
+            return pty.activateTerminalViewport(id, clientId, message.cols, message.rows)
           })
           .catch((error) => {
             logger.warn(`API terminal viewport message rejected: ${error instanceof Error ? error.message : error}`)
@@ -864,17 +857,14 @@ wsRouter.ws(`${apiBasePath}/terminals/:id`, ensureVSCodeLoaded, async (req: Webs
       ws.on("error", stopStreaming)
 
       ready = pty
-        .registerDataConsumer(id, consumerId)
+        .registerTerminalClient(id, clientId)
         .then(async () => {
-          await pty.registerTerminalViewport(id, consumerId)
-          viewportRegistered = true
           if (stopped) {
-            viewportRegistered = false
-            await pty.unregisterTerminalViewport(id, consumerId)
+            await pty.unregisterTerminalClient(id, clientId)
             return
           }
           if (initialDimensions) {
-            await pty.activateTerminalViewport(id, consumerId, initialDimensions.cols, initialDimensions.rows)
+            await pty.activateTerminalViewport(id, clientId, initialDimensions.cols, initialDimensions.rows)
           }
         })
         .then(() => (stopped ? undefined : pty.start(id)))

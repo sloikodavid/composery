@@ -168,7 +168,7 @@ class ShortcutStorage {
 			bytes = await vscode.workspace.fs.readFile(this.storageUri);
 		} catch (error) {
 			if (isFileNotFound(error)) {
-				return [];
+				return defaultShortcuts();
 			}
 			throw error;
 		}
@@ -202,6 +202,21 @@ class ShortcutStorage {
 		await vscode.workspace.fs.writeFile(this.tempUri, bytes);
 		await vscode.workspace.fs.rename(this.tempUri, this.storageUri, { overwrite: true });
 	}
+}
+
+function defaultShortcuts() {
+	const volumeRoot = process.env.COMPOSERY_DOCKER_VOLUME_PATH?.trim() || "/data";
+	const now = new Date().toISOString();
+	return [
+		{
+			id: "persistence-config",
+			type: "file",
+			label: "config.json",
+			file: vscode.Uri.file(path.posix.join(volumeRoot, "persistence", "config.json")).toString(),
+			createdAt: now,
+			updatedAt: now
+		}
+	];
 }
 
 class ShortcutTreeItem extends vscode.TreeItem {

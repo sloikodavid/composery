@@ -1,28 +1,21 @@
-The terminal across clients, and its viewport across resizes.
+The terminal across clients.
 
-Cross-client sync. A terminal belongs to the box, not to the browser tab that
-opened it. Workspace identity is canonicalised from the folder path, so the same
-workspace reached through a different origin (localhost against a LAN address)
-is one workspace; layouts merge across clients instead of the last writer
+A terminal belongs to the box, not to the browser tab that opened it. Workspace
+identity is canonicalised from the folder path, so the same workspace reached
+through a different origin (localhost against a LAN address) is one workspace,
+and it is the only identity a backend reports - the one it answers to as well as
+the one it sends. Layouts merge across clients instead of the last writer
 winning; attach state is per client and only the final detach releases the pty.
-One attached client is the controller and only its resizes reach the pty host,
-so a phone toggling its keyboard cannot resize a desktop viewer's shell - taking
-control hands the new controller its own cached dimensions. Replays are bound to
-the renderer that asked for them, so concurrent starts do not cross wires.
+Replays are bound to the renderer that asked for them, so concurrent starts do
+not cross wires, and live data reaches a client only once its own replay has
+landed. Single-recipient events go to the one client that can act on them: the
+UI target for a terminal, the first client of a workspace for a reply the pty
+host accepts once, and every client of the workspace for a detach request, which
+names an instance only its own window holds.
 
-Resize scroll. xterm's Buffer#resize advances ydisp once per row it drops off
-the top, wherever the viewport happened to be. That is right while the viewport
-follows the bottom - the cursor has to stay visible, so the content moves up by
-exactly the height that was taken away - and wrong once the user has scrolled up
-to read, where it drags the text out from under them by that same height.
-Nothing puts it back, so this does. A soft keyboard shrinking the panel is the
-cheapest way to see it, a sash drag does it on desktop just as well, so it is
-not gated on the touch capability. Columns are not part of it: Buffer#_reflow
-returns immediately unless the column count changed. Delete it the day xterm
-anchors the viewport itself.
+Which client sizes the pty, and which clients' acknowledgements advance its flow
+control, are not here - the pty host arbitrates both per client (terminal-clients.diff).
 
-diff --git a/lib/vscode/src/vs/platform/terminal/common/terminal.ts b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
-index 0238d70..310c7db 100644
 --- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
 +++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
 @@ -565,6 +565,7 @@ export interface IShellLaunchConfig {
@@ -37,15 +30,13 @@ index 0238d70..310c7db 100644
  
  export interface ITerminalBackend extends ITerminalBackendPtyServiceContributions {
  	readonly remoteAuthority: string | undefined;
-+	readonly onDidRequestTerminalSync?: Event<{ workspaceId: string }>;
++	readonly onDidRequestTerminalSync?: Event<void>;
  
  	readonly isResponsive: boolean;
  
-diff --git a/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts b/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts
-index 28408ee..4289724 100644
 --- a/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts
 +++ b/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts
-@@ -37,6 +37,7 @@
+@@ -37,6 +37,7 @@ export interface ISetTerminalLayoutInfoArgs {
  
  export interface IGetTerminalLayoutInfoArgs {
  	workspaceId: string;
@@ -53,8 +44,6 @@ index 28408ee..4289724 100644
  }
  
  export interface IProcessDetails {
-diff --git a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
-index 2f8d40d..cc84705 100644
 --- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
 +++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
 @@ -91,6 +91,24 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
@@ -125,8 +114,6 @@ index 2f8d40d..cc84705 100644
  		const result = {
  			id,
  			title: persistentProcess.title,
-diff --git a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
-index 05cdf58..03f29a0 100644
 --- a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
 +++ b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
 @@ -6,7 +6,7 @@
@@ -138,7 +125,7 @@ index 05cdf58..03f29a0 100644
  import * as path from '../../base/common/path.js';
  import * as platform from '../../base/common/platform.js';
  import { URI } from '../../base/common/uri.js';
-@@ -31,8 +31,172 @@
+@@ -31,8 +31,128 @@ import { IProductService } from '../../platform/product/common/productService.js
  import { IExtensionManagementService } from '../../platform/extensionManagement/common/extensionManagement.js';
  import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
  import { ILogService } from '../../platform/log/common/log.js';
@@ -147,71 +134,66 @@ index 05cdf58..03f29a0 100644
  import { shouldUseEnvironmentVariableCollection } from '../../platform/terminal/common/terminalEnvironment.js';
 +import { hasKey } from '../../base/common/types.js';
 +
-+interface IClientDimensions { cols: number; rows: number; pixelWidth?: number; pixelHeight?: number }
-+
++/**
++ * Which clients hold a terminal, which of them are receiving its output, and
++ * which one the single-recipient workbench events go to. Sizing and flow
++ * control are not here: the pty host arbitrates those per client itself.
++ */
 +export class TerminalClientState {
 +	private readonly _clients = new Map<number, Set<string>>();
-+	private readonly _controllers = new Map<number, string>();
-+	private readonly _dimensions = new Map<number, Map<string, IClientDimensions>>();
-+	private readonly _acknowledged = new Map<number, number>();
-+	private readonly _clientAcknowledged = new Map<number, Map<string, number>>();
++	private readonly _uiTargets = new Map<number, string>();
 +	private readonly _streaming = new Map<number, Set<string>>();
 +
-+	attach(id: number, clientId: string, makeController: boolean, streaming: boolean = false): void {
++	attach(id: number, clientId: string, makeUiTarget: boolean, streaming: boolean = false): void {
 +		let clients = this._clients.get(id);
 +		if (!clients) {
 +			clients = new Set();
 +			this._clients.set(id, clients);
 +		}
 +		clients.add(clientId);
-+		let clientAcknowledged = this._clientAcknowledged.get(id);
-+		if (!clientAcknowledged) {
-+			clientAcknowledged = new Map();
-+			this._clientAcknowledged.set(id, clientAcknowledged);
-+		}
-+		clientAcknowledged.set(clientId, this._acknowledged.get(id) ?? 0);
-+		if (makeController || !this._controllers.has(id)) {
-+			this._controllers.set(id, clientId);
++		if (makeUiTarget || !this._uiTargets.has(id)) {
++			this._uiTargets.set(id, clientId);
 +		}
 +		if (streaming) {
 +			this.markStreaming(id, clientId);
 +		}
 +	}
 +
-+	detach(id: number, clientId: string): { attached: boolean; final: boolean; nextController?: string; dimensions?: IClientDimensions } {
++	detach(id: number, clientId: string): { attached: boolean; final: boolean } {
 +		const clients = this._clients.get(id);
 +		if (!clients?.delete(clientId)) {
 +			return { attached: false, final: false };
 +		}
-+		this._dimensions.get(id)?.delete(clientId);
-+		this._clientAcknowledged.get(id)?.delete(clientId);
 +		this._streaming.get(id)?.delete(clientId);
 +		if (!clients.size) {
 +			this.clear(id);
 +			return { attached: true, final: true };
 +		}
-+		if (this._controllers.get(id) !== clientId) {
-+			return { attached: true, final: false };
++		if (this._uiTargets.get(id) === clientId) {
++			this._uiTargets.set(id, clients.values().next().value as string);
 +		}
-+		const nextController = clients.values().next().value as string;
-+		this._controllers.set(id, nextController);
-+		return { attached: true, final: false, nextController, dimensions: this._dimensions.get(id)?.get(nextController) };
++		return { attached: true, final: false };
 +	}
 +
-+	detachClient(clientId: string): { id: number; final: boolean; dimensions?: IClientDimensions }[] {
-+		const detached: { id: number; final: boolean; dimensions?: IClientDimensions }[] = [];
++	detachClient(clientId: string): { id: number; final: boolean }[] {
++		const detached: { id: number; final: boolean }[] = [];
 +		for (const id of [...this._clients.keys()]) {
 +			if (this._clients.get(id)?.has(clientId)) {
-+				const result = this.detach(id, clientId);
-+				detached.push({ id, final: result.final, dimensions: result.dimensions });
++				detached.push({ id, final: this.detach(id, clientId).final });
 +			}
 +		}
 +		return detached;
 +	}
 +
 +	isAttached(id: number, clientId: string): boolean { return this._clients.get(id)?.has(clientId) ?? false; }
-+	isController(id: number, clientId: string): boolean { return this._controllers.get(id) === clientId; }
++	isUiTarget(id: number, clientId: string): boolean { return this._uiTargets.get(id) === clientId; }
 +	isStreaming(id: number, clientId: string): boolean { return this._streaming.get(id)?.has(clientId) ?? false; }
++
++	takeUiControl(id: number, clientId: string): void {
++		if (this.isAttached(id, clientId)) {
++			this._uiTargets.set(id, clientId);
++		}
++	}
 +
 +	markStreaming(id: number, clientId: string): void {
 +		if (!this.isAttached(id, clientId)) {
@@ -225,48 +207,9 @@ index 05cdf58..03f29a0 100644
 +		streamingClients.add(clientId);
 +	}
 +
-+	recordDimensions(id: number, clientId: string, dimensions: IClientDimensions): boolean {
-+		if (!this.isAttached(id, clientId)) {
-+			return false;
-+		}
-+		let byClient = this._dimensions.get(id);
-+		if (!byClient) {
-+			byClient = new Map();
-+			this._dimensions.set(id, byClient);
-+		}
-+		byClient.set(clientId, dimensions);
-+		return this.isController(id, clientId);
-+	}
-+
-+	takeControl(id: number, clientId: string): IClientDimensions | undefined {
-+		if (!this.isAttached(id, clientId) || this.isController(id, clientId)) {
-+			return undefined;
-+		}
-+		this._controllers.set(id, clientId);
-+		return this._dimensions.get(id)?.get(clientId);
-+	}
-+
-+	acknowledge(id: number, clientId: string, charCount: number): number {
-+		if (!this.isAttached(id, clientId) || charCount <= 0) {
-+			return 0;
-+		}
-+		const byClient = this._clientAcknowledged.get(id)!;
-+		const clientTotal = (byClient.get(clientId) ?? this._acknowledged.get(id) ?? 0) + charCount;
-+		byClient.set(clientId, clientTotal);
-+		const acknowledged = this._acknowledged.get(id) ?? 0;
-+		const delta = Math.max(clientTotal - acknowledged, 0);
-+		if (delta) {
-+			this._acknowledged.set(id, clientTotal);
-+		}
-+		return delta;
-+	}
-+
 +	clear(id: number): void {
 +		this._clients.delete(id);
-+		this._controllers.delete(id);
-+		this._dimensions.delete(id);
-+		this._acknowledged.delete(id);
-+		this._clientAcknowledged.delete(id);
++		this._uiTargets.delete(id);
 +		this._streaming.delete(id);
 +	}
 +}
@@ -312,7 +255,7 @@ index 05cdf58..03f29a0 100644
  
  class CustomVariableResolver extends AbstractVariableResolverService {
  	constructor(
-@@ -87,6 +251,15 @@
+@@ -87,6 +207,15 @@ class CustomVariableResolver extends AbstractVariableResolverService {
  }
  
  export class RemoteTerminalChannel extends Disposable implements IServerChannel<RemoteAgentConnectionContext> {
@@ -328,7 +271,7 @@ index 05cdf58..03f29a0 100644
  
  	private _lastReqId = 0;
  	private readonly _pendingCommands = new Map<number, {
-@@ -107,6 +280,26 @@
+@@ -107,6 +236,28 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  		private readonly _configurationService: IConfigurationService
  	) {
  		super();
@@ -345,6 +288,8 @@ index 05cdf58..03f29a0 100644
 +			if (process?.persistent) {
 +				this._onPersistentTerminalInventoryChange.fire({ workspaceId: process.workspaceId });
 +			}
++			// After this tick: every client's own exit listener is filtered on still
++			// being attached, and they are downstream of this one.
 +			setTimeout(() => {
 +				this._clientState.clear(e.id);
 +				this._processWorkspaces.delete(e.id);
@@ -355,7 +300,7 @@ index 05cdf58..03f29a0 100644
  	}
  
  	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -116,10 +309,29 @@
+@@ -116,10 +267,26 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  
  			case RemoteTerminalChannelRequest.CreateProcess: {
  				const uriTransformer = createURITransformer(ctx.remoteAuthority);
@@ -378,9 +323,6 @@ index 05cdf58..03f29a0 100644
 +				if (!detached.attached) {
 +					return;
 +				}
-+				if (detached.dimensions) {
-+					await this._ptyHostService.resize(args[0], detached.dimensions.cols, detached.dimensions.rows, detached.dimensions.pixelWidth, detached.dimensions.pixelHeight);
-+				}
 +				return detached.final ? this._ptyHostService.detachFromProcess(args[0], args[1]) : undefined;
  			}
 -			case RemoteTerminalChannelRequest.AttachToProcess: return this._ptyHostService.attachToProcess.apply(this._ptyHostService, args);
@@ -388,7 +330,7 @@ index 05cdf58..03f29a0 100644
  
  			case RemoteTerminalChannelRequest.ListProcesses: return this._ptyHostService.listProcesses.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.GetLatency: return this._ptyHostService.getLatency.apply(this._ptyHostService, args);
-@@ -127,12 +339,44 @@
+@@ -127,8 +294,31 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  			case RemoteTerminalChannelRequest.OrphanQuestionReply: return this._ptyHostService.orphanQuestionReply.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables: return this._ptyHostService.acceptPtyHostResolvedVariables.apply(this._ptyHostService, args);
  
@@ -416,28 +358,13 @@ index 05cdf58..03f29a0 100644
 +				if (!this._clientState.isAttached(args[0], ctx.clientId)) {
 +					throw new Error(`Client "${ctx.clientId}" is not attached to terminal "${args[0]}"`);
 +				}
-+				const dimensions = this._clientState.takeControl(args[0], ctx.clientId);
-+				if (dimensions) {
-+					await this._ptyHostService.resize(args[0], dimensions.cols, dimensions.rows, dimensions.pixelWidth, dimensions.pixelHeight);
-+				}
++				this._clientState.takeUiControl(args[0], ctx.clientId);
 +				return this._ptyHostService.input(args[0], args[1]);
 +			}
  			case RemoteTerminalChannelRequest.SendSignal: return this._ptyHostService.sendSignal.apply(this._ptyHostService, args);
--			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: return this._ptyHostService.acknowledgeDataEvent.apply(this._ptyHostService, args);
-+			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: {
-+				const acknowledged = this._clientState.acknowledge(args[0], ctx.clientId, args[1]);
-+				return acknowledged ? this._ptyHostService.acknowledgeDataEvent(args[0], acknowledged) : undefined;
-+			}
+ 			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: return this._ptyHostService.acknowledgeDataEvent.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.Shutdown: return this._ptyHostService.shutdown.apply(this._ptyHostService, args);
--			case RemoteTerminalChannelRequest.Resize: return this._ptyHostService.resize.apply(this._ptyHostService, args);
-+			case RemoteTerminalChannelRequest.Resize: {
-+				const dimensions = { cols: args[1], rows: args[2], pixelWidth: args[3], pixelHeight: args[4] };
-+				return this._clientState.recordDimensions(args[0], ctx.clientId, dimensions) ? this._ptyHostService.resize(args[0], args[1], args[2], args[3], args[4]) : undefined;
-+			}
- 			case RemoteTerminalChannelRequest.ClearBuffer: return this._ptyHostService.clearBuffer.apply(this._ptyHostService, args);
- 			case RemoteTerminalChannelRequest.GetInitialCwd: return this._ptyHostService.getInitialCwd.apply(this._ptyHostService, args);
- 			case RemoteTerminalChannelRequest.GetCwd: return this._ptyHostService.getCwd.apply(this._ptyHostService, args);
-@@ -146,8 +390,48 @@
+@@ -146,8 +336,40 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  			case RemoteTerminalChannelRequest.GetProfiles: return this._getProfiles.apply(this, args);
  			case RemoteTerminalChannelRequest.GetEnvironment: return this._getEnvironment();
  			case RemoteTerminalChannelRequest.GetWslPath: return this._getWslPath(args[0], args[1]);
@@ -446,11 +373,7 @@ index 05cdf58..03f29a0 100644
 +			case RemoteTerminalChannelRequest.GetTerminalLayoutInfo: {
 +				const getArgs = <IGetTerminalLayoutInfoArgs>args;
 +				this._addWorkspaceClient(getArgs.workspaceId, ctx.clientId);
-+				let byWorkspace = this._layouts.get(ctx.clientId);
-+				if (!byWorkspace) {
-+					byWorkspace = new Map();
-+					this._layouts.set(ctx.clientId, byWorkspace);
-+				}
++				const byWorkspace = this._clientLayouts(ctx.clientId);
 +				const seededLayout = byWorkspace.get(getArgs.workspaceId) ?? this._latestLayouts.get(getArgs.workspaceId);
 +				if (seededLayout && !byWorkspace.has(getArgs.workspaceId)) {
 +					byWorkspace.set(getArgs.workspaceId, seededLayout);
@@ -461,14 +384,14 @@ index 05cdf58..03f29a0 100644
 +					for (const terminal of tab.terminals) {
 +						if (terminal.terminal) {
 +							terminal.terminal.isOrphan = !this._clientState.isAttached(terminal.terminal.id, ctx.clientId);
-+							this._processWorkspaces.set(terminal.terminal.id, { workspaceId: getArgs.workspaceId, persistent: true });
++							this._rememberWorkspace(terminal.terminal.id, getArgs.workspaceId);
 +						}
 +					}
 +				}
 +				for (const terminal of layoutInfo?.background ?? []) {
 +					if (terminal) {
 +						terminal.isOrphan = !this._clientState.isAttached(terminal.id, ctx.clientId);
-+						this._processWorkspaces.set(terminal.id, { workspaceId: getArgs.workspaceId, persistent: true });
++						this._rememberWorkspace(terminal.id, getArgs.workspaceId);
 +					}
 +				}
 +				return layoutInfo;
@@ -476,11 +399,7 @@ index 05cdf58..03f29a0 100644
 +			case RemoteTerminalChannelRequest.SetTerminalLayoutInfo: {
 +				const layout = <ISetTerminalLayoutInfoArgs>args;
 +				this._addWorkspaceClient(layout.workspaceId, ctx.clientId);
-+				let byWorkspace = this._layouts.get(ctx.clientId);
-+				if (!byWorkspace) {
-+					byWorkspace = new Map();
-+					this._layouts.set(ctx.clientId, byWorkspace);
-+				}
++				const byWorkspace = this._clientLayouts(ctx.clientId);
 +				byWorkspace.set(layout.workspaceId, layout);
 +				this._latestLayouts.set(layout.workspaceId, layout);
 +				return this._ptyHostService.setTerminalLayoutInfo(layout);
@@ -488,7 +407,7 @@ index 05cdf58..03f29a0 100644
  			case RemoteTerminalChannelRequest.SerializeTerminalState: return this._ptyHostService.serializeTerminalState.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.ReviveTerminalProcesses: return this._ptyHostService.reviveTerminalProcesses.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.GetRevivedPtyNewId: return this._ptyHostService.getRevivedPtyNewId.apply(this._ptyHostService, args);
-@@ -168,27 +452,70 @@
+@@ -168,27 +390,94 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  		throw new Error(`IPC Command ${command} not found`);
  	}
  
@@ -513,9 +432,13 @@ index 05cdf58..03f29a0 100644
 +			case RemoteTerminalChannelEvent.OnProcessReadyEvent: return Event.filter(this._ptyHostService.onProcessReady, e => this._startState.target(e.id) === ctx.clientId) as Event<T>;
 +			case RemoteTerminalChannelEvent.OnProcessExitEvent: return Event.filter(this._ptyHostService.onProcessExit, e => this._clientState.isAttached(e.id, ctx.clientId)) as Event<T>;
 +			case RemoteTerminalChannelEvent.OnProcessReplayEvent: return Event.filter(this._ptyHostService.onProcessReplay, e => this._startState.target(e.id) === ctx.clientId) as Event<T>;
-+			case RemoteTerminalChannelEvent.OnProcessOrphanQuestion: return Event.filter(this._ptyHostService.onProcessOrphanQuestion, e => this._clientState.isController(e.id, ctx.clientId)) as Event<T>;
-+			case RemoteTerminalChannelEvent.OnExecuteCommand: return Event.filter(this.onExecuteCommand, e => this._clientState.isController(e.persistentProcessId, ctx.clientId)) as Event<T>;
-+			case RemoteTerminalChannelEvent.OnDidRequestDetach: return Event.filter(this._ptyHostService.onDidRequestDetach || Event.None, e => this._isWorkspaceLeader(e.workspaceId, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessOrphanQuestion: return Event.filter(this._ptyHostService.onProcessOrphanQuestion, e => this._clientState.isUiTarget(e.id, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnExecuteCommand: return Event.filter(this.onExecuteCommand, e => this._clientState.isUiTarget(e.persistentProcessId, ctx.clientId)) as Event<T>;
++			// Every client of the workspace, not just its leader: the request names an
++			// instance of one particular window, and only the window holding it can
++			// answer. Asking the leader alone leaves a drag between windows unanswered
++			// until the request store times out.
++			case RemoteTerminalChannelEvent.OnDidRequestDetach: return Event.filter(this._ptyHostService.onDidRequestDetach || Event.None, e => this._isWorkspaceClient(e.workspaceId, ctx.clientId)) as Event<T>;
 +			case RemoteTerminalChannelEvent.OnDidChangeProperty: return Event.filter(this._ptyHostService.onDidChangeProperty, e => this._startState.target(e.id) ? this._startState.target(e.id) === ctx.clientId : this._clientState.isAttached(e.id, ctx.clientId)) as Event<T>;
 +			case RemoteTerminalChannelEvent.OnPersistentTerminalInventoryChange: return this._clientLifetimeEvent(ctx.clientId) as Event<T>;
  		}
@@ -526,16 +449,13 @@ index 05cdf58..03f29a0 100644
  
 +	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
 +		return (listener, thisArgs, disposables) => {
-+			const subscription = Event.filter(this._onPersistentTerminalInventoryChange.event, e => this._workspaceClients.get(e.workspaceId)?.has(clientId) ?? false)(listener, thisArgs);
++			const subscription = Event.filter(this._onPersistentTerminalInventoryChange.event, e => this._isWorkspaceClient(e.workspaceId, clientId))(listener, thisArgs);
 +			const result = combinedDisposable(subscription, toDisposable(() => {
 +				this._layouts.delete(clientId);
 +				for (const clients of this._workspaceClients.values()) {
 +					clients.delete(clientId);
 +				}
 +				for (const detached of this._clientState.detachClient(clientId)) {
-+					if (detached.dimensions) {
-+						void this._ptyHostService.resize(detached.id, detached.dimensions.cols, detached.dimensions.rows, detached.dimensions.pixelWidth, detached.dimensions.pixelHeight);
-+					}
 +					if (detached.final) {
 +						void this._ptyHostService.detachFromProcess(detached.id);
 +					}
@@ -550,6 +470,25 @@ index 05cdf58..03f29a0 100644
 +		};
 +	}
 +
++	// A pty's workspace never changes, so the first answer stands. Re-recording it
++	// from whichever window last asked for a layout would quietly reassign a
++	// terminal that belongs to all of them, and its exit would then be announced
++	// to that one window alone.
++	private _rememberWorkspace(id: number, workspaceId: string): void {
++		if (!this._processWorkspaces.has(id)) {
++			this._processWorkspaces.set(id, { workspaceId, persistent: true });
++		}
++	}
++
++	private _clientLayouts(clientId: string): Map<string, ISetTerminalLayoutInfoArgs> {
++		let byWorkspace = this._layouts.get(clientId);
++		if (!byWorkspace) {
++			byWorkspace = new Map();
++			this._layouts.set(clientId, byWorkspace);
++		}
++		return byWorkspace;
++	}
++
 +	private _addWorkspaceClient(workspaceId: string, clientId: string): void {
 +		let clients = this._workspaceClients.get(workspaceId);
 +		if (!clients) {
@@ -559,18 +498,20 @@ index 05cdf58..03f29a0 100644
 +		clients.add(clientId);
 +	}
 +
++	private _isWorkspaceClient(workspaceId: string, clientId: string): boolean {
++		return this._workspaceClients.get(workspaceId)?.has(clientId) ?? false;
++	}
 +
-+
++	// For requests only one client may answer: a resolve-variables reply settles the
++	// request store, so a second client's is a wasted round trip against a request
++	// that is already answered. First in, first asked.
 +	private _isWorkspaceLeader(workspaceId: string, clientId: string): boolean {
 +		return this._workspaceClients.get(workspaceId)?.values().next().value === clientId;
 +	}
 +
-+
  	private async _createProcess(uriTransformer: IURITransformer, args: ICreateTerminalProcessArguments): Promise<ICreateTerminalProcessResult> {
  		const shellLaunchConfig: IShellLaunchConfig = {
  			name: args.shellLaunchConfig.name,
-diff --git a/lib/vscode/src/vs/server/node/serverServices.ts b/lib/vscode/src/vs/server/node/serverServices.ts
-index 0610f74..af77507 100644
 --- a/lib/vscode/src/vs/server/node/serverServices.ts
 +++ b/lib/vscode/src/vs/server/node/serverServices.ts
 @@ -139,7 +139,7 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
@@ -582,8 +523,6 @@ index 0610f74..af77507 100644
  
  	// Files
  	const fileService = disposables.add(new FileService(logService));
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
-index 735c036..fd308fc 100644
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 @@ -23,7 +23,7 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
@@ -599,7 +538,7 @@ index 735c036..fd308fc 100644
  
  class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBackend {
  	private readonly _ptys: Map<number, RemotePty> = new Map();
-+	private readonly _onDidRequestTerminalSync = this._register(new Emitter<{ workspaceId: string }>());
++	private readonly _onDidRequestTerminalSync = this._register(new Emitter<void>());
 +	readonly onDidRequestTerminalSync = this._onDidRequestTerminalSync.event;
  
  	private readonly _whenConnected = new DeferredPromise<void>();
@@ -619,12 +558,10 @@ index 735c036..fd308fc 100644
 +		this._register(this._remoteTerminalChannel.onDidRequestDetach(e => this._onDidRequestDetach.fire({ ...e, workspaceId: this._workspaceContextService.getWorkspace().id })));
  		this._register(this._remoteTerminalChannel.onProcessReady(e => this._ptys.get(e.id)?.handleReady(e.event)));
  		this._register(this._remoteTerminalChannel.onDidChangeProperty(e => this._ptys.get(e.id)?.handleDidChangeProperty(e.property)));
-+		this._register(this._remoteTerminalChannel.onPersistentTerminalInventoryChange(e => this._onDidRequestTerminalSync.fire({ ...e, workspaceId: this._workspaceContextService.getWorkspace().id })));
++		this._register(this._remoteTerminalChannel.onPersistentTerminalInventoryChange(() => this._onDidRequestTerminalSync.fire()));
  		this._register(this._remoteTerminalChannel.onProcessExit(e => {
  			const pty = this._ptys.get(e.id);
  			if (pty) {
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
-index cc20eaf..ea82e1b 100644
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
 @@ -293,6 +293,9 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
@@ -647,11 +584,9 @@ index cc20eaf..ea82e1b 100644
  						shellLaunchConfig.attachPersistentProcess = undefined;
  					}
  				}
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
-index 152d14d..da2357d 100644
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
-@@ -82,6 +82,8 @@
+@@ -82,6 +82,8 @@ export class TerminalService extends Disposable implements ITerminalService {
  	private _terminalCountContextKey: IContextKey<number>;
  	private _nativeDelegate?: ITerminalServiceNativeDelegate;
  	private _shutdownWindowCount?: number;
@@ -660,7 +595,7 @@ index 152d14d..da2357d 100644
  
  	get isProcessSupportRegistered(): boolean { return !!this._processSupportContextKey.get(); }
  
-@@ -458,13 +460,16 @@
+@@ -458,13 +460,12 @@ export class TerminalService extends Disposable implements ITerminalService {
  		if (!backend) {
  			return;
  		}
@@ -669,11 +604,7 @@ index 152d14d..da2357d 100644
 -		mark('code/terminal/didGetTerminalLayoutInfo');
 +		await this._syncRemoteTerminals(backend, true);
 +		if (backend.onDidRequestTerminalSync) {
-+			this._register(backend.onDidRequestTerminalSync(e => {
-+				if (e.workspaceId === this._workspaceContextService.getWorkspace().id) {
-+					void this._queueRemoteTerminalSync(backend).catch(error => this._logService.error('Failed to synchronize remote terminals', error));
-+				}
-+			}));
++			this._register(backend.onDidRequestTerminalSync(() => void this._queueRemoteTerminalSync(backend).catch(error => this._logService.error('Failed to synchronize remote terminals', error))));
 +			void this._queueRemoteTerminalSync(backend).catch(error => this._logService.error('Failed to synchronize remote terminals', error));
 +		}
  		backend.reduceConnectionGraceTime();
@@ -683,7 +614,7 @@ index 152d14d..da2357d 100644
  		// now that terminals have been restored,
  		// attach listeners to update remote when terminals are changed
  		this._attachProcessLayoutListeners();
-@@ -472,6 +477,48 @@
+@@ -472,6 +473,48 @@ export class TerminalService extends Disposable implements ITerminalService {
  		this._logService.trace('Reconnected to remote terminals');
  	}
  
@@ -732,7 +663,7 @@ index 152d14d..da2357d 100644
  	private async _reconnectToLocalTerminals(): Promise<void> {
  		const localBackend = await this._terminalInstanceService.getBackend();
  		if (!localBackend) {
-@@ -527,7 +574,7 @@
+@@ -527,7 +570,7 @@ export class TerminalService extends Disposable implements ITerminalService {
  			if (!attachPersistentProcess) {
  				continue;
  			}
@@ -741,7 +672,7 @@ index 152d14d..da2357d 100644
  			instances.push(instance);
  		}
  		return instances;
-@@ -542,7 +589,7 @@
+@@ -542,7 +585,7 @@ export class TerminalService extends Disposable implements ITerminalService {
  			}
  			mark(`code/terminal/willRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`);
  			lastInstance = this.createTerminal({
@@ -750,31 +681,6 @@ index 152d14d..da2357d 100644
  				location: lastInstance ? { parentTerminal: lastInstance } : TerminalLocation.Panel
  			});
  			lastInstance.then(() => mark(`code/terminal/didRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`));
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts
-index dc89e65..0e9246c 100644
---- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts
-+++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts
-@@ -541,7 +541,18 @@
- 
- 	resize(columns: number, rows: number): void {
- 		this._logService.debug('resizing', columns, rows);
-+		// Composery: a viewport that was following the bottom must keep following it
-+		// (xterm scrolls it for us); one the user had scrolled up must not move at all.
-+		// Reading baseY rather than a flag keeps the alternate screen out of it for
-+		// free - it has no scrollback, so viewportY and baseY are both always 0 there.
-+		const before = this.raw.buffer.active;
-+		const restoreTo = before.viewportY === before.baseY ? undefined : before.viewportY;
- 		this.raw.resize(columns, rows);
-+		if (restoreTo !== undefined) {
-+			// scrollLines is clamped to the buffer, so a resize that ate the scrollback
-+			// the viewport sat in lands as close to it as the buffer still allows.
-+			this.raw.scrollLines(restoreTo - this.raw.buffer.active.viewportY);
-+		}
- 	}
- 
- 	updateLogLevel(): void {
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
-index 6cdd987..2104110 100644
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
 @@ -4,12 +4,13 @@
@@ -792,7 +698,7 @@ index 6cdd987..2104110 100644
  import { serializeEnvironmentDescriptionMap, serializeEnvironmentVariableCollection } from '../../../../../platform/terminal/common/environmentVariableShared.js';
  import { IConfigurationResolverService } from '../../../../services/configurationResolver/common/configurationResolver.js';
  import { SideBySideEditor, EditorResourceAccessor } from '../../../../common/editor.js';
-@@ -55,6 +56,13 @@
+@@ -55,6 +56,13 @@ export interface ICreateTerminalProcessArguments {
  	resolverEnv: { [key: string]: string | null } | undefined;
  }
  
@@ -806,69 +712,64 @@ index 6cdd987..2104110 100644
  export interface ICreateTerminalProcessResult {
  	persistentTerminalId: number;
  	resolvedShellLaunchConfig: IShellLaunchConfigDto;
-@@ -74,7 +82,7 @@
- 		return this._channel.listen<void>(RemoteTerminalChannelEvent.OnPtyHostResponsiveEvent);
- 	}
- 	get onPtyHostRequestResolveVariables(): Event<IRequestResolveVariablesEvent> {
--		return this._channel.listen<IRequestResolveVariablesEvent>(RemoteTerminalChannelEvent.OnPtyHostRequestResolveVariablesEvent);
-+		return Event.map(this._channel.listen<IRequestResolveVariablesEvent>(RemoteTerminalChannelEvent.OnPtyHostRequestResolveVariablesEvent), event => ({ ...event, workspaceId: this._workspaceContextService.getWorkspace().id }));
- 	}
- 	get onProcessData(): Event<{ id: number; event: IProcessDataEvent | string }> {
- 		return this._channel.listen<{ id: number; event: IProcessDataEvent | string }>(RemoteTerminalChannelEvent.OnProcessDataEvent);
-@@ -100,6 +108,9 @@
+@@ -100,6 +108,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	get onDidChangeProperty(): Event<{ id: number; property: IProcessProperty }> {
  		return this._channel.listen<{ id: number; property: IProcessProperty }>(RemoteTerminalChannelEvent.OnDidChangeProperty);
  	}
++	private get _workspaceId(): string {
++		return getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace());
++	}
++
 +	get onPersistentTerminalInventoryChange(): Event<{ workspaceId: string }> {
 +		return this._channel.listen<{ workspaceId: string }>(RemoteTerminalChannelEvent.OnPersistentTerminalInventoryChange);
 +	}
  
  	constructor(
  		private readonly _remoteAuthority: string,
-@@ -176,7 +187,7 @@
+@@ -176,7 +191,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  			resolvedVariables,
  			envVariableCollections,
  			shellLaunchConfig,
 -			workspaceId: workspace.id,
-+			workspaceId: getRemoteTerminalWorkspaceId(workspace),
++			workspaceId: this._workspaceId,
  			workspaceName: this._labelService.getWorkspaceLabel(workspace),
  			workspaceFolders,
  			activeWorkspaceFolder,
-@@ -191,8 +202,8 @@
+@@ -191,8 +206,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  		return await this._channel.call<ICreateTerminalProcessResult>(RemoteTerminalChannelRequest.CreateProcess, args);
  	}
  
 -	requestDetachInstance(workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined> {
 -		return this._channel.call(RemoteTerminalChannelRequest.RequestDetachInstance, [workspaceId, instanceId]);
 +	requestDetachInstance(_workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined> {
-+		return this._channel.call(RemoteTerminalChannelRequest.RequestDetachInstance, [getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace()), instanceId]);
++		return this._channel.call(RemoteTerminalChannelRequest.RequestDetachInstance, [this._workspaceId, instanceId]);
  	}
  	acceptDetachInstanceReply(requestId: number, persistentProcessId: number): Promise<void> {
  		return this._channel.call(RemoteTerminalChannelRequest.AcceptDetachInstanceReply, [requestId, persistentProcessId]);
-@@ -264,7 +275,7 @@
+@@ -264,7 +279,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  		return this._channel.call(RemoteTerminalChannelRequest.GetDefaultSystemShell, [osOverride]);
  	}
  	getProfiles(profiles: unknown, defaultProfile: unknown, includeDetectedProfiles?: boolean): Promise<ITerminalProfile[]> {
 -		return this._channel.call(RemoteTerminalChannelRequest.GetProfiles, [this._workspaceContextService.getWorkspace().id, profiles, defaultProfile, includeDetectedProfiles]);
-+		return this._channel.call(RemoteTerminalChannelRequest.GetProfiles, [getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace()), profiles, defaultProfile, includeDetectedProfiles]);
++		return this._channel.call(RemoteTerminalChannelRequest.GetProfiles, [this._workspaceId, profiles, defaultProfile, includeDetectedProfiles]);
  	}
  	acceptPtyHostResolvedVariables(requestId: number, resolved: string[]): Promise<void> {
  		return this._channel.call(RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables, [requestId, resolved]);
-@@ -281,7 +292,7 @@
+@@ -281,7 +296,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	setTerminalLayoutInfo(layout?: ITerminalsLayoutInfoById): Promise<void> {
  		const workspace = this._workspaceContextService.getWorkspace();
  		const args: ISetTerminalLayoutInfoArgs = {
 -			workspaceId: workspace.id,
-+			workspaceId: getRemoteTerminalWorkspaceId(workspace),
++			workspaceId: this._workspaceId,
  			tabs: layout ? layout.tabs : [],
  			background: layout ? layout.background : null
  		};
-@@ -307,13 +318,13 @@
+@@ -307,13 +322,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined> {
  		const workspace = this._workspaceContextService.getWorkspace();
  		const args: IGetTerminalLayoutInfoArgs = {
 -			workspaceId: workspace.id,
-+			workspaceId: getRemoteTerminalWorkspaceId(workspace),
++			workspaceId: this._workspaceId,
  		};
  		return this._channel.call<ITerminalsLayoutInfo>(RemoteTerminalChannelRequest.GetTerminalLayoutInfo, args);
  	}
@@ -876,15 +777,13 @@ index 6cdd987..2104110 100644
 -	reviveTerminalProcesses(workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string): Promise<void> {
 -		return this._channel.call(RemoteTerminalChannelRequest.ReviveTerminalProcesses, [workspaceId, state, dateTimeFormatLocate]);
 +	reviveTerminalProcesses(_workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string): Promise<void> {
-+		return this._channel.call(RemoteTerminalChannelRequest.ReviveTerminalProcesses, [getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace()), state, dateTimeFormatLocate]);
++		return this._channel.call(RemoteTerminalChannelRequest.ReviveTerminalProcesses, [this._workspaceId, state, dateTimeFormatLocate]);
  	}
  
  	getRevivedPtyNewId(id: number): Promise<number | undefined> {
-diff --git a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
-index fdf6140..85265ec 100644
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
-@@ -55,6 +55,7 @@
+@@ -55,6 +55,7 @@ export const enum RemoteTerminalChannelEvent {
  	OnExecuteCommand = '$onExecuteCommand',
  	OnDidRequestDetach = '$onDidRequestDetach',
  	OnDidChangeProperty = '$onDidChangeProperty',
@@ -892,8 +791,6 @@ index fdf6140..85265ec 100644
  }
  
  export const enum RemoteTerminalChannelRequest {
-diff --git a/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts b/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts
-index c9071cc..e8d8df1 100644
 --- a/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts
 +++ b/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts
 @@ -20,6 +20,7 @@ import { ITelemetryData, TelemetryLevel } from '../../../../platform/telemetry/c
@@ -921,3 +818,14 @@ index c9071cc..e8d8df1 100644
  			this._managementConnection = connection;
  		} finally {
  			this._initialConnectionMs = Date.now() - start;
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
+@@ -85,7 +85,7 @@ export abstract class BaseTerminalBackend extends Disposable {
+ 		}));
+ 		this._register(this._ptyHostController.onPtyHostRequestResolveVariables(async e => {
+ 			// Only answer requests for this workspace
+-			if (e.workspaceId !== this._workspaceContextService.getWorkspace().id) {
++			if (e.workspaceId !== this._getWorkspaceId()) {
+ 				return;
+ 			}
+ 			const activeWorkspaceRootUri = historyService.getLastActiveWorkspaceRoot(Schemas.file);

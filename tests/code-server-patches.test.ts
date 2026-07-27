@@ -2466,6 +2466,69 @@ describe("composery shortcuts", () => {
 	);
 	const shortcutsPatch = readRepoFile(`${PATCHES_DIR}/product.diff`);
 
+	function loadShortcutStorage(
+		env: Record<string, string>,
+		stored?: { version: number; shortcuts: unknown[] }
+	): { read(): Promise<Array<{ file?: string; type: string }>> } {
+		class FileSystemError extends Error {
+			code: string;
+
+			constructor(code: string) {
+				super(code);
+				this.code = code;
+			}
+		}
+		const uri = (value: string) => ({
+			path: value,
+			toString: () => `file://${value}`
+		});
+		const vscode = {
+			FileSystemError,
+			TreeItem: class {},
+			Uri: {
+				file: uri,
+				joinPath(base: { path: string }, ...segments: string[]) {
+					return uri(posix.join(base.path, ...segments));
+				}
+			},
+			workspace: {
+				fs: {
+					createDirectory() {
+						return Promise.resolve();
+					},
+					readFile() {
+						if (stored === undefined) {
+							throw new FileSystemError("FileNotFound");
+						}
+						return Promise.resolve(
+							new TextEncoder().encode(JSON.stringify(stored))
+						);
+					}
+				}
+			}
+		};
+		const context = vm.createContext({
+			module: { exports: {} },
+			process: { env },
+			require(name: string) {
+				if (name === "node:path") return { posix };
+				if (name === "node:crypto") return { randomUUID: () => "generated-id" };
+				if (name === "node:util") return { TextDecoder, TextEncoder };
+				if (name === "vscode") return vscode;
+				throw new Error(`Unexpected require: ${name}`);
+			}
+		});
+
+		vm.runInContext(
+			`${extension}\nglobalThis.ShortcutStorageForTest = ShortcutStorage;`,
+			context
+		);
+		const Storage = context.ShortcutStorageForTest as new (context: {
+			globalStorageUri: ReturnType<typeof uri>;
+		}) => { read(): Promise<Array<{ file?: string; type: string }>> };
+		return new Storage({ globalStorageUri: uri("/global-storage") });
+	}
+
 	test("keeps patched internal commands aligned with the extension", () => {
 		for (const command of [
 			"composery.shortcuts.pickIcon",
@@ -2507,6 +2570,32 @@ describe("composery shortcuts", () => {
 		);
 		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, true');
 		expect(extension).toContain('"setContext", CAN_UNDO_REMOVE_CONTEXT, false');
+	});
+
+	test.each([
+		[{}, "file:///data/persistence/config.json"],
+		[
+			{ COMPOSERY_DOCKER_VOLUME_PATH: "/mnt/composery-data" },
+			"file:///mnt/composery-data/persistence/config.json"
+		]
+	])(
+		"starts a missing store with the persistence config for its volume",
+		async (env, expected) => {
+			const defaults = await loadShortcutStorage(env).read();
+
+			expect(defaults).toEqual([
+				expect.objectContaining({ type: "file", file: expected })
+			]);
+		}
+	);
+
+	test("does not restore the default after the user saves an empty store", async () => {
+		const shortcuts = await loadShortcutStorage(
+			{},
+			{ version: 1, shortcuts: [] }
+		).read();
+
+		expect(shortcuts).toEqual([]);
 	});
 });
 
@@ -3583,7 +3672,7 @@ describe("terminal edge padding", () => {
 // Columns are not part of this: Buffer#_reflow returns immediately unless the
 // column count changed, so a keyboard rewraps nothing.
 describe("terminal resize scroll", () => {
-	const patch = readRepoFile(`${PATCHES_DIR}/terminal.diff`);
+	const patch = readRepoFile(`${PATCHES_DIR}/terminal-clients.diff`);
 
 	// Run the SHIPPED resize() rather than restating its arithmetic. The stand-in
 	// xterm moves the viewport on resize the way xterm does and records what it is
@@ -3875,10 +3964,6 @@ describe("api terminals", () => {
 	const terminals = readRepoFile(
 		"packages/ide/overlay/src/node/routes/api/terminals.ts"
 	);
-	const flowControl = readRepoFile(
-		"packages/ide/overlay/lib/vscode/src/vs/platform/terminal/common/terminalDataFlowControl.ts"
-	);
-
 	test("the workspace sentinel is identical on both sides", () => {
 		// A terminal created outside any editor window carries this instead of a
 		// real workspace id. If the two copies drift, the pty host stops matching
@@ -3950,45 +4035,27 @@ describe("api terminals", () => {
 		);
 	});
 
-	test("a second output consumer cannot acknowledge broadcast bytes twice", () => {
-		const added = addedLines(patch);
-		expect(added).toContain(
-			"registerDataConsumer(id: number, consumerId: string)"
-		);
-		expect(added).toContain(
-			"acknowledgeDataEvent(id: number, charCount: number, consumerId?: string)"
-		);
-		expect(
-			added.match(/unregisterDataConsumer\([^;\n]*'vscode'\)/g)
-		).toHaveLength(2);
-		expect(flowControl).toContain("consumerId === this._leader");
-		expect(flowControl).toContain("this._acknowledge(delta)");
-		// Nothing arbitrates a counter it is never told about.
-		expect(added).toContain("this._dataFlowControl.acceptData(e.length)");
-	});
-
-	test("the API never takes the consumer id the editor's own frontends share", () => {
-		// One id covers every VS Code frontend, because they have no registration
-		// call and the pty host names them. An API attach reusing it would land in
-		// that same slot, so either side detaching would strip the other's flow
-		// control - and the pty would then pause on bytes nobody can acknowledge.
-		const added = addedLines(patch);
-		const unregistered = [
-			...added.matchAll(/unregisterDataConsumer\([^;\n]*'([^']+)'\)/g)
-		].map((match) => match[1]);
-		const fallback =
-			/acknowledgeDataEvent\(id: number, charCount: number, consumerId: string = '([^']+)'\)/.exec(
-				added
-			)?.[1];
-
-		expect(fallback).toBeDefined();
-		expect(new Set([...unregistered, fallback]).size).toBe(1);
-
-		const apiIds = [...terminals.matchAll(/consumerId = `([^`$]+)\$\{/g)].map(
+	test("every API attachment is its own terminal client", () => {
+		// Two attachments sharing a client id would share one registry slot, so
+		// either one finishing would strip the other's flow control and viewport,
+		// and the pty would then pause on bytes nobody is left to acknowledge.
+		const ids = [...terminals.matchAll(/clientId = `([^`$]+)\$\{/g)].map(
 			(match) => match[1]
 		);
-		expect(apiIds).toHaveLength(2);
-		for (const id of apiIds) expect(id).not.toBe(fallback);
+		expect(ids).toHaveLength(2);
+		expect(new Set(ids).size).toBe(2);
+		for (const id of ids) expect(id).toMatch(/^api-/);
+		expect(terminals).toContain("crypto.randomUUID()");
+		// One registration covers the viewport and the flow control, so neither
+		// can outlive the other, and one unregistration releases both.
+		expect(
+			// "register" also matches inside "unregister" - anchor it.
+			terminals.match(/(?<!un)registerTerminalClient\(id, clientId\)/g)
+		).toHaveLength(2);
+		expect(
+			terminals.match(/unregisterTerminalClient\(id, clientId\)/g)
+		).toHaveLength(3);
+		expect(terminals).not.toContain("registerDataConsumer");
 	});
 
 	test("the orphan check keeps upstream's default and its own polarity", () => {

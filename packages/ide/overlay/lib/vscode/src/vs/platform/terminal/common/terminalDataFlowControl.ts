@@ -4,14 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Arbitrates the pty's single acknowledgement counter between every consumer
- * receiving the same terminal data. Only one consumer drives the counter at a
- * time; acknowledgements from the others are retained so a replacement can
- * take over without acknowledging the same bytes twice.
+ * Arbitrates the pty's single acknowledgement counter between every client
+ * receiving the same terminal data. The furthest-ahead client drives it, so a
+ * client that stops reading pauses only its own socket rather than the terminal
+ * everyone else is watching, and acknowledgements never count the same bytes
+ * twice.
  */
 export class TerminalDataFlowControl {
-	private readonly _consumers = new Map<string, number>();
-	private _leader: string | undefined;
+	private readonly _clients = new Map<string, number>();
 	private _produced = 0;
 	private _acknowledged = 0;
 	private readonly _acknowledge: (charCount: number) => void;
@@ -28,70 +28,63 @@ export class TerminalDataFlowControl {
 			throw new Error(`Invalid terminal data length: ${charCount}`);
 		}
 		this._produced += charCount;
-		if (this._leader === undefined) {
-			// Nobody is attached to acknowledge this, and the pty pauses above its
-			// high watermark until something does - a terminal whose last reader
-			// disconnected would stall mid-command instead of running on. Nothing
-			// is lost: the serializer still records the output for replay.
-			this._advance();
-		}
-	}
-
-	register(consumerId: string): void {
-		if (this._consumers.has(consumerId)) {
-			return;
-		}
-		this._consumers.set(consumerId, this._produced);
-		this._leader ??= consumerId;
-	}
-
-	unregister(consumerId: string): void {
-		if (!this._consumers.delete(consumerId) || this._leader !== consumerId) {
-			return;
-		}
-		this._leader = this._consumers.keys().next().value;
 		this._advance();
 	}
 
-	acknowledge(consumerId: string, charCount: number): void {
-		if (!Number.isSafeInteger(charCount) || charCount < 0) {
-			throw new Error(`Invalid terminal acknowledgement: ${charCount}`);
+	register(clientId: string): void {
+		if (!this._clients.has(clientId)) {
+			// At the tail: a client that arrives mid-command owes nothing for the
+			// output that ran before it, and the serializer replays that anyway.
+			this._clients.set(clientId, this._produced);
 		}
-		let previous = this._consumers.get(consumerId);
-		if (previous === undefined) {
-			// Existing VS Code clients have no registration RPC: their first
-			// acknowledgement is also their registration. Unlike an explicit
-			// attachment, it covers data already delivered, so begin at the
-			// native counter rather than at the current tail.
-			previous = this._acknowledged;
-			this._consumers.set(consumerId, previous);
-			this._leader ??= consumerId;
-		}
-		this._consumers.set(consumerId, Math.min(previous + charCount, this._produced));
-		if (consumerId === this._leader) {
+	}
+
+	unregister(clientId: string): void {
+		if (this._clients.delete(clientId)) {
 			this._advance();
 		}
 	}
 
+	acknowledge(clientId: string, charCount: number): void {
+		const previous = this._clients.get(clientId);
+		if (previous === undefined) {
+			throw new Error(`Terminal client "${clientId}" is not registered`);
+		}
+		if (!Number.isSafeInteger(charCount) || charCount < 0) {
+			throw new Error(`Invalid terminal acknowledgement: ${charCount}`);
+		}
+		this._clients.set(clientId, Math.min(previous + charCount, this._produced));
+		this._advance();
+	}
+
 	/**
-	 * Replay clears the pty's native counter. Every registered consumer receives
+	 * Replay clears the pty's native counter. Every registered client receives
 	 * that replay broadcast, so live flow control resumes at the current tail.
 	 */
 	resetAfterReplay(): void {
 		this._acknowledged = this._produced;
-		for (const consumerId of this._consumers.keys()) {
-			this._consumers.set(consumerId, this._produced);
+		for (const clientId of this._clients.keys()) {
+			this._clients.set(clientId, this._produced);
 		}
 	}
 
 	private _advance(): void {
-		// With no leader there is no consumer that could ever acknowledge, so
-		// everything produced counts as acknowledged.
-		const next = this._leader === undefined ? this._produced : this._consumers.get(this._leader)!;
-		const delta = next - this._acknowledged;
-		if (delta <= 0) {
+		// With nobody registered there is no client that could ever acknowledge, and
+		// the pty pauses above its high watermark until something does - a terminal
+		// whose last reader disconnected would stall mid-command instead of running
+		// on. So everything produced counts as acknowledged. Nothing is lost: the
+		// serializer still records the output for replay.
+		let next = this._produced;
+		if (this._clients.size > 0) {
+			next = 0;
+			for (const position of this._clients.values()) {
+				next = Math.max(next, position);
+			}
+		}
+		if (next <= this._acknowledged) {
 			return;
 		}
+		const delta = next - this._acknowledged;
 		this._acknowledged = next;
 		this._acknowledge(delta);
 	}

@@ -47,9 +47,9 @@ pub struct AuditConfig {
     pub deep_hash_interval_secs: u64,
 }
 
-/// Exactly what lives in `config.json`. Serde defaults keep a file written by
-/// any earlier build parsing in place rather than being quarantined for a
-/// missing field.
+/// The configurable values read from `config.json`. The generated file also
+/// carries a documentation link, which serde deliberately ignores so owners
+/// can remove it without changing behavior.
 ///
 /// `exclusions` is the name the single-array layout used before user intent was
 /// split from image policy. It is an alias rather than a migration: such a file
@@ -69,18 +69,21 @@ struct FileConfig {
     max_watches: u64,
 }
 
-/// The subset of `Config` that is written to `config.json` - user intent only.
-/// The integrity and default exclusion sets live in code, never on the volume,
-/// so a new image can change them without a stale copy on a volume overriding
-/// it.
+/// What is written to `config.json`: one removable documentation pointer plus
+/// user intent. The integrity and default exclusion sets live in code, never on
+/// the volume, so a new image can change them without a stale copy on a volume
+/// overriding it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredConfig<'a> {
+    documentation: &'static str,
     exclude: &'a [String],
     persist: &'a [String],
     audit: &'a AuditConfig,
     max_watches: u64,
 }
+
+const DOCUMENTATION_URL: &str = "https://www.composery.io/docs/persistence";
 
 fn default_interval_secs() -> u64 {
     60
@@ -303,6 +306,7 @@ fn write(path: &Path, config: &Config) -> Result<()> {
     ensure_real_dir(parent)?;
 
     let stored = StoredConfig {
+        documentation: DOCUMENTATION_URL,
         exclude: &config.exclude,
         persist: &config.persist,
         audit: &config.audit,
@@ -384,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn load_or_create_writes_only_user_intent_not_the_default_set() {
+    fn load_or_create_writes_documentation_and_user_intent_not_the_default_set() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("persistence/config.json");
 
@@ -393,6 +397,10 @@ mod tests {
         assert_eq!(config, Config::default());
         assert!(path.exists());
         let stored = read_json(&path);
+        assert_eq!(
+            stored["documentation"],
+            json!("https://www.composery.io/docs/persistence")
+        );
         assert_eq!(stored["exclude"], json!([]));
         assert_eq!(stored["persist"], json!([]));
         // The `/var/cache` default is shipped with the image now, never frozen
