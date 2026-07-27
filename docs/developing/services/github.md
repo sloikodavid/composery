@@ -127,16 +127,16 @@ Settings -> Actions -> General: Actions enabled, all actions allowed, default
 workflow token permissions **read-only**. Workflows elevate per-file through
 their `permissions:` blocks, which is why none of this needs org-level policy:
 
-| Workflow             | Trigger                               | Elevated permissions and why                                                                               |
-| -------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`, call | only the post-validation deploy job gets `contents: write`, to fast-forward the `deploy` branch            |
-| `smoke.yml`          | call, dispatch                        | direct runs get `security-events: write` for Trivy SARIF; validation calls are read-only and do not upload |
-| `smoke-nightly.yml`  | schedule, dispatch                    | `security-events: write` - uncached image smoke                                                            |
-| `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                                    |
-| `mobile-preview.yml` | successful `ci` completion, dispatch  | uses protected `EXPO_TOKEN`; automatic and manual builds both wait for the complete validation tier        |
-| `mobile-release.yml` | `mobile-v*` tag                       | revalidates the tag before EAS/Google; final job gets release and Google federation permissions            |
-| `release.yml`        | dispatch                              | revalidates the exact ref before image release, GHCR, provenance, and Trivy permissions                    |
-| `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                                     |
+| Workflow             | Trigger                               | Elevated permissions and why                                                                        |
+| -------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ci.yml`             | pull requests, pushes to `main`, call | only the post-validation deploy job gets `contents: write`, to fast-forward the `deploy` branch     |
+| `smoke.yml`          | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state       |
+| `smoke-nightly.yml`  | schedule, dispatch                    | none - uncached image smoke                                                                         |
+| `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                             |
+| `mobile-preview.yml` | successful `ci` completion, dispatch  | uses protected `EXPO_TOKEN`; automatic and manual builds both wait for the complete validation tier |
+| `mobile-release.yml` | `mobile-v*` tag                       | revalidates the tag before EAS/Google; final job gets release and Google federation permissions     |
+| `release.yml`        | dispatch                              | revalidates the exact ref before image release, GHCR, provenance, and Trivy permissions             |
+| `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                              |
 
 Create GitHub environments under **Settings** -> **Environments**:
 
@@ -204,9 +204,9 @@ image release workflow; never create them by hand. Mobile uses the distinct
 - **Private vulnerability reporting** (Settings -> Advanced Security) is
   enabled; `SECURITY.md` and the issue chooser both point reporters at
   private advisories instead of public issues.
-- **Code scanning** needs no setup: the smoke and release workflows upload
-  Trivy SARIF results (severity `CRITICAL,HIGH`), which appear under
-  Security -> Code scanning alerts.
+- **Code scanning** needs no setup: after the complete validation tier passes,
+  the release workflow uploads Trivy SARIF results (severity `CRITICAL,HIGH`),
+  which appear under Security -> Code scanning alerts.
 - **Secret scanning and push protection** (same settings page): enable both.
   They are free on public repositories and block accidental credential
   pushes at the git layer. Provider secrets must never enter Git regardless -

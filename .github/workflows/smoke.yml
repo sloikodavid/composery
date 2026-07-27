@@ -9,15 +9,8 @@ on:
       no_cache:
         type: boolean
         default: false
-  workflow_dispatch:
-    inputs:
-      no_cache:
-        type: boolean
-        default: false
-
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: smoke-${{ github.ref }}
@@ -63,19 +56,9 @@ jobs:
         if: matrix.arch == 'amd64'
         with:
           image-ref: ${{ env.SMOKE_IMAGE_TAG }}
-          format: sarif
-          output: trivy-results.sarif
+          format: table
           severity: CRITICAL,HIGH
-          # Informational: findings surface as SARIF code-scanning alerts here and
-          # in release.yml (which rescans the exact published digest); neither scan
-          # blocks, since unfixed base-image CVEs would brick every PR and release.
+          # Informational: release.yml rescans the exact published digest and owns
+          # the one persistent SARIF report. Validation only logs findings, since
+          # a report write belongs after the promotion boundary.
           exit-code: "0"
-      - uses: github/codeql-action/upload-sarif@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
-        if: >-
-          always() &&
-          github.event_name != 'workflow_call' &&
-          matrix.arch == 'amd64' &&
-          hashFiles('trivy-results.sarif') != '' &&
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        with:
-          sarif_file: trivy-results.sarif
