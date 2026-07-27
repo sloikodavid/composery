@@ -14,6 +14,7 @@ const api = readRepoFile(
 	"packages/ide/overlay/src/node/routes/api/terminals.ts"
 );
 const apiDocs = readRepoFile("docs/api.mdx");
+const smoke = readRepoFile("scripts/smoke.mjs");
 
 function declaration(source: string, marker: string): string {
 	const start = source.indexOf(marker);
@@ -211,6 +212,10 @@ describe("terminal API viewport protocol", () => {
 		expect(apiDocs).toContain("server rejects attachments without it");
 		expect(apiDocs).toContain("Binary client frames are terminal");
 		expect(apiDocs).toContain("websocat --protocol composery-terminal-v1");
+		expect(smoke).toContain('"Sec-WebSocket-Protocol: composery-terminal-v1"');
+		expect(smoke).toContain(
+			'headers["sec-websocket-protocol"] !== "composery-terminal-v1"'
+		);
 		expect(apiDocs).toContain(
 			"server restores the most recently active attached viewport"
 		);

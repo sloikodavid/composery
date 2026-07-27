@@ -942,6 +942,7 @@ function ptyWebsocket(key, id, { detachOnUpgrade = false } = {}) {
 			`Authorization: Bearer ${key}`,
 			`Sec-WebSocket-Key: ${randomBytes(16).toString("base64")}`,
 			"Sec-WebSocket-Version: 13",
+			"Sec-WebSocket-Protocol: composery-terminal-v1",
 			"",
 			""
 		].join("\r\n");
@@ -970,6 +971,12 @@ function ptyWebsocket(key, id, { detachOnUpgrade = false } = {}) {
 				const status = Number(head.split(" ")[1]) || 0;
 				if (status !== 101) {
 					finish(status);
+					return;
+				}
+				const { headers } = parseHttpHeaders(head);
+				if (headers["sec-websocket-protocol"] !== "composery-terminal-v1") {
+					socket.destroy();
+					reject(new Error("PTY websocket did not select its protocol."));
 					return;
 				}
 				upgraded = true;
