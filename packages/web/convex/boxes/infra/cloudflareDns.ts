@@ -83,6 +83,9 @@ export function dnsRecordListPath(
 	return `/zones/${zoneId}/dns_records?${params.toString()}`;
 }
 
+// Cloudflare's sentinel for "let the edge pick the TTL", not one second.
+const CLOUDFLARE_AUTOMATIC_TTL = 1;
+
 export function dnsRecordPayload(
 	type: "A" | "AAAA",
 	name: string,
@@ -92,7 +95,7 @@ export function dnsRecordPayload(
 		type,
 		name,
 		content,
-		ttl: 1,
+		ttl: CLOUDFLARE_AUTOMATIC_TTL,
 		proxied: false
 	};
 }

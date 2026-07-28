@@ -5,7 +5,9 @@
 		"paths": {
 			"@/*": ["./src/*"],
 			"@/assets/*": ["./assets/*"]
-		}
+		},
+		"types": ["node", "react"],
+		"allowImportingTsExtensions": true
 	},
 	"include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
 }

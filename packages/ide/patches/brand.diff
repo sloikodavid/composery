@@ -2,7 +2,7 @@ Composery product identity: what the assembled IDE calls itself and shows.
 
 - product.json coordinates: documentation and newsletter URLs, the trusted
   domain, the server data folder.
-- The brand mark wherever upstream draws its own: the letterpress backgrounds
+- The brand icon wherever upstream draws its own: the letterpress backgrounds
   (editor and sessions, light/dark/high-contrast) and the window icon.
 - The titlebar home button and its context menu.
 - Composery Dark / Composery Light as the default colour themes, including

@@ -107,27 +107,6 @@ export async function requireActiveUser(ctx: WriterCtx): Promise<ActiveUser> {
 	};
 }
 
-export async function requireActiveUserForRead(
-	ctx: ReaderCtx
-): Promise<ActiveUser> {
-	const identity = await requireIdentity(ctx);
-	const user = await getUserByClerkId(ctx, identity.subject);
-
-	if (!user) {
-		throw new ConvexError("User record has not been initialized.");
-	}
-
-	if (user.suspended) {
-		throw new ConvexError("User is suspended.");
-	}
-
-	return {
-		clerkUserId: user.clerk_user_id,
-		email: user.email,
-		user
-	};
-}
-
 export async function requireCapability(
 	ctx: ReaderCtx,
 	capability: UserCapability

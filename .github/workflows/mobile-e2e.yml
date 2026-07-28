@@ -84,7 +84,7 @@ jobs:
             pnpm exec expo run:android --variant release --no-bundler
             maestro test -e APP_ID="$APP_ID" \
               -e INSTANCE_URL="http://10.0.2.2:4173" --format junit \
-              --output ../../maestro-android.xml src/maestro/e2e.yml
+              --output ../../maestro-android.xml tests/system/e2e.yml
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -127,7 +127,7 @@ jobs:
           pnpm exec expo run:ios --configuration Release --no-bundler
           maestro test -e APP_ID="$APP_ID" \
             -e INSTANCE_URL="http://127.0.0.1:4173" --format junit \
-            --output ../../maestro-ios.xml src/maestro/e2e.yml
+            --output ../../maestro-ios.xml tests/system/e2e.yml
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()

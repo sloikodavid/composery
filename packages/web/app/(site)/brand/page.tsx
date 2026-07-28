@@ -6,7 +6,7 @@ import { PageTemplate } from "@/components/page-template";
 export const metadata: Metadata = {
 	title: "Brand",
 	description:
-		"Download the Composery logo and icon as SVG or PNG for articles, videos, and other coverage."
+		"Download the Composery logo and icon as SVG or PNG and copy the brand colours, for articles, videos, and other coverage."
 };
 
 export default function BrandPage() {

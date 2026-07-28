@@ -32,9 +32,8 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 3. Under Settings -> Payments, set the organization's default tax behavior to
    **Exclusive**. Polar fixes the billing interval on each product, so create two
    products rather than adding two prices to one product:
-   - **Box - Monthly**: recurring monthly, fixed at **$24 USD**.
-   - **Box - Annual**: recurring yearly, fixed at **$240 USD**. This is displayed
-     on Composery as $20/month, billed annually.
+   - **Box - Monthly**: recurring monthly, fixed.
+   - **Box - Annual**: recurring yearly, fixed. This is displayed in the monthly figure on the pricing page.
 
    Give both the same accurate hosted-box description, Terms link, Privacy link,
    and benefits. Duplicating Box Monthly is the safest way to create Box Annual,

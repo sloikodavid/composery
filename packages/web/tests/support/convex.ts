@@ -1,0 +1,172 @@
+import polar from "@convex-dev/polar/test";
+import resend from "@convex-dev/resend/test";
+import workflow from "@convex-dev/workflow/test";
+import { convexTest, type TestConvex } from "convex-test";
+import { vi } from "vitest";
+
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+import schema from "@/convex/schema";
+
+// `convex-test` resolves a function reference like `boxes/access:get` by looking
+// the path up in a module map, and it can only build that map from an
+// `import.meta.glob` written where the glob's base is statically known. Tests
+// live outside `convex/` (docs/developing/testing.md), so the glob is written
+// once here rather than in every test file - a per-file glob would be the same
+// pattern typed N times with N chances to miss a directory, and a missing entry
+// surfaces as "Could not find module" from whichever test happens to reach it.
+//
+// The `_generated` files have to be in the glob: convex-test finds the root of
+// the function tree by locating them.
+const modules = import.meta.glob("../../convex/**/*.*s");
+
+// The components `convex/convex.config.ts` installs, registered the same way and
+// in the same place, because a harness missing one fails only in whichever test
+// happens to reach that component - `startOperation` starts a real workflow, and
+// a staff alert really tries to queue an email. Each package ships its own
+// registrar, so this list stays a mirror of `convex.config.ts` and never a copy
+// of any component's internals (the workflow one also registers its nested
+// workpool, which lives at a pnpm path no glob here could name).
+const COMPONENTS = [polar, resend, workflow];
+
+export type Harness = TestConvex<typeof schema>;
+
+export function testConvex(): Harness {
+	const t = convexTest(schema, modules);
+	for (const component of COMPONENTS) component.register(t);
+	return t;
+}
+
+// The deployment variables a box's own row needs to render. `safeBox` builds a
+// runtime URL for every box it returns, so a query as ordinary as "list my
+// boxes" throws without `CLOUD_DOMAIN` - which makes this setup, not a fixture.
+// Nothing here reaches a real service: these two only ever appear in URLs we
+// build ourselves, and a test that needs a credentialled variable stubs that one
+// itself, so what a test does not stub it does not use.
+export function stubDeploymentEnv() {
+	vi.stubEnv("CLOUD_DOMAIN", "dev.composery.cloud");
+	vi.stubEnv("WEBSITE_ORIGIN", "https://composery.test");
+}
+
+type UserSeed = {
+	clerkUserId?: string;
+	email?: string;
+	role?: Doc<"users">["role"];
+	suspended?: boolean;
+	suspendedReason?: string;
+};
+
+// Clerk owns the identity; the `users` row is ours. Every authorization path
+// starts by matching one to the other on `clerk_user_id`, so a seeded user and
+// the identity a test calls with have to agree - this returns the identity to
+// pass to `withIdentity` so they cannot drift apart in a test's own setup.
+export async function seedUser(t: Harness, seed: UserSeed = {}) {
+	const clerkUserId = seed.clerkUserId ?? "clerk_user";
+	const email = seed.email ?? `${clerkUserId}@example.com`;
+	const userId = await t.run(
+		async (ctx) =>
+			await ctx.db.insert("users", {
+				clerk_user_id: clerkUserId,
+				email,
+				role: seed.role ?? "user",
+				suspended: seed.suspended ?? false,
+				suspended_reason: seed.suspendedReason,
+				created_at: 1,
+				updated_at: 1
+			})
+	);
+
+	return {
+		as: t.withIdentity({ subject: clerkUserId, email }),
+		clerkUserId,
+		email,
+		identity: { subject: clerkUserId, email },
+		userId
+	};
+}
+
+type BoxSeed = Partial<Doc<"boxes">> & { user_id: string };
+
+export async function seedBox(t: Harness, seed: BoxSeed): Promise<Id<"boxes">> {
+	return await t.run(
+		async (ctx) =>
+			await ctx.db.insert("boxes", {
+				slug: "box",
+				status: "running",
+				polar_subscription_id: undefined,
+				created_at: 1,
+				updated_at: 1,
+				...seed
+			})
+	);
+}
+
+// The deployment's one settings row. Capacity admission treats an unset
+// Hetzner limit as "capacity is not configured yet" and blocks every new box, so
+// a test about anything downstream of that gate has to say what the limits are.
+export async function seedSettings(
+	t: Harness,
+	settings: Partial<Doc<"settings">> = {}
+) {
+	return await t.run(
+		async (ctx) =>
+			await ctx.db.insert("settings", {
+				key: "global",
+				checkout_enabled: true,
+				hetzner_server_limit: 100,
+				hetzner_snapshot_limit: 1000,
+				updated_at: 1,
+				...settings
+			})
+	);
+}
+
+export function readBox(t: Harness, boxId: Id<"boxes">) {
+	return t.run(async (ctx) => await ctx.db.get(boxId));
+}
+
+export function readOperation(t: Harness, operationId: Id<"box_operations">) {
+	return t.run(async (ctx) => await ctx.db.get(operationId));
+}
+
+export function boxEvents(t: Harness, boxId: Id<"boxes">) {
+	return t.run(
+		async (ctx) =>
+			await ctx.db
+				.query("box_events")
+				.withIndex("box_id", (q) => q.eq("box_id", boxId))
+				.collect()
+	);
+}
+
+export function boxOperations(t: Harness, boxId: Id<"boxes">) {
+	return t.run(
+		async (ctx) =>
+			await ctx.db
+				.query("box_operations")
+				.withIndex("box_id", (q) => q.eq("box_id", boxId))
+				.collect()
+	);
+}
+
+export function staffAlerts(t: Harness) {
+	return t.run(async (ctx) => await ctx.db.query("staff_alerts").collect());
+}
+
+// What a mutation asked the scheduler to do next, read rather than run.
+//
+// A lot of this code ends in `scheduler.runAfter(0, ...)` towards an action that
+// talks to Hetzner or Cloudflare, and the decision under test is which row was
+// chosen - not what the provider says about it. Reading the queue asserts the
+// decision without letting a behaviour test reach the network, which is the line
+// `docs/developing/testing.md` draws around this kind.
+export async function scheduledJobs(t: Harness, name?: string) {
+	const jobs = await t.run(
+		async (ctx) => await ctx.db.system.query("_scheduled_functions").collect()
+	);
+	return name ? jobs.filter((job) => job.name === name) : jobs;
+}
+
+export async function scheduledArgs<T>(t: Harness, name: string) {
+	const jobs = await scheduledJobs(t, name);
+	return jobs.map((job) => job.args[0] as T);
+}

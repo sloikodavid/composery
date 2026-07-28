@@ -31,4 +31,13 @@ export function websiteOrigin() {
 	return requiredEnv("WEBSITE_ORIGIN").replace(/\/+$/g, "");
 }
 
+// A link onto the website, or `undefined` where the origin is not configured -
+// the difference from `websiteOrigin` above, which throws. Both callers put a
+// link inside an email sent from a box lifecycle mutation, and a deployment
+// missing its origin must lose the link rather than the deletion.
+export function optionalWebsiteUrl(path: string) {
+	const origin = optionalEnv("WEBSITE_ORIGIN")?.replace(/\/+$/g, "");
+	return origin ? `${origin}${path}` : undefined;
+}
+
 export { normalizeDomain as normalizeDomainValue };

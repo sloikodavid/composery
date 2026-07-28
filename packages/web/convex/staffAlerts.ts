@@ -7,7 +7,7 @@ import {
 	type DatabaseReader,
 	type MutationCtx
 } from "./_generated/server";
-import { optionalEnv } from "./env";
+import { optionalEnv, optionalWebsiteUrl } from "./env";
 import { rolesWithCapability, userHasCapability } from "./roles";
 import { vStaffAlertSeverity } from "./schema";
 
@@ -20,10 +20,22 @@ export const STAFF_ALERT_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
 const STAFF_ALERT_RETRY_BATCH = 20;
 const STAFF_ALERT_PURGE_BATCH = 200;
 
-export const resend: Resend = new Resend(components.resend, {
-	onEmailEvent: internal.staffAlerts.recordEmailEvent,
-	testMode: false
-});
+// Built per use rather than once at module load.
+//
+// The client captures `RESEND_API_KEY` when it is constructed, while every "is
+// email configured" answer below reads the variable when it is asked. A client
+// built at import time makes those two disagree for as long as a deployment's
+// module cache outlives an environment change - the configured-looking half
+// reporting healthy while the sending half throws "API key is not set". One of
+// them had to move, and this one is free to move: a client is a component handle
+// beside a plain config object, and the config it sends is assembled per call
+// regardless.
+export function resendClient(): Resend {
+	return new Resend(components.resend, {
+		onEmailEvent: internal.staffAlerts.recordEmailEvent,
+		testMode: false
+	});
+}
 
 type AlertInput = {
 	key: string;
@@ -43,8 +55,7 @@ export function staffAlertDeliveryTrackingConfigured() {
 }
 
 export function staffConsoleUrl(path = "/console") {
-	const origin = optionalEnv("WEBSITE_ORIGIN")?.replace(/\/+$/g, "");
-	return origin ? `${origin}${path}` : `the staff console (${path})`;
+	return optionalWebsiteUrl(path) ?? `the staff console (${path})`;
 }
 
 export async function staffAlertRecipientEmails(ctx: { db: DatabaseReader }) {
@@ -83,7 +94,7 @@ async function enqueueAlert(ctx: MutationCtx, alert: Doc<"staff_alerts">) {
 	}
 
 	try {
-		const emailId = await resend.sendEmail(ctx, {
+		const emailId = await resendClient().sendEmail(ctx, {
 			from,
 			to,
 			subject: alert.subject,
@@ -157,6 +168,51 @@ export function staffAlertDeliveryFailed(eventType: string | undefined) {
 	);
 }
 
+function recipients(to: string | string[]) {
+	return Array.isArray(to) ? to.join(", ") : to;
+}
+
+// A delivery failure for mail that is not a staff alert - which, since this
+// deployment sends exactly two kinds, means a box owner notice (convex/ownerEmail.ts).
+//
+// Owner notices carry no row of their own, on the argument that an individual
+// bounce has no action behind it: the address came from Clerk, there is no
+// second channel, and the box has already been deleted or suspended either way.
+// A complaint is the exception, and it is the reason this exists. Owner mail and
+// staff alerts deliberately share one sender domain and therefore one sending
+// reputation, so an owner marking a notice as spam degrades the channel the
+// alerts themselves ride on. Left unreported, that arrives later as staff alerts
+// mysteriously failing to deliver - the symptom, without the cause, at the exact
+// moment the alert channel is the thing that is broken.
+//
+// Everything needed is on the event: Resend echoes the recipient and the
+// subject, and an owner notice's subject names its box.
+function undeliveredNoticeAlert(
+	id: string,
+	event: EmailEvent
+): AlertInput | undefined {
+	if (!staffAlertDeliveryFailed(event.type)) return undefined;
+
+	const complaint = event.type === "email.complained";
+	return {
+		// Per message rather than per time window. The volume is bounded by real
+		// lifecycle events - a box is deleted or suspended once - so a burst of
+		// these is not noise to be collapsed, it is the news.
+		key: `owner-notice-undelivered:${id}`,
+		severity: complaint ? "critical" : "warning",
+		subject: complaint
+			? "A box owner marked a Composery notice as spam"
+			: "A box owner notice was not delivered",
+		text: `"${event.data.subject}" was not delivered to ${recipients(event.data.to)}.\n\n${
+			deliveryError(event) ?? event.type
+		}\n\n${
+			complaint
+				? "A complaint is a sending-reputation problem, not one owner's problem. Owner notices and these alerts share a verified sender domain, so repeated complaints degrade staff alert delivery too. Review what was sent and whether the two streams still belong on one domain."
+				: "The owner was not told what happened to their box. Notices are not retried - the box has since moved on - so reaching them, if it matters, is a manual step."
+		}\n\n${staffConsoleUrl()}`
+	};
+}
+
 export const recordEmailEvent = internalMutation({
 	args: vOnEmailEventArgs,
 	handler: async (ctx, args) => {
@@ -164,7 +220,11 @@ export const recordEmailEvent = internalMutation({
 			.query("staff_alerts")
 			.withIndex("email_id", (query) => query.eq("email_id", args.id))
 			.first();
-		if (!alert) return;
+		if (!alert) {
+			const notice = undeliveredNoticeAlert(args.id, args.event);
+			if (notice) await sendStaffAlert(ctx, notice);
+			return;
+		}
 		await ctx.db.patch(alert._id, {
 			last_email_event: args.event.type,
 			delivery_error: deliveryError(args.event),

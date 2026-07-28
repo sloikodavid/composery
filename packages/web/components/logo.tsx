@@ -15,10 +15,10 @@ import { BRAND_ASSETS, copySvg } from "@/lib/brand-assets";
 import { LOGO_INNER, LOGO_VIEWBOX } from "@/lib/logo-data";
 import { cn } from "@/lib/utils";
 
-// The plain mark - just an inline SVG. The /brand previews use this directly
+// The plain logo - just an inline SVG. The /brand previews use this directly
 // and keep the browser's native right-click. The brand menu lives on LogoMenu,
 // wrapped only around the real clickable logo below.
-export function LogoLockup({ className }: { className?: string }) {
+export function BrandLogo({ className }: { className?: string }) {
 	const holesId = useId().replace(/[^A-Za-z0-9_-]/g, "");
 	const inner = LOGO_INNER.replaceAll("composery-logo-icon-holes", holesId);
 
@@ -41,7 +41,7 @@ const MENU_POPUP =
 const MENU_ITEM =
 	"flex min-h-7 cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm no-underline outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
-// Right-click the real logo to copy the marks as SVG or jump to the brand page,
+// Right-click the real logo to copy the logo or icon as SVG or jump to the brand page,
 // instead of the browser's native "save image" menu.
 function LogoMenu({ children }: { children: ReactNode }) {
 	const { resolvedTheme } = useTheme();
@@ -114,7 +114,7 @@ function LogoMenu({ children }: { children: ReactNode }) {
 }
 
 // The one logo link, for every surface: site header, footer, and both fumadocs
-// nav slots. `size` picks the mark's height - only the footer differs, since
+// nav slots. `size` picks the logo's height - only the footer differs, since
 // it's a brand block rather than a fixed-height bar. Remaining props land on the
 // link, which is what the fumadocs nav-title slot needs: it passes a `me-auto`
 // that keeps the sidebar collapse button pushed to the end.
@@ -129,16 +129,16 @@ export function Logo({
 			aria-label="Composery"
 			href="/"
 			className={cn(
-				// Fade with opacity, not a translucent currentColor: the mark's icon
+				// Fade with opacity, not a translucent currentColor: the logo's icon
 				// paints fill and stroke in the same paint, so a per-shape alpha
 				// composites them twice and the stroke shows through as a seam. Opacity
-				// composites the whole mark once (same as auth.css's .auth-logo-link).
+				// composites the whole logo once (same as auth.css's .auth-logo-link).
 				"inline-flex text-foreground transition-opacity hover:opacity-80",
 				className
 			)}
 		>
 			<LogoMenu>
-				<LogoLockup className={cn(size, "w-auto")} />
+				<BrandLogo className={cn(size, "w-auto")} />
 			</LogoMenu>
 		</Link>
 	);

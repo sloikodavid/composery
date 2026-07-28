@@ -34,6 +34,7 @@
 		"shared": "workspace:*"
 	},
 	"devDependencies": {
+		"@types/node": "catalog:",
 		"@types/react": "catalog:",
 		"eslint": "catalog:",
 		"eslint-config-expo": "~57.0.0",
@@ -47,10 +48,9 @@
 		"dev:android": "expo start --go --android",
 		"dev:ios": "expo start --go --ios",
 		"dev:web": "expo start --web",
-		"check": "pnpm check:types && pnpm check:lint && pnpm check:test && pnpm check:native-config",
+		"check": "pnpm check:types && pnpm check:lint && pnpm check:native-config",
 		"check:types": "tsc --noEmit",
 		"check:lint": "eslint . --max-warnings 0",
-		"check:test": "vitest run",
 		"check:native-config": "node scripts/check-native-config.mjs",
 		"fix:lint": "eslint . --fix",
 		"build": "expo export --platform all"

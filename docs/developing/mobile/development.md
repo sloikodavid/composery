@@ -76,7 +76,7 @@ the helper's `pair` and `connect` commands with the values shown by Android.
 Never clear or uninstall a physical device app without the owner's permission.
 
 Nightly CI builds and installs the Release configuration on Android and iOS,
-then runs `src/maestro/e2e.yml`. Maestro can assert the native WebView exists,
+then runs `tests/system/e2e.yml`. Maestro can assert the native WebView exists,
 but cannot inspect its document. WebView behavior therefore also has unit tests
 for navigation classification and must be exercised manually for touch,
 keyboard, external-link, login, and local-network paths.

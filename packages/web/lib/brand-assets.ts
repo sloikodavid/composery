@@ -7,10 +7,10 @@ import {
 	LOGO_WIDTH
 } from "@/lib/logo-data";
 
-// Concrete, font-free, self-contained SVGs of the Composery marks, shared by the
-// public /brand page and the logo right-click menu. The asset catalog owns the
-// fixed mark color and matching preview surface together, so callers cannot
-// accidentally show or copy a different scheme.
+// Concrete, font-free, self-contained SVGs of the Composery logo and icon,
+// shared by the public /brand page and the logo right-click menu. The asset
+// catalog owns the fixed artwork color and matching preview surface together,
+// so callers cannot accidentally show or copy a different scheme.
 export type BrandAsset = { height: number; svg: string; width: number };
 export type BrandAssetScheme = "light" | "dark";
 export type BrandAssetType = "logo" | "icon";
@@ -59,12 +59,38 @@ export const BRAND_ASSETS = {
 	}
 >;
 
+// What someone writing about Composery needs to pick colours from: the two logo
+// colours, the surfaces they belong on, and the status accents. Every value is
+// read from the shared theme, so a palette change reaches this page on its own.
+// Labels are written out rather than derived from the token names - the two
+// vocabularies are separate, and "mutedForeground" is not a colour name.
+export const BRAND_PALETTE: { hex: string; label: string }[] = [
+	{ hex: BRAND_COLORS.surface.ink, label: "Logo on light" },
+	{ hex: BRAND_COLORS.surface.paper, label: "Logo on dark" },
+	{ hex: BRAND_THEME.light.background, label: "Light background" },
+	{ hex: BRAND_THEME.dark.background, label: "Dark background" },
+	{ hex: BRAND_THEME.light.mutedForeground, label: "Secondary text" },
+	{ hex: BRAND_COLORS.state.success, label: "Success" },
+	{ hex: BRAND_COLORS.state.warning, label: "Warning" },
+	{ hex: BRAND_COLORS.state.destructive, label: "Danger" },
+	{ hex: BRAND_COLORS.state.info, label: "Info" }
+];
+
 export async function copySvg(asset: BrandAsset) {
 	try {
 		await navigator.clipboard.writeText(asset.svg);
 		toast.success("SVG copied");
 	} catch {
 		toast.error("Couldn't copy SVG");
+	}
+}
+
+export async function copyHex(hex: string) {
+	try {
+		await navigator.clipboard.writeText(hex);
+		toast.success(`${hex} copied`);
+	} catch {
+		toast.error("Couldn't copy the colour");
 	}
 }
 

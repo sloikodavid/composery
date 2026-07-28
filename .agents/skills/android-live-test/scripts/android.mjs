@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global console, process */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

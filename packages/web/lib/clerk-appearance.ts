@@ -98,16 +98,22 @@ export const signInAppearance = {
 	}
 } as const;
 
+// Clerk mounts the trigger, the avatar box and the image on separate ticks, so
+// every link in that chain animates - one unanimated link is what pops, however
+// smooth the wrapper was. The muted disc means a late-loading image swaps in
+// over a circle that is already there instead of out of nothing.
 export const headerUserButtonAppearance = {
 	...clerkAppearance,
 	elements: {
 		...clerkAppearance.elements,
 		userButtonTrigger: { animation: "var(--header-auth-animation)" },
 		userButtonAvatarBox: {
-			animation: "var(--header-auth-animation)",
+			animation: "var(--header-avatar-animation)",
+			backgroundColor: "var(--muted)",
 			width: "2rem",
 			height: "2rem"
-		}
+		},
+		userButtonAvatarImage: { animation: "var(--header-auth-animation)" }
 	}
 } as const;
 

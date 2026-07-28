@@ -62,7 +62,7 @@ export default function Home() {
 				</div>
 			</section>
 
-			<figure className="mx-auto mt-8 w-full max-w-5xl sm:mt-10">
+			<figure className="mx-auto mt-8 w-full max-w-6xl sm:mt-10">
 				<ThemedShot
 					alt="Claude Code working inside Composery: a morning brief open in the editor while the agent writes a new automation in the terminal."
 					base="composery-ide"

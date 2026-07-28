@@ -14,7 +14,7 @@ separate development and production resources where specified.
 | [Clerk](./clerk.md)           | Customer authentication, legal consent, and account-deletion events                 |
 | [Polar](./polar.md)           | Checkout, subscriptions, tax, customer billing email, refunds, and billing webhooks |
 | [Hetzner Cloud](./hetzner.md) | Per-box servers, Primary IPs, firewall, SSH control, and snapshots                  |
-| [Resend](./resend.md)         | Staff-only operational alerts and delivery tracking                                 |
+| [Resend](./resend.md)         | Operational alerts, box owner notices, and delivery tracking                        |
 | [Vercel](./vercel.md)         | Next.js production deployment and website domains                                   |
 
 Each page identifies which values belong in Next/Vercel and which belong on the

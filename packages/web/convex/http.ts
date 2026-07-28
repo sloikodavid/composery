@@ -3,7 +3,7 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { registerPolarWebhookRoutes } from "./billing/webhooks";
-import { resend } from "./staffAlerts";
+import { resendClient } from "./staffAlerts";
 
 type ClerkUserDeletedPayload = {
 	data?: {
@@ -33,7 +33,7 @@ http.route({
 	path: "/resend/events",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
-		return await resend.handleResendEventWebhook(ctx, request);
+		return await resendClient().handleResendEventWebhook(ctx, request);
 	})
 });
 

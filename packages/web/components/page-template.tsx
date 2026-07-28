@@ -31,7 +31,7 @@ export function PageTemplate({
 	children
 }: PageTemplateProps) {
 	return (
-		<div className="mx-auto max-w-4xl space-y-3.5">
+		<div className="mx-auto max-w-5xl space-y-3.5">
 			{/* min-h pins the row to the action buttons' height (h-8) even on
 			    pages without actions, so content starts at the same place on
 			    every page. */}

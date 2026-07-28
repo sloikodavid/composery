@@ -23,7 +23,7 @@ type AnimatedIconProps = HTMLAttributes<HTMLDivElement> & {
 	size?: number;
 };
 
-// The props every lucide glyph's <svg> carries. Brand marks (Convex, Polar, ...)
+// The props every lucide glyph's <svg> carries. Brand logos (Convex, Polar, ...)
 // are filled artwork on their own grid and set these themselves.
 export const LUCIDE_SVG = {
 	fill: "none",

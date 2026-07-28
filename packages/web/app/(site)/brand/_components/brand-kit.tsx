@@ -2,11 +2,13 @@
 
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { BrandIcon } from "@/components/brand-icon";
-import { LogoLockup } from "@/components/logo";
+import { BrandLogo } from "@/components/logo";
 import {
 	BRAND_ASSETS,
+	BRAND_PALETTE,
 	type BrandAssetScheme,
 	type BrandAssetType,
+	copyHex,
 	copySvg,
 	downloadPng,
 	downloadSvg
@@ -19,11 +21,9 @@ const TYPES: { label: string; type: BrandAssetType }[] = [
 ];
 
 function Tile({
-	label,
 	scheme,
 	type
 }: {
-	label: string;
 	scheme: BrandAssetScheme;
 	type: BrandAssetType;
 }) {
@@ -34,15 +34,14 @@ function Tile({
 
 	return (
 		<div className="space-y-2.5">
-			<p className="text-xs text-muted-foreground">
-				{label} for {scheme} backgrounds
-			</p>
+			{/* The preview surface is the caption: a mark drawn on the light board is
+			    the light-background file, so a line of text saying so is noise. */}
 			<div
 				className="flex min-h-40 items-center justify-center rounded-2xl border border-border p-8"
 				style={{ background: board, color: set.color }}
 			>
 				{type === "logo" ? (
-					<LogoLockup className="h-12 max-w-full w-auto" />
+					<BrandLogo className="h-12 max-w-full w-auto" />
 				) : (
 					<BrandIcon className="size-20" />
 				)}
@@ -83,7 +82,7 @@ function Tile({
 export function BrandKit() {
 	return (
 		<div className="space-y-8">
-			<p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+			<p className="text-sm leading-6 text-muted-foreground">
 				Each file has a transparent background. Choose the version made for the
 				background where it will appear.
 			</p>
@@ -92,11 +91,39 @@ export function BrandKit() {
 					<h2 className="text-sm font-medium text-foreground">{label}</h2>
 					<div className="grid gap-5 sm:grid-cols-2">
 						{SCHEMES.map((scheme) => (
-							<Tile key={scheme} label={label} scheme={scheme} type={type} />
+							<Tile key={scheme} scheme={scheme} type={type} />
 						))}
 					</div>
 				</section>
 			))}
+
+			<section className="space-y-3">
+				<h2 className="text-sm font-medium text-foreground">Colours</h2>
+				<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					{BRAND_PALETTE.map(({ hex, label }) => (
+						<button
+							className="flex items-center gap-3 rounded-2xl border border-border p-3 text-start transition-colors outline-none hover:bg-[var(--ghost-hover)] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
+							key={hex + label}
+							onClick={() => copyHex(hex)}
+							type="button"
+						>
+							<span
+								aria-hidden="true"
+								className="size-10 shrink-0 rounded-xl border border-border"
+								style={{ background: hex }}
+							/>
+							<span className="min-w-0">
+								<span className="block text-sm font-medium text-foreground">
+									{label}
+								</span>
+								<code className="block font-mono text-xs text-muted-foreground">
+									{hex}
+								</code>
+							</span>
+						</button>
+					))}
+				</div>
+			</section>
 		</div>
 	);
 }

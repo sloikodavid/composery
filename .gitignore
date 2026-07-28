@@ -11,3 +11,6 @@ packages/cli/target/
 .DS_Store
 Thumbs.db
 .playwright-cli
+
+# Coverage output (vitest --coverage; the ratchet lives in vitest.config.ts)
+coverage/

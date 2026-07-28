@@ -7,6 +7,9 @@
 		/* These settings are not required by Convex and can be modified. */
 		"allowJs": true,
 		"strict": true,
+		/* ../shared/index.ts is imported directly as TS by Node type-stripping,
+		 * which requires the explicit .ts extension on its own imports. */
+		"allowImportingTsExtensions": true,
 		"moduleResolution": "Bundler",
 		"jsx": "react-jsx",
 		"skipLibCheck": true,

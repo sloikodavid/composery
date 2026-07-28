@@ -13,5 +13,11 @@
 		"types": ["node"],
 		"verbatimModuleSyntax": true
 	},
-	"include": ["packages/shared/index.ts", "tests/**/*.ts", "vitest.config.ts"]
+	"include": [
+		"packages/shared/index.ts",
+		"packages/shared/tests/**/*.ts",
+		"tests/**/*.ts",
+		"packages/ide/tests/**/*.ts",
+		"vitest.config.ts"
+	]
 }

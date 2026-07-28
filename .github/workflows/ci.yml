@@ -78,6 +78,10 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
           submodules: recursive
+          # check:coverage and check:mutants both diff against the fork point, and
+          # a shallow clone has no fork point to find. Both refuse to run rather
+          # than report a pass over nothing, so this is what keeps them honest.
+          fetch-depth: 0
       - name: Set up pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       - name: Set up Node.js
@@ -107,6 +111,15 @@ jobs:
         uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
+      # The Rust half of check:mutants. Installed here rather than by the script:
+      # a missing binary makes that script exit non-zero instead of skipping, so
+      # the gate cannot go quiet by losing a tool.
+      # Unpinned on purpose, and one of the few things here that is: cargo-mutants
+      # is a developer tool whose output we read, not a dependency of anything we
+      # ship, so tracking crates.io is what we want and there is no artifact for a
+      # digest to protect. `--locked` keeps its own dependency resolution fixed.
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:

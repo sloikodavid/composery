@@ -7,6 +7,7 @@ const TS_FILES = ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"];
 export default defineConfig(
 	globalIgnores([
 		"tmp/",
+		"coverage/",
 		"vendor/",
 		"**/.next/**",
 		"**/.source/**",
@@ -43,7 +44,10 @@ export default defineConfig(
 		}
 	},
 	{
-		files: ["*.mjs", "scripts/**/*.mjs", "packages/*/scripts/**/*.mjs"],
+		// Every `.mjs` here is a Node script - a generator, a check, or a test
+		// harness. Listing the directories they live in was a second copy of the
+		// layout that went stale the moment one moved.
+		files: ["**/*.mjs"],
 		languageOptions: {
 			globals: {
 				console: "readonly",

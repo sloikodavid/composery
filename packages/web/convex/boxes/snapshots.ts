@@ -484,8 +484,17 @@ export const claimExpiredSnapshots = internalMutation({
 
 			const rows = await ctx.db
 				.query("box_snapshots")
+				// Bounded from below for the reason `purge_at`'s sweeps are: Convex
+				// orders a missing optional field beneath every number, so a bare
+				// `lt("expires_at", now)` also selects every snapshot that has no
+				// expiry at all - and this sweep's next move is to delete the image.
+				// A snapshot with no expiry is one nothing has decided about yet, and
+				// the failure direction here is the owner's only copy of their files.
 				.withIndex("status_expires_at", (builder) =>
-					builder.eq("status", status).lt("expires_at", now)
+					builder
+						.eq("status", status)
+						.gte("expires_at", 0)
+						.lt("expires_at", now)
 				)
 				.take(remaining);
 

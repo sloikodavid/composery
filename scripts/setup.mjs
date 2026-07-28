@@ -65,7 +65,9 @@ function linkThemeExtension() {
 	const folderName = `${publisher}.${name}-${version}`;
 	const link = join(vscodeExtensions, folderName);
 	const alreadyLinked =
-		existsSync(link) && lstatSync(link).isSymbolicLink() && readlinkSync(link) === extensionDir;
+		existsSync(link) &&
+		lstatSync(link).isSymbolicLink() &&
+		readlinkSync(link) === extensionDir;
 	if (!alreadyLinked) {
 		if (existsSync(link)) rmSync(link, { recursive: true, force: true });
 		symlinkSync(extensionDir, link, "dir");
@@ -77,11 +79,18 @@ function linkThemeExtension() {
 	// skipped on every startup scan, symlink or not. Register it for real.
 	const extensionId = `${publisher}.${name}`;
 	const manifestPath = join(vscodeExtensions, "extensions.json");
-	const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : [];
-	const withoutStaleEntries = manifest.filter((entry) => entry.identifier.id !== extensionId);
+	const manifest = existsSync(manifestPath)
+		? JSON.parse(readFileSync(manifestPath, "utf8"))
+		: [];
+	const withoutStaleEntries = manifest.filter(
+		(entry) => entry.identifier.id !== extensionId
+	);
 	// Windows entries use a lowercase-drive-letter, leading-slash path
 	// ("/c:/Users/...") to match how VS Code itself serializes file URIs.
-	const uriPath = pathToFileURL(link).pathname.replace(/^\/([A-Z]):/, (_, d) => `/${d.toLowerCase()}:`);
+	const uriPath = pathToFileURL(link).pathname.replace(
+		/^\/([A-Z]):/,
+		(_, d) => `/${d.toLowerCase()}:`
+	);
 	writeFileSync(
 		manifestPath,
 		JSON.stringify([
@@ -91,7 +100,11 @@ function linkThemeExtension() {
 				version,
 				location: { $mid: 1, path: uriPath, scheme: "file" },
 				relativeLocation: folderName,
-				metadata: { installedTimestamp: Date.now(), pinned: true, source: "resource" }
+				metadata: {
+					installedTimestamp: Date.now(),
+					pinned: true,
+					source: "resource"
+				}
 			}
 		])
 	);

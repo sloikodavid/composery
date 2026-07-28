@@ -3,9 +3,9 @@
 import { motion } from "motion/react";
 import { createAnimatedIcon } from "@/components/icons/create";
 
-// Vercel's triangle brandmark. Monochrome, so it draws in `currentColor` to
+// Vercel's triangle logo. Monochrome, so it draws in `currentColor` to
 // follow the button's foreground in light and dark. It lifts on hover with the
-// same spring as the other "Open in" marks.
+// same spring as the other "Open in" logos.
 
 export const VercelIcon = createAnimatedIcon(
 	"VercelIcon",

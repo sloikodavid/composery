@@ -75,7 +75,8 @@ different things, not two spellings of one domain.
    [Hetzner](./services/hetzner.md), [Cloudflare](./services/cloudflare.md)). Each page names the
    value/variable it produces; some need the Convex URLs from step 1.
 4. Configure [Resend](./services/resend.md) and its delivery webhook for
-   production staff alerts. Polar, not Resend, sends customer billing email.
+   production staff alerts and box owner notices. Polar, not Resend, sends
+   customer billing email.
 5. Enter the collected values into the Convex deployment env per deployment
    ([Convex](./services/convex.md) - "Set Convex environment variables").
 6. Configure [Vercel](./services/vercel.md) (frontend env, prod deploy key, build

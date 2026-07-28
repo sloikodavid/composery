@@ -23,6 +23,39 @@
 - Fix the class, not the instance. A bug found by reading is usually one of several. Best is designing the class out - one source of truth, a derived value, a state made unrepresentable - so no guard is needed; next best is a test that catches the next instance; worst is a hand-patch of the one you saw.
 - Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem — if cost scales with a workload's shape, that is the bug, not the workload.
 
+## Tests
+
+The full doctrine is `docs/developing/testing.md`, and every rule in it names the
+check that enforces it - `tests/invariants/tests.test.ts`. A rule with no enforcer
+is deleted from the doc rather than left as an honour system, because nobody here
+remembers the last review.
+
+- Test code is structurally excluded from the shipped tree: a `*.test.ts` lives
+  under a `tests/` directory, never beside its subject. Rust satisfies the same
+  rule with `#[cfg(test)]`, which compiles out and can reach private items, so
+  inline unit tests stay inline and `<crate>/tests/` holds the public-surface ones.
+- The owning `tests/` directory belongs to the package the test constrains; what
+  constrains no single package, or the agreement between two, lives in the root.
+  Inside it the first subdirectory is the kind and the rest mirrors the source.
+- Three kinds, decided by what a test may touch, never by how it feels.
+  `behavior/` runs the real module. `invariants/` reads the checkout and asserts a
+  fact about it - the last rung of the duplication ladder, so its header says why
+  that duplication cannot be removed or derived. `system/` needs a built artifact
+  and is the only kind allowed to sleep or retry.
+- `expect(source).toContain(...)` over code that could have run is the one shape
+  that cannot fail for the right reason. The extraction helpers that make it
+  possible are confined to `invariants/`; everything else loads the module.
+- A patch is a call site. Logic lives in an overlay module the patch calls, because
+  code written inside a diff can only be reached by evaluating its added lines - no
+  coverage tool instruments that, and every assertion around it degrades to a grep.
+- Coverage's only honest job is finding code nothing touches, so there is no
+  percentage target and no global threshold: `check:coverage` gates the lines a
+  change adds, and the overall figure is a report you read. `check:mutants` is what
+  says the touching meant anything, and a surviving mutant is killed or annotated
+  with its reason, never ignored.
+- `test(`, never `it(`. A test name completes a present-indicative sentence about
+  its subject; `should` is filler. No `.only`, `.skip` or `.todo` in the tree.
+
 ## IDE / upstream naming
 
 `packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
@@ -73,6 +106,7 @@
     mobile-e2e.yml
     mobile-preview.yml
     mobile-release.yml
+    mutants.yml
     release.yml
     smoke-nightly.yml
     smoke.yml
@@ -118,6 +152,7 @@ docs/
     index.md
     meta.json
     repository.md
+    testing.md
   self-hosting/
     digitalocean.md
     disk-space.md
@@ -347,6 +382,29 @@ packages/
       build.sh
       rebrand.mjs
       types.mjs
+    tests/
+      behavior/
+        agent-install.test.ts
+        favicon.test.ts
+        loopback-callback-guard.test.ts
+        narrow-back.test.ts
+        narrow-editor-groups.test.ts
+        narrow-layout-reconciliation.test.ts
+        password-check.test.ts
+        session.test.ts
+        terminal-clients.test.ts
+        terminal-sync.test.ts
+        terminal-touch-selection.test.ts
+        touch-editor-selection.test.ts
+        touch-list-focus.test.ts
+        touch-selection-handles.test.ts
+      invariants/
+        auth-routes.test.ts
+        patches.test.ts
+        path-prefix.test.ts
+      support/
+        overlay.ts
+        patch.ts
     package.json
     upstream
   mobile/
@@ -382,44 +440,50 @@ packages/
         pressable-scale.tsx
         spinner.tsx
       lib/
-        android-dialog-theme.test.ts
-        back-decision.test.ts
         back-decision.ts
         fonts.ts
         haptics.ts
         id.ts
-        instance-host.test.ts
         instance-host.ts
-        instance-store.test.ts
         instance-store.ts
-        nav.test.ts
         nav.ts
-        normalize-url.test.ts
         normalize-url.ts
-        open-url.test.ts
         open-url.ts
-        parse-scanned.test.ts
         parse-scanned.ts
-        probe.test.ts
         probe.ts
-        theme.test.ts
         theme.ts
         use-theme.ts
-        webview-navigation.test.ts
         webview-navigation.ts
-      maestro/
-        add-instance.yml
-        e2e.yml
-        open-instance.yml
-        README.md
       web/
-        back-button.test.ts
         back-button.ts
     store/
       listing.md
       privacy.md
       README.md
       review-notes.md
+    tests/
+      behavior/
+        lib/
+          android-dialog-theme.test.ts
+          back-decision.test.ts
+          instance-host.test.ts
+          instance-store.test.ts
+          normalize-url.test.ts
+          open-url.test.ts
+          parse-scanned.test.ts
+          probe.test.ts
+          theme.test.ts
+          webview-navigation.test.ts
+        web/
+          back-button.test.ts
+      invariants/
+        lib/
+          nav.test.ts
+      system/
+        add-instance.yml
+        e2e.yml
+        open-instance.yml
+        README.md
     .gitignore
     app.json
     eas.json
@@ -427,7 +491,6 @@ packages/
     metro.config.js
     package.json
     tsconfig.json
-    vitest.config.ts
   shared/
     scripts/
       icons.mjs
@@ -608,7 +671,6 @@ packages/
         plug-zap.tsx
         plus.tsx
         polar.tsx
-        registry.test.ts
         rotate-cw.tsx
         scan-text.tsx
         square-pen.tsx
@@ -647,26 +709,18 @@ packages/
         server.d.ts
         server.js
       billing/
-        polar.test.ts
         polar.ts
         reconciliation.ts
         webhooks.ts
       boxes/
         infra/
-          cloudflareDns.test.ts
           cloudflareDns.ts
-          hetznerVps.test.ts
           hetznerVps.ts
-          runtimeArtifacts.test.ts
           runtimeArtifacts.ts
-          runtimeImages.test.ts
           runtimeImages.ts
-          ssh.test.ts
           ssh.ts
-          sshKeys.test.ts
           sshKeys.ts
         workflows/
-          boxWorkflow.test.ts
           boxWorkflow.ts
           changeBoxConfig.ts
           changeBoxPassword.ts
@@ -682,56 +736,37 @@ packages/
           suspendBox.ts
           unsuspendBox.ts
           updateBox.ts
-        access.test.ts
         access.ts
-        auth.test.ts
         auth.ts
-        autoRepair.test.ts
         autoRepair.ts
-        capacity.test.ts
         capacity.ts
-        capacityAlerts.test.ts
         capacityAlerts.ts
-        cleanup.test.ts
         cleanup.ts
         events.ts
         health.ts
         logs.ts
-        metrics.test.ts
         metrics.ts
         metricsPoll.ts
-        metricThresholds.test.ts
         metricThresholds.ts
-        operationRules.test.ts
         operationRules.ts
         operations.ts
-        operationSweep.test.ts
         operationSweep.ts
-        queries.test.ts
         queries.ts
-        reconcile.test.ts
         reconcile.ts
         recovery.ts
         recoveryTypes.ts
         rename.ts
-        retention.test.ts
         retention.ts
-        runtimeConfig.test.ts
         runtimeConfig.ts
         runtimeFloor.ts
-        runtimeRelease.test.ts
         runtimeRelease.ts
-        slugAvailability.test.ts
         slugAvailability.ts
-        snapshotPolicy.test.ts
         snapshotPolicy.ts
         snapshots.ts
         status.ts
-        views.test.ts
         views.ts
       checkout/
         checkoutConversion.ts
-        checkoutIntents.test.ts
         checkoutIntents.ts
       staff/
         alerts.ts
@@ -746,17 +781,14 @@ packages/
         boxes.ts
         checkout.ts
       accountDeletion.ts
-      accountDeletionLogic.test.ts
       accountDeletionLogic.ts
       auth.config.ts
       authorization.ts
       convex.config.ts
       crons.ts
-      env.test.ts
       env.ts
-      envExample.test.ts
       http.ts
-      roles.test.ts
+      ownerEmail.ts
       roles.ts
       schema.ts
       settings.ts
@@ -768,23 +800,15 @@ packages/
       use-is-touch.ts
       use-table-sort.ts
     lib/
-      auth-routing.test.ts
       auth-routing.ts
-      box-billing.test.ts
       box-billing.ts
-      box-route.test.ts
       box-route.ts
-      box-slug.test.ts
       box-slug.ts
-      brand-assets.test.ts
       brand-assets.ts
-      clerk-appearance.test.ts
       clerk-appearance.ts
       cloud-legal.ts
       convex-dashboard.ts
-      datetime.test.ts
       datetime.ts
-      error-message.test.ts
       error-message.ts
       hetzner-dashboard.ts
       highlight-logs.ts
@@ -793,18 +817,13 @@ packages/
       logo-data.ts
       nav-links.ts
       openapi.ts
-      operation-failure.test.ts
       operation-failure.ts
-      polar-dashboard.test.ts
       polar-dashboard.ts
-      repair-status.test.ts
       repair-status.ts
       route-guards.ts
-      runtime-update.test.ts
       runtime-update.ts
       shared.ts
       source.ts
-      table-columns.test.ts
       utils.ts
       vercel-dashboard.ts
     patches/
@@ -852,6 +871,82 @@ packages/
         lib.mjs
         README.md
         run.sh
+    tests/
+      behavior/
+        convex/
+          billing/
+            polar.test.ts
+            reconciliation.test.ts
+          boxes/
+            infra/
+              cloudflareDns.test.ts
+              hetznerVps.test.ts
+              runtimeArtifacts.test.ts
+              runtimeImages.test.ts
+              ssh.test.ts
+              sshKeys.test.ts
+            workflows/
+              boxWorkflow.test.ts
+            access.test.ts
+            auth.test.ts
+            autoRepair.test.ts
+            capacity.test.ts
+            capacityAlerts.test.ts
+            cleanup.test.ts
+            metrics.test.ts
+            metricThresholds.test.ts
+            operationRules.test.ts
+            operations.test.ts
+            operationSweep.test.ts
+            queries.test.ts
+            reconcile.test.ts
+            retention.test.ts
+            runtimeConfig.test.ts
+            runtimeRelease.test.ts
+            slugAvailability.test.ts
+            snapshotPolicy.test.ts
+            snapshots.test.ts
+            status.test.ts
+            views.test.ts
+          checkout/
+            checkoutIntents.test.ts
+          staff/
+            boxes.test.ts
+          user/
+            boxes.test.ts
+          accountDeletionLogic.test.ts
+          authorization.test.ts
+          env.test.ts
+          http.test.ts
+          ownerEmail.test.ts
+          roles.test.ts
+          staffAlerts.test.ts
+        lib/
+          auth-routing.test.ts
+          box-billing.test.ts
+          box-route.test.ts
+          box-slug.test.ts
+          brand-assets.test.ts
+          clerk-appearance.test.ts
+          datetime.test.ts
+          error-message.test.ts
+          operation-failure.test.ts
+          polar-dashboard.test.ts
+          repair-status.test.ts
+          runtime-update.test.ts
+      invariants/
+        components/
+          icons/
+            registry.test.ts
+        convex/
+          envExample.test.ts
+          optional-range-bounds.test.ts
+        legal/
+          processors.test.ts
+        lib/
+          table-columns.test.ts
+      support/
+        convex.ts
     .env.example.convex.dev
     .env.example.convex.prod
     .env.example.next.dev
@@ -869,7 +964,6 @@ packages/
     source.config.ts
     tsconfig.json
     vercel.json
-    vitest.config.ts
 rootfs/
   etc/
     caddy/
@@ -936,10 +1030,11 @@ rootfs/
         composery-url-handler.desktop
 scripts/
   cli.mjs
+  coverage.mjs
+  mutants.mjs
   runbook.d.mts
   runbook.mjs
   setup.mjs
-  smoke.mjs
   tree.d.mts
   tree.mjs
   write-formatted.mjs
@@ -980,44 +1075,32 @@ templates/
     user-data.yaml
   README.md
 tests/
+  behavior/
+    runbook-script.test.ts
+    tree-script.test.ts
   fixtures/
     cert.pem
     key.pem
-  overlay-engine/
-    Dockerfile
-    run.sh
+  invariants/
+    api-openapi.test.ts
+    brand-copy.test.ts
+    brand-page.test.ts
+    cross-platform.test.ts
+    desktop-integration.test.ts
+    docs-links.test.ts
+    eas-ignore.test.ts
+    runbook-windows.test.ts
+    runtime-init.test.ts
+    tests.test.ts
+    theme.test.ts
+    toolchain-pins.test.ts
   support/
-    patchSource.ts
-  agent-install.test.ts
-  api-openapi.test.ts
-  auth-routes.test.ts
-  brand-copy.test.ts
-  brand-page.test.ts
-  code-server-patches.test.ts
-  cross-platform.test.ts
-  desktop-integration.test.ts
-  docs-links.test.ts
-  eas-ignore.test.ts
-  favicon.test.ts
-  ide-path-prefix.test.ts
-  loopback-callback-guard.test.ts
-  narrow-back.test.ts
-  narrow-editor-groups.test.ts
-  narrow-layout-reconciliation.test.ts
-  password-check.test.ts
-  runbook-script.test.ts
-  runbook-windows.test.ts
-  runtime-init.test.ts
-  session.test.ts
-  terminal-clients.test.ts
-  terminal-sync.test.ts
-  terminal-touch-selection.test.ts
-  theme.test.ts
-  toolchain-pins.test.ts
-  touch-editor-selection.test.ts
-  touch-list-focus.test.ts
-  touch-selection-handles.test.ts
-  tree-script.test.ts
+    repo.ts
+  system/
+    overlay-engine/
+      Dockerfile
+      run.sh
+    smoke.mjs
 .dockerignore
 .easignore
 .editorconfig
@@ -1032,6 +1115,7 @@ CLAUDE.md
 compose.dev.yml
 Dockerfile
 eslint.config.mjs
+knip.json
 LICENSE
 package.json
 pnpm-lock.yaml
@@ -1039,6 +1123,7 @@ pnpm-workspace.yaml
 README.md
 renovate.json
 SECURITY.md
+stryker.config.json
 tsconfig.json
 vitest.config.ts
 ```

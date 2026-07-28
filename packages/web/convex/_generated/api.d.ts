@@ -69,6 +69,7 @@ import type * as checkout_checkoutIntents from "../checkout/checkoutIntents.js";
 import type * as crons from "../crons.js";
 import type * as env from "../env.js";
 import type * as http from "../http.js";
+import type * as ownerEmail from "../ownerEmail.js";
 import type * as roles from "../roles.js";
 import type * as settings from "../settings.js";
 import type * as staff_alerts from "../staff/alerts.js";
@@ -152,6 +153,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   env: typeof env;
   http: typeof http;
+  ownerEmail: typeof ownerEmail;
   roles: typeof roles;
   settings: typeof settings;
   "staff/alerts": typeof staff_alerts;

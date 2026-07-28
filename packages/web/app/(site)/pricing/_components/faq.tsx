@@ -41,7 +41,7 @@ export function Faq() {
 			</h2>
 			<div className="divide-y divide-border border-t border-border">
 				{FAQ.map(({ question, answer }) => (
-					<details className="group" key={question}>
+					<details className="disclosure group" key={question}>
 						<summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
 							{question}
 							<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />

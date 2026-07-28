@@ -1,5 +1,5 @@
 // The official GitHub icon, filled with currentColor so it tracks the theme.
-// Static on purpose, like the other brand marks in this directory.
+// Static on purpose, like the other brand logos in this directory.
 export function GitHubLogo({ className }: { className?: string }) {
 	return (
 		<svg

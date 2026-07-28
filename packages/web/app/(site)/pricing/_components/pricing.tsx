@@ -26,9 +26,11 @@ import { Input } from "@/components/base/input";
 import { PageTemplate } from "@/components/page-template";
 import { api } from "@/convex/_generated/api";
 import {
-	BOX_ANNUAL_SAVINGS_PERCENT,
+	annualSavingsPercent,
 	BOX_BILLING,
-	type BoxBillingInterval
+	type BoxBillingInterval,
+	type BoxPricing,
+	formatPrice
 } from "@/lib/box-billing";
 import { isValidSlugFormat, sanitizeSlug } from "@/lib/box-slug";
 import { errorMessage } from "@/lib/error-message";
@@ -54,10 +56,12 @@ const SELF_HOSTED_FEATURES: Feature[] = [
 
 function BillingSelector({
 	billingInterval,
-	onChange
+	onChange,
+	savingsPercent
 }: {
 	billingInterval: BoxBillingInterval;
 	onChange: (billingInterval: BoxBillingInterval) => void;
+	savingsPercent: number | null;
 }) {
 	return (
 		<div
@@ -87,11 +91,8 @@ function BillingSelector({
 							type="button"
 						>
 							{BOX_BILLING[interval].label}
-							{interval === "year" ? (
-								<span className="text-success">
-									{" "}
-									-{BOX_ANNUAL_SAVINGS_PERCENT}%
-								</span>
+							{interval === "year" && savingsPercent !== null ? (
+								<span className="text-success"> -{savingsPercent}%</span>
 							) : null}
 						</button>
 					</span>
@@ -127,7 +128,9 @@ function PlanCard({
 	features: Feature[];
 	name: string;
 	period?: string;
-	price: string;
+	// Null when Polar has not been read: the card keeps its checkout, and the
+	// visitor gets the real figure there, rather than one invented here.
+	price: string | null;
 }) {
 	return (
 		<div className="flex flex-col rounded-lg border border-border p-7 sm:p-8">
@@ -136,14 +139,16 @@ function PlanCard({
 			</h3>
 			<p className="mt-1 text-sm text-muted-foreground">{descriptor}</p>
 
-			<div className="mt-6 flex items-baseline gap-1.5">
-				<span className="font-heading text-5xl font-medium tracking-tight text-foreground tabular-nums">
-					{price}
-				</span>
-				{period ? (
-					<span className="text-sm text-muted-foreground">{period}</span>
-				) : null}
-			</div>
+			{price ? (
+				<div className="mt-6 flex items-baseline gap-1.5">
+					<span className="font-heading text-5xl font-medium tracking-tight text-foreground tabular-nums">
+						{price}
+					</span>
+					{period ? (
+						<span className="text-sm text-muted-foreground">{period}</span>
+					) : null}
+				</div>
+			) : null}
 
 			<div className="mt-6">{children}</div>
 
@@ -291,15 +296,16 @@ function BoxCheckout({
 
 export function Pricing({
 	initialBillingInterval,
-	initialSlug
+	initialSlug,
+	pricing
 }: {
 	initialBillingInterval: BoxBillingInterval;
 	initialSlug: string;
+	pricing: BoxPricing;
 }) {
 	const [billingInterval, setBillingInterval] = useState(
 		initialBillingInterval
 	);
-	const billing = BOX_BILLING[billingInterval];
 
 	return (
 		<PageTemplate
@@ -307,6 +313,7 @@ export function Pricing({
 				<BillingSelector
 					billingInterval={billingInterval}
 					onChange={setBillingInterval}
+					savingsPercent={annualSavingsPercent(pricing)}
 				/>
 			}
 			breadcrumbs={[{ icon: WalletIcon, label: "Pricing" }]}
@@ -322,7 +329,7 @@ export function Pricing({
 								? `/ month - billed annually.`
 								: "/ month."
 						}
-						price={`$${billing.monthlyPrice}`}
+						price={formatPrice(pricing[billingInterval], pricing.currency)}
 					>
 						<BoxCheckout
 							billingInterval={billingInterval}

@@ -106,11 +106,12 @@ export default function PrivacyPage() {
 					(application backend), Polar (merchant of record and billing), Hetzner
 					(European cloud infrastructure and snapshots), Cloudflare (DNS and
 					network services), Vercel (website hosting and cookieless
-					measurements), Resend (staff-only security and operational alerts),
-					and Have I Been Pwned (k-anonymous password checks). These providers
-					process data under their own terms and/or our processor agreements.
-					Where data leaves the EEA or UK, we rely on an adequacy decision or
-					appropriate contractual safeguards supplied by the provider.
+					measurements), Resend (security and operational alerts, and service
+					notices about your own boxes), and Have I Been Pwned (k-anonymous
+					password checks). These providers process data under their own terms
+					and/or our processor agreements. Where data leaves the EEA or UK, we
+					rely on an adequacy decision or appropriate contractual safeguards
+					supplied by the provider.
 				</p>
 			</LegalSection>
 			<LegalSection title="Retention and deletion">

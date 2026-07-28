@@ -172,8 +172,9 @@ complete alert boundary lives in [Resend](./services/resend.md#alert-policy).
   [Automatic repair and the operation lock](./maintenance.md#automatic-repair).
 - Review Convex function and cron failures, Polar webhook deliveries, Hetzner
   actions/resources/limits, Cloudflare records, and Vercel production health.
-- Confirm Polar owns customer billing email and Resend delivery is healthy and
-  staff-only. See [Resend](./services/resend.md).
+- Confirm Polar owns customer billing email, that Resend delivery is healthy,
+  and that Resend's own customer mail is still only the four box owner notices.
+  See [Resend](./services/resend.md).
 - Before changing destructive behavior, read the deletion, retention, refund,
   and reconciliation sections in [Polar](./services/polar.md),
   [Hetzner](./services/hetzner.md), and [Maintenance](./maintenance.md).

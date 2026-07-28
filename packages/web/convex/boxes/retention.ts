@@ -44,14 +44,24 @@ export function billingRecordPurgeAt(finishedAt: number) {
 	return date.getTime();
 }
 
+// The reason a suspension recorded, narrowed out of free-form operation
+// metadata. Two readers need the same answer - what survives a box's deletion,
+// and what the owner is told when the suspension happens - and one of them puts
+// it in an email, so a value that is not a usable string has to be nothing in
+// both rather than reach an inbox as "[object Object]".
+export function suspensionReason(
+	metadata: Record<string, unknown> | undefined
+) {
+	const reason = metadata?.reason;
+	return typeof reason === "string" && reason.trim() ? reason : undefined;
+}
+
 export function retainedOperationMetadata(
 	type: string,
 	metadata: Record<string, unknown> | undefined
 ) {
-	const reason = metadata?.reason;
-	return type === "suspend" && typeof reason === "string" && reason.trim()
-		? { reason }
-		: undefined;
+	const reason = type === "suspend" ? suspensionReason(metadata) : undefined;
+	return reason ? { reason } : undefined;
 }
 
 export function terminalCheckoutSecretPatch() {

@@ -135,6 +135,17 @@ crons.hourly(
 	{}
 );
 
+// The product webhooks only fire on a change, so a deployment that has not seen
+// one holds no catalogue and the pricing page has no price to show. Hourly for
+// the same reason as the release refresh above: one round trip answers for every
+// visitor, and it is the floor under a webhook that was missed or never sent.
+crons.hourly(
+	"sync Polar products",
+	{ minuteUTC: 33 },
+	internal.billing.polar.syncBoxProducts,
+	{}
+);
+
 // Reads the refreshed release, so it runs after it within the same hour.
 crons.hourly(
 	"update boxes past their floor deadline",

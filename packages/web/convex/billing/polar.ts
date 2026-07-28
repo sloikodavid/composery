@@ -1,9 +1,12 @@
 import { Polar } from "@convex-dev/polar";
 import { v } from "convex/values";
 import { components } from "../_generated/api";
-import { internalAction } from "../_generated/server";
+import { internalAction, query } from "../_generated/server";
 import { requiredEnv } from "../env";
-import type { BoxBillingInterval } from "../../lib/box-billing";
+import {
+	type BoxBillingInterval,
+	monthlyPriceFromMinorUnits
+} from "../../lib/box-billing";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",
@@ -44,6 +47,64 @@ export function isBoxProductId(productId: string | null | undefined) {
 		(environmentVariable) => requiredEnv(environmentVariable) === productId
 	);
 }
+
+// The price the pricing page shows, read from the Polar product that will
+// actually charge the visitor, so repricing in Polar needs no deploy here.
+//
+// Reads the products the component keeps in sync locally - the product.created /
+// product.updated webhooks registered in webhooks.ts, plus the hourly cron below
+// that covers a deployment those webhooks have not fired for yet. Null means the
+// product has not been read, and the page renders no figure rather than one this
+// repo made up.
+export const boxPricing = query({
+	args: {},
+	returns: v.object({
+		currency: v.union(v.string(), v.null()),
+		month: v.union(v.number(), v.null()),
+		year: v.union(v.number(), v.null())
+	}),
+	handler: async (ctx) => {
+		const products = await polarServer().listProducts(ctx);
+
+		function priceOf(billingInterval: BoxBillingInterval) {
+			const productId = process.env[BOX_PRODUCT_ENV[billingInterval]];
+			const product = productId
+				? products.find(
+						(candidate) => candidate.id === productId && !candidate.isArchived
+					)
+				: undefined;
+			return product?.prices.find(
+				(price) => !price.isArchived && typeof price.priceAmount === "number"
+			);
+		}
+
+		function monthlyPrice(billingInterval: BoxBillingInterval) {
+			const amount = priceOf(billingInterval)?.priceAmount;
+			return typeof amount === "number"
+				? monthlyPriceFromMinorUnits(billingInterval, amount)
+				: null;
+		}
+
+		return {
+			currency:
+				priceOf("month")?.priceCurrency ??
+				priceOf("year")?.priceCurrency ??
+				null,
+			month: monthlyPrice("month"),
+			year: monthlyPrice("year")
+		};
+	}
+});
+
+// Pull the product catalogue from Polar into the component's tables. The
+// webhooks only fire on a change, so without this a deployment that has never
+// seen one has no catalogue at all and the pricing page has no price to show.
+export const syncBoxProducts = internalAction({
+	args: {},
+	handler: async (ctx) => {
+		await polarServer().syncProducts(ctx);
+	}
+});
 
 export async function selectPolarCheckoutProduct(
 	checkoutId: string,

@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { createAnimatedIcon } from "@/components/icons/create";
 
-// Polar's brandmark (the phyllotaxis contour, traced verbatim from
+// Polar's logo (the phyllotaxis contour, traced verbatim from
 // polarsource/polar's logo asset). It spins on hover with the same spring as
 // the rotate-cw icon so the "Open in Polar" link feels of a piece.
 

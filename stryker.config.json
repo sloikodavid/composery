@@ -1,0 +1,45 @@
+{
+	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+	"_comment": "Mutation testing config. Driven by scripts/mutants.mjs, which scopes each run to the diff; a full sweep is the nightly job in .github/workflows/mutants.yml. Doctrine: docs/developing/testing.md.",
+	"plugins": [
+		"@stryker-mutator/vitest-runner"
+	],
+	"packageManager": "pnpm",
+	"testRunner": "vitest",
+	"vitest": {
+		"configFile": "vitest.config.ts"
+	},
+	"reporters": [
+		"progress",
+		"clear-text"
+	],
+	"coverageAnalysis": "perTest",
+	"tempDirName": "tmp/stryker",
+	"cleanTempDir": true,
+	"mutate": [
+		"packages/mobile/src/**/*.{ts,tsx}",
+		"packages/shared/**/*.{ts,mjs}",
+		"packages/web/{convex,lib,hooks}/**/*.{ts,tsx}",
+		"packages/ide/overlay/**/*.ts",
+		"scripts/**/*.mjs",
+		"!**/_generated/**",
+		"!**/*.test.*",
+		"!**/tests/**"
+	],
+	"ignorePatterns": [
+		".agents",
+		".claude",
+		".github",
+		"packages/ide/upstream",
+		"packages/ide/build",
+		"packages/web/.next",
+		"packages/web/.source",
+		"coverage",
+		"tmp"
+	],
+	"thresholds": {
+		"high": 80,
+		"low": 60,
+		"break": 0
+	}
+}

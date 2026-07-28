@@ -1,6 +1,12 @@
 {
 	"compilerOptions": {
-		"target": "ES2017",
+		// ES2020 rather than Next's scaffolded ES2017, because a Convex component
+		// registered by the test harness (`@convex-dev/workpool`, pulled in by
+		// `@convex-dev/workflow/test`) ships TypeScript sources that use BigInt
+		// literals. Nothing shipped changes: `noEmit` is set here and `next build`
+		// compiles with SWC against its own browser targets, so this only decides
+		// what the checker is willing to read.
+		"target": "ES2020",
 		"lib": ["dom", "dom.iterable", "esnext"],
 		"allowJs": false,
 		"skipLibCheck": true,
@@ -21,7 +27,8 @@
 		"paths": {
 			"@/*": ["./*"],
 			"collections/*": ["./.source/*"]
-		}
+		},
+		"allowImportingTsExtensions": true
 	},
 	"include": [
 		"next-env.d.ts",

@@ -23,7 +23,7 @@ export const ICON_WIDTH = 20;
 export const ICON_HEIGHT = 20;
 export const ICON_CROP_VIEWBOX = ICON_VIEWBOX;
 
-// Marks, icons and app chrome derive from the UI palette so they cannot drift
+// Logos, icons and app chrome derive from the UI palette so they cannot drift
 // into a second greyscale or status palette.
 export const brandColors = {
 	icon: {
@@ -65,7 +65,7 @@ export const BRAND_IDE_THEME = ideTheme;
 // measured with tmp/measure-icon.mjs; update if ICON_PATH or the stroke width changes.
 const ICON_PATH =
 	"M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z";
-// The holes - a circle with a slit running into it - subtract from the mark as one
+// The holes - a circle with a slit running into it - subtract from the icon as one
 // even-odd subpath, not as the two shapes they read as: two overlapping subpaths
 // cancel where they overlap under even-odd and paint the lens back in. So the
 // outline traces their union - up the slit's left wall, over its round cap, down
@@ -85,7 +85,7 @@ const ICON_FIT = `translate(${ICON_FIT_SHIFT} ${ICON_FIT_SHIFT}) scale(${ICON_FI
 // take its luminance and multiply that in - a step engines do not agree on (the
 // colour space the luminance is computed in is the known divergence), and the
 // intermediate is what carries the hole's antialiasing. WebKit renders those edges
-// soft where Blink keeps them crisp, so the mark looked mushy on iOS and nowhere
+// soft where Blink keeps them crisp, so the icon looked mushy on iOS and nowhere
 // else. A clip is pure geometry with no luminance step, so every engine antialiases
 // the hole the same way it antialiases the outer edge.
 export function iconInner({

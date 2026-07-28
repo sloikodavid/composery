@@ -3,9 +3,9 @@
 import { motion } from "motion/react";
 import { createAnimatedIcon } from "@/components/icons/create";
 
-// Hetzner's round brandmark: the white H (wide stems, thin crossbar) cut out
+// Hetzner's round logo: the white H (wide stems, thin crossbar) cut out
 // of the red disc. It spins a quarter turn on hover with the same spring as
-// the other "Open in" marks.
+// the other "Open in" logos.
 
 export const HetznerIcon = createAnimatedIcon(
 	"HetznerIcon",

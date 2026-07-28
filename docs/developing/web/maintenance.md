@@ -114,7 +114,7 @@ new image ships a new lower, and the boot-time hygiene pass reconciles the
 upper's deletion markers against the previous and current image baselines before
 mounting. The policy is documented in
 `packages/cli/crates/persistence/src/overlay.rs` and exercised against real
-booted containers by `tests/overlay-engine/run.sh`. An update is therefore not a
+booted containers by `tests/system/overlay-engine/run.sh`. An update is therefore not a
 special case for persistence; it is the upgrade path that engine already
 implements.
 
@@ -185,6 +185,7 @@ All fixed times are UTC.
 | Sweep box health                         | Every 10 minutes |
 | Sweep stuck box operations               | Every 15 minutes |
 | Refresh runtime release                  | Hourly at :26    |
+| Sync Polar products                      | Hourly at :33    |
 | Update boxes past their floor deadline   | Hourly at :41    |
 | Snapshot running boxes                   | Daily at 03:07   |
 | Delete expired snapshots                 | Daily at 04:41   |

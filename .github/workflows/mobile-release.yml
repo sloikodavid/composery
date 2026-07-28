@@ -224,7 +224,7 @@ jobs:
             node packages/mobile/scripts/test-instance.mjs &
             "$HOME/.maestro/bin/maestro" test -e APP_ID="$PACKAGE_NAME" \
               -e INSTANCE_URL="http://10.0.2.2:4173" \
-              packages/mobile/src/maestro/e2e.yml
+              packages/mobile/tests/system/e2e.yml
 
       - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:

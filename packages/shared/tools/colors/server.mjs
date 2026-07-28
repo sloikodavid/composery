@@ -12,6 +12,7 @@ const tool = dirname(fileURLToPath(import.meta.url));
 const root = resolve(tool, "../../../..");
 const pagePath = resolve(tool, "index.html");
 const themePath = resolve(root, "packages/shared/theme.json");
+const iconPath = resolve(root, "packages/web/app/icon.svg");
 const port = Number(process.env.PORT ?? 7331);
 const origins = new Set([
 	`http://127.0.0.1:${port}`,
@@ -100,6 +101,13 @@ const server = createServer(async (request, response) => {
 				"cache-control": "no-store"
 			});
 			return response.end(await readFile(themePath));
+		}
+		if (request.method === "GET" && request.url === "/icon.svg") {
+			response.writeHead(200, {
+				"content-type": "image/svg+xml; charset=utf-8",
+				"cache-control": "no-store"
+			});
+			return response.end(await readFile(iconPath));
 		}
 		if (request.method === "PUT" && request.url === "/theme") {
 			if (!origins.has(request.headers.origin))

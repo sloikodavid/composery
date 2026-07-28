@@ -1,0 +1,102 @@
+// Dead-code and unused-dependency gate. Agents leave orphans faster than anyone
+// notices them, so this is the rot control the test suite cannot provide.
+//
+// JSONC rather than JSON: knip 6 rejects unknown keys, so there is nowhere in a
+// plain .json file to say why an entry exists - and an ignore list without
+// reasons is one nobody can ever safely shrink.
+//
+// ignoreDependencies holds tools reached other than by import: shadcn and
+// expo-doctor are CLIs, tailwindcss and tw-animate-css are consumed from CSS
+// that knip does not follow, and sharp/png-to-ico/fontkit are used by the shared
+// asset generators through dynamic requires.
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"workspaces": {
+		".": {
+			"entry": [
+				"scripts/*.mjs",
+				"tests/**/*.test.ts",
+				"vitest.config.ts",
+				"eslint.config.mjs"
+			],
+			"project": [
+				"scripts/**/*.mjs",
+				"tests/**/*.ts",
+				"*.ts",
+				"*.mjs"
+			]
+		},
+		"packages/shared": {
+			"entry": [
+				"index.ts",
+				"scripts/*.mjs",
+				"tools/**/*.mjs"
+			],
+			"project": [
+				"**/*.{ts,mjs}"
+			]
+		},
+		"packages/web": {
+			"entry": [
+				"proxy.ts",
+				"convex/**/*.ts",
+				"tests/**/*.test.ts",
+				"scripts/**/*.mjs",
+				"source.config.ts",
+				"next.config.ts"
+			],
+			"project": [
+				"**/*.{ts,tsx}",
+				"scripts/**/*.mjs"
+			],
+			"ignore": [
+				"convex/_generated/**",
+				".source/**"
+			]
+		},
+		"packages/mobile": {
+			"entry": [
+				"src/app/**/*.tsx",
+				"plugins/*.js",
+				"scripts/*.mjs",
+				"tests/**/*.test.ts"
+			],
+			"project": [
+				"src/**/*.{ts,tsx}",
+				"plugins/*.js",
+				"scripts/*.mjs"
+			]
+		},
+		"packages/ide": {
+			"entry": [
+				"tests/**/*.test.ts",
+				"scripts/*.mjs"
+			],
+			"project": [
+				"tests/**/*.ts",
+				"scripts/*.mjs"
+			]
+		}
+	},
+	"ignore": [
+		"packages/ide/overlay/**",
+		"packages/ide/upstream/**",
+		"packages/web/components/base/**"
+	],
+	"ignoreDependencies": [
+		"sharp",
+		"png-to-ico",
+		"fontkit",
+		"shadcn",
+		"expo-doctor",
+		"tailwindcss",
+		"tw-animate-css"
+	],
+	"ignoreBinaries": [
+		"docker",
+		"cargo",
+		"quilt",
+		"adb",
+		"maestro"
+	]
+}

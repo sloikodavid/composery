@@ -52,6 +52,7 @@
 :root {
 	--radius: 0.625rem;
 	--header-auth-animation: page-fade-in 180ms ease-out both;
+	--header-avatar-animation: header-avatar-in 180ms ease-out both;
 	--font-sf-like:
 		-apple-system, BlinkMacSystemFont, var(--font-inter), "InterVariable",
 		"Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
@@ -190,6 +191,43 @@
 	to {
 		opacity: 1;
 	}
+}
+
+/* The avatar is a circle arriving into reserved space, so it grows into it
+   rather than blinking on. Only the box scales - the trigger and image inside
+   it take the plain fade, or the scales would multiply. */
+@keyframes header-avatar-in {
+	from {
+		opacity: 0;
+		scale: 0.8;
+	}
+
+	to {
+		opacity: 1;
+		scale: 1;
+	}
+}
+
+/* Native <details> animation: `interpolate-size` makes the `auto` height
+   interpolable and `allow-discrete` holds `content-visibility` open for the
+   duration. A browser without `::details-content` just snaps open as before. */
+.disclosure {
+	interpolate-size: allow-keywords;
+}
+
+.disclosure::details-content {
+	block-size: 0;
+	opacity: 0;
+	overflow: hidden;
+	transition:
+		block-size 140ms ease-out,
+		opacity 110ms ease-out,
+		content-visibility 140ms allow-discrete;
+}
+
+.disclosure[open]::details-content {
+	block-size: auto;
+	opacity: 1;
 }
 
 /* Shiki renders the box logs with a One Light / One Dark Pro pair. With

@@ -10,6 +10,7 @@ import {
 	type BoxFailureStatus
 } from "../schema";
 import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { sendOwnerEmail } from "../ownerEmail";
 import { consoleBoxPath } from "../../lib/box-route";
 import { operationLabel } from "../../lib/operation-failure";
 import { appendBoxEvent } from "./events";
@@ -19,7 +20,7 @@ import {
 	OPERATION_FAILURE_STATUS
 } from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
-import { deletedBoxDataPatch } from "./retention";
+import { deletedBoxDataPatch, suspensionReason } from "./retention";
 import { assertSlugAvailable } from "./slugAvailability";
 
 export const markOperationRunning = internalMutation({
@@ -308,6 +309,21 @@ export async function recordOperationFailure(
 		subject: `Box ${box.slug}: ${operationType} failed`,
 		text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${input.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
 	});
+
+	// Create is the only failure the owner is mailed about, and the reason is who
+	// is left holding it. Every other failed operation was started by someone
+	// watching a dialog for its outcome, and leaves a box that still exists; a
+	// create that fails leaves a paid checkout with nothing to show for it, and
+	// the person who paid may have closed the tab minutes ago. A failed delete is
+	// deliberately silent too: the owner never asked for it, `finishFailedDeletions`
+	// is already retrying, and there is nothing for them to do but worry.
+	//
+	// The error itself is not forwarded. It is written for staff and carries host
+	// names, provider messages and addresses; the owner is told the outcome and
+	// that a person already knows.
+	if (operation?.type === "create") {
+		await sendOwnerEmail(ctx, box, { type: "create_failed" });
+	}
 }
 
 export const markOperationFailed = internalMutation({
@@ -588,6 +604,7 @@ export const markDeleted = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
+		const operation = await ctx.db.get(args.operationId);
 
 		const timestamp = Date.now();
 		// deleteRuntime already removed the server, which detaches any attached
@@ -605,6 +622,15 @@ export const markDeleted = internalMutation({
 			updated_at: timestamp
 		});
 		await appendBoxEvent(ctx, box, boxEventType("delete", "succeeded"));
+		// Nothing else will ever tell them. A deletion is only ever ordered by a
+		// subscription ending, an account being deleted, or staff revoking a comp -
+		// never by the owner pressing a button and watching it finish - so this is
+		// the point at which someone's work becomes permanently unavailable while
+		// they are not looking at us. The trigger says which of the three it was.
+		await sendOwnerEmail(ctx, box, {
+			type: "deleted",
+			trigger: operation?.trigger
+		});
 		await ctx.scheduler.runAfter(0, internal.boxes.cleanup.deleteRuntimeData, {
 			boxId: box._id
 		});
@@ -655,6 +681,7 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
+		const operation = await ctx.db.get(args.operationId);
 
 		const timestamp = Date.now();
 		await ctx.db.patch(args.boxId, {
@@ -667,5 +694,25 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 			updated_at: timestamp
 		});
 		await appendBoxEvent(ctx, box, args.eventType);
+
+		// Suspension is the other thing that happens to an owner's box without the
+		// owner asking, and unlike a stop it cannot be undone from their own page.
+		// Stop, start and a settled update all end here too and mail nobody: those
+		// are the owner's own actions, finishing while they watch.
+		//
+		// Gated on the operation type *and* the status it settled at, because this
+		// mutation also carries the transient `suspending`/`unsuspending` statuses -
+		// so a future caller that reports progress through it cannot make this
+		// announce a suspension that has not happened yet.
+		if (operation?.type === "suspend" && args.status === "suspended") {
+			await sendOwnerEmail(ctx, box, {
+				type: "suspended",
+				trigger: operation.trigger,
+				reason: suspensionReason(operation.metadata)
+			});
+		}
+		if (operation?.type === "unsuspend" && args.status === "running") {
+			await sendOwnerEmail(ctx, box, { type: "unsuspended" });
+		}
 	}
 });

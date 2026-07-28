@@ -218,6 +218,23 @@ pub fn remove_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The staging name a write lands on before it is renamed into place.
+///
+/// Hidden and hashed rather than a plain suffix: two writers targeting the same
+/// file must not collide, and the watcher has to be able to tell a half-written
+/// file from a real one by name alone.
+///
+/// ```
+/// use std::path::Path;
+/// use persistence::public::{is_persistence_temp_path, temp_path};
+///
+/// let staged = temp_path(Path::new("/data/home/user/notes.md"));
+/// assert_eq!(staged.parent(), Path::new("/data/home/user/notes.md").parent());
+/// assert!(is_persistence_temp_path(&staged));
+///
+/// // Distinct targets never collide, even with the same file name.
+/// assert_ne!(staged, temp_path(Path::new("/data/other/notes.md")));
+/// ```
 pub fn temp_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()
@@ -227,6 +244,23 @@ pub fn temp_path(path: &Path) -> PathBuf {
     path.with_file_name(format!(".{file_name}.persistence-tmp-{}", &hash[..16]))
 }
 
+/// Whether a path is one of our own staging files.
+///
+/// The watcher uses this to ignore its own writes; a false negative would have
+/// it persist a half-written file, so the rule is matched on the name the
+/// [`temp_path`] above produces and nothing looser.
+///
+/// ```
+/// use std::path::Path;
+/// use persistence::public::is_persistence_temp_path;
+///
+/// assert!(is_persistence_temp_path(Path::new("/data/.notes.md.persistence-tmp-0123456789abcdef")));
+///
+/// // A user's own dotfile is not ours, and neither is a similarly named one
+/// // that never went through temp_path.
+/// assert!(!is_persistence_temp_path(Path::new("/data/.bashrc")));
+/// assert!(!is_persistence_temp_path(Path::new("/data/notes.md.persistence-tmp-abc")));
+/// ```
 pub fn is_persistence_temp_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
