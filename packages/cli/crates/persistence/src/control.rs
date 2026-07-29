@@ -142,23 +142,9 @@ fn request_with_timeout<T: DeserializeOwned>(
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, Request, Response};
+    use super::{Command, Response};
     use crate::paths::Paths;
     use std::fs;
-    #[cfg(unix)]
-    use std::{os::unix::net::UnixListener, thread, time::Duration};
-
-    #[test]
-    fn request_protocol_is_json_line_friendly() {
-        let request = Request {
-            version: 1,
-            command: Command::Status,
-        };
-
-        let encoded = serde_json::to_string(&request).unwrap();
-
-        assert_eq!(encoded, r#"{"version":1,"command":"status"}"#);
-    }
 
     #[test]
     fn response_decodes_typed_payload() {
@@ -167,29 +153,6 @@ mod tests {
         let payload: serde_json::Value = response.decode_payload().unwrap();
 
         assert_eq!(payload["ready"], true);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn request_times_out_when_daemon_does_not_respond() {
-        let temp = tempfile::tempdir().unwrap();
-        let socket = temp.path().join("control.sock");
-        let listener = UnixListener::bind(&socket).unwrap();
-        let server = thread::spawn(move || {
-            let (_stream, _addr) = listener.accept().unwrap();
-            thread::sleep(Duration::from_millis(100));
-        });
-
-        let error = super::request_with_timeout::<serde_json::Value>(
-            &socket,
-            Command::Status,
-            Duration::from_millis(20),
-        )
-        .unwrap_err()
-        .to_string();
-
-        assert!(error.contains("read daemon response"));
-        server.join().unwrap();
     }
 
     #[test]

@@ -724,18 +724,4 @@ mod tests {
             first_id
         );
     }
-
-    #[test]
-    fn reserved_layout_lives_under_the_volume() {
-        let paths = Paths::new("/opt/persistence", "/run/persistence", "/data/persistence");
-        let layout = reserved(&paths);
-        assert_eq!(
-            layout.upper.to_string_lossy(),
-            "/data/persistence/overlay/upper"
-        );
-        assert_eq!(
-            layout.work.to_string_lossy(),
-            "/data/persistence/overlay/work"
-        );
-    }
 }

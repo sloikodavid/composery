@@ -64,10 +64,27 @@ export function retainedOperationMetadata(
 	return reason ? { reason } : undefined;
 }
 
+// What to clear when a checkout intent reaches a terminal state: the live
+// checkout link, which is a capability anyone holding it could act on and which
+// means nothing once the intent is converted, released, or expired.
+//
+// Every one of this function's six call sites patches a `box_checkout_intents`
+// row, so it may only name fields that table has. It used to also clear
+// `runtime_auth_hash`, which is a `boxes` and `box_auth_grants` field and has
+// never existed on an intent - and Convex validates a patch against the table's
+// own validator, so that one extra key made every single call throw
+// "Unexpected field `runtime_auth_hash`". That is every checkout release, every
+// expiry sweep, every account-deletion cleanup, and - worst - the conversion of
+// a paid order into a box.
+//
+// Nothing caught it because nothing executed it: the checkout suite tested only
+// the pure helpers around these mutations, never the mutations themselves. The
+// conversion tests in `tests/behavior/convex/checkout/checkoutConversion.test.ts`
+// are what now run it, and they fail if a field is added here that the intents
+// table does not have.
 export function terminalCheckoutSecretPatch() {
 	return {
-		polar_checkout_url: undefined,
-		runtime_auth_hash: undefined
+		polar_checkout_url: undefined
 	};
 }
 

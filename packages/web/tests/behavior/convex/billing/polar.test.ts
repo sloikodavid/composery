@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	boxProductIds,
-	isBoxProductId,
+	boxSellableForProductId,
 	revokeAndRefundPolarOrder,
 	selectPolarCheckoutProduct
 } from "@/convex/billing/polar";
+
+function stubBoxProducts() {
+	vi.stubEnv("POLAR_BOX_AIR_MONTHLY_PRODUCT_ID", "air-monthly");
+	vi.stubEnv("POLAR_BOX_AIR_ANNUAL_PRODUCT_ID", "air-annual");
+	vi.stubEnv("POLAR_BOX_PRO_MONTHLY_PRODUCT_ID", "pro-monthly");
+	vi.stubEnv("POLAR_BOX_PRO_ANNUAL_PRODUCT_ID", "pro-annual");
+}
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -12,21 +19,48 @@ afterEach(() => {
 });
 
 describe("box products", () => {
-	test("orders both products with the selected billing interval first", () => {
-		vi.stubEnv("POLAR_BOX_MONTHLY_PRODUCT_ID", "monthly-product");
-		vi.stubEnv("POLAR_BOX_ANNUAL_PRODUCT_ID", "annual-product");
+	test("offers only the chosen plan's two intervals, selected one first", () => {
+		stubBoxProducts();
 
-		expect(boxProductIds("year")).toEqual([
-			"annual-product",
-			"monthly-product"
+		expect(boxProductIds({ billingInterval: "year", plan: "air" })).toEqual([
+			"air-annual",
+			"air-monthly"
 		]);
-		expect(boxProductIds("month")).toEqual([
-			"monthly-product",
-			"annual-product"
+		expect(boxProductIds({ billingInterval: "month", plan: "pro" })).toEqual([
+			"pro-monthly",
+			"pro-annual"
 		]);
-		expect(isBoxProductId("monthly-product")).toBe(true);
-		expect(isBoxProductId("annual-product")).toBe(true);
-		expect(isBoxProductId("another-product")).toBe(false);
+		// The other plan's products are absent, which is what stops a checkout
+		// admitted as Air from being paid for as Pro.
+		expect(
+			boxProductIds({ billingInterval: "month", plan: "air" })
+		).not.toContain("pro-monthly");
+	});
+
+	test("reads a product id back to the plan and interval it sells", () => {
+		stubBoxProducts();
+
+		expect(boxSellableForProductId("pro-annual")).toEqual({
+			billingInterval: "year",
+			plan: "pro"
+		});
+		expect(boxSellableForProductId("air-monthly")).toEqual({
+			billingInterval: "month",
+			plan: "air"
+		});
+		expect(boxSellableForProductId("another-product")).toBeNull();
+		expect(boxSellableForProductId(null)).toBeNull();
+	});
+
+	// The sweep that reads this runs across every box, so an unconfigured product
+	// must degrade to "not one of ours" rather than throw and abandon the pass.
+	test("treats an unconfigured product id as not ours instead of throwing", () => {
+		vi.stubEnv("POLAR_BOX_AIR_MONTHLY_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_AIR_ANNUAL_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_PRO_MONTHLY_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_PRO_ANNUAL_PRODUCT_ID", "");
+
+		expect(boxSellableForProductId("air-monthly")).toBeNull();
 	});
 
 	test("updates a resumable checkout to the selected product", async () => {

@@ -4,18 +4,31 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { Input } from "@/components/base/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue
+} from "@/components/base/select";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
+import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "@/lib/box-plan";
 
 // Provision a box for an existing user without a paid checkout. The backend
 // owns every guard (user exists, slug free, capacity, capability); this form
-// only collects the three inputs and reports the outcome.
+// only collects the inputs and reports the outcome.
+//
+// The plan is picked here and never changes by itself afterwards: a comp has no
+// subscription, so nothing reconciles it. Staff move a comp between plans by
+// resizing it from the box's own console page.
 export function ConsoleGrantBox() {
 	const grantComp = useMutation(api.staff.boxes.grantComp);
 	const { run, busy } = useBusyAction();
 	const [email, setEmail] = useState("");
 	const [slug, setSlug] = useState("");
 	const [reason, setReason] = useState("");
+	const [plan, setPlan] = useState<BoxPlan>("air");
 
 	const ready =
 		email.trim() !== "" && slug.trim() !== "" && reason.trim() !== "";
@@ -32,6 +45,7 @@ export function ConsoleGrantBox() {
 						run("grant-comp", "Box granted", async () => {
 							await grantComp({
 								email: email.trim(),
+								plan,
 								slug: slug.trim(),
 								reason: reason.trim()
 							});
@@ -45,7 +59,23 @@ export function ConsoleGrantBox() {
 					Grant box
 				</AnimatedIconButton>
 			</div>
-			<div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
+			<div className="grid gap-3 px-4 py-3 sm:grid-cols-4">
+				<Select
+					disabled={busy !== null}
+					onValueChange={(value) => setPlan(value as BoxPlan)}
+					value={plan}
+				>
+					<SelectTrigger aria-label="Plan" className="w-full">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{BOX_PLAN_ORDER.map((option) => (
+							<SelectItem key={option} value={option}>
+								{BOX_PLANS[option].label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 				<Input
 					aria-label="User email"
 					disabled={busy !== null}

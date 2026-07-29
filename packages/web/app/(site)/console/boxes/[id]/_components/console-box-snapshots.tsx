@@ -4,12 +4,17 @@ import { useMutation, useQuery } from "convex/react";
 import { SnapshotsDialog } from "@/components/boxes/snapshots-dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { BoxPlan, SnapshotSplit } from "@/lib/box-plan";
 
 export function ConsoleBoxSnapshots({
 	boxId,
+	plan,
+	split,
 	status
 }: {
 	boxId: Id<"boxes">;
+	plan: BoxPlan;
+	split: SnapshotSplit;
 	status: string;
 }) {
 	const snapshots = useQuery(api.staff.boxes.snapshots, { boxId });
@@ -24,6 +29,8 @@ export function ConsoleBoxSnapshots({
 			onDelete={(id) => deleteSnapshot({ snapshotId: id })}
 			onRestore={(id) => restoreSnapshot({ snapshotId: id })}
 			onTake={() => createSnapshot({ boxId })}
+			plan={plan}
+			split={split}
 			snapshots={snapshots}
 		/>
 	);

@@ -211,6 +211,8 @@ agent usually writes the test, this is the load-bearing check and not a nicety.
 | `pnpm check:mutants`                      | Stryker and `cargo-mutants` over the current diff. Nothing may survive.                              |
 | `pnpm check:knip`                         | Unused files, exports and dependencies - the rot agents leave behind.                                |
 | `pnpm smoke`                              | Boots the built image and exercises it.                                                              |
+| `pnpm templates:schema`                   | Validates provider manifests against live schemas and Fly's strict validator.                        |
+| `pnpm templates:compose`                  | Builds the image and boots every copied Compose deployment recipe.                                   |
 | `bash tests/system/overlay-engine/run.sh` | Proves persistence survives a container being destroyed.                                             |
 
 `check:coverage`, `check:mutants` and `check:knip` sit outside `check:portable`

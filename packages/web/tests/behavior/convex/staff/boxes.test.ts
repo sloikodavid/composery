@@ -333,6 +333,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: customer.email,
 				slug: "gift",
 				reason: "conference"
@@ -348,6 +349,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: customer.email,
 				slug: "gift",
 				reason: "conference"
@@ -361,6 +363,7 @@ describe("comping a box", () => {
 		await seedSettings(t);
 
 		const { boxId } = await admin.as.mutation(api.staff.boxes.grantComp, {
+			plan: "air",
 			email: customer.email,
 			slug: "gift",
 			reason: "conference"
@@ -382,6 +385,7 @@ describe("comping a box", () => {
 		await seedSettings(t);
 
 		const { boxId } = await admin.as.mutation(api.staff.boxes.grantComp, {
+			plan: "air",
 			email: customer.email,
 			slug: "gift",
 			reason: "conference"
@@ -399,6 +403,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: customer.email,
 				slug: "gift",
 				reason: "   "
@@ -413,6 +418,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: "nobody@example.com",
 				slug: "gift",
 				reason: "conference"
@@ -432,6 +438,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: banned.email,
 				slug: "gift",
 				reason: "conference"
@@ -447,6 +454,7 @@ describe("comping a box", () => {
 
 		await expect(
 			admin.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: customer.email,
 				slug: "gift",
 				reason: "conference"
@@ -460,6 +468,7 @@ describe("comping a box", () => {
 
 		await expect(
 			customer.as.mutation(api.staff.boxes.grantComp, {
+				plan: "air",
 				email: customer.email,
 				slug: "gift",
 				reason: "conference"

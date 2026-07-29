@@ -123,7 +123,7 @@ export function ConsoleCapacity({
 						<p className="text-sm">Snapshot allocation</p>
 						<p className="text-xs text-muted-foreground">
 							{capacity.snapshotCommitments} committed;{" "}
-							{capacity.snapshotSlotsPerBox} reserved per box
+							{capacity.snapshotSlotsPerBox} reserved per new box
 						</p>
 					</div>
 					<Input

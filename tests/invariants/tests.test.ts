@@ -18,14 +18,18 @@ import { readRepoFile, repoRoot } from "../support/repo.ts";
 
 const KINDS = ["behavior", "invariants", "system"];
 
-const tracked = execFileSync("git", ["ls-files"], {
-	cwd: repoRoot,
-	encoding: "utf8"
-})
+const checkoutFiles = execFileSync(
+	"git",
+	["ls-files", "--cached", "--others", "--exclude-standard"],
+	{
+		cwd: repoRoot,
+		encoding: "utf8"
+	}
+)
 	.split("\n")
 	.filter(Boolean);
 
-const testFiles = tracked.filter((f) => /\.test\.[cm]?tsx?$/.test(f));
+const testFiles = checkoutFiles.filter((f) => /\.test\.[cm]?tsx?$/.test(f));
 const read = (f: string) => readFileSync(resolve(repoRoot, f), "utf8");
 
 // Behaviour tests that still lift code out of a diff instead of loading the
@@ -37,23 +41,12 @@ const read = (f: string) => readFileSync(resolve(repoRoot, f), "utf8");
 // fails the confinement test unless someone adds it here on purpose - which the
 // doctrine forbids.
 const PATCH_READING_TESTS = [
-	"packages/ide/tests/behavior/favicon.test.ts",
-	"packages/ide/tests/behavior/loopback-callback-guard.test.ts",
-	"packages/ide/tests/behavior/narrow-editor-groups.test.ts",
-	"packages/ide/tests/behavior/narrow-layout-reconciliation.test.ts",
-	"packages/ide/tests/behavior/terminal-clients.test.ts",
-	"packages/ide/tests/behavior/terminal-sync.test.ts",
-	"packages/ide/tests/behavior/touch-editor-selection.test.ts",
-	"packages/ide/tests/behavior/touch-list-focus.test.ts"
+	"packages/ide/tests/behavior/terminal-clients.test.ts"
 ];
 
 // Behaviour tests that still wait on the wall clock. Same ratchet: a real delay
 // in an in-process test is a race the suite has decided to lose slowly.
-const SLEEPING_TESTS = [
-	"packages/ide/tests/behavior/narrow-back.test.ts",
-	"packages/ide/tests/behavior/terminal-touch-selection.test.ts",
-	"packages/ide/tests/behavior/touch-selection-handles.test.ts"
-];
+const SLEEPING_TESTS: string[] = [];
 
 describe("test layout", () => {
 	test("no test file sits outside a tests directory", () => {
@@ -199,12 +192,14 @@ describe("system harnesses are reachable", () => {
 		// A harness nothing runs is worse than a missing one: its presence reads as
 		// coverage while it proves nothing. tests/system/overlay-engine/run.sh sat
 		// unreferenced by any workflow for exactly as long as nobody checked.
-		const harnesses = tracked.filter((f) =>
-			/(?:^|\/)tests\/system\/.*(?:run\.sh|smoke\.mjs|e2e\.yml)$/.test(f)
+		const harnesses = checkoutFiles.filter((f) =>
+			/(?:^|\/)tests\/system\/.*(?:run\.(?:mjs|sh)|smoke\.mjs|e2e\.yml)$/.test(
+				f
+			)
 		);
 		expect(harnesses.length).toBeGreaterThan(0);
 
-		const workflows = tracked
+		const workflows = checkoutFiles
 			.filter((f) => f.startsWith(".github/workflows/"))
 			.map(read)
 			.join("\n");

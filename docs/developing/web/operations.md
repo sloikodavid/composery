@@ -95,12 +95,17 @@ operational headroom by allocating less than the approved value if desired;
 make that a conscious account plan, not hidden arithmetic in code. Checkout
 fails closed until both allocations are configured.
 
-One live box commits one server slot and its full configured snapshot package
-(`manualCap + automaticCap`). One active unpaid checkout commits the same
-package. Existing snapshots count directly; each live box also reserves its
-unused entitlement. Deleting/failed snapshot rows with a Hetzner image still
-count until the image is gone, and tracked images left by a deleted box count as
-remnants. This makes the accounting conservative across asynchronous cleanup.
+One live box commits one server slot and the whole snapshot allowance its plan
+sells - not how its owner has divided that allowance between automatic and
+on-demand, which moves slots between columns without changing the total. An
+active unpaid checkout commits the allowance for the plan it reserved. Admitting
+a _new_ checkout happens before a plan has been chosen, so that gate assumes the
+largest allowance any plan sells: room for the most expensive plan is room for
+the cheapest, and the reverse is not true. Existing snapshots count directly and
+each live box also reserves its unused entitlement, never going below zero.
+Deleting/failed snapshot rows with a Hetzner image still count until the image is
+gone, and tracked images left by a deleted box count as remnants. This makes the
+accounting conservative across asynchronous cleanup.
 
 New checkout is admitted only when one complete package fits in both
 allocations. Convex mutation serialization prevents simultaneous reservation

@@ -36,7 +36,11 @@ afterEach(() => {
 async function seedSubscription(
 	t: Harness,
 	id: string,
-	overrides: { endedAt?: string | null; status?: string } = {}
+	overrides: {
+		endedAt?: string | null;
+		productId?: string;
+		status?: string;
+	} = {}
 ) {
 	await t.mutation(components.polar.lib.updateSubscription, {
 		subscription: {
@@ -53,7 +57,7 @@ async function seedSubscription(
 			cancelAtPeriodEnd: false,
 			startedAt: new Date(NOW - 1000).toISOString(),
 			endedAt: overrides.endedAt ?? null,
-			productId: "prod_box",
+			productId: overrides.productId ?? "air-monthly",
 			checkoutId: null,
 			metadata: {}
 		}
@@ -61,10 +65,7 @@ async function seedSubscription(
 }
 
 async function sweep(t: Harness) {
-	await t.action(
-		internal.billing.reconciliation.deleteBoxesWithoutActiveSubscriptions,
-		{}
-	);
+	await t.action(internal.billing.reconciliation.reconcileBoxSubscriptions, {});
 }
 
 describe("reconciling boxes against Polar", () => {
@@ -237,6 +238,85 @@ describe("reconciling boxes against Polar", () => {
 			status: "running"
 		});
 		await seedSubscription(t, "sub_live");
+
+		await sweep(t);
+
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+});
+
+// A box's plan is fixed at purchase, so a subscription that has drifted onto a
+// different plan's product is not a change to apply - it is a state that should
+// not exist, and the only safe response is to say so.
+describe("a subscription that no longer matches its box's plan", () => {
+	async function boxOnPlan(t: Harness, plan: "air" | "pro", productId: string) {
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			plan,
+			polar_subscription_id: "sub_live",
+			status: "running"
+		});
+		await seedSubscription(t, "sub_live", { productId });
+		return boxId;
+	}
+
+	test("reports a subscription moved to another plan's product", async () => {
+		const t = testConvex();
+		const boxId = await boxOnPlan(t, "air", "pro-monthly");
+
+		await sweep(t);
+
+		// Reported, never acted on: resizing a live box is not something this
+		// system does, and rebilling the customer silently would be worse.
+		expect(await boxOperations(t, boxId)).toEqual([]);
+		expect(await readBox(t, boxId)).toMatchObject({ plan: "air" });
+		expect(await staffAlerts(t)).toMatchObject([
+			{
+				severity: "warning",
+				subject: "Box subscription no longer matches its plan"
+			}
+		]);
+	});
+
+	// Monthly and annual are two products for one plan, so moving between them
+	// changes the money and nothing about the box. It is not a mismatch.
+	test.each(["air-monthly", "air-annual"])(
+		"stays quiet about a billing-cycle change to %s",
+		async (productId) => {
+			const t = testConvex();
+			const boxId = await boxOnPlan(t, "air", productId);
+
+			await sweep(t);
+
+			expect(await staffAlerts(t)).toEqual([]);
+			expect(await boxOperations(t, boxId)).toEqual([]);
+		}
+	);
+
+	// A product this deployment does not sell is a catalogue or configuration
+	// problem, not a plan drift, and there is no plan to name in an alert about
+	// it - so this path stays out of the way rather than guessing.
+	test("stays quiet about a product it does not recognise", async () => {
+		const t = testConvex();
+		await boxOnPlan(t, "air", "prod_from_another_catalogue");
+
+		await sweep(t);
+
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+
+	// A comp has no subscription at all, so nothing can drift.
+	test("never reports a comped box", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		await seedBox(t, {
+			user_id: owner.clerkUserId,
+			plan: "air",
+			comped_at: NOW - 1000,
+			comped_by: "staff",
+			status: "running"
+		});
 
 		await sweep(t);
 

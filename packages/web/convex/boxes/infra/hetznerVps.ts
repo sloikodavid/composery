@@ -7,6 +7,7 @@ import {
 	SERVER_LOCATIONS,
 	SERVER_TYPES,
 	vServerLocation,
+	vServerType,
 	vSnapshotClass,
 	type ServerLocation,
 	type ServerType
@@ -19,13 +20,16 @@ export type PlacementCandidate = {
 	location: ServerLocation;
 };
 
+// Where to try putting a box, in preference order. The server type is not a
+// choice here: it is the box's plan, and a box provisioned on a type other than
+// the one its plan advertises would be selling a machine it does not run. Only
+// the location varies, so a region with no capacity right now falls through to
+// the next one.
 export function placementCandidates(
-	serverTypes: readonly ServerType[] = SERVER_TYPES,
+	serverType: ServerType,
 	locations: readonly ServerLocation[] = SERVER_LOCATIONS
 ) {
-	return serverTypes.flatMap((serverType) =>
-		locations.map((location) => ({ serverType, location }))
-	);
+	return locations.map((location) => ({ serverType, location }));
 }
 
 function parseAllowedList<const T extends string>(
@@ -49,10 +53,6 @@ function parseAllowedList<const T extends string>(
 	}
 
 	return parsed as T[];
-}
-
-export function parseServerTypes(value: string | undefined): ServerType[] {
-	return parseAllowedList(value, SERVER_TYPES);
 }
 
 export function parseLocations(value: string | undefined): ServerLocation[] {
@@ -475,12 +475,19 @@ export async function fetchServerMetricsSample(
 export const createServer = internalAction({
 	args: {
 		boxId: v.id("boxes"),
+		// Pinned by the caller when the new machine has to land beside something
+		// that is already placed - a plan change creates the replacement in the
+		// location its parking volume lives in, because a Hetzner Volume can only
+		// attach to a server in its own location.
+		location: v.optional(vServerLocation),
+		serverType: vServerType,
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const serverTypes = parseServerTypes(process.env.HETZNER_BOX_SERVER_TYPES);
-		const locations = parseLocations(process.env.HETZNER_BOX_LOCATIONS);
-		const candidates = placementCandidates(serverTypes, locations);
+		const locations = args.location
+			? [args.location]
+			: parseLocations(process.env.HETZNER_BOX_LOCATIONS);
+		const candidates = placementCandidates(args.serverType, locations);
 		let lastError: string | undefined;
 		const fallbackCandidate = candidates[0];
 
@@ -770,7 +777,9 @@ export function parseActionStatus(action: HetznerAction): {
 }
 
 // `image_size` is null until the image is `available`, so `imageSizeGb` stays
-// optional.
+// optional. The image's own `disk_size` is deliberately not read: every box has
+// the same disk for its whole life, so a snapshot always fits the machine it is
+// restored onto and there is nothing to compare.
 export function parseImageResponse(image: HetznerImage): {
 	status: "creating" | "available";
 	imageSizeGb?: number;

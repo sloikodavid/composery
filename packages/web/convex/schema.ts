@@ -183,7 +183,21 @@ export const vParkingVolumeStage = v.union(
 );
 export type ParkingVolumeStage = Infer<typeof vParkingVolumeStage>;
 
-export const vServerType = v.union(v.literal("cx23"), v.literal("cx33"));
+// Which product a box was bought as. The identity of a plan lives here because
+// it is a stored value; everything a plan *is* - its machine, its specification,
+// its capabilities - lives in `lib/box-plan.ts`, whose table is pinned to this
+// union with `satisfies Record<BoxPlan, ...>`. Adding a plan therefore fails to
+// compile until both halves exist, which is what keeps a sellable plan from
+// having no machine behind it.
+export const vBoxPlan = v.union(v.literal("air"), v.literal("pro"));
+export type BoxPlan = Infer<typeof vBoxPlan>;
+export const BOX_PLANS_STORED: BoxPlan[] = vBoxPlan.members.map(
+	(member) => member.value
+);
+
+// The Hetzner types a box can run on: one per plan, and nothing else. Which plan
+// gets which is `lib/box-plan.ts`; this union only says what may be stored.
+export const vServerType = v.union(v.literal("cx23"), v.literal("cx43"));
 export const vServerLocation = v.union(
 	v.literal("nbg1"),
 	v.literal("fsn1"),
@@ -209,9 +223,10 @@ export const vThreshold = v.object({
 });
 export type StoredThreshold = Infer<typeof vThreshold>;
 
+// Staff-tunable snapshot behaviour. Deliberately no caps: how many snapshots a
+// box gets is what its plan sells, and how they are split is its owner's, so a
+// number here could only contradict one of them. What is left is timing.
 export const vSnapshotPolicy = v.object({
-	manual_cap: v.number(),
-	automatic_cap: v.number(),
 	manual_min_interval_minutes: v.number(),
 	manual_retention_days: v.number(),
 	automatic_retention_days: v.number()
@@ -288,6 +303,11 @@ export default defineSchema({
 	box_checkout_intents: defineTable({
 		user_id: v.string(),
 		slug: v.string(),
+		// The plan the visitor was buying when the slug was reserved. Capacity
+		// admission reads it - a plan without manual snapshots commits fewer
+		// snapshot slots - so a reservation has to name one, not infer it later
+		// from whatever product the order happens to arrive on.
+		plan: vBoxPlan,
 		status: vCheckoutIntentStatus,
 		polar_checkout_id: v.optional(v.string()),
 		polar_checkout_url: v.optional(v.string()),
@@ -322,6 +342,17 @@ export default defineSchema({
 		user_id: v.string(),
 		slug: v.string(),
 		status: vBoxStatus,
+		// Which plan this box was bought on - the machine it gets and the snapshot
+		// allowance it comes with. Fixed for the life of the box: nothing moves a
+		// box between plans, so this is written once at creation and only ever read
+		// afterwards.
+		plan: vBoxPlan,
+		// How much of the plan's snapshot allowance is set aside for snapshots the
+		// owner takes themselves. The automatic half is the remainder, never stored,
+		// so the two cannot drift apart or sum to more than the plan sells. Always
+		// zero on a plan without manual snapshots. Read through
+		// `resolveSnapshotSplit`, never directly.
+		manual_snapshot_cap: v.number(),
 		// A box is backed by EITHER a paid Polar subscription (these two set) OR a
 		// staff comp (comped_at set, these absent). Never both, never neither. The
 		// subscription-coupled paths (reconciliation, revoke, account deletion,

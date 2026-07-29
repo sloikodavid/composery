@@ -4,6 +4,7 @@ import { ideUrl } from "../env";
 import { ACTIVE_OPERATION_STATUSES } from "./operationRules";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
+import { resolveSnapshotSplit } from "../../lib/box-plan";
 
 type OperationSummary = {
 	status: Doc<"box_operations">["status"];
@@ -121,6 +122,10 @@ export function safeBox(box: Doc<"boxes">) {
 	return {
 		id: box._id,
 		slug: box.slug,
+		plan: box.plan,
+		// Resolved, never the raw column: every reader gets the same coherent pair
+		// and none of them has to know the automatic half is a remainder.
+		snapshots: resolveSnapshotSplit(box.plan, box.manual_snapshot_cap),
 		status: box.status,
 		runtimeUrl: ideUrl(box.slug),
 		createdAt: box.created_at,

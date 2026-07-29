@@ -25,10 +25,15 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 //     is fixed at volume -> server, so a resumed repair can never overwrite the
 //     parked files with an empty server.
 //
+// This is the only operation that moves a box's files. A plan change does not:
+// every box keeps one disk for its whole life, so changing plan is a provider
+// resize of the machine around that disk (see workflows/changeBoxPlan.ts).
+//
 // No pre-repair Hetzner snapshot is taken: the verified parking volume is the
 // safety net, and a snapshot would burn a per-box snapshot slot (which gates
 // fleet-wide checkout capacity) and cannot even capture the attached volume. An
-// owner who wants belt-and-braces can take a manual snapshot first.
+// owner who wants belt-and-braces can take a manual snapshot first, on a plan
+// that has them.
 export const repairBox = defineBoxWorkflow({
 	type: "repair",
 	run: async (step, args) => {

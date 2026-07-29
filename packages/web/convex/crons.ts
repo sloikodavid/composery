@@ -28,10 +28,14 @@ crons.interval(
 	internal.staffAlerts.retryPending
 );
 
+// Boxes follow their subscriptions: one that has ended is deleted, one that now
+// names a different plan is resized onto that plan's machine. The webhooks do
+// both sooner; this is the floor under a webhook that was missed, arrived out of
+// order, or found the box busy with something else.
 crons.hourly(
-	"subscription deletion reconciliation",
+	"subscription reconciliation",
 	{ minuteUTC: 11 },
-	internal.billing.reconciliation.deleteBoxesWithoutActiveSubscriptions
+	internal.billing.reconciliation.reconcileBoxSubscriptions
 );
 
 crons.hourly(

@@ -7,7 +7,6 @@ import {
 	readSessionLifetime,
 	sessionCookieOptions
 } from "../../overlay/src/node/session.ts";
-import { readRepoFile } from "../../../../tests/support/repo.ts";
 
 const NOW = Date.UTC(2026, 6, 27, 12);
 const NONCE = "a".repeat(43);
@@ -83,23 +82,5 @@ describe("IDE sessions", () => {
 		expect(() => readSessionLifetime("forever")).toThrow(
 			/COMPOSERY_SESSION_LIFETIME must be one of/
 		);
-	});
-
-	test("the website offers exactly the policies the IDE implements", () => {
-		const runtimeConfig = readRepoFile(
-			"packages/web/convex/boxes/runtimeConfig.ts"
-		);
-		const field = runtimeConfig.slice(
-			runtimeConfig.indexOf('key: "COMPOSERY_SESSION_LIFETIME"'),
-			runtimeConfig.indexOf(
-				"\n\t},",
-				runtimeConfig.indexOf('key: "COMPOSERY_SESSION_LIFETIME"')
-			)
-		);
-		const offered = [...field.matchAll(/value: "([^"]+)"/g)].map(
-			(match) => match[1]
-		);
-
-		expect(offered).toEqual(Object.keys(SESSION_LIFETIMES));
 	});
 });

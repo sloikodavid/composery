@@ -185,8 +185,6 @@ export const setThresholds = mutation({
 export const setSnapshotPolicy = mutation({
 	args: {
 		policy: v.object({
-			manualCap: v.number(),
-			automaticCap: v.number(),
 			manualMinIntervalMinutes: v.number(),
 			manualRetentionDays: v.number(),
 			automaticRetentionDays: v.number()

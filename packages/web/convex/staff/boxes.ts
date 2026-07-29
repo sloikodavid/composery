@@ -30,6 +30,8 @@ import { readGlobalSettings } from "../settings";
 import { workflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
+import { vBoxPlan } from "../schema";
+import { defaultManualSnapshotCap } from "../../lib/box-plan";
 import {
 	activeOperation,
 	boxRuntimeStanding,
@@ -363,6 +365,7 @@ export const retryCreate = mutation({
 export const grantComp = mutation({
 	args: {
 		email: v.string(),
+		plan: vBoxPlan,
 		slug: v.string(),
 		reason: v.string()
 	},
@@ -401,6 +404,10 @@ export const grantComp = mutation({
 		const boxId = await ctx.db.insert("boxes", {
 			user_id: targetUser.clerk_user_id,
 			slug,
+			// A comp has no subscription, so nothing will ever reconcile its plan -
+			// what staff pick here is what the box stays on until staff change it.
+			plan: args.plan,
+			manual_snapshot_cap: defaultManualSnapshotCap(args.plan),
 			status: "creating",
 			runtime_image: requiredEnv("RUNTIME_IMAGE"),
 			comped_by: staffUser.clerk_user_id,

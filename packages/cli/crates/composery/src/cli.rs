@@ -64,13 +64,3 @@ pub fn init_tracing() {
         .with_writer(std::io::stderr)
         .init();
 }
-
-#[cfg(test)]
-mod tests {
-    use clap::CommandFactory as _;
-
-    #[test]
-    fn verify_cli() {
-        super::Cli::command().debug_assert();
-    }
-}

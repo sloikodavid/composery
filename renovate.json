@@ -149,6 +149,24 @@
 			"matchStrings": [
 				"//\\s*renovate:\\s*datasource=(?<datasource>docker)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*export const CADDY_IMAGE =\\s*\\n\\s*\"caddy:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
 			]
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^\\.github/workflows/templates\\.yml$/"],
+			"matchStrings": ["version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "superfly/flyctl",
+			"extractVersionTemplate": "^v(?<version>.+)$"
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^tests/system/templates/run\\.mjs$/"],
+			"matchStrings": [
+				"// renovate: datasource=github-releases depName=kubernetes/kubernetes\\s*\\n\\s*kubernetes:\\s*\\n?\\s*\"https://raw\\.githubusercontent\\.com/kubernetes/kubernetes/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/"
+			],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "kubernetes/kubernetes",
+			"extractVersionTemplate": "^v(?<version>.+)$"
 		}
 	]
 }

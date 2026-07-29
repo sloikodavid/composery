@@ -157,6 +157,9 @@ jobs:
     with:
       ref: ${{ inputs.ref || github.ref }}
 
+  templates:
+    uses: ./.github/workflows/templates.yml
+
   # One fail-closed result for consumers that must not learn the growing set of
   # validation jobs. `always()` makes a failed, cancelled, or skipped dependency
   # produce a red check instead of a skipped check that some external systems
@@ -168,6 +171,7 @@ jobs:
       - windows-macos
       - linux
       - smoke
+      - templates
     runs-on: ubuntu-24.04
     steps:
       - name: Confirm every check passed
@@ -175,9 +179,11 @@ jobs:
           LINUX: ${{ needs.linux.result }}
           PORTABLE: ${{ needs.windows-macos.result }}
           SMOKE: ${{ needs.smoke.result }}
+          TEMPLATES: ${{ needs.templates.result }}
         run: |
           set -euo pipefail
-          printf 'linux=%s\nportable=%s\nsmoke=%s\n' "$LINUX" "$PORTABLE" "$SMOKE"
+          printf 'linux=%s\nportable=%s\nsmoke=%s\ntemplates=%s\n' "$LINUX" "$PORTABLE" "$SMOKE" "$TEMPLATES"
           [[ "$LINUX" == "success" ]]
           [[ "$PORTABLE" == "success" ]]
           [[ "$SMOKE" == "success" ]]
+          [[ "$TEMPLATES" == "success" ]]

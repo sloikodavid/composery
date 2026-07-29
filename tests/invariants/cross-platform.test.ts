@@ -86,7 +86,7 @@ describe("cross-platform checks", () => {
 
 		expect(allChecks?.if).toBe("always()");
 		expect(new Set(allChecks?.needs)).toEqual(
-			new Set(["windows-macos", "linux", "smoke"])
+			new Set(["windows-macos", "linux", "smoke", "templates"])
 		);
 		expect(allChecks?.name).toBe("all checks");
 		expect(ci.jobs.linux?.name).toBe("checks / linux");

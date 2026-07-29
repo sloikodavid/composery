@@ -66,6 +66,12 @@ export default function TermsPage() {
 					until cancelled.
 				</p>
 				<p>
+					A box stays on the plan it was bought on for its lifetime; plans
+					cannot be switched after purchase. Plans differ in the machine behind
+					the box and in how many snapshots it keeps, and those figures are the
+					ones shown on the pricing page at the time of sale.
+				</p>
+				<p>
 					Normal cancellation through Polar stops renewal and keeps the box
 					available until the end of the period already paid for. It does not
 					automatically refund that period. An immediate revocation stops access

@@ -1,50 +1,49 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
-import { useAction, useConvexAuth, useQuery } from "convex/react";
 import {
 	AngryIcon,
 	ContainerIcon,
+	CpuIcon,
 	EarthLockIcon,
 	FileSearchCornerIcon,
 	HistoryIcon,
 	type LucideIcon,
 	MonitorCogIcon,
-	RocketIcon,
 	ShieldCheckIcon,
 	WalletIcon
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
 import { Faq } from "./faq";
-import { FadingText } from "./fading-text";
 import { GitHubLogo } from "@/components/icons/github-logo";
-import { Input } from "@/components/base/input";
 import { PageTemplate } from "@/components/page-template";
-import { api } from "@/convex/_generated/api";
+import { SlugDialog } from "./slug-dialog";
 import {
-	annualSavingsPercent,
 	BOX_BILLING,
 	type BoxBillingInterval,
 	type BoxPricing,
-	formatPrice
+	formatPrice,
+	sharedAnnualSavingsPercent
 } from "@/lib/box-billing";
-import { isValidSlugFormat, sanitizeSlug } from "@/lib/box-slug";
-import { errorMessage } from "@/lib/error-message";
+import {
+	BOX_PLANS,
+	BOX_PLAN_ORDER,
+	boxPlanSpecification,
+	type BoxPlan
+} from "@/lib/box-plan";
 import { GITHUB_REPO_URL } from "@/lib/links";
-import { signInUrlForReturnPath } from "@/lib/auth-routing";
 import { cn } from "@/lib/utils";
 
 type Feature = { icon: LucideIcon; text: string };
 
-const MANAGED_FEATURES: Feature[] = [
-	{ icon: RocketIcon, text: "Ready in a minute" },
-	{ icon: ShieldCheckIcon, text: "Privately hosted in Europe" },
-	{ icon: EarthLockIcon, text: "Sub-domain, DNS, and HTTPS" },
-	{ icon: HistoryIcon, text: "Daily and manual snapshots" }
+// What every hosted box gets, whichever plan bought it. The machine and the
+// snapshot line are per plan and are derived below, so this list is only the
+// part that genuinely does not vary.
+const HOSTED_FEATURES: Feature[] = [
+	{ icon: ShieldCheckIcon, text: "Securely hosted in Europe" },
+	{ icon: EarthLockIcon, text: "Sub-domain, DNS, and HTTPS" }
 ];
 
 const SELF_HOSTED_FEATURES: Feature[] = [
@@ -53,6 +52,24 @@ const SELF_HOSTED_FEATURES: Feature[] = [
 	{ icon: MonitorCogIcon, text: "Platform-specific hosting templates" },
 	{ icon: AngryIcon, text: "You might get a headache" }
 ];
+
+// Read off the plan table rather than written out per card, so a plan whose
+// machine or snapshot capability changes cannot keep advertising the old one.
+function planFeatures(plan: BoxPlan): Feature[] {
+	return [
+		{ icon: CpuIcon, text: boxPlanSpecification(plan) },
+		...HOSTED_FEATURES,
+		{
+			icon: HistoryIcon,
+			// Derived so a plan's allowance is stated once. The wording follows the
+			// capability rather than the number alone: a plan without on-demand
+			// captures gets all of them taken for it.
+			text: BOX_PLANS[plan].manualSnapshots
+				? `${BOX_PLANS[plan].snapshotCap} daily + manual snapshots`
+				: `${BOX_PLANS[plan].snapshotCap} daily snapshots`
+		}
+	];
+}
 
 function BillingSelector({
 	billingInterval,
@@ -128,8 +145,8 @@ function PlanCard({
 	features: Feature[];
 	name: string;
 	period?: string;
-	// Null when Polar has not been read: the card keeps its checkout, and the
-	// visitor gets the real figure there, rather than one invented here.
+	// Null when Polar has not been read: the card keeps its button, and the
+	// visitor gets the real figure in checkout, rather than one invented here.
 	price: string | null;
 }) {
 	return (
@@ -159,153 +176,24 @@ function PlanCard({
 	);
 }
 
-function BoxCheckout({
-	billingInterval,
-	initialSlug
-}: {
-	billingInterval: BoxBillingInterval;
-	initialSlug: string;
-}) {
-	const createCheckout = useAction(api.user.checkout.createCheckout);
-	const { isAuthenticated, isLoading: authenticationLoading } = useConvexAuth();
-	const { user } = useUser();
-	// Clerk resolves after mount, so the suggestion is derived rather than
-	// seeded into state; typing takes over from then on.
-	const [typedSlug, setTypedSlug] = useState<string | null>(
-		initialSlug || null
-	);
-	const [submitting, setSubmitting] = useState(false);
-	const suggestedSlug = sanitizeSlug(
-		user?.username ??
-			user?.primaryEmailAddress?.emailAddress.split("@")[0] ??
-			""
-	);
-	// Checked before it's shown: landing on a prefilled slug that's already
-	// taken reads as an error the visitor didn't cause, so an unavailable
-	// suggestion just leaves the field empty.
-	const suggestionAvailability = useQuery(
-		api.user.checkout.slugAvailability,
-		typedSlug === null && isValidSlugFormat(suggestedSlug)
-			? { slug: suggestedSlug }
-			: "skip"
-	);
-	const slug =
-		typedSlug ?? (suggestionAvailability?.available ? suggestedSlug : "");
-	const normalizedSlug = sanitizeSlug(slug);
-	const slugFormatValid = isValidSlugFormat(normalizedSlug);
-	const availability = useQuery(
-		api.user.checkout.slugAvailability,
-		slugFormatValid ? { slug: normalizedSlug } : "skip"
-	);
-	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
-	const slugAvailable = availability?.available ?? false;
-	const slugVisuallyInvalid = normalizedSlug.length > 0 && !slugFormatValid;
-	const slugTaken = slugFormatValid && availability != null && !slugAvailable;
-	const canCheckout =
-		!authenticationLoading &&
-		slugFormatValid &&
-		slugAvailable &&
-		(checkoutAvailability?.available === true ||
-			availability?.resumable === true);
-	const checkoutUnavailable =
-		checkoutAvailability?.available === false && !availability?.resumable;
-	// A rejected slug already shows as a red field, so the only words here are
-	// for the one state that isn't about the slug at all: no capacity for new
-	// boxes.
-	const slugError = checkoutUnavailable
-		? (checkoutAvailability.message ?? "Unavailable")
-		: "";
-
-	async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-		event.preventDefault();
-		if (!canCheckout || submitting) return;
-
-		if (!isAuthenticated) {
-			const query = new URLSearchParams({
-				billing: billingInterval,
-				slug: normalizedSlug
-			});
-			window.location.assign(
-				signInUrlForReturnPath(`/pricing?${query.toString()}`)
-			);
-			return;
-		}
-
-		setSubmitting(true);
-		try {
-			const checkout = await createCheckout({
-				billingInterval,
-				slug: normalizedSlug
-			});
-			window.location.assign(checkout.checkoutUrl);
-		} catch (error) {
-			toast.error("Checkout could not start", {
-				description: errorMessage(error)
-			});
-			setSubmitting(false);
-		}
-	}
-
-	return (
-		<form className="relative" onSubmit={handleSubmit}>
-			<div className="absolute right-0 bottom-full left-0 mb-1 flex min-h-5 items-center justify-end">
-				<span
-					aria-live="polite"
-					className="min-w-0"
-					id="box-slug-status"
-					title={slugError || undefined}
-				>
-					<FadingText
-						className="max-w-full truncate text-xs font-medium text-destructive"
-						text={slugError}
-					/>
-				</span>
-			</div>
-			<div className="flex min-w-0 gap-2">
-				<Input
-					aria-describedby="box-slug-status"
-					aria-invalid={slugVisuallyInvalid || slugTaken}
-					aria-label="Box slug"
-					autoCapitalize="none"
-					autoComplete="off"
-					autoFocus
-					className="h-9 min-w-0 flex-1 rounded-2xl"
-					id="box-slug"
-					maxLength={63}
-					name="slug"
-					onChange={(event) => setTypedSlug(sanitizeSlug(event.target.value))}
-					pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
-					placeholder="my-box"
-					spellCheck={false}
-					type="text"
-					value={slug}
-				/>
-				<AnimatedIconButton
-					className="h-9 shrink-0 rounded-2xl"
-					disabled={!canCheckout || submitting}
-					icon="arrow-right"
-					size="lg"
-					type="submit"
-				>
-					Checkout
-				</AnimatedIconButton>
-			</div>
-		</form>
-	);
-}
-
 export function Pricing({
 	initialBillingInterval,
+	initialPlan,
 	initialSlug,
 	pricing
 }: {
 	initialBillingInterval: BoxBillingInterval;
+	initialPlan: BoxPlan | null;
 	initialSlug: string;
 	pricing: BoxPricing;
 }) {
 	const [billingInterval, setBillingInterval] = useState(
 		initialBillingInterval
 	);
+	// The plan whose button was pressed, and the dialog's own open state.
+	// Reopened straight away when the visitor is arriving back from sign-in having
+	// already chosen one.
+	const [checkoutPlan, setCheckoutPlan] = useState<BoxPlan | null>(initialPlan);
 
 	return (
 		<PageTemplate
@@ -313,29 +201,39 @@ export function Pricing({
 				<BillingSelector
 					billingInterval={billingInterval}
 					onChange={setBillingInterval}
-					savingsPercent={annualSavingsPercent(pricing)}
+					savingsPercent={sharedAnnualSavingsPercent(pricing)}
 				/>
 			}
 			breadcrumbs={[{ icon: WalletIcon, label: "Pricing" }]}
 		>
 			<div className="space-y-8">
-				<div className="grid gap-5 md:grid-cols-2">
-					<PlanCard
-						descriptor="..with a secure + always-on Composery."
-						features={MANAGED_FEATURES}
-						name="Box"
-						period={
-							billingInterval === "year"
-								? `/ month - billed annually.`
-								: "/ month."
-						}
-						price={formatPrice(pricing[billingInterval], pricing.currency)}
-					>
-						<BoxCheckout
-							billingInterval={billingInterval}
-							initialSlug={initialSlug}
-						/>
-					</PlanCard>
+				<div className="grid gap-5 md:grid-cols-3">
+					{BOX_PLAN_ORDER.map((plan) => (
+						<PlanCard
+							descriptor={BOX_PLANS[plan].descriptor}
+							features={planFeatures(plan)}
+							key={plan}
+							name={BOX_PLANS[plan].label}
+							period={
+								billingInterval === "year"
+									? `/ month - billed annually.`
+									: "/ month."
+							}
+							price={formatPrice(
+								pricing.plans[plan][billingInterval],
+								pricing.currency
+							)}
+						>
+							<AnimatedIconButton
+								className="w-full"
+								icon="arrow-right"
+								onClick={() => setCheckoutPlan(plan)}
+								size="lg"
+							>
+								Get started
+							</AnimatedIconButton>
+						</PlanCard>
+					))}
 
 					<PlanCard
 						descriptor="Manage your own Composery."
@@ -360,6 +258,15 @@ export function Pricing({
 
 				<Faq />
 			</div>
+
+			<SlugDialog
+				billingInterval={billingInterval}
+				initialSlug={initialSlug}
+				onOpenChange={(open) => {
+					if (!open) setCheckoutPlan(null);
+				}}
+				plan={checkoutPlan}
+			/>
 		</PageTemplate>
 	);
 }

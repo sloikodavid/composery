@@ -109,6 +109,29 @@ describe("desktop URL and text editor integration", () => {
 		expect(settings["editor.minimap.enabled"]).toBe(false);
 	});
 
+	// The explorer deliberately shows what upstream hides - a `.git` you can see
+	// is a `.git` you can delete - but search reads `files.exclude` as well, so
+	// turning a pattern off there also sends Go to File and every text search
+	// walking through `.git`. `search.exclude` is the only place to put it back,
+	// and a settings file cannot derive one list from the other, so the pair is
+	// pinned here.
+	test("hides from search what the explorer deliberately shows", () => {
+		const settings = JSON.parse(
+			readRepoFile("rootfs/home/user/.local/share/composery/User/settings.json")
+		) as {
+			"files.exclude": Record<string, boolean>;
+			"search.exclude": Record<string, boolean>;
+		};
+		const shown = Object.entries(settings["files.exclude"])
+			.filter(([, excluded]) => !excluded)
+			.map(([pattern]) => pattern);
+
+		expect(shown).toContain("**/.git");
+		for (const pattern of shown) {
+			expect(settings["search.exclude"][pattern]).toBe(true);
+		}
+	});
+
 	test("integrated terminal runs a login shell so ~/.profile and ~/.local/bin load", () => {
 		const settings = JSON.parse(
 			readRepoFile("rootfs/home/user/.local/share/composery/User/settings.json")

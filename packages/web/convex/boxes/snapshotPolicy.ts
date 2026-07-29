@@ -4,21 +4,17 @@ import type { StoredSnapshotPolicy, vSnapshotClass } from "../schema";
 type SnapshotClass = Infer<typeof vSnapshotClass>;
 
 export type SnapshotPolicy = {
-	manualCap: number;
-	automaticCap: number;
 	manualMinIntervalMinutes: number;
 	manualRetentionDays: number;
 	automaticRetentionDays: number;
 };
 
-// The default caps sum to 10 snapshots per box. Capacity admission reserves the
-// current configured sum—not this default—for every live box and active
-// checkout. Automatic snapshots are rolling disaster recovery (retention
-// matches the default cap so they do not outlive it); manual ones are user
-// checkpoints kept far longer.
+// Timing only. How many snapshots a box may hold is its plan's business and how
+// they are split is its owner's; this is how long they last and how often a
+// manual one may be taken. Automatic snapshots are rolling disaster recovery and
+// are kept briefly; manual ones are the owner's own checkpoints and are kept far
+// longer.
 export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicy = {
-	manualCap: 5,
-	automaticCap: 5,
 	manualMinIntervalMinutes: 5,
 	manualRetentionDays: 30,
 	automaticRetentionDays: 5
@@ -43,14 +39,6 @@ export function resolveSnapshotPolicy(
 ): SnapshotPolicy {
 	if (!stored) return DEFAULT_SNAPSHOT_POLICY;
 	return {
-		manualCap: resolvedPositiveInteger(
-			stored.manual_cap,
-			DEFAULT_SNAPSHOT_POLICY.manualCap
-		),
-		automaticCap: resolvedPositiveInteger(
-			stored.automatic_cap,
-			DEFAULT_SNAPSHOT_POLICY.automaticCap
-		),
 		manualMinIntervalMinutes: resolvedPositiveInteger(
 			stored.manual_min_interval_minutes,
 			DEFAULT_SNAPSHOT_POLICY.manualMinIntervalMinutes
@@ -71,8 +59,6 @@ export function snapshotPolicyToStored(
 ): StoredSnapshotPolicy {
 	validateSnapshotPolicy(policy);
 	return {
-		manual_cap: policy.manualCap,
-		automatic_cap: policy.automaticCap,
 		manual_min_interval_minutes: policy.manualMinIntervalMinutes,
 		manual_retention_days: policy.manualRetentionDays,
 		automatic_retention_days: policy.automaticRetentionDays
@@ -81,15 +67,11 @@ export function snapshotPolicyToStored(
 
 export function validateSnapshotPolicy(policy: SnapshotPolicy) {
 	const {
-		manualCap,
-		automaticCap,
 		manualMinIntervalMinutes,
 		manualRetentionDays,
 		automaticRetentionDays
 	} = policy;
 	const values = {
-		manualCap,
-		automaticCap,
 		manualMinIntervalMinutes,
 		manualRetentionDays,
 		automaticRetentionDays

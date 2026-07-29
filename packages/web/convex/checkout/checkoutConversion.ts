@@ -13,10 +13,18 @@ import { CHECKOUT_INTENT_METADATA_KEYS } from "./checkoutIntents";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { sendStaffAlert } from "../staffAlerts";
+import { vBoxPlan } from "../schema";
+import { defaultManualSnapshotCap } from "../../lib/box-plan";
 
 export const convertCheckoutIntentToBox = internalMutation({
 	args: {
 		intentId: v.id("box_checkout_intents"),
+		// The plan of the product actually paid for, not the one the reservation
+		// was made under. They agree in practice - a checkout session is only ever
+		// offered the reserved plan's two billing intervals - but the money is what
+		// decides which machine the customer gets, so the box is born agreeing with
+		// its own subscription and the plan reconciler has nothing to fix.
+		plan: vBoxPlan,
 		polarCustomerId: v.string(),
 		polarOrderId: v.string(),
 		polarSubscriptionId: v.string(),
@@ -148,6 +156,8 @@ export const convertCheckoutIntentToBox = internalMutation({
 		const boxId = await ctx.db.insert("boxes", {
 			user_id: intent.user_id,
 			slug: intent.slug,
+			plan: args.plan,
+			manual_snapshot_cap: defaultManualSnapshotCap(args.plan),
 			status: "creating",
 			polar_customer_id: args.polarCustomerId,
 			polar_subscription_id: args.polarSubscriptionId,

@@ -70,18 +70,38 @@ export default defineConfig({
 				"**/tests/**",
 				"**/*.d.ts",
 				"packages/web/components/base/**",
-				// The legal pages are prose in JSX: no props, no state, no data, no
-				// branch. Nothing executes that could be got wrong, so a test could
-				// only render one and assert back the wording it was copied from -
-				// which is the "run the line, assert nothing" this configuration is
-				// arranged to prevent, dressed as coverage. What can actually drift is
-				// whether the copy still describes what the service does, and that is
-				// pinned where wording belongs: packages/web/tests/invariants/legal.
+				// Nothing under `app/` is instrumented, because nothing in this repo can
+				// run it. Every vitest project here is `environment: "node"`, and these
+				// are React server and client components reading Convex and Clerk through
+				// hooks: covering one would mean a jsdom project, a React renderer and a
+				// mock per hook, and the test that fell out would assert back the markup
+				// it was written from - the "run the line, assert nothing" this whole
+				// configuration is arranged to prevent, dressed as coverage.
 				//
-				// Matched without naming the `(site)` route group: parentheses are an
-				// extglob group to the matcher, so the literal path never matches and
-				// the exclusion silently does nothing.
-				"packages/web/app/**/{privacy,terms,cookies}/page.tsx"
+				// The rule that replaces it is where a decision is allowed to live. A
+				// page or component here is wiring and JSX; anything decidable belongs in
+				// `lib/` or `convex/`, which are instrumented and tested. When a
+				// component starts making a decision, the fix is to move the decision,
+				// not to build a harness to reach it. What can drift in the prose pages
+				// is whether the copy still describes the service, and that is pinned
+				// where wording belongs: `packages/web/tests/invariants/legal`.
+				"packages/web/app/**",
+				"packages/web/components/**",
+				// A box workflow handler is a sequence of `step.runAction` calls against
+				// a durable execution engine, Hetzner, Cloudflare, and SSH. Covering one
+				// means standing up the workflow component and mocking all four, and
+				// what the test then asserts is the order it called its own mocks in -
+				// the handler restated as an expectation, which fails when the code is
+				// edited rather than when it is wrong.
+				//
+				// What is decidable about a workflow is deliberately not in the handler,
+				// and every piece of it is covered elsewhere: where a failure leaves the
+				// box (`OPERATION_FAILURE_STATUS`), which states may begin an operation
+				// (`OPERATION_ALLOWED_STATUSES`), what a plan provisions
+				// (`lib/box-plan`). The handler is the wiring between them.
+				//
+				// The real check on that wiring is the system smoke, not a unit test.
+				"packages/web/convex/boxes/workflows/**"
 			],
 			// Reported, never thresholded. A global percentage is the one number that
 			// can be met while the suite gets worse - run the line, assert nothing - and

@@ -68,9 +68,9 @@ remembers the last review.
 
 @package.json
 
-<!-- repo-structure:start -->
+<!-- tree:start -->
 
-> Live-updated by `scripts/tree.mjs` when `pnpm dev` is running. Manually update with `pnpm fix:tree`.
+> Live-updated by `scripts/tree.mjs` when `pnpm dev` or `pnpm dev:tree` is running. Manually update with `pnpm fix:tree`.
 
 ```text
 .agents/
@@ -110,6 +110,7 @@ remembers the last review.
     release.yml
     smoke-nightly.yml
     smoke.yml
+    templates.yml
   CLA.md
   IMAGE_RELEASE.md
   MOBILE_RELEASE.md
@@ -384,20 +385,8 @@ packages/
       types.mjs
     tests/
       behavior/
-        agent-install.test.ts
-        favicon.test.ts
-        loopback-callback-guard.test.ts
-        narrow-back.test.ts
-        narrow-editor-groups.test.ts
-        narrow-layout-reconciliation.test.ts
-        password-check.test.ts
         session.test.ts
         terminal-clients.test.ts
-        terminal-sync.test.ts
-        terminal-touch-selection.test.ts
-        touch-editor-selection.test.ts
-        touch-list-focus.test.ts
-        touch-selection-handles.test.ts
       invariants/
         auth-routes.test.ts
         patches.test.ts
@@ -464,7 +453,6 @@ packages/
     tests/
       behavior/
         lib/
-          android-dialog-theme.test.ts
           back-decision.test.ts
           instance-host.test.ts
           instance-store.test.ts
@@ -497,6 +485,10 @@ packages/
       logo.mjs
       sync.mjs
       theme.mjs
+    tests/
+      invariants/
+        tools/
+          colors.test.ts
     tools/
       colors/
         index.html
@@ -561,6 +553,7 @@ packages/
             fading-text.tsx
             faq.tsx
             pricing.tsx
+            slug-dialog.tsx
           page.tsx
         privacy/
           page.tsx
@@ -802,6 +795,7 @@ packages/
     lib/
       auth-routing.ts
       box-billing.ts
+      box-plan.ts
       box-route.ts
       box-slug.ts
       brand-assets.ts
@@ -909,13 +903,16 @@ packages/
             status.test.ts
             views.test.ts
           checkout/
+            checkoutConversion.test.ts
             checkoutIntents.test.ts
           staff/
             boxes.test.ts
           user/
             boxes.test.ts
+            checkout.test.ts
           accountDeletionLogic.test.ts
           authorization.test.ts
+          crons.test.ts
           env.test.ts
           http.test.ts
           ownerEmail.test.ts
@@ -924,10 +921,10 @@ packages/
         lib/
           auth-routing.test.ts
           box-billing.test.ts
+          box-plan.test.ts
           box-route.test.ts
           box-slug.test.ts
           brand-assets.test.ts
-          clerk-appearance.test.ts
           datetime.test.ts
           error-message.test.ts
           operation-failure.test.ts
@@ -1076,7 +1073,6 @@ templates/
   README.md
 tests/
   behavior/
-    runbook-script.test.ts
     tree-script.test.ts
   fixtures/
     cert.pem
@@ -1089,8 +1085,10 @@ tests/
     desktop-integration.test.ts
     docs-links.test.ts
     eas-ignore.test.ts
+    mobile-theme-preview.test.ts
     runbook-windows.test.ts
     runtime-init.test.ts
+    templates.test.ts
     tests.test.ts
     theme.test.ts
     toolchain-pins.test.ts
@@ -1100,6 +1098,8 @@ tests/
     overlay-engine/
       Dockerfile
       run.sh
+    templates/
+      run.mjs
     smoke.mjs
 .dockerignore
 .easignore
@@ -1115,7 +1115,7 @@ CLAUDE.md
 compose.dev.yml
 Dockerfile
 eslint.config.mjs
-knip.json
+knip.jsonc
 LICENSE
 package.json
 pnpm-lock.yaml
@@ -1128,4 +1128,4 @@ tsconfig.json
 vitest.config.ts
 ```
 
-<!-- repo-structure:finish -->
+<!-- tree:finish -->

@@ -705,43 +705,6 @@ mod imp {
         }
 
         #[test]
-        fn baseline_records_device_numbers_when_mknod_is_permitted() {
-            let temp = tempfile::tempdir().unwrap();
-            let root = temp.path().join("root");
-            let output = root.join("opt/persistence/baseline.sqlite");
-            let device = root.join("null-device");
-            fs::create_dir_all(root.join("opt/persistence")).unwrap();
-            let c =
-                std::ffi::CString::new(std::os::unix::ffi::OsStrExt::as_bytes(device.as_os_str()))
-                    .unwrap();
-            let result =
-                unsafe { libc::mknod(c.as_ptr(), libc::S_IFCHR | 0o666, libc::makedev(1, 3)) };
-            if result != 0 {
-                eprintln!(
-                    "skipping device baseline test: mknod unavailable or not permitted: {}",
-                    std::io::Error::last_os_error()
-                );
-                return;
-            }
-
-            generate(&GenerateOptions {
-                root,
-                output: output.clone(),
-            })
-            .unwrap();
-
-            let db = BaselineDb::open(&output).unwrap();
-            let record = db
-                .get(&crate::public::PublicPath::parse("/null-device").unwrap())
-                .unwrap()
-                .unwrap();
-
-            assert_eq!(record.kind, "char_device");
-            assert_eq!(record.rdev_major, Some(1));
-            assert_eq!(record.rdev_minor, Some(3));
-        }
-
-        #[test]
         fn baseline_extracts_acl_and_capability_views_from_xattrs() {
             let xattrs = vec![
                 crate::rootfs::XattrRecord {

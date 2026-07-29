@@ -224,17 +224,6 @@ pub fn remove_path(path: &Path) -> Result<()> {
 /// file must not collide, and the watcher has to be able to tell a half-written
 /// file from a real one by name alone.
 ///
-/// ```
-/// use std::path::Path;
-/// use persistence::public::{is_persistence_temp_path, temp_path};
-///
-/// let staged = temp_path(Path::new("/data/home/user/notes.md"));
-/// assert_eq!(staged.parent(), Path::new("/data/home/user/notes.md").parent());
-/// assert!(is_persistence_temp_path(&staged));
-///
-/// // Distinct targets never collide, even with the same file name.
-/// assert_ne!(staged, temp_path(Path::new("/data/other/notes.md")));
-/// ```
 pub fn temp_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()

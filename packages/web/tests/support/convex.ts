@@ -45,6 +45,14 @@ export function testConvex(): Harness {
 export function stubDeploymentEnv() {
 	vi.stubEnv("CLOUD_DOMAIN", "dev.composery.cloud");
 	vi.stubEnv("WEBSITE_ORIGIN", "https://composery.test");
+	// The Polar product grid. Any path that reads a subscription back to a plan
+	// needs it configured, and an unconfigured one degrades to "not a box product"
+	// - which would silently turn a plan-reconciliation test into a test of the
+	// unrecognised-product alert instead.
+	vi.stubEnv("POLAR_BOX_AIR_MONTHLY_PRODUCT_ID", "air-monthly");
+	vi.stubEnv("POLAR_BOX_AIR_ANNUAL_PRODUCT_ID", "air-annual");
+	vi.stubEnv("POLAR_BOX_PRO_MONTHLY_PRODUCT_ID", "pro-monthly");
+	vi.stubEnv("POLAR_BOX_PRO_ANNUAL_PRODUCT_ID", "pro-annual");
 }
 
 type UserSeed = {
@@ -91,6 +99,12 @@ export async function seedBox(t: Harness, seed: BoxSeed): Promise<Id<"boxes">> {
 		async (ctx) =>
 			await ctx.db.insert("boxes", {
 				slug: "box",
+				// The cheaper plan by default, so a test that says nothing about plans
+				// exercises the one without manual snapshots - the restricted path is
+				// the one worth having as the unstated baseline. The split follows the
+				// seeded plan unless a test overrides it.
+				plan: "air",
+				manual_snapshot_cap: 0,
 				status: "running",
 				polar_subscription_id: undefined,
 				created_at: 1,

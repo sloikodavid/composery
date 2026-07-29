@@ -125,6 +125,8 @@ describe("suspension", () => {
 				await ctx.db.insert("boxes", {
 					user_id: user.clerkUserId,
 					slug: "box",
+					plan: "air",
+					manual_snapshot_cap: 0,
 					status: "running",
 					created_at: 1,
 					updated_at: 1

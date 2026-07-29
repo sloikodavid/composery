@@ -3,7 +3,8 @@ import {
 	annualSavingsPercent,
 	formatPrice,
 	isBoxBillingInterval,
-	monthlyPriceFromMinorUnits
+	monthlyPriceFromMinorUnits,
+	sharedAnnualSavingsPercent
 } from "@/lib/box-billing";
 
 // Figures here are arbitrary, never the live Polar prices: the point is the
@@ -19,35 +20,53 @@ describe("box billing", () => {
 	});
 
 	test("states the saving the two prices actually describe", () => {
-		const currency = "usd";
-		expect(annualSavingsPercent({ currency, month: 100, year: 75 })).toBe(25);
-		expect(annualSavingsPercent({ currency, month: 80, year: 40 })).toBe(50);
+		expect(annualSavingsPercent({ month: 100, year: 75 })).toBe(25);
+		expect(annualSavingsPercent({ month: 80, year: 40 })).toBe(50);
 	});
 
 	test("advertises no saving when the annual price stops being a discount", () => {
-		const currency = "usd";
-		expect(
-			annualSavingsPercent({ currency, month: 100, year: 100 })
-		).toBeNull();
-		expect(
-			annualSavingsPercent({ currency, month: 100, year: 125 })
-		).toBeNull();
+		expect(annualSavingsPercent({ month: 100, year: 100 })).toBeNull();
+		expect(annualSavingsPercent({ month: 100, year: 125 })).toBeNull();
 	});
 
 	test("advertises a saving too small to round up as none at all", () => {
-		const currency = "usd";
-		expect(
-			annualSavingsPercent({ currency, month: 100, year: 99.8 })
-		).toBeNull();
+		expect(annualSavingsPercent({ month: 100, year: 99.8 })).toBeNull();
 	});
 
 	test("claims no saving against a price it never read", () => {
-		const currency = "usd";
+		expect(annualSavingsPercent({ month: null, year: 75 })).toBeNull();
+		expect(annualSavingsPercent({ month: 100, year: null })).toBeNull();
+	});
+
+	// The badge sits on the billing toggle, above every card at once, so it may
+	// only claim a saving that holds for all of them.
+	test("advertises one shared saving only when every plan gives it", () => {
 		expect(
-			annualSavingsPercent({ currency, month: null, year: 75 })
+			sharedAnnualSavingsPercent({
+				currency: "usd",
+				plans: {
+					air: { month: 100, year: 75 },
+					pro: { month: 200, year: 150 }
+				}
+			})
+		).toBe(25);
+		expect(
+			sharedAnnualSavingsPercent({
+				currency: "usd",
+				plans: {
+					air: { month: 100, year: 75 },
+					pro: { month: 200, year: 100 }
+				}
+			})
 		).toBeNull();
 		expect(
-			annualSavingsPercent({ currency, month: 100, year: null })
+			sharedAnnualSavingsPercent({
+				currency: "usd",
+				plans: {
+					air: { month: 100, year: 75 },
+					pro: { month: null, year: 150 }
+				}
+			})
 		).toBeNull();
 	});
 

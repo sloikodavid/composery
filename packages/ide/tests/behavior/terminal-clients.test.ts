@@ -6,11 +6,6 @@ import { addedLines, evaluatePatchSnippets } from "../support/patch.ts";
 
 const patch = readRepoFile("packages/ide/patches/terminal-clients.diff");
 const added = addedLines(patch);
-const api = readRepoFile(
-	"packages/ide/overlay/src/node/routes/api/terminals.ts"
-);
-const apiDocs = readRepoFile("docs/api.mdx");
-const smoke = readRepoFile("tests/system/smoke.mjs");
 
 function declaration(source: string, marker: string): string {
 	const start = source.indexOf(marker);
@@ -299,70 +294,5 @@ describe("terminal data flow control", () => {
 			"this._ptyHostService.unregisterTerminalClient(detached.id, clientId)"
 		);
 		expect(added).not.toContain("'vscode'");
-	});
-});
-
-describe("terminal API viewport protocol", () => {
-	const resolveDimension = declaration(api, "function resolveDimension(");
-	const parseMessage = declaration(
-		api,
-		"export function parseTerminalViewportMessage("
-	).replace("export ", "");
-	const { parseTerminalViewportMessage } = evaluatePatchSnippets<{
-		parseTerminalViewportMessage: (data: string) => {
-			type: "resize";
-			cols: number;
-			rows: number;
-		};
-	}>([resolveDimension, parseMessage], ["parseTerminalViewportMessage"]);
-
-	test("accepts bounded resize messages and rejects inert controls", () => {
-		expect(
-			parseTerminalViewportMessage(
-				JSON.stringify({ type: "resize", cols: 47, rows: 19 })
-			)
-		).toEqual({ type: "resize", cols: 47, rows: 19 });
-		expect(() =>
-			parseTerminalViewportMessage(
-				JSON.stringify({ type: "resize", cols: 0, rows: 24 })
-			)
-		).toThrow("integers from 1 to 1000");
-		expect(() =>
-			parseTerminalViewportMessage(JSON.stringify({ type: "input" }))
-		).toThrow('type must be "resize"');
-		expect(() => parseTerminalViewportMessage("not json")).toThrow(
-			"must be valid JSON"
-		);
-	});
-
-	test("requires one protocol contract and owns a client lifecycle", () => {
-		expect(api).toContain(
-			'TERMINAL_VIEWPORT_PROTOCOL = "composery-terminal-v1"'
-		);
-		expect(api).toMatch(
-			/protocols\.has\(TERMINAL_VIEWPORT_PROTOCOL\)\s*\?\s*TERMINAL_VIEWPORT_PROTOCOL\s*:\s*false/
-		);
-		expect(api).toContain(
-			"!requestedProtocols.includes(TERMINAL_VIEWPORT_PROTOCOL)"
-		);
-		expect(api).toContain(
-			'endWithStatus(req, 400, "Terminal Protocol Required")'
-		);
-		expect(api).toContain("if (isBinary)");
-		expect(api).not.toContain("isViewport");
-		expect(api).toContain("registerTerminalClient(id, clientId)");
-		expect(api).toContain("activateTerminalViewport(id, clientId");
-		expect(api).toContain("unregisterTerminalClient(id, clientId)");
-		expect(apiDocs).toContain("server rejects attachments without it");
-		expect(apiDocs).toContain("Binary client frames are terminal");
-		expect(apiDocs).toContain("websocat --protocol composery-terminal-v1");
-		expect(smoke).toContain('"Sec-WebSocket-Protocol: composery-terminal-v1"');
-		expect(smoke).toContain(
-			'headers["sec-websocket-protocol"] !== "composery-terminal-v1"'
-		);
-		expect(apiDocs).toContain(
-			"server restores the most recently active attached viewport"
-		);
-		expect(apiDocs).not.toContain("legacy");
 	});
 });

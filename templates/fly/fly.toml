@@ -22,9 +22,9 @@ primary_region = "iad"
     path = "/_composery/healthz"
     interval = "30s"
     timeout = "5s"
-    # First boot runs `composery persistence apply`; allow for it, matching the
-    # other targets' startup grace (k8s startupProbe ~150s, Railway 120s).
-    grace_period = "150s"
+    # Fly caps this at one minute. The startup grace on targets without that cap
+    # remains longer (Kubernetes ~150s, Railway 120s).
+    grace_period = "60s"
 
 [[mounts]]
   source = "composery_data"

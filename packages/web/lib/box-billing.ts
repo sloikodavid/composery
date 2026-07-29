@@ -1,3 +1,5 @@
+import type { BoxPlan } from "./box-plan";
+
 // Copy and interval shape only. No price lives here: Polar owns it, its product
 // can be repriced from the Polar dashboard without touching this repo, and
 // `billing/polar.ts#boxPricing` reads whatever the product now says.
@@ -20,10 +22,17 @@ export type BoxBillingInterval = keyof typeof BOX_BILLING;
 // Null is "we have not read it from Polar", never "free" and never a stand-in
 // for a remembered figure. A caller renders nothing rather than a number it
 // cannot source, the same rule runtimeRelease.ts applies to fleet versions.
-export type BoxPricing = {
-	currency: string | null;
+export type PlanPricing = {
 	month: number | null;
 	year: number | null;
+};
+
+// One currency for the catalogue, one figure per (plan, interval). Polar
+// denominates a product, so a page that showed two currencies would be
+// reporting a Polar misconfiguration rather than a price.
+export type BoxPricing = {
+	currency: string | null;
+	plans: Record<BoxPlan, PlanPricing>;
 };
 
 // Object.hasOwn, not `in`: the value arrives from the ?billing= query string,
@@ -53,10 +62,26 @@ export function monthlyPriceFromMinorUnits(
 // a price we never read supports no claim at all, and a live Polar catalogue
 // priced at parity or worse leaves nothing to boast about - "-0%" reads as a bug
 // rather than as parity.
-export function annualSavingsPercent(pricing: BoxPricing) {
+export function annualSavingsPercent(pricing: PlanPricing) {
 	if (pricing.month === null || pricing.year === null) return null;
 	const percent = Math.round((1 - pricing.year / pricing.month) * 100);
 	return percent > 0 ? percent : null;
+}
+
+// The one saving the billing toggle can claim for the whole page, or null when
+// there isn't one.
+//
+// Null when the plans disagree, not "whichever is biggest": the toggle sits
+// above every card at once, so a figure that only holds for one of them would be
+// an advertised discount some visitors do not get. A catalogue priced with one
+// consistent annual discount - which is the normal case, and the only one worth
+// a badge - still gets its badge.
+export function sharedAnnualSavingsPercent(pricing: BoxPricing) {
+	const percents = Object.values(pricing.plans).map(annualSavingsPercent);
+	if (percents.length === 0 || percents.some((percent) => percent === null)) {
+		return null;
+	}
+	return new Set(percents).size === 1 ? percents[0] : null;
 }
 
 // Null for the same reason, so a missing price cannot render as a bare currency

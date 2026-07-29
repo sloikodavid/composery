@@ -13,7 +13,6 @@ import {
 	parseCreateImageResponse,
 	parseImageResponse,
 	parseLocations,
-	parseServerTypes,
 	placementCandidates,
 	primaryIpListPath,
 	rebuildServerPayload,
@@ -145,19 +144,19 @@ describe("vps request contracts", () => {
 });
 
 describe("placementCandidates", () => {
-	test("tries each location for cx23 before falling back to larger types", () => {
-		expect(placementCandidates()).toEqual([
-			{ serverType: "cx23", location: "nbg1" },
-			{ serverType: "cx23", location: "fsn1" },
-			{ serverType: "cx23", location: "hel1" },
-			{ serverType: "cx33", location: "nbg1" },
-			{ serverType: "cx33", location: "fsn1" },
-			{ serverType: "cx33", location: "hel1" }
+	// The server type is the box's plan, so it is never a fallback: a box that
+	// could not be placed as its own plan must fail rather than quietly come up on
+	// another plan's machine. Only the location varies.
+	test("tries each location and never another server type", () => {
+		expect(placementCandidates("cx43")).toEqual([
+			{ serverType: "cx43", location: "nbg1" },
+			{ serverType: "cx43", location: "fsn1" },
+			{ serverType: "cx43", location: "hel1" }
 		]);
 	});
 
 	test("rejects unsupported env placement values", () => {
-		expect(() => parseServerTypes("cx23,ccx13")).toThrow(
+		expect(() => parseLocations("nbg1,mars1")).toThrow(
 			"Unsupported provisioning value"
 		);
 		expect(() => parseLocations("nbg1,ash")).toThrow(

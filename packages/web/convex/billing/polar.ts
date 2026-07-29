@@ -4,9 +4,11 @@ import { components } from "../_generated/api";
 import { internalAction, query } from "../_generated/server";
 import { requiredEnv } from "../env";
 import {
+	BOX_BILLING,
 	type BoxBillingInterval,
 	monthlyPriceFromMinorUnits
 } from "../../lib/box-billing";
+import { BOX_PLAN_ORDER, type BoxPlan } from "../../lib/box-plan";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",
@@ -27,25 +29,83 @@ type PolarRefund = {
 
 const REFUND_IDEMPOTENCY_METADATA_KEY = "composery_refund_key";
 
+// Polar fixes the billing interval on a product, so a plan sold on two intervals
+// is two products - one Polar product per (plan, interval) pair. This grid is
+// the only place that correspondence is written down, and it is written as
+// literal names on purpose: the checklist test in
+// `tests/invariants/convex/envExample.test.ts` finds a plane's variables by
+// scanning this source for quoted names inside the env readers, so a name
+// assembled at runtime would be a variable the example files could never be
+// checked against.
 const BOX_PRODUCT_ENV = {
-	month: "POLAR_BOX_MONTHLY_PRODUCT_ID",
-	year: "POLAR_BOX_ANNUAL_PRODUCT_ID"
-} as const satisfies Record<BoxBillingInterval, string>;
+	air: {
+		month: "POLAR_BOX_AIR_MONTHLY_PRODUCT_ID",
+		year: "POLAR_BOX_AIR_ANNUAL_PRODUCT_ID"
+	},
+	pro: {
+		month: "POLAR_BOX_PRO_MONTHLY_PRODUCT_ID",
+		year: "POLAR_BOX_PRO_ANNUAL_PRODUCT_ID"
+	}
+} as const satisfies Record<BoxPlan, Record<BoxBillingInterval, string>>;
 
-export function boxProductId(billingInterval: BoxBillingInterval) {
-	return requiredEnv(BOX_PRODUCT_ENV[billingInterval]);
+// A sellable box: which plan, billed how often. Checkout picks one, a
+// subscription carries one, and `boxSellableForProductId` reads one back out of
+// Polar - so switching plan and switching billing cycle are the same move on
+// two axes rather than two features.
+export type BoxSellable = {
+	billingInterval: BoxBillingInterval;
+	plan: BoxPlan;
+};
+
+export function boxProductId({ billingInterval, plan }: BoxSellable) {
+	return requiredEnv(BOX_PRODUCT_ENV[plan][billingInterval]);
 }
 
-export function boxProductIds(billingInterval: BoxBillingInterval) {
-	const otherInterval = billingInterval === "year" ? "month" : "year";
-	return [boxProductId(billingInterval), boxProductId(otherInterval)];
+// The products a checkout session may sell, the chosen one first. Deliberately
+// only the chosen plan's two intervals: Polar shows every product in the list,
+// and a customer who came to buy Air should be able to reconsider monthly vs
+// annual in checkout without being able to walk out having bought Pro on a slug
+// reserved and capacity-admitted as Air.
+export function boxProductIds(sellable: BoxSellable) {
+	const otherInterval = sellable.billingInterval === "year" ? "month" : "year";
+	return [
+		boxProductId(sellable),
+		boxProductId({ ...sellable, billingInterval: otherInterval })
+	];
 }
 
-export function isBoxProductId(productId: string | null | undefined) {
-	if (!productId) return false;
-	return Object.values(BOX_PRODUCT_ENV).some(
-		(environmentVariable) => requiredEnv(environmentVariable) === productId
-	);
+// Which sellable a Polar product id is, or null when it is not one of ours.
+//
+// This is the inverse the plan-change path rests on: the customer changes what
+// they pay for in Polar's portal, the subscription arrives naming a product id,
+// and the box has to work out what it is now supposed to be. One reader for both
+// axes means a plan switch and an interval switch cannot be recognised by
+// different code that disagrees.
+export function boxSellableForProductId(
+	productId: string | null | undefined
+): BoxSellable | null {
+	if (!productId) return null;
+	for (const [plan, byInterval] of Object.entries(BOX_PRODUCT_ENV)) {
+		for (const [billingInterval, environmentVariable] of Object.entries(
+			byInterval
+		)) {
+			// A tolerant read, unlike `boxProductId`'s. This runs on the hourly sweep
+			// across every box, and a deployment missing one product id must not turn
+			// that into an exception that abandons the sweep - including the deletions
+			// it also carries. An unset variable simply matches nothing, and the
+			// caller reports the product as unrecognised, which is exactly what it is.
+			// Selling, by contrast, still fails closed: `boxProductId` demands the
+			// variable, so a sale can never be made against a product that is not
+			// configured.
+			if (process.env[environmentVariable] === productId) {
+				return {
+					billingInterval: billingInterval as BoxBillingInterval,
+					plan: plan as BoxPlan
+				};
+			}
+		}
+	}
+	return null;
 }
 
 // The price the pricing page shows, read from the Polar product that will
@@ -56,18 +116,26 @@ export function isBoxProductId(productId: string | null | undefined) {
 // that covers a deployment those webhooks have not fired for yet. Null means the
 // product has not been read, and the page renders no figure rather than one this
 // repo made up.
+const vPlanPricing = v.object({
+	month: v.union(v.number(), v.null()),
+	year: v.union(v.number(), v.null())
+});
+
 export const boxPricing = query({
 	args: {},
 	returns: v.object({
 		currency: v.union(v.string(), v.null()),
-		month: v.union(v.number(), v.null()),
-		year: v.union(v.number(), v.null())
+		plans: v.object({
+			air: vPlanPricing,
+			pro: vPlanPricing
+		})
 	}),
 	handler: async (ctx) => {
 		const products = await polarServer().listProducts(ctx);
 
-		function priceOf(billingInterval: BoxBillingInterval) {
-			const productId = process.env[BOX_PRODUCT_ENV[billingInterval]];
+		function priceOf(sellable: BoxSellable) {
+			const productId =
+				process.env[BOX_PRODUCT_ENV[sellable.plan][sellable.billingInterval]];
 			const product = productId
 				? products.find(
 						(candidate) => candidate.id === productId && !candidate.isArchived
@@ -78,20 +146,36 @@ export const boxPricing = query({
 			);
 		}
 
-		function monthlyPrice(billingInterval: BoxBillingInterval) {
-			const amount = priceOf(billingInterval)?.priceAmount;
+		function monthlyPrice(sellable: BoxSellable) {
+			const amount = priceOf(sellable)?.priceAmount;
 			return typeof amount === "number"
-				? monthlyPriceFromMinorUnits(billingInterval, amount)
+				? monthlyPriceFromMinorUnits(sellable.billingInterval, amount)
 				: null;
 		}
 
+		// One currency for the whole page: Polar denominates a product, and the
+		// first one that has been read speaks for the rest. A catalogue that
+		// disagreed with itself would be a Polar misconfiguration, not something
+		// the pricing page should try to render.
+		const currency =
+			BOX_PLAN_ORDER.flatMap((plan) =>
+				(Object.keys(BOX_BILLING) as BoxBillingInterval[]).map(
+					(billingInterval) => priceOf({ billingInterval, plan })?.priceCurrency
+				)
+			).find((value) => typeof value === "string") ?? null;
+
 		return {
-			currency:
-				priceOf("month")?.priceCurrency ??
-				priceOf("year")?.priceCurrency ??
-				null,
-			month: monthlyPrice("month"),
-			year: monthlyPrice("year")
+			currency,
+			plans: {
+				air: {
+					month: monthlyPrice({ billingInterval: "month", plan: "air" }),
+					year: monthlyPrice({ billingInterval: "year", plan: "air" })
+				},
+				pro: {
+					month: monthlyPrice({ billingInterval: "month", plan: "pro" }),
+					year: monthlyPrice({ billingInterval: "year", plan: "pro" })
+				}
+			}
 		};
 	}
 });
@@ -301,8 +385,10 @@ export const revokeSubscription = internalAction({
 export function polarServer() {
 	return new Polar(components.polar, {
 		products: {
-			boxMonthly: process.env.POLAR_BOX_MONTHLY_PRODUCT_ID ?? "",
-			boxAnnual: process.env.POLAR_BOX_ANNUAL_PRODUCT_ID ?? ""
+			boxAirMonthly: process.env.POLAR_BOX_AIR_MONTHLY_PRODUCT_ID ?? "",
+			boxAirAnnual: process.env.POLAR_BOX_AIR_ANNUAL_PRODUCT_ID ?? "",
+			boxProMonthly: process.env.POLAR_BOX_PRO_MONTHLY_PRODUCT_ID ?? "",
+			boxProAnnual: process.env.POLAR_BOX_PRO_ANNUAL_PRODUCT_ID ?? ""
 		},
 		organizationToken: process.env.POLAR_ORGANIZATION_TOKEN ?? "",
 		webhookSecret: process.env.POLAR_WEBHOOK_SECRET ?? "",

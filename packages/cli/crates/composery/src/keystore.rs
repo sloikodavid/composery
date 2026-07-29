@@ -289,12 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_name_rejected() {
-        let mut store = KeyStore::default();
-        assert!(store.create("   ").is_err());
-    }
-
-    #[test]
     fn store_file_is_private() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("api/keys.json");

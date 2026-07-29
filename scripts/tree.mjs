@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const AGENTS_FILE = "AGENTS.md";
-const TREE_START = "<!-- repo-structure:start -->";
-const TREE_FINISH = "<!-- repo-structure:finish -->";
+const TREE_START = "<!-- tree:start -->";
+const TREE_FINISH = "<!-- tree:finish -->";
 const write = process.argv.includes("--write");
 const watch = process.argv.includes("--watch");
 
@@ -82,7 +82,7 @@ function renderTree() {
 	return [
 		TREE_START,
 		"",
-		"> Live-updated by `scripts/tree.mjs` when `pnpm dev` is running. Manually update with `pnpm fix:tree`.",
+		"> Live-updated by `scripts/tree.mjs` when `pnpm dev` or `pnpm dev:tree` is running. Manually update with `pnpm fix:tree`.",
 		"",
 		"```text",
 		...renderNode(root),

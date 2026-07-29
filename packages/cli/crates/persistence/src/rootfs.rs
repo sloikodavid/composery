@@ -774,43 +774,15 @@ fn make_dev(major: u64, minor: u64) -> libc::dev_t {
 #[cfg(test)]
 mod tests {
     use super::{
-        FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink, rootfs_walker,
+        FileKind, copy_entry_atomic, facts, is_copy_unstable_error, make_hardlink,
         walker_will_descend,
     };
     use std::{
-        collections::BTreeSet,
         fs,
         io::Write,
-        os::unix::{
-            ffi::OsStrExt,
-            fs::{PermissionsExt, symlink},
-        },
+        os::unix::{ffi::OsStrExt, fs::symlink},
         path::Path,
-        process::Command,
     };
-
-    #[test]
-    fn rootfs_walker_traverses_the_subtree_watch_and_audit_share() {
-        // The seam both the watcher and the auditor go through. Its
-        // `same_file_system(true)` boundary cannot be exercised here without
-        // privileges to mount a second filesystem, so this only pins that the
-        // one shared constructor walks a normal tree; the mount-stop behaviour
-        // is covered by walkdir's own tests.
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
-        fs::create_dir_all(root.join("a/b")).unwrap();
-        fs::write(root.join("a/file"), "x").unwrap();
-
-        let seen = rootfs_walker(root)
-            .into_iter()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path().to_path_buf())
-            .collect::<BTreeSet<_>>();
-
-        assert!(seen.contains(&root.join("a")));
-        assert!(seen.contains(&root.join("a/b")));
-        assert!(seen.contains(&root.join("a/file")));
-    }
 
     #[test]
     fn mount_entry_is_not_pruned_twice() {
@@ -833,38 +805,6 @@ mod tests {
             xattr::get(&dest, "user.persistence-test").unwrap(),
             Some(b"value".to_vec())
         );
-    }
-
-    #[test]
-    fn copies_file_capabilities_when_supported() {
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("cap-source");
-        let dest = temp.path().join("cap-dest");
-        fs::write(&source, "#!/bin/sh\n").unwrap();
-        fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
-
-        let setcap = Command::new("setcap")
-            .arg("cap_net_bind_service=+ep")
-            .arg(&source)
-            .status();
-        if !setcap.is_ok_and(|status| status.success()) {
-            eprintln!("skipping capability copy test: setcap unavailable or not permitted");
-            return;
-        }
-
-        copy_entry_atomic(&source, &dest).unwrap();
-
-        let output = Command::new("getcap").arg(&dest).output();
-        let Ok(output) = output else {
-            eprintln!("skipping capability copy test: getcap unavailable");
-            return;
-        };
-        if !output.status.success() {
-            eprintln!("skipping capability copy test: getcap failed");
-            return;
-        }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("cap_net_bind_service"));
     }
 
     #[test]

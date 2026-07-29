@@ -15,6 +15,7 @@ import { websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
+import { vBoxPlan } from "../schema";
 
 type CheckoutResult = {
 	checkoutUrl: string;
@@ -94,6 +95,7 @@ export const availability = query({
 export const createCheckout = action({
 	args: {
 		billingInterval: v.union(v.literal("month"), v.literal("year")),
+		plan: vBoxPlan,
 		slug: v.string()
 	},
 	returns: v.object({
@@ -128,9 +130,17 @@ export const createCheckout = action({
 		);
 
 		if (activeCheckout) {
+			// The reservation is per slug, not per plan, so a visitor who reopened
+			// checkout on the other card gets the same reservation with the other
+			// plan's product selected, and the row's own plan follows above. The box
+			// is then born on whichever plan the order was actually paid against.
+			await ctx.runMutation(
+				internal.checkout.checkoutIntents.setCheckoutIntentPlan,
+				{ intentId: activeCheckout.intentId, plan: args.plan }
+			);
 			await selectPolarCheckoutProduct(
 				activeCheckout.checkoutId,
-				boxProductId(args.billingInterval)
+				boxProductId({ billingInterval: args.billingInterval, plan: args.plan })
 			);
 			return {
 				checkoutUrl: activeCheckout.checkoutUrl,
@@ -146,6 +156,7 @@ export const createCheckout = action({
 				await ctx.runMutation(
 					internal.checkout.checkoutIntents.reserveCheckoutIntent,
 					{
+						plan: args.plan,
 						userId: identity.subject,
 						slug
 					}
@@ -156,14 +167,21 @@ export const createCheckout = action({
 			const checkout = await polarServer().createCheckoutSession(ctx, {
 				userId: identity.subject,
 				email: user.email,
-				// Polar models monthly and yearly billing as separate products. Both
-				// are available in checkout; the first is selected by default.
-				productIds: boxProductIds(args.billingInterval),
+				// Polar models monthly and yearly billing as separate products, so a
+				// plan sold on two intervals is two products. Both of the chosen
+				// plan's are available in checkout, the selected one first; the other
+				// plan's are not, so the sale cannot change plan behind the
+				// reservation that admitted it.
+				productIds: boxProductIds({
+					billingInterval: args.billingInterval,
+					plan: args.plan
+				}),
 				origin,
 				successUrl: `${origin}/boxes?checkout_id={CHECKOUT_ID}`,
 				metadata: {
 					[CHECKOUT_INTENT_METADATA_KEYS.selectedBillingInterval]:
 						args.billingInterval,
+					[CHECKOUT_INTENT_METADATA_KEYS.selectedPlan]: args.plan,
 					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reservedIntentId,
 					[CHECKOUT_INTENT_METADATA_KEYS.slug]: slug,
 					[CHECKOUT_INTENT_METADATA_KEYS.userId]: identity.subject

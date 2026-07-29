@@ -6,6 +6,7 @@ import {
 	isBoxBillingInterval,
 	type BoxBillingInterval
 } from "@/lib/box-billing";
+import { isBoxPlan } from "@/lib/box-plan";
 import { sanitizeSlug } from "@/lib/box-slug";
 
 export const metadata: Metadata = {
@@ -15,9 +16,9 @@ export const metadata: Metadata = {
 export default async function PricingPage({
 	searchParams
 }: {
-	searchParams: Promise<{ billing?: string; slug?: string }>;
+	searchParams: Promise<{ billing?: string; plan?: string; slug?: string }>;
 }) {
-	const { billing, slug } = await searchParams;
+	const { billing, plan, slug } = await searchParams;
 	const initialBillingInterval: BoxBillingInterval = isBoxBillingInterval(
 		billing
 	)
@@ -30,6 +31,10 @@ export default async function PricingPage({
 	return (
 		<Pricing
 			initialBillingInterval={initialBillingInterval}
+			// Only ever set by the round trip through sign-in, which puts back
+			// exactly what the visitor had chosen. A fresh visit has no plan, so the
+			// dialog stays shut and the cards are the first thing asked.
+			initialPlan={isBoxPlan(plan) ? plan : null}
 			initialSlug={sanitizeSlug(slug ?? "")}
 			pricing={pricing}
 		/>

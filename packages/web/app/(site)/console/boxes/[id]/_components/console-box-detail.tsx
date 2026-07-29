@@ -48,6 +48,7 @@ import type { BoxOperationStatus, BoxOperationType } from "@/convex/schema";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
+import { BOX_PLANS, boxPlanServerType } from "@/lib/box-plan";
 
 // Typed off the schema's own unions rather than restating them as `string`: this
 // row is what the console renders, and a loose type here is what let raw
@@ -406,6 +407,13 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 						/>
 					],
 					[
+						// The plan and the machine it should be on, side by side: a box
+						// whose provisioning failed part-way is where the two differ, and
+						// nothing moves a box between plans to explain it away.
+						"Plan",
+						`${BOX_PLANS[box.plan].label} (${boxPlanServerType(box.plan)})`
+					],
+					[
 						"Placement",
 						[box.hetznerServerType, box.hetznerLocation]
 							.filter(Boolean)
@@ -585,7 +593,12 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 										)}
 									</ConfirmDialog>
 								) : null}
-								<ConsoleBoxSnapshots boxId={box.id} status={box.status} />
+								<ConsoleBoxSnapshots
+									boxId={box.id}
+									plan={box.plan}
+									split={box.snapshots}
+									status={box.status}
+								/>
 								<UpdateDialog
 									boxStatus={box.status}
 									busy={busy}

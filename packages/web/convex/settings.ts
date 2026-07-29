@@ -299,8 +299,6 @@ export const setThresholds = internalMutation({
 export const setSnapshotPolicy = internalMutation({
 	args: {
 		policy: v.object({
-			manualCap: v.number(),
-			automaticCap: v.number(),
 			manualMinIntervalMinutes: v.number(),
 			manualRetentionDays: v.number(),
 			automaticRetentionDays: v.number()

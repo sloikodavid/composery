@@ -1,6 +1,7 @@
 import type { WorkflowCtx } from "@convex-dev/workflow";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
+import { boxPlanServerType, type BoxPlan } from "../../../lib/box-plan";
 
 // Delete the box's DNS and server, waiting for Hetzner to finish, so the server
 // name/labels are free to reuse. Shared by resetBox and deleteBox.
@@ -45,11 +46,12 @@ export async function deleteRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 export async function createRuntime(
 	step: WorkflowCtx,
 	boxId: Id<"boxes">,
-	slug: string
+	slug: string,
+	plan: BoxPlan
 ) {
 	const server = await step.runAction(
 		internal.boxes.infra.hetznerVps.createServer,
-		{ boxId, slug },
+		{ boxId, slug, serverType: boxPlanServerType(plan) },
 		{ retry: true }
 	);
 

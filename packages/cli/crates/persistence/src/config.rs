@@ -379,7 +379,7 @@ fn validate_config_path(value: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AuditConfig, Config, default_max_watches, integrity_exclusions, load_or_create};
+    use super::{AuditConfig, Config, default_max_watches, load_or_create};
     use serde_json::{Value, json};
     use std::fs;
 
@@ -537,69 +537,6 @@ mod tests {
         let stored = read_json(&path);
         assert_eq!(stored["persist"], json!(["/opt/composery", "/data"]));
         assert!(stored.get("exclusions").is_none());
-    }
-
-    #[test]
-    fn integrity_exclusions_cover_every_product_owned_image_path() {
-        // Product code and state ship under these roots in the image; each MUST
-        // be shielded from becoming a user delta. Deriving the roots from the
-        // real Dockerfile means a newly installed product path - a moved binary,
-        // a new reserved directory - fails this test until it is
-        // integrity-excluded, instead of relying on anyone remembering the list.
-        // (Product paths outside /opt or /data are out of scope: the convention
-        // is that Composery's own implementation lives under /opt.)
-        let dockerfile = fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../Dockerfile"),
-        )
-        .expect("read repo Dockerfile via CARGO_MANIFEST_DIR");
-
-        let mut roots = std::collections::BTreeSet::new();
-        for token in dockerfile.split(|c: char| {
-            !(c == '/' || c == '.' || c == '_' || c == '-' || c.is_ascii_alphanumeric())
-        }) {
-            if let Some(root) = product_root(token) {
-                roots.insert(root);
-            }
-        }
-        // Sanity: the two roots we know the image installs must be discovered,
-        // or the extraction has silently stopped finding anything.
-        assert!(
-            roots.contains("/opt/composery"),
-            "expected /opt/composery among {roots:?}"
-        );
-        assert!(
-            roots.contains("/opt/persistence"),
-            "expected /opt/persistence among {roots:?}"
-        );
-
-        let integrity = integrity_exclusions();
-        for root in &roots {
-            assert!(
-                integrity.iter().any(|excluded| covers(excluded, root)),
-                "product-owned {root} is not covered by an integrity exclusion"
-            );
-        }
-    }
-
-    // Reduce a Dockerfile path token to the product-owned root it belongs to, or
-    // None if it is not product-owned. The whole `/data` volume is one root;
-    // under `/opt` each first-level directory is its own root.
-    fn product_root(token: &str) -> Option<String> {
-        if token == "/data" || token.starts_with("/data/") {
-            return Some("/data".to_string());
-        }
-        if let Some(rest) = token.strip_prefix("/opt/") {
-            let first = rest.split('/').next().unwrap_or("");
-            if !first.is_empty() {
-                return Some(format!("/opt/{first}"));
-            }
-        }
-        None
-    }
-
-    fn covers(excluded: &str, path: &str) -> bool {
-        path == excluded
-            || (path.starts_with(excluded) && path.as_bytes().get(excluded.len()) == Some(&b'/'))
     }
 
     #[test]

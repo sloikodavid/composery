@@ -26,7 +26,7 @@ export const createBox = defineBoxWorkflow({
 				runtimeVersion: release.version
 			});
 
-			await createRuntime(step, args.boxId, box.slug);
+			await createRuntime(step, args.boxId, box.slug, box.plan);
 
 			await step.runMutation(internal.boxes.status.markCreateSucceeded, {
 				boxId: args.boxId,

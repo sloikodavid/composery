@@ -6,6 +6,20 @@ import {
 	DEFAULT_SNAPSHOT_POLICY,
 	SNAPSHOT_INCOMPLETE_RETENTION_MS
 } from "@/convex/boxes/snapshotPolicy";
+import type { BoxPlan } from "@/convex/schema";
+import { BOX_PLANS, resolveSnapshotSplit } from "@/lib/box-plan";
+
+// The manual half of a Box Pro box's allowance, at the split a new one is
+// created with. Read rather than written down, so changing the plan's default
+// moves these tests with it instead of leaving them asserting a stale number.
+const PRO_MANUAL_CAP = resolveSnapshotSplit(
+	"pro",
+	BOX_PLANS.pro.snapshotManualDefault
+).manual;
+const PRO_AUTOMATIC_CAP = resolveSnapshotSplit(
+	"pro",
+	BOX_PLANS.pro.snapshotManualDefault
+).automatic;
 
 import {
 	boxOperations,
@@ -77,10 +91,15 @@ function snapshotsOf(t: Harness, boxId: Id<"boxes">) {
 	);
 }
 
-async function ownedRunningBox(t: Harness) {
+// Capture-on-demand is a plan capability, so every test about the manual path
+// needs a plan that has it. The default seed is deliberately the plan without
+// one, which is why this says so rather than relying on it.
+async function ownedRunningBox(t: Harness, plan: BoxPlan = "pro") {
 	const owner = await seedUser(t, { clerkUserId: "owner" });
 	const boxId = await seedBox(t, {
 		user_id: owner.clerkUserId,
+		plan,
+		manual_snapshot_cap: BOX_PLANS[plan].snapshotManualDefault,
 		slug: "mine",
 		status: "running"
 	});
@@ -88,6 +107,37 @@ async function ownedRunningBox(t: Harness) {
 }
 
 describe("taking a manual snapshot", () => {
+	// The gate that makes on-demand capture a Pro feature. It comes before every
+	// other check - a plan that cannot take one is not "at its cap" or "in
+	// cooldown", it simply does not have the feature.
+	test("refuses a plan without capture-on-demand snapshots", async () => {
+		const t = testConvex();
+		const { boxId, owner } = await ownedRunningBox(t, "air");
+
+		await expect(
+			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+		).rejects.toThrow(/Box Air takes automatic daily snapshots/);
+		expect(await snapshotsOf(t, boxId)).toHaveLength(0);
+		expect(await boxOperations(t, boxId)).toEqual([]);
+	});
+
+	// Staff are not an exception: a manual snapshot on a plan without them would
+	// spend a provider slot that capacity admission never reserved for this box,
+	// so the favour would really be a quiet over-subscription of the fleet.
+	test("refuses staff the same capture on a plan without it", async () => {
+		const t = testConvex();
+		const { boxId } = await ownedRunningBox(t, "air");
+		const staff = await seedUser(t, {
+			clerkUserId: "staff",
+			email: "staff@example.com",
+			role: "admin"
+		});
+
+		await expect(
+			staff.as.mutation(api.staff.boxes.createSnapshot, { boxId })
+		).rejects.toThrow(/Box Air takes automatic daily snapshots/);
+	});
+
 	test("starts a snapshot operation for a running box", async () => {
 		const t = testConvex();
 		const { boxId, owner } = await ownedRunningBox(t);
@@ -106,6 +156,8 @@ describe("taking a manual snapshot", () => {
 		const owner = await seedUser(t, { clerkUserId: "owner" });
 		await seedBox(t, {
 			user_id: owner.clerkUserId,
+			plan: "pro",
+			manual_snapshot_cap: BOX_PLANS.pro.snapshotManualDefault,
 			slug: "mine",
 			status: "stopped"
 		});
@@ -159,7 +211,7 @@ describe("taking a manual snapshot", () => {
 	test("refuses a manual snapshot at the cap rather than evicting one", async () => {
 		const t = testConvex();
 		const { boxId, owner } = await ownedRunningBox(t);
-		for (let index = 0; index < DEFAULT_SNAPSHOT_POLICY.manualCap; index += 1) {
+		for (let index = 0; index < PRO_MANUAL_CAP; index += 1) {
 			await seedSnapshot(t, boxId, owner.clerkUserId, {
 				createdAt: NOW - DAY_MS * (index + 2)
 			});
@@ -168,22 +220,111 @@ describe("taking a manual snapshot", () => {
 		await expect(
 			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/snapshot limit/);
-		expect(await snapshotsOf(t, boxId)).toHaveLength(
-			DEFAULT_SNAPSHOT_POLICY.manualCap
-		);
+		expect(await snapshotsOf(t, boxId)).toHaveLength(PRO_MANUAL_CAP);
 	});
 
 	// A box full of automatic snapshots must not block the owner's own.
 	test("counts only manual snapshots against the manual cap", async () => {
 		const t = testConvex();
 		const { boxId, owner } = await ownedRunningBox(t);
-		for (let index = 0; index < DEFAULT_SNAPSHOT_POLICY.manualCap; index += 1) {
+		for (let index = 0; index < PRO_MANUAL_CAP; index += 1) {
 			await seedSnapshot(t, boxId, owner.clerkUserId, {
 				class: "scheduled",
 				createdAt: NOW - DAY_MS * (index + 2)
 			});
 		}
 
+		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+
+		expect(await boxOperations(t, boxId)).toHaveLength(1);
+	});
+});
+
+// The owner moves slots between the two columns. It costs the fleet nothing -
+// the total is what the plan sold - so the interesting cases are the ends of the
+// range and what happens to snapshots already held on the side being shrunk.
+describe("splitting a box's snapshot allowance", () => {
+	test("moves slots between automatic and manual without changing the total", async () => {
+		const t = testConvex();
+		const { boxId, owner } = await ownedRunningBox(t);
+		const cap = BOX_PLANS.pro.snapshotCap;
+
+		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			manualCap: cap,
+			slug: "mine"
+		});
+
+		const box = await t.run(async (ctx) => await ctx.db.get(boxId));
+		expect(resolveSnapshotSplit("pro", box!.manual_snapshot_cap)).toEqual({
+			automatic: 0,
+			manual: cap
+		});
+	});
+
+	test("refuses more than the plan sells", async () => {
+		const t = testConvex();
+		const { owner } = await ownedRunningBox(t);
+
+		await expect(
+			owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+				manualCap: BOX_PLANS.pro.snapshotCap + 1,
+				slug: "mine"
+			})
+		).rejects.toThrow(/includes/);
+	});
+
+	// A plan without manual snapshots has nothing to split, and saying so is
+	// better than silently storing a number that resolves back to zero.
+	test("refuses a split on a plan without manual snapshots", async () => {
+		const t = testConvex();
+		const { owner } = await ownedRunningBox(t, "air");
+
+		await expect(
+			owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+				manualCap: 1,
+				slug: "mine"
+			})
+		).rejects.toThrow(/takes its snapshots automatically/);
+	});
+
+	// Lowering the manual side below what is already held must not delete
+	// anything - those are the owner's own checkpoints. New ones are simply
+	// refused until the existing ones expire or are removed, which is the rule a
+	// full manual allowance has always followed.
+	test("keeps snapshots already held when their side is shrunk", async () => {
+		const t = testConvex();
+		const { boxId, owner } = await ownedRunningBox(t);
+		for (let index = 0; index < PRO_MANUAL_CAP; index += 1) {
+			await seedSnapshot(t, boxId, owner.clerkUserId, {
+				createdAt: NOW - DAY_MS * (index + 2)
+			});
+		}
+
+		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			manualCap: 0,
+			slug: "mine"
+		});
+
+		expect(await snapshotsOf(t, boxId)).toHaveLength(PRO_MANUAL_CAP);
+		await expect(
+			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+		).rejects.toThrow(/snapshot limit/);
+	});
+
+	// Raising the manual side is what unblocks a box that was at its cap.
+	test("lets a box at its manual cap take another once the split is raised", async () => {
+		const t = testConvex();
+		const { boxId, owner } = await ownedRunningBox(t);
+		for (let index = 0; index < PRO_MANUAL_CAP; index += 1) {
+			await seedSnapshot(t, boxId, owner.clerkUserId, {
+				createdAt: NOW - DAY_MS * (index + 2)
+			});
+		}
+
+		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			manualCap: PRO_MANUAL_CAP + 1,
+			slug: "mine"
+		});
 		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
 
 		expect(await boxOperations(t, boxId)).toHaveLength(1);
@@ -218,11 +359,7 @@ describe("opening a snapshot row", () => {
 			class: "scheduled",
 			createdAt: NOW - DAY_MS * 10
 		});
-		for (
-			let index = 1;
-			index < DEFAULT_SNAPSHOT_POLICY.automaticCap;
-			index += 1
-		) {
+		for (let index = 1; index < PRO_AUTOMATIC_CAP; index += 1) {
 			await seedSnapshot(t, boxId, owner.clerkUserId, {
 				class: "scheduled",
 				createdAt: NOW - DAY_MS * (10 - index)
@@ -250,11 +387,7 @@ describe("opening a snapshot row", () => {
 			class: "manual",
 			createdAt: NOW - DAY_MS * 100
 		});
-		for (
-			let index = 0;
-			index < DEFAULT_SNAPSHOT_POLICY.automaticCap;
-			index += 1
-		) {
+		for (let index = 0; index < PRO_AUTOMATIC_CAP; index += 1) {
 			await seedSnapshot(t, boxId, owner.clerkUserId, {
 				class: "scheduled",
 				createdAt: NOW - DAY_MS * (10 - index)
@@ -462,6 +595,24 @@ describe("automatic snapshots", () => {
 		expect(await boxOperations(t, boxId)).toMatchObject([
 			{ type: "snapshot", trigger: "system:auto_snapshot" }
 		]);
+	});
+
+	// An owner who gives every slot to their own snapshots has asked for no daily
+	// one. Starting an operation that then fails its capacity check would record a
+	// failure every night for a box behaving exactly as configured.
+	test("skips a box whose owner kept no slots for automatic snapshots", async () => {
+		const t = testConvex();
+		const { boxId, owner } = await ownedRunningBox(t);
+		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			manualCap: BOX_PLANS.pro.snapshotCap,
+			slug: "mine"
+		});
+
+		await t.mutation(internal.boxes.snapshots.startAutomaticSnapshot, {
+			boxId
+		});
+
+		expect(await boxOperations(t, boxId)).toEqual([]);
 	});
 
 	test("skips a box that is not running", async () => {

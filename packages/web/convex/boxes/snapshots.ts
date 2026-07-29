@@ -8,8 +8,10 @@ import {
 	type MutationCtx
 } from "../_generated/server";
 import { vSnapshotClass, type OperationTrigger } from "../schema";
+import { BOX_PLANS, planAllowsManualSnapshots } from "../../lib/box-plan";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
+import { resolveSnapshotSplit } from "../../lib/box-plan";
 import { appendBoxEvent } from "./events";
 import { boxEventType } from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
@@ -20,8 +22,7 @@ import {
 	snapshotEvictionCount,
 	snapshotExpiry,
 	snapshotIdempotencyBucket,
-	snapshotScheduleDelayMs,
-	type SnapshotPolicy
+	snapshotScheduleDelayMs
 } from "./snapshotPolicy";
 
 type SnapshotClass = Infer<typeof vSnapshotClass>;
@@ -107,12 +108,13 @@ async function oldestAutomaticCompleteSnapshotIds(
 // by either path.
 async function snapshotCapacityPlan(
 	ctx: StartCtx,
-	boxId: Id<"boxes">,
-	cls: SnapshotClass,
-	policy: SnapshotPolicy
+	box: Doc<"boxes">,
+	cls: SnapshotClass
 ) {
+	const boxId = box._id;
+	const split = resolveSnapshotSplit(box.plan, box.manual_snapshot_cap);
 	if (cls === "manual") {
-		const cap = policy.manualCap;
+		const cap = split.manual;
 		const { count } = await countActiveSnapshotsByClass(
 			ctx,
 			boxId,
@@ -126,7 +128,7 @@ async function snapshotCapacityPlan(
 		};
 	}
 
-	const cap = policy.automaticCap;
+	const cap = split.automatic;
 	const capRepairBatch = cap + 1;
 	const activeCountLimit = cap + capRepairBatch;
 
@@ -155,25 +157,23 @@ async function snapshotCapacityPlan(
 
 async function assertSnapshotCapacity(
 	ctx: StartCtx,
-	boxId: Id<"boxes">,
-	cls: SnapshotClass,
-	policy: SnapshotPolicy
+	box: Doc<"boxes">,
+	cls: SnapshotClass
 ) {
-	const plan = await snapshotCapacityPlan(ctx, boxId, cls, policy);
+	const plan = await snapshotCapacityPlan(ctx, box, cls);
 	if (!plan.canInsert) {
 		throw new ConvexError(
-			"This box has reached its snapshot limit. Delete a snapshot to take a new one."
+			"This box has reached its snapshot limit. Delete one to take another, or give manual snapshots a bigger share of its allowance."
 		);
 	}
 }
 
 async function prepareSnapshotCapacity(
 	ctx: StartCtx,
-	boxId: Id<"boxes">,
-	cls: SnapshotClass,
-	policy: SnapshotPolicy
+	box: Doc<"boxes">,
+	cls: SnapshotClass
 ) {
-	const plan = await snapshotCapacityPlan(ctx, boxId, cls, policy);
+	const plan = await snapshotCapacityPlan(ctx, box, cls);
 	for (const snapshotRowId of plan.evictions) {
 		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId
@@ -182,7 +182,7 @@ async function prepareSnapshotCapacity(
 
 	if (!plan.canInsert) {
 		throw new ConvexError(
-			"This box has reached its snapshot limit. Delete a snapshot to take a new one."
+			"This box has reached its snapshot limit. Delete one to take another, or give manual snapshots a bigger share of its allowance."
 		);
 	}
 }
@@ -197,6 +197,16 @@ export async function startManualSnapshot(
 	idempotencyKeyPrefix: string,
 	trigger: OperationTrigger
 ) {
+	// Capture-on-demand is a plan capability, and this is the gate for every
+	// caller of it - owner and staff alike. Staff are not exempted: a manual
+	// snapshot on a plan without them would commit a provider slot that capacity
+	// admission never reserved for this box, so the exception would be a quiet
+	// over-subscription of the fleet's snapshot quota rather than a favour.
+	if (!planAllowsManualSnapshots(box.plan)) {
+		throw new ConvexError(
+			`${BOX_PLANS[box.plan].label} takes automatic daily snapshots. Switch to ${BOX_PLANS.pro.label} to capture one whenever you want.`
+		);
+	}
 	if (box.status !== "running") {
 		throw new ConvexError(
 			"Snapshots are only available while the box is running."
@@ -220,7 +230,7 @@ export async function startManualSnapshot(
 			"A snapshot was taken moments ago. Try again in a few minutes."
 		);
 	}
-	await assertSnapshotCapacity(ctx, box._id, "manual", snapshotPolicy);
+	await assertSnapshotCapacity(ctx, box, "manual");
 
 	const operationId = await startBoxOperation(ctx, box._id, "snapshot", {
 		idempotencyKey: `${idempotencyKeyPrefix}:${box._id}:${snapshotIdempotencyBucket(Date.now(), manualMinIntervalMs)}`,
@@ -238,8 +248,7 @@ export const beginSnapshot = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
 
-		const { snapshotPolicy } = await readGlobalSettings(ctx);
-		await prepareSnapshotCapacity(ctx, box._id, args.class, snapshotPolicy);
+		await prepareSnapshotCapacity(ctx, box, args.class);
 
 		const now = Date.now();
 		const snapshotRowId = await ctx.db.insert("box_snapshots", {
@@ -538,6 +547,18 @@ export const startAutomaticSnapshot = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box || box.status !== "running") return;
+
+		// An owner may give every slot to snapshots they take themselves, which
+		// leaves nothing for the daily one. Skip before starting an operation
+		// rather than letting the capacity check fail inside the workflow: that
+		// would record a failed snapshot every night for a box whose owner chose
+		// exactly this, and a nightly failure nobody should act on is how real ones
+		// stop being read.
+		if (
+			resolveSnapshotSplit(box.plan, box.manual_snapshot_cap).automatic === 0
+		) {
+			return;
+		}
 
 		const { snapshotPolicy } = await readGlobalSettings(ctx);
 		const manualMinIntervalMs =

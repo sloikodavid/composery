@@ -16,14 +16,22 @@ deployment:
 - checkout enabled/disabled;
 - the Hetzner server and snapshot allocations assigned to this deployment;
 - per-user concurrent unpaid checkout reservations;
-- snapshot caps, minimum interval, and retention;
+- snapshot retention windows and the manual-capture cooldown;
 - abuse/resource thresholds;
-- automatic suspension enabled/disabled; and
-- the minimum runtime version the fleet may run.
+- automatic suspension enabled/disabled;
+- the minimum runtime version the fleet may run; and
+- the plan a comped box is granted on.
 
 Checkout fails closed until both Hetzner allocations are configured. Read
 [Operations](./operations.md) before changing allocations or destructive
 behavior.
+
+What a plan _is_ deliberately stays in code rather than joining that list: its
+machine, and how many snapshots it includes, live in `lib/box-plan.ts` because
+the pricing page is printed from that same row. A console control over either
+would let what a visitor is sold and what they are given disagree. How an owner
+divides their own box's allowance is theirs, not staff's, and lives on the box.
+See [Hetzner](./services/hetzner.md#plans).
 
 ## Runtime image versions
 
@@ -73,7 +81,10 @@ app ships on the app stores' cadence against whatever box it connects to.
 immutable digest when it is created and records that digest, so the tag can move
 afterwards without changing what any existing box runs. Only two operations
 re-resolve the channel: Reset, which rebuilds the host and does not keep the
-box's files, and Update, which keeps them.
+box's files, and Update, which keeps them. Repair rewrites the box's runtime
+files from Convex state, so it puts back the digest the row already records
+rather than advancing it - which is what makes Repair the way back from a failed
+update.
 
 Compare digests, never version strings. The digest is what a box runs; the
 `org.opencontainers.image.version` label on it is the human-readable name shown
@@ -171,7 +182,7 @@ All fixed times are UTC.
 | Delete expired box authorization records | Every 15 minutes |
 | Reconcile capacity alerts                | Every 15 minutes |
 | Retry staff alerts                       | Every 15 minutes |
-| Subscription deletion reconciliation     | Hourly at :11    |
+| Subscription reconciliation              | Hourly at :11    |
 | Account deletion finalization            | Hourly at :19    |
 | Finish failed box deletions              | Hourly at :27    |
 | Poll box metrics                         | Every 10 minutes |

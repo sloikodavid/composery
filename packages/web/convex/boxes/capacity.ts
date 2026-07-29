@@ -1,6 +1,7 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
-import { boxStatusesExcept, type BoxStatus } from "../schema";
+import { boxStatusesExcept, type BoxPlan, type BoxStatus } from "../schema";
+import { BOX_PLANS, BOX_PLAN_ORDER } from "../../lib/box-plan";
 import type { SnapshotPolicy } from "./snapshotPolicy";
 
 // Every status but "deleted" holds a Hetzner server, so every one of them counts
@@ -60,8 +61,24 @@ export function capacityBlockMessage(reason: CapacityBlockReason) {
 	}
 }
 
-export function snapshotSlotsPerBox(policy: SnapshotPolicy) {
-	return policy.manualCap + policy.automaticCap;
+// The snapshot entitlement one box of this plan commits, whether or not it has
+// used any of it.
+//
+// The plan's total, not the box's split: moving the slider between automatic and
+// manual moves slots from one column to the other and never changes how many the
+// box can hold, so the fleet's commitment is unaffected by it. That is the whole
+// reason the plan sells a total rather than two separate caps.
+export function snapshotSlotsForPlan(plan: BoxPlan) {
+	return BOX_PLANS[plan].snapshotCap;
+}
+
+// What admitting one more box has to reserve, before anyone has said which plan
+// they are buying. The pricing page asks whether checkout is open at all, so the
+// answer cannot depend on a choice that has not been made yet - and the safe
+// direction is the expensive plan: room for a Pro box is room for an Air box,
+// while the reverse is not true.
+export function largestSnapshotSlotsPerBox() {
+	return Math.max(...BOX_PLAN_ORDER.map(snapshotSlotsForPlan));
 }
 
 export function capacityAvailability({
@@ -118,19 +135,17 @@ export function capacityAvailability({
 }
 
 export function reservedSnapshotCommitments({
-	activeCheckoutCount,
-	liveBoxIds,
-	snapshotRows,
-	slotsPerBox
+	activeCheckoutPlans,
+	liveBoxes,
+	snapshotRows
 }: {
-	activeCheckoutCount: number;
-	liveBoxIds: ReadonlySet<string>;
+	activeCheckoutPlans: readonly BoxPlan[];
+	liveBoxes: readonly { id: string; plan: BoxPlan }[];
 	snapshotRows: readonly {
 		boxId: string;
 		imageId?: number;
 		status: Doc<"box_snapshots">["status"];
 	}[];
-	slotsPerBox: number;
 }) {
 	const activeSnapshotsByBox = new Map<string, number>();
 	let commitments = 0;
@@ -145,43 +160,50 @@ export function reservedSnapshotCommitments({
 		if (active || snapshot.imageId !== undefined) commitments += 1;
 	}
 
-	for (const boxId of liveBoxIds) {
-		const activeSnapshots = activeSnapshotsByBox.get(boxId) ?? 0;
-		commitments += Math.max(0, slotsPerBox - activeSnapshots);
+	// Each live box reserves its own plan's entitlement, counting the slots it has
+	// already filled towards it rather than on top of it. A box that has more
+	// snapshots than its plan now entitles it to - because it was downgraded while
+	// holding manual ones - reserves nothing further; those rows are already
+	// counted above, so the arithmetic stays honest without a special case.
+	for (const box of liveBoxes) {
+		const slots = snapshotSlotsForPlan(box.plan);
+		commitments += Math.max(0, slots - (activeSnapshotsByBox.get(box.id) ?? 0));
 	}
-	return commitments + activeCheckoutCount * slotsPerBox;
+	for (const plan of activeCheckoutPlans) {
+		commitments += snapshotSlotsForPlan(plan);
+	}
+	return commitments;
 }
 
 export async function readCapacityUsage(
 	ctx: { db: DatabaseReader },
 	config: CapacityConfig
 ): Promise<CapacityUsage> {
-	const liveBoxIds = new Set<string>();
+	const liveBoxes: { id: string; plan: BoxPlan }[] = [];
 	for (const status of CAPACITY_BOX_STATUSES) {
 		const boxes = await ctx.db
 			.query("boxes")
 			.withIndex("status", (query) => query.eq("status", status))
 			.collect();
-		for (const box of boxes) liveBoxIds.add(box._id);
+		for (const box of boxes) liveBoxes.push({ id: box._id, plan: box.plan });
 	}
 
 	const activeCheckouts = await ctx.db
 		.query("box_checkout_intents")
 		.withIndex("status_created_at", (query) => query.eq("status", "active"))
 		.collect();
-	const activeCheckoutCount = activeCheckouts.filter(
-		(intent) => !intent.box_id
-	).length;
+	const activeCheckoutPlans = activeCheckouts
+		.filter((intent) => !intent.box_id)
+		.map((intent) => intent.plan);
 
-	const slotsPerBox = snapshotSlotsPerBox(config.snapshotPolicy);
+	const slotsPerBox = largestSnapshotSlotsPerBox();
 	const snapshots = await ctx.db.query("box_snapshots").collect();
 	// Pending captures already promise a future provider image. Failed or
 	// deleting rows count only while they still reference an image that exists
 	// (or is being removed) at Hetzner.
 	const snapshotCommitments = reservedSnapshotCommitments({
-		activeCheckoutCount,
-		liveBoxIds,
-		slotsPerBox,
+		activeCheckoutPlans,
+		liveBoxes,
 		snapshotRows: snapshots.map((snapshot) => ({
 			boxId: snapshot.box_id,
 			imageId: snapshot.hetzner_image_id,
@@ -190,11 +212,11 @@ export async function readCapacityUsage(
 	});
 
 	return capacityAvailability({
-		activeCheckoutCount,
+		activeCheckoutCount: activeCheckoutPlans.length,
 		checkoutEnabled: config.checkoutEnabled,
 		hetznerServerLimit: config.hetznerServerLimit,
 		hetznerSnapshotLimit: config.hetznerSnapshotLimit,
-		liveBoxCount: liveBoxIds.size,
+		liveBoxCount: liveBoxes.length,
 		snapshotCommitments,
 		snapshotSlotsPerBox: slotsPerBox
 	});

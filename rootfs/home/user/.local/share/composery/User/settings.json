@@ -21,6 +21,13 @@
 		"**/.svn": false,
 		"**/Thumbs.db": false
 	},
+	"search.exclude": {
+		"**/.DS_Store": true,
+		"**/.git": true,
+		"**/.hg": true,
+		"**/.svn": true,
+		"**/Thumbs.db": true
+	},
 	"explorer.compactFolders": false,
 	"scm.compactFolders": false,
 	"git.autofetch": true,

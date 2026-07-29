@@ -23,6 +23,7 @@ import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { boxPath } from "@/lib/box-route";
+import { BOX_PLANS } from "@/lib/box-plan";
 import { formatDate } from "@/lib/datetime";
 import { failureNotice } from "@/lib/operation-failure";
 import { cn } from "@/lib/utils";
@@ -111,7 +112,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 						iconPosition="start"
 						variant="outline"
 					>
-						Comped plan
+						Comped {BOX_PLANS[box.plan].label}
 					</AnimatedIconButton>
 				) : (
 					<AnimatedIconButton
@@ -126,7 +127,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 						}
 						variant="outline"
 					>
-						{billingLine}
+						{BOX_PLANS[box.plan].label} - {billingLine}
 					</AnimatedIconButton>
 				)}
 				<AnimatedIconAnchor
@@ -151,7 +152,12 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					onSubmit={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
 					slug={box.slug}
 				/>
-				<BoxSnapshots slug={box.slug} status={box.status} />
+				<BoxSnapshots
+					plan={box.plan}
+					slug={box.slug}
+					split={box.snapshots}
+					status={box.status}
+				/>
 				<UpdateDialog
 					boxStatus={box.status}
 					busy={busy}

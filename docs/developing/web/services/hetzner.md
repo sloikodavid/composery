@@ -133,11 +133,61 @@ The provisioning code labels servers `product=composery-web` and
 `box_slug=<slug>`, creates public IPv4/IPv6, waits for running, then SSHes in and
 bootstraps Docker Compose.
 
-`HETZNER_BOX_SERVER_TYPES` and `HETZNER_BOX_LOCATIONS` are comma-separated,
-preference-ordered lists (e.g. `cx23,cx33` and `nbg1,fsn1,hel1`); provisioning
-tries every type x location combination in that order until one has capacity.
-Both are optional and restricted to the values allowed in `convex/schema.ts` -
-leaving them unset allows every supported type and location.
+The server type is not configurable: it is the box's [plan](#plans), because a
+box provisioned on a type other than the one its plan advertises would be
+selling a machine it does not run. `HETZNER_BOX_LOCATIONS` is a comma-separated,
+preference-ordered list; provisioning tries each location in that order until one
+has capacity for the plan's type. It is optional and restricted to the values
+allowed in `convex/schema.ts` - leaving it unset allows every supported
+location.
+
+## Plans
+
+A box is sold as a plan, and the plan decides three things: the Hetzner server
+type it is provisioned on, the specification shown on the pricing page, and how
+many snapshots it includes. All three live together in
+`packages/web/lib/box-plan.ts`, which is the only place any of them is written
+down - the pricing page prints from it, provisioning reads from it, and the
+snapshot caps are enforced from it. Nothing is restated here, deliberately:
+machines and allowances are product decisions that change without a schema
+change, and a copy in this file could only ever go stale.
+
+`convex/schema.ts` owns the plan names as a stored union, and the table is pinned
+to it with `satisfies`, so adding a plan fails to compile until both halves
+exist - a sellable plan can never have no machine behind it.
+
+**A box's plan is fixed when it is bought.** Nothing moves a box between plans:
+there is no resize path, no plan-change operation, and no reconciliation that
+would start one. That is what keeps the rest of the lifecycle simple - Reset,
+Repair, Restore and Update all rebuild the same server type the box has always
+had, and a snapshot is always restorable onto the box it came from because its
+disk never changes size.
+
+The corollary is that a subscription can drift from the box it pays for, if plan
+changes are enabled in Polar's customer portal and a customer uses one. Nothing
+reconciles that, because resizing a live box is not something this system does
+and rebilling silently would be worse. The hourly sweep reports it as a staff
+warning instead, and [Polar](./polar.md) says to keep portal plan changes off.
+
+## Snapshots and the allowance a plan sells
+
+Each plan sells a number of snapshots. A plan may also allow some of them to be
+captured on demand by the owner rather than taken automatically each day; where
+it does, the owner chooses the split from the box's Snapshots dialog and the two
+sides always sum to what the plan sold. Only the manual side is stored on the box
+(`manual_snapshot_cap`) and the automatic side is the remainder, so the halves
+cannot disagree or exceed the total - the invariant is arithmetic rather than a
+validation. Read it through `resolveSnapshotSplit`, never off the column.
+
+Moving the split costs the fleet nothing: capacity admission reserves the plan's
+total for every live box regardless of how it is divided, which is why a plan
+sells one number instead of two caps. Both ends of the range are reachable,
+including all-automatic and all-manual, and the dialog says what each end means
+rather than forbidding one.
+
+Shrinking a side never deletes anything. Manual snapshots are the owner's own
+checkpoints and are never evicted - new ones are refused until the existing ones
+expire or are removed. Automatic ones roll, evicting the oldest to make room.
 
 ### Resource limits and paid checkout
 
@@ -247,21 +297,29 @@ Hetzner client; row state and retention live in `convex/boxes/snapshots.ts`.
 There are **no new environment variables.** Snapshots reuse the existing
 `HETZNER_CLOUD_TOKEN` already set above.
 
-- **Retention is automatic.** The daily `deleteExpiredSnapshots` cron deletes
-  each snapshot's Hetzner image **and** its Convex record together once it passes
-  the per-class retention in `convex/boxes/snapshotPolicy.ts`: automatic
-  snapshots, taken once a day, kept 5 days; manual snapshots kept 30 days;
-  failed/stuck captures 1 day. The default caps are 5 automatic plus 5 manual
-  snapshots per box.
-- **Provider snapshot quota.** The active approved value is whatever the
-  Hetzner Limits tab says, not the published 30 starting default. The deployment
-  allocation reserves every live box's full manual plus automatic entitlement,
-  including unused slots, before admitting new checkout. The API can still
-  report `resource_limit_exceeded`; that snapshot operation fails, checkout is
-  paused as a circuit breaker, and staff reconcile the allocation/provider
-  limit before retrying. It does not cancel the running box or refund its
-  subscription. Hetzner Backups are a separate seven-slot-per-server product
-  and are not implemented here.
+- **How many a box gets is its plan's business**, and how they are split between
+  automatic and on-demand is its owner's. See
+  [Snapshots and the allowance a plan sells](#snapshots-and-the-allowance-a-plan-sells).
+  The capture gate is in `startManualSnapshot` and applies to staff as well as
+  owners, because a manual snapshot on a plan without them would spend a provider
+  slot capacity admission never reserved for that box - the favour would really be
+  a quiet over-subscription of the fleet's quota.
+- **Retention is automatic.** The daily `deleteExpiredSnapshots` cron deletes each
+  snapshot's Hetzner image **and** its Convex record together once it passes the
+  per-class retention in `convex/boxes/snapshotPolicy.ts`. Those windows and the
+  manual cooldown are staff-editable in `/console` without a deploy; the counts
+  are not, because they are what a plan sells.
+- **Provider snapshot quota.** The active approved value is whatever the Hetzner
+  Limits tab says, not a published starting default. The deployment allocation
+  reserves every live box's full entitlement for its own plan, including unused
+  slots, before admitting new checkout. Admission for a _new_ box happens before a
+  plan is chosen, so it assumes the largest allowance any plan sells - room for the
+  most expensive plan is room for the cheapest, and the reverse is not true. The
+  API can still report `resource_limit_exceeded`; that snapshot operation fails,
+  checkout is paused as a circuit breaker, and staff reconcile the
+  allocation/provider limit before retrying. It does not cancel the running box or
+  refund its subscription. Hetzner Backups are a separate per-server product and
+  are not implemented here.
 - The runtime image needs nothing special for snapshots (no
   `age`/`zstd`/`curl` snapshot pipeline); it only needs what the lifecycle
   already requires.
@@ -277,3 +335,4 @@ constants.
 - Hetzner API tokens: https://docs.hetzner.com/cloud/api/getting-started/generating-api-token
 - Hetzner firewalls: https://docs.hetzner.com/cloud/firewalls/faq/
 - Hetzner backups and snapshots: https://docs.hetzner.com/cloud/servers/backups-snapshots/overview/
+- Hetzner rescaling and the disk-shrink restriction: https://docs.hetzner.com/cloud/servers/faq/

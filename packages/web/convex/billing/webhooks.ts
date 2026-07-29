@@ -8,7 +8,7 @@ import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { TERMS_FIELD_SLUG } from "../../lib/cloud-legal";
 import {
-	isBoxProductId,
+	boxSellableForProductId,
 	polarServer,
 	revokeAndRefundPolarOrder,
 	revokePolarSubscription
@@ -138,7 +138,11 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 			},
 			"order.paid": async (ctx, event) => {
 				const order = event.data;
-				if (!isBoxProductId(order.productId)) return;
+				// What was paid for decides which machine gets provisioned, so the
+				// plan is read off the order's product rather than off the reservation
+				// that preceded it.
+				const sellable = boxSellableForProductId(order.productId);
+				if (!sellable) return;
 				if (
 					order.billingReason !== "subscription_create" ||
 					!order.subscription ||
@@ -222,6 +226,7 @@ export function registerPolarWebhookRoutes(http: HttpRouter) {
 					internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
 					{
 						intentId,
+						plan: sellable.plan,
 						polarCustomerId: order.customerId,
 						polarOrderId: order.id,
 						polarSubscriptionId: order.subscription.id,

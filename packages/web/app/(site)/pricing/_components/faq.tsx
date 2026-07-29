@@ -14,12 +14,17 @@ const FAQ: { question: string; answer: string }[] = [
 	{
 		question: "What if I break something?",
 		answer:
-			"You're free to experiment. Take a snapshot before a big change and roll back to it in one click, or reset the box to a clean slate whenever you want. You get a cap of 5 automatic and 5 manual snapshots per box."
+			"You're free to experiment. Every box is snapshotted automatically and you can roll back to one in a click, or reset the box to a clean slate whenever you want. Box Pro also lets you take snapshots yourself, right before a big change, and choose how many of its snapshots are yours to take versus taken for you."
+	},
+	{
+		question: "Can I change plan later?",
+		answer:
+			"No - pick the one you want at checkout, because a box stays on the plan it was bought on. If you outgrow it, the practical move is to spin up a new box on the bigger plan and copy across, or get in touch and we'll help. We'd rather be straight about this than sell you a switch that turns into a migration."
 	},
 	{
 		question: "How much control do I get over the OS?",
 		answer:
-			"Pretty much full control. It's a Debian system with passwordless sudo and systemd, so you can apt install packages, edit any file, and run services and cron jobs - and it all survives restarts. It runs as a container, so custom kernel modules are the one thing you can't do."
+			"Pretty much full control. You get passwordless sudo and systemd, so you can apt install packages, edit any file, and set up scheduled automations. It runs as a container, so custom kernel stuff is probably the one thing you can't do."
 	},
 	{
 		question: "Can I run a dev server and open it in the browser?",

@@ -18,6 +18,7 @@ import {
 import { CLOUD_TERMS_VERSION } from "../../lib/cloud-legal";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+import { vBoxPlan } from "../schema";
 
 // Polar checkout metadata keys. Set when creating a checkout and read back from
 // paid orders to reconnect a completed payment to the reserved intent.
@@ -26,6 +27,10 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 	// checkout offers both products and the customer may switch. Analytics only
 	// - the sold interval is the subscription's recurringInterval.
 	selectedBillingInterval: "composery_selected_billing_interval",
+	// The plan the checkout was opened for. Unlike the interval this cannot be
+	// changed in Polar checkout - a session is only offered its own plan's two
+	// products - so it is also what the reservation committed capacity for.
+	selectedPlan: "composery_selected_plan",
 	intentId: "composery_checkout_intent_id",
 	slug: "composery_box_slug",
 	userId: "composery_clerk_user_id"
@@ -108,6 +113,7 @@ async function releaseIntentDoc(
 
 export const reserveCheckoutIntent = internalMutation({
 	args: {
+		plan: vBoxPlan,
 		slug: v.string(),
 		userId: v.string()
 	},
@@ -153,6 +159,7 @@ export const reserveCheckoutIntent = internalMutation({
 		const intentId = await ctx.db.insert("box_checkout_intents", {
 			user_id: args.userId,
 			slug: args.slug,
+			plan: args.plan,
 			status: "active",
 			polar_checkout_expires_at: timestamp + CHECKOUT_RESERVATION_TTL_MS,
 			created_at: timestamp,
@@ -187,6 +194,28 @@ export const activeCheckoutIntentForUserSlug = internalQuery({
 			checkoutUrl: intent.polar_checkout_url,
 			slug: intent.slug
 		};
+	}
+});
+
+// A reservation is held per slug, not per plan, so a visitor who reopens
+// checkout from the other card reuses it. The plan on the row has to follow,
+// because it is what capacity admission reserved the snapshot package against -
+// leaving it behind would hold an Air-sized reservation for a Pro sale.
+export const setCheckoutIntentPlan = internalMutation({
+	args: {
+		intentId: v.id("box_checkout_intents"),
+		plan: vBoxPlan
+	},
+	handler: async (ctx, args) => {
+		const intent = await ctx.db.get(args.intentId);
+		if (!intent || intent.status !== "active" || intent.plan === args.plan) {
+			return;
+		}
+		await ctx.db.patch(args.intentId, {
+			plan: args.plan,
+			updated_at: Date.now()
+		});
+		await reconcileCapacityAlert(ctx);
 	}
 });
 

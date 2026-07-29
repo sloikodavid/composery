@@ -12,15 +12,11 @@ import {
 } from "@/convex/boxes/snapshotPolicy";
 
 type FieldKey =
-	| "manualCap"
-	| "automaticCap"
-	| "manualMinIntervalMinutes"
-	| "manualRetentionDays"
-	| "automaticRetentionDays";
+	"manualMinIntervalMinutes" | "manualRetentionDays" | "automaticRetentionDays";
 
+// Timing only. How many snapshots a box may hold is sold by its plan and split
+// by its owner, so there is nothing here that could contradict either.
 const FIELDS: { key: FieldKey; label: string; unit: string }[] = [
-	{ key: "manualCap", label: "Manual cap", unit: "snapshots" },
-	{ key: "automaticCap", label: "Automatic cap", unit: "snapshots" },
 	{
 		key: "manualMinIntervalMinutes",
 		label: "Manual cooldown",
@@ -42,8 +38,6 @@ type Draft = Record<FieldKey, string>;
 
 function toDraft(policy: SnapshotPolicy): Draft {
 	return {
-		manualCap: String(policy.manualCap),
-		automaticCap: String(policy.automaticCap),
 		manualMinIntervalMinutes: String(policy.manualMinIntervalMinutes),
 		manualRetentionDays: String(policy.manualRetentionDays),
 		automaticRetentionDays: String(policy.automaticRetentionDays)
@@ -52,8 +46,6 @@ function toDraft(policy: SnapshotPolicy): Draft {
 
 function toPolicy(draft: Draft): SnapshotPolicy {
 	return {
-		manualCap: Number(draft.manualCap),
-		automaticCap: Number(draft.automaticCap),
 		manualMinIntervalMinutes: Number(draft.manualMinIntervalMinutes),
 		manualRetentionDays: Number(draft.manualRetentionDays),
 		automaticRetentionDays: Number(draft.automaticRetentionDays)

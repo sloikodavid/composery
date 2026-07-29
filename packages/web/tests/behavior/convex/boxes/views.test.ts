@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { safeBox, staffBox } from "@/convex/boxes/views";
+import { resolveSnapshotSplit } from "@/lib/box-plan";
 
 const previousDomain = process.env.CLOUD_DOMAIN;
 afterEach(() => {
@@ -14,6 +15,8 @@ function box(overrides: Partial<Doc<"boxes">> = {}): Doc<"boxes"> {
 		_creationTime: 1,
 		user_id: "user_1",
 		slug: "my-box",
+		plan: "air" as const,
+		manual_snapshot_cap: 0,
 		status: "running",
 		polar_customer_id: "cust_1",
 		polar_subscription_id: "sub_1",
@@ -40,6 +43,8 @@ describe("safeBox", () => {
 			deletedAt: undefined,
 			polarSubscriptionId: "sub_1",
 			comp: false,
+			plan: "air",
+			snapshots: resolveSnapshotSplit("air", 0),
 			runtimeVersion: null
 		});
 	});

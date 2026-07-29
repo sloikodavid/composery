@@ -30,25 +30,44 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    (`convex/billing/polar.ts`).
 
 3. Under Settings -> Payments, set the organization's default tax behavior to
-   **Exclusive**. Polar fixes the billing interval on each product, so create two
-   products rather than adding two prices to one product:
-   - **Box - Monthly**: recurring monthly, fixed.
-   - **Box - Annual**: recurring yearly, fixed. This is displayed in the monthly figure on the pricing page.
+   **Exclusive**. Polar fixes the billing interval on each product, so a plan
+   sold on two intervals is two products - one product per (plan, interval)
+   pair, four in total:
+   - **Box Air - Monthly**: recurring monthly, fixed.
+   - **Box Air - Annual**: recurring yearly, fixed.
+   - **Box Pro - Monthly**: recurring monthly, fixed.
+   - **Box Pro - Annual**: recurring yearly, fixed.
 
-   Give both the same accurate hosted-box description, Terms link, Privacy link,
-   and benefits. Duplicating Box Monthly is the safest way to create Box Annual,
-   then change its billing interval and price before publishing. Open each
-   product and copy its **Product ID** (not its price ID):
-   - Box Monthly -> `POLAR_BOX_MONTHLY_PRODUCT_ID`.
-   - Box Annual -> `POLAR_BOX_ANNUAL_PRODUCT_ID`.
+   The annual products are displayed as a monthly figure on the pricing page.
+   Give all four the same accurate hosted-box description, Terms link, Privacy
+   link, and benefits, differing only in the machine each plan promises -
+   `lib/box-plan.ts` is what that machine actually is, and the pricing page
+   prints it from there. Duplicating a published product is the safest way to
+   create the next one, then change its plan wording, billing interval, and
+   price before publishing. Open each product and copy its **Product ID** (not
+   its price ID):
+   - Box Air Monthly -> `POLAR_BOX_AIR_MONTHLY_PRODUCT_ID`.
+   - Box Air Annual -> `POLAR_BOX_AIR_ANNUAL_PRODUCT_ID`.
+   - Box Pro Monthly -> `POLAR_BOX_PRO_MONTHLY_PRODUCT_ID`.
+   - Box Pro Annual -> `POLAR_BOX_PRO_ANNUAL_PRODUCT_ID`.
 
-   Both variables are read by `convex/billing/polar.ts`. Checkout receives both
-   product IDs and selects the pricing-page choice by default; fulfillment
-   accepts paid initial orders from either ID. These are per-deployment values,
-   because sandbox and production products have different IDs.
+   All four are read by `convex/billing/polar.ts`, which also reads a product ID
+   back to its (plan, interval) pair - the inverse is what lets a paid order be
+   fulfilled as the plan it was actually paid for, and what lets the hourly sweep
+   notice a subscription that has drifted. Checkout receives only the chosen
+   plan's two product IDs, with the pricing-page choice selected by default, so
+   a customer can reconsider monthly vs annual in checkout but cannot leave it
+   having bought a different plan than the one their slug reservation was
+   admitted for. These are per-deployment values, because sandbox and production
+   products have different IDs.
+
+   All four must be set. Selling fails closed on a missing one (`requiredEnv`),
+   while the hourly reconciliation reads them tolerantly and reports a
+   subscription it cannot recognise as a critical staff alert rather than
+   aborting the sweep.
 
 4. Create one organization custom field (Settings -> Custom Fields), attach it
-   to **both Box products**, and make it a **required checkbox** on each:
+   to **all four Box products**, and make it a **required checkbox** on each:
    - Slug `composery-terms-v1`.
    - Label `I agree to the Composery Terms of Service.`
    - Help text linking to `https://www.composery.io/terms`.
@@ -64,13 +83,41 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    user is allowed to own multiple boxes and each box has its own subscription.
    There is intentionally no one-box-per-customer application limit.
 
-6. Under Customer notifications, keep Polar's order, subscription,
+6. In the customer portal settings, **leave on only what Composery actually
+   sells.** The portal offers a capability per thing Polar can model, and each one
+   it shows for something this product does not have is a control a customer can
+   act on to no effect. Composery sells one fixed recurring product per box: no
+   seats, no meters, and no plan a box can move to. So switch off **subscription
+   plan changes**, **seat management**, and **metered usage**, and apply the same
+   rule to any capability Polar adds later - it stays off until something here
+   sells it.
+
+   Everything that is about the billing relationship stays on: invoices, receipts,
+   payment method, cancellation, and **email edits**. That last one is worth saying
+   out loud because it looks like the others and is not. Polar owns billing
+   correspondence and Clerk owns identity (see `convex/ownerEmail.ts`), so the
+   address a customer sets here is where their receipts go, while product and
+   identity mail keeps going to their login. It cannot desync anything either: a
+   Polar customer is linked by Clerk user id and `polar_customer_id`, never by
+   email, and the component's `getUserInfo` is stubbed to throw so nothing resolves
+   a user from Polar's side at all. The two addresses simply differ, which is
+   usually the point.
+
+   Plan changes are the one where this is a correctness rule rather than a
+   tidiness one. A box stays on the plan it was bought on, so a customer who used
+   a portal switch would be rebilled for something their box never becomes, and
+   Polar provides no way to gate or confirm a change before charging for it -
+   which is why the answer is to not offer it rather than to validate it. If it is
+   enabled anyway and a subscription drifts onto another plan's product, the
+   hourly reconciliation reports it as a staff warning and takes no action.
+
+7. Under Customer notifications, keep Polar's order, subscription,
    cancellation, revocation, renewal, and failed-payment emails enabled. Polar
    owns routine billing mail and links customers to its hosted portal. Do not
    disable these in favor of Resend: selecting supplier-managed communications
    makes Composery responsible for sending the notices Polar would have sent.
 
-7. Create a webhook (Settings -> Webhooks -> Add Endpoint). Set the URL to the
+8. Create a webhook (Settings -> Webhooks -> Add Endpoint). Set the URL to the
    matching deployment's `<CONVEX_SITE_URL>/polar/events` (the Site URL from the
    [Convex](./convex.md) step). Copy the signing secret ->
    `POLAR_WEBHOOK_SECRET`. Enable:
@@ -79,7 +126,7 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    - Component sync: `product.created`, `product.updated`, `subscription.created`,
      `subscription.updated`.
 
-8. Copy the organization **slug** (Settings -> Organization, the handle shown in
+9. Copy the organization **slug** (Settings -> Organization, the handle shown in
    your dashboard URL) -> `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`, and set
    `NEXT_PUBLIC_POLAR_ENVIRONMENT` to `sandbox` (dev) or `production` (prod).
    These are frontend-plane vars read by `lib/polar-dashboard.ts` so the staff
@@ -92,11 +139,15 @@ Checkout success URLs are built from `WEBSITE_ORIGIN`, so that var on the same
 [Convex](./convex.md) deployment must point at the matching website before you
 test checkout.
 
-The pricing page defaults to Box Annual. Its slug field checks the shared box
-namespace before checkout, preserves the chosen slug and interval through sign
-in, and sends the chosen product first in Polar's checkout product list. Polar
-still shows both products in checkout, so the customer can review or change the
-billing interval before paying.
+The pricing page defaults to annual billing and asks for the plan first: each
+plan card's **Continue** button opens a dialog that asks for the slug, so
+choosing a plan and naming the box are two separate questions rather than one
+control that means nothing until the other is filled in. The chosen plan,
+interval, and slug all survive the round trip through sign in. The slug is
+checked against the shared box namespace before checkout, and the chosen
+product is sent first in Polar's checkout product list. Polar shows that plan's
+two products in checkout, so the customer can review or change the billing
+interval before paying - and can change either one afterwards from the portal.
 
 ## Billing and box lifecycle
 
@@ -153,6 +204,7 @@ refund requests in Polar rather than paying the customer outside Polar.
 - Polar custom fields: https://polar.sh/docs/features/custom-fields
 - Polar refunds: https://polar.sh/docs/features/refunds
 - Polar subscriptions and multiple-subscription setting: https://polar.sh/docs/features/subscriptions/introduction
-- Polar subscription cancellation and revocation: https://polar.sh/docs/features/subscriptions/manage
+- Polar subscription cancellation, revocation, and plan changes: https://polar.sh/docs/features/subscriptions/manage
+- Polar proration on subscription changes: https://polar.sh/docs/features/subscriptions/proration
 - Polar Buyer Terms: https://polar.sh/legal/checkout-buyer-terms
 - Polar supplier terms: https://polar.sh/legal/master-services-terms

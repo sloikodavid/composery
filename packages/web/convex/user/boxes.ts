@@ -30,6 +30,11 @@ import {
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
 import { boxPath } from "../../lib/box-route";
+import {
+	BOX_PLANS,
+	isValidManualSnapshotCap,
+	planAllowsManualSnapshots
+} from "../../lib/box-plan";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
 const CUSTOMER_PORTAL_BLOCKED_STATUSES = ["deleting", "deleted"] as const;
@@ -400,6 +405,39 @@ export const changeSlug = mutation({
 		});
 
 		return { slug: newSlug };
+	}
+});
+
+// How the box's snapshot allowance is divided between the daily automatic ones
+// and the ones its owner takes themselves.
+//
+// It moves slots between two columns and never changes how many there are, so it
+// costs the fleet nothing, touches no infrastructure, and is not a box operation
+// - a box mid-repair can still be re-split. Nothing is deleted either: lowering a
+// side below what is already held simply stops new ones being taken on that side
+// until the existing ones expire or the owner removes them, which is the same
+// rule a full manual allowance has always followed.
+export const setSnapshotSplit = mutation({
+	args: {
+		manualCap: v.number(),
+		slug: v.string()
+	},
+	handler: async (ctx, args) => {
+		const user = await requireActiveUser(ctx);
+		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+
+		if (!isValidManualSnapshotCap(box.plan, args.manualCap)) {
+			throw new ConvexError(
+				planAllowsManualSnapshots(box.plan)
+					? `${BOX_PLANS[box.plan].label} includes ${BOX_PLANS[box.plan].snapshotCap} snapshots, so between 0 and ${BOX_PLANS[box.plan].snapshotCap} of them can be yours to take.`
+					: `${BOX_PLANS[box.plan].label} takes its snapshots automatically, so there is no split to set.`
+			);
+		}
+
+		await ctx.db.patch(box._id, {
+			manual_snapshot_cap: args.manualCap,
+			updated_at: Date.now()
+		});
 	}
 });
 

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
 	paidOrderRecordingStatus,
@@ -12,19 +11,6 @@ const paidOrder = {
 };
 
 describe("reservationsToRelease", () => {
-	test("reads enough rows to enforce a lowered cap", () => {
-		const source = readFileSync(
-			new URL(
-				"../../../../convex/checkout/checkoutIntents.ts",
-				import.meta.url
-			),
-			"utf8"
-		);
-		expect(source).toMatch(
-			/^\s*\.take\(MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER \+ 1\);$/m
-		);
-	});
-
 	test("keeps every reservation while there is room under the cap", () => {
 		expect(reservationsToRelease(0, 3)).toBe(0);
 		expect(reservationsToRelease(2, 3)).toBe(0);

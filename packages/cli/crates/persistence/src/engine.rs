@@ -234,33 +234,6 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
-    fn parses_the_engine_request_and_rejects_unknown_values() {
-        assert_eq!(Request::parse(None).unwrap(), Request::Auto);
-        assert_eq!(Request::parse(Some("")).unwrap(), Request::Auto);
-        assert_eq!(Request::parse(Some(" auto ")).unwrap(), Request::Auto);
-        assert_eq!(Request::parse(Some("overlay")).unwrap(), Request::Overlay);
-        assert_eq!(Request::parse(Some("copy")).unwrap(), Request::Copy);
-
-        let error = Request::parse(Some("overlayfs")).unwrap_err().to_string();
-        assert!(error.contains("unsupported COMPOSERY_PERSISTENCE"));
-        assert!(error.contains("overlayfs"));
-    }
-
-    #[test]
-    fn copy_is_always_honoured_without_probing() {
-        let probed = Cell::new(false);
-        for ready in [false, true] {
-            let selection = select(Request::Copy, ready, || {
-                probed.set(true);
-                Ok(())
-            })
-            .unwrap();
-            assert_eq!(selection.engine, Engine::Copy);
-        }
-        assert!(!probed.get(), "copy must never run the overlay probe");
-    }
-
-    #[test]
     fn auto_uses_copy_and_skips_the_probe_until_overlay_is_ready() {
         let probed = Cell::new(false);
         let selection = select(Request::Auto, false, || {

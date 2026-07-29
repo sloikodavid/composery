@@ -52,15 +52,11 @@ describe("resolveSnapshotPolicy", () => {
 	test("keeps safe stored values and falls back unsafe fields independently", () => {
 		expect(
 			resolveSnapshotPolicy({
-				manual_cap: 3,
-				automatic_cap: 0,
 				manual_min_interval_minutes: 0,
 				manual_retention_days: 14,
 				automatic_retention_days: Number.POSITIVE_INFINITY
 			})
 		).toEqual({
-			manualCap: 3,
-			automaticCap: DEFAULT_SNAPSHOT_POLICY.automaticCap,
 			manualMinIntervalMinutes:
 				DEFAULT_SNAPSHOT_POLICY.manualMinIntervalMinutes,
 			manualRetentionDays: 14,
@@ -72,9 +68,9 @@ describe("resolveSnapshotPolicy", () => {
 		expect(() =>
 			snapshotPolicyToStored({
 				...DEFAULT_SNAPSHOT_POLICY,
-				manualCap: 0
+				manualRetentionDays: 0
 			})
-		).toThrow("manualCap must be a positive integer.");
+		).toThrow("manualRetentionDays must be a positive integer.");
 	});
 });
 
