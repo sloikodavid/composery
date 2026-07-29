@@ -22,6 +22,24 @@ pub enum Command {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// One newline-delimited command on the daemon's control socket.
+///
+/// The version and snake-case command spelling are the wire contract consumed
+/// by operator tooling.
+///
+/// ```
+/// use persistence::control::{Command, Request};
+///
+/// let request = Request {
+///     version: 1,
+///     command: Command::Prune,
+/// };
+///
+/// assert_eq!(
+///     serde_json::to_string(&request).unwrap(),
+///     r#"{"version":1,"command":"prune"}"#
+/// );
+/// ```
 pub struct Request {
     pub version: u8,
     pub command: Command,

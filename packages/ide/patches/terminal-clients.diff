@@ -84,14 +84,14 @@ and the serializer still records the output for replay.
  		return this._proxy.setUnicodeVersion(id, version);
 --- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
 +++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
-@@ -14,6 +14,7 @@ import { ILogService, LogLevel } from '../../log/common/log.js';
- import { RequestStore } from '../common/requestStore.js';
- import { IProcessDataEvent, IProcessReadyEvent, IPtyService, IRawTerminalInstanceLayoutInfo, IReconnectConstants, IShellLaunchConfig, ITerminalInstanceLayoutInfoById, ITerminalLaunchError, ITerminalsLayoutInfo, ITerminalTabLayoutInfoById, TerminalIcon, IProcessProperty, TitleEventSource, ProcessPropertyType, IProcessPropertyMap, IFixedTerminalDimensions, IPersistentTerminalProcessLaunchConfig, ICrossVersionSerializedTerminalState, ISerializedTerminalState, ITerminalProcessOptions, IPtyHostLatencyMeasurement, type IPtyServiceContribution, PosixShellType, ITerminalLaunchResult } from '../common/terminal.js';
- import { TerminalDataBufferer } from '../common/terminalDataBuffering.js';
-+import { TerminalDataFlowControl } from '../common/terminalDataFlowControl.js';
- import { escapeNonWindowsPath } from '../common/terminalEnvironment.js';
- import type { ISerializeOptions, SerializeAddon as XtermSerializeAddon } from '@xterm/addon-serialize';
- import type { Unicode11Addon as XtermUnicode11Addon } from '@xterm/addon-unicode11';
+@@ -20,6 +20,7 @@ import type { Unicode11Addon as XtermUnicode11Addon } from '@xterm/addon-unicode
+ import { IGetTerminalLayoutInfoArgs, IProcessDetails, ISetTerminalLayoutInfoArgs, ITerminalTabLayoutInfoDto } from '../common/terminalProcess.js';
+ import { sanitizeEnvForLogging } from './terminalEnvironment.js';
+ import { TerminalProcess } from './terminalProcess.js';
++import { IViewportDimensions, TerminalClients } from './terminalClients.js';
+ import { localize } from '../../../nls.js';
+ import { ignoreProcessNames } from './childProcessMonitor.js';
+ import { ErrorNoTelemetry } from '../../../base/common/errors.js';
 @@ -409,6 +410,26 @@ export class PtyService extends Disposable implements IPtyService {
  		}
  	}
@@ -130,45 +130,27 @@ and the serializer still records the output for replay.
  	}
  	@traceRpc
  	async setUnicodeVersion(id: number, version: '6' | '11'): Promise<void> {
-@@ -721,9 +742,28 @@ const enum InteractionState {
- 	Session = 'Session'
- }
- 
-+interface IViewportDimensions {
-+	cols: number;
-+	rows: number;
-+	pixelWidth?: number;
-+	pixelHeight?: number;
-+}
-+
-+interface ITerminalClient {
-+	viewport?: IViewportDimensions;
-+	/** Zero until the client asks for the terminal to be its size, then increasing. */
-+	activation: number;
-+}
-+
+@@ -724,6 +745,7 @@ const enum InteractionState {
  class PersistentTerminalProcess extends Disposable {
  
  	private readonly _bufferer: TerminalDataBufferer;
-+	private readonly _dataFlowControl: TerminalDataFlowControl;
-+	/** Every client attached to this terminal, and the viewport each one last reported. */
-+	private readonly _clients = new Map<string, ITerminalClient>();
-+	private _activeClient: string | undefined;
-+	private _activations = 0;
-+	private _dimensions: IViewportDimensions;
++	private readonly _clients: TerminalClients;
  
  	private readonly _pendingCommands = new Map<number, { resolve: (data: unknown) => void; reject: (err: unknown) => void }>();
  
-@@ -817,6 +857,8 @@ class PersistentTerminalProcess extends Disposable {
+@@ -817,6 +839,11 @@ class PersistentTerminalProcess extends Disposable {
  		fixedDimensions?: IFixedTerminalDimensions
  	) {
  		super();
-+		this._dimensions = { cols, rows };
-+		this._dataFlowControl = new TerminalDataFlowControl(charCount => this._terminalProcess.acknowledgeDataEvent(charCount));
++		this._clients = new TerminalClients(
++			{ cols, rows },
++			charCount => this._terminalProcess.acknowledgeDataEvent(charCount),
++			dimensions => this._applyResize(dimensions)
++		);
  		this._interactionState = new MutationLogger(`Persistent process "${this._persistentProcessId}" interaction state`, InteractionState.None, this._logService);
  		this._wasRevived = reviveBuffer !== undefined;
  		this._serializer = new XtermSerializer(
-@@ -857,8 +899,11 @@ class PersistentTerminalProcess extends Disposable {
+@@ -857,8 +884,11 @@ class PersistentTerminalProcess extends Disposable {
  		this._bufferer = new TerminalDataBufferer((_, data) => this._onProcessData.fire(data));
  		this._register(this._bufferer.startBuffering(this._persistentProcessId, this._terminalProcess.onProcessData));
  
@@ -176,101 +158,60 @@ and the serializer still records the output for replay.
 -		this._register(this.onProcessData(e => this._serializer.handleData(e)));
 +		// Data recording for reconnect, and one shared flow-control sequence.
 +		this._register(this.onProcessData(e => {
-+			this._dataFlowControl.acceptData(e.length);
++			this._clients.acceptData(e.length);
 +			this._serializer.handleData(e);
 +		}));
  	}
  
  	async attach(): Promise<void> {
-@@ -883,6 +928,58 @@ class PersistentTerminalProcess extends Disposable {
+@@ -883,6 +913,22 @@ class PersistentTerminalProcess extends Disposable {
  		return this._serializer.generateReplayEvent(true, this._interactionState.value !== InteractionState.Session);
  	}
  
 +	registerClient(clientId: string): void {
-+		if (!this._clients.has(clientId)) {
-+			this._clients.set(clientId, { activation: 0 });
-+		}
-+		this._dataFlowControl.register(clientId);
++		this._clients.register(clientId);
 +	}
 +
 +	unregisterClient(clientId: string): void {
-+		this._dataFlowControl.unregister(clientId);
-+		if (!this._clients.delete(clientId) || this._activeClient !== clientId) {
-+			return;
-+		}
-+		// Hand the terminal to the most recently active client that still has one.
-+		// A client that only ever reported a layout - a background window, a
-+		// hidden panel - never asked for the terminal to be its size, so promoting
-+		// it would resize a shell nobody is looking at.
-+		this._activeClient = undefined;
-+		let next: { clientId: string; viewport: IViewportDimensions; activation: number } | undefined;
-+		for (const [id, client] of this._clients) {
-+			if (client.viewport && client.activation > 0 && (!next || client.activation > next.activation)) {
-+				next = { clientId: id, viewport: client.viewport, activation: client.activation };
-+			}
-+		}
-+		if (next) {
-+			this._activeClient = next.clientId;
-+			this._resize(next.viewport);
-+		}
++		this._clients.unregister(clientId);
 +	}
 +
 +	resizeViewport(clientId: string, viewport: IViewportDimensions): void {
-+		this._client(clientId).viewport = viewport;
-+		if (this._activeClient === clientId) {
-+			this._resize(viewport);
-+		}
++		this._clients.resizeViewport(clientId, viewport);
 +	}
 +
 +	activateViewport(clientId: string, viewport: IViewportDimensions): void {
-+		const client = this._client(clientId);
-+		client.viewport = viewport;
-+		client.activation = ++this._activations;
-+		this._activeClient = clientId;
-+		this._resize(viewport);
-+	}
-+
-+	private _client(clientId: string): ITerminalClient {
-+		const client = this._clients.get(clientId);
-+		if (!client) {
-+			throw new Error(`Terminal client "${clientId}" is not registered`);
-+		}
-+		return client;
++		this._clients.activateViewport(clientId, viewport);
 +	}
 +
  	async refreshProperty<T extends ProcessPropertyType>(type: T): Promise<IProcessPropertyMap[T]> {
  		return this._terminalProcess.refreshProperty(type);
  	}
-@@ -942,15 +1039,26 @@ class PersistentTerminalProcess extends Disposable {
+@@ -942,15 +988,20 @@ class PersistentTerminalProcess extends Disposable {
  		return this._terminalProcess.processBinary(data);
  	}
  	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
-+		this._resize({ cols, rows, pixelWidth, pixelHeight });
++		this._clients.resize({ cols, rows, pixelWidth, pixelHeight });
 +	}
 +
-+	private _resize(dimensions: IViewportDimensions): void {
++	private _applyResize(dimensions: IViewportDimensions): boolean {
  		if (this._inReplay) {
- 			return;
+-			return;
++			return false;
  		}
 -		this._serializer.handleResize(cols, rows);
-+		// Clients take turns being the active one and mostly report the same
-+		// geometry, so most of these are no-ops the pty need never hear about.
-+		if (this._dimensions.cols === dimensions.cols && this._dimensions.rows === dimensions.rows &&
-+			this._dimensions.pixelWidth === dimensions.pixelWidth && this._dimensions.pixelHeight === dimensions.pixelHeight) {
-+			return;
-+		}
-+		this._dimensions = dimensions;
 +		this._serializer.handleResize(dimensions.cols, dimensions.rows);
  
  		// Buffered events should flush when a resize occurs
  		this._bufferer.flushBuffer(this._persistentProcessId);
  
 -		return this._terminalProcess.resize(cols, rows, pixelWidth, pixelHeight);
-+		return this._terminalProcess.resize(dimensions.cols, dimensions.rows, dimensions.pixelWidth, dimensions.pixelHeight);
++		this._terminalProcess.resize(dimensions.cols, dimensions.rows, dimensions.pixelWidth, dimensions.pixelHeight);
++		return true;
  	}
  	async clearBuffer(): Promise<void> {
  		this._serializer.clearBuffer();
-@@ -966,11 +1074,11 @@ class PersistentTerminalProcess extends Disposable {
+@@ -966,11 +1017,11 @@ class PersistentTerminalProcess extends Disposable {
  		this._serializer.setNextCommandId?.(commandLine, commandId);
  	}
  
@@ -280,15 +221,15 @@ and the serializer still records the output for replay.
  			return;
  		}
 -		return this._terminalProcess.acknowledgeDataEvent(charCount);
-+		return this._dataFlowControl.acknowledge(clientId, charCount);
++		return this._clients.acknowledge(clientId, charCount);
  	}
  	getInitialCwd(): Promise<string> {
  		return this._terminalProcess.getInitialCwd();
-@@ -991,6 +1099,7 @@ class PersistentTerminalProcess extends Disposable {
+@@ -991,6 +1042,7 @@ class PersistentTerminalProcess extends Disposable {
  		this._logService.info(`Persistent process "${this._persistentProcessId}": Replaying ${dataLength} chars and ${ev.events.length} size events`);
  		this._onProcessReplay.fire(ev);
  		this._terminalProcess.clearUnacknowledgedChars();
-+		this._dataFlowControl.resetAfterReplay();
++		this._clients.resetAfterReplay();
  		this._onPersistentProcessReady.fire();
  	}
  
@@ -414,7 +355,7 @@ and the serializer still records the output for replay.
  		this._register(dom.addDisposableListener(xterm.raw.element, 'mousedown', () => {
  			// We need to listen to the mouseup event on the document since the user may release
  			// the mouse button anywhere outside of _xterm.element.
-@@ -1246,6 +1255,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1252,6 +1261,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  
  	private _setFocus(focused?: boolean): void {
  		if (focused) {
@@ -422,7 +363,7 @@ and the serializer still records the output for replay.
  			this._terminalFocusContextKey.set(true);
  			this._setShellIntegrationContextKey();
  			this._onDidFocus.fire(this);
-@@ -1441,7 +1451,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1447,7 +1457,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  			// Resize to re-evaluate dimensions, this will ensure when switching to a terminal it is
  			// using the most up to date dimensions (eg. when terminal is created in the background
  			// using cached dimensions of a split terminal).
@@ -435,7 +376,7 @@ and the serializer still records the output for replay.
  		}
  		if (didChange) {
  			this._onDidChangeVisibility.fire(visible);
-@@ -1576,7 +1590,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1582,7 +1596,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		}));
  
  		this._initialDataEventsListener.value = processManager.onProcessData(ev => this._initialDataEvents?.push(ev.data));
@@ -449,7 +390,7 @@ and the serializer still records the output for replay.
  		this._register(processManager.onEnvironmentVariableInfoChanged(e => this._onEnvironmentVariableInfoChanged(e)));
  		this._register(processManager.onPtyDisconnect(() => {
  			if (this.xterm) {
-@@ -2093,6 +2112,24 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -2099,6 +2118,24 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		await this._processManager.setDimensions(rawXterm.cols, rawXterm.rows, undefined, roundedPixelWidth, roundedPixelHeight);
  	}
  

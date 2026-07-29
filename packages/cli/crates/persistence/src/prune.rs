@@ -288,6 +288,7 @@ pub fn print_human(report: &PruneReport) {
 mod tests {
     use super::run;
     use crate::{
+        apply::apply_public_truth,
         baseline::{BaselineDb, GenerateOptions, generate},
         config::Config,
         internal::StateDb,
@@ -295,8 +296,141 @@ mod tests {
         metadata::{self, MetadataRecord},
         paths::Paths,
         public::PublicPath,
+        update::{UpdateContext, update_path},
+    };
+    use proptest::{
+        prelude::*,
+        test_runner::{Config as ProptestConfig, RngSeed},
     };
     use std::{fs, os::unix::fs::symlink};
+
+    const GENERATED_PATHS: [&str; 4] = [
+        "/generated/alpha",
+        "/generated/bravo",
+        "/generated/charlie",
+        "/generated/delta",
+    ];
+
+    #[derive(Clone, Debug)]
+    enum Change {
+        Write(usize, Vec<u8>),
+        Remove(usize),
+    }
+
+    fn change() -> impl Strategy<Value = Change> {
+        prop_oneof![
+            (
+                0..GENERATED_PATHS.len(),
+                proptest::collection::vec(any::<u8>(), 0..24)
+            )
+                .prop_map(|(index, contents)| Change::Write(index, contents)),
+            (0..GENERATED_PATHS.len()).prop_map(Change::Remove),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 48,
+            failure_persistence: None,
+            rng_seed: RngSeed::Fixed(0x434f_5059),
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn generated_change_sets_round_trip_through_prune_and_apply_idempotently(
+            initial in proptest::collection::vec(
+                proptest::option::of(proptest::collection::vec(any::<u8>(), 0..24)),
+                GENERATED_PATHS.len()..=GENERATED_PATHS.len(),
+            ),
+            changes in proptest::collection::vec(change(), 1..24),
+        ) {
+            let fixture = GeneratedFixture::new(&initial);
+            let config = Config::default();
+            let ctx = UpdateContext {
+                root: &fixture.root,
+                paths: &fixture.paths,
+                config: &config,
+                baseline: &fixture.baseline,
+            };
+
+            for change in changes {
+                let index = match change {
+                    Change::Write(index, contents) => {
+                        let path = fixture.root.join(GENERATED_PATHS[index].trim_start_matches('/'));
+                        fs::create_dir_all(path.parent().unwrap()).unwrap();
+                        fs::write(path, contents).unwrap();
+                        index
+                    }
+                    Change::Remove(index) => {
+                        let path = fixture.root.join(GENERATED_PATHS[index].trim_start_matches('/'));
+                        match fs::remove_file(path) {
+                            Ok(()) => {}
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                            Err(error) => panic!("remove generated path: {error}"),
+                        }
+                        index
+                    }
+                };
+                update_path(&ctx, GENERATED_PATHS[index]).unwrap();
+            }
+
+            let expected = read_generated_state(&fixture.root);
+            run(
+                &fixture.root,
+                &fixture.paths,
+                &config,
+                &fixture.baseline,
+                &fixture.db,
+            )
+            .unwrap();
+
+            let restored = fixture.fresh_root(&initial);
+            apply_public_truth(&restored, &fixture.paths, &config).unwrap();
+            prop_assert_eq!(read_generated_state(&restored), expected.clone());
+
+            apply_public_truth(&restored, &fixture.paths, &config).unwrap();
+            prop_assert_eq!(read_generated_state(&restored), expected);
+        }
+
+        #[test]
+        fn image_upgrades_keep_every_captured_user_edit(
+            image in proptest::collection::vec(any::<u8>(), 0..32),
+            upgrade in proptest::collection::vec(any::<u8>(), 0..32),
+            edit in proptest::collection::vec(any::<u8>(), 0..32),
+        ) {
+            let image = tagged_contents(0, image);
+            let upgrade = tagged_contents(1, upgrade);
+            let edit = tagged_contents(2, edit);
+            let initial = vec![Some(image), None, None, None];
+            let fixture = GeneratedFixture::new(&initial);
+            let config = Config::default();
+            let edited_path = fixture.root.join("generated/alpha");
+            fs::write(&edited_path, &edit).unwrap();
+            update_path(
+                &UpdateContext {
+                    root: &fixture.root,
+                    paths: &fixture.paths,
+                    config: &config,
+                    baseline: &fixture.baseline,
+                },
+                GENERATED_PATHS[0],
+            )
+            .unwrap();
+            run(
+                &fixture.root,
+                &fixture.paths,
+                &config,
+                &fixture.baseline,
+                &fixture.db,
+            )
+            .unwrap();
+
+            let upgraded = fixture.fresh_root(&[Some(upgrade), None, None, None]);
+            apply_public_truth(&upgraded, &fixture.paths, &config).unwrap();
+
+            prop_assert_eq!(fs::read(upgraded.join("generated/alpha")).unwrap(), edit);
+        }
+    }
 
     #[test]
     fn prune_removes_stale_tombstone_and_empty_dirs() {
@@ -495,6 +629,78 @@ mod tests {
                 db,
             }
         }
+    }
+
+    struct GeneratedFixture {
+        _temp: tempfile::TempDir,
+        root: std::path::PathBuf,
+        paths: Paths,
+        baseline: BaselineDb,
+        db: StateDb,
+    }
+
+    impl GeneratedFixture {
+        fn new(initial: &[Option<Vec<u8>>]) -> Self {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let paths = Paths::new(
+                root.join("opt/persistence"),
+                temp.path().join("run/persistence"),
+                temp.path().join("data/persistence"),
+            );
+            write_generated_state(&root, initial);
+            fs::create_dir_all(root.join("opt/persistence")).unwrap();
+            generate(&GenerateOptions {
+                root: root.clone(),
+                output: paths.baseline_db.clone(),
+            })
+            .unwrap();
+            layout::ensure(&paths).unwrap();
+            let baseline = BaselineDb::open(&paths.baseline_db).unwrap();
+            let db = StateDb::open_or_rebuild(&paths).unwrap();
+            Self {
+                _temp: temp,
+                root,
+                paths,
+                baseline,
+                db,
+            }
+        }
+
+        fn fresh_root(&self, state: &[Option<Vec<u8>>]) -> std::path::PathBuf {
+            let root = self._temp.path().join("fresh-root");
+            write_generated_state(&root, state);
+            root
+        }
+    }
+
+    fn tagged_contents(tag: u8, mut contents: Vec<u8>) -> Vec<u8> {
+        contents.insert(0, tag);
+        contents
+    }
+
+    fn write_generated_state(root: &std::path::Path, state: &[Option<Vec<u8>>]) {
+        fs::create_dir_all(root.join("generated")).unwrap();
+        for (public_path, contents) in GENERATED_PATHS.iter().zip(state) {
+            let path = root.join(public_path.trim_start_matches('/'));
+            if let Some(contents) = contents {
+                fs::write(path, contents).unwrap();
+            }
+        }
+    }
+
+    fn read_generated_state(root: &std::path::Path) -> Vec<Option<Vec<u8>>> {
+        GENERATED_PATHS
+            .iter()
+            .map(|public_path| {
+                let path = root.join(public_path.trim_start_matches('/'));
+                match fs::read(path) {
+                    Ok(contents) => Some(contents),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(error) => panic!("read generated path: {error}"),
+                }
+            })
+            .collect()
     }
 
     fn upsert_metadata(path: &std::path::Path, public_path: &str, kind: &str) {

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
@@ -27,7 +27,7 @@ const checkoutFiles = execFileSync(
 	}
 )
 	.split("\n")
-	.filter(Boolean);
+	.filter((file) => file && existsSync(resolve(repoRoot, file)));
 
 const testFiles = checkoutFiles.filter((f) => /\.test\.[cm]?tsx?$/.test(f));
 const read = (f: string) => readFileSync(resolve(repoRoot, f), "utf8");
@@ -40,9 +40,7 @@ const read = (f: string) => readFileSync(resolve(repoRoot, f), "utf8");
 // -entry test below fails until it does), and a file that starts reading them
 // fails the confinement test unless someone adds it here on purpose - which the
 // doctrine forbids.
-const PATCH_READING_TESTS = [
-	"packages/ide/tests/behavior/terminal-clients.test.ts"
-];
+const PATCH_READING_TESTS: string[] = [];
 
 // Behaviour tests that still wait on the wall clock. Same ratchet: a real delay
 // in an in-process test is a race the suite has decided to lose slowly.

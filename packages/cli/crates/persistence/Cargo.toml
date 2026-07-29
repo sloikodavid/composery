@@ -21,4 +21,5 @@ walkdir = "2.5.0"
 xattr = "1.6.1"
 
 [dev-dependencies]
+proptest = "1.11.0"
 tempfile.workspace = true

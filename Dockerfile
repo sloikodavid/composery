@@ -57,7 +57,7 @@ COPY packages/ide/package.json ./packages/ide/package.json
 COPY packages/ide/overlay ./packages/ide/overlay
 COPY packages/ide/patches ./packages/ide/patches
 COPY packages/ide/scripts ./packages/ide/scripts
-COPY packages/shared/index.ts ./packages/shared/index.ts
+COPY packages/shared/*.ts ./packages/shared/
 
 WORKDIR /src/packages/ide
 

@@ -18,6 +18,7 @@
 		"packages/shared/tests/**/*.ts",
 		"tests/**/*.ts",
 		"packages/ide/tests/**/*.ts",
+		"scripts/runbook.d.mts",
 		"vitest.config.ts"
 	]
 }

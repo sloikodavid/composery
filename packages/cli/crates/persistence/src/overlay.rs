@@ -511,6 +511,10 @@ fn path_kv(path: &Path) -> Result<&str> {
 mod tests {
     use super::*;
     use crate::baseline::{GenerateOptions, generate};
+    use proptest::{
+        prelude::*,
+        test_runner::{Config as ProptestConfig, RngSeed},
+    };
     use std::os::unix::ffi::OsStrExt;
 
     fn record(kind: &str, content_hash: Option<&str>) -> BaselineRecord {
@@ -537,56 +541,55 @@ mod tests {
         }
     }
 
-    #[test]
-    fn classify_covers_every_whiteout_case() {
-        let old = record("file", Some("aaa"));
-        let same = record("file", Some("aaa"));
-        let changed = record("file", Some("bbb"));
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 96,
+            failure_persistence: None,
+            rng_seed: RngSeed::Fixed(0x5748_4954),
+            ..ProptestConfig::default()
+        })]
 
-        // Orphan: the current image ships nothing here.
-        assert_eq!(
-            classify_whiteout(Some(&old), None, true),
-            WhiteoutAction::DropOrphan
-        );
-        // Reintroduced: previous image lacked it, current ships it.
-        assert_eq!(
-            classify_whiteout(None, Some(&changed), true),
-            WhiteoutAction::DropReintroduced
-        );
-        // Changed: both ship it, different content.
-        assert_eq!(
-            classify_whiteout(Some(&old), Some(&changed), true),
-            WhiteoutAction::DropChanged
-        );
-        // Unchanged: identical content in both images - keep the deletion.
-        assert_eq!(
-            classify_whiteout(Some(&old), Some(&same), true),
-            WhiteoutAction::Keep
-        );
-        // Unknown history (no previous baseline): keep everything with a
-        // counterpart, only orphans are safe to drop.
-        assert_eq!(
-            classify_whiteout(None, Some(&changed), false),
-            WhiteoutAction::Keep
-        );
-        assert_eq!(
-            classify_whiteout(None, None, false),
-            WhiteoutAction::DropOrphan
-        );
-    }
+        #[test]
+        fn whiteout_classification_preserves_only_the_deleted_image_contents(
+            previous_available in any::<bool>(),
+            previous_contents in proptest::option::of(any::<u16>()),
+            current_contents in proptest::option::of(any::<u16>()),
+            previous_mode in 0i64..=0o7777,
+            current_mode in 0i64..=0o7777,
+            previous_uid in any::<u16>(),
+            current_uid in any::<u16>(),
+        ) {
+            let previous_contents = previous_available.then_some(previous_contents).flatten();
+            let mut previous = previous_contents
+                .map(|contents| record("file", Some(&format!("{contents:04x}"))));
+            let mut current = current_contents
+                .map(|contents| record("file", Some(&format!("{contents:04x}"))));
+            if let Some(previous) = &mut previous {
+                previous.mode = previous_mode;
+                previous.uid = i64::from(previous_uid);
+            }
+            if let Some(current) = &mut current {
+                current.mode = current_mode;
+                current.uid = i64::from(current_uid);
+            }
 
-    #[test]
-    fn signature_ignores_metadata_only_changes() {
-        let mut a = record("file", Some("aaa"));
-        let mut b = record("file", Some("aaa"));
-        a.mode = 0o644;
-        b.mode = 0o600;
-        a.uid = 0;
-        b.uid = 1000;
-        assert_eq!(signature(&a), signature(&b));
+            let expected = match (previous_contents, current_contents) {
+                (_, None) => WhiteoutAction::DropOrphan,
+                (Some(previous), Some(current)) if previous == current => WhiteoutAction::Keep,
+                (Some(_), Some(_)) => WhiteoutAction::DropChanged,
+                (None, Some(_)) if previous_available => WhiteoutAction::DropReintroduced,
+                (None, Some(_)) => WhiteoutAction::Keep,
+            };
 
-        let c = record("file", Some("zzz"));
-        assert_ne!(signature(&a), signature(&c));
+            prop_assert_eq!(
+                classify_whiteout(
+                    previous.as_ref(),
+                    current.as_ref(),
+                    previous_available,
+                ),
+                expected,
+            );
+        }
     }
 
     /// Make a `0/0` character-device whiteout. Returns false when the kernel /
@@ -665,6 +668,7 @@ mod tests {
         assert_eq!(report.whiteouts_dropped_changed, 1);
         assert_eq!(report.whiteouts_dropped_reintroduced, 1);
         assert_eq!(report.whiteouts_dropped_orphan, 1);
+        assert!(report.previous_baseline_present);
     }
 
     #[test]

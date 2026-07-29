@@ -67,10 +67,10 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # would ship different code under identical URLs and clients would keep stale caches. Stamp a
 # content hash of everything we lay on top instead (workbench-page.diff makes the build honor it):
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
-# scripts/ and ../shared/index.ts are hashed too: rebrand.mjs rewrites the
+# scripts/ and ../shared/*.ts are hashed too: rebrand.mjs rewrites the
 # assembled tree from both, so a rename-rule or brand-constant change alters
 # shipped code without touching patches or overlay.
-COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay scripts ../shared/index.ts -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
+COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay scripts ../shared/*.ts -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
 export COMPOSERY_STATIC_STAMP
 echo "static stamp: $COMPOSERY_STATIC_STAMP"
 # npm ci is skipped when node_modules came with the tree: the Docker ide-base

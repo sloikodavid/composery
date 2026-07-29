@@ -1,3 +1,8 @@
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import vm from "node:vm";
+
 import ts from "typescript";
 
 // Loading overlay modules so a behaviour test can run them. Overlay files
@@ -17,4 +22,46 @@ export function transpileToCommonJs(source: string): string {
 			target: ts.ScriptTarget.ES2022
 		}
 	}).outputText;
+}
+
+export function loadOverlayModule<T>({
+	source,
+	dependencies = {},
+	globals = {}
+}: {
+	source: URL;
+	dependencies?: Record<string, unknown>;
+	globals?: Record<string, unknown>;
+}): {
+	exports: T;
+	binding<U>(name: string): U;
+} {
+	const filename = fileURLToPath(source);
+	const localRequire = createRequire(source);
+	const module = { exports: {} as T };
+	const context = vm.createContext({
+		...globals,
+		exports: module.exports,
+		module,
+		__dirname: fileURLToPath(new URL(".", source)),
+		__filename: filename,
+		require(specifier: string): unknown {
+			if (Object.hasOwn(dependencies, specifier)) {
+				return dependencies[specifier];
+			}
+			return localRequire(specifier) as unknown;
+		}
+	});
+
+	const contents = readFileSync(filename, "utf8");
+	const executable = filename.endsWith(".ts")
+		? transpileToCommonJs(contents)
+		: contents;
+	new vm.Script(executable, { filename }).runInContext(context);
+	return {
+		exports: module.exports,
+		binding<U>(name: string): U {
+			return new vm.Script(name).runInContext(context) as U;
+		}
+	};
 }

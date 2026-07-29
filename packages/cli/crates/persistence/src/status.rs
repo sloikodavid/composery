@@ -197,6 +197,61 @@ pub fn print_human(report: &StatusReport) {
 /// Build the human status text. Split out from `print_human` so tests assert on
 /// the real rendering (and the overlay stand-down branch in particular) rather
 /// than a copy of the logic.
+///
+/// ```
+/// use persistence::status::{PublicCounts, StatusReport, human_report};
+///
+/// let report = StatusReport {
+///     ready: true,
+///     phase: "ready".into(),
+///     engine: "copy".into(),
+///     engine_reason: Some("overlay probe unavailable".into()),
+///     last_apply_success_at: None,
+///     last_apply_failure_at: None,
+///     last_apply_error: None,
+///     last_daemon_success_at: None,
+///     last_daemon_failure_at: None,
+///     last_daemon_error: None,
+///     watch_status: "active".into(),
+///     audit_status: "idle".into(),
+///     watch_count: 12,
+///     watch_budget: 64,
+///     watch_evictions: 2,
+///     watches_shed: false,
+///     last_error: None,
+///     baseline_present: true,
+///     baseline_valid: true,
+///     capabilities: None,
+///     dirty_queue_size: 3,
+///     public_counts: PublicCounts {
+///         changed: 4,
+///         removed: 1,
+///         metadata: 2,
+///     },
+/// };
+///
+/// assert_eq!(
+///     human_report(&report),
+///     concat!(
+///         "persistence status:\n",
+///         "  ready: true\n",
+///         "  phase: ready\n",
+///         "  engine: copy\n",
+///         "  engineReason: overlay probe unavailable\n",
+///         "  baseline: true\n",
+///         "  baselineValid: true\n",
+///         "  watch: active\n",
+///         "  audit: idle\n",
+///         "  watches: 12 / 64\n",
+///         "  watchEvictions: 2\n",
+///         "  watchesShed: false\n",
+///         "  dirtyQueueSize: 3\n",
+///         "  changed: 4\n",
+///         "  removed: 1\n",
+///         "  metadata: 2\n",
+///     )
+/// );
+/// ```
 pub fn human_report(report: &StatusReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();

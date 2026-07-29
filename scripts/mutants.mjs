@@ -80,7 +80,9 @@ if (ts.length) {
 	// config that is the committed one plus this run's scope. Writing it out beats
 	// mutating stryker.config.json in place: nothing here can leave the checked-in
 	// config holding a diff-shaped `mutate` list.
-	const base = JSON.parse(readFileSync(resolve(REPO_ROOT, "stryker.config.json"), "utf8"));
+	const base = JSON.parse(
+		readFileSync(resolve(REPO_ROOT, "stryker.config.json"), "utf8")
+	);
 	mkdirSync(dirname(STRYKER_CONFIG), { recursive: true });
 	writeFileSync(
 		STRYKER_CONFIG,

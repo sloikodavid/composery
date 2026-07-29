@@ -275,6 +275,8 @@ packages/
                 terminal/
                   common/
                     terminalDataFlowControl.ts
+                  node/
+                    terminalClients.ts
               workbench/
                 browser/
                   media/
@@ -287,6 +289,7 @@ packages/
                     browser/
                       shortcuts.contribution.ts
                       xtermCell.ts
+                      xtermResize.ts
                   terminalContrib/
                     touchSelection/
                       browser/
@@ -385,8 +388,38 @@ packages/
       types.mjs
     tests/
       behavior/
+        lib/
+          vscode/
+            extensions/
+              composery-agents/
+                extension.test.ts
+              composery-api/
+                extension.test.ts
+              composery-qr/
+                extension.test.ts
+              composery-shortcuts/
+                extension.test.ts
+              composery-updates/
+                extension.test.ts
+            src/
+              vs/
+                base/
+                  browser/
+                    softKeyboard.test.ts
+                code/
+                  browser/
+                    workbench/
+                      shell.test.ts
+                platform/
+                  terminal/
+                    node/
+                      terminalClients.test.ts
+                workbench/
+                  contrib/
+                    terminal/
+                      browser/
+                        xtermResize.test.ts
         session.test.ts
-        terminal-clients.test.ts
       invariants/
         auth-routes.test.ts
         patches.test.ts

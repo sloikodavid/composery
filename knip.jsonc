@@ -19,22 +19,11 @@
 				"vitest.config.ts",
 				"eslint.config.mjs"
 			],
-			"project": [
-				"scripts/**/*.mjs",
-				"tests/**/*.ts",
-				"*.ts",
-				"*.mjs"
-			]
+			"project": ["scripts/**/*.mjs", "tests/**/*.ts", "*.ts", "*.mjs"]
 		},
 		"packages/shared": {
-			"entry": [
-				"index.ts",
-				"scripts/*.mjs",
-				"tools/**/*.mjs"
-			],
-			"project": [
-				"**/*.{ts,mjs}"
-			]
+			"entry": ["index.ts", "scripts/*.mjs", "tools/**/*.mjs"],
+			"project": ["**/*.{ts,mjs}"]
 		},
 		"packages/web": {
 			"entry": [
@@ -45,14 +34,8 @@
 				"source.config.ts",
 				"next.config.ts"
 			],
-			"project": [
-				"**/*.{ts,tsx}",
-				"scripts/**/*.mjs"
-			],
-			"ignore": [
-				"convex/_generated/**",
-				".source/**"
-			]
+			"project": ["**/*.{ts,tsx}", "scripts/**/*.mjs"],
+			"ignore": ["convex/_generated/**", ".source/**"]
 		},
 		"packages/mobile": {
 			"entry": [
@@ -61,21 +44,11 @@
 				"scripts/*.mjs",
 				"tests/**/*.test.ts"
 			],
-			"project": [
-				"src/**/*.{ts,tsx}",
-				"plugins/*.js",
-				"scripts/*.mjs"
-			]
+			"project": ["src/**/*.{ts,tsx}", "plugins/*.js", "scripts/*.mjs"]
 		},
 		"packages/ide": {
-			"entry": [
-				"tests/**/*.test.ts",
-				"scripts/*.mjs"
-			],
-			"project": [
-				"tests/**/*.ts",
-				"scripts/*.mjs"
-			]
+			"entry": ["tests/**/*.test.ts", "scripts/*.mjs"],
+			"project": ["tests/**/*.ts", "scripts/*.mjs"]
 		}
 	},
 	"ignore": [
@@ -92,11 +65,5 @@
 		"tailwindcss",
 		"tw-animate-css"
 	],
-	"ignoreBinaries": [
-		"docker",
-		"cargo",
-		"quilt",
-		"adb",
-		"maestro"
-	]
+	"ignoreBinaries": ["docker", "cargo", "quilt", "adb", "maestro"]
 }
