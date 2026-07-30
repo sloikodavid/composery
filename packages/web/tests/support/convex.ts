@@ -57,6 +57,7 @@ export function stubDeploymentEnv() {
 
 type UserSeed = {
 	clerkUserId?: string;
+	deletionPending?: boolean;
 	email?: string;
 	role?: Doc<"users">["role"];
 	suspended?: boolean;
@@ -78,6 +79,7 @@ export async function seedUser(t: Harness, seed: UserSeed = {}) {
 				role: seed.role ?? "user",
 				suspended: seed.suspended ?? false,
 				suspended_reason: seed.suspendedReason,
+				deletion_pending: seed.deletionPending,
 				created_at: 1,
 				updated_at: 1
 			})

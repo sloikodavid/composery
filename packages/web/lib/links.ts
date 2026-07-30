@@ -4,14 +4,7 @@
 // "Running your own".
 import { OWNER, REPO, SOCIAL } from "shared";
 
-// Retained for existing consumers; sourced from the shared REPO coordinates.
-export const gitConfig = {
-	user: REPO.owner,
-	repo: REPO.name,
-	branch: REPO.branch
-};
-
-export const GITHUB_REPO_URL = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
+export const GITHUB_REPO_URL = `https://github.com/${REPO.owner}/${REPO.name}`;
 export const GITHUB_BUG_URL = `${GITHUB_REPO_URL}/issues/new?template=bug.yml`;
 export const GITHUB_IDEAS_URL = `${GITHUB_REPO_URL}/discussions/categories/ideas`;
 export const GITHUB_ADVISORY_URL = `${GITHUB_REPO_URL}/security/advisories/new`;

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
 	cloudUrl,
 	ideUrl,
-	normalizeDomainValue,
+	normalizeDomain,
 	optionalEnv,
 	requiredEnv,
 	runtimeDomain,
@@ -20,13 +20,11 @@ afterEach(() => {
 	}
 });
 
-describe("normalizeDomainValue", () => {
+describe("normalizeDomain", () => {
 	test("strips leading and trailing dots", () => {
-		expect(normalizeDomainValue("composery.cloud")).toBe("composery.cloud");
-		expect(normalizeDomainValue(".composery.cloud.")).toBe("composery.cloud");
-		expect(normalizeDomainValue("...composery.cloud...")).toBe(
-			"composery.cloud"
-		);
+		expect(normalizeDomain("composery.cloud")).toBe("composery.cloud");
+		expect(normalizeDomain(".composery.cloud.")).toBe("composery.cloud");
+		expect(normalizeDomain("...composery.cloud...")).toBe("composery.cloud");
 	});
 });
 

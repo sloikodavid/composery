@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
-import { requireCapability } from "../authorization";
+import { requireCapability } from "../users";
 import { BOX_STATUSES, type BoxStatus } from "../schema";
 import { CAPACITY_BOX_STATUSES } from "../boxes/capacity";
 

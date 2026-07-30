@@ -43,11 +43,9 @@ instead of repeating the list:
   full, authoritative list is `packages/web/.env.example.convex.dev` and
   `.env.example.convex.prod`; [Convex](./services/convex.md) covers setting it.
 
-`CLERK_SECRET_KEY` is the only variable on both planes: the same Clerk secret
-sits in the Next env and on the Convex deployment, the latter for staff-triggered
-account deletion (`convex/accountDeletion.ts`). Otherwise the planes are
-disjoint - putting a Convex deployment var in `.env.local`, or a frontend var on
-the deployment, does nothing at runtime; each plane reads only its own store.
+The planes are disjoint, with no exceptions: putting a Convex deployment var in
+`.env.local`, or a frontend var on the deployment, does nothing at runtime, and
+each plane reads only its own store.
 
 Domain split:
 

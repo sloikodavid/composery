@@ -12,11 +12,12 @@ import {
 	type QueryCtx
 } from "../_generated/server";
 import {
-	getUserByClerkId,
-	publicUser,
+	accountBlock,
+	findUserByClerkId,
+	findUserByEmail,
 	requireCapability,
 	requireCapabilityInAction
-} from "../authorization";
+} from "../users";
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
 import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
@@ -57,7 +58,7 @@ const STAFF_FAILURE_DISMISS_BATCH = 100;
 async function usersByClerkIds(ctx: QueryCtx, clerkUserIds: Iterable<string>) {
 	const users = new Map<string, Doc<"users">>();
 	for (const clerkUserId of new Set(clerkUserIds)) {
-		const user = await getUserByClerkId(ctx, clerkUserId);
+		const user = await findUserByClerkId(ctx, clerkUserId);
 		if (user) users.set(clerkUserId, user);
 	}
 	return users;
@@ -127,10 +128,7 @@ export const search = query({
 					.first()
 			);
 
-			const user = await ctx.db
-				.query("users")
-				.withIndex("email", (query) => query.eq("email", term))
-				.first();
+			const user = await findUserByEmail(ctx, term);
 			const userIds = new Set([rawTerm]);
 			if (user) userIds.add(user.clerk_user_id);
 			for (const userId of userIds) {
@@ -289,7 +287,7 @@ export const getById = query({
 		const box = boxId ? await ctx.db.get(boxId) : null;
 		if (!box) return null;
 
-		const user = await getUserByClerkId(ctx, box.user_id);
+		const user = await findUserByClerkId(ctx, box.user_id);
 		const subscription = box.polar_subscription_id
 			? await ctx.runQuery(components.polar.lib.getSubscription, {
 					id: box.polar_subscription_id
@@ -300,7 +298,16 @@ export const getById = query({
 
 		return {
 			box: staffBox(box, user),
-			user: user ? publicUser(user) : null,
+			// Only what the console draws: who the owner is, and whether they are
+			// locked out. Role and suspension wording are staff-only text the page
+			// never renders, so they are not shipped to it.
+			user: user
+				? {
+						clerkUserId: user.clerk_user_id,
+						email: user.email,
+						suspended: user.suspended
+					}
+				: null,
 			subscription,
 			suspendedReason,
 			activeOperation: await activeOperation(ctx.db, box._id),
@@ -375,17 +382,12 @@ export const grantComp = mutation({
 		const reason = args.reason.trim();
 		if (!reason) throw new ConvexError("A comp reason is required.");
 
-		const targetUser = await ctx.db
-			.query("users")
-			.withIndex("email", (query) =>
-				query.eq("email", args.email.trim().toLowerCase())
-			)
-			.first();
+		const targetUser = await findUserByEmail(ctx, args.email);
 		if (!targetUser) throw new ConvexError("User not found.");
-		if (targetUser.suspended) throw new ConvexError("User is suspended.");
-		if (targetUser.deletion_pending) {
-			throw new ConvexError("Account deletion is in progress for this user.");
-		}
+		// The same answer the owner would get, so a comp cannot be granted to an
+		// account its own owner is locked out of.
+		const blocked = accountBlock(targetUser);
+		if (blocked) throw new ConvexError(`${blocked.title}. ${blocked.detail}`);
 
 		const slug = sanitizeSlug(args.slug);
 		if (!isValidSlug(slug)) throw new ConvexError("Slug is unavailable.");

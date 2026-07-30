@@ -12,7 +12,7 @@ const host = vi.hoisted<{
 }>(() => ({
 	current: new Map(),
 	readiness:
-		'const page = \'<style>body{margin:0;background:#111111;color:#222222}@media (prefers-color-scheme:dark){body{background:#333333;color:#444444}}</style>\';',
+		"const page = '<style>body{margin:0;background:#111111;color:#222222}@media (prefers-color-scheme:dark){body{background:#333333;color:#444444}}</style>';",
 	writes: []
 }));
 
@@ -170,7 +170,7 @@ describe("text brand asset generator", () => {
 		expect(
 			output(/packages\/ide\/overlay\/src\/node\/persistence\/readiness\.ts$/)
 		).toBe(
-			'const page = \'<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}</style>\';'
+			"const page = '<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}</style>';"
 		);
 
 		expect(output(/packages\/web\/app\/icon\.svg$/)).toMatch(

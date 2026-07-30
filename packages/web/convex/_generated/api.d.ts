@@ -10,7 +10,6 @@
 
 import type * as accountDeletion from "../accountDeletion.js";
 import type * as accountDeletionLogic from "../accountDeletionLogic.js";
-import type * as authorization from "../authorization.js";
 import type * as billing_polar from "../billing/polar.js";
 import type * as billing_reconciliation from "../billing/reconciliation.js";
 import type * as billing_webhooks from "../billing/webhooks.js";
@@ -71,7 +70,6 @@ import type * as email from "../email.js";
 import type * as env from "../env.js";
 import type * as http from "../http.js";
 import type * as ownerEmail from "../ownerEmail.js";
-import type * as roles from "../roles.js";
 import type * as settings from "../settings.js";
 import type * as staff_alerts from "../staff/alerts.js";
 import type * as staff_boxes from "../staff/boxes.js";
@@ -94,7 +92,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   accountDeletion: typeof accountDeletion;
   accountDeletionLogic: typeof accountDeletionLogic;
-  authorization: typeof authorization;
   "billing/polar": typeof billing_polar;
   "billing/reconciliation": typeof billing_reconciliation;
   "billing/webhooks": typeof billing_webhooks;
@@ -155,7 +152,6 @@ declare const fullApi: ApiFromModules<{
   env: typeof env;
   http: typeof http;
   ownerEmail: typeof ownerEmail;
-  roles: typeof roles;
   settings: typeof settings;
   "staff/alerts": typeof staff_alerts;
   "staff/boxes": typeof staff_boxes;

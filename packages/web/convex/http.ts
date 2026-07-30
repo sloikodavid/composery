@@ -71,10 +71,7 @@ http.route({
 
 		await ctx.runAction(
 			internal.accountDeletion.requestAccountDeletionForClerkUser,
-			{
-				clerkUserId,
-				trigger: "clerk_webhook"
-			}
+			{ clerkUserId }
 		);
 
 		return new Response("Accepted.", { status: 202 });

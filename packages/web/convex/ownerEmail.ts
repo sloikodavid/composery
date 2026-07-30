@@ -6,6 +6,7 @@ import { optionalWebsiteUrl } from "./env";
 import { appendBoxEvent } from "./boxes/events";
 import { ownerSender, resendClient } from "./email";
 import { raiseAlert } from "./staff/alerts";
+import { findUserByClerkId } from "./users";
 import type { OperationTrigger } from "./schema";
 
 // What a box owner is told by email, and when.
@@ -158,12 +159,7 @@ export async function sendOwnerEmail(
 		const from = ownerSender();
 		if (!from) return;
 
-		const owner = await ctx.db
-			.query("users")
-			.withIndex("clerk_user_id", (query) =>
-				query.eq("clerk_user_id", box.user_id)
-			)
-			.first();
+		const owner = await findUserByClerkId(ctx, box.user_id);
 		// A finished account deletion replaces the address with a `@deleted.invalid`
 		// placeholder, and the last box teardown of that same deletion can land
 		// after it. Mailing the placeholder would be a guaranteed bounce, and the

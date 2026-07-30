@@ -84,6 +84,12 @@ export default defineConfig({
 				// where wording belongs: `packages/web/tests/invariants/legal`.
 				"packages/web/app/**",
 				"packages/web/components/**",
+				// The same rule, for the one file in `lib/` that is presentation rather
+				// than a decision: a map of Clerk element names to Tailwind strings. It
+				// sits here rather than beside a component because three surfaces mount
+				// Clerk, and the only test that could reach it would assert the class
+				// strings back - the styling restated as an expectation.
+				"packages/web/lib/clerk-appearance.ts",
 				// A box workflow handler is a sequence of `step.runAction` calls against
 				// a durable execution engine, Hetzner, Cloudflare, and SSH. Covering one
 				// means standing up the workflow component and mocking all four, and

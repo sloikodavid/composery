@@ -287,7 +287,6 @@ export default defineSchema({
 		suspended_at: v.optional(v.number()),
 		deletion_pending: v.optional(v.boolean()),
 		deletion_requested_at: v.optional(v.number()),
-		deletion_requested_by: v.optional(v.string()),
 		deletion_finished_at: v.optional(v.number()),
 		purge_at: v.optional(v.number()),
 		created_at: v.number(),

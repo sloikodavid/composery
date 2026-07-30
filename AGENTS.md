@@ -492,8 +492,6 @@ packages/
                 config-field.tsx
               page.tsx
             page.tsx
-          new/
-            page.tsx
           error.tsx
           page.tsx
         brand/
@@ -754,14 +752,12 @@ packages/
       accountDeletion.ts
       accountDeletionLogic.ts
       auth.config.ts
-      authorization.ts
       convex.config.ts
       crons.ts
       email.ts
       env.ts
       http.ts
       ownerEmail.ts
-      roles.ts
       schema.ts
       settings.ts
       tsconfig.json
@@ -901,17 +897,19 @@ packages/
           staff/
             alerts.test.ts
             boxes.test.ts
+            checkout.test.ts
+            users.test.ts
           user/
             boxes.test.ts
             checkout.test.ts
+          accountDeletion.test.ts
           accountDeletionLogic.test.ts
-          authorization.test.ts
           crons.test.ts
           env.test.ts
           http.test.ts
           ownerEmail.test.ts
-          roles.test.ts
           settings.test.ts
+          users.test.ts
         lib/
           auth-routing.test.ts
           box-billing.test.ts

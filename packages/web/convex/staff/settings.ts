@@ -5,7 +5,7 @@ import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
-import { requireCapability, requireCapabilityInAction } from "../authorization";
+import { requireCapability, requireCapabilityInAction } from "../users";
 import {
 	validateThresholds,
 	type ThresholdSetting

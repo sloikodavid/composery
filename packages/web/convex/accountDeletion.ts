@@ -16,6 +16,7 @@ import {
 	terminalCheckoutSecretPatch
 } from "./boxes/retention";
 import { releaseIntentDoc } from "./checkout/checkoutIntents";
+import { findUserByClerkId } from "./users";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
@@ -23,7 +24,6 @@ import {
 	scrubbedAccountEmail,
 	scrubbedUserId
 } from "./accountDeletionLogic";
-import { requiredEnv } from "./env";
 
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * 60 * 1000;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
@@ -34,27 +34,10 @@ const ACCOUNT_PURGE_RETRY_MS = 24 * 60 * 60 * 1000;
 // runbook: Stuck account-deletion alert
 export const ACCOUNT_DELETION_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
 
-type DeletionTrigger = "clerk_webhook" | "staff";
-type AccountDeletionResult = { status: "missing" | "pending" };
 type DeletionState = {
 	boxes: Doc<"boxes">[];
 	user: Doc<"users"> | null;
 };
-
-async function deleteClerkUser(clerkUserId: string) {
-	const response = await fetch(
-		`https://api.clerk.com/v1/users/${encodeURIComponent(clerkUserId)}`,
-		{
-			method: "DELETE",
-			headers: {
-				Authorization: `Bearer ${requiredEnv("CLERK_SECRET_KEY")}`,
-				"Content-Type": "application/json"
-			}
-		}
-	);
-	if (response.ok || response.status === 404) return;
-	throw new Error(`Clerk user deletion failed with HTTP ${response.status}.`);
-}
 
 async function stateForClerkUser(
 	ctx: Pick<ActionCtx, "runQuery">,
@@ -98,37 +81,12 @@ async function scheduleFinalizer(
 	);
 }
 
-async function runAccountDeletion(
-	ctx: ActionCtx,
-	input: {
-		clerkUserId: string;
-		trigger: DeletionTrigger;
-	}
-): Promise<AccountDeletionResult> {
-	const marked = await ctx.runMutation(
-		internal.accountDeletion.markAccountDeletionPending,
-		input
-	);
-	if (!marked) return { status: "missing" as const };
-
-	const state = await stateForClerkUser(ctx, input.clerkUserId);
-	await startDeletionWorkflows(ctx, state.boxes);
-
-	await scheduleFinalizer(ctx, input.clerkUserId, 0);
-	return { status: "pending" as const };
-}
-
 export const accountDeletionState = internalQuery({
 	args: {
 		clerkUserId: v.string()
 	},
 	handler: async (ctx, args): Promise<DeletionState> => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("clerk_user_id", (query) =>
-				query.eq("clerk_user_id", args.clerkUserId)
-			)
-			.first();
+		const user = await findUserByClerkId(ctx, args.clerkUserId);
 
 		const boxes = await ctx.db
 			.query("boxes")
@@ -158,16 +116,10 @@ export const pendingAccountDeletionsPage = internalQuery({
 
 export const markAccountDeletionPending = internalMutation({
 	args: {
-		clerkUserId: v.string(),
-		trigger: v.union(v.literal("clerk_webhook"), v.literal("staff"))
+		clerkUserId: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("clerk_user_id", (query) =>
-				query.eq("clerk_user_id", args.clerkUserId)
-			)
-			.first();
+		const user = await findUserByClerkId(ctx, args.clerkUserId);
 
 		if (!user) return null;
 		if (user.deletion_finished_at) return user._id;
@@ -177,7 +129,6 @@ export const markAccountDeletionPending = internalMutation({
 			await ctx.db.patch(user._id, {
 				deletion_pending: true,
 				deletion_requested_at: timestamp,
-				deletion_requested_by: args.trigger,
 				updated_at: timestamp
 			});
 		}
@@ -221,12 +172,7 @@ export const finishAccountDeletion = internalMutation({
 		clerkUserId: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("clerk_user_id", (query) =>
-				query.eq("clerk_user_id", args.clerkUserId)
-			)
-			.first();
+		const user = await findUserByClerkId(ctx, args.clerkUserId);
 		if (!user || !user.deletion_pending || user.deletion_finished_at) return;
 
 		const timestamp = Date.now();
@@ -367,16 +313,27 @@ export const pseudonymizeDeletedAccountRecords = internalMutation({
 	}
 });
 
+// Clerk owns the identity, so Clerk owns the decision to delete it: a customer
+// deleting their own account in the account portal and staff deleting one from
+// the Clerk dashboard are the same signed `user.deleted` webhook, and this is
+// everything that happens on our side of it. There is deliberately no second
+// entry point - a staff console button that deleted the Clerk user through its
+// Backend API would be a second way to start the identical cleanup, and the
+// deployment would carry a Clerk secret on the Convex plane to do it.
 export const requestAccountDeletionForClerkUser = internalAction({
 	args: {
-		clerkUserId: v.string(),
-		trigger: v.union(v.literal("clerk_webhook"), v.literal("staff"))
+		clerkUserId: v.string()
 	},
-	handler: async (ctx, args): Promise<AccountDeletionResult> => {
-		// Staff deletion owns the whole identity lifecycle. Clerk-originated
-		// deletion already happened and arrives here through its signed webhook.
-		if (args.trigger === "staff") await deleteClerkUser(args.clerkUserId);
-		return await runAccountDeletion(ctx, args);
+	handler: async (ctx, args) => {
+		const marked = await ctx.runMutation(
+			internal.accountDeletion.markAccountDeletionPending,
+			args
+		);
+		if (!marked) return;
+
+		const state = await stateForClerkUser(ctx, args.clerkUserId);
+		await startDeletionWorkflows(ctx, state.boxes);
+		await scheduleFinalizer(ctx, args.clerkUserId, 0);
 	}
 });
 

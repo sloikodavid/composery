@@ -2,7 +2,11 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { mutation, query, type QueryCtx } from "../_generated/server";
-import { getUserByClerkId, requireCapability } from "../authorization";
+import {
+	findUserByClerkId,
+	findUserByEmail,
+	requireCapability
+} from "../users";
 import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
 
 const STAFF_INTENT_LIST_LIMIT = 50;
@@ -11,7 +15,7 @@ const STAFF_INTENT_SEARCH_SCAN_LIMIT = 500;
 async function usersByClerkIds(ctx: QueryCtx, clerkUserIds: Iterable<string>) {
 	const users = new Map<string, Doc<"users">>();
 	for (const clerkUserId of new Set(clerkUserIds)) {
-		const user = await getUserByClerkId(ctx, clerkUserId);
+		const user = await findUserByClerkId(ctx, clerkUserId);
 		if (user) users.set(clerkUserId, user);
 	}
 	return users;
@@ -86,10 +90,7 @@ export const activeCheckoutIntents = query({
 					.first()
 			);
 
-			const user = await ctx.db
-				.query("users")
-				.withIndex("email", (query) => query.eq("email", term))
-				.first();
+			const user = await findUserByEmail(ctx, term);
 			const userIds = new Set([rawTerm]);
 			if (user) userIds.add(user.clerk_user_id);
 			for (const userId of userIds) {

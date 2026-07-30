@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, query } from "../_generated/server";
-import { emailFromIdentity } from "../authorization";
+import { accountBlock, emailFromIdentity } from "../users";
 import {
 	boxProductId,
 	boxProductIds,
@@ -143,14 +143,15 @@ export const createCheckout = action({
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) throw new ConvexError("Authentication required.");
 
+		// The row has to exist before the sale, and this is an action, so it is
+		// created through a mutation rather than by `requireActiveUser`. The gate
+		// afterwards is the same one every other owner-facing entry point applies.
 		const user = await ctx.runMutation(internal.users.ensureUserForIdentity, {
 			clerkUserId: identity.subject,
 			email: emailFromIdentity(identity)
 		});
-		if (user.suspended) throw new ConvexError("User is suspended.");
-		if (user.deletion_pending) {
-			throw new ConvexError("Account deletion is already in progress.");
-		}
+		const blocked = accountBlock(user);
+		if (blocked) throw new ConvexError(blocked);
 
 		const slug = sanitizeSlug(args.slug);
 		if (!isValidSlug(slug)) {

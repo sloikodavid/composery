@@ -4,16 +4,15 @@ import { components, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, mutation, query, type QueryCtx } from "../_generated/server";
 import {
-	getUserByClerkId,
+	currentUserForRead,
 	requireActiveUser,
-	requireActiveUserInAction,
-	requireIdentity
-} from "../authorization";
+	requireActiveUserInAction
+} from "../users";
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
 import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
 import { startBoxOperation } from "../boxes/operations";
-import { currentSuspensionReason, findBoxBySlug } from "../boxes/queries";
+import { currentSuspensionReason, findOwnedBoxBySlug } from "../boxes/queries";
 import {
 	boxRuntimeStanding,
 	latestFailure,
@@ -68,23 +67,11 @@ async function assertTlsReissueBudget(ctx: QueryCtx, boxId: Id<"boxes">) {
 	}
 }
 
-async function requireCurrentUserForBoxRead(ctx: QueryCtx) {
-	const identity = await requireIdentity(ctx);
-	const user = await getUserByClerkId(ctx, identity.subject);
-	if (user?.suspended) {
-		throw new ConvexError({
-			kind: "user_suspended",
-			reason: user.suspended_reason ?? ""
-		});
-	}
-	return { identity, user };
-}
-
 // Resolve a slug to the caller's box or fail without revealing whether the slug
 // exists.
 async function requireOwnedBox(ctx: QueryCtx, userId: string, slug: string) {
-	const box = await findBoxBySlug(ctx, slug);
-	if (!box || box.user_id !== userId) throw new ConvexError("Box not found.");
+	const box = await findOwnedBoxBySlug(ctx, userId, slug);
+	if (!box) throw new ConvexError("Box not found.");
 	return box;
 }
 
@@ -119,7 +106,7 @@ export const list = query({
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
-		const { identity, user } = await requireCurrentUserForBoxRead(ctx);
+		const { identity, user } = await currentUserForRead(ctx);
 		if (!user) {
 			return {
 				continueCursor: "",
@@ -149,7 +136,7 @@ export const getById = query({
 		boxId: v.string()
 	},
 	handler: async (ctx, args) => {
-		const { identity } = await requireCurrentUserForBoxRead(ctx);
+		const { identity } = await currentUserForRead(ctx);
 		const boxId = ctx.db.normalizeId("boxes", args.boxId);
 		const box = boxId ? await ctx.db.get(boxId) : null;
 
@@ -184,9 +171,9 @@ export const metricsSeries = query({
 		range: v.optional(vMetricsRange)
 	},
 	handler: async (ctx, args) => {
-		const { identity } = await requireCurrentUserForBoxRead(ctx);
-		const box = await findBoxBySlug(ctx, args.slug);
-		if (!box || box.user_id !== identity.subject) return [];
+		const { identity } = await currentUserForRead(ctx);
+		const box = await findOwnedBoxBySlug(ctx, identity.subject, args.slug);
+		if (!box) return [];
 
 		return [
 			{
@@ -324,7 +311,7 @@ export const retryCreate = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 
 		await startBoxOperation(ctx, box._id, "create", {
 			idempotencyKey: `create:${box._id}`,
@@ -339,7 +326,7 @@ export const stop = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 
 		await startBoxOperation(ctx, box._id, "stop", {
 			idempotencyKey: `stop:${box._id}`,
@@ -354,7 +341,7 @@ export const start = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 
 		await startBoxOperation(ctx, box._id, "start", {
 			idempotencyKey: `start:${box._id}`,
@@ -370,7 +357,7 @@ export const reset = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 		if (args.confirmation !== box.slug) {
 			throw new ConvexError("Type the box slug to reset.");
 		}
@@ -393,7 +380,7 @@ export const changeSlug = mutation({
 		const newSlug = sanitizeSlug(args.newSlug);
 		if (!isValidSlug(newSlug)) throw new ConvexError("Slug is unavailable.");
 
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 		await assertTlsReissueBudget(ctx, box._id);
 
 		await startBoxOperation(ctx, box._id, "change_slug", {
@@ -424,7 +411,7 @@ export const setSnapshotSplit = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 
 		if (!isValidManualSnapshotCap(box.plan, args.manualCap)) {
 			throw new ConvexError(
@@ -446,9 +433,9 @@ export const snapshots = query({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const { identity } = await requireCurrentUserForBoxRead(ctx);
-		const box = await findBoxBySlug(ctx, args.slug);
-		if (!box || box.user_id !== identity.subject) return [];
+		const { identity } = await currentUserForRead(ctx);
+		const box = await findOwnedBoxBySlug(ctx, identity.subject, args.slug);
+		if (!box) return [];
 
 		const rows = await ctx.db
 			.query("box_snapshots")
@@ -468,7 +455,7 @@ export const createSnapshot = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerkUserId, args.slug);
+		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
 		await startManualSnapshot(ctx, box, "snapshot", "owner");
 	}
 });
@@ -481,7 +468,7 @@ export const restoreSnapshot = mutation({
 		const user = await requireActiveUser(ctx);
 		const { box, snapshot } = await requireOwnedSnapshot(
 			ctx,
-			user.clerkUserId,
+			user.clerk_user_id,
 			args.snapshotId
 		);
 		if (snapshot.status !== "complete") {
@@ -504,7 +491,7 @@ export const deleteSnapshot = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		await requireOwnedSnapshot(ctx, user.clerkUserId, args.snapshotId);
+		await requireOwnedSnapshot(ctx, user.clerk_user_id, args.snapshotId);
 		await markSnapshotDeleting(ctx, args.snapshotId);
 		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId

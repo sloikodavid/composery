@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "../_generated/server";
-import { requireActiveUser, requireIdentity } from "../authorization";
-import { findBoxBySlug } from "../boxes/queries";
+import { currentUserForRead, requireActiveUser } from "../users";
+import { findOwnedBoxBySlug } from "../boxes/queries";
 import {
 	RUNTIME_CONFIG_FIELDS,
 	RuntimeConfigError,
@@ -22,9 +22,13 @@ const SECRET_KEYS = new Set(SECRET_CONFIG_KEYS);
 export const get = query({
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
-		const identity = await requireIdentity(ctx);
-		const box = await findBoxBySlug(ctx, sanitizeSlug(args.slug));
-		if (!box || box.user_id !== identity.subject) return null;
+		const { identity } = await currentUserForRead(ctx);
+		const box = await findOwnedBoxBySlug(
+			ctx,
+			identity.subject,
+			sanitizeSlug(args.slug)
+		);
+		if (!box) return null;
 
 		const stored = box.runtime_config ?? {};
 		return {
@@ -54,10 +58,12 @@ export const save = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireActiveUser(ctx);
-		const box = await findBoxBySlug(ctx, sanitizeSlug(args.slug));
-		if (!box || box.user_id !== user.clerkUserId) {
-			throw new ConvexError("Box not found.");
-		}
+		const box = await findOwnedBoxBySlug(
+			ctx,
+			user.clerk_user_id,
+			sanitizeSlug(args.slug)
+		);
+		if (!box) throw new ConvexError("Box not found.");
 
 		let config: Record<string, string>;
 		try {

@@ -7,8 +7,10 @@ import { describe, expect, test } from "vitest";
 // pins that list to the code: every variable the Convex source reads must appear
 // in both example files, and neither file may carry a variable nothing reads. It
 // fails loudly when the two drift, so a new requiredEnv()/process.env read cannot
-// ship without its checklist entry - the exact gap that once hid CLERK_SECRET_KEY
-// from the Convex examples.
+// ship without its checklist entry - and, in the other direction, a capability
+// deleted from the code cannot leave its secret on the deployment checklist,
+// which is how CLERK_SECRET_KEY was caught still being asked for after the only
+// Convex-side reader of it went away.
 //
 // Scoped to the Convex plane on purpose: every Convex read is an explicit
 // requiredEnv/optionalEnv/process.env literal, so both directions are decidable
@@ -73,8 +75,10 @@ describe("Convex environment example checklist", () => {
 	test("finds the reads (a broken scanner would pass the equality below vacuously)", () => {
 		// Stable anchors plus a floor: if the patterns ever match nothing, an empty
 		// example file would wrongly compare equal, so make that failure show here.
+		// One anchor per read pattern: CLOUD_DOMAIN is a requiredEnv() call,
+		// CLERK_WEBHOOK_SIGNING_SECRET a bare process.env access.
 		expect(codeReads.has("CLOUD_DOMAIN")).toBe(true);
-		expect(codeReads.has("CLERK_SECRET_KEY")).toBe(true);
+		expect(codeReads.has("CLERK_WEBHOOK_SIGNING_SECRET")).toBe(true);
 		expect(codeReads.size).toBeGreaterThan(15);
 	});
 

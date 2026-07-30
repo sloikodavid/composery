@@ -117,7 +117,6 @@ describe("raster icon generator", () => {
 		expect(outputs["packages/web/app/apple-icon.png"]).toContain(
 			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.959999999999999) translate(-10 -10)">`
 		);
-
 	});
 
 	test("builds both legacy favicons from the exact 16, 32, and 48 pixel set", () => {

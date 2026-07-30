@@ -116,7 +116,11 @@ describe("reading a box", () => {
 		await expect(
 			suspended.as.query(api.user.boxes.getById, { boxId })
 		).rejects.toMatchObject({
-			data: { kind: "user_suspended", reason: "abuse report" }
+			data: {
+				kind: "account_unavailable",
+				title: "Your account is suspended",
+				detail: "abuse report"
+			}
 		});
 	});
 });

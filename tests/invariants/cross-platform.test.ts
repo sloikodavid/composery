@@ -295,5 +295,4 @@ describe("cross-platform checks", () => {
 
 		expect(gaps).toEqual([]);
 	});
-
 });

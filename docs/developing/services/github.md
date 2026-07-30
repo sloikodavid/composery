@@ -125,14 +125,14 @@ Settings -> Actions -> General: Actions enabled, all actions allowed, default
 workflow token permissions **read-only**. Workflows elevate per-file through
 their `permissions:` blocks, which is why none of this needs org-level policy:
 
-| Workflow             | Trigger                               | Elevated permissions and why                                                                        |
-| -------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `ci.yml`             | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result       |
-| `deploy.yml`         | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run   |
-| `smoke.yml`          | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state       |
-| `smoke-nightly.yml`  | schedule, dispatch                    | none - uncached image smoke                                                                         |
-| `release.yml`        | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions             |
-| `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                              |
+| Workflow            | Trigger                               | Elevated permissions and why                                                                      |
+| ------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `ci.yml`            | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result     |
+| `deploy.yml`        | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run |
+| `smoke.yml`         | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state     |
+| `smoke-nightly.yml` | schedule, dispatch                    | none - uncached image smoke                                                                       |
+| `release.yml`       | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions           |
+| `cla.yml`           | PR events/comments                    | signature branch, PR comments, and recheck permissions                                            |
 
 Operational notes:
 
@@ -248,16 +248,16 @@ finds every site:
 git grep -n "sloikodavid" -- ':!packages/ide/upstream' ':!pnpm-lock.yaml'
 ```
 
-| Surface                                                         | What it controls                                                      |
-| --------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `.github/workflows/cla.yml`                                     | repo guard condition and the CLA document URLs                        |
-| `.github/ISSUE_TEMPLATE/config.yml`                             | issue-chooser links to Discussions, advisories, and the support page  |
-| `renovate.json`                                                 | the "never bump our own image" package rule                           |
-| `README.md`, `CHANGELOG.md`, `docs/self-hosting/`, `templates/` | published image references and repo links                             |
-| `compose.dev.yml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)      | image source labels                                                   |
-| `packages/web/lib/links.ts` (`gitConfig`, `SUPPORT_EMAIL`)      | the website's repo links, issue/discussion links, and support email   |
-| `packages/ide/scripts/rebrand.mjs`                              | product metadata baked into the IDE build (issue URL, license, email) |
-| `packages/ide/overlay/.../composery-*/package.json`             | bundled extension repository metadata                                 |
+| Surface                                                          | What it controls                                                      |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `.github/workflows/cla.yml`                                      | repo guard condition and the CLA document URLs                        |
+| `.github/ISSUE_TEMPLATE/config.yml`                              | issue-chooser links to Discussions, advisories, and the support page  |
+| `renovate.json`                                                  | the "never bump our own image" package rule                           |
+| `README.md`, `CHANGELOG.md`, `docs/self-hosting/`, `templates/`  | published image references and repo links                             |
+| `compose.dev.yml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)       | image source labels                                                   |
+| `packages/web/lib/links.ts` (`GITHUB_REPO_URL`, `SUPPORT_EMAIL`) | the website's repo links, issue/discussion links, and support email   |
+| `packages/ide/scripts/rebrand.mjs`                               | product metadata baked into the IDE build (issue URL, license, email) |
+| `packages/ide/overlay/.../composery-*/package.json`              | bundled extension repository metadata                                 |
 
 `release.yml` and `smoke.yml` need no edits - they derive the image owner from
 `github.repository_owner` at run time.

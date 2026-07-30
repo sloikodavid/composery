@@ -12,36 +12,39 @@ type ErrorPageProps = {
 	reset: () => void;
 };
 
-function accountSuspensionReason(error: unknown): string | null {
+// Every Convex entry point behind these pages refuses a suspended or
+// mid-deletion account the same way, and says why in the same two strings (see
+// `convex/users.ts` -> AccountBlock). This draws them; it never writes its own
+// wording, so the card and the toast an action raises cannot disagree.
+function accountBlock(
+	error: unknown
+): { title: string; detail: string } | null {
 	if (!(error instanceof ConvexError)) return null;
-	const data = error.data as { kind?: string; reason?: string } | undefined;
-	if (data?.kind !== "user_suspended") return null;
-	return data.reason ?? "";
+	const data = error.data as
+		{ kind?: string; title?: string; detail?: string } | undefined;
+	if (data?.kind !== "account_unavailable") return null;
+	if (!data.title || !data.detail) return null;
+	return { title: data.title, detail: data.detail };
 }
 
 export default function BoxesError({ error, reset }: ErrorPageProps) {
-	const suspensionReason = accountSuspensionReason(error);
+	const blocked = accountBlock(error);
 
 	useEffect(() => {
-		if (suspensionReason === null) console.error(error);
-	}, [error, suspensionReason]);
+		if (!blocked) console.error(error);
+	}, [error, blocked]);
 
-	if (suspensionReason !== null) {
+	if (blocked) {
 		return (
 			<PageTemplate
-				breadcrumbs={[{ icon: ConstructionIcon, label: "Account suspended" }]}
+				breadcrumbs={[{ icon: ConstructionIcon, label: blocked.title }]}
 			>
 				<Card className="border-warning/40 bg-warning/5">
 					<CardContent className="flex gap-3">
 						<ConstructionIcon className="mt-0.5 size-5 shrink-0 text-warning" />
 						<div className="space-y-1">
-							<p className="font-medium text-foreground">
-								Your account is suspended
-							</p>
-							<p className="text-sm text-muted-foreground">
-								{suspensionReason ||
-									"Contact support if you think this is a mistake."}
-							</p>
+							<p className="font-medium text-foreground">{blocked.title}</p>
+							<p className="text-sm text-muted-foreground">{blocked.detail}</p>
 						</div>
 					</CardContent>
 				</Card>

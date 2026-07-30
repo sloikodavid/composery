@@ -118,6 +118,10 @@ export async function boxRuntimeStanding(
 	});
 }
 
+// What a box's own owner is sent. Nothing else: a field here is shipped to a
+// browser for every row of every box list, so the billing identifiers, the
+// retention dates and the raw image version live one function down, where only
+// the console reads them.
 export function safeBox(box: Doc<"boxes">) {
 	return {
 		id: box._id,
@@ -129,13 +133,7 @@ export function safeBox(box: Doc<"boxes">) {
 		status: box.status,
 		runtimeUrl: ideUrl(box.slug),
 		createdAt: box.created_at,
-		updatedAt: box.updated_at,
-		readyAt: box.ready_at,
-		deletedAt: box.deleted_at,
-		purgeAt: box.purge_at,
-		polarSubscriptionId: box.polar_subscription_id ?? null,
-		comp: box.comped_at !== undefined,
-		runtimeVersion: box.runtime_version ?? null
+		comp: box.comped_at !== undefined
 	};
 }
 
@@ -143,6 +141,9 @@ export function staffBox(box: Doc<"boxes">, user?: Doc<"users"> | null) {
 	return {
 		...safeBox(box),
 		runtimeUrl: box.status === "deleted" ? null : ideUrl(box.slug),
+		deletedAt: box.deleted_at,
+		purgeAt: box.purge_at,
+		polarSubscriptionId: box.polar_subscription_id ?? null,
 		userId: box.user_id,
 		userEmail: user?.email ?? "",
 		polarCustomerId: box.polar_customer_id ?? null,

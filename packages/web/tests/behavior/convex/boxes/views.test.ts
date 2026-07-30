@@ -29,38 +29,45 @@ function box(overrides: Partial<Doc<"boxes">> = {}): Doc<"boxes"> {
 }
 
 describe("safeBox", () => {
-	test("maps the owner-facing fields and derives the runtime url", () => {
+	// Exhaustive on purpose. This object is what every box list ships to a
+	// browser, so a field added to it has to be added here too - which is the
+	// moment to ask whether the owner's page reads it or only the console does.
+	test("sends the owner exactly the fields their pages render", () => {
 		process.env.CLOUD_DOMAIN = "composery.cloud";
-		const view = safeBox(box());
-		expect(view).toEqual({
+		expect(safeBox(box())).toEqual({
 			id: "boxes:1",
 			slug: "my-box",
 			status: "running",
 			runtimeUrl: "https://my-box.composery.cloud/ide/",
 			createdAt: 1_000,
-			updatedAt: 2_000,
-			readyAt: undefined,
-			deletedAt: undefined,
-			polarSubscriptionId: "sub_1",
 			comp: false,
 			plan: "air",
-			snapshots: resolveSnapshotSplit("air", 0),
-			runtimeVersion: null
+			snapshots: resolveSnapshotSplit("air", 0)
 		});
 	});
 
-	// A box created before versions were recorded has a digest but no label.
-	// The owner view has to say "unknown", not omit the field, or the interface
-	// cannot tell "no version recorded" from "not loaded yet".
-	test("reports a null version for a box with no recorded one", () => {
+	// Billing identifiers and retention dates belong to the console. Nothing on
+	// the owner's own pages reads them, and a subscription id is not something to
+	// hand a browser for every row of a list just because the row's owner is
+	// entitled to it.
+	test("keeps billing and retention detail out of the owner's payload", () => {
 		process.env.CLOUD_DOMAIN = "composery.cloud";
-		expect(safeBox(box()).runtimeVersion).toBe(null);
-		expect(safeBox(box({ runtime_version: "0.2.1" })).runtimeVersion).toBe(
-			"0.2.1"
-		);
+		const view = safeBox(
+			box({ ready_at: 1_500, deleted_at: 9_000, purge_at: 12_000 })
+		) as Record<string, unknown>;
+		for (const field of [
+			"polarSubscriptionId",
+			"purgeAt",
+			"deletedAt",
+			"readyAt",
+			"updatedAt",
+			"runtimeVersion"
+		]) {
+			expect(view).not.toHaveProperty(field);
+		}
 	});
 
-	test("marks a comp box and nulls its absent subscription", () => {
+	test("marks a comp box and nulls its absent subscription for staff", () => {
 		process.env.CLOUD_DOMAIN = "composery.cloud";
 		const overrides = {
 			polar_customer_id: undefined,
@@ -69,24 +76,23 @@ describe("safeBox", () => {
 			comped_at: 5_000,
 			comp_reason: "beta tester"
 		};
-		const view = safeBox(box(overrides));
-		expect(view.comp).toBe(true);
-		expect(view.polarSubscriptionId).toBeNull();
+		expect(safeBox(box(overrides)).comp).toBe(true);
 		const staff = staffBox(box(overrides));
+		expect(staff.polarSubscriptionId).toBeNull();
 		expect(staff.polarCustomerId).toBeNull();
 		expect(staff.compedBy).toBe("user_staff");
 		expect(staff.compReason).toBe("beta tester");
 	});
 
-	test("surfaces ready/deleted timestamps when present", () => {
+	test("keeps a deleted box's status but drops its unreachable url for staff", () => {
 		process.env.CLOUD_DOMAIN = "composery.cloud";
-		const view = safeBox(
-			box({ ready_at: 1_500, deleted_at: 9_000, status: "deleted" })
+		const staff = staffBox(
+			box({ deleted_at: 9_000, purge_at: 12_000, status: "deleted" })
 		);
-		expect(view.readyAt).toBe(1_500);
-		expect(view.deletedAt).toBe(9_000);
-		expect(view.status).toBe("deleted");
-		expect(staffBox(box({ status: "deleted" })).runtimeUrl).toBeNull();
+		expect(staff.status).toBe("deleted");
+		expect(staff.deletedAt).toBe(9_000);
+		expect(staff.purgeAt).toBe(12_000);
+		expect(staff.runtimeUrl).toBeNull();
 	});
 });
 

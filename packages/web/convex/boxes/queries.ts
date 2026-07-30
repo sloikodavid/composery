@@ -14,6 +14,19 @@ export async function findBoxBySlug(ctx: QueryCtx, slug: string) {
 		.first();
 }
 
+// The same resolution, narrowed to one owner. Every owner-facing entry point
+// goes through here rather than comparing `user_id` itself, so "is this your
+// box" is answered in one place - and answered the same way whether the caller
+// then returns null, an empty list, or an error.
+export async function findOwnedBoxBySlug(
+	ctx: QueryCtx,
+	userId: string,
+	slug: string
+) {
+	const box = await findBoxBySlug(ctx, slug);
+	return box && box.user_id === userId ? box : null;
+}
+
 // Which statuses a subscription is reconciled against: everything except a box
 // that is already on its way out. Derived rather than spelled out so a new
 // status is reconciled by default - a box silently skipped by reconciliation is
@@ -89,12 +102,8 @@ export const boxByOwnerSlug = internalQuery({
 		slug: v.string(),
 		userId: v.string()
 	},
-	handler: async (ctx, args) => {
-		const box = await findBoxBySlug(ctx, args.slug);
-
-		if (!box || box.user_id !== args.userId) return null;
-		return box;
-	}
+	handler: async (ctx, args) =>
+		await findOwnedBoxBySlug(ctx, args.userId, args.slug)
 });
 
 export const getBoxLifecycleSnapshot = internalQuery({

@@ -1,10 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { action, internalMutation, mutation } from "../_generated/server";
-import { requireCapability, requireCapabilityInAction } from "../authorization";
+import { action, internalMutation } from "../_generated/server";
 import { startBoxSuspension } from "../boxes/operations";
-import { isInternalRole } from "../roles";
+import {
+	findUserByClerkId,
+	isInternalRole,
+	requireCapabilityInAction
+} from "../users";
 
 const USER_BOX_ACTION_FAILURE_EXAMPLES = 5;
 
@@ -16,12 +19,7 @@ export const setUserSuspension = internalMutation({
 		suspended: v.boolean()
 	},
 	handler: async (ctx, args) => {
-		const user = await ctx.db
-			.query("users")
-			.withIndex("clerk_user_id", (query) =>
-				query.eq("clerk_user_id", args.clerkUserId)
-			)
-			.first();
+		const user = await findUserByClerkId(ctx, args.clerkUserId);
 
 		if (!user) throw new ConvexError("User not found.");
 
@@ -105,54 +103,5 @@ export const setUserSuspended = action({
 				`User suspension updated, but ${failureCount} box action(s) failed: ${failures.join("; ")}${omitted > 0 ? `; ${omitted} more` : ""}`
 			);
 		}
-	}
-});
-
-export const requestAccountDeletionByEmail = mutation({
-	args: {
-		email: v.string()
-	},
-	handler: async (ctx, args): Promise<{ status: "missing" | "pending" }> => {
-		const staffUser = await requireCapability(ctx, "user_moderation");
-
-		const user = await ctx.db
-			.query("users")
-			.withIndex("email", (query) => query.eq("email", args.email))
-			.first();
-		if (!user) throw new ConvexError("User not found.");
-		if (user._id === staffUser._id) {
-			throw new ConvexError(
-				"You cannot delete your own account from staff tools."
-			);
-		}
-		if (isInternalRole(user.role)) {
-			throw new ConvexError(
-				"Staff accounts cannot be deleted from staff tools."
-			);
-		}
-
-		if (!user.deletion_pending && !user.deletion_finished_at) {
-			const timestamp = Date.now();
-			await ctx.db.patch(user._id, {
-				deletion_pending: true,
-				deletion_requested_at: timestamp,
-				deletion_requested_by: "staff",
-				suspended: true,
-				suspended_at: timestamp,
-				suspended_reason: "Account deletion pending",
-				updated_at: timestamp
-			});
-		}
-
-		await ctx.scheduler.runAfter(
-			0,
-			internal.accountDeletion.requestAccountDeletionForClerkUser,
-			{
-				clerkUserId: user.clerk_user_id,
-				trigger: "staff"
-			}
-		);
-
-		return { status: "pending" };
 	}
 });

@@ -8,10 +8,13 @@ import {
 	type MutationCtx,
 	type QueryCtx
 } from "../_generated/server";
-import { requireCapability } from "../authorization";
 import { alertSender, emailDeliveryTracked, resendClient } from "../email";
 import { staffConsoleUrl } from "../env";
-import { rolesWithCapability, userHasCapability } from "../roles";
+import {
+	requireCapability,
+	rolesWithCapability,
+	userHasCapability
+} from "../users";
 import { vStaffAlertSeverity } from "../schema";
 
 // What staff are told about the deployment, and whether they were reachable.

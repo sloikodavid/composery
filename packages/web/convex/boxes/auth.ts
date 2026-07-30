@@ -8,7 +8,7 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { requireActiveUserInAction } from "../authorization";
+import { requireActiveUserInAction } from "../users";
 import { cloudUrl } from "../env";
 import { vBoxAuthorizationType } from "../schema";
 import { startBoxOperation } from "./operations";

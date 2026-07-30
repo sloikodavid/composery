@@ -44,9 +44,7 @@ committed and not read from `.env.local`.
 are the authoritative list of which keys each deployment needs, with their
 non-secret defaults and a comment on each saying where to obtain the value. Copy
 from them; this page does not restate the names, and a variable absent from those
-files does not belong on the deployment. `CLERK_SECRET_KEY` also lives in the
-Next env - it is the one variable set on both planes, the same Clerk secret the
-deployment uses for staff-triggered account deletion (`convex/accountDeletion.ts`).
+files does not belong on the deployment. No variable is set on both planes.
 
 Only `CLERK_FRONTEND_API_URL` is required at deploy time. Convex evaluates
 `convex/auth.config.ts` during every push, and it calls

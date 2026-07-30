@@ -378,6 +378,31 @@ describe("comping a box", () => {
 		});
 	});
 
+	// The address reaches staff by whatever route the customer sent it - a
+	// support thread, a conference badge - so the lookup normalizes rather than
+	// telling staff the account does not exist.
+	test("finds the account however the address was typed", async () => {
+		const t = testConvex();
+		const { customer } = await cast(t);
+		await seedSettings(t);
+		const admin = await seedUser(t, {
+			clerkUserId: "admin",
+			email: "admin@example.com",
+			role: "admin"
+		});
+
+		const { boxId } = await admin.as.mutation(api.staff.boxes.grantComp, {
+			plan: "air",
+			email: `  ${customer.email.toUpperCase()} `,
+			slug: "gift",
+			reason: "conference"
+		});
+
+		expect(await readBox(t, boxId)).toMatchObject({
+			user_id: customer.clerkUserId
+		});
+	});
+
 	// A comp is backed by no subscription, so nothing else may look like one.
 	test("leaves a comped box with no subscription attached", async () => {
 		const t = testConvex();

@@ -20,7 +20,7 @@ export const clerkAppearance = {
 		colorRing: "color-mix(in oklab, var(--ring) 30%, transparent)",
 		colorShimmer: "var(--muted)",
 		colorModalBackdrop: "var(--overlay)",
-		// Form controls match the full-page auth form (new-box): rounded-lg
+		// Form controls match the app's own: rounded-lg
 		// (var(--radius)), 15px text. Card/popover radius is overridden per-element
 		// to the 24px card curve below.
 		borderRadius: "var(--radius)",
@@ -38,7 +38,7 @@ export const clerkAppearance = {
 		headerSubtitle: "text-[15px] text-muted-foreground",
 		// Primary/outline buttons mirror components/button.tsx (default + outline
 		// variants): color-mix hovers rather than opacity, ring-1 focus, the
-		// active nudge. Sized like new-box's h-12 rounded-lg controls.
+		// active nudge, at the h-12 rounded-lg scale the app uses for form controls.
 		button:
 			"rounded-lg font-medium transition-all outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		formButtonPrimary:
@@ -54,7 +54,7 @@ export const clerkAppearance = {
 		socialButtonsBlockButtonText: "text-[15px] font-medium text-foreground!",
 		socialButtonsIconButton:
 			"h-12 rounded-lg border border-border bg-button transition-all outline-none hover:bg-button-hover! active:bg-button-active! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
-		// Inputs mirror components/input.tsx (outline variant) at new-box's
+		// Inputs mirror components/input.tsx (outline variant) at the same
 		// h-12 rounded-lg px-5 scale, with the ring-1 focus treatment.
 		input:
 			"h-12 rounded-lg border border-field-border bg-field! px-5 text-[15px] text-field-foreground shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-field-placeholder focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",

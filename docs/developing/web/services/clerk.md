@@ -38,7 +38,7 @@ domain `clerk.composery.io`.
    | Value                  | Destination                                 |
    | ---------------------- | ------------------------------------------- |
    | Publishable key        | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in Next |
-   | Secret key             | `CLERK_SECRET_KEY` in Next and Convex       |
+   | Secret key             | `CLERK_SECRET_KEY` in Next                  |
    | Frontend API URL       | `CLERK_FRONTEND_API_URL` in Convex          |
    | Webhook signing secret | `CLERK_WEBHOOK_SIGNING_SECRET` in Convex    |
 
@@ -112,12 +112,13 @@ Subscribe only to `user.deleted` and put its signing secret in the matching
 Convex deployment. The handler verifies the signature, immediately revokes Polar
 subscriptions, deletes boxes and snapshots, releases pending checkouts, and
 scrubs the application email. A scheduled retry finishes boxes that are busy.
-Staff-triggered deletion first removes the Clerk identity through its Backend
-API, then runs the same idempotent cleanup path; it requires `CLERK_SECRET_KEY`
-in Convex as well as Next.
 
-Test once in both environments with a disposable account. Removing a Convex row
-manually is not account deletion because the Clerk identity would still exist.
+This webhook is the only entry point, so deleting an account is always the same
+operation whoever starts it: a customer removes their own account from the
+account portal, and staff remove one by deleting the Clerk user in this
+dashboard. Test once in both environments with a disposable account. Removing a
+Convex row manually is not account deletion because the Clerk identity would
+still exist.
 
 ## Check
 

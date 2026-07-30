@@ -1003,6 +1003,25 @@ describe("default color theme", () => {
 		);
 	};
 
+	// Every theme colour that is one of ours by name, not by coincidence. Several
+	// palette entries share a hex - `foreground`, `link` and `control` are the
+	// same colour today - so a check written by matching values would pass on the
+	// wrong token and stop meaning anything the moment one of them moved.
+	const SHARED_TOKENS: Record<string, string> = {
+		"editor.background": "background",
+		"editor.foreground": "foreground",
+		"activityBar.background": "background",
+		"activityBar.foreground": "foreground",
+		"sideBar.background": "background",
+		"sideBar.foreground": "foreground",
+		"statusBar.background": "background",
+		"button.secondaryBackground": "secondary-button",
+		"button.secondaryForeground": "secondary-button-foreground",
+		"button.secondaryHoverBackground": "secondary-button-hover",
+		"badge.background": "badge",
+		"badge.foreground": "badge-foreground"
+	};
+
 	test.each([
 		["composery-dark.json", "\\.dark"],
 		["composery-light.json", ":root"]
@@ -1010,11 +1029,27 @@ describe("default color theme", () => {
 		const colors = themeColors(file);
 		const brand = brandTokens(selector);
 
-		expect(colors["editor.background"]).toBe(brand["background"]);
-		expect(colors["editor.foreground"]).toBe(brand["foreground"]);
-		expect(colors["button.background"]).toBe(brand["primary"]);
-		expect(colors["button.foreground"]).toBe(brand["primary-foreground"]);
-		expect(colors["activityBar.background"]).toBe(brand["background"]);
+		for (const [color, token] of Object.entries(SHARED_TOKENS)) {
+			expect(brand[token], `--${token}`).toBeDefined();
+			expect(colors[color], color).toBe(brand[token]);
+		}
+	});
+
+	// The prominent button is the one place the IDE deliberately does not take a
+	// palette entry. `--button` is the website's soft surface button; VS Code's
+	// `button.background` is its call to action ("Install", "Trust the authors"),
+	// and a soft surface reads there as a disabled control. It inverts the page
+	// instead - which is still ours, and still pinned, because an inversion that
+	// drifts to an arbitrary pair is exactly what this check exists to catch.
+	test.each([
+		["composery-dark.json", "\\.dark"],
+		["composery-light.json", ":root"]
+	])("%s inverts the page for the prominent button", (file, selector) => {
+		const colors = themeColors(file);
+		const brand = brandTokens(selector);
+
+		expect(colors["button.background"]).toBe(brand["foreground"]);
+		expect(colors["button.foreground"]).toBe(brand["background"]);
 	});
 });
 

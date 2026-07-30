@@ -57,14 +57,14 @@ management handled for you.
 
 ## Repository
 
-| Path              | Contents                                                       |
-| ----------------- | -------------------------------------------------------------- |
-| `packages/ide`    | The editor: upstream code-server + our patch stack and overlay |
-| `packages/cli`    | The `composery` CLI and `persistence` daemon (Rust)            |
-| `packages/web`    | Website, docs site, and cloud backend (Next.js, Convex)        |
-| `rootfs/`         | Files baked into the runtime image                             |
-| `templates/`      | Ready-to-use deployment recipes for the self-hosting guides    |
-| `docs/`           | The documentation rendered at composery.io/docs                |
+| Path           | Contents                                                       |
+| -------------- | -------------------------------------------------------------- |
+| `packages/ide` | The editor: upstream code-server + our patch stack and overlay |
+| `packages/cli` | The `composery` CLI and `persistence` daemon (Rust)            |
+| `packages/web` | Website, docs site, and cloud backend (Next.js, Convex)        |
+| `rootfs/`      | Files baked into the runtime image                             |
+| `templates/`   | Ready-to-use deployment recipes for the self-hosting guides    |
+| `docs/`        | The documentation rendered at composery.io/docs                |
 
 Developing: see [docs/developing](docs/developing/index.md). Releases:
 [changelog](https://github.com/sloikodavid/composery/releases). Security:

@@ -1,6 +1,6 @@
 import { IDE_PATH } from "shared";
 
-function normalizeDomain(value: string) {
+export function normalizeDomain(value: string) {
 	return value.replace(/^\.+|\.+$/g, "");
 }
 
@@ -46,5 +46,3 @@ export function optionalWebsiteUrl(path: string) {
 export function staffConsoleUrl(path = "/console") {
 	return optionalWebsiteUrl(path) ?? `the staff console (${path})`;
 }
-
-export { normalizeDomain as normalizeDomainValue };

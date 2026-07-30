@@ -13,7 +13,7 @@ export async function redirectIfSignedOut(returnPath: string) {
 	}
 }
 
-export async function redirectIfSignedIn(destination = "/") {
+export async function redirectIfSignedIn(destination: string) {
 	const { isAuthenticated } = await auth();
 
 	if (isAuthenticated) {
