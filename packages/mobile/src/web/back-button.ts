@@ -7,7 +7,7 @@
 // injected.
 
 export const TITLEBAR_LEFT_SELECTOR = ".part.titlebar .titlebar-left";
-export const WORKBENCH_SELECTOR = ".monaco-workbench";
+const WORKBENCH_SELECTOR = ".monaco-workbench";
 export const APPICON_SELECTOR = ".window-appicon";
 
 export type Placement = "titlebar" | "wait";
@@ -17,19 +17,23 @@ export type Placement = "titlebar" | "wait";
 // than a TS function because the script is injected as a string and Hermes does
 // not preserve Function#toString - this is the only way the script and its test
 // can share one copy of the rule.
-export const USABLE_BG_SOURCE = `function usableBg(bg) {
-	// Only rgb()/rgba(). "transparent", "" and the colour syntaxes React Native
-	// cannot parse (color(), oklch()) are not usable surface colours.
-	if (!bg || bg.indexOf("rgb") !== 0) return null;
-	// A translucent surface composites over whatever is behind it, so its
-	// computed colour is not the colour on screen. A theme that sets the title
-	// bar with 8-digit hex - #ffffff10 over a black workbench - paints a
-	// near-black strip but reads as light, which flips the status-bar icons to
-	// black-on-black. Take the opaque surface underneath instead: that is what
-	// the eye sees through it anyway.
-	var parts = bg.match(/-?\\d*\\.?\\d+/g) || [];
-	return parts.length > 3 && Number(parts[3]) < 1 ? null : bg;
-}`;
+// Stryker disable next-line BlockStatement: Vitest evaluates this injected-source builder during discovery before static mutant selection; the behavior test executes the returned function and pins its embedding.
+export function buildUsableBgSource(): string {
+	// Stryker disable next-line StringLiteral: The same discovery-time evaluation prevents selecting this static template mutant; the returned function is executed by the behavior test.
+	return `function usableBg(bg) {
+		// Only rgb()/rgba(). "transparent", "" and the colour syntaxes React Native
+		// cannot parse (color(), oklch()) are not usable surface colours.
+		if (!bg || bg.indexOf("rgb") !== 0) return null;
+		// A translucent surface composites over whatever is behind it, so its
+		// computed colour is not the colour on screen. A theme that sets the title
+		// bar with 8-digit hex - #ffffff10 over a black workbench - paints a
+		// near-black strip but reads as light, which flips the status-bar icons to
+		// black-on-black. Take the opaque surface underneath instead: that is what
+		// the eye sees through it anyway.
+		var parts = bg.match(/-?\\d*\\.?\\d+/g) || [];
+		return parts.length > 3 && Number(parts[3]) < 1 ? null : bg;
+	}`;
+}
 
 // Rewire once the title-bar logo exists; until then wait (the workbench builds
 // it async, and the poll retries). No floating fallback.
@@ -174,7 +178,7 @@ export const INSTALL_SCRIPT = `(function () {
 		logo.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") go(e); });
 	}
 
-	${USABLE_BG_SOURCE}
+	${buildUsableBgSource()}
 
 	function surfaceBg(el) {
 		return el ? usableBg(getComputedStyle(el).backgroundColor) : null;

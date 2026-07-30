@@ -4,6 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Colors</title>
+		<link rel="stylesheet" href="/codicon.css" />
 		<style>
 			* {
 				box-sizing: border-box;
@@ -34,6 +35,27 @@
 			}
 			button {
 				color: inherit;
+			}
+			.icon {
+				display: block;
+				width: 1em;
+				height: 1em;
+				flex: 0 0 auto;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+			.icon-only {
+				display: inline-grid;
+				place-items: center;
+				line-height: 0;
+			}
+			.with-icon {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
 			}
 			.toolbar {
 				flex-wrap: wrap;
@@ -75,8 +97,10 @@
 				gap: 2px;
 			}
 			.history button {
+				display: grid;
 				min-width: 30px;
 				min-height: 30px;
+				place-items: center;
 				padding: 0;
 				border: 0;
 				border-radius: 5px;
@@ -86,7 +110,7 @@
 				font-size: 15px;
 			}
 			.history button:hover:not(:disabled) {
-				background: var(--accent);
+				background: var(--selected);
 				color: var(--foreground);
 			}
 			.history button:disabled {
@@ -94,14 +118,14 @@
 				opacity: 0.35;
 			}
 			.segment button[aria-pressed="true"] {
-				background: var(--accent);
-				color: var(--accent-foreground);
+				background: var(--selected);
+				color: var(--selected-foreground);
 				box-shadow: 0 0 0 1px var(--border);
 			}
 			.primary {
 				min-width: 64px;
-				background: var(--primary);
-				color: var(--primary-foreground);
+				background: var(--button);
+				color: var(--button-foreground);
 				font-weight: 650;
 			}
 			.primary:disabled {
@@ -110,7 +134,7 @@
 			}
 			.layout {
 				display: grid;
-				grid-template-columns: 420px minmax(640px, 1fr);
+				grid-template-columns: 480px minmax(640px, 1fr);
 				flex: 1;
 				min-height: 0;
 			}
@@ -143,6 +167,56 @@
 				gap: 6px;
 				min-height: 34px;
 			}
+			.feature-row {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto;
+				align-items: center;
+				gap: 12px;
+				min-height: 42px;
+			}
+			.feature-copy {
+				min-width: 0;
+			}
+			.feature-copy b,
+			.feature-copy small {
+				display: block;
+			}
+			.feature-copy b {
+				font-size: 12px;
+				font-weight: 600;
+			}
+			.feature-copy small {
+				overflow: hidden;
+				color: var(--muted-foreground);
+				font-size: 10px;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			input.feature-switch {
+				width: 34px;
+				height: 20px;
+				margin: 0;
+				appearance: none;
+				border: 1px solid var(--border);
+				border-radius: 999px;
+				background:
+					radial-gradient(
+						circle at 9px 50%,
+						var(--muted-foreground) 0 6px,
+						transparent 6.5px
+					),
+					var(--muted);
+				cursor: pointer;
+			}
+			input.feature-switch:checked {
+				background:
+					radial-gradient(
+						circle at 25px 50%,
+						var(--button-foreground) 0 6px,
+						transparent 6.5px
+					),
+					var(--button);
+			}
 			.role[hidden],
 			.group[hidden] {
 				display: none;
@@ -157,8 +231,11 @@
 				text-align: center;
 			}
 			.link {
+				position: relative;
+				display: grid;
 				width: 26px;
 				height: 22px;
+				place-items: center;
 				padding: 0;
 				border: 0;
 				border-radius: 5px;
@@ -167,8 +244,30 @@
 				cursor: pointer;
 				font-size: 11px;
 			}
+			.link .icon,
+			.reset .icon {
+				width: 14px;
+				height: 14px;
+			}
+			.link-count {
+				position: absolute;
+				right: -2px;
+				bottom: -2px;
+				display: grid;
+				min-width: 12px;
+				height: 12px;
+				place-items: center;
+				padding: 0 2px;
+				border: 1px solid var(--muted);
+				border-radius: 999px;
+				background: var(--foreground);
+				color: var(--background);
+				font-size: 8px;
+				font-weight: 700;
+				line-height: 1;
+			}
 			.link:hover {
-				background: var(--accent);
+				background: var(--selected);
 				color: var(--foreground);
 			}
 			.link.loose {
@@ -189,7 +288,7 @@
 				cursor: pointer;
 			}
 			.plain:hover:not(:disabled) {
-				background: var(--accent);
+				background: var(--selected);
 			}
 			.plain:disabled {
 				cursor: default;
@@ -214,7 +313,7 @@
 				width: 100%;
 				height: 46vh;
 				padding: 10px;
-				border: 1px solid var(--input);
+				border: 1px solid var(--field-border);
 				border-radius: 6px;
 				outline: none;
 				background: var(--background);
@@ -255,8 +354,10 @@
 				cursor: pointer;
 			}
 			.reset {
+				display: grid;
 				width: 22px;
 				height: 22px;
+				place-items: center;
 				padding: 0;
 				border: 0;
 				border-radius: 5px;
@@ -266,7 +367,7 @@
 				font-size: 14px;
 			}
 			.reset:hover:not(:disabled) {
-				background: var(--accent);
+				background: var(--selected);
 				color: var(--foreground);
 			}
 			.reset:disabled {
@@ -331,7 +432,7 @@
 				width: 94px;
 				height: 27px;
 				padding: 3px 6px;
-				border: 1px solid var(--input);
+				border: 1px solid var(--field-border);
 				border-radius: 5px;
 				outline: none;
 				background: var(--background);
@@ -438,8 +539,8 @@
 			}
 			.role.active {
 				border-radius: 5px;
-				background: var(--accent);
-				box-shadow: 0 0 0 3px var(--accent);
+				background: var(--selected);
+				box-shadow: 0 0 0 3px var(--selected);
 			}
 			.role-name {
 				min-width: 0;
@@ -478,7 +579,9 @@
 				border: 1px solid var(--border);
 				border-top: 0;
 				border-radius: 0 0 16px 16px;
-				background: var(--background);
+				background: var(--header);
+				color: var(--header-foreground);
+				box-shadow: 0 2px 8px var(--shadow);
 			}
 			.product-logo {
 				display: inline-flex;
@@ -521,11 +624,11 @@
 				cursor: pointer;
 			}
 			.web-nav button:hover {
-				background: color-mix(in srgb, var(--foreground) 5%, transparent);
+				background: var(--ghost-hover);
 				color: var(--foreground);
 			}
 			.web-nav button.current {
-				background: color-mix(in srgb, var(--foreground) 8%, transparent);
+				background: var(--ghost-active);
 				color: var(--foreground);
 			}
 			.web-account {
@@ -555,20 +658,43 @@
 				width: 30px;
 				padding: 0;
 				border-color: var(--border);
+				background: var(--button);
+				color: var(--button-foreground);
 				font-size: 15px;
 			}
-			.web-button.primary-action {
-				background: var(--primary);
-				color: var(--primary-foreground);
+			.web-icon-button .icon {
+				width: 15px;
+				height: 15px;
+			}
+			.web-button.primary-action,
+			.web-button.outline-action {
+				background: var(--button);
+				color: var(--button-foreground);
 			}
 			.web-button.outline-action {
 				border-color: var(--border);
-				background: var(--background);
-				color: var(--foreground);
+			}
+			.web-button.primary-action:hover,
+			.web-button.outline-action:hover,
+			.web-icon-button:hover {
+				background: var(--button-hover);
+			}
+			.web-button.primary-action:active,
+			.web-button.outline-action:active,
+			.web-icon-button:active {
+				background: var(--button-active);
 			}
 			.web-button.secondary-action {
-				background: var(--secondary);
-				color: var(--secondary-foreground);
+				background: var(--secondary-button);
+				color: var(--secondary-button-foreground);
+			}
+			.web-button.secondary-action:hover,
+			.monitor-select:hover {
+				background: var(--secondary-button-hover);
+			}
+			.web-button.secondary-action:active,
+			.monitor-select:active {
+				background: var(--secondary-button-active);
 			}
 			.web-button.destructive-action {
 				background: color-mix(in srgb, var(--destructive) 12%, transparent);
@@ -579,6 +705,47 @@
 				min-height: 0;
 				overflow: auto;
 				padding: 22px 20px;
+				scrollbar-color: var(--scrollbar) var(--scrollbar-track);
+			}
+			.web-content::-webkit-scrollbar {
+				width: 10px;
+			}
+			.web-content::-webkit-scrollbar-track {
+				background: var(--scrollbar-track);
+			}
+			.web-content::-webkit-scrollbar-thumb {
+				border: 2px solid var(--scrollbar-track);
+				border-radius: 999px;
+				background: var(--scrollbar);
+			}
+			.web-content::-webkit-scrollbar-thumb:hover {
+				background: var(--scrollbar-hover);
+			}
+			.web-content::-webkit-scrollbar-thumb:active {
+				background: var(--scrollbar-active);
+			}
+			.web-content::-webkit-scrollbar-corner,
+			.web-content::-webkit-resizer {
+				background: var(--scrollbar-track);
+			}
+			.web-product ::selection {
+				background: var(--selection);
+			}
+			.web-footer {
+				display: flex;
+				min-height: 38px;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				padding: 0 22px;
+				border-top: 1px solid var(--border);
+				background: var(--footer);
+				color: var(--footer-foreground);
+				font-size: 11px;
+			}
+			.web-footer nav {
+				display: flex;
+				gap: 14px;
 			}
 			.web-page {
 				width: 100%;
@@ -601,9 +768,22 @@
 				font-weight: 550;
 				letter-spacing: -0.025em;
 			}
+			.web-crumbs .icon {
+				width: 16px;
+				height: 16px;
+			}
 			.web-crumbs .past,
 			.web-copy {
 				color: var(--muted-foreground);
+			}
+			.web-crumbs button.past {
+				display: inline-flex;
+				align-items: center;
+				gap: 5px;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				font: inherit;
 			}
 			.web-card {
 				overflow: hidden;
@@ -611,6 +791,99 @@
 				border-radius: 16px;
 				background: var(--card);
 				color: var(--card-foreground);
+				box-shadow: 0 1px 3px var(--shadow);
+			}
+			.web-docs {
+				display: grid;
+				width: min(920px, 100%);
+				min-height: 100%;
+				grid-template-columns: 190px minmax(0, 1fr);
+				margin: -22px auto;
+			}
+			.web-sidebar {
+				padding: 24px 14px;
+				border-right: 1px solid var(--border);
+				background: var(--sidebar);
+				color: var(--sidebar-foreground);
+			}
+			.web-sidebar strong {
+				display: block;
+				margin: 0 8px 10px;
+				font-size: 11px;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+			}
+			.web-sidebar div {
+				padding: 7px 8px;
+				border-radius: 8px;
+			}
+			.web-sidebar .current {
+				background: var(--selected);
+				color: var(--selected-foreground);
+			}
+			.web-doc {
+				max-width: 620px;
+				padding: 30px 36px;
+			}
+			.web-doc h2 {
+				margin: 0 0 8px;
+				font-size: 25px;
+			}
+			.web-doc h3 {
+				margin: 24px 0 8px;
+			}
+			.web-doc-callout {
+				margin-top: 18px;
+				padding: 13px 15px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				background: var(--card);
+				color: var(--card-foreground);
+				box-shadow: 0 1px 3px var(--shadow);
+			}
+			.web-browser-colors {
+				display: grid;
+				grid-template-columns: 1fr 12px;
+				gap: 14px;
+				margin-top: 20px;
+				padding: 12px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+			}
+			.web-selection-sample {
+				align-self: center;
+				padding: 2px 4px;
+				background: var(--selection);
+			}
+			.web-scrollbar-sample {
+				position: relative;
+				min-height: 76px;
+				border-radius: 999px;
+				background: var(--scrollbar-track);
+			}
+			.web-scrollbar-sample::before,
+			.web-scrollbar-sample::after,
+			.web-scrollbar-sample i {
+				position: absolute;
+				right: 2px;
+				left: 2px;
+				border-radius: 999px;
+				content: "";
+			}
+			.web-scrollbar-sample::before {
+				top: 5px;
+				height: 23px;
+				background: var(--scrollbar);
+			}
+			.web-scrollbar-sample::after {
+				top: 31px;
+				height: 18px;
+				background: var(--scrollbar-hover);
+			}
+			.web-scrollbar-sample i {
+				bottom: 5px;
+				height: 17px;
+				background: var(--scrollbar-active);
 			}
 			.web-card-header {
 				display: flex;
@@ -650,7 +923,7 @@
 				border-bottom: 0;
 			}
 			.box-row:hover {
-				background: color-mix(in srgb, var(--muted) 50%, transparent);
+				background: var(--ghost-hover);
 			}
 			.box-name {
 				font-weight: 600;
@@ -702,10 +975,18 @@
 				height: 32px;
 				align-items: center;
 				padding: 0 11px;
-				border: 1px solid var(--input);
+				border: 1px solid var(--field-border);
 				border-radius: 16px;
-				background: var(--background);
-				color: var(--foreground);
+				background: var(--field);
+				color: var(--field-foreground);
+			}
+			.web-input .icon {
+				width: 13px;
+				height: 13px;
+				margin-left: auto;
+			}
+			.web-placeholder {
+				color: var(--field-placeholder);
 			}
 			.web-input.focused {
 				border-color: var(--ring);
@@ -741,9 +1022,16 @@
 				gap: 18px;
 				padding: 0 10px;
 				border-radius: 15px;
-				background: var(--secondary);
-				color: var(--secondary-foreground);
+				background: var(--secondary-button);
+				color: var(--secondary-button-foreground);
 				font-size: 11px;
+			}
+			.monitor-select .icon {
+				width: 12px;
+				height: 12px;
+			}
+			.monitor-select.badge-sample:hover {
+				background: var(--badge-hover);
 			}
 			.metric-summary {
 				position: absolute;
@@ -809,8 +1097,8 @@
 				border-radius: 12px;
 			}
 			.web-menu-item.selected {
-				background: var(--accent);
-				color: var(--accent-foreground);
+				background: var(--selected);
+				color: var(--selected-foreground);
 			}
 			.web-menu-separator {
 				height: 1px;
@@ -848,8 +1136,8 @@
 				padding: 20px;
 				border: 1px solid var(--border);
 				border-radius: 22px;
-				background: var(--card);
-				color: var(--card-foreground);
+				background: var(--dialog);
+				color: var(--dialog-foreground);
 				box-shadow: 0 18px 46px
 					color-mix(in srgb, var(--overlay) 70%, transparent);
 			}
@@ -857,6 +1145,327 @@
 				margin: 0;
 				font-size: 16px;
 				font-weight: 600;
+			}
+
+			/* Mobile mirrors the native launcher, including its exact 40px header
+			   actions, list rows, empty state, form, and bottom sheet. It only
+			   references roles the React Native theme actually consumes. */
+			.mobile-product {
+				display: grid;
+				place-items: center;
+				padding: 16px;
+				background: #606060;
+				color: var(--foreground);
+			}
+			.mobile-phone {
+				position: relative;
+				display: grid;
+				width: min(390px, 100%);
+				height: min(720px, 100%);
+				min-height: 520px;
+				grid-template-rows: 29px minmax(0, 1fr);
+				overflow: hidden;
+				border: 7px solid #161616;
+				border-radius: 43px;
+				background: var(--background);
+				color: var(--foreground);
+				box-shadow: 0 20px 52px #00000070;
+				font:
+					14px/1.4 -apple-system,
+					BlinkMacSystemFont,
+					Inter,
+					sans-serif;
+			}
+			.mobile-island {
+				position: absolute;
+				z-index: 2;
+				top: 7px;
+				left: 50%;
+				width: 78px;
+				height: 19px;
+				translate: -50% 0;
+				border-radius: 12px;
+				background: #000;
+			}
+			.mobile-status {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 4px 17px 0;
+				font-size: 11px;
+				font-weight: 650;
+			}
+			.mobile-status-icons {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+			}
+			.mobile-status-icons .icon {
+				width: 12px;
+				height: 12px;
+				stroke-width: 2.25;
+			}
+			.mobile-content {
+				display: flex;
+				min-height: 0;
+				flex-direction: column;
+			}
+			.mobile-header {
+				display: flex;
+				height: 60px;
+				align-items: center;
+				justify-content: space-between;
+				padding: 8px 16px 12px;
+			}
+			.mobile-logo {
+				font-size: 18px;
+			}
+			.mobile-logo .product-mark {
+				width: 29px;
+				height: 29px;
+			}
+			.mobile-actions {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+			.mobile-circle {
+				display: grid;
+				width: 40px;
+				height: 40px;
+				place-items: center;
+				padding: 0;
+				border: 1px solid var(--border);
+				border-radius: 50%;
+				background: var(--background);
+				color: var(--foreground);
+				cursor: pointer;
+			}
+			.mobile-circle .icon {
+				width: 20px;
+				height: 20px;
+				stroke-width: 2.2;
+			}
+			.mobile-circle.primary {
+				border-color: var(--button);
+				background: var(--button);
+				color: var(--button-foreground);
+			}
+			.mobile-circle.primary .icon {
+				width: 22px;
+				height: 22px;
+				stroke-width: 2.4;
+			}
+			.mobile-separator {
+				height: 1px;
+				margin: 0 16px;
+				background: var(--border);
+			}
+			.mobile-list {
+				flex: 1;
+				min-height: 0;
+			}
+			.mobile-row {
+				display: grid;
+				height: 57px;
+				grid-template-columns: minmax(0, 1fr) 50px;
+				align-items: center;
+				padding-left: 16px;
+				border-bottom: 1px solid var(--border);
+				font-size: 15px;
+				font-weight: 600;
+			}
+			.mobile-row > span {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.mobile-menu-button {
+				display: grid;
+				width: 44px;
+				height: 44px;
+				place-items: center;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+			}
+			.mobile-menu-button .icon {
+				width: 20px;
+				height: 20px;
+			}
+			.mobile-legal {
+				display: flex;
+				justify-content: center;
+				gap: 20px;
+				padding: 12px;
+				color: var(--muted-foreground);
+				font-size: 12px;
+				font-weight: 550;
+			}
+			.mobile-form-head {
+				display: grid;
+				height: 64px;
+				grid-template-columns: 40px minmax(0, 1fr) 40px;
+				align-items: center;
+				gap: 8px;
+				padding: 8px 16px;
+			}
+			.mobile-form-head b {
+				overflow: hidden;
+				text-align: center;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.mobile-form-head .mobile-submit {
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: var(--button);
+				cursor: pointer;
+				font-weight: 650;
+			}
+			.mobile-form {
+				display: grid;
+				gap: 8px;
+				padding: 16px;
+			}
+			.mobile-form label {
+				margin-top: 7px;
+				font-size: 13px;
+				font-weight: 650;
+			}
+			.mobile-input {
+				min-height: 48px;
+				padding: 13px 14px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				background: var(--muted);
+				color: var(--foreground);
+			}
+			.mobile-placeholder {
+				color: var(--muted-foreground);
+			}
+			.mobile-error {
+				display: flex;
+				align-items: flex-start;
+				gap: 7px;
+				margin-top: 7px;
+				color: var(--destructive);
+				font-size: 13px;
+			}
+			.mobile-error .icon {
+				width: 16px;
+				height: 16px;
+				margin-top: 1px;
+			}
+			.mobile-empty {
+				display: flex;
+				flex: 1;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				padding: 32px;
+				text-align: center;
+			}
+			.mobile-empty .empty-mark {
+				width: 56px;
+				height: 56px;
+			}
+			.mobile-empty h2 {
+				margin: 18px 0 4px;
+				font-size: 23px;
+			}
+			.mobile-empty p {
+				margin: 0;
+				color: var(--muted-foreground);
+			}
+			.mobile-wide-button {
+				display: inline-flex;
+				width: min(280px, 100%);
+				min-height: 48px;
+				align-items: center;
+				justify-content: center;
+				gap: 8px;
+				margin-top: 22px;
+				border: 0;
+				border-radius: 12px;
+				background: var(--button);
+				color: var(--button-foreground);
+				cursor: pointer;
+				font-weight: 650;
+			}
+			.mobile-wide-button .icon {
+				width: 18px;
+				height: 18px;
+				stroke-width: 2.3;
+			}
+			.mobile-wide-button.outline {
+				margin-top: 10px;
+				border: 1px solid var(--border);
+				background: var(--background);
+				color: var(--foreground);
+			}
+			.mobile-backdrop {
+				position: absolute;
+				inset: 0;
+				z-index: 5;
+				border: 0;
+				background: #00000066;
+				cursor: pointer;
+			}
+			.mobile-sheet {
+				position: absolute;
+				right: 0;
+				bottom: 0;
+				left: 0;
+				z-index: 6;
+				padding: 8px 0 22px;
+				border-radius: 22px 22px 0 0;
+				background: var(--card);
+				color: var(--foreground);
+			}
+			.mobile-sheet-handle {
+				width: 38px;
+				height: 4px;
+				margin: 0 auto 13px;
+				border-radius: 2px;
+				background: var(--border);
+			}
+			.mobile-sheet-title {
+				padding: 0 20px 10px;
+			}
+			.mobile-sheet-title b {
+				display: block;
+				overflow: hidden;
+				font-size: 16px;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.mobile-sheet-title span {
+				display: block;
+				overflow: hidden;
+				color: var(--muted-foreground);
+				font-size: 12px;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.mobile-sheet-action {
+				display: flex;
+				align-items: center;
+				gap: 14px;
+				padding: 13px 20px;
+				color: var(--foreground);
+				font-size: 15px;
+				font-weight: 550;
+			}
+			.mobile-sheet-action .icon {
+				width: 20px;
+				height: 20px;
+			}
+			.mobile-sheet-action.destructive {
+				color: var(--destructive);
 			}
 
 			/* IDE: desktop Composery captures have a top menubar, horizontal
@@ -910,6 +1519,9 @@
 				gap: 13px;
 				font-size: 15px;
 			}
+			.workbench-layout .codicon {
+				font-size: 15px;
+			}
 			.workbench-body {
 				display: grid;
 				grid-template-columns: 185px minmax(0, 1fr);
@@ -932,10 +1544,16 @@
 				font-size: 11px;
 				text-transform: uppercase;
 			}
+			.explorer-title .codicon {
+				font-size: 15px;
+			}
 			.explorer-tree {
 				overflow: hidden;
 			}
 			.explorer-section {
+				display: flex;
+				align-items: center;
+				gap: 4px;
 				padding: 5px 9px;
 				font-weight: 700;
 			}
@@ -947,9 +1565,17 @@
 				padding-right: 7px;
 				white-space: nowrap;
 			}
-			.explorer-row.selected,
+			.explorer-section .codicon,
+			.explorer-row .codicon {
+				flex: 0 0 auto;
+				font-size: 14px;
+			}
 			.explorer-row:hover {
-				background: var(--ide-hover);
+				background: var(--ide-list-hover);
+			}
+			.explorer-row.selected {
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
 			}
 			.explorer-row.selected {
 				box-shadow: inset 2px 0 var(--ide-focus);
@@ -973,16 +1599,23 @@
 			}
 			.workbench-activity .active {
 				color: var(--ide-foreground);
+			}
+			.feature-activity-bar-indicator .workbench-activity .active {
 				box-shadow: inset 0 -2px var(--ide-focus);
 			}
 			.workbench-activity button {
+				display: grid;
 				height: 32px;
+				place-items: center;
 				padding: 0;
 				border: 0;
 				background: transparent;
 				color: inherit;
 				cursor: pointer;
 				font-size: inherit;
+			}
+			.workbench-activity .codicon {
+				font-size: 18px;
 			}
 			.workbench-content {
 				min-width: 0;
@@ -1002,6 +1635,14 @@
 			}
 			.workbench-status .right {
 				margin-left: auto;
+			}
+			.workbench-status > span:not(.right) {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+			}
+			.workbench-status .codicon {
+				font-size: 12px;
 			}
 			.ide-split {
 				display: grid;
@@ -1036,9 +1677,17 @@
 				color: var(--ide-tab-inactive-foreground);
 				cursor: pointer;
 			}
+			.ide-editor-tab .codicon {
+				font-size: 14px;
+			}
 			.ide-editor-tab.active {
 				background: var(--ide-tab-active);
 				color: var(--ide-tab-active-foreground);
+			}
+			.ide-editor-tab.hover-sample {
+				background: var(--ide-tab-hover);
+			}
+			.feature-active-tab-indicator .ide-editor-tab.active {
 				box-shadow: inset 0 1px var(--ide-focus);
 			}
 			.ide-document {
@@ -1081,6 +1730,19 @@
 				padding: 0 11px;
 				border-bottom: 1px solid var(--ide-border);
 				color: var(--ide-foreground);
+			}
+			.ide-panel-actions {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+			}
+			.ide-panel-actions .codicon {
+				font-size: 14px;
+			}
+			.feature-panel-title-indicator .ide-panel-title span:first-child {
+				align-self: stretch;
+				padding-top: 10px;
+				box-shadow: inset 0 -2px var(--ide-focus);
 			}
 			.ide-terminal {
 				min-height: 0;
@@ -1146,12 +1808,15 @@
 				white-space: nowrap;
 			}
 			.editor-line.current {
-				background: var(--ide-hover);
+				background: var(--ide-list-hover);
 			}
 			.editor-number {
 				padding-right: 8px;
 				color: var(--ide-line-number);
 				text-align: right;
+			}
+			.editor-line.current .editor-number {
+				color: var(--ide-active-line-number);
 			}
 			.editor-gutter.added {
 				background: var(--ide-gutter-added);
@@ -1291,6 +1956,25 @@
 			.syn-comment {
 				color: var(--ide-comment);
 			}
+			.feature-semantic-highlighting [data-feature="semanticHighlighting"] {
+				color: var(--ide-type);
+			}
+			.ide-product:not(.feature-surface-borders) {
+				--ide-border: transparent !important;
+			}
+			.ide-product:not(.feature-control-borders) {
+				--ide-input-border: transparent !important;
+			}
+			.ide-product:not(.feature-tab-borders) {
+				--ide-tab-border: transparent !important;
+			}
+			.ide-product:not(.feature-shadows) {
+				--ide-shadow: transparent !important;
+			}
+			.feature-contrast-borders .explorer-row.selected {
+				outline: 1px solid var(--ide-focus);
+				outline-offset: -1px;
+			}
 			.ide-diff {
 				display: grid;
 				height: 100%;
@@ -1365,8 +2049,8 @@
 				color: var(--ide-muted-foreground);
 			}
 			.ide-quick-row.selected {
-				background: var(--ide-hover);
-				color: var(--ide-foreground);
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
 			}
 			.ide-badge {
 				min-width: 19px;
@@ -1384,13 +2068,15 @@
 				padding: 5px;
 				border: 1px solid var(--ide-input-border);
 				background: var(--ide-dropdown);
+				color: var(--ide-dropdown-foreground);
 				box-shadow: 0 10px 28px var(--ide-shadow);
 			}
 			.ide-dropdown div {
 				padding: 6px 8px;
 			}
 			.ide-dropdown .selected {
-				background: var(--ide-hover);
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
 			}
 			.ide-notification {
 				position: absolute;
@@ -1404,9 +2090,20 @@
 				color: var(--ide-foreground);
 				box-shadow: 0 10px 30px var(--ide-shadow);
 			}
+			.ide-notification-message,
+			.ide-terminal-status {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+			}
+			.ide-notification-message .codicon,
+			.ide-terminal-status .codicon {
+				flex: 0 0 auto;
+				font-size: 14px;
+			}
 			.ide-notification a {
 				color: var(--ide-link);
-				text-decoration: underline;
+				text-decoration: none;
 			}
 			.ide-notification-actions {
 				display: flex;
@@ -1417,12 +2114,117 @@
 			.ide-button {
 				padding: 4px 10px;
 				border: 0;
-				background: var(--ide-primary);
-				color: var(--ide-primary-foreground);
+				background: var(--ide-button);
+				color: var(--ide-button-foreground);
+			}
+			.ide-button:hover {
+				background: var(--ide-button-hover);
 			}
 			.ide-button.secondary {
 				background: var(--ide-secondary-button);
+				color: var(--ide-secondary-button-foreground);
+			}
+			.ide-button.secondary:hover {
+				background: var(--ide-secondary-button-hover);
+			}
+			.ide-details {
+				display: grid;
+				height: 100%;
+				grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+				gap: 12px;
+				padding: 16px;
+				overflow: auto;
+				background: var(--ide-editor);
+			}
+			.ide-detail-card {
+				min-width: 0;
+				overflow: hidden;
+				border: 1px solid var(--ide-border);
+				border-radius: 6px;
+				background: var(--ide-widget);
 				color: var(--ide-foreground);
+				box-shadow: 0 8px 24px var(--ide-shadow);
+			}
+			.ide-detail-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 9px 11px;
+				border-bottom: 1px solid var(--ide-separator);
+				color: var(--ide-settings-header);
+				font-weight: 600;
+			}
+			.ide-setting {
+				display: grid;
+				grid-template-columns: 4px minmax(0, 1fr) 150px;
+				align-items: center;
+				gap: 10px;
+				padding: 10px 11px 10px 0;
+				border-bottom: 1px solid var(--ide-separator);
+			}
+			.ide-setting::before {
+				align-self: stretch;
+				background: var(--ide-settings-modified);
+				content: "";
+			}
+			.ide-setting-control {
+				padding: 5px 7px;
+				border: 1px solid var(--ide-input-border);
+				border-radius: 3px;
+				background: var(--ide-input-background);
+				color: var(--ide-input-foreground);
+			}
+			.ide-detail-stack {
+				display: grid;
+				align-content: start;
+				gap: 12px;
+			}
+			.ide-chat {
+				padding: 11px;
+			}
+			.ide-chat-command,
+			.ide-preformatted {
+				display: inline-flex;
+				margin: 7px 0;
+				padding: 3px 6px;
+				border-radius: 3px;
+			}
+			.ide-chat-command {
+				background: var(--ide-chat-accent);
+				color: var(--ide-chat-accent-foreground);
+			}
+			.ide-chat-edited {
+				color: var(--ide-chat-edited);
+			}
+			.ide-preformatted {
+				background: var(--ide-preformatted);
+				color: var(--ide-preformatted-foreground);
+				font-family: "Cascadia Mono", Consolas, monospace;
+			}
+			.ide-debug-toolbar {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 13px;
+				padding: 9px;
+				background: var(--ide-debug-toolbar);
+				font-size: 15px;
+			}
+			.ide-debug-toolbar .codicon {
+				font-size: 15px;
+			}
+			.ide-debug-status {
+				padding: 5px 9px;
+				background: var(--ide-debug-status);
+				color: var(--ide-debug-status-foreground);
+			}
+			.ide-drop-target {
+				margin: 11px;
+				padding: 18px;
+				border: 1px dashed var(--ide-focus);
+				border-radius: 4px;
+				background: var(--ide-drop-background);
+				text-align: center;
 			}
 			.ansi-table {
 				display: grid;
@@ -1433,248 +2235,6 @@
 			.ansi-table span {
 				padding: 2px 6px;
 				border-left: 6px solid currentColor;
-			}
-
-			/* Mobile: a native launcher-sized phone using exactly the web roles
-			   consumed by React Native. Unused web roles stay absent here instead
-			   of being assigned imaginary mobile jobs. */
-			.mobile-product {
-				display: grid;
-				place-items: center;
-				padding: 16px;
-				background: #737373;
-				color: var(--foreground);
-			}
-			.mobile-phone {
-				position: relative;
-				display: grid;
-				width: min(390px, 100%);
-				height: min(700px, 100%);
-				min-height: 500px;
-				grid-template-rows: 26px 1fr;
-				overflow: hidden;
-				border: 7px solid #171717;
-				border-radius: 42px;
-				background: var(--background);
-				color: var(--foreground);
-				box-shadow: 0 18px 48px #00000066;
-				font:
-					14px/1.4 -apple-system,
-					BlinkMacSystemFont,
-					Inter,
-					sans-serif;
-			}
-			.mobile-status {
-				display: flex;
-				align-items: center;
-				justify-content: space-between;
-				padding: 4px 18px 0;
-				font-size: 11px;
-				font-weight: 650;
-			}
-			.mobile-island {
-				position: absolute;
-				top: 7px;
-				left: 50%;
-				width: 76px;
-				height: 19px;
-				translate: -50% 0;
-				border-radius: 12px;
-				background: #000000;
-			}
-			.mobile-content {
-				display: flex;
-				min-height: 0;
-				flex-direction: column;
-			}
-			.mobile-header {
-				display: flex;
-				height: 60px;
-				align-items: center;
-				justify-content: space-between;
-				padding: 8px 16px 12px;
-			}
-			.mobile-actions {
-				display: flex;
-				gap: 10px;
-			}
-			.mobile-circle {
-				display: grid;
-				width: 40px;
-				height: 40px;
-				place-items: center;
-				border: 1px solid var(--border);
-				border-radius: 50%;
-				background: var(--background);
-				color: var(--foreground);
-				cursor: pointer;
-				font-size: 19px;
-			}
-			.mobile-circle.primary {
-				border-color: var(--primary);
-				background: var(--primary);
-				color: var(--primary-foreground);
-			}
-			.mobile-separator {
-				height: 1px;
-				margin: 0 16px;
-				background: var(--border);
-			}
-			.mobile-list {
-				flex: 1;
-			}
-			.mobile-row {
-				display: grid;
-				height: 57px;
-				grid-template-columns: 1fr 42px;
-				align-items: center;
-				padding-left: 16px;
-				border-bottom: 1px solid var(--border);
-				font-size: 15px;
-				font-weight: 600;
-			}
-			.mobile-menu-button {
-				border: 0;
-				background: transparent;
-				color: var(--muted-foreground);
-				cursor: pointer;
-				font-size: 20px;
-			}
-			.mobile-legal {
-				display: flex;
-				justify-content: center;
-				gap: 20px;
-				padding: 12px;
-				color: var(--muted-foreground);
-				font-size: 12px;
-				font-weight: 550;
-			}
-			.mobile-form-head {
-				display: grid;
-				height: 64px;
-				grid-template-columns: 40px 1fr 40px;
-				align-items: center;
-				padding: 8px 16px;
-			}
-			.mobile-form-head b {
-				text-align: center;
-			}
-			.mobile-form-head .mobile-submit {
-				border: 0;
-				background: transparent;
-				color: var(--primary);
-				cursor: pointer;
-				font-weight: 650;
-			}
-			.mobile-form {
-				display: grid;
-				gap: 8px;
-				padding: 16px;
-			}
-			.mobile-form label {
-				margin-top: 7px;
-				font-size: 13px;
-				font-weight: 650;
-			}
-			.mobile-input {
-				min-height: 48px;
-				padding: 13px 14px;
-				border: 1px solid var(--border);
-				border-radius: 12px;
-				background: var(--muted);
-				color: var(--foreground);
-			}
-			.mobile-placeholder {
-				color: var(--muted-foreground);
-			}
-			.mobile-error {
-				margin-top: 7px;
-				color: var(--destructive);
-				font-size: 13px;
-			}
-			.mobile-empty {
-				display: flex;
-				flex: 1;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				padding: 32px;
-				text-align: center;
-			}
-			.mobile-empty .empty-mark {
-				width: 56px;
-				height: 56px;
-			}
-			.mobile-empty h2 {
-				margin: 18px 0 4px;
-				font-size: 23px;
-			}
-			.mobile-empty p {
-				margin: 0;
-				color: var(--muted-foreground);
-			}
-			.mobile-wide-button {
-				width: min(280px, 100%);
-				min-height: 48px;
-				margin-top: 22px;
-				border: 0;
-				border-radius: 12px;
-				background: var(--primary);
-				color: var(--primary-foreground);
-				cursor: pointer;
-				font-weight: 650;
-			}
-			.mobile-wide-button.outline {
-				margin-top: 10px;
-				border: 1px solid var(--border);
-				background: var(--background);
-				color: var(--foreground);
-			}
-			.mobile-backdrop {
-				position: absolute;
-				inset: 0;
-				z-index: 5;
-				background: #00000066;
-			}
-			.mobile-sheet {
-				position: absolute;
-				right: 0;
-				bottom: 0;
-				left: 0;
-				z-index: 6;
-				padding: 8px 0 22px;
-				border-radius: 22px 22px 0 0;
-				background: var(--card);
-			}
-			.mobile-sheet-handle {
-				width: 38px;
-				height: 4px;
-				margin: 0 auto 13px;
-				border-radius: 2px;
-				background: var(--border);
-			}
-			.mobile-sheet-title {
-				padding: 0 20px 10px;
-			}
-			.mobile-sheet-title b {
-				display: block;
-				font-size: 16px;
-			}
-			.mobile-sheet-title span {
-				color: var(--muted-foreground);
-				font-size: 12px;
-			}
-			.mobile-sheet-action {
-				display: flex;
-				align-items: center;
-				gap: 14px;
-				padding: 13px 20px;
-				color: var(--foreground);
-				font-size: 15px;
-				font-weight: 550;
-			}
-			.mobile-sheet-action.destructive {
-				color: var(--destructive);
 			}
 
 			@media (max-width: 950px) {
@@ -1729,8 +2289,26 @@
 				><input id="hide-linked" type="checkbox" /> Hide linked</label
 			>
 			<div class="history">
-				<button id="undo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-				<button id="redo" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+				<button
+					class="icon-only"
+					id="undo"
+					title="Undo (Ctrl+Z)"
+					aria-label="Undo"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#undo-2"></use>
+					</svg>
+				</button>
+				<button
+					class="icon-only"
+					id="redo"
+					title="Redo (Ctrl+Y)"
+					aria-label="Redo"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#redo-2"></use>
+					</svg>
+				</button>
 			</div>
 			<div class="segment" id="area" aria-label="Preview">
 				<button data-value="web" aria-pressed="true">web</button>
@@ -1741,9 +2319,24 @@
 				<button data-value="light" aria-pressed="true">Light</button>
 				<button data-value="dark" aria-pressed="false">Dark</button>
 			</div>
-			<button class="plain" id="reset-all">Reset all</button>
-			<button class="plain" id="transfer-open">Transfer</button>
-			<button class="primary" id="save">Save</button>
+			<button class="plain with-icon" id="reset-all">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#rotate-ccw"></use>
+				</svg>
+				Reset all
+			</button>
+			<button class="plain with-icon" id="transfer-open">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#arrow-right-left"></use>
+				</svg>
+				Transfer
+			</button>
+			<button class="primary with-icon" id="save">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#save"></use>
+				</svg>
+				Save
+			</button>
 		</header>
 		<main class="layout">
 			<aside class="controls">
@@ -1773,22 +2366,38 @@
 				class="product-preview web-product"
 				data-token="web.background web.foreground"
 			>
-				<header class="web-header" data-token="web.background web.border">
+				<header
+					class="web-header"
+					data-token="web.header web.headerForeground web.border web.shadow"
+				>
 					<button class="product-logo" data-go-view="boxes" type="button">
 						<span class="product-mark"></span><span>Composery</span>
 					</button>
 					<nav class="web-nav" aria-label="Website pages">
-						<button data-go-view="boxes" type="button">Boxes</button>
+						<button
+							data-go-view="boxes"
+							data-token="web.ghostHover web.ghostActive"
+							type="button"
+						>
+							Boxes
+						</button>
 						<button data-go-view="monitor" type="button">Monitor</button>
 						<button data-go-view="form" type="button">Configure</button>
+						<button data-go-view="docs" type="button">Docs</button>
 					</nav>
 					<div class="web-account">
-						<button class="web-icon-button" type="button" aria-label="Theme">
-							◐
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Theme"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#sun-moon"></use>
+							</svg>
 						</button>
 						<button
 							class="web-button primary-action"
-							data-token="web.primary web.primaryForeground"
+							data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
 							type="button"
 						>
 							Sign in
@@ -1796,6 +2405,79 @@
 					</div>
 				</header>
 				<main class="web-content" data-preview-slot></main>
+				<footer
+					class="web-footer"
+					data-token="web.footer web.footerForeground web.border"
+				>
+					<span>© 2026 Composery</span>
+					<nav><span>Docs</span><span>Privacy</span><span>Terms</span></nav>
+				</footer>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="docs"
+			data-label="Docs"
+			data-order="99"
+		>
+			<div class="web-docs">
+				<aside
+					class="web-sidebar"
+					data-token="web.sidebar web.sidebarForeground web.border"
+				>
+					<strong>Documentation</strong>
+					<div class="current" data-token="web.selected web.selectedForeground">
+						Getting started
+					</div>
+					<div>Configuration</div>
+					<div>Persistence</div>
+					<div>Self-hosting</div>
+					<div>API reference</div>
+				</aside>
+				<article class="web-doc">
+					<div class="web-copy" data-token="web.mutedForeground">
+						Docs / Getting started
+					</div>
+					<h2>Build anywhere, keep everything</h2>
+					<p>
+						Composery gives every project a persistent browser IDE with the
+						tools, terminals, and files it needs.
+					</p>
+					<p>
+						Read the
+						<a class="web-link" data-token="web.link">configuration guide</a>
+						or use the
+						<input checked data-token="web.control" type="checkbox" /> automatic
+						update setting.
+					</p>
+					<div
+						class="web-doc-callout"
+						data-token="web.card web.cardForeground web.border web.shadow"
+					>
+						<b>Before you start</b>
+						<p class="web-copy" data-token="web.mutedForeground">
+							Choose a deployment and keep the generated password somewhere
+							safe.
+						</p>
+					</div>
+					<h3>Create your first box</h3>
+					<p>
+						Open Boxes, choose a region, and start the runtime. Your workspace
+						will be ready at its permanent URL.
+					</p>
+					<div class="web-browser-colors" data-token="web.border">
+						<span class="web-selection-sample" data-token="web.selection"
+							>Selected browser text</span
+						>
+						<span
+							class="web-scrollbar-sample"
+							data-token="web.scrollbarTrack web.scrollbar web.scrollbarHover web.scrollbarActive"
+							><i data-token="web.scrollbarActive"></i
+						></span>
+					</div>
+				</article>
 			</div>
 		</template>
 
@@ -1806,20 +2488,34 @@
 			data-label="Boxes"
 		>
 			<section class="web-page">
+				<span
+					class="monitor-select badge-sample"
+					data-token="web.badge web.badgeForeground web.badgeHover"
+					style="float: right"
+					>3 boxes</span
+				>
 				<div class="web-page-head">
-					<div class="web-crumbs"><span>▣</span><span>Boxes</span></div>
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>Boxes</span>
+					</div>
 					<button
 						class="web-button primary-action"
 						data-go-view="form"
-						data-token="web.primary web.primaryForeground"
+						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
 						type="button"
 					>
-						＋ New box
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#plus"></use>
+						</svg>
+						New box
 					</button>
 				</div>
 				<div
 					class="web-card"
-					data-token="web.card web.cardForeground web.border"
+					data-token="web.card web.cardForeground web.border web.shadow"
 				>
 					<div class="box-table-head">
 						<span>Slug</span><span>Created</span><span>Status</span
@@ -1833,8 +2529,14 @@
 						<span class="web-status web-success" data-token="web.success"
 							>Running</span
 						>
-						<button class="web-icon-button" type="button" aria-label="Open box">
-							↗
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
 						</button>
 					</div>
 					<div class="box-row">
@@ -1845,8 +2547,14 @@
 						<span class="web-status web-warning" data-token="web.warning"
 							>Updating</span
 						>
-						<button class="web-icon-button" type="button" aria-label="Open box">
-							↗
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
 						</button>
 					</div>
 					<div class="box-row">
@@ -1857,8 +2565,14 @@
 						<span class="web-status web-danger" data-token="web.destructive"
 							>Stopped</span
 						>
-						<button class="web-icon-button" type="button" aria-label="Open box">
-							↗
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
 						</button>
 					</div>
 				</div>
@@ -1875,7 +2589,10 @@
 				<div class="web-page-head">
 					<div class="web-crumbs">
 						<button class="past" data-go-view="boxes" type="button">
-							▣ Boxes
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#boxes"></use>
+							</svg>
+							Boxes
 						</button>
 						<span class="past">/</span><span>quiet-harbour</span>
 					</div>
@@ -1885,24 +2602,36 @@
 				</div>
 				<div
 					class="web-card monitor-card"
-					data-token="web.card web.cardForeground web.border"
+					data-token="web.card web.cardForeground web.border web.shadow"
 				>
 					<div class="monitor-controls">
 						<span
 							class="monitor-select"
-							data-token="web.secondary web.secondaryForeground"
-							>Metrics⌄</span
+							data-token="web.secondaryButton web.secondaryButtonForeground"
 						>
+							Metrics
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
 						<span
 							class="monitor-select"
-							data-token="web.secondary web.secondaryForeground"
-							>CPU⌄</span
+							data-token="web.secondaryButton web.secondaryButtonForeground"
 						>
+							CPU
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
 						<span
 							class="monitor-select"
-							data-token="web.secondary web.secondaryForeground"
-							>1 hour⌄</span
+							data-token="web.secondaryButton web.secondaryButtonForeground"
 						>
+							1 hour
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
 					</div>
 					<div class="metric-summary">
 						<span class="web-copy" data-token="web.mutedForeground"
@@ -1957,10 +2686,17 @@
 					</div>
 				</div>
 				<div class="web-form-actions">
-					<button class="web-button outline-action" type="button">Stop</button>
+					<button
+						class="web-button outline-action"
+						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+						type="button"
+					>
+						Stop
+					</button>
 					<button
 						class="web-button outline-action"
 						data-go-view="menu"
+						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
 						type="button"
 					>
 						More actions
@@ -1979,7 +2715,10 @@
 				<div class="web-page-head">
 					<div class="web-crumbs">
 						<button class="past" data-go-view="boxes" type="button">
-							▣ Boxes
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#boxes"></use>
+							</svg>
+							Boxes
 						</button>
 						<span class="past">/</span><span>quiet-harbour</span>
 						<span class="past">/</span><span>Configuration</span>
@@ -1987,7 +2726,7 @@
 				</div>
 				<div
 					class="web-card"
-					data-token="web.card web.cardForeground web.border"
+					data-token="web.card web.cardForeground web.border web.shadow"
 				>
 					<div class="web-card-header">
 						<div>
@@ -2006,7 +2745,7 @@
 								<label>Slug</label>
 								<div
 									class="web-input focused"
-									data-token="web.background web.foreground web.input web.ring"
+									data-token="web.field web.fieldForeground web.fieldBorder web.ring"
 								>
 									quiet-harbour
 								</div>
@@ -2017,10 +2756,13 @@
 							<div class="web-field">
 								<label>Region</label>
 								<div
-									class="web-input"
-									data-token="web.background web.foreground web.input"
+									class="web-input web-placeholder"
+									data-token="web.field web.fieldPlaceholder web.fieldBorder"
 								>
-									Dublin, Ireland⌄
+									<span>Dublin, Ireland</span>
+									<svg class="icon" aria-hidden="true">
+										<use href="/lucide.svg#chevron-down"></use>
+									</svg>
 								</div>
 								<small data-token="web.mutedForeground"
 									>Closest to your team.</small
@@ -2037,14 +2779,14 @@
 						<div class="web-form-actions">
 							<button
 								class="web-button secondary-action"
-								data-token="web.secondary web.secondaryForeground"
+								data-token="web.secondaryButton web.secondaryButtonForeground web.secondaryButtonHover web.secondaryButtonActive"
 								type="button"
 							>
 								Discard
 							</button>
 							<button
 								class="web-button primary-action"
-								data-token="web.primary web.primaryForeground"
+								data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
 								type="button"
 							>
 								Save changes
@@ -2063,9 +2805,21 @@
 		>
 			<section class="web-page" style="position: relative; min-height: 430px">
 				<div class="web-page-head">
-					<div class="web-crumbs"><span>▣</span><span>quiet-harbour</span></div>
-					<button class="web-button outline-action" type="button">
-						More actions⌄
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>quiet-harbour</span>
+					</div>
+					<button
+						class="web-button outline-action"
+						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+						type="button"
+					>
+						More actions
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#chevron-down"></use>
+						</svg>
 					</button>
 				</div>
 				<div
@@ -2096,30 +2850,48 @@
 				</div>
 				<div
 					class="web-popover"
-					data-token="web.popover web.popoverForeground web.border"
+					data-token="web.popover web.popoverForeground web.border web.shadow"
 				>
 					<div
 						class="web-menu-item selected"
-						data-token="web.accent web.accentForeground"
+						data-token="web.selected web.selectedForeground"
 					>
-						↗ Open in editor
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#external-link"></use>
+						</svg>
+						Open in editor
 					</div>
-					<div class="web-menu-item">◫ Take snapshot</div>
-					<div class="web-menu-item">⌁ Change slug</div>
+					<div class="web-menu-item">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#camera"></use>
+						</svg>
+						Take snapshot
+					</div>
+					<div class="web-menu-item">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#square-pen"></use>
+						</svg>
+						Change slug
+					</div>
 					<div class="web-menu-separator" data-token="web.border"></div>
 					<div
 						class="web-menu-item web-danger"
 						data-go-view="dialog"
 						data-token="web.destructive"
 					>
-						⌫ Delete box
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#trash-2"></use>
+						</svg>
+						Delete box
 					</div>
 				</div>
 				<div
 					class="web-toast"
-					data-token="web.popover web.popoverForeground web.border"
+					data-token="web.popover web.popoverForeground web.border web.shadow"
 				>
-					<b class="web-info" data-token="web.info">ⓘ</b>
+					<svg class="icon web-info" data-token="web.info" aria-hidden="true">
+						<use href="/lucide.svg#info"></use>
+					</svg>
 					<div>
 						<b>Update available</b>
 						<div class="web-copy" data-token="web.mutedForeground">
@@ -2138,7 +2910,12 @@
 		>
 			<section class="web-page">
 				<div class="web-page-head">
-					<div class="web-crumbs"><span>▣</span><span>Boxes</span></div>
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>Boxes</span>
+					</div>
 				</div>
 				<div
 					class="web-card"
@@ -2160,7 +2937,7 @@
 			<div class="web-overlay" data-token="web.overlay">
 				<div
 					class="web-dialog"
-					data-token="web.card web.cardForeground web.border"
+					data-token="web.dialog web.dialogForeground web.border web.shadow"
 				>
 					<h3>Delete quiet-harbour?</h3>
 					<p class="web-copy" data-token="web.mutedForeground">
@@ -2171,6 +2948,7 @@
 						<button
 							class="web-button outline-action"
 							data-go-view="boxes"
+							data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
 							type="button"
 						>
 							Cancel
@@ -2187,6 +2965,302 @@
 			</div>
 		</template>
 
+		<template data-preview-shell="mobile">
+			<div class="product-preview mobile-product">
+				<div class="mobile-phone" data-token="web.background web.foreground">
+					<div class="mobile-island"></div>
+					<div class="mobile-status">
+						<span>9:41</span>
+						<span class="mobile-status-icons" aria-hidden="true">
+							<svg class="icon"><use href="/lucide.svg#signal"></use></svg>
+							<svg class="icon"><use href="/lucide.svg#wifi"></use></svg>
+							<svg class="icon">
+								<use href="/lucide.svg#battery-full"></use>
+							</svg>
+						</span>
+					</div>
+					<main class="mobile-content" data-preview-slot></main>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="mobile"
+			data-view="instances"
+			data-label="Instances"
+		>
+			<header class="mobile-header">
+				<button
+					class="product-logo mobile-logo"
+					data-go-view="empty"
+					type="button"
+				>
+					<span class="product-mark"></span><span>Composery</span>
+				</button>
+				<div class="mobile-actions">
+					<button
+						class="mobile-circle icon-only"
+						data-token="web.background web.foreground web.border"
+						type="button"
+						aria-label="Scan QR code"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#qr-code"></use>
+						</svg>
+					</button>
+					<button
+						class="mobile-circle primary icon-only"
+						data-go-view="add"
+						data-token="web.button web.buttonForeground"
+						type="button"
+						aria-label="Add instance"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#plus"></use>
+						</svg>
+					</button>
+				</div>
+			</header>
+			<div class="mobile-separator" data-token="web.border"></div>
+			<div class="mobile-list">
+				<div class="mobile-row">
+					<span>quiet-harbour</span>
+					<button
+						class="mobile-menu-button icon-only"
+						data-go-view="actions"
+						data-token="web.mutedForeground"
+						type="button"
+						aria-label="Instance actions"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#ellipsis-vertical"></use>
+						</svg>
+					</button>
+				</div>
+				<div class="mobile-row">
+					<span>soft-river</span>
+					<button
+						class="mobile-menu-button icon-only"
+						data-go-view="actions"
+						data-token="web.mutedForeground"
+						type="button"
+						aria-label="Instance actions"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#ellipsis-vertical"></use>
+						</svg>
+					</button>
+				</div>
+				<div class="mobile-row">
+					<span>https://local.composery.dev</span>
+					<button
+						class="mobile-menu-button icon-only"
+						data-go-view="actions"
+						data-token="web.mutedForeground"
+						type="button"
+						aria-label="Instance actions"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#ellipsis-vertical"></use>
+						</svg>
+					</button>
+				</div>
+			</div>
+			<footer class="mobile-legal" data-token="web.mutedForeground">
+				<span>Privacy</span><span>Terms</span>
+			</footer>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="mobile"
+			data-view="empty"
+			data-label="Empty"
+		>
+			<section class="mobile-empty">
+				<span class="product-mark empty-mark"></span>
+				<h2>No instances yet</h2>
+				<p data-token="web.mutedForeground">
+					Add your Composery by URL to get started
+				</p>
+				<button
+					class="mobile-wide-button"
+					data-go-view="add"
+					data-token="web.button web.buttonForeground"
+					type="button"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#plus"></use>
+					</svg>
+					Add instance
+				</button>
+				<button
+					class="mobile-wide-button outline"
+					data-token="web.background web.foreground web.border"
+					type="button"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#qr-code"></use>
+					</svg>
+					Scan QR code
+				</button>
+			</section>
+			<footer class="mobile-legal" data-token="web.mutedForeground">
+				<span>Privacy</span><span>Terms</span>
+			</footer>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="mobile"
+			data-view="add"
+			data-label="Add"
+		>
+			<header class="mobile-form-head">
+				<button
+					class="mobile-circle icon-only"
+					data-go-view="instances"
+					data-token="web.background web.foreground web.border"
+					type="button"
+					aria-label="Back"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#arrow-left"></use>
+					</svg>
+				</button>
+				<b>Add instance</b>
+				<button
+					class="mobile-submit"
+					data-go-view="instances"
+					data-token="web.button"
+					type="button"
+				>
+					Add
+				</button>
+			</header>
+			<div class="mobile-form">
+				<label>URL</label>
+				<div
+					class="mobile-input"
+					data-token="web.muted web.foreground web.border"
+				>
+					example.composery.cloud
+				</div>
+				<label
+					>Label
+					<span class="mobile-placeholder" data-token="web.mutedForeground"
+						>(optional)</span
+					></label
+				>
+				<div
+					class="mobile-input mobile-placeholder"
+					data-token="web.muted web.mutedForeground web.border"
+				>
+					My Composery
+				</div>
+				<div class="mobile-error" data-token="web.destructive">
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#circle-alert"></use>
+					</svg>
+					<span
+						>Could not reach this instance. Check the URL and try again.</span
+					>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="mobile"
+			data-view="actions"
+			data-label="Actions"
+		>
+			<header class="mobile-header">
+				<div class="product-logo mobile-logo">
+					<span class="product-mark"></span><span>Composery</span>
+				</div>
+				<div class="mobile-actions">
+					<button
+						class="mobile-circle icon-only"
+						data-token="web.background web.foreground web.border"
+						type="button"
+						aria-label="Scan QR code"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#qr-code"></use>
+						</svg>
+					</button>
+					<button
+						class="mobile-circle primary icon-only"
+						data-token="web.button web.buttonForeground"
+						type="button"
+						aria-label="Add instance"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#plus"></use>
+						</svg>
+					</button>
+				</div>
+			</header>
+			<div class="mobile-separator" data-token="web.border"></div>
+			<div class="mobile-list">
+				<div class="mobile-row">
+					<span>quiet-harbour</span>
+					<button
+						class="mobile-menu-button icon-only"
+						data-token="web.mutedForeground"
+						type="button"
+						aria-label="Instance actions"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#ellipsis-vertical"></use>
+						</svg>
+					</button>
+				</div>
+				<div class="mobile-row"><span>soft-river</span><span></span></div>
+			</div>
+			<footer class="mobile-legal" data-token="web.mutedForeground">
+				<span>Privacy</span><span>Terms</span>
+			</footer>
+			<button
+				class="mobile-backdrop"
+				data-go-view="instances"
+				type="button"
+				aria-label="Close actions"
+			></button>
+			<div class="mobile-sheet" data-token="web.card web.foreground">
+				<div class="mobile-sheet-handle" data-token="web.border"></div>
+				<div class="mobile-sheet-title">
+					<b>quiet-harbour</b>
+					<span data-token="web.mutedForeground"
+						>quiet-harbour.composery.cloud</span
+					>
+				</div>
+				<div class="mobile-sheet-action">
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#external-link"></use>
+					</svg>
+					Open in browser
+				</div>
+				<div class="mobile-sheet-action">
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#square-pen"></use>
+					</svg>
+					Edit
+				</div>
+				<div
+					class="mobile-sheet-action destructive"
+					data-token="web.destructive"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#trash-2"></use>
+					</svg>
+					Remove
+				</div>
+			</div>
+		</template>
+
 		<template data-preview-shell="ide">
 			<div
 				class="product-preview ide-product"
@@ -2194,6 +3268,7 @@
 			>
 				<header
 					class="workbench-titlebar"
+					data-feature="surfaceBorders"
 					data-token="ide.titleBar ide.titleBarForeground ide.border"
 				>
 					<div class="workbench-menus">
@@ -2209,7 +3284,12 @@
 						workspace
 					</div>
 					<div class="workbench-layout">
-						<span>◫</span><span>▯</span><span>⚙</span>
+						<i class="codicon codicon-layout-panel" aria-hidden="true"></i>
+						<i
+							class="codicon codicon-layout-sidebar-left"
+							aria-hidden="true"
+						></i>
+						<i class="codicon codicon-settings-gear" aria-hidden="true"></i>
 					</div>
 				</header>
 				<div class="workbench-body">
@@ -2218,17 +3298,24 @@
 						data-token="ide.sideBar ide.foreground ide.border"
 					>
 						<div class="explorer-title" data-token="ide.mutedForeground">
-							<span>Explorer</span><span>•••</span>
+							<span>Explorer</span>
+							<i class="codicon codicon-ellipsis" aria-hidden="true"></i>
 						</div>
 						<div class="explorer-tree">
-							<div class="explorer-section">⌄ WORKSPACE</div>
+							<div class="explorer-section">
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								WORKSPACE
+							</div>
 							<div class="explorer-row" style="padding-left: 11px">
-								⌄ packages
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								<i class="codicon codicon-folder-opened" aria-hidden="true"></i>
+								packages
 							</div>
 							<button
 								class="explorer-row selected"
+								data-feature="contrastBorders"
 								data-go-view="editing"
-								data-token="ide.hover ide.focus"
+								data-token="ide.listSelection ide.listSelectionForeground ide.focus"
 								style="
 									width: 100%;
 									padding-left: 24px;
@@ -2237,7 +3324,9 @@
 								"
 								type="button"
 							>
-								⌄ shared
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								<i class="codicon codicon-folder-opened" aria-hidden="true"></i>
+								shared
 								<span
 									class="explorer-decoration web-warning"
 									data-token="web.warning"
@@ -2245,6 +3334,7 @@
 								>
 							</button>
 							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-json" aria-hidden="true"></i>
 								theme.json
 								<span
 									class="explorer-decoration web-warning"
@@ -2253,6 +3343,7 @@
 								>
 							</div>
 							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
 								theme.ts
 								<span
 									class="explorer-decoration web-success"
@@ -2261,6 +3352,7 @@
 								>
 							</div>
 							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
 								preview.ts
 								<span
 									class="explorer-decoration web-danger"
@@ -2273,9 +3365,11 @@
 								data-token="ide.ignored"
 								style="padding-left: 24px"
 							>
+								<i class="codicon codicon-folder" aria-hidden="true"></i>
 								node_modules
 							</div>
 							<div class="explorer-row" style="padding-left: 11px">
+								<i class="codicon codicon-markdown" aria-hidden="true"></i>
 								README.md
 								<span class="explorer-decoration web-info" data-token="web.info"
 									>i</span
@@ -2288,22 +3382,41 @@
 							aria-label="Workbench views"
 						>
 							<button
-								class="active"
+								class="active icon-only"
+								data-feature="activityBarIndicator"
 								data-go-view="workbench"
 								data-token="ide.focus ide.foreground"
 								type="button"
 								title="Explorer"
 							>
-								▱
+								<i class="codicon codicon-files" aria-hidden="true"></i>
 							</button>
-							<button data-go-view="editing" type="button" title="Search">
-								⌕
+							<button
+								class="icon-only"
+								data-go-view="editing"
+								type="button"
+								title="Search"
+							>
+								<i class="codicon codicon-search" aria-hidden="true"></i>
 							</button>
-							<button data-go-view="diff" type="button" title="Source Control">
-								⑂
+							<button
+								class="icon-only"
+								data-go-view="diff"
+								type="button"
+								title="Source Control"
+							>
+								<i
+									class="codicon codicon-source-control"
+									aria-hidden="true"
+								></i>
 							</button>
-							<button data-go-view="terminal" type="button" title="Terminal">
-								▻
+							<button
+								class="icon-only"
+								data-go-view="terminal"
+								type="button"
+								title="Terminal"
+							>
+								<i class="codicon codicon-terminal" aria-hidden="true"></i>
 							</button>
 						</nav>
 					</aside>
@@ -2313,11 +3426,143 @@
 					class="workbench-status"
 					data-token="ide.statusBar ide.statusBarForeground ide.border"
 				>
-					<span>⑂ main*</span><span>↻ 0↓ 2↑</span
-					><span class="web-danger" data-token="web.destructive">× 1</span
-					><span class="web-warning" data-token="web.warning">△ 2</span>
+					<span>
+						<i class="codicon codicon-git-branch" aria-hidden="true"></i>
+						main*
+					</span>
+					<span>
+						<i class="codicon codicon-sync" aria-hidden="true"></i>
+						0 / 2
+					</span>
+					<span class="web-danger" data-token="web.destructive">
+						<i class="codicon codicon-error" aria-hidden="true"></i>
+						1
+					</span>
+					<span class="web-warning" data-token="web.warning">
+						<i class="codicon codicon-warning" aria-hidden="true"></i>
+						2
+					</span>
 					<span class="right">Ln 18, Col 27　UTF-8　TypeScript</span>
 				</footer>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="details"
+			data-label="Workbench details"
+		>
+			<div class="ide-details" data-token="ide.editor">
+				<section
+					class="ide-detail-card"
+					data-token="ide.widget ide.border ide.shadow ide.foreground"
+				>
+					<header
+						class="ide-detail-title"
+						data-token="ide.settingsHeader ide.separator"
+					>
+						<span>Editor settings</span><span>Modified</span>
+					</header>
+					<div class="ide-setting" data-token="ide.settingsModified">
+						<div>
+							<b>Font Size</b>
+							<div data-token="ide.mutedForeground">
+								Controls the font size in pixels.
+							</div>
+						</div>
+						<div
+							class="ide-setting-control"
+							data-token="ide.inputBackground ide.inputForeground ide.inputBorder"
+						>
+							14
+						</div>
+					</div>
+					<div class="ide-setting" data-token="ide.settingsModified">
+						<div>
+							<b>Color Theme</b>
+							<div data-token="ide.mutedForeground">
+								Specifies the workbench color theme.
+							</div>
+						</div>
+						<div
+							class="ide-setting-control"
+							data-token="ide.dropdown ide.dropdownForeground ide.inputBorder"
+						>
+							Composery Dark
+						</div>
+					</div>
+					<div
+						class="ide-drop-target"
+						data-token="ide.dropBackground ide.focus"
+					>
+						Drop a file here to open it
+					</div>
+				</section>
+				<div class="ide-detail-stack">
+					<section
+						class="ide-detail-card"
+						data-token="ide.widget ide.border ide.shadow"
+					>
+						<header class="ide-detail-title" data-token="ide.separator">
+							<span>Agent chat</span>
+							<i class="codicon codicon-ellipsis" aria-hidden="true"></i>
+						</header>
+						<div class="ide-chat">
+							<div
+								class="ide-chat-command"
+								data-token="ide.chatAccent ide.chatAccentForeground"
+							>
+								/fix explain the failed check
+							</div>
+							<div>
+								Updated
+								<span class="ide-chat-edited" data-token="ide.chatEdited"
+									>theme.mjs</span
+								>
+								and verified
+								<code
+									class="ide-preformatted"
+									data-token="ide.preformatted ide.preformattedForeground"
+									>pnpm test</code
+								>.
+							</div>
+						</div>
+					</section>
+					<section
+						class="ide-detail-card"
+						data-token="ide.widget ide.border ide.shadow"
+					>
+						<header class="ide-detail-title" data-token="ide.separator">
+							<span>Debug session</span><span>Node</span>
+						</header>
+						<div class="ide-debug-toolbar" data-token="ide.debugToolbar">
+							<i
+								class="codicon codicon-debug-continue"
+								aria-label="Continue"
+							></i>
+							<i
+								class="codicon codicon-debug-step-over"
+								aria-label="Step over"
+							></i>
+							<i
+								class="codicon codicon-debug-step-into"
+								aria-label="Step into"
+							></i>
+							<i
+								class="codicon codicon-debug-step-out"
+								aria-label="Step out"
+							></i>
+							<i class="codicon codicon-debug-stop" aria-label="Stop"></i>
+						</div>
+						<div
+							class="ide-debug-status"
+							data-token="ide.debugStatus ide.debugStatusForeground"
+						>
+							Paused on breakpoint · localhost:7331
+						</div>
+					</section>
+				</div>
 			</div>
 		</template>
 
@@ -2331,19 +3576,22 @@
 				<section class="ide-pane" data-token="ide.editor">
 					<div class="ide-tabs" data-token="ide.tabBar ide.tabBorder">
 						<button
-							class="ide-editor-tab"
+							class="ide-editor-tab hover-sample"
 							data-go-view="editing"
-							data-token="ide.tabInactive ide.tabInactiveForeground ide.tabBorder"
+							data-token="ide.tabInactive ide.tabInactiveForeground ide.tabHover ide.tabBorder"
 							type="button"
 						>
 							Welcome
 						</button>
 						<button
 							class="ide-editor-tab active"
+							data-feature="activeTabIndicator"
 							data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
 							type="button"
 						>
-							▤ 2026-07-28.md　×
+							<i class="codicon codicon-markdown" aria-hidden="true"></i>
+							2026-07-28.md
+							<i class="codicon codicon-close" aria-label="Close"></i>
 						</button>
 					</div>
 					<article class="ide-document" data-token="ide.editor ide.foreground">
@@ -2369,8 +3617,17 @@
 					class="ide-terminal-pane"
 					data-token="ide.panel ide.foreground ide.border"
 				>
-					<div class="ide-panel-title">
-						<span>TERMINAL</span><span>＋⌄　1: Agent⌄　•••</span>
+					<div class="ide-panel-title" data-feature="panelTitleIndicator">
+						<span>TERMINAL</span>
+						<span class="ide-panel-actions">
+							<i class="codicon codicon-add" aria-label="New terminal"></i>
+							<span>1: Agent</span>
+							<i
+								class="codicon codicon-chevron-down"
+								aria-label="Terminal menu"
+							></i>
+							<i class="codicon codicon-ellipsis" aria-label="More actions"></i>
+						</span>
 					</div>
 					<div class="ide-terminal" data-token="ide.panel ide.foreground">
 						<div><b>Claude Code</b> <span class="dim">v2.1.207</span></div>
@@ -2378,14 +3635,23 @@
 						<br />
 						<div>› Flag any invoice more than five days overdue.</div>
 						<br />
-						<div>
-							<span class="web-success" data-token="web.success">●</span> Read 2
-							files and drafted a chase email.
+						<div class="ide-terminal-status">
+							<i
+								class="codicon codicon-pass-filled web-success"
+								data-token="web.success"
+								aria-hidden="true"
+							></i>
+							Read 2 files and drafted a chase email.
 						</div>
 						<div class="dim">Wrote drafts/acme-chase.md for your approval.</div>
 						<br />
-						<div>
-							<span class="web-info" data-token="web.info">✣</span> Working…
+						<div class="ide-terminal-status">
+							<i
+								class="codicon codicon-sync codicon-modifier-spin web-info"
+								data-token="web.info"
+								aria-hidden="true"
+							></i>
+							Working…
 							<span class="dim">29s · 811 tokens</span>
 						</div>
 					</div>
@@ -2400,13 +3666,19 @@
 			data-label="Editing"
 		>
 			<div class="ide-editor-stack">
-				<div class="ide-tabs" data-token="ide.tabBar ide.tabBorder">
+				<div
+					class="ide-tabs"
+					data-feature="tabBorders"
+					data-token="ide.tabBar ide.tabBorder"
+				>
 					<button
 						class="ide-editor-tab active"
 						data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
 						type="button"
 					>
-						theme-preview.ts　●
+						<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+						theme-preview.ts
+						<i class="codicon codicon-circle-filled" aria-label="Unsaved"></i>
 					</button>
 					<button
 						class="ide-editor-tab"
@@ -2414,7 +3686,9 @@
 						data-token="ide.tabInactive ide.tabInactiveForeground ide.tabBorder"
 						type="button"
 					>
-						theme.ts　×
+						<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+						theme.ts
+						<i class="codicon codicon-close" aria-label="Close"></i>
 					</button>
 				</div>
 				<div
@@ -2508,8 +3782,11 @@
 								></span
 							>
 						</div>
-						<div class="editor-line current" data-token="ide.hover">
-							<span class="editor-number" data-token="ide.lineNumber">6</span
+						<div class="editor-line current" data-token="ide.listHover">
+							<span
+								class="editor-number"
+								data-token="ide.lineNumber ide.activeLineNumber"
+								>6</span
 							><i></i
 							><span
 								><b class="indent-guide" data-token="ide.indentGuide"></b
@@ -2650,7 +3927,20 @@
 						</div>
 						<div class="editor-line">
 							<span class="editor-number" data-token="ide.lineNumber">13</span
-							><i></i><span></span>
+							><i></i
+							><span
+								><span class="syn-keyword">const</span>
+								<span
+									class="syn-variable"
+									data-feature="semanticHighlighting"
+									data-token="ide.variable ide.type"
+									>LegacyTheme</span
+								>
+								<span class="syn-operator">=</span>
+								<span class="syn-variable" data-token="ide.variable"
+									>oldTheme</span
+								><span class="syn-punctuation">;</span></span
+							>
 						</div>
 						<div class="editor-line">
 							<span class="editor-number" data-token="ide.lineNumber">14</span
@@ -2717,7 +4007,8 @@
 						data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
 						type="button"
 					>
-						theme.json ↔ theme.json
+						<i class="codicon codicon-diff" aria-hidden="true"></i>
+						theme.json / theme.json
 					</button>
 					<button
 						class="ide-editor-tab"
@@ -2817,17 +4108,19 @@
 				</div>
 				<div
 					class="ide-quick-input"
+					data-feature="shadows"
 					data-token="ide.widget ide.border ide.shadow ide.foreground"
 				>
 					<div
 						class="ide-input focused"
-						data-token="ide.inputBackground ide.inputBorder ide.placeholder ide.focus"
+						data-feature="controlBorders"
+						data-token="ide.inputBackground ide.inputBorder ide.inputForeground ide.placeholder ide.focus"
 					>
 						&gt; theme
 					</div>
 					<div
 						class="ide-quick-row selected"
-						data-token="ide.hover ide.foreground"
+						data-token="ide.listSelection ide.listSelectionForeground"
 					>
 						<span>Preferences: Color Theme</span
 						><span class="ide-badge" data-token="ide.badge ide.badgeForeground"
@@ -2843,9 +4136,14 @@
 				</div>
 				<div
 					class="ide-dropdown"
-					data-token="ide.dropdown ide.inputBorder ide.shadow ide.foreground"
+					data-token="ide.dropdown ide.dropdownForeground ide.inputBorder ide.shadow"
 				>
-					<div class="selected" data-token="ide.hover">Composery Dark</div>
+					<div
+						class="selected"
+						data-token="ide.listSelection ide.listSelectionForeground"
+					>
+						Composery Dark
+					</div>
 					<div>Composery Light</div>
 					<div>High Contrast</div>
 				</div>
@@ -2853,22 +4151,26 @@
 					class="ide-notification"
 					data-token="ide.widget ide.border ide.shadow ide.foreground"
 				>
-					<div>
-						<span class="web-info" data-token="web.info">ⓘ</span>
+					<div class="ide-notification-message">
+						<i
+							class="codicon codicon-info web-info"
+							data-token="web.info"
+							aria-hidden="true"
+						></i>
 						A new Composery build is available.
 						<a data-token="ide.link">Release notes</a>
 					</div>
 					<div class="ide-notification-actions">
 						<button
 							class="ide-button secondary"
-							data-token="ide.secondaryButton ide.foreground"
+							data-token="ide.secondaryButton ide.secondaryButtonForeground ide.secondaryButtonHover"
 							type="button"
 						>
 							Later
 						</button>
 						<button
 							class="ide-button"
-							data-token="ide.primary ide.primaryForeground"
+							data-token="ide.button ide.buttonForeground ide.buttonHover"
 							type="button"
 						>
 							Reload
@@ -2890,7 +4192,12 @@
 				style="height: 100%"
 			>
 				<div class="ide-panel-title">
-					<span>TERMINAL</span><span>＋⌄　1: colors　•••</span>
+					<span>TERMINAL</span>
+					<span class="ide-panel-actions">
+						<i class="codicon codicon-add" aria-label="New terminal"></i>
+						<span>1: colors</span>
+						<i class="codicon codicon-ellipsis" aria-label="More actions"></i>
+					</span>
 				</div>
 				<div class="ide-terminal">
 					<div>
@@ -2898,21 +4205,37 @@
 							>~/composery</span
 						>$ pnpm check
 					</div>
-					<div>
-						<span class="web-success" data-token="web.success">✓</span> shared
-						theme generated
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-pass-filled web-success"
+							data-token="web.success"
+							aria-hidden="true"
+						></i>
+						shared theme generated
 					</div>
-					<div>
-						<span class="web-warning" data-token="web.warning">⚠</span> two
-						files modified
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-warning web-warning"
+							data-token="web.warning"
+							aria-hidden="true"
+						></i>
+						two files modified
 					</div>
-					<div>
-						<span class="web-danger" data-token="web.destructive">✕</span>
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-error web-danger"
+							data-token="web.destructive"
+							aria-hidden="true"
+						></i>
 						invalid token example
 					</div>
-					<div>
-						<span class="web-info" data-token="web.info">ℹ</span> preview
-						refreshed
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-info web-info"
+							data-token="web.info"
+							aria-hidden="true"
+						></i>
+						preview refreshed
 					</div>
 					<div class="ansi-table" aria-label="ANSI terminal colors">
 						<span
@@ -2982,245 +4305,6 @@
 			</section>
 		</template>
 
-		<template data-preview-shell="mobile">
-			<div class="product-preview mobile-product">
-				<div class="mobile-phone" data-token="web.background web.foreground">
-					<div class="mobile-island"></div>
-					<div class="mobile-status">
-						<span>9:41</span><span>▮▮　⌁　▰</span>
-					</div>
-					<main class="mobile-content" data-preview-slot></main>
-				</div>
-			</div>
-		</template>
-
-		<template
-			data-preview-state
-			data-surface="mobile"
-			data-view="instances"
-			data-label="Instances"
-		>
-			<header class="mobile-header">
-				<button class="product-logo" data-go-view="empty" type="button">
-					<span class="product-mark"></span><span>Composery</span>
-				</button>
-				<div class="mobile-actions">
-					<button
-						class="mobile-circle"
-						data-token="web.background web.foreground web.border"
-						type="button"
-						aria-label="Scan QR code"
-					>
-						⌗
-					</button>
-					<button
-						class="mobile-circle primary"
-						data-go-view="add"
-						data-token="web.primary web.primaryForeground"
-						type="button"
-						aria-label="Add instance"
-					>
-						＋
-					</button>
-				</div>
-			</header>
-			<div class="mobile-separator" data-token="web.border"></div>
-			<div class="mobile-list">
-				<div class="mobile-row">
-					<span>quiet-harbour</span
-					><button
-						class="mobile-menu-button"
-						data-go-view="actions"
-						data-token="web.mutedForeground"
-						type="button"
-						aria-label="Instance actions"
-					>
-						⋮
-					</button>
-				</div>
-				<div class="mobile-row">
-					<span>soft-river</span
-					><button
-						class="mobile-menu-button"
-						data-go-view="actions"
-						data-token="web.mutedForeground"
-						type="button"
-						aria-label="Instance actions"
-					>
-						⋮
-					</button>
-				</div>
-				<div class="mobile-row">
-					<span>https://local.composery.dev</span
-					><button
-						class="mobile-menu-button"
-						data-go-view="actions"
-						data-token="web.mutedForeground"
-						type="button"
-						aria-label="Instance actions"
-					>
-						⋮
-					</button>
-				</div>
-			</div>
-			<footer class="mobile-legal" data-token="web.mutedForeground">
-				<span>Privacy</span><span>Terms</span>
-			</footer>
-		</template>
-
-		<template
-			data-preview-state
-			data-surface="mobile"
-			data-view="empty"
-			data-label="Empty"
-		>
-			<section class="mobile-empty">
-				<span class="product-mark empty-mark"></span>
-				<h2>No instances yet</h2>
-				<p data-token="web.mutedForeground">
-					Add your Composery by URL to get started
-				</p>
-				<button
-					class="mobile-wide-button"
-					data-go-view="add"
-					data-token="web.primary web.primaryForeground"
-					type="button"
-				>
-					＋ Add instance
-				</button>
-				<button
-					class="mobile-wide-button outline"
-					data-token="web.background web.foreground web.border"
-					type="button"
-				>
-					⌗ Scan QR code
-				</button>
-			</section>
-			<footer class="mobile-legal" data-token="web.mutedForeground">
-				<span>Privacy</span><span>Terms</span>
-			</footer>
-		</template>
-
-		<template
-			data-preview-state
-			data-surface="mobile"
-			data-view="add"
-			data-label="Add"
-		>
-			<header class="mobile-form-head">
-				<button
-					class="mobile-circle"
-					data-go-view="instances"
-					data-token="web.background web.foreground web.border"
-					type="button"
-					aria-label="Back"
-				>
-					←
-				</button>
-				<b>Add instance</b>
-				<button
-					class="mobile-submit"
-					data-go-view="instances"
-					data-token="web.primary"
-					type="button"
-				>
-					Add
-				</button>
-			</header>
-			<div class="mobile-form">
-				<label>URL</label>
-				<div
-					class="mobile-input"
-					data-token="web.muted web.foreground web.border"
-				>
-					example.composery.cloud
-				</div>
-				<label
-					>Label
-					<span class="mobile-placeholder" data-token="web.mutedForeground"
-						>(optional)</span
-					></label
-				>
-				<div
-					class="mobile-input mobile-placeholder"
-					data-token="web.muted web.mutedForeground web.border"
-				>
-					My Composery
-				</div>
-				<div class="mobile-error" data-token="web.destructive">
-					Could not reach this instance. Check the URL and try again.
-				</div>
-			</div>
-		</template>
-
-		<template
-			data-preview-state
-			data-surface="mobile"
-			data-view="actions"
-			data-label="Actions"
-		>
-			<header class="mobile-header">
-				<div class="product-logo">
-					<span class="product-mark"></span><span>Composery</span>
-				</div>
-				<div class="mobile-actions">
-					<button
-						class="mobile-circle"
-						data-token="web.background web.foreground web.border"
-						type="button"
-					>
-						⌗
-					</button>
-					<button
-						class="mobile-circle primary"
-						data-token="web.primary web.primaryForeground"
-						type="button"
-					>
-						＋
-					</button>
-				</div>
-			</header>
-			<div class="mobile-separator" data-token="web.border"></div>
-			<div class="mobile-list">
-				<div class="mobile-row">
-					<span>quiet-harbour</span
-					><button
-						class="mobile-menu-button"
-						data-token="web.mutedForeground"
-						type="button"
-					>
-						⋮
-					</button>
-				</div>
-				<div class="mobile-row"><span>soft-river</span><span></span></div>
-			</div>
-			<footer class="mobile-legal" data-token="web.mutedForeground">
-				<span>Privacy</span><span>Terms</span>
-			</footer>
-			<button
-				class="mobile-backdrop"
-				data-go-view="instances"
-				type="button"
-				aria-label="Close actions"
-			></button>
-			<div class="mobile-sheet" data-token="web.card web.foreground">
-				<div class="mobile-sheet-handle" data-token="web.border"></div>
-				<div class="mobile-sheet-title">
-					<b>quiet-harbour</b
-					><span data-token="web.mutedForeground"
-						>quiet-harbour.composery.cloud</span
-					>
-				</div>
-				<div class="mobile-sheet-action">↗　Open in browser</div>
-				<div class="mobile-sheet-action">✎　Edit</div>
-				<div
-					class="mobile-sheet-action destructive"
-					data-token="web.destructive"
-				>
-					⌫　Remove
-				</div>
-			</div>
-		</template>
 		<script type="module">
 			const theme = await fetch("/theme").then((response) => response.json());
 			const roles = document.querySelector("#roles");
@@ -3337,6 +4421,7 @@
 				for (const source of ["web", "ide"])
 					for (const values of ["light", "dark"])
 						Object.assign(theme[source][values], next[source][values]);
+				Object.assign(theme.ide.features, next.ide.features);
 			}
 
 			function step(from, to) {
@@ -3360,17 +4445,73 @@
 				step(redo ? future : history, redo ? history : future);
 			});
 
+			const FEATURES = [
+				[
+					"surfaceBorders",
+					"Surface borders",
+					"Draw separators around workbench regions and floating widgets"
+				],
+				[
+					"controlBorders",
+					"Control borders",
+					"Outline inputs, dropdowns, checkboxes, and buttons"
+				],
+				["tabBorders", "Tab borders", "Separate editor and terminal tabs"],
+				[
+					"shadows",
+					"Shadows",
+					"Draw depth beneath widgets, menus, and scrolled content"
+				],
+				[
+					"activeTabIndicator",
+					"Active tab indicator",
+					"Mark the active editor and terminal tab"
+				],
+				[
+					"activityBarIndicator",
+					"Activity bar indicator",
+					"Mark the selected workbench view"
+				],
+				[
+					"panelTitleIndicator",
+					"Panel title indicator",
+					"Underline the active panel title"
+				],
+				[
+					"contrastBorders",
+					"Extra contrast borders",
+					"Outline active elements beyond their normal focus treatment"
+				],
+				[
+					"semanticHighlighting",
+					"Semantic highlighting",
+					"Let language servers refine syntax colours"
+				]
+			];
+
 			// Every role in one list, grouped by what it does, not by surface.
 			const GROUPS = [
 				[
 					"Surfaces",
 					[
 						["web", "background", "Page"],
+						["web", "header", "Header"],
+						["web", "footer", "Footer"],
+						["web", "sidebar", "Docs sidebar"],
 						["web", "card", "Card"],
+						["web", "dialog", "Dialog"],
 						["web", "popover", "Popover"],
-						["web", "secondary", "Secondary"],
+						["web", "button", "Button"],
+						["web", "buttonHover", "Button hover"],
+						["web", "buttonActive", "Button pressed"],
+						["web", "secondaryButton", "Secondary button"],
+						["web", "secondaryButtonHover", "Secondary button hover"],
+						["web", "secondaryButtonActive", "Secondary button pressed"],
+						["web", "badge", "Badge"],
+						["web", "badgeHover", "Badge hover"],
 						["web", "muted", "Muted"],
-						["web", "accent", "Accent"],
+						["web", "field", "Field"],
+						["web", "selected", "Selected item"],
 						["ide", "editor", "Editor"],
 						["ide", "titleBar", "Title bar"],
 						["ide", "activityBar", "Activity bar"],
@@ -3386,18 +4527,36 @@
 						["ide", "dropdown", "Dropdown"],
 						["ide", "badge", "Badge"],
 						["ide", "secondaryButton", "Secondary button"],
-						["ide", "hover", "Hover / list selection"]
+						["ide", "secondaryButtonHover", "Secondary button hover"],
+						["ide", "button", "Button"],
+						["ide", "buttonHover", "Button hover"],
+						["ide", "listHover", "List hover"],
+						["ide", "listSelection", "List selection"],
+						["ide", "tabHover", "Tab hover"],
+						["ide", "chatAccent", "Chat accent"],
+						["ide", "debugToolbar", "Debug toolbar"],
+						["ide", "debugStatus", "Debug status bar"],
+						["ide", "preformatted", "Preformatted text background"],
+						["ide", "dropBackground", "Dragged item target"]
 					]
 				],
 				[
 					"Text",
 					[
 						["web", "foreground", "Page text"],
+						["web", "headerForeground", "Header text"],
+						["web", "footerForeground", "Footer text"],
+						["web", "sidebarForeground", "Sidebar text"],
 						["web", "cardForeground", "Card text"],
+						["web", "dialogForeground", "Dialog text"],
 						["web", "popoverForeground", "Popover text"],
-						["web", "secondaryForeground", "Secondary text"],
+						["web", "buttonForeground", "Button text"],
+						["web", "secondaryButtonForeground", "Secondary button text"],
+						["web", "badgeForeground", "Badge text"],
 						["web", "mutedForeground", "Muted text"],
-						["web", "accentForeground", "Accent text"],
+						["web", "fieldForeground", "Field text"],
+						["web", "fieldPlaceholder", "Field placeholder"],
+						["web", "selectedForeground", "Selected item text"],
 						["ide", "foreground", "Editor text"],
 						["ide", "mutedForeground", "Editor muted text"],
 						["ide", "titleBarForeground", "Title bar text"],
@@ -3407,16 +4566,27 @@
 						["ide", "tabActiveForeground", "Active tab text"],
 						["ide", "tabInactiveForeground", "Inactive tab text"],
 						["ide", "placeholder", "Placeholder"],
-						["ide", "badgeForeground", "Badge text"]
+						["ide", "badgeForeground", "Badge text"],
+						["ide", "secondaryButtonForeground", "Secondary button text"],
+						["ide", "buttonForeground", "Button text"],
+						["ide", "inputForeground", "Input text"],
+						["ide", "dropdownForeground", "Dropdown text"],
+						["ide", "listSelectionForeground", "Selected item text"],
+						["ide", "activeLineNumber", "Active line number"],
+						["ide", "chatAccentForeground", "Chat accent text"],
+						["ide", "chatEdited", "Edited file"],
+						["ide", "debugStatusForeground", "Debug status text"],
+						["ide", "preformattedForeground", "Preformatted text"],
+						["ide", "settingsHeader", "Settings heading"]
 					]
 				],
 				[
 					"Actions",
 					[
-						["web", "primary", "Primary"],
-						["web", "primaryForeground", "Primary text"],
-						["ide", "primary", "Editor primary"],
-						["ide", "primaryForeground", "Editor primary text"],
+						["web", "ghostHover", "Ghost hover"],
+						["web", "ghostActive", "Ghost pressed"],
+						["web", "link", "Link"],
+						["web", "control", "Native control accent"],
 						["ide", "link", "Link"]
 					]
 				],
@@ -3427,6 +4597,7 @@
 						["web", "warning", "Warning"],
 						["web", "destructive", "Destructive"],
 						["web", "info", "Info"],
+						["ide", "settingsModified", "Modified setting"],
 						["ide", "gutterAdded", "Gutter added"],
 						["ide", "gutterModified", "Gutter modified"],
 						["ide", "gutterDeleted", "Gutter deleted"],
@@ -3439,14 +4610,21 @@
 					"Structure",
 					[
 						["web", "border", "Border"],
-						["web", "input", "Input border"],
+						["web", "fieldBorder", "Field border"],
 						["web", "ring", "Focus ring"],
 						["web", "overlay", "Overlay"],
+						["web", "shadow", "Shadow"],
+						["web", "selection", "Text selection"],
+						["web", "scrollbarTrack", "Scrollbar track"],
+						["web", "scrollbar", "Scrollbar"],
+						["web", "scrollbarHover", "Scrollbar hover"],
+						["web", "scrollbarActive", "Scrollbar active"],
 						["ide", "border", "Editor border"],
 						["ide", "tabBorder", "Tab border"],
 						["ide", "inputBorder", "Editor input border"],
 						["ide", "focus", "Editor focus"],
-						["ide", "shadow", "Widget shadow"]
+						["ide", "shadow", "Widget shadow"],
+						["ide", "separator", "Separator"]
 					]
 				],
 				[
@@ -3521,6 +4699,31 @@
 					]
 				]
 			];
+
+			function lucide(name) {
+				const svg = document.createElementNS(
+					"http://www.w3.org/2000/svg",
+					"svg"
+				);
+				svg.classList.add("icon");
+				svg.setAttribute("aria-hidden", "true");
+				const use = document.createElementNS(
+					"http://www.w3.org/2000/svg",
+					"use"
+				);
+				use.setAttribute("href", `/lucide.svg#${name}`);
+				svg.append(use);
+				return svg;
+			}
+
+			function setIcon(button, name, count) {
+				button.replaceChildren(lucide(name));
+				if (!count) return;
+				const badge = document.createElement("span");
+				badge.className = "link-count";
+				badge.textContent = count;
+				button.append(badge);
+			}
 
 			function setPressed(container, selected) {
 				for (const button of container.querySelectorAll("button"))
@@ -3691,6 +4894,13 @@
 						] = value;
 				for (const [name, value] of Object.entries(painted))
 					root.style.setProperty(name, value);
+				const idePreview = stage.querySelector(".ide-product");
+				if (idePreview)
+					for (const [key, enabled] of Object.entries(theme.ide.features))
+						idePreview.classList.toggle(
+							`feature-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+							enabled
+						);
 				seen.clear();
 				for (const section of sections) section.visible = 0;
 
@@ -3714,6 +4924,45 @@
 				roles.replaceChildren();
 				rows.length = 0;
 				sections.length = 0;
+				const featureGroup = document.createElement("section");
+				featureGroup.className = "group";
+				const featureHeading = document.createElement("h2");
+				featureHeading.textContent = "VS Code theme options";
+				featureGroup.append(featureHeading);
+				const featureTally = { group: featureGroup, visible: 0 };
+				sections.push(featureTally);
+				for (const [key, label, description] of FEATURES) {
+					const row = document.createElement("label");
+					row.className = "feature-row";
+					row.dataset.feature = key;
+					const copy = document.createElement("span");
+					copy.className = "feature-copy";
+					const name = document.createElement("b");
+					name.textContent = label;
+					const detail = document.createElement("small");
+					detail.textContent = description;
+					copy.append(name, detail);
+					const toggle = document.createElement("input");
+					toggle.type = "checkbox";
+					toggle.className = "feature-switch";
+					toggle.setAttribute("aria-label", label);
+					toggle.onchange = () => {
+						if (theme.ide.features[key] === toggle.checked) return;
+						settle();
+						startEdit(label);
+						commitOnce();
+						theme.ide.features[key] = toggle.checked;
+						paint();
+					};
+					rows.push(() => {
+						toggle.checked = theme.ide.features[key];
+						row.hidden = area !== "ide";
+						if (!row.hidden) featureTally.visible += 1;
+					});
+					row.append(copy, toggle);
+					featureGroup.append(row);
+				}
+				roles.append(featureGroup);
 				for (const [title, entries] of GROUPS) {
 					const group = document.createElement("section");
 					group.className = "group";
@@ -3744,11 +4993,11 @@
 						text.setAttribute("aria-label", `${label} hex color`);
 						const link = document.createElement("button");
 						link.type = "button";
-						link.className = "link";
+						link.className = "link icon-only";
 						const reset = document.createElement("button");
 						reset.type = "button";
-						reset.className = "reset";
-						reset.textContent = "↺";
+						reset.className = "reset icon-only";
+						setIcon(reset, "rotate-ccw");
 						reset.title = "Reset this colour and everything linked to it";
 						const id = `${source}.${key}`;
 						row.dataset.role = id;
@@ -3762,11 +5011,11 @@
 							}
 							const loose = detached.has(id);
 							const shared = linkedRoles(source, key);
-							link.textContent = loose
-								? "⊘"
-								: shared.length > 1
-									? String(shared.length)
-									: "·";
+							setIcon(
+								link,
+								loose ? "unlink-2" : "link-2",
+								shared.length > 1 ? String(shared.length) : ""
+							);
 							link.classList.toggle("loose", loose);
 							link.title = loose
 								? "Detached - edits here move nothing else. Click to link it back up."
@@ -3869,9 +5118,13 @@
 			}
 
 			const statesFor = (surface) =>
-				previewStates.filter(
-					(template) => template.dataset.surface === surface
-				);
+				previewStates
+					.filter((template) => template.dataset.surface === surface)
+					.toSorted(
+						(first, second) =>
+							Number(first.dataset.order ?? 0) -
+							Number(second.dataset.order ?? 0)
+					);
 			const containsToken = (template, token) =>
 				tokenSet(template.content).has(token);
 
@@ -3916,7 +5169,7 @@
 				if (area === "mobile")
 					return `${web.length} shared web roles are actually used by the native app`;
 				if (area === "ide")
-					return `${ide.length} IDE roles · ${web.length} shared status roles`;
+					return `${ide.length} IDE roles · ${FEATURES.length} theme options · ${web.length} shared status roles`;
 				return `${web.length} web roles · every role has a reference state`;
 			}
 
@@ -4049,7 +5302,18 @@
 
 			function readTransfer(text) {
 				const next = JSON.parse(text);
-				const clean = { web: {}, ide: {} };
+				const clean = { web: {}, ide: { features: {} } };
+				const featureKeys = Object.keys(theme.ide.features);
+				if (
+					!next?.ide?.features ||
+					Object.keys(next.ide.features).length !== featureKeys.length
+				)
+					throw new Error("ide.features does not list every theme option");
+				for (const key of featureKeys) {
+					if (typeof next.ide.features[key] !== "boolean")
+						throw new Error(`ide.features.${key} is not a boolean`);
+					clean.ide.features[key] = next.ide.features[key];
+				}
 				for (const source of ["web", "ide"])
 					for (const values of ["light", "dark"]) {
 						const from = next?.[source]?.[values];

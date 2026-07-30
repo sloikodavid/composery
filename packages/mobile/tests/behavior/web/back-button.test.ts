@@ -2,19 +2,19 @@ import { describe, expect, test } from "vitest";
 
 import {
 	APPICON_SELECTOR,
+	buildUsableBgSource,
 	buildBeforeLoad,
 	choosePlacement,
 	INSTALL_SCRIPT,
 	NATIVE_BACK_SCRIPT,
-	TITLEBAR_LEFT_SELECTOR,
-	USABLE_BG_SOURCE
+	TITLEBAR_LEFT_SELECTOR
 } from "@/web/back-button";
 
 // The rule ships as source, so the test runs that source rather than a
 // second copy of it.
-const usableBg = new Function(`${USABLE_BG_SOURCE}; return usableBg;`)() as (
-	bg: string | null | undefined
-) => string | null;
+const usableBg = new Function(
+	`${buildUsableBgSource()}; return usableBg;`
+)() as (bg: string | null | undefined) => string | null;
 
 describe("status-bar strip color", () => {
 	test("takes an opaque background", () => {
@@ -44,12 +44,19 @@ describe("status-bar strip color", () => {
 	// No opaque surface anywhere reports empty and the app keeps its own
 	// background. A guessed white would be a white bar over a dark app.
 	test("the script never guesses a color", () => {
-		expect(INSTALL_SCRIPT).toContain(USABLE_BG_SOURCE);
+		expect(INSTALL_SCRIPT).toContain(buildUsableBgSource());
 		expect(INSTALL_SCRIPT).not.toContain("rgb(255, 255, 255)");
 	});
 });
 
 describe("back-button placement", () => {
+	test("pins the injected selectors to the IDE elements they identify", () => {
+		expect(TITLEBAR_LEFT_SELECTOR).toBe(".part.titlebar .titlebar-left");
+		expect(APPICON_SELECTOR).toBe(".window-appicon");
+		expect(INSTALL_SCRIPT).toContain('var WORKBENCH = ".monaco-workbench";');
+		expect(buildUsableBgSource()).toMatch(/^function usableBg\(bg\) \{/);
+	});
+
 	test("rewires the logo when it exists", () => {
 		expect(choosePlacement({ hasAppicon: true })).toBe("titlebar");
 	});
@@ -116,6 +123,13 @@ describe("hardware back", () => {
 });
 
 describe("color-scheme override", () => {
+	test("keeps diagnostics off unless a development build opts in", () => {
+		expect(buildBeforeLoad("dark")).toContain("window.__composeryDev = false;");
+		expect(buildBeforeLoad("dark", true)).toContain(
+			"window.__composeryDev = true;"
+		);
+	});
+
 	test("only synthesizes prefers-color-scheme, passing other queries through", () => {
 		const script = buildBeforeLoad("dark");
 		expect(script).toContain('"dark"');

@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { theme } from "../../../index.ts";
+
 const host = vi.hoisted<{
 	app: unknown;
 	android: string;
@@ -42,7 +44,7 @@ const app = {
 };
 const syncedApp = {
 	expo: {
-		android: { adaptiveIcon: { backgroundColor: "#0a0a0a" } },
+		android: { adaptiveIcon: { backgroundColor: "#242121" } },
 		plugins: [
 			"unrelated",
 			[
@@ -55,13 +57,23 @@ const syncedApp = {
 			[
 				"expo-splash-screen",
 				{
-					backgroundColor: "#ffffff",
-					dark: { backgroundColor: "#0a0a0a" }
+					backgroundColor: "#cdc9c4",
+					dark: { backgroundColor: "#1d1b1b" }
 				}
 			]
 		]
 	}
 };
+const pageThemeMeta = `<meta
+	name="theme-color"
+	content="#111111"
+	media="(prefers-color-scheme: light)"
+/>
+<meta
+	name="theme-color"
+	content="#222222"
+	media="(prefers-color-scheme: dark)"
+/>`;
 
 vi.mock("node:fs/promises", () => ({
 	readFile: (path: string, encoding: string) => {
@@ -74,6 +86,11 @@ vi.mock("node:fs/promises", () => ({
 			return Promise.resolve(host.readiness);
 		if (normalized.endsWith("/plugins/android-dialog-theme.js"))
 			return Promise.resolve(host.android);
+		if (
+			normalized.endsWith("/pages/auth.html") ||
+			normalized.endsWith("/pages/error.html")
+		)
+			return Promise.resolve(pageThemeMeta);
 		if (normalized === `${slash(repoRoot)}/packages/mobile/app.json`)
 			return Promise.resolve(JSON.stringify(host.app, null, "\t"));
 		return Promise.resolve(null);
@@ -134,6 +151,8 @@ describe("text brand asset generator", () => {
 			)
 		).toEqual([
 			"packages/web/app/brand.css",
+			"packages/ide/overlay/src/browser/pages/auth.html",
+			"packages/ide/overlay/src/browser/pages/error.html",
 			"packages/ide/overlay/src/browser/pages/brand.css",
 			"packages/ide/overlay/src/node/persistence/readiness.ts",
 			"packages/mobile/plugins/android-dialog-theme.js",
@@ -151,100 +170,91 @@ describe("text brand asset generator", () => {
 
 		const webCss = output(/packages\/web\/app\/brand\.css$/);
 		expect(webCss).toContain(`:root {
-	--background: #ffffff;
-	--foreground: #000000;
-	--card: #ffffff;
-	--card-foreground: #000000;
-	--popover: #ffffff;
-	--popover-foreground: #000000;
-	--primary: #171717;
-	--primary-foreground: #fafafa;
-	--secondary: #f5f5f5;
-	--secondary-foreground: #171717;
-	--muted: #f5f5f5;
-	--muted-foreground: #737373;
-	--accent: #f5f5f5;
-	--accent-foreground: #171717;
-	--destructive: #dc2626;
-	--success: #16a34a;
-	--warning: #dc8a06;
-	--info: #2563eb;
-	--border: #e5e5e5;
-	--input: #e5e5e5;
-	--ring: #a3a3a3;
-	--overlay: #00000066;
-	--chart-1: #171717;
-	--chart-2: #525252;
-	--chart-3: #737373;
-	--chart-4: #a3a3a3;
-	--chart-5: #d4d4d4;
-}`);
+	--background: ${theme.light.background};
+	--foreground: ${theme.light.foreground};
+	--header: ${theme.light.header};
+	--header-foreground: ${theme.light.headerForeground};`);
 		expect(webCss).toContain(`.dark {
-	--background: #0a0a0a;
-	--foreground: #fafafa;`);
+	--background: ${theme.dark.background};
+	--foreground: ${theme.dark.foreground};
+	--header: ${theme.dark.header};`);
+		for (const page of ["auth", "error"])
+			expect(
+				output(
+					new RegExp(`packages/ide/overlay/src/browser/pages/${page}\\.html$`)
+				)
+			).toContain(`content="${theme.light.background}"
+	media="(prefers-color-scheme: light)"`);
 
 		const ideCss = output(
 			/packages\/ide\/overlay\/src\/browser\/pages\/brand\.css$/
 		);
-		expect(ideCss).toContain(`	--vscode-button-background: #171717;
-	--vscode-button-foreground: #fafafa;
-	--vscode-button-hoverBackground: #737373;
-	--vscode-focusBorder: #a3a3a3;
-	--vscode-editor-background: #ffffff;
-	--vscode-editorHoverWidget-background: #ffffff;
-	--vscode-editorHoverWidget-border: #e5e5e5;
-	--vscode-editorHoverWidget-foreground: #000000;
-	--vscode-errorForeground: #dc2626;
-	--vscode-descriptionForeground: #737373;
-	--auth-success: #16a34a;
-	--auth-warning: #dc8a06;
-	--auth-input-focus: #a3a3a3;
-	--vscode-foreground: #000000;
-	--vscode-input-background: #ffffff;
-	--vscode-input-border: #f5f5f5;
-	--vscode-input-foreground: #000000;
-	--vscode-toolbar-activeBackground: #73737350;
-	--vscode-toolbar-hoverBackground: #f5f5f580;
-	--vscode-shadow-hover: 0 2px 8px #00000026;`);
-		expect(ideCss).toContain(`		--vscode-button-background: #fafafa;
-		--vscode-button-foreground: #0a0a0a;
-		--vscode-button-hoverBackground: #fafafa;
-		--vscode-focusBorder: #737373;
-		--vscode-editor-background: #0a0a0a;
-		--vscode-editorHoverWidget-background: #171717;`);
-		expect(ideCss).toContain("--vscode-shadow-hover: 0 2px 8px #0000005c;");
+		expect(ideCss).toContain(`	--vscode-button-background: ${theme.light.button};
+	--vscode-button-foreground: ${theme.light.buttonForeground};
+	--vscode-button-hoverBackground: ${theme.light.buttonHover};
+	--vscode-focusBorder: ${theme.light.ring};
+	--vscode-editor-background: ${theme.light.background};
+	--vscode-editorHoverWidget-background: ${theme.light.popover};
+	--vscode-editorHoverWidget-border: ${theme.light.border};
+	--vscode-editorHoverWidget-foreground: ${theme.light.popoverForeground};
+	--vscode-errorForeground: ${theme.light.destructive};
+	--vscode-descriptionForeground: ${theme.light.mutedForeground};
+	--auth-success: ${theme.light.success};
+	--auth-warning: ${theme.light.warning};
+	--auth-input-focus: ${theme.light.ring};
+	--vscode-foreground: ${theme.light.foreground};
+	--vscode-input-background: ${theme.light.field};
+	--vscode-input-border: ${theme.light.fieldBorder};
+	--vscode-input-foreground: ${theme.light.fieldForeground};
+	--vscode-toolbar-activeBackground: ${theme.light.mutedForeground}50;
+	--vscode-toolbar-hoverBackground: ${theme.light.ghostHover};
+	--vscode-shadow-hover: 0 2px 8px ${theme.light.shadow};
+	--composery-selection: ${theme.light.selection};
+	--composery-scrollbar-track: ${theme.light.scrollbarTrack};
+	--composery-scrollbar: ${theme.light.scrollbar};
+	--composery-scrollbar-hover: ${theme.light.scrollbarHover};
+	--composery-scrollbar-active: ${theme.light.scrollbarActive};`);
+		expect(ideCss).toContain(`		--vscode-button-background: ${theme.dark.button};
+		--vscode-button-foreground: ${theme.dark.buttonForeground};
+		--vscode-button-hoverBackground: ${theme.dark.buttonHover};
+		--vscode-focusBorder: ${theme.dark.ring};
+		--vscode-editor-background: ${theme.dark.background};
+		--vscode-editorHoverWidget-background: ${theme.dark.popover};`);
+		expect(ideCss).toContain(
+			`--vscode-shadow-hover: 0 2px 8px ${theme.dark.shadow};`
+		);
 		expect(ideCss).toContain(':root[data-scheme="light"]');
 		expect(ideCss).toContain(':root[data-scheme="dark"]');
 
 		expect(
 			output(/packages\/ide\/overlay\/src\/node\/persistence\/readiness\.ts$/)
 		).toBe(
-			'const page = \'<style>body{margin:0;background:#ffffff;color:#000000}@media (prefers-color-scheme:dark){body{background:#0a0a0a;color:#fafafa}}html[data-scheme="light"] body{background:#ffffff;color:#000000}html[data-scheme="dark"] body{background:#0a0a0a;color:#fafafa}</style>\';'
+			'const page = \'<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}html[data-scheme="light"] body{background:#cdc9c4;color:#323229}html[data-scheme="dark"] body{background:#1d1b1b;color:#c1b5a9}</style>\';'
 		);
 		expect(output(/packages\/mobile\/plugins\/android-dialog-theme\.js$/)).toBe(
-			'const ACCENT = { light: "#171717", dark: "#fafafa" };'
+			'const ACCENT = { light: "#323229", dark: "#c1b5a9" };'
 		);
 
 		expect(output(/packages\/web\/app\/icon\.svg$/)).toMatch(
-			/^<svg width="256" height="256" viewBox="0 0 20 20" fill="none" xmlns="http:\/\/www\.w3\.org\/2000\/svg"><style>svg\{color:#171717\}@media \(prefers-color-scheme:dark\)\{svg\{color:#fafafa\}\}<\/style>/
+			/^<svg width="256" height="256" viewBox="0 0 20 20" fill="none" xmlns="http:\/\/www\.w3\.org\/2000\/svg"><style>svg\{color:#323229\}@media \(prefers-color-scheme:dark\)\{svg\{color:#c1b5a9\}\}<\/style>/
 		);
 		expect(output(/packages\/web\/public\/icon-light\.svg$/)).toContain(
-			'color="#171717"'
+			'color="#323229"'
 		);
 		expect(output(/packages\/web\/public\/icon-dark\.svg$/)).toContain(
-			'color="#fafafa"'
+			'color="#c1b5a9"'
 		);
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon\.svg$/)
 		).toMatch(
-			/^<svg width="100%" height="100%" viewBox="0 0 20 20".*<style>svg\{color:#171717\}/
+			/^<svg width="100%" height="100%" viewBox="0 0 20 20".*<style>svg\{color:#323229\}/
 		);
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon-light\.svg$/)
 		).toContain('<svg width="100%" height="100%"');
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon-dark\.svg$/)
-		).toContain('color="#fafafa"');
+		).toContain('color="#c1b5a9"');
 
 		expect(output(/packages\/mobile\/app\.json$/)).toBe(
 			`${JSON.stringify(syncedApp, null, "\t")}\n`
@@ -264,7 +274,7 @@ describe("text brand asset generator", () => {
 
 		expect(JSON.parse(output(/packages\/mobile\/app\.json$/))).toEqual({
 			expo: {
-				android: { adaptiveIcon: { backgroundColor: "#0a0a0a" } },
+				android: { adaptiveIcon: { backgroundColor: "#242121" } },
 				plugins: ["unrelated"]
 			}
 		});
@@ -349,7 +359,7 @@ describe("text brand asset generator", () => {
 				)
 			);
 			const message = error.mock.calls[0]?.[0] as string;
-			expect(message.split("\n")).toHaveLength(12);
+			expect(message.split("\n")).toHaveLength(14);
 			expect(host.writes).toEqual([]);
 		} finally {
 			exit.mockRestore();

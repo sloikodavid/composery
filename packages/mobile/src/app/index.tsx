@@ -204,14 +204,14 @@ export default function IndexScreen() {
 									width: 40,
 									height: 40,
 									borderRadius: 20,
-									backgroundColor: theme.primary,
+									backgroundColor: theme.button,
 									alignItems: "center",
 									justifyContent: "center"
 								}}
 							>
 								<Plus
 									size={22}
-									color={theme.primaryForeground}
+									color={theme.buttonForeground}
 									strokeWidth={2.4}
 								/>
 							</PressableScale>
@@ -232,7 +232,7 @@ export default function IndexScreen() {
 
 			{loading ? (
 				<View style={styles_center}>
-					<Spinner color={theme.primary} size={30} />
+					<Spinner color={theme.button} size={30} />
 				</View>
 			) : loadError ? (
 				<ErrorState
@@ -352,15 +352,15 @@ function ErrorState({
 					paddingHorizontal: 18,
 					paddingVertical: 12,
 					borderRadius: 12,
-					backgroundColor: theme.primary,
+					backgroundColor: theme.button,
 					marginTop: 24
 				}}
 			>
-				<RotateCw size={16} color={theme.primaryForeground} strokeWidth={2.4} />
+				<RotateCw size={16} color={theme.buttonForeground} strokeWidth={2.4} />
 				<Text
 					style={[
 						body("semibold"),
-						{ fontSize: 15, color: theme.primaryForeground }
+						{ fontSize: 15, color: theme.buttonForeground }
 					]}
 				>
 					Retry
@@ -484,16 +484,16 @@ function EmptyState({
 						alignItems: "center",
 						justifyContent: "center",
 						gap: 8,
-						backgroundColor: theme.primary,
+						backgroundColor: theme.button,
 						paddingVertical: 14,
 						borderRadius: 12
 					}}
 				>
-					<Plus size={18} color={theme.primaryForeground} strokeWidth={2.4} />
+					<Plus size={18} color={theme.buttonForeground} strokeWidth={2.4} />
 					<Text
 						style={[
 							body("semibold"),
-							{ fontSize: 16, color: theme.primaryForeground }
+							{ fontSize: 16, color: theme.buttonForeground }
 						]}
 					>
 						Add instance

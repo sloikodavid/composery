@@ -64,7 +64,7 @@ export function BoxList() {
 							   whole row - but hovering anywhere else does nothing, so a
 							   highlighted row always means "click goes to the box". */
 							<div
-								className="flex h-14 items-center gap-3 px-4 has-[[data-link]:hover]:bg-muted/50"
+								className="flex h-14 items-center gap-3 px-4 has-[[data-link]:hover]:bg-ghost-hover"
 								key={box.id}
 							>
 								{/* self-stretch, so the link is the full height of its column

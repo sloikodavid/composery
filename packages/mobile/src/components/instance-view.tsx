@@ -741,7 +741,7 @@ function ChromeLoading({
 		<View style={{ flex: 1 }}>
 			<ScreenHeader onBack={onBack} />
 			<View style={styles_center}>
-				<Spinner color={theme.primary} size={32} />
+				<Spinner color={theme.button} size={32} />
 			</View>
 		</View>
 	);
@@ -873,23 +873,23 @@ function ErrorView({
 									paddingHorizontal: 18,
 									paddingVertical: 12,
 									borderRadius: 12,
-									backgroundColor: theme.primary,
+									backgroundColor: theme.button,
 									opacity: busy ? 0.7 : 1
 								}}
 							>
 								{busy ? (
-									<Spinner color={theme.primaryForeground} size={16} />
+									<Spinner color={theme.buttonForeground} size={16} />
 								) : (
 									<RotateCw
 										size={16}
-										color={theme.primaryForeground}
+										color={theme.buttonForeground}
 										strokeWidth={2.4}
 									/>
 								)}
 								<Text
 									style={[
 										body("semibold"),
-										{ fontSize: 15, color: theme.primaryForeground }
+										{ fontSize: 15, color: theme.buttonForeground }
 									]}
 								>
 									Retry

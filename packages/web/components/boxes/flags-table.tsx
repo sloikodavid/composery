@@ -117,7 +117,7 @@ export function FlagsTable({
 					<TableBody className="page-fade-in">
 						{sortedRows.map((flag) => (
 							<TableRow
-								className="[&>td]:align-top has-[[data-link]:hover]:bg-muted/50"
+								className="[&>td]:align-top has-[[data-link]:hover]:bg-ghost-hover"
 								key={flag.id}
 							>
 								<TableCell className="pl-4">

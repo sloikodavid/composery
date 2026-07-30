@@ -361,7 +361,7 @@ export function ConsoleHome() {
 							<TableBody className="page-fade-in">
 								{sortedBoxes.map((box: ConsoleBox) => (
 									<TableRow
-										className="h-14 has-[[data-link]:hover]:bg-muted/50"
+										className="h-14 has-[[data-link]:hover]:bg-ghost-hover"
 										key={box.id}
 									>
 										{/* The link is an overlay so it fills the whole cell (height

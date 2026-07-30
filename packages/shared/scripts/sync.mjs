@@ -45,14 +45,14 @@ ${cssThemeBlock(".dark", theme.dark)}
 // the media-query blocks (browsers) and the [data-scheme] blocks (the mobile
 // app stamps its scheme there - an Android WebView's native prefers-color-scheme
 // tracks the activity theme, not the system) can never drift apart.
-function idePageSchemeVars(c, dark) {
+function idePageSchemeVars(c) {
 	return {
-		"--vscode-button-background": c.primary,
-		"--vscode-button-foreground": c.primaryForeground,
-		"--vscode-button-hoverBackground": dark ? c.foreground : c.mutedForeground,
+		"--vscode-button-background": c.button,
+		"--vscode-button-foreground": c.buttonForeground,
+		"--vscode-button-hoverBackground": c.buttonHover,
 		"--vscode-focusBorder": c.ring,
 		"--vscode-editor-background": c.background,
-		"--vscode-editorHoverWidget-background": dark ? c.secondary : c.popover,
+		"--vscode-editorHoverWidget-background": c.popover,
 		"--vscode-editorHoverWidget-border": c.border,
 		"--vscode-editorHoverWidget-foreground": c.popoverForeground,
 		"--vscode-errorForeground": c.destructive,
@@ -61,14 +61,17 @@ function idePageSchemeVars(c, dark) {
 		"--auth-warning": c.warning,
 		"--auth-input-focus": c.ring,
 		"--vscode-foreground": c.foreground,
-		"--vscode-input-background": dark ? c.secondary : c.background,
-		"--vscode-input-border": dark ? c.input : c.secondary,
-		"--vscode-input-foreground": c.foreground,
+		"--vscode-input-background": c.field,
+		"--vscode-input-border": c.fieldBorder,
+		"--vscode-input-foreground": c.fieldForeground,
 		"--vscode-toolbar-activeBackground": `${c.mutedForeground}50`,
-		"--vscode-toolbar-hoverBackground": `${c.muted}80`,
-		"--vscode-shadow-hover": dark
-			? "0 2px 8px #0000005c"
-			: "0 2px 8px #00000026"
+		"--vscode-toolbar-hoverBackground": c.ghostHover,
+		"--vscode-shadow-hover": `0 2px 8px ${c.shadow}`,
+		"--composery-selection": c.selection,
+		"--composery-scrollbar-track": c.scrollbarTrack,
+		"--composery-scrollbar": c.scrollbar,
+		"--composery-scrollbar-hover": c.scrollbarHover,
+		"--composery-scrollbar-active": c.scrollbarActive
 	};
 }
 
@@ -77,8 +80,8 @@ function idePageThemeCss() {
 		Object.entries(vars)
 			.map(([k, v]) => `${indent}${k}: ${v};`)
 			.join("\n");
-	const lightVars = idePageSchemeVars(theme.light, false);
-	const darkVars = idePageSchemeVars(theme.dark, true);
+	const lightVars = idePageSchemeVars(theme.light);
+	const darkVars = idePageSchemeVars(theme.dark);
 	// Stryker disable next-line StringLiteral: formatContent applies the committed CSS indentation after this template is assembled.
 	const indent = "\t";
 	// Stryker disable next-line StringLiteral: formatContent applies the committed CSS indentation after this template is assembled.
@@ -155,6 +158,27 @@ export async function syncAssets({
 
 	await emit(join(webApp, "brand.css"), webThemeCss());
 
+	for (const name of ["auth.html", "error.html"]) {
+		const path = join(ideBrowser, "pages", name);
+		let page = await readFile(path, "utf8");
+		for (const [scheme, color] of [
+			["light", theme.light.background],
+			["dark", theme.dark.background]
+		]) {
+			const pattern = new RegExp(
+				`(name="theme-color"\\s+content=")#[0-9a-f]{6}("\\s+media="\\(prefers-color-scheme: ${scheme}\\)")`,
+				"i"
+			);
+			const matches = page.match(new RegExp(pattern.source, "gi")) ?? [];
+			if (matches.length !== 1)
+				throw new Error(
+					`${name} ${scheme} theme-color: expected one palette literal, found ${matches.length}`
+				);
+			page = page.replace(pattern, `$1${color}$2`);
+		}
+		await emit(path, page);
+	}
+
 	await emit(join(ideBrowser, "pages", "brand.css"), idePageThemeCss());
 
 	function replaceOne(source, pattern, replacement, name) {
@@ -212,7 +236,7 @@ export async function syncAssets({
 	const androidDialog = replaceOne(
 		await readFile(androidDialogPath, "utf8"),
 		/const ACCENT = \{ light: "#[0-9a-f]{6}", dark: "#[0-9a-f]{6}" \};/i,
-		`const ACCENT = { light: "${theme.light.primary}", dark: "${theme.dark.primary}" };`,
+		`const ACCENT = { light: "${theme.light.control}", dark: "${theme.dark.control}" };`,
 		"Android dialog accent"
 	);
 	await emit(androidDialogPath, androidDialog);

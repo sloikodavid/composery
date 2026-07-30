@@ -162,7 +162,7 @@ export default function AddInstanceScreen() {
 				>
 					{/* Always primary tint; disabled reads as dimmed (iOS pattern). */}
 					<Text
-						style={[body("semibold"), { fontSize: 16, color: theme.primary }]}
+						style={[body("semibold"), { fontSize: 16, color: theme.button }]}
 					>
 						{editing ? "Save" : "Add"}
 					</Text>

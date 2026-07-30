@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { BRAND_COLORS } from "../../../index.ts";
+
 const host = vi.hoisted<{
 	capHeight: number | undefined;
 	extremeBounds: boolean;
@@ -161,7 +163,7 @@ describe("outlined logo generator", () => {
 			'<g transform="translate(40 28.80) scale(0.02200 -0.02200)" fill="currentColor"><path transform="translate(0 0)" d="M0 0L1 1"/><path transform="translate(570 0)" d="M2 2L3 3"/></g>'
 		);
 		expect(svg.contents).toBe(
-			`<svg xmlns="http://www.w3.org/2000/svg" width="64.84" height="42.5" viewBox="-1.5 -1.5 64.84 42.5" fill="none"><style>svg{color:#171717}@media (prefers-color-scheme:dark){svg{color:#fafafa}}</style>${inner}</svg>\n`
+			`<svg xmlns="http://www.w3.org/2000/svg" width="64.84" height="42.5" viewBox="-1.5 -1.5 64.84 42.5" fill="none"><style>svg{color:${BRAND_COLORS.surface.lightText}}@media (prefers-color-scheme:dark){svg{color:${BRAND_COLORS.surface.darkText}}}</style>${inner}</svg>\n`
 		);
 		expect(logs).toEqual([
 			[

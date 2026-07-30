@@ -15,7 +15,7 @@ export type Check = {
 
 type ComponentState = RecoveryStatus["docker"];
 
-export function serviceState(state: ComponentState): {
+function serviceState(state: ComponentState): {
 	label: string;
 	tone: Tone;
 } {
@@ -46,7 +46,7 @@ export function diskState(percent: number | null): {
 // an issue. Only the daemon can name the live engine, so an unreadable one is
 // `muted` ("we could not read this") like every other unread check - never a
 // guess at which engine is running.
-export function engineState(engine: RecoveryStatus["engine"]): {
+function engineState(engine: RecoveryStatus["engine"]): {
 	label: string;
 	tone: Tone;
 } {

@@ -1,7 +1,7 @@
 // An in-page <select> (the IDE's dropdowns on touch - see touch.diff)
 // surfaces as a framework AlertDialog themed by the hosting activity, which
 // prebuild leaves at stock defaults: teal-green controls, or whatever the
-// wallpaper dictates. Pin the control accent to the brand primary so the dialog
+// wallpaper dictates. Pin the control accent to the shared control colour so the dialog
 // reads Composery like the auth pages; the app theme's DayNight parent swaps
 // the dialog surfaces for dark mode on its own. Prebuild-only by nature: Expo Go
 // runs under Expo's own activity theme and keeps the stock look - the built app
@@ -13,10 +13,10 @@ const {
 	withAndroidStyles
 } = require("expo/config-plugins");
 
-// Pinned to BRAND_THEME.{light,dark}.primary by android-dialog-theme.test.ts:
+// Pinned to BRAND_THEME.{light,dark}.control by android-dialog-theme.test.ts:
 // this file runs under plain node require at prebuild, where the TS `shared`
 // package is out of reach.
-const ACCENT = { light: "#171717", dark: "#fafafa" };
+const ACCENT = { light: "#323229", dark: "#c1b5a9" };
 
 // composery- prefix because Android merges every library's resources into one
 // namespace, and an app color named like a library's silently overrides it.

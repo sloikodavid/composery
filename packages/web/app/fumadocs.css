@@ -16,12 +16,12 @@
 	--color-fd-card: var(--card);
 	--color-fd-card-foreground: var(--card-foreground);
 	--color-fd-border: var(--border);
-	--color-fd-primary: var(--primary);
-	--color-fd-primary-foreground: var(--primary-foreground);
-	--color-fd-secondary: var(--secondary);
-	--color-fd-secondary-foreground: var(--secondary-foreground);
-	--color-fd-accent: var(--accent);
-	--color-fd-accent-foreground: var(--accent-foreground);
+	--color-fd-primary: var(--link);
+	--color-fd-primary-foreground: var(--background);
+	--color-fd-secondary: var(--muted);
+	--color-fd-secondary-foreground: var(--foreground);
+	--color-fd-accent: var(--selected);
+	--color-fd-accent-foreground: var(--selected-foreground);
 	--color-fd-ring: var(--ring);
 	--color-fd-overlay: var(--overlay);
 	--color-fd-error: var(--destructive);
@@ -71,6 +71,17 @@
 
 :root {
 	--fd-sidebar-drawer-offset: 100%;
+}
+
+#nd-subnav {
+	background-color: color-mix(in srgb, var(--header) 80%, transparent);
+	color: var(--header-foreground);
+}
+
+#nd-sidebar,
+#nd-sidebar-mobile {
+	background-color: var(--sidebar);
+	color: var(--sidebar-foreground);
 }
 
 /* Hover intensity isn't a fumadocs token; route sidebar hover through the same

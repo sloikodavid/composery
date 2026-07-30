@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { ideTheme, theme } from "../../../index.ts";
+import { ideFeatures, ideTheme, theme } from "../../../index.ts";
 
 const firstPaintKeys = `
 checkbox.border editor.background editor.foreground editor.inactiveSelectionBackground
@@ -198,15 +198,28 @@ function generated(scheme: "light" | "dark") {
 	);
 	expect(entry).not.toBeUndefined();
 	return JSON.parse(entry?.contents ?? "null") as {
+		semanticHighlighting: boolean;
+		colors: Record<string, string>;
 		tokenColors: Array<{
+			name?: string;
+			scope?: string | string[];
 			settings: { foreground?: string; fontStyle?: string };
 		}>;
-		semanticTokenColors: unknown;
+		semanticTokenColors: Record<
+			string,
+			string | Record<string, string | boolean>
+		>;
 	};
 }
 
 beforeEach(() => {
-	host.config = { web: structuredClone(theme), ide: structuredClone(ideTheme) };
+	host.config = {
+		web: structuredClone(theme),
+		ide: {
+			features: structuredClone(ideFeatures),
+			...structuredClone(ideTheme)
+		}
+	};
 });
 
 describe("theme generator", () => {
@@ -222,116 +235,101 @@ describe("theme generator", () => {
 			semanticHighlighting: true,
 			colors: {
 				"child.color": "#020202",
-				"editor.background": "#ffffff",
-				"editor.foreground": "#000000",
-				"activityBar.background": "#ffffff",
-				"activityBar.inactiveForeground": "#737373",
-				"activityBarBadge.background": "#171717",
-				"activityBarBadge.foreground": "#fafafa",
-				"editorWidget.background": "#f5f5f5",
-				"editorGroupHeader.tabsBackground": "#f5f5f5",
-				"tab.activeBackground": "#f5f5f5",
-				"tab.inactiveForeground": "#737373",
-				"input.background": "#f5f5f5",
-				"input.border": "#e5e5e5",
-				"button.background": "#171717",
-				"button.foreground": "#fafafa",
-				"list.hoverBackground": "#f5f5f5",
-				"editor.selectionBackground": "#00000029",
-				"editor.findMatchBackground": "#dc8a0666",
-				"editor.findMatchHighlightBackground": "#dc8a0633",
-				"editorBracketMatch.background": "#ffffff00",
-				"scrollbarSlider.background": "#00000033",
-				"editorLink.activeForeground": "#2563eb",
-				"gitDecoration.addedResourceForeground": "#16a34a",
-				"editorWarning.foreground": "#dc8a06",
-				"editorError.foreground": "#dc2626",
-				"editorInfo.foreground": "#2563eb",
-				"editorGutter.addedBackground": "#16a34a",
-				"diffEditor.insertedLineBackground": "#16a34a1f",
-				"diffEditorOverview.insertedForeground": "#16a34a80",
-				"terminal.ansiRed": "#dc2626",
-				"terminal.ansiGreen": "#16a34a",
-				"terminal.ansiYellow": "#dc8a06",
-				"terminal.ansiBlue": "#2563eb",
-				"terminal.ansiBrightWhite": "#e5e5e5"
+				"editor.background": ideTheme.light.editor,
+				"editor.foreground": ideTheme.light.foreground,
+				"activityBar.background": ideTheme.light.activityBar,
+				"editorWidget.background": ideTheme.light.widget,
+				"sideBar.background": ideTheme.light.sideBar,
+				"panel.background": ideTheme.light.panel,
+				"statusBar.background": ideTheme.light.statusBar,
+				"editor.selectionBackground": ideTheme.light.selection,
+				"editorLink.activeForeground": ideTheme.light.link,
+				"gitDecoration.addedResourceForeground": theme.light.success,
+				"editorWarning.foreground": theme.light.warning,
+				"editorError.foreground": theme.light.destructive,
+				"editorInfo.foreground": theme.light.info,
+				"terminal.ansiRed": theme.light.destructive,
+				"terminal.ansiGreen": theme.light.success
 			}
 		});
 		expect(dark).toMatchObject({
 			name: "Composery Dark",
 			type: "dark",
 			colors: {
-				"editor.background": "#0a0a0a",
-				"editor.foreground": "#fafafa",
-				"activityBar.background": "#0a0a0a",
-				"button.background": "#fafafa",
-				"button.foreground": "#0a0a0a",
-				"editor.findMatchBackground": "#f5a80b66",
-				"editorBracketMatch.background": "#0a0a0a00",
-				"gitDecoration.addedResourceForeground": "#22c55e",
-				"editorWarning.foreground": "#f5a80b",
-				"editorError.foreground": "#f87171",
-				"editorInfo.foreground": "#60a5fa",
-				"diffEditorOverview.removedForeground": "#f8717180"
+				"editor.background": ideTheme.dark.editor,
+				"editor.foreground": ideTheme.dark.foreground,
+				"activityBar.background": ideTheme.dark.activityBar,
+				"button.background": ideTheme.dark.button,
+				"button.foreground": ideTheme.dark.buttonForeground,
+				"gitDecoration.addedResourceForeground": theme.dark.success,
+				"editorWarning.foreground": theme.dark.warning,
+				"editorError.foreground": theme.dark.destructive,
+				"editorInfo.foreground": theme.dark.info
 			}
 		});
-
-		expect(
-			light.tokenColors.map(
-				(rule: { settings: { foreground?: string; fontStyle?: string } }) =>
-					rule.settings.foreground ?? rule.settings.fontStyle
-			)
-		).toEqual([
-			"#008000",
-			"#a31515",
-			"#a31515",
-			"#a31515",
-			"#795e26",
-			"#795e26",
-			"#267f99",
-			"#267f99",
-			"#267f99",
-			"#098658",
-			"#0000ff",
-			"#0000ff",
-			"#001080",
-			"#001080",
-			"#001080",
-			"#001080",
-			"#001080",
-			"#001080",
-			"#000000",
-			"#16a34a",
-			"#dc2626",
-			"#dc8a06",
-			"#dc2626",
-			"#010101",
-			"bold"
-		]);
-		expect(light.semanticTokenColors).toEqual({
-			inheritedComment: "#008000",
-			comment: "#008000",
-			regexpToken: { foreground: "#a31515", bold: true },
-			stringToken: "#a31515",
-			numberToken: { foreground: "#098658", bold: true },
-			decoratorToken: "#795e26",
-			namespaceToken: { foreground: "#267f99", bold: true },
-			labelToken: "#001080",
-			functionToken: { foreground: "#795e26", bold: true },
-			methodToken: "#795e26",
-			customLiteralToken: { foreground: "#795e26", bold: true },
-			classToken: "#267f99",
-			enumToken: { foreground: "#267f99", bold: true },
-			interfaceToken: "#267f99",
-			structToken: { foreground: "#267f99", bold: true },
-			typeToken: "#267f99",
-			operatorToken: { foreground: "#0000ff", bold: true },
-			keywordToken: "#0000ff",
-			parameterToken: { foreground: "#001080", bold: true },
-			propertyToken: "#001080",
-			variableToken: { foreground: "#001080", bold: true },
-			unknownToken: "#010101"
+		expect(light.tokenColors[0]!.settings).toMatchObject({
+			foreground: ideTheme.light.comment
 		});
+		expect(light.tokenColors[10]!.settings).toMatchObject({
+			foreground: ideTheme.light.operator
+		});
+		expect(light.tokenColors[19]!.settings.foreground).toBe(
+			theme.light.success
+		);
+		expect(light.semanticTokenColors.comment).toBe(ideTheme.light.comment);
+		expect(light.semanticTokenColors.keywordToken).toBe(ideTheme.light.keyword);
+	});
+
+	test("controls surface, control, and tab borders independently", async () => {
+		const config = host.config as {
+			ide: {
+				features: Record<string, boolean>;
+			};
+		};
+		config.ide.features.surfaceBorders = false;
+		config.ide.features.controlBorders = true;
+		config.ide.features.tabBorders = false;
+		await generate();
+
+		const light = generated("light");
+		for (const key of [
+			"activityBar.border",
+			"editorGroup.border",
+			"widget.border"
+		])
+			expect(light.colors[key], key).toBe("#00000000");
+		expect(light.colors["input.border"]).toBe(ideTheme.light.inputBorder);
+		expect(light.colors["tab.border"]).toBe("#00000000");
+		expect(light.colors.focusBorder).toBe(ideTheme.light.focus);
+		expect(light.colors["editorBracketMatch.border"]).toBe(
+			ideTheme.light.bracketMatch
+		);
+	});
+
+	test("controls optional workbench effects independently", async () => {
+		const config = host.config as {
+			ide: {
+				features: Record<string, boolean>;
+			};
+		};
+		config.ide.features.shadows = false;
+		config.ide.features.activeTabIndicator = false;
+		config.ide.features.activityBarIndicator = false;
+		config.ide.features.panelTitleIndicator = false;
+		config.ide.features.contrastBorders = true;
+		config.ide.features.semanticHighlighting = false;
+		await generate();
+
+		const light = generated("light");
+		expect(light.colors["widget.shadow"]).toBe("#00000000");
+		expect(light.colors["scrollbar.shadow"]).toBe("#00000000");
+		expect(light.colors["tab.activeBorderTop"]).toBe("#00000000");
+		expect(light.colors["terminal.tab.activeBorder"]).toBe("#00000000");
+		expect(light.colors["activityBar.activeBorder"]).toBe("#00000000");
+		expect(light.colors["panelTitle.activeBorder"]).toBe("#00000000");
+		expect(light.colors.contrastBorder).toBe(ideTheme.light.border);
+		expect(light.colors.contrastActiveBorder).toBe(ideTheme.light.focus);
+		expect(light.semanticHighlighting).toBe(false);
 	});
 
 	test("updates committed TypeScript and patch literals from the generated themes", async () => {
@@ -346,32 +344,72 @@ describe("theme generator", () => {
 		expect(themeSource?.contents).toContain(
 			`export const ideTheme = ${JSON.stringify(ideTheme, null, "\t")} as const;`
 		);
+		expect(themeSource?.contents).toContain(
+			`export const ideFeatures = ${JSON.stringify(ideFeatures, null, "\t")} as const;`
+		);
 
 		const firstPaint = host.writes.find(({ path }) =>
 			slash(path).endsWith("/patches/first-paint.diff")
 		)?.contents;
-		expect(firstPaint).toContain("+\t'editor.background': '#ffffff',");
-		expect(firstPaint).toContain("+\t'editor.background': '#0a0a0a',");
 		expect(firstPaint).toContain(
-			"+\t'activityBarBadge.background': '#171717',"
+			`+\t'editor.background': '${ideTheme.light.editor}',`
 		);
 		expect(firstPaint).toContain(
-			"+\t'activityBarBadge.background': '#fafafa',"
+			`+\t'editor.background': '${ideTheme.dark.editor}',`
 		);
-		expect(firstPaint).toContain("+\t'button.border': '#010101',");
+		expect(firstPaint).toContain(
+			`+\t'activityBarBadge.background': '${ideTheme.light.badge}',`
+		);
+		expect(firstPaint).toContain(
+			`+\t'activityBarBadge.background': '${ideTheme.dark.badge}',`
+		);
+		expect(firstPaint).toContain(
+			`+\t'button.border': '${ideTheme.light.inputBorder}',`
+		);
 
 		const workbench = host.writes.find(({ path }) =>
 			slash(path).endsWith("/patches/workbench-page.diff")
 		)?.contents;
 		expect(workbench)
-			.toBe(`+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
-+ html, body { background-color: #ffffff; }
-+ @media (prefers-color-scheme: dark) { html, body { background-color: #0a0a0a; } }
-+ html[data-scheme="light"], html[data-scheme="light"] body { background-color: #ffffff; }
-+ html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: #0a0a0a; }
-+theme_color: "#0a0a0a"
-+background_color: "#0a0a0a"`);
+			.toBe(`+<meta name="theme-color" content="${ideTheme.light.titleBar}" media="(prefers-color-scheme: light)">
++<meta name="theme-color" content="${ideTheme.dark.titleBar}" media="(prefers-color-scheme: dark)">
++ html, body { background-color: ${ideTheme.light.editor}; }
++ @media (prefers-color-scheme: dark) { html, body { background-color: ${ideTheme.dark.editor}; } }
++ html[data-scheme="light"], html[data-scheme="light"] body { background-color: ${ideTheme.light.editor}; }
++ html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: ${ideTheme.dark.editor}; }
++theme_color: "${ideTheme.dark.titleBar}"
++background_color: "${ideTheme.dark.editor}"`);
+	});
+
+	test("derives workbench browser chrome and first paint from IDE surfaces", async () => {
+		const config = host.config as {
+			ide: {
+				light: { titleBar: string; editor: string };
+				dark: { titleBar: string; editor: string };
+			};
+		};
+		config.ide.light.titleBar = "#112233";
+		config.ide.light.editor = "#223344";
+		config.ide.dark.titleBar = "#334455";
+		config.ide.dark.editor = "#445566";
+
+		await generate();
+
+		const workbench = host.writes.find(({ path }) =>
+			slash(path).endsWith("/patches/workbench-page.diff")
+		)?.contents;
+		expect(workbench).toContain(
+			'<meta name="theme-color" content="#112233" media="(prefers-color-scheme: light)">'
+		);
+		expect(workbench).toContain(
+			'<meta name="theme-color" content="#334455" media="(prefers-color-scheme: dark)">'
+		);
+		expect(workbench).toContain("html, body { background-color: #223344; }");
+		expect(workbench).toContain(
+			"@media (prefers-color-scheme: dark) { html, body { background-color: #445566; } }"
+		);
+		expect(workbench).toContain('theme_color: "#334455"');
+		expect(workbench).toContain('background_color: "#445566"');
 	});
 
 	test("rejects an invalid palette before emitting partial outputs", async () => {

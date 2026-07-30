@@ -46,7 +46,7 @@ const LEGAL_LINKS: FooterLink[] = [
 
 export function Footer() {
 	return (
-		<footer className="border-t border-border bg-background">
+		<footer className="border-t border-border bg-footer text-footer-foreground">
 			<div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
 				<div className="max-w-sm space-y-3">
 					<Logo size="h-12" />
@@ -66,7 +66,7 @@ export function Footer() {
 					<p>&copy; {new Date().getFullYear()} Composery</p>
 					<div className="flex items-center gap-5">
 						<a
-							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-footer-foreground"
 							href={X_URL}
 							rel="noreferrer"
 							target="_blank"
@@ -75,7 +75,7 @@ export function Footer() {
 							<span className="sr-only sm:not-sr-only">X</span>
 						</a>
 						<a
-							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-footer-foreground"
 							href={LINKEDIN_URL}
 							rel="noreferrer"
 							target="_blank"
@@ -84,7 +84,7 @@ export function Footer() {
 							<span className="sr-only sm:not-sr-only">LinkedIn</span>
 						</a>
 						<a
-							className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+							className="inline-flex items-center gap-1.5 transition-colors hover:text-footer-foreground"
 							href={GITHUB_REPO_URL}
 							rel="noreferrer"
 							target="_blank"
@@ -100,7 +100,7 @@ export function Footer() {
 }
 
 const FOOTER_LINK_CLASSES =
-	"text-sm text-muted-foreground transition-colors hover:text-foreground";
+	"text-sm text-muted-foreground transition-colors hover:text-footer-foreground";
 
 // ponytail: label length proxies rendered width; measure text if fonts make it lie
 const byLabelLength = (a: FooterLink, b: FooterLink) =>
@@ -115,7 +115,7 @@ function FooterLinkGroup({
 }) {
 	return (
 		<nav className="space-y-3" aria-label={title}>
-			<p className="text-sm font-medium text-foreground">{title}</p>
+			<p className="text-sm font-medium text-footer-foreground">{title}</p>
 			<ul className="space-y-2">
 				{links.toSorted(byLabelLength).map((link) => (
 					<li key={link.label}>

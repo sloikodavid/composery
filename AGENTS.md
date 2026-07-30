@@ -489,6 +489,7 @@ packages/
       behavior/
         lib/
           back-decision.test.ts
+          haptics.test.ts
           instance-host.test.ts
           instance-store.test.ts
           normalize-url.test.ts
@@ -847,6 +848,7 @@ packages/
       box-route.ts
       box-slug.ts
       brand-assets.ts
+      browser-theme.ts
       clerk-appearance.ts
       cloud-legal.ts
       convex-dashboard.ts
@@ -926,6 +928,7 @@ packages/
             repair-dialog.test.ts
             reset-dialog.test.ts
             status-action.test.ts
+          animated-icon.test.ts
           confirm-dialog.test.ts
         convex/
           billing/
@@ -985,6 +988,7 @@ packages/
           box-route.test.ts
           box-slug.test.ts
           brand-assets.test.ts
+          browser-theme.test.ts
           datetime.test.ts
           error-message.test.ts
           operation-failure.test.ts

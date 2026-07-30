@@ -1,6 +1,6 @@
-import { ideTheme, theme } from "./theme.ts";
+import { ideFeatures, ideTheme, theme } from "./theme.ts";
 
-export { ideTheme, theme } from "./theme.ts";
+export { ideFeatures, ideTheme, theme } from "./theme.ts";
 
 // The single source of truth for who/what this project is: brand, identity, and
 // the pure (zero-dependency) icon-SVG builders derived from them. Everything here
@@ -26,18 +26,18 @@ export const ICON_HEIGHT = 20;
 // into a second greyscale or status palette.
 export const BRAND_COLORS = {
 	icon: {
-		light: theme.light.primary,
-		dark: theme.dark.primary,
+		light: theme.light.foreground,
+		dark: theme.dark.foreground,
 		muted: theme.light.mutedForeground,
-		tileStroke: theme.dark.primary
+		tileStroke: theme.dark.foreground
 	},
 	surface: {
-		ink: theme.light.primary,
-		paper: theme.dark.primary,
+		ink: theme.light.foreground,
+		paper: theme.dark.foreground,
 		canvas: theme.light.background,
-		border: theme.light.secondary,
-		lightText: theme.light.primary,
-		darkText: theme.dark.primary,
+		border: theme.light.selected,
+		lightText: theme.light.foreground,
+		darkText: theme.dark.foreground,
 		tile: theme.dark.card,
 		splash: theme.light.background,
 		splashDark: theme.dark.background
@@ -52,6 +52,7 @@ export const BRAND_COLORS = {
 
 export const BRAND_THEME = theme;
 export const BRAND_IDE_THEME = ideTheme;
+export const BRAND_IDE_FEATURES = ideFeatures;
 
 // --- Icon SVG builders (pure, zero-dep) ------------------------------------
 

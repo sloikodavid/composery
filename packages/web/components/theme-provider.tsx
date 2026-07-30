@@ -3,6 +3,7 @@
 import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
 import type { ComponentProps } from "react";
 import { useEffect } from "react";
+import { syncBrowserThemeColor } from "@/lib/browser-theme";
 
 export function ThemeProvider({
 	children,
@@ -12,6 +13,7 @@ export function ThemeProvider({
 		<NextThemesProvider {...props}>
 			<SystemThemeSync />
 			<FaviconSync />
+			<BrowserThemeColorSync />
 			{children}
 		</NextThemesProvider>
 	);
@@ -29,6 +31,17 @@ function SystemThemeSync() {
 		query.addEventListener("change", sync);
 		return () => query.removeEventListener("change", sync);
 	}, [setTheme]);
+
+	return null;
+}
+
+function BrowserThemeColorSync() {
+	const { resolvedTheme } = useTheme();
+
+	useEffect(() => {
+		if (resolvedTheme === "light" || resolvedTheme === "dark")
+			syncBrowserThemeColor(document, resolvedTheme);
+	}, [resolvedTheme]);
 
 	return null;
 }

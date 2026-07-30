@@ -213,9 +213,15 @@ importers:
 
   packages/shared:
     devDependencies:
+      '@vscode/codicons':
+        specifier: 0.0.46-24
+        version: 0.0.46-24
       fontkit:
         specifier: ^2.0.4
         version: 2.0.4
+      lucide-static:
+        specifier: ^1.27.0
+        version: 1.27.0
       png-to-ico:
         specifier: ^3.0.2
         version: 3.0.2
@@ -4280,6 +4286,9 @@ packages:
   '@vitest/utils@4.1.10':
     resolution: {integrity: sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA==}
 
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
+
   '@wallet-standard/app@1.1.1':
     resolution: {integrity: sha512-WDGwoByhP5gwHH01r5EaLgQdLVkACPCdOMQhmhn8rsm10h/siSgTorShzBxrn0ExSPof+Lu+C3TfgqBrPa1xoQ==}
     engines: {node: '>=22'}
@@ -6912,6 +6921,9 @@ packages:
     resolution: {integrity: sha512-/mdJTRbiwcLOQ1NZZK1amZF9rIZyvO18D6r9TngE6TG1NmqHgFuT4eE7Xrkm9UsXMbBJD1NlfwHVltCDWHrOTw==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  lucide-static@1.27.0:
+    resolution: {integrity: sha512-ev1Wufm+RsKpQ6CfmS0PgYF+NTB1aaltfE+jUgBYGB8PV5b5qqHpzsTLPsMWFRFdpVMv66eIK8/Xf9d8cl3HhA==}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -13611,6 +13623,8 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
+  '@vscode/codicons@0.0.46-24': {}
+
   '@wallet-standard/app@1.1.1':
     dependencies:
       '@wallet-standard/base': 1.1.1
@@ -16608,6 +16622,8 @@ snapshots:
   lucide-react@1.25.0(react@19.2.7):
     dependencies:
       react: 19.2.7
+
+  lucide-static@1.27.0: {}
 
   lz-string@1.5.0: {}
 

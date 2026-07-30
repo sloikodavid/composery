@@ -155,7 +155,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 				// No row-level hover: only clickable regions (e.g. a row's link
 				// cell) show a hover state, so hover always means "you can click
 				// here".
-				"border-b transition-colors data-[state=selected]:bg-muted",
+				"border-b transition-colors data-[state=selected]:bg-selected data-[state=selected]:text-selected-foreground",
 				className
 			)}
 			{...props}

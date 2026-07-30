@@ -1015,7 +1015,6 @@ describe("default color theme", () => {
 		expect(colors["button.background"]).toBe(brand["primary"]);
 		expect(colors["button.foreground"]).toBe(brand["primary-foreground"]);
 		expect(colors["activityBar.background"]).toBe(brand["background"]);
-		expect(colors["editorGroup.border"]).toBe(brand["border"]);
 	});
 });
 

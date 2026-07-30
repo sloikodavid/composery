@@ -69,27 +69,27 @@ describe("shared brand identity", () => {
 		});
 		expect(BRAND_COLORS).toEqual({
 			icon: {
-				light: "#171717",
-				dark: "#fafafa",
-				muted: "#737373",
-				tileStroke: "#fafafa"
+				light: "#323229",
+				dark: "#c1b5a9",
+				muted: "#564f43",
+				tileStroke: "#c1b5a9"
 			},
 			surface: {
-				ink: "#171717",
-				paper: "#fafafa",
-				canvas: "#ffffff",
-				border: "#f5f5f5",
-				lightText: "#171717",
-				darkText: "#fafafa",
-				tile: "#0a0a0a",
-				splash: "#ffffff",
-				splashDark: "#0a0a0a"
+				ink: "#323229",
+				paper: "#c1b5a9",
+				canvas: "#cdc9c4",
+				border: "#c6c1bc",
+				lightText: "#323229",
+				darkText: "#c1b5a9",
+				tile: "#242121",
+				splash: "#cdc9c4",
+				splashDark: "#1d1b1b"
 			},
 			state: {
-				success: "#16a34a",
-				warning: "#dc8a06",
-				destructive: "#dc2626",
-				info: "#2563eb"
+				success: "#415331",
+				warning: "#513c2c",
+				destructive: "#8a372e",
+				info: "#3d4f5c"
 			}
 		});
 		expect(BRAND_THEME).toBe(theme);
@@ -107,7 +107,7 @@ describe("shared icon builders", () => {
 		expect(iconInner()).toBe(ICON);
 		expect(ICON_SVG).toBe(ICON);
 		expect(ICON_XML).toBe(
-			`<svg width="256" height="256" viewBox="0 0 20 20" fill="none" color="#171717" xmlns="http://www.w3.org/2000/svg">${ICON}</svg>`
+			`<svg width="256" height="256" viewBox="0 0 20 20" fill="none" color="#323229" xmlns="http://www.w3.org/2000/svg">${ICON}</svg>`
 		);
 	});
 
@@ -172,7 +172,7 @@ describe("shared icon builders", () => {
 
 	test("uses the canonical stroke and dimensions for a centered icon by default", () => {
 		expect(centeredIconSvg()).toContain(
-			'<svg width="20" height="20" viewBox="0 0 256 256" fill="none" color="#171717"'
+			'<svg width="20" height="20" viewBox="0 0 256 256" fill="none" color="#323229"'
 		);
 		expect(centeredIconSvg()).toContain(
 			'fill="currentColor" stroke="currentColor"'

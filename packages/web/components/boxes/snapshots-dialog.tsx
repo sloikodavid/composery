@@ -136,7 +136,7 @@ export function SnapshotsDialog({
 								</span>
 							</div>
 							<input
-								className="w-full accent-primary"
+								className="w-full accent-control"
 								disabled={busy === "snapshot-split"}
 								id="snapshot-split"
 								max={cap}

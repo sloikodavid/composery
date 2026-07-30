@@ -73,7 +73,7 @@ export function FumadocsNarrowHeader() {
 	return (
 		<NextProvider>
 			<SidebarProvider>
-				<div className="flex h-14 items-center border-b border-border bg-background/80 px-2.5 backdrop-blur-sm md:hidden">
+				<div className="flex h-14 items-center border-b border-border bg-header/80 text-header-foreground px-2.5 backdrop-blur-sm md:hidden">
 					<Logo />
 					<div className="flex-1" />
 					<SidebarTrigger
@@ -85,7 +85,7 @@ export function FumadocsNarrowHeader() {
 				</div>
 
 				<SidebarDrawerOverlay className="fixed z-40 inset-0 backdrop-blur-xs data-[state=open]:animate-fd-fade-in data-[state=closed]:animate-fd-fade-out" />
-				<SidebarDrawerContent className="fixed text-[0.9375rem] flex flex-col shadow-lg border-s inset-e-0 inset-y-0 w-[85%] max-w-[380px] z-40 bg-fd-background data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
+				<SidebarDrawerContent className="fixed text-[0.9375rem] flex flex-col shadow-lg border-s inset-e-0 inset-y-0 w-[85%] max-w-[380px] z-40 bg-sidebar text-sidebar-foreground data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
 					<div className="flex flex-col gap-3 p-4 pb-2">
 						<div className="flex items-center gap-1.5 text-fd-muted-foreground">
 							<div className="flex flex-1">

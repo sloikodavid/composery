@@ -24,17 +24,17 @@ describe("theme palette", () => {
 		expect(Object.keys(light).sort()).toEqual(Object.keys(dark).sort());
 	});
 
-	test("primary and primaryForeground contrast in both themes", () => {
-		expect(light.primary).not.toBe(light.primaryForeground);
-		expect(dark.primary).not.toBe(dark.primaryForeground);
+	test("button and buttonForeground contrast in both themes", () => {
+		expect(light.button).not.toBe(light.buttonForeground);
+		expect(dark.button).not.toBe(dark.buttonForeground);
 	});
 
-	test("primary light matches the shared brand palette", () => {
-		expect(light.primary).toBe(BRAND_THEME.light.primary);
+	test("light button matches the shared brand palette", () => {
+		expect(light.button).toBe(BRAND_THEME.light.button);
 	});
 
-	test("primary dark matches the shared brand palette", () => {
-		expect(dark.primary).toBe(BRAND_THEME.dark.primary);
+	test("dark button matches the shared brand palette", () => {
+		expect(dark.button).toBe(BRAND_THEME.dark.button);
 	});
 
 	test("selects the palette for a React Native color scheme", () => {

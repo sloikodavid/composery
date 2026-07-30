@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { BRAND_COLORS } from "../../../index.ts";
+
 const host = vi.hoisted(() => ({
 	icoInputs: [] as Buffer[][],
 	writes: [] as Array<{ path: string; contents: Buffer }>
@@ -98,7 +100,7 @@ describe("raster icon generator", () => {
 		expect(
 			outputs["packages/ide/overlay/src/browser/media/pwa-icon-192.png"]
 		).toContain(
-			'<rect width="256" height="256" rx="46" fill="#0a0a0a"/><g transform="translate(128 128) scale(8.793600000000001) translate(-10 -10)">'
+			`<rect width="256" height="256" rx="46" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.793600000000001) translate(-10 -10)">`
 		);
 		expect(
 			outputs["packages/ide/overlay/src/browser/media/pwa-icon-512.png"]
@@ -108,7 +110,7 @@ describe("raster icon generator", () => {
 				"packages/ide/overlay/src/browser/media/pwa-icon-maskable-192.png"
 			]
 		).toContain(
-			'<rect width="256" height="256" fill="#0a0a0a"/><g transform="translate(128 128) scale(6.988800000000001) translate(-10 -10)">'
+			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(6.988800000000001) translate(-10 -10)">`
 		);
 		expect(
 			outputs[
@@ -120,31 +122,33 @@ describe("raster icon generator", () => {
 			'<svg width="180" height="180"'
 		);
 		expect(outputs["packages/web/app/apple-icon.png"]).toContain(
-			'<rect width="256" height="256" fill="#0a0a0a"/><g transform="translate(128 128) scale(8.959999999999999) translate(-10 -10)">'
+			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.959999999999999) translate(-10 -10)">`
 		);
 
 		expect(outputs["packages/mobile/assets/images/icon.png"]).toContain(
 			'<svg width="1024" height="1024"'
 		);
 		expect(outputs["packages/mobile/assets/images/icon.png"]).toContain(
-			'<rect width="256" height="256" fill="#0a0a0a"/><g transform="translate(128 128) scale(8.793600000000001) translate(-10 -10)">'
+			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.793600000000001) translate(-10 -10)">`
 		);
 		expect(
 			outputs["packages/mobile/assets/images/android-icon-background.png"]
 		).toBe(
-			'<svg width="1024" height="1024" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="#0a0a0a"/></svg>'
+			`<svg width="1024" height="1024" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/></svg>`
 		);
 		expect(
 			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
 		).toContain(
-			'<svg width="1024" height="1024" viewBox="0 0 256 256" fill="none" color="#171717"'
+			`<svg width="1024" height="1024" viewBox="0 0 256 256" fill="none" color="${BRAND_COLORS.surface.ink}"`
 		);
 		expect(
 			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
 		).toContain('scale(6.988800000000001) translate(-10 -10)"><g transform=');
 		expect(
 			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
-		).toContain('fill="#fafafa" stroke="#fafafa"');
+		).toContain(
+			`fill="${BRAND_COLORS.icon.tileStroke}" stroke="${BRAND_COLORS.icon.tileStroke}"`
+		);
 		expect(
 			outputs["packages/mobile/assets/images/android-icon-monochrome.png"]
 		).toContain('fill="#ffffff" stroke="#ffffff"');
@@ -152,16 +156,18 @@ describe("raster icon generator", () => {
 			'<svg width="384" height="384"'
 		);
 		expect(outputs["packages/mobile/assets/images/splash-icon.png"]).toContain(
-			'fill="#171717" stroke="#171717"'
+			`fill="${BRAND_COLORS.surface.ink}" stroke="${BRAND_COLORS.surface.ink}"`
 		);
 		expect(
 			outputs["packages/mobile/assets/images/splash-icon-dark.png"]
-		).toContain('fill="#fafafa" stroke="#fafafa"');
+		).toContain(
+			`fill="${BRAND_COLORS.icon.dark}" stroke="${BRAND_COLORS.icon.dark}"`
+		);
 		expect(outputs["packages/mobile/assets/images/favicon.png"]).toContain(
 			'<svg width="64" height="64"'
 		);
 		expect(outputs["packages/mobile/assets/images/favicon.png"]).toContain(
-			'<rect width="256" height="256" rx="56" fill="#0a0a0a"/>'
+			`<rect width="256" height="256" rx="56" fill="${BRAND_COLORS.surface.tile}"/>`
 		);
 	});
 

@@ -12,10 +12,28 @@ import { describe, expect, test } from "vitest";
 const sharedRoot = resolve(import.meta.dirname, "../../..");
 const theme = JSON.parse(
 	readFileSync(resolve(sharedRoot, "theme.json"), "utf8")
-) as Record<"web" | "ide", Record<"light" | "dark", Record<string, string>>>;
+) as {
+	web: Record<"light" | "dark", Record<string, string>>;
+	ide: {
+		features: Record<string, boolean>;
+		light: Record<string, string>;
+		dark: Record<string, string>;
+	};
+};
 const document = new JSDOM(
 	readFileSync(resolve(sharedRoot, "tools/colors/index.html"), "utf8")
 ).window.document;
+const lucideSprite = new JSDOM(
+	readFileSync(
+		resolve(sharedRoot, "node_modules/lucide-static/sprite.svg"),
+		"utf8"
+	),
+	{ contentType: "image/svg+xml" }
+).window.document;
+const codiconCss = readFileSync(
+	resolve(sharedRoot, "node_modules/@vscode/codicons/dist/codicon.css"),
+	"utf8"
+);
 
 function tokensIn(root: ParentNode): Set<string> {
 	return new Set(
@@ -82,6 +100,22 @@ describe("colors preview metadata", () => {
 		);
 	});
 
+	test("every VS Code theme option has an accurate preview example", () => {
+		const previewed = [
+			...document.querySelectorAll<HTMLTemplateElement>(
+				'template[data-preview-shell="ide"], template[data-preview-state][data-surface="ide"]'
+			)
+		].flatMap((template) =>
+			[...template.content.querySelectorAll<HTMLElement>("[data-feature]")].map(
+				(element) => element.dataset.feature!
+			)
+		);
+
+		expect([...new Set(previewed)].sort()).toEqual(
+			Object.keys(theme.ide.features).sort()
+		);
+	});
+
 	test("every preview token names a canonical editable role", () => {
 		const canonical = new Set(
 			Object.entries(theme).flatMap(([surface, schemes]) =>
@@ -95,5 +129,61 @@ describe("colors preview metadata", () => {
 		expect([...referenced].filter((token) => !canonical.has(token))).toEqual(
 			[]
 		);
+	});
+
+	test("every Lucide interface icon exists in the pinned sprite", () => {
+		const roots: ParentNode[] = [
+			document,
+			...[...document.querySelectorAll<HTMLTemplateElement>("template")].map(
+				(template) => template.content
+			)
+		];
+		const uses = roots.flatMap((root) => [
+			...root.querySelectorAll<SVGUseElement>('use[href^="/lucide.svg#"]')
+		]);
+		const names = uses.map((use) => use.getAttribute("href")!.split("#")[1]);
+
+		expect(names.length).toBeGreaterThan(30);
+		expect(
+			names.filter((name) => !lucideSprite.querySelector(`#${name}`))
+		).toEqual([]);
+		expect(
+			roots
+				.flatMap((root) => [
+					...root.querySelectorAll<HTMLButtonElement>("button.icon-only")
+				])
+				.filter((button) => !button.querySelector("svg > use, .codicon"))
+		).toEqual([]);
+	});
+
+	test("the IDE preview uses real VS Code Codicons", () => {
+		const roots = [
+			document.querySelector<HTMLTemplateElement>(
+				'template[data-preview-shell="ide"]'
+			)!.content,
+			...[
+				...document.querySelectorAll<HTMLTemplateElement>(
+					'template[data-preview-state][data-surface="ide"]'
+				)
+			].map((template) => template.content)
+		];
+		const codicons = roots.flatMap((root) => [
+			...root.querySelectorAll<HTMLElement>(".codicon")
+		]);
+		const names = codicons.map((icon) =>
+			[...icon.classList].find(
+				(name) => name.startsWith("codicon-") && name !== "codicon"
+			)!
+		);
+
+		expect(names.length).toBeGreaterThan(20);
+		expect(
+			names.filter((name) => !codiconCss.includes(`.${name}:before`))
+		).toEqual([]);
+		expect(
+			roots.flatMap((root) => [
+				...root.querySelectorAll('use[href^="/lucide.svg#"]')
+			])
+		).toEqual([]);
 	});
 });

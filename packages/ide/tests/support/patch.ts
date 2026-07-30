@@ -1,9 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import vm from "node:vm";
-
-import ts from "typescript";
 
 // Text handling for the patch stack: applying it, and lifting code back out of
 // a diff so it can be exercised.
@@ -69,74 +66,6 @@ export function addedLines(patch: string): string {
 		.join("\n");
 }
 
-// One brace matcher for every declaration shape below. Four near-identical
-// copies of this loop had already accumulated - two of them inside test files,
-// which is how the extraction technology started leaking out of this module.
-// A shape is now a marker plus what to strip, and nothing else.
-function extractBraced(source: string, marker: RegExp, what: string): string {
-	const start = source.search(marker);
-	if (start < 0) throw new Error(`Could not find added ${what}`);
-
-	let depth = 0;
-	for (let i = source.indexOf("{", start); i < source.length; i++) {
-		const char = source[i];
-		if (char === "{") depth++;
-		else if (char === "}") {
-			depth--;
-			if (depth === 0) return source.slice(start, i + 1);
-		}
-	}
-
-	throw new Error(`Could not parse added ${what}`);
-}
-
-const escape = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-// A single added `function name(...) {...}` declaration, brace-matched.
-export function extractAddedFunction(patch: string, name: string): string {
-	return extractBraced(
-		addedLines(patch),
-		new RegExp(`function ${escape(name)}\\b`),
-		`function ${name}`
-	);
-}
-
-// A single added class member `private name(...) {...}`, brace-matched, returned
-// without its modifier so it can be spliced into a stand-in class and exercised.
-export function extractAddedMethod(patch: string, name: string): string {
-	// One rule for `private name(`, `private async name(` and `private get name(`; the
-	// `async`/`get` stays in the returned body so it splices into a stand-in class
-	// unchanged. A getter is as much a behaviour worth exercising as a method is.
-	return extractBraced(
-		addedLines(patch),
-		new RegExp(`private (?:async |get )?${escape(name)}\\b`),
-		`method ${name}`
-	).replace(/^private /, "");
-}
-
-// An added `public override name(...) {...}` member, returned without its
-// modifiers so it splices into a stand-in class unchanged.
-export function extractAddedOverrideMethod(
-	patch: string,
-	name: string
-): string {
-	return extractBraced(
-		addedLines(patch),
-		new RegExp(`public override ${escape(name)}\\(`),
-		`override ${name}`
-	).replace(/^public override /, "");
-}
-
-// An added `export class Name { ... }` declaration, returned without the
-// `export` so it can be evaluated as a bare declaration.
-export function extractAddedClass(patch: string, name: string): string {
-	return extractBraced(
-		addedLines(patch),
-		new RegExp(`export class ${escape(name)}\\b`),
-		`class ${name}`
-	).replace(/^export /, "");
-}
-
 // Every line a patch leaves behind inside its hunks - added and context both,
 // with the leading marker stripped. This is what the file reads like after the
 // patch applies, so constructs that open on an added line and close on a context
@@ -152,69 +81,4 @@ export function postImageLines(patch: string): string {
 		)
 		.map((line) => line.slice(1))
 		.join("\n");
-}
-
-// The body of a `case <prefix>.<name>: { ... }` block the patch ships, returned
-// without its braces so it can be spliced into a stand-in method. Channel request
-// handlers only exist as case blocks, so this is the only way to exercise the
-// dispatch the patch actually ships rather than a paraphrase of it.
-export function extractAddedCaseBody(
-	patch: string,
-	name: string,
-	prefix: string
-): string {
-	const source = postImageLines(patch);
-	const marker = `case ${prefix}.${name}: {`;
-	const start = source.indexOf(marker);
-	if (start < 0) {
-		throw new Error(`Could not find added case ${prefix}.${name}`);
-	}
-
-	const open = start + marker.length - 1;
-	let depth = 0;
-	for (let i = open; i < source.length; i++) {
-		const char = source[i];
-		if (char === "{") depth++;
-		else if (char === "}") {
-			depth--;
-			if (depth === 0) {
-				return source.slice(open + 1, i);
-			}
-		}
-	}
-
-	throw new Error(`Could not parse added case ${prefix}.${name}`);
-}
-
-// An added `const name = ...;` statement (single or multi-line, ends at `;`
-// on a line boundary).
-export function extractAddedConst(patch: string, name: string): string {
-	const source = addedLines(patch);
-	const start = source.indexOf(`const ${name}`);
-	if (start < 0) {
-		throw new Error(`Could not find added const ${name}`);
-	}
-	const end = source.indexOf(";\n", start);
-	if (end < 0) {
-		throw new Error(`Could not parse added const ${name}`);
-	}
-	return source.slice(start, end + 1);
-}
-
-// Compile extracted TypeScript snippets and expose the named bindings, so tests
-// exercise the exact code the patch ships instead of a copy that can drift.
-export function evaluatePatchSnippets<T>(
-	snippets: string[],
-	bindings: string[]
-): T {
-	const source = [
-		...snippets,
-		`globalThis.__exports = { ${bindings.join(", ")} };`
-	].join("\n");
-	const js = ts.transpileModule(source, {
-		compilerOptions: { target: ts.ScriptTarget.ES2022 }
-	}).outputText;
-	const context = vm.createContext({ URL, URLSearchParams });
-	vm.runInContext(js, context);
-	return (context as { __exports?: T }).__exports as T;
 }

@@ -13,6 +13,14 @@ const root = resolve(tool, "../../../..");
 const pagePath = resolve(tool, "index.html");
 const themePath = resolve(root, "packages/shared/theme.json");
 const iconPath = resolve(root, "packages/web/app/icon.svg");
+const lucidePath = resolve(
+	root,
+	"packages/shared/node_modules/lucide-static/sprite.svg"
+);
+const codiconRoot = resolve(
+	root,
+	"packages/shared/node_modules/@vscode/codicons/dist"
+);
 const port = Number(process.env.PORT ?? 7331);
 const origins = new Set([
 	`http://127.0.0.1:${port}`,
@@ -30,20 +38,27 @@ function buildAssets() {
 }
 
 function validTheme(value, shape) {
+	const sameKeys = (first, second) =>
+		first &&
+		second &&
+		Object.keys(first).length === Object.keys(second).length &&
+		Object.keys(first).every((key) => Object.hasOwn(second, key));
+	if (!value || typeof value !== "object" || !sameKeys(value, shape))
+		return false;
 	if (
-		!value ||
-		typeof value !== "object" ||
-		Object.keys(value).join() !== "web,ide"
+		!sameKeys(value.web, shape.web) ||
+		!sameKeys(value.ide, shape.ide) ||
+		!sameKeys(value.ide.features, shape.ide.features) ||
+		!Object.values(value.ide.features).every(
+			(feature) => typeof feature === "boolean"
+		)
 	)
 		return false;
 	for (const area of ["web", "ide"]) {
-		if (!value[area] || Object.keys(value[area]).join() !== "light,dark")
-			return false;
 		for (const scheme of ["light", "dark"]) {
 			if (
 				!value[area][scheme] ||
-				Object.keys(value[area][scheme]).join() !==
-					Object.keys(shape[area][scheme]).join()
+				!sameKeys(value[area][scheme], shape[area][scheme])
 			)
 				return false;
 			if (
@@ -108,6 +123,27 @@ const server = createServer(async (request, response) => {
 				"cache-control": "no-store"
 			});
 			return response.end(await readFile(iconPath));
+		}
+		if (request.method === "GET" && request.url === "/lucide.svg") {
+			response.writeHead(200, {
+				"content-type": "image/svg+xml; charset=utf-8",
+				"cache-control": "public, max-age=31536000, immutable"
+			});
+			return response.end(await readFile(lucidePath));
+		}
+		if (request.method === "GET" && request.url === "/codicon.css") {
+			response.writeHead(200, {
+				"content-type": "text/css; charset=utf-8",
+				"cache-control": "public, max-age=31536000, immutable"
+			});
+			return response.end(await readFile(resolve(codiconRoot, "codicon.css")));
+		}
+		if (request.method === "GET" && request.url?.startsWith("/codicon.ttf")) {
+			response.writeHead(200, {
+				"content-type": "font/ttf",
+				"cache-control": "public, max-age=31536000, immutable"
+			});
+			return response.end(await readFile(resolve(codiconRoot, "codicon.ttf")));
 		}
 		if (request.method === "PUT" && request.url === "/theme") {
 			if (!origins.has(request.headers.origin))

@@ -20,10 +20,10 @@ const app = JSON.parse(
 ) as { expo: { plugins: unknown[] } };
 
 describe("android dialog theme static wiring", () => {
-	test("keeps the CommonJS accent copies on the shared brand primary", () => {
+	test("keeps the CommonJS accent copies on the shared control colour", () => {
 		expect(plugin.ACCENT).toEqual({
-			light: BRAND_THEME.light.primary,
-			dark: BRAND_THEME.dark.primary
+			light: BRAND_THEME.light.control,
+			dark: BRAND_THEME.dark.control
 		});
 	});
 

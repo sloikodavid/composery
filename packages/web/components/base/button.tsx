@@ -15,13 +15,13 @@ const buttonVariants = cva(
 		variants: {
 			variant: {
 				default:
-					"bg-primary text-primary-foreground hover:bg-[color-mix(in_oklab,var(--primary)_88%,var(--background))] active:bg-[color-mix(in_oklab,var(--primary)_78%,var(--background))]",
+					"bg-button text-button-foreground hover:bg-button-hover active:bg-button-active",
 				outline:
-					"border-border bg-background hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)] hover:text-foreground active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)] aria-expanded:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)] aria-expanded:text-foreground dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)] dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)] dark:aria-expanded:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]",
+					"border-border bg-button text-button-foreground hover:bg-button-hover active:bg-button-active aria-expanded:bg-button-active aria-expanded:text-button-foreground",
 				secondary:
-					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklab,var(--secondary)_94%,var(--foreground))] active:bg-[color-mix(in_oklab,var(--secondary)_92%,var(--foreground))] aria-expanded:bg-[color-mix(in_oklab,var(--secondary)_92%,var(--foreground))] aria-expanded:text-secondary-foreground dark:hover:bg-[color-mix(in_oklab,var(--secondary)_88%,var(--foreground))] dark:active:bg-[color-mix(in_oklab,var(--secondary)_78%,var(--foreground))] dark:aria-expanded:bg-[color-mix(in_oklab,var(--secondary)_78%,var(--foreground))]",
+					"bg-secondary-button text-secondary-button-foreground hover:bg-secondary-button-hover active:bg-secondary-button-active aria-expanded:bg-secondary-button-active aria-expanded:text-secondary-button-foreground",
 				ghost:
-					"hover:bg-[var(--ghost-hover)] hover:text-foreground focus-visible:bg-[var(--ghost-active)] active:bg-[var(--ghost-active)] aria-expanded:bg-[var(--ghost-active)] aria-expanded:text-foreground",
+					"hover:bg-ghost-hover hover:text-foreground focus-visible:bg-ghost-active active:bg-ghost-active aria-expanded:bg-ghost-active aria-expanded:text-foreground",
 				destructive:
 					"bg-destructive/10 text-destructive hover:bg-destructive/16 active:bg-destructive/24 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/18 dark:hover:bg-destructive/26 dark:active:bg-destructive/34 dark:focus-visible:ring-destructive/40",
 				warning:

@@ -6,13 +6,13 @@
 export const clerkAppearance = {
 	theme: shadcn,
 	variables: {
-		colorPrimary: "var(--primary)",
-		colorPrimaryForeground: "var(--primary-foreground)",
+		colorPrimary: "var(--button)",
+		colorPrimaryForeground: "var(--button-foreground)",
 		colorForeground: "var(--foreground)",
 		colorMutedForeground: "var(--muted-foreground)",
 		colorBackground: "var(--card)",
-		colorInput: "var(--background)",
-		colorInputForeground: "var(--foreground)",
+		colorInput: "var(--field)",
+		colorInputForeground: "var(--field-foreground)",
 		colorDanger: "var(--destructive)",
 		colorSuccess: "var(--success)",
 		colorWarning: "var(--warning)",
@@ -42,7 +42,7 @@ export const clerkAppearance = {
 		button:
 			"rounded-lg font-medium transition-all outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		formButtonPrimary:
-			"h-12 w-full rounded-lg text-[15px] font-medium bg-primary text-primary-foreground shadow-none! transition-all outline-none hover:bg-[color-mix(in_oklab,var(--primary)_88%,var(--background))]! active:bg-[color-mix(in_oklab,var(--primary)_78%,var(--background))]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
+			"h-12 w-full rounded-lg text-[15px] font-medium bg-button text-button-foreground shadow-none! transition-all outline-none hover:bg-button-hover! active:bg-button-active! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		formButtonReset:
 			"rounded-lg font-medium transition-all active:translate-y-px",
 		socialButtons: "gap-2",
@@ -50,23 +50,22 @@ export const clerkAppearance = {
 		// soft surface inside the outline instead of blending into it. dark: keeps
 		// its stronger lift since the border there is barely visible.
 		socialButtonsBlockButton:
-			"h-12 rounded-lg text-[15px] font-medium border border-border bg-background text-foreground transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! hover:text-foreground active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
+			"h-12 rounded-lg text-[15px] font-medium border border-border bg-button text-button-foreground transition-all outline-none hover:bg-button-hover! active:bg-button-active! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		socialButtonsBlockButtonText: "text-[15px] font-medium text-foreground!",
 		socialButtonsIconButton:
-			"h-12 rounded-lg border border-border bg-background transition-all outline-none hover:bg-[color-mix(in_oklab,var(--foreground)_4%,transparent)]! active:bg-[color-mix(in_oklab,var(--foreground)_6%,transparent)]! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px dark:bg-transparent dark:hover:bg-[color-mix(in_oklab,var(--foreground)_11%,transparent)]! dark:active:bg-[color-mix(in_oklab,var(--foreground)_18%,transparent)]!",
+			"h-12 rounded-lg border border-border bg-button transition-all outline-none hover:bg-button-hover! active:bg-button-active! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
 		// Inputs mirror components/input.tsx (outline variant) at new-box's
 		// h-12 rounded-lg px-5 scale, with the ring-1 focus treatment.
 		input:
-			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring dark:bg-input/30!",
+			"h-12 rounded-lg border border-field-border bg-field! px-5 text-[15px] text-field-foreground shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-field-placeholder focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",
 		formFieldInput:
-			"h-12 rounded-lg border border-border bg-background! px-5 text-[15px] shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring dark:bg-input/30!",
+			"h-12 rounded-lg border border-field-border bg-field! px-5 text-[15px] text-field-foreground shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-field-placeholder focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",
 		formFieldLabel: "text-[15px] font-medium text-foreground",
 		otpCodeFieldInput:
 			"rounded-lg border border-border focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",
 		dividerLine: "bg-border",
 		dividerText: "text-[15px] text-muted-foreground",
-		footerActionLink:
-			"text-primary transition-colors hover:text-[color-mix(in_oklab,var(--primary)_80%,var(--background))]",
+		footerActionLink: "text-link transition-opacity hover:opacity-80",
 		badge: "rounded-lg text-xs font-medium",
 		modalCloseButton: {
 			color: "var(--muted-foreground)",

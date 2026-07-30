@@ -47,11 +47,11 @@ function SelectTrigger({
 			data-variant={variant}
 			className={cn(
 				variant === "secondary"
-					? "group/button inline-flex shrink-0 items-center justify-center rounded-2xl border border-transparent bg-clip-padding bg-secondary text-sm font-medium text-secondary-foreground whitespace-nowrap transition outline-none select-none hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/60 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=default]:gap-1.5 data-[size=sm]:gap-1 data-[size=default]:px-3 data-[size=sm]:px-3"
-					: "flex items-center gap-1.5 rounded-2xl border border-transparent bg-input/50 px-3 py-2 text-sm whitespace-nowrap transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/60 data-[size=default]:h-8 data-[size=sm]:h-7 data-placeholder:text-muted-foreground dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+					? "group/button inline-flex shrink-0 items-center justify-center rounded-2xl border border-transparent bg-clip-padding bg-secondary-button text-sm font-medium text-secondary-button-foreground whitespace-nowrap transition outline-none select-none hover:bg-secondary-button-hover focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-expanded:bg-secondary-button-active aria-expanded:text-secondary-button-foreground aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/60 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=default]:gap-1.5 data-[size=sm]:gap-1 data-[size=default]:px-3 data-[size=sm]:px-3"
+					: "flex items-center gap-1.5 rounded-2xl border border-field-border bg-field px-3 py-2 text-sm text-field-foreground whitespace-nowrap transition-[color,box-shadow] duration-200 outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/60 data-[size=default]:h-8 data-[size=sm]:h-7 data-placeholder:text-field-placeholder dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
 				"w-fit justify-between *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 				variant === "secondary"
-					? "data-placeholder:text-secondary-foreground"
+					? "data-placeholder:text-secondary-button-foreground"
 					: undefined,
 				className
 			)}
@@ -139,7 +139,7 @@ function SelectItem({
 		<SelectPrimitive.Item
 			data-slot="select-item"
 			className={cn(
-				"relative flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-xl py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+				"relative flex min-h-7 w-full cursor-pointer items-center gap-2 rounded-xl py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-selected focus:text-selected-foreground not-data-[variant=destructive]:focus:**:text-selected-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
 				className
 			)}
 			{...props}

@@ -17,26 +17,58 @@
 	--font-heading: var(--font-sf-like);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
+	--color-header: var(--header);
+	--color-header-foreground: var(--header-foreground);
+	--color-footer: var(--footer);
+	--color-footer-foreground: var(--footer-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
 	--color-card: var(--card);
 	--color-card-foreground: var(--card-foreground);
+	--color-dialog: var(--dialog);
+	--color-dialog-foreground: var(--dialog-foreground);
 	--color-popover: var(--popover);
 	--color-popover-foreground: var(--popover-foreground);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-secondary: var(--secondary);
-	--color-secondary-foreground: var(--secondary-foreground);
+	--color-button: var(--button);
+	--color-button-foreground: var(--button-foreground);
+	--color-button-hover: var(--button-hover);
+	--color-button-active: var(--button-active);
+	--color-secondary-button: var(--secondary-button);
+	--color-secondary-button-foreground: var(--secondary-button-foreground);
+	--color-secondary-button-hover: var(--secondary-button-hover);
+	--color-secondary-button-active: var(--secondary-button-active);
+	--color-ghost-hover: var(--ghost-hover);
+	--color-ghost-active: var(--ghost-active);
+	--color-badge: var(--badge);
+	--color-badge-foreground: var(--badge-foreground);
+	--color-badge-hover: var(--badge-hover);
 	--color-muted: var(--muted);
 	--color-muted-foreground: var(--muted-foreground);
-	--color-accent: var(--accent);
-	--color-accent-foreground: var(--accent-foreground);
+	--color-field: var(--field);
+	--color-field-foreground: var(--field-foreground);
+	--color-field-placeholder: var(--field-placeholder);
+	--color-field-border: var(--field-border);
+	--color-selected: var(--selected);
+	--color-selected-foreground: var(--selected-foreground);
+	--color-link: var(--link);
+	--color-control: var(--control);
 	--color-destructive: var(--destructive);
 	--color-success: var(--success);
 	--color-warning: var(--warning);
 	--color-info: var(--info);
 	--color-border: var(--border);
-	--color-input: var(--input);
 	--color-ring: var(--ring);
 	--color-overlay: var(--overlay);
+	--color-shadow: var(--shadow);
+	--color-selection: var(--selection);
+	--color-scrollbar-track: var(--scrollbar-track);
+	--color-scrollbar: var(--scrollbar);
+	--color-scrollbar-hover: var(--scrollbar-hover);
+	--color-scrollbar-active: var(--scrollbar-active);
+	--shadow-xs: 0 1px 2px 0 var(--shadow);
+	--shadow-sm: 0 1px 3px 0 var(--shadow), 0 1px 2px -1px var(--shadow);
+	--shadow-md: 0 4px 6px -1px var(--shadow), 0 2px 4px -2px var(--shadow);
+	--shadow-lg: 0 10px 15px -3px var(--shadow), 0 4px 6px -4px var(--shadow);
 	--color-chart-1: var(--chart-1);
 	--color-chart-2: var(--chart-2);
 	--color-chart-3: var(--chart-3);
@@ -62,13 +94,6 @@
 	--inter-opsz-heading-lg: 32;
 	--inter-tracking-text: -0.009em;
 	--inter-tracking-heading: -0.03em;
-	--ghost-hover: color-mix(in oklab, var(--foreground) 4.5%, transparent);
-	--ghost-active: color-mix(in oklab, var(--foreground) 7%, transparent);
-}
-
-.dark {
-	--ghost-hover: color-mix(in oklab, var(--foreground) 6.5%, transparent);
-	--ghost-active: color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 
 @supports (font-variation-settings: normal) {
@@ -86,6 +111,7 @@
 
 	html {
 		@apply font-sans;
+		scrollbar-color: var(--scrollbar) var(--scrollbar-track);
 		font-feature-settings:
 			"liga" 1,
 			"calt" 1;
@@ -111,6 +137,44 @@
 	button:not(:disabled),
 	[role="button"]:not(:disabled) {
 		cursor: pointer;
+	}
+
+	::selection {
+		background: var(--selection);
+	}
+
+	input,
+	textarea,
+	select {
+		accent-color: var(--control);
+	}
+
+	*::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+
+	*::-webkit-scrollbar-track {
+		background: var(--scrollbar-track);
+	}
+
+	*::-webkit-scrollbar-thumb {
+		border: 2px solid var(--scrollbar-track);
+		border-radius: 999px;
+		background: var(--scrollbar);
+	}
+
+	*::-webkit-scrollbar-thumb:hover {
+		background: var(--scrollbar-hover);
+	}
+
+	*::-webkit-scrollbar-thumb:active {
+		background: var(--scrollbar-active);
+	}
+
+	*::-webkit-scrollbar-corner,
+	*::-webkit-resizer {
+		background: var(--scrollbar-track);
 	}
 
 	h1,
@@ -164,7 +228,7 @@
 	color: var(--foreground);
 	font-weight: 500;
 	text-decoration: underline;
-	text-decoration-color: var(--primary);
+	text-decoration-color: var(--link);
 	text-decoration-thickness: 1.5px;
 	text-underline-offset: 3.5px;
 	transition: opacity 200ms ease-out;
@@ -256,7 +320,7 @@
 	gap: 0.75rem;
 	padding: 0.75rem;
 	border-radius: var(--radius);
-	box-shadow: 0 6px 16px -4px oklch(0 0 0 / 0.12);
+	box-shadow: 0 6px 16px -4px var(--shadow);
 	font-family: var(--font-sans);
 }
 

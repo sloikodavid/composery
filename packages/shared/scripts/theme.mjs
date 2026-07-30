@@ -74,6 +74,7 @@ async function flatten(file) {
 }
 
 const appendAlpha = (color, alpha) => color.slice(0, 7) + alpha;
+const transparent = "#00000000";
 
 function set(colors, keys, value) {
 	for (const key of keys) colors[key] = value;
@@ -179,7 +180,7 @@ function semanticRole(key) {
 	return null;
 }
 
-function retint(base, web, ide, scheme) {
+function retint(base, web, ide, features, scheme) {
 	const colors = { ...base.colors };
 
 	set(
@@ -236,25 +237,37 @@ function retint(base, web, ide, scheme) {
 	set(colors, ["checkbox.background", "input.background"], ide.inputBackground);
 	set(colors, ["dropdown.background"], ide.dropdown);
 	set(colors, ["badge.background"], ide.badge);
+	set(colors, ["badge.foreground"], ide.badgeForeground);
 	set(
 		colors,
 		["actionBar.toggledBackground", "button.secondaryBackground"],
 		ide.secondaryButton
 	);
+	set(colors, ["button.secondaryForeground"], ide.secondaryButtonForeground);
+	set(
+		colors,
+		["button.secondaryHoverBackground", "statusBarItem.compactHoverBackground"],
+		ide.secondaryButtonHover
+	);
+	set(colors, ["button.background"], ide.button);
+	set(colors, ["button.foreground"], ide.buttonForeground);
+	set(colors, ["button.hoverBackground"], ide.buttonHover);
 	set(
 		colors,
 		[
-			"activityBarBadge.background",
-			"button.background",
 			"list.activeSelectionIconForeground",
 			"panelTitle.activeBorder",
 			"progressBar.background",
-			"statusBarItem.remoteBackground",
 			"tab.activeBorderTop",
 			"tab.selectedBorderTop",
 			"terminal.tab.activeBorder"
 		],
-		ide.primary
+		ide.focus
+	);
+	set(
+		colors,
+		["activityBarBadge.background", "statusBarItem.remoteBackground"],
+		ide.badge
 	);
 	set(
 		colors,
@@ -265,17 +278,27 @@ function retint(base, web, ide, scheme) {
 			"icon.foreground",
 			"sideBar.foreground",
 			"sideBarSectionHeader.foreground",
-			"badge.foreground",
 			"terminal.foreground"
 		],
 		ide.foreground
 	);
-	set(colors, ["titleBar.activeForeground"], ide.titleBarForeground);
 	set(
 		colors,
-		["button.foreground", "statusBarItem.remoteForeground"],
-		ide.primaryForeground
+		[
+			"dropdown.foreground",
+			"input.foreground",
+			"keybindingLabel.foreground",
+			"menu.foreground",
+			"notificationCenterHeader.foreground",
+			"notifications.foreground",
+			"panelTitle.activeForeground",
+			"quickInput.foreground"
+		],
+		ide.inputForeground
 	);
+	set(colors, ["dropdown.foreground"], ide.dropdownForeground);
+	set(colors, ["titleBar.activeForeground"], ide.titleBarForeground);
+	set(colors, ["statusBarItem.remoteForeground"], ide.badgeForeground);
 	set(colors, ["activityBarBadge.foreground"], ide.badgeForeground);
 	set(
 		colors,
@@ -301,48 +324,123 @@ function retint(base, web, ide, scheme) {
 		ide.tabInactiveForeground
 	);
 	set(colors, ["input.placeholderForeground"], ide.placeholder);
+	set(colors, ["list.hoverBackground"], ide.listHover);
 	set(
 		colors,
 		[
 			"editor.inactiveSelectionBackground",
 			"editorSuggestWidget.selectedBackground",
 			"list.activeSelectionBackground",
-			"list.hoverBackground",
 			"list.inactiveSelectionBackground",
 			"quickInputList.focusBackground",
-			"tab.hoverBackground",
 			"tab.selectedBackground"
 		],
-		ide.hover
+		ide.listSelection
 	);
+	set(
+		colors,
+		[
+			"inputOption.activeForeground",
+			"list.activeSelectionForeground",
+			"menu.selectionForeground"
+		],
+		ide.listSelectionForeground
+	);
+	set(
+		colors,
+		["tab.hoverBackground", "tab.unfocusedHoverBackground"],
+		ide.tabHover
+	);
+	set(colors, ["tab.selectedForeground"], ide.tabActiveForeground);
+	set(colors, ["menu.selectionBackground"], ide.listSelection);
+	set(colors, ["list.dropBackground"], ide.dropBackground);
 	set(
 		colors,
 		[
 			"activityBar.border",
+			"agentsPanel.border",
+			"diffEditor.border",
 			"editorGroup.border",
 			"editorOverviewRuler.border",
+			"editorStickyScroll.border",
+			"editorHoverWidget.border",
+			"editorSuggestWidget.border",
 			"editorWidget.border",
+			"gauge.border",
+			"inlineChat.border",
 			"menu.border",
+			"notificationCenter.border",
+			"notificationToast.border",
 			"notifications.border",
 			"panel.border",
+			"peekView.border",
 			"pickerGroup.border",
+			"quickInput.border",
 			"sideBar.border",
 			"sideBarSectionHeader.border",
+			"statusBar.border",
+			"terminal.border",
+			"textBlockQuote.border",
 			"titleBar.border",
 			"widget.border"
 		],
-		ide.border
+		features.surfaceBorders ? ide.border : transparent
 	);
 	set(
 		colors,
-		["checkbox.border", "dropdown.border", "input.border", "panelInput.border"],
-		ide.inputBorder
+		[
+			"agentsChatInput.border",
+			"agentsNewSessionButton.border",
+			"button.border",
+			"button.secondaryBorder",
+			"checkbox.border",
+			"commandCenter.border",
+			"dropdown.border",
+			"input.border",
+			"panelInput.border",
+			"searchEditor.textInputBorder",
+			"settings.dropdownBorder",
+			"settings.numberInputBorder",
+			"settings.textInputBorder"
+		],
+		features.controlBorders ? ide.inputBorder : transparent
 	);
-	set(colors, ["editorGroupHeader.tabsBorder", "tab.border"], ide.tabBorder);
+	set(
+		colors,
+		["editorGroupHeader.tabsBorder", "tab.border", "tab.lastPinnedBorder"],
+		features.tabBorders ? ide.tabBorder : transparent
+	);
+	set(colors, ["tab.activeBorder", "tab.unfocusedActiveBorder"], transparent);
+	set(
+		colors,
+		[
+			"tab.activeBorderTop",
+			"tab.unfocusedActiveBorderTop",
+			"terminal.tab.activeBorder"
+		],
+		features.activeTabIndicator ? ide.focus : transparent
+	);
+	set(
+		colors,
+		[
+			"activityBar.activeBorder",
+			"activityBar.activeFocusBorder",
+			"activityBarTop.activeBorder"
+		],
+		features.activityBarIndicator ? ide.focus : transparent
+	);
+	colors["panelTitle.activeBorder"] = features.panelTitleIndicator
+		? ide.focus
+		: transparent;
+	colors.contrastBorder = features.contrastBorders ? ide.border : transparent;
+	colors.contrastActiveBorder = features.contrastBorders
+		? ide.focus
+		: transparent;
 	set(
 		colors,
 		[
 			"focusBorder",
+			"agentsChatInput.focusBorder",
 			"inputOption.activeBorder",
 			"list.focusOutline",
 			"statusBar.focusBorder",
@@ -350,15 +448,75 @@ function retint(base, web, ide, scheme) {
 		],
 		ide.focus
 	);
-	set(colors, ["widget.shadow", "scrollbar.shadow"], ide.shadow);
+	set(
+		colors,
+		[
+			"editorStickyScroll.shadow",
+			"listFilterWidget.shadow",
+			"panelStickyScroll.shadow",
+			"scrollbar.shadow",
+			"sideBarStickyScroll.shadow",
+			"widget.shadow"
+		],
+		features.shadows ? ide.shadow : transparent
+	);
 	colors["editorLineNumber.foreground"] = ide.lineNumber;
+	colors["editorLineNumber.activeForeground"] = ide.activeLineNumber;
 	colors["gitDecoration.ignoredResourceForeground"] = ide.ignored;
+	set(
+		colors,
+		[
+			"editorSuggestWidget.background",
+			"diffEditor.unchangedRegionBackground",
+			"dropdown.listBackground",
+			"settings.dropdownBackground"
+		],
+		ide.widget
+	);
+	set(
+		colors,
+		["notebook.cellBorderColor", "menu.separatorBackground"],
+		ide.separator
+	);
+	set(colors, ["notebook.selectedCellBackground"], ide.listSelection);
+	set(
+		colors,
+		["list.focusAndSelectionOutline", "inputOption.activeBorder"],
+		ide.focus
+	);
+	set(colors, ["inputOption.activeBackground"], ide.listSelection);
+	set(colors, ["pickerGroup.foreground"], ide.mutedForeground);
+	set(colors, ["settings.headerForeground"], ide.settingsHeader);
+	set(colors, ["settings.modifiedItemIndicator"], ide.settingsModified);
+	set(
+		colors,
+		[
+			"peekViewEditor.matchHighlightBackground",
+			"peekViewResult.matchHighlightBackground"
+		],
+		ide.findMatchHighlight
+	);
+	set(
+		colors,
+		["statusBarItem.hoverBackground", "statusBarItem.prominentBackground"],
+		ide.listHover
+	);
+	set(colors, ["statusBarItem.hoverForeground"], ide.foreground);
+	set(colors, ["statusBarItem.errorBackground"], web.destructive);
+	set(colors, ["debugToolBar.background"], ide.debugToolbar);
+	set(colors, ["statusBar.debuggingBackground"], ide.debugStatus);
+	set(colors, ["statusBar.debuggingForeground"], ide.debugStatusForeground);
+	set(colors, ["chat.slashCommandBackground"], ide.chatAccent);
+	set(colors, ["chat.slashCommandForeground"], ide.chatAccentForeground);
+	set(colors, ["chat.editedFileForeground"], ide.chatEdited);
+	set(colors, ["textPreformat.background"], ide.preformatted);
+	set(colors, ["textPreformat.foreground"], ide.preformattedForeground);
+	set(colors, ["textSeparator.foreground"], ide.separator);
 
 	set(
 		colors,
 		[
 			"editor.selectionBackground",
-			"input.selectionBackground",
 			"selection.background",
 			"terminal.selectionBackground"
 		],
@@ -543,12 +701,10 @@ function retint(base, web, ide, scheme) {
 						: null;
 		const role = syntaxRole(scopes);
 		const foreground = status ? web[status] : role ? syntax[role] : null;
-		return foreground && rule.settings?.foreground
-			? {
-					...rule,
-					settings: { ...rule.settings, foreground }
-				}
-			: rule;
+		if (!role && !foreground) return rule;
+		const settings = { ...rule.settings };
+		if (foreground && settings.foreground) settings.foreground = foreground;
+		return { ...rule, settings };
 	});
 	const semanticTokenColors = Object.fromEntries(
 		Object.entries(base.semanticTokenColors).map(([key, value]) => {
@@ -568,7 +724,7 @@ function retint(base, web, ide, scheme) {
 		name: `Composery ${scheme === "dark" ? "Dark" : "Light"}`,
 		type: scheme,
 		"//": "Generated from VS Code Modern. Product chrome and syntax follow packages/shared/theme.json; diagnostics, Git, diff, and ANSI status colours share the web status roles.",
-		semanticHighlighting: true,
+		semanticHighlighting: features.semanticHighlighting,
 		colors,
 		semanticTokenColors,
 		tokenColors
@@ -577,21 +733,46 @@ function retint(base, web, ide, scheme) {
 
 const config = JSON.parse(await readFile(configPath, "utf8"));
 const webTheme = config.web;
-const ideTheme = config.ide;
+const ideFeatures = config.ide.features;
+const ideTheme = { light: config.ide.light, dark: config.ide.dark };
+const featureNames = [
+	"surfaceBorders",
+	"controlBorders",
+	"tabBorders",
+	"shadows",
+	"activeTabIndicator",
+	"activityBarIndicator",
+	"panelTitleIndicator",
+	"contrastBorders",
+	"semanticHighlighting"
+];
+const isPalette = (palette) =>
+	palette &&
+	Object.values(palette).every(
+		(value) =>
+			typeof value === "string" && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(value)
+	);
+const sameKeys = (first, second) =>
+	Object.keys(first).length === Object.keys(second).length &&
+	Object.keys(first).every((key) => Object.hasOwn(second, key));
 if (
-	Object.keys(config).join() !== "web,ide" ||
-	![webTheme, ideTheme].every(
-		(area) =>
-			Object.keys(area.light).join() === Object.keys(area.dark).join() &&
-			Object.values(area).every((scheme) =>
-				Object.values(scheme).every((value) =>
-					/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(value)
-				)
-			)
-	)
+	!sameKeys(config, { web: true, ide: true }) ||
+	!sameKeys(webTheme, { light: true, dark: true }) ||
+	!sameKeys(config.ide, { features: true, light: true, dark: true }) ||
+	!sameKeys(webTheme.light, webTheme.dark) ||
+	!sameKeys(ideTheme.light, ideTheme.dark) ||
+	!isPalette(webTheme.light) ||
+	!isPalette(webTheme.dark) ||
+	!isPalette(ideTheme.light) ||
+	!isPalette(ideTheme.dark) ||
+	!sameKeys(
+		ideFeatures,
+		Object.fromEntries(featureNames.map((name) => [name, true]))
+	) ||
+	Object.values(ideFeatures).some((value) => typeof value !== "boolean")
 )
 	throw new Error(
-		"theme.json must define matching light/dark web and IDE roles as hex colours"
+		"theme.json must define matching light/dark web and IDE hex colours plus the supported IDE boolean features"
 	);
 
 for (const scheme of ["light", "dark"]) {
@@ -607,8 +788,16 @@ for (const scheme of ["light", "dark"]) {
 		["card text", colors.cardForeground, colors.card],
 		["muted card text", colors.mutedForeground, colors.card],
 		["popover text", colors.popoverForeground, colors.popover],
-		["primary text", colors.primaryForeground, colors.primary],
-		["secondary text", colors.secondaryForeground, colors.secondary]
+		["button text", colors.buttonForeground, colors.button],
+		[
+			"secondary button text",
+			colors.secondaryButtonForeground,
+			colors.secondaryButton
+		],
+		["badge text", colors.badgeForeground, colors.badge],
+		["field text", colors.fieldForeground, colors.field],
+		["selected item text", colors.selectedForeground, colors.selected],
+		["dialog text", colors.dialogForeground, colors.dialog]
 	])
 		if (contrast(foreground, background) < 4.5)
 			throw new Error(`${scheme} ${name} must have 4.5:1 contrast`);
@@ -620,6 +809,7 @@ await emit(
 // Edit the theme with \`pnpm dev:colors\` or edit theme.json directly.
 export const theme = ${JSON.stringify(webTheme, null, "\t")} as const;
 export const ideTheme = ${JSON.stringify(ideTheme, null, "\t")} as const;
+export const ideFeatures = ${JSON.stringify(ideFeatures, null, "\t")} as const;
 `
 );
 
@@ -631,6 +821,7 @@ for (const scheme of ["light", "dark"]) {
 		modern,
 		webTheme[scheme],
 		ideTheme[scheme],
+		ideFeatures,
 		scheme
 	);
 	await emit(
@@ -714,42 +905,42 @@ for (const [name, pattern, value] of [
 	[
 		"light theme-color",
 		/(<meta name="theme-color" content=")#[0-9a-f]{6}(" media="\(prefers-color-scheme: light\)")/i,
-		webTheme.light.background
+		ideTheme.light.titleBar
 	],
 	[
 		"dark theme-color",
 		/(<meta name="theme-color" content=")#[0-9a-f]{6}(" media="\(prefers-color-scheme: dark\)")/i,
-		webTheme.dark.background
+		ideTheme.dark.titleBar
 	],
 	[
 		"light first paint",
 		/^(\+\s*html, body \{ background-color: )#[0-9a-f]{6}(; \})$/im,
-		webTheme.light.background
+		ideTheme.light.editor
 	],
 	[
 		"dark first paint",
 		/^(\+\s*@media \(prefers-color-scheme: dark\) \{ html, body \{ background-color: )#[0-9a-f]{6}(; \} \})$/im,
-		webTheme.dark.background
+		ideTheme.dark.editor
 	],
 	[
 		"app light first paint",
 		/^(\+\s*html\[data-scheme="light"\], html\[data-scheme="light"\] body \{ background-color: )#[0-9a-f]{6}(; \})$/im,
-		webTheme.light.background
+		ideTheme.light.editor
 	],
 	[
 		"app dark first paint",
 		/^(\+\s*html\[data-scheme="dark"\], html\[data-scheme="dark"\] body \{ background-color: )#[0-9a-f]{6}(; \})$/im,
-		webTheme.dark.background
+		ideTheme.dark.editor
 	],
 	[
 		"manifest theme",
 		/(theme_color: ")#[0-9a-f]{6}(")/i,
-		webTheme.dark.background
+		ideTheme.dark.titleBar
 	],
 	[
 		"manifest background",
 		/(background_color: ")#[0-9a-f]{6}(")/i,
-		webTheme.dark.background
+		ideTheme.dark.editor
 	]
 ]) {
 	const matches =

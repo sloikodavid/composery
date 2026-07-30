@@ -78,8 +78,6 @@ const ICONS = {
 	x: XIcon
 };
 
-export const ANIMATED_ICON_NAMES = Object.keys(ICONS) as AnimatedIconName[];
-
 export type AnimatedIconName = keyof typeof ICONS;
 
 type AnimatedIconPosition = "start" | "end" | "only";
@@ -105,9 +103,8 @@ type HandlerProps<T extends HTMLElement> = {
 function isFocusVisible(element: HTMLElement) {
 	try {
 		return element.matches(":focus-visible");
-	} catch {
-		return false;
-	}
+	} catch {}
+	return false;
 }
 
 // Wires a whole interactive element (link, anchor, button) to an icon's handle,

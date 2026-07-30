@@ -20,6 +20,43 @@ body {
 	width: 100%;
 }
 
+* {
+	scrollbar-color: var(--composery-scrollbar)
+		var(--composery-scrollbar-track);
+}
+
+::selection {
+	background: var(--composery-selection);
+}
+
+*::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+	background: var(--composery-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+	border: 2px solid var(--composery-scrollbar-track);
+	border-radius: 999px;
+	background: var(--composery-scrollbar);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: var(--composery-scrollbar-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+	background: var(--composery-scrollbar-active);
+}
+
+*::-webkit-scrollbar-corner,
+*::-webkit-resizer {
+	background: var(--composery-scrollbar-track);
+}
+
 body {
 	margin: 0;
 	background: var(--vscode-editor-background);

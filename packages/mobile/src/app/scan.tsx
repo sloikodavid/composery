@@ -124,7 +124,7 @@ export default function ScanScreen() {
 							else void Linking.openSettings();
 						}}
 						style={{
-							backgroundColor: theme.primary,
+							backgroundColor: theme.button,
 							paddingHorizontal: 22,
 							paddingVertical: 13,
 							borderRadius: 12,
@@ -134,7 +134,7 @@ export default function ScanScreen() {
 						<Text
 							style={[
 								body("semibold"),
-								{ fontSize: 16, color: theme.primaryForeground }
+								{ fontSize: 16, color: theme.buttonForeground }
 							]}
 						>
 							{permission.canAskAgain ? "Allow camera" : "Open settings"}
@@ -175,10 +175,10 @@ export default function ScanScreen() {
 				<View style={{ flexDirection: "row", height: frame }}>
 					<View style={{ flex: 1, backgroundColor: SCRIM }} />
 					<View style={{ width: frame, height: frame }}>
-						<Corner color={theme.primary} top left />
-						<Corner color={theme.primary} top right />
-						<Corner color={theme.primary} bottom left />
-						<Corner color={theme.primary} bottom right />
+						<Corner color={theme.button} top left />
+						<Corner color={theme.button} top right />
+						<Corner color={theme.button} bottom left />
+						<Corner color={theme.button} bottom right />
 					</View>
 					<View style={{ flex: 1, backgroundColor: SCRIM }} />
 				</View>

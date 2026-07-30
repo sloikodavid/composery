@@ -15,7 +15,7 @@ import ts from "typescript";
 // becoming a grep over source. The patch-extraction helpers next door are the
 // text-handling ones and are confined to `invariants/`.
 
-export function transpileToCommonJs(source: string): string {
+function transpileToCommonJs(source: string): string {
 	return ts.transpileModule(source, {
 		compilerOptions: {
 			module: ts.ModuleKind.CommonJS,

@@ -3,11 +3,17 @@
 // constrains the source itself - every editable value canonical hex, light and
 // dark carrying the same keys - because a generator propagates a malformed value
 // as happily as a good one and reports success either way.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { BRAND_IDE_THEME, BRAND_THEME } from "../../packages/shared/index.ts";
+import {
+	BRAND_IDE_FEATURES,
+	BRAND_IDE_THEME,
+	BRAND_THEME
+} from "../../packages/shared/index.ts";
 import { readRepoFile, repoRoot } from "../support/repo.ts";
 const schemes = ["light", "dark"] as const;
 
@@ -15,7 +21,11 @@ const source = JSON.parse(
 	readFileSync(resolve(repoRoot, "packages/shared/theme.json"), "utf8")
 ) as {
 	web: typeof BRAND_THEME;
-	ide: typeof BRAND_IDE_THEME;
+	ide: {
+		features: typeof BRAND_IDE_FEATURES;
+		light: typeof BRAND_IDE_THEME.light;
+		dark: typeof BRAND_IDE_THEME.dark;
+	};
 };
 
 function composite(
@@ -53,7 +63,11 @@ function contrast(foreground: string, background: string): number {
 describe("shared theme", () => {
 	test("the editable source is exported without a second copy", () => {
 		expect(BRAND_THEME).toEqual(source.web);
-		expect(BRAND_IDE_THEME).toEqual(source.ide);
+		expect(BRAND_IDE_THEME).toEqual({
+			light: source.ide.light,
+			dark: source.ide.dark
+		});
+		expect(BRAND_IDE_FEATURES).toEqual(source.ide.features);
 	});
 
 	test("both schemes expose the same website and IDE roles", () => {
@@ -68,12 +82,19 @@ describe("shared theme", () => {
 	test("every editable value is canonical hex or hex-alpha", () => {
 		// Typed at the entry point: the parsed JSON widens to `any` inside a bare
 		// Object.values walk, which silently disables every check below it.
-		const areas: Array<Record<string, Record<string, string>>> =
-			Object.values(source);
+		const areas: Array<Record<string, Record<string, string>>> = [
+			source.web,
+			{ light: source.ide.light, dark: source.ide.dark }
+		];
 		for (const area of areas)
 			for (const values of Object.values(area))
 				for (const color of Object.values(values))
 					expect(color).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/);
+	});
+
+	test("every IDE feature is a boolean", () => {
+		for (const feature of Object.values(BRAND_IDE_FEATURES))
+			expect(typeof feature).toBe("boolean");
 	});
 
 	test.each(schemes)("%s status roles are distinct", (scheme) => {
@@ -88,12 +109,23 @@ describe("shared theme", () => {
 		const colors = BRAND_THEME[scheme];
 		for (const [name, foreground, background] of [
 			["page", colors.foreground, colors.background],
+			["header", colors.headerForeground, colors.header],
+			["footer", colors.footerForeground, colors.footer],
+			["sidebar", colors.sidebarForeground, colors.sidebar],
 			["muted page", colors.mutedForeground, colors.background],
 			["card", colors.cardForeground, colors.card],
 			["muted card", colors.mutedForeground, colors.card],
+			["dialog", colors.dialogForeground, colors.dialog],
 			["popover", colors.popoverForeground, colors.popover],
-			["primary", colors.primaryForeground, colors.primary],
-			["secondary", colors.secondaryForeground, colors.secondary]
+			["button", colors.buttonForeground, colors.button],
+			[
+				"secondary button",
+				colors.secondaryButtonForeground,
+				colors.secondaryButton
+			],
+			["badge", colors.badgeForeground, colors.badge],
+			["field", colors.fieldForeground, colors.field],
+			["selected item", colors.selectedForeground, colors.selected]
 		] as const)
 			expect(contrast(foreground, background), name).toBeGreaterThanOrEqual(
 				4.5
@@ -108,6 +140,7 @@ describe("generated editor themes", () => {
 				`packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/composery-${scheme}.json`
 			)
 		) as {
+			semanticHighlighting: boolean;
 			colors: Record<string, string>;
 			semanticTokenColors: Record<string, string | { foreground?: string }>;
 			tokenColors: {
@@ -169,8 +202,85 @@ describe("generated editor themes", () => {
 			)
 		);
 
-		expect([...consumed].sort()).toEqual(
-			Object.keys(BRAND_IDE_THEME.light).sort()
+		expect(
+			Object.keys(BRAND_IDE_THEME.light).filter((role) => !consumed.has(role))
+		).toEqual([]);
+	});
+
+	test("every emitted workbench color ID exists in the pinned upstream", () => {
+		// The color registry is an external API owned by the pinned VS Code fork.
+		// Some IDs are registered by core, some by bundled extensions, and a few
+		// are supplied by upstream default themes. Reading all three actual
+		// contribution surfaces avoids maintaining another hand-written list.
+		const ids = Object.keys(readTheme("light").colors);
+		const directory = mkdtempSync(join(tmpdir(), "composery-theme-"));
+		const patterns = join(directory, "ids.txt");
+		writeFileSync(
+			patterns,
+			ids.flatMap((id) => [`'${id}'`, `"${id}"`]).join("\n")
+		);
+		let upstream: string;
+		try {
+			upstream = execFileSync(
+				"git",
+				[
+					"grep",
+					"-F",
+					"-f",
+					patterns,
+					"--",
+					"src",
+					"extensions/git",
+					"extensions/theme-defaults/themes"
+				],
+				{
+					cwd: resolve(repoRoot, "packages/ide/upstream/lib/vscode"),
+					encoding: "utf8",
+					maxBuffer: 16 * 1024 * 1024
+				}
+			);
+		} finally {
+			rmSync(directory, { recursive: true });
+		}
+
+		expect(
+			ids.filter(
+				(id) => !upstream.includes(`'${id}'`) && !upstream.includes(`"${id}"`)
+			)
+		).toEqual([]);
+	});
+
+	test.each(schemes)("%s applies the editable VS Code features", (scheme) => {
+		const generated = readTheme(scheme);
+		const colors = BRAND_IDE_THEME[scheme];
+		const optional = (enabled: boolean, color: string) =>
+			enabled ? color : "#00000000";
+		expect(generated.semanticHighlighting).toBe(
+			BRAND_IDE_FEATURES.semanticHighlighting
+		);
+		expect(generated.colors["activityBar.border"]).toBe(
+			optional(BRAND_IDE_FEATURES.surfaceBorders, colors.border)
+		);
+		expect(generated.colors["input.border"]).toBe(
+			optional(BRAND_IDE_FEATURES.controlBorders, colors.inputBorder)
+		);
+		expect(generated.colors["tab.border"]).toBe(
+			optional(BRAND_IDE_FEATURES.tabBorders, colors.tabBorder)
+		);
+		expect(generated.colors["widget.shadow"]).toBe(
+			optional(BRAND_IDE_FEATURES.shadows, colors.shadow)
+		);
+		expect(generated.colors["tab.activeBorderTop"]).toBe(
+			optional(BRAND_IDE_FEATURES.activeTabIndicator, colors.focus)
+		);
+		expect(generated.colors["activityBar.activeBorder"]).toBe(
+			optional(BRAND_IDE_FEATURES.activityBarIndicator, colors.focus)
+		);
+		expect(generated.colors["panelTitle.activeBorder"]).toBe(
+			optional(BRAND_IDE_FEATURES.panelTitleIndicator, colors.focus)
+		);
+		expect(generated.colors.contrastBorder).toBe(
+			optional(BRAND_IDE_FEATURES.contrastBorders, colors.border)
 		);
 	});
 
@@ -188,15 +298,16 @@ describe("generated editor themes", () => {
 				["widget", ["editorWidget.background", "quickInput.background"]],
 				["tabActive", ["tab.activeBackground"]],
 				["tabInactive", ["tab.inactiveBackground"]],
-				["hover", ["list.hoverBackground", "quickInputList.focusBackground"]],
+				["listHover", ["list.hoverBackground"]],
+				["listSelection", ["quickInputList.focusBackground"]],
 				["foreground", ["editor.foreground", "terminal.foreground"]],
 				["mutedForeground", ["descriptionForeground"]],
 				["border", ["editorWidget.border", "widget.border"]],
 				["inputBorder", ["input.border"]],
 				["focus", ["focusBorder"]],
 				["shadow", ["widget.shadow"]],
-				["primary", ["button.background"]],
-				["primaryForeground", ["button.foreground"]],
+				["button", ["button.background"]],
+				["buttonForeground", ["button.foreground"]],
 				["lineNumber", ["editorLineNumber.foreground"]],
 				["ignored", ["gitDecoration.ignoredResourceForeground"]],
 				["gutterAdded", ["editorGutter.addedBackground"]],

@@ -39,7 +39,7 @@ export function BrandLogo({ className }: { className?: string }) {
 const MENU_POPUP =
 	"z-50 min-w-44 origin-(--transform-origin) rounded-2xl bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/5 outline-none dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 const MENU_ITEM =
-	"flex min-h-7 cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm no-underline outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
+	"flex min-h-7 cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 text-sm no-underline outline-hidden select-none focus:bg-selected focus:text-selected-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4";
 
 // Right-click the real logo to copy the logo or icon as SVG or jump to the brand page,
 // instead of the browser's native "save image" menu.

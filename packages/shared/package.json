@@ -12,7 +12,9 @@
 		"dev:colors": "node tools/colors/server.mjs"
 	},
 	"devDependencies": {
+		"@vscode/codicons": "0.0.46-24",
 		"fontkit": "^2.0.4",
+		"lucide-static": "^1.27.0",
 		"png-to-ico": "^3.0.2",
 		"sharp": "^0.35.3"
 	}

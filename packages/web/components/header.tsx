@@ -26,7 +26,7 @@ export function Header() {
 			className={cn(
 				buttonVariants({ size: "nav", variant: "ghost" }),
 				pathname.startsWith(link.href)
-					? "bg-[var(--ghost-active)] text-foreground"
+					? "bg-[var(--ghost-active)] text-header-foreground"
 					: "text-muted-foreground",
 				fade && "header-auth-fade-in"
 			)}
@@ -46,7 +46,7 @@ export function Header() {
 			    nav on the bar itself, so it stays put no matter how much wider the
 			    auth cluster is than the logo. `justify-between` would only centre it
 			    if the two sides happened to match. */}
-			<div className="mx-auto hidden h-14 w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-6 rounded-b-2xl border border-t-0 border-border bg-background pe-3.5 ps-2.5 md:grid">
+			<div className="mx-auto hidden h-14 w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-6 rounded-b-2xl border border-t-0 border-border bg-header text-header-foreground shadow-[0_2px_8px_var(--shadow)] pe-3.5 ps-2.5 md:grid">
 				{/* Grid items stretch by default, which would leave the logo's link box
 				    spanning the whole column. */}
 				<Logo className="justify-self-start" />
