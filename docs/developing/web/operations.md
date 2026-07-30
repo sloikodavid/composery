@@ -31,11 +31,12 @@ Instead, `convex/roles.ts` explicitly maps roles to capabilities:
 - `user_moderation` - suspend or delete customer accounts;
 - `settings_management` - checkout, capacity, snapshot, and abuse settings;
 - `checkout_management` - release active checkout reservations;
+- `box_comp` - mint a free box, which spends real infrastructure;
 - `staff_alerts` - receive Resend operational alerts.
 
-Today `admin` has all six and `user` has none. Backend functions check the
-specific capability; the console link checks `staff_console`. Suspension removes
-all capability access. Merely being a non-user role never grants access.
+Today `admin` has every one of them and `user` has none. Backend functions check
+the specific capability; the console link checks `staff_console`. Suspension
+removes all capability access. Merely being a non-user role never grants access.
 
 ### Add a narrower role later
 
@@ -48,7 +49,10 @@ not delete accounts or change billing settings:
 3. Audit every backend endpoint for the narrow capability it requires; never
    replace this with `role !== "user"`.
 4. Gate console controls as well as navigation. Backend denial is the security
-   boundary, but controls the person cannot use should not be displayed.
+   boundary, but controls the person cannot use should not be displayed. The
+   client asks `api.users.canAccessStaffConsole` and nothing finer, because with
+   one internal role there is nothing finer to ask; a narrower role is what makes
+   a per-capability query worth adding.
 5. Decide whether the role receives `staff_alerts`, may act on other internal
    accounts, and may be promoted by an admin. Do not infer these powers.
 6. Add role/capability, action-denial, UI, migration, and alert-recipient tests.
@@ -110,8 +114,17 @@ accounting conservative across asynchronous cleanup.
 New checkout is admitted only when one complete package fits in both
 allocations. Convex mutation serialization prevents simultaneous reservation
 writes from both observing and taking the final slot. An active checkout can be
-resumed even when later reservations are blocked. Its one-hour expiry releases
-the slug and capacity automatically.
+resumed even when later reservations are blocked, by the customer who holds it
+and no one else.
+
+A reservation runs to its Polar checkout's expiry, which Polar sets and its API
+gives no way to choose, so the window is Polar's and not a Composery setting.
+Whichever end notices first releases the slug and capacity: Polar's
+`checkout.expired` webhook, or the sweep reading the same deadline off the
+reservation. A reservation that never got a Polar session - the checkout action
+died between the two - falls back to the short grace in
+[Fixed windows](./maintenance.md#fixed-windows), which is the only part of this
+Composery chooses.
 
 Existing boxes always have priority. Lowering an allocation below current
 commitments does not delete or suspend them; it reports an overcommit and blocks

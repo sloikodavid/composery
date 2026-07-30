@@ -169,7 +169,7 @@ export const startOperation = internalMutation({
 		assertOperationAllowed(box, args.type);
 
 		if (args.reservedSlug) {
-			await assertSlugAvailable(ctx, args.reservedSlug, box._id);
+			await assertSlugAvailable(ctx, args.reservedSlug, { boxId: box._id });
 		}
 
 		const plan = BOX_OPERATION_PLANS[args.type];

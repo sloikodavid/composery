@@ -22,14 +22,11 @@ const STAFF_LINKS: NavLink[] = [
 	{ href: "/console", icon: "layout-grid", label: "Console" }
 ];
 
-// Nothing until the capabilities are known, so the nav grows once. Answering
-// with USER_LINKS while the query is in flight puts Boxes on the bar and then
+// Nothing until the answer is known, so the nav grows once. Answering with
+// USER_LINKS while the query is in flight puts Boxes on the bar and then
 // displaces it again a round trip later when Console turns up beside it.
 export function useAuthedNavLinks(): NavLink[] {
-	const capabilities = useQuery(api.users.currentUserCapabilities);
-	if (!capabilities) return [];
-	return [
-		...USER_LINKS,
-		...(capabilities.includes("staff_console") ? STAFF_LINKS : [])
-	];
+	const staff = useQuery(api.users.canAccessStaffConsole);
+	if (staff === undefined) return [];
+	return [...USER_LINKS, ...(staff ? STAFF_LINKS : [])];
 }

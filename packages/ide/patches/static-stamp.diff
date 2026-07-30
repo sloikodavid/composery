@@ -12,10 +12,11 @@ The rest follows from the stamp being in the URL:
 - The served HTML is Cache-Control: no-store, because it embeds stamped URLs.
 - Service workers register with updateViaCache 'none'.
 - Each boot unregisters the webview service workers stranded under old stamps.
-  They register below the stamped static route, so every update leaves one
-  behind, in storage a mobile WebView user has no way to clear. The workbench's
-  own worker is scoped to the site root and carries no stamp, so the same test
-  that finds the stale ones leaves it alone.
+  A VS Code webview is served its files by a worker registered below the stamped
+  static route, so every update leaves one behind and they accumulate in origin
+  storage nobody clears. Which scopes those are is staleWebviewWorkers.ts in the
+  overlay - the call here ends in unregister(), so what it reads as a stamp is
+  worth a test rather than a substring.
 
 --- a/ci/build/build-vscode.sh
 +++ b/ci/build/build-vscode.sh
@@ -52,7 +53,15 @@ The rest follows from the stamp being in the URL:
  		return void res.end(data);
 --- a/lib/vscode/src/vs/workbench/browser/client.ts
 +++ b/lib/vscode/src/vs/workbench/browser/client.ts
-@@ -196,11 +210,39 @@ export class CodeServerClient extends Disposable {
+@@ -7,6 +7,7 @@ import { INotificationService, Severity } from '../../platform/notification/comm
+ import { IProductService } from '../../platform/product/common/productService.js';
+ import { ICommandService } from '../../platform/commands/common/commands.js';
+ import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
++import { isStaleWebviewWorkerScope } from './staleWebviewWorkers.js';
+ 
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
+@@ -208,11 +209,28 @@ export class CodeServerClient extends Disposable {
  			try {
  				await navigator.serviceWorker.register(serviceWorker.path, {
  					scope: serviceWorker.scope,
@@ -69,24 +78,13 @@ The rest follows from the stamp being in the URL:
 +		}
 +	}
 +
-+	// Composery: webviews register their service worker under the webview
-+	// endpoint, which sits below the stable-<stamp> static route - so every
-+	// update strands the previous stamp's registration, and they pile up forever
-+	// in storage the user has no way to clear (e.g. a mobile WebView). The
-+	// workbench's own worker is scoped to the site root and carries no stamp, so
-+	// the same test that finds the stale ones leaves it alone.
-+	//
 +	// Only registrations: the resource cache is keyed by the service worker's own
 +	// VERSION and its entries are vscode-resource URLs of workspace files, so no
 +	// part of it moves with the stamp and there is nothing there to strand.
 +	private async unregisterStaleWebviewWorkers() {
 +		const stamp = this.productService.commit;
-+		if (!stamp) {
-+			return;
-+		}
 +		for (const registration of await navigator.serviceWorker.getRegistrations()) {
-+			const scope = new URL(registration.scope).pathname;
-+			if (scope.includes('stable-') && !scope.includes(stamp)) {
++			if (isStaleWebviewWorkerScope(registration.scope, stamp)) {
 +				await registration.unregister();
 +			}
  		}

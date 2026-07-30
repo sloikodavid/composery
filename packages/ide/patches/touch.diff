@@ -70,7 +70,7 @@ a selection-change refresh of the selection context keys, without which Copy sat
 disabled in the very menu the selection was made for (every other refresh hangs
 off a mouse or key event, and a hold produces neither).
 The keyboard resizes the grid like any other pane change - holding the scroll
-position across that is terminal.diff, which is not touch-gated.
+position across that is xterm-resize-scroll.diff, which is not touch-gated.
 
 Links. A tap activates what a click activates: detected terminal links
 (url/localFile/localFolder - never 'word') hit-tested through the shared cell

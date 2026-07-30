@@ -13,9 +13,9 @@ import { reconcileCapacityAlert } from "./boxes/capacityAlerts";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
-	terminalCheckoutSecretPatch,
-	unpaidCheckoutPurgeAt
+	terminalCheckoutSecretPatch
 } from "./boxes/retention";
+import { releaseIntentDoc } from "./checkout/checkoutIntents";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
@@ -191,13 +191,9 @@ export const markAccountDeletionPending = internalMutation({
 			.collect();
 		for (const intent of intents) {
 			if (intent.status !== "active" || intent.box_id) continue;
-			await ctx.db.patch(intent._id, {
-				status: "released",
-				released_at: timestamp,
-				release_reason: "account_deleted",
-				purge_at: unpaidCheckoutPurgeAt(timestamp),
-				...terminalCheckoutSecretPatch(),
-				updated_at: timestamp
+			await releaseIntentDoc(ctx, intent, {
+				reason: "account_deleted",
+				status: "released"
 			});
 		}
 		await reconcileCapacityAlert(ctx);
@@ -397,7 +393,7 @@ export const finalizeAccountDeletion = internalAction({
 			requestedAt &&
 			Date.now() - requestedAt >= ACCOUNT_DELETION_ALERT_AFTER_MS
 		) {
-			await ctx.runMutation(internal.staffAlerts.raise, {
+			await ctx.runMutation(internal.staff.alerts.raise, {
 				key: `account-deletion-stuck:${state.user._id}:${requestedAt}`,
 				severity: "critical",
 				subject: "Account deletion has been pending for over 24 hours",

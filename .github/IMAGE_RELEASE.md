@@ -1,6 +1,6 @@
 # Image release
 
-Composery container-image releases publish to GHCR.
+Composery container-image releases publish to ghcr.
 
 GitHub always shows a **Use workflow from** dropdown when manually running a
 workflow. Leave it set to `main`; that dropdown selects the workflow definition.

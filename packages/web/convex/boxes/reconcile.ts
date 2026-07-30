@@ -5,7 +5,7 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { sendStaffAlert } from "../staffAlerts";
+import { raiseAlert } from "../staff/alerts";
 
 // Grace window before a Hetzner resource is eligible for reclaim. A snapshot
 // image exists for a few seconds before its row is patched with the id, and a
@@ -93,7 +93,7 @@ export const alertOrphanedServers = internalMutation({
 			.map((server) => server.serverId)
 			.sort((a, b) => a - b)
 			.join(",");
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `orphaned-hetzner-servers:${serverIds}`,
 			severity: "critical",
 			subject: `${args.servers.length} orphaned Hetzner server(s) need review`,
@@ -127,7 +127,7 @@ export const alertUnassignedPrimaryIps = internalMutation({
 			.map((primaryIp) => primaryIp.primaryIpId)
 			.sort((a, b) => a - b)
 			.join(",");
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `unassigned-hetzner-primary-ips:${ids}`,
 			severity: "warning",
 			subject: `${args.primaryIps.length} unassigned Hetzner Primary IP(s) need review`,
@@ -250,7 +250,7 @@ export const reconcileHetznerResources = internalAction({
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const day = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-			await ctx.runMutation(internal.staffAlerts.raise, {
+			await ctx.runMutation(internal.staff.alerts.raise, {
 				key: `hetzner-reconciliation-failed:${day}`,
 				severity: "critical",
 				subject: "Hetzner resource reconciliation failed",

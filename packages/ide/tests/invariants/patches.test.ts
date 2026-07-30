@@ -167,8 +167,8 @@ describe("patch stack lint", () => {
 	// Assemble one patch directory and one series first, exactly as build.sh
 	// does, instead of applying the two series from where they live. Reading
 	// each patch from its own directory made the rehearsal blind to the whole
-	// namespace: our clipboard.diff overwrote code-server's identically named
-	// patch in the build tree and appended a duplicate series entry, so the
+	// namespace: ours was called clipboard.diff then, and it overwrote upstream's
+	// identically named patch in the build tree and appended a duplicate entry, so the
 	// image build died on "already applied" while this test stayed green. Ours
 	// go under composery/ for that reason - assert the assembly keeps upstream's
 	// patches intact and the series free of duplicates.
@@ -1322,7 +1322,7 @@ describe("api terminals", () => {
 	});
 
 	test("the orphan check keeps upstream's default and its own polarity", () => {
-		// terminal.diff's fourth `_buildProcessDetails` argument is `checkOrphan`,
+		// terminal-sharing.diff's fourth `_buildProcessDetails` argument is `checkOrphan`,
 		// where true means run the check - and that check asks every renderer and
 		// waits on a 4s barrier for an answer. A pass-through named for the
 		// opposite meaning inverts both callers at once: the editor quietly loses

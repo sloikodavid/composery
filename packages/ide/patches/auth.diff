@@ -505,7 +505,7 @@ and a configured-but-ignored password says so.
    "cookie-suffix": {
      type: "string",
      description:
-@@ -295,13 +299,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
+@@ -296,13 +300,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
      type: "string",
      short: "an",
      description:
@@ -520,7 +520,7 @@ and a configured-but-ignored password says so.
    },
    "abs-proxy-base-path": {
      type: "string",
-@@ -596,6 +594,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -597,6 +595,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
      args.auth = AuthType.Password
    }
  
@@ -534,7 +534,7 @@ and a configured-but-ignored password says so.
    const addr = bindAddrFromAllSources(configArgs || {}, cliArgs)
    args.host = addr.host
    args.port = addr.port
-@@ -611,6 +616,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -612,6 +617,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    let usingEnvPassword = !!process.env.PASSWORD
    if (process.env.PASSWORD) {
      args.password = process.env.PASSWORD
@@ -542,7 +542,7 @@ and a configured-but-ignored password says so.
    }
  
    if (process.env.CS_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
-@@ -632,9 +638,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -633,9 +639,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
    if (process.env.HASHED_PASSWORD) {
      args["hashed-password"] = process.env.HASHED_PASSWORD
@@ -562,7 +562,7 @@ and a configured-but-ignored password says so.
    if (process.env.CODE_SERVER_COOKIE_SUFFIX) {
      args["cookie-suffix"] = process.env.CODE_SERVER_COOKIE_SUFFIX
    }
-@@ -699,18 +715,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
+@@ -700,18 +716,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
  /**
   * Helper function to return the default config file.
   *
@@ -582,7 +582,7 @@ and a configured-but-ignored password says so.
  cert: false
  `
  }
-@@ -735,8 +748,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
+@@ -736,8 +749,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
    await fs.mkdir(path.dirname(configPath), { recursive: true })
  
    try {
@@ -592,7 +592,7 @@ and a configured-but-ignored password says so.
        flag: "wx", // wx means to fail if the path exists.
      })
      logger.info(`Wrote default config file to ${configPath}`)
-@@ -925,5 +937,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
+@@ -926,5 +938,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
      version: !!args.version,
      port: args.port?.toString(),
      log: args.log ? [args.log] : undefined,
@@ -679,7 +679,7 @@ and a configured-but-ignored password says so.
  
 --- a/src/node/routes/login.ts
 +++ b/src/node/routes/login.ts
-@@ -1,65 +1,50 @@
+@@ -1,65 +1,33 @@
  import { Router, Request } from "express"
 -import { promises as fs } from "fs"
 -import { RateLimiter as Limiter } from "limiter"
@@ -710,6 +710,7 @@ and a configured-but-ignored password says so.
 -}
 +import { setSessionCookie } from "../session"
 +import { sanitizeString } from "../util"
++import { authErrorMessage } from "./authErrors"
 +import { renderAuthPage, returnPath } from "./authPage"
 +import { loginRateLimit, loginSource } from "./loginRateLimit"
 +import { hasPassword, isPasswordValid } from "./passwordConfig"
@@ -719,37 +720,14 @@ and a configured-but-ignored password says so.
 -  const locale = req.args["locale"] || "en"
 -  i18n.changeLanguage(locale)
 -  const welcomeText = req.args["welcome-text"] || (i18n.t("WELCOME", { app: req.args["app-name"] }) as string)
-+  i18n.changeLanguage(req.args["locale"] || "en")
-+  const displayError = error || getErrorFromQuery(req)
-+  return renderAuthPage(req, {
-+    page: "login",
-+    title: i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }),
-+    formLabel: "Sign in",
-+    error: displayError?.message,
-+  })
-+}
- 
+-
 -  // Determine password message using i18n
 -  let passwordMsg = i18n.t("LOGIN_PASSWORD")
 -  if (req.args.usingEnvPassword) {
 -    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
 -  } else if (req.args.usingEnvHashedPassword) {
 -    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
-+const getErrorFromQuery = (req: Request): Error | undefined => {
-+  switch (req.query.error) {
-+    case "configured":
-+      return new Error("Password was already configured. Sign in instead.")
-+    case "env-managed":
-+      return new Error("COMPOSERY_PASSWORD is set on this box and takes precedence over a password set here. Change or remove that variable instead.")
-+    case "rate-limit":
-+      return new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
-+    case "missing":
-+      return new Error(i18n.t("MISS_PASSWORD") as string)
-+    case "incorrect":
-+      return new Error(i18n.t("INCORRECT_PASSWORD") as string)
-+    default:
-+      return undefined
-   }
+-  }
 -
 -  return replaceTemplates(
 -    req,
@@ -762,6 +740,13 @@ and a configured-but-ignored password says so.
 -      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
 -      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
 -  )
++  i18n.changeLanguage(req.args["locale"] || "en")
++  return renderAuthPage(req, {
++    page: "login",
++    title: i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }),
++    formLabel: "Sign in",
++    error: error?.message ?? authErrorMessage("login", req.query.error),
++  })
  }
  
 -const limiter = new RateLimiter()
@@ -780,7 +765,7 @@ and a configured-but-ignored password says so.
    }
    next()
  })
-@@ -68,54 +53,39 @@ router.get("/", async (req, res) => {
+@@ -68,54 +36,39 @@ router.get("/", async (req, res) => {
    res.send(await getRoot(req))
  })
  
@@ -798,7 +783,7 @@ and a configured-but-ignored password says so.
 -    if (!password) {
 -      throw new Error(i18n.t("MISS_PASSWORD") as string)
 -    }
- 
+-
 -    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
 -    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
 -      passwordMethod,
@@ -806,7 +791,7 @@ and a configured-but-ignored password says so.
 -      passwordFromRequestBody: password,
 -      passwordFromArgs: req.args.password,
 -    })
--
+ 
 -    if (isPasswordValid) {
 -      // The hash does not add any actual security but we do it for
 -      // obfuscation purposes (and as a side effect it handles escaping).

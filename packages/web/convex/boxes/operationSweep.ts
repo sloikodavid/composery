@@ -10,7 +10,8 @@ import {
 import { consoleBoxPath } from "../../lib/box-route";
 import { operationLabel } from "../../lib/operation-failure";
 import { vBoxOperationType } from "../schema";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import {
 	ACTIVE_OPERATION_STATUSES,
 	boxEventType,
@@ -152,7 +153,7 @@ export const alertLongRunningOperation = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box) return;
 		const hours = Math.floor((Date.now() - args.createdAt) / (60 * 60 * 1000));
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `box-operation-long-running:${args.operationId}`,
 			severity: "warning",
 			subject: `Box ${box.slug}: ${operationLabel(args.type, true)} has been running ${hours}h`,

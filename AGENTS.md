@@ -90,7 +90,7 @@ remembers the last review.
       SKILL.md
     senior-buzzwords/
       SKILL.md
-    simplify-ide.md
+    simplify-implementation.md
 .claude/
   skills
 .github/
@@ -262,6 +262,11 @@ packages/
                     terminalDataFlowControl.ts
                   node/
                     terminalClients.ts
+                    terminalLayoutMerge.ts
+              server/
+                node/
+                  terminalClientState.ts
+                  terminalStartState.ts
               workbench/
                 browser/
                   media/
@@ -269,16 +274,23 @@ packages/
                   keybar.ts
                   narrowActivityBar.ts
                   narrowGate.ts
+                  staleWebviewWorkers.ts
                 contrib/
                   terminal/
                     browser/
                       shortcuts.contribution.ts
                       xtermCell.ts
                       xtermResize.ts
+                    common/
+                      remote/
+                        terminalWorkspaceId.ts
                   terminalContrib/
                     touchSelection/
                       browser/
                         terminal.touchSelection.contribution.ts
+                  url/
+                    browser/
+                      loopbackCallback.ts
       src/
         browser/
           media/
@@ -325,6 +337,7 @@ packages/
               keystore.ts
               ratelimit.ts
               terminals.ts
+            authErrors.ts
             authPage.ts
             changePassword.ts
             cloudAuth.ts
@@ -339,7 +352,7 @@ packages/
       auth.diff
       bfcache-reload.diff
       brand.diff
-      clipboard.diff
+      clipboard-bridges.diff
       custom-editors.diff
       defaults.diff
       dependency-pins.diff
@@ -359,7 +372,7 @@ packages/
       shortcuts-bridge.diff
       static-stamp.diff
       terminal-clients.diff
-      terminal.diff
+      terminal-sharing.diff
       touch.diff
       updates.diff
       vscode-duplicate-mount.diff
@@ -398,18 +411,38 @@ packages/
                   terminal/
                     node/
                       terminalClients.test.ts
+                      terminalLayoutMerge.test.ts
+                server/
+                  node/
+                    terminalClientState.test.ts
+                    terminalStartState.test.ts
                 workbench/
+                  browser/
+                    staleWebviewWorkers.test.ts
                   contrib/
                     terminal/
                       browser/
                         xtermResize.test.ts
+                      common/
+                        remote/
+                          terminalWorkspaceId.test.ts
+                    url/
+                      browser/
+                        loopbackCallback.test.ts
         scripts/
           rebrand.test.ts
+        src/
+          node/
+            routes/
+              authErrors.test.ts
         session.test.ts
       invariants/
+        auth-error-codes.test.ts
         auth-routes.test.ts
+        patch-call-sites.test.ts
         patches.test.ts
         path-prefix.test.ts
+        terminal-layout-types.test.ts
       support/
         overlay.ts
         patch.ts
@@ -469,10 +502,13 @@ packages/
           page.tsx
         console/
           _components/
+            console-alert-delivery.tsx
             console-capacity.tsx
             console-checkout-limit.tsx
+            console-failures.tsx
             console-grant-box.tsx
             console-home.tsx
+            console-metrics.tsx
             console-snapshot-policy.tsx
             console-stats.tsx
             console-thresholds.tsx
@@ -721,13 +757,13 @@ packages/
       authorization.ts
       convex.config.ts
       crons.ts
+      email.ts
       env.ts
       http.ts
       ownerEmail.ts
       roles.ts
       schema.ts
       settings.ts
-      staffAlerts.ts
       tsconfig.json
       users.ts
     hooks/
@@ -827,6 +863,7 @@ packages/
           billing/
             polar.test.ts
             reconciliation.test.ts
+            webhooks.test.ts
           boxes/
             infra/
               cloudflareDns.test.ts
@@ -862,6 +899,7 @@ packages/
             checkoutConversion.test.ts
             checkoutIntents.test.ts
           staff/
+            alerts.test.ts
             boxes.test.ts
           user/
             boxes.test.ts
@@ -873,7 +911,7 @@ packages/
           http.test.ts
           ownerEmail.test.ts
           roles.test.ts
-          staffAlerts.test.ts
+          settings.test.ts
         lib/
           auth-routing.test.ts
           box-billing.test.ts

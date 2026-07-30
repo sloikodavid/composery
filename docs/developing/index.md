@@ -10,7 +10,7 @@ not for running an instance. If you want to deploy Composery, start at
 - **[Repository](repository.md)** - fresh-clone setup, workspace layout, commands,
   generated files, test gates, and the normal change/release workflow.
 - **[Services](services/index.md)** - repository-level external services, starting
-  with [GitHub](services/github.md): repo settings, rulesets, Actions, GHCR,
+  with [GitHub](services/github.md): repo settings, rulesets, Actions, ghcr,
   releases, community intake, CLA, and Renovate.
 - **[IDE](ide.md)** - the editor fork in `packages/ide`: shared theme sources and
   the upstream / VS Code bump runbook.

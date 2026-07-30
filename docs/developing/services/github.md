@@ -1,10 +1,10 @@
 ---
 title: GitHub
-description: Create and configure the GitHub repository - settings, community intake, rulesets, Actions, GHCR, releases, security, CLA, and Renovate.
+description: Create and configure the GitHub repository - settings, community intake, rulesets, Actions, ghcr, releases, security, CLA, and Renovate.
 ---
 
 GitHub is a configured service, not just a remote: CI, smoke, and the release
-pipeline run on GitHub Actions; the shipped runtime image publishes to GHCR;
+pipeline run on GitHub Actions; the shipped runtime image publishes to ghcr;
 bug reports, feature requests, questions, and vulnerability reports all land on
 GitHub surfaces; the CLA bot records signatures; Renovate opens dependency
 pull requests. This page assumes no GitHub account exists yet and walks a fresh
@@ -131,7 +131,7 @@ their `permissions:` blocks, which is why none of this needs org-level policy:
 | `deploy.yml`         | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run   |
 | `smoke.yml`          | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state       |
 | `smoke-nightly.yml`  | schedule, dispatch                    | none - uncached image smoke                                                                         |
-| `release.yml`        | dispatch                              | revalidates the exact ref before image release, GHCR, provenance, and Trivy permissions             |
+| `release.yml`        | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions             |
 | `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                              |
 
 Operational notes:
@@ -153,7 +153,7 @@ Operational notes:
 `ghcr.io/<github-user>/composery` using `GITHUB_TOKEN` - no registry
 credentials exist anywhere. Two one-time steps after the first release run:
 
-1. The first push creates the GHCR package **private**. Make it public so
+1. The first push creates the ghcr package **private**. Make it public so
    `docker run` works unauthenticated (Package -> Package settings -> Danger
    Zone -> Change visibility), which the README quickstart, the self-hosting
    docs, and every template assume.
@@ -268,7 +268,7 @@ git grep -n "sloikodavid" -- ':!packages/ide/upstream' ':!pnpm-lock.yaml'
 - Issue template chooser config: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
 - Repository rulesets: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
 - GITHUB_TOKEN permissions: https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication
-- GHCR package visibility: https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility
+- ghcr package visibility: https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility
 - Artifact attestations: https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations
 - Private vulnerability reporting: https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/configuring-private-vulnerability-reporting-for-a-repository
 - CLA assistant action: https://github.com/contributor-assistant/github-action

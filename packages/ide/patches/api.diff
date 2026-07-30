@@ -39,91 +39,6 @@ The Composery automation API, server to menu.
  	/**
  	 * Revives a workspaces terminal processes, these can then be reconnected to using the normal
  	 * flow for restoring terminals after reloading.
---- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
-+++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
-@@ -91,12 +91,29 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
- 
- type WorkspaceId = string;
- 
-+/**
-+ * Workspace of a terminal created outside any editor window - the Composery
-+ * API. It has no workspace to belong to, so it belongs to whichever window
-+ * asks. Keep in sync with the API's own copy (routes/api/terminals.ts); a test
-+ * pins the two together.
-+ */
-+export const API_TERMINAL_WORKSPACE_ID = 'composery-api-terminal';
-+
-+function isForWorkspace(process: PersistentTerminalProcess, workspaceId: string): boolean {
-+	return process.workspaceId === workspaceId || process.workspaceId === API_TERMINAL_WORKSPACE_ID;
-+}
-+
- function mergeTerminalLayouts(workspaceId: string, layout: ISetTerminalLayoutInfoArgs | undefined, processes: Iterable<readonly [number, PersistentTerminalProcess]>): ISetTerminalLayoutInfoArgs | undefined {
- 	const tabs = layout?.tabs.map(tab => ({ ...tab, terminals: [...tab.terminals] })) ?? [];
- 	const background = [...(layout?.background ?? [])];
- 	const knownIds = new Set([...tabs.flatMap(tab => tab.terminals.map(terminal => terminal.terminal)), ...background]);
- 	for (const [id, process] of processes) {
--		if (process.workspaceId !== workspaceId || !process.shouldPersistTerminal || knownIds.has(id)) {
-+		// isDetaching skips a terminal the user detached on purpose. Without it
-+		// the next layout request adopts it straight back and a client attaches,
-+		// cancelling the disconnect - which silently undoes Detach Session. Only
-+		// *adding* is gated: a client's own terminals arrive in `layout` and are
-+		// restored on reload either way.
-+		if (!isForWorkspace(process, workspaceId) || !process.shouldPersistTerminal || process.isDetaching || knownIds.has(id)) {
- 			continue;
- 		}
- 		knownIds.add(id);
-@@ -245,7 +262,7 @@ export class PtyService extends Disposable implements IPtyService {
- 	}
- 
- 	@traceRpc
--	async serializeTerminalState(ids: number[]): Promise<string> {
-+	async serializeTerminalState(ids: number[], checkOrphan: boolean = true): Promise<string> {
- 		const promises: Promise<ISerializedTerminalState>[] = [];
- 		for (const [persistentProcessId, persistentProcess] of this._ptys.entries()) {
- 			// Only serialize persistent processes that have had data written or performed a replay
-@@ -254,7 +271,7 @@ export class PtyService extends Disposable implements IPtyService {
- 					r({
- 						id: persistentProcessId,
- 						shellLaunchConfig: persistentProcess.shellLaunchConfig,
--						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess),
-+						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess, false, checkOrphan),
- 						processLaunchConfig: persistentProcess.processLaunchOptions,
- 						unicodeVersion: persistentProcess.unicodeVersion,
- 						replayEvent: await persistentProcess.serializeNormalBuffer(),
-@@ -430,13 +447,13 @@ export class PtyService extends Disposable implements IPtyService {
- 	}
- 
- 	@traceRpc
--	async listProcesses(): Promise<IProcessDetails[]> {
-+	async listProcesses(includeAttached: boolean = false): Promise<IProcessDetails[]> {
- 		const persistentProcesses = Array.from(this._ptys.entries()).filter(([_, pty]) => pty.shouldPersistTerminal);
- 
- 		this._logService.info(`Listing ${persistentProcesses.length} persistent terminals, ${this._ptys.size} total terminals`);
--		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData));
-+		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData, false, !includeAttached));
- 		const allTerminals = await Promise.all(promises);
--		return allTerminals.filter(entry => entry.isOrphan);
-+		return includeAttached ? allTerminals : allTerminals.filter(entry => entry.isOrphan);
- 	}
- 
- 	@traceRpc
-@@ -630,7 +647,7 @@ export class PtyService extends Disposable implements IPtyService {
- 			}
- 			doneSet.add(persistentProcessId);
- 			const persistentProcess = this._throwIfNoPty(persistentProcessId);
--			if (persistentProcess.workspaceId !== workspaceId || !persistentProcess.shouldPersistTerminal) {
-+			if (!isForWorkspace(persistentProcess, workspaceId) || !persistentProcess.shouldPersistTerminal) {
- 				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
- 			}
- 			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
-@@ -752,6 +769,7 @@ class PersistentTerminalProcess extends Disposable {
- 	get color(): string | undefined { return this._color; }
- 	get fixedDimensions(): IFixedTerminalDimensions | undefined { return this._fixedDimensions; }
- 	get hasChildProcesses(): boolean { return this._terminalProcess.hasChildProcesses; }
-+	get isDetaching(): boolean { return this._disconnectRunner1.isScheduled() || this._disconnectRunner2.isScheduled(); }
- 
- 	setTitle(title: string, titleSource: TitleEventSource): void {
- 		if (titleSource === TitleEventSource.Api) {
 --- a/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
 +++ b/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
 @@ -229,8 +229,8 @@ export class PtyHostService extends Disposable implements IPtyHostService {
@@ -148,6 +63,93 @@ The Composery automation API, server to menu.
  	}
  
  	async reviveTerminalProcesses(workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string) {
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -92,6 +92,18 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
+ 
+ type WorkspaceId = string;
+ 
++/**
++ * Workspace of a terminal created outside any editor window - the Composery
++ * API. It has no workspace to belong to, so it belongs to whichever window
++ * asks. Keep in sync with the API's own copy (routes/api/terminals.ts); a test
++ * pins the two together.
++ */
++export const API_TERMINAL_WORKSPACE_ID = 'composery-api-terminal';
++
++function isForWorkspace(process: PersistentTerminalProcess, workspaceId: string): boolean {
++	return process.workspaceId === workspaceId || process.workspaceId === API_TERMINAL_WORKSPACE_ID;
++}
++
+ let SerializeAddon: typeof XtermSerializeAddon;
+ let Unicode11Addon: typeof XtermUnicode11Addon;
+ 
+@@ -228,7 +240,7 @@ export class PtyService extends Disposable implements IPtyService {
+ 	}
+ 
+ 	@traceRpc
+-	async serializeTerminalState(ids: number[]): Promise<string> {
++	async serializeTerminalState(ids: number[], checkOrphan: boolean = true): Promise<string> {
+ 		const promises: Promise<ISerializedTerminalState>[] = [];
+ 		for (const [persistentProcessId, persistentProcess] of this._ptys.entries()) {
+ 			// Only serialize persistent processes that have had data written or performed a replay
+@@ -237,7 +249,7 @@ export class PtyService extends Disposable implements IPtyService {
+ 					r({
+ 						id: persistentProcessId,
+ 						shellLaunchConfig: persistentProcess.shellLaunchConfig,
+-						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess),
++						processDetails: await this._buildProcessDetails(persistentProcessId, persistentProcess, false, checkOrphan),
+ 						processLaunchConfig: persistentProcess.processLaunchOptions,
+ 						unicodeVersion: persistentProcess.unicodeVersion,
+ 						replayEvent: await persistentProcess.serializeNormalBuffer(),
+@@ -413,13 +425,13 @@ export class PtyService extends Disposable implements IPtyService {
+ 	}
+ 
+ 	@traceRpc
+-	async listProcesses(): Promise<IProcessDetails[]> {
++	async listProcesses(includeAttached: boolean = false): Promise<IProcessDetails[]> {
+ 		const persistentProcesses = Array.from(this._ptys.entries()).filter(([_, pty]) => pty.shouldPersistTerminal);
+ 
+ 		this._logService.info(`Listing ${persistentProcesses.length} persistent terminals, ${this._ptys.size} total terminals`);
+-		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData));
++		const promises = persistentProcesses.map(async ([id, terminalProcessData]) => this._buildProcessDetails(id, terminalProcessData, false, !includeAttached));
+ 		const allTerminals = await Promise.all(promises);
+-		return allTerminals.filter(entry => entry.isOrphan);
++		return includeAttached ? allTerminals : allTerminals.filter(entry => entry.isOrphan);
+ 	}
+ 
+ 	@traceRpc
+@@ -594,7 +606,12 @@ export class PtyService extends Disposable implements IPtyService {
+ 	// the window that made them.
+ 	private *_adoptableProcesses(workspaceId: string): Iterable<readonly [number, IMergeableTerminalProcess]> {
+ 		for (const [id, process] of this._ptys) {
+-			if (process.workspaceId === workspaceId && process.shouldPersistTerminal) {
++			// isDetaching skips a terminal the user detached on purpose. Without it
++			// the next layout request adopts it straight back and a client attaches,
++			// cancelling the disconnect - which silently undoes Detach Session. Only
++			// *adoption* is gated: a client's own terminals arrive in `layout` and are
++			// restored on reload either way.
++			if (isForWorkspace(process, workspaceId) && process.shouldPersistTerminal && !process.isDetaching) {
+ 				yield [id, process];
+ 			}
+ 		}
+@@ -624,7 +641,7 @@ export class PtyService extends Disposable implements IPtyService {
+ 			}
+ 			doneSet.add(persistentProcessId);
+ 			const persistentProcess = this._throwIfNoPty(persistentProcessId);
+-			if (persistentProcess.workspaceId !== workspaceId || !persistentProcess.shouldPersistTerminal) {
++			if (!isForWorkspace(persistentProcess, workspaceId) || !persistentProcess.shouldPersistTerminal) {
+ 				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
+ 			}
+ 			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
+@@ -746,6 +763,7 @@ class PersistentTerminalProcess extends Disposable {
+ 	get color(): string | undefined { return this._color; }
+ 	get fixedDimensions(): IFixedTerminalDimensions | undefined { return this._fixedDimensions; }
+ 	get hasChildProcesses(): boolean { return this._terminalProcess.hasChildProcesses; }
++	get isDetaching(): boolean { return this._disconnectRunner1.isScheduled() || this._disconnectRunner2.isScheduled(); }
+ 
+ 	setTitle(title: string, titleSource: TitleEventSource): void {
+ 		if (titleSource === TitleEventSource.Api) {
 --- a/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
 +++ b/lib/vscode/src/vs/server/node/remoteExtensionHostAgentServer.ts
 @@ -33,6 +33,7 @@ import { IProductService } from '../../platform/product/common/productService.js
@@ -188,7 +190,7 @@ The Composery automation API, server to menu.
  import { IGetTerminalLayoutInfoArgs, ISetTerminalLayoutInfoArgs } from '../../platform/terminal/common/terminalProcess.js';
  import { IWorkspaceFolder } from '../../platform/workspace/common/workspace.js';
  import { createURITransformer } from '../../base/common/uriTransformer.js';
-@@ -236,6 +237,22 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -119,6 +120,22 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  		private readonly _configurationService: IConfigurationService
  	) {
  		super();
@@ -211,7 +213,7 @@ The Composery automation API, server to menu.
  		this._register(this._ptyHostService.onProcessReplay(e => {
  			const target = this._startState.target(e.id);
  			if (target) {
-@@ -418,7 +435,12 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -301,7 +318,12 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  
  	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
  		return (listener, thisArgs, disposables) => {

@@ -40,4 +40,11 @@ export function optionalWebsiteUrl(path: string) {
 	return origin ? `${origin}${path}` : undefined;
 }
 
+// Where an alert sends the person reading it. Degrades to naming the page rather
+// than dropping the sentence, for the same reason as `optionalWebsiteUrl`: a
+// deployment missing its origin should lose the link, not the alert.
+export function staffConsoleUrl(path = "/console") {
+	return optionalWebsiteUrl(path) ?? `the staff console (${path})`;
+}
+
 export { normalizeDomain as normalizeDomainValue };

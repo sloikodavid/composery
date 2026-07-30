@@ -20,6 +20,11 @@ attachment cannot acknowledge bytes another already did. With nobody registered
 the pty drains freely - a terminal whose last reader disconnected keeps running,
 and the serializer still records the output for replay.
 
+Only what the pty itself has to arbitrate is here. The names being arbitrated
+between are the ones the server channel gives out, and which client holds a
+terminal, receives its output or owns its replay is that channel's own registry
+(terminal-sharing.diff).
+
 --- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
 +++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
 @@ -337,6 +337,10 @@ export interface IPtyService {

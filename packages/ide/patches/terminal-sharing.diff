@@ -1,4 +1,4 @@
-The terminal across clients.
+A terminal shared across clients.
 
 A terminal belongs to the box, not to the browser tab that opened it. Workspace
 identity is canonicalised from the folder path, so the same workspace reached
@@ -13,8 +13,15 @@ UI target for a terminal, the first client of a workspace for a reply the pty
 host accepts once, and every client of the workspace for a detach request, which
 names an instance only its own window holds.
 
+Each of those rules is an overlay module this patch calls, so it can be run by a
+test rather than only read off a diff: terminalWorkspaceId.ts is the identity,
+terminalLayoutMerge.ts the merge, terminalClientState.ts who holds a terminal and
+which of them a single-recipient event goes to, terminalStartState.ts which
+client a replay belongs to.
+
 Which client sizes the pty, and which clients' acknowledgements advance its flow
-control, are not here - the pty host arbitrates both per client (terminal-clients.diff).
+control, are not here - the pty host arbitrates both per client, through a
+registry of its own (terminal-clients.diff).
 
 --- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
 +++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
@@ -46,32 +53,15 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  export interface IProcessDetails {
 --- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
 +++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
-@@ -91,6 +91,24 @@ export function traceRpc(_target: Object, key: string, descriptor: PropertyDescr
+@@ -34,6 +34,7 @@ import pkg from '@xterm/headless';
+ import { AutoRepliesPtyServiceContribution } from './terminalContrib/autoReplies/autoRepliesContribController.js';
+ import { hasKey, isFunction, isNumber, isString } from '../../../base/common/types.js';
+ import { getWindowsBuildNumberAsync } from '../../../base/node/windowsVersion.js';
++import { IMergeableTerminalProcess, mergeTerminalLayouts } from './terminalLayoutMerge.js';
  
- type WorkspaceId = string;
- 
-+function mergeTerminalLayouts(workspaceId: string, layout: ISetTerminalLayoutInfoArgs | undefined, processes: Iterable<readonly [number, PersistentTerminalProcess]>): ISetTerminalLayoutInfoArgs | undefined {
-+	const tabs = layout?.tabs.map(tab => ({ ...tab, terminals: [...tab.terminals] })) ?? [];
-+	const background = [...(layout?.background ?? [])];
-+	const knownIds = new Set([...tabs.flatMap(tab => tab.terminals.map(terminal => terminal.terminal)), ...background]);
-+	for (const [id, process] of processes) {
-+		if (process.workspaceId !== workspaceId || !process.shouldPersistTerminal || knownIds.has(id)) {
-+			continue;
-+		}
-+		knownIds.add(id);
-+		if (process.shellLaunchConfig.hideFromUser) {
-+			background.push(id);
-+		} else {
-+			tabs.push({ isActive: false, activePersistentProcessId: id, terminals: [{ terminal: id, relativeSize: 1 }] });
-+		}
-+	}
-+	return !layout && tabs.length === 0 && background.length === 0 ? undefined : { workspaceId, tabs, background };
-+}
-+
- let SerializeAddon: typeof XtermSerializeAddon;
- let Unicode11Addon: typeof XtermUnicode11Addon;
- 
-@@ -568,7 +586,6 @@ export class PtyService extends Disposable implements IPtyService {
+ type XtermTerminal = pkg.Terminal;
+ const { Terminal: XtermTerminal } = pkg;
+@@ -568,7 +569,6 @@ export class PtyService extends Disposable implements IPtyService {
  		return undefined;
  	}
  
@@ -79,16 +69,34 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  	async setTerminalLayoutInfo(args: ISetTerminalLayoutInfoArgs): Promise<void> {
  		this._workspaceLayoutInfos.set(args.workspaceId, args);
  	}
-@@ -576,7 +593,7 @@ export class PtyService extends Disposable implements IPtyService {
+@@ -576,7 +576,7 @@ export class PtyService extends Disposable implements IPtyService {
  	@traceRpc
  	async getTerminalLayoutInfo(args: IGetTerminalLayoutInfoArgs): Promise<ITerminalsLayoutInfo | undefined> {
  		performance.mark('code/willGetTerminalLayoutInfo');
 -		const layout = this._workspaceLayoutInfos.get(args.workspaceId);
-+		const layout = mergeTerminalLayouts(args.workspaceId, args.layout ?? this._workspaceLayoutInfos.get(args.workspaceId), this._ptys);
++		const layout = mergeTerminalLayouts(args.workspaceId, args.layout ?? this._workspaceLayoutInfos.get(args.workspaceId), this._adoptableProcesses(args.workspaceId));
  		if (layout) {
  			const doneSet: Set<number> = new Set();
  			const expandedTabs = await Promise.all(layout.tabs.map(async tab => this._expandTerminalTab(args.workspaceId, tab, doneSet)));
-@@ -613,7 +630,10 @@ export class PtyService extends Disposable implements IPtyService {
+@@ -589,6 +589,17 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return undefined;
+ 	}
+ 
++	// Which of this host's terminals a client may be shown in its layout: the ones
++	// belonging to the workspace it asked about, and only those meant to outlive
++	// the window that made them.
++	private *_adoptableProcesses(workspaceId: string): Iterable<readonly [number, IMergeableTerminalProcess]> {
++		for (const [id, process] of this._ptys) {
++			if (process.workspaceId === workspaceId && process.shouldPersistTerminal) {
++				yield [id, process];
++			}
++		}
++	}
++
+ 	private async _expandTerminalTab(workspaceId: string, tab: ITerminalTabLayoutInfoById, doneSet: Set<number>): Promise<ITerminalTabLayoutInfoDto> {
+ 		const expandedTerminals = (await Promise.all(tab.terminals.map(t => this._expandTerminalInstance(workspaceId, t, doneSet))));
+ 		const filtered = expandedTerminals.filter(term => term.terminal !== null) as IRawTerminalInstanceLayoutInfo<IProcessDetails>[];
+@@ -613,7 +624,10 @@ export class PtyService extends Disposable implements IPtyService {
  			}
  			doneSet.add(persistentProcessId);
  			const persistentProcess = this._throwIfNoPty(persistentProcessId);
@@ -100,7 +108,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			return {
  				terminal: { ...processDetails, id: persistentProcessId },
  				relativeSize: hasLayout ? t.relativeSize : 0
-@@ -635,11 +655,11 @@ export class PtyService extends Disposable implements IPtyService {
+@@ -635,11 +649,11 @@ export class PtyService extends Disposable implements IPtyService {
  		return `${workspaceId}-${ptyId}`;
  	}
  
@@ -125,137 +133,17 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  import * as path from '../../base/common/path.js';
  import * as platform from '../../base/common/platform.js';
  import { URI } from '../../base/common/uri.js';
-@@ -31,8 +31,128 @@ import { IProductService } from '../../platform/product/common/productService.js
- import { IExtensionManagementService } from '../../platform/extensionManagement/common/extensionManagement.js';
- import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
+@@ -33,6 +33,9 @@ import { IConfigurationService } from '../../platform/configuration/common/confi
  import { ILogService } from '../../platform/log/common/log.js';
--import { promiseWithResolvers } from '../../base/common/async.js';
-+import { promiseWithResolvers, raceTimeout } from '../../base/common/async.js';
+ import { promiseWithResolvers } from '../../base/common/async.js';
  import { shouldUseEnvironmentVariableCollection } from '../../platform/terminal/common/terminalEnvironment.js';
 +import { hasKey } from '../../base/common/types.js';
-+
-+/**
-+ * Which clients hold a terminal, which of them are receiving its output, and
-+ * which one the single-recipient workbench events go to. Sizing and flow
-+ * control are not here: the pty host arbitrates those per client itself.
-+ */
-+export class TerminalClientState {
-+	private readonly _clients = new Map<number, Set<string>>();
-+	private readonly _uiTargets = new Map<number, string>();
-+	private readonly _streaming = new Map<number, Set<string>>();
-+
-+	attach(id: number, clientId: string, makeUiTarget: boolean, streaming: boolean = false): void {
-+		let clients = this._clients.get(id);
-+		if (!clients) {
-+			clients = new Set();
-+			this._clients.set(id, clients);
-+		}
-+		clients.add(clientId);
-+		if (makeUiTarget || !this._uiTargets.has(id)) {
-+			this._uiTargets.set(id, clientId);
-+		}
-+		if (streaming) {
-+			this.markStreaming(id, clientId);
-+		}
-+	}
-+
-+	detach(id: number, clientId: string): { attached: boolean; final: boolean } {
-+		const clients = this._clients.get(id);
-+		if (!clients?.delete(clientId)) {
-+			return { attached: false, final: false };
-+		}
-+		this._streaming.get(id)?.delete(clientId);
-+		if (!clients.size) {
-+			this.clear(id);
-+			return { attached: true, final: true };
-+		}
-+		if (this._uiTargets.get(id) === clientId) {
-+			this._uiTargets.set(id, clients.values().next().value as string);
-+		}
-+		return { attached: true, final: false };
-+	}
-+
-+	detachClient(clientId: string): { id: number; final: boolean }[] {
-+		const detached: { id: number; final: boolean }[] = [];
-+		for (const id of [...this._clients.keys()]) {
-+			if (this._clients.get(id)?.has(clientId)) {
-+				detached.push({ id, final: this.detach(id, clientId).final });
-+			}
-+		}
-+		return detached;
-+	}
-+
-+	isAttached(id: number, clientId: string): boolean { return this._clients.get(id)?.has(clientId) ?? false; }
-+	isUiTarget(id: number, clientId: string): boolean { return this._uiTargets.get(id) === clientId; }
-+	isStreaming(id: number, clientId: string): boolean { return this._streaming.get(id)?.has(clientId) ?? false; }
-+
-+	takeUiControl(id: number, clientId: string): void {
-+		if (this.isAttached(id, clientId)) {
-+			this._uiTargets.set(id, clientId);
-+		}
-+	}
-+
-+	markStreaming(id: number, clientId: string): void {
-+		if (!this.isAttached(id, clientId)) {
-+			return;
-+		}
-+		let streamingClients = this._streaming.get(id);
-+		if (!streamingClients) {
-+			streamingClients = new Set();
-+			this._streaming.set(id, streamingClients);
-+		}
-+		streamingClients.add(clientId);
-+	}
-+
-+	clear(id: number): void {
-+		this._clients.delete(id);
-+		this._uiTargets.delete(id);
-+		this._streaming.delete(id);
-+	}
-+}
-+
-+export class TerminalStartState {
-+	private readonly _queues = new Map<number, Promise<void>>();
-+	private readonly _targets = new Map<number, string>();
-+	private readonly _replayWaiters = new Map<number, ReturnType<typeof promiseWithResolvers<'replay' | 'exit'>>>();
-+
-+	target(id: number): string | undefined { return this._targets.get(id); }
-+	replay(id: number): void { this._replayWaiters.get(id)?.resolve('replay'); }
-+	exit(id: number): void { this._replayWaiters.get(id)?.resolve('exit'); }
-+
-+	async run<T>(id: number, clientId: string, expectReplay: (result: T) => boolean, start: () => Promise<T>): Promise<T> {
-+		const previous = this._queues.get(id);
-+		const completion = promiseWithResolvers<void>();
-+		this._queues.set(id, completion.promise);
-+		await previous;
-+		const replay = promiseWithResolvers<'replay' | 'exit'>();
-+		this._targets.set(id, clientId);
-+		this._replayWaiters.set(id, replay);
-+		try {
-+			const result = await start();
-+			if (expectReplay(result)) {
-+				const replayResult = await raceTimeout(replay.promise, 10_000);
-+				if (replayResult !== 'replay') {
-+					throw new Error(`Terminal "${id}" ${replayResult === 'exit' ? 'exited' : 'timed out'} before its replay completed`);
-+				}
-+			}
-+			return result;
-+		} finally {
-+			if (this._targets.get(id) === clientId) {
-+				this._targets.delete(id);
-+				this._replayWaiters.delete(id);
-+			}
-+			completion.resolve();
-+			if (this._queues.get(id) === completion.promise) {
-+				this._queues.delete(id);
-+			}
-+		}
-+	}
-+}
++import { TerminalClientState } from './terminalClientState.js';
++import { TerminalStartState } from './terminalStartState.js';
  
  class CustomVariableResolver extends AbstractVariableResolverService {
  	constructor(
-@@ -87,6 +207,15 @@ class CustomVariableResolver extends AbstractVariableResolverService {
+@@ -87,6 +90,15 @@ class CustomVariableResolver extends AbstractVariableResolverService {
  }
  
  export class RemoteTerminalChannel extends Disposable implements IServerChannel<RemoteAgentConnectionContext> {
@@ -271,7 +159,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  
  	private _lastReqId = 0;
  	private readonly _pendingCommands = new Map<number, {
-@@ -107,6 +236,28 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -107,6 +119,28 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  		private readonly _configurationService: IConfigurationService
  	) {
  		super();
@@ -300,7 +188,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  	}
  
  	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-@@ -116,10 +267,26 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -116,10 +150,26 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  
  			case RemoteTerminalChannelRequest.CreateProcess: {
  				const uriTransformer = createURITransformer(ctx.remoteAuthority);
@@ -330,7 +218,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  
  			case RemoteTerminalChannelRequest.ListProcesses: return this._ptyHostService.listProcesses.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.GetLatency: return this._ptyHostService.getLatency.apply(this._ptyHostService, args);
-@@ -127,8 +294,31 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -127,8 +177,31 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  			case RemoteTerminalChannelRequest.OrphanQuestionReply: return this._ptyHostService.orphanQuestionReply.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables: return this._ptyHostService.acceptPtyHostResolvedVariables.apply(this._ptyHostService, args);
  
@@ -364,7 +252,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			case RemoteTerminalChannelRequest.SendSignal: return this._ptyHostService.sendSignal.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: return this._ptyHostService.acknowledgeDataEvent.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.Shutdown: return this._ptyHostService.shutdown.apply(this._ptyHostService, args);
-@@ -146,8 +336,40 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -146,8 +219,40 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  			case RemoteTerminalChannelRequest.GetProfiles: return this._getProfiles.apply(this, args);
  			case RemoteTerminalChannelRequest.GetEnvironment: return this._getEnvironment();
  			case RemoteTerminalChannelRequest.GetWslPath: return this._getWslPath(args[0], args[1]);
@@ -407,7 +295,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			case RemoteTerminalChannelRequest.SerializeTerminalState: return this._ptyHostService.serializeTerminalState.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.ReviveTerminalProcesses: return this._ptyHostService.reviveTerminalProcesses.apply(this._ptyHostService, args);
  			case RemoteTerminalChannelRequest.GetRevivedPtyNewId: return this._ptyHostService.getRevivedPtyNewId.apply(this._ptyHostService, args);
-@@ -168,27 +390,94 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+@@ -168,27 +273,94 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
  		throw new Error(`IPC Command ${command} not found`);
  	}
  
@@ -523,6 +411,17 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  
  	// Files
  	const fileService = disposables.add(new FileService(logService));
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
+@@ -85,7 +85,7 @@ export abstract class BaseTerminalBackend extends Disposable {
+ 		}));
+ 		this._register(this._ptyHostController.onPtyHostRequestResolveVariables(async e => {
+ 			// Only answer requests for this workspace
+-			if (e.workspaceId !== this._workspaceContextService.getWorkspace().id) {
++			if (e.workspaceId !== this._getWorkspaceId()) {
+ 				return;
+ 			}
+ 			const activeWorkspaceRootUri = historyService.getLastActiveWorkspaceRoot(Schemas.file);
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
 @@ -23,7 +23,7 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
@@ -683,11 +582,12 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			lastInstance.then(() => mark(`code/terminal/didRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`));
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
-@@ -4,12 +4,13 @@
+@@ -4,12 +4,14 @@
   *--------------------------------------------------------------------------------------------*/
  
  import { Event } from '../../../../../base/common/event.js';
 +import { hash } from '../../../../../base/common/hash.js';
++import { terminalWorkspaceId } from './terminalWorkspaceId.js';
  import { URI, UriComponents } from '../../../../../base/common/uri.js';
  import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
  import { IWorkbenchConfigurationService } from '../../../../services/configuration/common/configuration.js';
@@ -698,21 +598,18 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  import { serializeEnvironmentDescriptionMap, serializeEnvironmentVariableCollection } from '../../../../../platform/terminal/common/environmentVariableShared.js';
  import { IConfigurationResolverService } from '../../../../services/configurationResolver/common/configurationResolver.js';
  import { SideBySideEditor, EditorResourceAccessor } from '../../../../common/editor.js';
-@@ -55,6 +56,13 @@ export interface ICreateTerminalProcessArguments {
+@@ -55,6 +57,10 @@ export interface ICreateTerminalProcessArguments {
  	resolverEnv: { [key: string]: string | null } | undefined;
  }
  
 +export function getRemoteTerminalWorkspaceId(workspace: IWorkspace): string {
-+	const identity = workspace.configuration
-+		? { configuration: workspace.configuration.path }
-+		: { folders: workspace.folders.map(folder => folder.uri.path) };
-+	return `remote:${hash(JSON.stringify(identity)).toString(16)}`;
++	return terminalWorkspaceId(workspace, hash);
 +}
 +
  export interface ICreateTerminalProcessResult {
  	persistentTerminalId: number;
  	resolvedShellLaunchConfig: IShellLaunchConfigDto;
-@@ -100,6 +108,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -100,6 +106,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  	get onDidChangeProperty(): Event<{ id: number; property: IProcessProperty }> {
  		return this._channel.listen<{ id: number; property: IProcessProperty }>(RemoteTerminalChannelEvent.OnDidChangeProperty);
  	}
@@ -726,7 +623,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  
  	constructor(
  		private readonly _remoteAuthority: string,
-@@ -176,7 +191,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -176,7 +189,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  			resolvedVariables,
  			envVariableCollections,
  			shellLaunchConfig,
@@ -735,7 +632,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			workspaceName: this._labelService.getWorkspaceLabel(workspace),
  			workspaceFolders,
  			activeWorkspaceFolder,
-@@ -191,8 +206,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -191,8 +204,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  		return await this._channel.call<ICreateTerminalProcessResult>(RemoteTerminalChannelRequest.CreateProcess, args);
  	}
  
@@ -746,7 +643,7 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  	}
  	acceptDetachInstanceReply(requestId: number, persistentProcessId: number): Promise<void> {
  		return this._channel.call(RemoteTerminalChannelRequest.AcceptDetachInstanceReply, [requestId, persistentProcessId]);
-@@ -264,7 +279,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -264,7 +277,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
  		return this._channel.call(RemoteTerminalChannelRequest.GetDefaultSystemShell, [osOverride]);
  	}
  	getProfiles(profiles: unknown, defaultProfile: unknown, includeDetectedProfiles?: boolean): Promise<ITerminalProfile[]> {
@@ -755,7 +652,9 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  	}
  	acceptPtyHostResolvedVariables(requestId: number, resolved: string[]): Promise<void> {
  		return this._channel.call(RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables, [requestId, resolved]);
-@@ -281,7 +296,6 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -279,9 +292,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	}
+ 
  	setTerminalLayoutInfo(layout?: ITerminalsLayoutInfoById): Promise<void> {
 -		const workspace = this._workspaceContextService.getWorkspace();
  		const args: ISetTerminalLayoutInfoArgs = {
@@ -764,7 +663,9 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			tabs: layout ? layout.tabs : [],
  			background: layout ? layout.background : null
  		};
-@@ -307,13 +322,12 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+@@ -305,15 +317,14 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	}
+ 
  	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined> {
 -		const workspace = this._workspaceContextService.getWorkspace();
  		const args: IGetTerminalLayoutInfoArgs = {
@@ -818,14 +719,3 @@ control, are not here - the pty host arbitrates both per client (terminal-client
  			this._managementConnection = connection;
  		} finally {
  			this._initialConnectionMs = Date.now() - start;
---- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
-+++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
-@@ -85,7 +85,7 @@ export abstract class BaseTerminalBackend extends Disposable {
- 		}));
- 		this._register(this._ptyHostController.onPtyHostRequestResolveVariables(async e => {
- 			// Only answer requests for this workspace
--			if (e.workspaceId !== this._workspaceContextService.getWorkspace().id) {
-+			if (e.workspaceId !== this._getWorkspaceId()) {
- 				return;
- 			}
- 			const activeWorkspaceRootUri = historyService.getLastActiveWorkspaceRoot(Schemas.file);

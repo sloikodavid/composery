@@ -16,8 +16,8 @@ touch.diff
 local-media-preview.diff
 custom-editors.diff
 webkit-paste.diff
-clipboard.diff
-terminal.diff
+clipboard-bridges.diff
+terminal-sharing.diff
 api.diff
 terminal-clients.diff
 xterm-resize-scroll.diff

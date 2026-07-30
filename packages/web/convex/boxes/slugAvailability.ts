@@ -63,13 +63,19 @@ async function activeSlugOperation(ctx: ReadCtx, slug: string) {
 		.first();
 }
 
+// What already holds this slug that the caller is allowed to be. One shape for
+// both readers, because "is it free" and "insist it is free" must never disagree
+// about who is asking - a caller that could name the box it is renaming but not
+// the reservation it is resuming would refuse that caller their own slug.
+export type SlugHolder = {
+	boxId?: Id<"boxes">;
+	intentId?: Id<"box_checkout_intents">;
+};
+
 export async function isSlugAvailable(
 	ctx: ReadCtx,
 	slug: string,
-	ignore?: {
-		boxId?: Id<"boxes">;
-		intentId?: Id<"box_checkout_intents">;
-	}
+	ignore?: SlugHolder
 ): Promise<boolean> {
 	if (!isValidSlug(slug)) return false;
 	if (await activeBoxWithSlug(ctx, slug, ignore?.boxId)) return false;
@@ -81,14 +87,9 @@ export async function isSlugAvailable(
 export async function assertSlugAvailable(
 	ctx: ReadCtx,
 	slug: string,
-	ignoreBoxId?: Id<"boxes">,
-	ignoreIntentId?: Id<"box_checkout_intents">
+	ignore?: SlugHolder
 ) {
-	const available = await isSlugAvailable(ctx, slug, {
-		boxId: ignoreBoxId,
-		intentId: ignoreIntentId
-	});
-	if (!available) {
+	if (!(await isSlugAvailable(ctx, slug, ignore))) {
 		throw new ConvexError("Slug is unavailable.");
 	}
 }

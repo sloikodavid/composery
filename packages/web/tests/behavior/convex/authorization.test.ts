@@ -34,17 +34,15 @@ describe("identity to user record", () => {
 
 	test("gives a brand-new account no role but `user`", async () => {
 		const t = testConvex();
+		const as = t.withIdentity({
+			subject: "clerk_1",
+			email: "first@example.com"
+		});
 
-		const capabilities = await t
-			.withIdentity({ subject: "clerk_1", email: "first@example.com" })
-			.mutation(api.users.ensureCurrentUser, {})
-			.then(() =>
-				t
-					.withIdentity({ subject: "clerk_1", email: "first@example.com" })
-					.query(api.users.currentUserCapabilities, {})
-			);
+		const created = await as.mutation(api.users.ensureCurrentUser, {});
 
-		expect(capabilities).toEqual([]);
+		expect(created.role).toBe("user");
+		expect(await as.query(api.users.canAccessStaffConsole, {})).toBe(false);
 	});
 
 	test("reuses the existing row when the same identity calls again", async () => {
@@ -139,15 +137,15 @@ describe("suspension", () => {
 		).rejects.toThrow(/suspended/i);
 	});
 
-	test("reports no capabilities for a suspended admin", async () => {
+	test("shuts a suspended admin out of the console", async () => {
 		const t = testConvex();
 		const admin = await seedUser(t, { role: "admin", suspended: true });
 
-		expect(await admin.as.query(api.users.currentUserCapabilities, {})).toEqual(
-			[]
-		);
 		expect(await admin.as.query(api.users.canAccessStaffConsole, {})).toBe(
 			false
+		);
+		await expect(admin.as.query(api.staff.boxes.search, {})).rejects.toThrow(
+			/Staff access required/
 		);
 	});
 

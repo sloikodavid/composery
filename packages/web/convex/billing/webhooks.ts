@@ -1,7 +1,6 @@
 import type { PolarWebhookEvent } from "@convex-dev/polar";
 import type { HttpRouter } from "convex/server";
-import { components, internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { startBoxOperation } from "../boxes/operations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
@@ -25,66 +24,29 @@ type RouteCtx = {
 	runQuery: ActionCtx["runQuery"];
 	runMutation: ActionCtx["runMutation"];
 };
-type PolarSubscription = Extract<
-	PolarWebhookEvent,
-	{ type: "subscription.active" }
->["data"];
 type PolarOrder = Extract<PolarWebhookEvent, { type: "order.paid" }>["data"];
+type PolarRefundedOrder = Extract<
+	PolarWebhookEvent,
+	{ type: "order.refunded" }
+>["data"];
+type PolarClosedCheckout = Extract<
+	PolarWebhookEvent,
+	{ type: "checkout.expired" | "checkout.updated" }
+>["data"];
 
-function date(value: Date | null | undefined) {
-	return value ? value.toISOString() : null;
-}
+// Nothing here syncs a subscription into the Polar component's tables. Polar
+// fires `subscription.updated` alongside every state change - active, canceled,
+// revoked, uncanceled, past_due, paused - and `registerRoutes` persists that one
+// itself before any handler below runs. A second copy of that write here meant
+// a hand-maintained mirror of the component's field list, which is a mirror that
+// can only ever fall behind it.
 
-function subscriptionForComponent(subscription: PolarSubscription) {
-	return {
-		id: subscription.id,
-		customerId: subscription.customerId,
-		createdAt: subscription.createdAt.toISOString(),
-		modifiedAt: date(subscription.modifiedAt),
-		amount: subscription.amount,
-		currency: subscription.currency,
-		recurringInterval: subscription.recurringInterval,
-		status: subscription.status,
-		currentPeriodStart: subscription.currentPeriodStart.toISOString(),
-		currentPeriodEnd: date(subscription.currentPeriodEnd),
-		cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-		startedAt: date(subscription.startedAt),
-		endedAt: date(subscription.endedAt),
-		productId: subscription.productId,
-		priceId: subscription.prices?.[0]?.id,
-		checkoutId: subscription.checkoutId,
-		metadata: subscription.metadata ?? {},
-		customerCancellationReason: subscription.customerCancellationReason,
-		customerCancellationComment: subscription.customerCancellationComment,
-		discountId: subscription.discountId,
-		canceledAt: date(subscription.canceledAt),
-		endsAt: date(subscription.endsAt),
-		recurringIntervalCount: subscription.recurringIntervalCount,
-		trialStart: date(subscription.trialStart),
-		trialEnd: date(subscription.trialEnd),
-		seats: subscription.seats ?? null,
-		customFieldData: subscription.customFieldData
-	};
-}
-
-async function syncSubscription(
-	ctx: RouteCtx,
-	subscription: PolarSubscription
-) {
-	await ctx.runMutation(components.polar.lib.updateSubscription, {
-		subscription: subscriptionForComponent(subscription)
-	});
-}
-
-async function intentIdFromCheckoutMetadata(
+async function intentIdForOrder(
 	ctx: RouteCtx,
 	metadata: Record<string, unknown>,
 	checkoutId: string | null | undefined
 ) {
-	const metadataIntentId =
-		metadata[CHECKOUT_INTENT_METADATA_KEYS.intentId] ??
-		metadata.intentId ??
-		metadata.checkout_intent_id;
+	const metadataIntentId = metadata[CHECKOUT_INTENT_METADATA_KEYS.intentId];
 
 	if (typeof metadataIntentId === "string" && metadataIntentId) {
 		const intentId = await ctx.runQuery(
@@ -98,215 +60,234 @@ async function intentIdFromCheckoutMetadata(
 
 	return await ctx.runQuery(
 		internal.checkout.checkoutIntents.checkoutIntentIdByPolarCheckout,
-		{
-			checkoutId
-		}
+		{ checkoutId }
 	);
 }
 
-async function intentIdFromOrder(ctx: RouteCtx, order: PolarOrder) {
-	return await intentIdFromCheckoutMetadata(
+// A paid order this deployment will not turn into a box: money taken for
+// nothing. Every one of them ends the same way - tell a person, then give the
+// money back and stop the subscription - so it is written once and each caller
+// only says what went wrong.
+//
+// One `key` serves as both the alert's dedupe key and Polar's refund
+// idempotency key, so the refund in Polar and the alert in the console name the
+// same event. `reason: "other"` throughout: none of these is a service
+// disruption, they are orders that should not have completed.
+async function refuseOrder(
+	ctx: RouteCtx,
+	order: { id: string; subscriptionId: string },
+	refusal: { comment: string; key: string; subject: string; text: string }
+) {
+	await ctx.runMutation(internal.staff.alerts.raise, {
+		key: refusal.key,
+		severity: "critical",
+		subject: refusal.subject,
+		text: refusal.text
+	});
+	await revokeAndRefundPolarOrder({
+		comment: refusal.comment,
+		idempotencyKey: refusal.key,
+		orderId: order.id,
+		reason: "other",
+		subscriptionId: order.subscriptionId
+	});
+}
+
+// A completed first payment, turned into a box or refused outright. There is no
+// third outcome: every early return below either belongs to another event
+// entirely (a renewal) or hands the money back, because an `order.paid` this
+// code quietly ignores is a customer who has been charged and will never be
+// told why nothing arrived.
+export async function handlePaidOrder(ctx: RouteCtx, order: PolarOrder) {
+	// Renewals and mid-term changes bill an existing box. Only the order that
+	// opens a subscription creates one.
+	if (order.billingReason !== "subscription_create") return;
+
+	if (!order.subscription) {
+		await ctx.runMutation(internal.staff.alerts.raise, {
+			key: `paid-order-without-subscription:${order.id}`,
+			severity: "critical",
+			subject: "Paid Polar order opened no subscription",
+			text: `Polar order ${order.id} completed for customer ${order.customerId} with billing reason subscription_create but carries no subscription, so it can neither be fulfilled nor revoked automatically. Refund it in Polar by hand and review the product it was placed against.`
+		});
+		return;
+	}
+	const paid = { id: order.id, subscriptionId: order.subscription.id };
+
+	// What was paid for decides which machine gets provisioned, so the plan is
+	// read off the order's product rather than off the reservation that preceded
+	// it. A product this deployment does not sell means its `POLAR_BOX_*` ids are
+	// wrong or Polar's catalogue moved - either way nothing can be provisioned,
+	// and silence here would leave a paying customer with no box and no signal.
+	const sellable = boxSellableForProductId(order.productId);
+	if (!sellable) {
+		await refuseOrder(ctx, paid, {
+			comment: "Composery does not sell the product this order was placed for.",
+			key: `unsellable-product:${order.id}`,
+			subject: "Paid Polar order is for a product Composery does not sell",
+			text: `Polar order ${order.id} completed for customer ${order.customerId} against product ${order.productId}, which matches none of this deployment's POLAR_BOX_* product ids. Nothing was provisioned; the subscription is being revoked and the order refunded automatically. Check the product ids on this Convex deployment against the Polar catalogue.`
+		});
+		return;
+	}
+
+	const intentId = order.checkoutId
+		? await intentIdForOrder(ctx, order.metadata, order.checkoutId)
+		: null;
+	if (!intentId || !order.checkoutId) {
+		await refuseOrder(ctx, paid, {
+			comment:
+				"The paid order could not be linked to a Composery checkout intent.",
+			key: `unmatched-checkout:${order.id}`,
+			subject: "Paid Polar order is not linked to a checkout",
+			text: `Polar order ${order.id} completed for customer ${order.customerId} and subscription ${paid.subscriptionId}, but no Composery checkout intent matched checkout ${order.checkoutId ?? "(none)"}. Fulfillment did not start. The subscription is being revoked and the order refunded automatically. Review the order and webhook metadata in Polar.`
+		});
+		return;
+	}
+
+	if (order.customFieldData?.[TERMS_FIELD_SLUG] !== true) {
+		await refuseOrder(ctx, paid, {
+			comment: "Required supplier Terms acceptance was missing.",
+			key: `missing-terms:${order.id}`,
+			subject: "Paid Polar order is missing Terms acceptance",
+			text: `Polar order ${order.id} completed for checkout intent ${intentId}, but the required supplier Terms checkbox was not present. The subscription is being revoked and the order refunded automatically.`
+		});
+		return;
+	}
+
+	const recorded = await ctx.runMutation(
+		internal.checkout.checkoutIntents.recordInitialPaidOrder,
+		{
+			checkoutId: order.checkoutId,
+			customerId: order.customerId,
+			intentId,
+			orderId: order.id,
+			subscriptionId: paid.subscriptionId,
+			termsAcceptedAt: order.createdAt.getTime()
+		}
+	);
+	if (recorded !== "recorded" && recorded !== "already_fulfilled") {
+		await refuseOrder(ctx, paid, {
+			comment: `The paid order did not match its Composery checkout intent (${recorded}).`,
+			key: `checkout-intent-mismatch:${order.id}`,
+			subject: "Paid Polar order does not match its checkout intent",
+			text: `Polar order ${order.id} could not be recorded on checkout intent ${intentId} (${recorded}). Fulfillment did not start. The subscription is being revoked and the order refunded automatically.`
+		});
+		return;
+	}
+
+	const conversion = await ctx.runMutation(
+		internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
+		{
+			intentId,
+			plan: sellable.plan,
+			polarCustomerId: order.customerId,
+			polarOrderId: order.id,
+			polarSubscriptionId: paid.subscriptionId,
+			runtimeImage: requiredEnv("RUNTIME_IMAGE")
+		}
+	);
+	// The conversion raises its own alert before refusing, because only it knows
+	// which of capacity or the slug ran out.
+	if (conversion.unfulfilled) {
+		await revokeAndRefundPolarOrder(conversion.unfulfilled);
+	}
+}
+
+// A refund that leaves nothing refundable ends the sale. Polar refunds and
+// subscriptions are independent, so a full cumulative refund must not leave the
+// box running or able to renew - revoking is what then deletes it, through
+// `subscription.revoked`.
+export async function handleRefundedOrder(
+	ctx: RouteCtx,
+	order: PolarRefundedOrder
+) {
+	if (order.refundableAmount !== 0 || !order.subscriptionId) return;
+
+	const intentId = await intentIdForOrder(
 		ctx,
 		order.metadata,
 		order.checkoutId
 	);
+	const boxId = await ctx.runQuery(internal.boxes.queries.boxIdBySubscription, {
+		subscriptionId: order.subscriptionId
+	});
+	if (!intentId && !boxId) return;
+
+	if (intentId) {
+		await ctx.runMutation(
+			internal.checkout.checkoutIntents.releaseCheckoutIntent,
+			{
+				intentId,
+				polarCheckoutStatus: "refunded",
+				reason: "order_fully_refunded"
+			}
+		);
+	}
+
+	await revokePolarSubscription(order.subscriptionId);
 }
 
-function checkedCustomField(
-	customFieldData: Record<string, unknown> | undefined,
-	slug: string
-) {
-	return customFieldData?.[slug] === true;
-}
-
-async function startDeleteWorkflow(
+export async function handleRevokedSubscription(
 	ctx: RouteCtx,
-	boxId: Id<"boxes">,
 	subscriptionId: string
 ) {
+	const boxId = await ctx.runQuery(internal.boxes.queries.boxIdBySubscription, {
+		subscriptionId
+	});
+	if (!boxId) return;
+
 	await startBoxOperation(ctx, boxId, "delete", {
 		idempotencyKey: `delete:${subscriptionId}`,
 		trigger: "system:subscription_revoked"
 	});
 }
 
+// A checkout that ended without paying gives its slug and capacity back. Polar
+// reports it twice - the dedicated `checkout.expired` event and the terminal
+// status on `checkout.updated` - so both arrive here and the second is a no-op.
+const CHECKOUT_RELEASES = {
+	expired: { reason: "checkout_expired", status: "expired" },
+	failed: { reason: "checkout_failed", status: "released" }
+} as const;
+
+export async function handleClosedCheckout(
+	ctx: RouteCtx,
+	checkout: PolarClosedCheckout
+) {
+	const release =
+		CHECKOUT_RELEASES[checkout.status as keyof typeof CHECKOUT_RELEASES];
+	if (!release) return;
+
+	await ctx.runMutation(
+		internal.checkout.checkoutIntents.releaseCheckoutIntentByPolarCheckout,
+		{
+			checkoutId: checkout.id,
+			polarCheckoutStatus: checkout.status,
+			reason: release.reason,
+			status: release.status
+		}
+	);
+}
+
 export function registerPolarWebhookRoutes(http: HttpRouter) {
 	polarServer().registerRoutes(http, {
 		events: {
-			"subscription.active": async (ctx, event) => {
-				await syncSubscription(ctx, event.data);
-			},
 			"order.paid": async (ctx, event) => {
-				const order = event.data;
-				// What was paid for decides which machine gets provisioned, so the
-				// plan is read off the order's product rather than off the reservation
-				// that preceded it.
-				const sellable = boxSellableForProductId(order.productId);
-				if (!sellable) return;
-				if (
-					order.billingReason !== "subscription_create" ||
-					!order.subscription ||
-					!order.checkoutId
-				) {
-					return;
-				}
-				const intentId = await intentIdFromOrder(ctx, order);
-				if (!intentId) {
-					await ctx.runMutation(internal.staffAlerts.raise, {
-						key: `paid-order-without-intent:${order.id}`,
-						severity: "critical",
-						subject: "Paid Polar order is not linked to a checkout",
-						text: `Polar order ${order.id} completed for customer ${order.customerId} and subscription ${order.subscription.id}, but no Composery checkout intent matched checkout ${order.checkoutId}. Fulfillment did not start. Review the order and webhook metadata in Polar immediately.`
-					});
-					await revokeAndRefundPolarOrder({
-						comment:
-							"The paid order could not be linked to a Composery checkout intent.",
-						idempotencyKey: `unmatched-checkout:${order.id}`,
-						orderId: order.id,
-						reason: "other",
-						subscriptionId: order.subscription.id
-					});
-					return;
-				}
-				const termsAccepted = checkedCustomField(
-					order.customFieldData,
-					TERMS_FIELD_SLUG
-				);
-				if (!termsAccepted) {
-					await ctx.runMutation(internal.staffAlerts.raise, {
-						key: `paid-order-missing-terms:${order.id}`,
-						severity: "critical",
-						subject: "Paid Polar order is missing Terms acceptance",
-						text: `Polar order ${order.id} completed for checkout intent ${intentId}, but the required supplier Terms checkbox was not present. The subscription is being revoked and the order refunded automatically.`
-					});
-					await revokeAndRefundPolarOrder({
-						comment: "Required supplier Terms acceptance was missing.",
-						idempotencyKey: `invalid-checkout:${order.id}`,
-						orderId: order.id,
-						reason: "other",
-						subscriptionId: order.subscription.id
-					});
-					return;
-				}
-
-				const recorded = await ctx.runMutation(
-					internal.checkout.checkoutIntents.recordInitialPaidOrder,
-					{
-						checkoutId: order.checkoutId,
-						customerId: order.customerId,
-						intentId,
-						orderId: order.id,
-						subscriptionId: order.subscription.id,
-						termsAccepted,
-						termsAcceptedAt: order.createdAt.getTime()
-					}
-				);
-				if (
-					recorded === "missing" ||
-					recorded === "checkout_mismatch" ||
-					recorded === "order_mismatch"
-				) {
-					await ctx.runMutation(internal.staffAlerts.raise, {
-						key: `paid-order-intent-mismatch:${order.id}`,
-						severity: "critical",
-						subject: "Paid Polar order does not match its checkout intent",
-						text: `Polar order ${order.id} could not be recorded on checkout intent ${intentId} (${recorded}). Fulfillment did not start. The subscription is being revoked and the order refunded automatically.`
-					});
-					await revokeAndRefundPolarOrder({
-						comment: `The paid order did not match its Composery checkout intent (${recorded}).`,
-						idempotencyKey: `checkout-intent-mismatch:${order.id}`,
-						orderId: order.id,
-						reason: "other",
-						subscriptionId: order.subscription.id
-					});
-					return;
-				}
-
-				const conversion = await ctx.runMutation(
-					internal.checkout.checkoutConversion.convertCheckoutIntentToBox,
-					{
-						intentId,
-						plan: sellable.plan,
-						polarCustomerId: order.customerId,
-						polarOrderId: order.id,
-						polarSubscriptionId: order.subscription.id,
-						runtimeImage: requiredEnv("RUNTIME_IMAGE")
-					}
-				);
-				if (conversion.unfulfilled) {
-					await revokeAndRefundPolarOrder({
-						...conversion.unfulfilled
-					});
-				}
+				await handlePaidOrder(ctx, event.data);
 			},
 			"order.refunded": async (ctx, event) => {
-				const order = event.data;
-				if (order.refundableAmount !== 0 || !order.subscriptionId) {
-					return;
-				}
-
-				const intentId = await intentIdFromOrder(ctx, order);
-				const boxId = await ctx.runQuery(
-					internal.boxes.queries.boxIdBySubscription,
-					{ subscriptionId: order.subscriptionId }
-				);
-				if (!intentId && !boxId) return;
-				if (intentId) {
-					await ctx.runMutation(
-						internal.checkout.checkoutIntents.releaseCheckoutIntent,
-						{
-							intentId,
-							polarCheckoutStatus: "refunded",
-							reason: "order_fully_refunded"
-						}
-					);
-				}
-
-				// Polar refunds and subscriptions are independent. A full cumulative
-				// refund must not leave the box running or able to renew.
-				await revokePolarSubscription(order.subscriptionId);
+				await handleRefundedOrder(ctx, event.data);
 			},
 			"subscription.revoked": async (ctx, event) => {
-				await syncSubscription(ctx, event.data);
-
-				const boxId = await ctx.runQuery(
-					internal.boxes.queries.boxIdBySubscription,
-					{
-						subscriptionId: event.data.id
-					}
-				);
-				if (!boxId) return;
-
-				await startDeleteWorkflow(ctx, boxId, event.data.id);
+				await handleRevokedSubscription(ctx, event.data.id);
 			},
+			// `checkout.expired` carries a checkout whose status is already
+			// "expired", so both events reach the same handler unchanged.
 			"checkout.expired": async (ctx, event) => {
-				await ctx.runMutation(
-					internal.checkout.checkoutIntents
-						.releaseCheckoutIntentByPolarCheckout,
-					{
-						checkoutId: event.data.id,
-						polarCheckoutStatus: event.data.status,
-						reason: "checkout_expired"
-					}
-				);
+				await handleClosedCheckout(ctx, event.data);
 			},
 			"checkout.updated": async (ctx, event) => {
-				if (event.data.status !== "expired" && event.data.status !== "failed") {
-					return;
-				}
-
-				await ctx.runMutation(
-					internal.checkout.checkoutIntents
-						.releaseCheckoutIntentByPolarCheckout,
-					{
-						checkoutId: event.data.id,
-						polarCheckoutStatus: event.data.status,
-						reason:
-							event.data.status === "expired"
-								? "checkout_expired"
-								: "checkout_failed"
-					}
-				);
+				await handleClosedCheckout(ctx, event.data);
 			}
 		}
 	});

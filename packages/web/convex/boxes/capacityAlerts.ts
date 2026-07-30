@@ -1,6 +1,7 @@
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import { readGlobalSettings } from "../settings";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import {
 	readCapacityUsage,
 	type CapacityLimitBlockReason,
@@ -59,7 +60,7 @@ export async function reconcileCapacityAlert(ctx: MutationCtx) {
 			capacity_alert_started_at: startedAt
 		});
 		const label = capacityLabel(transition.reason);
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `capacity-exhausted:${transition.reason}:${startedAt}`,
 			severity: "critical",
 			subject: `New box ${label} capacity is exhausted`,
@@ -73,7 +74,7 @@ export async function reconcileCapacityAlert(ctx: MutationCtx) {
 		capacity_alert_reason: undefined,
 		capacity_alert_started_at: undefined
 	});
-	await sendStaffAlert(ctx, {
+	await raiseAlert(ctx, {
 		key: `capacity-recovered:${transition.reason}:${startedAt}`,
 		severity: "resolved",
 		subject: `New box ${capacityLabel(transition.reason)} capacity recovered`,

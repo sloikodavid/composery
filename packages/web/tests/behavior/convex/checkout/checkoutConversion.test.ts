@@ -7,6 +7,7 @@ import {
 	boxOperations,
 	seedSettings,
 	seedUser,
+	staffAlerts,
 	stubDeploymentEnv,
 	testConvex,
 	type Harness
@@ -158,21 +159,97 @@ describe("converting a paid checkout into a box", () => {
 		});
 	});
 
-	// A terminal release must never be resurrected by a late webhook.
-	test("refunds a checkout already released for a slug conflict", async () => {
+	// A terminal release must never be resurrected by a late webhook. Every
+	// reason answers the same way, with the refund key naming the reason itself
+	// so the row, the alert, and Polar's refund cannot be three different words
+	// for one event.
+	test.each(["slug_conflict", "capacity_unavailable", "account_deleted"])(
+		"refunds a checkout already released for %s",
+		async (release_reason) => {
+			const t = testConvex();
+			await seedSettings(t);
+			const owner = await seedUser(t);
+			const intentId = await seedIntent(t, owner.clerkUserId, {
+				release_reason,
+				status: "released"
+			});
+
+			const result = await convert(t, intentId, "air");
+
+			expect(result.boxId).toBeNull();
+			expect(result.unfulfilled).toMatchObject({
+				idempotencyKey: `${release_reason}:${intentId}`,
+				orderId: "order_1",
+				subscriptionId: "sub_1"
+			});
+		}
+	);
+
+	// The one release that must not refund again: the money is already back, and
+	// asking Polar for a second refund is the failure this row prevents.
+	test("does not refund again for an order that was already refunded", async () => {
 		const t = testConvex();
 		await seedSettings(t);
 		const owner = await seedUser(t);
 		const intentId = await seedIntent(t, owner.clerkUserId, {
-			release_reason: "slug_conflict",
+			release_reason: "order_fully_refunded",
 			status: "released"
 		});
 
 		const result = await convert(t, intentId, "air");
 
-		expect(result.boxId).toBeNull();
-		expect(result.unfulfilled).toMatchObject({
-			idempotencyKey: `slug-conflict:${intentId}`
+		expect(result).toEqual({ boxId: null, unfulfilled: null });
+	});
+
+	// A release reason that is not one of ours is not a terminal outcome - a
+	// reservation superseded by the customer's next one still converts on
+	// payment. Read with Object.hasOwn, so "constructor" is not a reason either.
+	test.each(["superseded_by_new_reservation", "constructor", "toString"])(
+		"still fulfils a checkout released as %s",
+		async (release_reason) => {
+			const t = testConvex();
+			await seedSettings(t);
+			const owner = await seedUser(t);
+			const intentId = await seedIntent(t, owner.clerkUserId, {
+				release_reason,
+				status: "released"
+			});
+
+			const result = await convert(t, intentId, "air");
+
+			expect(result.unfulfilled).toBeNull();
+			expect(result.boxId).not.toBeNull();
+		}
+	);
+
+	// A late payment that finds the fleet full is refused, and the reservation it
+	// was holding stops counting - so the capacity alert has to be reconciled on
+	// the way out, exactly as the slug-conflict refusal does.
+	test("refuses and reports a late payment with no capacity left", async () => {
+		const t = testConvex();
+		await seedSettings(t, { hetzner_server_limit: 0 });
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId, {
+			status: "expired"
 		});
+
+		const result = await convert(t, intentId, "air");
+
+		expect(result.unfulfilled).toMatchObject({
+			idempotencyKey: `capacity_unavailable:${intentId}`
+		});
+		expect(
+			await t.run(async (ctx) => await ctx.db.get(intentId))
+		).toMatchObject({
+			release_reason: "capacity_unavailable",
+			status: "released"
+		});
+		// Both alerts: the refused sale, and the capacity reconciliation this
+		// refusal now runs on its way out - the reservation stopped holding a
+		// server, so the fleet's standing had to be re-asked.
+		expect((await staffAlerts(t)).map((alert) => alert.key).sort()).toEqual([
+			`capacity-exhausted:server_limit:${NOW}`,
+			`capacity_unavailable:${intentId}`
+		]);
 	});
 });

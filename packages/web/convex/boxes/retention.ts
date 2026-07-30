@@ -68,20 +68,13 @@ export function retainedOperationMetadata(
 // checkout link, which is a capability anyone holding it could act on and which
 // means nothing once the intent is converted, released, or expired.
 //
-// Every one of this function's six call sites patches a `box_checkout_intents`
-// row, so it may only name fields that table has. It used to also clear
-// `runtime_auth_hash`, which is a `boxes` and `box_auth_grants` field and has
-// never existed on an intent - and Convex validates a patch against the table's
-// own validator, so that one extra key made every single call throw
-// "Unexpected field `runtime_auth_hash`". That is every checkout release, every
-// expiry sweep, every account-deletion cleanup, and - worst - the conversion of
-// a paid order into a box.
-//
-// Nothing caught it because nothing executed it: the checkout suite tested only
-// the pure helpers around these mutations, never the mutations themselves. The
-// conversion tests in `tests/behavior/convex/checkout/checkoutConversion.test.ts`
-// are what now run it, and they fail if a field is added here that the intents
-// table does not have.
+// Every call site patches a `box_checkout_intents` row, so this may only name
+// fields that table has - Convex validates a patch against the table's own
+// validator, so one field belonging to `boxes` here throws on every checkout
+// release, every expiry sweep, and the conversion of a paid order into a box.
+// The behaviour tests under `tests/behavior/convex/checkout/` and
+// `tests/behavior/convex/billing/` run those mutations, so a wrong field fails
+// them rather than shipping.
 export function terminalCheckoutSecretPatch() {
 	return {
 		polar_checkout_url: undefined

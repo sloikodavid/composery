@@ -33,8 +33,8 @@ rm -rf "$BUILD"; cp -r "$PACKAGE_ROOT/upstream" "$BUILD"
 echo "== 3. add our VS Code-side patches to code-server's series (upstream's own apply unmodified) =="
 # Ours land in a subdirectory of upstream's patch namespace, never beside their
 # files: flat names collided the moment one of ours matched one of theirs
-# (clipboard.diff), and the cp silently replaced their patch with ours before
-# quilt aborted on the duplicate series entry. A directory keeps our filenames
+# (ours was clipboard.diff then too), and the cp silently replaced their patch
+# with ours before quilt aborted on the duplicate entry. A directory keeps ours
 # ours and makes the collision unrepresentable rather than merely unlikely.
 mkdir -p "$BUILD/patches/composery"
 while read -r p; do

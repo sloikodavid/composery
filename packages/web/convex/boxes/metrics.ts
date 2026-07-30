@@ -12,7 +12,8 @@ import {
 	type BoxStatus
 } from "../schema";
 import { readGlobalSettings } from "../settings";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import { consoleBoxPath } from "../../lib/box-route";
 import {
 	crossedValue,
@@ -320,7 +321,7 @@ export const recordSample = internalMutation({
 				suspendReason = `Automatic suspension: ${message}`;
 			}
 
-			await sendStaffAlert(ctx, {
+			await raiseAlert(ctx, {
 				key: `box-flag:${flagId}`,
 				severity: autoSuspend ? "critical" : "warning",
 				subject: `Box ${box.slug} flagged: ${threshold.label}`,

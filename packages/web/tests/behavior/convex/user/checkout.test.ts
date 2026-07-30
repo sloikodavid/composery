@@ -114,6 +114,72 @@ describe("opening a checkout", () => {
 		expect(createCheckoutSession).not.toHaveBeenCalled();
 	});
 
+	// The reservation is the customer's own, so it can never read as "taken" to
+	// them. A row left behind by an action that died between reserving and
+	// attaching is invisible to every "do I have a live checkout" question, and
+	// used to make the owner's next attempt fail on their own slug until the
+	// grace expired - with the availability query still calling it available.
+	test("resumes a reservation whose Polar session was never attached", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const user = await seedUser(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert("box_checkout_intents", {
+				user_id: user.clerkUserId,
+				slug: "my-box",
+				plan: "air",
+				status: "active",
+				created_at: NOW - 1000,
+				updated_at: NOW - 1000
+			});
+		});
+
+		const result = await user.as.action(api.user.checkout.createCheckout, {
+			billingInterval: "month",
+			plan: "air",
+			slug: "my-box"
+		});
+
+		expect(result).toMatchObject({
+			checkoutUrl: "https://polar.test/checkout_1"
+		});
+		const intents = await t.run(
+			async (ctx) => await ctx.db.query("box_checkout_intents").collect()
+		);
+		expect(intents).toHaveLength(1);
+		expect(intents[0]).toMatchObject({
+			status: "active",
+			polar_checkout_id: "checkout_1"
+		});
+	});
+
+	// The same reservation, reopened from the other pricing card. The row's plan
+	// has to follow, because it is what capacity admission reserved against.
+	test("moves an existing reservation onto the plan being reopened", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const user = await seedUser(t);
+
+		await user.as.action(api.user.checkout.createCheckout, {
+			billingInterval: "month",
+			plan: "air",
+			slug: "my-box"
+		});
+		await user.as.action(api.user.checkout.createCheckout, {
+			billingInterval: "year",
+			plan: "pro",
+			slug: "my-box"
+		});
+
+		const intents = await t.run(
+			async (ctx) => await ctx.db.query("box_checkout_intents").collect()
+		);
+		expect(intents).toHaveLength(1);
+		expect(intents[0]).toMatchObject({ plan: "pro", status: "active" });
+		// One Polar session, repointed rather than replaced.
+		expect(createCheckoutSession).toHaveBeenCalledTimes(1);
+	});
+
 	// A reservation that could not be paired with a Polar session must not keep
 	// holding the slug and a capacity slot for an hour.
 	test("releases the reservation when Polar cannot open a session", async () => {
@@ -137,5 +203,87 @@ describe("opening a checkout", () => {
 			status: "released",
 			release_reason: "polar_checkout_creation_failed"
 		});
+	});
+});
+
+// The page a customer lands on coming back from Polar reads this, and it is the
+// only thing that can tell them a completed payment was handed back.
+describe("reporting a finished checkout to its customer", () => {
+	async function outcomeFor(
+		t: ReturnType<typeof testConvex>,
+		user: Awaited<ReturnType<typeof seedUser>>,
+		intent: Record<string, unknown>
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert("box_checkout_intents", {
+				user_id: user.clerkUserId,
+				slug: "my-box",
+				plan: "air",
+				status: "active",
+				polar_checkout_id: "checkout_1",
+				created_at: NOW - 1000,
+				updated_at: NOW - 1000,
+				...intent
+			});
+		});
+		return await user.as.query(api.user.checkout.completedCheckout, {
+			checkoutId: "checkout_1"
+		});
+	}
+
+	test("reports a checkout still being paid as pending", async () => {
+		const t = testConvex();
+		const user = await seedUser(t);
+
+		expect(await outcomeFor(t, user, {})).toMatchObject({
+			boxId: null,
+			outcome: "pending"
+		});
+	});
+
+	// Paid - Polar gave us the order id - and released without a box. The
+	// customer's money is on its way back and nothing else on the page says so.
+	test("reports a paid checkout that fulfillment refused as refunded", async () => {
+		const t = testConvex();
+		const user = await seedUser(t);
+
+		expect(
+			await outcomeFor(t, user, {
+				polar_initial_order_id: "order_1",
+				release_reason: "slug_conflict",
+				status: "released"
+			})
+		).toMatchObject({ boxId: null, outcome: "refunded" });
+	});
+
+	// An unpaid reservation that simply lapsed took no money, so it is not a
+	// refund and must not be announced as one.
+	test("reports an unpaid reservation that lapsed as pending", async () => {
+		const t = testConvex();
+		const user = await seedUser(t);
+
+		expect(
+			await outcomeFor(t, user, {
+				release_reason: "checkout_expired",
+				status: "expired"
+			})
+		).toMatchObject({ outcome: "pending" });
+	});
+
+	// One customer's checkout is not another's to read.
+	test("tells a different user nothing about it", async () => {
+		const t = testConvex();
+		const user = await seedUser(t);
+		await outcomeFor(t, user, {});
+		const other = await seedUser(t, {
+			clerkUserId: "other",
+			email: "other@example.com"
+		});
+
+		expect(
+			await other.as.query(api.user.checkout.completedCheckout, {
+				checkoutId: "checkout_1"
+			})
+		).toBeNull();
 	});
 });

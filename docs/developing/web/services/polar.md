@@ -62,9 +62,11 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    products have different IDs.
 
    All four must be set. Selling fails closed on a missing one (`requiredEnv`),
-   while the hourly reconciliation reads them tolerantly and reports a
-   subscription it cannot recognise as a critical staff alert rather than
-   aborting the sweep.
+   while the hourly reconciliation reads them tolerantly and raises a staff
+   warning per box whose subscription it cannot recognise, rather than aborting
+   the sweep or passing over it. A paid order against an unrecognised product is
+   the same fault caught earlier and costs a customer money, so that one is a
+   critical alert and an automatic revoke and refund.
 
 4. Create one organization custom field (Settings -> Custom Fields), attach it
    to **all four Box products**, and make it a **required checkbox** on each:
@@ -121,10 +123,16 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    matching deployment's `<CONVEX_SITE_URL>/polar/events` (the Site URL from the
    [Convex](./convex.md) step). Copy the signing secret ->
    `POLAR_WEBHOOK_SECRET`. Enable:
-   - App logic: `order.paid`, `order.refunded`, `subscription.active`,
-     `subscription.revoked`, `checkout.updated`, `checkout.expired`.
+   - App logic: `order.paid`, `order.refunded`, `subscription.revoked`,
+     `checkout.updated`, `checkout.expired`.
    - Component sync: `product.created`, `product.updated`, `subscription.created`,
      `subscription.updated`.
+
+   Nothing else. `subscription.updated` is Polar's catch-all, fired alongside
+   every state change including `active` and `revoked`, and the Polar component
+   persists it for us - so the granular twins are events no handler reads, and
+   an enabled event nothing handles reads as coverage this deployment does not
+   have.
 
 9. Copy the organization **slug** (Settings -> Organization, the handle shown in
    your dashboard URL) -> `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`, and set
@@ -155,16 +163,16 @@ Polar treats refunds and subscriptions as separate operations. Refunding a
 subscription order does not end the subscription, and revoking a subscription
 does not refund an order. Composery therefore applies these rules:
 
-| Event                                                                                   | Money                                                                                             | Subscription and box                                                                                                                     |
-| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Customer cancels in the Polar portal                                                    | No automatic refund                                                                               | `cancel_at_period_end` stays active through the paid period; the box is removed after the subscription ends.                             |
-| Staff or account deletion revokes immediately                                           | No automatic refund                                                                               | Access ends now; `subscription.revoked` starts box deletion. Refund separately only when agreed, required by law, or directed by Polar.  |
-| Partial order refund                                                                    | Polar returns that net amount and prorated tax; Polar fees remain charged to Composery            | Subscription and box remain active.                                                                                                      |
-| Full cumulative order refund                                                            | Polar returns the remaining refundable net amount and tax; Polar fees remain charged to Composery | `order.refunded` makes Composery revoke the subscription, which removes the box.                                                         |
-| Paid event arrives after its capacity reservation ended and no complete package remains | Full remaining refundable amount                                                                  | Composery records the order, revokes the subscription, and refunds without creating an unallocated box.                                  |
-| Paid Box order lacks Terms acceptance or a matching checkout intent                     | Full remaining refundable amount                                                                  | Composery alerts staff, revokes, and refunds without starting fulfillment.                                                               |
-| Initial box fulfillment fails after workflow retries                                    | Full remaining refundable amount                                                                  | Composery revokes first, refunds the paid order, and removes any server, DNS, IP, credentials, and snapshots created for the failed box. |
-| Snapshot capture fails                                                                  | No subscription refund                                                                            | Only the snapshot operation fails; the running box and subscription continue.                                                            |
+| Event                                                                                           | Money                                                                                             | Subscription and box                                                                                                                     |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Customer cancels in the Polar portal                                                            | No automatic refund                                                                               | `cancel_at_period_end` stays active through the paid period; the box is removed after the subscription ends.                             |
+| Staff or account deletion revokes immediately                                                   | No automatic refund                                                                               | Access ends now; `subscription.revoked` starts box deletion. Refund separately only when agreed, required by law, or directed by Polar.  |
+| Partial order refund                                                                            | Polar returns that net amount and prorated tax; Polar fees remain charged to Composery            | Subscription and box remain active.                                                                                                      |
+| Full cumulative order refund                                                                    | Polar returns the remaining refundable net amount and tax; Polar fees remain charged to Composery | `order.refunded` makes Composery revoke the subscription, which removes the box.                                                         |
+| Paid event arrives after its capacity reservation ended and no complete package remains         | Full remaining refundable amount                                                                  | Composery records the order, revokes the subscription, and refunds without creating an unallocated box.                                  |
+| Paid Box order lacks Terms acceptance, a matching checkout intent, or a product Composery sells | Full remaining refundable amount                                                                  | Composery alerts staff, revokes, and refunds without starting fulfillment.                                                               |
+| Initial box fulfillment fails after workflow retries                                            | Full remaining refundable amount                                                                  | Composery revokes first, refunds the paid order, and removes any server, DNS, IP, credentials, and snapshots created for the failed box. |
+| Snapshot capture fails                                                                          | No subscription refund                                                                            | Only the snapshot operation fails; the running box and subscription continue.                                                            |
 
 `order.paid` stores the exact first order id before provisioning starts. A later
 catalog price change cannot affect a fulfillment-failure refund: the code asks

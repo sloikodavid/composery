@@ -169,6 +169,17 @@ and have the healthiest tests in the repository.
 The target is not zero logic in patches; CSS-only, wiring-only and pin-only
 patches have nothing to move. The target is **no tested logic in patches**.
 
+Mechanically: a patch may not introduce a top-level declaration. That is blunt on
+purpose - it says nothing about logic inside an upstream class's methods, which is
+most of what the stack does and is genuinely call-site work, and it cannot be
+satisfied by writing the same function inside a method instead. Declarations that
+cannot be modules are allowed one at a time, each carrying the reason, in a list
+that may only shrink.
+
+> Enforced by `the patch stack introduces no top-level declaration of its own`,
+> `every allowance is still needed` and `the sweep can see the declarations it
+allows`.
+
 Until the migration finishes, `packages/ide/tests/behavior/` files that still
 extract from a diff are listed in `PATCH_READING_TESTS` in the enforcer suite.
 That list may only shrink. Adding to it fails the build.

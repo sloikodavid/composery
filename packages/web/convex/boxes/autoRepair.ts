@@ -7,7 +7,8 @@ import {
 	internalQuery
 } from "../_generated/server";
 import { consoleBoxPath } from "../../lib/box-route";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import {
 	isSystemTrigger,
 	type BoxStatus,
@@ -256,7 +257,7 @@ export const alertRepairsExhausted = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box) return;
 		const window = Math.floor(Date.now() / AUTO_REPAIR_WINDOW_MS);
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `auto-repair-exhausted:${args.boxId}:${window}`,
 			severity: "critical",
 			subject: `Box ${box.slug} is down and automatic repair has given up`,

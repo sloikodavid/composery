@@ -1,12 +1,14 @@
 Guard callback links that target loopback: in a remote workspace, a link whose
 callback/redirect parameter points at localhost completes on the wrong machine
-- the browser is not the host that owns the port. One concern, two halves:
+- the browser is not the host that owns the port. Which links those are is
+loopbackCallback.ts in the overlay, where the spellings it has to recognise
+(every name the parameter travels under, hash-queries, IPv4-mapped IPv6, up to
+two levels of nesting) can be run by a test instead of read off a diff. One
+concern, two halves:
 
-- trustedDomainsValidator: detect a loopback callback target in any query-like
-  position (query, hash-query, one level of nesting) and warn before opening,
-  offering Copy as the way to carry the link to the right machine. The check
-  runs before the trusted-workspace bypass: workspace trust says nothing about
-  where a redirect lands.
+- trustedDomainsValidator: warn before opening, offering Copy as the way to
+  carry the link to the right machine. The check runs before the trusted-
+  workspace bypass: workspace trust says nothing about where a redirect lands.
 - markdown preview: absolute http(s) links otherwise navigate inside the
   preview webview and bypass the workbench opener entirely; route them through
   the existing openLink message so the guard above sees them (and tolerate
@@ -59,134 +61,15 @@ callback/redirect parameter points at localhost completes on the wrong machine
  import { IOpenerService, OpenOptions } from '../../../../platform/opener/common/opener.js';
  import { IProductService } from '../../../../platform/product/common/productService.js';
  import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
-@@ -23,6 +25,126 @@ import { isURLDomainTrusted } from '../../../../platform/url/common/trustedDomai
+@@ -22,6 +24,7 @@ import { ITrustedDomainService } from './trustedDomainService.js';
+ import { isURLDomainTrusted } from '../../../../platform/url/common/trustedDomains.js';
  import { configureOpenerTrustedDomainsHandler, readStaticTrustedDomains } from './trustedDomains.js';
  import { IEditorService } from '../../../services/editor/common/editorService.js';
++import { findLoopbackCallbackTarget } from './loopbackCallback.js';
  
-+const loopbackCallbackParamNames = new Set([
-+	'callback',
-+	'callbackto',
-+	'callbackuri',
-+	'callbackurl',
-+	'continue',
-+	'continueto',
-+	'continueuri',
-+	'continueurl',
-+	'destination',
-+	'destinationuri',
-+	'destinationurl',
-+	'next',
-+	'nexturi',
-+	'nexturl',
-+	'postlogoutredirecturi',
-+	'postlogoutredirecturl',
-+	'redirect',
-+	'redirectto',
-+	'redirecturi',
-+	'redirecturl',
-+	'return',
-+	'returnto',
-+	'returnuri',
-+	'returnurl',
-+	'targetlinkuri',
-+]);
-+
-+function normalizeLoopbackCallbackParamName(name: string): string {
-+	return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-+}
-+
-+function parseHttpUrl(value: string | undefined): URL | undefined {
-+	if (typeof value !== 'string' || !value.trim()) {
-+		return undefined;
-+	}
-+
-+	try {
-+		const parsed = new URL(value);
-+		return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed : undefined;
-+	} catch {
-+		return undefined;
-+	}
-+}
-+
-+function isLoopbackHost(hostname: string): boolean {
-+	const normalized = hostname.trim().toLowerCase();
-+	return normalized === 'localhost'
-+		|| normalized === 'localhost.'
-+		|| normalized.endsWith('.localhost')
-+		|| normalized.endsWith('.localhost.')
-+		|| /^127(?:\.\d{1,3}){3}$/.test(normalized)
-+		|| normalized === '0.0.0.0'
-+		|| normalized === '::1'
-+		|| normalized === '[::1]'
-+		|| normalized === '::'
-+		|| normalized === '[::]'
-+		|| isIpv4MappedLoopbackHost(normalized);
-+}
-+
-+function isIpv4MappedLoopbackHost(normalized: string): boolean {
-+	const match = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/.exec(normalized);
-+	if (!match) {
-+		return false;
-+	}
-+
-+	const highBits = parseInt(match[1]!, 16);
-+	return highBits >= 0x7f00 && highBits <= 0x7fff;
-+}
-+
-+function getQueryLikeParams(url: URL): URLSearchParams[] {
-+	const params = [url.searchParams];
-+	const hash = url.hash.startsWith('#') ? url.hash.slice(1) : url.hash;
-+	if (!hash) {
-+		return params;
-+	}
-+
-+	const hashQueryIndex = hash.indexOf('?');
-+	if (hashQueryIndex >= 0 && hashQueryIndex < hash.length - 1) {
-+		params.push(new URLSearchParams(hash.slice(hashQueryIndex + 1)));
-+		return params;
-+	}
-+
-+	if (hash.includes('=')) {
-+		params.push(new URLSearchParams(hash));
-+	}
-+
-+	return params;
-+}
-+
-+function findLoopbackCallbackTarget(url: URL, depth = 0): URL | undefined {
-+	if (depth > 2) {
-+		return undefined;
-+	}
-+
-+	for (const params of getQueryLikeParams(url)) {
-+		for (const [key, value] of params) {
-+			if (!loopbackCallbackParamNames.has(normalizeLoopbackCallbackParamName(key))) {
-+				continue;
-+			}
-+
-+			const parsedValue = parseHttpUrl(value);
-+			if (!parsedValue) {
-+				continue;
-+			}
-+
-+			if (isLoopbackHost(parsedValue.hostname)) {
-+				return parsedValue;
-+			}
-+
-+			const nestedTarget = findLoopbackCallbackTarget(parsedValue, depth + 1);
-+			if (nestedTarget) {
-+				return nestedTarget;
-+			}
-+		}
-+	}
-+
-+	return undefined;
-+}
-+
  export class OpenerValidatorContributions implements IWorkbenchContribution {
  
- 	constructor(
-@@ -33,6 +155,7 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+@@ -33,6 +36,7 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
  		@IQuickInputService private readonly _quickInputService: IQuickInputService,
  		@IEditorService private readonly _editorService: IEditorService,
  		@IClipboardService private readonly _clipboardService: IClipboardService,
@@ -194,7 +77,7 @@ callback/redirect parameter points at localhost completes on the wrong machine
  		@ITelemetryService private readonly _telemetryService: ITelemetryService,
  		@IInstantiationService private readonly _instantiationService: IInstantiationService,
  		@IConfigurationService private readonly _configurationService: IConfigurationService,
-@@ -47,10 +170,6 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+@@ -47,10 +51,6 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
  			return true;
  		}
  
@@ -205,14 +88,11 @@ callback/redirect parameter points at localhost completes on the wrong machine
  		const originalResource = resource;
  		let resourceUri: URI;
  		if (typeof resource === 'string') {
-@@ -59,6 +178,21 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+@@ -59,6 +59,18 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
  			resourceUri = resource;
  		}
  
-+		const resourceUrl = parseHttpUrl(resourceUri.toString(true));
-+		const loopbackCallbackTarget = resourceUrl && !isLoopbackHost(resourceUrl.hostname)
-+			? findLoopbackCallbackTarget(resourceUrl)
-+			: undefined;
++		const loopbackCallbackTarget = findLoopbackCallbackTarget(resourceUri.toString(true));
 +		if (loopbackCallbackTarget) {
 +			return this.promptForLoopbackCallbackLink(
 +				typeof originalResource === 'string' ? originalResource : resourceUri.toString(true),
@@ -227,7 +107,7 @@ callback/redirect parameter points at localhost completes on the wrong machine
  		if (this._trustedDomainService.isValid(resourceUri)) {
  			return true;
  		} else {
-@@ -133,4 +267,43 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+@@ -133,4 +145,43 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
  			return result;
  		}
  	}

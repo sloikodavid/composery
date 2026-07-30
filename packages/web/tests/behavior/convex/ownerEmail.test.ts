@@ -350,7 +350,7 @@ describe("when an owner cannot be reached", () => {
 	])("a %s owner notice tells staff", async (type, severity, subject) => {
 		const t = testConvex();
 
-		await t.mutation(internal.staffAlerts.recordEmailEvent, {
+		await t.mutation(internal.staff.alerts.recordEmailEvent, {
 			id: "email_owner_1",
 			event: {
 				type,
@@ -382,7 +382,7 @@ describe("when an owner cannot be reached", () => {
 	test("a delivered owner notice tells staff nothing", async () => {
 		const t = testConvex();
 
-		await t.mutation(internal.staffAlerts.recordEmailEvent, {
+		await t.mutation(internal.staff.alerts.recordEmailEvent, {
 			id: "email_owner_2",
 			event: {
 				type: "email.delivered",

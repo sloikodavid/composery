@@ -294,16 +294,43 @@ describe("a subscription that no longer matches its box's plan", () => {
 		}
 	);
 
-	// A product this deployment does not sell is a catalogue or configuration
-	// problem, not a plan drift, and there is no plan to name in an alert about
-	// it - so this path stays out of the way rather than guessing.
-	test("stays quiet about a product it does not recognise", async () => {
+	// A product this deployment does not sell is worse than plan drift, not
+	// milder: it means nothing here can say what any customer is paying for, and
+	// the next sale against that product gets refunded. Staying quiet about it
+	// would look healthy for exactly as long as nobody checked.
+	test("reports a product it does not recognise", async () => {
 		const t = testConvex();
-		await boxOnPlan(t, "air", "prod_from_another_catalogue");
+		const boxId = await boxOnPlan(t, "air", "prod_from_another_catalogue");
 
 		await sweep(t);
 
-		expect(await staffAlerts(t)).toEqual([]);
+		expect(await boxOperations(t, boxId)).toEqual([]);
+		expect(await readBox(t, boxId)).toMatchObject({ plan: "air" });
+		expect(await staffAlerts(t)).toMatchObject([
+			{
+				severity: "warning",
+				subject: "Box subscription is on a product Composery does not sell"
+			}
+		]);
+	});
+
+	// The same failure seen through an unconfigured deployment: every product id
+	// is missing, so every subscription reads as unrecognised. It is reported per
+	// box and product, which is what lets one alert per box reach a person rather
+	// than one silent skip per box reach nobody.
+	test("reports a box whose product ids are not configured at all", async () => {
+		const t = testConvex();
+		vi.stubEnv("POLAR_BOX_AIR_MONTHLY_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_AIR_ANNUAL_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_PRO_MONTHLY_PRODUCT_ID", "");
+		vi.stubEnv("POLAR_BOX_PRO_ANNUAL_PRODUCT_ID", "");
+		await boxOnPlan(t, "air", "air-monthly");
+
+		await sweep(t);
+
+		expect(await staffAlerts(t)).toMatchObject([
+			{ subject: "Box subscription is on a product Composery does not sell" }
+		]);
 	});
 
 	// A comp has no subscription at all, so nothing can drift.

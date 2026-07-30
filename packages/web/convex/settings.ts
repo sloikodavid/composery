@@ -20,7 +20,8 @@ import {
 	snapshotPolicyToStored,
 	type SnapshotPolicy
 } from "./boxes/snapshotPolicy";
-import { sendStaffAlert, staffConsoleUrl } from "./staffAlerts";
+import { staffConsoleUrl } from "./env";
+import { raiseAlert } from "./staff/alerts";
 
 // Legit buyers rarely juggle more than a couple of pending purchases; the
 // default caps concurrent active checkout reservations so one account can't hog
@@ -75,6 +76,15 @@ function resolveMinimumRuntime(
 	};
 }
 
+// The audit stamp belongs to the actor, so it is written only when there is one.
+//
+// `db.patch` deletes a field it is given as `undefined`, so a write that simply
+// forwarded an absent actor did not leave the attribution alone - it erased it,
+// and reset `updated_at` to the moment of a machine write. The hourly release
+// refresh does exactly that kind of write, which left the console's record of
+// who last changed the settings permanently blank and never more than an hour
+// old. An actor is now either present, and stamped, or absent, and the last
+// staff edit is left standing.
 async function patchGlobalSettings(
 	ctx: { db: DatabaseWriter },
 	patch: {
@@ -98,26 +108,15 @@ async function patchGlobalSettings(
 	if (settings) {
 		await ctx.db.patch(settings._id, {
 			...patch,
-			updated_at: now,
-			updated_by: updatedBy
+			...(updatedBy ? { updated_at: now, updated_by: updatedBy } : {})
 		});
 		return;
 	}
 
 	await ctx.db.insert("settings", {
+		...patch,
 		key: "global",
 		checkout_enabled: patch.checkout_enabled ?? true,
-		hetzner_server_limit: patch.hetzner_server_limit,
-		hetzner_snapshot_limit: patch.hetzner_snapshot_limit,
-		auto_suspend_enabled: patch.auto_suspend_enabled,
-		max_active_checkout_intents_per_user:
-			patch.max_active_checkout_intents_per_user,
-		thresholds: patch.thresholds,
-		snapshot_policy: patch.snapshot_policy,
-		runtime_release: patch.runtime_release,
-		minimum_runtime_image: patch.minimum_runtime_image,
-		minimum_runtime_version: patch.minimum_runtime_version,
-		minimum_runtime_deadline: patch.minimum_runtime_deadline,
 		updated_at: now,
 		updated_by: updatedBy
 	});
@@ -126,7 +125,7 @@ async function patchGlobalSettings(
 export const setCheckoutEnabled = internalMutation({
 	args: {
 		checkoutEnabled: v.boolean(),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		const previous = await readGlobalSettings(ctx);
@@ -138,12 +137,11 @@ export const setCheckoutEnabled = internalMutation({
 		if (previous.checkoutEnabled === args.checkoutEnabled) return;
 
 		const state = args.checkoutEnabled ? "enabled" : "disabled";
-		const actor = args.updatedBy ?? "system";
-		await sendStaffAlert(ctx, {
-			key: `checkout-${state}:${Date.now()}:${actor}`,
+		await raiseAlert(ctx, {
+			key: `checkout-${state}:${Date.now()}:${args.updatedBy}`,
 			severity: args.checkoutEnabled ? "resolved" : "critical",
 			subject: `Checkout ${state}`,
-			text: `New box checkout was ${state} by ${actor}.\n\nReview capacity and checkout state: ${staffConsoleUrl()}`
+			text: `New box checkout was ${state} by ${args.updatedBy}.\n\nReview capacity and checkout state: ${staffConsoleUrl()}`
 		});
 	}
 });
@@ -152,7 +150,7 @@ export const setHetznerLimits = internalMutation({
 	args: {
 		serverLimit: v.union(v.number(), v.null()),
 		snapshotLimit: v.union(v.number(), v.null()),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		const previous = await readGlobalSettings(ctx);
@@ -170,12 +168,11 @@ export const setHetznerLimits = internalMutation({
 		const configured = args.serverLimit !== null && args.snapshotLimit !== null;
 		if (!wasConfigured || configured) return;
 
-		const actor = args.updatedBy ?? "system";
-		await sendStaffAlert(ctx, {
-			key: `capacity-admission-disabled:${Date.now()}:${actor}`,
+		await raiseAlert(ctx, {
+			key: `capacity-admission-disabled:${Date.now()}:${args.updatedBy}`,
 			severity: "critical",
 			subject: "Capacity admission disabled",
-			text: `Hetzner server and snapshot allocations were removed by ${actor}. New checkout now fails closed until both are configured.\n\nReview the allocation: ${staffConsoleUrl()}`
+			text: `Hetzner server and snapshot allocations were removed by ${args.updatedBy}. New checkout now fails closed until both are configured.\n\nReview the allocation: ${staffConsoleUrl()}`
 		});
 	}
 });
@@ -183,7 +180,7 @@ export const setHetznerLimits = internalMutation({
 export const setAutoSuspendEnabled = internalMutation({
 	args: {
 		autoSuspendEnabled: v.boolean(),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		const previous = await readGlobalSettings(ctx);
@@ -195,12 +192,11 @@ export const setAutoSuspendEnabled = internalMutation({
 		if (previous.autoSuspendEnabled === args.autoSuspendEnabled) return;
 
 		const state = args.autoSuspendEnabled ? "enabled" : "disabled";
-		const actor = args.updatedBy ?? "system";
-		await sendStaffAlert(ctx, {
-			key: `auto-suspend-${state}:${Date.now()}:${actor}`,
+		await raiseAlert(ctx, {
+			key: `auto-suspend-${state}:${Date.now()}:${args.updatedBy}`,
 			severity: args.autoSuspendEnabled ? "warning" : "critical",
 			subject: `Automatic suspension ${state}`,
-			text: `Automatic abuse suspension was ${state} by ${actor}.\n\nReview the thresholds and current flags: ${staffConsoleUrl()}`
+			text: `Automatic abuse suspension was ${state} by ${args.updatedBy}.\n\nReview the thresholds and current flags: ${staffConsoleUrl()}`
 		});
 	}
 });
@@ -208,7 +204,7 @@ export const setAutoSuspendEnabled = internalMutation({
 export const setMaxActiveCheckoutIntentsPerUser = internalMutation({
 	args: {
 		max: v.number(),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		await patchGlobalSettings(
@@ -225,8 +221,8 @@ export const recordRuntimeRelease = internalMutation({
 		version: v.union(v.string(), v.null())
 	},
 	handler: async (ctx, args) => {
-		// Written by the schedule, not by a person, so it deliberately does not
-		// touch `updated_by` - a refresh is not a staff edit of the settings.
+		// Written by the schedule, not by a person, so it passes no actor and the
+		// audit stamp is left alone - a refresh is not a staff edit of the settings.
 		await patchGlobalSettings(ctx, {
 			runtime_release: {
 				image: args.image,
@@ -242,7 +238,7 @@ export const setMinimumRuntime = internalMutation({
 		deadline: v.optional(v.number()),
 		image: v.string(),
 		version: v.union(v.string(), v.null()),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		await patchGlobalSettings(
@@ -255,18 +251,17 @@ export const setMinimumRuntime = internalMutation({
 			args.updatedBy
 		);
 
-		const actor = args.updatedBy ?? "system";
 		const deadline = args.deadline
 			? new Date(args.deadline).toISOString()
 			: "no deadline";
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `minimum-runtime-set:${args.image}:${args.deadline ?? "none"}`,
 			severity: "warning",
 			subject: "Minimum runtime version raised",
 			// Raising the floor is what retires a compatibility path, so the alert
 			// names the obligation rather than just the value: until every box has
 			// crossed it, the control plane still has to read older boxes.
-			text: `${actor} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/boxes/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
+			text: `${args.updatedBy} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/boxes/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
 		});
 	}
 });
@@ -280,7 +275,7 @@ export const setThresholds = internalMutation({
 				sustainedSamples: v.number()
 			})
 		),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		const thresholds: ThresholdSetting[] = args.thresholds.map((t) => ({
@@ -303,7 +298,7 @@ export const setSnapshotPolicy = internalMutation({
 			manualRetentionDays: v.number(),
 			automaticRetentionDays: v.number()
 		}),
-		updatedBy: v.optional(v.string())
+		updatedBy: v.string()
 	},
 	handler: async (ctx, args) => {
 		const policy: SnapshotPolicy = args.policy;

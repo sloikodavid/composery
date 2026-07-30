@@ -53,7 +53,7 @@ describe("published image name", () => {
 		readRepoFile("packages/shared/index.ts")
 	)?.[1];
 
-	// Any GHCR reference of the shape owner/repo. Matching the pattern rather than
+	// Any ghcr reference of the shape owner/repo. Matching the pattern rather than
 	// the expected value is the point: a copy that names the wrong owner or a
 	// renamed repository is exactly the drift this catches, and asserting on the
 	// right string alone would simply not see it.

@@ -3,6 +3,7 @@ import { cloudConfig } from "../cloud";
 import { ensureOrigin, getCookieOptions, redirect } from "../http";
 import { setSessionCookie } from "../session";
 import { hash, sanitizeString } from "../util";
+import { authErrorMessage } from "./authErrors";
 import { renderAuthPage } from "./authPage";
 import { changeCloudPassword } from "./cloudAuth";
 import { loginRateLimit, loginSource } from "./loginRateLimit";
@@ -12,27 +13,6 @@ import {
 	isPasswordValid,
 	writeHashedPassword
 } from "./passwordConfig";
-
-const errorMessage = (error: unknown): string | undefined => {
-	switch (error) {
-		case "missing-current":
-			return "Enter your current password";
-		case "incorrect-current":
-			return "Current password is incorrect";
-		case "missing-new":
-			return "Enter a new password";
-		case "mismatch":
-			return "Passwords do not match";
-		case "rate-limit":
-			return "Too many attempts. Try again later.";
-		case "unavailable":
-			// True whether Composery could not be reached or refused the change
-			// (which is what an owner-supplied COMPOSERY_HASHED_PASSWORD does).
-			return "Composery did not record the change. Try again.";
-		default:
-			return undefined;
-	}
-};
 
 export const router = Router();
 
@@ -56,10 +36,7 @@ router.use(async (req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-	const error =
-		typeof req.query.error === "string"
-			? errorMessage(req.query.error)
-			: undefined;
+	const error = authErrorMessage("change-password", req.query.error);
 	res.send(
 		await renderAuthPage(req, {
 			page: "change-password",

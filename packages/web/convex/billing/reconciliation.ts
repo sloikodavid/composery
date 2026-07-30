@@ -57,6 +57,12 @@ async function reconcileBoxDeletion(
 // another, and neither has a safe automatic answer - resizing a live box is not
 // something this system does at all any more, and silently rebilling them is
 // worse. So it says so, once per box and product, and stops.
+//
+// A product that matches no plan at all is the same failure seen from further
+// away: this deployment can no longer say what any of its customers are paying
+// for, which is also what `order.paid` would hit on the next sale. It is
+// reported rather than skipped, because a sweep that stays quiet about it looks
+// healthy for exactly as long as nobody checks.
 async function reportPlanMismatch(
 	ctx: ActionCtx,
 	box: Doc<"boxes">,
@@ -64,9 +70,21 @@ async function reportPlanMismatch(
 ) {
 	if (!box.polar_subscription_id) return;
 	const sold = boxSellableForProductId(subscription.productId);
-	if (!sold || sold.plan === box.plan) return;
+	if (sold?.plan === box.plan) return;
 
-	await ctx.runMutation(internal.staffAlerts.raise, {
+	if (!sold) {
+		await ctx.runMutation(internal.staff.alerts.raise, {
+			key: `box-product-unrecognised:${box._id}:${subscription.productId}`,
+			severity: "warning",
+			subject: "Box subscription is on a product Composery does not sell",
+			text: `Box ${box.slug} runs as ${box.plan}, but its Polar subscription names product ${subscription.productId}, which matches none of this deployment's POLAR_BOX_* product ids.
+
+Nothing reconciles this, and the next paid checkout against that product would be refunded automatically. Check the product ids on this Convex deployment against the Polar catalogue.`
+		});
+		return;
+	}
+
+	await ctx.runMutation(internal.staff.alerts.raise, {
 		key: `box-plan-mismatch:${box._id}:${sold.plan}`,
 		severity: "warning",
 		subject: "Box subscription no longer matches its plan",
@@ -110,7 +128,7 @@ export const reconcileBoxSubscriptions = internalAction({
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const sixHourWindow = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
-			await ctx.runMutation(internal.staffAlerts.raise, {
+			await ctx.runMutation(internal.staff.alerts.raise, {
 				key: `subscription-reconciliation-failed:${sixHourWindow}`,
 				severity: "critical",
 				subject: "Polar subscription reconciliation failed",

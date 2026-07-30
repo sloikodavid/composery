@@ -9,7 +9,8 @@ import {
 	vServerType,
 	type BoxFailureStatus
 } from "../schema";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import { sendOwnerEmail } from "../ownerEmail";
 import { consoleBoxPath } from "../../lib/box-route";
 import { operationLabel } from "../../lib/operation-failure";
@@ -303,7 +304,7 @@ export async function recordOperationFailure(
 		// failure can leave it not serving - the same blast radius as a repair.
 		"update"
 	]).has(operationType);
-	await sendStaffAlert(ctx, {
+	await raiseAlert(ctx, {
 		key: `box-operation-failed:${input.operationId}`,
 		severity: critical ? "critical" : "warning",
 		subject: `Box ${box.slug}: ${operationType} failed`,
@@ -383,7 +384,7 @@ export const swapSlug = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
-		await assertSlugAvailable(ctx, args.newSlug, args.boxId);
+		await assertSlugAvailable(ctx, args.newSlug, { boxId: args.boxId });
 
 		const oldSlug = box.slug;
 		const timestamp = Date.now();

@@ -2,9 +2,10 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { boxPath } from "../lib/box-route";
 import { SUPPORT_EMAIL } from "../lib/links";
-import { optionalEnv, optionalWebsiteUrl } from "./env";
+import { optionalWebsiteUrl } from "./env";
 import { appendBoxEvent } from "./boxes/events";
-import { resendClient, sendStaffAlert } from "./staffAlerts";
+import { ownerSender, resendClient } from "./email";
+import { raiseAlert } from "./staff/alerts";
 import type { OperationTrigger } from "./schema";
 
 // What a box owner is told by email, and when.
@@ -149,13 +150,13 @@ export async function sendOwnerEmail(
 	notice: OwnerNotice
 ) {
 	try {
-		const from = optionalEnv("OWNER_EMAIL_FROM");
 		// Silent by configuration, and it says so where someone looks: an owner
 		// notice rides the same key and sender domain as the staff alerts whose
 		// delivery health `staff/alerts.ts` already reports to the console. A
 		// deployment that cannot mail its owners is a deployment already showing an
 		// unhealthy alert channel, so this needs no second inert-path signal.
-		if (!optionalEnv("RESEND_API_KEY") || !from) return;
+		const from = ownerSender();
+		if (!from) return;
 
 		const owner = await ctx.db
 			.query("users")
@@ -195,7 +196,7 @@ export async function sendOwnerEmail(
 		console.error("Failed to email a box owner", error);
 		try {
 			const window = Math.floor(Date.now() / OWNER_EMAIL_ALERT_WINDOW_MS);
-			await sendStaffAlert(ctx, {
+			await raiseAlert(ctx, {
 				key: `owner-email-failed:${window}`,
 				severity: "warning",
 				subject: "A box owner could not be emailed",

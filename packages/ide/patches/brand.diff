@@ -155,11 +155,11 @@ rule cannot express.
 -	background-position: center center;
 -	background-size: 16px;
 +	/* Composery: as a plain background-image the logo SVG self-colours from the BROWSER
-+	   scheme (prefers-color-scheme inside the SVG), which neither the active IDE theme nor
-+	   an app WebView reliably matches - a light theme in a dark browser got a near-white
-+	   logo on a white titlebar, and the mobile WebView an invisible one. Paint it as a mask
-+	   filled with the titlebar's own foreground so it always contrasts, under every theme,
-+	   scheme and surface. Sized up from upstream's 16px so the logo reads comfortably. */
++	   scheme (prefers-color-scheme inside the SVG), which the active IDE theme need not
++	   match - a light theme in a dark browser got a near-white logo on a white titlebar.
++	   Paint it as a mask filled with the titlebar's own foreground so it always contrasts,
++	   under every theme and scheme. Sized up from upstream's 16px so the logo reads
++	   comfortably. */
 +	background-color: var(--vscode-titleBar-activeForeground);
 +	-webkit-mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
 +	mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;

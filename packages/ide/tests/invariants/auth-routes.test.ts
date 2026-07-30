@@ -118,10 +118,9 @@ describe("register route", () => {
 		expect(envGuard).toBeGreaterThan(grantBypass);
 		// ...and inside the grant branch, before the handler can write.
 		expect(envGuard).toBeLessThan(register.indexOf('router.get("/"'));
-		// The login page has to be able to render the code this sends it.
-		expect(readRepoFile("packages/ide/patches/auth.diff")).toContain(
-			'+    case "env-managed":'
-		);
+		// That the login page can render the code this sends it is no longer a
+		// fact about this route: `every code that is sent can be rendered by the
+		// page it is sent to` proves it for every redirect in the tree.
 	});
 });
 

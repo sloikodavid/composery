@@ -36,8 +36,16 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 	userId: "composery_clerk_user_id"
 } as const;
 
-// runbook: Unpaid checkout reservation
-export const CHECKOUT_RESERVATION_TTL_MS = 60 * 60 * 1000;
+// How long a reservation holds its slug and capacity before a Polar checkout is
+// attached to it.
+//
+// Only the crash window: `createCheckout` releases the reservation itself when
+// Polar refuses, so this is the floor under the action dying between reserving
+// and attaching. Once a checkout exists, the reservation runs to that checkout's
+// expiry - Polar sets it and its API offers no way to choose it, so this is not
+// the reservation's lifetime and must not be documented as one.
+// runbook: Unattached checkout reservation
+export const CHECKOUT_ATTACH_GRACE_MS = 60 * 60 * 1000;
 
 export function paidOrderRecordingStatus(
 	intent: Pick<
@@ -89,8 +97,10 @@ export function reservationsToRelease(activeCount: number, cap: number) {
 }
 
 // Every terminal transition of an unpaid intent looks the same: stop holding the
-// slug and capacity, keep why, and schedule the purge.
-async function releaseIntentDoc(
+// slug and capacity, keep why, and schedule the purge. Exported because account
+// deletion ends reservations too, and a second hand-written copy of this patch
+// is how one of them ends up keeping a slug or missing a purge date.
+export async function releaseIntentDoc(
 	ctx: MutationCtx,
 	intent: Doc<"box_checkout_intents">,
 	release: {
@@ -111,6 +121,18 @@ async function releaseIntentDoc(
 	});
 }
 
+// Reserve this user's slug, or hand back the reservation they already hold for
+// it.
+//
+// One mutation for both, because the caller cannot tell them apart without
+// racing: a reservation whose Polar session was never attached - the action died
+// between reserving and attaching - is invisible to any "do I have a live
+// checkout" question, and reserving again then reports the user's own slug as
+// unavailable and locks them out of it until the grace expires. Resuming here
+// makes that unrepresentable rather than guarded against.
+//
+// `checkout` is the Polar session to send them back to, or null when this
+// reservation still needs one.
 export const reserveCheckoutIntent = internalMutation({
 	args: {
 		plan: vBoxPlan,
@@ -118,7 +140,47 @@ export const reserveCheckoutIntent = internalMutation({
 		userId: v.string()
 	},
 	handler: async (ctx, args) => {
-		await assertSlugAvailable(ctx, args.slug);
+		const held = await ctx.db
+			.query("box_checkout_intents")
+			.withIndex("user_id_slug_status", (query) =>
+				query
+					.eq("user_id", args.userId)
+					.eq("slug", args.slug)
+					.eq("status", "active")
+			)
+			.first();
+		// The caller's own reservation is the one thing that must not read as
+		// taken - they are the person it is being held for.
+		await assertSlugAvailable(ctx, args.slug, { intentId: held?._id });
+
+		if (held) {
+			// A reservation is held per slug, not per plan, so a visitor who reopens
+			// checkout from the other card resumes this one. The plan on the row has
+			// to follow, because it is what capacity admission reserved the snapshot
+			// package against - leaving it behind would hold an Air-sized reservation
+			// for a Pro sale. Capacity itself is not re-asked: this reservation
+			// already holds a server and its snapshot slots, and refusing a visitor
+			// their own open checkout because the fleet filled up since would abandon
+			// a commitment already made.
+			if (held.plan !== args.plan) {
+				await ctx.db.patch(held._id, {
+					plan: args.plan,
+					updated_at: Date.now()
+				});
+				await reconcileCapacityAlert(ctx);
+			}
+			return {
+				checkout:
+					held.polar_checkout_id && held.polar_checkout_url
+						? {
+								checkoutId: held.polar_checkout_id,
+								checkoutUrl: held.polar_checkout_url
+							}
+						: null,
+				intentId: held._id
+			};
+		}
+
 		const settings = await readGlobalSettings(ctx);
 		const capacity = await readCapacityUsage(ctx, settings);
 		if (!capacity.checkoutAvailable) {
@@ -134,8 +196,8 @@ export const reserveCheckoutIntent = internalMutation({
 		// limit on paid boxes, and reaching it does not block the sale. Nothing lets
 		// a user cancel a reservation, and an abandoned one is exactly what the cap
 		// exists to reclaim, so the oldest yields to the new one. Payment arriving
-		// late on a released intent still converts or refunds, as when the TTL sweep
-		// releases it.
+		// late on a released intent still converts or refunds, as when the expiry
+		// sweep releases it.
 		const cap = settings.maxActiveCheckoutIntentsPerUser;
 		const active = await ctx.db
 			.query("box_checkout_intents")
@@ -161,61 +223,12 @@ export const reserveCheckoutIntent = internalMutation({
 			slug: args.slug,
 			plan: args.plan,
 			status: "active",
-			polar_checkout_expires_at: timestamp + CHECKOUT_RESERVATION_TTL_MS,
+			polar_checkout_expires_at: timestamp + CHECKOUT_ATTACH_GRACE_MS,
 			created_at: timestamp,
 			updated_at: timestamp
 		});
 		await reconcileCapacityAlert(ctx);
-		return intentId;
-	}
-});
-
-export const activeCheckoutIntentForUserSlug = internalQuery({
-	args: {
-		slug: v.string(),
-		userId: v.string()
-	},
-	handler: async (ctx, args) => {
-		const intent = await ctx.db
-			.query("box_checkout_intents")
-			.withIndex("user_id_slug_status", (query) =>
-				query
-					.eq("user_id", args.userId)
-					.eq("slug", args.slug)
-					.eq("status", "active")
-			)
-			.first();
-
-		if (!intent?.polar_checkout_id || !intent.polar_checkout_url) return null;
-
-		return {
-			checkoutId: intent.polar_checkout_id,
-			intentId: intent._id,
-			checkoutUrl: intent.polar_checkout_url,
-			slug: intent.slug
-		};
-	}
-});
-
-// A reservation is held per slug, not per plan, so a visitor who reopens
-// checkout from the other card reuses it. The plan on the row has to follow,
-// because it is what capacity admission reserved the snapshot package against -
-// leaving it behind would hold an Air-sized reservation for a Pro sale.
-export const setCheckoutIntentPlan = internalMutation({
-	args: {
-		intentId: v.id("box_checkout_intents"),
-		plan: vBoxPlan
-	},
-	handler: async (ctx, args) => {
-		const intent = await ctx.db.get(args.intentId);
-		if (!intent || intent.status !== "active" || intent.plan === args.plan) {
-			return;
-		}
-		await ctx.db.patch(args.intentId, {
-			plan: args.plan,
-			updated_at: Date.now()
-		});
-		await reconcileCapacityAlert(ctx);
+		return { checkout: null, intentId };
 	}
 });
 
@@ -261,11 +274,16 @@ export const releaseCheckoutIntent = internalMutation({
 	}
 });
 
+// The same transition, reached from a Polar webhook that knows the checkout but
+// not the intent. The terminal status is stated by the caller rather than
+// inferred from `reason`: a free-form string deciding stored state means a
+// reworded reason silently changes what the row says happened.
 export const releaseCheckoutIntentByPolarCheckout = internalMutation({
 	args: {
 		checkoutId: v.string(),
 		polarCheckoutStatus: v.optional(v.string()),
-		reason: v.string()
+		reason: v.string(),
+		status: v.union(v.literal("expired"), v.literal("released"))
 	},
 	handler: async (ctx, args) => {
 		const intent = await ctx.db
@@ -280,7 +298,7 @@ export const releaseCheckoutIntentByPolarCheckout = internalMutation({
 		await releaseIntentDoc(ctx, intent, {
 			polarCheckoutStatus: args.polarCheckoutStatus,
 			reason: args.reason,
-			status: args.reason === "checkout_expired" ? "expired" : "released"
+			status: args.status
 		});
 		await reconcileCapacityAlert(ctx);
 
@@ -314,8 +332,9 @@ export const checkoutIntentIdFromString = internalQuery({
 });
 
 // Store the paid order before provisioning. It is the order refunded if the
-// initial service cannot be delivered, while the versioned checkbox is the
-// supplier-Terms acceptance evidence from Polar checkout.
+// initial service cannot be delivered, and `terms_accepted_at` dates the
+// supplier-Terms checkbox Polar checkout collected - the webhook refuses an
+// order without it before reaching here, so this only records when it happened.
 export const recordInitialPaidOrder = internalMutation({
 	args: {
 		checkoutId: v.string(),
@@ -323,7 +342,6 @@ export const recordInitialPaidOrder = internalMutation({
 		intentId: v.id("box_checkout_intents"),
 		orderId: v.string(),
 		subscriptionId: v.string(),
-		termsAccepted: v.boolean(),
 		termsAcceptedAt: v.number()
 	},
 	handler: async (ctx, args) => {
@@ -334,11 +352,6 @@ export const recordInitialPaidOrder = internalMutation({
 		if (!intent) return "missing" as const;
 		const recordingStatus = paidOrderRecordingStatus(intent, args);
 		if (recordingStatus !== "recorded") return recordingStatus;
-		if (!args.termsAccepted) {
-			throw new ConvexError(
-				"Paid Polar checkout is missing the required Terms field."
-			);
-		}
 		const timestamp = Date.now();
 		await ctx.db.patch(intent._id, {
 			polar_checkout_id: intent.polar_checkout_id ?? args.checkoutId,

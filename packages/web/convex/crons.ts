@@ -25,13 +25,14 @@ crons.interval(
 crons.interval(
 	"retry staff alerts",
 	{ minutes: 15 },
-	internal.staffAlerts.retryPending
+	internal.staff.alerts.retryPending
 );
 
-// Boxes follow their subscriptions: one that has ended is deleted, one that now
-// names a different plan is resized onto that plan's machine. The webhooks do
-// both sooner; this is the floor under a webhook that was missed, arrived out of
-// order, or found the box busy with something else.
+// Boxes follow their subscriptions: one that has ended is deleted, and one whose
+// product no longer names the plan it runs on is reported to staff - a box's
+// plan is fixed at purchase, so that drift has no automatic answer. The webhooks
+// delete sooner; this is the floor under a webhook that was missed, arrived out
+// of order, or found the box busy with something else.
 crons.hourly(
 	"subscription reconciliation",
 	{ minuteUTC: 11 },
@@ -105,7 +106,7 @@ crons.daily(
 crons.daily(
 	"purge expired staff alerts",
 	{ hourUTC: 4, minuteUTC: 43 },
-	internal.staffAlerts.purgeExpired,
+	internal.staff.alerts.purgeExpired,
 	{}
 );
 

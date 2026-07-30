@@ -27,15 +27,21 @@ and the current provider limits; the code does not require a paid tier.
 
 ## Delivery model
 
-**convex/staffAlerts.ts** inserts a deduplicated **staff_alerts** row before
+**convex/staff/alerts.ts** inserts a deduplicated **staff_alerts** row before
 trying email. The row records queue state, recipient count, Resend email ID,
 latest delivery event, and any error. Disabled, recipient-less, or failed queue
-attempts retry every 15 minutes. Rows remain for 180 days.
+attempts retry every 15 minutes. Rows remain for 180 days. **convex/email.ts**
+owns the Resend client and answers whether a given class of mail can be sent at
+all, so the alerts and the owner notices cannot disagree about it.
 
 The **/resend/events** Convex HTTP route verifies Resend's signed webhook and
 records **email.\*** delivery events. The staff console stays quiet when sending,
-recipients, and tracking are healthy; it shows a warning when configuration,
-queueing, bouncing, complaints, failure, or delivery delay needs attention.
+recipients, and tracking are healthy; it names the alerts that need attention
+when one is unqueued, bounced, complained about, failed, or delayed. An alert
+Resend has not reported on counts as unaccounted for only where
+**RESEND_WEBHOOK_SECRET** is set: without it no event can ever arrive, and the
+console reports that missing configuration itself rather than restating it once
+per alert.
 
 ## Alert policy
 

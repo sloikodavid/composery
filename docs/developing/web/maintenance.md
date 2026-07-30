@@ -138,7 +138,7 @@ define evidence retention, retry cadence, or background workload:
 
 | Behavior                           | Window                              |
 | ---------------------------------- | ----------------------------------- |
-| Unpaid checkout reservation        | 1 hour                              |
+| Unattached checkout reservation    | 1 hour                              |
 | Consecutive failures before repair | 3 probes (~30 minutes)              |
 | Automatic repair quiet window      | 2 hours after a person acts         |
 | Automatic repairs per box          | 2 per 24 hours                      |

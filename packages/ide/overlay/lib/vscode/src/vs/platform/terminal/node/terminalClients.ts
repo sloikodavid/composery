@@ -13,6 +13,13 @@ interface ITerminalClient {
 	activation: number;
 }
 
+/**
+ * The clients of one pty, as far as the pty is concerned: which of them the
+ * single size belongs to, and which of their acknowledgements advance the single
+ * flow-control counter. Who holds the terminal and which client an event belongs
+ * to is not decided here - that is the server channel's TerminalClientState,
+ * which is also where these names come from.
+ */
 export class TerminalClients {
 	private readonly _dataFlowControl: TerminalDataFlowControl;
 	private readonly _clients = new Map<string, ITerminalClient>();

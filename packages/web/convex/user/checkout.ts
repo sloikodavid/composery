@@ -23,7 +23,12 @@ type CheckoutResult = {
 	slug: string;
 };
 
-type ActiveCheckoutResult = CheckoutResult & { checkoutId: string };
+// What `reserveCheckoutIntent` hands back. Named here because an action calling
+// its own deployment's mutation has no inferred return type to lean on.
+type Reservation = {
+	checkout: { checkoutId: string; checkoutUrl: string } | null;
+	intentId: Id<"box_checkout_intents">;
+};
 
 export const slugAvailability = query({
 	args: {
@@ -64,8 +69,27 @@ export const slugAvailability = query({
 	}
 });
 
+// Where the customer landing back from Polar is sent, and what to tell them if
+// they are not being sent anywhere.
+//
+// "refunded" is the case worth having a name for: they paid, and fulfillment
+// refused the sale - no capacity, the slug taken, Terms missing - so the
+// subscription was revoked and the order refunded. Without it they would arrive
+// at an empty box list after a successful payment and be told nothing at all,
+// which is the same silence the webhook side no longer allows itself.
 export const completedCheckout = query({
 	args: { checkoutId: v.string() },
+	returns: v.union(
+		v.null(),
+		v.object({
+			boxId: v.union(v.id("boxes"), v.null()),
+			outcome: v.union(
+				v.literal("pending"),
+				v.literal("provisioned"),
+				v.literal("refunded")
+			)
+		})
+	),
 	handler: async (ctx, args) => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity) return null;
@@ -76,7 +100,19 @@ export const completedCheckout = query({
 			)
 			.first();
 		if (!intent || intent.user_id !== identity.subject) return null;
-		return { boxId: intent.box_id ?? null, status: intent.status };
+
+		if (intent.box_id) {
+			return { boxId: intent.box_id, outcome: "provisioned" as const };
+		}
+		// Paid, because Polar told us the order id, and still without a box. A
+		// reservation that simply lapsed unpaid has no order on it and is only
+		// "pending" - the customer may still be finishing checkout in the other tab.
+		const refunded =
+			Boolean(intent.polar_initial_order_id) && intent.status !== "active";
+		return {
+			boxId: null,
+			outcome: refunded ? ("refunded" as const) : ("pending" as const)
+		};
 	}
 });
 
@@ -121,48 +157,34 @@ export const createCheckout = action({
 			throw new ConvexError("Slug is unavailable.");
 		}
 
-		const activeCheckout: ActiveCheckoutResult | null = await ctx.runQuery(
-			internal.checkout.checkoutIntents.activeCheckoutIntentForUserSlug,
+		// Reserving and resuming are one answer, so this action never has to decide
+		// which of the two it is in - see `reserveCheckoutIntent`.
+		const reserved: Reservation = await ctx.runMutation(
+			internal.checkout.checkoutIntents.reserveCheckoutIntent,
 			{
+				plan: args.plan,
 				userId: identity.subject,
 				slug
 			}
 		);
 
-		if (activeCheckout) {
-			// The reservation is per slug, not per plan, so a visitor who reopened
-			// checkout on the other card gets the same reservation with the other
-			// plan's product selected, and the row's own plan follows above. The box
-			// is then born on whichever plan the order was actually paid against.
-			await ctx.runMutation(
-				internal.checkout.checkoutIntents.setCheckoutIntentPlan,
-				{ intentId: activeCheckout.intentId, plan: args.plan }
-			);
+		if (reserved.checkout) {
+			// A visitor who reopened checkout on the other card gets the same
+			// reservation with the other plan's product selected, and the row's own
+			// plan followed above. The box is then born on whichever plan the order
+			// was actually paid against.
 			await selectPolarCheckoutProduct(
-				activeCheckout.checkoutId,
+				reserved.checkout.checkoutId,
 				boxProductId({ billingInterval: args.billingInterval, plan: args.plan })
 			);
 			return {
-				checkoutUrl: activeCheckout.checkoutUrl,
-				intentId: activeCheckout.intentId,
-				slug: activeCheckout.slug
+				checkoutUrl: reserved.checkout.checkoutUrl,
+				intentId: reserved.intentId,
+				slug
 			};
 		}
 
-		let intentId: Id<"box_checkout_intents"> | undefined;
-
 		try {
-			const reservedIntentId: Id<"box_checkout_intents"> =
-				await ctx.runMutation(
-					internal.checkout.checkoutIntents.reserveCheckoutIntent,
-					{
-						plan: args.plan,
-						userId: identity.subject,
-						slug
-					}
-				);
-			intentId = reservedIntentId;
-
 			const origin = websiteOrigin();
 			const checkout = await polarServer().createCheckoutSession(ctx, {
 				userId: identity.subject,
@@ -182,7 +204,7 @@ export const createCheckout = action({
 					[CHECKOUT_INTENT_METADATA_KEYS.selectedBillingInterval]:
 						args.billingInterval,
 					[CHECKOUT_INTENT_METADATA_KEYS.selectedPlan]: args.plan,
-					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reservedIntentId,
+					[CHECKOUT_INTENT_METADATA_KEYS.intentId]: reserved.intentId,
 					[CHECKOUT_INTENT_METADATA_KEYS.slug]: slug,
 					[CHECKOUT_INTENT_METADATA_KEYS.userId]: identity.subject
 				}
@@ -191,7 +213,7 @@ export const createCheckout = action({
 			await ctx.runMutation(
 				internal.checkout.checkoutIntents.attachPolarCheckout,
 				{
-					intentId: reservedIntentId,
+					intentId: reserved.intentId,
 					checkoutId: checkout.id,
 					checkoutUrl: checkout.url,
 					checkoutStatus: checkout.status,
@@ -202,19 +224,19 @@ export const createCheckout = action({
 
 			return {
 				checkoutUrl: checkout.url,
-				intentId,
+				intentId: reserved.intentId,
 				slug
 			};
 		} catch (error) {
-			if (intentId) {
-				await ctx.runMutation(
-					internal.checkout.checkoutIntents.releaseCheckoutIntent,
-					{
-						intentId,
-						reason: "polar_checkout_creation_failed"
-					}
-				);
-			}
+			// Only a reservation this call made is given back. A resumed one belongs
+			// to a checkout that already exists and returned above.
+			await ctx.runMutation(
+				internal.checkout.checkoutIntents.releaseCheckoutIntent,
+				{
+					intentId: reserved.intentId,
+					reason: "polar_checkout_creation_failed"
+				}
+			);
 			throw error;
 		}
 	}

@@ -209,17 +209,38 @@ function polarEnvironment() {
 	return environment;
 }
 
-// Ends the subscription immediately. Idempotent: a subscription already gone
-// (404) or already revoked answers success, so retrying callers never block.
-export async function revokePolarSubscription(subscriptionId: string) {
-	const response = await fetch(
-		`${POLAR_API_HOSTS[polarEnvironment()]}/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
-		{
-			method: "DELETE",
-			headers: {
-				Authorization: `Bearer ${requiredEnv("POLAR_ORGANIZATION_TOKEN")}`
-			}
+// The calls the component does not make for us: refunds, order reads, immediate
+// revocation, and repointing a live checkout at another product. One authorized
+// request builder, so the host and the token are chosen in a single place and a
+// caller can only get them both or neither.
+function polarRequest(path: string, init: RequestInit = {}) {
+	return fetch(`${POLAR_API_HOSTS[polarEnvironment()]}${path}`, {
+		...init,
+		headers: {
+			Authorization: `Bearer ${requiredEnv("POLAR_ORGANIZATION_TOKEN")}`,
+			...init.headers
 		}
+	});
+}
+
+async function polarApi(path: string, init: RequestInit = {}) {
+	const response = await polarRequest(path, init);
+	if (response.ok) return response;
+
+	const body = await response.text().catch(() => "");
+	throw new Error(
+		`Polar API ${init.method ?? "GET"} ${path} failed: ${response.status} ${body}`
+	);
+}
+
+// Ends the subscription immediately. Idempotent: a subscription already gone
+// (404) or already revoked answers success, so retrying callers never block -
+// which is why this one reads the response itself instead of going through
+// `polarApi`.
+export async function revokePolarSubscription(subscriptionId: string) {
+	const response = await polarRequest(
+		`/v1/subscriptions/${encodeURIComponent(subscriptionId)}`,
+		{ method: "DELETE" }
 	);
 
 	if (response.ok || response.status === 404) return;
@@ -229,26 +250,6 @@ export async function revokePolarSubscription(subscriptionId: string) {
 
 	throw new Error(
 		`Polar subscription revoke failed for ${subscriptionId}: ${response.status} ${body}`
-	);
-}
-
-function polarApiUrl(path: string) {
-	return `${POLAR_API_HOSTS[polarEnvironment()]}${path}`;
-}
-
-async function polarApi(path: string, init: RequestInit = {}) {
-	const response = await fetch(polarApiUrl(path), {
-		...init,
-		headers: {
-			Authorization: `Bearer ${requiredEnv("POLAR_ORGANIZATION_TOKEN")}`,
-			...init.headers
-		}
-	});
-	if (response.ok) return response;
-
-	const body = await response.text().catch(() => "");
-	throw new Error(
-		`Polar API ${init.method ?? "GET"} ${path} failed: ${response.status} ${body}`
 	);
 }
 
@@ -364,15 +365,6 @@ export const revokeAndRefundOrder = internalAction({
 	},
 	handler: async (_ctx, args) => {
 		await revokeAndRefundPolarOrder(args);
-	}
-});
-
-export const revokeSubscription = internalAction({
-	args: {
-		subscriptionId: v.string()
-	},
-	handler: async (_ctx, args) => {
-		await revokePolarSubscription(args.subscriptionId);
 	}
 });
 

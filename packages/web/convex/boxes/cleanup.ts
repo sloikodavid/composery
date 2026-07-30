@@ -7,7 +7,8 @@ import {
 	internalQuery
 } from "../_generated/server";
 import { consoleBoxPath } from "../../lib/box-route";
-import { sendStaffAlert, staffConsoleUrl } from "../staffAlerts";
+import { staffConsoleUrl } from "../env";
+import { raiseAlert } from "../staff/alerts";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { startBoxOperation } from "./operations";
 import {
@@ -84,7 +85,7 @@ export const alertDeletionNeedsPerson = internalMutation({
 		if (!box || box.status !== "delete_failed") return;
 
 		const day = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-		await sendStaffAlert(ctx, {
+		await raiseAlert(ctx, {
 			key: `box-delete-needs-person:${box._id}:${day}`,
 			severity: "critical",
 			subject: `Box ${box.slug} has failed to delete ${args.failedDeletes} times`,

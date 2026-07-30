@@ -3,6 +3,7 @@ import { cloudConfig } from "../cloud";
 import { ensureOrigin, getCookieOptions, redirect } from "../http";
 import { setSessionCookie } from "../session";
 import { hash, sanitizeString } from "../util";
+import { authErrorMessage } from "./authErrors";
 import { renderAuthPage, returnPath } from "./authPage";
 import {
 	clearCloudSetupGrant,
@@ -14,21 +15,6 @@ import {
 	isEnvPasswordManaged,
 	writeHashedPassword
 } from "./passwordConfig";
-
-const errorMessage = (error: unknown): string | undefined => {
-	switch (error) {
-		case "missing":
-			return "Enter a password";
-		case "mismatch":
-			return "Passwords do not match";
-		case "configured":
-			return "Password was already configured. Sign in instead.";
-		case "unavailable":
-			return "Password setup is temporarily unavailable";
-		default:
-			return undefined;
-	}
-};
 
 export const router = Router();
 
@@ -58,10 +44,7 @@ router.use((req, res, next) => {
 });
 
 router.get("/", async (req, res) => {
-	const error =
-		typeof req.query.error === "string"
-			? errorMessage(req.query.error)
-			: undefined;
+	const error = authErrorMessage("register", req.query.error);
 	const title = hasPassword(req.args) ? "Change password" : "Create password";
 	res.send(
 		await renderAuthPage(req, {
@@ -91,10 +74,13 @@ router.post("/", ensureOrigin, async (req, res) => {
 		try {
 			await installCloudPassword(req, hashedPassword);
 		} catch {
+			// The grant is spent either way, so the owner has to start the cloud
+			// flow again - and the page that says so is the one the callback
+			// failure already uses. /authorize renders nothing, so an error code
+			// sent there is discarded and the owner is walked back around the
+			// loop with no idea anything went wrong.
 			clearCloudSetupGrant(req, res);
-			return redirect(req, res, "_composery/cloud/authorize", {
-				error: "unavailable"
-			});
+			return redirect(req, res, "_composery/cloud/error");
 		}
 	}
 	// The cloud setup grant authorizes overwriting an existing password (the

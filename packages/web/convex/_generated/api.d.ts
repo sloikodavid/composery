@@ -67,6 +67,7 @@ import type * as boxes_workflows_updateBox from "../boxes/workflows/updateBox.js
 import type * as checkout_checkoutConversion from "../checkout/checkoutConversion.js";
 import type * as checkout_checkoutIntents from "../checkout/checkoutIntents.js";
 import type * as crons from "../crons.js";
+import type * as email from "../email.js";
 import type * as env from "../env.js";
 import type * as http from "../http.js";
 import type * as ownerEmail from "../ownerEmail.js";
@@ -79,7 +80,6 @@ import type * as staff_metrics from "../staff/metrics.js";
 import type * as staff_settings from "../staff/settings.js";
 import type * as staff_stats from "../staff/stats.js";
 import type * as staff_users from "../staff/users.js";
-import type * as staffAlerts from "../staffAlerts.js";
 import type * as user_boxConfig from "../user/boxConfig.js";
 import type * as user_boxes from "../user/boxes.js";
 import type * as user_checkout from "../user/checkout.js";
@@ -151,6 +151,7 @@ declare const fullApi: ApiFromModules<{
   "checkout/checkoutConversion": typeof checkout_checkoutConversion;
   "checkout/checkoutIntents": typeof checkout_checkoutIntents;
   crons: typeof crons;
+  email: typeof email;
   env: typeof env;
   http: typeof http;
   ownerEmail: typeof ownerEmail;
@@ -163,7 +164,6 @@ declare const fullApi: ApiFromModules<{
   "staff/settings": typeof staff_settings;
   "staff/stats": typeof staff_stats;
   "staff/users": typeof staff_users;
-  staffAlerts: typeof staffAlerts;
   "user/boxConfig": typeof user_boxConfig;
   "user/boxes": typeof user_boxes;
   "user/checkout": typeof user_checkout;

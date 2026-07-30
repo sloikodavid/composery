@@ -30,10 +30,6 @@ export function roleHasCapability(role: UserRole, capability: UserCapability) {
 	);
 }
 
-export function capabilitiesForRole(role: UserRole): readonly UserCapability[] {
-	return ROLE_CAPABILITIES[role];
-}
-
 export function isInternalRole(role: UserRole) {
 	return role !== "user";
 }

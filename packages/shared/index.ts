@@ -184,7 +184,7 @@ export const SOCIAL = {
 export const WEBSITE_DOMAIN = "composery.io";
 export const WEBSITE_ORIGIN = "https://www.composery.io";
 
-// Published runtime image on GHCR. Infra files that can't import TS (Dockerfile,
+// Published runtime image on ghcr. Infra files that can't import TS (Dockerfile,
 // compose, templates/, .env.example.*) hardcode this same string - keep in sync.
 export const CONTAINER_IMAGE = "ghcr.io/sloikodavid/composery";
 
