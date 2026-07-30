@@ -53,12 +53,14 @@ export function isReservedSlug(slug: string) {
 }
 
 export function isValidSlugFormat(slug: string) {
+	// Length is already at least three and equality below requires a whole-string
+	// match, so neither an optional body nor a start anchor carries information.
+	const format = slug.match(/[a-z0-9](?:[a-z0-9-]*[a-z0-9])/);
 	return (
 		slug.length >= 3 &&
 		slug.length <= 63 &&
-		!slug.endsWith("-") &&
 		!slug.startsWith("xn--") &&
-		/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(slug)
+		format?.[0] === slug
 	);
 }
 

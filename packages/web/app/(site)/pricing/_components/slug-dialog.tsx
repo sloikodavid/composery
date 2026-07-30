@@ -75,17 +75,18 @@ export function SlugDialog({
 		slugFormatValid ? { slug: normalizedSlug } : "skip"
 	);
 	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
-	const slugAvailable = availability?.available ?? false;
+	const slugAvailable = availability?.available === true;
+	const slugResumable = availability?.resumable === true;
+	const checkoutAvailable = checkoutAvailability?.available === true;
 	const slugVisuallyInvalid = normalizedSlug.length > 0 && !slugFormatValid;
 	const slugTaken = slugFormatValid && availability != null && !slugAvailable;
 	const canCheckout =
 		!authenticationLoading &&
 		slugFormatValid &&
 		slugAvailable &&
-		(checkoutAvailability?.available === true ||
-			availability?.resumable === true);
+		(checkoutAvailable || slugResumable);
 	const checkoutUnavailable =
-		checkoutAvailability?.available === false && !availability?.resumable;
+		checkoutAvailability?.available === false && !slugResumable;
 	// A rejected slug already shows as a red field, so the only words here are for
 	// the one state that isn't about the slug at all: no capacity for new boxes.
 	const slugError = checkoutUnavailable

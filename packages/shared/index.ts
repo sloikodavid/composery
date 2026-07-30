@@ -21,11 +21,10 @@ export const LOGO_TEXT = "Composery";
 export const ICON_VIEWBOX = "0 0 20 20";
 export const ICON_WIDTH = 20;
 export const ICON_HEIGHT = 20;
-export const ICON_CROP_VIEWBOX = ICON_VIEWBOX;
 
 // Logos, icons and app chrome derive from the UI palette so they cannot drift
 // into a second greyscale or status palette.
-export const brandColors = {
+export const BRAND_COLORS = {
 	icon: {
 		light: theme.light.primary,
 		dark: theme.dark.primary,
@@ -51,8 +50,6 @@ export const brandColors = {
 	}
 } as const;
 
-// SCREAMING_CASE aliases: the app-facing name for the palette/theme.
-export const BRAND_COLORS = brandColors;
 export const BRAND_THEME = theme;
 export const BRAND_IDE_THEME = ideTheme;
 
@@ -91,26 +88,41 @@ const ICON_FIT = `translate(${ICON_FIT_SHIFT} ${ICON_FIT_SHIFT}) scale(${ICON_FI
 export function iconInner({
 	fill = "currentColor",
 	holesId = ICON_HOLES_ID
+}: {
+	fill?: string;
+	holesId?: string;
 } = {}) {
 	return `<g transform="${ICON_FIT}"><clipPath id="${holesId}"><path clip-rule="evenodd" d="${ICON_HOLES_PATH}"/></clipPath><path d="${ICON_PATH}" fill="${fill}" stroke="${fill}" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#${holesId})"/></g>`;
 }
 
 export function iconSvg({
-	color = brandColors.icon.light,
+	color = BRAND_COLORS.icon.light,
 	fill = "currentColor",
 	height = 256,
 	viewBox = ICON_VIEWBOX,
 	width = 256
+}: {
+	color?: string;
+	fill?: string;
+	height?: number;
+	viewBox?: string;
+	width?: number;
 } = {}) {
 	return `<svg width="${width}" height="${height}" viewBox="${viewBox}" fill="none" color="${color}" xmlns="http://www.w3.org/2000/svg">${iconInner({ fill })}</svg>`;
 }
 
 export function iconTileSvg({
-	background = brandColors.surface.tile,
-	fill = brandColors.icon.tileStroke,
+	background = BRAND_COLORS.surface.tile,
+	fill = BRAND_COLORS.icon.tileStroke,
 	radius = 0,
 	scale = 0.652,
 	size = ICON_WIDTH
+}: {
+	background?: string;
+	fill?: string;
+	radius?: number;
+	scale?: number;
+	size?: number;
 } = {}) {
 	const iconScale = (256 / ICON_WIDTH) * scale;
 	const transform = `translate(128 128) scale(${iconScale}) translate(-10 -10)`;
@@ -120,10 +132,15 @@ export function iconTileSvg({
 }
 
 export function centeredIconSvg({
-	color = brandColors.icon.light,
+	color = BRAND_COLORS.icon.light,
 	fill = "currentColor",
 	scale = 0.652,
 	size = ICON_WIDTH
+}: {
+	color?: string;
+	fill?: string;
+	scale?: number;
+	size?: number;
 } = {}) {
 	const iconScale = (256 / ICON_WIDTH) * scale;
 	const transform = `translate(128 128) scale(${iconScale}) translate(-10 -10)`;
@@ -132,7 +149,7 @@ export function centeredIconSvg({
 
 // Pre-rendered icon strings the apps embed directly.
 export const ICON_SVG = iconInner();
-export const ICON_XML = iconSvg({ viewBox: ICON_CROP_VIEWBOX });
+export const ICON_XML = iconSvg();
 
 // --- Identity --------------------------------------------------------------
 

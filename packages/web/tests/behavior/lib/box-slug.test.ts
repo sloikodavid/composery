@@ -1,12 +1,35 @@
+import { array, assert, constantFrom, property, string } from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
+	RESERVED_BOX_SLUGS,
 	isReservedSlug,
 	isValidSlug,
 	isValidSlugFormat,
 	sanitizeSlug
 } from "@/lib/box-slug";
 
+const SLUG_CHARACTER = [
+	..."abcdefghijklmnopqrstuvwxyz",
+	..."0123456789",
+	"-"
+] as const;
+
+const validSlugArbitrary = array(constantFrom(...SLUG_CHARACTER), {
+	minLength: 1,
+	maxLength: 53
+}).map((middle) => `property-${middle.join("")}x`);
+
 describe("sanitizeSlug", () => {
+	test("never turns a valid slug into an invalid one", () => {
+		assert(
+			property(validSlugArbitrary, (slug) => {
+				const sanitized = sanitizeSlug(slug);
+				expect(sanitized).toBe(slug);
+				expect(isValidSlug(sanitized)).toBe(true);
+			})
+		);
+	});
+
 	test("lowercases, strips invalid characters, and trims leading dashes", () => {
 		expect(sanitizeSlug("--My Box!!")).toBe("mybox");
 	});
@@ -36,6 +59,24 @@ describe("sanitizeSlug", () => {
 });
 
 describe("isValidSlug", () => {
+	test("never accepts a slug outside the DNS and reservation rules", () => {
+		const reserved = new Set<string>(RESERVED_BOX_SLUGS);
+		assert(
+			property(string({ maxLength: 100 }), (slug) => {
+				const validByContract =
+					slug.length >= 3 &&
+					slug.length <= 63 &&
+					!slug.startsWith("xn--") &&
+					/^[a-z0-9]$/.test(slug[0] ?? "") &&
+					/^[a-z0-9]$/.test(slug.at(-1) ?? "") &&
+					[...slug].every((character) => /^[a-z0-9-]$/.test(character)) &&
+					!reserved.has(slug);
+				expect(isValidSlug(slug)).toBe(validByContract);
+			}),
+			{ examples: [["xn--box"], ["box-\n"], ["abc\n"]] }
+		);
+	});
+
 	test("accepts DNS-safe box slugs", () => {
 		expect(isValidSlug("my-box")).toBe(true);
 		expect(isValidSlug("abc")).toBe(true);

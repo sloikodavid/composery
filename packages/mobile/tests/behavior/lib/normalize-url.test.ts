@@ -1,8 +1,20 @@
+import { assert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 
 import { normalizeInstanceUrl } from "@/lib/normalize-url";
+import { instanceUrlArbitrary } from "../../support/urls";
 
 describe("normalizeInstanceUrl", () => {
+	test("is idempotent for every accepted instance URL", () => {
+		assert(
+			property(instanceUrlArbitrary, (input) => {
+				const normalized = normalizeInstanceUrl(input).href;
+				expect(normalizeInstanceUrl(normalized).href).toBe(normalized);
+				expect(normalizeInstanceUrl(` \t${input}\n`).href).toBe(normalized);
+			})
+		);
+	});
+
 	test("prepends https:// to a bare host", () => {
 		expect(normalizeInstanceUrl("mybox.com").href).toBe(
 			"https://mybox.com/ide/"
@@ -83,46 +95,74 @@ describe("normalizeInstanceUrl", () => {
 	});
 
 	test("rejects a non-http(s) scheme", () => {
-		expect(() => normalizeInstanceUrl("ftp://x")).toThrow();
-		expect(() => normalizeInstanceUrl("file:///etc/passwd")).toThrow();
-		expect(() => normalizeInstanceUrl("composery://add")).toThrow();
+		for (const [input, message] of [
+			["ftp://x", "Unsupported scheme: ftp:"],
+			["file:///etc/passwd", "Unsupported scheme: file:"],
+			["composery://add", "Unsupported scheme: composery:"]
+		]) {
+			expect(() => normalizeInstanceUrl(input)).toThrow(message);
+		}
 	});
 
 	test("rejects URLs containing credentials", () => {
-		expect(() => normalizeInstanceUrl("https://user:pass@host/")).toThrow();
-		expect(() => normalizeInstanceUrl("user:pass@host")).toThrow();
+		for (const input of [
+			"https://user:pass@host/",
+			"https://user@host/",
+			"https://:pass@host/",
+			"user:pass@host"
+		]) {
+			expect(() => normalizeInstanceUrl(input)).toThrow(
+				`URL must not contain credentials: ${input}`
+			);
+		}
 	});
 
 	describe("bare local host defaults to http", () => {
-		test.each([
-			["localhost", "http://localhost/ide/"],
-			["localhost:8080", "http://localhost:8080/ide/"],
-			["localhost:8080/code/", "http://localhost:8080/code/"],
-			["127.0.0.1", "http://127.0.0.1/ide/"],
-			["192.168.1.5", "http://192.168.1.5/ide/"],
-			["10.0.0.1:3000", "http://10.0.0.1:3000/ide/"],
-			["172.16.0.1", "http://172.16.0.1/ide/"],
-			["172.31.255.255", "http://172.31.255.255/ide/"],
-			["169.254.1.1", "http://169.254.1.1/ide/"],
-			["raspberrypi.local", "http://raspberrypi.local/ide/"],
-			["nas", "http://nas/ide/"],
-			[
-				"192.168.1.5:8080/code/?folder=/app",
-				"http://192.168.1.5:8080/code/?folder=/app"
-			]
-		])("%p -> %p", (input, expected) => {
-			expect(normalizeInstanceUrl(input).href).toBe(expected);
+		test("classifies every supported loopback, private, link-local, mDNS, and LAN form", () => {
+			for (const [input, expected] of [
+				["localhost", "http://localhost/ide/"],
+				["localhost:8080", "http://localhost:8080/ide/"],
+				["localhost:8080/code/", "http://localhost:8080/code/"],
+				["127.0.0.1", "http://127.0.0.1/ide/"],
+				["192.168.1.5", "http://192.168.1.5/ide/"],
+				["10.0.0.1:3000", "http://10.0.0.1:3000/ide/"],
+				["172.16.0.1", "http://172.16.0.1/ide/"],
+				["172.31.255.255", "http://172.31.255.255/ide/"],
+				["169.254.1.1", "http://169.254.1.1/ide/"],
+				["raspberrypi.local", "http://raspberrypi.local/ide/"],
+				["nas", "http://nas/ide/"],
+				["[::1]", "http://[::1]/ide/"],
+				["[fe80::1]", "http://[fe80::1]/ide/"],
+				[
+					"192.168.1.5:8080/code/?folder=/app",
+					"http://192.168.1.5:8080/code/?folder=/app"
+				]
+			]) {
+				expect(normalizeInstanceUrl(input).href).toBe(expected);
+			}
 		});
 	});
 
 	describe("bare public host defaults to https", () => {
-		test.each([
-			["mybox.com", "https://mybox.com/ide/"],
-			["8.8.8.8", "https://8.8.8.8/ide/"],
-			["172.32.0.1", "https://172.32.0.1/ide/"], // outside the 172.16/12 range
-			["169.253.0.1", "https://169.253.0.1/ide/"] // outside link-local
-		])("%p -> %p", (input, expected) => {
-			expect(normalizeInstanceUrl(input).href).toBe(expected);
+		test("keeps every boundary outside the local ranges on HTTPS", () => {
+			for (const [input, expected] of [
+				["mybox.com", "https://mybox.com/ide/"],
+				["8.8.8.8", "https://8.8.8.8/ide/"],
+				["192.167.1.1", "https://192.167.1.1/ide/"],
+				["192.169.1.1", "https://192.169.1.1/ide/"],
+				["191.168.1.1", "https://191.168.1.1/ide/"],
+				["172.15.255.255", "https://172.15.255.255/ide/"],
+				["172.32.0.1", "https://172.32.0.1/ide/"],
+				["171.16.0.1", "https://171.16.0.1/ide/"],
+				["169.253.0.1", "https://169.253.0.1/ide/"],
+				["169.255.0.1", "https://169.255.0.1/ide/"],
+				["168.254.1.1", "https://168.254.1.1/ide/"],
+				["192.168.1.example", "https://192.168.1.example/ide/"],
+				["192.168.1.1.example", "https://192.168.1.1.example/ide/"],
+				["[2001:4860:4860::8888]", "https://[2001:4860:4860::8888]/ide/"]
+			]) {
+				expect(normalizeInstanceUrl(input).href).toBe(expected);
+			}
 		});
 	});
 
@@ -141,7 +181,10 @@ describe("normalizeInstanceUrl", () => {
 	});
 
 	test("rejects an empty string", () => {
-		expect(() => normalizeInstanceUrl("")).toThrow();
-		expect(() => normalizeInstanceUrl("   ")).toThrow();
+		expect(() => normalizeInstanceUrl("")).toThrow("Invalid URL: ");
+		expect(() => normalizeInstanceUrl("   ")).toThrow("Invalid URL:    ");
+		expect(() => normalizeInstanceUrl("junk https://host")).toThrow(
+			"Invalid URL: junk https://host"
+		);
 	});
 });

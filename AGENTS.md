@@ -419,6 +419,8 @@ packages/
                     terminal/
                       browser/
                         xtermResize.test.ts
+        scripts/
+          rebrand.test.ts
         session.test.ts
       invariants/
         auth-routes.test.ts
@@ -495,11 +497,17 @@ packages/
           probe.test.ts
           theme.test.ts
           webview-navigation.test.ts
+        plugins/
+          android-dialog-theme.test.ts
         web/
           back-button.test.ts
       invariants/
         lib/
           nav.test.ts
+        plugins/
+          android-dialog-theme.test.ts
+      support/
+        urls.ts
       system/
         add-instance.yml
         e2e.yml
@@ -519,6 +527,13 @@ packages/
       sync.mjs
       theme.mjs
     tests/
+      behavior/
+        scripts/
+          icons.test.ts
+          logo.test.ts
+          sync.test.ts
+          theme.test.ts
+        index.test.ts
       invariants/
         tools/
           colors.test.ts
@@ -900,6 +915,18 @@ packages/
         run.sh
     tests/
       behavior/
+        app/
+          (site)/
+            pricing/
+              _components/
+                slug-dialog.test.ts
+        components/
+          boxes/
+            change-slug-dialog.test.ts
+            repair-dialog.test.ts
+            reset-dialog.test.ts
+            status-action.test.ts
+          confirm-dialog.test.ts
         convex/
           billing/
             polar.test.ts
@@ -969,6 +996,8 @@ packages/
           icons/
             registry.test.ts
         convex/
+          boxes/
+            cleanup.test.ts
           envExample.test.ts
           optional-range-bounds.test.ts
         legal/
@@ -977,6 +1006,7 @@ packages/
           table-columns.test.ts
       support/
         convex.ts
+        ui.tsx
     .env.example.convex.dev
     .env.example.convex.prod
     .env.example.next.dev
@@ -1106,6 +1136,7 @@ templates/
   README.md
 tests/
   behavior/
+    setup.test.ts
     tree-script.test.ts
   fixtures/
     cert.pem

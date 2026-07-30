@@ -1,8 +1,23 @@
+import { assert, property } from "fast-check";
 import { describe, expect, test } from "vitest";
 
+import { normalizeInstanceUrl } from "@/lib/normalize-url";
 import { parseScannedInstance } from "@/lib/parse-scanned";
+import { instanceUrlArbitrary } from "../../support/urls";
 
 describe("parseScannedInstance", () => {
+	test("round-trips direct and deep-link payloads through normalization", () => {
+		assert(
+			property(instanceUrlArbitrary, (input) => {
+				const normalized = normalizeInstanceUrl(input).href;
+				const deepLink = `composery://add-instance?url=${encodeURIComponent(input)}`;
+
+				expect(parseScannedInstance(input)).toBe(normalized);
+				expect(parseScannedInstance(deepLink)).toBe(normalized);
+			})
+		);
+	});
+
 	test("normalizes a plain https instance URL", () => {
 		expect(parseScannedInstance("https://my-box.composery.cloud/")).toBe(
 			"https://my-box.composery.cloud/ide/"
@@ -64,6 +79,26 @@ describe("parseScannedInstance", () => {
 
 	test("returns null for a malformed composery deep link", () => {
 		expect(parseScannedInstance("composery://%zz")).toBeNull();
+	});
+
+	test("accepts only the exact hostless add-instance path", () => {
+		const encoded = encodeURIComponent("https://my-box.example/");
+		expect(
+			parseScannedInstance(`composery://///add-instance?url=${encoded}`)
+		).toBe("https://my-box.example/ide/");
+		expect(
+			parseScannedInstance(`composery:not-add-instance?url=${encoded}`)
+		).toBeNull();
+	});
+
+	test("accepts the hierarchical deep link with or without its root slash", () => {
+		const encoded = encodeURIComponent("https://my-box.example/");
+		expect(
+			parseScannedInstance(`composery://add-instance?url=${encoded}`)
+		).toBe("https://my-box.example/ide/");
+		expect(
+			parseScannedInstance(`composery://add-instance/?url=${encoded}`)
+		).toBe("https://my-box.example/ide/");
 	});
 
 	test("returns null for non-URL junk", () => {

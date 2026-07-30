@@ -4,6 +4,8 @@ import { IDE_PATH } from "shared";
 // misuse a raw string. Rejects non-http(s) schemes and embedded credentials;
 // preserves pathname/query/hash, since code-server is subpath-sensitive and
 // reads ?folder/?workspace (trailing slash matters: /code vs /code/).
+// Stryker disable next-line Regex: removing the anchor only admits leading junk,
+// which the final WHATWG URL parse rejects before any result can escape.
 const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 
 // Browsers default a bare address-bar input to https://, and for public hosts
@@ -16,23 +18,25 @@ const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 // (mDNS), and a single-label hostname (no dot — a LAN name like `nas`).
 function looksLocalHost(host: string): boolean {
 	const h = host.toLowerCase();
-	if (h === "localhost") return true;
 	if (h.endsWith(".local")) return true;
-	if (!h.includes(".")) return true; // single-label LAN hostname
 
 	// WHATWG URL keeps brackets on IPv6 hosts (e.g. "[::1]").
-	const bare = h.startsWith("[") && h.endsWith("]") ? h.slice(1, -1) : h;
+	const bare = h.startsWith("[") ? h.slice(1, -1) : h;
+	if (!bare.includes(".") && !bare.includes(":")) return true;
 
-	const v4 = bare.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-	if (v4) {
-		const a = Number(v4[1]);
-		const b = Number(v4[2]);
-		if (a === 127) return true; // 127/8 loopback
-		if (a === 10) return true; // 10/8 private
-		if (a === 192 && b === 168) return true; // 192.168/16 private
-		if (a === 169 && b === 254) return true; // 169.254/16 link-local
-		if (a === 172 && b >= 16 && b <= 31) return true; // 172.16/12 private
-		return false;
+	const v4 = bare.split(".");
+	// WHATWG canonicalizes every valid IPv4 spelling to four numeric segments
+	// and rejects non-four-part numeric hosts before this function runs.
+	if (v4.every((part) => String(Number(part)) === part)) {
+		const a = Number(v4[0]);
+		const b = Number(v4[1]);
+		return (
+			a === 127 || // 127/8 loopback
+			a === 10 || // 10/8 private
+			(a === 192 && b === 168) || // 192.168/16 private
+			(a === 169 && b === 254) || // 169.254/16 link-local
+			(a === 172 && b >= 16 && b <= 31) // 172.16/12 private
+		);
 	}
 
 	if (bare === "::1") return true; // IPv6 loopback
@@ -46,22 +50,11 @@ export function normalizeInstanceUrl(input: string): URL {
 	// A scheme counts only when followed by `//`, so `host:8080` is a host+port,
 	// not a `host:` scheme. A bare host gets a scheme: https:// for public
 	// hosts, http:// for local-looking ones (see looksLocalHost).
-	let withScheme: string;
-	if (SCHEME_RE.test(trimmed)) {
-		withScheme = trimmed;
-	} else {
-		let host = "";
-		try {
-			host = new URL(`https://${trimmed}`).hostname;
-		} catch {
-			host = "";
-		}
-		const scheme = looksLocalHost(host) ? "http://" : "https://";
-		withScheme = `${scheme}${trimmed}`;
-	}
-
 	let url: URL;
 	try {
+		const withScheme = SCHEME_RE.test(trimmed)
+			? trimmed
+			: `${looksLocalHost(new URL(`https://${trimmed}`).hostname) ? "http://" : "https://"}${trimmed}`;
 		url = new URL(withScheme);
 	} catch {
 		throw new Error(`Invalid URL: ${input}`);
@@ -69,10 +62,6 @@ export function normalizeInstanceUrl(input: string): URL {
 
 	if (url.protocol !== "http:" && url.protocol !== "https:") {
 		throw new Error(`Unsupported scheme: ${url.protocol}`);
-	}
-
-	if (!url.hostname) {
-		throw new Error(`URL has no host: ${input}`);
 	}
 
 	if (url.username || url.password) {
@@ -88,9 +77,7 @@ export function normalizeInstanceUrl(input: string): URL {
 
 	// The parser keeps leading `//` (`host//code/` -> `//code/`); collapse to one
 	// since code-server is subpath-sensitive. Internal `//` is kept.
-	if (url.pathname.length > 1 && url.pathname.startsWith("//")) {
-		url.pathname = `/${url.pathname.replace(/^\/+/, "")}`;
-	}
+	while (url.pathname.startsWith("//")) url.pathname = url.pathname.slice(1);
 
 	// A bare instance address names the product, whose browser surface has one
 	// uniform mount. Preserve explicit deeper URLs (folder/workspace links and

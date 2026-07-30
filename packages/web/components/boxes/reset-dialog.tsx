@@ -31,7 +31,7 @@ export function ResetDialog({
 
 	function changeOpen(nextOpen: boolean) {
 		setOpen(nextOpen);
-		if (!nextOpen) setConfirmation("");
+		setConfirmation("");
 	}
 
 	return (

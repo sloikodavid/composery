@@ -15,92 +15,94 @@
 // Regenerate via `pnpm assets`.
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as fontkit from "fontkit";
-import { ICON_VIEWBOX, LOGO_TEXT, brandColors, iconInner } from "../index.ts";
+import { BRAND_COLORS, ICON_VIEWBOX, LOGO_TEXT, iconInner } from "../index.ts";
 import { writeFormatted } from "../../../scripts/write-formatted.mjs";
-
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 const FONT_URL =
 	"https://rsms.me/inter/font-files/InterDisplay-SemiBold.woff2?v=4.1";
-const HEIGHT = 40;
-const FONT_SIZE = 22;
-const TRACKING_EM = -0.03;
-// How far the styled text starts from the left, in viewBox units (icon box is HEIGHT).
-const TEXT_X = 40;
 
-const response = await fetch(FONT_URL);
-const font = fontkit.create(Buffer.from(await response.arrayBuffer()));
-const scale = FONT_SIZE / font.unitsPerEm;
-const capPx = (font.capHeight ?? font.ascent * 0.7) * scale;
-const baseline = HEIGHT / 2 + capPx / 2; // center the cap height vertically
+export async function generateLogo({
+	root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
+} = {}) {
+	const HEIGHT = 40;
+	const FONT_SIZE = 22;
+	const TRACKING_EM = -0.03;
+	// How far the styled text starts from the left, in viewBox units (icon box is HEIGHT).
+	const TEXT_X = 40;
 
-// The icon is rendered through its own viewport so the visible shape can be
-// centered and scaled without affecting the outlined styled text.
-const ICON_X = 0.5;
-const ICON_Y = 0.5;
-const ICON_SIZE = 38.5;
-const iconLeft = ICON_X;
-const iconTop = ICON_Y;
-const iconRight = ICON_X + ICON_SIZE;
-const iconBottom = ICON_Y + ICON_SIZE;
+	const response = await fetch(FONT_URL);
+	const font = fontkit.create(Buffer.from(await response.arrayBuffer()));
+	const scale = FONT_SIZE / font.unitsPerEm;
+	const capPx = (font.capHeight ?? font.ascent * 0.7) * scale;
+	const baseline = HEIGHT / 2 + capPx / 2; // center the cap height vertically
 
-const run = font.layout(LOGO_TEXT);
-const trackingUnits = font.unitsPerEm * TRACKING_EM;
-let cursor = 0;
-let wmMinX = Infinity;
-let wmMaxX = -Infinity;
-let wmMinY = Infinity;
-let wmMaxY = -Infinity;
-const glyphs = run.glyphs
-	.map((glyph, index) => {
-		const box = glyph.path.bbox;
-		wmMinX = Math.min(wmMinX, cursor + box.minX);
-		wmMaxX = Math.max(wmMaxX, cursor + box.maxX);
-		wmMinY = Math.min(wmMinY, box.minY);
-		wmMaxY = Math.max(wmMaxY, box.maxY);
-		const path = `<path transform="translate(${cursor} 0)" d="${glyph.path.toSVG()}"/>`;
-		cursor +=
-			run.positions[index].xAdvance +
-			(index === run.glyphs.length - 1 ? 0 : trackingUnits);
-		return path;
-	})
-	.join("");
+	// The icon is rendered through its own viewport so the visible shape can be
+	// centered and scaled without affecting the outlined styled text.
+	const ICON_X = 0.5;
+	const ICON_Y = 0.5;
+	const ICON_SIZE = 38.5;
+	const iconLeft = ICON_X;
+	const iconTop = ICON_Y;
+	const iconRight = ICON_X + ICON_SIZE;
+	const iconBottom = ICON_Y + ICON_SIZE;
 
-// Tight bounding box of all the ink (icon + styled text), then a uniform clear-space
-// on every side - so the padding is even (not the lopsided icon-inset vs nothing
-// it had before) and no ink sits exactly on the edge, where anti-aliasing clips
-// it (the logo text's trailing "y" especially).
-const PAD = 2;
-const round = (n) => +n.toFixed(2);
-const inkLeft = Math.min(iconLeft, TEXT_X + wmMinX * scale);
-const inkTop = Math.min(iconTop, baseline - wmMaxY * scale);
-const inkRight = Math.max(iconRight, TEXT_X + wmMaxX * scale);
-const inkBottom = Math.max(iconBottom, baseline - wmMinY * scale);
-const left = round(inkLeft - PAD);
-const top = round(inkTop - PAD);
-const width = round(inkRight - inkLeft + 2 * PAD);
-const height = round(inkBottom - inkTop + 2 * PAD);
-const viewBox = `${left} ${top} ${width} ${height}`;
-const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ holesId: "composery-logo-icon-holes" })}</svg>`;
-const inner = `${icon}<g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
+	const run = font.layout(LOGO_TEXT);
+	const trackingUnits = font.unitsPerEm * TRACKING_EM;
+	let cursor = 0;
+	let wmMinX = Infinity;
+	let wmMaxX = -Infinity;
+	let wmMinY = Infinity;
+	let wmMaxY = -Infinity;
+	const glyphs = run.glyphs
+		.map((glyph, index) => {
+			const box = glyph.path.bbox;
+			wmMinX = Math.min(wmMinX, cursor + box.minX);
+			wmMaxX = Math.max(wmMaxX, cursor + box.maxX);
+			wmMinY = Math.min(wmMinY, box.minY);
+			wmMaxY = Math.max(wmMaxY, box.maxY);
+			const path = `<path transform="translate(${cursor} 0)" d="${glyph.path.toSVG()}"/>`;
+			// Tracking after the final glyph only advances a cursor that is never
+			// read again, so one absolute rule is both simpler and equivalent.
+			cursor += run.positions[index].xAdvance + trackingUnits;
+			return path;
+		})
+		.join("");
 
-const out = join(root, "packages", "web", "lib", "logo-data.ts");
-const overlayLogo = join(
-	root,
-	"packages",
-	"ide",
-	"overlay",
-	"src",
-	"browser",
-	"media",
-	"composery-logo.svg"
-);
-await writeFormatted(
-	out,
-	`// AUTO-GENERATED by packages/shared/scripts/logo.mjs - do not edit by hand.
+	// Tight bounding box of all the ink (icon + styled text), then a uniform clear-space
+	// on every side - so the padding is even (not the lopsided icon-inset vs nothing
+	// it had before) and no ink sits exactly on the edge, where anti-aliasing clips
+	// it (the logo text's trailing "y" especially).
+	const PAD = 2;
+	const round = (n) => +n.toFixed(2);
+	const inkLeft = Math.min(iconLeft, TEXT_X + wmMinX * scale);
+	const inkTop = Math.min(iconTop, baseline - wmMaxY * scale);
+	const inkRight = Math.max(iconRight, TEXT_X + wmMaxX * scale);
+	const inkBottom = Math.max(iconBottom, baseline - wmMinY * scale);
+	const left = round(inkLeft - PAD);
+	const top = round(inkTop - PAD);
+	const width = round(inkRight - inkLeft + 2 * PAD);
+	const height = round(inkBottom - inkTop + 2 * PAD);
+	const viewBox = `${left} ${top} ${width} ${height}`;
+	const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ holesId: "composery-logo-icon-holes" })}</svg>`;
+	const inner = `${icon}<g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
+
+	const out = join(root, "packages", "web", "lib", "logo-data.ts");
+	const overlayLogo = join(
+		root,
+		"packages",
+		"ide",
+		"overlay",
+		"src",
+		"browser",
+		"media",
+		"composery-logo.svg"
+	);
+	await writeFormatted(
+		out,
+		`// AUTO-GENERATED by packages/shared/scripts/logo.mjs - do not edit by hand.
 // The Composery logo: the icon plus styled text outlined from Inter Display
 // SemiBold, so the asset is self-contained and font-free. The styled text is
 // fill="currentColor", so it follows the text color (dark on light, light on
@@ -110,12 +112,17 @@ export const LOGO_VIEWBOX = ${JSON.stringify(viewBox)};
 export const LOGO_WIDTH = ${width};
 export const LOGO_HEIGHT = ${height};
 `
-);
-await writeFile(
-	overlayLogo,
-	`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" fill="none"><style>svg{color:${brandColors.surface.lightText}}@media (prefers-color-scheme:dark){svg{color:${brandColors.surface.darkText}}}</style>${inner}</svg>\n`
-);
+	);
+	await writeFile(
+		overlayLogo,
+		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" fill="none"><style>svg{color:${BRAND_COLORS.surface.lightText}}@media (prefers-color-scheme:dark){svg{color:${BRAND_COLORS.surface.darkText}}}</style>${inner}</svg>\n`
+	);
 
-console.log(
-	`Wrote web/lib/logo-data.ts and the editor overlay logo (viewBox "${viewBox}").`
-);
+	console.log(
+		`Wrote web/lib/logo-data.ts and the editor overlay logo (viewBox "${viewBox}").`
+	);
+}
+
+const scriptPath = fileURLToPath(import.meta.url);
+// Stryker disable next-line all: package scripts exercise this CLI dispatch; behavior tests call the generator directly so they can assert its outputs.
+if (resolve(process.argv[1] ?? "") === scriptPath) await generateLogo();
