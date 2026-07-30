@@ -71,7 +71,6 @@ const help = `Android live test
   open-url <url>                 Open an Android deep link or web URL
   start <package> [activity]     Start an app (activity optional)
   stop <package>                 Force-stop an app
-  reload                         Send Expo/React Native reload (R,R)
   logcat [lines]                 Print recent logs (default 400 lines)
   record <output.mp4> [seconds]  Record the screen (default 15, max 180)
 
@@ -229,9 +228,6 @@ switch (command) {
 	}
 	case "stop":
 		runAdb(["shell", "am", "force-stop", required(args[0], "stop <package>")]);
-		break;
-	case "reload":
-		runAdb(["shell", "input", "keyevent", "KEYCODE_R", "KEYCODE_R"]);
 		break;
 	case "logcat":
 		process.stdout.write(runAdb(["logcat", "-d", "-t", args[0] ?? "400"]));

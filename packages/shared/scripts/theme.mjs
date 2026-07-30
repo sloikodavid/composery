@@ -923,16 +923,6 @@ for (const [name, pattern, value] of [
 		ideTheme.dark.editor
 	],
 	[
-		"app light first paint",
-		/^(\+\s*html\[data-scheme="light"\], html\[data-scheme="light"\] body \{ background-color: )#[0-9a-f]{6}(; \})$/im,
-		ideTheme.light.editor
-	],
-	[
-		"app dark first paint",
-		/^(\+\s*html\[data-scheme="dark"\], html\[data-scheme="dark"\] body \{ background-color: )#[0-9a-f]{6}(; \})$/im,
-		ideTheme.dark.editor
-	],
-	[
 		"manifest theme",
 		/(theme_color: ")#[0-9a-f]{6}(")/i,
 		ideTheme.dark.titleBar

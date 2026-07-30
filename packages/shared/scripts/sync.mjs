@@ -15,10 +15,6 @@ import { formatContent } from "../../../scripts/write-formatted.mjs";
 // guard, wired into `pnpm check`) instead of writing. Every output of this script
 // is deterministic from index.ts, so the check covers all of them; the font- and
 // sharp-derived assets (logo.mjs, icons.mjs) stay outside this script.
-function json(value) {
-	return JSON.stringify(value, null, "\t");
-}
-
 function cssVariableName(key) {
 	return key
 		.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
@@ -41,10 +37,7 @@ ${cssThemeBlock(".dark", theme.dark)}
 `;
 }
 
-// Per-scheme variables for the auth/error pages, serialized once per scheme so
-// the media-query blocks (browsers) and the [data-scheme] blocks (the mobile
-// app stamps its scheme there - an Android WebView's native prefers-color-scheme
-// tracks the activity theme, not the system) can never drift apart.
+// Per-scheme variables for the auth/error pages.
 function idePageSchemeVars(c) {
 	return {
 		"--vscode-button-background": c.button,
@@ -102,14 +95,6 @@ ${cssVars(darkVars, nestedIndent)}
 	}
 }
 
-/* App override: the mobile app stamps data-scheme with the app scheme. */
-:root[data-scheme="light"] {
-${cssVars(lightVars, indent)}
-}
-
-:root[data-scheme="dark"] {
-${cssVars(darkVars, indent)}
-}
 `;
 }
 
@@ -211,35 +196,10 @@ export async function syncAssets({
 			"startup dark",
 			/(@media \(prefers-color-scheme:dark\)\{body\{background:)#[0-9a-f]{6}(;color:)#[0-9a-f]{6}/i,
 			`$1${theme.dark.background}$2${theme.dark.foreground}`
-		],
-		[
-			"startup app light",
-			/(html\[data-scheme="light"\] body\{background:)#[0-9a-f]{6}(;color:)#[0-9a-f]{6}/i,
-			`$1${theme.light.background}$2${theme.light.foreground}`
-		],
-		[
-			"startup app dark",
-			/(html\[data-scheme="dark"\] body\{background:)#[0-9a-f]{6}(;color:)#[0-9a-f]{6}/i,
-			`$1${theme.dark.background}$2${theme.dark.foreground}`
 		]
 	])
 		readiness = replaceOne(readiness, pattern, replacement, name);
 	await emit(readinessPath, readiness);
-
-	const androidDialogPath = join(
-		root,
-		"packages",
-		"mobile",
-		"plugins",
-		"android-dialog-theme.js"
-	);
-	const androidDialog = replaceOne(
-		await readFile(androidDialogPath, "utf8"),
-		/const ACCENT = \{ light: "#[0-9a-f]{6}", dark: "#[0-9a-f]{6}" \};/i,
-		`const ACCENT = { light: "${theme.light.control}", dark: "${theme.dark.control}" };`,
-		"Android dialog accent"
-	);
-	await emit(androidDialogPath, androidDialog);
 
 	await emit(join(webApp, "icon.svg"), `${adaptiveFavicon()}\n`);
 	await emit(join(webPublic, "icon-light.svg"), `${pinnedFavicon({})}\n`);
@@ -261,22 +221,6 @@ export async function syncAssets({
 	await emit(
 		join(ideMedia, "favicon-dark.svg"),
 		`${pinnedFavicon({ scheme: "dark", ...ideFaviconBox })}\n`
-	);
-
-	const appJson = JSON.parse(
-		await readFile(join(root, "packages", "mobile", "app.json"), "utf8")
-	);
-	appJson.expo.android.adaptiveIcon.backgroundColor = BRAND_COLORS.surface.tile;
-	const splash = appJson.expo.plugins.find(
-		(plugin) => Array.isArray(plugin) && plugin[0] === "expo-splash-screen"
-	);
-	if (splash) {
-		splash[1].backgroundColor = BRAND_COLORS.surface.splash;
-		splash[1].dark.backgroundColor = BRAND_COLORS.surface.splashDark;
-	}
-	await emit(
-		join(root, "packages", "mobile", "app.json"),
-		`${json(appJson)}\n`
 	);
 
 	if (check) {

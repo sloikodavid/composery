@@ -26,7 +26,7 @@ jobs:
     # build plus the suite, ~20 minutes on these runners), far enough above it
     # that a loaded runner is never mistaken for a broken one. A test pins the
     # floor, because the failure mode of a tight one is a healthy job reported
-    # as a failure - which is exactly what a budget-sized 60 did to mobile-e2e.
+    # as a failure.
     timeout-minutes: 120
     strategy:
       fail-fast: false

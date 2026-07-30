@@ -121,16 +121,13 @@ describe("runtime process managers", () => {
 		);
 		const apiPatch = readRepoFile("packages/ide/patches/api.diff");
 		const readinessPatch = readRepoFile("packages/ide/patches/readiness.diff");
-		const probe = readRepoFile("packages/mobile/src/lib/probe.ts");
 
 		expect(apiPath).toContain('"/_composery/api/v1"');
-		expect(apiPatch).toContain('app.router.get("/_composery"');
 		expect(readinessPatch).toContain(
 			'app.router.use("/_composery/healthz", health.router)'
 		);
-		expect(probe).toContain('new URL("/_composery", instanceUrl)');
 		expect(apiPath).not.toContain('"/v1"');
-		expect(apiPatch).not.toContain('+  app.router.get("/__composery"');
+		expect(apiPatch).not.toContain('app.router.get("/_composery"');
 		expect(readinessPatch).not.toContain('+  app.router.use("/healthz"');
 	});
 

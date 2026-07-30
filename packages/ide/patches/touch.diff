@@ -1,9 +1,8 @@
 The touch capability layer: everything gated on the canonical touch gate
 (touchGate.ts - hover: none / any-pointer: coarse) that a hover-and-fine-
 pointer editor needs to work with a coarse pointer and a soft keyboard. The
-narrow-viewport axis is narrow.diff; vendor-defect workarounds keep their own
-patches (editcontext-android, window-focus-resample) so the day a defect dies,
-its patch does too.
+narrow-viewport axis is narrow.diff; the Android EditContext vendor-defect
+workaround keeps its own patch so the day the defect dies, its patch does too.
 
 Editor. PointerEventHandler is selected on the touch gate, not the phone UA -
 upstream's (isIOS || isAndroid+isMobile) leaves Android tablets (no "Mobi" UA
@@ -32,16 +31,14 @@ selection asked for used to destroy that selection as it opened (device-verified
 and the keybar holds its dock through a menu for the same reason). Items are
 tapped, not walked with arrow keys, and Escape still cancels.
 
-Soft keyboard. Whether one is up, and how much it still covers, is answered in
-exactly one place (softKeyboard.ts) because no single measurement sees every
-keyboard: one shape shrinks the visual viewport, one shrinks both viewports in
-lockstep and is visible only through shell.js's published verdict, one shrinks
-neither and can only be reported by the native host. Everything that has to
-know goes through it - the workbench fit, the keybar, the editor's
-tap-to-refocus - so no surface can measure a number that is structurally zero
-on its own platform. layout() fits the workbench to the visual viewport minus
-that overlap (measured or reported, never both) and the edge-to-edge bottom
-inset - gated on the touch capability, not a vendor list: where no keyboard
+Soft keyboard. Whether one is up is answered in exactly one place
+(softKeyboard.ts) because browsers expose two shapes: one shrinks the visual
+viewport, while one shrinks both viewports in lockstep and is visible only
+through shell.js's published verdict. Everything that has to know goes through
+it - the workbench fit, the keybar, the editor's tap-to-refocus - so no surface
+can measure a number that is structurally zero on its own platform. layout()
+fits the workbench to the visual viewport and the edge-to-edge bottom inset -
+gated on the touch capability, not a vendor list: where no keyboard
 exists it reads 0 (Android device-verified; other coarse-pointer platforms
 reasoned, not device-tested). The Keybar docks the keys a soft keyboard cannot
 produce (Esc/Tab/arrows/F-keys/sticky modifiers) above it, reserved out of the
@@ -1909,7 +1906,7 @@ short layouts its row back.
 +			if (isTouch(mainWindow) && viewport && viewport.scale === 1) {
 +				const keyboard = softKeyboard(mainWindow);
 +				const safeAreaBottom = keyboard.open ? 0 : parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-safe-area-bottom'), 10) || 0;
-+				const visibleHeight = Math.round(viewport.height) - keyboard.overlap - safeAreaBottom;
++				const visibleHeight = Math.round(viewport.height) - safeAreaBottom;
 +				// Composery: the keybar exists exactly while the soft keyboard does - one rule, no
 +				// per-surface judgement - and collapses to a single row when what survives the
 +				// keyboard is too short to spend two on. This is the only place that knows either.
@@ -2230,7 +2227,7 @@ short layouts its row back.
  import Severity from '../../base/common/severity.js';
  import { URI } from '../../base/common/uri.js';
  import { localize } from '../../nls.js';
-@@ -259,21 +261,67 @@ export class BrowserWindow extends BaseWindow {
+@@ -259,21 +261,61 @@ export class BrowserWindow extends BaseWindow {
  		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
  
  		// Layout
@@ -2270,12 +2267,6 @@ short layouts its row back.
 +				}
 +			}));
 +		}
-+		// Composery Mobile reports native IME geometry when an edge-to-edge WebView
-+		// leaves both innerHeight and visualViewport unchanged. Re-run the same layout
-+		// path so bottom panels and the terminal keybar stay above the keyboard.
-+		this._register(addDisposableListener(mainWindow, 'composery-native-keyboard-change', () => {
-+			this.layoutService.layout();
-+		}));
  
  		// Prevent the back/forward gestures in macOS
  		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.WHEEL, e => e.preventDefault(), { passive: false }));

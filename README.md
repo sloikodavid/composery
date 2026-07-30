@@ -62,7 +62,6 @@ management handled for you.
 | `packages/ide`    | The editor: upstream code-server + our patch stack and overlay |
 | `packages/cli`    | The `composery` CLI and `persistence` daemon (Rust)            |
 | `packages/web`    | Website, docs site, and cloud backend (Next.js, Convex)        |
-| `packages/mobile` | iOS/Android companion app (Expo)                               |
 | `rootfs/`         | Files baked into the runtime image                             |
 | `templates/`      | Ready-to-use deployment recipes for the self-hosting guides    |
 | `docs/`           | The documentation rendered at composery.io/docs                |
@@ -70,7 +69,7 @@ management handled for you.
 Developing: see [docs/developing](docs/developing/index.md). Releases:
 [changelog](https://github.com/sloikodavid/composery/releases). Security:
 [SECURITY.md](SECURITY.md). Bugs in any part of the product - image, cloud,
-IDE, app, or site - go to
+IDE, CLI, or site - go to
 [issues](https://github.com/sloikodavid/composery/issues); feature requests
 and questions live in
 [discussions](https://github.com/sloikodavid/composery/discussions).

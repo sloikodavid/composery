@@ -5,8 +5,8 @@ export { ideFeatures, ideTheme, theme } from "./theme.ts";
 // The single source of truth for who/what this project is: brand, identity, and
 // the pure (zero-dependency) icon-SVG builders derived from them. Everything here
 // is plain data or pure string functions, so every surface imports it DIRECTLY -
-// web, mobile, the IDE build scripts, and rebrand.mjs - with no generated copies
-// and no drift. Node imports it via type-stripping; bundlers transpile it.
+// web, the IDE build scripts, and rebrand.mjs - with no generated copies and no
+// drift. Node imports it via type-stripping; bundlers transpile it.
 //
 // Files that cannot import TS (Dockerfile, compose, templates/, .env.example.*,
 // CI, Markdown) duplicate these values by hand; CONTAINER_IMAGE and REPO below are

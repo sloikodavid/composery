@@ -5,8 +5,7 @@ description: Fresh-clone setup, workspace map, verification gates, and the norma
 
 This is the zero-config entry point: assume only source access and no configured
 local environment or external services. Product deployment continues under
-[Web](./web/index.md), IDE-fork work under [IDE](./ide.md), and store releases
-under [Mobile](./mobile/index.md).
+[Web](./web/index.md), and IDE-fork work under [IDE](./ide.md).
 
 ## Fresh clone
 
@@ -60,7 +59,6 @@ host; everything else is native. The IDE fork builds inside the image, so
 | ------------------- | --------------------------------------------------------------------------------------------------- |
 | `packages/web`      | Public site, customer dashboard, staff console, Convex backend, cloud orchestration, and these docs |
 | `packages/ide`      | Owned hard fork of code-server, assembled from the upstream submodule, Quilt patches, and overlay   |
-| `packages/mobile`   | Expo mobile client and Maestro flows                                                                |
 | `packages/cli`      | Rust CLI and persistence service                                                                    |
 | `packages/shared`   | Brand and identity constants imported directly, plus the build-time CSS/asset generator             |
 | `rootfs`            | Files installed into the shipped runtime image                                                      |
@@ -82,7 +80,7 @@ pnpm smoke
 ```
 
 `pnpm dev` starts the tree watcher, development container, Convex, Next.js,
-mobile client, and local theme editor. Run narrower scripts while iterating, such as
+and local theme editor. Run narrower scripts while iterating, such as
 `pnpm --filter web check`, but run the root `pnpm check` before opening a pull request. The root
 gate covers TypeScript, ESLint, Prettier, Vitest, the generated repository tree,
 Renovate config, the IDE patch stack, Rust formatting/lints/tests, and brand
@@ -113,9 +111,8 @@ function/schema changes and should be reviewed like any other generated diff.
 The web frontend deploys through Vercel as described in
 [Web / Vercel](./web/services/vercel.md). Convex functions deploy separately with their
 configured deployment. The shipped self-hosted product is a multi-architecture
-GHCR image. `.github/IMAGE_RELEASE.md` is the image procedure; mobile has the
-independent `.github/MOBILE_RELEASE.md` procedure and `mobile-v*` tags. Image
-preview refs publish preview tags; a stable run from current `main` reads the
+GHCR image. `.github/IMAGE_RELEASE.md` is the image procedure. Image preview
+refs publish preview tags; a stable run from current `main` reads the
 root semver, publishes immutable version/SHA tags plus moving convenience tags,
 scans the image, attests it, and creates the GitHub release. Never create stable
 `v*` tags manually. The GitHub-side repository configuration - settings, rulesets,

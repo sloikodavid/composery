@@ -6,64 +6,16 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { theme } from "../../../index.ts";
 
 const host = vi.hoisted<{
-	app: unknown;
-	android: string;
 	current: Map<string, string>;
 	readiness: string;
 	writes: Array<{ path: string; contents: string }>;
 }>(() => ({
-	app: null,
-	android: 'const ACCENT = { light: "#111111", dark: "#222222" };',
 	current: new Map(),
 	readiness:
-		'const page = \'<style>body{margin:0;background:#111111;color:#222222}@media (prefers-color-scheme:dark){body{background:#333333;color:#444444}}html[data-scheme="light"] body{background:#555555;color:#666666}html[data-scheme="dark"] body{background:#777777;color:#888888}</style>\';',
+		'const page = \'<style>body{margin:0;background:#111111;color:#222222}@media (prefers-color-scheme:dark){body{background:#333333;color:#444444}}</style>\';',
 	writes: []
 }));
 
-const app = {
-	expo: {
-		android: { adaptiveIcon: { backgroundColor: "#111111" } },
-		plugins: [
-			"unrelated",
-			[
-				"not-splash",
-				{
-					backgroundColor: "#444444",
-					dark: { backgroundColor: "#555555" }
-				}
-			],
-			[
-				"expo-splash-screen",
-				{
-					backgroundColor: "#222222",
-					dark: { backgroundColor: "#333333" }
-				}
-			]
-		]
-	}
-};
-const syncedApp = {
-	expo: {
-		android: { adaptiveIcon: { backgroundColor: "#242121" } },
-		plugins: [
-			"unrelated",
-			[
-				"not-splash",
-				{
-					backgroundColor: "#444444",
-					dark: { backgroundColor: "#555555" }
-				}
-			],
-			[
-				"expo-splash-screen",
-				{
-					backgroundColor: "#cdc9c4",
-					dark: { backgroundColor: "#1d1b1b" }
-				}
-			]
-		]
-	}
-};
 const pageThemeMeta = `<meta
 	name="theme-color"
 	content="#111111"
@@ -84,15 +36,11 @@ vi.mock("node:fs/promises", () => ({
 			return Promise.resolve(host.current.get(normalized));
 		if (normalized.endsWith("/persistence/readiness.ts"))
 			return Promise.resolve(host.readiness);
-		if (normalized.endsWith("/plugins/android-dialog-theme.js"))
-			return Promise.resolve(host.android);
 		if (
 			normalized.endsWith("/pages/auth.html") ||
 			normalized.endsWith("/pages/error.html")
 		)
 			return Promise.resolve(pageThemeMeta);
-		if (normalized === `${slash(repoRoot)}/packages/mobile/app.json`)
-			return Promise.resolve(JSON.stringify(host.app, null, "\t"));
 		return Promise.resolve(null);
 	},
 	writeFile: (path: string, contents: string) => {
@@ -137,12 +85,10 @@ function output(path: RegExp) {
 
 beforeEach(() => {
 	host.current = new Map();
-	host.android = 'const ACCENT = { light: "#111111", dark: "#222222" };';
 });
 
 describe("text brand asset generator", () => {
-	test("derives CSS, favicons, native colors, and startup literals from one theme", async () => {
-		host.app = structuredClone(app);
+	test("derives CSS, favicons, and startup literals from one theme", async () => {
 		const logs = await run();
 
 		expect(
@@ -155,14 +101,12 @@ describe("text brand asset generator", () => {
 			"packages/ide/overlay/src/browser/pages/error.html",
 			"packages/ide/overlay/src/browser/pages/brand.css",
 			"packages/ide/overlay/src/node/persistence/readiness.ts",
-			"packages/mobile/plugins/android-dialog-theme.js",
 			"packages/web/app/icon.svg",
 			"packages/web/public/icon-light.svg",
 			"packages/web/public/icon-dark.svg",
 			"packages/ide/overlay/src/browser/media/favicon.svg",
 			"packages/ide/overlay/src/browser/media/favicon-light.svg",
-			"packages/ide/overlay/src/browser/media/favicon-dark.svg",
-			"packages/mobile/app.json"
+			"packages/ide/overlay/src/browser/media/favicon-dark.svg"
 		]);
 		expect(slash(host.writes[0]!.path)).toBe(
 			`${slash(repoRoot)}/packages/web/app/brand.css`
@@ -223,16 +167,10 @@ describe("text brand asset generator", () => {
 		expect(ideCss).toContain(
 			`--vscode-shadow-hover: 0 2px 8px ${theme.dark.shadow};`
 		);
-		expect(ideCss).toContain(':root[data-scheme="light"]');
-		expect(ideCss).toContain(':root[data-scheme="dark"]');
-
 		expect(
 			output(/packages\/ide\/overlay\/src\/node\/persistence\/readiness\.ts$/)
 		).toBe(
-			'const page = \'<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}html[data-scheme="light"] body{background:#cdc9c4;color:#323229}html[data-scheme="dark"] body{background:#1d1b1b;color:#c1b5a9}</style>\';'
-		);
-		expect(output(/packages\/mobile\/plugins\/android-dialog-theme\.js$/)).toBe(
-			'const ACCENT = { light: "#323229", dark: "#c1b5a9" };'
+			'const page = \'<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}</style>\';'
 		);
 
 		expect(output(/packages\/web\/app\/icon\.svg$/)).toMatch(
@@ -256,32 +194,10 @@ describe("text brand asset generator", () => {
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon-dark\.svg$/)
 		).toContain('color="#c1b5a9"');
 
-		expect(output(/packages\/mobile\/app\.json$/)).toBe(
-			`${JSON.stringify(syncedApp, null, "\t")}\n`
-		);
 		expect(logs).toEqual([["Synced generated brand CSS and SVGs."]]);
 	});
 
-	test("leaves mobile splash configuration optional", async () => {
-		host.app = {
-			expo: {
-				android: { adaptiveIcon: { backgroundColor: "#111111" } },
-				plugins: ["unrelated"]
-			}
-		};
-
-		await run();
-
-		expect(JSON.parse(output(/packages\/mobile\/app\.json$/))).toEqual({
-			expo: {
-				android: { adaptiveIcon: { backgroundColor: "#242121" } },
-				plugins: ["unrelated"]
-			}
-		});
-	});
-
 	test("refuses an ambiguous literal instead of silently changing one copy", async () => {
-		host.app = structuredClone(app);
 		const original = host.readiness;
 		host.readiness = `${original}\n${original}`;
 		try {
@@ -294,22 +210,12 @@ describe("text brand asset generator", () => {
 	});
 
 	test("names every ambiguous source literal in its failure", async () => {
-		host.app = structuredClone(app);
 		const originalReadiness = host.readiness;
 		const cases = [
 			{
 				extra:
 					"@media (prefers-color-scheme:dark){body{background:#999999;color:#aaaaaa",
 				message: "startup dark: expected one palette literal, found 2"
-			},
-			{
-				extra:
-					'html[data-scheme="light"] body{background:#999999;color:#aaaaaa',
-				message: "startup app light: expected one palette literal, found 2"
-			},
-			{
-				extra: 'html[data-scheme="dark"] body{background:#999999;color:#aaaaaa',
-				message: "startup app dark: expected one palette literal, found 2"
 			}
 		];
 		try {
@@ -317,18 +223,12 @@ describe("text brand asset generator", () => {
 				host.readiness = `${originalReadiness}\n${extra}`;
 				await expect(run()).rejects.toThrow(message);
 			}
-			host.readiness = originalReadiness;
-			host.android = `${host.android}\n${host.android}`;
-			await expect(run()).rejects.toThrow(
-				"Android dialog accent: expected one palette literal, found 2"
-			);
 		} finally {
 			host.readiness = originalReadiness;
 		}
 	});
 
 	test("rejects a missing source literal before emitting a partial replacement", async () => {
-		host.app = structuredClone(app);
 		const original = host.readiness;
 		host.readiness = original.replace("body{margin:0", "body{padding:0");
 		try {
@@ -341,7 +241,6 @@ describe("text brand asset generator", () => {
 	});
 
 	test("check mode reports stale outputs without writing replacements", async () => {
-		host.app = structuredClone(app);
 		const exit = vi.spyOn(process, "exit").mockImplementation(((
 			code?: number
 		) => {
@@ -359,7 +258,7 @@ describe("text brand asset generator", () => {
 				)
 			);
 			const message = error.mock.calls[0]?.[0] as string;
-			expect(message.split("\n")).toHaveLength(14);
+			expect(message.split("\n")).toHaveLength(12);
 			expect(host.writes).toEqual([]);
 		} finally {
 			exit.mockRestore();
@@ -368,7 +267,6 @@ describe("text brand asset generator", () => {
 	});
 
 	test("check mode reports current outputs without writing replacements", async () => {
-		host.app = structuredClone(app);
 		await run();
 		host.current = new Map(
 			host.writes.map(({ path, contents }) => [slash(path), contents])

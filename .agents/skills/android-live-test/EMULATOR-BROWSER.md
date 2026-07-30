@@ -1,4 +1,4 @@
-# Persistent emulator Chrome and WebView
+# Persistent emulator Chrome
 
 The live-test helper starts emulators with `-read-only -no-snapshot-save`. This is
 the right default for disposable test runs, but every guest-disk change from such a
@@ -25,7 +25,7 @@ account out of documentation and Git.
 2. In Android Studio's SDK Manager, update Android Emulator, Android SDK
    Platform-Tools, and the target AVD's Google Play system image when updates exist.
    Updating the system image alone does not guarantee a current Play-distributed
-   Chrome or WebView.
+   Chrome.
 
 3. Start the target AVD normally from Android Studio's Device Manager. Do not use
    `android.mjs boot`, `-read-only`, or `-wipe-data`. Only one writable instance of
@@ -42,7 +42,7 @@ account out of documentation and Git.
    without printing its account identifier or capturing account/Store UI. Ask the
    user to authenticate only if Google requires it. In
    **Play Store > profile > Manage apps & device**, update all apps; check the store
-   pages for both **Google Chrome** and **Android System WebView**.
+   page for **Google Chrome**.
 
 5. Find the emulator serial, reboot, and wait for Android to finish:
 
@@ -58,14 +58,9 @@ account out of documentation and Git.
 6. Check the active artifacts, not the system image or store UI:
 
    ```powershell
-   & $adb -s emulator-5554 shell dumpsys webviewupdate
    & $adb -s emulator-5554 shell dumpsys package com.android.chrome |
      Select-String "versionName="
    ```
-
-   `dumpsys webviewupdate` is authoritative for the selected provider and its
-   version. The provider is normally `com.google.android.webview`, but do not assume
-   that package name.
 
 7. Stop the writable emulator cleanly from Device Manager or its window. Wait for
    its process to exit before starting a test instance. Do not wipe its data.
@@ -83,7 +78,6 @@ At the start of browser-sensitive work, record:
 
 ```powershell
 $adb = "$env:USERPROFILE\AppData\Local\Android\Sdk\platform-tools\adb.exe"
-& $adb -s emulator-5556 shell dumpsys webviewupdate
 & $adb -s emulator-5556 shell dumpsys package com.android.chrome |
   Select-String "versionName="
 ```

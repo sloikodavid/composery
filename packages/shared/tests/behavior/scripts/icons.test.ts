@@ -70,14 +70,7 @@ describe("raster icon generator", () => {
 			"packages/ide/overlay/src/browser/media/pwa-icon-maskable-512.png",
 			"packages/ide/overlay/src/browser/media/favicon.ico",
 			"packages/web/app/apple-icon.png",
-			"packages/web/app/favicon.ico",
-			"packages/mobile/assets/images/icon.png",
-			"packages/mobile/assets/images/android-icon-background.png",
-			"packages/mobile/assets/images/android-icon-foreground.png",
-			"packages/mobile/assets/images/android-icon-monochrome.png",
-			"packages/mobile/assets/images/splash-icon.png",
-			"packages/mobile/assets/images/splash-icon-dark.png",
-			"packages/mobile/assets/images/favicon.png"
+			"packages/web/app/favicon.ico"
 		]);
 		expect(outputs["packages/ide/overlay/src/browser/media/favicon.ico"]).toBe(
 			"fixture-ico"
@@ -89,7 +82,7 @@ describe("raster icon generator", () => {
 			)}/packages/ide/overlay/src/browser/media/pwa-icon-192.png`
 		);
 		expect(generationLogs).toEqual([
-			["Wrote raster icons for the editor overlay, web, and mobile."]
+			["Wrote raster icons for the editor overlay and website."]
 		]);
 	});
 
@@ -125,50 +118,6 @@ describe("raster icon generator", () => {
 			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.959999999999999) translate(-10 -10)">`
 		);
 
-		expect(outputs["packages/mobile/assets/images/icon.png"]).toContain(
-			'<svg width="1024" height="1024"'
-		);
-		expect(outputs["packages/mobile/assets/images/icon.png"]).toContain(
-			`<rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/><g transform="translate(128 128) scale(8.793600000000001) translate(-10 -10)">`
-		);
-		expect(
-			outputs["packages/mobile/assets/images/android-icon-background.png"]
-		).toBe(
-			`<svg width="1024" height="1024" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="${BRAND_COLORS.surface.tile}"/></svg>`
-		);
-		expect(
-			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
-		).toContain(
-			`<svg width="1024" height="1024" viewBox="0 0 256 256" fill="none" color="${BRAND_COLORS.surface.ink}"`
-		);
-		expect(
-			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
-		).toContain('scale(6.988800000000001) translate(-10 -10)"><g transform=');
-		expect(
-			outputs["packages/mobile/assets/images/android-icon-foreground.png"]
-		).toContain(
-			`fill="${BRAND_COLORS.icon.tileStroke}" stroke="${BRAND_COLORS.icon.tileStroke}"`
-		);
-		expect(
-			outputs["packages/mobile/assets/images/android-icon-monochrome.png"]
-		).toContain('fill="#ffffff" stroke="#ffffff"');
-		expect(outputs["packages/mobile/assets/images/splash-icon.png"]).toContain(
-			'<svg width="384" height="384"'
-		);
-		expect(outputs["packages/mobile/assets/images/splash-icon.png"]).toContain(
-			`fill="${BRAND_COLORS.surface.ink}" stroke="${BRAND_COLORS.surface.ink}"`
-		);
-		expect(
-			outputs["packages/mobile/assets/images/splash-icon-dark.png"]
-		).toContain(
-			`fill="${BRAND_COLORS.icon.dark}" stroke="${BRAND_COLORS.icon.dark}"`
-		);
-		expect(outputs["packages/mobile/assets/images/favicon.png"]).toContain(
-			'<svg width="64" height="64"'
-		);
-		expect(outputs["packages/mobile/assets/images/favicon.png"]).toContain(
-			`<rect width="256" height="256" rx="56" fill="${BRAND_COLORS.surface.tile}"/>`
-		);
 	});
 
 	test("builds both legacy favicons from the exact 16, 32, and 48 pixel set", () => {

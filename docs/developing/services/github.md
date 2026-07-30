@@ -11,10 +11,8 @@ pull requests. This page assumes no GitHub account exists yet and walks a fresh
 setup to parity with the canonical repository.
 
 Repository checks and image publication authenticate with the ephemeral,
-repository-scoped `GITHUB_TOKEN`. Mobile cloud builds additionally use an Expo
-token in protected GitHub environments; the production APK download exchanges
-GitHub OIDC for a short-lived Google credential. Do not replace either with a
-personal GitHub access token. Check GitHub's plan/billing pages for runner and
+repository-scoped `GITHUB_TOKEN`. Do not replace it with a personal GitHub
+access token. Check GitHub's plan/billing pages for runner and
 storage allowances rather than recording mutable quotas here.
 
 ## Account and repository
@@ -133,23 +131,8 @@ their `permissions:` blocks, which is why none of this needs org-level policy:
 | `deploy.yml`         | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run   |
 | `smoke.yml`          | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state       |
 | `smoke-nightly.yml`  | schedule, dispatch                    | none - uncached image smoke                                                                         |
-| `mobile-e2e.yml`     | schedule, dispatch                    | none - Release-configuration Android/iOS Maestro checks                                             |
-| `mobile-preview.yml` | successful `ci` completion, dispatch  | uses protected `EXPO_TOKEN`; automatic and manual builds both wait for the complete validation tier |
-| `mobile-release.yml` | `mobile-v*` tag                       | revalidates the tag before EAS/Google; final job gets release and Google federation permissions     |
 | `release.yml`        | dispatch                              | revalidates the exact ref before image release, GHCR, provenance, and Trivy permissions             |
 | `cla.yml`            | PR events/comments                    | signature branch, PR comments, and recheck permissions                                              |
-
-Create GitHub environments under **Settings** -> **Environments**:
-
-- `mobile-preview`: secret `EXPO_TOKEN`. Repository variable
-  `MOBILE_PREVIEW_ENABLED=true` opts into automatic APK builds after a
-  successful `main` CI run.
-- `mobile-production`: required reviewers, secret `EXPO_TOKEN`, and variables
-  `GCP_WORKLOAD_IDENTITY_PROVIDER` and
-  `GCP_ANDROID_PUBLISHER_SERVICE_ACCOUNT`.
-
-Use the mobile Expo/Google runbooks to create those identities. A fork can leave
-them absent; its normal CI and image workflows remain usable.
 
 Operational notes:
 
@@ -186,9 +169,8 @@ Renovate is configured to never bump our own image reference.
 ## Releases and tags
 
 Stable image `v*` tags and image GitHub Releases are created exclusively by the
-image release workflow; never create them by hand. Mobile uses the distinct
-`mobile-v*` namespace and tag-triggered workflow. The operator procedures are
-`.github/IMAGE_RELEASE.md` and `.github/MOBILE_RELEASE.md`; the image side is:
+image release workflow; never create them by hand. The operator procedure is
+`.github/IMAGE_RELEASE.md`:
 
 - Actions -> release -> Run workflow (requires write access; image release has
   no provider credential).
@@ -276,7 +258,6 @@ git grep -n "sloikodavid" -- ':!packages/ide/upstream' ':!pnpm-lock.yaml'
 | `packages/web/lib/links.ts` (`gitConfig`, `SUPPORT_EMAIL`)      | the website's repo links, issue/discussion links, and support email   |
 | `packages/ide/scripts/rebrand.mjs`                              | product metadata baked into the IDE build (issue URL, license, email) |
 | `packages/ide/overlay/.../composery-*/package.json`             | bundled extension repository metadata                                 |
-| `packages/mobile/app.json` (`owner`)                            | the Expo/EAS owner account, not GitHub                                |
 
 `release.yml` and `smoke.yml` need no edits - they derive the image owner from
 `github.repository_owner` at run time.

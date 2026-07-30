@@ -54,10 +54,9 @@ describe("IDE public path boundary", () => {
 		]) {
 			expect(lines.has(route), route).toBe(true);
 		}
-		expect(lines.has("@identity path /_composery")).toBe(true);
 		expect(
 			lines.has(
-				"@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt"
+				"@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt"
 			)
 		).toBe(true);
 		expect(

@@ -1,7 +1,6 @@
 # Image release
 
-Composery container-image releases publish to GHCR. Mobile releases are
-independent and use [MOBILE_RELEASE.md](MOBILE_RELEASE.md).
+Composery container-image releases publish to GHCR.
 
 GitHub always shows a **Use workflow from** dropdown when manually running a
 workflow. Leave it set to `main`; that dropdown selects the workflow definition.

@@ -21,7 +21,7 @@ const theme = JSON.parse(
 	};
 };
 const document = new JSDOM(
-	readFileSync(resolve(sharedRoot, "tools/colors/index.html"), "utf8")
+	readFileSync(resolve(sharedRoot, "scripts/colors/index.html"), "utf8")
 ).window.document;
 const lucideSprite = new JSDOM(
 	readFileSync(
@@ -57,7 +57,7 @@ function surfaceTokens(surface: string): Set<string> {
 }
 
 describe("colors preview metadata", () => {
-	test.each(["web", "ide", "mobile"])(
+	test.each(["web", "ide"])(
 		"%s exposes uniquely named switchable reference states",
 		(surface) => {
 			const states = [
@@ -123,7 +123,7 @@ describe("colors preview metadata", () => {
 			)
 		);
 		const referenced = new Set(
-			["web", "ide", "mobile"].flatMap((surface) => [...surfaceTokens(surface)])
+			["web", "ide"].flatMap((surface) => [...surfaceTokens(surface)])
 		);
 
 		expect([...referenced].filter((token) => !canonical.has(token))).toEqual(
@@ -143,7 +143,7 @@ describe("colors preview metadata", () => {
 		]);
 		const names = uses.map((use) => use.getAttribute("href")!.split("#")[1]);
 
-		expect(names.length).toBeGreaterThan(30);
+		expect(names.length).toBeGreaterThan(20);
 		expect(
 			names.filter((name) => !lucideSprite.querySelector(`#${name}`))
 		).toEqual([]);

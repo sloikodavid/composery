@@ -17,7 +17,6 @@ export default defineConfig(
 		"**/.cache/**",
 		"**/node_modules/**",
 		"packages/web/**",
-		"packages/mobile/**",
 		"packages/ide/overlay/**",
 		"packages/ide/upstream/**",
 		"packages/ide/build/**",

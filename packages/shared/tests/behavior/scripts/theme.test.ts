@@ -125,8 +125,6 @@ const workbenchPatch = `+<meta name="theme-color" content="#111111" media="(pref
 +<meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">
 + html, body { background-color: #333333; }
 + @media (prefers-color-scheme: dark) { html, body { background-color: #444444; } }
-+ html[data-scheme="light"], html[data-scheme="light"] body { background-color: #555555; }
-+ html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: #666666; }
 +theme_color: "#777777"
 +background_color: "#888888"`;
 
@@ -375,8 +373,6 @@ describe("theme generator", () => {
 +<meta name="theme-color" content="${ideTheme.dark.titleBar}" media="(prefers-color-scheme: dark)">
 + html, body { background-color: ${ideTheme.light.editor}; }
 + @media (prefers-color-scheme: dark) { html, body { background-color: ${ideTheme.dark.editor}; } }
-+ html[data-scheme="light"], html[data-scheme="light"] body { background-color: ${ideTheme.light.editor}; }
-+ html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: ${ideTheme.dark.editor}; }
 +theme_color: "${ideTheme.dark.titleBar}"
 +background_color: "${ideTheme.dark.editor}"`);
 	});

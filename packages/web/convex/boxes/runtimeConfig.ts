@@ -137,7 +137,7 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 		key: "COMPOSERY_SESSION_LIFETIME",
 		label: "Sign-in frequency",
 		description:
-			"How long a sign-in remains valid. The default is 8 hours. Every browser session asks again after the browser or mobile app closes, with a 30-day safety cap while it remains open.",
+			"How long a sign-in remains valid. The default is 8 hours. Every browser session asks again after the browser closes, with a 30-day safety cap while it remains open.",
 		options: [
 			{ label: "Every browser session", value: "browser" },
 			{ label: "Every 8 hours", value: "8h" },

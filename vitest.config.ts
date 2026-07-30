@@ -2,8 +2,8 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
-// One vitest run for the whole repo. Three separate invocations (root, then
-// `pnpm -r` fanning out to web and mobile) each sized their worker pool to the
+// One vitest run for the whole repo. Separate root and recursive package
+// invocations each sized their worker pool to the
 // full machine, so they oversubscribed it and timed each other out - a slow test
 // read as a broken one. Every project is declared here instead, so there is one
 // scheduler and one place that knows what a project is.
@@ -23,8 +23,7 @@ const SUITES = [
 	// `@` mirrors each package's tsconfig `paths`, so a test imports its subject
 	// exactly as the package's own source does and never through a chain of `..`
 	// that a move would invalidate.
-	{ name: "web", root: "packages/web", alias: "packages/web" },
-	{ name: "mobile", root: "packages/mobile", alias: "packages/mobile/src" }
+	{ name: "web", root: "packages/web", alias: "packages/web" }
 ];
 
 // Behaviour runs product code; invariants read the checkout. The timeout is a
@@ -37,8 +36,7 @@ const SUITES = [
 // Hang detectors, not budgets - sized against measured worst cases with the same
 // margin smoke.yml uses, because the failure mode of a tight one is a healthy run
 // reported as broken and nobody trusts a suite that cries wolf. Today's slowest
-// behaviour test is the Expo prebuild at ~1.7s and the slowest invariant is the
-// fuzz=0 patch-stack apply at ~11.7s, both on an idle machine; a loaded runner is
+// invariant is the fuzz=0 patch-stack apply at ~11.7s on an idle machine; a loaded runner is
 // several times that. A single test that genuinely needs longer passes its own
 // timeout as vitest's third argument rather than lifting the ceiling for all of
 // them - there is always a way out, and it is per test.
@@ -60,7 +58,6 @@ export default defineConfig({
 			// ran it - the one direction a coverage number must never be wrong in.
 			include: [
 				"packages/ide/overlay/**/*.{ts,js}",
-				"packages/mobile/src/**/*.{ts,tsx}",
 				"packages/shared/**/*.{ts,mjs}",
 				"packages/web/{app,components,convex,hooks,lib}/**/*.{ts,tsx}",
 				"scripts/**/*.mjs"

@@ -6,7 +6,6 @@ readiness.diff
 node-engine.diff
 qr-action.diff
 loopback-callback.diff
-window-focus-resample.diff
 editcontext-android.diff
 brand.diff
 defaults.diff

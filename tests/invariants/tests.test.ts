@@ -207,8 +207,8 @@ describe("system harnesses are reachable", () => {
 
 		const unreachable = harnesses.filter((h) => {
 			// Either the workflow names the harness, or it calls a package script
-			// that does. A path relative to its own package counts: the mobile jobs
-			// run from packages/mobile.
+			// that does. A path relative to its own package counts: some jobs run
+			// from inside their package directory.
 			const local = h.replace(/^packages\/[^/]+\//, "");
 			const named = (text: string) => text.includes(h) || text.includes(local);
 			if (named(workflows)) return false;

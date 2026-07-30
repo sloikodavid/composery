@@ -60,7 +60,7 @@ remembers the last review.
 
 `packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
-- Repo packages stay domain nouns (`ide`, `web`, `mobile`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list — a test pins it to real wiring, so add there rather than enumerating names here.
+- Repo packages stay domain nouns (`ide`, `web`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list — a test pins it to real wiring, so add there rather than enumerating names here.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
 - `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. It owns _every_ rename, without exception: no patch in the series renames an upstream identifier, string or environment variable, and a hunk that would only rename belongs there as a rule. A patch anchors on upstream's spelling and lets the rewrite happen afterwards - so `CS_DISABLE_FILE_UPLOADS` in a hunk is what ships as `COMPOSERY_DISABLE_FILE_UPLOADS`. This absolute rule replaces a split that left a name's home unknowable: two-thirds of the old `naming.diff` was doing work rebrand already did, while its siblings (`PASSWORD`, `LOG_LEVEL`, `GITHUB_TOKEN`) were rebrand's alone. Variables Composery introduces outright have no upstream spelling to rename, so those are written directly where they are read.
 - No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
@@ -78,7 +78,7 @@ remembers the last review.
     android-live-test/
       scripts/
         android.mjs
-      EMULATOR-WEBVIEW.md
+      EMULATOR-BROWSER.md
       SKILL.md
     claudes/
       SKILL.md
@@ -97,15 +97,10 @@ remembers the last review.
   ISSUE_TEMPLATE/
     bug.yml
     config.yml
-  scripts/
-    install-maestro.sh
   workflows/
     ci.yml
     cla.yml
     deploy.yml
-    mobile-e2e.yml
-    mobile-preview.yml
-    mobile-release.yml
     mutants.yml
     release.yml
     smoke-nightly.yml
@@ -113,7 +108,6 @@ remembers the last review.
     templates.yml
   CLA.md
   IMAGE_RELEASE.md
-  MOBILE_RELEASE.md
   PULL_REQUEST_TEMPLATE.md
 .vscode/
   extensions.json
@@ -121,15 +115,6 @@ remembers the last review.
   settings.json
 docs/
   developing/
-    mobile/
-      apple.md
-      development.md
-      expo.md
-      google-play.md
-      index.md
-      meta.json
-      releasing.md
-      review-and-privacy.md
     services/
       github.md
       index.md
@@ -379,7 +364,6 @@ packages/
       updates.diff
       vscode-duplicate-mount.diff
       webkit-paste.diff
-      window-focus-resample.diff
       workbench-page.diff
       xterm-resize-scroll.diff
     scripts/
@@ -431,98 +415,11 @@ packages/
         patch.ts
     package.json
     upstream
-  mobile/
-    assets/
-      images/
-        android-icon-background.png
-        android-icon-foreground.png
-        android-icon-monochrome.png
-        favicon.png
-        icon.png
-        splash-icon-dark.png
-        splash-icon.png
-    plugins/
-      android-dialog-theme.js
-    scripts/
-      check-native-config.mjs
-      eas.mjs
-      test-instance.mjs
-    src/
-      app/
-        instance/
-          [id].tsx
-        _layout.tsx
-        add-instance.tsx
-        index.tsx
-        scan.tsx
-      components/
-        action-sheet.tsx
-        back-button.tsx
-        instance-host.tsx
-        instance-view.tsx
-        logo.tsx
-        pressable-scale.tsx
-        spinner.tsx
-      lib/
-        back-decision.ts
-        fonts.ts
-        haptics.ts
-        id.ts
-        instance-host.ts
-        instance-store.ts
-        nav.ts
-        normalize-url.ts
-        open-url.ts
-        parse-scanned.ts
-        probe.ts
-        theme.ts
-        use-theme.ts
-        webview-navigation.ts
-      web/
-        back-button.ts
-    store/
-      listing.md
-      privacy.md
-      README.md
-      review-notes.md
-    tests/
-      behavior/
-        lib/
-          back-decision.test.ts
-          haptics.test.ts
-          instance-host.test.ts
-          instance-store.test.ts
-          normalize-url.test.ts
-          open-url.test.ts
-          parse-scanned.test.ts
-          probe.test.ts
-          theme.test.ts
-          webview-navigation.test.ts
-        plugins/
-          android-dialog-theme.test.ts
-        web/
-          back-button.test.ts
-      invariants/
-        lib/
-          nav.test.ts
-        plugins/
-          android-dialog-theme.test.ts
-      support/
-        urls.ts
-      system/
-        add-instance.yml
-        e2e.yml
-        open-instance.yml
-        README.md
-    .gitignore
-    app.json
-    eas.json
-    eslint.config.mjs
-    metro.config.js
-    package.json
-    tsconfig.json
   shared/
     scripts/
+      colors/
+        index.html
+        server.mjs
       icons.mjs
       logo.mjs
       sync.mjs
@@ -538,10 +435,6 @@ packages/
       invariants/
         tools/
           colors.test.ts
-    tools/
-      colors/
-        index.html
-        server.mjs
     index.ts
     package.json
     theme.json
@@ -1152,8 +1045,6 @@ tests/
     cross-platform.test.ts
     desktop-integration.test.ts
     docs-links.test.ts
-    eas-ignore.test.ts
-    mobile-theme-preview.test.ts
     runbook-windows.test.ts
     runtime-init.test.ts
     templates.test.ts
@@ -1170,7 +1061,6 @@ tests/
       run.mjs
     smoke.mjs
 .dockerignore
-.easignore
 .editorconfig
 .gitattributes
 .gitignore

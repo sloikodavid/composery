@@ -1,8 +1,8 @@
 packages:
   - packages/*
 
-# Single-source the versions shared across packages so they can't drift (web/mobile/root
-# had already diverged on vitest, @types/node, concurrently). Reference as "catalog:".
+# Single-source the versions shared across packages so they can't drift.
+# Reference as "catalog:".
 catalog:
   "@types/node": 24.13.2
   "@types/react": ^19.2.15
@@ -31,7 +31,6 @@ overrides:
 peerDependencyRules:
   allowedVersions:
     "ws@7>utf-8-validate": "6"
-    "@gorhom/bottom-sheet>react-native-reanimated": "4.5.0"
 
 allowBuilds:
   "@clerk/shared": true

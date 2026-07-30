@@ -1,5 +1,5 @@
 name: Bug report
-description: Something is broken in the runtime image, Cloud, IDE, mobile app, or website.
+description: Something is broken in the runtime image, Cloud, IDE, CLI, or website.
 labels: ["bug"]
 body:
   - type: dropdown
@@ -11,7 +11,6 @@ body:
         - Runtime image (self-hosted)
         - Composery Cloud
         - IDE
-        - Mobile app
         - CLI / persistence
         - Website or docs
     validations:
@@ -20,7 +19,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Image tag, release, or app version, if you know it.
+      description: Image tag or release, if you know it.
   - type: textarea
     id: happened
     attributes:

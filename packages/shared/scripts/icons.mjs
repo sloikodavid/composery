@@ -1,18 +1,12 @@
-// Rasterizes the Composery icon into every platform's PNG/ICO assets. Vector
-// source: packages/shared/index.ts. One home for all raster brand icons - the editor overlay,
-// web, and the mobile app - so a size or padding change happens in a single file.
+// Rasterizes the Composery icon into the editor and website PNG/ICO assets.
+// Vector source: packages/shared/index.ts.
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pngToIco from "png-to-ico";
 import sharp from "sharp";
-import {
-	BRAND_COLORS,
-	centeredIconSvg,
-	iconSvg,
-	iconTileSvg
-} from "../index.ts";
+import { BRAND_COLORS, iconSvg, iconTileSvg } from "../index.ts";
 
 export async function generateIcons({
 	root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -27,7 +21,6 @@ export async function generateIcons({
 		"media"
 	);
 	const webApp = join(root, "packages", "web", "app");
-	const mobileImages = join(root, "packages", "mobile", "assets", "images");
 
 	const png = (svg) => sharp(Buffer.from(svg)).png().toBuffer();
 	const write = (path, buf) => writeFile(path, buf);
@@ -36,7 +29,7 @@ export async function generateIcons({
 			pngToIco
 		);
 
-	// scales preserve the app-icon padding now that the shared icon fills its box flush
+	// Scales preserve the icon padding now that the shared icon fills its box flush
 	// (see ICON_FIT in index.mjs): old effective fill was scale * 17.617/20.
 
 	// Editor overlay: installable PWA icons on a solid tile (maskable variant unpadded
@@ -99,73 +92,7 @@ export async function generateIcons({
 	);
 	await write(join(webApp, "favicon.ico"), await ico([16, 32, 48]));
 
-	// Mobile: app icon, Android adaptive layers, splash, and web favicon - the paths
-	// mobile/app.json references.
-	const solidSvg = (size, color) =>
-		`<svg width="${size}" height="${size}" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect width="256" height="256" fill="${color}"/></svg>`;
-	await write(
-		join(mobileImages, "icon.png"),
-		await png(
-			iconTileSvg({
-				background: BRAND_COLORS.surface.tile,
-				size: 1024,
-				scale: 0.687
-			})
-		)
-	);
-	await write(
-		join(mobileImages, "android-icon-background.png"),
-		await png(solidSvg(1024, BRAND_COLORS.surface.tile))
-	);
-	await write(
-		join(mobileImages, "android-icon-foreground.png"),
-		await png(
-			centeredIconSvg({
-				size: 1024,
-				scale: 0.546,
-				fill: BRAND_COLORS.icon.tileStroke
-			})
-		)
-	);
-	await write(
-		join(mobileImages, "android-icon-monochrome.png"),
-		await png(centeredIconSvg({ size: 1024, scale: 0.546, fill: "#ffffff" }))
-	);
-	// Two splash icons: the splash background follows the system theme, so a single
-	// ink glyph would be black on near-black in dark mode.
-	await write(
-		join(mobileImages, "splash-icon.png"),
-		await png(
-			centeredIconSvg({
-				size: 384,
-				scale: 0.687,
-				fill: BRAND_COLORS.surface.ink
-			})
-		)
-	);
-	await write(
-		join(mobileImages, "splash-icon-dark.png"),
-		await png(
-			centeredIconSvg({
-				size: 384,
-				scale: 0.687,
-				fill: BRAND_COLORS.icon.dark
-			})
-		)
-	);
-	await write(
-		join(mobileImages, "favicon.png"),
-		await png(
-			iconTileSvg({
-				background: BRAND_COLORS.surface.tile,
-				size: 64,
-				scale: 0.687,
-				radius: 56
-			})
-		)
-	);
-
-	console.log("Wrote raster icons for the editor overlay, web, and mobile.");
+	console.log("Wrote raster icons for the editor overlay and website.");
 }
 
 const scriptPath = fileURLToPath(import.meta.url);

@@ -56,7 +56,7 @@ read the staff console.
 ### Versions that are not that one
 
 Every other `version` field in the repository - `packages/web`, `packages/ide`,
-`packages/shared`, `packages/mobile`, and the Rust workspace in
+`packages/shared`, and the Rust workspace in
 `packages/cli/Cargo.toml` - belongs to a private, unpublished package and is
 pinned at `0.0.0` on purpose. None of them is a release input, and a test in
 `tests/toolchain-pins.test.ts` keeps them inert so a second real version cannot
@@ -70,10 +70,6 @@ rather than policing it - the binary reads `COMPOSERY_BUILD_VERSION` from its
 environment at runtime, so it reports whatever the image it is running in was
 built as, and answers `unknown` outside an image because an unreleased build has
 no version to claim.
-
-The **mobile app** is the one genuine exception, and it is not drift: EAS owns
-its version remotely (`appVersionSource: "remote"` with `autoIncrement`), and the
-app ships on the app stores' cadence against whatever box it connects to.
 
 ### How a box's version is compared
 

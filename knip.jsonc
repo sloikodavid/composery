@@ -5,8 +5,8 @@
 // plain .json file to say why an entry exists - and an ignore list without
 // reasons is one nobody can ever safely shrink.
 //
-// ignoreDependencies holds tools reached other than by import: shadcn and
-// expo-doctor are CLIs, tailwindcss and tw-animate-css are consumed from CSS
+// ignoreDependencies holds tools reached other than by import: shadcn is a CLI,
+// tailwindcss and tw-animate-css are consumed from CSS
 // that knip does not follow, and sharp/png-to-ico/fontkit are used by the shared
 // asset generators through dynamic requires.
 {
@@ -22,7 +22,7 @@
 			"project": ["scripts/**/*.mjs", "tests/**/*.ts", "*.ts", "*.mjs"]
 		},
 		"packages/shared": {
-			"entry": ["index.ts", "scripts/*.mjs", "tools/**/*.mjs"],
+			"entry": ["index.ts", "scripts/**/*.mjs"],
 			"project": ["**/*.{ts,mjs}"]
 		},
 		"packages/web": {
@@ -36,15 +36,6 @@
 			],
 			"project": ["**/*.{ts,tsx}", "scripts/**/*.mjs"],
 			"ignore": ["convex/_generated/**", ".source/**"]
-		},
-		"packages/mobile": {
-			"entry": [
-				"src/app/**/*.tsx",
-				"plugins/*.js",
-				"scripts/*.mjs",
-				"tests/**/*.test.ts"
-			],
-			"project": ["src/**/*.{ts,tsx}", "plugins/*.js", "scripts/*.mjs"]
 		},
 		"packages/ide": {
 			"entry": ["tests/**/*.test.ts", "scripts/*.mjs"],
@@ -61,9 +52,8 @@
 		"png-to-ico",
 		"fontkit",
 		"shadcn",
-		"expo-doctor",
 		"tailwindcss",
 		"tw-animate-css"
 	],
-	"ignoreBinaries": ["docker", "cargo", "quilt", "adb", "maestro"]
+	"ignoreBinaries": ["docker", "cargo", "quilt", "adb"]
 }

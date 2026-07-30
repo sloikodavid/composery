@@ -9,7 +9,7 @@ one source of truth and derive the rest where practical, so maintenance is
 usually a generator or update PR, not hand-retyping values.
 
 Browser-, operator-, and runtime-facing names are Composery. Repo package names
-stay domain nouns (`ide`, `web`, `mobile`, `brand`, `cli`), while shipped binaries,
+stay domain nouns (`ide`, `web`, `brand`, `cli`), while shipped binaries,
 paths, product metadata, settings files, cookies, sockets, and product-specific
 environment variables use Composery names. `code-server` stays only as upstream
 provenance: the submodule source, patch coordinates, and source URL metadata.

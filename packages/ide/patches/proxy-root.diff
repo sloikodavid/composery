@@ -150,8 +150,8 @@ Root path proxies are the only proxy boundary.
  import { errorHandler, wsErrorHandler } from "./errors"
  import * as health from "./health"
  import * as login from "./login"
-@@ -116,9 +115,6 @@ export const register = async (
-     res.json({ composery: true })
+@@ -113,9 +112,6 @@ export const register = async (
+     res.send(await fs.readFile(resourcePath))
    })
  
 -  app.router.use("/", domainProxy.router)

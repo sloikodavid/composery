@@ -13,9 +13,7 @@
 // prefers-color-scheme: with window.autoDetectColorScheme the theme follows the OS
 // anyway, and when the user picks a theme that disagrees with the OS the tab
 // belongs to the editor they are looking at. Mirrors (cannot import)
-// ThemeTypeSelector. A page with no workbench keeps the matchMedia answer, which
-// is also the one the mobile app shims - an Android WebView's native
-// prefers-color-scheme tracks the activity theme, not the system one.
+// ThemeTypeSelector. A page with no workbench keeps the matchMedia answer.
 const DARK_THEME_CLASSES = ["vs-dark", "hc-black"]
 const LIGHT_THEME_CLASSES = ["vs", "hc-light"]
 const WORKBENCH_SELECTOR = ".monaco-workbench"

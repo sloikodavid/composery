@@ -48,10 +48,6 @@ describe("toolchain pins", () => {
 	// Nothing here needs a real number - the Rust binary reads the version from
 	// the environment at runtime - so the honest state for all of them is "not a
 	// version".
-	//
-	// The mobile app is excluded because it genuinely has its own release train:
-	// EAS owns its version remotely (`appVersionSource: "remote"`), and it ships
-	// on the app stores' cadence against whatever box it connects to.
 	test("only the root package.json carries a real version", () => {
 		const productVersion = (
 			JSON.parse(readRepoFile("package.json")) as { version: string }
@@ -61,8 +57,7 @@ describe("toolchain pins", () => {
 		const inert = [
 			"packages/web/package.json",
 			"packages/ide/package.json",
-			"packages/shared/package.json",
-			"packages/mobile/package.json"
+			"packages/shared/package.json"
 		];
 		for (const path of inert) {
 			const version = (JSON.parse(readRepoFile(path)) as { version?: string })

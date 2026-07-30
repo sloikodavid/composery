@@ -88,25 +88,12 @@
 			"dependencyDashboardApproval": true
 		},
 		{
-			"description": "Expo pins its own dependency set per SDK; `expo install --check` is the source of truth. Bumping one package to the next SDK's version breaks that alignment, so group the SDK and take it deliberately.",
-			"matchPackageNames": [
-				"expo",
-				"expo-**",
-				"@expo/**",
-				"react-native",
-				"react-native-**"
-			],
-			"groupName": "expo sdk",
-			"automerge": false,
-			"dependencyDashboardApproval": true
-		},
-		{
 			"description": "typescript-eslint peers `typescript >=4.8.4 <6.1.0`, so TS 6.1+ and the Go-native TS 7 both break typed linting. TS 7 dropped the programmatic API typescript-eslint reads types through; a replacement lands in 7.1, and typescript-eslint closed its TS 7 issue as not planned until then. Lift this when typescript-eslint's peer range names a version we want.",
 			"matchPackageNames": ["typescript"],
 			"allowedVersions": "<6.1.0"
 		},
 		{
-			"description": "ESLint 10 removed the context.getFilename/getSourceCode APIs that eslint-plugin-react, eslint-plugin-jsx-a11y and eslint-plugin-import still call, and all three arrive transitively through eslint-config-next and eslint-config-expo. On v10 both packages abort with a TypeError before linting a single file, so this is a hard block, not a warning. Lift when those plugins ship v10 support (jsx-eslint/eslint-plugin-react#3977, vercel/next.js#89764).",
+			"description": "ESLint 10 removed the context.getFilename/getSourceCode APIs that eslint-plugin-react, eslint-plugin-jsx-a11y and eslint-plugin-import still call through eslint-config-next. On v10 the package aborts with a TypeError before linting a single file, so this is a hard block, not a warning. Lift when those plugins ship v10 support (jsx-eslint/eslint-plugin-react#3977, vercel/next.js#89764).",
 			"matchPackageNames": ["eslint", "@eslint/js"],
 			"allowedVersions": "<10"
 		},
@@ -120,26 +107,10 @@
 	"customManagers": [
 		{
 			"customType": "regex",
-			"managerFilePatterns": ["/^packages/mobile/eas\\.json$/"],
-			"matchStrings": ["\\\"version\\\":\\s*\\\"(?<currentValue>[^\\\"]+)\\\""],
-			"datasourceTemplate": "npm",
-			"depNameTemplate": "eas-cli",
-			"versioningTemplate": "npm"
-		},
-		{
-			"customType": "regex",
 			"managerFilePatterns": ["/^Dockerfile$/"],
 			"matchStrings": [
 				"#\\s*renovate:\\s*datasource=(?<datasource>npm|crate)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*ARG\\s+\\S+=(?<currentValue>\\S+)"
 			]
-		},
-		{
-			"customType": "regex",
-			"managerFilePatterns": ["/^\\.github/scripts/install-maestro\\.sh$/"],
-			"matchStrings": [
-				"#\\s*renovate:\\s*datasource=(?<datasource>github-releases)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*MAESTRO_VERSION=(?<currentValue>\\S+)"
-			],
-			"extractVersionTemplate": "^cli-(?<version>.+)$"
 		},
 		{
 			"customType": "regex",

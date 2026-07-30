@@ -12,7 +12,6 @@
 	"tempDirName": "tmp/stryker",
 	"cleanTempDir": true,
 	"mutate": [
-		"packages/mobile/src/**/*.{ts,tsx}",
 		"packages/shared/**/*.{ts,mjs}",
 		"packages/web/{convex,lib,hooks}/**/*.{ts,tsx}",
 		"packages/ide/overlay/**/*.ts",

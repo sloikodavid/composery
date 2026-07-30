@@ -1,10 +1,8 @@
 The Composery automation API, server to menu.
 
 - Server endpoints: /_composery/api/v1/... (API-key auth, in-process on the
-  single port) and the unauthenticated /_composery identification probe the
-  mobile app uses to validate a URL before embedding it. Mounted before the
-  VS Code catch-all so it is not swallowed; gated by the persistence-readiness
-  middleware.
+  single port). Mounted before the VS Code catch-all so it is not swallowed;
+  gated by the persistence-readiness middleware.
 - Pty host exposure: the VS Code server hands its IPtyService to the embedder,
   so API-created terminals are ordinary persistent VS Code terminals instead
   of a parallel implementation. The API can explicitly ask its inventory for
@@ -254,21 +252,7 @@ The Composery automation API, server to menu.
  import * as vscode from "./vscode"
  
  /**
-@@ -112,6 +113,13 @@ export const register = async (
-     res.send(await fs.readFile(resourcePath))
-   })
- 
-+  // Unauthenticated identification endpoint for the mobile app. Probed before
-+  // loading the WebView so a non-Composery URL (e.g. youtube.com) is rejected
-+  // with an error screen instead of a blank embed.
-+  app.router.get("/_composery", (_, res) => {
-+    res.json({ composery: true })
-+  })
-+
-   app.router.use("/", domainProxy.router)
-   app.wsRouter.use("/", domainProxy.wsRouter.router)
- 
-@@ -213,6 +221,14 @@ export const register = async (
+@@ -213,6 +214,14 @@ export const register = async (
  
    app.router.use("/update", update.router)
  

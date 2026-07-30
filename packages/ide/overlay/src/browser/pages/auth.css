@@ -6,8 +6,7 @@
 
 /* Tint strength for the warning/destructive submit states: the website's
    bg-warning/10 -> /16 -> /24 scale, raised in dark where tints need more
-   presence. data-scheme mirrors brand.css: the mobile app stamps the app scheme
-   on :root. */
+   presence. */
 :root {
 	--auth-tint: 15%;
 	--auth-tint-hover: 22%;
@@ -20,18 +19,6 @@
 		--auth-tint-hover: 26%;
 		--auth-tint-active: 34%;
 	}
-}
-
-:root[data-scheme="light"] {
-	--auth-tint: 15%;
-	--auth-tint-hover: 22%;
-	--auth-tint-active: 30%;
-}
-
-:root[data-scheme="dark"] {
-	--auth-tint: 18%;
-	--auth-tint-hover: 26%;
-	--auth-tint-active: 34%;
 }
 
 .auth-form {
@@ -57,13 +44,8 @@
 	transform: scale(0.98);
 }
 
-/* Inlined, not an <img> (authPage.ts): the logo paints itself in currentColor, which
-   inside an <img> resolves in the image's own isolated document - where the only scheme
-   signal is the standalone file's prefers-color-scheme rule, out of reach of the
-   data-scheme the app stamps on :root. An Android WebView reports the activity scheme
-   there rather than the system one, so the app drew a black logo on the dark page
-   (device-verified 2026-07-20). Inlined it simply inherits body's colour, the same way
-   the website's header logo does. */
+/* Inlined, not an <img> (authPage.ts): the logo paints itself in currentColor.
+   Inlined it inherits body's colour, the same way the website's header logo does. */
 .auth-logo {
 	display: block;
 	height: clamp(38px, 8.5vw, 46px);

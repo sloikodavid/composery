@@ -24,17 +24,12 @@
 		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
 	}
 
-	# Machine endpoints and origin identity stay outside the workbench mount.
+	# Machine endpoints stay outside the workbench mount.
 	handle /_composery/healthz* {
 		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
 	}
 
 	handle /_composery/api/v1/* {
-		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
-	}
-
-	@identity path /_composery
-	handle @identity {
 		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
 	}
 
@@ -44,7 +39,7 @@
 	}
 
 	# Root-only routes must not leak back in through the stripping workbench route.
-	@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt
+	@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt
 	handle @outside_ide {
 		respond "Not found" 404
 	}

@@ -1075,40 +1075,6 @@ describe("terminal soft-keyboard suggestions", () => {
 	});
 });
 
-// The mobile app overrides the page's colour scheme with a data-scheme attribute
-// on <html>, because an Android WebView's native prefers-color-scheme tracks the
-// activity theme rather than the system (see back-button.ts). Any page the app
-// can put on screen therefore needs scheme CSS keyed on that attribute as well as
-// on the media query - and the app tints its status-bar strip to whatever the page
-// paints, so a page that misses the override shows a white bar over a dark app.
-// The three copies live in three languages and cannot share a constant; this is
-// what keeps them from drifting, as the readiness page already had.
-describe("app scheme override", () => {
-	const pages: [name: string, source: () => string][] = [
-		[
-			"workbench first paint",
-			() => readRepoFile(`${PATCHES_DIR}/workbench-page.diff`)
-		],
-		[
-			"auth and error pages",
-			() => readRepoFile("packages/ide/overlay/src/browser/pages/brand.css")
-		],
-		[
-			"persistence startup page",
-			() =>
-				readRepoFile("packages/ide/overlay/src/node/persistence/readiness.ts")
-		]
-	];
-
-	test.each(pages)("%s keys its dark background on data-scheme", (_, read) => {
-		const source = read();
-		expect(source).toMatch(/\[data-scheme="dark"\]/);
-		expect(source).toMatch(/\[data-scheme="light"\]/);
-		// The media query stays for real browsers; the attribute is the override.
-		expect(source).toContain("prefers-color-scheme");
-	});
-});
-
 describe("persistence readiness cache", () => {
 	test("uses monotonic elapsed time instead of the adjustable wall clock", () => {
 		const source = readRepoFile(
@@ -1162,7 +1128,7 @@ describe("overlay never shadows an upstream file", () => {
 	});
 });
 
-// The installed PWA is the mobile story until the native apps ship, so the
+// The installed PWA is the mobile product, so the
 // values that decide how it looks on a home screen are worth pinning: they live
 // in an upstream file none of us reads by accident, and a wrong one is only
 // visible after installing the app.

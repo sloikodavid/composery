@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
@@ -140,31 +140,9 @@ describe("cross-platform checks", () => {
 		for (const job of ["plan", "build", "publish"])
 			expect(dependsOn(release.jobs, job, "validate"), job).toBe(true);
 
-		const mobileRelease = workflow(".github/workflows/mobile-release.yml");
-		expect(mobileRelease.jobs.ci?.uses).toBe("./.github/workflows/ci.yml");
-		for (const job of ["validate", "build-submit", "publish-apk"])
-			expect(dependsOn(mobileRelease.jobs, job, "ci"), job).toBe(true);
-
-		const preview = workflow(".github/workflows/mobile-preview.yml");
-		expect(preview.jobs.validate?.uses).toBe("./.github/workflows/ci.yml");
-		expect(dependsOn(preview.jobs, "build", "validate")).toBe(true);
-		expect(preview.jobs.build?.if).toContain(
-			"github.event.workflow_run.conclusion == 'success'"
-		);
-		expect(preview.jobs.build?.if).toContain(
-			"needs.validate.result == 'success'"
-		);
-
 		const smoke = workflow(".github/workflows/smoke.yml");
 		expect(smoke.on).not.toHaveProperty("push");
 		expect(smoke.on).not.toHaveProperty("pull_request");
-	});
-
-	test("formatting excludes Expo's generated native projects", () => {
-		const prettierIgnore = readRepoFile(".prettierignore");
-
-		expect(prettierIgnore).toMatch(/^packages\/mobile\/android\/$/m);
-		expect(prettierIgnore).toMatch(/^packages\/mobile\/ios\/$/m);
 	});
 
 	test("local smoke builds have no arbitrary wall-clock cutoff", () => {
@@ -178,43 +156,8 @@ describe("cross-platform checks", () => {
 		expect(smoke).not.toContain("45 * 60_000");
 	});
 
-	test("native config uses Expo's matching clean prebuild engine", () => {
-		const checker = readRepoFile(
-			"packages/mobile/scripts/check-native-config.mjs"
-		);
-		const mobilePackage = JSON.parse(
-			readRepoFile("packages/mobile/package.json")
-		) as { scripts?: Record<string, string> };
-
-		expect(mobilePackage.scripts?.["check:native-config"]).toBe(
-			"node scripts/check-native-config.mjs"
-		);
-		expect(checker).toContain(
-			'createRequire(expoRequire.resolve("@expo/cli/package.json"))'
-		);
-		expect(checker).toMatch(
-			/const prebuildVersion = cliRequire\(\s*"@expo\/prebuild-config\/package\.json"\s*\)\.version/
-		);
-		expect(checker).toContain("ignoreExistingNativeFiles: true");
-	});
-
-	test("the pinned EAS wrapper does not shell-interpret arguments", () => {
-		const wrapper = readRepoFile("packages/mobile/scripts/eas.mjs");
-
-		expect(wrapper).toContain("`eas-cli@${version}`");
-		expect(wrapper).not.toMatch(/shell\s*:/);
-		expect(wrapper).toContain("node_modules/npm/bin/npx-cli.js");
-		expect(wrapper).toContain(
-			"delete childEnv.npm_config_manage_package_manager_versions"
-		);
-	});
-
 	test("lint warnings fail every lint scope", () => {
-		const packages = [
-			"package.json",
-			"packages/mobile/package.json",
-			"packages/web/package.json"
-		];
+		const packages = ["package.json", "packages/web/package.json"];
 		for (const path of packages) {
 			const pkg = JSON.parse(readRepoFile(path)) as {
 				scripts?: Record<string, string>;
@@ -353,109 +296,4 @@ describe("cross-platform checks", () => {
 		expect(gaps).toEqual([]);
 	});
 
-	test("Maestro flows are not pinned to one platform's app id", () => {
-		// Expo Go is host.exp.exponent on Android but host.exp.Exponent on iOS,
-		// so a hardcoded appId silently makes a flow Android-only. Taking it as
-		// ${APP_ID} is what lets one flow file cover both.
-		const flows = readdirSync(resolve(repoRoot, "packages/mobile/tests/system"))
-			.filter((name) => name.endsWith(".yml"))
-			.map((name) => ({
-				name,
-				appId: /^appId:\s*(.+)$/m
-					.exec(readRepoFile(`packages/mobile/tests/system/${name}`))?.[1]
-					?.trim()
-			}));
-
-		expect(flows.length).toBeGreaterThan(0);
-		expect(flows.filter((flow) => flow.appId !== "${APP_ID}")).toEqual([]);
-	});
-
-	test("every testID in the app is documented for flow authors", () => {
-		// Matches any prop spelling, not just testID=: the instance screen passes
-		// one down as backTestID, and a pattern that only knew the common spelling
-		// would report a documented id as missing from the source.
-		const ids = new Set<string>();
-		const walk = (dir: string): void => {
-			for (const entry of readdirSync(dir, { withFileTypes: true })) {
-				const path = resolve(dir, entry.name);
-				if (entry.isDirectory()) {
-					walk(path);
-				} else if (entry.name.endsWith(".tsx")) {
-					for (const match of readFileSync(path, "utf8").matchAll(
-						/[a-zA-Z]*[tT]estID=["']([^"']+)["']/g
-					))
-						if (match[1]) ids.add(match[1]);
-				}
-			}
-		};
-		walk(resolve(repoRoot, "packages/mobile/src"));
-
-		const testIdSection = readRepoFile(
-			"packages/mobile/tests/system/README.md"
-		).match(/## Test IDs\s+([\s\S]*?)(?:\n## |$)/)?.[1];
-		expect(testIdSection).toBeDefined();
-		const documented = new Set(
-			[...(testIdSection ?? "").matchAll(/`([^`]+)`/g)].flatMap(
-				(match) => match[1] ?? []
-			)
-		);
-
-		expect(ids.size).toBeGreaterThan(5);
-		expect([...ids].filter((id) => !documented.has(id)).sort()).toEqual([]);
-		expect([...documented].filter((id) => !ids.has(id)).sort()).toEqual([]);
-	});
-
-	test("mobile e2e drives both an Android emulator and an iOS simulator", () => {
-		const workflow = readRepoFile(".github/workflows/mobile-e2e.yml");
-
-		expect(workflow).toContain("android-emulator-runner");
-		expect(workflow).toContain("expo run:ios");
-		expect(workflow).toMatch(/runs-on: macos-[\w.-]+/);
-	});
-
-	test("every Maestro install is the one checksummed pin Renovate can see", () => {
-		const installer = readRepoFile(".github/scripts/install-maestro.sh");
-		const renovate = readRepoFile("renovate.json");
-		const callers = [
-			".github/workflows/mobile-e2e.yml",
-			".github/workflows/mobile-release.yml"
-		];
-
-		expect(installer).toMatch(
-			/# renovate: datasource=github-releases depName=mobile-dev-inc\/maestro\nMAESTRO_VERSION=\d+\.\d+\.\d+\n/
-		);
-		expect(installer).toMatch(/MAESTRO_SHA256=[a-f0-9]{64}\n/);
-		expect(installer).toContain(
-			"releases/download/cli-$MAESTRO_VERSION/maestro.zip"
-		);
-		expect(installer).toContain("shasum -a 256 -c -");
-		expect(renovate).toContain("install-maestro");
-
-		// A second copy of the pin is what this collapsed: Renovate's custom
-		// manager reads one file, so a version living anywhere else is a version
-		// that stays behind on the next bump - against a checksum that moved.
-		for (const caller of callers) {
-			const workflow = readRepoFile(caller);
-			expect(workflow, caller).toContain(
-				"sh .github/scripts/install-maestro.sh"
-			);
-			expect(workflow, caller).not.toMatch(/MAESTRO_(VERSION|SHA256)/);
-			expect(workflow, caller).not.toContain("get.maestro.mobile.dev");
-		}
-		expect(
-			readRepoFile(callers[0]!).match(
-				/sh \.github\/scripts\/install-maestro\.sh/g
-			)
-		).toHaveLength(2);
-	});
-
-	test("the mobile bundle is exported for every platform it ships to", () => {
-		// app.json configures ios and android; exporting only one of them lets a
-		// bundling error on the other reach a release unseen.
-		const mobilePackage = JSON.parse(
-			readRepoFile("packages/mobile/package.json")
-		) as { scripts: Record<string, string> };
-
-		expect(mobilePackage.scripts.build).toBe("expo export --platform all");
-	});
 });

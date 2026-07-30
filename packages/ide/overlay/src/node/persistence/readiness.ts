@@ -87,9 +87,6 @@ body{margin:0;background:#cdc9c4;color:#323229;font-family:-apple-system,BlinkMa
 main{box-sizing:border-box;padding:max(2rem,env(safe-area-inset-top,0px)) max(2rem,env(safe-area-inset-right,0px)) max(2rem,env(safe-area-inset-bottom,0px)) max(2rem,env(safe-area-inset-left,0px))}
 h1{font-size:1.25rem;font-weight:600;line-height:1.3;margin:0}
 @media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}
-/* The mobile app stamps data-scheme with the app scheme: an Android WebView's native prefers-color-scheme tracks the activity theme, not the system, so the media query alone goes stale there and this page paints white inside a dark app - which the app's status-bar strip then matches. Same override as brand.css and the workbench's first-paint style. */
-html[data-scheme="light"] body{background:#cdc9c4;color:#323229}
-html[data-scheme="dark"] body{background:#1d1b1b;color:#c1b5a9}
 </style>
 </head>
 <body>

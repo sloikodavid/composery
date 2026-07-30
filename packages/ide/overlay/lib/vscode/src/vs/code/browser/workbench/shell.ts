@@ -16,17 +16,6 @@
 import { TOUCH_QUERY } from '../../../base/browser/touchGate.js';
 import { NARROW_QUERY } from '../../../workbench/browser/narrowGate.js';
 
-// The native host's channel. Declared locally rather than merged into the global
-// Window: only this file and the app agree on these, and a global would invite
-// the rest of the workbench to reach for them.
-interface INativeHostWindow extends Window {
-	__composeryNative?: boolean;
-	__composeryNativeBack?: () => boolean;
-	ReactNativeWebView?: { postMessage(message: string): void };
-}
-
-const hostWindow = window as INativeHostWindow;
-
 const narrow = window.matchMedia(NARROW_QUERY);
 const coarsePointer = window.matchMedia('(pointer: coarse)');
 const touchLike = window.matchMedia(TOUCH_QUERY);
@@ -39,8 +28,7 @@ let pending = false;
 const PART = 'part';
 type BackTarget = Element | typeof PART;
 
-// Our sentinel history entry is the current one (browser back gesture only - the
-// native app never walks WebView history, see syncBackGuard).
+// Our sentinel history entry is the current one.
 let backGuardArmed = false;
 // history.back() calls WE issued to retire a sentinel. Counted, not a flag: a
 // layer can reopen while one is still in flight, and the resulting popstate
@@ -50,9 +38,6 @@ let pendingBackGuardDisarms = 0;
 // The layer we last asked to close, and one that refused to (see dismissTopLayer).
 let dismissing: { target: BackTarget; at: number } | undefined;
 let undismissable: BackTarget | undefined;
-// Last layer state sent to the app. Starts false to match the app's own initial
-// state, so the first message is a real change and not an echo of it.
-let reportedLayerOpen = false;
 const modalEditorNarrowAttribute = 'data-composery-narrow-maximized';
 const modalEditorMaximizePendingAttribute = 'data-composery-narrow-maximize-pending';
 // Mirrors (cannot import) the listener in narrow.diff; keep in sync.
@@ -101,14 +86,6 @@ const overlaySelectors = [
 const modalEditorMaximizeSelector =
 	'.monaco-modal-editor-block .modal-editor-action-container .action-label.codicon-screen-full';
 
-// --composery-touch-keyboard-inset is deliberately NOT written here. It carries the
-// one keyboard measurement the page cannot make for itself - the height an
-// edge-to-edge WebView's keyboard covers while resizing neither viewport - and its
-// only writer is the native host (packages/mobile). This loop runs on every workbench
-// mutation, so publishing our own number into it overwrote the host's within a frame
-// and left iOS-in-app with no keyboard signal at all. softKeyboard.ts reads the
-// property, and everything the page CAN measure it measures there.
-//
 // The VirtualKeyboard API is no substitute: both
 // navigator.virtualKeyboard.boundingRect and env(keyboard-inset-height) are
 // populated only for a page that has set overlaysContent = true and taken over
@@ -169,8 +146,8 @@ function onScreen(element: BackTarget | undefined): boolean {
 
 function activeOverlay(): Element | undefined {
 	// A rotated phone can exceed the narrow layout breakpoint while still using
-	// Android hardware Back. Keep transient IDE layers in the WebView history
-	// on coarse-pointer devices at every orientation; full-screen workbench
+	// Keep transient IDE layers in browser history on coarse-pointer devices at
+	// every orientation; full-screen workbench
 	// parts below remain narrow-specific.
 	if (!narrow.matches && !coarsePointer.matches) {
 		return undefined;
@@ -308,38 +285,9 @@ function reviewDismissal(): void {
 	}
 }
 
-function nativeHost(): boolean {
-	return Boolean(hostWindow.__composeryNative && hostWindow.ReactNativeWebView?.postMessage);
-}
-
-function postNative(message: string): void {
-	if (!nativeHost()) {
-		return;
-	}
-
-	try {
-		hostWindow.ReactNativeWebView?.postMessage(message);
-	} catch { }
-}
-
 function syncBackGuard(): void {
 	reviewDismissal();
 	const target = activeBackTarget();
-
-	// In the app the back press is delivered to us directly, so there is no
-	// sentinel to keep: history stays exactly as the workbench left it and a back
-	// can never walk it. All the app needs is whether this press has a layer to
-	// spend itself on or should leave the screen - on the transitions only, since
-	// this runs on every workbench mutation and a live terminal produces them by
-	// the hundred.
-	if (nativeHost()) {
-		const open = Boolean(target);
-		if (open !== reportedLayerOpen) {
-			reportedLayerOpen = open;
-			postNative(`composery:overlay-back:${open ? 'on' : 'off'}`);
-		}
-		return;
-	}
 
 	if (target) {
 		if (!backGuardArmed) {
@@ -386,27 +334,12 @@ function handleBackGuardPop(): void {
 	// next back hit Chrome's "Leave site?" instead of closing the panel). A layer
 	// closed by Escape is gone from the DOM by now, so activeBackTarget already
 	// reflects the layer beneath it, and syncBackGuard re-plants the sentinel while
-	// that layer is still open. The app never gets here - it has no sentinel.
+	// that layer is still open.
 	syncBackGuard();
 	// And again once a layer that closes on an animation rather than synchronously
 	// has finished, in case the pass above re-armed against one that is now gone.
 	window.setTimeout(syncBackGuard, 100);
 }
-
-// The app's hardware/gesture back. Same ladder as the browser guard above, minus
-// the history round trip: dismiss the top layer, or tell the app there was none
-// so it leaves for the instance list. Defined for every host so the app can call
-// it without knowing which page it landed on.
-hostWindow.__composeryNativeBack = function (): boolean {
-	reviewDismissal();
-	const dismissed = dismissTopLayer();
-	if (!dismissed) {
-		postNative('composery:back');
-	}
-
-	schedule();
-	return dismissed;
-};
 
 function updateModalEditorNarrowState(): void {
 	for (const action of document.querySelectorAll(modalEditorMaximizeSelector)) {

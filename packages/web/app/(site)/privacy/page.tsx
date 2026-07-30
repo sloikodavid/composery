@@ -6,21 +6,18 @@ import { OWNER, WEBSITE_DOMAIN } from "shared";
 
 export const metadata: Metadata = {
 	title: "Privacy Policy",
-	description:
-		"How Composery Mobile and Composery Cloud collect, use, share, and retain data."
+	description: "How Composery Cloud collects, uses, shares, and retains data."
 };
 
 export default function PrivacyPage() {
 	return (
 		<LegalPage title="Privacy Policy">
 			<p>
-				This policy applies to the Composery mobile application,{" "}
-				{WEBSITE_DOMAIN}, and the hosted Composery Cloud service.{" "}
-				{OWNER.legalName}, trading as {OWNER.tradingName} in{" "}
-				{OWNER.jurisdiction}, is the publisher of the app and the data
-				controller for Composery Cloud. A person or organisation running the
-				open-source software themselves is responsible for their own deployment
-				and is a separate controller.
+				This policy applies to {WEBSITE_DOMAIN} and the hosted Composery Cloud
+				service. {OWNER.legalName}, trading as {OWNER.tradingName} in{" "}
+				{OWNER.jurisdiction}, is the data controller for Composery Cloud. A
+				person or organisation running the open-source software themselves is
+				responsible for their own deployment and is a separate controller.
 			</p>
 			<LegalSection title="What we collect">
 				<ul className="list-disc space-y-2 pl-5">
@@ -50,42 +47,6 @@ export default function PrivacyPage() {
 						provide cookieless, anonymized traffic and performance information,
 						including page, referrer, browser, device, country, and web-vital
 						data. Web Analytics derives a visitor hash that resets daily.
-					</li>
-				</ul>
-			</LegalSection>
-			<LegalSection title="Composery Mobile">
-				<ul className="list-disc space-y-2 pl-5">
-					<li>
-						The app stores instance URLs, labels, identifiers, and last-used
-						times on your device. It does not send that instance list to
-						Composery. Removing an instance removes its record; uninstalling the
-						app removes its app storage subject to device or platform backup
-						behavior.
-					</li>
-					<li>
-						When you open an instance, the app connects directly to the URL you
-						provided. The instance operator receives the requests, credentials,
-						cookies, content, and technical information needed to provide that
-						instance. This policy governs that processing only when the selected
-						instance is Composery Cloud.
-					</li>
-					<li>
-						Camera access is optional and requested only when you choose QR
-						scanning. QR frames are processed on the device for decoding; the
-						app does not save or upload images, video, or audio. You can enter
-						an instance URL instead.
-					</li>
-					<li>
-						External top-level links leave the in-app instance view and open
-						through your operating system. The destination and browser then
-						apply their own privacy practices.
-					</li>
-					<li>
-						The app contains no advertising, analytics, cross-app tracking, push
-						notifications, or third-party crash-reporting SDK. Apple, Google,
-						and your device may process store, installation, purchase-free
-						download, and diagnostic information under their own terms and
-						settings.
 					</li>
 				</ul>
 			</LegalSection>

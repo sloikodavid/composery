@@ -61,9 +61,6 @@ jobs:
         run: pnpm build:web
         env:
           NEXT_PUBLIC_CONVEX_URL: https://convex.invalid
-      - name: Build mobile app
-        run: pnpm build:mobile
-
   # Everything the other job cannot run: the full check + build set, plus the
   # Linux-only gates (workflow lint, quilt patch stack, cargo, image build).
   linux:
@@ -144,10 +141,10 @@ jobs:
         run: pnpm check
       # Run the whole build so every build:* target is covered with no list here to
       # drift. Catches bundling errors tsc can't (web's SSR/prerender, e.g.
-      # ConvexReactClient's URL validation; mobile's Metro export) and builds the
+      # ConvexReactClient's URL validation) and builds the
       # image; smoke.yml is what boots and exercises it. No real secret needed:
       # nothing here reads a runtime value.
-      - name: Build website, mobile app, and image
+      - name: Build website and image
         run: pnpm build
         env:
           NEXT_PUBLIC_CONVEX_URL: https://convex.invalid

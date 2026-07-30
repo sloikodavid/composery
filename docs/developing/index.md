@@ -17,9 +17,7 @@ not for running an instance. If you want to deploy Composery, start at
 - **[Web](web/index.md)** - the Next.js website and cloud backend in `packages/web`,
   with nested service setup pages for Convex, Clerk, Polar, Hetzner, Cloudflare,
   Resend, and Vercel.
-- **[Mobile](mobile/index.md)** - building and shipping `packages/mobile` to the App Store
-  and Play Store.
 
 Repository-wide commands live in the root `package.json`: `pnpm dev` runs the
-web, Convex, Docker, mobile, and theme-editor dev processes together, and
+web, Convex, Docker, and theme-editor dev processes together, and
 `pnpm check` runs every typecheck, lint, format, and test gate CI runs.

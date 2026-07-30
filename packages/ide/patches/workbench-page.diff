@@ -42,7 +42,7 @@ the notch upstream's default keeps it out of.
  
  		<!-- Workbench Configuration -->
  		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
-@@ -24,10 +27,21 @@
+@@ -24,10 +27,18 @@
  		<meta id="vscode-workbench-auth-session" data-settings="{{WORKBENCH_AUTH_SESSION}}">
  
  		<!-- Workbench Icon/Manifest/CSS -->
@@ -59,9 +59,6 @@ the notch upstream's default keeps it out of.
 +		<style>
 +			html, body { background-color: #cdc9c4; }
 +			@media (prefers-color-scheme: dark) { html, body { background-color: #1d1b1b; } }
-+			/* The mobile app stamps data-scheme with the app scheme: an Android WebView's native prefers-color-scheme tracks the activity theme, not the system, so the media query alone goes stale there. */
-+			html[data-scheme="light"], html[data-scheme="light"] body { background-color: #cdc9c4; }
-+			html[data-scheme="dark"], html[data-scheme="dark"] body { background-color: #1d1b1b; }
 +		</style>
  
  	</head>
