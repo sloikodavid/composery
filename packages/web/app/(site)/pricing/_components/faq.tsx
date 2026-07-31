@@ -9,7 +9,7 @@ const FAQ: { question: string; answer: string }[] = [
 	{
 		question: "Do I need an app to use it on my phone?",
 		answer:
-			"Composery runs in your phone's browser and the UI is built for touch - open your box URL and you're in. Add it to your home screen for an app icon and a fullscreen window. Native iOS and Android apps are on the way."
+			"Composery runs in your phone's browser and the UI is patched in all the right places for touch - open your box URL and you're in. Add it to your home screen as an app to get the seamless experience."
 	},
 	{
 		question: "What if I break something?",
