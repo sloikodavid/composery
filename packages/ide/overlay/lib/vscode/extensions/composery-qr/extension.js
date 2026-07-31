@@ -4,7 +4,7 @@ const qrcode = require("./qrcode-generator.js");
 
 // Opens an editor tab with a QR of the instance URL. The URL is passed in by the
 // workbench command (only the browser knows which of the server's addresses
-// reached it), and the QR SVG is generated here in node — no client-side script,
+// reached it), and the QR SVG is generated here in node - no client-side script,
 // so nothing can fail to load and render blank.
 const COMMAND = "composery.showQr";
 const TITLE = "QR Code";

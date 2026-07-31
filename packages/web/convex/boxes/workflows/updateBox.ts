@@ -52,8 +52,8 @@ export const updateBox = defineBoxWorkflow({
 				{
 					boxId: args.boxId,
 					operationId: args.operationId,
-					status: "running",
-					eventType: "box.update_not_needed"
+					outcome: "skipped",
+					status: "running"
 				}
 			);
 			return;

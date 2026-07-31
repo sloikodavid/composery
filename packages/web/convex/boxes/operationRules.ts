@@ -1,8 +1,9 @@
-import type {
-	BoxFailureStatus,
-	BoxOperationStatus,
-	BoxOperationType,
-	BoxStatus
+import {
+	boxStatusesExcept,
+	type BoxFailureStatus,
+	type BoxOperationStatus,
+	type BoxOperationType,
+	type BoxStatus
 } from "../schema";
 
 // The single source of truth for which box states each operation may begin
@@ -14,26 +15,15 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	readonly BoxStatus[]
 > = {
 	create: ["creating", "create_failed"],
-	delete: [
-		"creating",
-		"running",
-		"create_failed",
-		"stopping",
-		"stopped",
-		"starting",
-		"resetting",
-		"reset_failed",
-		"repairing",
-		"repair_failed",
-		"updating",
-		"update_failed",
-		"restoring",
-		"restore_failed",
-		"suspending",
-		"suspended",
-		"unsuspending",
-		"delete_failed"
-	],
+	// Named by its exclusions, not its members. Every other entry here is a short
+	// list a reader can check; this one was eighteen literals - every status but
+	// two - which is the shape that silently falls behind the union. A status
+	// added without being pasted in here would be a box nothing can delete: its
+	// server keeps billing, its slug stays reserved, and the only signal is an
+	// owner told their box is "busy". `deleting` is out because a teardown
+	// already has the box (`finishFailedDeletions` re-drives it through
+	// `delete_failed`), and `deleted` because there is nothing left to remove.
+	delete: boxStatusesExcept("deleting", "deleted"),
 	reset: ["running", "reset_failed", "restore_failed", "update_failed"],
 	stop: ["running"],
 	start: ["stopped"],
@@ -78,23 +68,6 @@ export const OPERATION_ALLOWED_STATUSES: Record<
 	// only advanced once the editor answers), so the box is still simply running.
 	change_config: ["running"]
 };
-
-// Every event a box records about an operation, derived rather than listed.
-//
-// This used to be nineteen hand-written strings across thirteen files, in four
-// competing grammars: `box.repair_succeeded`, `box.password_changed`,
-// `box.stopped`, and `box.running` all meant "an operation finished". Three
-// failure names disagreed with their own operation type (`box.slug_change_failed`
-// for `change_slug`). A function cannot drift from itself, so the whole grammar is
-// one line and adding an operation type gets its events for free.
-export type OperationOutcome = "started" | "succeeded" | "failed" | "skipped";
-
-export function boxEventType(
-	type: BoxOperationType,
-	outcome: OperationOutcome
-) {
-	return `box.${type}_${outcome}`;
-}
 
 // Where each operation leaves the box when it fails.
 //

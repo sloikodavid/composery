@@ -1,3 +1,9 @@
+// The one `.yml` left, and the only one that is not a repository file: this is a
+// path on a box that is already running. Every box provisioned so far has the
+// file under this name, and repair reads it (`compose config --volumes`) before
+// anything rewrites it - so renaming it here to match the repository's `.yaml`
+// would make repair fail on exactly the boxes that need repairing. It moves when
+// something migrates the existing fleet, not when the checkout is tidied.
 export const COMPOSERY_COMPOSE_PATH = "/opt/composery-web/compose.yml";
 export const COMPOSERY_ENV_PATH = "/opt/composery-web/composery.env";
 export const COMPOSERY_CADDYFILE_PATH = "/opt/composery-web/Caddyfile";

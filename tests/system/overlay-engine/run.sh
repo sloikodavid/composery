@@ -18,6 +18,10 @@
 # Self-contained, standalone, self-cleaning. Everything it creates is prefixed
 # "overlay-harness-" and the EXIT trap removes only those, never unrelated Docker
 # resources on this host. Reuses one built image per fixture version across checks.
+#
+# No `-e`: a failing check is a verdict this harness has to record and carry to
+# the summary at the end, not an error that aborts the run and hides the checks
+# that would have followed it.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -452,9 +456,9 @@ check6_fallback
 
 log "SUMMARY"
 if [ "$FAILED" -eq 0 ]; then
-  echo "ALL CHECKS PASSED — the overlay engine is proven end to end."
+  echo "ALL CHECKS PASSED - the overlay engine is proven end to end."
   exit 0
 else
-  echo "ONE OR MORE CHECKS FAILED — see the per-check verdicts above."
+  echo "ONE OR MORE CHECKS FAILED - see the per-check verdicts above."
   exit 1
 fi

@@ -45,17 +45,20 @@ per alert.
 
 ## Alert policy
 
-| Alert                | When it opens                                                                                            | Deduplication                                            |
-| -------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Checkout state       | Manual or Hetzner circuit-breaker enable/disable transition                                              | Once per transition                                      |
-| Automatic suspension | Protection is enabled or disabled                                                                        | Once per transition                                      |
-| Capacity             | Allocations are removed, or can no longer fit one complete box package                                   | Once per removal and capacity episode, plus one recovery |
-| Box operation        | A provision, delete, reset, restore, repair, lifecycle, password, slug, or snapshot workflow ends failed | Once per operation                                       |
-| Abuse/resource flag  | A sustained threshold creates a new flag; auto-suspension is marked critical                             | Once per flag                                            |
-| Paid fulfillment     | Paid checkout lost capacity/slug, lacks Terms acceptance, or cannot be linked to an intent               | Once per checkout/order                                  |
-| Account deletion     | Deletion remains unfinished for 24 hours                                                                 | Once per deletion request                                |
-| Reconciliation       | Polar subscription or Hetzner orphan-resource reconciliation fails                                       | Rate-limited by time window                              |
-| Orphaned server      | Hetzner server has no live database owner after the grace period                                         | Once per server set                                      |
+An alert opens on a fact a staff member has to act on, and only on one: a
+protection changing state, a workflow ending failed, a paid checkout that could
+not be delivered, a resource nobody owns, a sweep that gave up. Every one is
+raised through `raiseAlert` (**convex/staff/alerts.ts**), and the call sites are
+the list - this page deliberately does not restate them, because an enumeration
+of eighteen alerts in a document is one that silently falls behind the code, and
+this one had.
+
+What each alert is _about_ is its deduplication key, so re-raising it is a no-op
+until the thing it names changes. That is the whole mechanism, and it is what
+lets a sweep run every fifteen minutes without mailing anybody twice: a key
+naming one box, operation, order, flag or server opens once for that subject; a
+key naming a time window opens once per window, for the failures that are
+properties of the deployment rather than of any one row.
 
 Expected events do not email: unpaid checkout expiry/cancellation, customer
 cancellation/refund, successful operations, routine snapshot cleanup, and an

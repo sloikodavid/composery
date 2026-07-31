@@ -122,9 +122,9 @@ created once in the console and referenced by id.
 4. **Project id.** Read the numeric id from the project's console URL
    (`console.hetzner.cloud/projects/<id>/...`)
    -> `NEXT_PUBLIC_HETZNER_PROJECT_ID`. This is a frontend-plane var read by
-   `lib/hetzner-dashboard.ts` so the staff console can deep-link a box to its
+   `lib/dashboards.ts` so the staff console can deep-link a box to its
    Hetzner server; set it in the Next env (local `.env.local` and
-   [Vercel](./vercel.md)), not on the Convex deployment. It is non-secret, so the
+   [Vercel](vercel.md)), not on the Convex deployment. It is non-secret, so the
    console action simply hides itself when the id is absent.
 
 ## Provisioning and reset
@@ -146,7 +146,7 @@ location.
 A box is sold as a plan, and the plan decides three things: the Hetzner server
 type it is provisioned on, the specification shown on the pricing page, and how
 many snapshots it includes. All three live together in
-`packages/web/lib/box-plan.ts`, which is the only place any of them is written
+`packages/web/lib/boxes/plan.ts`, which is the only place any of them is written
 down - the pricing page prints from it, provisioning reads from it, and the
 snapshot caps are enforced from it. Nothing is restated here, deliberately:
 machines and allowances are product decisions that change without a schema
@@ -167,7 +167,7 @@ The corollary is that a subscription can drift from the box it pays for, if plan
 changes are enabled in Polar's customer portal and a customer uses one. Nothing
 reconciles that, because resizing a live box is not something this system does
 and rebilling silently would be worse. The hourly sweep reports it as a staff
-warning instead, and [Polar](./polar.md) says to keep portal plan changes off.
+warning instead, and [Polar](polar.md) says to keep portal plan changes off.
 
 ## Snapshots and the allowance a plan sells
 
@@ -227,7 +227,7 @@ it does not create or hold a Hetzner resource before payment. If initial
 provisioning still fails, Composery revokes the Polar subscription, refunds the
 full remaining refundable amount of the paid order, and runs normal box
 deletion. A partially created VPS is included in that cleanup. See
-[Polar](./polar.md#billing-and-box-lifecycle).
+[Polar](polar.md#billing-and-box-lifecycle).
 
 Operationally, check the Limits tab and request increases with lead time; Hetzner
 says requests are manually reviewed during business hours. After an increase,
@@ -251,7 +251,7 @@ deleting and creating a replacement. That still destroys the VPS disk and return
 the host OS to the base image, but it preserves the server and Primary IP
 resources. Reset also re-resolves the deployment's current `RUNTIME_IMAGE` before
 bootstrap, so a rebuilt box uses the runtime release configured on the active
-[Convex](./convex.md) deployment. Box deletion deletes the server and then
+[Convex](convex.md) deployment. Box deletion deletes the server and then
 explicitly deletes the recorded Primary IPs, with IP-string lookup as a fallback
 for older boxes that do not yet have Primary IP IDs stored.
 

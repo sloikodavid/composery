@@ -9,7 +9,7 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // it.
 //
 // The unwind lives inside `run` and rethrows, so the failure itself is still
-// recorded by `defineBoxWorkflow` from `OPERATION_FAILURE`. This used to hand-roll
+// recorded by `defineBoxWorkflow` from `OPERATION_FAILURE_STATUS`. This used to hand-roll
 // the whole wrapper - marking the operation running and failed itself - which
 // meant it was the one workflow that could disagree with every other about where
 // a failure leaves the box.

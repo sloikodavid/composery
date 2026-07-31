@@ -12,12 +12,19 @@ import {
 	DialogHeader,
 	DialogTitle
 } from "@/components/base/dialog";
+import {
+	isOperationInFlight,
+	lastOperationNotice,
+	Notice,
+	unavailableReason,
+	type LastOperation
+} from "@/components/boxes/operation-dialog";
 import { ToneIcon } from "@/components/boxes/tone-icon";
 import { isOperationAllowed } from "@/convex/boxes/operationRules";
 import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
-import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
+import type { BoxStatus } from "@/convex/schema";
 import { errorMessage } from "@/lib/error-message";
-import { CHECKS, type Tone, buildChecks, summarize } from "@/lib/repair-status";
+import { CHECKS, summarize } from "@/lib/boxes/repair";
 
 const TONE_BADGE = {
 	ok: "success",
@@ -28,44 +35,16 @@ const TONE_BADGE = {
 
 // The last repair this box attempted. The dialog reads this record for the
 // precise progress and the error text behind a failure.
-//
-// The status is the schema's own union rather than restated literals. It used to
-// restate them and included a "cancelled" the schema has never had, so that
-// branch could not run - and, worse, the restatement meant adding a real status
-// would have compiled here and silently fallen through to it.
-export type RepairOperation = {
-	status: BoxOperationStatus;
-	error: string | null;
-	finishedAt: number | null;
-};
+export type RepairOperation = LastOperation;
 
 function repairNotice(repair: RepairOperation | null) {
-	if (!repair) return null;
-	switch (repair.status) {
-		case "pending":
-		case "running":
-			return {
-				tone: "muted" as Tone,
-				text: "Repairing this box now. The checks above update when it finishes."
-			};
-		case "failed":
-			return {
-				tone: "bad" as Tone,
-				text: `The last repair failed: ${repair.error ?? "no reason recorded"}. Your files are safe on the parking volume; repair again to resume.`
-			};
-		case "succeeded":
-			return { tone: "ok" as Tone, text: "The last repair finished." };
-	}
-}
-
-function unavailableReason(boxStatus: BoxStatus) {
-	if (boxStatus === "repairing") {
-		return "A repair is already running on this box.";
-	}
-	if (boxStatus === "stopped" || boxStatus === "suspended") {
-		return "This box is not running. Start it before repairing.";
-	}
-	return "This box can't be repaired in its current state.";
+	return lastOperationNotice(repair, {
+		inFlight:
+			"Repairing this box now. The checks above update when it finishes.",
+		failed: (error) =>
+			`The last repair failed: ${error}. Your files are safe on the parking volume; repair again to resume.`,
+		succeeded: () => "The last repair finished."
+	});
 }
 
 // Owner and console box pages share this. It shows a read-only picture of every
@@ -121,11 +100,9 @@ export function RepairDialog({
 		}
 	}
 
-	const checks = status ? buildChecks(status) : [];
-	const summary = status ? summarize(status, checks) : null;
+	const summary = status ? summarize(status) : null;
 	const notice = repairNotice(repair);
-	const repairing =
-		repair?.status === "pending" || repair?.status === "running";
+	const repairing = isOperationInFlight(repair);
 
 	return (
 		<>
@@ -220,22 +197,12 @@ export function RepairDialog({
 							</div>
 						</>
 					) : (
-						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
-							<ToneIcon className="mt-0.5" tone="muted" />
-							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
-								{unavailableReason(boxStatus)}
-							</p>
-						</div>
+						<Notice tone="muted">
+							{unavailableReason(boxStatus, "repair", repairing)}
+						</Notice>
 					)}
 
-					{notice ? (
-						<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
-							<ToneIcon className="mt-0.5" tone={notice.tone} />
-							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
-								{notice.text}
-							</p>
-						</div>
-					) : null}
+					{notice ? <Notice tone={notice.tone}>{notice.text}</Notice> : null}
 
 					<AnimatedIconButton
 						className="w-full"

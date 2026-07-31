@@ -17,7 +17,7 @@ const rootPackage = JSON.parse(readRepoFile("package.json")) as {
 // Enumerated from disk, not listed: a hardcoded pair silently exempted every
 // workflow added after it. Any workflow that sets Node up at all is covered.
 const workflows = readdirSync(resolve(repoRoot, ".github/workflows"))
-	.filter((name) => name.endsWith(".yml"))
+	.filter((name) => name.endsWith(".yaml"))
 	.map((name) => `.github/workflows/${name}`)
 	.filter((path) => readRepoFile(path).includes("actions/setup-node"));
 
@@ -44,7 +44,7 @@ describe("toolchain pins", () => {
 	// test: it does not ask two numbers to agree, it asks that a second real
 	// number never appears. Keeping copies in sync is friction paid on every
 	// release forever, and a contributor who bumps one and not the other ships a
-	// box that reports one version in its editor and another from its own CLI.
+	// build that reports one version in its editor and another from its own CLI.
 	// Nothing here needs a real number - the Rust binary reads the version from
 	// the environment at runtime - so the honest state for all of them is "not a
 	// version".
@@ -127,7 +127,7 @@ describe("toolchain pins", () => {
 		const cargoVersion = /^rust-version = "([^"]+)"$/m.exec(
 			readRepoFile("packages/cli/Cargo.toml")
 		)?.[1];
-		const ci = parse(readRepoFile(".github/workflows/ci.yml")) as {
+		const ci = parse(readRepoFile(".github/workflows/ci.yaml")) as {
 			jobs: Record<string, { steps?: Array<{ uses?: string }> }>;
 		};
 		const ciVersions = Object.values(ci.jobs)

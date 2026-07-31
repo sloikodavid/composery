@@ -27,6 +27,7 @@ import type * as boxes_infra_runtimeArtifacts from "../boxes/infra/runtimeArtifa
 import type * as boxes_infra_runtimeImages from "../boxes/infra/runtimeImages.js";
 import type * as boxes_infra_ssh from "../boxes/infra/ssh.js";
 import type * as boxes_infra_sshKeys from "../boxes/infra/sshKeys.js";
+import type * as boxes_infra_sshScripts from "../boxes/infra/sshScripts.js";
 import type * as boxes_logs from "../boxes/logs.js";
 import type * as boxes_metricThresholds from "../boxes/metricThresholds.js";
 import type * as boxes_metrics from "../boxes/metrics.js";
@@ -78,6 +79,7 @@ import type * as staff_metrics from "../staff/metrics.js";
 import type * as staff_settings from "../staff/settings.js";
 import type * as staff_stats from "../staff/stats.js";
 import type * as staff_users from "../staff/users.js";
+import type * as time from "../time.js";
 import type * as user_boxConfig from "../user/boxConfig.js";
 import type * as user_boxes from "../user/boxes.js";
 import type * as user_checkout from "../user/checkout.js";
@@ -109,6 +111,7 @@ declare const fullApi: ApiFromModules<{
   "boxes/infra/runtimeImages": typeof boxes_infra_runtimeImages;
   "boxes/infra/ssh": typeof boxes_infra_ssh;
   "boxes/infra/sshKeys": typeof boxes_infra_sshKeys;
+  "boxes/infra/sshScripts": typeof boxes_infra_sshScripts;
   "boxes/logs": typeof boxes_logs;
   "boxes/metricThresholds": typeof boxes_metricThresholds;
   "boxes/metrics": typeof boxes_metrics;
@@ -160,6 +163,7 @@ declare const fullApi: ApiFromModules<{
   "staff/settings": typeof staff_settings;
   "staff/stats": typeof staff_stats;
   "staff/users": typeof staff_users;
+  time: typeof time;
   "user/boxConfig": typeof user_boxConfig;
   "user/boxes": typeof user_boxes;
   "user/checkout": typeof user_checkout;

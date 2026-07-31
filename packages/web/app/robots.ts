@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { siteUrl } from "@/lib/shared";
+import { WEBSITE_ORIGIN } from "shared";
 
 // Allow crawling everything by default; keep auth-gated app surfaces out.
 // /docs/developing is deliberately absent: those pages now 404, and a Disallow
@@ -12,6 +12,6 @@ export default function robots(): MetadataRoute.Robots {
 				disallow: ["/boxes", "/console", "/sign-in", "/api/"]
 			}
 		],
-		sitemap: `${siteUrl}/sitemap.xml`
+		sitemap: `${WEBSITE_ORIGIN}/sitemap.xml`
 	};
 }

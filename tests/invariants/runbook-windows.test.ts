@@ -57,18 +57,34 @@ type Annotation = {
 	source: string;
 };
 
-// Sums of products of number literals - "2 * 24 * 60 * 60 * 1000", "180" - which
-// is how every window in convex/ is written. A reference to another constant, a
-// call, anything with parentheses: undefined, so the caller fails loudly rather
-// than reporting a window it cannot read. Spelled out rather than handed to
-// `Function` the way the schedule generator does it: this walks source that has
-// no business being executed, and the grammar it needs is this small.
-function evaluateNumber(expression: string): number | undefined {
+// Sums of products of number literals and named durations - "2 * DAY_MS", "180",
+// "DELETED_BOX_RETENTION_DAYS * DAY_MS" - which is how every window in convex/ is
+// written. A call, anything with parentheses, a name nothing declared: undefined,
+// so the caller fails loudly rather than reporting a window it cannot read.
+// Spelled out rather than handed to `Function` the way the schedule generator
+// does it: this walks source that has no business being executed, and the grammar
+// it needs is this small.
+//
+// Names are resolved, never assumed. `packages/web/convex/time.ts` exists because eighteen
+// sites had open-coded this arithmetic, so a test that could only read the
+// open-coded form would be one that punishes the de-duplication - and hardcoding
+// "a day is 86400000" here would put the nineteenth copy in the checker.
+function evaluateNumber(
+	expression: string,
+	names: Map<string, number>
+): number | undefined {
 	let total = 0;
 	for (const term of expression.split("+")) {
 		let product = 1;
 		for (const factor of term.split("*")) {
-			const literal = factor.trim().replace(/_/g, "");
+			const token = factor.trim();
+			const named = names.get(token);
+			if (named !== undefined) {
+				product *= named;
+				continue;
+			}
+			// Only now strip separators: 60_000 is a literal, DAY_MS is not.
+			const literal = token.replace(/_/g, "");
 			if (!/^\d+(?:\.\d+)?$/.test(literal)) return undefined;
 			product *= Number(literal);
 		}
@@ -76,6 +92,30 @@ function evaluateNumber(expression: string): number | undefined {
 	}
 	return total;
 }
+
+// Every `const NAME = <arithmetic>;` a source declares, in declaration order, so
+// a window written in terms of one declared above it resolves. Anything whose
+// value this cannot read is skipped rather than guessed at - it then reads as an
+// unknown name to whatever refers to it, which is the loud failure.
+const CONSTANT = /^\s*(?:export\s+)?const ([A-Za-z_]\w*)\s*=\s*([^;]+);/gm;
+
+function resolveConstants(
+	source: string,
+	base: Map<string, number>
+): Map<string, number> {
+	const names = new Map(base);
+	for (const [, name = "", expression = ""] of source.matchAll(CONSTANT)) {
+		const value = evaluateNumber(expression, names);
+		if (value !== undefined) names.set(name, value);
+	}
+	return names;
+}
+
+// The shared durations every window is written in terms of.
+const SHARED_DURATIONS = resolveConstants(
+	readRepoFile(`${CONVEX_DIR}/time.ts`),
+	new Map()
+);
 
 function convexFiles(dir: string): string[] {
 	const found: string[] = [];
@@ -91,14 +131,19 @@ function convexFiles(dir: string): string[] {
 
 // Every `// runbook: <label>` in convex/, with the constant it sits on. The
 // annotation has to be the line directly above an exported constant whose value
-// is plain arithmetic; anything else throws, because an annotation this cannot
-// read is one whose row would silently stop being checked.
+// this can evaluate; anything else throws, because an annotation this cannot read
+// is one whose row would silently stop being checked.
 function readAnnotations(): Annotation[] {
 	const annotations: Annotation[] = [];
 
 	for (const file of convexFiles(join(repoRoot, CONVEX_DIR))) {
 		const where = relative(repoRoot, file).replace(/\\/g, "/");
-		const lines = readFileSync(file, "utf8").split(/\r?\n/);
+		const source = readFileSync(file, "utf8");
+		const lines = source.split(/\r?\n/);
+		// A window may be stated in terms of a constant its own file declares
+		// (DELETED_BOX_RETENTION_MS is DELETED_BOX_RETENTION_DAYS * DAY_MS), so the
+		// file's own names sit on top of the shared durations.
+		const names = resolveConstants(source, SHARED_DURATIONS);
 
 		for (const [index, line] of lines.entries()) {
 			const label = /^\s*\/\/ runbook: (.+?)\s*$/.exec(line)?.[1];
@@ -122,10 +167,10 @@ function readAnnotations(): Annotation[] {
 			}
 
 			const [, name = "", expression = ""] = match;
-			const value = evaluateNumber(expression);
+			const value = evaluateNumber(expression, names);
 			if (value === undefined) {
 				throw new Error(
-					`${where}:${index + 2}: ${name} is annotated for the runbook, so its value must be arithmetic this test can read, not "${expression.trim()}".`
+					`${where}:${index + 2}: ${name} is annotated for the runbook, so its value must be arithmetic over literals and declared durations, not "${expression.trim()}".`
 				);
 			}
 

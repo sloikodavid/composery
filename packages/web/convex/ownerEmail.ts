@@ -1,6 +1,6 @@
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { boxPath } from "../lib/box-route";
+import { boxPath } from "../lib/boxes/route";
 import { SUPPORT_EMAIL } from "../lib/links";
 import { optionalWebsiteUrl } from "./env";
 import { appendBoxEvent } from "./boxes/events";
@@ -8,6 +8,7 @@ import { ownerSender, resendClient } from "./email";
 import { raiseAlert } from "./staff/alerts";
 import { findUserByClerkId } from "./users";
 import type { OperationTrigger } from "./schema";
+import { HOUR_MS } from "./time";
 
 // What a box owner is told by email, and when.
 //
@@ -40,7 +41,7 @@ const AUTOMATIC_SUSPENSION: OperationTrigger = "system:abuse_suspension";
 // is a property of the deployment (key revoked, sender unverified, component
 // down), never of one owner, so per-box alerts would be the same incident
 // repeated once per box in the fleet.
-const OWNER_EMAIL_ALERT_WINDOW_MS = 6 * 60 * 60 * 1000;
+const OWNER_EMAIL_ALERT_WINDOW_MS = 6 * HOUR_MS;
 
 export type OwnerNotice =
 	| { type: "deleted"; trigger: OperationTrigger | undefined }

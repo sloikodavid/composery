@@ -1,5 +1,6 @@
 import type { Infer } from "convex/values";
 import type { StoredSnapshotPolicy, vSnapshotClass } from "../schema";
+import { DAY_MS, HOUR_MS, MINUTE_MS } from "../time";
 
 type SnapshotClass = Infer<typeof vSnapshotClass>;
 
@@ -20,11 +21,14 @@ export const DEFAULT_SNAPSHOT_POLICY: SnapshotPolicy = {
 	automaticRetentionDays: 5
 };
 
-const MINUTE_MS = 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-export const SNAPSHOT_MANUAL_MIN_INTERVAL_MS =
-	DEFAULT_SNAPSHOT_POLICY.manualMinIntervalMinutes * MINUTE_MS;
+// The one conversion of the stored minutes into the milliseconds every caller
+// actually compares against. It was written out at each call site, which is how
+// the two that matter came to sit beside a module constant derived from the
+// *default* policy - a value that looked like the interval and ignored the
+// setting.
+export function manualSnapshotIntervalMs(policy: SnapshotPolicy) {
+	return policy.manualMinIntervalMinutes * MINUTE_MS;
+}
 
 function positiveInteger(value: number) {
 	return Number.isFinite(value) && value > 0 && Number.isInteger(value);
@@ -89,20 +93,20 @@ export function validateSnapshotPolicy(policy: SnapshotPolicy) {
 export const SNAPSHOT_SCHEDULE_STAGGER_MS = 20 * 1000;
 
 // runbook: Incomplete snapshot-row retention
-export const SNAPSHOT_INCOMPLETE_RETENTION_MS = 24 * 60 * 60 * 1000;
+export const SNAPSHOT_INCOMPLETE_RETENTION_MS = DAY_MS;
 
 export const SNAPSHOT_RETENTION_SWEEP_BATCH = 200;
 
 export const SNAPSHOT_POLL_FAST_MS = 10 * 1000;
 export const SNAPSHOT_POLL_SLOW_MS = 30 * 1000;
-export const SNAPSHOT_POLL_FAST_WINDOW_MS = 60 * 1000;
+export const SNAPSHOT_POLL_FAST_WINDOW_MS = MINUTE_MS;
 // runbook: Snapshot capture deadline
-export const SNAPSHOT_CAPTURE_DEADLINE_MS = 60 * 60 * 1000;
+export const SNAPSHOT_CAPTURE_DEADLINE_MS = HOUR_MS;
 
 export function snapshotExpiry(
 	cls: SnapshotClass,
 	createdAt: number,
-	policy: SnapshotPolicy = DEFAULT_SNAPSHOT_POLICY
+	policy: SnapshotPolicy
 ) {
 	const retentionDays =
 		cls === "manual"
@@ -122,9 +126,12 @@ export function snapshotScheduleDelayMs(scheduledIndex: number) {
 	return scheduledIndex * SNAPSHOT_SCHEDULE_STAGGER_MS;
 }
 
+// No defaults: every caller holds the resolved policy already, and a default
+// here would silently answer with the shipped one when a deployment had
+// configured something else.
 export function snapshotIdempotencyBucket(
-	now: number = Date.now(),
-	manualMinIntervalMs: number = SNAPSHOT_MANUAL_MIN_INTERVAL_MS
+	now: number,
+	manualMinIntervalMs: number
 ) {
 	return Math.floor(now / manualMinIntervalMs).toString(36);
 }

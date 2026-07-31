@@ -2,7 +2,7 @@ import { docs } from "collections/server";
 import { loader } from "fumadocs-core/source";
 import { lucideIconsPlugin } from "fumadocs-core/source/lucide-icons";
 import { API_OPERATION, openapi, SPEC_ID } from "./openapi";
-import { docsContentRoute, docsImageRoute, docsRoute } from "./shared";
+import { docsContentRoute, docsImageRoute, docsRoute } from "./docs";
 
 export const source = loader({
 	baseUrl: docsRoute,

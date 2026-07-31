@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
-import { sanitizeSlug } from "../../lib/box-slug";
+import { sanitizeSlug } from "../../lib/boxes/slug";
 import { boxStatusesExcept, vBoxStatus } from "../schema";
 
 // Resolve a (sanitized) slug to its box for query and mutation handlers. The
@@ -9,7 +9,7 @@ import { boxStatusesExcept, vBoxStatus } from "../schema";
 export async function findBoxBySlug(ctx: QueryCtx, slug: string) {
 	return await ctx.db
 		.query("boxes")
-		.withIndex("slug", (query) => query.eq("slug", sanitizeSlug(slug)))
+		.withIndex("slug_status", (query) => query.eq("slug", sanitizeSlug(slug)))
 		.filter((query) => query.neq(query.field("status"), "deleted"))
 		.first();
 }

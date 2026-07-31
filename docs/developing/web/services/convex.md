@@ -22,7 +22,7 @@ Note each deployment's two URLs (Convex dashboard -> the deployment -> Settings)
 
 - `CONVEX_CLOUD_URL` - client URL, same as `NEXT_PUBLIC_CONVEX_URL`.
 - `CONVEX_SITE_URL` - HTTP Actions URL, e.g. `https://<name>.convex.site`. You
-  need it for the [Polar](./polar.md) webhook (`<CONVEX_SITE_URL>/polar/events`).
+  need it for the [Polar](polar.md) webhook (`<CONVEX_SITE_URL>/polar/events`).
 
 ## Production deploy key
 

@@ -15,7 +15,10 @@ a model-coordinate anchor that survives the drag's edge auto-scroll, and a
 hold inside a selection opens the IDE context menu. Pans are classified before
 the tap path can focus the hidden input; keyboard-driven layout preserves
 scroll; mouse presses fall through to the mousedown flow so click counts
-survive.
+survive. What a press turns out to have meant, and where the selection's edges
+sit, are overlay modules this calls (touchPress.ts, touchSelection.ts): a tap, a
+scroll, a word select and the hold menu are each other's alternatives and the
+rules deciding between them are worth running, not reading off a diff.
 
 Menus and lists. Long-press opens context menus wherever right-click does
 (editor tabs, composite bars, view panes, status bar, lists), with the native
@@ -137,7 +140,7 @@ short layouts its row back.
  		return;
 --- a/lib/vscode/src/vs/base/browser/touch.ts
 +++ b/lib/vscode/src/vs/base/browser/touch.ts
-@@ -10,12 +10,16 @@
+@@ -10,12 +10,16 @@ import { Event as EventUtils } from '../common/event.js';
  import { Disposable, IDisposable, markAsSingleton, toDisposable } from '../common/lifecycle.js';
  import { LinkedList } from '../common/linkedList.js';
  
@@ -155,7 +158,7 @@ short layouts its row back.
  }
  
  interface TouchData {
-@@ -27,6 +31,11 @@
+@@ -27,6 +31,11 @@ interface TouchData {
  	rollingTimestamps: number[];
  	rollingPageX: number[];
  	rollingPageY: number[];
@@ -167,7 +170,7 @@ short layouts its row back.
  }
  
  export interface GestureEvent extends MouseEvent {
-@@ -76,11 +85,16 @@
+@@ -76,11 +85,16 @@ export class Gesture extends Disposable {
  	private readonly targets = new LinkedList<HTMLElement>();
  	private readonly ignoreTargets = new LinkedList<HTMLElement>();
  	private handle: IDisposable | null;
@@ -184,7 +187,7 @@ short layouts its row back.
  	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
  
  
-@@ -95,6 +109,14 @@
+@@ -95,6 +109,14 @@ export class Gesture extends Disposable {
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
  			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
@@ -199,7 +202,7 @@ short layouts its row back.
  		}, { window: mainWindow, disposables: this._store }));
  	}
  
-@@ -152,15 +174,32 @@
+@@ -152,15 +174,32 @@ export class Gesture extends Disposable {
  	private onTouchStart(e: TouchEvent): void {
  		const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
  
@@ -233,7 +236,7 @@ short layouts its row back.
  				id: touch.identifier,
  				initialTarget: touch.target,
  				initialTimeStamp: timestamp,
-@@ -168,9 +207,28 @@
+@@ -168,9 +207,28 @@ export class Gesture extends Disposable {
  				initialPageY: touch.pageY,
  				rollingTimestamps: [timestamp],
  				rollingPageX: [touch.pageX],
@@ -263,7 +266,7 @@ short layouts its row back.
  			const evt = this.newGestureEvent(EventType.Start, touch.target);
  			evt.pageX = touch.pageX;
  			evt.pageY = touch.pageY;
-@@ -201,23 +259,34 @@
+@@ -201,23 +259,34 @@ export class Gesture extends Disposable {
  			const data = this.activeTouches[touch.identifier],
  				holdTime = Date.now() - data.initialTimeStamp;
  
@@ -279,11 +282,6 @@ short layouts its row back.
 -			} else if (holdTime >= Gesture.HOLD_DELAY
 -				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
 -				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
--
--				const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
--				evt.pageX = data.rollingPageX.at(-1)!;
--				evt.pageY = data.rollingPageY.at(-1)!;
--				this.dispatchEvent(evt);
 +			this.clearContextMenuTimer(data);
 +			if (data.contextMenuFired) {
 +				// Composery: the long-press already fired during the hold - the release must
@@ -297,7 +295,11 @@ short layouts its row back.
 +				delete this.activeTouches[touch.identifier];
 +				continue;
 +			}
-+
+ 
+-				const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
+-				evt.pageX = data.rollingPageX.at(-1)!;
+-				evt.pageY = data.rollingPageY.at(-1)!;
+-				this.dispatchEvent(evt);
 +			// Composery: a touch that never left the pan threshold is a press, long or short;
 +			// one that did is a scroll. Upstream asked the same question twice with a second,
 +			// looser 30px slop of its own - unreachable now that onTouchMove settles the
@@ -315,7 +317,7 @@ short layouts its row back.
  
  			} else if (activeTouchCount === 1) {
  				const finalX = data.rollingPageX.at(-1)!;
-@@ -228,14 +297,20 @@
+@@ -228,14 +297,20 @@ export class Gesture extends Disposable {
  				const deltaY = finalY - data.rollingPageY[0];
  
  				// We need to get all the dispatch targets on the start of the inertia event
@@ -338,7 +340,7 @@ short layouts its row back.
  				);
  			}
  
-@@ -252,6 +327,85 @@
+@@ -252,6 +327,85 @@ export class Gesture extends Disposable {
  		}
  	}
  
@@ -424,7 +426,7 @@ short layouts its row back.
  	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
  		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
  		event.initEvent(type, false, true);
-@@ -272,8 +426,8 @@
+@@ -272,8 +426,8 @@ export class Gesture extends Disposable {
  
  			this._lastSetTapCountTime = currentTime;
  			event.tapCount = setTapCount;
@@ -435,7 +437,7 @@ short layouts its row back.
  			this._lastSetTapCountTime = 0;
  		}
  
-@@ -306,7 +460,8 @@
+@@ -306,7 +460,8 @@ export class Gesture extends Disposable {
  		}
  	}
  
@@ -445,7 +447,7 @@ short layouts its row back.
  		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
  			const now = Date.now();
  
-@@ -329,13 +484,18 @@
+@@ -329,13 +484,18 @@ export class Gesture extends Disposable {
  			}
  
  			// dispatch translation event
@@ -466,7 +468,7 @@ short layouts its row back.
  			}
  		});
  	}
-@@ -354,6 +514,33 @@
+@@ -354,6 +514,33 @@ export class Gesture extends Disposable {
  
  			const data = this.activeTouches[touch.identifier];
  
@@ -1159,7 +1161,7 @@ short layouts its row back.
  }
 --- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
 +++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
-@@ -5,32 +5,84 @@
+@@ -5,32 +5,78 @@
  
  import { BrowserFeatures } from '../../../base/browser/canIUse.js';
  import * as dom from '../../../base/browser/dom.js';
@@ -1181,28 +1183,22 @@ short layouts its row back.
 +import * as viewEvents from '../../common/viewEvents.js';
  import { TextAreaSyntethicEvents } from './editContext/textArea/textAreaEditContextInput.js';
 +import { Selection } from '../../common/core/selection.js';
-+import { Position } from '../../common/core/position.js';
-+
-+const TOUCH_SELECTION_MENU_HOLD_TIME = 650;
-+
-+interface TouchGestureState {
-+	startedOnText: boolean;
-+	startedInSelection: boolean;
-+	panned: boolean;
-+	menuOpened: boolean;
-+	totalX: number;
-+	totalY: number;
-+	pageX: number;
-+	pageY: number;
-+	menuTimer: number | undefined;
-+}
++import { TOUCH_SELECTION_MENU_HOLD_TIME, TouchPress, touchContextMenu } from './touchPress.js';
++import { ITouchPosition, touchDragAnchor, touchDragHandle, touchSelectionEdge, touchSelectionEdges } from './touchSelection.js';
  
  /**
   * Currently only tested on iOS 13/ iPadOS.
   */
  export class PointerEventHandler extends MouseHandler {
  	private _lastPointerType: string;
-+	private _touchGesture: TouchGestureState | null;
++	// The press itself decides what it means (touchPress.ts); what is kept here is what
++	// only the DOM can hold - where the finger is, and the timer that is the hold.
++	private _touchPress: {
++		readonly press: TouchPress;
++		readonly pageX: number;
++		readonly pageY: number;
++		menuTimer: number | undefined;
++	} | null;
 +	private _primarySelection: Selection | null;
 +	private _primaryModelSelection: Selection | null;
 +	// Touch selection is driven entirely by the editor: the browser's own selection UI
@@ -1212,7 +1208,7 @@ short layouts its row back.
 +	// adjust it - this class only says where the selection is and moves it.
 +	private readonly _touchHandles: TouchSelectionHandles;
 +	/** The end of the selection a handle drag holds still, in model coordinates. */
-+	private _touchDragAnchor: Position | null;
++	private _touchDragAnchor: ITouchPosition | null;
 +	private _editorFocused: boolean;
 +
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
@@ -1227,7 +1223,7 @@ short layouts its row back.
 +		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode, dom.EventType.CONTEXT_MENU, (e: MouseEvent) => this.onContextMenu(e), true));
  
  		this._lastPointerType = 'mouse';
-+		this._touchGesture = null;
++		this._touchPress = null;
 +		this._primarySelection = null;
 +		this._primaryModelSelection = null;
 +		this._touchDragAnchor = null;
@@ -1247,7 +1243,7 @@ short layouts its row back.
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
  			const pointerType = e.pointerType;
-@@ -53,18 +105,177 @@
+@@ -53,18 +99,172 @@ export class PointerEventHandler extends MouseHandler {
  		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
  	}
  
@@ -1262,20 +1258,18 @@ short layouts its row back.
 +		this._clearTouchMenuTimer();
 +		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
 +		const modelPosition = target.position ? this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position) : null;
-+		const startedInSelection = !!modelPosition && !!this._primaryModelSelection && !this._primaryModelSelection.isEmpty() && this._primaryModelSelection.containsPosition(modelPosition);
-+		this._touchGesture = {
++		const press = new TouchPress({
 +			startedOnText: target.type === MouseTargetType.CONTENT_TEXT,
-+			startedInSelection,
-+			panned: false,
-+			menuOpened: false,
-+			totalX: 0,
-+			totalY: 0,
++			startedInSelection: !!modelPosition && !!this._primaryModelSelection && !this._primaryModelSelection.isEmpty() && this._primaryModelSelection.containsPosition(modelPosition)
++		}, PAN_THRESHOLD);
++		this._touchPress = {
++			press,
 +			pageX: event.pageX,
 +			pageY: event.pageY,
 +			// Long-press inside the existing selection asks for actions on it - the IDE
 +			// menu opens from this timer, ahead of Gesture's 700ms long-press, which is
 +			// when a long-press elsewhere selects the word instead.
-+			menuTimer: startedInSelection
++			menuTimer: press.armsHoldMenu
 +				? dom.getWindow(this.viewHelper.viewDomNode).setTimeout(() => this._openTouchSelectionMenu(), TOUCH_SELECTION_MENU_HOLD_TIME)
 +				: undefined
 +		};
@@ -1283,23 +1277,23 @@ short layouts its row back.
 +
 +	private onTouchEnd(): void {
 +		this._clearTouchMenuTimer();
-+		this._touchGesture = null;
++		this._touchPress = null;
 +	}
 +
 +	private _clearTouchMenuTimer(): void {
-+		if (this._touchGesture?.menuTimer !== undefined) {
-+			dom.getWindow(this.viewHelper.viewDomNode).clearTimeout(this._touchGesture.menuTimer);
-+			this._touchGesture.menuTimer = undefined;
++		if (this._touchPress?.menuTimer !== undefined) {
++			dom.getWindow(this.viewHelper.viewDomNode).clearTimeout(this._touchPress.menuTimer);
++			this._touchPress.menuTimer = undefined;
 +		}
 +	}
 +
 +	private _openTouchSelectionMenu(): void {
-+		const gesture = this._touchGesture;
-+		if (!gesture || gesture.panned) {
++		const gesture = this._touchPress;
++		if (!gesture?.press.opensHoldMenu) {
 +			return;
 +		}
 +		gesture.menuTimer = undefined;
-+		gesture.menuOpened = true;
++		gesture.press.openedMenu();
 +		const targetWindow = dom.getWindow(this.viewHelper.viewDomNode);
 +		const browserEvent = new MouseEvent('contextmenu', {
 +			bubbles: false,
@@ -1313,9 +1307,9 @@ short layouts its row back.
 +	}
 +
  	private onTap(event: GestureEvent): void {
-+		// A gesture that panned or opened the hold menu is not a tap, even when it stays
++		// A press that panned or opened the hold menu is not a tap, even when it stays
 +		// inside Gesture's own 30px tap slop (our pan threshold is tighter).
-+		if (this._touchGesture?.panned || this._touchGesture?.menuOpened) {
++		if (this._touchPress?.press.settled) {
 +			event.preventDefault();
 +			return;
 +		}
@@ -1341,36 +1335,27 @@ short layouts its row back.
  
 +	private onContextMenu(event: MouseEvent): void {
 +		const editorEvent = new EditorMouseEvent(event, false, this.viewHelper.viewDomNode);
-+		const gesture = this._touchGesture;
-+		if (!gesture) {
-+			// This capture listener also sees ordinary mouse context menus. Leave those on
-+			// MouseHandler's existing bubbling path; only the native touch event and
-+			// Gesture's untrusted fallback belong to this path.
-+			if (event.isTrusted && (event as PointerEvent).pointerType !== 'touch') {
-+				return;
-+			}
-+			this._showTouchContextMenu(editorEvent);
-+			event.preventDefault();
-+			event.stopPropagation();
++		const press = this._touchPress?.press ?? null;
++		const action = touchContextMenu(press, {
++			isTrusted: event.isTrusted,
++			pointerType: (event as PointerEvent).pointerType
++		});
++
++		// This capture listener also sees ordinary mouse context menus. Leave those on
++		// MouseHandler's existing bubbling path; only the native touch event and
++		// Gesture's untrusted fallback belong to this path.
++		if (action === 'defer') {
 +			return;
 +		}
 +
-+		// A pan is a scroll, and after the in-selection hold menu the same press must
-+		// not open a second surface.
-+		if (gesture.panned || gesture.menuOpened) {
-+			event.preventDefault();
-+			event.stopPropagation();
-+			return;
-+		}
-+
-+		// A long-press on text selects the word under the finger, exactly as it would
-+		// in a textarea; the handles then adjust it and a second hold inside the
-+		// selection opens the menu. Non-text spots in the lines keep the menu.
-+		// The native-shaped event is intentionally re-fired 700ms after touchstart. Keep
-+		// the text classification from touchstart: Chromium can classify that re-fire as
-+		// content-empty even while its DOM target is still the rendered token. Recompute
-+		// only the dispatch position so it reflects the editor state at hold time.
-+		if (gesture.startedOnText) {
++		if (action === 'selectWord') {
++			// The word under the finger, exactly as a textarea would; the handles then
++			// adjust it and a second hold inside the selection opens the menu.
++			// The native-shaped event is intentionally re-fired 700ms after touchstart, and
++			// the text classification stays the one taken at touchstart: Chromium can
++			// classify that re-fire as content-empty even while its DOM target is still the
++			// rendered token. Recompute only the dispatch position, so it reflects the
++			// editor state at hold time.
 +			const target = this._createMouseTarget(editorEvent, false);
 +			event.preventDefault();
 +			event.stopPropagation();
@@ -1379,13 +1364,20 @@ short layouts its row back.
 +			return;
 +		}
 +
-+		this._touchHandles.suppress();
-+		this._showTouchContextMenu(editorEvent);
++		if (action === 'menu') {
++			this._showTouchContextMenu(editorEvent);
++		}
++
 +		event.preventDefault();
 +		event.stopPropagation();
 +	}
 +
 +	private _showTouchContextMenu(editorEvent: EditorMouseEvent): void {
++		// A menu is taking over the selection, so the grips go. That is the rule the
++		// _onContextMenu override applies everywhere else, and this is the path that
++		// misses it: the normal branch reaches MouseHandler through super, and the
++		// gutter branch below emits its menu without going through it at all.
++		this._touchHandles.suppress();
 +		const target = this._createMouseTarget(editorEvent, true);
 +		if (
 +			target.position
@@ -1409,15 +1401,14 @@ short layouts its row back.
 +
  	private onChange(event: GestureEvent): void {
  		if (this._lastPointerType === 'touch') {
-+			if (this._touchGesture && !this._touchGesture.panned) {
-+				this._touchGesture.totalX += event.translationX;
-+				this._touchGesture.totalY += event.translationY;
-+				if (Math.hypot(this._touchGesture.totalX, this._touchGesture.totalY) >= PAN_THRESHOLD) {
-+					this._touchGesture.panned = true;
-+					this._clearTouchMenuTimer();
-+					// A scroll after all - apply the pan accumulated during the arm window
-+					// at once. Within the window finger jitter must not scroll the view.
-+					this._context.viewModel.viewLayout.deltaScrollNow(-this._touchGesture.totalX, -this._touchGesture.totalY);
++			const press = this._touchPress?.press;
++			if (press) {
++				const pan = press.translate(event.translationX, event.translationY);
++				if (pan) {
++					if (pan.startedPanning) {
++						this._clearTouchMenuTimer();
++					}
++					this._context.viewModel.viewLayout.deltaScrollNow(pan.deltaX, pan.deltaY);
 +				}
 +				return;
 +			}
@@ -1425,7 +1416,7 @@ short layouts its row back.
  			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
  		}
  		if (this._lastPointerType === 'pen') {
-@@ -74,13 +285,20 @@
+@@ -74,13 +274,20 @@ export class PointerEventHandler extends MouseHandler {
  
  	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
  		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
@@ -1448,7 +1439,7 @@ short layouts its row back.
  				inSelectionMode,
  				altKey: false,
  				ctrlKey: false,
-@@ -93,11 +311,105 @@
+@@ -93,11 +300,95 @@ export class PointerEventHandler extends MouseHandler {
  		}
  	}
  
@@ -1487,35 +1478,27 @@ short layouts its row back.
 +	// Only a touch selection carries handles, and only while the editor owns the cursor
 +	// they belong to.
 +	private _getTouchSelectionEdges(): TouchSelectionEdges | null {
-+		const selection = this._lastPointerType === 'touch' && this._editorFocused ? this._primarySelection : null;
-+		if (!selection) {
-+			return null;
-+		}
-+		return selection.isEmpty()
-+			? { caret: this._touchSelectionEdgeAt(selection.getPosition()) }
-+			: { start: this._touchSelectionEdgeAt(selection.getStartPosition()), end: this._touchSelectionEdgeAt(selection.getEndPosition()) };
++		return touchSelectionEdges(
++			this._lastPointerType === 'touch' && this._editorFocused ? this._primarySelection : null,
++			position => this._touchSelectionEdgeAt(position)
++		);
 +	}
 +
-+	private _touchSelectionEdgeAt(position: Position): ITouchSelectionEdge | undefined {
++	private _touchSelectionEdgeAt(position: ITouchPosition): ITouchSelectionEdge | undefined {
 +		const visibleRange = this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column);
 +		if (!visibleRange || visibleRange.outsideRenderedLine) {
 +			return undefined;
 +		}
-+		const height = this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber);
-+		const top = this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber) - this._context.viewLayout.getLinesViewportData().bigNumbersDelta + height;
-+		// The lines are absolutely positioned and translated by the scroll, so their own
-+		// rect already carries it: content coordinates plus that rect are client ones.
-+		const rect = this.viewHelper.linesContentDomNode.getBoundingClientRect();
-+		return { x: rect.left + visibleRange.left, y: rect.top + top, height };
++		return touchSelectionEdge({
++			left: visibleRange.left,
++			height: this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber),
++			verticalOffset: this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber),
++			bigNumbersDelta: this._context.viewLayout.getLinesViewportData().bigNumbersDelta
++		}, this.viewHelper.linesContentDomNode.getBoundingClientRect());
 +	}
 +
 +	private _startTouchSelectionDrag(kind: TouchSelectionHandleKind): void {
-+		const selection = this._primaryModelSelection;
-+		// The end the drag holds still. Model coordinates survive scrolling, so a drag can
-+		// auto-scroll far beyond the rendered lines without losing it.
-+		this._touchDragAnchor = !selection || kind === 'caret'
-+			? null
-+			: kind === 'start' ? selection.getEndPosition() : selection.getStartPosition();
++		this._touchDragAnchor = touchDragAnchor(kind, this._primaryModelSelection);
 +		this.viewHelper.focusTextArea();
 +	}
 +
@@ -1527,9 +1510,7 @@ short layouts its row back.
 +		const position = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
 +		const anchor = this._touchDragAnchor;
 +		this.viewController.setSelection(anchor ? Selection.fromPositions(anchor, position) : Selection.fromPositions(position));
-+		// Dragging one end past the other swaps which end the finger holds - the shapes
-+		// follow, so the grips keep pointing into the selection.
-+		return !anchor ? 'caret' : Position.isBeforeOrEqual(position, anchor) ? 'start' : 'end';
++		return touchDragHandle(anchor, position);
 +	}
 +
 +	protected override _onContextMenu(e: EditorMouseEvent, testEventTarget: boolean): void {
@@ -1554,7 +1535,7 @@ short layouts its row back.
  		super._onMouseDown(e, pointerId);
  	}
  }
-@@ -111,7 +423,7 @@
+@@ -111,7 +402,7 @@ class TouchHandler extends MouseHandler {
  
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
  		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
@@ -1563,7 +1544,7 @@ short layouts its row back.
  	}
  
  	private onTap(event: GestureEvent): void {
-@@ -141,8 +453,12 @@
+@@ -141,8 +432,12 @@ export class PointerHandler extends Disposable {
  
  	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
  		super();
@@ -1662,7 +1643,7 @@ short layouts its row back.
  import { Menu } from '../../../base/browser/ui/menu/menu.js';
  import { ActionRunner, IRunEvent, WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../base/common/actions.js';
  import { isCancellationError } from '../../../base/common/errors.js';
-@@ -49,7 +51,14 @@
+@@ -49,7 +51,14 @@ export class ContextMenuHandler {
  
  		let menu: Menu | undefined;
  
@@ -1678,7 +1659,7 @@ short layouts its row back.
  		this.contextViewService.showContextView({
  			getAnchor: () => delegate.getAnchor(),
  			canRelayout: false,
-@@ -94,9 +103,16 @@
+@@ -94,9 +103,16 @@ export class ContextMenuHandler {
  				);
  
  				menu.onDidCancel(() => this.contextViewService.hideContextView(true), null, menuDisposables);
@@ -1697,7 +1678,7 @@ short layouts its row back.
  				menuDisposables.add(addDisposableListener(targetWindow, EventType.MOUSE_DOWN, (e: MouseEvent) => {
  					if (e.defaultPrevented) {
  						return;
-@@ -125,7 +141,16 @@
+@@ -125,7 +141,16 @@ export class ContextMenuHandler {
  			},
  
  			focus: () => {
@@ -1715,7 +1696,7 @@ short layouts its row back.
  			},
  
  			onHide: (didCancel?: boolean) => {
-@@ -140,7 +165,9 @@
+@@ -140,7 +165,9 @@ export class ContextMenuHandler {
  				this.blockDisposable = null;
  
  				if (!!this.lastContainer && (getActiveElement() === this.lastContainer || isAncestor(getActiveElement(), this.lastContainer))) {
@@ -2534,7 +2515,7 @@ short layouts its row back.
  		} else {
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
-@@ -8,6 +8,7 @@
+@@ -8,6 +8,7 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
  import { DataTransfers } from '../../../../base/browser/dnd.js';
  import * as dom from '../../../../base/browser/dom.js';
  import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
@@ -2542,7 +2523,7 @@ short layouts its row back.
  import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
  import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
  import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
-@@ -1130,6 +1131,13 @@
+@@ -1130,6 +1131,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  			throw new Error('xterm elements not set after open');
  		}
  
@@ -2556,7 +2537,7 @@ short layouts its row back.
  		this._setAriaLabel(xterm.raw, this._instanceId, this._title);
  
  		xterm.raw.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
-@@ -1202,9 +1210,18 @@
+@@ -1202,9 +1210,18 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  				listener.dispose();
  			});
  		}));
@@ -2578,7 +2559,7 @@ short layouts its row back.
  		this._register(dom.addDisposableListener(xterm.raw.element, 'keyup', () => {
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
-@@ -17,6 +17,15 @@
+@@ -17,6 +17,15 @@ export interface IXtermCore {
  		_curAttrData: XtermAttributes;
  	};
  
@@ -2596,7 +2577,7 @@ short layouts its row back.
  			css: {
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
-@@ -35,5 +35,7 @@
+@@ -35,5 +35,7 @@ import '../terminalContrib/sendSequence/browser/terminal.sendSequence.contributi
  import '../terminalContrib/sendSignal/browser/terminal.sendSignal.contribution.js';
  import '../terminalContrib/suggest/browser/terminal.suggest.contribution.js';
  import '../terminalContrib/telemetry/browser/terminal.telemetry.contribution.js';
@@ -2643,7 +2624,7 @@ short layouts its row back.
  import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
  import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
  import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
-@@ -16,6 +21,7 @@
+@@ -16,6 +21,7 @@ import { KeybindingWeight } from '../../../../../platform/keybinding/common/keyb
  import { accessibleViewCurrentProviderId, accessibleViewIsShown } from '../../../accessibility/browser/accessibilityConfiguration.js';
  import { ITerminalContribution, ITerminalInstance, IXtermTerminal, isDetachedTerminalInstance } from '../../../terminal/browser/terminal.js';
  import { registerActiveInstanceAction } from '../../../terminal/browser/terminalActions.js';
@@ -2651,7 +2632,7 @@ short layouts its row back.
  import { registerTerminalContribution, type IDetachedCompatibleTerminalContributionContext, type ITerminalContributionContext } from '../../../terminal/browser/terminalExtensions.js';
  import { isTerminalProcessManager } from '../../../terminal/common/terminal.js';
  import { TerminalContextKeys } from '../../../terminal/common/terminalContextKey.js';
-@@ -80,6 +86,24 @@
+@@ -80,6 +86,24 @@ class TerminalLinkContribution extends DisposableStore implements ITerminalContr
  		linkManager.add(this._terminalLinkProviderService.onDidRemoveLinkProvider(() => linkManager.externalProvideLinksCb = undefined));
  	}
  
@@ -2676,7 +2657,7 @@ short layouts its row back.
  	async showLinkQuickpick(extended?: boolean): Promise<void> {
  		if (!this._terminalLinkQuickpick) {
  			this._terminalLinkQuickpick = this.add(this._instantiationService.createInstance(TerminalLinkQuickpick));
-@@ -132,6 +156,18 @@
+@@ -132,6 +156,18 @@ registerActiveInstanceAction({
  	],
  	run: (activeInstance) => TerminalLinkContribution.get(activeInstance)?.showLinkQuickpick()
  });
@@ -2707,7 +2688,7 @@ short layouts its row back.
  import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
  import { DisposableStore, dispose, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
  import { isMacintosh, OS } from '../../../../../base/common/platform.js';
-@@ -24,6 +25,7 @@
+@@ -24,6 +25,7 @@ import { ITerminalConfigurationService, ITerminalExternalLinkProvider, TerminalL
  import { ILinkHoverTargetOptions, TerminalHover } from '../../../terminal/browser/widgets/terminalHoverWidget.js';
  import { TerminalWidgetManager } from '../../../terminal/browser/widgets/widgetManager.js';
  import { IXtermCore } from '../../../terminal/browser/xterm-private.js';
@@ -2715,7 +2696,7 @@ short layouts its row back.
  import { ITerminalCapabilityStore } from '../../../../../platform/terminal/common/capabilities/capabilities.js';
  import { ITerminalConfiguration, ITerminalProcessInfo, TERMINAL_CONFIG_SECTION } from '../../../terminal/common/terminal.js';
  import type { ILink, ILinkProvider, IViewportRange, Terminal } from '@xterm/xterm';
-@@ -252,6 +254,32 @@
+@@ -252,6 +254,32 @@ export class TerminalLinkManager extends DisposableStore {
  		return links[0];
  	}
  
@@ -2748,7 +2729,7 @@ short layouts its row back.
  	async getLinks(): Promise<{ viewport: IDetectedLinks; all: Promise<IDetectedLinks> }> {
  		// Fetch and await the viewport results
  		const viewportLinksByLinePromises: Promise<IDetectedLinks | undefined>[] = [];
-@@ -447,6 +475,11 @@
+@@ -447,6 +475,11 @@ export class TerminalLinkManager extends DisposableStore {
  	}
  
  	protected _isLinkActivationModifierDown(event: MouseEvent): boolean {

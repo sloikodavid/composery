@@ -57,7 +57,7 @@ each provider, register an OAuth app on its side, copy the **Authorization
 Callback URL** Clerk shows for that connection, then enable **Use custom
 credentials** and paste the client id and secret.
 
-Every provider must return a verified email address. `convex/authorization.ts`
+Every provider must return a verified email address. `convex/users.ts`
 reads the `email` claim and refuses an identity without one. Clerk links a new
 social identity into the existing account when the email matches and is
 verified, which is why **Verify at sign-up** stays on: the Convex user row is

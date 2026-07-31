@@ -172,13 +172,6 @@ describe("trigger classification", () => {
 		expect(isSystemTrigger(trigger)).toBe(true);
 	});
 
-	// An operation recorded before the column existed. Reading it as a person's
-	// keeps repair off a box someone may have been working on, which is the safe
-	// direction for a value we cannot know.
-	test("treats an unrecorded trigger as a person", () => {
-		expect(isSystemTrigger(undefined)).toBe(false);
-	});
-
 	test("counts its own repairs against the attempt limit", () => {
 		expect(isSystemTrigger(AUTO_REPAIR_TRIGGER)).toBe(true);
 	});

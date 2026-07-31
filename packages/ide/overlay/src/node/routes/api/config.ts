@@ -1,19 +1,13 @@
 import * as path from "path"
 
+import { envFlag } from "../../envFlag"
+
 export const MAX_TERMINAL_TIMEOUT_SEC = 24 * 60 * 60
 const MAX_TERMINAL_OUTPUT_BYTES = 64 * 1024 * 1024
 const MAX_RATE_RPS = 1000
 const MAX_RATE_BURST = 10_000
 const MAX_SESSIONS = 500
 const MAX_AUTH_FAIL_PER_MIN = 1000
-
-// Only an explicit 1/true turns a surface off, like every other
-// COMPOSERY_DISABLE_*: a typo has to leave the API reachable rather than
-// silently 404 every request an operator still believes is wired up.
-function disabled(name: string): boolean {
-  const raw = process.env[name]?.trim().toLowerCase()
-  return raw === "1" || raw === "true"
-}
 
 function num(name: string, def: number, max: number): number {
   const raw = process.env[name]?.trim()
@@ -28,15 +22,11 @@ function int(name: string, def: number, max: number): number {
 }
 
 export const apiConfig = {
-  enabled: !disabled("COMPOSERY_DISABLE_API"),
+  enabled: !envFlag("COMPOSERY_DISABLE_API"),
   shell: process.env.SHELL || "/bin/bash",
   home: process.env.HOME,
   terminalTimeoutSec: num("COMPOSERY_API_TERMINAL_TIMEOUT", 60, MAX_TERMINAL_TIMEOUT_SEC),
-  terminalMaxOutput: int(
-    "COMPOSERY_API_TERMINAL_MAX_OUTPUT",
-    10 * 1024 * 1024,
-    MAX_TERMINAL_OUTPUT_BYTES,
-  ),
+  terminalMaxOutput: int("COMPOSERY_API_TERMINAL_MAX_OUTPUT", 10 * 1024 * 1024, MAX_TERMINAL_OUTPUT_BYTES),
   rateRps: num("COMPOSERY_API_RATE_RPS", 50, MAX_RATE_RPS),
   rateBurst: int("COMPOSERY_API_RATE_BURST", 200, MAX_RATE_BURST),
   maxSessions: int("COMPOSERY_API_MAX_SESSIONS", 50, MAX_SESSIONS),

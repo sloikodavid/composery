@@ -6,80 +6,41 @@ import {
 	internalQuery,
 	type DatabaseReader
 } from "../_generated/server";
-import {
-	boxStatusesExcept,
-	type BoxFlagSignal,
-	type BoxStatus
-} from "../schema";
+import { boxStatusesExcept, type BoxStatus } from "../schema";
 import { readGlobalSettings } from "../settings";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import { consoleBoxPath } from "../../lib/box-route";
+import { consoleBoxPath } from "../../lib/boxes/route";
 import {
-	crossedValue,
-	isEnabled,
-	type ThresholdSetting
-} from "./metricThresholds";
+	FLAG_SIGNALS,
+	flagSignalLabel,
+	formatFlagValue,
+	METRICS_RANGES,
+	ROLLED_METRICS,
+	type MetricsRange,
+	type RolledMetric
+} from "../../lib/boxes/metrics";
+import { crossedValue, isEnabled } from "./metricThresholds";
+import { DAY_MS, HOUR_MS, MINUTE_MS } from "../time";
 
 export const METRICS_POLL_INTERVAL_MINUTES = 10;
 export const METRICS_POLL_INTERVAL_MS =
-	METRICS_POLL_INTERVAL_MINUTES * 60 * 1000;
+	METRICS_POLL_INTERVAL_MINUTES * MINUTE_MS;
 
-const METRICS_SERIES_WINDOW_MS = 24 * 60 * 60 * 1000;
+const METRICS_SERIES_WINDOW_MS = DAY_MS;
 // The annotated windows in this file are exported only because the operator
 // runbook states them: `// runbook:` is what binds a number in the doc to the
 // constant that produces it, and the test that pins the pair reads the value.
 // runbook: Raw metrics retention
-export const RAW_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
+export const RAW_RETENTION_MS = 2 * DAY_MS;
 // runbook: Hourly metrics retention
-export const ROLLUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
+export const ROLLUP_RETENTION_MS = 30 * DAY_MS;
 const ROLLUP_BOX_BATCH = 200;
 const ROLLUP_SAMPLE_LIMIT = Math.ceil(HOUR_MS / METRICS_POLL_INTERVAL_MS) + 18;
 // runbook: Repeat flag cooloff per box/signal
-export const FLAG_COOLOFF_MS = 6 * 60 * 60 * 1000;
+export const FLAG_COOLOFF_MS = 6 * HOUR_MS;
 const RETENTION_DELETE_BATCH = 1000;
 const POLL_TARGET_PAGE_SIZE = 200;
-
-function formatMbit(bps: number) {
-	return `${Math.round((bps * 8) / 1_000_000)} Mbit/s`;
-}
-
-function formatPps(pps: number) {
-	return `${Math.round(pps).toLocaleString("en-US")} packets/s`;
-}
-
-type ThresholdMetric = "egress_bps" | "egress_pps";
-
-type ThresholdPresentation = {
-	format: (value: number) => string;
-	label: string;
-	metric: ThresholdMetric;
-};
-
-const THRESHOLD_PRESENTATION: Record<BoxFlagSignal, ThresholdPresentation> = {
-	egress_bandwidth: {
-		metric: "egress_bps",
-		label: "outbound bandwidth",
-		format: formatMbit
-	},
-	egress_pps: {
-		metric: "egress_pps",
-		label: "outbound packet rate",
-		format: formatPps
-	}
-};
-
-type ResolvedThreshold = ThresholdSetting & ThresholdPresentation;
-
-function presentThresholds(
-	thresholds: readonly ThresholdSetting[]
-): ResolvedThreshold[] {
-	return thresholds.map((threshold) => ({
-		...threshold,
-		...THRESHOLD_PRESENTATION[threshold.signal]
-	}));
-}
 
 export const POLLED_STATUSES = ["running", "stopped", "suspended"] as const;
 
@@ -94,30 +55,15 @@ export const vPolledStatus = v.union(
 	v.literal("suspended")
 );
 
-const ROLLED_METRICS = [
-	"cpu_percent",
-	"ingress_bps",
-	"egress_bps",
-	"ingress_pps",
-	"egress_pps",
-	"disk_read_bps",
-	"disk_write_bps"
-] as const;
-
-export type RolledMetric = (typeof ROLLED_METRICS)[number];
-
+// Both validators are built from the vocabulary in `lib/boxes/metrics.ts`
+// rather than restating it, so what the console's pickers offer and what these
+// arguments accept are the same list by construction.
 export const vRolledMetric = v.union(
 	...ROLLED_METRICS.map((metric) => v.literal(metric))
 );
 
-export type MetricsRange = "1h" | "6h" | "24h" | "7d" | "30d";
-
 export const vMetricsRange = v.union(
-	v.literal("1h"),
-	v.literal("6h"),
-	v.literal("24h"),
-	v.literal("7d"),
-	v.literal("30d")
+	...METRICS_RANGES.map((range) => v.literal(range))
 );
 
 // Raw box_metrics samples are retained for two days (polled every
@@ -127,11 +73,11 @@ const METRICS_RANGE_CONFIG: Record<
 	MetricsRange,
 	{ hourly: boolean; windowMs: number }
 > = {
-	"1h": { hourly: false, windowMs: 60 * 60 * 1000 },
-	"6h": { hourly: false, windowMs: 6 * 60 * 60 * 1000 },
+	"1h": { hourly: false, windowMs: HOUR_MS },
+	"6h": { hourly: false, windowMs: 6 * HOUR_MS },
 	"24h": { hourly: false, windowMs: METRICS_SERIES_WINDOW_MS },
-	"7d": { hourly: true, windowMs: 7 * 24 * 60 * 60 * 1000 },
-	"30d": { hourly: true, windowMs: 30 * 24 * 60 * 60 * 1000 }
+	"7d": { hourly: true, windowMs: 7 * DAY_MS },
+	"30d": { hourly: true, windowMs: 30 * DAY_MS }
 };
 
 export type RollupMetricSample = Record<RolledMetric, number>;
@@ -265,7 +211,7 @@ export const recordSample = internalMutation({
 		if (box.status !== "running") return none;
 
 		const settings = await readGlobalSettings(ctx);
-		const thresholds = presentThresholds(settings.thresholds);
+		const thresholds = settings.thresholds;
 
 		const longestWindow = Math.max(
 			...thresholds.map((threshold) => threshold.sustainedSamples)
@@ -281,8 +227,9 @@ export const recordSample = internalMutation({
 
 		for (const threshold of thresholds) {
 			if (!isEnabled(threshold)) continue;
+			const { metric } = FLAG_SIGNALS[threshold.signal];
 			const value = crossedValue(
-				samples.map((sample) => sample[threshold.metric]),
+				samples.map((sample) => sample[metric]),
 				threshold
 			);
 			if (value === null) continue;
@@ -297,10 +244,15 @@ export const recordSample = internalMutation({
 			if (lastFlag && now - lastFlag.created_at < FLAG_COOLOFF_MS) continue;
 
 			const windowMinutes =
-				(threshold.sustainedSamples * METRICS_POLL_INTERVAL_MS) / 60_000;
-			const message = `Sustained ${threshold.label} at ${threshold.format(
+				(threshold.sustainedSamples * METRICS_POLL_INTERVAL_MS) / MINUTE_MS;
+			const message = `Sustained ${flagSignalLabel(
+				threshold.signal,
+				true
+			)} at ${formatFlagValue(
+				threshold.signal,
 				value
-			)} (threshold ${threshold.format(
+			)} (threshold ${formatFlagValue(
+				threshold.signal,
 				threshold.value
 			)}) over the last ${windowMinutes} minutes.`;
 			const autoSuspend: boolean =
@@ -324,7 +276,10 @@ export const recordSample = internalMutation({
 			await raiseAlert(ctx, {
 				key: `box-flag:${flagId}`,
 				severity: autoSuspend ? "critical" : "warning",
-				subject: `Box ${box.slug} flagged: ${threshold.label}`,
+				subject: `Box ${box.slug} flagged: ${flagSignalLabel(
+					threshold.signal,
+					true
+				)}`,
 				text: `${message}\n\n${
 					autoSuspend ? "The box was automatically suspended.\n\n" : ""
 				}${staffConsoleUrl(consoleBoxPath(box._id))}`

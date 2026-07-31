@@ -22,8 +22,7 @@ export const suspendBox = defineBoxWorkflow({
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,
-				status: "suspended",
-				eventType: "box.suspended"
+				status: "suspended"
 			}
 		);
 	}

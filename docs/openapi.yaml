@@ -1,5 +1,5 @@
 # The instance automation API, rendered into docs/api.mdx by fumadocs-openapi.
-# tests/api-openapi.test.ts pins this file to the route that serves it.
+# tests/invariants/api-openapi.test.ts pins this file to the route that serves it.
 openapi: 3.1.0
 
 info:

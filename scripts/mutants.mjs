@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 // agent writes the test, so this is the load-bearing check rather than a nicety:
 // it is the only one that cannot be satisfied by a test that merely runs.
 //
-// Scoped to the diff on purpose. A full sweep is a nightly job (mutants.yml);
+// Scoped to the diff on purpose. A full sweep is a nightly job (mutants.yaml);
 // per-change it has to be fast enough that nobody is tempted to skip it.
 //
 // A surviving mutant is killed by a test or annotated as equivalent with a
@@ -114,7 +114,7 @@ if (rust.length) {
 	if (!installed) {
 		console.error(
 			"cargo-mutants is not installed. `cargo install cargo-mutants` (CI does\n" +
-				"this in mutants.yml). Refusing to report a Rust pass without running."
+				"this in mutants.yaml). Refusing to report a Rust pass without running."
 		);
 		process.exit(1);
 	}

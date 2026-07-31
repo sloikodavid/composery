@@ -7,7 +7,7 @@ import {
 	snapshotSlotsForPlan
 } from "@/convex/boxes/capacity";
 import { vBoxStatus } from "@/convex/schema";
-import { BOX_PLANS } from "@/lib/box-plan";
+import { BOX_PLANS } from "@/lib/boxes/plan";
 
 describe("box capacity", () => {
 	// These lists are hand-written subsets of the status union, so the type

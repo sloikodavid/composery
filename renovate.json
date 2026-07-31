@@ -123,7 +123,7 @@
 		},
 		{
 			"customType": "regex",
-			"managerFilePatterns": ["/^\\.github/workflows/templates\\.yml$/"],
+			"managerFilePatterns": ["/^\\.github/workflows/templates\\.yaml$/"],
 			"matchStrings": ["version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
 			"datasourceTemplate": "github-releases",
 			"depNameTemplate": "superfly/flyctl",

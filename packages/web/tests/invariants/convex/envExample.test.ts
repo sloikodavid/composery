@@ -1,60 +1,25 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
+import { CONVEX_ENV_NAMES } from "@/convex/env";
 
 // The .env.example.convex.* files are the single documented list of Convex-plane
-// environment variables (see packages/web/AGENTS.md -> "Living setup docs"). This
-// pins that list to the code: every variable the Convex source reads must appear
-// in both example files, and neither file may carry a variable nothing reads. It
-// fails loudly when the two drift, so a new requiredEnv()/process.env read cannot
-// ship without its checklist entry - and, in the other direction, a capability
-// deleted from the code cannot leave its secret on the deployment checklist,
-// which is how CLERK_SECRET_KEY was caught still being asked for after the only
-// Convex-side reader of it went away.
+// environment variables (see packages/web/CLAUDE.md -> "Living setup docs").
+// This pins that list to `CONVEX_ENV_NAMES`, which is the plane's environment
+// surface rather than a description of one: `requiredEnv`/`optionalEnv` only
+// accept a name from it and nothing else in convex/ touches `process.env`, so
+// "the code reads it" and "the array lists it" are the same fact, checked by the
+// type checker.
 //
-// Scoped to the Convex plane on purpose: every Convex read is an explicit
-// requiredEnv/optionalEnv/process.env literal, so both directions are decidable
-// from source. The Next plane also gets vars implicitly from SDKs/CLIs (Clerk,
-// Convex), which a source scan cannot see, so it is not checked here.
+// This replaced a scanner that looked for `process.env.X` spellings across the
+// source. Two things were wrong with that: it could only see names written as
+// literals at the read - the four `POLAR_BOX_*` ids were on the checklist by
+// accident, matched through a tolerant read rather than through the table that
+// names them, and moving that read would have quietly dropped them - and it
+// needed a hand-kept set of runtime-injected names to exclude. Neither survives.
 
-const convexDir = resolve(import.meta.dirname, "../../../convex");
-const webDir = join(convexDir, "..");
-
-// Names Convex or Node inject at runtime. They are never configured through the
-// example checklist, so reading one must not demand an entry. Kept explicit so a
-// future read of one fails visibly here rather than silently widening the set.
-const RUNTIME_PROVIDED = new Set([
-	"NODE_ENV",
-	"CONVEX_CLOUD_URL",
-	"CONVEX_SITE_URL"
-]);
-
-const READ_PATTERNS = [
-	// requiredEnv("NAME") / optionalEnv("NAME")
-	/(?:required|optional)Env\(\s*["'`]([A-Z][A-Z0-9_]*)["'`]/g,
-	// process.env.NAME
-	/process\.env\.([A-Z][A-Z0-9_]*)/g,
-	// process.env["NAME"] - the quotes exclude the dynamic process.env[name] in env.ts
-	/process\.env\[\s*["'`]([A-Z][A-Z0-9_]*)["'`]\s*\]/g
-];
-
-function envNamesReadByConvexSource() {
-	const names = new Set<string>();
-	for (const entry of readdirSync(convexDir, { recursive: true })) {
-		const rel = String(entry);
-		const normalized = rel.replaceAll("\\", "/");
-		if (!normalized.endsWith(".ts")) continue;
-		if (normalized.endsWith(".test.ts")) continue;
-		if (normalized.startsWith("_generated/")) continue;
-		const source = readFileSync(join(convexDir, rel), "utf8");
-		for (const pattern of READ_PATTERNS) {
-			for (const match of source.matchAll(pattern)) {
-				if (!RUNTIME_PROVIDED.has(match[1])) names.add(match[1]);
-			}
-		}
-	}
-	return names;
-}
+const webDir = resolve(import.meta.dirname, "../../..");
+const convexDir = join(webDir, "convex");
 
 function envNamesInExample(fileName: string) {
 	const names = new Set<string>();
@@ -62,7 +27,7 @@ function envNamesInExample(fileName: string) {
 		const trimmed = line.trim();
 		if (!trimmed || trimmed.startsWith("#")) continue;
 		const match = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(trimmed);
-		if (match) names.add(match[1]);
+		if (match) names.add(match[1] as string);
 	}
 	return names;
 }
@@ -70,30 +35,38 @@ function envNamesInExample(fileName: string) {
 const sorted = (names: Iterable<string>) => [...names].sort();
 
 describe("Convex environment example checklist", () => {
-	const codeReads = envNamesReadByConvexSource();
-
-	test("finds the reads (a broken scanner would pass the equality below vacuously)", () => {
-		// Stable anchors plus a floor: if the patterns ever match nothing, an empty
-		// example file would wrongly compare equal, so make that failure show here.
-		// One anchor per read pattern: CLOUD_DOMAIN is a requiredEnv() call,
-		// CLERK_WEBHOOK_SIGNING_SECRET a bare process.env access.
-		expect(codeReads.has("CLOUD_DOMAIN")).toBe(true);
-		expect(codeReads.has("CLERK_WEBHOOK_SIGNING_SECRET")).toBe(true);
-		expect(codeReads.size).toBeGreaterThan(15);
-	});
-
 	test.each([".env.example.convex.dev", ".env.example.convex.prod"])(
-		"%s lists exactly the variables the Convex source reads",
+		"%s lists exactly the variables the Convex plane declares",
 		(fileName) => {
 			const listed = envNamesInExample(fileName);
 			const missing = sorted(
-				[...codeReads].filter((name) => !listed.has(name))
+				CONVEX_ENV_NAMES.filter((name) => !listed.has(name))
 			);
-			const unread = sorted([...listed].filter((name) => !codeReads.has(name)));
+			const unread = sorted(
+				[...listed].filter(
+					(name) => !(CONVEX_ENV_NAMES as readonly string[]).includes(name)
+				)
+			);
 			expect(
 				{ missing, unread },
-				`${fileName}: 'missing' are read in convex/ but absent from the file; 'unread' are in the file but read nowhere in convex/`
+				`${fileName}: 'missing' are declared in convex/env.ts but absent from the file; 'unread' are in the file but declared nowhere`
 			).toEqual({ missing: [], unread: [] });
 		}
 	);
+
+	// The registry is only the whole surface for as long as it is the only door.
+	// A bare `process.env` read elsewhere in convex/ is a variable that can ship
+	// undeclared and undocumented, which is exactly what this file exists to stop.
+	test("convex/env.ts is the only module that touches process.env", () => {
+		const offenders: string[] = [];
+		for (const entry of readdirSync(convexDir, { recursive: true })) {
+			const path = String(entry).replaceAll("\\", "/");
+			if (!path.endsWith(".ts")) continue;
+			if (path.startsWith("_generated/") || path === "env.ts") continue;
+			const source = readFileSync(join(convexDir, path), "utf8");
+			// Comments may name it; a read is an access.
+			if (/process\.env\s*[.[]/.test(source)) offenders.push(path);
+		}
+		expect(offenders).toEqual([]);
+	});
 });

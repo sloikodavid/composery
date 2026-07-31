@@ -4,7 +4,7 @@ import {
 	CircleXIcon,
 	TriangleAlertIcon
 } from "lucide-react";
-import type { Tone } from "@/lib/repair-status";
+import type { Tone } from "@/lib/boxes/repair";
 import { cn } from "@/lib/utils";
 
 // A tone as a glyph, for the box dialogs that report a state they read rather

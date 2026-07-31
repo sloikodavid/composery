@@ -7,7 +7,7 @@ Composery is a container, but it should feel like a machine whose state survives
 restarts. Persistence keeps only your changes to the image - your delta - on the `/data`
 volume, and mounting one durable volume there is the only hard requirement for
 [self-hosting](self-hosting/index.md). Two [engines](#engines) implement that, and which
-one a box runs changes nothing about the promise.
+one an instance runs changes nothing about the promise.
 
 The delta model is what makes image upgrades safe: a new image ships new base contents,
 your changes stay on top, and every file you never touched moves to the new version. See
@@ -21,7 +21,7 @@ writable layer and its delta copy, so a 10 GB changed file outside `/data` costs
 20 GB of host disk (the overlay engine stores it once). `df -h /data` shows the durable
 disk's ordinary filesystem usage.
 
-If you run Docker inside your box, point its `data-root` at `/data` — add
+If you run Docker inside your Composery, point its `data-root` at `/data` - add
 `{"data-root": "/data/docker"}` to `/etc/docker/daemon.json` and restart it. Left at
 `/var/lib/docker`, the daemon sits on Composery's own root filesystem: under the overlay
 engine it cannot nest `overlay2` and silently falls back to the slower `fuse-overlayfs`,
@@ -37,12 +37,12 @@ file locking, atomic renames, and xattrs that NFS does not reliably provide.
 Persistence has two engines behind one contract, selected by `COMPOSERY_PERSISTENCE`
 (`auto` by default):
 
-- **copy** — the universal engine, and the only one that works on managed PaaS that
+- **copy** - the universal engine, and the only one that works on managed PaaS that
   cannot grant container privileges (Render, Railway, Koyeb, and similar). A userspace
   daemon compares the live root filesystem against the image baseline and writes only your
   deltas to `/data/persistence`. Its observation cost is bounded by construction (see
   [Bounded observation](#bounded-observation)).
-- **overlay** — a kernel-maintained engine that makes the root filesystem an overlayfs
+- **overlay** - a kernel-maintained engine that makes the root filesystem an overlayfs
   whose upper layer lives on the `/data` volume, so the kernel records the delta directly.
   It needs a privileged container (`CAP_SYS_ADMIN`), which means Composery Cloud, the
   `systemd` compose recipes, and any host you own; a managed platform that cannot grant
@@ -52,7 +52,7 @@ Persistence has two engines behind one contract, selected by `COMPOSERY_PERSISTE
 What is identical across engines: one durable volume at `/data`, the same delta model, the
 same image-upgrade promise (a new image ships a new baseline/lower, your changes stay on
 top, every file you never touched moves to the new version), and the same integrity
-boundary — the paths under [What persists](#what-persists) are never captured either way.
+boundary - the paths under [What persists](#what-persists) are never captured either way.
 `auto` probes by attempting a real overlay mount on the `/data` volume and falls back to
 copy on any failure; an explicit `COMPOSERY_PERSISTENCE=overlay` that cannot be satisfied
 stops the container with the probe's own error rather than quietly running copy, and
@@ -68,7 +68,7 @@ What honestly differs:
 | Deletions     | recorded as tombstones                                                                      | recorded as overlayfs whiteouts           |
 
 One consequence is worth knowing about. Under either engine a file you delete stays
-deleted across an upgrade, which is what you want — but an upgrade that reintroduces
+deleted across an upgrade, which is what you want - but an upgrade that reintroduces
 content at a path you had deleted, or adds files inside a directory you had replaced
 wholesale, has to decide between your change and the image's. Overlay reconciles this at
 boot: a deletion whose file the new image genuinely changed is dropped so the new version
@@ -117,8 +117,8 @@ The active config lives at `/data/persistence/config.json`. A new file starts wi
 removable `documentation` link, while its configurable values record only your intent,
 never the built-in policy. Two symmetric arrays: `exclude` adds paths to the boundary, and
 `persist` keeps a path the image excludes by default (it can never override an integrity
-exclusion). A new config contains neither — the image owns the default set, so a future
-image can change it — alongside an `audit` block and a `maxWatches` cap. The effective
+exclusion). A new config contains neither - the image owns the default set, so a future
+image can change it - alongside an `audit` block and a `maxWatches` cap. The effective
 exclusion set is the integrity set, plus the image defaults you did not `persist`, plus
 whatever you `exclude`. A config written by an older build, with a single `exclusions`
 array, keeps working unchanged: `exclusions` is read as `exclude`, so the paths you named

@@ -9,7 +9,8 @@ import {
 	websiteOrigin
 } from "@/convex/env";
 
-const names = ["CLOUD_DOMAIN", "WEBSITE_ORIGIN", "OPTIONAL_TEST"];
+// A real declared name, because `optionalEnv` only accepts one now.
+const names = ["CLOUD_DOMAIN", "WEBSITE_ORIGIN", "HETZNER_NETWORK_ID"];
 const previous = new Map(names.map((name) => [name, process.env[name]]));
 
 afterEach(() => {
@@ -46,17 +47,17 @@ describe("requiredEnv", () => {
 
 describe("optionalEnv", () => {
 	test("returns undefined for unset, empty, or whitespace-only values", () => {
-		delete process.env.OPTIONAL_TEST;
-		expect(optionalEnv("OPTIONAL_TEST")).toBeUndefined();
-		process.env.OPTIONAL_TEST = "";
-		expect(optionalEnv("OPTIONAL_TEST")).toBeUndefined();
-		process.env.OPTIONAL_TEST = "   ";
-		expect(optionalEnv("OPTIONAL_TEST")).toBeUndefined();
+		delete process.env.HETZNER_NETWORK_ID;
+		expect(optionalEnv("HETZNER_NETWORK_ID")).toBeUndefined();
+		process.env.HETZNER_NETWORK_ID = "";
+		expect(optionalEnv("HETZNER_NETWORK_ID")).toBeUndefined();
+		process.env.HETZNER_NETWORK_ID = "   ";
+		expect(optionalEnv("HETZNER_NETWORK_ID")).toBeUndefined();
 	});
 
 	test("trims and returns a present value", () => {
-		process.env.OPTIONAL_TEST = "  value  ";
-		expect(optionalEnv("OPTIONAL_TEST")).toBe("value");
+		process.env.HETZNER_NETWORK_ID = "  value  ";
+		expect(optionalEnv("HETZNER_NETWORK_ID")).toBe("value");
 	});
 });
 

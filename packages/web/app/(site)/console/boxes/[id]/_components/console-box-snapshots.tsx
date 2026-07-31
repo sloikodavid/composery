@@ -4,7 +4,9 @@ import { useMutation, useQuery } from "convex/react";
 import { SnapshotsDialog } from "@/components/boxes/snapshots-dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { BoxPlan, SnapshotSplit } from "@/lib/box-plan";
+import { isOperationAllowed } from "@/convex/boxes/operationRules";
+import type { BoxStatus } from "@/convex/schema";
+import type { BoxPlan, SnapshotSplit } from "@/lib/boxes/plan";
 
 export function ConsoleBoxSnapshots({
 	boxId,
@@ -15,7 +17,7 @@ export function ConsoleBoxSnapshots({
 	boxId: Id<"boxes">;
 	plan: BoxPlan;
 	split: SnapshotSplit;
-	status: string;
+	status: BoxStatus;
 }) {
 	const snapshots = useQuery(api.staff.boxes.snapshots, { boxId });
 	const createSnapshot = useMutation(api.staff.boxes.createSnapshot);
@@ -24,8 +26,8 @@ export function ConsoleBoxSnapshots({
 
 	return (
 		<SnapshotsDialog
-			canRestore={status === "running" || status === "restore_failed"}
-			canTake={status === "running"}
+			canRestore={isOperationAllowed(status, "restore")}
+			canTake={isOperationAllowed(status, "snapshot")}
 			onDelete={(id) => deleteSnapshot({ snapshotId: id })}
 			onRestore={(id) => restoreSnapshot({ snapshotId: id })}
 			onTake={() => createSnapshot({ boxId })}

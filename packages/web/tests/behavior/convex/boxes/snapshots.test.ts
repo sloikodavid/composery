@@ -7,7 +7,7 @@ import {
 	SNAPSHOT_INCOMPLETE_RETENTION_MS
 } from "@/convex/boxes/snapshotPolicy";
 import type { BoxPlan } from "@/convex/schema";
-import { BOX_PLANS, resolveSnapshotSplit } from "@/lib/box-plan";
+import { BOX_PLANS, resolveSnapshotSplit } from "@/lib/boxes/plan";
 
 // The manual half of a Box Pro box's allowance, at the split a new one is
 // created with. Read rather than written down, so changing the plan's default
@@ -86,7 +86,7 @@ function snapshotsOf(t: Harness, boxId: Id<"boxes">) {
 		async (ctx) =>
 			await ctx.db
 				.query("box_snapshots")
-				.withIndex("box_id", (q) => q.eq("box_id", boxId))
+				.withIndex("box_id_created_at", (q) => q.eq("box_id", boxId))
 				.collect()
 	);
 }

@@ -23,15 +23,15 @@ deployment:
 - the plan a comped box is granted on.
 
 Checkout fails closed until both Hetzner allocations are configured. Read
-[Operations](./operations.md) before changing allocations or destructive
+[Operations](operations.md) before changing allocations or destructive
 behavior.
 
 What a plan _is_ deliberately stays in code rather than joining that list: its
-machine, and how many snapshots it includes, live in `lib/box-plan.ts` because
+machine, and how many snapshots it includes, live in `lib/boxes/plan.ts` because
 the pricing page is printed from that same row. A console control over either
 would let what a visitor is sold and what they are given disagree. How an owner
 divides their own box's allowance is theirs, not staff's, and lives on the box.
-See [Hetzner](./services/hetzner.md#plans).
+See [Hetzner](services/hetzner.md#plans).
 
 ## Runtime image versions
 
@@ -59,7 +59,7 @@ Every other `version` field in the repository - `packages/web`, `packages/ide`,
 `packages/shared`, and the Rust workspace in
 `packages/cli/Cargo.toml` - belongs to a private, unpublished package and is
 pinned at `0.0.0` on purpose. None of them is a release input, and a test in
-`tests/toolchain-pins.test.ts` keeps them inert so a second real version cannot
+`tests/invariants/toolchain-pins.test.ts` keeps them inert so a second real version cannot
 creep back in.
 
 That test deliberately does **not** ask two numbers to agree. Keeping copies in
@@ -157,13 +157,13 @@ define evidence retention, retry cadence, or background workload:
 | Paid billing record                | 6 calendar years after the box ends |
 
 Each row is bound to the constant that produces it by a `// runbook:` comment on
-that constant, and `tests/runbook-windows.test.ts` fails if a number here stops
+that constant, and `tests/invariants/runbook-windows.test.ts` fails if a number here stops
 matching the code or a row loses its constant. Cadences that come from a cron
 are stated once under [Scheduled work](#scheduled-work) instead.
 
 Paid initial-fulfillment failure, provider cleanup, capacity admission, and
-refund behavior are specified once in [Operations](./operations.md),
-[Polar](./services/polar.md), and [Hetzner](./services/hetzner.md).
+refund behavior are specified once in [Operations](operations.md),
+[Polar](services/polar.md), and [Hetzner](services/hetzner.md).
 
 ## Scheduled work
 

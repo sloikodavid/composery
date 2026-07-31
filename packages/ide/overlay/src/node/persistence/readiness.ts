@@ -1,80 +1,77 @@
-import { constants, promises as fs } from "fs";
+import { constants, promises as fs } from "fs"
 
-const persistenceRunDir = "/run/persistence";
-const readyPath = `${persistenceRunDir}/ready`;
+const persistenceRunDir = "/run/persistence"
+const readyPath = `${persistenceRunDir}/ready`
 
 type PersistenceReadiness = {
-	ready: boolean;
-	message: string;
-	updatedAt?: string;
-};
+  ready: boolean
+  message: string
+  updatedAt?: string
+}
 
-const cacheTtlMs = 1000;
-let cached: { value: PersistenceReadiness; at: number } | undefined;
+const cacheTtlMs = 1000
+let cached: { value: PersistenceReadiness; at: number } | undefined
 
 export async function checkPersistenceReadiness(): Promise<PersistenceReadiness> {
-	// Cache age is elapsed time, not civil time. Date.now() can move backwards
-	// after an NTP correction or host clock change and otherwise keep a stale
-	// readiness result alive indefinitely.
-	if (cached && performance.now() - cached.at < cacheTtlMs) {
-		return cached.value;
-	}
-	const value = await readPersistenceReadiness();
-	cached = { value, at: performance.now() };
-	return value;
+  // Cache age is elapsed time, not civil time. Date.now() can move backwards
+  // after an NTP correction or host clock change and otherwise keep a stale
+  // readiness result alive indefinitely.
+  if (cached && performance.now() - cached.at < cacheTtlMs) {
+    return cached.value
+  }
+  const value = await readPersistenceReadiness()
+  cached = { value, at: performance.now() }
+  return value
 }
 
 async function readPersistenceReadiness(): Promise<PersistenceReadiness> {
-	let data: string;
-	try {
-		const file = await fs.open(
-			readyPath,
-			constants.O_RDONLY | constants.O_NOFOLLOW
-		);
-		try {
-			const metadata = await file.stat();
-			if (!metadata.isFile()) {
-				return {
-					ready: false,
-					message: "persistence ready file cannot be read"
-				};
-			}
-			data = await file.readFile("utf8");
-		} finally {
-			await file.close();
-		}
-	} catch (error: any) {
-		if (error?.code === "ENOENT") {
-			return { ready: false, message: "persistence is starting" };
-		}
+  let data: string
+  try {
+    const file = await fs.open(readyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const metadata = await file.stat()
+      if (!metadata.isFile()) {
+        return {
+          ready: false,
+          message: "persistence ready file cannot be read",
+        }
+      }
+      data = await file.readFile("utf8")
+    } finally {
+      await file.close()
+    }
+  } catch (error: any) {
+    if (error?.code === "ENOENT") {
+      return { ready: false, message: "persistence is starting" }
+    }
 
-		return { ready: false, message: "persistence ready file cannot be read" };
-	}
+    return { ready: false, message: "persistence ready file cannot be read" }
+  }
 
-	let parsed: { ready?: unknown; updatedAt?: unknown };
-	try {
-		parsed = JSON.parse(data);
-	} catch {
-		return { ready: false, message: "persistence ready file is invalid" };
-	}
+  let parsed: { ready?: unknown; updatedAt?: unknown }
+  try {
+    parsed = JSON.parse(data)
+  } catch {
+    return { ready: false, message: "persistence ready file is invalid" }
+  }
 
-	if (parsed.ready !== true) {
-		return { ready: false, message: "persistence is starting" };
-	}
+  if (parsed.ready !== true) {
+    return { ready: false, message: "persistence is starting" }
+  }
 
-	if (typeof parsed.updatedAt !== "string" || parsed.updatedAt.length === 0) {
-		return { ready: false, message: "persistence ready file is invalid" };
-	}
+  if (typeof parsed.updatedAt !== "string" || parsed.updatedAt.length === 0) {
+    return { ready: false, message: "persistence ready file is invalid" }
+  }
 
-	return {
-		ready: true,
-		message: "persistence is ready",
-		updatedAt: parsed.updatedAt
-	};
+  return {
+    ready: true,
+    message: "persistence is ready",
+    updatedAt: parsed.updatedAt,
+  }
 }
 
 export function renderStartupPage(healthUrl: string): string {
-	return `<!doctype html>
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -106,5 +103,5 @@ waitUntilReady();
 </script>
 </body>
 </html>
-`;
+`
 }

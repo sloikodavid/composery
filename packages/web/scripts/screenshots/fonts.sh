@@ -7,7 +7,7 @@
 # Needs 7-Zip (to crack the .dmg -> .pkg -> cpio payloads). On Windows:
 #   winget install -e --id 7zip.7zip
 # Then: bash screenshots/fonts.sh
-set -e
+set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p fonts wallpapers
 

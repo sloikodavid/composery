@@ -19,6 +19,7 @@ import { CLOUD_TERMS_VERSION } from "../../lib/cloud-legal";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { vBoxPlan } from "../schema";
+import { HOUR_MS } from "../time";
 
 // Polar checkout metadata keys. Set when creating a checkout and read back from
 // paid orders to reconnect a completed payment to the reserved intent.
@@ -45,7 +46,7 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 // expiry - Polar sets it and its API offers no way to choose it, so this is not
 // the reservation's lifetime and must not be documented as one.
 // runbook: Unattached checkout reservation
-export const CHECKOUT_ATTACH_GRACE_MS = 60 * 60 * 1000;
+export const CHECKOUT_ATTACH_GRACE_MS = HOUR_MS;
 
 export function paidOrderRecordingStatus(
 	intent: Pick<

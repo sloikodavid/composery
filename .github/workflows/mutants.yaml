@@ -1,0 +1,83 @@
+name: mutants
+
+# The full mutation sweep. ci.yaml gates every pull request on the mutants in its
+# own diff, which is fast and catches new tests that cannot fail; this is the
+# other half - the standing score over code nobody has touched lately, which is
+# exactly where a test that stopped meaning anything goes unnoticed.
+#
+# Nightly and on demand. A sweep runs the suite once per surviving mutant across
+# both languages and is measured in hours, so it can never be a per-PR gate.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    runs-on: ubuntu-24.04
+    # No timeout-minutes on purpose. A hang detector works when the real runtime
+    # is known and much smaller than the cap - smoke does ~20 minutes under 120,
+    # so two hours means wedged. A sweep's runtime scales with the codebase and
+    # nobody has measured this one yet, so any number here would be a budget
+    # dressed as a detector: it cannot tell "hung" from "working". GitHub's own
+    # 360-minute ceiling applies regardless. Measure the first green sweep, then
+    # set a real detector at a few times that - or shard the work so the runtime
+    # is knowable (`--concurrency`, splitting the mutate globs, `--shard`).
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          submodules: recursive
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # `--break` comes from stryker.config.json, which is the ratchet: raise it
+      # when the score rises, never lower it to make a red run green.
+      - name: Sweep
+        run: pnpm exec stryker run
+      - name: Upload the survivor list
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stryker-report
+          path: tmp/stryker
+          if-no-files-found: ignore
+          retention-days: 14
+
+  rust:
+    runs-on: ubuntu-24.04
+    # Unbounded for the same reason as the TypeScript job above.
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1.96.0
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: packages/cli
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+      - name: Sweep
+        run: cargo mutants --manifest-path packages/cli/Cargo.toml --no-times
+      - name: Upload the survivor list
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cargo-mutants-report
+          path: packages/cli/mutants.out
+          if-no-files-found: ignore
+          retention-days: 14

@@ -3,20 +3,48 @@ import { internal } from "../_generated/api";
 import { action, mutation, query } from "../_generated/server";
 import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
-	readGlobalSettings
+	readGlobalSettings,
+	writeAutoSuspendEnabled,
+	writeCheckoutEnabled,
+	writeHetznerLimits,
+	writeMaxActiveCheckoutIntentsPerUser,
+	writeSnapshotPolicy,
+	writeThresholds
 } from "../settings";
 import { requireCapability, requireCapabilityInAction } from "../users";
-import {
-	validateThresholds,
-	type ThresholdSetting
-} from "../boxes/metricThresholds";
-import {
-	validateSnapshotPolicy,
-	type SnapshotPolicy
-} from "../boxes/snapshotPolicy";
-import type { BoxFlagSignal } from "../schema";
+import { validateThresholds } from "../boxes/metricThresholds";
+import { validateSnapshotPolicy } from "../boxes/snapshotPolicy";
 import { readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+
+// The staff console's half of the settings row: who may change a setting, and
+// what a valid value is. The row itself, and the alert a change raises, are
+// `convex/settings.ts`.
+//
+// Every argument shape a setting accepts is declared here and nowhere else -
+// this is the boundary untrusted input crosses, so it is the only place a
+// validator earns its keep.
+
+const vThresholds = v.array(
+	v.object({
+		signal: v.union(v.literal("egress_bandwidth"), v.literal("egress_pps")),
+		value: v.number(),
+		sustainedSamples: v.number()
+	})
+);
+
+const vSnapshotPolicy = v.object({
+	manualMinIntervalMinutes: v.number(),
+	manualRetentionDays: v.number(),
+	automaticRetentionDays: v.number()
+});
+
+// The validators below throw plain `Error`s, because they are also reached from
+// paths with no caller to tell. A staff member typing into a form is the one
+// caller who can act on the message, so it becomes a ConvexError here.
+function reject(error: unknown, fallback: string): never {
+	throw new ConvexError(error instanceof Error ? error.message : fallback);
+}
 
 export const get = query({
 	args: {},
@@ -36,10 +64,7 @@ export const setCheckoutEnabled = mutation({
 	},
 	handler: async (ctx, args) => {
 		const staffUser = await requireCapability(ctx, "settings_management");
-		await ctx.runMutation(internal.settings.setCheckoutEnabled, {
-			checkoutEnabled: args.enabled,
-			updatedBy: staffUser.clerk_user_id
-		});
+		await writeCheckoutEnabled(ctx, args.enabled, staffUser.clerk_user_id);
 	}
 });
 
@@ -49,10 +74,7 @@ export const setAutoSuspendEnabled = mutation({
 	},
 	handler: async (ctx, args) => {
 		const staffUser = await requireCapability(ctx, "settings_management");
-		await ctx.runMutation(internal.settings.setAutoSuspendEnabled, {
-			autoSuspendEnabled: args.enabled,
-			updatedBy: staffUser.clerk_user_id
-		});
+		await writeAutoSuspendEnabled(ctx, args.enabled, staffUser.clerk_user_id);
 	}
 });
 
@@ -119,11 +141,7 @@ export const setHetznerLimits = mutation({
 				);
 			}
 		}
-		await ctx.runMutation(internal.settings.setHetznerLimits, {
-			serverLimit: args.serverLimit,
-			snapshotLimit: args.snapshotLimit,
-			updatedBy: staffUser.clerk_user_id
-		});
+		await writeHetznerLimits(ctx, args, staffUser.clerk_user_id);
 		await reconcileCapacityAlert(ctx);
 	}
 });
@@ -139,75 +157,58 @@ export const setMaxActiveCheckoutIntentsPerUser = mutation({
 			args.max < 1 ||
 			args.max > MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER
 		) {
-			throw new ConvexError("Limit must be a whole number between 1 and 50.");
+			throw new ConvexError(
+				`Limit must be a whole number between 1 and ${MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER}.`
+			);
 		}
-		await ctx.runMutation(
-			internal.settings.setMaxActiveCheckoutIntentsPerUser,
-			{ max: args.max, updatedBy: staffUser.clerk_user_id }
+		await writeMaxActiveCheckoutIntentsPerUser(
+			ctx,
+			args.max,
+			staffUser.clerk_user_id
 		);
 	}
 });
 
 export const setThresholds = mutation({
 	args: {
-		thresholds: v.array(
-			v.object({
-				signal: v.union(v.literal("egress_bandwidth"), v.literal("egress_pps")),
-				value: v.number(),
-				sustainedSamples: v.number()
-			})
-		)
+		thresholds: vThresholds
 	},
 	handler: async (ctx, args) => {
 		const staffUser = await requireCapability(ctx, "settings_management");
 
-		const thresholds: ThresholdSetting[] = args.thresholds.map((t) => ({
-			signal: t.signal as BoxFlagSignal,
-			value: t.value,
-			sustainedSamples: t.sustainedSamples
-		}));
-
 		try {
-			validateThresholds(thresholds);
+			validateThresholds(args.thresholds);
 		} catch (error) {
-			throw new ConvexError(
-				error instanceof Error ? error.message : "Invalid thresholds."
-			);
+			reject(error, "Invalid thresholds.");
 		}
 
-		await ctx.runMutation(internal.settings.setThresholds, {
-			thresholds: args.thresholds,
-			updatedBy: staffUser.clerk_user_id
-		});
+		await writeThresholds(ctx, args.thresholds, staffUser.clerk_user_id);
 	}
 });
 
 export const setSnapshotPolicy = mutation({
 	args: {
-		policy: v.object({
-			manualMinIntervalMinutes: v.number(),
-			manualRetentionDays: v.number(),
-			automaticRetentionDays: v.number()
-		})
+		policy: vSnapshotPolicy
 	},
 	handler: async (ctx, args) => {
 		const staffUser = await requireCapability(ctx, "settings_management");
 
-		const policy: SnapshotPolicy = args.policy;
 		try {
-			validateSnapshotPolicy(policy);
+			validateSnapshotPolicy(args.policy);
 		} catch (error) {
-			throw new ConvexError(
-				error instanceof Error ? error.message : "Invalid snapshot policy."
-			);
+			reject(error, "Invalid snapshot policy.");
 		}
 
+		// A policy that lengthens retention commits more snapshot slots for boxes
+		// that already exist, so it is admitted against the same Hetzner allocation
+		// a new box is. Only a policy that makes it worse is refused - a deployment
+		// already over its limit must still be able to shorten retention.
 		const currentSettings = await readGlobalSettings(ctx);
 		if (currentSettings.hetznerSnapshotLimit !== null) {
 			const currentCapacity = await readCapacityUsage(ctx, currentSettings);
 			const nextCapacity = await readCapacityUsage(ctx, {
 				...currentSettings,
-				snapshotPolicy: policy
+				snapshotPolicy: args.policy
 			});
 			if (
 				nextCapacity.snapshotCommitments >
@@ -220,10 +221,7 @@ export const setSnapshotPolicy = mutation({
 			}
 		}
 
-		await ctx.runMutation(internal.settings.setSnapshotPolicy, {
-			policy: args.policy,
-			updatedBy: staffUser.clerk_user_id
-		});
+		await writeSnapshotPolicy(ctx, args.policy, staffUser.clerk_user_id);
 		await reconcileCapacityAlert(ctx);
 	}
 });

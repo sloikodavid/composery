@@ -24,7 +24,7 @@ const COL_WIDTH = {
 	text: 192, // a slug, an email, an id - anything user-supplied (truncates)
 	date: 128, // formatDate, e.g. "Sep 30, 2025"
 	datetime: 208, // formatDateTime, e.g. "Sep 30, 2025, 03:04 PM"
-	status: 192, // StatusText, longest label "Provisioning failed"
+	status: 192, // StatusText, glyph plus its longest label ("Couldn't restore")
 	short: 96, // a size, a count, a fixed label like "Automatic"
 	"actions-1": 60,
 	"actions-2": 96,

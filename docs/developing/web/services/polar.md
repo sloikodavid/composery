@@ -5,7 +5,7 @@ description: Set up the Polar sandbox (dev) and production organizations, produc
 
 Use the Polar sandbox (`sandbox.polar.sh`) for development and Polar production
 (`polar.sh`) for production. Set up each the same way; sandbox values go on the
-dev [Convex](./convex.md) deployment, production values on the prod deployment.
+dev [Convex](convex.md) deployment, production values on the prod deployment.
 
 1. Create or select the organization.
    In production, complete Polar's account review and enter the real supplier
@@ -41,7 +41,7 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
    The annual products are displayed as a monthly figure on the pricing page.
    Give all four the same accurate hosted-box description, Terms link, Privacy
    link, and benefits, differing only in the machine each plan promises -
-   `lib/box-plan.ts` is what that machine actually is, and the pricing page
+   `lib/boxes/plan.ts` is what that machine actually is, and the pricing page
    prints it from there. Duplicating a published product is the safest way to
    create the next one, then change its plan wording, billing interval, and
    price before publishing. Open each product and copy its **Product ID** (not
@@ -121,7 +121,7 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 
 8. Create a webhook (Settings -> Webhooks -> Add Endpoint). Set the URL to the
    matching deployment's `<CONVEX_SITE_URL>/polar/events` (the Site URL from the
-   [Convex](./convex.md) step). Copy the signing secret ->
+   [Convex](convex.md) step). Copy the signing secret ->
    `POLAR_WEBHOOK_SECRET`. Enable:
    - App logic: `order.paid`, `order.refunded`, `subscription.revoked`,
      `checkout.updated`, `checkout.expired`.
@@ -137,14 +137,14 @@ dev [Convex](./convex.md) deployment, production values on the prod deployment.
 9. Copy the organization **slug** (Settings -> Organization, the handle shown in
    your dashboard URL) -> `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`, and set
    `NEXT_PUBLIC_POLAR_ENVIRONMENT` to `sandbox` (dev) or `production` (prod).
-   These are frontend-plane vars read by `lib/polar-dashboard.ts` so the staff
+   These are frontend-plane vars read by `lib/dashboards.ts` so the staff
    console can deep-link a box to its Polar customer and subscription; set them
-   in the Next env (local `.env.local` and [Vercel](./vercel.md)), not on the
+   in the Next env (local `.env.local` and [Vercel](vercel.md)), not on the
    Convex deployment. They are non-secret, so the console action simply hides
    itself when the slug is absent.
 
 Checkout success URLs are built from `WEBSITE_ORIGIN`, so that var on the same
-[Convex](./convex.md) deployment must point at the matching website before you
+[Convex](convex.md) deployment must point at the matching website before you
 test checkout.
 
 The pricing page defaults to annual billing and asks for the plan first: each

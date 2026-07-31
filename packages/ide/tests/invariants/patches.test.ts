@@ -848,7 +848,12 @@ describe("adaptive favicon", () => {
 
 			// The adaptive file alone only ever caught up across a reload: Chromium
 			// rasterizes a favicon once per URL and never re-runs the embedded
-			// media query. The swap itself is driven in tests/favicon.test.ts.
+			// media query. The swap itself is driven by
+			// `packages/ide/overlay/src/browser/pages/favicon.js`, which nothing
+			// executes here: it is DOM code and the ide projects are
+			// `environment: "node"` (see the `src/browser/pages/**` exclusion in
+			// vitest.config.ts). This asserts only that each page still declares
+			// both files and loads that script.
 			expect(content).toContain("favicon-light.svg");
 			expect(content).toContain("favicon-dark.svg");
 			expect(content).toContain(script);
@@ -1444,7 +1449,7 @@ describe("default layout", () => {
 
 	// Where a container lives is a layout opinion, not a default: unlike pinned
 	// state there is no UI that reads as "put this back", and it was seeded into
-	// per-browser storage, so the same box looked different on a second device.
+	// per-browser storage, so the same Composery looked different on a second device.
 	test("no patch seeds view container locations", () => {
 		for (const patch of readdirSync(resolve(repoRoot, PATCHES_DIR))) {
 			if (!patch.endsWith(".diff")) continue;

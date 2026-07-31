@@ -3,28 +3,33 @@ import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
 import { ThemedShot } from "./_components/themed-shot";
 import { GITHUB_REPO_URL } from "@/lib/links";
-import { appDescription, appName, appTagline, siteUrl } from "@/lib/shared";
+import {
+	APP_DESCRIPTION,
+	APP_TAGLINE,
+	BRAND_NAME,
+	WEBSITE_ORIGIN
+} from "shared";
 
 const jsonLd = {
 	"@context": "https://schema.org",
 	"@graph": [
 		{
 			"@type": "Organization",
-			name: appName,
-			url: siteUrl,
-			logo: `${siteUrl}/icon.svg`,
+			name: BRAND_NAME,
+			url: WEBSITE_ORIGIN,
+			logo: `${WEBSITE_ORIGIN}/icon.svg`,
 			sameAs: [GITHUB_REPO_URL]
 		},
 		{
 			"@type": "WebSite",
-			name: appName,
-			url: siteUrl
+			name: BRAND_NAME,
+			url: WEBSITE_ORIGIN
 		},
 		{
 			"@type": "SoftwareApplication",
-			name: appName,
-			url: siteUrl,
-			description: appDescription,
+			name: BRAND_NAME,
+			url: WEBSITE_ORIGIN,
+			description: APP_DESCRIPTION,
 			applicationCategory: "DeveloperApplication",
 			operatingSystem: "Web, Android, iOS, Linux"
 		}
@@ -40,7 +45,7 @@ export default function Home() {
 						Like VS Code, but always on.
 					</h1>
 					<p className="mx-auto max-w-[41rem] text-[clamp(0.875rem,3vw,1rem)] leading-[1.6] text-muted-foreground md:max-w-none md:text-lg md:text-nowrap">
-						{appTagline}
+						{APP_TAGLINE}
 					</p>
 				</div>
 				<div className="flex flex-wrap justify-center gap-3">

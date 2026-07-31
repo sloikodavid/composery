@@ -1,5 +1,5 @@
 // Generates the operator's schedule table in docs/developing/web/maintenance.md
-// from convex/crons.ts, so the runbook cannot drift from what actually runs.
+// from packages/web/convex/crons.ts, so the runbook cannot drift from what actually runs.
 //
 // That table used to be maintained by hand, with the doc itself instructing
 // contributors to "update this table in the same commit". Nothing checked it, so
@@ -169,10 +169,7 @@ async function expectedDoc() {
 	);
 }
 
-if (
-	process.argv[1] &&
-	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	const file = join(REPO_ROOT, DOC_FILE);
 	if (!existsSync(file)) throw new Error(`${DOC_FILE} is missing.`);
 

@@ -36,42 +36,27 @@
 // cautious rather than true. It is surfaced with a warning that says what
 // actually happens and a typed confirmation, which is the honest treatment.
 
-export type RuntimeConfigField =
-	| { kind: "boolean"; key: string; label: string; description: string }
-	| {
-			kind: "number";
-			key: string;
-			label: string;
-			description: string;
-			min: number;
-			max: number;
-	  }
-	| {
-			kind: "enum";
-			key: string;
-			label: string;
-			description: string;
-			options: readonly { label: string; value: string }[];
-	  }
-	| {
-			kind: "string";
-			key: string;
-			label: string;
-			description: string;
-			maxLength: number;
-			secret?: true;
-			// Set where a wrong value is dangerous rather than merely wrong. The
-			// interface requires a typed confirmation for these; nothing here changes
-			// how the value is stored or rendered.
-			dangerous?: true;
-	  }
-	| {
-			kind: "boolean";
-			key: string;
-			label: string;
-			description: string;
-			dangerous: true;
-	  };
+// What every field has, whatever it holds. Written once: the four variants below
+// had their own copies of `key`/`label`/`description`, and `boolean` had two
+// variants that differed only by whether `dangerous` was set - a second member
+// for a property the string fields already carried as optional.
+type RuntimeConfigFieldBase = {
+	key: string;
+	label: string;
+	description: string;
+	// Set where a wrong value is dangerous rather than merely wrong. The
+	// interface requires a typed confirmation for these; nothing here changes how
+	// the value is stored or rendered.
+	dangerous?: true;
+};
+
+export type RuntimeConfigField = RuntimeConfigFieldBase &
+	(
+		| { kind: "boolean" }
+		| { kind: "number"; min: number; max: number }
+		| { kind: "enum"; options: readonly { label: string; value: string }[] }
+		| { kind: "string"; maxLength: number; secret?: true }
+	);
 
 // Longest value we will write into a single env-file line. Generous enough for
 // an extensions-gallery JSON blob, bounded so a box's env file cannot be grown

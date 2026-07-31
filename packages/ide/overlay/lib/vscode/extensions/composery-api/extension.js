@@ -142,7 +142,9 @@ async function manageKeys() {
 function activate(context) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand(COMMAND, async () => {
-			// Same 1/true semantics as the server's config.ts disabled().
+			// The same reading as src/node/envFlag.ts, which this cannot import:
+			// the extension ships into the VS Code extension host and compiles
+			// apart from the server. An invariant test pins the pair.
 			const off = (process.env.COMPOSERY_DISABLE_API || "")
 				.trim()
 				.toLowerCase();

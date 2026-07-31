@@ -1,7 +1,7 @@
 import type { WorkflowCtx } from "@convex-dev/workflow";
 import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
-import { boxPlanServerType, type BoxPlan } from "../../../lib/box-plan";
+import { boxPlanServerType, type BoxPlan } from "../../../lib/boxes/plan";
 
 // Delete the box's DNS and server, waiting for Hetzner to finish, so the server
 // name/labels are free to reuse. Shared by resetBox and deleteBox.

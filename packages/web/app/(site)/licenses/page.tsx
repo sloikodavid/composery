@@ -9,7 +9,7 @@ export default function LicensesPage() {
 		<LegalPage title="Licences">
 			<LegalSection title="Composery source code">
 				<p>
-					Composery’s original source code is available under the Apache
+					Composery&apos;s original source code is available under the Apache
 					License, Version 2.0. The full licence and copyright notice are
 					included in the{" "}
 					<a

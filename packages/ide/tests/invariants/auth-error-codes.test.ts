@@ -10,8 +10,8 @@ import { readRepoFile, repoRoot } from "../../../../tests/support/repo.ts";
 //
 // The auth pages redirect to each other with a code in the query string, and the
 // page that renders it is often not the page that sent it - register bounces an
-// owner who already has a password to login, change-password sends a box with no
-// password to register. A code with no message on the receiving page shows the
+// owner who already has a password to login, change-password sends an instance
+// with no password to register. A code with no message on the receiving page shows the
 // user a bare form and no reason at all, and nothing else would ever say so: the
 // redirect succeeds, the page renders, the error is simply missing.
 //
@@ -42,13 +42,25 @@ function sent(source: string): { page: string; code: string }[] {
 
 // The codes a page can render, read off the table's own nesting: a page opens a
 // block, and the keys inside it up to the closing brace are its codes.
+//
+// Indentation is read from the opening line rather than assumed. This file is
+// formatted by upstream code-server's prettier config (two spaces), not this
+// repo's (tabs), and a parser that hardcoded one of them reported every page as
+// rendering nothing the day that changed - a silent pass on the "no message for
+// a code nothing sends" direction, which is why the sweep guard above exists.
 function rendered(page: string): string[] {
 	const table = readRepoFile(TABLE);
-	const start = new RegExp(`^\t(?:"${page}"|${page}): \\{$`, "m").exec(table);
+	const start = new RegExp(`^([ \t]+)(?:"${page}"|${page}): \\{$`, "m").exec(
+		table
+	);
 	if (!start) return [];
+	const indent = start[1]!;
 	const body = table.slice(start.index + start[0].length);
+	const end = body.indexOf(`\n${indent}}`);
 	return [
-		...body.slice(0, body.indexOf("\n\t}")).matchAll(/^\t\t"?([\w-]+)"?:/gm)
+		...body
+			.slice(0, end === -1 ? undefined : end)
+			.matchAll(new RegExp(`^${indent}[ \t]+"?([\\w-]+)"?:`, "gm"))
 	].map((key) => key[1]!);
 }
 

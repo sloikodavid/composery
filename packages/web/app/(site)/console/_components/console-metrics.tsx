@@ -10,6 +10,7 @@ import {
 	MetricsRangeSelect,
 	type MetricsRange
 } from "@/components/boxes/metrics-chart";
+import { ChartCard } from "@/components/boxes/chart-card";
 import { api } from "@/convex/_generated/api";
 
 // The all-boxes overlay: the top boxes ranked by the selected metric's latest
@@ -23,19 +24,20 @@ export function ConsoleMetrics() {
 	});
 
 	return (
-		<div className="relative rounded-2xl border border-border bg-card">
-			<div className="absolute top-3 left-3 z-10 flex gap-2">
-				<MetricSelect onChange={setMetricKey} value={metricKey} />
-				<MetricsRangeSelect onChange={setRange} value={range} />
-			</div>
-			<div className="p-4 pt-12">
-				<MetricsLineChart
-					className="h-78"
-					metricKey={metricKey}
-					range={range}
-					series={series}
-				/>
-			</div>
-		</div>
+		<ChartCard
+			controls={
+				<>
+					<MetricSelect onChange={setMetricKey} value={metricKey} />
+					<MetricsRangeSelect onChange={setRange} value={range} />
+				</>
+			}
+		>
+			<MetricsLineChart
+				className="h-78"
+				metricKey={metricKey}
+				range={range}
+				series={series}
+			/>
+		</ChartCard>
 	);
 }

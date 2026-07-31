@@ -10,8 +10,8 @@ import {
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { type ComponentProps, type ReactNode, useId } from "react";
-import { toast } from "sonner";
 import { BRAND_ASSETS, copySvg } from "@/lib/brand-assets";
+import { copyToClipboard } from "@/lib/clipboard";
 import { LOGO_INNER, LOGO_VIEWBOX } from "@/lib/logo-data";
 import { cn } from "@/lib/utils";
 
@@ -48,14 +48,8 @@ function LogoMenu({ children }: { children: ReactNode }) {
 	// Copy the variant that matches what's on screen (white on dark, black on light).
 	const assets = BRAND_ASSETS[resolvedTheme === "dark" ? "dark" : "light"];
 
-	const copyLink = async () => {
-		try {
-			await navigator.clipboard.writeText(window.location.origin);
-			toast.success("Link copied");
-		} catch {
-			toast.error("Couldn't copy link");
-		}
-	};
+	const copyLink = () =>
+		void copyToClipboard(window.location.origin, "Link copied");
 
 	return (
 		<ContextMenu.Root>

@@ -2,16 +2,17 @@ import { clerkMiddleware } from "@clerk/nextjs/server";
 import { isMarkdownPreferred, rewritePath } from "fumadocs-core/negotiation";
 import { NextResponse } from "next/server";
 import { parseAuthorizedParties } from "@/lib/auth-routing";
-import { docsContentRoute, docsRoute } from "@/lib/shared";
+import { docsContentRoute, docsRoute } from "@/lib/docs";
+import { nextEnv } from "@/lib/env";
 
 const authorizedParties = parseAuthorizedParties(
-	process.env.CLERK_AUTHORIZED_PARTIES
+	nextEnv.CLERK_AUTHORIZED_PARTIES
 );
 
 // Serve a docs page as raw markdown to LLMs and tools: an explicit `/docs/x.md`
 // suffix, or any /docs request that prefers text/markdown, rewrites to the
 // generated content route. Both derive from docsRoute, so the docs base stays
-// defined in exactly one place (lib/shared.ts).
+// defined in exactly one place (lib/docs.ts).
 const { rewrite: rewriteDocs } = rewritePath(
 	`${docsRoute}{/*path}`,
 	`${docsContentRoute}{/*path}/content.md`

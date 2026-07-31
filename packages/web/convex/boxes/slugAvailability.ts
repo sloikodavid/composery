@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
-import { isValidSlug } from "../../lib/box-slug";
+import { isValidSlug } from "../../lib/boxes/slug";
 import { boxStatusesExcept } from "../schema";
 
 type ReadCtx = { db: DatabaseReader };

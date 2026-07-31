@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue
 } from "@/components/base/select";
+import { ChartCard } from "@/components/boxes/chart-card";
 import { api } from "@/convex/_generated/api";
 import { formatDate } from "@/lib/datetime";
 
@@ -130,8 +131,8 @@ export function ConsoleStats() {
 				))}
 			</div>
 
-			<div className="relative rounded-2xl border border-border bg-card">
-				<div className="absolute top-3 left-3 z-10">
+			<ChartCard
+				controls={
 					<Select
 						items={RANGE_ITEMS}
 						onValueChange={(next) =>
@@ -150,58 +151,57 @@ export function ConsoleStats() {
 							))}
 						</SelectContent>
 					</Select>
-				</div>
-				<div className="p-4 pt-12">
-					{data === undefined ? (
-						<div className="flex h-56 items-center justify-center">
-							<LoaderIcon className="size-5 animate-spin text-muted-foreground" />
-						</div>
-					) : (
-						<ChartContainer className="h-56 w-full" config={TREND_CONFIG}>
-							<LineChart
-								data={data.series}
-								margin={{ left: 0, right: 12, top: 4 }}
-							>
-								<CartesianGrid vertical={false} />
-								<XAxis
-									axisLine={false}
-									dataKey="at"
-									minTickGap={24}
-									tickFormatter={(value: number) => formatDate(value)}
-									tickLine={false}
-									tickMargin={8}
-								/>
-								<YAxis
-									allowDecimals={false}
-									axisLine={false}
-									tickLine={false}
-									width={28}
-								/>
-								<ChartTooltip
-									content={
-										<ChartTooltipContent
-											labelFormatter={(_, payload) =>
-												formatDate(payload?.[0]?.payload?.at)
-											}
-										/>
-									}
-								/>
-								{Object.keys(TREND_CONFIG).map((key) => (
-									<Line
-										dataKey={key}
-										dot={false}
-										isAnimationActive={false}
-										key={key}
-										stroke={`var(--color-${key})`}
-										strokeWidth={1.5}
-										type="monotone"
+				}
+			>
+				{data === undefined ? (
+					<div className="flex h-56 items-center justify-center">
+						<LoaderIcon className="size-5 animate-spin text-muted-foreground" />
+					</div>
+				) : (
+					<ChartContainer className="h-56 w-full" config={TREND_CONFIG}>
+						<LineChart
+							data={data.series}
+							margin={{ left: 0, right: 12, top: 4 }}
+						>
+							<CartesianGrid vertical={false} />
+							<XAxis
+								axisLine={false}
+								dataKey="at"
+								minTickGap={24}
+								tickFormatter={(value: number) => formatDate(value)}
+								tickLine={false}
+								tickMargin={8}
+							/>
+							<YAxis
+								allowDecimals={false}
+								axisLine={false}
+								tickLine={false}
+								width={28}
+							/>
+							<ChartTooltip
+								content={
+									<ChartTooltipContent
+										labelFormatter={(_, payload) =>
+											formatDate(payload?.[0]?.payload?.at)
+										}
 									/>
-								))}
-							</LineChart>
-						</ChartContainer>
-					)}
-				</div>
-			</div>
+								}
+							/>
+							{Object.keys(TREND_CONFIG).map((key) => (
+								<Line
+									dataKey={key}
+									dot={false}
+									isAnimationActive={false}
+									key={key}
+									stroke={`var(--color-${key})`}
+									strokeWidth={1.5}
+									type="monotone"
+								/>
+							))}
+						</LineChart>
+					</ChartContainer>
+				)}
+			</ChartCard>
 		</div>
 	);
 }

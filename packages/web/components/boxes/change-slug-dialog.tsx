@@ -14,7 +14,7 @@ import {
 } from "@/components/base/dialog";
 import { Input } from "@/components/base/input";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { isValidSlug, sanitizeSlug } from "@/lib/box-slug";
+import { isValidSlug, sanitizeSlug, SLUG_MAX_LENGTH } from "@/lib/boxes/slug";
 
 // Owner and console box pages share this dialog; the caller's onSubmit performs
 // the slug change (and any post-change navigation).
@@ -51,7 +51,7 @@ export function ChangeSlugDialog({
 					<Input
 						autoCapitalize="none"
 						autoComplete="off"
-						maxLength={63}
+						maxLength={SLUG_MAX_LENGTH}
 						onChange={(event) => setNewSlug(sanitizeSlug(event.target.value))}
 						placeholder="new-slug"
 						spellCheck={false}

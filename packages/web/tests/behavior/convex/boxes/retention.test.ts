@@ -9,6 +9,7 @@ import {
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
 } from "@/convex/boxes/retention";
+import schema from "@/convex/schema";
 
 describe("box retention", () => {
 	test("keeps a deleted box audit tombstone for exactly 180 days", () => {
@@ -19,19 +20,43 @@ describe("box retention", () => {
 		);
 	});
 
-	test("removes secrets and dead infrastructure from the tombstone", () => {
+	// Every optional field on the row is either cleared or deliberately kept, and
+	// this asks the schema which fields exist rather than restating them.
+	//
+	// The previous version of this test listed six fields and used
+	// `toMatchObject`, so it could only ever confirm that what it already named
+	// was cleared - a field left behind was invisible to it, which is how
+	// `runtime_config` (the owner's own environment for the box, including a
+	// GitHub token) survived deletion for the full 180-day tombstone window.
+	test("clears every optional field the tombstone does not deliberately keep", () => {
 		const deletedAt = Date.UTC(2026, 0, 1);
-		expect(deletedBoxDataPatch(deletedAt)).toMatchObject({
-			status: "deleted",
-			runtime_image: undefined,
-			runtime_auth_hash: undefined,
-			password_setup_pending_at: undefined,
-			hetzner_server_id: undefined,
-			hetzner_ipv4: undefined,
-			dns_record_id: undefined,
-			deleted_at: deletedAt,
-			purge_at: deletedBoxPurgeAt(deletedAt)
-		});
+		const patch = deletedBoxDataPatch(deletedAt) as Record<string, unknown>;
+		const optional = Object.entries(schema.tables.boxes.validator.fields)
+			.filter(([, validator]) => validator.isOptional === "optional")
+			.map(([field]) => field);
+
+		expect(optional).toContain("runtime_config");
+		expect(optional.length).toBeGreaterThan(10);
+
+		const kept = optional.filter((field) => !(field in patch));
+		expect(kept.sort()).toEqual([
+			"comp_reason",
+			"comped_at",
+			"comped_by",
+			"polar_customer_id",
+			"polar_subscription_id",
+			"ready_at"
+		]);
+
+		for (const field of optional) {
+			if (kept.includes(field)) continue;
+			if (field === "deleted_at" || field === "purge_at") continue;
+			expect(patch[field], `${field} is not cleared`).toBeUndefined();
+		}
+
+		expect(patch.status).toBe("deleted");
+		expect(patch.deleted_at).toBe(deletedAt);
+		expect(patch.purge_at).toBe(deletedBoxPurgeAt(deletedAt));
 	});
 
 	test("removes unpaid checkout records after 30 days", () => {

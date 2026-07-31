@@ -1,4 +1,4 @@
-System clipboard bridges for the remote context: programs on the box reaching
+System clipboard bridges for the remote context: programs on the server reaching
 the real clipboard of the machine the browser runs on.
 
 - OSC 52: the browser clipboard service mirrors regular 'clipboard'-type

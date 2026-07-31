@@ -182,7 +182,7 @@ pub fn copy_entry_atomic_without_xattrs(source: &Path, destination: &Path) -> Re
 
 /// Boot-time restore onto the ephemeral container rootfs. The writer lock is
 /// held and the daemon is down, so the source delta store is quiescent, and a
-/// crash before ready simply re-runs apply — skip the stable-copy verification
+/// crash before ready simply re-runs apply - skip the stable-copy verification
 /// passes and every fsync that the persist direction needs for durability.
 pub fn restore_entry(source: &Path, destination: &Path) -> Result<()> {
     copy_entry_atomic_inner(source, destination, true, false)

@@ -66,9 +66,9 @@ gh repo edit <github-user>/composery \
 All intake surfaces ship in the repository - after the push there is nothing
 to configure beyond enabling Discussions above:
 
-- `.github/ISSUE_TEMPLATE/bug.yml` is the only issue form; it labels new
+- `.github/ISSUE_TEMPLATE/bug.yaml` is the only issue form; it labels new
   issues `bug` and requires the affected surface and reproduction details.
-- `.github/ISSUE_TEMPLATE/config.yml` disables blank issues and routes the
+- `.github/ISSUE_TEMPLATE/config.yaml` disables blank issues and routes the
   "New issue" chooser: feature requests to the **Ideas** discussion category,
   questions to **Q&A**, vulnerabilities to a private security advisory, and
   Composery Cloud account/billing matters to the support email (contact links
@@ -78,7 +78,7 @@ to configure beyond enabling Discussions above:
 Discussions ships with its default categories; the routing relies on the
 **Ideas** and **Q&A** slugs (`/discussions/categories/ideas`, `.../q-a`).
 Renaming or deleting those categories silently breaks the links in
-`.github/ISSUE_TEMPLATE/config.yml`, `packages/web/lib/links.ts`, and the
+`.github/ISSUE_TEMPLATE/config.yaml`, `packages/web/lib/links.ts`, and the
 README - keep the defaults.
 
 Labels: the GitHub default label set is enough for the issue form (`bug`).
@@ -125,14 +125,14 @@ Settings -> Actions -> General: Actions enabled, all actions allowed, default
 workflow token permissions **read-only**. Workflows elevate per-file through
 their `permissions:` blocks, which is why none of this needs org-level policy:
 
-| Workflow            | Trigger                               | Elevated permissions and why                                                                      |
-| ------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ci.yml`            | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result     |
-| `deploy.yml`        | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run |
-| `smoke.yml`         | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state     |
-| `smoke-nightly.yml` | schedule, dispatch                    | none - uncached image smoke                                                                       |
-| `release.yml`       | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions           |
-| `cla.yml`           | PR events/comments                    | signature branch, PR comments, and recheck permissions                                            |
+| Workflow             | Trigger                               | Elevated permissions and why                                                                      |
+| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `ci.yaml`            | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result     |
+| `deploy.yaml`        | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run |
+| `smoke.yaml`         | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state     |
+| `smoke-nightly.yaml` | schedule, dispatch                    | none - uncached image smoke                                                                       |
+| `release.yaml`       | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions           |
+| `cla.yaml`           | PR events/comments                    | signature branch, PR comments, and recheck permissions                                            |
 
 Operational notes:
 
@@ -141,15 +141,15 @@ Operational notes:
 - Docker builds cache through the GitHub Actions cache (`type=gha`). The
   per-repository cache budget is limited and evicts least-recently-used
   entries; slow cold builds after quiet periods are normal, not broken.
-- GitHub suspends scheduled workflows (`smoke-nightly.yml`) after 60 days
+- GitHub suspends scheduled workflows (`smoke-nightly.yaml`) after 60 days
   without repository activity; re-enable from the Actions tab if it happens.
-- `cla.yml` guards on `github.repository == 'sloikodavid/composery'` so forks
+- `cla.yaml` guards on `github.repository == 'sloikodavid/composery'` so forks
   do not run a misconfigured CLA bot; see
   [Running your own](#running-your-own) before expecting it to work on a fork.
 
 ## Container registry
 
-`release.yml` pushes multi-architecture images to
+`release.yaml` pushes multi-architecture images to
 `ghcr.io/<github-user>/composery` using `GITHUB_TOKEN` - no registry
 credentials exist anywhere. Two one-time steps after the first release run:
 
@@ -201,7 +201,7 @@ image release workflow; never create them by hand. The operator procedure is
 ## CLA
 
 Contributions are covered by `.github/CLA.md`, enforced by the
-`contributor-assistant` action in `cla.yml`:
+`contributor-assistant` action in `cla.yaml`:
 
 - On each PR the bot posts signing instructions; the contributor signs by
   commenting the exact sentence from the PR template, and `recheck` re-runs a
@@ -212,7 +212,7 @@ Contributions are covered by `.github/CLA.md`, enforced by the
 - Bot authors (`github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`) are
   allowlisted.
 - If `CLA.md` changes materially, bump the signature file version in
-  `cla.yml` (`cla-v1.json` -> `cla-v2.json`) so existing signatures do not
+  `cla.yaml` (`cla-v1.json` -> `cla-v2.json`) so existing signatures do not
   cover a document their authors never read.
 
 ## Renovate
@@ -250,16 +250,16 @@ git grep -n "sloikodavid" -- ':!packages/ide/upstream' ':!pnpm-lock.yaml'
 
 | Surface                                                          | What it controls                                                      |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `.github/workflows/cla.yml`                                      | repo guard condition and the CLA document URLs                        |
-| `.github/ISSUE_TEMPLATE/config.yml`                              | issue-chooser links to Discussions, advisories, and the support page  |
+| `.github/workflows/cla.yaml`                                     | repo guard condition and the CLA document URLs                        |
+| `.github/ISSUE_TEMPLATE/config.yaml`                             | issue-chooser links to Discussions, advisories, and the support page  |
 | `renovate.json`                                                  | the "never bump our own image" package rule                           |
 | `README.md`, `CHANGELOG.md`, `docs/self-hosting/`, `templates/`  | published image references and repo links                             |
-| `compose.dev.yml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)       | image source labels                                                   |
+| `compose.dev.yaml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)      | image source labels                                                   |
 | `packages/web/lib/links.ts` (`GITHUB_REPO_URL`, `SUPPORT_EMAIL`) | the website's repo links, issue/discussion links, and support email   |
 | `packages/ide/scripts/rebrand.mjs`                               | product metadata baked into the IDE build (issue URL, license, email) |
 | `packages/ide/overlay/.../composery-*/package.json`              | bundled extension repository metadata                                 |
 
-`release.yml` and `smoke.yml` need no edits - they derive the image owner from
+`release.yaml` and `smoke.yaml` need no edits - they derive the image owner from
 `github.repository_owner` at run time.
 
 ## References

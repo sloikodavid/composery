@@ -40,4 +40,4 @@ Never wipe the base AVD merely to update its browser stack.
 - Do not clear app data, uninstall apps, or reset a physical phone unless the user explicitly requests it.
 - Do not commit screenshots, recordings, dumps, or logs; keep them under `tmp/`.
 - Never assume a lone device. `status` shows serials; pass `--serial <serial>` (or set `ANDROID_SERIAL`) when multiple devices are attached.
-- Parallel agents: one agent per device. `boot` is safe to run concurrently (it picks a free port; the same AVD can run multiple read-only instances) and prints the new serial — pass that serial to every later command. Never send input to a device you did not boot or were not assigned; other devices in `status` may belong to other agents.
+- Parallel agents: one agent per device. `boot` is safe to run concurrently (it picks a free port; the same AVD can run multiple read-only instances) and prints the new serial - pass that serial to every later command. Never send input to a device you did not boot or were not assigned; other devices in `status` may belong to other agents.

@@ -486,7 +486,7 @@ export const createServer = internalAction({
 	handler: async (ctx, args) => {
 		const locations = args.location
 			? [args.location]
-			: parseLocations(process.env.HETZNER_BOX_LOCATIONS);
+			: parseLocations(optionalEnv("HETZNER_BOX_LOCATIONS"));
 		const candidates = placementCandidates(args.serverType, locations);
 		let lastError: string | undefined;
 		const fallbackCandidate = candidates[0];
@@ -516,9 +516,8 @@ export const createServer = internalAction({
 					// created. Stop new payable checkouts so repeated purchases do not
 					// become repeated refunds and non-refundable Polar fees. Staff can
 					// request the Hetzner increase and re-enable checkout in the console.
-					await ctx.runMutation(internal.settings.setCheckoutEnabled, {
-						checkoutEnabled: false,
-						updatedBy: "system:hetzner_resource_limit_exceeded"
+					await ctx.runMutation(internal.settings.closeCheckout, {
+						by: "system:hetzner_resource_limit_exceeded"
 					});
 					throw error;
 				}
@@ -824,9 +823,8 @@ export const createSnapshotImage = internalAction({
 				error instanceof HetznerApiError &&
 				error.code === "resource_limit_exceeded"
 			) {
-				await ctx.runMutation(internal.settings.setCheckoutEnabled, {
-					checkoutEnabled: false,
-					updatedBy: "system:hetzner_snapshot_resource_limit_exceeded"
+				await ctx.runMutation(internal.settings.closeCheckout, {
+					by: "system:hetzner_snapshot_resource_limit_exceeded"
 				});
 			}
 			throw error;
@@ -1051,12 +1049,6 @@ export function parkingVolumeSizeGb(usedBytes: number) {
 
 export function parkingVolumeName(slug: string) {
 	return `composery-park-${slug}`;
-}
-
-// Hetzner exposes an attached Volume at a stable, id-derived path, so the box
-// scripts never have to guess a `/dev/sd*` letter that can shift between boots.
-export function parkingVolumeDevicePath(volumeId: number) {
-	return `/dev/disk/by-id/scsi-0HC_Volume_${volumeId}`;
 }
 
 export function createVolumePayload(

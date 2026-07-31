@@ -20,8 +20,7 @@ export const stopBox = defineBoxWorkflow({
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,
-				status: "stopped",
-				eventType: "box.stopped"
+				status: "stopped"
 			}
 		);
 	}

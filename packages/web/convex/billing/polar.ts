@@ -2,13 +2,13 @@ import { Polar } from "@convex-dev/polar";
 import { v } from "convex/values";
 import { components } from "../_generated/api";
 import { internalAction, query } from "../_generated/server";
-import { requiredEnv } from "../env";
+import { optionalEnv, requiredEnv, type ConvexEnvName } from "../env";
 import {
 	BOX_BILLING,
 	type BoxBillingInterval,
 	monthlyPriceFromMinorUnits
-} from "../../lib/box-billing";
-import { BOX_PLAN_ORDER, type BoxPlan } from "../../lib/box-plan";
+} from "../../lib/boxes/billing";
+import { BOX_PLAN_ORDER, type BoxPlan } from "../../lib/boxes/plan";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",
@@ -31,12 +31,9 @@ const REFUND_IDEMPOTENCY_METADATA_KEY = "composery_refund_key";
 
 // Polar fixes the billing interval on a product, so a plan sold on two intervals
 // is two products - one Polar product per (plan, interval) pair. This grid is
-// the only place that correspondence is written down, and it is written as
-// literal names on purpose: the checklist test in
-// `tests/invariants/convex/envExample.test.ts` finds a plane's variables by
-// scanning this source for quoted names inside the env readers, so a name
-// assembled at runtime would be a variable the example files could never be
-// checked against.
+// the only place that correspondence is written down; the names are typed
+// against `CONVEX_ENV_NAMES`, so the deployment checklist covers them whether
+// they are read from here or anywhere else.
 const BOX_PRODUCT_ENV = {
 	air: {
 		month: "POLAR_BOX_AIR_MONTHLY_PRODUCT_ID",
@@ -46,7 +43,16 @@ const BOX_PRODUCT_ENV = {
 		month: "POLAR_BOX_PRO_MONTHLY_PRODUCT_ID",
 		year: "POLAR_BOX_PRO_ANNUAL_PRODUCT_ID"
 	}
-} as const satisfies Record<BoxPlan, Record<BoxBillingInterval, string>>;
+} as const satisfies Record<BoxPlan, Record<BoxBillingInterval, ConvexEnvName>>;
+
+// The configured id, or undefined where this deployment has not been given one.
+// Tolerant on purpose, unlike `boxProductId`: the hourly sweep across every box
+// must not abandon itself - and the deletions it also carries - because one
+// product id is missing, and the checkout component is constructed while Convex
+// analyses modules with no deployment environment at all.
+function configuredProductId(sellable: BoxSellable) {
+	return optionalEnv(BOX_PRODUCT_ENV[sellable.plan][sellable.billingInterval]);
+}
 
 // A sellable box: which plan, billed how often. Checkout picks one, a
 // subscription carries one, and `boxSellableForProductId` reads one back out of
@@ -85,24 +91,16 @@ export function boxSellableForProductId(
 	productId: string | null | undefined
 ): BoxSellable | null {
 	if (!productId) return null;
-	for (const [plan, byInterval] of Object.entries(BOX_PRODUCT_ENV)) {
-		for (const [billingInterval, environmentVariable] of Object.entries(
-			byInterval
-		)) {
-			// A tolerant read, unlike `boxProductId`'s. This runs on the hourly sweep
-			// across every box, and a deployment missing one product id must not turn
-			// that into an exception that abandons the sweep - including the deletions
-			// it also carries. An unset variable simply matches nothing, and the
-			// caller reports the product as unrecognised, which is exactly what it is.
-			// Selling, by contrast, still fails closed: `boxProductId` demands the
-			// variable, so a sale can never be made against a product that is not
-			// configured.
-			if (process.env[environmentVariable] === productId) {
-				return {
-					billingInterval: billingInterval as BoxBillingInterval,
-					plan: plan as BoxPlan
-				};
-			}
+	for (const plan of Object.keys(BOX_PRODUCT_ENV) as BoxPlan[]) {
+		for (const billingInterval of Object.keys(
+			BOX_PRODUCT_ENV[plan]
+		) as BoxBillingInterval[]) {
+			const sellable = { billingInterval, plan };
+			// An unset variable simply matches nothing, and the caller reports the
+			// product as unrecognised, which is exactly what it is. Selling, by
+			// contrast, still fails closed: `boxProductId` demands the variable, so a
+			// sale can never be made against a product that is not configured.
+			if (configuredProductId(sellable) === productId) return sellable;
 		}
 	}
 	return null;
@@ -134,8 +132,7 @@ export const boxPricing = query({
 		const products = await polarServer().listProducts(ctx);
 
 		function priceOf(sellable: BoxSellable) {
-			const productId =
-				process.env[BOX_PRODUCT_ENV[sellable.plan][sellable.billingInterval]];
+			const productId = configuredProductId(sellable);
 			const product = productId
 				? products.find(
 						(candidate) => candidate.id === productId && !candidate.isArchived
@@ -202,7 +199,7 @@ export async function selectPolarCheckoutProduct(
 }
 
 function polarEnvironment() {
-	const environment = process.env.POLAR_ENVIRONMENT ?? "sandbox";
+	const environment = optionalEnv("POLAR_ENVIRONMENT") ?? "sandbox";
 	if (environment !== "sandbox" && environment !== "production") {
 		throw new Error("POLAR_ENVIRONMENT must be sandbox or production.");
 	}
@@ -374,16 +371,23 @@ export const revokeAndRefundOrder = internalAction({
 // design: an empty token fails the Polar API call (401), an empty webhook
 // secret makes signature verification fail closed, and "sandbox" is the
 // fail-safe default (a missing config can never charge a real card).
+//
+// The four product keys are Polar's own names, so they are written out; the
+// variable behind each is still read through the grid above.
 export function polarServer() {
 	return new Polar(components.polar, {
 		products: {
-			boxAirMonthly: process.env.POLAR_BOX_AIR_MONTHLY_PRODUCT_ID ?? "",
-			boxAirAnnual: process.env.POLAR_BOX_AIR_ANNUAL_PRODUCT_ID ?? "",
-			boxProMonthly: process.env.POLAR_BOX_PRO_MONTHLY_PRODUCT_ID ?? "",
-			boxProAnnual: process.env.POLAR_BOX_PRO_ANNUAL_PRODUCT_ID ?? ""
+			boxAirMonthly:
+				configuredProductId({ billingInterval: "month", plan: "air" }) ?? "",
+			boxAirAnnual:
+				configuredProductId({ billingInterval: "year", plan: "air" }) ?? "",
+			boxProMonthly:
+				configuredProductId({ billingInterval: "month", plan: "pro" }) ?? "",
+			boxProAnnual:
+				configuredProductId({ billingInterval: "year", plan: "pro" }) ?? ""
 		},
-		organizationToken: process.env.POLAR_ORGANIZATION_TOKEN ?? "",
-		webhookSecret: process.env.POLAR_WEBHOOK_SECRET ?? "",
+		organizationToken: optionalEnv("POLAR_ORGANIZATION_TOKEN") ?? "",
+		webhookSecret: optionalEnv("POLAR_WEBHOOK_SECRET") ?? "",
 		server: polarEnvironment(),
 		getUserInfo: async () => {
 			throw new Error("Use explicit Composery Cloud Polar calls.");

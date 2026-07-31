@@ -2,6 +2,12 @@ import { fetchAction } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+	CLOUD_AUTH_HEADERS,
+	isBoxIdString,
+	isFlowSecret,
+	isPasswordHash
+} from "@/lib/boxes/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -43,22 +49,20 @@ export async function POST(request: Request) {
 	}
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function isPasswordChangeRequest(value: unknown): value is {
 	boxId: string;
 	currentRuntimeAuthHash: string;
 	runtimeAuthHash: string;
 } {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-	const body = value as Record<string, unknown>;
 	return (
-		typeof body.boxId === "string" &&
-		body.boxId.length <= 64 &&
-		typeof body.currentRuntimeAuthHash === "string" &&
-		body.currentRuntimeAuthHash.length <= 512 &&
-		body.currentRuntimeAuthHash.startsWith("$argon2id$") &&
-		typeof body.runtimeAuthHash === "string" &&
-		body.runtimeAuthHash.length <= 512 &&
-		body.runtimeAuthHash.startsWith("$argon2id$")
+		isObject(value) &&
+		isBoxIdString(value.boxId) &&
+		isPasswordHash(value.currentRuntimeAuthHash) &&
+		isPasswordHash(value.runtimeAuthHash)
 	);
 }
 
@@ -67,25 +71,14 @@ function isPasswordRequest(value: unknown): value is {
 	grant: string;
 	runtimeAuthHash: string;
 } {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-	const body = value as Record<string, unknown>;
 	return (
-		typeof body.boxId === "string" &&
-		body.boxId.length <= 64 &&
-		typeof body.grant === "string" &&
-		body.grant.length === 43 &&
-		typeof body.runtimeAuthHash === "string" &&
-		body.runtimeAuthHash.length <= 512 &&
-		body.runtimeAuthHash.startsWith("$argon2id$")
+		isObject(value) &&
+		isBoxIdString(value.boxId) &&
+		isFlowSecret(value.grant) &&
+		isPasswordHash(value.runtimeAuthHash)
 	);
 }
 
 function response(body: unknown, status: number) {
-	return NextResponse.json(body, {
-		status,
-		headers: {
-			"Cache-Control": "no-store",
-			"Referrer-Policy": "no-referrer"
-		}
-	});
+	return NextResponse.json(body, { status, headers: CLOUD_AUTH_HEADERS });
 }

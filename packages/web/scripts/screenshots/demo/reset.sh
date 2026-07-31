@@ -5,6 +5,12 @@
 # does not match - and kill - this very shell.
 #
 #   docker exec -u user <container> bash /tmp/reset.sh
+#
+# No `-e`, unlike the other scripts here: every teardown step below is expected
+# to fail on an already-clean instance (pkill exits 1 when nothing matched), and
+# a reset that stopped at the first of those would leave the rest of the state
+# behind.
+set -uo pipefail
 
 pkill -9 -f claude 2>/dev/null
 pkill -9 -f 'bash -l' 2>/dev/null   # the server-side ptys Composery keeps alive

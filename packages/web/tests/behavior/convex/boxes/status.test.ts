@@ -66,7 +66,6 @@ describe("recording an operation failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "the host never answered",
-			eventType: "box.reset_failed",
 			operationId,
 			targetBoxStatus: "reset_failed"
 		});
@@ -90,7 +89,6 @@ describe("recording an operation failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "boom",
-			eventType: "box.reset_failed",
 			operationId,
 			targetBoxStatus: "reset_failed"
 		});
@@ -111,7 +109,6 @@ describe("recording an operation failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "hetzner said no",
-			eventType: "box.snapshot_failed",
 			operationId
 		});
 
@@ -133,7 +130,6 @@ describe("recording an operation failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "ssh refused",
-			eventType: "box.repair_failed",
 			operationId,
 			targetBoxStatus: "repair_failed"
 		});
@@ -157,7 +153,6 @@ describe("recording an operation failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "box vanished",
-			eventType: "box.reset_failed",
 			operationId,
 			targetBoxStatus: "reset_failed"
 		});
@@ -183,7 +178,6 @@ describe("staff alerting on failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "ssh refused",
-			eventType: "box.repair_failed",
 			operationId,
 			targetBoxStatus: "repair_failed"
 		});
@@ -205,7 +199,6 @@ describe("staff alerting on failure", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "transient",
-			eventType: "box.stop_failed",
 			operationId,
 			targetBoxStatus: "running"
 		});
@@ -225,7 +218,6 @@ describe("staff alerting on failure", () => {
 			await t.mutation(internal.boxes.status.markOperationFailed, {
 				boxId,
 				error: "boom",
-				eventType: "box.reset_failed",
 				operationId,
 				targetBoxStatus: "reset_failed"
 			});
@@ -260,7 +252,6 @@ describe("settling an operation", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "boom",
-			eventType: "box.reset_failed",
 			operationId,
 			targetBoxStatus: "reset_failed"
 		});
@@ -363,5 +354,74 @@ describe("the workflow completion callback", () => {
 		expect(operation).toMatchObject({ status: "succeeded" });
 		expect(operation?.last_error).toBeUndefined();
 		expect(await readBox(t, boxId)).toMatchObject({ status: "running" });
+	});
+});
+
+describe("the event an ended operation records", () => {
+	// The name is derived from the operation row rather than passed in, because
+	// passing it in is how five workflows came to be writing the pre-rename names
+	// (`box.stopped`, `box.suspended`, `box.update_not_needed`) that
+	// `convex/boxes/rename.ts` migrates away from - so every stop, start,
+	// suspend, unsuspend and no-op update undid that migration as it ran.
+	test("names the operation that ended, in the one grammar", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "stopping"
+		});
+		const operationId = await openOperation(t, boxId, "stop");
+
+		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+			boxId,
+			operationId,
+			status: "stopped"
+		});
+
+		expect((await boxEvents(t, boxId)).map((event) => event.type)).toEqual([
+			"box.stop_succeeded"
+		]);
+	});
+
+	test("says an operation found nothing to do rather than that it did it", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "updating"
+		});
+		const operationId = await openOperation(t, boxId, "update");
+
+		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+			boxId,
+			operationId,
+			outcome: "skipped",
+			status: "running"
+		});
+
+		expect((await boxEvents(t, boxId)).map((event) => event.type)).toEqual([
+			"box.update_skipped"
+		]);
+	});
+
+	test("names the failed operation from its own row", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "repairing"
+		});
+		const operationId = await openOperation(t, boxId, "repair");
+
+		await t.mutation(internal.boxes.status.markOperationFailed, {
+			boxId,
+			error: "the host never answered",
+			operationId,
+			targetBoxStatus: "repair_failed"
+		});
+
+		expect((await boxEvents(t, boxId)).map((event) => event.type)).toEqual([
+			"box.repair_failed"
+		]);
 	});
 });

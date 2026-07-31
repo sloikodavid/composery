@@ -1,6 +1,6 @@
 A terminal shared across clients.
 
-A terminal belongs to the box, not to the browser tab that opened it. Workspace
+A terminal belongs to the server, not to the browser tab that opened it. Workspace
 identity is canonicalised from the folder path, so the same workspace reached
 through a different origin (localhost against a LAN address) is one workspace,
 and it is the only identity a backend reports - the one it answers to as well as

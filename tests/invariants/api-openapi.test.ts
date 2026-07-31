@@ -64,6 +64,21 @@ function interfaceFields(source: string, name: string): string[] {
 	return [...body.matchAll(/^\s*(\w+)\??:/gm)].map((match) => match[1] ?? "");
 }
 
+describe("the spec is where the website looks for it", () => {
+	test("packages/web/lib/openapi.ts points at the file this suite reads", () => {
+		// `createOpenAPI` takes the path as a plain string, so nothing type-checks
+		// it and nothing fails loudly when it goes stale: fumadocs resolves it at
+		// build time, and a miss renders the API pages without any operations
+		// rather than erroring. The path is also cwd-relative, so a test cannot
+		// simply load it from here - which leaves pinning the pair, the last rung
+		// of the ladder in AGENTS.md, as the only thing that can catch a rename
+		// that updates one spelling and not the other.
+		expect(readRepoFile("packages/web/lib/openapi.ts")).toContain(
+			'instance: "../../docs/openapi.yaml"'
+		);
+	});
+});
+
 describe("the terminal API spec matches the routes that serve it", () => {
 	test("documents the complete HTTP surface and no compatibility route", () => {
 		expect(
@@ -224,6 +239,82 @@ describe("the terminal API spec matches the routes that serve it", () => {
 			expect(documented, `configuration.md is missing ${name}`).toContain(
 				`\`${name}\``
 			);
+		}
+	});
+});
+
+// A number in a table is a promise. The test above only asks whether the
+// variable is *named* there, which was enough for a name to go missing and not
+// enough for a value to go wrong: every default and every guardrail cap in
+// docs/configuration.md was a hand-copied literal that nothing compared to
+// config.ts. An operator sizing a deployment reads those numbers, and a cap that
+// reads lower than it is describes a protection the instance does not have.
+describe("the documented API numbers are the numbers the code uses", () => {
+	// `24 * 60 * 60`, `10 * 1024 * 1024`, `10_000` - the spellings config.ts uses
+	// to keep a magnitude readable. Multiplication only, so this stays a reader
+	// rather than an evaluator.
+	function value(expression: string): number {
+		const parts = expression.trim().replaceAll("_", "").split("*");
+		expect(
+			parts.every((part) => /^\s*\d+\s*$/.test(part)),
+			expression
+		).toBe(true);
+		return parts.reduce((total, part) => total * Number(part.trim()), 1);
+	}
+
+	const caps = new Map(
+		[...config.matchAll(/const (MAX_[A-Z_]+) = ([^\n]+)/g)].map((match) => [
+			match[1] ?? "",
+			value(match[2] ?? "")
+		])
+	);
+
+	const defaults = new Map(
+		[...config.matchAll(/\b(?:num|int)\(\s*"([A-Z_]+)",\s*([^,]+),/g)].map(
+			(match) => [match[1] ?? "", value(match[2] ?? "")]
+		)
+	);
+
+	const documented = readRepoFile("docs/configuration.md");
+
+	test("the sweep read the code it is meant to read", () => {
+		// Both maps are built by regex over one file. Empty, every assertion
+		// below passes without comparing anything.
+		expect(caps.size).toBe(6);
+		expect(defaults.size).toBe(6);
+	});
+
+	test("every default in the table is the default in config.ts", () => {
+		const rows = new Map(
+			[
+				...documented.matchAll(
+					/^\|\s*`(COMPOSERY_API_[A-Z_]+)`\s*\|\s*`(\d+)`\s*\|/gm
+				)
+			].map((match) => [match[1] ?? "", Number(match[2])])
+		);
+
+		expect(rows.size).toBe(defaults.size);
+		expect(Object.fromEntries(rows)).toEqual(Object.fromEntries(defaults));
+	});
+
+	test("every guardrail cap is stated as the code enforces it", () => {
+		// The prose gives each cap in the unit an operator thinks in, so the
+		// rendering is derived here rather than the number restated.
+		const hours = (caps.get("MAX_TERMINAL_TIMEOUT_SEC") ?? 0) / 60 / 60;
+		const mib = (caps.get("MAX_TERMINAL_OUTPUT_BYTES") ?? 0) / 1024 / 1024;
+
+		for (const phrase of [
+			`${hours}h one-shot timeout`,
+			`${mib} MiB one-shot output`,
+			`${caps.get("MAX_RATE_RPS")} RPS`,
+			`${caps.get("MAX_RATE_BURST")} burst`,
+			`${caps.get("MAX_SESSIONS")} concurrent terminal streams`,
+			`${caps.get("MAX_AUTH_FAIL_PER_MIN")}\nfailed-auth attempts/min/IP`
+		]) {
+			expect(
+				documented,
+				`configuration.md does not state the cap "${phrase}"`
+			).toContain(phrase);
 		}
 	});
 });

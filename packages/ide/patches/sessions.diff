@@ -149,7 +149,7 @@ actually cleared by Sign Out), and lets base/href go entirely.
 +    path: "/",
      sameSite: "lax",
 +    // Marking a cookie secure on a plain-HTTP deployment makes the browser drop
-+    // it, locking out every LAN and loopback box, so claim it only where this
++    // it, locking out every LAN and loopback instance, so claim it only where this
 +    // reply demonstrably travelled over TLS.
 +    secure:
 +      req.secure ||

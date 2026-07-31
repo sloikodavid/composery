@@ -12,7 +12,7 @@
 		"dev": "concurrently -n tree,docker,convex,next,colors -c green,blue,yellow,yellow,cyan \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:colors\"",
 		"dev:next": "pnpm --filter web dev:next",
 		"dev:convex": "pnpm --filter web dev:convex",
-		"dev:docker": "docker compose --progress=plain -f compose.dev.yml up --build",
+		"dev:docker": "docker compose --progress=plain -f compose.dev.yaml up --build",
 		"dev:tree": "node scripts/tree.mjs --watch",
 		"dev:colors": "pnpm --filter shared dev:colors",
 		"check": "pnpm check:portable && pnpm check:knip && pnpm check:coverage && pnpm check:cli && pnpm check:mutants && pnpm check:renovate",
@@ -35,7 +35,7 @@
 		"fix:cli": "node scripts/cli.mjs --fix",
 		"build": "pnpm build:web && pnpm build:docker",
 		"build:web": "pnpm --filter web build",
-		"build:docker": "docker compose --progress=plain -f compose.dev.yml build",
+		"build:docker": "docker compose --progress=plain -f compose.dev.yaml build",
 		"smoke": "node tests/system/smoke.mjs",
 		"templates:schema": "node tests/system/templates/run.mjs schemas",
 		"templates:compose": "node tests/system/templates/run.mjs compose",
@@ -47,7 +47,21 @@
 	},
 	"prettier": {
 		"useTabs": true,
-		"trailingComma": "none"
+		"trailingComma": "none",
+		"overrides": [
+			{
+				"comment": "packages/ide/upstream/.prettierrc.yaml verbatim. These files are copied into code-server's src/ and have to read like the files around them, so the fork's formatter is the one that owns them.",
+				"files": "packages/ide/overlay/src/**",
+				"options": {
+					"printWidth": 120,
+					"semi": false,
+					"trailingComma": "all",
+					"arrowParens": "always",
+					"singleQuote": false,
+					"useTabs": false
+				}
+			}
+		]
 	},
 	"devDependencies": {
 		"@eslint/js": "9.39.5",

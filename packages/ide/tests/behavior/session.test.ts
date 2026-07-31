@@ -5,7 +5,8 @@ import {
 	createSessionToken,
 	isSessionTokenValid,
 	readSessionLifetime,
-	sessionCookieOptions
+	sessionCookieOptions,
+	setSessionCookie
 } from "../../overlay/src/node/session.ts";
 
 const NOW = Date.UTC(2026, 6, 27, 12);
@@ -21,14 +22,14 @@ describe("IDE sessions", () => {
 			isSessionTokenValid(
 				token,
 				args,
-				NOW + SESSION_LIFETIMES["8h"].maxAgeSeconds * 1000 - 1
+				NOW + SESSION_LIFETIMES["8h"].maxAgeSec * 1000 - 1
 			)
 		).toBe(true);
 		expect(
 			isSessionTokenValid(
 				token,
 				args,
-				NOW + SESSION_LIFETIMES["8h"].maxAgeSeconds * 1000
+				NOW + SESSION_LIFETIMES["8h"].maxAgeSec * 1000
 			)
 		).toBe(false);
 	});
@@ -64,7 +65,7 @@ describe("IDE sessions", () => {
 			isSessionTokenValid(
 				token,
 				args,
-				NOW + SESSION_LIFETIMES["30d"].maxAgeSeconds * 1000
+				NOW + SESSION_LIFETIMES["30d"].maxAgeSec * 1000
 			)
 		).toBe(false);
 	});
@@ -72,7 +73,7 @@ describe("IDE sessions", () => {
 	test("persistent policies put the same duration on the cookie", () => {
 		for (const lifetime of ["8h", "1d", "7d", "30d"] as const) {
 			expect(sessionCookieOptions({}, lifetime).maxAge).toBe(
-				SESSION_LIFETIMES[lifetime].maxAgeSeconds * 1000
+				SESSION_LIFETIMES[lifetime].maxAgeSec * 1000
 			);
 		}
 	});
@@ -82,5 +83,37 @@ describe("IDE sessions", () => {
 		expect(() => readSessionLifetime("forever")).toThrow(
 			/COMPOSERY_SESSION_LIFETIME must be one of/
 		);
+	});
+});
+
+// The one place a session is actually handed to a browser. It reads the cookie
+// name off the request rather than holding one of its own, because code-server
+// derives that name per instance - a hard-coded one would authenticate against
+// the wrong box on a machine running two.
+describe("issuing the cookie", () => {
+	test("signs the token with this instance's password and names it per instance", () => {
+		const args = { password: "correct horse battery staple" };
+		// One slot rather than a list: exactly one cookie is the assertion, and an
+		// index would be a possibly-undefined read under the root tsconfig.
+		let issued: { name: string; value: string } | undefined;
+		let calls = 0;
+		const req = { args, cookieSessionName: "composery-session-9911" };
+		const res = {
+			cookie: (name: string, value: string) => {
+				calls += 1;
+				issued = { name, value };
+			}
+		};
+
+		setSessionCookie(req, res, { domain: "box.test" });
+
+		expect(calls).toBe(1);
+		expect(issued?.name).toBe("composery-session-9911");
+		// Whatever it wrote has to be a session this instance will accept back.
+		expect(isSessionTokenValid(issued?.value ?? "", args)).toBe(true);
+		// And it must be rejected by an instance with a different password.
+		expect(
+			isSessionTokenValid(issued?.value ?? "", { password: "something else" })
+		).toBe(false);
 	});
 });

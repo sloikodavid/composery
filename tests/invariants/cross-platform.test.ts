@@ -7,7 +7,7 @@ import { parse } from "yaml";
 import { repoRoot, readRepoFile } from "../support/repo.ts";
 
 // Composery must be developable on Linux, Windows and macOS alike. `check`
-// splits into the portable set (proven on every OS by ci.yml's portable job)
+// splits into the portable set (proven on every OS by ci.yaml's portable job)
 // and the few targets that genuinely cannot leave Linux. The split is only
 // worth anything if a newly added check:* target has to pick a side, so these
 // tests fail on any target that belongs to neither.
@@ -15,7 +15,7 @@ const rootPackage = JSON.parse(readRepoFile("package.json")) as {
 	scripts: Record<string, string>;
 };
 const scripts = rootPackage.scripts;
-const ciWorkflow = readRepoFile(".github/workflows/ci.yml");
+const ciWorkflow = readRepoFile(".github/workflows/ci.yaml");
 
 type WorkflowJob = {
 	if?: string;
@@ -81,7 +81,7 @@ const portableTargets = targetsOf(scripts["check:portable"] ?? "");
 
 describe("cross-platform checks", () => {
 	test("one fail-closed check separates validation from deployment", () => {
-		const ci = workflow(".github/workflows/ci.yml");
+		const ci = workflow(".github/workflows/ci.yaml");
 		const allChecks = ci.jobs["all-checks"];
 
 		expect(allChecks?.if).toBe("always()");
@@ -97,7 +97,7 @@ describe("cross-platform checks", () => {
 			.map(([name]) => name);
 		expect(writable).toEqual([]);
 
-		const deployWorkflow = workflow(".github/workflows/deploy.yml");
+		const deployWorkflow = workflow(".github/workflows/deploy.yaml");
 		expect(deployWorkflow.on?.workflow_run).toEqual({
 			workflows: ["ci"],
 			types: ["completed"],
@@ -135,12 +135,12 @@ describe("cross-platform checks", () => {
 	});
 
 	test("every publication workflow depends on the complete CI tier", () => {
-		const release = workflow(".github/workflows/release.yml");
-		expect(release.jobs.validate?.uses).toBe("./.github/workflows/ci.yml");
+		const release = workflow(".github/workflows/release.yaml");
+		expect(release.jobs.validate?.uses).toBe("./.github/workflows/ci.yaml");
 		for (const job of ["plan", "build", "publish"])
 			expect(dependsOn(release.jobs, job, "validate"), job).toBe(true);
 
-		const smoke = workflow(".github/workflows/smoke.yml");
+		const smoke = workflow(".github/workflows/smoke.yaml");
 		expect(smoke.on).not.toHaveProperty("push");
 		expect(smoke.on).not.toHaveProperty("pull_request");
 	});
@@ -234,14 +234,14 @@ describe("cross-platform checks", () => {
 
 	// Both Trivy scans read the same image at CRITICAL,HIGH with unfixed
 	// findings included, so either one blocking means a Debian CVE with no fix
-	// available stops the pipeline - nothing a change here could clear. smoke.yml
-	// said as much while release.yml quietly ran exit-code 1, which would have
+	// available stops the pipeline - nothing a change here could clear. smoke.yaml
+	// said as much while release.yaml quietly ran exit-code 1, which would have
 	// failed the publish job on two unfixed perl-modules CRITICALs. They report;
 	// they do not gate.
 	test("neither image scan can block on a CVE with no fix", () => {
 		for (const path of [
-			".github/workflows/smoke.yml",
-			".github/workflows/release.yml"
+			".github/workflows/smoke.yaml",
+			".github/workflows/release.yaml"
 		]) {
 			const workflow = readRepoFile(path);
 			const scans = [...workflow.matchAll(/aquasecurity\/trivy-action/g)];

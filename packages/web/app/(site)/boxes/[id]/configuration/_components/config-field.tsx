@@ -225,7 +225,7 @@ export function ConfigField({
 				max={field.max}
 				min={field.min}
 				onChange={(event) => onChange(event.target.value)}
-				placeholder={`${field.min}–${field.max}`}
+				placeholder={`${field.min}-${field.max}`}
 				type="number"
 				value={value}
 			/>

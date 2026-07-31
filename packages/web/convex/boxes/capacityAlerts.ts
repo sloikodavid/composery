@@ -32,10 +32,7 @@ function capacityLabel(reason: CapacityLimitBlockReason) {
 }
 
 export async function reconcileCapacityAlert(ctx: MutationCtx) {
-	const stored = await ctx.db
-		.query("settings")
-		.withIndex("key", (query) => query.eq("key", "global"))
-		.first();
+	const stored = await ctx.db.query("settings").first();
 	const settings = await readGlobalSettings(ctx);
 	const usage = await readCapacityUsage(ctx, settings);
 	const transition = capacityAlertTransition(

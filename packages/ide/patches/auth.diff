@@ -14,7 +14,7 @@ PasswordMethod dispatch (legacy SHA-256, a cookie-validation twin, and an
 argon2 hash computed on every attempt whose only consumer was the cookie this
 stack no longer sets) for a product with no legacy passwords to support. What
 survives is `isPasswordValid(args, password)`. Because argon2 is now the only
-format, a hashed-password in any other shape stops the box at start: nothing
+format, a hashed-password in any other shape stops the IDE at start: nothing
 could ever match it, so accepting it means looking configured while refusing
 every sign-in.
 
@@ -27,17 +27,17 @@ matching endpoint is in product.json, both routed through openAuthEndpoint,
 which suppresses beforeunload for the deliberate navigation. The endpoints
 resolve against window.top so they work embedded. Whether change-password
 exists at all is one predicate (isEnvPasswordManaged) shared by the command,
-the route guard and the link on the sign-in page - a cloud box's own
+the route guard and the link on the sign-in page - a cloud instance's own
 COMPOSERY_HASHED_PASSWORD is not "the environment owns this", because the
 change is recorded with the website first and reconciled back into it.
 
 COMPOSERY_DISABLE_AUTH turns sign-in off for deployments with their own gate
-in front (a private network, an SSO proxy, a throwaway local box). Upstream
+in front (a private network, an SSO proxy, a throwaway local instance). Upstream
 carries AuthType.None end to end - authenticated() short-circuits, so the
 workbench, both proxies and every websocket open together, and the sign-in
 commands drop out with the endpoints behind them. Only an explicit 1/true
 disables: every other value, typos included, fails towards keeping sign-in.
-The boot line becomes a warning that names the real exposure - a cloud box
+The boot line becomes a warning that names the real exposure - a cloud instance
 sits on the public internet where a self-hosted one may be loopback-only -
 and a configured-but-ignored password says so.
 
@@ -469,10 +469,10 @@ and a configured-but-ignored password says so.
 -</html>
 --- a/src/node/cli.ts
 +++ b/src/node/cli.ts
-@@ -2,7 +2,8 @@ import { field, Level, logger } from "@coder/logger"
- import { promises as fs } from "fs"
+@@ -3,7 +3,8 @@ import { promises as fs } from "fs"
  import { load } from "js-yaml"
  import * as path from "path"
+ import { envFlag } from "./envFlag"
 -import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
 +import { isEnvPasswordManaged } from "./routes/passwordConfig"
 +import { generateCertificate, paths, splitOnFirstEquals } from "./util"
@@ -520,28 +520,29 @@ and a configured-but-ignored password says so.
    },
    "abs-proxy-base-path": {
      type: "string",
-@@ -597,6 +595,13 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -597,6 +596,14 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
      args.auth = AuthType.Password
    }
  
 +  // Overrides the config file, which ships `auth: password`, so the switch
-+  // works without editing config. Only 1/true disable sign-in: every other
-+  // value, typos included, has to fail towards keeping the instance protected.
-+  if (process.env.COMPOSERY_DISABLE_AUTH?.match(/^(1|true)$/)) {
++  // works without editing config. envFlag is the one reading of "set to 1 or
++  // true" in the product: every other value, typos included, has to fail
++  // towards keeping the instance protected.
++  if (envFlag("COMPOSERY_DISABLE_AUTH")) {
 +    args.auth = AuthType.None
 +  }
 +
    const addr = bindAddrFromAllSources(configArgs || {}, cliArgs)
    args.host = addr.host
    args.port = addr.port
-@@ -612,6 +617,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+@@ -613,6 +619,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    let usingEnvPassword = !!process.env.PASSWORD
    if (process.env.PASSWORD) {
      args.password = process.env.PASSWORD
 +    args["hashed-password"] = undefined
    }
  
-   if (process.env.CS_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
+   if (envFlag("CS_DISABLE_FILE_DOWNLOADS")) {
 @@ -633,9 +639,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
    const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
    if (process.env.HASHED_PASSWORD) {
@@ -551,7 +552,7 @@ and a configured-but-ignored password says so.
    }
  
 +  // A hash in any other format is not a weaker password, it is no password at
-+  // all - nothing can match it and the box locks everyone out while looking
++  // all - nothing can match it and this locks everyone out while looking
 +  // configured. Refuse to start instead of failing every sign-in silently.
 +  if (args["hashed-password"] && !args["hashed-password"].startsWith("$argon2")) {
 +    throw new Error(
@@ -628,12 +629,12 @@ and a configured-but-ignored password says so.
    } else {
 -    logger.info("  - Authentication is disabled")
 +    // Owners control their own host, so this is never withheld - but report what
-+    // it costs here rather than warning generically. A cloud box is published on
-+    // the public internet, where no sign-in means whoever learns the address is
-+    // in; a self-hosted instance may only be reachable on a loopback or a LAN.
++    // it costs here rather than warning generically. A cloud instance is on the
++    // public internet, where no sign-in means whoever learns the address is in;
++    // a self-hosted instance may only be reachable on a loopback or a LAN.
 +    // Config can also select `auth: none`, so name both ways back.
 +    const reach = process.env.COMPOSERY_CLOUD_BOX_ID
-+      ? "this box is published on the internet, so anyone who learns its address"
++      ? "this Composery is published on the internet, so anyone who learns its address"
 +      : "anyone who can reach it"
 +    logger.warn(
 +      `Authentication is disabled: ${reach} gets a root-capable terminal. ` +

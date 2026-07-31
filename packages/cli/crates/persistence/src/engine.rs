@@ -290,7 +290,7 @@ mod tests {
         // so the shipped constant is on: `auto` probes, a successful probe gives
         // overlay, a failing one still falls back to copy. Both run through the
         // real constant, so turning the gate back off flips both outcomes and
-        // fails here rather than quietly changing which engine boxes run.
+        // fails here rather than quietly changing which engine instances run.
         let overlay = select(Request::Auto, OVERLAY_ENGINE_READY, || Ok(())).unwrap();
         assert_eq!(overlay.engine, Engine::Overlay);
         assert!(overlay.reason.contains("probe succeeded"));

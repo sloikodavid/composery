@@ -8,12 +8,12 @@ import {
 	type MutationCtx
 } from "../_generated/server";
 import { vSnapshotClass, type OperationTrigger } from "../schema";
-import { BOX_PLANS, planAllowsManualSnapshots } from "../../lib/box-plan";
+import { BOX_PLANS, planAllowsManualSnapshots } from "../../lib/boxes/plan";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
-import { resolveSnapshotSplit } from "../../lib/box-plan";
+import { resolveSnapshotSplit } from "../../lib/boxes/plan";
 import { appendBoxEvent } from "./events";
-import { boxEventType } from "./operationRules";
+import { boxEventType } from "../../lib/boxes/operations";
 import { reconcileCapacityAlert } from "./capacityAlerts";
 import { startBoxOperation } from "./operations";
 import {
@@ -21,6 +21,7 @@ import {
 	SNAPSHOT_RETENTION_SWEEP_BATCH,
 	snapshotEvictionCount,
 	snapshotExpiry,
+	manualSnapshotIntervalMs,
 	snapshotIdempotencyBucket,
 	snapshotScheduleDelayMs
 } from "./snapshotPolicy";
@@ -41,8 +42,6 @@ const DELETABLE_SNAPSHOT_STATUSES = [
 	"complete",
 	"failed"
 ] as const satisfies readonly Doc<"box_snapshots">["status"][];
-
-const MINUTE_MS = 60 * 1000;
 
 export function snapshotView(snapshot: Doc<"box_snapshots">) {
 	return {
@@ -214,8 +213,7 @@ export async function startManualSnapshot(
 	}
 
 	const { snapshotPolicy } = await readGlobalSettings(ctx);
-	const manualMinIntervalMs =
-		snapshotPolicy.manualMinIntervalMinutes * MINUTE_MS;
+	const manualMinIntervalMs = manualSnapshotIntervalMs(snapshotPolicy);
 
 	const last = await ctx.db
 		.query("box_snapshots")
@@ -455,7 +453,9 @@ export const cascadeDeleteBoxSnapshots = internalMutation({
 	handler: async (ctx, args) => {
 		const page = await ctx.db
 			.query("box_snapshots")
-			.withIndex("box_id", (builder) => builder.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (builder) =>
+				builder.eq("box_id", args.boxId)
+			)
 			.paginate({
 				cursor: args.cursor ?? null,
 				numItems: SNAPSHOT_CASCADE_DELETE_PAGE_SIZE
@@ -561,8 +561,7 @@ export const startAutomaticSnapshot = internalMutation({
 		}
 
 		const { snapshotPolicy } = await readGlobalSettings(ctx);
-		const manualMinIntervalMs =
-			snapshotPolicy.manualMinIntervalMinutes * MINUTE_MS;
+		const manualMinIntervalMs = manualSnapshotIntervalMs(snapshotPolicy);
 
 		try {
 			await startBoxOperation(ctx, args.boxId, "snapshot", {

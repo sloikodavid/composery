@@ -52,8 +52,7 @@ crons.hourly(
 crons.hourly(
 	"finish failed box deletions",
 	{ minuteUTC: 27 },
-	internal.boxes.cleanup.finishFailedDeletions,
-	{}
+	internal.boxes.cleanup.finishFailedDeletions
 );
 
 crons.interval(
@@ -78,8 +77,7 @@ crons.daily(
 crons.daily(
 	"normalize deleted boxes",
 	{ hourUTC: 4, minuteUTC: 29 },
-	internal.boxes.cleanup.normalizeDeletedBoxes,
-	{}
+	internal.boxes.cleanup.normalizeDeletedBoxes
 );
 
 crons.daily(
@@ -92,32 +90,31 @@ crons.daily(
 crons.daily(
 	"purge expired checkout records",
 	{ hourUTC: 4, minuteUTC: 37 },
-	internal.boxes.cleanup.purgeExpiredCheckoutRecords,
-	{}
+	internal.boxes.cleanup.purgeExpiredCheckoutRecords
 );
 
 crons.daily(
 	"purge expired deleted accounts",
 	{ hourUTC: 4, minuteUTC: 39 },
-	internal.accountDeletion.purgeExpiredDeletedAccounts,
-	{}
+	internal.accountDeletion.purgeExpiredDeletedAccounts
 );
 
 crons.daily(
 	"purge expired staff alerts",
 	{ hourUTC: 4, minuteUTC: 43 },
-	internal.staff.alerts.purgeExpired,
-	{}
+	internal.staff.alerts.purgeExpired
 );
 
 // Aligned with metrics polling: both sweep every running box, and the
 // consecutive-failure count automatic repair gates on is expressed in these
-// ticks (see boxes/autoRepair.ts).
+// ticks (see boxes/autoRepair.ts). Derived rather than restated, because the
+// alignment was a claim in this comment beside a hardcoded 10 - retuning the
+// poll would have silently unaligned them and turned SUSTAINED_FAILURES into a
+// different amount of real time.
 crons.interval(
 	"sweep box health",
-	{ minutes: 10 },
-	internal.boxes.autoRepair.sweepBoxHealth,
-	{}
+	{ minutes: METRICS_POLL_INTERVAL_MINUTES },
+	internal.boxes.autoRepair.sweepBoxHealth
 );
 
 // An operation nothing will ever finish holds its box's lock for ever, and every
@@ -127,8 +124,7 @@ crons.interval(
 crons.interval(
 	"sweep stuck box operations",
 	{ minutes: 15 },
-	internal.boxes.operationSweep.sweepStuckOperations,
-	{}
+	internal.boxes.operationSweep.sweepStuckOperations
 );
 
 // Hourly rather than per box or per page view: one registry round trip answers
@@ -136,8 +132,7 @@ crons.interval(
 crons.hourly(
 	"refresh runtime release",
 	{ minuteUTC: 26 },
-	internal.boxes.runtimeRelease.refreshRuntimeRelease,
-	{}
+	internal.boxes.runtimeRelease.refreshRuntimeRelease
 );
 
 // The product webhooks only fire on a change, so a deployment that has not seen
@@ -147,8 +142,7 @@ crons.hourly(
 crons.hourly(
 	"sync Polar products",
 	{ minuteUTC: 33 },
-	internal.billing.polar.syncBoxProducts,
-	{}
+	internal.billing.polar.syncBoxProducts
 );
 
 // Reads the refreshed release, so it runs after it within the same hour.

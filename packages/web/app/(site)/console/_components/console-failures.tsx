@@ -16,7 +16,8 @@ import {
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { formatDateTime } from "@/lib/datetime";
-import { consoleBoxPath } from "@/lib/box-route";
+import { OPERATION_LABEL, operationLabel } from "@/lib/boxes/operations";
+import { consoleBoxPath } from "@/lib/boxes/route";
 
 type FailedOperation = NonNullable<
 	ReturnType<typeof useQuery<typeof api.staff.boxes.recentFailedOperations>>
@@ -82,7 +83,9 @@ export function ConsoleFailures() {
 						>
 							<TableCell className="pl-4">
 								<div className="min-w-0">
-									<p className="font-medium text-foreground">{failure.type}</p>
+									<p className="font-medium text-foreground">
+										{OPERATION_LABEL[failure.type]}
+									</p>
 									{failure.lastError ? (
 										<p className="wrap-break-word whitespace-normal text-muted-foreground">
 											{failure.lastError}
@@ -118,7 +121,7 @@ export function ConsoleFailures() {
 									/>
 									<OpenInConvex
 										iconOnly
-										label={`Open ${failure.type} operation in Convex`}
+										label={`Open ${operationLabel(failure.type, true)} operation in Convex`}
 										table="box_operations"
 										value={failure.id}
 									/>

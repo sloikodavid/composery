@@ -157,12 +157,8 @@ export type OperationTrigger = Infer<typeof vOperationTrigger>;
 // True for anything the fleet started by itself. Keyed off the `system:` prefix
 // rather than a second list of literals, so a trigger added to the union above is
 // classified the moment it exists instead of defaulting to "a person did this".
-//
-// `undefined` means an operation recorded before the column existed. Those read
-// as human, which is the safe direction: it holds automatic repair off rather
-// than letting it act on a box a person may have been working on.
-export function isSystemTrigger(trigger: OperationTrigger | undefined) {
-	return trigger !== undefined && trigger.startsWith("system:");
+export function isSystemTrigger(trigger: OperationTrigger) {
+	return trigger.startsWith("system:");
 }
 
 // Which half of a Repair ("clean host, current files") a box's parking volume
@@ -185,7 +181,7 @@ export type ParkingVolumeStage = Infer<typeof vParkingVolumeStage>;
 
 // Which product a box was bought as. The identity of a plan lives here because
 // it is a stored value; everything a plan *is* - its machine, its specification,
-// its capabilities - lives in `lib/box-plan.ts`, whose table is pinned to this
+// its capabilities - lives in `lib/boxes/plan.ts`, whose table is pinned to this
 // union with `satisfies Record<BoxPlan, ...>`. Adding a plan therefore fails to
 // compile until both halves exist, which is what keeps a sellable plan from
 // having no machine behind it.
@@ -196,7 +192,7 @@ export const BOX_PLANS_STORED: BoxPlan[] = vBoxPlan.members.map(
 );
 
 // The Hetzner types a box can run on: one per plan, and nothing else. Which plan
-// gets which is `lib/box-plan.ts`; this union only says what may be stored.
+// gets which is `lib/boxes/plan.ts`; this union only says what may be stored.
 export const vServerType = v.union(v.literal("cx23"), v.literal("cx43"));
 export const vServerLocation = v.union(
 	v.literal("nbg1"),
@@ -330,7 +326,7 @@ export default defineSchema({
 		.index("status_expires", ["status", "polar_checkout_expires_at"])
 		.index("status_created_at", ["status", "created_at"])
 		.index("polar_checkout_id", ["polar_checkout_id"])
-		.index("user_id", ["user_id"])
+		.index("user_id_created_at", ["user_id", "created_at"])
 		.index("user_id_status", ["user_id", "status"])
 		.index("user_id_slug_status", ["user_id", "slug", "status"])
 		.index("box_id", ["box_id"])
@@ -396,12 +392,13 @@ export default defineSchema({
 		deleted_at: v.optional(v.number()),
 		purge_at: v.optional(v.number())
 	})
-		.index("slug", ["slug"])
 		.index("slug_status", ["slug", "status"])
 		.index("status", ["status"])
-		.index("status_purge_at", ["status", "purge_at"])
+		// Only a deleted box is given one (`deletedBoxDataPatch`), so the purge
+		// sweep needs no status column to scope itself - the same shape every other
+		// purged table uses.
+		.index("purge_at", ["purge_at"])
 		.index("created_at", ["created_at"])
-		.index("user_id", ["user_id"])
 		.index("user_id_created_at", ["user_id", "created_at"])
 		.index("user_id_status", ["user_id", "status"])
 		.index("polar_subscription_id", ["polar_subscription_id"])
@@ -440,13 +437,18 @@ export default defineSchema({
 		status: vBoxOperationStatus,
 		idempotency_key: v.string(),
 		reserved_slug: v.optional(v.string()),
-		// Who asked for this. Optional only because rows predating the column exist;
-		// every new operation records one (see `startBoxOperation`).
-		trigger: v.optional(vOperationTrigger),
-		// The workflow carrying this operation out, recorded in the same transaction
-		// that creates the row. It is what lets `boxOperationSweep` ask whether an
-		// operation still has anything running behind it, instead of guessing from
-		// how long it has been open. Absent on rows predating the column.
+		// Who asked for this. Required: `startBoxOperation` is the only writer and it
+		// demands one, and automatic repair decides whether a person has their hand
+		// on this box from this field alone - a row without it would read as neither.
+		trigger: vOperationTrigger,
+		// The workflow carrying this operation out. It is what lets the operation
+		// sweep ask whether an operation still has anything running behind it,
+		// instead of guessing from how long it has been open.
+		//
+		// Optional because it cannot be otherwise: starting the workflow needs the
+		// operation's own id, so the row is inserted and then patched with this,
+		// inside one transaction. Nothing outside that transaction ever sees the
+		// gap, and the sweep treats an active operation without one as orphaned.
 		workflow_id: v.optional(v.string()),
 		started_at: v.optional(v.number()),
 		finished_at: v.optional(v.number()),
@@ -457,7 +459,6 @@ export default defineSchema({
 		created_at: v.number(),
 		updated_at: v.number()
 	})
-		.index("box_id", ["box_id"])
 		.index("box_id_status", ["box_id", "status"])
 		.index("box_id_created_at", ["box_id", "created_at"])
 		.index("box_type_status", ["box_id", "type", "status"])
@@ -468,7 +469,6 @@ export default defineSchema({
 			"dismissed_at",
 			"created_at"
 		])
-		.index("idempotency_key", ["idempotency_key"])
 		.index("idempotency_key_status", ["idempotency_key", "status"])
 		.index("reserved_slug_status", ["reserved_slug", "status"]),
 
@@ -480,10 +480,8 @@ export default defineSchema({
 		metadata: vMetadata,
 		created_at: v.number()
 	})
-		.index("box_id", ["box_id"])
 		.index("box_id_created_at", ["box_id", "created_at"])
-		.index("user_id", ["user_id"])
-		.index("type", ["type"]),
+		.index("user_id", ["user_id"]),
 
 	// One row per box, tracking whether it is answering. Only the running count
 	// matters: automatic repair fires on a box that has been unreachable for
@@ -524,13 +522,6 @@ export default defineSchema({
 		disk_write_bps: v.number()
 	})
 		.index("box_id_hour_start", ["box_id", "hour_start"])
-		.index("hour_start_cpu_percent", ["hour_start", "cpu_percent"])
-		.index("hour_start_ingress_bps", ["hour_start", "ingress_bps"])
-		.index("hour_start_egress_bps", ["hour_start", "egress_bps"])
-		.index("hour_start_ingress_pps", ["hour_start", "ingress_pps"])
-		.index("hour_start_egress_pps", ["hour_start", "egress_pps"])
-		.index("hour_start_disk_read_bps", ["hour_start", "disk_read_bps"])
-		.index("hour_start_disk_write_bps", ["hour_start", "disk_write_bps"])
 		.index("hour_start", ["hour_start"]),
 
 	box_flags: defineTable({
@@ -544,7 +535,7 @@ export default defineSchema({
 		dismissed_by: v.optional(v.string()),
 		created_at: v.number()
 	})
-		.index("box_id", ["box_id"])
+		.index("box_id_created_at", ["box_id", "created_at"])
 		.index("box_id_signal", ["box_id", "signal"])
 		.index("dismissed_created_at", ["dismissed_at", "created_at"])
 		.index("box_id_dismissed_created_at", [
@@ -566,18 +557,14 @@ export default defineSchema({
 		completed_at: v.optional(v.number()),
 		expires_at: v.optional(v.number())
 	})
-		.index("box_id", ["box_id"])
 		.index("box_id_created_at", ["box_id", "created_at"])
-		.index("box_id_status", ["box_id", "status"])
 		.index("box_id_class_status_created_at", [
 			"box_id",
 			"class",
 			"status",
 			"created_at"
 		])
-		.index("status", ["status"])
 		.index("status_expires_at", ["status", "expires_at"])
-		.index("expires_at", ["expires_at"])
 		.index("hetzner_image_id", ["hetzner_image_id"]),
 
 	staff_alerts: defineTable({
@@ -600,8 +587,11 @@ export default defineSchema({
 		.index("purge_at", ["purge_at"])
 		.index("created_at", ["created_at"]),
 
+	// One row, by construction: nothing inserts a second, and every reader takes
+	// the first. It carried a `key: "global"` column and an index over it - a
+	// column with one possible value, and an index that could only ever narrow a
+	// one-row table to itself.
 	settings: defineTable({
-		key: v.literal("global"),
 		checkout_enabled: v.boolean(),
 		hetzner_server_limit: v.optional(v.number()),
 		hetzner_snapshot_limit: v.optional(v.number()),
@@ -622,5 +612,5 @@ export default defineSchema({
 		capacity_alert_started_at: v.optional(v.number()),
 		updated_at: v.number(),
 		updated_by: v.optional(v.string())
-	}).index("key", ["key"])
+	})
 });

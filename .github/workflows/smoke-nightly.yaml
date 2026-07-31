@@ -1,0 +1,43 @@
+name: smoke-nightly
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/smoke.yaml
+    with:
+      no_cache: true
+
+  templates:
+    uses: ./.github/workflows/templates.yaml
+
+  # The only proof that an instance's filesystem survives being recreated, which
+  # is what the product promises. It went unreferenced by any workflow for as
+  # long as nobody looked: the Rust unit tests cover the engine's logic in
+  # isolation and the smoke checks that persistence answers, but neither kills a
+  # container and asks whether the work came back. A test in
+  # `tests/invariants/tests.test.ts` now fails if a system harness has no
+  # workflow, so this cannot go quiet again.
+  #
+  # Nightly rather than per-PR, and alongside the smoke rather than inside it:
+  # this builds two fixture images and boots six privileged containers, and it is
+  # the slowest thing in the repository by a wide margin.
+  overlay-engine:
+    name: overlay engine
+    runs-on: ubuntu-24.04
+    # A hang detector, not a budget. Six boots plus two image builds run around
+    # 25 minutes; the default 360 would burn six hours of runner time on a wedge,
+    # and a floor pinned by tests/invariants/cross-platform.test.ts keeps this far
+    # enough above the real runtime that a loaded runner is never read as a break.
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Prove the overlay engine end to end
+        run: bash tests/system/overlay-engine/run.sh

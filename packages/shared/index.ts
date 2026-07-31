@@ -199,6 +199,6 @@ export const IDE_PATH = "/ide/";
 // The one-line pitch, in the product's own voice. Longer prose (APP_DESCRIPTION)
 // is what search engines and app stores get; this is what a person reads first.
 // README.md and docs/index.md cannot import it and copy it by hand - the "brand
-// copy" test in tests/brand-copy.test.ts is what keeps those copies honest.
+// copy" test in tests/invariants/brand-copy.test.ts is what keeps those copies honest.
 export const APP_TAGLINE =
 	"A secure cloud computer with a powerful UI, usable from any phone or browser.";

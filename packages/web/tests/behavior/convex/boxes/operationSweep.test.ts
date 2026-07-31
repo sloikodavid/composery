@@ -7,10 +7,10 @@ import {
 	type BoxStatus
 } from "@/convex/schema";
 import {
-	boxEventType,
 	OPERATION_ALLOWED_STATUSES,
 	OPERATION_FAILURE_STATUS
 } from "@/convex/boxes/operationRules";
+import { boxEventType } from "@/lib/boxes/operations";
 import {
 	operationLiveness,
 	OPERATION_ORPHAN_GRACE_MS,

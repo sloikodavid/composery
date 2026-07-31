@@ -12,11 +12,10 @@ import {
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import { sendOwnerEmail } from "../ownerEmail";
-import { consoleBoxPath } from "../../lib/box-route";
-import { operationLabel } from "../../lib/operation-failure";
+import { consoleBoxPath } from "../../lib/boxes/route";
+import { boxEventType, operationLabel } from "../../lib/boxes/operations";
 import { appendBoxEvent } from "./events";
 import {
-	boxEventType,
 	isActiveOperationStatus,
 	OPERATION_FAILURE_STATUS
 } from "./operationRules";
@@ -243,7 +242,6 @@ export const finishBoxOperation = internalMutation({
 		await recordOperationFailure(ctx, {
 			boxId: args.context.boxId,
 			error,
-			eventType: boxEventType(operation.type, "failed"),
 			operationId: args.context.operationId,
 			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
 		});
@@ -263,7 +261,6 @@ export async function recordOperationFailure(
 	input: {
 		boxId: Id<"boxes">;
 		error: string;
-		eventType: string;
 		operationId: Id<"box_operations">;
 		targetBoxStatus?: BoxFailureStatus;
 	}
@@ -287,9 +284,21 @@ export async function recordOperationFailure(
 	});
 	if (!box) return;
 
-	await appendBoxEvent(ctx, box, input.eventType, {
-		message: input.error
-	});
+	// Named from the operation row rather than from an argument. It used to be
+	// passed in as a string, which is how five workflows came to be writing the
+	// pre-rename names (`box.stopped`, `box.suspended`, `box.update_not_needed`)
+	// that `rename.ts` exists to migrate away from - each one undoing that
+	// migration the next time the operation ran.
+	//
+	// The patch above would have thrown on a missing operation, so this is the
+	// type system's question rather than a state that happens - and the alert
+	// below still goes out either way, which is why this guards the one line
+	// that needs a row to name it rather than returning early.
+	if (operation) {
+		await appendBoxEvent(ctx, box, boxEventType(operation.type, "failed"), {
+			message: input.error
+		});
+	}
 
 	const operationType = operation
 		? operationLabel(operation.type, true)
@@ -331,7 +340,6 @@ export const markOperationFailed = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
 		error: v.string(),
-		eventType: v.string(),
 		operationId: v.id("box_operations"),
 		targetBoxStatus: v.optional(vBoxFailureStatus)
 	},
@@ -606,6 +614,10 @@ export const markDeleted = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
 		const operation = await ctx.db.get(args.operationId);
+		// The patch below would throw on a missing operation anyway. Saying so
+		// here is what keeps the event from being the thing that quietly drops:
+		// the row is what names it, so no row means no name.
+		if (!operation) throw new ConvexError("Operation not found.");
 
 		const timestamp = Date.now();
 		// deleteRuntime already removed the server, which detaches any attached
@@ -669,8 +681,11 @@ export const markDeleted = internalMutation({
 export const setBoxStatusWithOperationSucceeded = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
-		eventType: v.string(),
 		operationId: v.id("box_operations"),
+		// The event this records is named from the operation row below, so the
+		// only thing a caller still chooses is whether the operation did the work
+		// or found there was none to do.
+		outcome: v.optional(v.union(v.literal("succeeded"), v.literal("skipped"))),
 		status: v.union(
 			v.literal("running"),
 			v.literal("stopped"),
@@ -683,6 +698,10 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
 		const operation = await ctx.db.get(args.operationId);
+		// The patch below would throw on a missing operation anyway. Saying so
+		// here is what keeps the event from being the thing that quietly drops:
+		// the row is what names it, so no row means no name.
+		if (!operation) throw new ConvexError("Operation not found.");
 
 		const timestamp = Date.now();
 		await ctx.db.patch(args.boxId, {
@@ -694,7 +713,11 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 			finished_at: timestamp,
 			updated_at: timestamp
 		});
-		await appendBoxEvent(ctx, box, args.eventType);
+		await appendBoxEvent(
+			ctx,
+			box,
+			boxEventType(operation.type, args.outcome ?? "succeeded")
+		);
 
 		// Suspension is the other thing that happens to an owner's box without the
 		// owner asking, and unlike a stop it cannot be undone from their own page.

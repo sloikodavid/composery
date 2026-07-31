@@ -23,7 +23,7 @@ import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
 import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
 import { currentSuspensionReason } from "../boxes/queries";
 import { appendBoxEvent } from "../boxes/events";
-import { boxEventType } from "../boxes/operationRules";
+
 import { assertSlugAvailable } from "../boxes/slugAvailability";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
@@ -32,7 +32,7 @@ import { workflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
 import { vBoxPlan } from "../schema";
-import { defaultManualSnapshotCap } from "../../lib/box-plan";
+import { defaultManualSnapshotCap } from "../../lib/boxes/plan";
 import {
 	activeOperation,
 	boxRuntimeStanding,
@@ -46,12 +46,13 @@ import {
 	snapshotView,
 	startManualSnapshot
 } from "../boxes/snapshots";
-import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
-import { operationLabel } from "../../lib/operation-failure";
+import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
+import { boxEventType, operationLabel } from "../../lib/boxes/operations";
+import { DAY_MS } from "../time";
 
 const STAFF_BOX_LIST_LIMIT = 50;
 const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
-const STAFF_FAILURE_FEED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const STAFF_FAILURE_FEED_WINDOW_MS = 7 * DAY_MS;
 const STAFF_FAILURE_FEED_LIMIT = 25;
 const STAFF_FAILURE_DISMISS_BATCH = 100;
 
@@ -113,7 +114,7 @@ export const search = query({
 			if (isValidSlug(slug)) {
 				const slugBoxes = await ctx.db
 					.query("boxes")
-					.withIndex("slug", (query) => query.eq("slug", slug))
+					.withIndex("slug_status", (query) => query.eq("slug", slug))
 					.collect();
 				for (const box of slugBoxes) addBoxCandidate(candidates, box);
 			}
@@ -134,7 +135,9 @@ export const search = query({
 			for (const userId of userIds) {
 				const userBoxes = await ctx.db
 					.query("boxes")
-					.withIndex("user_id", (query) => query.eq("user_id", userId))
+					.withIndex("user_id_created_at", (query) =>
+						query.eq("user_id", userId)
+					)
 					.order("desc")
 					.take(STAFF_BOX_LIST_LIMIT);
 				for (const box of userBoxes) addBoxCandidate(candidates, box);
@@ -330,7 +333,7 @@ export const auditOperations = query({
 		await requireCapability(ctx, "staff_console");
 		return await ctx.db
 			.query("box_operations")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.order("desc")
 			.paginate(args.paginationOpts);
 	}

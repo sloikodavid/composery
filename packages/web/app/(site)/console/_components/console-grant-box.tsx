@@ -2,7 +2,6 @@
 
 import { useMutation } from "convex/react";
 import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
 import { Input } from "@/components/base/input";
 import {
 	Select,
@@ -13,7 +12,8 @@ import {
 } from "@/components/base/select";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "@/lib/box-plan";
+import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "@/lib/boxes/plan";
+import { SettingsCard } from "./settings-card";
 
 // Provision a box for an existing user without a paid checkout. The backend
 // owns every guard (user exists, slug free, capacity, capability); this form
@@ -34,31 +34,26 @@ export function ConsoleGrantBox() {
 		email.trim() !== "" && slug.trim() !== "" && reason.trim() !== "";
 
 	return (
-		<div className="rounded-2xl border border-border bg-card">
-			<div className="flex items-center justify-between border-b border-border px-4 py-3">
-				<h2 className="text-sm font-medium">Grant a box</h2>
-				<AnimatedIconButton
-					disabled={!ready || busy !== null}
-					icon="plus"
-					iconPosition="start"
-					onClick={() =>
-						run("grant-comp", "Box granted", async () => {
-							await grantComp({
-								email: email.trim(),
-								plan,
-								slug: slug.trim(),
-								reason: reason.trim()
-							});
-							setEmail("");
-							setSlug("");
-							setReason("");
-						})
-					}
-					size="sm"
-				>
-					Grant box
-				</AnimatedIconButton>
-			</div>
+		<SettingsCard
+			footnote="Provisions a real server against capacity, billed to no one. Recorded against your account."
+			onSave={() =>
+				run("grant-comp", "Box granted", async () => {
+					await grantComp({
+						email: email.trim(),
+						plan,
+						slug: slug.trim(),
+						reason: reason.trim()
+					});
+					setEmail("");
+					setSlug("");
+					setReason("");
+				})
+			}
+			saveDisabled={!ready || busy !== null}
+			saveIcon="plus"
+			saveLabel="Grant box"
+			title="Grant a box"
+		>
 			<div className="grid gap-3 px-4 py-3 sm:grid-cols-4">
 				<Select
 					disabled={busy !== null}
@@ -99,10 +94,6 @@ export function ConsoleGrantBox() {
 					value={reason}
 				/>
 			</div>
-			<p className="px-4 pb-3 text-xs text-pretty text-muted-foreground">
-				Provisions a real server against capacity, billed to no one. Recorded
-				against your account.
-			</p>
-		</div>
+		</SettingsCard>
 	);
 }

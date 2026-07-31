@@ -4,6 +4,7 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "../boxes/queries";
 import { startBoxOperation } from "../boxes/operations";
 import { boxSellableForProductId } from "./polar";
+import { HOUR_MS } from "../time";
 
 type ReconciliationPage = {
 	continueCursor: string;
@@ -127,7 +128,7 @@ export const reconcileBoxSubscriptions = internalAction({
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			const sixHourWindow = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
+			const sixHourWindow = Math.floor(Date.now() / (6 * HOUR_MS));
 			await ctx.runMutation(internal.staff.alerts.raise, {
 				key: `subscription-reconciliation-failed:${sixHourWindow}`,
 				severity: "critical",

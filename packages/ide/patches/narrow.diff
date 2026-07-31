@@ -19,8 +19,8 @@ workbench part fullscreen at a time, and one editor group.
   out of range.
 - Activity bar: `composery.activityBar.narrowLocation` (default `bottom`) is
   the narrow viewport's own activity bar location, independent of
-  `workbench.activityBar.location` - one phone and one desktop browser share a
-  box's settings file, so a single key would have had them moving each other's
+  `workbench.activityBar.location` - one phone and one desktop browser share one
+  Composery's settings file, so a single key would have had them moving each other's
   activity bar. narrowActivityBar.ts mirrors the narrow value onto the upstream
   key in the memory target so every existing reader and change listener needs no
   teaching, and configurationService.ts redirects writes of the upstream key to

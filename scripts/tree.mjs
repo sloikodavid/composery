@@ -11,6 +11,12 @@ const TREE_FINISH = "<!-- tree:finish -->";
 const write = process.argv.includes("--write");
 const watch = process.argv.includes("--watch");
 
+// The note that says the block below it is generated. It only tells the truth
+// inside the markers, so it is also how a second, unmanaged copy of the tree
+// gives itself away - see `dropStrayTrees`.
+const TREE_NOTE =
+	"> Live-updated by `scripts/tree.mjs` when `pnpm dev` or `pnpm dev:tree` is running. Manually update with `pnpm fix:tree`.";
+
 // Include new, non-ignored files before they are staged. A tree check that is
 // green before `git add` but turns red after it is not checking the artifact a
 // contributor is about to commit.
@@ -38,7 +44,7 @@ export function gitFiles() {
 
 // Directories before files, then by name under a pinned locale. localeCompare
 // with a default (undefined) locale resolves it from the environment (en-US on
-// the author's box, en-US-POSIX on a LANG=C.UTF-8 CI runner), which sorts
+// the author's machine, en-US-POSIX on a LANG=C.UTF-8 CI runner), which sorts
 // "_components" vs "[id]" differently and makes the committed tree fail the CI
 // check forever. Exported so a test guards the pin.
 export function compareEntries(left, right) {
@@ -46,7 +52,7 @@ export function compareEntries(left, right) {
 	return left.name.localeCompare(right.name, "en-US", { sensitivity: "base" });
 }
 
-function renderTree() {
+export function renderTree() {
 	const root = {
 		children: new Map(),
 		name: basename(REPO_ROOT),
@@ -82,7 +88,7 @@ function renderTree() {
 	return [
 		TREE_START,
 		"",
-		"> Live-updated by `scripts/tree.mjs` when `pnpm dev` or `pnpm dev:tree` is running. Manually update with `pnpm fix:tree`.",
+		TREE_NOTE,
 		"",
 		"```text",
 		...renderNode(root),
@@ -93,17 +99,40 @@ function renderTree() {
 	].join("\n");
 }
 
-function renderAgentsFile(current, tree) {
+// Remove any copy of the tree that is not the one between the markers.
+//
+// A file listing nothing regenerates is worse than no listing: it reads as
+// current for exactly as long as nobody checks it, and this file is loaded into
+// every agent's context, so a stale copy is handed out as fact. One did exist -
+// a second block carrying this same "live-updated" note, naming twenty-one files
+// that had been deleted and missing forty-five that had been added - and nothing
+// could have caught it, because the check only ever compared the managed block.
+// Now a stray copy is rewritten away by `--write` and named by the check.
+export function dropStrayTrees(current) {
 	const start = current.indexOf(TREE_START);
-	const finish = current.indexOf(TREE_FINISH);
+	const managed = start === -1 ? "" : current.slice(start);
+	const before = start === -1 ? current : current.slice(0, start);
+
+	// A note followed by a fenced block, anywhere outside the markers.
+	const stray = new RegExp(
+		`${TREE_NOTE.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}\\n+\`\`\`[\\s\\S]*?\\n\`\`\`\\n*`,
+		"g"
+	);
+	return `${before.replace(stray, "")}${managed}`;
+}
+
+export function renderAgentsFile(current, tree) {
+	const cleaned = dropStrayTrees(current);
+	const start = cleaned.indexOf(TREE_START);
+	const finish = cleaned.indexOf(TREE_FINISH);
 
 	if (start !== -1 && finish !== -1 && finish > start) {
-		const before = current.slice(0, start).trimEnd();
-		const after = current.slice(finish + TREE_FINISH.length).trimStart();
+		const before = cleaned.slice(0, start).trimEnd();
+		const after = cleaned.slice(finish + TREE_FINISH.length).trimStart();
 		return [before, tree.trimEnd(), after].filter(Boolean).join("\n\n") + "\n";
 	}
 
-	return `${current.trimEnd()}\n\n${tree}`;
+	return `${cleaned.trimEnd()}\n\n${tree}`;
 }
 
 function expectedAgentsFile() {
@@ -125,10 +154,7 @@ function syncTree({ quiet = false } = {}) {
 	return true;
 }
 
-if (
-	process.argv[1] &&
-	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	if (watch) {
 		syncTree();
 		setInterval(() => syncTree({ quiet: true }), 1000);

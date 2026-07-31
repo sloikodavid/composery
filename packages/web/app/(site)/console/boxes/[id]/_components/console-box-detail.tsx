@@ -19,10 +19,11 @@ import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
 import {
+	boxEventLabel,
 	failureNotice,
 	operationLabel,
 	OPERATION_LABEL
-} from "@/lib/operation-failure";
+} from "@/lib/boxes/operations";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
@@ -48,7 +49,7 @@ import type { BoxOperationStatus, BoxOperationType } from "@/convex/schema";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
-import { BOX_PLANS, boxPlanServerType } from "@/lib/box-plan";
+import { BOX_PLANS, boxPlanServerType } from "@/lib/boxes/plan";
 
 // Typed off the schema's own unions rather than restating them as `string`: this
 // row is what the console renders, and a loose type here is what let raw
@@ -69,17 +70,6 @@ type EventRow = {
 	type: string;
 };
 
-const OPERATION_SORT = {
-	type: (operation: OperationRow) => OPERATION_LABEL[operation.type],
-	status: (operation: OperationRow) => operation.status,
-	created_at: (operation: OperationRow) => operation.created_at
-};
-
-const EVENT_SORT = {
-	type: (event: EventRow) => event.type,
-	created_at: (event: EventRow) => event.created_at
-};
-
 const AUDIT_PAGE_SIZE = 100;
 
 function operationDetail(operation: OperationRow) {
@@ -88,6 +78,134 @@ function operationDetail(operation: OperationRow) {
 	return typeof reason === "string" && reason.trim()
 		? `Reason: ${reason}`
 		: null;
+}
+
+// What the two halves of the audit history have in common, which is everything
+// except what a row is called and whether it carries a status. They were two
+// copies of this table, so the events half kept rendering its raw stored
+// identifier long after the operations half had been given words.
+type AuditRow = { _id: string; created_at: number };
+
+type AuditPage<Row> = ReturnType<typeof usePaginatedQuery> & {
+	results: Row[];
+};
+
+function AuditTable<Row extends AuditRow>({
+	boxId,
+	detail,
+	label,
+	name,
+	page,
+	status,
+	table,
+	title
+}: {
+	boxId: Id<"boxes">;
+	// The second line under the name, where a row has one.
+	detail: (row: Row) => string | null;
+	// What one row is called, in words.
+	label: (row: Row) => string;
+	// What the whole list is called - the column header, and the plural in the
+	// "show more" button, so those two cannot disagree.
+	name: string;
+	page: AuditPage<Row>;
+	// The status cell, for the half that has one.
+	status?: (row: Row) => ReactNode;
+	table: string;
+	title: string;
+}) {
+	const accessors = {
+		type: (row: Row) => label(row),
+		created_at: (row: Row) => row.created_at
+	};
+	const { sort, sortedRows } = useTableSort(page.results, accessors);
+
+	return (
+		<>
+			<div className="overflow-hidden rounded-2xl border border-border bg-card">
+				<Table
+					cols={
+						status
+							? ["fluid", "datetime", "status", "actions-1"]
+							: ["fluid", "datetime", "actions-1"]
+					}
+				>
+					<TableHeader>
+						<TableRow>
+							<TableHead className="pl-4">
+								<SortHeader label={title} sort={sort} sortKey="type" />
+							</TableHead>
+							<TableHead>
+								<SortHeader label="Created" sort={sort} sortKey="created_at" />
+							</TableHead>
+							{status ? <TableHead>Status</TableHead> : null}
+							<TableHead className="pr-4 text-right">
+								<OpenInConvex
+									iconOnly
+									field="box_id"
+									table={table}
+									value={boxId}
+								/>
+							</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{page.status === "LoadingFirstPage" ? (
+							<TableLoadingRow />
+						) : sortedRows.length > 0 ? (
+							sortedRows.map((row) => {
+								const second = detail(row);
+								return (
+									<TableRow
+										className={second ? "[&>td]:align-top" : undefined}
+										key={row._id}
+									>
+										<TableCell className="pl-4">
+											<div className="min-w-0">
+												<p className="font-medium wrap-break-word text-foreground">
+													{label(row)}
+												</p>
+												{second ? (
+													<p className="wrap-break-word whitespace-normal text-muted-foreground">
+														{second}
+													</p>
+												) : null}
+											</div>
+										</TableCell>
+										<TableCell>{formatDateTime(row.created_at)}</TableCell>
+										{status ? <TableCell>{status(row)}</TableCell> : null}
+										<TableCell className="pr-4 text-right">
+											<OpenInConvex
+												iconOnly
+												label={`Open ${label(row).toLowerCase()} in Convex`}
+												table={table}
+												value={row._id}
+											/>
+										</TableCell>
+									</TableRow>
+								);
+							})
+						) : (
+							<TableEmptyRow>{`No ${name}.`}</TableEmptyRow>
+						)}
+					</TableBody>
+				</Table>
+			</div>
+			{page.status === "CanLoadMore" || page.status === "LoadingMore" ? (
+				<div className="flex justify-center">
+					<AnimatedIconButton
+						disabled={page.status === "LoadingMore"}
+						icon="plus"
+						iconPosition="start"
+						onClick={() => page.loadMore(AUDIT_PAGE_SIZE)}
+						variant="outline"
+					>
+						{page.status === "LoadingMore" ? "Loading…" : `Show more ${name}`}
+					</AnimatedIconButton>
+				</div>
+			) : null}
+		</>
+	);
 }
 
 function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
@@ -101,190 +219,30 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 		{ boxId },
 		{ initialNumItems: AUDIT_PAGE_SIZE }
 	);
-	const { sort: operationSort, sortedRows: sortedOperations } = useTableSort(
-		operations.results as OperationRow[],
-		OPERATION_SORT
-	);
-	const { sort: eventSort, sortedRows: sortedEvents } = useTableSort(
-		events.results as EventRow[],
-		EVENT_SORT
-	);
 
 	return (
 		<>
-			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table cols={["fluid", "datetime", "status", "actions-1"]}>
-					<TableHeader>
-						<TableRow>
-							<TableHead className="pl-4">
-								<SortHeader
-									label="Operation"
-									sort={operationSort}
-									sortKey="type"
-								/>
-							</TableHead>
-							<TableHead>
-								<SortHeader
-									label="Created"
-									sort={operationSort}
-									sortKey="created_at"
-								/>
-							</TableHead>
-							<TableHead>
-								<SortHeader
-									label="Status"
-									sort={operationSort}
-									sortKey="status"
-								/>
-							</TableHead>
-							<TableHead className="pr-4 text-right">
-								<OpenInConvex
-									iconOnly
-									field="box_id"
-									table="box_operations"
-									value={boxId}
-								/>
-							</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{operations.status === "LoadingFirstPage" ? (
-							<TableLoadingRow />
-						) : sortedOperations.length > 0 ? (
-							sortedOperations.map((operation) => {
-								const detail = operationDetail(operation);
-								return (
-									<TableRow
-										className={detail ? "[&>td]:align-top" : undefined}
-										key={operation._id}
-									>
-										<TableCell className="pl-4">
-											<div className="min-w-0">
-												<p className="font-medium wrap-break-word text-foreground">
-													{OPERATION_LABEL[operation.type]}
-												</p>
-												{detail ? (
-													<p className="wrap-break-word whitespace-normal text-muted-foreground">
-														{detail}
-													</p>
-												) : null}
-											</div>
-										</TableCell>
-										<TableCell>
-											{formatDateTime(operation.created_at)}
-										</TableCell>
-										<TableCell>
-											<StatusText kind="operation" status={operation.status} />
-										</TableCell>
-										<TableCell className="pr-4 text-right">
-											<OpenInConvex
-												iconOnly
-												label={`Open ${operationLabel(operation.type, true)} operation in Convex`}
-												table="box_operations"
-												value={operation._id}
-											/>
-										</TableCell>
-									</TableRow>
-								);
-							})
-						) : (
-							<TableEmptyRow>No operations.</TableEmptyRow>
-						)}
-					</TableBody>
-				</Table>
-			</div>
-			{operations.status === "CanLoadMore" ||
-			operations.status === "LoadingMore" ? (
-				<div className="flex justify-center">
-					<AnimatedIconButton
-						disabled={operations.status === "LoadingMore"}
-						icon="plus"
-						iconPosition="start"
-						onClick={() => operations.loadMore(AUDIT_PAGE_SIZE)}
-						variant="outline"
-					>
-						{operations.status === "LoadingMore"
-							? "Loading…"
-							: "Show more operations"}
-					</AnimatedIconButton>
-				</div>
-			) : null}
-
-			<div className="overflow-hidden rounded-2xl border border-border bg-card">
-				<Table cols={["fluid", "datetime", "actions-1"]}>
-					<TableHeader>
-						<TableRow>
-							<TableHead className="pl-4">
-								<SortHeader label="Event" sort={eventSort} sortKey="type" />
-							</TableHead>
-							<TableHead>
-								<SortHeader
-									label="Created"
-									sort={eventSort}
-									sortKey="created_at"
-								/>
-							</TableHead>
-							<TableHead className="pr-4 text-right">
-								<OpenInConvex
-									iconOnly
-									field="box_id"
-									table="box_events"
-									value={boxId}
-								/>
-							</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{events.status === "LoadingFirstPage" ? (
-							<TableLoadingRow />
-						) : sortedEvents.length > 0 ? (
-							sortedEvents.map((event) => (
-								<TableRow
-									className={event.message ? "[&>td]:align-top" : undefined}
-									key={event._id}
-								>
-									<TableCell className="pl-4">
-										<div className="min-w-0">
-											<p className="font-medium wrap-break-word text-foreground">
-												{event.type}
-											</p>
-											{event.message ? (
-												<p className="wrap-break-word whitespace-normal text-muted-foreground">
-													{event.message}
-												</p>
-											) : null}
-										</div>
-									</TableCell>
-									<TableCell>{formatDateTime(event.created_at)}</TableCell>
-									<TableCell className="pr-4 text-right">
-										<OpenInConvex
-											iconOnly
-											label={`Open ${event.type} event in Convex`}
-											table="box_events"
-											value={event._id}
-										/>
-									</TableCell>
-								</TableRow>
-							))
-						) : (
-							<TableEmptyRow>No events.</TableEmptyRow>
-						)}
-					</TableBody>
-				</Table>
-			</div>
-			{events.status === "CanLoadMore" || events.status === "LoadingMore" ? (
-				<div className="flex justify-center">
-					<AnimatedIconButton
-						disabled={events.status === "LoadingMore"}
-						icon="plus"
-						iconPosition="start"
-						onClick={() => events.loadMore(AUDIT_PAGE_SIZE)}
-						variant="outline"
-					>
-						{events.status === "LoadingMore" ? "Loading…" : "Show more events"}
-					</AnimatedIconButton>
-				</div>
-			) : null}
+			<AuditTable<OperationRow>
+				boxId={boxId}
+				detail={operationDetail}
+				label={(operation) => OPERATION_LABEL[operation.type]}
+				name="operations"
+				page={operations as AuditPage<OperationRow>}
+				status={(operation) => (
+					<StatusText kind="operation" status={operation.status} />
+				)}
+				table="box_operations"
+				title="Operation"
+			/>
+			<AuditTable<EventRow>
+				boxId={boxId}
+				detail={(event) => event.message ?? null}
+				label={(event) => boxEventLabel(event.type)}
+				name="events"
+				page={events as AuditPage<EventRow>}
+				table="box_events"
+				title="Event"
+			/>
 		</>
 	);
 }

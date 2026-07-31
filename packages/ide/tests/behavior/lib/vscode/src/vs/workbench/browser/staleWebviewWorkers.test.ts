@@ -5,7 +5,7 @@ import { isStaleWebviewWorkerScope } from "../../../../../../../../overlay/lib/v
 // What a webview actually registers: service-worker.js relative to the pre page,
 // which the server hands out below the stamped static route.
 const webviewScope = (stamp: string, base = "") =>
-	`https://box.example.com${base}/stable-${stamp}/static/out/vs/workbench/contrib/webview/browser/pre/`;
+	`https://composery.example.com${base}/stable-${stamp}/static/out/vs/workbench/contrib/webview/browser/pre/`;
 
 const STAMP = "9f2c1ab4d7e0";
 
@@ -23,9 +23,9 @@ describe("stale webview workers", () => {
 	// The workbench's own worker is scoped to the site root and carries no stamp.
 	// Unregistering it would take out the running workbench's offline support.
 	test.each([
-		"https://box.example.com/",
-		"https://box.example.com/prefix/",
-		"https://box.example.com/static/out/"
+		"https://composery.example.com/",
+		"https://composery.example.com/prefix/",
+		"https://composery.example.com/static/out/"
 	])("%s carries no stamp and is left alone", (scope) => {
 		expect(isStaleWebviewWorkerScope(scope, STAMP)).toBe(false);
 	});
@@ -49,9 +49,9 @@ describe("stale webview workers", () => {
 	});
 
 	test.each([
-		"https://box.example.com/my-stable-notes/",
-		"https://box.example.com/unstable-9f2c1ab4d7e0/",
-		"https://box.example.com/docs/stable-releases.html"
+		"https://composery.example.com/my-stable-notes/",
+		"https://composery.example.com/unstable-9f2c1ab4d7e0/",
+		"https://composery.example.com/docs/stable-releases.html"
 	])("%s is not a stamped scope", (scope) => {
 		expect(isStaleWebviewWorkerScope(scope, STAMP)).toBe(false);
 	});
@@ -79,7 +79,7 @@ describe("stale webview workers", () => {
 	test("a bare stable- segment is not a stamp", () => {
 		expect(
 			isStaleWebviewWorkerScope(
-				"https://box.example.com/stable-/static/",
+				"https://composery.example.com/stable-/static/",
 				STAMP
 			)
 		).toBe(false);

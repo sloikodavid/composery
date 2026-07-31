@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import {
 	internalMutation,
 	type DatabaseReader,
-	type DatabaseWriter
+	type MutationCtx
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type {
@@ -11,8 +11,8 @@ import type {
 	StoredThreshold
 } from "./schema";
 import {
-	resolveThresholds,
 	thresholdsToStored,
+	resolveThresholds,
 	type ThresholdSetting
 } from "./boxes/metricThresholds";
 import {
@@ -23,6 +23,23 @@ import {
 import { staffConsoleUrl } from "./env";
 import { raiseAlert } from "./staff/alerts";
 
+// The deployment's one settings row: how it is read, and every way it changes.
+//
+// The `write*` functions are plain functions rather than internal mutations, because the
+// only thing that changes a setting deliberately is a staff mutation in
+// `staff/settings.ts` - and a mutation calling a mutation runs in the same
+// transaction anyway, so the hop bought nothing but a second copy of every
+// argument validator. Two of those validators (thresholds, snapshot policy) were
+// literally written out twice, which is exactly the drift a shape declared once
+// at the public boundary cannot have.
+//
+// What survives as a Convex function below is only what an *action* has to
+// reach, since an action has no `db`.
+
+// The alert a setting change raises has to reach the mail component, so a
+// writer here is the whole mutation ctx rather than just its `db`.
+type Writer = MutationCtx;
+
 // Legit buyers rarely juggle more than a couple of pending purchases; the
 // default caps concurrent active checkout reservations so one account can't hog
 // slugs it never pays for. Staff-tunable via the console.
@@ -30,10 +47,7 @@ export const DEFAULT_MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER = 3;
 export const MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER = 50;
 
 async function globalSettings(ctx: { db: DatabaseReader }) {
-	return await ctx.db
-		.query("settings")
-		.withIndex("key", (query) => query.eq("key", "global"))
-		.first();
+	return await ctx.db.query("settings").first();
 }
 
 export async function readGlobalSettings(ctx: { db: DatabaseReader }) {
@@ -86,7 +100,7 @@ function resolveMinimumRuntime(
 // old. An actor is now either present, and stamped, or absent, and the last
 // staff edit is left standing.
 async function patchGlobalSettings(
-	ctx: { db: DatabaseWriter },
+	ctx: Writer,
 	patch: {
 		auto_suspend_enabled?: boolean;
 		checkout_enabled?: boolean;
@@ -115,103 +129,134 @@ async function patchGlobalSettings(
 
 	await ctx.db.insert("settings", {
 		...patch,
-		key: "global",
 		checkout_enabled: patch.checkout_enabled ?? true,
 		updated_at: now,
 		updated_by: updatedBy
 	});
 }
 
-export const setCheckoutEnabled = internalMutation({
+export async function writeCheckoutEnabled(
+	ctx: Writer,
+	checkoutEnabled: boolean,
+	updatedBy: string
+) {
+	const previous = await readGlobalSettings(ctx);
+	await patchGlobalSettings(
+		ctx,
+		{ checkout_enabled: checkoutEnabled },
+		updatedBy
+	);
+	if (previous.checkoutEnabled === checkoutEnabled) return;
+
+	const state = checkoutEnabled ? "enabled" : "disabled";
+	await raiseAlert(ctx, {
+		key: `checkout-${state}:${Date.now()}:${updatedBy}`,
+		severity: checkoutEnabled ? "resolved" : "critical",
+		subject: `Checkout ${state}`,
+		text: `New box checkout was ${state} by ${updatedBy}.\n\nReview capacity and checkout state: ${staffConsoleUrl()}`
+	});
+}
+
+export async function writeHetznerLimits(
+	ctx: Writer,
+	limits: { serverLimit: number | null; snapshotLimit: number | null },
+	updatedBy: string
+) {
+	const previous = await readGlobalSettings(ctx);
+	await patchGlobalSettings(
+		ctx,
+		{
+			hetzner_server_limit: limits.serverLimit ?? undefined,
+			hetzner_snapshot_limit: limits.snapshotLimit ?? undefined
+		},
+		updatedBy
+	);
+	const wasConfigured =
+		previous.hetznerServerLimit !== null &&
+		previous.hetznerSnapshotLimit !== null;
+	const configured =
+		limits.serverLimit !== null && limits.snapshotLimit !== null;
+	if (!wasConfigured || configured) return;
+
+	await raiseAlert(ctx, {
+		key: `capacity-admission-disabled:${Date.now()}:${updatedBy}`,
+		severity: "critical",
+		subject: "Capacity admission disabled",
+		text: `Hetzner server and snapshot allocations were removed by ${updatedBy}. New checkout now fails closed until both are configured.\n\nReview the allocation: ${staffConsoleUrl()}`
+	});
+}
+
+export async function writeAutoSuspendEnabled(
+	ctx: Writer,
+	autoSuspendEnabled: boolean,
+	updatedBy: string
+) {
+	const previous = await readGlobalSettings(ctx);
+	await patchGlobalSettings(
+		ctx,
+		{ auto_suspend_enabled: autoSuspendEnabled },
+		updatedBy
+	);
+	if (previous.autoSuspendEnabled === autoSuspendEnabled) return;
+
+	const state = autoSuspendEnabled ? "enabled" : "disabled";
+	await raiseAlert(ctx, {
+		key: `auto-suspend-${state}:${Date.now()}:${updatedBy}`,
+		severity: autoSuspendEnabled ? "warning" : "critical",
+		subject: `Automatic suspension ${state}`,
+		text: `Automatic abuse suspension was ${state} by ${updatedBy}.\n\nReview the thresholds and current flags: ${staffConsoleUrl()}`
+	});
+}
+
+export async function writeMaxActiveCheckoutIntentsPerUser(
+	ctx: Writer,
+	max: number,
+	updatedBy: string
+) {
+	await patchGlobalSettings(
+		ctx,
+		{ max_active_checkout_intents_per_user: max },
+		updatedBy
+	);
+}
+
+export async function writeThresholds(
+	ctx: Writer,
+	thresholds: readonly ThresholdSetting[],
+	updatedBy: string
+) {
+	await patchGlobalSettings(
+		ctx,
+		{ thresholds: thresholdsToStored(thresholds) },
+		updatedBy
+	);
+}
+
+export async function writeSnapshotPolicy(
+	ctx: Writer,
+	policy: SnapshotPolicy,
+	updatedBy: string
+) {
+	await patchGlobalSettings(
+		ctx,
+		{ snapshot_policy: snapshotPolicyToStored(policy) },
+		updatedBy
+	);
+}
+
+// Stop selling boxes, from an action.
+//
+// Deliberately one-way. The two callers are provider quota failures in
+// `boxes/infra/hetznerVps.ts`, and both close checkout; a generic boolean
+// reachable from any action could also re-open it, which is a decision that
+// belongs to a person looking at the Hetzner allocation. Turning it back on is
+// the staff mutation, and only that.
+export const closeCheckout = internalMutation({
 	args: {
-		checkoutEnabled: v.boolean(),
-		updatedBy: v.string()
+		by: v.string()
 	},
 	handler: async (ctx, args) => {
-		const previous = await readGlobalSettings(ctx);
-		await patchGlobalSettings(
-			ctx,
-			{ checkout_enabled: args.checkoutEnabled },
-			args.updatedBy
-		);
-		if (previous.checkoutEnabled === args.checkoutEnabled) return;
-
-		const state = args.checkoutEnabled ? "enabled" : "disabled";
-		await raiseAlert(ctx, {
-			key: `checkout-${state}:${Date.now()}:${args.updatedBy}`,
-			severity: args.checkoutEnabled ? "resolved" : "critical",
-			subject: `Checkout ${state}`,
-			text: `New box checkout was ${state} by ${args.updatedBy}.\n\nReview capacity and checkout state: ${staffConsoleUrl()}`
-		});
-	}
-});
-
-export const setHetznerLimits = internalMutation({
-	args: {
-		serverLimit: v.union(v.number(), v.null()),
-		snapshotLimit: v.union(v.number(), v.null()),
-		updatedBy: v.string()
-	},
-	handler: async (ctx, args) => {
-		const previous = await readGlobalSettings(ctx);
-		await patchGlobalSettings(
-			ctx,
-			{
-				hetzner_server_limit: args.serverLimit ?? undefined,
-				hetzner_snapshot_limit: args.snapshotLimit ?? undefined
-			},
-			args.updatedBy
-		);
-		const wasConfigured =
-			previous.hetznerServerLimit !== null &&
-			previous.hetznerSnapshotLimit !== null;
-		const configured = args.serverLimit !== null && args.snapshotLimit !== null;
-		if (!wasConfigured || configured) return;
-
-		await raiseAlert(ctx, {
-			key: `capacity-admission-disabled:${Date.now()}:${args.updatedBy}`,
-			severity: "critical",
-			subject: "Capacity admission disabled",
-			text: `Hetzner server and snapshot allocations were removed by ${args.updatedBy}. New checkout now fails closed until both are configured.\n\nReview the allocation: ${staffConsoleUrl()}`
-		});
-	}
-});
-
-export const setAutoSuspendEnabled = internalMutation({
-	args: {
-		autoSuspendEnabled: v.boolean(),
-		updatedBy: v.string()
-	},
-	handler: async (ctx, args) => {
-		const previous = await readGlobalSettings(ctx);
-		await patchGlobalSettings(
-			ctx,
-			{ auto_suspend_enabled: args.autoSuspendEnabled },
-			args.updatedBy
-		);
-		if (previous.autoSuspendEnabled === args.autoSuspendEnabled) return;
-
-		const state = args.autoSuspendEnabled ? "enabled" : "disabled";
-		await raiseAlert(ctx, {
-			key: `auto-suspend-${state}:${Date.now()}:${args.updatedBy}`,
-			severity: args.autoSuspendEnabled ? "warning" : "critical",
-			subject: `Automatic suspension ${state}`,
-			text: `Automatic abuse suspension was ${state} by ${args.updatedBy}.\n\nReview the thresholds and current flags: ${staffConsoleUrl()}`
-		});
-	}
-});
-
-export const setMaxActiveCheckoutIntentsPerUser = internalMutation({
-	args: {
-		max: v.number(),
-		updatedBy: v.string()
-	},
-	handler: async (ctx, args) => {
-		await patchGlobalSettings(
-			ctx,
-			{ max_active_checkout_intents_per_user: args.max },
-			args.updatedBy
-		);
+		await writeCheckoutEnabled(ctx, false, args.by);
 	}
 });
 
@@ -233,6 +278,8 @@ export const recordRuntimeRelease = internalMutation({
 	}
 });
 
+// The floor is pinned to a resolved release, which only an action can read, so
+// unlike the settings above this one is reached through a mutation.
 export const setMinimumRuntime = internalMutation({
 	args: {
 		deadline: v.optional(v.number()),
@@ -263,49 +310,5 @@ export const setMinimumRuntime = internalMutation({
 			// crossed it, the control plane still has to read older boxes.
 			text: `${args.updatedBy} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/boxes/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
 		});
-	}
-});
-
-export const setThresholds = internalMutation({
-	args: {
-		thresholds: v.array(
-			v.object({
-				signal: v.union(v.literal("egress_bandwidth"), v.literal("egress_pps")),
-				value: v.number(),
-				sustainedSamples: v.number()
-			})
-		),
-		updatedBy: v.string()
-	},
-	handler: async (ctx, args) => {
-		const thresholds: ThresholdSetting[] = args.thresholds.map((t) => ({
-			signal: t.signal,
-			value: t.value,
-			sustainedSamples: t.sustainedSamples
-		}));
-		await patchGlobalSettings(
-			ctx,
-			{ thresholds: thresholdsToStored(thresholds) },
-			args.updatedBy
-		);
-	}
-});
-
-export const setSnapshotPolicy = internalMutation({
-	args: {
-		policy: v.object({
-			manualMinIntervalMinutes: v.number(),
-			manualRetentionDays: v.number(),
-			automaticRetentionDays: v.number()
-		}),
-		updatedBy: v.string()
-	},
-	handler: async (ctx, args) => {
-		const policy: SnapshotPolicy = args.policy;
-		await patchGlobalSettings(
-			ctx,
-			{ snapshot_policy: snapshotPolicyToStored(policy) },
-			args.updatedBy
-		);
 	}
 });

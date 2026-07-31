@@ -24,15 +24,16 @@ import {
 	scrubbedAccountEmail,
 	scrubbedUserId
 } from "./accountDeletionLogic";
+import { DAY_MS, MINUTE_MS } from "./time";
 
-const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * 60 * 1000;
+const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * MINUTE_MS;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
-const ACCOUNT_PURGE_RETRY_MS = 24 * 60 * 60 * 1000;
+const ACCOUNT_PURGE_RETRY_MS = DAY_MS;
 // Exported only because the operator runbook states it: `// runbook:` binds the
 // number in the doc to this constant, and the test that pins the pair reads the
 // exported value.
 // runbook: Stuck account-deletion alert
-export const ACCOUNT_DELETION_ALERT_AFTER_MS = 24 * 60 * 60 * 1000;
+export const ACCOUNT_DELETION_ALERT_AFTER_MS = DAY_MS;
 
 type DeletionState = {
 	boxes: Doc<"boxes">[];
@@ -90,7 +91,9 @@ export const accountDeletionState = internalQuery({
 
 		const boxes = await ctx.db
 			.query("boxes")
-			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.withIndex("user_id_created_at", (query) =>
+				query.eq("user_id", args.clerkUserId)
+			)
 			.collect();
 
 		return { boxes, user };
@@ -138,7 +141,9 @@ export const markAccountDeletionPending = internalMutation({
 		// account, and the slug should free up immediately.
 		const intents = await ctx.db
 			.query("box_checkout_intents")
-			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.withIndex("user_id_created_at", (query) =>
+				query.eq("user_id", args.clerkUserId)
+			)
 			.collect();
 		for (const intent of intents) {
 			if (intent.status !== "active" || intent.box_id) continue;
@@ -179,7 +184,9 @@ export const finishAccountDeletion = internalMutation({
 		const deletedUserId = scrubbedUserId(user._id);
 		const intents = await ctx.db
 			.query("box_checkout_intents")
-			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.withIndex("user_id_created_at", (query) =>
+				query.eq("user_id", args.clerkUserId)
+			)
 			.collect();
 
 		for (const intent of intents) {
@@ -240,13 +247,13 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 			const [box, intent, event] = await Promise.all([
 				ctx.db
 					.query("boxes")
-					.withIndex("user_id", (query) =>
+					.withIndex("user_id_created_at", (query) =>
 						query.eq("user_id", user.clerk_user_id)
 					)
 					.first(),
 				ctx.db
 					.query("box_checkout_intents")
-					.withIndex("user_id", (query) =>
+					.withIndex("user_id_created_at", (query) =>
 						query.eq("user_id", user.clerk_user_id)
 					)
 					.first(),
@@ -286,7 +293,9 @@ export const pseudonymizeDeletedAccountRecords = internalMutation({
 	handler: async (ctx, args) => {
 		const boxes = await ctx.db
 			.query("boxes")
-			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.withIndex("user_id_created_at", (query) =>
+				query.eq("user_id", args.clerkUserId)
+			)
 			.take(ACCOUNT_DELETION_PAGE_SIZE);
 		const events = await ctx.db
 			.query("box_events")

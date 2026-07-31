@@ -1,7 +1,7 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { boxStatusesExcept, type BoxPlan, type BoxStatus } from "../schema";
-import { BOX_PLANS, BOX_PLAN_ORDER } from "../../lib/box-plan";
+import { BOX_PLANS, BOX_PLAN_ORDER } from "../../lib/boxes/plan";
 import type { SnapshotPolicy } from "./snapshotPolicy";
 
 // Every status but "deleted" holds a Hetzner server, so every one of them counts

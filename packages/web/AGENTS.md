@@ -7,12 +7,12 @@
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
 - Box lifecycle workflows are named `<verb>Box` or `<verb>Box<target>`; see `convex/boxes/workflows/` for the current set.
 - Every box operation starts through `startBoxOperation` and carries a required `trigger` (`owner`, `staff`, or a `system:` sweep). Automatic repair decides whether a person is working on a box from that field alone, so a new automatic caller adds its own `system:` literal rather than borrowing one.
-- A workflow declares its operation `type`, not its own failure handling. Where a failure leaves the box and what event it records live once in `OPERATION_FAILURE_STATUS` and `boxEventType` (`convex/boxes/boxOperationRules.ts`), because the sweep that rescues a stuck operation has to reach the same answer the workflow would have.
-- Retention and purge windows live in `convex/boxes/boxRetention.ts`; read the window from there rather than restating a duration.
+- A workflow declares its operation `type`, not its own failure handling. Where a failure leaves the box and what event it records live once in `OPERATION_FAILURE_STATUS` and `boxEventType` (`convex/boxes/operationRules.ts`), because the sweep that rescues a stuck operation has to reach the same answer the workflow would have.
+- Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
-- A directory is part of a name: inside `convex/boxes/` and `components/boxes/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
+- A directory is part of a name: inside `convex/boxes/`, `components/boxes/` and `lib/boxes/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
 - The same operation is named the same on both sides. `api.user.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
-- What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `lib/box-plan.ts`, keyed by the `vBoxPlan` union in `convex/schema.ts` and pinned to it with `satisfies`. Never restate a plan's machine or specification anywhere else: adding a plan is a literal in the union, a row in that table, and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
+- What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `lib/boxes/plan.ts`, keyed by the `vBoxPlan` union in `convex/schema.ts` and pinned to it with `satisfies`. Never restate a plan's machine or specification anywhere else: adding a plan is a literal in the union, a row in that table, and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
 - Cloud box runtime settings are defined once in `convex/boxes/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
 
 ## Components
@@ -20,7 +20,7 @@
 Four buckets, by what a file is rather than what it does:
 
 - `components/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
-- `components/boxes/` - box-domain UI, mirroring `convex/boxes/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`).
+- `components/boxes/` - box-domain UI, mirroring `convex/boxes/`, `lib/boxes/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`).
 - `components/icons/` - see below.
 - `components/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
 
@@ -31,7 +31,7 @@ Four buckets, by what a file is rather than what it does:
 **How they're reached.** Static glyphs are imported from `lucide-react`. Animated ones are never imported by name outside `components/animated-icon` - call sites name them (`icon="download"`, or `<AnimatedIcon icon="check" iconRef={ref} />` when the trigger lays its own icon out). A test enforces this; without it, `CheckIcon` means two different components depending on the import line.
 
 - Every icon shares one shell (`components/icons/create.tsx`): the hover/handle wiring and the stock lucide `<svg>` props live there once, so an icon file is its variants plus its `<svg>` body and nothing else.
-- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `components/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `components/icons/<name>.tsx` -> add a line to the `ICONS` map in `components/animated-icon`. `AnimatedIconName` reads off that map, and `components/icons/registry.test.ts` fails if you skip the last step.
+- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `components/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `components/icons/<name>.tsx` -> add a line to the `ICONS` map in `components/animated-icon`. `AnimatedIconName` reads off that map, and `tests/invariants/components/icons/registry.test.ts` fails if you skip the last step.
 - It lands in `base/` because `@lucide-animated` items are `registry:ui`, which the CLI writes to `aliases.ui`; `--path` does not override that. Nothing to fix - the file has to be rewritten by hand anyway, so move it while you rewrite it.
 - Anything that renders an animated icon inside its own trigger uses `useAnimatedIconHandlers` rather than repeating the four handlers - it carries the `:focus-visible` guard that keeps programmatic focus (a dialog autofocusing its first button) from freezing the icon mid-pose.
 - `icons/<name>.tsx` is a glyph registered in the map; `icons/<name>-logo.tsx` is a static brand logo that is not. Keeping those apart is what stops a second `XIcon` (the dismiss glyph vs the X/Twitter logo) from existing.

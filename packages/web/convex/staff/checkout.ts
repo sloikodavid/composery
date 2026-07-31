@@ -7,7 +7,7 @@ import {
 	findUserByEmail,
 	requireCapability
 } from "../users";
-import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
+import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
 
 const STAFF_INTENT_LIST_LIMIT = 50;
 const STAFF_INTENT_SEARCH_SCAN_LIMIT = 500;
@@ -96,7 +96,9 @@ export const activeCheckoutIntents = query({
 			for (const userId of userIds) {
 				const userIntents = await ctx.db
 					.query("box_checkout_intents")
-					.withIndex("user_id", (query) => query.eq("user_id", userId))
+					.withIndex("user_id_created_at", (query) =>
+						query.eq("user_id", userId)
+					)
 					.order("desc")
 					.take(STAFF_INTENT_LIST_LIMIT);
 				for (const intent of userIntents) {

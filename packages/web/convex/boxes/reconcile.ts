@@ -6,12 +6,13 @@ import {
 	internalQuery
 } from "../_generated/server";
 import { raiseAlert } from "../staff/alerts";
+import { DAY_MS, HOUR_MS } from "../time";
 
 // Grace window before a Hetzner resource is eligible for reclaim. A snapshot
 // image exists for a few seconds before its row is patched with the id, and a
 // freshly created server exists for minutes before creation records it on
 // the box - the window keeps reconciliation off anything mid-flight.
-export const RECONCILE_MIN_AGE_MS = 2 * 60 * 60 * 1000;
+export const RECONCILE_MIN_AGE_MS = 2 * HOUR_MS;
 
 // A resource is reclaimable when nothing in our DB references it and it has
 // aged past the grace window. Pure so the decision is testable without Hetzner
@@ -249,7 +250,7 @@ export const reconcileHetznerResources = internalAction({
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			const day = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+			const day = Math.floor(Date.now() / DAY_MS);
 			await ctx.runMutation(internal.staff.alerts.raise, {
 				key: `hetzner-reconciliation-failed:${day}`,
 				severity: "critical",

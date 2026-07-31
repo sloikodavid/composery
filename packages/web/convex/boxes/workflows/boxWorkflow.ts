@@ -3,7 +3,7 @@ import { type ObjectType, type PropertyValidators, v } from "convex/values";
 import { components, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type { BoxOperationType } from "../../schema";
-import { boxEventType, OPERATION_FAILURE_STATUS } from "../operationRules";
+import { OPERATION_FAILURE_STATUS } from "../operationRules";
 
 export const workflow = new WorkflowManager(components.workflow);
 
@@ -56,7 +56,7 @@ type BoxWorkflowArgs<Extra extends PropertyValidators> = {
 // it - an unclosed operation would block every later action on the box.
 //
 // Where a failure leaves the box is not stated here: it is looked up from
-// `OPERATION_FAILURE` by operation type, so a workflow cannot describe its own
+// `OPERATION_FAILURE_STATUS` by operation type, so a workflow cannot describe its own
 // failure differently from the sweep that rescues it.
 export function defineBoxWorkflow<
 	Extra extends PropertyValidators = Record<string, never>
@@ -86,7 +86,6 @@ export function defineBoxWorkflow<
 					boxId: typedArgs.boxId,
 					operationId: typedArgs.operationId,
 					error: operationError(error),
-					eventType: boxEventType(config.type, "failed"),
 					targetBoxStatus: failureStatus
 				});
 				throw error;

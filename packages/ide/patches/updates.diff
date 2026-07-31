@@ -3,7 +3,7 @@ Composery updates own the whole update surface
 Composery has exactly one update mechanism: the composery-updates builtin
 extension (keyed on COMPOSERY_BUILD_VERSION, compared against
 COMPOSERY_BUILD_SOURCE's GitHub releases on a self-hosted instance and against
-the website's fleet release on a cloud box; automatic on startup and manual via
+the website's fleet release on a cloud instance; automatic on startup and manual via
 the composery.checkForUpdates command). This patch owns everything around that:
 
 - adds the File-menu "Check for Updates" item that fires the extension command

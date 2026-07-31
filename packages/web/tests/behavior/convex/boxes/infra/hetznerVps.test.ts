@@ -20,7 +20,6 @@ import {
 	PARKING_VOLUME_MIN_GB,
 	attachVolumePayload,
 	createVolumePayload,
-	parkingVolumeDevicePath,
 	parkingVolumeName,
 	parkingVolumeSizeGb,
 	productVolumeListPath
@@ -29,24 +28,16 @@ import { authorizedPublicKey } from "@/convex/boxes/infra/sshKeys";
 
 const { utils } = ssh2;
 
-const envNames = [
-	"HETZNER_BOX_IMAGE",
-	"HETZNER_CLOUD_TOKEN",
-	"HETZNER_FIREWALL_ID",
-	"HETZNER_NETWORK_ID",
-	"HETZNER_SSH_KEYS",
-	"SSH_PRIVATE_KEY",
-	"SSH_USER"
-] as const;
-const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
-
+// `vi.stubEnv`, never a module-load snapshot of `process.env`. A snapshot taken
+// when the file is imported is only correct if this file has the process to
+// itself: with file isolation off - which is how mutation testing runs the suite
+// - a sibling that also saves and restores these names captures whatever this
+// one happened to leave set, and then restores it over the top. Two files
+// hand-rolling the same save/restore is how a malformed SSH_PRIVATE_KEY turns up
+// in a test that had just written a valid one.
 afterEach(() => {
 	vi.unstubAllGlobals();
-	for (const name of envNames) {
-		const value = previousEnv.get(name);
-		if (value === undefined) delete process.env[name];
-		else process.env[name] = value;
-	}
+	vi.unstubAllEnvs();
 });
 
 describe("vps request contracts", () => {
@@ -64,12 +55,12 @@ describe("vps request contracts", () => {
 		const keyPair = utils.generateKeyPairSync("ed25519", {
 			comment: "composery-test"
 		});
-		process.env.HETZNER_BOX_IMAGE = "ubuntu-24.04";
-		process.env.HETZNER_FIREWALL_ID = "42";
-		process.env.HETZNER_NETWORK_ID = "";
-		process.env.HETZNER_SSH_KEYS = "123,composery-key";
-		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
-		process.env.SSH_USER = "root";
+		vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
+		vi.stubEnv("HETZNER_FIREWALL_ID", "42");
+		vi.stubEnv("HETZNER_NETWORK_ID", "");
+		vi.stubEnv("HETZNER_SSH_KEYS", "123,composery-key");
+		vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+		vi.stubEnv("SSH_USER", "root");
 
 		const payload = createServerPayload(
 			{ serverType: "cx23", location: "nbg1" },
@@ -89,8 +80,8 @@ describe("vps request contracts", () => {
 		const keyPair = utils.generateKeyPairSync("ed25519", {
 			comment: "composery-test"
 		});
-		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
-		process.env.SSH_USER = "root";
+		vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+		vi.stubEnv("SSH_USER", "root");
 
 		expect(rebuildServerPayload(123)).toEqual({
 			image: 123,
@@ -108,12 +99,12 @@ describe("vps request contracts", () => {
 		const keyPair = utils.generateKeyPairSync("ed25519", {
 			comment: "composery-test"
 		});
-		process.env.HETZNER_BOX_IMAGE = "ubuntu-24.04";
-		process.env.HETZNER_FIREWALL_ID = "42";
-		process.env.HETZNER_NETWORK_ID = "";
-		process.env.HETZNER_SSH_KEYS = "123";
-		process.env.SSH_PRIVATE_KEY = keyPair.private.replace(/\n/g, "\\n");
-		process.env.SSH_USER = "root";
+		vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
+		vi.stubEnv("HETZNER_FIREWALL_ID", "42");
+		vi.stubEnv("HETZNER_NETWORK_ID", "");
+		vi.stubEnv("HETZNER_SSH_KEYS", "123");
+		vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+		vi.stubEnv("SSH_USER", "root");
 
 		expect(
 			createServerPayload({ serverType: "cx23", location: "nbg1" }, "my-box")
@@ -261,13 +252,8 @@ describe("parking volumes", () => {
 		expect(() => parkingVolumeSizeGb(-1)).toThrow();
 	});
 
-	test("names and locates a parking volume deterministically from ids", () => {
+	test("names a parking volume deterministically from the box slug", () => {
 		expect(parkingVolumeName("my-box")).toBe("composery-park-my-box");
-		// The stable by-id path is what lets the box scripts mount the volume
-		// without guessing a shifting /dev/sd* letter.
-		expect(parkingVolumeDevicePath(1234)).toBe(
-			"/dev/disk/by-id/scsi-0HC_Volume_1234"
-		);
 	});
 
 	test("creates a pre-formatted, labeled volume in the box's own location", () => {

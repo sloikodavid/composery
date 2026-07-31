@@ -4,7 +4,7 @@
 # authenticated. See README.md for the one-time setup.
 #
 #   bash screenshots/run.sh [container-name]
-set -e
+set -euo pipefail
 cd "$(dirname "$0")"
 export MSYS_NO_PATHCONV=true   # keep git-bash from mangling the container :/tmp path
 C="${1:-composery-shots}"

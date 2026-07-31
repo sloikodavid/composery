@@ -29,7 +29,7 @@ pub const FORMAT_VERSION: u8 = 1;
 /// a live root filesystem, with nothing to notice it. Refusing to start is
 /// recoverable; a silently misapplied delta is not.
 ///
-/// Newer versions are the case that actually happens (a box was downgraded, or a
+/// Newer versions are the case that actually happens (an instance was downgraded, or a
 /// volume moved to an older image), so it gets its own message. A future build
 /// that can read more than one version replaces the equality check with the set
 /// it supports; it must keep accepting every older version it can still read, or
@@ -41,7 +41,7 @@ fn check_supported_version(version: u8, path: &Path, line: usize) -> Result<()> 
     if version > FORMAT_VERSION {
         bail!(
             "{} line {} was written by a newer Composery (metadata format {}, this build reads {}). \
-             Start this box on the image that wrote its volume, or restore a backup taken before the downgrade.",
+             Start this Composery on the image that wrote its volume, or restore a backup taken before the downgrade.",
             path.display(),
             line,
             version,
@@ -124,7 +124,7 @@ pub fn compact(path: &Path) -> Result<Vec<MetadataRecord>> {
 
 /// In-memory working set over `metadata.jsonl`. The daemon writer loads it once
 /// per drain tick, applies every upsert/remove in memory, and `flush`es a single
-/// atomic write — instead of a full read+reserialize+fsync per dirty path.
+/// atomic write - instead of a full read+reserialize+fsync per dirty path.
 pub struct MetadataStore {
     path: PathBuf,
     records: BTreeMap<Vec<u8>, MetadataRecord>,
@@ -345,7 +345,7 @@ mod tests {
         store.flush().unwrap();
         assert!(!path.exists());
 
-        // Many mutations stay in memory until a single flush — the whole point of
+        // Many mutations stay in memory until a single flush - the whole point of
         // the per-tick batching (no per-path read/reserialize/fsync).
         store.upsert(record("/a")).unwrap();
         store.upsert(record("/b")).unwrap();
@@ -511,7 +511,7 @@ mod tests {
     fn metadata_reads_refuse_a_record_written_by_a_newer_build() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("metadata.jsonl");
-        // What a downgraded box finds on its volume. Every field this build
+        // What a downgraded instance finds on its volume. Every field this build
         // knows is present and valid, and serde ignores the extra one, so the
         // record deserializes perfectly - the version is the only thing that
         // says it does not mean what this build would take it to mean.
@@ -548,7 +548,7 @@ mod tests {
     fn the_writer_stamps_the_version_the_reader_accepts() {
         // The guard above is only worth having if what we write passes it. If
         // the writer's stamp and the reader's accepted set ever drift, every
-        // box refuses to boot on its own metadata - so pin them together rather
+        // instance refuses to boot on its own metadata - so pin them together rather
         // than trusting two independent literals to stay equal.
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("metadata.jsonl");

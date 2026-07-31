@@ -8,7 +8,7 @@
 #
 #   docker cp screenshots/demo/prepare.sh <container>:/tmp/prepare.sh
 #   docker exec -u user <container> bash /tmp/prepare.sh
-set -e
+set -euo pipefail
 
 WB="$HOME/.local/share/composery/User/settings.json"
 python3 - "$WB" <<'PY'

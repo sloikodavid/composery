@@ -40,7 +40,7 @@ internet-facing, put TLS in front - start at
 ## Documentation
 
 Rendered at [composery.io/docs](https://www.composery.io/docs), source in
-[`docs/`](docs/index.md):
+[`docs/`](docs/):
 
 - [Self-hosting](docs/self-hosting/index.md) - VPS with Docker Compose,
   DigitalOcean, Fly.io, Render, Railway, Koyeb, Kubernetes, and other
@@ -52,7 +52,7 @@ Rendered at [composery.io/docs](https://www.composery.io/docs), source in
 ## Composery Cloud
 
 The hosted offering at [composery.io](https://www.composery.io/pricing) runs the same
-runtime image on a dedicated VPS per box, with HTTPS, snapshots, and lifecycle
+runtime image on a dedicated VPS per instance, with HTTPS, snapshots, and lifecycle
 management handled for you.
 
 ## Repository

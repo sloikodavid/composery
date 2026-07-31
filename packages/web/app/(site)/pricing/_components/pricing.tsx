@@ -26,13 +26,13 @@ import {
 	type BoxPricing,
 	formatPrice,
 	sharedAnnualSavingsPercent
-} from "@/lib/box-billing";
+} from "@/lib/boxes/billing";
 import {
 	BOX_PLANS,
 	BOX_PLAN_ORDER,
 	boxPlanSpecification,
 	type BoxPlan
-} from "@/lib/box-plan";
+} from "@/lib/boxes/plan";
 import { GITHUB_REPO_URL } from "@/lib/links";
 import { cn } from "@/lib/utils";
 

@@ -11,15 +11,20 @@ import {
 import { requireActiveUserInAction } from "../users";
 import { cloudUrl } from "../env";
 import { vBoxAuthorizationType } from "../schema";
+import {
+	ARGON2ID_HASH,
+	BASE64URL_SHA256,
+	MAX_HASH_LENGTH,
+	MAX_REDIRECT_URI_LENGTH
+} from "../../lib/boxes/auth";
 import { startBoxOperation } from "./operations";
+import { MINUTE_MS } from "../time";
 
-const AUTHORIZATION_CODE_TTL_MS = 2 * 60_000;
-const SETUP_GRANT_TTL_MS = 10 * 60_000;
+const AUTHORIZATION_CODE_TTL_MS = 2 * MINUTE_MS;
+const SETUP_GRANT_TTL_MS = 10 * MINUTE_MS;
 const PASSWORD_RECONCILE_DELAY_MS = 5_000;
-const PASSWORD_RECONCILE_RETRY_MS = 60_000;
+const PASSWORD_RECONCILE_RETRY_MS = MINUTE_MS;
 const PASSWORD_RECONCILE_MAX_ATTEMPTS = 20;
-const BASE64URL_SHA256_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const ARGON2ID_PATTERN = /^\$argon2id\$/;
 
 function bytes(length: number) {
 	const value = new Uint8Array(length);
@@ -73,7 +78,7 @@ export const createAuthorizationCode = action({
 	returns: v.object({ code: v.string(), redirectUri: v.string() }),
 	handler: async (ctx, args) => {
 		const user = await requireActiveUserInAction(ctx);
-		if (!BASE64URL_SHA256_PATTERN.test(args.codeChallenge)) {
+		if (!BASE64URL_SHA256.test(args.codeChallenge)) {
 			throw new ConvexError("Invalid authorization request.");
 		}
 
@@ -116,9 +121,9 @@ export const exchangeAuthorizationCode = action({
 	),
 	handler: async (ctx, args) => {
 		if (
-			!BASE64URL_SHA256_PATTERN.test(args.code) ||
-			!BASE64URL_SHA256_PATTERN.test(args.codeVerifier) ||
-			args.redirectUri.length > 512
+			!BASE64URL_SHA256.test(args.code) ||
+			!BASE64URL_SHA256.test(args.codeVerifier) ||
+			args.redirectUri.length > MAX_REDIRECT_URI_LENGTH
 		) {
 			throw new ConvexError("Invalid authorization code.");
 		}
@@ -146,9 +151,9 @@ export const installPassword = action({
 	returns: v.object({ accepted: v.boolean() }),
 	handler: async (ctx, args) => {
 		if (
-			!BASE64URL_SHA256_PATTERN.test(args.grant) ||
-			!ARGON2ID_PATTERN.test(args.runtimeAuthHash) ||
-			args.runtimeAuthHash.length > 512
+			!BASE64URL_SHA256.test(args.grant) ||
+			!ARGON2ID_HASH.test(args.runtimeAuthHash) ||
+			args.runtimeAuthHash.length > MAX_HASH_LENGTH
 		) {
 			throw new ConvexError("Invalid password hash.");
 		}
@@ -174,10 +179,10 @@ export const changePassword = action({
 	returns: v.object({ accepted: v.boolean() }),
 	handler: async (ctx, args) => {
 		if (
-			!ARGON2ID_PATTERN.test(args.currentRuntimeAuthHash) ||
-			!ARGON2ID_PATTERN.test(args.runtimeAuthHash) ||
-			args.currentRuntimeAuthHash.length > 512 ||
-			args.runtimeAuthHash.length > 512
+			!ARGON2ID_HASH.test(args.currentRuntimeAuthHash) ||
+			!ARGON2ID_HASH.test(args.runtimeAuthHash) ||
+			args.currentRuntimeAuthHash.length > MAX_HASH_LENGTH ||
+			args.runtimeAuthHash.length > MAX_HASH_LENGTH
 		) {
 			throw new ConvexError("Invalid password hash.");
 		}

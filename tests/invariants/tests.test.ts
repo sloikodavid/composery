@@ -191,7 +191,7 @@ describe("system harnesses are reachable", () => {
 		// coverage while it proves nothing. tests/system/overlay-engine/run.sh sat
 		// unreferenced by any workflow for exactly as long as nobody checked.
 		const harnesses = checkoutFiles.filter((f) =>
-			/(?:^|\/)tests\/system\/.*(?:run\.(?:mjs|sh)|smoke\.mjs|e2e\.yml)$/.test(
+			/(?:^|\/)tests\/system\/.*(?:run\.(?:mjs|sh)|smoke\.mjs|e2e\.yaml)$/.test(
 				f
 			)
 		);

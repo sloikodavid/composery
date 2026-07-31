@@ -1,14 +1,13 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { requireCapability } from "../users";
-import { BOX_STATUSES, type BoxStatus } from "../schema";
+import type { BoxStatus } from "../schema";
 import { CAPACITY_BOX_STATUSES } from "../boxes/capacity";
+import { DAY_MS } from "../time";
 
 const COUNT_CAP = 1_000;
 const DAILY_COUNT_CAP = 1_000;
 const INTENT_COUNT_CAP = 5_000;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type StatsRange = "7d" | "30d" | "90d";
 
@@ -31,7 +30,13 @@ type CappedCount = {
 
 // Every failed status is named `<operation>_failed`, so derive rather than list:
 // a new operation's failure state counts here the day it exists.
-const FAILED_STATUSES: BoxStatus[] = BOX_STATUSES.filter((status) =>
+//
+// Derived from the statuses actually counted below, not from every status there
+// is. The failed tile is a sum over `statusCounts`, so a failure status outside
+// that set would be read as `undefined` and throw the whole overview - and the
+// set is one exclusion away from losing `delete_failed`, which is exactly the
+// kind of box that stops holding capacity while still being a failure.
+const FAILED_STATUSES: BoxStatus[] = CAPACITY_BOX_STATUSES.filter((status) =>
 	status.endsWith("_failed")
 );
 

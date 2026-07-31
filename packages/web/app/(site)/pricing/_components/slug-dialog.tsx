@@ -16,9 +16,13 @@ import {
 import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
 import { FadingText } from "./fading-text";
-import type { BoxBillingInterval } from "@/lib/box-billing";
-import { BOX_PLANS, type BoxPlan } from "@/lib/box-plan";
-import { isValidSlugFormat, sanitizeSlug } from "@/lib/box-slug";
+import type { BoxBillingInterval } from "@/lib/boxes/billing";
+import { BOX_PLANS, type BoxPlan } from "@/lib/boxes/plan";
+import {
+	isValidSlugFormat,
+	sanitizeSlug,
+	SLUG_MAX_LENGTH
+} from "@/lib/boxes/slug";
 import { errorMessage } from "@/lib/error-message";
 import { signInUrlForReturnPath } from "@/lib/auth-routing";
 
@@ -150,12 +154,11 @@ export function SlugDialog({
 							autoFocus
 							className="h-10"
 							id="box-slug"
-							maxLength={63}
+							maxLength={SLUG_MAX_LENGTH}
 							name="slug"
 							onChange={(event) =>
 								setTypedSlug(sanitizeSlug(event.target.value))
 							}
-							pattern="[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?"
 							placeholder="my-box"
 							spellCheck={false}
 							type="text"

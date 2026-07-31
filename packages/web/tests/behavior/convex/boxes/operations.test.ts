@@ -203,7 +203,6 @@ describe("the operation lock", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId,
 			error: "boom",
-			eventType: "box.reset_failed",
 			operationId: first!,
 			targetBoxStatus: "reset_failed"
 		});

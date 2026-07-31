@@ -43,7 +43,7 @@ Composery needs a persistent `/data` and cannot fall back to a managed database,
 
 ## Maintenance
 
-- **[Disk space](./disk-space.md)** - remove unused Docker images and build cache, then
+- **[Disk space](disk-space.md)** - remove unused Docker images and build cache, then
   reclaim space held by Docker Desktop's virtual disk on Windows and macOS.
 
 ## Updating
@@ -105,7 +105,7 @@ sudo rsync -aHAXS --numeric-ids --delete \
 docker compose start
 ```
 
-Those flags are the same set Composery uses internally to move a box's files between hosts:
+Those flags are the same set Composery uses internally to move an instance's files between hosts:
 `-a` (recursive, symlinks, permissions, times, owner, devices), `-H` (hardlinks), `-A`
 (ACLs), `-X` (all extended-attribute namespaces, including `trusted.*` when run as root),
 `-S` (sparse files), and `--numeric-ids` (no uid/gid remapping).

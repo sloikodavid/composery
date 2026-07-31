@@ -9,63 +9,39 @@ import {
 	DialogHeader,
 	DialogTitle
 } from "@/components/base/dialog";
-import { ToneIcon } from "@/components/boxes/tone-icon";
+import {
+	isOperationInFlight,
+	lastOperationNotice,
+	Notice,
+	recreateNotice,
+	unavailableReason,
+	type LastOperation,
+	type OperationNotice
+} from "@/components/boxes/operation-dialog";
 import { isOperationAllowed } from "@/convex/boxes/operationRules";
 import type { RuntimeStanding } from "@/convex/boxes/runtimeRelease";
-import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
+import type { BoxStatus } from "@/convex/schema";
 import { formatDateTime } from "@/lib/datetime";
-import { standingNotices, type UpdateNotice } from "@/lib/runtime-update";
+import { standingNotices } from "@/lib/boxes/update";
 
 // The last update this box attempted. The status field on the box says one ran;
-// this record is where the error text behind a failure lives. Typed off the
-// schema's own union rather than restated, so a new operation status reaches the
-// switch below as a type error instead of as a missing line.
-export type UpdateOperation = {
-	status: BoxOperationStatus;
-	error: string | null;
-	finishedAt: number | null;
-};
+// this record is where the error text behind a failure lives.
+export type UpdateOperation = LastOperation;
 
-// Every version a box changes is a container recreate, so this is the sentence
-// the dialog exists to put in front of an owner before they press the button.
-const COST_NOTICE =
-	"Updating recreates the box's container. Terminals, running processes and anything unsaved stop, and the box is unreachable until the new one answers. Files on disk and snapshots are kept.";
-
-function updateNotice(update: UpdateOperation | null): UpdateNotice | null {
-	if (!update) return null;
-	switch (update.status) {
-		case "pending":
-		case "running":
-			return {
-				tone: "muted",
-				text: "Updating this box now. The versions above update when it finishes."
-			};
-		case "failed":
-			return {
-				tone: "bad",
-				// True by construction: the update advances the box's recorded image
-				// only after the new container has answered, so a failure leaves the
-				// row naming the image that last served and Repair rebuilds from it.
-				text: `The last update failed: ${update.error ?? "no reason recorded"}. This box is still recorded on the version it was running; try again, or repair it to put that version back.`
-			};
-		case "succeeded":
-			return {
-				tone: "ok",
-				text: update.finishedAt
-					? `The last update finished ${formatDateTime(update.finishedAt)}.`
-					: "The last update finished."
-			};
-	}
-}
-
-function unavailableReason(boxStatus: BoxStatus) {
-	if (boxStatus === "updating") {
-		return "An update is already running on this box.";
-	}
-	if (boxStatus === "stopped" || boxStatus === "suspended") {
-		return "This box is not running. Start it before updating.";
-	}
-	return "This box can't be updated in its current state.";
+function updateNotice(update: UpdateOperation | null) {
+	return lastOperationNotice(update, {
+		inFlight:
+			"Updating this box now. The versions above update when it finishes.",
+		// True by construction: the update advances the box's recorded image only
+		// after the new container has answered, so a failure leaves the row naming
+		// the image that last served and Repair rebuilds from it.
+		failed: (error) =>
+			`The last update failed: ${error}. This box is still recorded on the version it was running; try again, or repair it to put that version back.`,
+		succeeded: (finishedAt) =>
+			finishedAt
+				? `The last update finished ${formatDateTime(finishedAt)}.`
+				: "The last update finished."
+	});
 }
 
 // The trigger carries the standing itself rather than the page growing a banner
@@ -103,14 +79,19 @@ export function UpdateDialog({
 	// last update failed) can be updated: the host has to answer over SSH for the
 	// new image to be pulled at all.
 	const updatable = isOperationAllowed(boxStatus, "update");
-	const updating = update?.status === "pending" || update?.status === "running";
+	const updating = isOperationInFlight(update);
 
 	const outcome = updateNotice(update);
-	const notices: UpdateNotice[] = [
+	const notices: OperationNotice[] = [
 		...standingNotices(runtime),
 		...(updatable
 			? []
-			: [{ tone: "muted" as const, text: unavailableReason(boxStatus) }]),
+			: [
+					{
+						tone: "muted" as const,
+						text: unavailableReason(boxStatus, "update", updating)
+					}
+				]),
 		...(outcome ? [outcome] : [])
 	];
 
@@ -155,21 +136,14 @@ export function UpdateDialog({
 
 					{/* Not muted like the rows below it: this is the one thing an owner
 					    must not be surprised by after pressing Update. */}
-					<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
-						<ToneIcon className="mt-0.5" tone="warn" />
-						<p className="min-w-0 flex-1 text-sm">{COST_NOTICE}</p>
-					</div>
+					<Notice muted={false} tone="warn">
+						{recreateNotice("Updating")}
+					</Notice>
 
 					{notices.map((notice) => (
-						<div
-							className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5"
-							key={notice.text}
-						>
-							<ToneIcon className="mt-0.5" tone={notice.tone} />
-							<p className="min-w-0 flex-1 text-sm text-muted-foreground">
-								{notice.text}
-							</p>
-						</div>
+						<Notice key={notice.text} tone={notice.tone}>
+							{notice.text}
+						</Notice>
 					))}
 
 					<AnimatedIconButton

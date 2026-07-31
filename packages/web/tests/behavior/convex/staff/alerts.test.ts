@@ -59,6 +59,30 @@ describe("queueing a staff alert", () => {
 		]);
 	});
 
+	// An account that may not act may not be mailed either. Both conditions run
+	// through the same gate every other entry point uses, so an admin locked out
+	// of the console cannot keep receiving its incidents at an address the
+	// deployment has already decided not to trust.
+	test("skips an admin who is suspended or being deleted", async () => {
+		stubSender();
+		const t = testConvex();
+		await seedUser(t, { clerkUserId: "admin_live", role: "admin" });
+		await seedUser(t, {
+			clerkUserId: "admin_suspended",
+			role: "admin",
+			suspended: true
+		});
+		await seedUser(t, {
+			clerkUserId: "admin_deleting",
+			role: "admin",
+			deletionPending: true
+		});
+
+		await t.mutation(internal.staff.alerts.raise, ALERT);
+
+		expect(await staffAlerts(t)).toMatchObject([{ recipient_count: 1 }]);
+	});
+
 	test("records that a configured deployment has nobody to tell", async () => {
 		stubSender();
 		const t = testConvex();

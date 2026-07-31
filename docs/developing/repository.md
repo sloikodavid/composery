@@ -5,7 +5,7 @@ description: Fresh-clone setup, workspace map, verification gates, and the norma
 
 This is the zero-config entry point: assume only source access and no configured
 local environment or external services. Product deployment continues under
-[Web](./web/index.md), and IDE-fork work under [IDE](./ide.md).
+[Web](web/index.md), and IDE-fork work under [IDE](ide.md).
 
 ## Fresh clone
 
@@ -109,7 +109,7 @@ function/schema changes and should be reviewed like any other generated diff.
 ## Releases
 
 The web frontend deploys through Vercel as described in
-[Web / Vercel](./web/services/vercel.md). Convex functions deploy separately with their
+[Web / Vercel](web/services/vercel.md). Convex functions deploy separately with their
 configured deployment. The shipped self-hosted product is a multi-architecture
 ghcr image. `.github/IMAGE_RELEASE.md` is the image procedure. Image preview
 refs publish preview tags; a stable run from current `main` reads the
@@ -117,7 +117,7 @@ root semver, publishes immutable version/SHA tags plus moving convenience tags,
 scans the image, attests it, and creates the GitHub release. Never create stable
 `v*` tags manually. The GitHub-side repository configuration - settings, rulesets,
 Actions, ghcr, community intake, CLA, and Renovate - is
-[Services / GitHub](./services/github.md).
+[Services / GitHub](services/github.md).
 
 ## Secrets and scratch work
 

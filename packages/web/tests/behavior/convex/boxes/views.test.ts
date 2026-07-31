@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { safeBox, staffBox } from "@/convex/boxes/views";
-import { resolveSnapshotSplit } from "@/lib/box-plan";
+import { resolveSnapshotSplit } from "@/lib/boxes/plan";
 
 const previousDomain = process.env.CLOUD_DOMAIN;
 afterEach(() => {

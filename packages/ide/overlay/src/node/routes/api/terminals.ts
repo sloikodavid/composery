@@ -257,9 +257,7 @@ function resolveCwd(cwd: unknown): string {
 
 function resolveTimeoutSec(timeout: unknown): number {
   const value =
-    typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0
-      ? timeout
-      : apiConfig.terminalTimeoutSec
+    typeof timeout === "number" && Number.isFinite(timeout) && timeout > 0 ? timeout : apiConfig.terminalTimeoutSec
   return Math.min(value, MAX_TERMINAL_TIMEOUT_SEC)
 }
 

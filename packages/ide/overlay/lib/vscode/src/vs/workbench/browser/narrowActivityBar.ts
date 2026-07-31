@@ -4,7 +4,7 @@
  * `workbench.activityBar.location` and `composery.activityBar.narrowLocation` are two
  * independent settings - the upstream one governs every viewport except a narrow one, ours
  * governs a narrow one and nothing else. One key could not have served both: a phone and a
- * desktop browser pointed at the same box share one settings file, so whichever client wrote
+ * desktop browser pointed at the same Composery share one settings file, so whichever client wrote
  * last would have moved the other client's activity bar.
  *
  * The narrow default is `bottom`. A narrow viewport shows the side bar fullscreen (see the

@@ -29,7 +29,7 @@ an artifact, or the agreement between two packages - lives in the root `tests/`.
 Inside a `tests/` directory the first subdirectory names the kind, and below that
 the path mirrors the source it covers.
 
-```
+```text
 packages/web/tests/behavior/convex/boxes/capacity.test.ts
 packages/ide/tests/invariants/patches.test.ts
 tests/system/smoke.mjs
@@ -75,7 +75,7 @@ nothing ran it.
 Runs a built artifact: the Docker image, privileged containers, a device. Not
 vitest, not in-process, and the only kind allowed to sleep or retry. Slow, few,
 and irreplaceable - `tests/system/overlay-engine/run.sh` is the only proof that a
-box's filesystem survives being recreated, which is the product's core promise.
+instance's filesystem survives being recreated, which is the product's core promise.
 
 Every system harness is reachable from a workflow. One that is not is invisible,
 and an invisible test is worse than a missing one because its presence reads as

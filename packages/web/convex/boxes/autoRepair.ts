@@ -6,7 +6,7 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/box-route";
+import { consoleBoxPath } from "../../lib/boxes/route";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import {
@@ -19,6 +19,7 @@ import {
 	isOperationAllowed,
 	OPERATION_ALLOWED_STATUSES
 } from "./operationRules";
+import { DAY_MS, HOUR_MS } from "../time";
 
 // Automatic repair: the fleet heals a box that has stopped serving, without its
 // owner having to notice and press Repair.
@@ -31,8 +32,9 @@ import {
 // keep the owner's own hand on the box strictly ahead of ours.
 
 // How many consecutive failed health probes before a box counts as down. The
-// sweep runs every 10 minutes, so this is roughly half an hour of a box not
-// answering - long enough that a restart, a slow boot, or a blip has passed.
+// sweep runs on the metrics poll interval (`METRICS_POLL_INTERVAL_MINUTES`), so
+// at ten minutes this is roughly half an hour of a box not answering - long
+// enough that a restart, a slow boot, or a blip has passed.
 // runbook: Consecutive failures before repair
 export const SUSTAINED_FAILURES = 3;
 
@@ -43,7 +45,7 @@ export const SUSTAINED_FAILURES = 3;
 //
 // Operations the fleet started itself do not count - see `AutoRepairFacts`.
 // runbook: Automatic repair quiet window
-export const OWNER_QUIET_WINDOW_MS = 2 * 60 * 60 * 1000;
+export const OWNER_QUIET_WINDOW_MS = 2 * HOUR_MS;
 
 // Ceiling on automatic repairs per box per window. A box that needs a third
 // repair in a day is not having a bad night - either the owner is breaking it
@@ -55,7 +57,7 @@ export const OWNER_QUIET_WINDOW_MS = 2 * 60 * 60 * 1000;
 // Both halves carry the same runbook label because the operator reads them as
 // one sentence ("2 per 24 hours"); the test checks the row states each value.
 // runbook: Automatic repairs per box
-export const AUTO_REPAIR_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const AUTO_REPAIR_WINDOW_MS = DAY_MS;
 // runbook: Automatic repairs per box
 export const MAX_AUTO_REPAIRS_PER_WINDOW = 2;
 

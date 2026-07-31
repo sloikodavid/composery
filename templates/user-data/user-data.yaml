@@ -16,7 +16,7 @@
 runcmd:
   - curl -fsSL https://get.docker.com | sh
   - install -d /opt/composery
-  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/systemd-caddy-compose/compose.yml    -o /opt/composery/compose.yml
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/systemd-caddy-compose/compose.yaml    -o /opt/composery/compose.yaml
   - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/systemd-caddy-compose/Caddyfile      -o /opt/composery/Caddyfile
   - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery/main/templates/systemd-caddy-compose/composery.env  -o /opt/composery/composery.env
   - sed -i 's/example\.com/your-domain.example/' /opt/composery/Caddyfile

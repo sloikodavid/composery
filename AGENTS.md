@@ -8,20 +8,21 @@
 - A rule here solves a specific problem; check that problem is yours before applying it. In particular, a rule that manages unavoidable duplication never justifies creating some.
 - One name per concept, the plainest one: Create (not Provision/Spawn), Delete (not Erase/Destroy), Start (not Open/Boot), Stop (not Close/Halt), Finish (not Complete/End), Type (not Mode/Kind), Contents (not Material), Index (not Main). Where an external API forces its own word, keep theirs at the boundary and ours everywhere inside.
 - An action is named for what it acts on. Acting on a whole thing takes the bare verb (`repair`, `reset`, `update`); acting on one of its attributes takes verb + attribute (`change_slug`, `change_password`). That rule decides operation types, event names, function names, and button labels alike, so a name that needs an exception is usually the wrong name.
-- When adding or changing an environment-driven IDE setting, update the canonical `docs/configuration.md` entry and decide whether a cloud box owner can set it through `packages/web/convex/boxes/runtimeConfig.ts`. If it is offered there, give enum values explicit user-facing labels and keep the runtime/configuration wiring test green; if it is not, record the managed or infrastructure reason beside that allowlist.
+- When adding or changing an environment-driven IDE setting, update the canonical `docs/configuration.md` entry and decide whether an owner can set it through `packages/web/convex/boxes/runtimeConfig.ts`. If it is offered there, give enum values explicit user-facing labels and keep the runtime/configuration wiring test green; if it is not, record the managed or infrastructure reason beside that allowlist.
 - Identifiers and prose are separate vocabularies. Never build user-visible text by reformatting an identifier: a stored value that also has to read well in English can be neither consistent nor readable. Map identifiers to labels explicitly.
-- The container is not a boundary against the person using it: it is privileged and root-capable, and cloud box owners control their host too (the Hetzner firewall is the real boundary — see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own box is a supported surface, so every env-driven feature must behave correctly when they do.
-- Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the box password never requires a Composery website account — proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
+- `**box**` **is the web package's word and stays there.** It is the name of the record Composery Cloud keeps for one running instance, so it is correct in `packages/web/**`, in `docs/developing/web/**`, and in the identifiers those own wherever they are referenced - the `boxes` tables and modules, `/boxes/*` routes, `COMPOSERY_CLOUD_BOX_ID`. In prose everywhere else - the IDE, the CLI, `rootfs/`, user-facing docs, comments, and every string a user reads - say "Composery", "this Composery", "your Composery", or "your instance". Where the thing meant is really the server or the machine, say that. Do not coin a third word.
+- The container is not a boundary against the person using it: it is privileged and root-capable, and cloud owners control their host too (the Hetzner firewall is the real boundary - see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own instance is a supported surface, so every env-driven feature must behave correctly when they do.
+- Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the password never requires a Composery website account - proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
 
 ## Correctness
 
 - Check claims against the artifact, not the source you assume produces it: run the generator, read the built tree, query the deployment. A grep that misses one spelling reads as proof of absence.
-- A check that cannot fail is worse than no check: it reports success forever. Before trusting a new test or guard, break what it guards and watch it fail. Substring assertions are the usual culprit — `HASHED_PASSWORD` matches inside `COMPOSERY_HASHED_PASSWORD`.
+- A check that cannot fail is worse than no check: it reports success forever. Before trusting a new test or guard, break what it guards and watch it fail. Substring assertions are the usual culprit - `HASHED_PASSWORD` matches inside `COMPOSERY_HASHED_PASSWORD`.
 - Silent success is worse than a crash. A documented variable nothing reads, a repair job checking the wrong name, a gate no sweep can reach: each looks healthy for exactly as long as nobody checks. Make the inert path say so.
 - Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
 - Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
 - Fix the class, not the instance. A bug found by reading is usually one of several. Best is designing the class out - one source of truth, a derived value, a state made unrepresentable - so no guard is needed; next best is a test that catches the next instance; worst is a hand-patch of the one you saw.
-- Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem — if cost scales with a workload's shape, that is the bug, not the workload.
+- Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem - if cost scales with a workload's shape, that is the bug, not the workload.
 
 ## Tests
 
@@ -58,12 +59,12 @@ remembers the last review.
 
 ## IDE / upstream naming
 
-`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch — a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
+`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch - a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
 
-- Repo packages stay domain nouns (`ide`, `web`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list — a test pins it to real wiring, so add there rather than enumerating names here.
+- Repo packages stay domain nouns (`ide`, `web`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list - a test pins it to real wiring, so add there rather than enumerating names here.
 - Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
-- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. It owns _every_ rename, without exception: no patch in the series renames an upstream identifier, string or environment variable, and a hunk that would only rename belongs there as a rule. A patch anchors on upstream's spelling and lets the rewrite happen afterwards - so `CS_DISABLE_FILE_UPLOADS` in a hunk is what ships as `COMPOSERY_DISABLE_FILE_UPLOADS`. This absolute rule replaces a split that left a name's home unknowable: two-thirds of the old `naming.diff` was doing work rebrand already did, while its siblings (`PASSWORD`, `LOG_LEVEL`, `GITHUB_TOKEN`) were rebrand's alone. Variables Composery introduces outright have no upstream spelling to rename, so those are written directly where they are read.
-- No hybrid visible names like `composery-code-server`. Visible services and supervisor programs are `composery` and `persistence`.
+- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. It owns _every_ rename, without exception: no patch in the series renames an upstream identifier, string or environment variable, and a hunk that would only rename belongs there instead. A patch anchors on upstream's spelling and lets the rewrite happen afterwards - so `CS_DISABLE_FILE_UPLOADS` in a hunk is what ships as `COMPOSERY_DISABLE_FILE_UPLOADS`. The rule is absolute because any split leaves a name's home unknowable. Variables Composery introduces outright have no upstream spelling to rename, so those are written directly where they are read.
+- No hybrid visible names like `composery-code-server`. A visible service or supervisor program is named for what it runs rather than for the product - `ide`, `persistence`, `caddy`, `cron` - and both init systems use the same set, so one runbook line covers `supervisorctl restart ide` and `systemctl restart ide` alike. There is no `composery` service; `tests/invariants/runtime-init.test.ts` fails if one comes back.
 - The `composery` prefix is namespacing, not decoration: use `composery`/`composery-` only for identifiers injected into a shared upstream namespace (CSS classes, custom properties, DOM attributes, command/setting/contribution/extension IDs). Never on things we own outright - TS files, symbols, types, or patch filenames.
 
 @package.json
@@ -95,17 +96,17 @@ remembers the last review.
   skills
 .github/
   ISSUE_TEMPLATE/
-    bug.yml
-    config.yml
+    bug.yaml
+    config.yaml
   workflows/
-    ci.yml
-    cla.yml
-    deploy.yml
-    mutants.yml
-    release.yml
-    smoke-nightly.yml
-    smoke.yml
-    templates.yml
+    ci.yaml
+    cla.yaml
+    deploy.yaml
+    mutants.yaml
+    release.yaml
+    smoke-nightly.yaml
+    smoke.yaml
+    templates.yaml
   CLA.md
   IMAGE_RELEASE.md
   PULL_REQUEST_TEMPLATE.md
@@ -256,6 +257,11 @@ packages/
                 browser/
                   workbench/
                     shell.ts
+              editor/
+                browser/
+                  controller/
+                    touchPress.ts
+                    touchSelection.ts
               platform/
                 terminal/
                   common/
@@ -346,6 +352,7 @@ packages/
             pwned.ts
             register.ts
           cloud.ts
+          envFlag.ts
           session.ts
     patches/
       api.diff
@@ -407,6 +414,11 @@ packages/
                   browser/
                     workbench/
                       shell.test.ts
+                editor/
+                  browser/
+                    controller/
+                      touchPress.test.ts
+                      touchSelection.test.ts
                 platform/
                   terminal/
                     node/
@@ -433,12 +445,21 @@ packages/
           rebrand.test.ts
         src/
           node/
+            persistence/
+              readiness.test.ts
             routes/
+              api/
+                config.test.ts
               authErrors.test.ts
+              loginRateLimit.test.ts
+              pwned.test.ts
+            cloud.test.ts
+            envFlag.test.ts
         session.test.ts
       invariants/
         auth-error-codes.test.ts
         auth-routes.test.ts
+        env-flags.test.ts
         patch-call-sites.test.ts
         patches.test.ts
         path-prefix.test.ts
@@ -510,6 +531,7 @@ packages/
             console-snapshot-policy.tsx
             console-stats.tsx
             console-thresholds.tsx
+            settings-card.tsx
           boxes/
             [id]/
               _components/
@@ -604,9 +626,11 @@ packages/
       boxes/
         actions-bar.tsx
         change-slug-dialog.tsx
+        chart-card.tsx
         flags-table.tsx
         metrics-chart.tsx
         monitor-card.tsx
+        operation-dialog.tsx
         qr-dialog.tsx
         repair-dialog.tsx
         reset-dialog.tsx
@@ -657,6 +681,7 @@ packages/
       copy-email.tsx
       copy-link-button.tsx
       dismiss-button.tsx
+      error-page.tsx
       footer.tsx
       fumadocs-narrow-header.tsx
       fumadocs-theme-toggle.tsx
@@ -689,6 +714,7 @@ packages/
           runtimeImages.ts
           ssh.ts
           sshKeys.ts
+          sshScripts.ts
         workflows/
           boxWorkflow.ts
           changeBoxConfig.ts
@@ -760,41 +786,46 @@ packages/
       ownerEmail.ts
       schema.ts
       settings.ts
+      time.ts
       tsconfig.json
       users.ts
     hooks/
       use-busy-action.ts
       use-is-touch.ts
+      use-reseed.ts
+      use-setting-draft.ts
       use-table-sort.ts
     lib/
+      boxes/
+        auth.ts
+        billing.ts
+        metrics.ts
+        operations.ts
+        plan.ts
+        repair.ts
+        route.ts
+        slug.ts
+        update.ts
       auth-routing.ts
-      box-billing.ts
-      box-plan.ts
-      box-route.ts
-      box-slug.ts
       brand-assets.ts
       browser-theme.ts
       clerk-appearance.ts
+      clipboard.ts
       cloud-legal.ts
-      convex-dashboard.ts
+      dashboards.ts
       datetime.ts
+      docs.ts
+      env.ts
       error-message.ts
-      hetzner-dashboard.ts
       highlight-logs.ts
       layout.shared.tsx
       links.ts
       logo-data.ts
       nav-links.ts
       openapi.ts
-      operation-failure.ts
-      polar-dashboard.ts
-      repair-status.ts
       route-guards.ts
-      runtime-update.ts
-      shared.ts
       source.ts
       utils.ts
-      vercel-dashboard.ts
     patches/
       fumadocs-mdx@15.0.12.patch
       fumadocs-ui@16.10.4.patch
@@ -855,6 +886,7 @@ packages/
             status-action.test.ts
           animated-icon.test.ts
           confirm-dialog.test.ts
+          theme-provider.test.ts
         convex/
           billing/
             polar.test.ts
@@ -866,8 +898,8 @@ packages/
               hetznerVps.test.ts
               runtimeArtifacts.test.ts
               runtimeImages.test.ts
-              ssh.test.ts
               sshKeys.test.ts
+              sshScripts.test.ts
             workflows/
               boxWorkflow.test.ts
             access.test.ts
@@ -881,6 +913,7 @@ packages/
             operationRules.test.ts
             operations.test.ts
             operationSweep.test.ts
+            purgeBox.test.ts
             queries.test.ts
             reconcile.test.ts
             retention.test.ts
@@ -898,6 +931,8 @@ packages/
             alerts.test.ts
             boxes.test.ts
             checkout.test.ts
+            metrics.test.ts
+            stats.test.ts
             users.test.ts
           user/
             boxes.test.ts
@@ -910,33 +945,41 @@ packages/
           ownerEmail.test.ts
           settings.test.ts
           users.test.ts
+        hooks/
+          use-setting-draft.test.ts
+          use-table-sort.test.ts
         lib/
+          boxes/
+            auth.test.ts
+            billing.test.ts
+            operations.test.ts
+            plan.test.ts
+            repair.test.ts
+            route.test.ts
+            slug.test.ts
+            update.test.ts
           auth-routing.test.ts
-          box-billing.test.ts
-          box-plan.test.ts
-          box-route.test.ts
-          box-slug.test.ts
           brand-assets.test.ts
           browser-theme.test.ts
+          clipboard.test.ts
+          dashboards.test.ts
           datetime.test.ts
           error-message.test.ts
-          operation-failure.test.ts
-          polar-dashboard.test.ts
-          repair-status.test.ts
-          runtime-update.test.ts
+          openapi.test.ts
       invariants/
         components/
           icons/
             registry.test.ts
         convex/
-          boxes/
-            cleanup.test.ts
           envExample.test.ts
+          legacy-event-names.test.ts
           optional-range-bounds.test.ts
+          schema-indexes.test.ts
         legal/
           processors.test.ts
         lib/
           table-columns.test.ts
+        next-env-example.test.ts
       support/
         convex.ts
         ui.tsx
@@ -1047,20 +1090,20 @@ templates/
     render.yaml
   supervisor-caddy-compose/
     Caddyfile
-    compose.yml
+    compose.yaml
     composery.env
     README.md
   supervisor-compose/
-    compose.yml
+    compose.yaml
     composery.env
     README.md
   systemd-caddy-compose/
     Caddyfile
-    compose.yml
+    compose.yaml
     composery.env
     README.md
   systemd-compose/
-    compose.yml
+    compose.yaml
     composery.env
     README.md
   user-data/
@@ -1069,7 +1112,10 @@ templates/
   README.md
 tests/
   behavior/
+    mutants-script.test.ts
+    runbook-script.test.ts
     setup.test.ts
+    tree-agents-file.test.ts
     tree-script.test.ts
   fixtures/
     cert.pem
@@ -1078,15 +1124,20 @@ tests/
     api-openapi.test.ts
     brand-copy.test.ts
     brand-page.test.ts
+    conventions.test.ts
     cross-platform.test.ts
     desktop-integration.test.ts
     docs-links.test.ts
+    keystore-contract.test.ts
     runbook-windows.test.ts
     runtime-init.test.ts
+    stale-references.test.ts
     templates.test.ts
     tests.test.ts
     theme.test.ts
     toolchain-pins.test.ts
+    tree-paths.test.ts
+    workflows.test.ts
   support/
     repo.ts
   system/
@@ -1106,7 +1157,7 @@ tests/
 AGENTS.md
 CHANGELOG.md
 CLAUDE.md
-compose.dev.yml
+compose.dev.yaml
 Dockerfile
 eslint.config.mjs
 knip.jsonc
@@ -1120,6 +1171,8 @@ SECURITY.md
 stryker.config.json
 tsconfig.json
 vitest.config.ts
+vitest.mutation.config.ts
+vitest.projects.ts
 ```
 
 <!-- tree:finish -->

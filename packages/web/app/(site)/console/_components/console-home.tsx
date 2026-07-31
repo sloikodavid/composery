@@ -33,7 +33,7 @@ import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDate, formatDateTime } from "@/lib/datetime";
-import { consoleBoxPath } from "@/lib/box-route";
+import { consoleBoxPath } from "@/lib/boxes/route";
 
 type ConsoleBox = NonNullable<
 	ReturnType<typeof useQuery<typeof api.staff.boxes.search>>

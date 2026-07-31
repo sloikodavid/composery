@@ -20,8 +20,7 @@ export const startBox = defineBoxWorkflow({
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,
-				status: "running",
-				eventType: "box.started"
+				status: "running"
 			}
 		);
 	}

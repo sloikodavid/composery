@@ -2,6 +2,14 @@ import { fetchAction } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+	CLOUD_AUTH_HEADERS,
+	isAuthorizationType,
+	isBoxIdString,
+	isFlowSecret,
+	isRedirectUri,
+	type AuthorizationType
+} from "@/lib/boxes/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -35,31 +43,19 @@ function isExchangeRequest(value: unknown): value is {
 	code: string;
 	codeVerifier: string;
 	redirectUri: string;
-	type?: "password" | "session";
+	type?: AuthorizationType;
 } {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
 	const body = value as Record<string, unknown>;
 	return (
-		typeof body.boxId === "string" &&
-		body.boxId.length <= 64 &&
-		typeof body.code === "string" &&
-		body.code.length === 43 &&
-		typeof body.codeVerifier === "string" &&
-		body.codeVerifier.length === 43 &&
-		typeof body.redirectUri === "string" &&
-		body.redirectUri.length <= 512 &&
-		(body.type === undefined ||
-			body.type === "password" ||
-			body.type === "session")
+		isBoxIdString(body.boxId) &&
+		isFlowSecret(body.code) &&
+		isFlowSecret(body.codeVerifier) &&
+		isRedirectUri(body.redirectUri) &&
+		(body.type === undefined || isAuthorizationType(body.type))
 	);
 }
 
 function response(body: unknown, status: number) {
-	return NextResponse.json(body, {
-		status,
-		headers: {
-			"Cache-Control": "no-store",
-			"Referrer-Policy": "no-referrer"
-		}
-	});
+	return NextResponse.json(body, { status, headers: CLOUD_AUTH_HEADERS });
 }

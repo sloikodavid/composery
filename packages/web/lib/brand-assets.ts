@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { BRAND_COLORS, BRAND_THEME, ICON_SVG } from "shared";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
 	LOGO_HEIGHT,
 	LOGO_INNER,
@@ -76,22 +77,12 @@ export const BRAND_PALETTE: { hex: string; label: string }[] = [
 	{ hex: BRAND_COLORS.state.info, label: "Info" }
 ];
 
-export async function copySvg(asset: BrandAsset) {
-	try {
-		await navigator.clipboard.writeText(asset.svg);
-		toast.success("SVG copied");
-	} catch {
-		toast.error("Couldn't copy SVG");
-	}
+export function copySvg(asset: BrandAsset) {
+	return copyToClipboard(asset.svg, "SVG copied");
 }
 
-export async function copyHex(hex: string) {
-	try {
-		await navigator.clipboard.writeText(hex);
-		toast.success(`${hex} copied`);
-	} catch {
-		toast.error("Couldn't copy the colour");
-	}
+export function copyHex(hex: string) {
+	return copyToClipboard(hex, `${hex} copied`);
 }
 
 function save(href: string, name: string) {

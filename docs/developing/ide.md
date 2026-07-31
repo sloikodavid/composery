@@ -59,7 +59,8 @@ which a small script in the `<head>` replays before anything renders - otherwise
 the first frame is the browser's white canvas and the chrome reflows once the
 palette arrives over the network.
 
-Every IDE role must be read by `scripts/theme.mjs`; a test compares the two, so a
+Every IDE role must be read by `packages/shared/scripts/theme.mjs`; a test
+compares the two, so a
 role nobody consumes fails rather than sitting inert.
 
 - **Editor themes**.
@@ -79,7 +80,8 @@ role nobody consumes fails rather than sitting inert.
 - **Startup page**.
   `packages/ide/overlay/src/node/persistence/readiness.ts` (`renderStartupPage`),
   the "Preparing workspace" page shown until the workspace is ready, wired in by
-  our owned `packages/ide/overlay/src/node/routes/index.ts` (the `persistenceGate`).
+  the `persistenceGate` that `packages/ide/patches/readiness.diff` installs in
+  code-server's own `src/node/routes/index.ts`.
 - **Logo**.
   `packages/ide/patches/brand.diff` and
   `packages/ide/overlay/src/browser/media/composery-logo.svg` (same icon paths
@@ -163,8 +165,8 @@ versions. On each bump:
 
 The image build is the only real check of the full stack. Budget for it.
 CI also runs an early gate that lays our patch stack over the submodule and runs
-`quilt push -a` with `--fuzz=0` (see `.github/workflows/ci.yml`). That catches
+`quilt push -a` with `--fuzz=0` (see `.github/workflows/ci.yaml`). That catches
 broken patch application before the full image build, but it does not prove the
 patched app builds or behaves correctly.
 
-Releases and dependency upgrades: see `.github/workflows/release.yml` and `renovate.json`.
+Releases and dependency upgrades: see `.github/workflows/release.yaml` and `renovate.json`.

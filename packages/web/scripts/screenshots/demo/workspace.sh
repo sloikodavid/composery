@@ -5,7 +5,7 @@
 #
 #   docker cp screenshots/demo/workspace.sh <container>:/tmp/workspace.sh
 #   docker exec -u user <container> bash /tmp/workspace.sh
-set -e
+set -euo pipefail
 
 rm -rf "$HOME/workspace"
 mkdir -p "$HOME/workspace"/{brief,clients,proposals,automations,data}

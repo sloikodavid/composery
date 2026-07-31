@@ -17,7 +17,7 @@ import {
 	type SelectTriggerVariant,
 	SelectValue
 } from "@/components/base/select";
-import type { RolledMetric } from "@/convex/boxes/metrics";
+import type { MetricsRange, RolledMetric } from "@/lib/boxes/metrics";
 import { cn } from "@/lib/utils";
 import { formatDate, formatDateTime } from "@/lib/datetime";
 
@@ -103,7 +103,7 @@ const METRIC_ITEMS = Object.fromEntries(
 	Object.entries(METRICS).map(([key, { label }]) => [key, label])
 );
 
-export type MetricsRange = "1h" | "6h" | "24h" | "7d" | "30d";
+export type { MetricsRange };
 
 export const DEFAULT_RANGE: MetricsRange = "24h";
 

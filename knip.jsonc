@@ -8,7 +8,12 @@
 // ignoreDependencies holds tools reached other than by import: shadcn is a CLI,
 // tailwindcss and tw-animate-css are consumed from CSS
 // that knip does not follow, and sharp/png-to-ico/fontkit are used by the shared
-// asset generators through dynamic requires.
+// asset generators through dynamic requires. @vscode/codicons and lucide-static
+// are read as files rather than imported - the colour console serves
+// `node_modules/@vscode/codicons/dist/codicon.css` and
+// `node_modules/lucide-static/sprite.svg` over HTTP, and its invariants test
+// reads the same codicon CSS to prove every glyph the IDE preview draws is a
+// real one. A path in a string is exactly what a static scan cannot follow.
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"workspaces": {
@@ -16,7 +21,12 @@
 			"entry": [
 				"scripts/*.mjs",
 				"tests/**/*.test.ts",
+				// Both vitest configs are entry points. The mutation one is reached by
+				// name from `stryker.config.json` rather than by an import, which is
+				// the same blind spot the ignoreDependencies note above describes: a
+				// path in a string is what a static scan cannot follow.
 				"vitest.config.ts",
+				"vitest.mutation.config.ts",
 				"eslint.config.mjs"
 			],
 			"project": ["scripts/**/*.mjs", "tests/**/*.ts", "*.ts", "*.mjs"]
@@ -48,6 +58,8 @@
 		"packages/web/components/base/**"
 	],
 	"ignoreDependencies": [
+		"@vscode/codicons",
+		"lucide-static",
 		"sharp",
 		"png-to-ico",
 		"fontkit",

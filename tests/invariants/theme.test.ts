@@ -1,4 +1,5 @@
-// The shape of the committed theme source. `scripts/theme.mjs --check` already
+// The shape of the committed theme source. `packages/shared/scripts/theme.mjs
+// --check` already
 // proves the generated artifacts match `theme.json`, so this is not that: it
 // constrains the source itself - every editable value canonical hex, light and
 // dark carrying the same keys - because a generator propagates a malformed value

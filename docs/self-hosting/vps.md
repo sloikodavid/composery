@@ -4,7 +4,7 @@ description: Self-host Composery on your own Linux server with Docker Compose.
 ---
 
 Run Composery on any Docker-capable Linux server - Hetzner (cheapest), a DigitalOcean
-Droplet (the most common n8n choice), Hostinger, Vultr, Contabo, Linode, or your own box.
+Droplet (the most common n8n choice), Hostinger, Vultr, Contabo, Linode, or your own server.
 Install Docker, then choose two things: the **init** system, and whether Composery **owns
 its TLS edge**.
 
@@ -13,7 +13,7 @@ managed VM (Elestio), see [Other PaaS & self-hosted platforms](other-platforms.m
 
 - **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a
   privileged container with host cgroup access) or `supervisor` (works on any host,
-  including rootless or locked-down ones). Selected by `COMPOSERY_INIT` in `compose.yml`.
+  including rootless or locked-down ones). Selected by `COMPOSERY_INIT` in `compose.yaml`.
 - **TLS** - bundle **Caddy** for automatic HTTPS when Composery owns the domain, or run
   with **no proxy** when your own reverse proxy or a platform terminates TLS.
 
@@ -56,7 +56,7 @@ docker compose up -d
 
 This serves plaintext HTTP on `8080`. Do not expose it to the public internet without TLS
 in front - either put a reverse proxy that terminates HTTPS ahead of `8080`, or bind it to
-localhost only (`"127.0.0.1:8080:8080"` in `compose.yml`) and route from your proxy.
+localhost only (`"127.0.0.1:8080:8080"` in `compose.yaml`) and route from your proxy.
 
 For a one-off trial without Compose:
 

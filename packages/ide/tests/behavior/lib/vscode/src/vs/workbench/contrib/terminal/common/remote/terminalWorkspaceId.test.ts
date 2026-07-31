@@ -16,7 +16,7 @@ const folder = (path: string, authority = "localhost:8080") => ({
 
 describe("terminal workspace id", () => {
 	// The whole point of the rule: upstream hashes the folder URI including the
-	// authority the browser happened to use, so the same box reached over the LAN
+	// authority the browser happened to use, so the same server reached over the LAN
 	// filed its terminals under a second workspace and the ones started over
 	// localhost were nowhere to be found.
 	test("the same folder reached through two addresses is one workspace", () => {
@@ -69,9 +69,9 @@ describe("terminal workspace id", () => {
 		);
 	});
 
-	// Serialized terminal state on the box carries the workspace id, so this
+	// Serialized terminal state on the server carries the workspace id, so this
 	// string is what a restart matches a client against: changing how it is built
-	// orphans every terminal an existing box is holding.
+	// orphans every terminal an existing instance is holding.
 	test("the identity hashed is the paths and nothing else", () => {
 		const spy = vi.fn(() => 0);
 

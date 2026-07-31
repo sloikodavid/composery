@@ -4,14 +4,17 @@ import type { VariantProps } from "class-variance-authority";
 import { AnimatedIconAnchor } from "@/components/animated-icon";
 import type { AnimatedIconName } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
-import { convexFilterUrl, convexTableUrl } from "@/lib/convex-dashboard";
-import { hetznerServersUrl, hetznerServerUrl } from "@/lib/hetzner-dashboard";
 import {
+	convexFilterUrl,
+	convexTableUrl,
+	hetznerServersUrl,
+	hetznerServerUrl,
 	polarCustomersUrl,
 	polarCustomerUrl,
-	polarSubscriptionUrl
-} from "@/lib/polar-dashboard";
-import { vercelDashboardUrl, type VercelView } from "@/lib/vercel-dashboard";
+	polarSubscriptionUrl,
+	vercelDashboardUrl,
+	type VercelView
+} from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
 
 // Props every provider button shares. Each provider below only resolves an href

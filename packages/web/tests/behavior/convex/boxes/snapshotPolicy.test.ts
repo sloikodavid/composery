@@ -5,7 +5,7 @@ import {
 	SNAPSHOT_POLL_FAST_MS,
 	SNAPSHOT_POLL_FAST_WINDOW_MS,
 	SNAPSHOT_POLL_SLOW_MS,
-	SNAPSHOT_MANUAL_MIN_INTERVAL_MS,
+	manualSnapshotIntervalMs,
 	SNAPSHOT_SCHEDULE_STAGGER_MS,
 	resolveSnapshotPolicy,
 	snapshotEvictionCount,
@@ -21,8 +21,12 @@ const DAY = 24 * 60 * 60 * 1000;
 describe("snapshot retention", () => {
 	test("keeps manual snapshots far longer than automatic ones", () => {
 		const created = 1_000_000;
-		expect(snapshotExpiry("manual", created)).toBe(created + 30 * DAY);
-		expect(snapshotExpiry("scheduled", created)).toBe(created + 5 * DAY);
+		expect(snapshotExpiry("manual", created, DEFAULT_SNAPSHOT_POLICY)).toBe(
+			created + 30 * DAY
+		);
+		expect(snapshotExpiry("scheduled", created, DEFAULT_SNAPSHOT_POLICY)).toBe(
+			created + 5 * DAY
+		);
 	});
 
 	test("uses a resolved retention policy when provided", () => {
@@ -113,11 +117,28 @@ describe("snapshotScheduleDelayMs", () => {
 describe("snapshotIdempotencyBucket", () => {
 	test("collapses requests inside one min-interval window, separates later ones", () => {
 		const now = 1_000_000_000;
-		const bucket = snapshotIdempotencyBucket(now);
-		expect(snapshotIdempotencyBucket(now + 1000)).toBe(bucket);
-		expect(
-			snapshotIdempotencyBucket(now + SNAPSHOT_MANUAL_MIN_INTERVAL_MS)
-		).not.toBe(bucket);
+		const interval = manualSnapshotIntervalMs(DEFAULT_SNAPSHOT_POLICY);
+		const bucket = snapshotIdempotencyBucket(now, interval);
+		expect(snapshotIdempotencyBucket(now + 1000, interval)).toBe(bucket);
+		expect(snapshotIdempotencyBucket(now + interval, interval)).not.toBe(
+			bucket
+		);
+	});
+
+	// The window is the configured one, not the shipped default: a deployment
+	// that lengthened the interval must collapse requests the default would
+	// have separated.
+	test("follows a configured interval rather than the default", () => {
+		const now = 1_000_000_000;
+		const shipped = manualSnapshotIntervalMs(DEFAULT_SNAPSHOT_POLICY);
+		const longer = manualSnapshotIntervalMs({
+			...DEFAULT_SNAPSHOT_POLICY,
+			manualMinIntervalMinutes:
+				DEFAULT_SNAPSHOT_POLICY.manualMinIntervalMinutes * 4
+		});
+		expect(snapshotIdempotencyBucket(now + shipped, longer)).toBe(
+			snapshotIdempotencyBucket(now, longer)
+		);
 	});
 });
 

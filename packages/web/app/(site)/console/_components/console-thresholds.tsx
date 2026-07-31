@@ -1,75 +1,52 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
+import {
+	DEFAULT_THRESHOLDS,
+	type ThresholdSetting
+} from "@/convex/boxes/metricThresholds";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { DEFAULT_THRESHOLDS } from "@/convex/boxes/metricThresholds";
-import type { ThresholdSetting } from "@/convex/boxes/metricThresholds";
+import { useSettingDraft, type SettingDraft } from "@/hooks/use-setting-draft";
+import {
+	FLAG_SIGNALS,
+	flagDisplayValue,
+	flagSignalLabel,
+	flagStoredValue
+} from "@/lib/boxes/metrics";
+import { NumberField, SettingsCard } from "./settings-card";
 
-const SIGNAL_LABELS: Record<ThresholdSetting["signal"], string> = {
-	egress_bandwidth: "Outbound bandwidth",
-	egress_pps: "Outbound packet rate"
-};
+type Signal = ThresholdSetting["signal"];
 
-const SIGNAL_UNITS: Record<ThresholdSetting["signal"], string> = {
-	egress_bandwidth: "Mbit/s",
-	egress_pps: "packets/s"
-};
+// One flat draft keyed `<signal>.<field>`, so the thresholds - which are a list -
+// still ride the same draft the other panels use. The signals themselves are
+// fixed by `DEFAULT_THRESHOLDS`, never by what the server happened to return, so
+// a stored row for a signal that no longer exists cannot render a phantom field.
+const SIGNALS: Signal[] = DEFAULT_THRESHOLDS.map(
+	(threshold) => threshold.signal
+);
 
-// Bandwidth is stored in bytes/s (matches Hetzner's API and crossedValue) but
-// edited in Mbit/s. PPS is pass-through.
-const BITS_PER_BYTE = 8;
-const MBIT_FACTOR = 1_000_000;
-
-function toDisplayValue(signal: ThresholdSetting["signal"], stored: number) {
-	if (signal === "egress_bandwidth") {
-		return Math.round((stored * BITS_PER_BYTE) / MBIT_FACTOR);
-	}
-	return stored;
-}
-
-function toStoredValue(signal: ThresholdSetting["signal"], display: number) {
-	if (signal === "egress_bandwidth") {
-		return Math.round((display * MBIT_FACTOR) / BITS_PER_BYTE);
-	}
-	return display;
-}
-
-type Draft = {
-	signal: ThresholdSetting["signal"];
-	value: string;
-	sustainedSamples: string;
-};
-
-function toDraft(threshold: ThresholdSetting): Draft {
-	return {
-		signal: threshold.signal,
-		value: String(toDisplayValue(threshold.signal, threshold.value)),
-		sustainedSamples: String(threshold.sustainedSamples)
-	};
-}
-
-function toSetting(draft: Draft): ThresholdSetting {
-	return {
-		signal: draft.signal,
-		value: toStoredValue(draft.signal, Number(draft.value)),
-		sustainedSamples: Number(draft.sustainedSamples)
-	};
-}
-
-function draftsEqual(a: Draft[], b: Draft[]): boolean {
-	if (a.length !== b.length) return false;
-	return a.every((row, index) => {
-		const other = b[index];
-		return (
-			row.signal === other?.signal &&
-			row.value === other.value &&
-			row.sustainedSamples === other.sustainedSamples
+function toDraft(thresholds: readonly ThresholdSetting[]): SettingDraft {
+	const draft: SettingDraft = {};
+	for (const signal of SIGNALS) {
+		const threshold =
+			thresholds.find((row) => row.signal === signal) ??
+			DEFAULT_THRESHOLDS.find((row) => row.signal === signal);
+		if (!threshold) continue;
+		draft[`${signal}.value`] = String(
+			flagDisplayValue(signal, threshold.value)
 		);
-	});
+		draft[`${signal}.samples`] = String(threshold.sustainedSamples);
+	}
+	return draft;
+}
+
+function toSettings(draft: SettingDraft): ThresholdSetting[] {
+	return SIGNALS.map((signal) => ({
+		signal,
+		value: flagStoredValue(signal, Number(draft[`${signal}.value`])),
+		sustainedSamples: Number(draft[`${signal}.samples`])
+	}));
 }
 
 export function ConsoleThresholds({
@@ -79,123 +56,59 @@ export function ConsoleThresholds({
 }) {
 	const setThresholds = useMutation(api.staff.settings.setThresholds);
 	const { run, busy } = useBusyAction();
-	const [drafts, setDrafts] = useState<Draft[]>(
-		(thresholds ?? DEFAULT_THRESHOLDS).map(toDraft)
+	const { draft, dirty, setDraft, setField } = useSettingDraft(
+		thresholds && toDraft(thresholds)
 	);
-	const [lastSynced, setLastSynced] = useState<ThresholdSetting[] | undefined>(
-		thresholds
-	);
-
-	if (thresholds !== lastSynced) {
-		setLastSynced(thresholds);
-		if (thresholds) setDrafts(thresholds.map(toDraft));
-	}
-
-	const savedDrafts = (thresholds ?? []).map(toDraft);
-	const dirty = !draftsEqual(drafts, savedDrafts);
-
-	function updateField(
-		signal: ThresholdSetting["signal"],
-		field: keyof Draft,
-		value: string
-	) {
-		setDrafts((rows) =>
-			rows.map((row) =>
-				row.signal === signal ? { ...row, [field]: value } : row
-			)
-		);
-	}
-
-	function reset() {
-		setDrafts(DEFAULT_THRESHOLDS.map(toDraft));
-	}
-
-	function save() {
-		run("thresholds", "Thresholds updated", () =>
-			setThresholds({ thresholds: drafts.map(toSetting) })
-		);
-	}
 
 	return (
-		<div className="rounded-2xl border border-border bg-card">
-			<div className="flex items-center justify-between border-b border-border px-4 py-3">
-				<h2 className="text-sm font-medium">Abuse thresholds</h2>
-				<div className="flex gap-2">
-					<AnimatedIconButton
-						disabled={busy !== null}
-						icon="rotate-cw"
-						iconPosition="start"
-						onClick={reset}
-						size="sm"
-						variant="outline"
+		<SettingsCard
+			onReset={() => setDraft(toDraft(DEFAULT_THRESHOLDS))}
+			onSave={() =>
+				run("thresholds", "Thresholds updated", () =>
+					setThresholds({ thresholds: toSettings(draft) })
+				)
+			}
+			saveDisabled={!dirty || busy !== null}
+			title="Abuse thresholds"
+		>
+			{SIGNALS.map((signal) => {
+				const disabled = Number(draft[`${signal}.value`]) <= 0;
+				return (
+					/* Two fixed-width control groups plus a label don't fit on one
+					   narrow row - they were what made the whole console page scroll
+					   sideways - so the label takes its own line below sm. This is why
+					   the thresholds lay out their own rows rather than using
+					   SettingsRow's two-column grid. */
+					<div
+						className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto_auto]"
+						key={signal}
 					>
-						Reset
-					</AnimatedIconButton>
-					<AnimatedIconButton
-						disabled={!dirty || busy !== null}
-						icon="check"
-						iconPosition="start"
-						onClick={save}
-						size="sm"
-					>
-						Save
-					</AnimatedIconButton>
-				</div>
-			</div>
-			<div className="divide-y divide-border">
-				{drafts.map((draft) => {
-					const disabled = Number(draft.value) <= 0;
-					return (
-						/* Two fixed-width control groups plus a label don't fit on one
-						   narrow row - they were what made the whole console page scroll
-						   sideways - so the label takes its own line below sm. */
-						<div
-							className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:grid-cols-[1fr_auto_auto]"
-							key={draft.signal}
+						<span
+							className={`col-span-2 text-sm sm:col-span-1 ${disabled ? "text-muted-foreground" : "text-foreground"}`}
 						>
-							<span
-								className={`col-span-2 text-sm sm:col-span-1 ${disabled ? "text-muted-foreground" : "text-foreground"}`}
-							>
-								{SIGNAL_LABELS[draft.signal]}
-							</span>
-							<div className="flex items-center gap-1.5">
-								<Input
-									className="w-24 tabular-nums"
-									disabled={busy !== null}
-									min={0}
-									onChange={(event) =>
-										updateField(draft.signal, "value", event.target.value)
-									}
-									type="number"
-									value={draft.value}
-								/>
-								<span className="w-16 shrink-0 text-xs text-muted-foreground">
-									{disabled ? "disabled" : SIGNAL_UNITS[draft.signal]}
-								</span>
-							</div>
-							<div className="flex items-center gap-1.5">
-								<Input
-									className="w-14 tabular-nums"
-									disabled={busy !== null}
-									min={1}
-									onChange={(event) =>
-										updateField(
-											draft.signal,
-											"sustainedSamples",
-											event.target.value
-										)
-									}
-									type="number"
-									value={draft.sustainedSamples}
-								/>
-								<span className="shrink-0 text-xs text-muted-foreground">
-									polls
-								</span>
-							</div>
-						</div>
-					);
-				})}
-			</div>
-		</div>
+							{flagSignalLabel(signal)}
+						</span>
+						<NumberField
+							disabled={busy !== null}
+							inputClassName="w-24"
+							min={0}
+							onChange={(value) => setField(`${signal}.value`, value)}
+							unit={disabled ? "disabled" : FLAG_SIGNALS[signal].unit}
+							unitClassName="w-16"
+							value={draft[`${signal}.value`] ?? ""}
+						/>
+						<NumberField
+							disabled={busy !== null}
+							inputClassName="w-14"
+							min={1}
+							onChange={(value) => setField(`${signal}.samples`, value)}
+							unit="polls"
+							unitClassName=""
+							value={draft[`${signal}.samples`] ?? ""}
+						/>
+					</div>
+				);
+			})}
+		</SettingsCard>
 	);
 }

@@ -1,12 +1,17 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseWriter } from "../_generated/server";
+import type { BoxEventType } from "../../lib/boxes/operations";
 
 type WriteDbCtx = { db: DatabaseWriter };
 
+// `type` is the closed union rather than `string`, which is what makes the
+// audit history unable to grow a row nothing can name: every member of it has a
+// label in `lib/boxes/operations.ts`, so a new event is named in the same edit
+// that writes it or it does not compile.
 export async function appendBoxEvent(
 	ctx: WriteDbCtx,
 	box: Pick<Doc<"boxes">, "_id" | "user_id">,
-	type: string,
+	type: BoxEventType,
 	input?: { message?: string; metadata?: Record<string, unknown> }
 ) {
 	await ctx.db.insert("box_events", {

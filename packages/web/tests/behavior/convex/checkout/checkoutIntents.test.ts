@@ -56,7 +56,9 @@ describe("reservationsToRelease", () => {
 			async (ctx) =>
 				await ctx.db
 					.query("box_checkout_intents")
-					.withIndex("user_id", (query) => query.eq("user_id", "owner"))
+					.withIndex("user_id_created_at", (query) =>
+						query.eq("user_id", "owner")
+					)
 					.collect()
 		);
 		expect(
@@ -104,7 +106,9 @@ describe("reservationsToRelease", () => {
 			async (ctx) =>
 				await ctx.db
 					.query("box_checkout_intents")
-					.withIndex("user_id", (query) => query.eq("user_id", "owner"))
+					.withIndex("user_id_created_at", (query) =>
+						query.eq("user_id", "owner")
+					)
 					.collect()
 		);
 		expect(

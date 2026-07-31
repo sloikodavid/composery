@@ -22,9 +22,9 @@ describe("IDE public path boundary", () => {
 	test("one mount owns browser-facing URL construction", () => {
 		expect(IDE_PATH).toBe("/ide/");
 		expect(
-			new URL(".", `https://box.example${IDE_PATH}manifest.json`).pathname
+			new URL(".", `https://composery.example${IDE_PATH}manifest.json`).pathname
 		).toBe(IDE_PATH);
-		expect(new URL("./", `https://box.example${IDE_PATH}`).pathname).toBe(
+		expect(new URL("./", `https://composery.example${IDE_PATH}`).pathname).toBe(
 			IDE_PATH
 		);
 
@@ -83,7 +83,7 @@ describe("IDE public path boundary", () => {
 	test("no deployment config enables the removed host-domain proxy", () => {
 		for (const path of [
 			"Dockerfile",
-			"compose.dev.yml",
+			"compose.dev.yaml",
 			"docs",
 			"rootfs",
 			"scripts",

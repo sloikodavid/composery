@@ -126,7 +126,6 @@ export async function seedSettings(
 	return await t.run(
 		async (ctx) =>
 			await ctx.db.insert("settings", {
-				key: "global",
 				checkout_enabled: true,
 				hetzner_server_limit: 100,
 				hetzner_snapshot_limit: 1000,
@@ -149,7 +148,7 @@ export function boxEvents(t: Harness, boxId: Id<"boxes">) {
 		async (ctx) =>
 			await ctx.db
 				.query("box_events")
-				.withIndex("box_id", (q) => q.eq("box_id", boxId))
+				.withIndex("box_id_created_at", (q) => q.eq("box_id", boxId))
 				.collect()
 	);
 }
@@ -159,7 +158,7 @@ export function boxOperations(t: Harness, boxId: Id<"boxes">) {
 		async (ctx) =>
 			await ctx.db
 				.query("box_operations")
-				.withIndex("box_id", (q) => q.eq("box_id", boxId))
+				.withIndex("box_id_created_at", (q) => q.eq("box_id", boxId))
 				.collect()
 	);
 }

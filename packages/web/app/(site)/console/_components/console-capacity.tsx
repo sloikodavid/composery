@@ -1,17 +1,20 @@
 "use client";
 
 import { useMutation } from "convex/react";
-import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
 import type { CapacityUsage } from "@/convex/boxes/capacity";
 import { useBusyAction } from "@/hooks/use-busy-action";
+import { useSettingDraft } from "@/hooks/use-setting-draft";
+import { NumberField, SettingsCard, SettingsRow } from "./settings-card";
+
+const LIMIT_MAX = 100_000;
 
 function draftValue(value: number | null) {
 	return value === null ? "" : String(value);
 }
 
+// An empty field is "no allocation configured", which is a real state - capacity
+// admission fails closed on it - so it parses to null rather than to zero.
 function parsedLimit(value: string) {
 	return value === "" ? null : Number(value);
 }
@@ -19,8 +22,43 @@ function parsedLimit(value: string) {
 function validLimit(value: number | null) {
 	return (
 		value === null ||
-		(Number.isInteger(value) && value >= 1 && value <= 100_000)
+		(Number.isInteger(value) && value >= 1 && value <= LIMIT_MAX)
 	);
+}
+
+function capacityStatus(
+	capacity: CapacityUsage,
+	serverLimit: number | null,
+	snapshotLimit: number | null
+) {
+	if (capacity.blockReason === "limits_not_configured") {
+		return "Set both allocations before checkout can start.";
+	}
+
+	const serverOvercommit =
+		serverLimit !== null && capacity.serverCommitments > serverLimit;
+	const snapshotOvercommit =
+		snapshotLimit !== null && capacity.snapshotCommitments > snapshotLimit;
+	if (serverOvercommit || snapshotOvercommit) {
+		const which =
+			serverOvercommit && snapshotOvercommit
+				? "server and snapshot allocations"
+				: serverOvercommit
+					? "server allocation"
+					: "snapshot allocation";
+		return `Existing commitments exceed the configured ${which}. New checkout is blocked; existing boxes keep priority.`;
+	}
+
+	if (capacity.blockReason === "server_limit") {
+		return "Server capacity is fully committed.";
+	}
+	if (capacity.blockReason === "snapshot_limit") {
+		return "Snapshot capacity is fully committed.";
+	}
+	if (capacity.blockReason === "manual_pause") {
+		return "Capacity is available, but checkout is manually paused.";
+	}
+	return `${capacity.availableNewBoxes} additional box${capacity.availableNewBoxes === 1 ? "" : "es"} can be reserved.`;
 }
 
 export function ConsoleCapacity({
@@ -34,72 +72,38 @@ export function ConsoleCapacity({
 }) {
 	const setLimits = useMutation(api.staff.settings.setHetznerLimits);
 	const { run, busy } = useBusyAction();
-	const [serverDraft, setServerDraft] = useState(draftValue(serverLimit));
-	const [snapshotDraft, setSnapshotDraft] = useState(draftValue(snapshotLimit));
-	const [lastSynced, setLastSynced] = useState(
-		`${serverLimit ?? ""}:${snapshotLimit ?? ""}`
-	);
-	const synced = `${serverLimit ?? ""}:${snapshotLimit ?? ""}`;
-	if (synced !== lastSynced) {
-		setLastSynced(synced);
-		setServerDraft(draftValue(serverLimit));
-		setSnapshotDraft(draftValue(snapshotLimit));
-	}
+	const { draft, dirty, setField } = useSettingDraft({
+		server: draftValue(serverLimit),
+		snapshot: draftValue(snapshotLimit)
+	});
 
-	const nextServerLimit = parsedLimit(serverDraft);
-	const nextSnapshotLimit = parsedLimit(snapshotDraft);
+	const nextServerLimit = parsedLimit(draft.server ?? "");
+	const nextSnapshotLimit = parsedLimit(draft.snapshot ?? "");
+	// Both or neither: one allocation alone cannot admit a box, and the mutation
+	// refuses the half-configured pair, so the button refuses it too.
 	const bothSetOrCleared =
 		(nextServerLimit === null) === (nextSnapshotLimit === null);
 	const valid =
 		bothSetOrCleared &&
 		validLimit(nextServerLimit) &&
 		validLimit(nextSnapshotLimit);
-	const dirty =
-		serverDraft !== draftValue(serverLimit) ||
-		snapshotDraft !== draftValue(snapshotLimit);
-	const serverOvercommit =
-		serverLimit !== null && capacity.serverCommitments > serverLimit;
-	const snapshotOvercommit =
-		snapshotLimit !== null && capacity.snapshotCommitments > snapshotLimit;
-	const status =
-		capacity.blockReason === "limits_not_configured"
-			? "Set both allocations before checkout can start."
-			: serverOvercommit || snapshotOvercommit
-				? `Existing commitments exceed the configured ${serverOvercommit && snapshotOvercommit ? "server and snapshot allocations" : serverOvercommit ? "server allocation" : "snapshot allocation"}. New checkout is blocked; existing boxes keep priority.`
-				: capacity.blockReason === "server_limit"
-					? "Server capacity is fully committed."
-					: capacity.blockReason === "snapshot_limit"
-						? "Snapshot capacity is fully committed."
-						: capacity.blockReason === "manual_pause"
-							? "Capacity is available, but checkout is manually paused."
-							: `${capacity.availableNewBoxes} additional box${capacity.availableNewBoxes === 1 ? "" : "es"} can be reserved.`;
 
 	return (
-		<div className="rounded-2xl border border-border bg-card">
-			<div className="flex items-center justify-between border-b border-border px-4 py-3">
-				<div>
-					<h2 className="text-sm font-medium">Hetzner capacity</h2>
-					<p className="mt-0.5 text-xs text-muted-foreground">{status}</p>
-				</div>
-				<AnimatedIconButton
-					disabled={!dirty || !valid || busy !== null}
-					icon="check"
-					iconPosition="start"
-					onClick={() =>
-						run("hetzner-capacity", "Hetzner capacity updated", () =>
-							setLimits({
-								serverLimit: nextServerLimit,
-								snapshotLimit: nextSnapshotLimit
-							})
-						)
-					}
-					size="sm"
-				>
-					Save
-				</AnimatedIconButton>
-			</div>
-			<div className="divide-y divide-border">
-				<div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
+		<SettingsCard
+			onSave={() =>
+				run("hetzner-capacity", "Hetzner capacity updated", () =>
+					setLimits({
+						serverLimit: nextServerLimit,
+						snapshotLimit: nextSnapshotLimit
+					})
+				)
+			}
+			saveDisabled={!dirty || !valid || busy !== null}
+			subtitle={capacityStatus(capacity, serverLimit, snapshotLimit)}
+			title="Hetzner capacity"
+		>
+			<SettingsRow
+				label={
 					<div>
 						<p className="text-sm">Server allocation</p>
 						<p className="text-xs text-muted-foreground">
@@ -107,18 +111,20 @@ export function ConsoleCapacity({
 							boxes and {capacity.activeCheckoutCount} active checkouts
 						</p>
 					</div>
-					<Input
-						className="w-24 tabular-nums"
-						disabled={busy !== null}
-						max={100000}
-						min={1}
-						onChange={(event) => setServerDraft(event.target.value)}
-						placeholder="Required"
-						type="number"
-						value={serverDraft}
-					/>
-				</div>
-				<div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
+				}
+			>
+				<NumberField
+					disabled={busy !== null}
+					inputClassName="w-24"
+					max={LIMIT_MAX}
+					min={1}
+					onChange={(value) => setField("server", value)}
+					placeholder="Required"
+					value={draft.server ?? ""}
+				/>
+			</SettingsRow>
+			<SettingsRow
+				label={
 					<div>
 						<p className="text-sm">Snapshot allocation</p>
 						<p className="text-xs text-muted-foreground">
@@ -126,18 +132,18 @@ export function ConsoleCapacity({
 							{capacity.snapshotSlotsPerBox} reserved per new box
 						</p>
 					</div>
-					<Input
-						className="w-24 tabular-nums"
-						disabled={busy !== null}
-						max={100000}
-						min={1}
-						onChange={(event) => setSnapshotDraft(event.target.value)}
-						placeholder="Required"
-						type="number"
-						value={snapshotDraft}
-					/>
-				</div>
-			</div>
-		</div>
+				}
+			>
+				<NumberField
+					disabled={busy !== null}
+					inputClassName="w-24"
+					max={LIMIT_MAX}
+					min={1}
+					onChange={(value) => setField("snapshot", value)}
+					placeholder="Required"
+					value={draft.snapshot ?? ""}
+				/>
+			</SettingsRow>
+		</SettingsCard>
 	);
 }

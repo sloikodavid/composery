@@ -5,7 +5,7 @@
 import { OWNER, REPO, SOCIAL } from "shared";
 
 export const GITHUB_REPO_URL = `https://github.com/${REPO.owner}/${REPO.name}`;
-export const GITHUB_BUG_URL = `${GITHUB_REPO_URL}/issues/new?template=bug.yml`;
+export const GITHUB_BUG_URL = `${GITHUB_REPO_URL}/issues/new?template=bug.yaml`;
 export const GITHUB_IDEAS_URL = `${GITHUB_REPO_URL}/discussions/categories/ideas`;
 export const GITHUB_ADVISORY_URL = `${GITHUB_REPO_URL}/security/advisories/new`;
 export const SUPPORT_EMAIL = OWNER.email;

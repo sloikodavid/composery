@@ -4,7 +4,7 @@ import { ideUrl } from "../env";
 import { ACTIVE_OPERATION_STATUSES } from "./operationRules";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
-import { resolveSnapshotSplit } from "../../lib/box-plan";
+import { resolveSnapshotSplit } from "../../lib/boxes/plan";
 
 type OperationSummary = {
 	status: Doc<"box_operations">["status"];

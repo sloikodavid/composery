@@ -238,6 +238,6 @@ export async function syncAssets({
 	}
 }
 
-const scriptPath = fileURLToPath(import.meta.url);
 // Stryker disable next-line all: package scripts exercise this CLI dispatch; behavior tests call the generator directly so they can assert write and check modes separately.
-if (resolve(process.argv[1] ?? "") === scriptPath) await syncAssets();
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url))
+	await syncAssets();

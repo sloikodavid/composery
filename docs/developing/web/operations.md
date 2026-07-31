@@ -4,8 +4,8 @@ description: Admin bootstrap, role boundaries, capacity admission, and incident 
 ---
 
 This is the operator runbook for the hosted Composery service. Provider setup
-belongs under [Services](./services/index.md); hardcoded cron and retention
-values are in [Maintenance](./maintenance.md).
+belongs under [Services](services/index.md); hardcoded cron and retention
+values are in [Maintenance](maintenance.md).
 
 ## Admin, staff, and owner terminology
 
@@ -24,7 +24,7 @@ V1 intentionally stores only `user` and `admin`. Calling every employee generic
 billing intervention, settings changes, and alert access as one implied bundle.
 It is also unnecessary to invent narrow roles before real people need them.
 
-Instead, `convex/roles.ts` explicitly maps roles to capabilities:
+Instead, `convex/users.ts` explicitly maps roles to capabilities:
 
 - `staff_console` - enter and read the console;
 - `box_operations` - operate customer boxes, snapshots, and flags;
@@ -45,7 +45,7 @@ not delete accounts or change billing settings:
 
 1. Add the role literal to `vUserRole` in `convex/schema.ts`.
 2. Add an explicit capability entry to `ROLE_CAPABILITIES` in
-   `convex/roles.ts`. Typechecking deliberately fails until this is done.
+   `convex/users.ts`. Typechecking deliberately fails until this is done.
 3. Audit every backend endpoint for the narrow capability it requires; never
    replace this with `role !== "user"`.
 4. Gate console controls as well as navigation. Backend denial is the security
@@ -61,7 +61,7 @@ not delete accounts or change billing settings:
 
 ## Bootstrap the first admin
 
-There is deliberately no public “make me admin” route and no email allowlist.
+There is deliberately no public "make me admin" route and no email allowlist.
 That would turn a configuration mistake into privilege escalation.
 
 1. Deploy Convex and Clerk for the environment.
@@ -123,7 +123,7 @@ Whichever end notices first releases the slug and capacity: Polar's
 `checkout.expired` webhook, or the sweep reading the same deadline off the
 reservation. A reservation that never got a Polar session - the checkout action
 died between the two - falls back to the short grace in
-[Fixed windows](./maintenance.md#fixed-windows), which is the only part of this
+[Fixed windows](maintenance.md#fixed-windows), which is the only part of this
 Composery chooses.
 
 Existing boxes always have priority. Lowering an allocation below current
@@ -157,7 +157,7 @@ rewrite the allocation.
 Calculated server/snapshot exhaustion opens one deduplicated alert episode and
 recovery closes it. The independent checkout toggle sends an alert on every
 actual state transition, including a provider-triggered circuit breaker. The
-complete alert boundary lives in [Resend](./services/resend.md#alert-policy).
+complete alert boundary lives in [Resend](services/resend.md#alert-policy).
 
 ## Capacity incident runbook
 
@@ -187,12 +187,12 @@ complete alert boundary lives in [Resend](./services/resend.md#alert-policy).
   tried), and an operation still running past its window (the box refuses every
   action while it stays open). **Cancel operation** on the box's console page is
   the lever for the second. See
-  [Automatic repair and the operation lock](./maintenance.md#automatic-repair).
+  [Automatic repair and the operation lock](maintenance.md#automatic-repair).
 - Review Convex function and cron failures, Polar webhook deliveries, Hetzner
   actions/resources/limits, Cloudflare records, and Vercel production health.
 - Confirm Polar owns customer billing email, that Resend delivery is healthy,
   and that Resend's own customer mail is still only the four box owner notices.
-  See [Resend](./services/resend.md).
+  See [Resend](services/resend.md).
 - Before changing destructive behavior, read the deletion, retention, refund,
-  and reconciliation sections in [Polar](./services/polar.md),
-  [Hetzner](./services/hetzner.md), and [Maintenance](./maintenance.md).
+  and reconciliation sections in [Polar](services/polar.md),
+  [Hetzner](services/hetzner.md), and [Maintenance](maintenance.md).

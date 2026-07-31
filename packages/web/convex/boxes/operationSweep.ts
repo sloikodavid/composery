@@ -7,20 +7,20 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/box-route";
-import { operationLabel } from "../../lib/operation-failure";
+import { consoleBoxPath } from "../../lib/boxes/route";
+import { operationLabel } from "../../lib/boxes/operations";
 import { vBoxOperationType } from "../schema";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import {
 	ACTIVE_OPERATION_STATUSES,
-	boxEventType,
 	isActiveOperationStatus,
 	OPERATION_FAILURE_STATUS
 } from "./operationRules";
 import { recordOperationFailure } from "./status";
 import { activeOperation } from "./views";
 import { workflow } from "./workflows/boxWorkflow";
+import { HOUR_MS, MINUTE_MS } from "../time";
 
 // The backstop for the operation lock.
 //
@@ -44,14 +44,14 @@ import { workflow } from "./workflows/boxWorkflow";
 // and its completion callback has not yet landed. Both are second-scale; the
 // window is minutes because there is no cost to patience here.
 // runbook: Orphaned operation grace period
-export const OPERATION_ORPHAN_GRACE_MS = 30 * 60 * 1000;
+export const OPERATION_ORPHAN_GRACE_MS = 30 * MINUTE_MS;
 
 // An operation whose workflow is still genuinely running past this is reported,
 // never closed. Past any plausible duration it means a workflow is wedged rather
 // than working, and cancelling one mid-flight is a judgement call about the box's
 // files - so it goes to a person, with `staff.boxes.cancelOperation` as the lever.
 // runbook: Long-running operation alert
-export const OPERATION_RUNNING_ALERT_MS = 6 * 60 * 60 * 1000;
+export const OPERATION_RUNNING_ALERT_MS = 6 * HOUR_MS;
 
 const OPERATION_SWEEP_BATCH = 100;
 
@@ -68,9 +68,9 @@ export function operationLiveness(input: {
 	workflowStatus: { type: string } | null;
 }): OperationLiveness {
 	if (input.workflowId === undefined) {
-		// Recorded in the same transaction as the row since `startOperation`, so an
-		// active operation without one either predates that column or comes from the
-		// window it closed. Either way nothing is carrying this operation.
+		// `startBoxOperation` inserts the row and patches this in one transaction,
+		// so an active operation reaching the sweep without one means the workflow
+		// was never started. Nothing is carrying it.
 		return {
 			orphaned: true,
 			error:
@@ -120,7 +120,7 @@ export const activeOperationsBefore = internalQuery({
 
 // Close an operation whose workflow is provably gone, and say so. Routed through
 // the same failure recorder every workflow failure uses, so the box lands in the
-// status `OPERATION_FAILURE` says a failure of this type leaves it in - a rescued
+// status `OPERATION_FAILURE_STATUS` says a failure of this type leaves it in - a rescued
 // repair reads as `repair_failed` and can be retried, exactly as one that failed
 // the ordinary way.
 export const failOrphanedOperation = internalMutation({
@@ -135,7 +135,6 @@ export const failOrphanedOperation = internalMutation({
 		await recordOperationFailure(ctx, {
 			boxId: operation.box_id,
 			error: args.error,
-			eventType: boxEventType(operation.type, "failed"),
 			operationId: args.operationId,
 			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
 		});
@@ -152,7 +151,7 @@ export const alertLongRunningOperation = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) return;
-		const hours = Math.floor((Date.now() - args.createdAt) / (60 * 60 * 1000));
+		const hours = Math.floor((Date.now() - args.createdAt) / HOUR_MS);
 		await raiseAlert(ctx, {
 			key: `box-operation-long-running:${args.operationId}`,
 			severity: "warning",

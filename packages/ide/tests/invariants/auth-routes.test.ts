@@ -108,8 +108,8 @@ describe("register route", () => {
 	});
 
 	test("a grant cannot write a password the environment already outranks", () => {
-		// Cloud box owners control their host, so COMPOSERY_PASSWORD on a cloud
-		// box is reachable. It wins at every restart, so the grant flow has to
+		// Cloud owners control their host, so COMPOSERY_PASSWORD on a cloud
+		// instance is reachable. It wins at every restart, so the grant flow has to
 		// say so rather than store a password that silently stops working.
 		const grantBypass = register.indexOf(
 			"cloudConfig && hasCloudSetupGrant(req)"
@@ -129,8 +129,8 @@ describe("change-password route", () => {
 		expect(changePassword).toContain('router.post("/", ensureOrigin,');
 	});
 
-	test("cloud boxes change their password on the same terms as self-hosted", () => {
-		// Holding the box password must never require a Composery website
+	test("cloud instances change their password on the same terms as self-hosted", () => {
+		// Holding the password must never require a Composery website
 		// account: someone handed the password can rotate it. The grant flow
 		// stays the recovery path for a password you cannot produce, offered as
 		// a link rather than forced on everyone who wants to change one.
@@ -211,10 +211,11 @@ describe("change-password route", () => {
 		expect(write).toBeGreaterThan(validate);
 	});
 
-	test("a cloud box changes its password here, not only through the website", () => {
-		// The website renders COMPOSERY_HASHED_PASSWORD into every cloud box's
-		// env file, so a rule of "the environment owns the password" locked the
-		// change and recovery flows out of every box that had one. It does not:
+	test("a cloud instance changes its password here, not only through the website", () => {
+		// The website renders COMPOSERY_HASHED_PASSWORD into every cloud
+		// instance's env file, so a rule of "the environment owns the password"
+		// locked the change and recovery flows out of every one that had a
+		// password. It does not:
 		// the change is recorded in Convex first, and the reconcile carries it
 		// back into that same variable.
 		const passwordConfig = readRepoFile(
@@ -232,8 +233,8 @@ describe("change-password route", () => {
 		);
 	});
 
-	test("a password the box changed itself is reconciled into its env file", () => {
-		// The env file the website renders is where a cloud box reads its
+	test("a password an instance changed itself is reconciled into its env file", () => {
+		// The env file the website renders is where a cloud instance reads its
 		// password from, and it still holds the old hash after a local change.
 		// Recording the new one in Convex alone leaves a password that works
 		// until the next restart and then silently reverts.
@@ -242,7 +243,7 @@ describe("change-password route", () => {
 		const apply = auth.slice(start, auth.indexOf("\nexport const", start + 1));
 		expect(apply).toContain("internal.boxes.auth.reconcilePassword");
 		// ...and the reconcile has to re-render the env file from the new hash,
-		// not merely restart the box on the old one.
+		// not merely restart the instance on the old one.
 		const ssh = readRepoFile("packages/web/convex/boxes/infra/ssh.ts");
 		const rewrite = ssh.slice(
 			ssh.indexOf("export const rewritePasswordAndRestart")
@@ -309,9 +310,12 @@ describe("disabled authentication", () => {
 
 	test("only an explicit 1/true unprotects the instance", () => {
 		// Every other value, typos included, has to leave sign-in required: a
-		// misread switch must never be the thing that opens the box.
-		expect(disableAuth).toContain(
-			"process.env.COMPOSERY_DISABLE_AUTH?.match(/^(1|true)$/)"
+		// misread switch must never be the thing that opens the instance. The
+		// reading itself lives in envFlag.ts and is tested there; what this pins
+		// is that the switch goes through it rather than carrying a fifth copy.
+		expect(disableAuth).toContain('envFlag("COMPOSERY_DISABLE_AUTH")');
+		expect(disableAuth).not.toMatch(
+			/COMPOSERY_DISABLE_AUTH["'`]?\s*\??\.\s*(match|test|toLowerCase|trim)/
 		);
 	});
 
@@ -345,7 +349,7 @@ describe("disabled authentication", () => {
 	});
 
 	test("the cloud grant flow stops when sign-in does", () => {
-		// Its only job is setting the box password; with sign-in off it would
+		// Its only job is setting the password; with sign-in off it would
 		// pass the ownership check, report success, and gate nothing.
 		expect(cloudAuth).toContain("req.args.auth !== AuthType.Password");
 	});

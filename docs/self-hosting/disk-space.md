@@ -1,5 +1,5 @@
 ---
-title: Disk Space
+title: Disk space
 description: Reclaim Docker disk space and return unused storage to the host.
 ---
 
@@ -15,7 +15,7 @@ underlying virtual disk immediately.
 
 Run these commands wherever the Docker daemon is running:
 
-```sh
+```bash
 docker image prune -a -f
 docker builder prune -a -f
 docker system df
@@ -31,7 +31,7 @@ or rebuilt again when next used.
 For a more aggressive cleanup that also removes stopped containers, unused
 networks, and unused volumes:
 
-```sh
+```bash
 docker system prune -a --volumes -f
 docker system df
 ```
@@ -46,7 +46,7 @@ the host automatically.
 
 Check Docker's storage location and available disk space:
 
-```sh
+```bash
 docker info --format '{{.DockerRootDir}}'
 df -h
 ```

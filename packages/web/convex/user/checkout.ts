@@ -12,7 +12,7 @@ import {
 import { isSlugAvailable } from "../boxes/slugAvailability";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { websiteOrigin } from "../env";
-import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
+import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { vBoxPlan } from "../schema";

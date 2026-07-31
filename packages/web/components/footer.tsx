@@ -12,7 +12,7 @@ import {
 	LINKEDIN_URL,
 	X_URL
 } from "@/lib/links";
-import { appTagline } from "@/lib/shared";
+import { APP_TAGLINE } from "shared";
 
 type FooterLink =
 	{ href: string; label: string } | { copyEmail: true; label: string };
@@ -51,7 +51,7 @@ export function Footer() {
 				<div className="max-w-sm space-y-3">
 					<Logo size="h-12" />
 					<p className="text-balance text-sm leading-6 text-muted-foreground">
-						{appTagline}
+						{APP_TAGLINE}
 					</p>
 				</div>
 

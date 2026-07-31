@@ -17,11 +17,16 @@ import {
 } from "@/components/base/table";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
-import { consoleBoxPath } from "@/lib/box-route";
+import { flagSignalLabel } from "@/lib/boxes/metrics";
+import { consoleBoxPath } from "@/lib/boxes/route";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { BoxFlagSignal } from "@/convex/schema";
 import { useBusyAction } from "@/hooks/use-busy-action";
 
+// `signal` is the schema's own union rather than `string`: this row is what the
+// console reads, and a loose type here is what let the raw identifier through a
+// fallback and onto the page.
 type FlagRow = {
 	autoSuspended: boolean;
 	boxId: Id<"boxes">;
@@ -30,21 +35,12 @@ type FlagRow = {
 	hetznerServerId: number | null;
 	id: Id<"box_flags">;
 	message: string;
-	signal: string;
+	signal: BoxFlagSignal;
 	slug: string;
 };
 
-const SIGNAL_LABELS: Record<string, string> = {
-	egress_bandwidth: "Network out",
-	egress_pps: "Packets out"
-};
-
-function signalLabel(flag: FlagRow) {
-	return SIGNAL_LABELS[flag.signal] ?? flag.signal;
-}
-
 const FLAG_SORT = {
-	flag: signalLabel,
+	flag: (flag: FlagRow) => flagSignalLabel(flag.signal),
 	slug: (flag: FlagRow) => flag.slug,
 	createdAt: (flag: FlagRow) => flag.createdAt
 };
@@ -123,7 +119,7 @@ export function FlagsTable({
 								<TableCell className="pl-4">
 									<div>
 										<p className="font-medium wrap-break-word text-foreground">
-											{signalLabel(flag)}
+											{flagSignalLabel(flag.signal)}
 											{flag.autoSuspended ? " - auto-suspended" : ""}
 										</p>
 										<p className="wrap-break-word whitespace-normal text-muted-foreground">

@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { registerPolarWebhookRoutes } from "./billing/webhooks";
 import { resendClient } from "./email";
+import { optionalEnv } from "./env";
 
 type ClerkUserDeletedPayload = {
 	data?: {
@@ -13,11 +14,6 @@ type ClerkUserDeletedPayload = {
 };
 
 const http = httpRouter();
-
-function clerkWebhookSecret() {
-	const secret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
-	return secret && secret.trim() ? secret.trim() : null;
-}
 
 function svixHeaders(request: Request) {
 	return {
@@ -41,7 +37,7 @@ http.route({
 	path: "/clerk/events",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
-		const secret = clerkWebhookSecret();
+		const secret = optionalEnv("CLERK_WEBHOOK_SIGNING_SECRET");
 		if (!secret) {
 			return new Response("Missing Clerk webhook signing secret.", {
 				status: 500

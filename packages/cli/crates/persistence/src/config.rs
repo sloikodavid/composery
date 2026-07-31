@@ -14,7 +14,7 @@ pub struct Config {
     /// User intent: paths to exclude from the persisted delta, on top of the
     /// image's default set.
     pub exclude: Vec<String>,
-    /// User intent: paths the image excludes by default that this box wants
+    /// User intent: paths the image excludes by default that this instance wants
     /// persisted anyway. Never overrides an integrity exclusion.
     pub persist: Vec<String>,
     pub audit: AuditConfig,
@@ -133,7 +133,7 @@ fn integrity_exclusions() -> Vec<String> {
 
 /// Excluded by default because they hold regenerable caches (downloaded apt
 /// archives and the like), but shipped with the image rather than written into
-/// the file - so a future image can change the set, and a box can override any
+/// the file - so a future image can change the set, and an instance can override any
 /// entry per-path via `persist`.
 fn default_exclusions() -> Vec<String> {
     vec!["/var/cache".into()]
@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn persist_cannot_override_an_integrity_exclusion() {
-        // A box that tries to force-persist Composery's own implementation still
+        // An instance that tries to force-persist Composery's own implementation still
         // cannot: integrity always wins over `persist`.
         let config = Config::from_intent(
             Vec::new(),

@@ -1,0 +1,279 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or commit SHA to publish. Use main for a stable release; anything else is a preview release."
+        required: true
+        default: main
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  id-token: write
+  attestations: write
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yaml
+    with:
+      ref: ${{ inputs.ref }}
+
+  plan:
+    needs: validate
+    runs-on: ubuntu-24.04
+    outputs:
+      build_version: ${{ steps.plan.outputs.build_version }}
+      cache_scope: ${{ steps.plan.outputs.cache_scope }}
+      image: ${{ steps.plan.outputs.image }}
+      is_stable: ${{ steps.plan.outputs.is_stable }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      sha: ${{ steps.plan.outputs.sha }}
+      tags: ${{ steps.plan.outputs.tags }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+      - name: Plan release
+        id: plan
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/composery
+          REF_INPUT: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          git fetch origin main --tags
+
+          sha="$(git rev-parse HEAD)"
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          package_version="$(node -p 'require("./package.json").version')"
+
+          if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "package.json version must be plain semver (X.Y.Z). Got: $package_version" >&2
+            exit 1
+          fi
+
+          main_sha="$(git rev-parse origin/main)"
+          if [[ "$REF_INPUT" == "main" && "$sha" == "$main_sha" ]]; then
+            tag="v$package_version"
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              echo "Release tag already exists: $tag" >&2
+              exit 1
+            fi
+
+            major_minor="${package_version%.*}"
+            build_version="$package_version"
+            is_stable="true"
+            cache_scope="release-stable"
+            tags=(
+              "$IMAGE:$package_version"
+              "$IMAGE:$major_minor"
+              "$IMAGE:latest"
+              "$IMAGE:sha-$short_sha"
+            )
+          else
+            safe_ref="$(printf '%s' "$REF_INPUT" | tr '/:@ ' '-' | tr -cd 'A-Za-z0-9_.-' | cut -c1-80)"
+            if [[ -z "$safe_ref" ]]; then
+              safe_ref="$short_sha"
+            fi
+
+            build_version="preview-$short_sha"
+            is_stable="false"
+            cache_scope="release-preview-$short_sha"
+            tags=(
+              "$IMAGE:preview-$safe_ref"
+              "$IMAGE:sha-$short_sha"
+            )
+          fi
+
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "${tags[@]}"
+            echo "EOF"
+            echo "build_version=$build_version"
+            echo "cache_scope=$cache_scope"
+            echo "image=$IMAGE"
+            echo "is_stable=$is_stable"
+            echo "release_tag=v$package_version"
+            echo "sha=$sha"
+            echo "version=$package_version"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Log in to the registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Image labels come from the Dockerfile (fed by the build args below).
+      #
+      # Pushed by digest, with no tag of its own: a half-finished release must
+      # never be reachable by name. Tagging here would publish `latest-amd64`
+      # the moment one architecture finished, so `latest-amd64` and `latest`
+      # would name different builds for the length of the publish job - and
+      # forever, if publish never ran. `publish` moves every tag at once,
+      # afterwards, from the merged manifest.
+      - name: Build and push the image
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          tags: ${{ needs.plan.outputs.image }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: true
+          build-args: |
+            COMPOSERY_BUILD_VERSION=${{ needs.plan.outputs.build_version }}
+            COMPOSERY_BUILD_REVISION=${{ needs.plan.outputs.sha }}
+            COMPOSERY_BUILD_SOURCE=${{ github.server_url }}/${{ github.repository }}
+          # Preview refs get per-commit caches so they cannot feed stable releases.
+          cache-from: type=gha,scope=${{ needs.plan.outputs.cache_scope }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ needs.plan.outputs.cache_scope }}-${{ matrix.arch }}
+      - name: Record the image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Build produced no usable digest. Got: $DIGEST" >&2
+            exit 1
+          fi
+
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+      - name: Upload the image digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs:
+      - plan
+      - build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Log in to the registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download the image digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: digests
+          pattern: digest-*
+          merge-multiple: true
+      - name: Create multi-platform manifest
+        id: manifest
+        env:
+          IMAGE: ${{ needs.plan.outputs.image }}
+          TAGS: ${{ needs.plan.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t tags <<< "$TAGS"
+          primary_tag="${tags[0]}"
+
+          args=()
+          for image_tag in "${tags[@]}"; do
+            [[ -z "$image_tag" ]] && continue
+            args+=("-t" "$image_tag")
+          done
+
+          sources=()
+          for digest_file in digests/*; do
+            sources+=("$IMAGE@sha256:$(basename "$digest_file")")
+          done
+
+          # One per matrix architecture. A glob that matched nothing would
+          # otherwise hand imagetools a bare tag list and retag the image the
+          # manifest already points at, reporting success on a lost build.
+          if [[ "${#sources[@]}" -ne 2 ]]; then
+            echo "Expected 2 architecture digests, found ${#sources[@]}" >&2
+            printf '%s\n' "${sources[@]}" >&2
+            exit 1
+          fi
+
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+
+          docker buildx imagetools inspect "$primary_tag" --format '{{json .Manifest}}' > manifest.json
+          digest="$(jq -r '.digest // empty' manifest.json)"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Could not resolve manifest digest for $primary_tag" >&2
+            cat manifest.json >&2
+            exit 1
+          fi
+
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Report image vulnerabilities
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: ${{ needs.plan.outputs.image }}@${{ steps.manifest.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          limit-severities-for-sarif: true
+          # Informational, exactly like smoke.yaml's scan of the same image: with
+          # ignore-unfixed off, a Debian CVE with no fixed version yet is enough
+          # to fail this, and the image currently carries two CRITICAL ones in
+          # perl-modules that Debian has not fixed. Blocking here would have made
+          # the release unpublishable for reasons no change to this repo can
+          # resolve. The findings still land as code-scanning alerts. A test
+          # pins the two scans together.
+          exit-code: "0"
+      - name: Upload the scan report
+        uses: github/codeql-action/upload-sarif@5e316336eb4f107009e477d4bfbfff13d7250fae # v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: trivy-results.sarif
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-name: ${{ needs.plan.outputs.image }}
+          subject-digest: ${{ steps.manifest.outputs.digest }}
+          push-to-registry: true
+      - name: Publish the release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        if: needs.plan.outputs.is_stable == 'true'
+        with:
+          tag_name: ${{ needs.plan.outputs.release_tag }}
+          target_commitish: ${{ needs.plan.outputs.sha }}
+          generate_release_notes: true
+          body: |
+            Image: `${{ needs.plan.outputs.image }}:${{ needs.plan.outputs.version }}`
+            Digest: `${{ steps.manifest.outputs.digest }}`

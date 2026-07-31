@@ -63,10 +63,6 @@ const ALLOWED = new Map<string, string>([
 		"a number exported so the editor and Gesture classify one pan the same way; a second copy is the bug it exists to prevent"
 	],
 	[
-		"touch.diff:TOUCH_SELECTION_MENU_HOLD_TIME",
-		"a duration, not logic; it belongs beside the hold it times"
-	],
-	[
 		"touch.diff:CURSOR_ON_LINK",
 		"a RawContextKey registration - constructing it is the whole of it, and it must happen in upstream's module"
 	]

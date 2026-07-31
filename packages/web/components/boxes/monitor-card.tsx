@@ -24,10 +24,11 @@ import {
 	SelectTrigger,
 	SelectValue
 } from "@/components/base/select";
+import type { BoxStatus } from "@/convex/schema";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
 import { highlightLogs } from "@/lib/highlight-logs";
-import type { FailureNotice } from "@/lib/operation-failure";
+import type { FailureNotice } from "@/lib/boxes/operations";
 
 const REFRESH_INTERVAL = 5000;
 
@@ -61,7 +62,7 @@ function Message({
 }
 
 function notRunningMessage(
-	status: string,
+	status: BoxStatus,
 	note?: string,
 	failure?: FailureNotice | null
 ) {
@@ -136,7 +137,7 @@ export function MonitorCard({
 	onRangeChange: (range: MetricsRange) => void;
 	range: MetricsRange;
 	series?: MetricsSeries[];
-	status: string;
+	status: BoxStatus;
 }) {
 	const [choice, setChoice] = useState<View | null>(null);
 	const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);

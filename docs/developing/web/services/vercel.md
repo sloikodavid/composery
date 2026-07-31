@@ -28,7 +28,7 @@ Project settings:
   npx convex deploy --cmd 'pnpm build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL
   ```
 
-  It deploys [Convex](./convex.md) first, injects the correct
+  It deploys [Convex](convex.md) first, injects the correct
   `NEXT_PUBLIC_CONVEX_URL` into the Next.js build, then builds the frontend.
   That first step is why a post-build Vercel Deployment Check is insufficient:
   the backend would already have changed. The `deploy` branch prevents the
@@ -66,15 +66,15 @@ listed in `CLERK_AUTHORIZED_PARTIES`.
 
 `packages/web/.env.example.next.prod` is the authoritative list of Vercel
 Production env vars (frontend plane); add every key it lists. Most values come
-from the service page that produces them ([Clerk](./clerk.md), [Polar](./polar.md),
-[Hetzner](./hetzner.md)), and the `NEXT_PUBLIC_*` dashboard-link vars are
+from the service page that produces them ([Clerk](clerk.md), [Polar](polar.md),
+[Hetzner](hetzner.md)), and the `NEXT_PUBLIC_*` dashboard-link vars are
 optional. The few with a non-obvious value or flag:
 
-| Variable                   | Production value / handling                                               |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `CONVEX_DEPLOY_KEY`        | the `prod:` deploy key from the [Convex](./convex.md) step; `--sensitive` |
-| `CLERK_SECRET_KEY`         | Production Clerk secret key; `--sensitive`                                |
-| `CLERK_AUTHORIZED_PARTIES` | `https://www.<website-domain>` (exact origins, comma separated)           |
+| Variable                   | Production value / handling                                             |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `CONVEX_DEPLOY_KEY`        | the `prod:` deploy key from the [Convex](convex.md) step; `--sensitive` |
+| `CLERK_SECRET_KEY`         | Production Clerk secret key; `--sensitive`                              |
+| `CLERK_AUTHORIZED_PARTIES` | `https://www.<website-domain>` (exact origins, comma separated)         |
 
 Set each with `vercel env add <NAME> production`, adding `--sensitive` for the
 two secrets above:
@@ -108,7 +108,7 @@ Two planes of observability, no third-party tracker and no new env vars:
   Vercel and only log (no beacon) in development. To surface a one-click "Open in
   Vercel" link on `/console` (the in-app pointer to those dashboards), set
   `NEXT_PUBLIC_VERCEL_PROJECT_URL` to the project's dashboard URL
-  (`https://vercel.com/<team>/<project>`) in the Next env; `lib/vercel-dashboard.ts`
+  (`https://vercel.com/<team>/<project>`) in the Next env; `lib/dashboards.ts`
   reads it and the link hides when it is unset.
 - **Product/fleet KPIs.** Derived on demand in `convex/staff/stats.ts`
   (`api.staff.stats.overview`) from existing tables - no separate analytics

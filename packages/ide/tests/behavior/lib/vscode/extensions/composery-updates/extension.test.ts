@@ -161,9 +161,9 @@ describe("updates extension", () => {
 		}
 	});
 
-	test("a cloud box asks the website and opens its own box page", async () => {
+	test("a cloud instance asks the website and opens its own page", async () => {
 		const { activate, harness } = loadUpdatesExtension({
-			action: "View Box",
+			action: "View Instance",
 			cloudBoxId: "k17abc",
 			cloudOrigin: "https://www.composery.io",
 			fleet: { version: "1.3.0" },
@@ -182,7 +182,7 @@ describe("updates extension", () => {
 			"https://www.composery.io/api/cloud/runtime"
 		]);
 		expect(harness.messages).toEqual([
-			"Composery 1.3.0 is available for this box. You have 1.2.3. Update it from the box's page on Composery Cloud."
+			"Composery 1.3.0 is available for this instance. You have 1.2.3. Update it from your instance's page on Composery Cloud."
 		]);
 		expect(harness.opened).toEqual(["https://www.composery.io/boxes/k17abc"]);
 	});

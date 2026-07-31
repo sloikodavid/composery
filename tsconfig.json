@@ -19,6 +19,6 @@
 		"tests/**/*.ts",
 		"packages/ide/tests/**/*.ts",
 		"scripts/runbook.d.mts",
-		"vitest.config.ts"
+		"vitest*.ts"
 	]
 }

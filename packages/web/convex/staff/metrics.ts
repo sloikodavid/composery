@@ -12,15 +12,16 @@ import { requireCapability } from "../users";
 import {
 	boxMetricsSamples,
 	vMetricsRange,
-	type MetricsRange,
-	vRolledMetric,
-	type RolledMetric
+	vRolledMetric
 } from "../boxes/metrics";
+import type { MetricsRange, RolledMetric } from "../../lib/boxes/metrics";
 
 const FLAG_LIST_LIMIT = 50;
 const FLAG_DISMISS_BATCH = 100;
 const TOP_BOXES = 8;
-const RAW_RANK_DOCUMENT_LIMIT = 8000;
+// Ceiling on the rows either ranking path reads, so the cost of this chart is
+// bounded by construction rather than by how large the fleet grew.
+const RANK_DOCUMENT_LIMIT = 8000;
 
 async function boxesById(ctx: QueryCtx, boxIds: Iterable<Id<"boxes">>) {
 	const boxes = new Map<Id<"boxes">, Doc<"boxes"> | null>();
@@ -32,6 +33,27 @@ async function boxesById(ctx: QueryCtx, boxIds: Iterable<Id<"boxes">>) {
 	return boxes;
 }
 
+// The busiest boxes on one metric, ranked in memory.
+//
+// One row per box per hour, so the newest hour is a fleet-sized page - smaller
+// than the raw fallback below already reads, and bounded by the same cap. This
+// used to be seven `hour_start_<metric>` indexes and a seven-arm switch that
+// differed only in the index name: seven indexes written on every rollup, for
+// eight rows on one staff chart.
+async function rankBoxIds<T extends { box_id: Id<"boxes"> }>(
+	rows: readonly T[],
+	value: (row: T) => number
+) {
+	const best = new Map<Id<"boxes">, number>();
+	for (const row of rows) {
+		if (!best.has(row.box_id)) best.set(row.box_id, value(row));
+	}
+	return [...best.entries()]
+		.sort(([, first], [, second]) => second - first)
+		.slice(0, TOP_BOXES)
+		.map(([boxId]) => boxId);
+}
+
 async function topBoxIds(ctx: QueryCtx, metric: RolledMetric) {
 	const latest = await ctx.db
 		.query("box_metrics_hourly")
@@ -39,99 +61,23 @@ async function topBoxIds(ctx: QueryCtx, metric: RolledMetric) {
 		.order("desc")
 		.first();
 	if (latest) {
-		return await topHourlyBoxIds(ctx, latest.hour_start, metric);
+		const rows = await ctx.db
+			.query("box_metrics_hourly")
+			.withIndex("hour_start", (builder) =>
+				builder.eq("hour_start", latest.hour_start)
+			)
+			.take(RANK_DOCUMENT_LIMIT);
+		return await rankBoxIds(rows, (row) => row[metric]);
 	}
 
-	const values = new Map<Id<"boxes">, number>();
+	// No rollup yet: rank off the raw samples, newest first, so each box is
+	// scored on its most recent reading.
 	const samples = await ctx.db
 		.query("box_metrics")
 		.withIndex("sampled_at")
 		.order("desc")
-		.take(RAW_RANK_DOCUMENT_LIMIT);
-	for (const sample of samples) {
-		if (!values.has(sample.box_id)) {
-			values.set(sample.box_id, sample[metric]);
-		}
-	}
-	return [...values.entries()]
-		.sort(([, first], [, second]) => second - first)
-		.slice(0, TOP_BOXES)
-		.map(([boxId]) => boxId);
-}
-
-async function topHourlyBoxIds(
-	ctx: QueryCtx,
-	hourStart: number,
-	metric: RolledMetric
-) {
-	let rows: Doc<"box_metrics_hourly">[];
-	switch (metric) {
-		case "cpu_percent":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_cpu_percent", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "ingress_bps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_ingress_bps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "egress_bps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_egress_bps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "ingress_pps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_ingress_pps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "egress_pps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_egress_pps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "disk_read_bps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_disk_read_bps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-		case "disk_write_bps":
-			rows = await ctx.db
-				.query("box_metrics_hourly")
-				.withIndex("hour_start_disk_write_bps", (builder) =>
-					builder.eq("hour_start", hourStart)
-				)
-				.order("desc")
-				.take(TOP_BOXES);
-			break;
-	}
-
-	return rows.map((row) => row.box_id);
+		.take(RANK_DOCUMENT_LIMIT);
+	return await rankBoxIds(samples, (sample) => sample[metric]);
 }
 
 export const series = query({
@@ -186,7 +132,9 @@ export const flags = query({
 			if (!box) return [];
 			flags = await ctx.db
 				.query("box_flags")
-				.withIndex("box_id", (builder) => builder.eq("box_id", box._id))
+				.withIndex("box_id_created_at", (builder) =>
+					builder.eq("box_id", box._id)
+				)
 				.order("desc")
 				.take(FLAG_LIST_LIMIT);
 		} else {

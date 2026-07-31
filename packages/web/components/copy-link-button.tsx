@@ -3,14 +3,17 @@
 import type { ComponentProps } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { toast } from "sonner";
 import {
 	AnimatedIcon,
 	type AnimatedIconHandle
 } from "@/components/animated-icon";
 import { Button } from "@/components/base/button";
+import { copyToClipboard } from "@/lib/clipboard";
 
 type ButtonProps = ComponentProps<typeof Button>;
+
+// How long the check stays before the copy glyph comes back.
+const CHECK_MS = 1500;
 
 // Copies a value to the clipboard. The label never changes - only the icon swaps
 // to a check on success - so the button keeps its width and nothing shifts when
@@ -68,14 +71,12 @@ export function CopyLinkButton({
 			{...props}
 			onBlur={handleBlur}
 			onClick={async () => {
-				try {
-					await navigator.clipboard.writeText(value);
-					setCopied(true);
-					toast.success(message);
-					setTimeout(() => setCopied(false), 1500);
-				} catch {
-					toast.error("Couldn't copy");
-				}
+				// The check only replaces the copy glyph on a copy that actually
+				// happened; a rejected one leaves the button as it was, beside the
+				// toast that says why.
+				if (!(await copyToClipboard(value, message))) return;
+				setCopied(true);
+				setTimeout(() => setCopied(false), CHECK_MS);
 			}}
 			onFocus={handleFocus}
 			onMouseEnter={handleMouseEnter}

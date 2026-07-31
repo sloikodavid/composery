@@ -105,7 +105,7 @@ pub struct ReservedLayout {
     pub work: PathBuf,
     /// Engine bookkeeping that is not the delta (the baseline stash).
     pub state: PathBuf,
-    /// Copy of the image baseline this box last booted overlay against.
+    /// Copy of the image baseline this instance last booted overlay against.
     pub previous_baseline: PathBuf,
     /// blake3 of `previous_baseline`, so an unchanged image skips the re-copy.
     pub previous_baseline_id: PathBuf,

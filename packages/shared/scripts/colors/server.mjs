@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { Buffer } from "node:buffer";
 import { readFile, rename, writeFile } from "node:fs/promises";

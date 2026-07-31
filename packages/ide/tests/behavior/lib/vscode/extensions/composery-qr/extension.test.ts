@@ -49,7 +49,7 @@ describe("QR extension", () => {
 		const { isReachableFromAnotherDevice } = loadQrExtension();
 
 		for (const reachable of [
-			"https://box.test/",
+			"https://composery.test/",
 			"http://192.168.1.192:8080/",
 			"http://127.example.com/"
 		]) {
@@ -60,7 +60,7 @@ describe("QR extension", () => {
 
 		for (const unreachable of [
 			"http://localhost:8080/",
-			"http://box.localhost/",
+			"http://composery.localhost/",
 			"http://localhost./",
 			"http://127.0.0.1:8080/",
 			"http://127.1:8080/",
@@ -69,7 +69,7 @@ describe("QR extension", () => {
 			"http://[::1]/",
 			"http://[::]/",
 			"http://[::ffff:127.0.0.1]/",
-			"ftp://box.test/"
+			"ftp://composery.test/"
 		]) {
 			expect(
 				isReachableFromAnotherDevice(new URL(unreachable)),

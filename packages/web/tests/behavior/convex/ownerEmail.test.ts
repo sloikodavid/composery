@@ -223,7 +223,6 @@ describe("which lifecycle outcomes email the owner", () => {
 
 		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
 			boxId: suspended,
-			eventType: "box.suspended",
 			operationId: await openOperation(t, suspended, "suspend", {
 				reason: AUTOMATIC_REASON
 			}),
@@ -231,7 +230,6 @@ describe("which lifecycle outcomes email the owner", () => {
 		});
 		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
 			boxId: stopped,
-			eventType: "box.stopped",
 			operationId: await openOperation(t, stopped, "stop"),
 			status: "stopped"
 		});
@@ -251,7 +249,6 @@ describe("which lifecycle outcomes email the owner", () => {
 
 		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
 			boxId,
-			eventType: "box.unsuspended",
 			operationId: await openOperation(t, boxId, "unsuspend"),
 			status: "running"
 		});
@@ -277,14 +274,12 @@ describe("which lifecycle outcomes email the owner", () => {
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId: created,
 			error: "hetzner said 409 on 10.0.0.4",
-			eventType: "box.create_failed",
 			operationId: await openOperation(t, created, "create"),
 			targetBoxStatus: "create_failed"
 		});
 		await t.mutation(internal.boxes.status.markOperationFailed, {
 			boxId: reset,
 			error: "the host never answered",
-			eventType: "box.reset_failed",
 			operationId: await openOperation(t, reset, "reset"),
 			targetBoxStatus: "reset_failed"
 		});

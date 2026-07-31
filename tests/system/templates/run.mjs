@@ -276,7 +276,7 @@ async function bootComposeTemplate(variant) {
 		variant
 	};
 
-	log(`booting templates/${variant}/compose.yml`);
+	log(`booting templates/${variant}/compose.yaml`);
 	compose(["config", "--quiet"]);
 	const expected = variant.includes("caddy")
 		? ["caddy", "composery"]
@@ -425,7 +425,7 @@ function compose(args, options = {}) {
 			"--project-name",
 			activeCompose.project,
 			"--file",
-			"compose.yml",
+			"compose.yaml",
 			...args
 		],
 		{ ...options, cwd: activeCompose.cwd }

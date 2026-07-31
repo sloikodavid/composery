@@ -1,36 +1,69 @@
+import type { Doc } from "../_generated/dataModel";
+import schema from "../schema";
+import { DAY_MS } from "../time";
+
 // runbook: Deleted box/support evidence
 export const DELETED_BOX_RETENTION_DAYS = 180;
-export const DELETED_BOX_RETENTION_MS =
-	DELETED_BOX_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+export const DELETED_BOX_RETENTION_MS = DELETED_BOX_RETENTION_DAYS * DAY_MS;
 
 export function deletedBoxPurgeAt(deletedAt: number) {
 	return deletedAt + DELETED_BOX_RETENTION_MS;
 }
 
+// What a deleted box's tombstone keeps. Everything else optional on the row is
+// cleared, so this is the whole list of things that outlive the box.
+//
+// Named as exclusions because the direction of the mistake matters: this used to
+// be a hand-written list of the fields to *clear*, and `runtime_config` - the
+// owner's own environment for the box, including their GitHub token - was added
+// to the schema long after that list and never joined it. A deleted box kept its
+// owner's secret in the control plane for the full 180-day retention window, and
+// nothing said so: the test guarding the patch used `toMatchObject`, which
+// cannot see a field that was left behind. Inverting it means a field added
+// tomorrow is scrubbed on the day it exists, and keeping one is a decision
+// someone has to write down here.
+const TOMBSTONE_KEEPS = new Set([
+	// Billing evidence. The subscription outlives the box - a refund, a chargeback
+	// or a tax enquiry is answered from these, and `billingRecordPurgeAt` is what
+	// eventually retires them.
+	"polar_customer_id",
+	"polar_subscription_id",
+	// Why this box was free, and who decided. A comp is the staff-side equivalent
+	// of the two above.
+	"comped_by",
+	"comped_at",
+	"comp_reason",
+	// The audit timeline itself: when it first served, when it was deleted, and
+	// when the tombstone goes. The last two are written by the patch below.
+	"ready_at",
+	"deleted_at",
+	"purge_at"
+]);
+
+// Cleared fields are spelled `undefined` because that is what `db.patch` deletes
+// a field with; a field already absent is unaffected.
 export function deletedBoxDataPatch(deletedAt: number) {
+	const cleared: Record<string, undefined> = {};
+	for (const [field, validator] of Object.entries(
+		schema.tables.boxes.validator.fields
+	)) {
+		if (validator.isOptional !== "optional") continue;
+		if (TOMBSTONE_KEEPS.has(field)) continue;
+		cleared[field] = undefined;
+	}
+
 	return {
+		...cleared,
 		status: "deleted" as const,
-		runtime_image: undefined,
-		runtime_auth_hash: undefined,
-		password_setup_pending_at: undefined,
-		hetzner_server_id: undefined,
-		hetzner_server_type: undefined,
-		hetzner_location: undefined,
-		hetzner_ipv4: undefined,
-		hetzner_ipv6: undefined,
-		dns_record_id: undefined,
-		dns_record_aaaa_id: undefined,
-		parking_volume_id: undefined,
-		parking_volume_stage: undefined,
 		deleted_at: deletedAt,
 		purge_at: deletedBoxPurgeAt(deletedAt)
-	};
+	} satisfies Partial<Doc<"boxes">>;
 }
 
 // runbook: Unpaid checkout record
 export const UNPAID_CHECKOUT_RETENTION_DAYS = 30;
 export const UNPAID_CHECKOUT_RETENTION_MS =
-	UNPAID_CHECKOUT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+	UNPAID_CHECKOUT_RETENTION_DAYS * DAY_MS;
 // runbook: Paid billing record
 export const BILLING_RECORD_RETENTION_YEARS = 6;
 

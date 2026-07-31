@@ -5,9 +5,9 @@ import { api } from "@/convex/_generated/api";
 import {
 	isBoxBillingInterval,
 	type BoxBillingInterval
-} from "@/lib/box-billing";
-import { isBoxPlan } from "@/lib/box-plan";
-import { sanitizeSlug } from "@/lib/box-slug";
+} from "@/lib/boxes/billing";
+import { isBoxPlan } from "@/lib/boxes/plan";
+import { sanitizeSlug } from "@/lib/boxes/slug";
 
 export const metadata: Metadata = {
 	title: "Pricing"

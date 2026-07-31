@@ -11,7 +11,7 @@ import { StatusText } from "@/components/boxes/status-text";
 import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { formatDate } from "@/lib/datetime";
-import { boxPath } from "@/lib/box-route";
+import { boxPath } from "@/lib/boxes/route";
 
 const BOX_PAGE_SIZE = 25;
 

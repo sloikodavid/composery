@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { Button } from "@/components/base/button";
 import {
@@ -12,14 +12,14 @@ import {
 	CardHeader,
 	CardTitle
 } from "@/components/base/card";
+import { Notice, recreateNotice } from "@/components/boxes/operation-dialog";
 import { StatusText } from "@/components/boxes/status-text";
-import { ToneIcon } from "@/components/boxes/tone-icon";
 import { api } from "@/convex/_generated/api";
 import type { RuntimeConfigField } from "@/convex/boxes/runtimeConfig";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { boxPath } from "@/lib/box-route";
+import { useReseed } from "@/hooks/use-reseed";
+import { boxPath } from "@/lib/boxes/route";
 import { errorMessage } from "@/lib/error-message";
-import type { Tone } from "@/lib/repair-status";
 import {
 	ConfigField,
 	isDangerousField,
@@ -28,12 +28,6 @@ import {
 	SecretField,
 	type SecretIntent
 } from "./config-field";
-
-// The one thing an owner must not be surprised by after pressing the button.
-// `applyRuntimeConfig` writes the env file and runs `up -d --force-recreate`, so
-// everything living inside the container goes with it.
-const COST_NOTICE =
-	"Saving recreates the box's container. Terminals, running processes and anything unsaved stop, and the box is unreachable until the new one answers. Files on disk and snapshots are kept.";
 
 // Which group a variable lands in is decided by its key and its `dangerous`
 // flag, never by a list of keys held here: a variable added to the allowlist
@@ -131,15 +125,6 @@ function keyForError(
 	);
 }
 
-function Notice({ children, tone }: { children: ReactNode; tone: Tone }) {
-	return (
-		<div className="flex items-start gap-3 rounded-2xl border border-border bg-card px-4 py-3">
-			<ToneIcon className="mt-0.5" tone={tone} />
-			<div className="min-w-0 flex-1 text-sm">{children}</div>
-		</div>
-	);
-}
-
 export function BoxConfiguration({ boxId }: { boxId: string }) {
 	const detail = useQuery(api.user.boxes.getById, { boxId });
 	const config = useQuery(
@@ -152,21 +137,21 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 	const [draft, setDraft] = useState<Record<string, string>>({});
 	const [secrets, setSecrets] = useState<Record<string, SecretIntent>>({});
 	const [saveError, setSaveError] = useState<string | null>(null);
-	const [synced, setSynced] = useState<string | null>(null);
 
 	// Re-seed the form when the box's stored configuration changes - which is
-	// what happens a few seconds after a save finishes applying. Comparing the
-	// stored value rather than the query result's identity keeps a re-render that
-	// returns the same configuration from throwing away what is being typed.
-	const signature = config
-		? JSON.stringify([config.values, config.secretsSet])
-		: null;
-	if (config && signature !== synced) {
-		setSynced(signature);
-		setDraft(draftFromValues(config.fields, config.values));
-		setSecrets({});
-		setSaveError(null);
-	}
+	// what happens a few seconds after a save finishes applying. The secrets and
+	// the last error go with it: they describe the configuration that was on
+	// screen, and keeping them beside a newly arrived one would be reporting the
+	// previous save's outcome about a value it no longer concerns.
+	useReseed(
+		config ? JSON.stringify([config.values, config.secretsSet]) : null,
+		() => {
+			if (!config) return;
+			setDraft(draftFromValues(config.fields, config.values));
+			setSecrets({});
+			setSaveError(null);
+		}
+	);
 
 	if (detail === undefined || config === undefined) return null;
 
@@ -223,10 +208,17 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 
 	return (
 		<div className="space-y-4">
-			<Notice tone="warn">{COST_NOTICE}</Notice>
+			{/* The one thing an owner must not be surprised by after pressing the
+			    button. `applyRuntimeConfig` writes the env file and runs
+			    `up -d --force-recreate`, so everything living inside the container
+			    goes with it - the same cost the Update dialog names, from the same
+			    sentence. */}
+			<Notice muted={false} tone="warn">
+				{recreateNotice("Saving")}
+			</Notice>
 
 			{canConfigure ? null : (
-				<Notice tone="muted">
+				<Notice muted={false} tone="muted">
 					<p>
 						A configuration is applied to a running box, so this form is
 						read-only until it is running again.
@@ -294,7 +286,11 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 				instead.
 			</p>
 
-			{saveError && !errorKey ? <Notice tone="bad">{saveError}</Notice> : null}
+			{saveError && !errorKey ? (
+				<Notice muted={false} tone="bad">
+					{saveError}
+				</Notice>
+			) : null}
 
 			<div className="flex flex-wrap items-center justify-end gap-2">
 				<Button

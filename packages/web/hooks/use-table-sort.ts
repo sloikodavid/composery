@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 export type SortDirection = "ascending" | "descending";
 
@@ -10,6 +10,15 @@ export type TableSortControls<Key extends string> = {
 	toggleSort: (key: Key) => void;
 };
 
+// Column sorting for a table that already holds every row it will show - one
+// page of a paginated query, or a capped list - so the sort is over tens to
+// hundreds of rows and is done on each render.
+//
+// Deliberately not memoized. `accessors` is a record of functions, and a call
+// site that writes it inline hands over a new one every render, so a `useMemo`
+// keyed on it recomputes every render anyway while reading as though it does
+// not. That is the worse of the two: the cost is identical and the code claims a
+// guarantee it never had.
 export function useTableSort<Row, Key extends string>(
 	rows: Row[],
 	accessors: Record<Key, (row: Row) => string | number>
@@ -18,7 +27,7 @@ export function useTableSort<Row, Key extends string>(
 	const [sortDirection, setSortDirection] =
 		useState<SortDirection>("ascending");
 
-	const sortedRows = useMemo(() => {
+	function sortRows() {
 		if (sortKey === null) return rows;
 		const read = accessors[sortKey];
 		return [...rows].sort((first, second) => {
@@ -30,7 +39,7 @@ export function useTableSort<Row, Key extends string>(
 					: String(firstValue).localeCompare(String(secondValue));
 			return sortDirection === "ascending" ? result : -result;
 		});
-	}, [accessors, rows, sortDirection, sortKey]);
+	}
 
 	function toggleSort(nextKey: Key) {
 		if (sortKey === nextKey) {
@@ -44,5 +53,5 @@ export function useTableSort<Row, Key extends string>(
 	}
 
 	const sort: TableSortControls<Key> = { sortDirection, sortKey, toggleSort };
-	return { sort, sortedRows };
+	return { sort, sortedRows: sortRows() };
 }

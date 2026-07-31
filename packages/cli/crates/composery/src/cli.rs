@@ -11,7 +11,7 @@ use crate::commands;
 /// workflow derives the image tags and this variable from it, and the image sets
 /// it for every process in the container. Taking it from Cargo instead would put
 /// a second copy of the release number in `Cargo.toml` where nothing updates it,
-/// which is how a box came to be able to announce one version in its editor and
+/// which is how an instance came to announce one version in its editor and
 /// a different one here.
 ///
 /// Compile-time (`option_env!`) would need the version plumbed into the Rust

@@ -81,8 +81,8 @@ describe("runtime process managers", () => {
 		for (const path of [
 			"Dockerfile",
 			"packages/web/convex/boxes/infra/runtimeArtifacts.ts",
-			"templates/systemd-caddy-compose/compose.yml",
-			"templates/supervisor-caddy-compose/compose.yml"
+			"templates/systemd-caddy-compose/compose.yaml",
+			"templates/supervisor-caddy-compose/compose.yaml"
 		]) {
 			expect(readRepoFile(path), path).toContain(image);
 		}
@@ -199,8 +199,16 @@ describe("runtime process managers", () => {
 		// destructive value "true" and violates fail-towards-protected parsing.
 		expect(removal).toContain('${removal#"${removal%%[![:space:]]*}"}');
 		expect(removal).toContain('${removal%"${removal##*[![:space:]]}"}');
+		expect(removal).toContain("${removal,,}");
 		expect(removal).not.toContain("//[[:space:]]/");
 		expect(removal).not.toContain("password-removed");
+		// Shell cannot import the one reading of "set to 1 or true", so this is
+		// the second copy of it and has to say which module it is a copy of.
+		// packages/ide/tests/invariants/env-flags.test.ts pins the other.
+		expect(removal).toContain("packages/ide/overlay/src/node/envFlag.ts");
+		expect(readRepoFile("packages/ide/overlay/src/node/envFlag.ts")).toContain(
+			'raw === "1" || raw === "true"'
+		);
 	});
 
 	test("selects the persistence engine before applying, mirroring COMPOSERY_INIT", () => {
@@ -292,9 +300,9 @@ describe("runtime process managers", () => {
 	// switch an owner flips that does nothing at all - the same inert-path failure
 	// the test above exists to catch, one layer further out. The managed and
 	// infrastructure variables are checked from the other direction: offering any
-	// of them would let a saved configuration take a box off its own password or
-	// detach it from the control plane.
-	test("only offers box configuration for variables that are documented and wired", () => {
+	// of them would let a saved configuration take an instance off its own
+	// password or detach it from the control plane.
+	test("only offers configuration for variables that are documented and wired", () => {
 		// Read rather than imported. This suite lives in the root TypeScript
 		// project, which resolves modules differently from packages/web's, so
 		// importing a Convex source file here fights the two configurations for no
@@ -337,9 +345,9 @@ describe("runtime process managers", () => {
 			"COMPOSERY_REMOVE_PASSWORD",
 			"COMPOSERY_CLOUD_BOX_ID",
 			"COMPOSERY_CLOUD_ORIGIN",
-			// Written by the website so a box knows which digest it was started as.
-			// An owner who could set it would make their box report a version it is
-			// not running.
+			// Written by the website so an instance knows which digest it was started
+			// as. An owner who could set it would make their instance report a
+			// version it is not running.
 			"COMPOSERY_RUNTIME_IMAGE",
 			"COMPOSERY_INIT",
 			"COMPOSERY_IDE_PORT",

@@ -6,7 +6,7 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/box-route";
+import { consoleBoxPath } from "../../lib/boxes/route";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
@@ -18,9 +18,10 @@ import {
 	retainedOperationMetadata,
 	terminalCheckoutSecretPatch
 } from "./retention";
+import { DAY_MS, MINUTE_MS } from "../time";
 
 const DELETE_BATCH_SIZE = 100;
-const CLEANUP_RETRY_MS = 24 * 60 * 60 * 1000;
+const CLEANUP_RETRY_MS = DAY_MS;
 
 // How many failed deletes make this a person's problem as well as the sweep's.
 //
@@ -84,7 +85,7 @@ export const alertDeletionNeedsPerson = internalMutation({
 		const box = await ctx.db.get(args.boxId);
 		if (!box || box.status !== "delete_failed") return;
 
-		const day = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+		const day = Math.floor(Date.now() / DAY_MS);
 		await raiseAlert(ctx, {
 			key: `box-delete-needs-person:${box._id}:${day}`,
 			severity: "critical",
@@ -320,7 +321,7 @@ export const sanitizeOperations = internalMutation({
 	handler: async (ctx, args) => {
 		const page = await ctx.db
 			.query("box_operations")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.paginate({ cursor: args.cursor ?? null, numItems: DELETE_BATCH_SIZE });
 		for (const operation of page.page) {
 			await ctx.db.patch(operation._id, {
@@ -351,7 +352,7 @@ export const sanitizeEvents = internalMutation({
 	handler: async (ctx, args) => {
 		const page = await ctx.db
 			.query("box_events")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.paginate({ cursor: args.cursor ?? null, numItems: DELETE_BATCH_SIZE });
 		for (const event of page.page) {
 			await ctx.db.patch(event._id, {
@@ -373,11 +374,11 @@ export const scheduleExpiredBoxPurges = internalMutation({
 	handler: async (ctx, args) => {
 		const page = await ctx.db
 			.query("boxes")
-			.withIndex("status_purge_at", (query) =>
-				query
-					.eq("status", "deleted")
-					.gte("purge_at", 0)
-					.lte("purge_at", Date.now())
+			// Bounded from below because `purge_at` is optional and Convex orders a
+			// missing field below every number: a bare `lte` would select every box
+			// that never got one, which is every live box.
+			.withIndex("purge_at", (query) =>
+				query.gte("purge_at", 0).lte("purge_at", Date.now())
 			)
 			.paginate({ cursor: args.cursor ?? null, numItems: DELETE_BATCH_SIZE });
 		for (const box of page.page) {
@@ -417,11 +418,11 @@ export const purgeBox = internalMutation({
 			.take(DELETE_BATCH_SIZE);
 		const operations = await ctx.db
 			.query("box_operations")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
 		const events = await ctx.db
 			.query("box_events")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
 		const metrics = await ctx.db
 			.query("box_metrics")
@@ -433,7 +434,7 @@ export const purgeBox = internalMutation({
 			.take(DELETE_BATCH_SIZE);
 		const flags = await ctx.db
 			.query("box_flags")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
 		const health = await ctx.db
 			.query("box_health")
@@ -445,7 +446,7 @@ export const purgeBox = internalMutation({
 			.take(DELETE_BATCH_SIZE);
 		const snapshots = await ctx.db
 			.query("box_snapshots")
-			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
+			.withIndex("box_id_created_at", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
 
 		const rows = [
@@ -473,7 +474,7 @@ export const purgeBox = internalMutation({
 
 		if (rows.length > 0 || intents.length > 0 || snapshots.length > 0) {
 			await ctx.scheduler.runAfter(
-				snapshots.length > 0 ? 60_000 : 0,
+				snapshots.length > 0 ? MINUTE_MS : 0,
 				internal.boxes.cleanup.purgeBox,
 				{ boxId: args.boxId }
 			);

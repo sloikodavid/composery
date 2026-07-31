@@ -16,6 +16,7 @@ import {
 	userHasCapability
 } from "../users";
 import { vStaffAlertSeverity } from "../schema";
+import { DAY_MS, MINUTE_MS } from "../time";
 
 // What staff are told about the deployment, and whether they were reachable.
 //
@@ -29,12 +30,12 @@ const RECIPIENT_LIMIT = 50;
 // number in the doc to this constant, and the test that pins the pair reads the
 // exported value.
 // runbook: Staff-alert record retention
-export const STAFF_ALERT_RETENTION_MS = 180 * 24 * 60 * 60 * 1000;
+export const STAFF_ALERT_RETENTION_MS = 180 * DAY_MS;
 const RETRY_BATCH = 20;
 const PURGE_BATCH = 200;
 const RECENT_ALERT_LIMIT = 50;
 const RECENT_ISSUE_LIMIT = 10;
-const STALE_DELIVERY_MS = 30 * 60 * 1000;
+const STALE_DELIVERY_MS = 30 * MINUTE_MS;
 
 type AlertInput = {
 	key: string;
@@ -43,13 +44,24 @@ type AlertInput = {
 	text: string;
 };
 
+// Who an alert goes to.
+//
+// Bounded by the read, not after it. The old shape collected every account
+// holding the role and then stopped adding at the limit, so the ceiling capped
+// the recipient list while the cost still scaled with how many staff accounts
+// existed - and the console asks this on every render of its health panel.
+//
+// ponytail: the first RECIPIENT_LIMIT accounts per role, so a deployment with
+// more staff than that could in principle read a page of accounts that are all
+// suspended and mail nobody. It reports `recipientCount: 0` when that happens,
+// which is the same signal a deployment with no admins at all gets.
 async function alertRecipients(ctx: Pick<QueryCtx, "db">) {
 	const emails = new Set<string>();
 	for (const role of rolesWithCapability("staff_alerts")) {
 		const users = await ctx.db
 			.query("users")
 			.withIndex("role", (query) => query.eq("role", role))
-			.collect();
+			.take(RECIPIENT_LIMIT);
 		for (const user of users) {
 			if (userHasCapability(user, "staff_alerts")) emails.add(user.email);
 			if (emails.size >= RECIPIENT_LIMIT) return [...emails];

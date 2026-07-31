@@ -1,6 +1,6 @@
-import { fileURLToPath } from "node:url";
-
 import { defineConfig } from "vitest/config";
+
+import { projects } from "./vitest.projects.ts";
 
 // One vitest run for the whole repo. Separate root and recursive package
 // invocations each sized their worker pool to the
@@ -12,38 +12,6 @@ import { defineConfig } from "vitest/config";
 // or a package cannot leave a suite silently unscheduled. Kinds and what belongs
 // in each are docs/developing/testing.md; `tests/invariants/tests.test.ts`
 // enforces the layout this file assumes.
-
-const path = (p: string) => fileURLToPath(new URL(p, import.meta.url));
-
-const SUITES = [
-	// The repository as an artifact, plus the agreement between packages.
-	{ name: "repo", root: "." },
-	{ name: "ide", root: "packages/ide" },
-	{ name: "shared", root: "packages/shared" },
-	// `@` mirrors each package's tsconfig `paths`, so a test imports its subject
-	// exactly as the package's own source does and never through a chain of `..`
-	// that a move would invalidate.
-	{ name: "web", root: "packages/web", alias: "packages/web" }
-];
-
-// Behaviour runs product code; invariants read the checkout. The timeout is a
-// property of the kind rather than a global: repo-inspection copies trees, shells
-// out and walks the upstream working copy, so its runtime tracks how busy the
-// machine is more than what it asserts. Granting that budget to every test lets a
-// slow behaviour test hide in it, so the two are sized apart and a test that
-// needs the larger one has to move to the directory that admits why.
-//
-// Hang detectors, not budgets - sized against measured worst cases with the same
-// margin smoke.yml uses, because the failure mode of a tight one is a healthy run
-// reported as broken and nobody trusts a suite that cries wolf. Today's slowest
-// invariant is the fuzz=0 patch-stack apply at ~11.7s on an idle machine; a loaded runner is
-// several times that. A single test that genuinely needs longer passes its own
-// timeout as vitest's third argument rather than lifting the ceiling for all of
-// them - there is always a way out, and it is per test.
-const KINDS = {
-	behavior: 15_000,
-	invariants: 120_000
-};
 
 export default defineConfig({
 	test: {
@@ -104,7 +72,75 @@ export default defineConfig({
 				// (`lib/box-plan`). The handler is the wiring between them.
 				//
 				// The real check on that wiring is the system smoke, not a unit test.
-				"packages/web/convex/boxes/workflows/**"
+				"packages/web/convex/boxes/workflows/**",
+				// The same argument one layer down, and the reason `sshScripts.ts`
+				// exists: what is left in `ssh.ts` is an ssh2 connection and the
+				// actions that drive it. Covering a line of it means mocking ssh2 and
+				// asserting the mock. Everything it sends and everything it reads back
+				// - the fidelity flags a Repair stands on, the escaping a password
+				// change stands on, the parse behind the Repair dialog - moved next
+				// door, where it is pure and instrumented.
+				"packages/web/convex/boxes/infra/ssh.ts",
+				// Express routers over upstream code-server modules - `../cli`,
+				// `../http`, `../util`, `../constants` - which exist only in the tree
+				// the image build assembles, and over `req.args`, which code-server
+				// populates. `packages/ide/tests/support/overlay.ts` can evaluate an overlay file
+				// that stands on its own (`authErrors`, `loginRateLimit`); it cannot
+				// conjure the half of code-server these four sit inside, and the
+				// alternative - paraphrasing their logic into a test - would assert
+				// the paraphrase. The real check on them is the system smoke.
+				//
+				// Scoped to the four routers by name rather than to the directory, so
+				// a helper that does stand on its own stays instrumented and has to
+				// earn its coverage.
+				"packages/ide/overlay/src/node/routes/authPage.ts",
+				"packages/ide/overlay/src/node/routes/changePassword.ts",
+				"packages/ide/overlay/src/node/routes/cloudAuth.ts",
+				"packages/ide/overlay/src/node/routes/register.ts",
+				// `passwordConfig` reads upstream's `../util` and `../cli`;
+				// `api/terminals` reaches the VS Code pty host through `../vscode`
+				// and code-server's own `wsRouter`. Same boundary, same reason.
+				//
+				// Their siblings are all instrumented and tested, which is what makes
+				// this list a boundary rather than a blanket: `cloud`, `envFlag`,
+				// `session`, `loginRateLimit`, `pwned`, `api/config` and
+				// `persistence/readiness` each stand on their own and earn their
+				// coverage.
+				"packages/ide/overlay/src/node/routes/passwordConfig.ts",
+				"packages/ide/overlay/src/node/routes/api/terminals.ts",
+				// Covered, but not attributably. Every limit in `api/config` is
+				// asserted by
+				// `packages/ide/tests/behavior/src/node/routes/api/config.test.ts`.
+				// Vitest resolves the module and its extensionless `../../envFlag`
+				// import fine - a direct `await import(...)` runs green - but doing
+				// that pulls the file into the root TypeScript program, which is
+				// `nodenext` and rejects the import, while code-server's tsconfig is
+				// `moduleResolution: "node"`, where extensionless is the required
+				// spelling every file in `overlay/src/` uses. No spelling satisfies
+				// both, and a `@ts-expect-error` at the import site cannot suppress an
+				// error raised inside the imported file. So the test reaches it through
+				// the overlay loader, and v8 does not map a vm-evaluated module back
+				// onto these lines.
+				//
+				// The fix that would work is a second TypeScript project for
+				// `packages/ide/tests/` on `moduleResolution: "node"`, and it is not
+				// worth it: this is the only entry above it would buy anything for.
+				// The two names below import `../util`, `../../wsRouter` and
+				// `../vscode`, which exist only in the tree the image build assembles,
+				// so no resolution setting makes them importable from here. Priced
+				// once so it is not re-investigated.
+				"packages/ide/overlay/src/node/routes/api/config.ts",
+				// The scripts served with those pages. They are vanilla DOM code
+				// against markup code-server renders, and this package has no browser
+				// environment at all - the `ide` projects are `environment: "node"`,
+				// like every other project here. The smoke drives the real pages.
+				//
+				// The decisions inside them are worth a test and would be reachable
+				// from a jsdom project: that a breach check which cannot be performed
+				// proceeds rather than blocks, and that only an explicit
+				// `{ valid: false }` from the verify endpoint counts as "wrong". That
+				// project is what would let this exclusion be deleted.
+				"packages/ide/overlay/src/browser/pages/**"
 			],
 			// Reported, never thresholded. A global percentage is the one number that
 			// can be met while the suite gets worse - run the line, assert nothing - and
@@ -114,24 +150,6 @@ export default defineConfig({
 			// below is for finding what nothing touches at all.
 			reporter: ["text-summary", "json", "lcov"]
 		},
-		projects: SUITES.flatMap((suite) =>
-			Object.entries(KINDS).map(([kind, testTimeout]) => ({
-				test: {
-					name: `${suite.name}:${kind}`,
-					root: path(suite.root),
-					include: [`tests/${kind}/**/*.test.ts`],
-					environment: "node",
-					testTimeout,
-					// Setup is where a harness boots - a backend, a prebuild, a
-					// container fixture - so a hook that inherited vitest's stock 10s
-					// while its tests had longer would fail the whole file for being
-					// slow at the one step that has most right to be.
-					hookTimeout: testTimeout
-				},
-				...(suite.alias
-					? { resolve: { alias: { "@": path(suite.alias) } } }
-					: {})
-			}))
-		)
+		projects: projects()
 	}
 });

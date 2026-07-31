@@ -14,20 +14,20 @@ export default function TermsPage() {
 		<LegalPage title="Terms of Service">
 			<p>
 				These terms are an agreement between you and {OWNER.legalName}, trading
-				as {OWNER.tradingName} in {OWNER.jurisdiction} (“{OWNER.tradingName}”),
-				for {WEBSITE_DOMAIN} and Composery Cloud. The self-hosted runtime is
-				open-source software distributed under the Apache 2.0 licence. These
-				Terms govern the hosted service, not your separate right to use that
-				software.
+				as {OWNER.tradingName} in {OWNER.jurisdiction} (&quot;
+				{OWNER.tradingName}&quot;), for {WEBSITE_DOMAIN} and Composery Cloud.
+				The self-hosted runtime is open-source software distributed under the
+				Apache 2.0 licence. These Terms govern the hosted service, not your
+				separate right to use that software.
 			</p>
 			<LegalSection title="Eligibility and accounts">
 				<p>
 					You must be able to enter this agreement. If you are under 18, you may
-					use Composery Cloud only with a parent or legal guardian’s involvement
-					and permission; that adult must agree to the paid subscription. Keep
-					account credentials secure and provide accurate information. You are
-					responsible for activity under your account and must promptly report
-					suspected unauthorised access.
+					use Composery Cloud only with a parent or legal guardian&apos;s
+					involvement and permission; that adult must agree to the paid
+					subscription. Keep account credentials secure and provide accurate
+					information. You are responsible for activity under your account and
+					must promptly report suspected unauthorised access.
 				</p>
 			</LegalSection>
 			<LegalSection title="The service">
@@ -60,8 +60,9 @@ export default function TermsPage() {
 					available until the end of the period already paid for. It does not
 					automatically refund that period. An immediate revocation stops access
 					now and is also separate from any refund. Refund and cancellation
-					requests are handled through Polar, subject to Polar’s buyer terms,
-					applicable law, and protections against fraud, abuse, and misuse.
+					requests are handled through Polar, subject to Polar&apos;s buyer
+					terms, applicable law, and protections against fraud, abuse, and
+					misuse.
 				</p>
 				<p>
 					If Composery cannot complete initial delivery of a paid box, we revoke
@@ -73,9 +74,9 @@ export default function TermsPage() {
 			</LegalSection>
 			<LegalSection title="Acceptable use">
 				<p>
-					Do not use the service to break the law or others’ rights; distribute
-					malware; gain unauthorised access; facilitate abuse, fraud, spam, or
-					harassment; mine cryptocurrency; attack or materially disrupt
+					Do not use the service to break the law or others&apos; rights;
+					distribute malware; gain unauthorised access; facilitate abuse, fraud,
+					spam, or harassment; mine cryptocurrency; attack or materially disrupt
 					networks; or consume resources in a way that threatens the service or
 					others. Do not resell access without written permission. We may
 					investigate, rate-limit, suspend, or remove affected boxes when
@@ -100,7 +101,7 @@ export default function TermsPage() {
 					liability for death or personal injury caused by negligence.
 					Otherwise, to the fullest extent permitted by law, the service is
 					provided as available; implied warranties are excluded, and Composery
-					is not liable for indirect or consequential loss. Composery’s
+					is not liable for indirect or consequential loss. Composery&apos;s
 					aggregate liability arising from the paid service is limited to the
 					fees you paid for it in the 12 months before the event, except where
 					that limit is prohibited by law.

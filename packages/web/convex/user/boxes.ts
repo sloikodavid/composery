@@ -28,13 +28,14 @@ import {
 } from "../boxes/snapshots";
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
-import { boxPath } from "../../lib/box-route";
+import { boxPath } from "../../lib/boxes/route";
 import {
 	BOX_PLANS,
 	isValidManualSnapshotCap,
 	planAllowsManualSnapshots
-} from "../../lib/box-plan";
-import { isValidSlug, sanitizeSlug } from "../../lib/box-slug";
+} from "../../lib/boxes/plan";
+import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
+import { DAY_MS } from "../time";
 
 const CUSTOMER_PORTAL_BLOCKED_STATUSES = ["deleting", "deleted"] as const;
 const BOX_LIST_MAXIMUM_ROWS_READ = 200;
@@ -44,7 +45,7 @@ const BOX_LIST_MAXIMUM_ROWS_READ = 200;
 // repeated name), so the two reissuing operations share a per-box weekly cap.
 // The staff console bypasses this on purpose.
 const TLS_REISSUE_OPERATION_TYPES = ["reset", "change_slug"] as const;
-const TLS_REISSUE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const TLS_REISSUE_WEEK_MS = 7 * DAY_MS;
 const TLS_REISSUE_CAP_PER_WEEK = 5;
 
 async function assertTlsReissueBudget(ctx: QueryCtx, boxId: Id<"boxes">) {

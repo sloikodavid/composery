@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -111,7 +109,7 @@ switch (command) {
 		const free = [];
 		for (let port = 5554; port <= 5584; port += 2)
 			if (!used.includes(`emulator-${port}`)) free.push(port);
-		// ponytail: racy free-port scan; on a collision the emulator exits loudly — rerun boot
+		// ponytail: racy free-port scan; on a collision the emulator exits loudly - rerun boot
 		const port = free[Math.floor(Math.random() * free.length)];
 		required(port, "boot [avd] (no free emulator port)");
 		const child = spawn(

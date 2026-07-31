@@ -95,6 +95,6 @@ export async function generateIcons({
 	console.log("Wrote raster icons for the editor overlay and website.");
 }
 
-const scriptPath = fileURLToPath(import.meta.url);
 // Stryker disable next-line all: package scripts exercise this CLI dispatch; behavior tests call the generator directly so they can assert its outputs.
-if (resolve(process.argv[1] ?? "") === scriptPath) await generateIcons();
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url))
+	await generateIcons();

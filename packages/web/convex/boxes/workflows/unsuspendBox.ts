@@ -20,8 +20,7 @@ export const unsuspendBox = defineBoxWorkflow({
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,
-				status: "running",
-				eventType: "box.unsuspended"
+				status: "running"
 			}
 		);
 	}

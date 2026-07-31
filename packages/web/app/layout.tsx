@@ -5,19 +5,19 @@ import type { ReactNode } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/base/sonner";
 import { BROWSER_THEME_COLORS } from "@/lib/browser-theme";
-import { appDescription, siteUrl } from "@/lib/shared";
 import { cn } from "@/lib/utils";
 import { inter } from "./fonts";
 import { Providers } from "./providers";
+import { APP_DESCRIPTION, WEBSITE_ORIGIN } from "shared";
 import "./globals.css";
 
 export const metadata: Metadata = {
-	metadataBase: new URL(siteUrl),
+	metadataBase: new URL(WEBSITE_ORIGIN),
 	title: {
 		default: "Composery: like VS Code, but always on",
 		template: "%s - Composery"
 	},
-	description: appDescription,
+	description: APP_DESCRIPTION,
 	alternates: { canonical: "./" },
 	openGraph: {
 		siteName: "Composery",
