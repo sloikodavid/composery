@@ -1,18 +1,48 @@
 # Conventions
 
+## Where a module goes
+
+Four planes, and the rule is who may read it.
+
+- **`convex/model/`** - the words both planes speak. No React, no `_generated`, no
+  Convex runtime, relative imports only (`convex/tsconfig.json` has no path
+  aliases). A box's statuses, its operations, its plans, its metrics and its slug
+  rules live here, and `convex/schema.ts` builds its validators *from* them. The
+  dependency runs one way: the model knows nothing about the database, and
+  everything that knows about the database reads the model.
+- **`convex/owner/`, `convex/staff/`, `convex/box/`** - public surfaces, named for
+  who calls them. A file here holds `query`/`mutation`/`action` and nothing else
+  worth reading; the work is one call down.
+- **`convex/<domain>/`** (`boxes/`, `billing/`, `checkout/`, `notice/`,
+  `account/`) - internal only. Nothing outside the deployment may call these.
+- **`app/`, `components/`, `hooks/`, `lib/`** - the browser plane. `lib/` is
+  Next-only by definition now; anything Convex also reads belongs in
+  `convex/model/`.
+
+What stays loose at `convex/` root is what belongs to the deployment rather than
+a domain: `schema`, `env`, `settings`, `crons`, `http`, `time`, `users`, and the
+two Convex config files.
+
+## Naming
+
 - `app/`, `components/`, `lib/` filenames: kebab-case (regular Next.js modules).
 - `convex/` filenames: camelCase, because the path becomes a generated API identifier (`convex/staff/boxes.ts` -> `api.staff.boxes.reset`).
 - Database/schema fields and persisted status/type literals: snake_case (stored data, not JS names).
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- Box lifecycle workflows are named `<verb>Box` or `<verb>Box<target>`; see `convex/boxes/workflows/` for the current set.
-- Every box operation starts through `startBoxOperation` and carries a required `trigger` (`owner`, `staff`, or a `system:` sweep). Automatic repair decides whether a person is working on a box from that field alone, so a new automatic caller adds its own `system:` literal rather than borrowing one.
-- A workflow declares its operation `type`, not its own failure handling. Where a failure leaves the box and what event it records live once in `OPERATION_FAILURE_STATUS` and `boxEventType` (`convex/model/box/operation.ts`), because the sweep that rescues a stuck operation has to reach the same answer the workflow would have.
+- A directory is part of a name: inside `convex/boxes/`, `components/boxes/` and `convex/model/box/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
+- The same operation is named the same on both sides. `api.owner.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
+- An **alert** is an incident record for staff (`raiseAlert`). A **notice** is a message to a person (`convex/notice/`). Name the thing, never the channel: `sendOwnerNotice`, not `sendOwnerEmail`.
+
+## Box operations
+
+- **One row per operation, in `convex/model/box/operation.ts`.** What it is called, which statuses it may begin from, which status the box wears while it runs, where a failure leaves it, whether that failure pages a person, and what the owner is told - all of it, keyed by operation type and exhaustive by `satisfies`. This was six parallel tables in three files; adding an operation is now adding a row. The workflow that carries it out is the one thing kept out (it needs `_generated`), and it lives in `convex/boxes/operations.ts` keyed by the same names.
+- The begin-status and failure-status unions are **derived** from that table, never listed beside it. A hand-written subset is what the type checker cannot check, and the begin-status one had already drifted to carry `running` and `suspended`, which no operation moves a box to.
+- **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/boxes/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
+- A `system:` sweep still names its own trigger, because it is not one of the two audiences. A new automatic caller adds its own `system:` literal rather than borrowing one.
 - Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
-- A directory is part of a name: inside `convex/boxes/`, `components/boxes/` and `lib/boxes/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
-- The same operation is named the same on both sides. `api.user.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
-- What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `convex/model/box/plan.ts`, keyed by the `vBoxPlan` union in `convex/schema.ts` and pinned to it with `satisfies`. Never restate a plan's machine or specification anywhere else: adding a plan is a literal in the union, a row in that table, and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
+- What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `convex/model/box/plan.ts`. `BoxPlan` is the key of that table and `vBoxPlan` is built from it, so a plan cannot exist in one and not the other. Adding a plan is a row there and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
 - Cloud box runtime settings are defined once in `convex/boxes/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
 
 ## Components
@@ -20,7 +50,7 @@
 Four buckets, by what a file is rather than what it does:
 
 - `components/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
-- `components/boxes/` - box-domain UI, mirroring `convex/boxes/`, `lib/boxes/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`).
+- `components/boxes/` - box-domain UI, mirroring `convex/model/box/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`).
 - `components/icons/` - see below.
 - `components/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
 

@@ -18,7 +18,13 @@ import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
-import { boxEventLabel, failureNotice, operationLabel, type BoxOperationStatus, type BoxOperationType } from "@/convex/model/box/operation";
+import {
+	boxEventLabel,
+	failureNotice,
+	operationLabel,
+	type BoxOperationStatus,
+	type BoxOperationType
+} from "@/convex/model/box/operation";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,

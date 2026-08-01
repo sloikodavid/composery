@@ -1695,10 +1695,9 @@ describe("the box page the console draws", () => {
 			const { admin, customer } = await cast(t);
 			const boxId = await seedBox(t, { user_id: customer.clerkUserId });
 			await t.run(async (ctx) => {
-				for (const [index, type] of [
-					"box.create_succeeded",
-					"box.repair_succeeded"
-				].entries()) {
+				for (const [index, type] of (
+					["box.create_succeeded", "box.repair_succeeded"] as const
+				).entries()) {
 					await ctx.db.insert("box_events", {
 						box_id: boxId,
 						user_id: customer.clerkUserId,

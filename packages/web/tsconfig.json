@@ -1,15 +1,35 @@
+// Next.js writes to this file. `next dev`, `next build` and `next typegen` all
+// reach `verifyTypeScriptSetup`, which overwrites the options it requires and -
+// this is the part that bites - fills in a *suggested* value for every option it
+// knows and does not find here. An option removed from this file therefore comes
+// back with Next's value, not TypeScript's default.
+//
+// So the usual reading does not apply: an option here is not redundant merely
+// because TypeScript 6 already defaults to it. `strict` is the trap. TypeScript 6
+// defaults it to `true`, Next suggests `false`, and Next wins on a file that does
+// not name it - deleting the line silently unstrict the whole package. `target`
+// and `allowJs` are held for the same reason and are noted where they are set.
+//
+// Convex checks `convex/` a second time through `convex/tsconfig.json`, which the
+// Convex CLI owns. Neither file can include the other; keep the two readings of
+// the same directory from drifting by hand.
 {
 	"compilerOptions": {
-		// ES2020 rather than Next's scaffolded ES2017, because a Convex component
+		// ES2020 rather than Next's suggested ES2017, because a Convex component
 		// registered by the test harness (`@convex-dev/workpool`, pulled in by
 		// `@convex-dev/workflow/test`) ships TypeScript sources that use BigInt
 		// literals. Nothing shipped changes: `noEmit` is set here and `next build`
 		// compiles with SWC against its own browser targets, so this only decides
 		// what the checker is willing to read.
 		"target": "ES2020",
-		"lib": ["dom", "dom.iterable", "esnext"],
+		// TypeScript 6 folded `dom.iterable` into `dom`; the separate lib file is
+		// now an empty stub kept for compatibility.
+		"lib": ["dom", "esnext"],
+		// Next suggests `true`. Nothing in this package is JavaScript, and a stray
+		// .js file should be a question rather than something the checker adopts.
 		"allowJs": false,
 		"skipLibCheck": true,
+		// Held against Next's suggested `false` - see the note above.
 		"strict": true,
 		"noEmit": true,
 		"esModuleInterop": true,
@@ -28,6 +48,8 @@
 			"@/*": ["./*"],
 			"collections/*": ["./.source/*"]
 		},
+		// `shared` resolves to ../shared/index.ts, imported as TypeScript because
+		// Node strips its types rather than compiling it.
 		"allowImportingTsExtensions": true
 	},
 	"include": [
@@ -37,6 +59,5 @@
 		".next/types/**/*.ts",
 		".next/dev/types/**/*.ts",
 		"**/*.mts"
-	],
-	"exclude": ["node_modules"]
+	]
 }

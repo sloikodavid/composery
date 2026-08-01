@@ -12,10 +12,7 @@ import { raiseAlert } from "../staff/alerts";
 import { isSystemTrigger, type OperationTrigger } from "../schema";
 import { type BoxStatus } from "../model/box/status";
 import { startBoxOperation } from "./operations";
-import {
-	isOperationAllowed,
-	BOX_OPERATIONS
-} from "../model/box/operation";
+import { isOperationAllowed, BOX_OPERATIONS } from "../model/box/operation";
 import { DAY_MS, HOUR_MS } from "../time";
 
 // Automatic repair: the fleet heals a box that has stopped serving, without its
@@ -67,8 +64,7 @@ export const MAX_AUTO_REPAIRS_PER_WINDOW = 2;
 // update was never probed, so it never accumulated a failure count, so the gate
 // that permits repairing it could not fire. There was a passing test asserting
 // that it would.
-export const SWEPT_STATUSES: readonly BoxStatus[] =
-	BOX_OPERATIONS.repair.from;
+export const SWEPT_STATUSES: readonly BoxStatus[] = BOX_OPERATIONS.repair.from;
 
 // Recorded on every operation this module starts, and the thing that makes an
 // automatic repair distinguishable from one a person asked for - in the event

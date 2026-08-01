@@ -271,7 +271,12 @@ export const retryCreate = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "owner", await requireOwnerBox(ctx, args.slug), "create");
+		await startFor(
+			ctx,
+			"owner",
+			await requireOwnerBox(ctx, args.slug),
+			"create"
+		);
 	}
 });
 
@@ -289,7 +294,12 @@ export const start = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "owner", await requireOwnerBox(ctx, args.slug), "start");
+		await startFor(
+			ctx,
+			"owner",
+			await requireOwnerBox(ctx, args.slug),
+			"start"
+		);
 	}
 });
 

@@ -21,11 +21,7 @@
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import type {
-	ActionCtx,
-	MutationCtx,
-	QueryCtx
-} from "../_generated/server";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import {
 	operationAllowsAudience,
 	operationLabel,
@@ -165,8 +161,8 @@ export async function startFor(
 // absorbed by the old one.
 //
 // The sentence is built from the operation's label, not from its identifier.
-// Inflecting the identifier reads as economy and produces "updateed" and
-// "stoped"; identifiers and prose are separate vocabularies, and this is the
+// Adding a suffix to the identifier reads as economy and breaks on half the
+// operations; identifiers and prose are separate vocabularies, and this is the
 // boundary between them.
 export async function startForOrFail(
 	ctx: { runMutation: ActionCtx["runMutation"] },

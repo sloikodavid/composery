@@ -71,7 +71,9 @@ describe("reading a box", () => {
 		const { mine, theirs } = await twoOwners(t);
 		const boxId = await seedBox(t, { user_id: mine.clerkUserId });
 
-		expect(await theirs.as.query(api.owner.boxes.getById, { boxId })).toBeNull();
+		expect(
+			await theirs.as.query(api.owner.boxes.getById, { boxId })
+		).toBeNull();
 	});
 
 	test("hides a deleted box from its former owner", async () => {

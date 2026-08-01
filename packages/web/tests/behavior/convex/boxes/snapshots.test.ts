@@ -7,7 +7,11 @@ import {
 	SNAPSHOT_INCOMPLETE_RETENTION_MS,
 	snapshotIdempotencyBucket
 } from "@/convex/boxes/snapshotPolicy";
-import { type BoxPlan, BOX_PLANS, resolveSnapshotSplit } from "@/convex/model/box/plan";
+import {
+	type BoxPlan,
+	BOX_PLANS,
+	resolveSnapshotSplit
+} from "@/convex/model/box/plan";
 
 // The manual half of a Box Pro box's allowance, at the split a new one is
 // created with. Read rather than written down, so changing the plan's default

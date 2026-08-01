@@ -4,7 +4,13 @@ import { v } from "convex/values";
 import type { z } from "zod";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
-import { SERVER_LOCATIONS, vServerLocation, vServerType, vSnapshotClass, type ServerLocation } from "../../schema";
+import {
+	SERVER_LOCATIONS,
+	vServerLocation,
+	vServerType,
+	vSnapshotClass,
+	type ServerLocation
+} from "../../schema";
 import { SERVER_TYPES, type ServerType } from "../../model/box/plan";
 import { optionalEnv, requiredEnv } from "../../env";
 import {

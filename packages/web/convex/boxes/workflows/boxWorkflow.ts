@@ -2,7 +2,10 @@ import { WorkflowManager, type WorkflowCtx } from "@convex-dev/workflow";
 import { type ObjectType, type PropertyValidators, v } from "convex/values";
 import { components, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
-import { type BoxOperationType, BOX_OPERATIONS } from "../../model/box/operation";
+import {
+	type BoxOperationType,
+	BOX_OPERATIONS
+} from "../../model/box/operation";
 
 export const workflow = new WorkflowManager(components.workflow);
 

@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { BOX_STATUSES, type BoxStatus } from "@/convex/model/box/status";
-import { type BoxOperationType, BOX_OPERATIONS, BOX_OPERATION_TYPES, boxEventType } from "@/convex/model/box/operation";
+import {
+	type BoxOperationType,
+	BOX_OPERATIONS,
+	BOX_OPERATION_TYPES,
+	boxEventType
+} from "@/convex/model/box/operation";
 import { HOUR_MS } from "@/convex/time";
 import {
 	operationLiveness,

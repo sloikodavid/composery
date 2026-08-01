@@ -11,11 +11,7 @@ import {
 import { requireActiveUserInAction } from "../users";
 import { cloudUrl } from "../env";
 import { vBoxAuthorizationType } from "../schema";
-import {
-	isFlowSecret,
-	isPasswordHash,
-	isRedirectUri
-} from "../model/box/auth";
+import { isFlowSecret, isPasswordHash, isRedirectUri } from "../model/box/auth";
 import { startBoxOperation } from "./operations";
 import { MINUTE_MS } from "../time";
 

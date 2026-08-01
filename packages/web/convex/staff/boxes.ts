@@ -365,7 +365,12 @@ export const retryCreate = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "create");
+		await startFor(
+			ctx,
+			"staff",
+			await requireStaffBox(ctx, args.boxId),
+			"create"
+		);
 	}
 });
 
@@ -471,7 +476,12 @@ export const reset = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "reset");
+		await startFor(
+			ctx,
+			"staff",
+			await requireStaffBox(ctx, args.boxId),
+			"reset"
+		);
 	}
 });
 
@@ -501,7 +511,12 @@ export const stop = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "stop");
+		await startFor(
+			ctx,
+			"staff",
+			await requireStaffBox(ctx, args.boxId),
+			"stop"
+		);
 	}
 });
 
@@ -510,7 +525,12 @@ export const start = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "start");
+		await startFor(
+			ctx,
+			"staff",
+			await requireStaffBox(ctx, args.boxId),
+			"start"
+		);
 	}
 });
 

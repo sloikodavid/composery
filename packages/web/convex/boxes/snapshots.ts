@@ -8,7 +8,11 @@ import {
 	type MutationCtx
 } from "../_generated/server";
 import { vSnapshotClass, type OperationTrigger } from "../schema";
-import { BOX_PLANS, planAllowsManualSnapshots, resolveSnapshotSplit } from "../model/box/plan";
+import {
+	BOX_PLANS,
+	planAllowsManualSnapshots,
+	resolveSnapshotSplit
+} from "../model/box/plan";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
 import { appendBoxEvent } from "./events";

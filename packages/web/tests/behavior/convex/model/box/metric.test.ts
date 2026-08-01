@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
 
-import { FLAG_SIGNALS, METRICS_RANGES, ROLLED_METRICS, flagDisplayValue, flagSignalLabel, flagStoredValue, formatFlagValue, type BoxFlagSignal } from "@/convex/model/box/metric";
+import {
+	FLAG_SIGNALS,
+	METRICS_RANGES,
+	ROLLED_METRICS,
+	flagDisplayValue,
+	flagSignalLabel,
+	flagStoredValue,
+	formatFlagValue,
+	type BoxFlagSignal
+} from "@/convex/model/box/metric";
 import { vBoxFlagSignal } from "@/convex/schema";
 
 // The union the schema stores, as a list. `satisfies` already stops a signal

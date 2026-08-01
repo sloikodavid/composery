@@ -23,7 +23,11 @@ import {
 	TableRow
 } from "@/components/base/table";
 import type { Id } from "@/convex/_generated/dataModel";
-import { BOX_PLANS, type BoxPlan, type SnapshotSplit } from "@/convex/model/box/plan";
+import {
+	BOX_PLANS,
+	type BoxPlan,
+	type SnapshotSplit
+} from "@/convex/model/box/plan";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDate, formatDateTime } from "@/lib/datetime";

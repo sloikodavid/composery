@@ -4,7 +4,13 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
-import { type BoxFailureStatus, boxEventType, operationLabel, isActiveOperationStatus, BOX_OPERATIONS } from "../model/box/operation";
+import {
+	type BoxFailureStatus,
+	boxEventType,
+	operationLabel,
+	isActiveOperationStatus,
+	BOX_OPERATIONS
+} from "../model/box/operation";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import { sendOwnerNotice } from "../notice/owner";
@@ -292,9 +298,7 @@ export async function recordOperationFailure(
 	const operationType = operationLabel(operation.type, true);
 	await raiseAlert(ctx, {
 		key: `box-operation-failed:${input.operationId}`,
-		severity: BOX_OPERATIONS[operation.type].critical
-			? "critical"
-			: "warning",
+		severity: BOX_OPERATIONS[operation.type].critical ? "critical" : "warning",
 		subject: `Box ${box.slug}: ${operationType} failed`,
 		text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${input.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
 	});

@@ -2,12 +2,12 @@
 //
 // This replaces six tables that were each keyed by the operation type and each
 // kept in a different file: what it is called, which statuses it may begin from,
-// which status the box wears while it runs, where a failure leaves it, whether
+// which status the box has while it runs, where a failure leaves it, whether
 // that failure pages a person, and what the owner is told about it. Six parallel
 // tables mean six chances to add an operation and forget one - and that is not
 // hypothetical: `repair_failed` was once spelled in one of them and missing from
 // another, and a failed `delete` was filed as a warning for as long as the
-// criticality check compared prose against identifiers.
+// check for a critical failure compared prose against identifiers.
 //
 // One row per operation makes the whole set of facts about it visible at once,
 // and `satisfies` makes every field mandatory. Adding an operation is adding a
@@ -15,7 +15,7 @@
 //
 // What is deliberately NOT here: the workflow that carries the operation out.
 // That reference needs `_generated`, which would drag Convex into a module the
-// browser reads. It lives in `convex/boxes/workflow.ts`, keyed by these same
+// browser reads. It lives in `convex/boxes/operations.ts`, keyed by these same
 // names and pinned exhaustive by `satisfies`, so the two cannot drift.
 import { boxStatusesExcept, type BoxStatus } from "./status";
 
@@ -37,7 +37,7 @@ type OperationSpec = {
 	// tears it down, or recreates the container of one that was working.
 	// Everything else fails leaving a box exactly as usable as it was.
 	critical: boolean;
-	// The status the box wears while the operation runs, or `null` where the
+	// The status the box has while the operation runs, or `null` where the
 	// operation runs beside a box it does not move off its current status.
 	during: BoxStatus | null;
 	// The statuses the operation may begin from. `startOperation` refuses
@@ -52,7 +52,7 @@ type OperationSpec = {
 	// to act on. `owned: false` means the notice is shown only in the console - a
 	// scheduled snapshot hitting a full Hetzner quota is staff's problem, not the
 	// owner's - but staff still get the sentence rather than a bare status word.
-	// `hint: null` is the honest answer where there is nothing to advise; never
+	// `hint: null` is the honest answer where there is nothing to suggest; never
 	// invent an action an owner does not have.
 	notice: { owned: boolean; title: string; hint: string | null };
 	// Where a failure leaves the box, or `null` where the operation never moved
@@ -301,7 +301,7 @@ export const BOX_OPERATION_TYPES = Object.keys(
 	BOX_OPERATIONS
 ) as BoxOperationType[];
 
-// The statuses a box may wear while an operation runs, and the statuses a
+// The statuses a box may have while an operation runs, and the statuses a
 // failure may leave it in. Both are derived from the catalogue rather than
 // listed beside it, because both were subsets that had already drifted: the
 // begin-status union carried `running` and `suspended`, which no operation ever
@@ -424,8 +424,7 @@ const BOX_FACT_LABEL = {
 export type BoxFactType = keyof typeof BOX_FACT_LABEL;
 
 export type BoxEventType =
-	| `box.${BoxOperationType}_${OperationOutcome}`
-	| BoxFactType;
+	`box.${BoxOperationType}_${OperationOutcome}` | BoxFactType;
 
 // Every event name this deployment can write, as values. `convex/schema.ts`
 // builds the stored column's validator from it, so a row whose type nothing can
