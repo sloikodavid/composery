@@ -22,12 +22,12 @@ import { raiseAlert } from "../staff/alerts";
 //
 // Both obligations are owed per person, and both put the burden of proof on us,
 // which is why a recipient row exists for each one rather than a single "sent"
-// flag on the notice. `lib/cloud-legal.ts` holds what is sent and explains why
+// flag on the notice. `convex/model/legal.ts` holds what is sent and explains why
 // deploying is what sends it.
 //
 // This is not a feed and must never become one. Everything a customer might like
 // to know - their box started, an update is waiting, their invoice - already has
-// an owner: the box's own page, `convex/ownerEmail.ts`, or Polar. Mail that a
+// an owner: the box's own page, `convex/notice/owner.ts`, or Polar. Mail that a
 // person did not need to receive is what makes them stop reading the mail they
 // did, and this channel's entire value is that they read it.
 

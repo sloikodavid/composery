@@ -12,7 +12,7 @@ const authorizedParties = parseAuthorizedParties(
 // Serve a docs page as raw markdown to LLMs and tools: an explicit `/docs/x.md`
 // suffix, or any /docs request that prefers text/markdown, rewrites to the
 // generated content route. Both derive from docsRoute, so the docs base stays
-// defined in exactly one place (lib/docs.ts).
+// defined in exactly one place (ui/lib/docs.ts).
 const { rewrite: rewriteDocs } = rewritePath(
 	`${docsRoute}{/*path}`,
 	`${docsContentRoute}{/*path}/content.md`

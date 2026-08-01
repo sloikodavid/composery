@@ -14,10 +14,12 @@ const host = vi.hoisted(() => ({
 	// the real script sees for a ref that does not exist.
 	git: new Map<string, string>(),
 	cargoInstalled: true,
+	// What the mutation config's globs resolve to in the checkout.
+	mutable: [] as string[],
 	spawns: [] as string[],
 	exits: [] as number[],
 	errors: [] as string[],
-	writes: [] as string[]
+	writes: [] as { path: string; contents: string }[]
 }));
 
 vi.mock("node:child_process", () => ({
@@ -36,8 +38,16 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("node:fs", () => ({
 	mkdirSync: () => undefined,
-	writeFileSync: (path: string) => host.writes.push(String(path)),
-	readFileSync: () => "{}"
+	writeFileSync: (path: string, contents: string) =>
+		host.writes.push({ path: String(path), contents: String(contents) }),
+	readFileSync: () =>
+		JSON.stringify({
+			mutate: ["packages/web/convex/**/*.ts", "!**/_generated/**"],
+			thresholds: { high: 80, low: 60, break: 0 }
+		}),
+	// A glob is Node's to resolve. What this file constrains is the step after:
+	// which of the changed files the run is allowed to mutate.
+	globSync: () => host.mutable
 }));
 
 function arrange(changed: string[]) {
@@ -123,6 +133,36 @@ describe("check:mutants", () => {
 		await runScript();
 
 		expect(host.spawns.some((call) => call.startsWith("cargo"))).toBe(false);
+		expect(host.exits).toEqual([]);
+	});
+
+	test("mutates only the changed files the mutation config already claims", async () => {
+		host.mutable = ["packages/web/convex/boxes/lifecycle.ts"];
+		arrange([
+			"packages/web/convex/boxes/lifecycle.ts",
+			// Real source, changed, and deliberately outside the `mutate` set: no
+			// test covers it, so every mutant would survive by construction and the
+			// gate would fail on a list nobody could ever kill.
+			"packages/web/app/(site)/page.tsx"
+		]);
+
+		await runScript();
+
+		const written = host.writes.find((w) => w.path.endsWith(".json"));
+		expect(JSON.parse(written?.contents ?? "{}")).toMatchObject({
+			mutate: ["packages/web/convex/boxes/lifecycle.ts"],
+			// Raised for the diff run: a change may not introduce a survivor.
+			thresholds: { break: 100 }
+		});
+	});
+
+	test("runs no mutation when every changed file is outside the mutate set", async () => {
+		host.mutable = [];
+		arrange(["packages/web/app/(site)/page.tsx"]);
+
+		await runScript();
+
+		expect(host.spawns.some((call) => call.includes("stryker"))).toBe(false);
 		expect(host.exits).toEqual([]);
 	});
 });

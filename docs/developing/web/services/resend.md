@@ -50,7 +50,7 @@ addresses on it, alongside the support address
 
 **One word per sender, used at every layer.** `alerts`, `notices` and
 `accounts` each name the environment variable, the display name, the local part
-in front of the `@`, the helper in `convex/email.ts` and the key the console's
+in front of the `@`, the helper in `convex/notice/email.ts` and the key the console's
 delivery panel reports. There is no mapping between layers because there is
 nothing to map - pick the word and the rest follows.
 
@@ -167,7 +167,7 @@ being enforced, with Microsoft rejecting outright rather than filtering.
 **convex/staff/alerts.ts** inserts a deduplicated **staff_alerts** row before
 trying email. The row records queue state, recipient count, Resend email ID,
 latest delivery event, and any error. Disabled, recipient-less, or failed queue
-attempts retry every 15 minutes. Rows remain for 180 days. **convex/email.ts**
+attempts retry every 15 minutes. Rows remain for 180 days. **convex/notice/email.ts**
 owns the Resend client and answers whether a given class of mail can be sent at
 all, so no two senders can disagree about it.
 
@@ -214,7 +214,7 @@ actionable.
 
 ## Box owner notices
 
-**convex/ownerEmail.ts** sends the owner of a box exactly four notices, from
+**convex/notice/owner.ts** sends the owner of a box exactly four notices, from
 **RESEND_NOTICES_FROM**. Each is sent from the lifecycle mutation that makes it
 true, and each is something the owner cannot learn any other way at the moment
 it happens, because nobody opens the website to check whether a box they were
@@ -281,7 +281,7 @@ its price.
 
 ## Account notices
 
-**convex/accountEmail.ts** tells one account holder that their account was
+**convex/notice/account.ts** tells one account holder that their account was
 suspended or restored, from **RESEND_ACCOUNTS_FROM**. It is the sibling of the box
 notices one level up: same discipline, same never-throw contract, and the sender
 follows the subject.
@@ -307,7 +307,7 @@ of the deployment and not of either stream.
 
 ## Legal notices
 
-**convex/legalNotice.ts** mails every account holder individually, from
+**convex/notice/legal.ts** mails every account holder individually, from
 **RESEND_ACCOUNTS_FROM**, and records who was told. It is the only channel that
 reaches the whole customer base, and it exists for two obligations that must be
 delivered to a person rather than published at them:
@@ -329,7 +329,7 @@ delivered to a person rather than published at them:
   involve "disproportionate effort", which is not the case here.
 
 **Deploying a notice is what sends it.** The text lives in `LEGAL_NOTICES` in
-**packages/web/lib/cloud-legal.ts**; there is deliberately no console button and
+**packages/web/convex/model/legal.ts**; there is deliberately no console button and
 no free-text field, because a textarea that mails every customer at once is the
 wrong place for reviewed prose with legal consequences. A cron picks the entry up
 within 15 minutes. See [Operations](../operations.md), "Publishing a legal

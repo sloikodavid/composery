@@ -27,7 +27,7 @@ Checkout fails closed until both Hetzner allocations are configured. Read
 behavior.
 
 What a plan _is_ deliberately stays in code rather than joining that list: its
-machine, and how many snapshots it includes, live in `lib/boxes/plan.ts` because
+machine, and how many snapshots it includes, live in `convex/model/box/plan.ts` because
 the pricing page is printed from that same row. A console control over either
 would let what a visitor is sold and what they are given disagree. How an owner
 divides their own box's allowance is theirs, not staff's, and lives on the box.

@@ -36,7 +36,7 @@ export const clerkAppearance = {
 			"rounded-[min(var(--radius-4xl),24px)] border border-border shadow-lg!",
 		headerTitle: "font-heading text-lg font-medium text-foreground",
 		headerSubtitle: "text-[15px] text-muted-foreground",
-		// Primary/outline buttons mirror components/base/button.tsx (default + outline
+		// Primary/outline buttons mirror ui/base/button.tsx (default + outline
 		// variants): color-mix hovers rather than opacity, ring-1 focus, the
 		// active nudge, at the h-12 rounded-lg scale the app uses for form controls.
 		button:
@@ -54,7 +54,7 @@ export const clerkAppearance = {
 		socialButtonsBlockButtonText: "text-[15px] font-medium text-foreground!",
 		socialButtonsIconButton:
 			"h-12 rounded-lg border border-border bg-button transition-all outline-none hover:bg-button-hover! active:bg-button-active! focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring active:translate-y-px",
-		// Inputs mirror components/base/input.tsx (outline variant) at the same
+		// Inputs mirror ui/base/input.tsx (outline variant) at the same
 		// h-12 rounded-lg px-5 scale, with the ring-1 focus treatment.
 		input:
 			"h-12 rounded-lg border border-field-border bg-field! px-5 text-[15px] text-field-foreground shadow-xs transition-[color,box-shadow,border-color] duration-200 placeholder:text-field-placeholder focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring",

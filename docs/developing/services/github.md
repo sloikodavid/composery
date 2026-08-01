@@ -78,7 +78,7 @@ to configure beyond enabling Discussions above:
 Discussions ships with its default categories; the routing relies on the
 **Ideas** and **Q&A** slugs (`/discussions/categories/ideas`, `.../q-a`).
 Renaming or deleting those categories silently breaks the links in
-`.github/ISSUE_TEMPLATE/config.yaml`, `packages/web/lib/links.ts`, and the
+`.github/ISSUE_TEMPLATE/config.yaml`, `packages/web/convex/model/links.ts`, and the
 README - keep the defaults.
 
 Labels: the GitHub default label set is enough for the issue form (`bug`).
@@ -248,16 +248,16 @@ finds every site:
 git grep -n "sloikodavid" -- ':!packages/ide/upstream' ':!pnpm-lock.yaml'
 ```
 
-| Surface                                                          | What it controls                                                      |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `.github/workflows/cla.yaml`                                     | repo guard condition and the CLA document URLs                        |
-| `.github/ISSUE_TEMPLATE/config.yaml`                             | issue-chooser links to Discussions, advisories, and the support page  |
-| `renovate.json`                                                  | the "never bump our own image" package rule                           |
-| `README.md`, `CHANGELOG.md`, `docs/self-hosting/`, `templates/`  | published image references and repo links                             |
-| `compose.dev.yaml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)      | image source labels                                                   |
-| `packages/web/lib/links.ts` (`GITHUB_REPO_URL`, `SUPPORT_EMAIL`) | the website's repo links, issue/discussion links, and support email   |
-| `packages/ide/scripts/rebrand.mjs`                               | product metadata baked into the IDE build (issue URL, license, email) |
-| `packages/ide/overlay/.../composery-*/package.json`              | bundled extension repository metadata                                 |
+| Surface                                                                   | What it controls                                                      |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `.github/workflows/cla.yaml`                                              | repo guard condition and the CLA document URLs                        |
+| `.github/ISSUE_TEMPLATE/config.yaml`                                      | issue-chooser links to Discussions, advisories, and the support page  |
+| `renovate.json`                                                           | the "never bump our own image" package rule                           |
+| `README.md`, `CHANGELOG.md`, `docs/self-hosting/`, `templates/`           | published image references and repo links                             |
+| `compose.dev.yaml`, `Dockerfile` (`COMPOSERY_BUILD_SOURCE`)               | image source labels                                                   |
+| `packages/web/convex/model/links.ts` (`GITHUB_REPO_URL`, `SUPPORT_EMAIL`) | the website's repo links, issue/discussion links, and support email   |
+| `packages/ide/scripts/rebrand.mjs`                                        | product metadata baked into the IDE build (issue URL, license, email) |
+| `packages/ide/overlay/.../composery-*/package.json`                       | bundled extension repository metadata                                 |
 
 `release.yaml` and `smoke.yaml` need no edits - they derive the image owner from
 `github.repository_owner` at run time.

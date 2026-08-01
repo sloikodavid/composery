@@ -7,7 +7,7 @@
 // The styled text uses fill="currentColor" so a single logo adapts to light/dark
 // (it follows the text color). The web header, public brand assets, and the IDE
 // overlay all consume this one output, so the logo spacing is defined here,
-// once. Outputs: web/lib/logo-data.ts (TS data) and the editor overlay's
+// once. Outputs: web/ui/lib/logo-data.ts (TS data) and the editor overlay's
 // composery-logo.svg.
 //
 // The app's live UI ships Inter Variable. The logo is outlined, so use Inter
@@ -89,7 +89,7 @@ export async function generateLogo({
 	const icon = `<svg x="${ICON_X}" y="${ICON_Y}" width="${ICON_SIZE}" height="${ICON_SIZE}" viewBox="${ICON_VIEWBOX}" fill="none">${iconInner({ holesId: "composery-logo-icon-holes" })}</svg>`;
 	const inner = `${icon}<g transform="translate(${TEXT_X} ${baseline.toFixed(2)}) scale(${scale.toFixed(5)} ${(-scale).toFixed(5)})" fill="currentColor">${glyphs}</g>`;
 
-	const out = join(root, "packages", "web", "lib", "logo-data.ts");
+	const out = join(root, "packages", "web", "ui", "lib", "logo-data.ts");
 	const overlayLogo = join(
 		root,
 		"packages",
@@ -119,7 +119,7 @@ export const LOGO_HEIGHT = ${height};
 	);
 
 	console.log(
-		`Wrote web/lib/logo-data.ts and the editor overlay logo (viewBox "${viewBox}").`
+		`Wrote web/ui/lib/logo-data.ts and the editor overlay logo (viewBox "${viewBox}").`
 	);
 }
 

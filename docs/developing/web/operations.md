@@ -182,7 +182,7 @@ complete alert boundary lives in [Resend](services/resend.md#alert-policy).
 
 Changing the Terms, Privacy Policy or Cookie Notice and telling existing
 customers you changed them are one act. The repository enforces that: append to
-`LEGAL_VERSIONS` in **packages/web/lib/cloud-legal.ts** and
+`LEGAL_VERSIONS` in **packages/web/convex/model/legal.ts** and
 `tests/invariants/legal/notices.test.ts` fails until an entry in
 `LEGAL_NOTICES` announces that version.
 

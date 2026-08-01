@@ -114,7 +114,7 @@ Two planes of observability, no third-party tracker and no new env vars:
   Vercel and only log (no beacon) in development. To surface a one-click "Open in
   Vercel" link on `/console` (the in-app pointer to those dashboards), set
   `NEXT_PUBLIC_VERCEL_PROJECT_URL` to the project's dashboard URL
-  (`https://vercel.com/<team>/<project>`) in the Next env; `lib/dashboards.ts`
+  (`https://vercel.com/<team>/<project>`) in the Next env; `ui/lib/dashboards.ts`
   reads it and the link hides when it is unset.
 - **Product/fleet KPIs.** Derived on demand in `convex/staff/stats.ts`
   (`api.staff.stats.overview`) from existing tables - no separate analytics

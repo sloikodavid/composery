@@ -441,10 +441,10 @@ describe("the workflow completion callback", () => {
 
 describe("the event an ended operation records", () => {
 	// The name is derived from the operation row rather than passed in, because
-	// passing it in is how five workflows came to be writing the pre-rename names
-	// (`box.stopped`, `box.suspended`, `box.update_not_needed`) that
-	// `convex/boxes/rename.ts` migrates away from - so every stop, start,
-	// suspend, unsuspend and no-op update undid that migration as it ran.
+	// passing it in is how five workflows came to be writing their own spellings
+	// of "this ended" - `box.stopped`, `box.suspended`, `box.update_not_needed` -
+	// none of which the one grammar can produce. Deriving it makes those
+	// unrepresentable, and the schema's own event union now refuses them too.
 	test("names the operation that ended, in the one grammar", async () => {
 		const t = testConvex();
 		const owner = await seedUser(t);

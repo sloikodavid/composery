@@ -64,7 +64,7 @@ verified, which is why **Verify at sign-up** stays on: the Convex user row is
 keyed on the Clerk user id, so a second Clerk identity for the same person
 becomes a second, empty account with the same email.
 
-Enabled providers need no code change. `lib/clerk-appearance.ts` already styles
+Enabled providers need no code change. `ui/lib/clerk-appearance.ts` already styles
 the social buttons, and `/sign-in` is a catch-all route rendering
 `<SignIn withSignUp />`, so both flows and their follow-up steps live on that
 one path. Legal consent turns the OAuth return into a session task - the
@@ -81,7 +81,7 @@ users return to the box without seeing another prompt. Do not configure a Clerk
 force redirect because it overrides the transaction return path.
 
 The code, PKCE challenge, grant, and their lifetimes live in
-`convex/boxes/auth.ts`; read them there rather than restating them. The raw
+`convex/box/auth.ts`; read them there rather than restating them. The raw
 password never leaves the box origin, so Clerk only ever proves who owns the
 box.
 

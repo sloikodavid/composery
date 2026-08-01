@@ -178,7 +178,7 @@ function recipients(to: string | string[]) {
 }
 
 // A delivery failure for mail that belongs to no row in this deployment - which
-// means a box owner notice (convex/ownerEmail.ts), the one stream that keeps no
+// means a box owner notice (convex/notice/owner.ts), the one stream that keeps no
 // record of its own.
 //
 // Reached by elimination, and that is safe only for as long as elimination is

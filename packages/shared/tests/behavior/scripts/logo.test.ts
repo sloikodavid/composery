@@ -137,7 +137,7 @@ describe("outlined logo generator", () => {
 		const { data, logs, svg } = await generate(800);
 
 		expect(slash(data.path)).toBe(
-			`${slash(repoRoot)}/packages/web/lib/logo-data.ts`
+			`${slash(repoRoot)}/packages/web/ui/lib/logo-data.ts`
 		);
 		expect(slash(svg.path)).toBe(
 			`${slash(
@@ -167,7 +167,7 @@ describe("outlined logo generator", () => {
 		);
 		expect(logs).toEqual([
 			[
-				'Wrote web/lib/logo-data.ts and the editor overlay logo (viewBox "-1.5 -1.5 64.84 42.5").'
+				'Wrote web/ui/lib/logo-data.ts and the editor overlay logo (viewBox "-1.5 -1.5 64.84 42.5").'
 			]
 		]);
 	});

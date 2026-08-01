@@ -41,7 +41,7 @@ dev [Convex](convex.md) deployment, production values on the prod deployment.
    The annual products are displayed as a monthly figure on the pricing page.
    Give all four the same accurate hosted-box description, Terms link, Privacy
    link, and benefits, differing only in the machine each plan promises -
-   `lib/boxes/plan.ts` is what that machine actually is, and the pricing page
+   `convex/model/box/plan.ts` is what that machine actually is, and the pricing page
    prints it from there. Duplicating a published product is the safest way to
    create the next one, then change its plan wording, billing interval, and
    price before publishing. Open each product and copy its **Product ID** (not
@@ -78,7 +78,7 @@ dev [Convex](convex.md) deployment, production values on the prod deployment.
    and copies the value to the Order and Subscription. The webhook also checks
    the value before fulfillment; a paid order without it is revoked and fully
    refunded. Do not change a versioned slug's meaning in place. Create a new
-   field and update `lib/cloud-legal.ts` when the Terms acceptance changes.
+   field and update `convex/model/legal.ts` when the Terms acceptance changes.
 
 5. Enable **Allow multiple subscriptions per customer** in the organization
    subscription settings. Polar disables this by default, but one Composery
@@ -97,7 +97,7 @@ dev [Convex](convex.md) deployment, production values on the prod deployment.
    Everything that is about the billing relationship stays on: invoices, receipts,
    payment method, cancellation, and **email edits**. That last one is worth saying
    out loud because it looks like the others and is not. Polar owns billing
-   correspondence and Clerk owns identity (see `convex/ownerEmail.ts`), so the
+   correspondence and Clerk owns identity (see `convex/notice/owner.ts`), so the
    address a customer sets here is where their receipts go, while product and
    identity mail keeps going to their login. It cannot desync anything either: a
    Polar customer is linked by Clerk user id and `polar_customer_id`, never by
@@ -137,7 +137,7 @@ dev [Convex](convex.md) deployment, production values on the prod deployment.
 9. Copy the organization **slug** (Settings -> Organization, the handle shown in
    your dashboard URL) -> `NEXT_PUBLIC_POLAR_ORGANIZATION_SLUG`, and set
    `NEXT_PUBLIC_POLAR_ENVIRONMENT` to `sandbox` (dev) or `production` (prod).
-   These are frontend-plane vars read by `lib/dashboards.ts` so the staff
+   These are frontend-plane vars read by `ui/lib/dashboards.ts` so the staff
    console can deep-link a box to its Polar customer and subscription; set them
    in the Next env (local `.env.local` and [Vercel](vercel.md)), not on the
    Convex deployment. They are non-secret, so the console action simply hides

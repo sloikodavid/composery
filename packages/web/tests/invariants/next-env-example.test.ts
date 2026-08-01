@@ -13,7 +13,7 @@ import { NEXT_ENV_NAMES } from "@/ui/lib/env";
 // miss one every render needs, and stay green - the rule was stated for two
 // planes and enforced for one.
 //
-// Duplication, and why it cannot be removed: `lib/env.ts` is the plane's
+// Duplication, and why it cannot be removed: `ui/lib/env.ts` is the plane's
 // surface rather than a description of one - it is keyed by each variable's own
 // name, so `NEXT_ENV_NAMES` is derived from the reads instead of restating
 // them, exactly as `CONVEX_ENV_NAMES` is. What no registry can hold is the
