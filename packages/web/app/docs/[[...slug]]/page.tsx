@@ -10,7 +10,7 @@ import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
-import { GITHUB_REPO_URL } from "@/lib/links";
+import { GITHUB_REPO_URL } from "@/convex/model/links";
 import { REPO } from "shared";
 import { getPageImage, getPageMarkdownUrl, source } from "@/lib/source";
 

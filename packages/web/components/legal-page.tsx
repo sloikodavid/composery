@@ -7,7 +7,7 @@ import {
 	CardTitle
 } from "@/components/base/card";
 import { PageTemplate } from "@/components/page-template";
-import { legalUpdatedLabel } from "@/lib/cloud-legal";
+import { legalUpdatedLabel } from "@/convex/model/legal";
 
 export function LegalPage({
 	title,

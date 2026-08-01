@@ -1,7 +1,7 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
-import { boxStatusesExcept, type BoxPlan, type BoxStatus } from "../schema";
-import { BOX_PLANS, BOX_PLAN_ORDER } from "../../lib/boxes/plan";
+import { boxStatusesExcept, type BoxStatus } from "../model/box/status";
+import { type BoxPlan, BOX_PLANS, BOX_PLAN_ORDER } from "../model/box/plan";
 
 // Every status but "deleted" holds a Hetzner server, so every one of them counts
 // against the allocation.

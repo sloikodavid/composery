@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { BOX_PLANS } from "@/lib/boxes/plan";
+import { BOX_PLANS } from "@/convex/model/box/plan";
 
 import {
 	boxOperations,

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { requireCapability } from "../users";
-import type { BoxStatus } from "../schema";
+import { type BoxStatus } from "../model/box/status";
 import { CAPACITY_BOX_STATUSES } from "../boxes/capacity";
 import { DAY_MS } from "../time";
 

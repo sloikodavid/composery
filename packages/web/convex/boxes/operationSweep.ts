@@ -7,16 +7,11 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/boxes/route";
-import { operationLabel } from "../../lib/boxes/operations";
+import { consoleBoxPath } from "../model/box/path";
+import { operationLabel, ACTIVE_OPERATION_STATUSES, isActiveOperationStatus, BOX_OPERATIONS } from "../model/box/operation";
 import { vBoxOperationType } from "../schema";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import {
-	ACTIVE_OPERATION_STATUSES,
-	isActiveOperationStatus,
-	OPERATION_FAILURE_STATUS
-} from "./operationRules";
 import { recordOperationFailure } from "./status";
 import { activeOperation } from "./views";
 import { workflow } from "./workflows/boxWorkflow";
@@ -120,7 +115,7 @@ export const activeOperationsBefore = internalQuery({
 
 // Close an operation whose workflow is provably gone, and say so. Routed through
 // the same failure recorder every workflow failure uses, so the box lands in the
-// status `OPERATION_FAILURE_STATUS` says a failure of this type leaves it in - a rescued
+// status `BOX_OPERATIONS[type].onFailure` says a failure leaves it in - a rescued
 // repair reads as `repair_failed` and can be retried, exactly as one that failed
 // the ordinary way.
 export const failOrphanedOperation = internalMutation({
@@ -136,7 +131,7 @@ export const failOrphanedOperation = internalMutation({
 			boxId: operation.box_id,
 			error: args.error,
 			operationId: args.operationId,
-			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
+			targetBoxStatus: BOX_OPERATIONS[operation.type].onFailure ?? undefined
 		});
 	}
 });

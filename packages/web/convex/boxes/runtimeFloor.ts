@@ -3,7 +3,7 @@ import { internalAction, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { readGlobalSettings } from "../settings";
 import { startBoxOperation } from "./operations";
-import { OPERATION_ALLOWED_STATUSES } from "./operationRules";
+import { BOX_OPERATIONS } from "../model/box/operation";
 import { floorDeadlinePassed, runtimeStanding } from "./runtimeRelease";
 
 // Which boxes the floor sweep considers: exactly the statuses an update may
@@ -21,7 +21,7 @@ import { floorDeadlinePassed, runtimeStanding } from "./runtimeRelease";
 // or suspended box cannot be reached over SSH, and a box mid-operation must not
 // have one queued behind it; both are picked up by a later run once they are
 // eligible again.
-export const FLOOR_UPDATE_STATUSES = OPERATION_ALLOWED_STATUSES.update;
+export const FLOOR_UPDATE_STATUSES = BOX_OPERATIONS.update.from;
 
 // Boxes whose floor deadline has passed and which are still below it.
 export const boxesPastFloorDeadline = internalQuery({

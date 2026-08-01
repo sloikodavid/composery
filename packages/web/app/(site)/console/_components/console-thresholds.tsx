@@ -13,7 +13,7 @@ import {
 	flagDisplayValue,
 	flagSignalLabel,
 	flagStoredValue
-} from "@/lib/boxes/metrics";
+} from "@/convex/model/box/metric";
 import { NumberField, SettingsCard } from "./settings-card";
 
 type Signal = ThresholdSetting["signal"];

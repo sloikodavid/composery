@@ -6,7 +6,7 @@ import {
 	isValidSlug,
 	isValidSlugFormat,
 	sanitizeSlug
-} from "@/lib/boxes/slug";
+} from "@/convex/model/box/slug";
 
 const SLUG_CHARACTER = [
 	..."abcdefghijklmnopqrstuvwxyz",

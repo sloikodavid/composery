@@ -14,7 +14,7 @@ import {
 } from "@/components/base/dialog";
 import { Input } from "@/components/base/input";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { isValidSlug, sanitizeSlug, SLUG_MAX_LENGTH } from "@/lib/boxes/slug";
+import { isValidSlug, sanitizeSlug, SLUG_MAX_LENGTH } from "@/convex/model/box/slug";
 
 // Owner and console box pages share this dialog; the caller's onSubmit performs
 // the slug change (and any post-change navigation).

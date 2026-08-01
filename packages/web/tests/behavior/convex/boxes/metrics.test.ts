@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { Doc } from "@/convex/_generated/dataModel";
-import { boxStatusesExcept } from "@/convex/schema";
+import { boxStatusesExcept } from "@/convex/model/box/status";
 import {
 	FLAG_COOLOFF_MS,
 	RAW_RETENTION_MS,

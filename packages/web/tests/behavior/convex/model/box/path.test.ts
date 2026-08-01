@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { boxPath, consoleBoxPath } from "@/lib/boxes/route";
+import { boxPath, consoleBoxPath } from "@/convex/model/box/path";
 
 describe("box detail routes", () => {
 	test("uses the immutable box id for the owner route", () => {

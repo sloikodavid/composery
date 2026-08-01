@@ -18,7 +18,7 @@ import { api } from "@/convex/_generated/api";
 import type { RuntimeConfigField } from "@/convex/boxes/runtimeConfig";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useReseed } from "@/hooks/use-reseed";
-import { boxPath } from "@/lib/boxes/route";
+import { boxPath } from "@/convex/model/box/path";
 import { errorMessage } from "@/lib/error-message";
 import {
 	ConfigField,

@@ -1,11 +1,16 @@
 import { resolveRelease } from "../../../packages/web/convex/boxes/infra/runtimeImageRegistry.ts";
 
-// A public, multi-platform image exercises the complete anonymous Registry V2
-// walk without coupling CI to one Composery deployment or registry account.
-const image = "docker.io/library/alpine:latest";
+// This is the image every self-hosting guide and managed box uses. Resolve it
+// without credentials so a deleted or private release fails before deployment.
+const image = "ghcr.io/sloikodavid/composery:latest";
 const release = await resolveRelease(image);
-if (!/^docker\.io\/library\/alpine@sha256:[a-f0-9]{64}$/.test(release.image)) {
+if (
+	!/^ghcr\.io\/sloikodavid\/composery@sha256:[a-f0-9]{64}$/.test(release.image)
+) {
 	throw new Error(`The registry resolved ${image} to ${release.image}.`);
+}
+if (release.version !== "0.1.0") {
+	throw new Error(`The registry reports version ${release.version ?? "none"}.`);
 }
 
 console.log(

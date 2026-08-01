@@ -9,23 +9,18 @@ import {
 	isValidManualSnapshotCap,
 	planAllowsManualSnapshots,
 	resolveSnapshotSplit
-} from "@/lib/boxes/plan";
-import { BOX_PLANS_STORED } from "@/convex/schema";
+} from "@/convex/model/box/plan";
 
 // Figures are read from the table rather than written down here. A test that
 // restated them would be a second copy of the catalogue, to be edited every time
 // a plan is repriced or re-specced - exactly the duplication the table removes.
+//
+// There is deliberately no test that the table matches the schema's plan union.
+// It used to be one, pinning `BOX_PLANS` against a separate list of plan names in
+// the schema. The union is now `keyof typeof BOX_PLANS` and the order is
+// `Object.keys` of it, so a plan cannot exist in one and not the other - the
+// check could no longer fail, and a check that cannot fail is worse than none.
 describe("box plans", () => {
-	// The table is what every surface reads - the machine provisioned, the
-	// specification advertised, the snapshot allowance enforced - so a plan in the
-	// schema union with no row would be a sellable product with no machine behind
-	// it. `satisfies Record<BoxPlan, ...>` prevents that; this checks the pin is
-	// load-bearing rather than a type that happens to be wide.
-	test("describes exactly the plans the schema can store", () => {
-		expect(Object.keys(BOX_PLANS).sort()).toEqual([...BOX_PLANS_STORED].sort());
-		expect([...BOX_PLAN_ORDER].sort()).toEqual([...BOX_PLANS_STORED].sort());
-	});
-
 	test("accepts only stored plan names", () => {
 		expect(isBoxPlan("air")).toBe(true);
 		expect(isBoxPlan("plus")).toBe(false);

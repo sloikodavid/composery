@@ -28,13 +28,13 @@ import {
 } from "../boxes/snapshots";
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
-import { boxPath } from "../../lib/boxes/route";
+import { boxPath } from "../model/box/path";
 import {
 	BOX_PLANS,
 	isValidManualSnapshotCap,
 	planAllowsManualSnapshots
-} from "../../lib/boxes/plan";
-import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
+} from "../model/box/plan";
+import { isValidSlug, sanitizeSlug } from "../model/box/slug";
 import { DAY_MS } from "../time";
 
 const CUSTOMER_PORTAL_BLOCKED_STATUSES = ["deleting", "deleted"] as const;

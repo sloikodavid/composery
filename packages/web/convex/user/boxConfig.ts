@@ -10,8 +10,8 @@ import {
 	normalizeRuntimeConfig
 } from "../boxes/runtimeConfig";
 import { startBoxOperation } from "../boxes/operations";
-import { isOperationAllowed } from "../boxes/operationRules";
-import { sanitizeSlug } from "../../lib/boxes/slug";
+import { isOperationAllowed } from "../model/box/operation";
+import { sanitizeSlug } from "../model/box/slug";
 
 // The box needs these values, the owner set them, and nobody needs to read them
 // back - so the page is told one exists rather than being sent it. A page that

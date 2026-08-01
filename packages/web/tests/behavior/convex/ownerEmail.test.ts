@@ -4,7 +4,7 @@ import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { customerEmailAlertKey } from "@/convex/email";
 import { ownerNoticeEmail } from "@/convex/ownerEmail";
-import { SUPPORT_EMAIL } from "@/lib/links";
+import { SUPPORT_EMAIL } from "@/convex/model/links";
 
 // One address the deployment cannot hand over, so `sendOwnerEmail`'s never-throw
 // contract is reachable from here at all. Arranged rather than found: the

@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
-import { sanitizeSlug } from "../../lib/boxes/slug";
-import { boxStatusesExcept, vBoxStatus } from "../schema";
+import { sanitizeSlug } from "../model/box/slug";
+import { vBoxStatus } from "../schema";
+import { boxStatusesExcept } from "../model/box/status";
 import { suspensionReason } from "./retention";
 
 // Resolve a (sanitized) slug to its box for query and mutation handlers. The

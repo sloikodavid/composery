@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
 import { ThemedShot } from "./_components/themed-shot";
-import { GITHUB_REPO_URL } from "@/lib/links";
+import { GITHUB_REPO_URL } from "@/convex/model/links";
 import {
 	APP_DESCRIPTION,
 	APP_TAGLINE,

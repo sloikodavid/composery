@@ -5,7 +5,7 @@ import {
 	isBoxBillingInterval,
 	monthlyPriceFromMinorUnits,
 	sharedAnnualSavingsPercent
-} from "@/lib/boxes/billing";
+} from "@/convex/model/box/billing";
 
 // Figures here are arbitrary, never the live Polar prices: the point is the
 // arithmetic, and a fixture that copies the catalogue goes stale the first time

@@ -15,7 +15,7 @@ import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
-import { LEGAL_VERSION } from "../../lib/cloud-legal";
+import { LEGAL_VERSION } from "../model/legal";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { vBoxPlan } from "../schema";

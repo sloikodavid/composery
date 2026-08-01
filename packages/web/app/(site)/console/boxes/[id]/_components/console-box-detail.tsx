@@ -18,12 +18,7 @@ import { RepairDialog } from "@/components/boxes/repair-dialog";
 import { ResetDialog } from "@/components/boxes/reset-dialog";
 import { SortHeader } from "@/components/sort-header";
 import { StatusText } from "@/components/boxes/status-text";
-import {
-	boxEventLabel,
-	failureNotice,
-	operationLabel,
-	OPERATION_LABEL
-} from "@/lib/boxes/operations";
+import { boxEventLabel, failureNotice, operationLabel, type BoxOperationStatus, type BoxOperationType } from "@/convex/model/box/operation";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
@@ -44,31 +39,18 @@ import {
 	TableRow
 } from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import type { BoxOperationStatus, BoxOperationType } from "@/convex/schema";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
-import { BOX_PLANS, boxPlanServerType } from "@/lib/boxes/plan";
+import { BOX_PLANS, boxPlanServerType } from "@/convex/model/box/plan";
 
-// Typed off the schema's own unions rather than restating them as `string`: this
-// row is what the console renders, and a loose type here is what let raw
-// identifiers reach the page in the first place.
-type OperationRow = {
-	_id: string;
-	created_at: number;
-	last_error?: string;
-	metadata?: Record<string, unknown>;
-	status: BoxOperationStatus;
-	type: BoxOperationType;
-};
+// The stored rows themselves, not a hand-copied shape of them. Restating the
+// columns is what let these drift: the event row typed its `type` as `string`,
+// so the audit table would happily render an event name nothing can label.
+type OperationRow = Doc<"box_operations">;
 
-type EventRow = {
-	_id: string;
-	created_at: number;
-	message?: string;
-	type: string;
-};
+type EventRow = Doc<"box_events">;
 
 const AUDIT_PAGE_SIZE = 100;
 
@@ -225,7 +207,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 			<AuditTable<OperationRow>
 				boxId={boxId}
 				detail={operationDetail}
-				label={(operation) => OPERATION_LABEL[operation.type]}
+				label={(operation) => operationLabel(operation.type)}
 				name="operations"
 				page={operations as AuditPage<OperationRow>}
 				status={(operation) => (

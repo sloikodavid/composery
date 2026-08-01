@@ -7,8 +7,8 @@ import {
 	BOX_BILLING,
 	type BoxBillingInterval,
 	monthlyPriceFromMinorUnits
-} from "../../lib/boxes/billing";
-import { BOX_PLAN_ORDER, type BoxPlan } from "../../lib/boxes/plan";
+} from "../model/box/billing";
+import { BOX_PLAN_ORDER, type BoxPlan } from "../model/box/plan";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",

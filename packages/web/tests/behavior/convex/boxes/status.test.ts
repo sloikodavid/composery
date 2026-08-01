@@ -2,11 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import {
-	OPERATION_FAILURE_CRITICAL,
-	OPERATION_FAILURE_STATUS
-} from "@/convex/boxes/operationRules";
-import type { BoxOperationType, OperationTrigger } from "@/convex/schema";
+import { OPERATION_FAILURE_CRITICAL, OPERATION_FAILURE_STATUS, type BoxOperationType } from "@/convex/model/box/operation";
+import type { OperationTrigger } from "@/convex/schema";
 
 import {
 	boxEvents,

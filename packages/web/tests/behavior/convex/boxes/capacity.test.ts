@@ -17,7 +17,7 @@ import {
 	testConvex,
 	type Harness
 } from "../../../support/convex.ts";
-import { BOX_PLANS } from "@/lib/boxes/plan";
+import { BOX_PLANS } from "@/convex/model/box/plan";
 
 describe("box capacity", () => {
 	// These lists are hand-written subsets of the status union, so the type

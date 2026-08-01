@@ -26,14 +26,14 @@ import {
 	type BoxPricing,
 	formatPrice,
 	sharedAnnualSavingsPercent
-} from "@/lib/boxes/billing";
+} from "@/convex/model/box/billing";
 import {
 	BOX_PLANS,
 	BOX_PLAN_ORDER,
 	boxPlanSpecification,
 	type BoxPlan
-} from "@/lib/boxes/plan";
-import { GITHUB_REPO_URL } from "@/lib/links";
+} from "@/convex/model/box/plan";
+import { GITHUB_REPO_URL } from "@/convex/model/links";
 import { cn } from "@/lib/utils";
 
 type Feature = { icon: LucideIcon; text: string };

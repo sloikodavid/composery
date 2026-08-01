@@ -1,7 +1,7 @@
 "use client";
 
 import { copyToClipboard } from "@/lib/clipboard";
-import { SUPPORT_EMAIL } from "@/lib/links";
+import { SUPPORT_EMAIL } from "@/convex/model/links";
 import { cn } from "@/lib/utils";
 
 // Copies the support email instead of opening a mail client - mailto links

@@ -13,7 +13,7 @@ import {
 	autoRepairDecision,
 	type AutoRepairFacts
 } from "@/convex/boxes/autoRepair";
-import { OPERATION_ALLOWED_STATUSES } from "@/convex/boxes/operationRules";
+import { OPERATION_ALLOWED_STATUSES } from "@/convex/model/box/operation";
 
 import {
 	boxOperations,

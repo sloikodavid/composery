@@ -8,12 +8,11 @@ import {
 	type MutationCtx
 } from "../_generated/server";
 import { vSnapshotClass, type OperationTrigger } from "../schema";
-import { BOX_PLANS, planAllowsManualSnapshots } from "../../lib/boxes/plan";
+import { BOX_PLANS, planAllowsManualSnapshots, resolveSnapshotSplit } from "../model/box/plan";
 import type { Infer } from "convex/values";
 import { readGlobalSettings } from "../settings";
-import { resolveSnapshotSplit } from "../../lib/boxes/plan";
 import { appendBoxEvent } from "./events";
-import { boxEventType } from "../../lib/boxes/operations";
+import { boxEventType } from "../model/box/operation";
 import { reconcileCapacityAlert } from "./capacityAlerts";
 import { startBoxOperation } from "./operations";
 import {

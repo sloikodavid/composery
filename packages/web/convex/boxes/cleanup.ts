@@ -6,7 +6,7 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/boxes/route";
+import { consoleBoxPath } from "../model/box/path";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";

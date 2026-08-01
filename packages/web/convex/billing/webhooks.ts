@@ -5,7 +5,7 @@ import type { ActionCtx } from "../_generated/server";
 import { startBoxOperation } from "../boxes/operations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
-import { TERMS_FIELD_SLUG } from "../../lib/cloud-legal";
+import { TERMS_FIELD_SLUG } from "../model/legal";
 import {
 	boxSellableForProductId,
 	polarServer,

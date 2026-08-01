@@ -4,7 +4,7 @@ import {
 	LEGAL_VERSION,
 	LEGAL_VERSIONS,
 	legalUpdatedLabel
-} from "@/lib/cloud-legal";
+} from "@/convex/model/legal";
 
 // Changing the legal documents and telling customers you changed them are one
 // act, and this is what makes them one act.

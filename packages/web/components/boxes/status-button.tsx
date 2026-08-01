@@ -7,7 +7,7 @@ import {
 } from "@/components/animated-icon";
 import { StatusText } from "@/components/boxes/status-text";
 import { Button } from "@/components/base/button";
-import type { BoxStatus } from "@/convex/schema";
+import { type BoxStatus } from "@/convex/model/box/status";
 
 type StatusAction = {
 	disabled?: boolean;

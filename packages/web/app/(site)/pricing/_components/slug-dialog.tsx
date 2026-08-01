@@ -16,13 +16,13 @@ import {
 import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
 import { FadingText } from "./fading-text";
-import type { BoxBillingInterval } from "@/lib/boxes/billing";
-import { BOX_PLANS, type BoxPlan } from "@/lib/boxes/plan";
+import type { BoxBillingInterval } from "@/convex/model/box/billing";
+import { BOX_PLANS, type BoxPlan } from "@/convex/model/box/plan";
 import {
 	isValidSlugFormat,
 	sanitizeSlug,
 	SLUG_MAX_LENGTH
-} from "@/lib/boxes/slug";
+} from "@/convex/model/box/slug";
 import { errorMessage } from "@/lib/error-message";
 import { signInUrlForReturnPath } from "@/lib/auth-routing";
 

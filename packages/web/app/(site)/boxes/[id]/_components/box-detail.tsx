@@ -22,10 +22,10 @@ import { Card, CardContent } from "@/components/base/card";
 import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { boxPath } from "@/lib/boxes/route";
-import { BOX_PLANS } from "@/lib/boxes/plan";
+import { boxPath } from "@/convex/model/box/path";
+import { BOX_PLANS } from "@/convex/model/box/plan";
 import { formatDate } from "@/lib/datetime";
-import { failureNotice } from "@/lib/boxes/operations";
+import { failureNotice } from "@/convex/model/box/operation";
 import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {

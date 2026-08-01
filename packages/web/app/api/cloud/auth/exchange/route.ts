@@ -9,7 +9,7 @@ import {
 	isFlowSecret,
 	isRedirectUri,
 	type AuthorizationType
-} from "@/lib/boxes/auth";
+} from "@/convex/model/box/auth";
 
 export const dynamic = "force-dynamic";
 

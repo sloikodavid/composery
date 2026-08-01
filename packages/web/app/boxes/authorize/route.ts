@@ -11,7 +11,7 @@ import {
 	isFlowSecret,
 	isOauthState,
 	isRedirectUri
-} from "@/lib/boxes/auth";
+} from "@/convex/model/box/auth";
 
 export const dynamic = "force-dynamic";
 

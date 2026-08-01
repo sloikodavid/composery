@@ -2,7 +2,7 @@
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { StatusButton } from "@/components/boxes/status-button";
-import type { BoxStatus } from "@/convex/schema";
+import { type BoxStatus } from "@/convex/model/box/status";
 
 type ConfirmAction = { onConfirm: () => void };
 type ClickAction = { disabled?: boolean; onClick: () => void };

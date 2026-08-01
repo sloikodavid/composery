@@ -213,7 +213,7 @@ describe("runtime bootstrap and repair scripts", () => {
 	});
 
 	test("rewrites all three runtime files and re-pulls the image", () => {
-		expect(repair).toContain("/opt/composery-web/compose.yml");
+		expect(repair).toContain("/opt/composery-web/compose.yaml");
 		expect(repair).toContain("/opt/composery-web/composery.env");
 		expect(repair).toContain("/opt/composery-web/Caddyfile");
 		expect(repair).toContain(artifacts.compose);
@@ -280,7 +280,7 @@ describe("repair parking scripts", () => {
 	test("derives the volume set from the compose file, never a hardcoded list", () => {
 		for (const script of everyScript) {
 			expect(script).toContain(
-				"docker compose -p composery -f /opt/composery-web/compose.yml config --volumes"
+				"docker compose -p composery -f /opt/composery-web/compose.yaml config --volumes"
 			);
 		}
 		// The copy logic must not name any volume itself. copyBack legitimately
@@ -318,7 +318,7 @@ describe("repair parking scripts", () => {
 	// dangerous - stop the stack so the volumes are quiescent.
 	test("stops the stack before copying it out", () => {
 		expect(copyOut).toContain(
-			"docker compose -p composery -f /opt/composery-web/compose.yml stop"
+			"docker compose -p composery -f /opt/composery-web/compose.yaml stop"
 		);
 	});
 
@@ -330,10 +330,10 @@ describe("repair parking scripts", () => {
 		expect(copyBack).not.toMatch(/\brm\s+-/);
 		// It materializes the empty volumes without starting anything, then copies.
 		expect(copyBack).toContain(
-			"docker compose -p composery -f /opt/composery-web/compose.yml create"
+			"docker compose -p composery -f /opt/composery-web/compose.yaml create"
 		);
 		expect(copyBack).toContain(
-			"docker compose -p composery -f /opt/composery-web/compose.yml pull"
+			"docker compose -p composery -f /opt/composery-web/compose.yaml pull"
 		);
 		// And it lays the runtime files down first (needs the compose file present).
 		expect(copyBack).toContain(artifacts.compose);

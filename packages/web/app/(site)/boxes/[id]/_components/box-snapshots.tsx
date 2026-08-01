@@ -3,9 +3,9 @@
 import { useMutation, useQuery } from "convex/react";
 import { SnapshotsDialog } from "@/components/boxes/snapshots-dialog";
 import { api } from "@/convex/_generated/api";
-import { isOperationAllowed } from "@/convex/boxes/operationRules";
-import type { BoxStatus } from "@/convex/schema";
-import type { BoxPlan, SnapshotSplit } from "@/lib/boxes/plan";
+import { isOperationAllowed } from "@/convex/model/box/operation";
+import { type BoxStatus } from "@/convex/model/box/status";
+import type { BoxPlan, SnapshotSplit } from "@/convex/model/box/plan";
 
 export function BoxSnapshots({
 	plan,

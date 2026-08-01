@@ -1,16 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-	BOX_STATUSES,
-	type BoxOperationType,
-	type BoxStatus
-} from "@/convex/schema";
-import {
-	OPERATION_ALLOWED_STATUSES,
-	OPERATION_FAILURE_STATUS
-} from "@/convex/boxes/operationRules";
-import { boxEventType } from "@/lib/boxes/operations";
+import { BOX_STATUSES, type BoxStatus } from "@/convex/model/box/status";
+import { type BoxOperationType, OPERATION_ALLOWED_STATUSES, OPERATION_FAILURE_STATUS, boxEventType } from "@/convex/model/box/operation";
 import { HOUR_MS } from "@/convex/time";
 import {
 	operationLiveness,

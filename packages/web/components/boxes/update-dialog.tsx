@@ -18,9 +18,9 @@ import {
 	type LastOperation,
 	type OperationNotice
 } from "@/components/boxes/operation-dialog";
-import { isOperationAllowed } from "@/convex/boxes/operationRules";
+import { isOperationAllowed } from "@/convex/model/box/operation";
 import type { RuntimeStanding } from "@/convex/boxes/runtimeRelease";
-import type { BoxStatus } from "@/convex/schema";
+import { type BoxStatus } from "@/convex/model/box/status";
 import { formatDateTime } from "@/lib/datetime";
 import { standingNotices } from "@/lib/boxes/update";
 

@@ -43,8 +43,9 @@ const OAUTH_STATE = /^[A-Za-z0-9_-]{43,128}$/;
 export const MAX_REDIRECT_URI_LENGTH = 512;
 
 // What a box may be authorized for: the password it will be set up with, or a
-// session on it.
-const AUTHORIZATION_TYPES = ["password", "session"] as const;
+// session on it. `convex/schema.ts` builds the stored column from this list, so
+// the wire check and the database cannot admit different sets.
+export const AUTHORIZATION_TYPES = ["password", "session"] as const;
 
 export type AuthorizationType = (typeof AUTHORIZATION_TYPES)[number];
 

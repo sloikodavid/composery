@@ -12,7 +12,7 @@ import {
 } from "@/components/base/select";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "@/lib/boxes/plan";
+import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "@/convex/model/box/plan";
 import { SettingsCard } from "./settings-card";
 
 // Provision a box for an existing user without a paid checkout. The backend

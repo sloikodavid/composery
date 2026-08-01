@@ -60,12 +60,12 @@ const directory = await mkdtemp(join(tmpdir(), "composery-artifacts-"));
 try {
 	await Promise.all([
 		writeFile(join(directory, "Caddyfile"), artifacts.caddyfile),
-		writeFile(join(directory, "compose.yml"), artifacts.compose),
+		writeFile(join(directory, "compose.yaml"), artifacts.compose),
 		writeFile(join(directory, "composery.env"), artifacts.env)
 	]);
 	const checked = spawnSync(
 		"docker",
-		["compose", "-f", "compose.yml", "config", "--quiet"],
+		["compose", "-f", "compose.yaml", "config", "--quiet"],
 		{ cwd: directory, encoding: "utf8" }
 	);
 	if (checked.status !== 0) {

@@ -1,6 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import type { DatabaseWriter } from "../_generated/server";
-import type { BoxEventType } from "../../lib/boxes/operations";
+import type { BoxEventType } from "../model/box/operation";
 
 type WriteDbCtx = { db: DatabaseWriter };
 

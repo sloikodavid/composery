@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { BOX_STATUSES, type BoxStatus } from "@/convex/schema";
+import { BOX_STATUSES, type BoxStatus } from "@/convex/model/box/status";
 import {
 	isSlugAvailable,
 	SLUG_OCCUPYING_STATUSES,

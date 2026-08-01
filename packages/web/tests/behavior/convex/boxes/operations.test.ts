@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { BoxOperationType } from "@/convex/schema";
+import { type BoxOperationType } from "@/convex/model/box/operation";
 import { startBoxSuspension } from "@/convex/boxes/operations";
 
 import {

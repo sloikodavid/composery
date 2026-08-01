@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ToneIcon } from "@/components/boxes/tone-icon";
-import type { BoxOperationStatus, BoxStatus } from "@/convex/schema";
+import { type BoxOperationStatus } from "@/convex/model/box/operation";
+import { type BoxStatus } from "@/convex/model/box/status";
 import type { Tone } from "@/lib/boxes/repair";
 
 // What the Repair and Update dialogs are: a read-only picture of the box, a

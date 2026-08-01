@@ -1,7 +1,7 @@
 import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { BOXES_PATH } from "../lib/boxes/route";
-import { SUPPORT_EMAIL } from "../lib/links";
+import { BOXES_PATH } from "./model/box/path";
+import { SUPPORT_EMAIL } from "./model/links";
 import { optionalWebsiteUrl } from "./env";
 import { accountsSender, customerEmailAlertKey, resendClient } from "./email";
 import { raiseAlert } from "./staff/alerts";

@@ -8,10 +8,6 @@
 // "Outbound bandwidth" in the panel where they raised the threshold, and
 // "Network out" in the table of what it had flagged.
 //
-// Relative, not "@/lib/...": Convex's tsconfig has no path aliases - see
-// `plan.ts`, which obeys the same boundary for the same reason.
-import type { BoxFlagSignal } from "../../convex/schema";
-
 // The per-box metrics rolled up hourly and kept for thirty days. Declaration
 // order is the order the chart's picker offers them in.
 export const ROLLED_METRICS = [
@@ -63,7 +59,13 @@ export const FLAG_SIGNALS = {
 		storedPerDisplayUnit: 1,
 		unit: "packets/s"
 	}
-} as const satisfies Record<BoxFlagSignal, FlagSignalDefinition>;
+} as const satisfies Record<string, FlagSignalDefinition>;
+
+// What a box can be flagged for. Derived from the table above, so
+// `convex/schema.ts` cannot store a signal nothing here can name or label.
+export type BoxFlagSignal = keyof typeof FLAG_SIGNALS;
+
+export const BOX_FLAG_SIGNALS = Object.keys(FLAG_SIGNALS) as BoxFlagSignal[];
 
 // The same name inside a sentence ("sustained outbound bandwidth at 30 Mbit/s"),
 // where a leading capital would read as a proper noun.

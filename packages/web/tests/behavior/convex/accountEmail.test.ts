@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import { accountNoticeEmail } from "@/convex/accountEmail";
 import { customerEmailAlertKey } from "@/convex/email";
-import { BOXES_PATH } from "@/lib/boxes/route";
-import { SUPPORT_EMAIL } from "@/lib/links";
+import { BOXES_PATH } from "@/convex/model/box/path";
+import { SUPPORT_EMAIL } from "@/convex/model/links";
 
 import {
 	seedUser,

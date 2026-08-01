@@ -17,11 +17,10 @@ import {
 } from "@/components/base/table";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDateTime } from "@/lib/datetime";
-import { flagSignalLabel } from "@/lib/boxes/metrics";
-import { consoleBoxPath } from "@/lib/boxes/route";
+import { flagSignalLabel, type BoxFlagSignal } from "@/convex/model/box/metric";
+import { consoleBoxPath } from "@/convex/model/box/path";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { BoxFlagSignal } from "@/convex/schema";
 import { useBusyAction } from "@/hooks/use-busy-action";
 
 // `signal` is the schema's own union rather than `string`: this row is what the

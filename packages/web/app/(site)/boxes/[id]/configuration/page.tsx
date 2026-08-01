@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { BoxActions } from "../_components/box-actions";
 import { BoxConfiguration } from "./_components/box-configuration";
 import { PageTemplate } from "@/components/page-template";
-import { boxPath } from "@/lib/boxes/route";
+import { boxPath } from "@/convex/model/box/path";
 import { redirectIfSignedOut } from "@/lib/route-guards";
 
 export const dynamic = "force-dynamic";

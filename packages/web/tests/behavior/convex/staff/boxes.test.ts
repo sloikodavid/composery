@@ -6,7 +6,7 @@ import {
 	STAFF_BOX_SEARCH_SCAN_LIMIT
 } from "@/convex/staff/boxes";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { BOX_PLANS } from "@/lib/boxes/plan";
+import { BOX_PLANS } from "@/convex/model/box/plan";
 
 import {
 	boxOperations,

@@ -32,7 +32,7 @@ import { workflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
 import { requiredEnv } from "../env";
 import { vBoxPlan } from "../schema";
-import { defaultManualSnapshotCap } from "../../lib/boxes/plan";
+import { defaultManualSnapshotCap } from "../model/box/plan";
 import {
 	activeOperation,
 	boxRuntimeStanding,
@@ -46,8 +46,8 @@ import {
 	snapshotView,
 	startManualSnapshot
 } from "../boxes/snapshots";
-import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
-import { boxEventType, operationLabel } from "../../lib/boxes/operations";
+import { isValidSlug, sanitizeSlug } from "../model/box/slug";
+import { boxEventType, operationLabel } from "../model/box/operation";
 import { DAY_MS } from "../time";
 
 export const STAFF_BOX_LIST_LIMIT = 50;

@@ -14,7 +14,7 @@ import {
 	vMetricsRange,
 	vRolledMetric
 } from "../boxes/metrics";
-import type { MetricsRange, RolledMetric } from "../../lib/boxes/metrics";
+import type { MetricsRange, RolledMetric } from "../model/box/metric";
 
 const FLAG_LIST_LIMIT = 50;
 const FLAG_DISMISS_BATCH = 100;

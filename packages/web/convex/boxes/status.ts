@@ -3,23 +3,13 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
-import {
-	vBoxFailureStatus,
-	vServerLocation,
-	vServerType,
-	type BoxFailureStatus
-} from "../schema";
+import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
+import { type BoxFailureStatus, boxEventType, operationLabel, isActiveOperationStatus, BOX_OPERATIONS } from "../model/box/operation";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
 import { sendOwnerEmail } from "../ownerEmail";
-import { consoleBoxPath } from "../../lib/boxes/route";
-import { boxEventType, operationLabel } from "../../lib/boxes/operations";
+import { consoleBoxPath } from "../model/box/path";
 import { appendBoxEvent } from "./events";
-import {
-	isActiveOperationStatus,
-	OPERATION_FAILURE_CRITICAL,
-	OPERATION_FAILURE_STATUS
-} from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
 import { deletedBoxDataPatch, suspensionReason } from "./retention";
 import { assertSlugAvailable } from "./slugAvailability";
@@ -244,7 +234,7 @@ export const finishBoxOperation = internalMutation({
 			boxId: args.context.boxId,
 			error,
 			operationId: args.context.operationId,
-			targetBoxStatus: OPERATION_FAILURE_STATUS[operation.type]
+			targetBoxStatus: BOX_OPERATIONS[operation.type].onFailure ?? undefined
 		});
 	}
 });
@@ -291,11 +281,10 @@ export async function recordOperationFailure(
 	});
 	if (!box) return;
 
-	// Named from the operation row rather than from an argument. It used to be
-	// passed in as a string, which is how five workflows came to be writing the
-	// pre-rename names (`box.stopped`, `box.suspended`, `box.update_not_needed`)
-	// that `rename.ts` exists to migrate away from - each one undoing that
-	// migration the next time the operation ran.
+	// Named from the operation row rather than from an argument. Passing the name
+	// in as a string is how five workflows once came to write their own spellings
+	// of "this failed"; deriving it from the row that already knows the operation
+	// type is what makes that unrepresentable.
 	await appendBoxEvent(ctx, box, boxEventType(operation.type, "failed"), {
 		message: input.error
 	});
@@ -303,7 +292,7 @@ export async function recordOperationFailure(
 	const operationType = operationLabel(operation.type, true);
 	await raiseAlert(ctx, {
 		key: `box-operation-failed:${input.operationId}`,
-		severity: OPERATION_FAILURE_CRITICAL[operation.type]
+		severity: BOX_OPERATIONS[operation.type].critical
 			? "critical"
 			: "warning",
 		subject: `Box ${box.slug}: ${operationType} failed`,

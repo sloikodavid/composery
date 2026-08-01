@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
-import { OPERATION_ALLOWED_STATUSES } from "@/convex/boxes/operationRules";
+import { OPERATION_ALLOWED_STATUSES } from "@/convex/model/box/operation";
 import { FLOOR_UPDATE_STATUSES } from "@/convex/boxes/runtimeFloor";
 
 import {

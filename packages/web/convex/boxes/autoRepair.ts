@@ -6,19 +6,16 @@ import {
 	internalMutation,
 	internalQuery
 } from "../_generated/server";
-import { consoleBoxPath } from "../../lib/boxes/route";
+import { consoleBoxPath } from "../model/box/path";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import {
-	isSystemTrigger,
-	type BoxStatus,
-	type OperationTrigger
-} from "../schema";
+import { isSystemTrigger, type OperationTrigger } from "../schema";
+import { type BoxStatus } from "../model/box/status";
 import { startBoxOperation } from "./operations";
 import {
 	isOperationAllowed,
-	OPERATION_ALLOWED_STATUSES
-} from "./operationRules";
+	BOX_OPERATIONS
+} from "../model/box/operation";
 import { DAY_MS, HOUR_MS } from "../time";
 
 // Automatic repair: the fleet heals a box that has stopped serving, without its
@@ -71,7 +68,7 @@ export const MAX_AUTO_REPAIRS_PER_WINDOW = 2;
 // that permits repairing it could not fire. There was a passing test asserting
 // that it would.
 export const SWEPT_STATUSES: readonly BoxStatus[] =
-	OPERATION_ALLOWED_STATUSES.repair;
+	BOX_OPERATIONS.repair.from;
 
 // Recorded on every operation this module starts, and the thing that makes an
 // automatic repair distinguishable from one a person asked for - in the event

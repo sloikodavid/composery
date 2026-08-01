@@ -885,14 +885,12 @@ packages/
         metrics.ts
         metricsPoll.ts
         metricThresholds.ts
-        operationRules.ts
         operations.ts
         operationSweep.ts
         queries.ts
         reconcile.ts
         recovery.ts
         recoveryTypes.ts
-        rename.ts
         retention.ts
         runtimeConfig.ts
         runtimeFloor.ts
@@ -905,6 +903,19 @@ packages/
       checkout/
         checkoutConversion.ts
         checkoutIntents.ts
+      model/
+        box/
+          auth.ts
+          billing.ts
+          metric.ts
+          operation.ts
+          path.ts
+          plan.ts
+          slug.ts
+          snapshot.ts
+          status.ts
+        legal.ts
+        links.ts
       staff/
         alerts.ts
         boxes.ts
@@ -941,21 +952,13 @@ packages/
       use-table-sort.ts
     lib/
       boxes/
-        auth.ts
-        billing.ts
-        metrics.ts
-        operations.ts
-        plan.ts
         repair.ts
-        route.ts
-        slug.ts
         update.ts
       auth-routing.ts
       brand-assets.ts
       browser-theme.ts
       clerk-appearance.ts
       clipboard.ts
-      cloud-legal.ts
       dashboards.ts
       datetime.ts
       docs.ts
@@ -963,7 +966,6 @@ packages/
       error-message.ts
       highlight-logs.ts
       layout.shared.tsx
-      links.ts
       logo-data.ts
       nav-links.ts
       openapi.ts
@@ -1063,14 +1065,12 @@ packages/
             metrics.test.ts
             metricsPoll.test.ts
             metricThresholds.test.ts
-            operationRules.test.ts
             operations.test.ts
             operationSweep.test.ts
             purgeBox.test.ts
             queries.test.ts
             reconcile.test.ts
             recovery.test.ts
-            rename.test.ts
             retention.test.ts
             runtimeConfig.test.ts
             runtimeFloor.test.ts
@@ -1083,6 +1083,15 @@ packages/
           checkout/
             checkoutConversion.test.ts
             checkoutIntents.test.ts
+          model/
+            box/
+              auth.test.ts
+              billing.test.ts
+              metric.test.ts
+              operation.test.ts
+              path.test.ts
+              plan.test.ts
+              slug.test.ts
           staff/
             alerts.test.ts
             boxes.test.ts
@@ -1111,14 +1120,7 @@ packages/
           use-table-sort.test.ts
         lib/
           boxes/
-            auth.test.ts
-            billing.test.ts
-            metrics.test.ts
-            operations.test.ts
-            plan.test.ts
             repair.test.ts
-            route.test.ts
-            slug.test.ts
             update.test.ts
           auth-routing.test.ts
           brand-assets-download.test.ts
@@ -1144,7 +1146,6 @@ packages/
           alert-remedies.test.ts
           components.test.ts
           envExample.test.ts
-          legacy-event-names.test.ts
           missing-box-guards.test.ts
           operation-attribution.test.ts
           optional-range-bounds.test.ts

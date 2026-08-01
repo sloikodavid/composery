@@ -51,14 +51,6 @@ const WRITES_YML_FOR_SOMEONE_ELSE = new Map([
 		"packages/ide/tests/behavior/scripts/rebrand.test.ts",
 		"asserts the extension set that scan accepts"
 	],
-	[
-		"packages/web/convex/boxes/infra/runtimeArtifacts.ts",
-		"COMPOSERY_COMPOSE_PATH, a path on boxes that are already running"
-	],
-	[
-		"packages/web/tests/behavior/convex/boxes/infra/sshScripts.test.ts",
-		"asserts the scripts that read that path"
-	]
 ]);
 
 // Markdown we ship or hand to a reader. `packages/ide/upstream` is someone

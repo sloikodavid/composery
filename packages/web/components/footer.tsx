@@ -11,7 +11,7 @@ import {
 	GITHUB_REPO_URL,
 	LINKEDIN_URL,
 	X_URL
-} from "@/lib/links";
+} from "@/convex/model/links";
 import { APP_TAGLINE } from "shared";
 
 type FooterLink =

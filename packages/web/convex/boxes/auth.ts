@@ -15,7 +15,7 @@ import {
 	isFlowSecret,
 	isPasswordHash,
 	isRedirectUri
-} from "../../lib/boxes/auth";
+} from "../model/box/auth";
 import { startBoxOperation } from "./operations";
 import { MINUTE_MS } from "../time";
 

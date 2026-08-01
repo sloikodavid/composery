@@ -8,8 +8,8 @@ import {
 	safeBox,
 	staffBox
 } from "@/convex/boxes/views";
-import type { BoxOperationType } from "@/convex/schema";
-import { resolveSnapshotSplit } from "@/lib/boxes/plan";
+import { type BoxOperationType } from "@/convex/model/box/operation";
+import { resolveSnapshotSplit } from "@/convex/model/box/plan";
 
 import {
 	seedBox,

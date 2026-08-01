@@ -1,6 +1,5 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Infer } from "convex/values";
-import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
@@ -17,7 +16,7 @@ import {
 import {
 	ACTIVE_OPERATION_STATUSES,
 	isOperationAllowed
-} from "./operationRules";
+} from "../model/box/operation";
 import { assertSlugAvailable } from "./slugAvailability";
 import { startWorkflow } from "./workflows/boxWorkflow";
 

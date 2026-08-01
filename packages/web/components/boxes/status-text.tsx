@@ -10,11 +10,9 @@ import {
 	ZapOffIcon
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type {
-	BoxOperationStatus,
-	BoxStatus,
-	SnapshotStatus
-} from "@/convex/schema";
+import { type BoxOperationStatus } from "@/convex/model/box/operation";
+import { type BoxStatus } from "@/convex/model/box/status";
+import { type SnapshotStatus } from "@/convex/model/box/snapshot";
 import { RunningIndicator } from "@/components/boxes/running-indicator";
 import { cn } from "@/lib/utils";
 

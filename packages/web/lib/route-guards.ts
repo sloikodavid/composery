@@ -1,7 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
-import { notFound } from "next/navigation";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { signInUrlForReturnPath } from "@/lib/auth-routing";
 

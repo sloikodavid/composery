@@ -18,7 +18,7 @@ import { AnimatedIconLink } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
 import { FumadocsThemeToggle } from "@/components/fumadocs-theme-toggle";
 import { GitHubLogo } from "@/components/icons/github-logo";
-import { GITHUB_REPO_URL } from "@/lib/links";
+import { GITHUB_REPO_URL } from "@/convex/model/links";
 import { Logo } from "@/components/logo";
 import {
 	type NavLink,

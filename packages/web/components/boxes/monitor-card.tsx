@@ -24,11 +24,11 @@ import {
 	SelectTrigger,
 	SelectValue
 } from "@/components/base/select";
-import type { BoxStatus } from "@/convex/schema";
+import { type BoxStatus } from "@/convex/model/box/status";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
 import { highlightLogs } from "@/lib/highlight-logs";
-import type { FailureNotice } from "@/lib/boxes/operations";
+import type { FailureNotice } from "@/convex/model/box/operation";
 
 const REFRESH_INTERVAL = 5000;
 

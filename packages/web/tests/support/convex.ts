@@ -66,21 +66,6 @@ export function testConvex(): Harness {
 	return registerComponents(convexTest(schema, modules));
 }
 
-// The same harness with the schema's validators switched off, which is exactly
-// how `convex/boxes/rename.ts` is run: its whole job is to rewrite values the
-// current unions no longer contain, so the deployment is pushed with
-// `schemaValidation: false`, the migration runs, and validation goes back on -
-// that final push being the check that it finished.
-//
-// A validated harness cannot even seed the rows that migration exists for, so a
-// test using one can only ever assert that it leaves current values alone. This
-// is confined to migrations for that reason: everywhere else the schema is the
-// thing under test, and a harness that stopped enforcing it would let a test
-// pass on a row the deployment would reject.
-export function unvalidatedTestConvex(): Harness {
-	return registerComponents(convexTest(undefined, modules)) as Harness;
-}
-
 function registerComponents<T extends { run: unknown }>(t: T) {
 	for (const component of COMPONENTS) component.register(t as never);
 	return t;

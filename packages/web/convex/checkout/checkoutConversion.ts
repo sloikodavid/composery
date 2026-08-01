@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { appendBoxEvent } from "../boxes/events";
-import { boxEventType } from "../../lib/boxes/operations";
+import { boxEventType } from "../model/box/operation";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { startBoxOperation } from "../boxes/operations";
 import { isSlugAvailable } from "../boxes/slugAvailability";
@@ -15,7 +15,7 @@ import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { raiseAlert } from "../staff/alerts";
 import { vBoxPlan } from "../schema";
-import { defaultManualSnapshotCap } from "../../lib/boxes/plan";
+import { defaultManualSnapshotCap } from "../model/box/plan";
 
 // Every way a paid checkout can end without becoming a box, and what the
 // customer is told on the refund.

@@ -6,11 +6,11 @@ import {
 	internalQuery,
 	type DatabaseReader
 } from "../_generated/server";
-import { boxStatusesExcept, type BoxStatus } from "../schema";
+import { boxStatusesExcept, type BoxStatus } from "../model/box/status";
 import { readGlobalSettings } from "../settings";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import { consoleBoxPath } from "../../lib/boxes/route";
+import { consoleBoxPath } from "../model/box/path";
 import {
 	FLAG_SIGNALS,
 	flagSignalLabel,
@@ -19,7 +19,7 @@ import {
 	ROLLED_METRICS,
 	type MetricsRange,
 	type RolledMetric
-} from "../../lib/boxes/metrics";
+} from "../model/box/metric";
 import { crossedValue, isEnabled } from "./metricThresholds";
 import { DAY_MS, HOUR_MS, MINUTE_MS } from "../time";
 

@@ -12,7 +12,7 @@ import {
 	isRedirectUri,
 	MAX_HASH_LENGTH,
 	MAX_REDIRECT_URI_LENGTH
-} from "@/lib/boxes/auth";
+} from "@/convex/model/box/auth";
 
 // The shapes both ends of the box authorization flow check: the Next routes that
 // turn a malformed request into a 400, and the Convex actions that decide. They

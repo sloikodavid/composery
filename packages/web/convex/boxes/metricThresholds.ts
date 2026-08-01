@@ -1,4 +1,5 @@
-import type { BoxFlagSignal, StoredThreshold } from "../schema";
+import type { StoredThreshold } from "../schema";
+import { type BoxFlagSignal } from "../model/box/metric";
 
 export type ThresholdSpec = {
 	value: number;

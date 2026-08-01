@@ -11,11 +11,12 @@
 // afterwards, so nothing here has to describe a transition, be reachable from
 // another plan, or hold in both directions - which is why each row can simply be
 // the machine that plan sells.
-// Relative, not "@/convex/...": convex/tsconfig.json has no path aliases, and
-// this module is imported by Convex functions - see operation-failure.ts.
-import type { BoxPlan, ServerType } from "../../convex/schema";
+// The Hetzner machines a plan may sell. Declared here rather than in the schema
+// because a plan is what decides one: `convex/schema.ts` builds `vServerType`
+// from this list, so a machine nothing sells cannot be stored on a box.
+export const SERVER_TYPES = ["cx23", "cx43"] as const;
 
-export type { BoxPlan };
+export type ServerType = (typeof SERVER_TYPES)[number];
 
 type PlanDefinition = {
 	descriptor: string;
@@ -60,14 +61,15 @@ export const BOX_PLANS = {
 		snapshotManualDefault: 2,
 		vcpu: 8
 	}
-} as const satisfies Record<BoxPlan, PlanDefinition>;
+} as const satisfies Record<string, PlanDefinition>;
+
+export type BoxPlan = keyof typeof BOX_PLANS;
 
 // Cheapest first. The pricing page lays its cards out in this order and the
-// console lists them in it, so "which way is up" is stated once.
-export const BOX_PLAN_ORDER = [
-	"air",
-	"pro"
-] as const satisfies readonly BoxPlan[];
+// console lists them in it, so "which way is up" is stated once - and it is the
+// declaration order above rather than a second list, which is what stops a plan
+// from existing in one and not the other.
+export const BOX_PLAN_ORDER = Object.keys(BOX_PLANS) as BoxPlan[];
 
 // Object.hasOwn, not `in`: values arrive from the ?plan= query string and from
 // Polar webhook metadata, and `in` walks the prototype chain, so "constructor"

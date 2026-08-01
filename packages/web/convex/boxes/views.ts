@@ -1,10 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { ideUrl } from "../env";
-import { ACTIVE_OPERATION_STATUSES } from "./operationRules";
+import { ACTIVE_OPERATION_STATUSES } from "../model/box/operation";
 import { readGlobalSettings } from "../settings";
 import { runtimeStanding } from "./runtimeRelease";
-import { resolveSnapshotSplit } from "../../lib/boxes/plan";
+import { resolveSnapshotSplit } from "../model/box/plan";
 
 type OperationSummary = {
 	status: Doc<"box_operations">["status"];

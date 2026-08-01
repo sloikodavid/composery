@@ -1,5 +1,36 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v, type Infer } from "convex/values";
+import { AUTHORIZATION_TYPES } from "./model/box/auth";
+import { BOX_FLAG_SIGNALS } from "./model/box/metric";
+import {
+	BOX_DURING_STATUSES,
+	BOX_EVENT_TYPES,
+	BOX_FAILURE_STATUSES,
+	BOX_OPERATION_STATUSES,
+	BOX_OPERATION_TYPES
+} from "./model/box/operation";
+import { BOX_PLAN_ORDER, SERVER_TYPES } from "./model/box/plan";
+import { SNAPSHOT_CLASSES, SNAPSHOT_STATUSES } from "./model/box/snapshot";
+import { BOX_STATUSES } from "./model/box/status";
+
+// Turn a list of the model's words into a Convex validator.
+//
+// The direction matters and is the whole point of `convex/model/`. Every closed
+// union this deployment stores is declared as words there - where the browser,
+// the control plane and the tests all read it without importing a database - and
+// becomes a validator only here. It used to run the other way, with the schema
+// holding the literals and each list derived back out with
+// `vBoxStatus.members.map(...)`, which meant a module that only wanted the words
+// had to import the schema and everything the schema imports.
+//
+// A subset union is derived too rather than listed beside its parent: the
+// begin-status and failure-status unions were hand-written subsets, and a subset
+// is exactly what the type checker cannot check. The begin-status one had
+// drifted to carry `running` and `suspended`, which no operation ever moved a
+// box to.
+function literals<T extends string>(values: readonly T[]) {
+	return v.union(...values.map((value) => v.literal(value)));
+}
 
 export const vUserRole = v.union(v.literal("user"), v.literal("admin"));
 export type UserRole = Infer<typeof vUserRole>;
@@ -11,119 +42,15 @@ export const vCheckoutIntentStatus = v.union(
 	v.literal("expired")
 );
 
-export const vBoxAuthorizationType = v.union(
-	v.literal("password"),
-	v.literal("session")
-);
+export const vBoxAuthorizationType = literals(AUTHORIZATION_TYPES);
 
-export const vBoxStatus = v.union(
-	v.literal("creating"),
-	v.literal("running"),
-	v.literal("create_failed"),
-	v.literal("stopping"),
-	v.literal("stopped"),
-	v.literal("starting"),
-	v.literal("resetting"),
-	v.literal("reset_failed"),
-	v.literal("repairing"),
-	v.literal("repair_failed"),
-	v.literal("updating"),
-	v.literal("update_failed"),
-	v.literal("restoring"),
-	v.literal("restore_failed"),
-	v.literal("suspending"),
-	v.literal("suspended"),
-	v.literal("unsuspending"),
-	v.literal("deleting"),
-	v.literal("delete_failed"),
-	v.literal("deleted")
-);
+export const vBoxStatus = literals(BOX_STATUSES);
 
-export type BoxStatus = Infer<typeof vBoxStatus>;
-
-export const BOX_STATUSES: BoxStatus[] = vBoxStatus.members.map(
-	(member) => member.value
-);
-
-// "Every box status except these."
-//
-// Several rules mean "all live boxes": which ones hold a server against
-// capacity, which ones keep their slug reserved, which ones a subscription is
-// reconciled against, which ones roll metrics up. Each of those was a
-// hand-written subset of the union, and a subset is exactly what the type
-// checker cannot check - so every status added since has had to be pasted into
-// all of them by hand, and `repair_failed` had already fallen out of the metrics
-// rollup that way.
-//
-// The direction of the failure is what makes this worth deriving rather than
-// remembering: a status missing from one of these lists means a box that quietly
-// stops counting against capacity, or stops holding its own slug so someone else
-// can claim it. Naming the exclusions inverts that - a new status is in every
-// list by default and only leaves one deliberately.
-export function boxStatusesExcept(
-	...excluded: readonly BoxStatus[]
-): BoxStatus[] {
-	return BOX_STATUSES.filter((status) => !excluded.includes(status));
-}
-
-export const vBoxBeginStatus = v.union(
-	v.literal("creating"),
-	v.literal("stopping"),
-	v.literal("starting"),
-	v.literal("resetting"),
-	v.literal("repairing"),
-	v.literal("updating"),
-	v.literal("restoring"),
-	v.literal("suspending"),
-	v.literal("suspended"),
-	v.literal("unsuspending"),
-	v.literal("deleting"),
-	v.literal("running")
-);
-
-export const vBoxFailureStatus = v.union(
-	v.literal("create_failed"),
-	v.literal("reset_failed"),
-	v.literal("repair_failed"),
-	v.literal("update_failed"),
-	v.literal("restore_failed"),
-	v.literal("delete_failed"),
-	v.literal("running"),
-	v.literal("stopped"),
-	v.literal("suspended")
-);
-
-export type BoxFailureStatus = Infer<typeof vBoxFailureStatus>;
-
-export const vBoxOperationType = v.union(
-	v.literal("create"),
-	v.literal("delete"),
-	v.literal("reset"),
-	v.literal("stop"),
-	v.literal("start"),
-	v.literal("change_password"),
-	v.literal("change_slug"),
-	v.literal("suspend"),
-	v.literal("unsuspend"),
-	v.literal("restore"),
-	v.literal("snapshot"),
-	v.literal("repair"),
-	v.literal("update"),
-	v.literal("change_config")
-);
-
-export const vBoxOperationStatus = v.union(
-	v.literal("pending"),
-	v.literal("running"),
-	v.literal("succeeded"),
-	v.literal("failed")
-);
-
-export type BoxOperationType = Infer<typeof vBoxOperationType>;
-export type BoxOperationStatus = Infer<typeof vBoxOperationStatus>;
-
-export const BOX_OPERATION_STATUSES: BoxOperationStatus[] =
-	vBoxOperationStatus.members.map((member) => member.value);
+export const vBoxBeginStatus = literals(BOX_DURING_STATUSES);
+export const vBoxFailureStatus = literals(BOX_FAILURE_STATUSES);
+export const vBoxOperationType = literals(BOX_OPERATION_TYPES);
+export const vBoxOperationStatus = literals(BOX_OPERATION_STATUSES);
+export const vBoxEventType = literals(BOX_EVENT_TYPES);
 
 // Who started an operation. Recorded on every one, because "who did this" is a
 // question a box's history has to be able to answer - in support, in the console,
@@ -179,38 +106,28 @@ export const vParkingVolumeStage = v.union(
 );
 export type ParkingVolumeStage = Infer<typeof vParkingVolumeStage>;
 
-// Which product a box was bought as. The identity of a plan lives here because
-// it is a stored value; everything a plan *is* - its machine, its specification,
-// its capabilities - lives in `lib/boxes/plan.ts`, whose table is pinned to this
-// union with `satisfies Record<BoxPlan, ...>`. Adding a plan therefore fails to
-// compile until both halves exist, which is what keeps a sellable plan from
-// having no machine behind it.
-export const vBoxPlan = v.union(v.literal("air"), v.literal("pro"));
-export type BoxPlan = Infer<typeof vBoxPlan>;
-export const BOX_PLANS_STORED: BoxPlan[] = vBoxPlan.members.map(
-	(member) => member.value
-);
+// What a plan is - its machine, its specification, its capabilities - is
+// `convex/model/box/plan.ts`, and `BoxPlan` is the key of that table. There is no
+// second list of plan names to keep in step: a plan exists iff it has a machine.
+export const vBoxPlan = literals(BOX_PLAN_ORDER);
 
-// The Hetzner types a box can run on: one per plan, and nothing else. Which plan
-// gets which is `lib/boxes/plan.ts`; this union only says what may be stored.
-export const vServerType = v.union(v.literal("cx23"), v.literal("cx43"));
+// The Hetzner types a box can run on: one per plan, and nothing else.
+export const vServerType = literals(SERVER_TYPES);
+
+// Where a box may be placed. Unlike the machine, this is not a property of a
+// plan - any plan can run in any of these - so the list lives here, beside the
+// column that stores it, rather than in the model.
 export const vServerLocation = v.union(
 	v.literal("nbg1"),
 	v.literal("fsn1"),
 	v.literal("hel1")
 );
-export type ServerType = Infer<typeof vServerType>;
 export type ServerLocation = Infer<typeof vServerLocation>;
-export const SERVER_TYPES = vServerType.members.map((member) => member.value);
 export const SERVER_LOCATIONS = vServerLocation.members.map(
 	(member) => member.value
 );
 
-export const vBoxFlagSignal = v.union(
-	v.literal("egress_bandwidth"),
-	v.literal("egress_pps")
-);
-export type BoxFlagSignal = Infer<typeof vBoxFlagSignal>;
+export const vBoxFlagSignal = literals(BOX_FLAG_SIGNALS);
 
 export const vThreshold = v.object({
 	signal: vBoxFlagSignal,
@@ -240,23 +157,8 @@ export const vRuntimeRelease = v.object({
 });
 export type StoredRuntimeRelease = Infer<typeof vRuntimeRelease>;
 
-export const vSnapshotClass = v.union(
-	v.literal("manual"),
-	v.literal("scheduled")
-);
-export const vSnapshotStatus = v.union(
-	v.literal("pending"),
-	v.literal("creating"),
-	v.literal("complete"),
-	v.literal("failed"),
-	v.literal("deleting")
-);
-
-export type SnapshotStatus = Infer<typeof vSnapshotStatus>;
-
-export const SNAPSHOT_STATUSES: SnapshotStatus[] = vSnapshotStatus.members.map(
-	(member) => member.value
-);
+export const vSnapshotClass = literals(SNAPSHOT_CLASSES);
+export const vSnapshotStatus = literals(SNAPSHOT_STATUSES);
 
 export const vStaffAlertSeverity = v.union(
 	v.literal("warning"),
@@ -487,7 +389,11 @@ export default defineSchema({
 	box_events: defineTable({
 		box_id: v.id("boxes"),
 		user_id: v.string(),
-		type: v.string(),
+		// The closed union, not `v.string()`. `appendBoxEvent` already took a
+		// `BoxEventType`, so the write was typed; the column was not, which left
+		// the door open for a row nothing in the interface can name. Validating it
+		// here is what lets `boxEventLabel` be total and drop its fallback.
+		type: vBoxEventType,
 		message: v.optional(v.string()),
 		metadata: vMetadata,
 		created_at: v.number()

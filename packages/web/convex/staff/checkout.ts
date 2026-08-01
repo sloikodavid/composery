@@ -7,7 +7,7 @@ import {
 	findUserByEmail,
 	requireCapability
 } from "../users";
-import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
+import { isValidSlug, sanitizeSlug } from "../model/box/slug";
 
 const STAFF_INTENT_LIST_LIMIT = 50;
 const STAFF_INTENT_SEARCH_SCAN_LIMIT = 500;

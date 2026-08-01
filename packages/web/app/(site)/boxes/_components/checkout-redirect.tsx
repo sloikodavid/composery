@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import { boxPath } from "@/lib/boxes/route";
+import { boxPath } from "@/convex/model/box/path";
 
 // Where a customer coming back from Polar ends up. A completed payment is a
 // redirect into the new box; a payment fulfillment refused is the one case that
