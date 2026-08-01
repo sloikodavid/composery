@@ -11,7 +11,12 @@ import {
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
 import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
-import { startBoxOperation } from "../boxes/operations";
+import {
+	requireOwnerBox,
+	requireOwnerBoxInAction,
+	startFor,
+	startForOrFail
+} from "../boxes/endpoint";
 import { currentSuspensionReason, findOwnedBoxBySlug } from "../boxes/queries";
 import {
 	boxRuntimeStanding,
@@ -227,16 +232,7 @@ export const runtimeLogs = action({
 		logs: v.union(v.string(), v.null())
 	}),
 	handler: async (ctx, args): Promise<{ logs: string | null }> => {
-		const user = await requireActiveUserInAction(ctx);
-
-		const box: Doc<"boxes"> | null = await ctx.runQuery(
-			internal.boxes.queries.boxByOwnerSlug,
-			{
-				userId: user.clerk_user_id,
-				slug: sanitizeSlug(args.slug)
-			}
-		);
-		if (!box) throw new ConvexError("Box not found.");
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
 		if (box.status !== "running") return { logs: null };
 
 		return await fetchRuntimeLogsSafely(ctx, box._id);
@@ -247,12 +243,7 @@ export const recoveryStatus = action({
 	args: { slug: v.string() },
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
-		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
-			userId: user.clerk_user_id,
-			slug: sanitizeSlug(args.slug)
-		});
-		if (!box) throw new ConvexError("Box not found.");
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
 		return await ctx.runAction(internal.boxes.recovery.status, {
 			boxId: box._id
 		});
@@ -262,47 +253,16 @@ export const recoveryStatus = action({
 export const repair = action({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<void> => {
-		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
-			userId: user.clerk_user_id,
-			slug: sanitizeSlug(args.slug)
-		});
-		if (!box) throw new ConvexError("Box not found.");
-		// Null means an identical repair is already in flight; reporting "Repair
-		// started" over a request that started nothing is the same lie as an
-		// operation that never reports an outcome. A retry after a failure reuses
-		// this same key while the failed operation is settled, so it starts a fresh
-		// repair that resumes from the box's parking volume.
-		const operationId = await startBoxOperation(ctx, box._id, "repair", {
-			idempotencyKey: `repair:${box._id}`,
-			trigger: "owner"
-		});
-		if (!operationId) {
-			throw new ConvexError("This box is already being repaired.");
-		}
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		await startForOrFail(ctx, "owner", box, "repair");
 	}
 });
 
 export const update = action({
 	args: { slug: v.string() },
 	handler: async (ctx, args): Promise<void> => {
-		const user = await requireActiveUserInAction(ctx);
-		const box = await ctx.runQuery(internal.boxes.queries.boxByOwnerSlug, {
-			userId: user.clerk_user_id,
-			slug: sanitizeSlug(args.slug)
-		});
-		if (!box) throw new ConvexError("Box not found.");
-		// Keyed per box rather than per target image on purpose. Two presses of
-		// Update are the same request, and the second must not queue a second
-		// container recreate behind the first. A retry after a failure reuses the
-		// key once the failed operation has settled, so it starts a fresh attempt.
-		const operationId = await startBoxOperation(ctx, box._id, "update", {
-			idempotencyKey: `update:${box._id}`,
-			trigger: "owner"
-		});
-		if (!operationId) {
-			throw new ConvexError("This box is already being updated.");
-		}
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		await startForOrFail(ctx, "owner", box, "update");
 	}
 });
 
@@ -311,13 +271,7 @@ export const retryCreate = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
-
-		await startBoxOperation(ctx, box._id, "create", {
-			idempotencyKey: `create:${box._id}`,
-			trigger: "owner"
-		});
+		await startFor(ctx, "owner", await requireOwnerBox(ctx, args.slug), "create");
 	}
 });
 
@@ -326,13 +280,7 @@ export const stop = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
-
-		await startBoxOperation(ctx, box._id, "stop", {
-			idempotencyKey: `stop:${box._id}`,
-			trigger: "owner"
-		});
+		await startFor(ctx, "owner", await requireOwnerBox(ctx, args.slug), "stop");
 	}
 });
 
@@ -341,13 +289,7 @@ export const start = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
-
-		await startBoxOperation(ctx, box._id, "start", {
-			idempotencyKey: `start:${box._id}`,
-			trigger: "owner"
-		});
+		await startFor(ctx, "owner", await requireOwnerBox(ctx, args.slug), "start");
 	}
 });
 
@@ -357,17 +299,13 @@ export const reset = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
+		const box = await requireOwnerBox(ctx, args.slug);
 		if (args.confirmation !== box.slug) {
 			throw new ConvexError("Type the box slug to reset.");
 		}
 		await assertTlsReissueBudget(ctx, box._id);
 
-		await startBoxOperation(ctx, box._id, "reset", {
-			idempotencyKey: `reset:${box._id}`,
-			trigger: "owner"
-		});
+		await startFor(ctx, "owner", box, "reset");
 	}
 });
 
@@ -377,18 +315,18 @@ export const changeSlug = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
 		const newSlug = sanitizeSlug(args.newSlug);
 		if (!isValidSlug(newSlug)) throw new ConvexError("Slug is unavailable.");
 
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
+		const box = await requireOwnerBox(ctx, args.slug);
 		await assertTlsReissueBudget(ctx, box._id);
 
-		await startBoxOperation(ctx, box._id, "change_slug", {
-			idempotencyKey: `change-slug:${box._id}:${newSlug}`,
-			trigger: "owner",
-			reservedSlug: newSlug,
+		// Keyed on the new name as well as the box, so asking for a second name is
+		// a new request rather than one absorbed by the first.
+		await startFor(ctx, "owner", box, "change_slug", {
+			key: newSlug,
 			metadata: { oldSlug: box.slug, newSlug },
+			reservedSlug: newSlug,
 			workflowArgs: { newSlug }
 		});
 
@@ -455,8 +393,7 @@ export const createSnapshot = mutation({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
-		const user = await requireActiveUser(ctx);
-		const box = await requireOwnedBox(ctx, user.clerk_user_id, args.slug);
+		const box = await requireOwnerBox(ctx, args.slug);
 		await startManualSnapshot(ctx, box, "snapshot", "owner");
 	}
 });
@@ -475,14 +412,12 @@ export const restoreSnapshot = mutation({
 		if (snapshot.status !== "complete") {
 			throw new ConvexError("Only a finished snapshot can be restored.");
 		}
-		const operationId = await startBoxOperation(ctx, box._id, "restore", {
-			idempotencyKey: `restore:${box._id}:${args.snapshotId}`,
-			trigger: "owner",
+		// Keyed on the snapshot too: restoring a different one is a different
+		// request, not a repeat of this one.
+		await startForOrFail(ctx, "owner", box, "restore", {
+			key: args.snapshotId,
 			workflowArgs: { snapshotRowId: args.snapshotId }
 		});
-		if (!operationId) {
-			throw new ConvexError("Restore is already in progress.");
-		}
 	}
 });
 

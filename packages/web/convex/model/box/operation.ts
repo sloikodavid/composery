@@ -75,10 +75,11 @@ export const BOX_OPERATIONS = {
 		onFailure: "create_failed"
 	},
 	delete: {
-		// Nobody presses this. Deletion follows the subscription ending, and the
-		// owner is told about a failure because they can see the box sitting in
-		// their list - not because there is anything for them to do.
-		audiences: [],
+		// The owner never presses this - deletion follows the subscription ending -
+		// but staff do, when they revoke a comp. The owner is told about a failure
+		// because they can see the box sitting in their list, not because there is
+		// anything for them to do about it.
+		audiences: ["staff"],
 		critical: true,
 		during: "deleting",
 		// Named by its exclusions, not its members. Every other entry here is a

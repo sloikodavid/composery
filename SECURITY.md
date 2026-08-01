@@ -5,7 +5,7 @@ Report vulnerabilities by opening a private security advisory on GitHub or conta
 When possible, include:
 
 - A short description of the issue and why it matters.
-- Affected version(s)
+- Affected version(s), if applicable.
 - Reproduction steps or a small proof of concept.
 - Any suggested fix or mitigation.
 

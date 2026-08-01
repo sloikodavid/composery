@@ -245,10 +245,31 @@ function syncTree({ quiet = false } = {}) {
 	return true;
 }
 
+// One watch tick, which never ends the watch.
+//
+// Windows refuses a write while another process holds the file open or memory
+// mapped, and this file is read often: ripgrep maps it during a repository
+// search, an editor or a scanner opens it, and every agent follows the
+// `CLAUDE.md` symlink to it. Node has no errno for that refusal and reports
+// `UNKNOWN` (-4094). An uncaught one took down the whole of `pnpm dev` for a
+// lock that was gone a second later. The write is not lost: the file still differs
+// from the tree, so the next tick writes it. A lock that never clears says so
+// once a second rather than silently leaving the listing stale.
+//
+// Exported so a test can prove a failed write does not end the watch.
+export function syncTick() {
+	try {
+		return syncTree({ quiet: true });
+	} catch (error) {
+		console.warn(`${AGENTS_FILE} is locked (${error.code}). Retrying.`);
+		return false;
+	}
+}
+
 if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	if (watch) {
-		syncTree();
-		setInterval(() => syncTree({ quiet: true }), 1000);
+		syncTick();
+		setInterval(syncTick, 1000);
 		process.stdin.resume();
 	} else if (write) {
 		syncTree();

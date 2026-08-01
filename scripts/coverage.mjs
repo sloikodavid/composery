@@ -75,7 +75,9 @@ function uncoveredLines() {
 	if (!existsSync(COVERAGE)) {
 		console.error(
 			`No coverage report at ${relative(REPO_ROOT, COVERAGE)}.\n` +
-				"Run `pnpm check:test --coverage` first, or use `pnpm check:coverage`."
+				"Run `pnpm check:test` first - it writes the report this reads. A failed\n" +
+				"suite writes nothing (vitest `coverage.reportOnFailure` is off), so a\n" +
+				"red run reaches here too: fix the failures rather than this message."
 		);
 		process.exit(1);
 	}

@@ -30,7 +30,7 @@ export function BoxList() {
 		results: boxes,
 		status
 	} = usePaginatedQuery(
-		api.user.boxes.list,
+		api.owner.boxes.list,
 		{},
 		{ initialNumItems: BOX_PAGE_SIZE }
 	);

@@ -21,6 +21,12 @@ import {
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
 import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
+import {
+	requireStaffBox,
+	requireStaffBoxInAction,
+	startFor,
+	startForOrFail
+} from "../boxes/endpoint";
 import { currentSuspensionReason } from "../boxes/queries";
 import { appendBoxEvent } from "../boxes/events";
 
@@ -359,11 +365,7 @@ export const retryCreate = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireCapability(ctx, "box_operations");
-		await startBoxOperation(ctx, args.boxId, "create", {
-			idempotencyKey: `staff-create:${args.boxId}`,
-			trigger: "staff"
-		});
+		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "create");
 	}
 });
 
@@ -426,13 +428,9 @@ export const grantComp = mutation({
 		const box = await ctx.db.get(boxId);
 		if (!box) throw new ConvexError("Box creation failed.");
 
-		const operationId = await startBoxOperation(ctx, boxId, "create", {
-			idempotencyKey: `create:${boxId}`,
-			metadata: { compedBy: staffUser.clerk_user_id, reason },
-			trigger: "staff"
+		const operationId = await startForOrFail(ctx, "staff", box, "create", {
+			metadata: { compedBy: staffUser.clerk_user_id, reason }
 		});
-		if (!operationId)
-			throw new ConvexError("Provision operation already exists.");
 
 		await appendBoxEvent(ctx, box, boxEventType("create", "started"), {
 			message: `Comped by ${staffUser.email}: ${reason}`,
@@ -456,6 +454,11 @@ export const revokeComp = mutation({
 		if (box.comped_at === undefined) {
 			throw new ConvexError("This box is not a comp.");
 		}
+		// The one operation that does not take its key from the audience. A box's
+		// teardown is keyed on its subscription so the billing webhook, the
+		// deletion sweep and this button can never start three of them; routing it
+		// through `startFor` would give it a staff-specific key and lose exactly
+		// that. See `boxDeletionIdempotencyKey`.
 		await startBoxOperation(ctx, box._id, "delete", {
 			idempotencyKey: boxDeletionIdempotencyKey(box),
 			trigger: "staff"
@@ -468,11 +471,7 @@ export const reset = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireCapability(ctx, "box_operations");
-		await startBoxOperation(ctx, args.boxId, "reset", {
-			idempotencyKey: `staff-reset:${args.boxId}`,
-			trigger: "staff"
-		});
+		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "reset");
 	}
 });
 
@@ -482,15 +481,16 @@ export const changeSlug = mutation({
 		newSlug: v.string()
 	},
 	handler: async (ctx, args) => {
-		await requireCapability(ctx, "box_operations");
 		const newSlug = sanitizeSlug(args.newSlug);
 		if (!isValidSlug(newSlug)) throw new ConvexError("Slug is unavailable.");
 
-		await startBoxOperation(ctx, args.boxId, "change_slug", {
-			idempotencyKey: `staff-change-slug:${args.boxId}:${newSlug}`,
-			reservedSlug: newSlug,
-			trigger: "staff",
+		// Keyed on the new name as well as the box, so asking for a second name is
+		// a new request rather than one absorbed by the first.
+		const box = await requireStaffBox(ctx, args.boxId);
+		await startFor(ctx, "staff", box, "change_slug", {
+			key: newSlug,
 			metadata: { newSlug },
+			reservedSlug: newSlug,
 			workflowArgs: { newSlug }
 		});
 	}
@@ -501,11 +501,7 @@ export const stop = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireCapability(ctx, "box_operations");
-		await startBoxOperation(ctx, args.boxId, "stop", {
-			idempotencyKey: `staff-stop:${args.boxId}`,
-			trigger: "staff"
-		});
+		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "stop");
 	}
 });
 
@@ -514,11 +510,7 @@ export const start = mutation({
 		boxId: v.id("boxes")
 	},
 	handler: async (ctx, args) => {
-		await requireCapability(ctx, "box_operations");
-		await startBoxOperation(ctx, args.boxId, "start", {
-			idempotencyKey: `staff-start:${args.boxId}`,
-			trigger: "staff"
-		});
+		await startFor(ctx, "staff", await requireStaffBox(ctx, args.boxId), "start");
 	}
 });
 
@@ -562,47 +554,16 @@ export const recoveryStatus = action({
 export const repair = action({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args): Promise<void> => {
-		await requireCapabilityInAction(ctx, "box_operations");
-		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box) throw new ConvexError("Box not found.");
-		// Null means an identical repair is already in flight; reporting "Repair
-		// started" over a request that started nothing is the same lie as an
-		// operation that never reports an outcome. A retry after a failure reuses
-		// this same key while the failed operation is settled, so it starts a fresh
-		// repair that resumes from the box's parking volume.
-		const operationId = await startBoxOperation(ctx, box._id, "repair", {
-			idempotencyKey: `staff-repair:${box._id}`,
-			trigger: "staff"
-		});
-		if (!operationId) {
-			throw new ConvexError("This box is already being repaired.");
-		}
+		const box = await requireStaffBoxInAction(ctx, args.boxId);
+		await startForOrFail(ctx, "staff", box, "repair");
 	}
 });
 
 export const update = action({
 	args: { boxId: v.id("boxes") },
 	handler: async (ctx, args): Promise<void> => {
-		await requireCapabilityInAction(ctx, "box_operations");
-		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		if (!box) throw new ConvexError("Box not found.");
-		// Staff and owner keys are separate so a staff update is not deduplicated
-		// against an owner's in-flight one and silently reported as started.
-		// `startOperation` still refuses a second concurrent operation on the box, so
-		// the two cannot overlap - one of them is told the box is busy.
-		const operationId = await startBoxOperation(ctx, box._id, "update", {
-			idempotencyKey: `staff-update:${box._id}`,
-			trigger: "staff"
-		});
-		if (!operationId) {
-			throw new ConvexError("This box is already being updated.");
-		}
+		const box = await requireStaffBoxInAction(ctx, args.boxId);
+		await startForOrFail(ctx, "staff", box, "update");
 	}
 });
 
@@ -713,14 +674,12 @@ export const restoreSnapshot = mutation({
 		}
 		const box = await ctx.db.get(snapshot.box_id);
 		if (!box) throw new ConvexError("Box not found.");
-		const operationId = await startBoxOperation(ctx, box._id, "restore", {
-			idempotencyKey: `staff-restore:${box._id}:${args.snapshotId}`,
-			trigger: "staff",
+		// Keyed on the snapshot too: restoring a different one is a different
+		// request, not a repeat of this one.
+		await startForOrFail(ctx, "staff", box, "restore", {
+			key: args.snapshotId,
 			workflowArgs: { snapshotRowId: args.snapshotId }
 		});
-		if (!operationId) {
-			throw new ConvexError("Restore is already in progress.");
-		}
 	}
 });
 

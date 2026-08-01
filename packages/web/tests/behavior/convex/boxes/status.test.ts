@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { OPERATION_FAILURE_CRITICAL, OPERATION_FAILURE_STATUS, type BoxOperationType } from "@/convex/model/box/operation";
+import { BOX_OPERATIONS, BOX_OPERATION_TYPES, type BoxOperationType } from "@/convex/model/box/operation";
 import type { OperationTrigger } from "@/convex/schema";
 
 import {
@@ -184,7 +184,7 @@ describe("staff alerting on failure", () => {
 	// every type whose label differs from its identifier - `delete`, labelled
 	// "Remove", is the one that matters and it is the one a two-case test missed.
 	test.each(
-		Object.entries(OPERATION_FAILURE_CRITICAL) as [BoxOperationType, boolean][]
+		BOX_OPERATION_TYPES.map((type) => [type, BOX_OPERATIONS[type].critical]) as [BoxOperationType, boolean][]
 	)(
 		"a failed %s alerts staff at the severity its blast radius earns",
 		async (type, critical) => {
@@ -200,7 +200,7 @@ describe("staff alerting on failure", () => {
 				boxId,
 				error: "ssh refused",
 				operationId,
-				targetBoxStatus: OPERATION_FAILURE_STATUS[type]
+				targetBoxStatus: BOX_OPERATIONS[type].onFailure ?? undefined
 			});
 
 			expect(await staffAlerts(t)).toMatchObject([

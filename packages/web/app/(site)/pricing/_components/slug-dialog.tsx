@@ -47,7 +47,7 @@ export function SlugDialog({
 	// is what makes "which card did they press" unrepresentable as a mismatch.
 	plan: BoxPlan | null;
 }) {
-	const createCheckout = useAction(api.user.checkout.createCheckout);
+	const createCheckout = useAction(api.owner.checkout.createCheckout);
 	const { isAuthenticated, isLoading: authenticationLoading } = useConvexAuth();
 	const { user } = useUser();
 	// Clerk resolves after mount, so the suggestion is derived rather than seeded
@@ -65,7 +65,7 @@ export function SlugDialog({
 	// reads as an error the visitor didn't cause, so an unavailable suggestion
 	// just leaves the field empty.
 	const suggestionAvailability = useQuery(
-		api.user.checkout.slugAvailability,
+		api.owner.checkout.slugAvailability,
 		typedSlug === null && isValidSlugFormat(suggestedSlug)
 			? { slug: suggestedSlug }
 			: "skip"
@@ -75,10 +75,10 @@ export function SlugDialog({
 	const normalizedSlug = sanitizeSlug(slug);
 	const slugFormatValid = isValidSlugFormat(normalizedSlug);
 	const availability = useQuery(
-		api.user.checkout.slugAvailability,
+		api.owner.checkout.slugAvailability,
 		slugFormatValid ? { slug: normalizedSlug } : "skip"
 	);
-	const checkoutAvailability = useQuery(api.user.checkout.availability, {});
+	const checkoutAvailability = useQuery(api.owner.checkout.availability, {});
 	const slugAvailable = availability?.available === true;
 	const slugResumable = availability?.resumable === true;
 	const checkoutAvailable = checkoutAvailability?.available === true;

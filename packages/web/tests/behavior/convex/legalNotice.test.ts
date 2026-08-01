@@ -32,7 +32,7 @@ const UNREACHABLE = "unreachable@example.com";
 
 // What the repository declares, replaced so the sweep has something to fan out.
 // One notice announcing a document revision and one announcing a breach, because
-// those are the two shapes `lib/cloud-legal.ts` admits and only the first
+// those are the two shapes `convex/model/legal.ts` admits and only the first
 // carries a `version`.
 const { DECLARED } = vi.hoisted(() => ({
 	DECLARED: [
@@ -50,8 +50,8 @@ const { DECLARED } = vi.hoisted(() => ({
 	]
 }));
 
-vi.mock("@/lib/cloud-legal", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@/lib/cloud-legal")>()),
+vi.mock("@/convex/model/legal", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@/convex/model/legal")>()),
 	LEGAL_NOTICES: DECLARED
 }));
 

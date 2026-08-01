@@ -194,7 +194,7 @@ describe("an account that may not act", () => {
 		await seedBox(t, { user_id: user.clerkUserId, slug: "box" });
 
 		await expect(
-			user.as.mutation(api.user.boxes.stop, { slug: "box" })
+			user.as.mutation(api.owner.boxes.stop, { slug: "box" })
 		).rejects.toMatchObject({
 			data: { kind: "account_unavailable", detail: "abuse" }
 		});
@@ -210,7 +210,7 @@ describe("an account that may not act", () => {
 		await seedBox(t, { user_id: user.clerkUserId, slug: "box" });
 
 		await expect(
-			user.as.mutation(api.user.boxes.start, { slug: "box" })
+			user.as.mutation(api.owner.boxes.start, { slug: "box" })
 		).rejects.toMatchObject({
 			data: { title: "This account is being deleted" }
 		});
@@ -222,7 +222,7 @@ describe("an account that may not act", () => {
 		const user = await seedUser(t, { deletionPending: true });
 
 		await expect(
-			user.as.action(api.user.checkout.createCheckout, {
+			user.as.action(api.owner.checkout.createCheckout, {
 				billingInterval: "month",
 				plan: "air",
 				slug: "another-box"
@@ -242,12 +242,12 @@ describe("an account that may not act", () => {
 		await seedBox(t, { user_id: user.clerkUserId, slug: "box" });
 
 		await expect(
-			user.as.query(api.user.boxes.list, {
+			user.as.query(api.owner.boxes.list, {
 				paginationOpts: { cursor: null, numItems: 10 }
 			})
 		).rejects.toThrow(/suspended/i);
 		await expect(
-			user.as.query(api.user.boxConfig.get, { slug: "box" })
+			user.as.query(api.owner.boxConfig.get, { slug: "box" })
 		).rejects.toThrow(/suspended/i);
 	});
 

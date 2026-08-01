@@ -117,7 +117,7 @@ describe("taking a manual snapshot", () => {
 		const { boxId, owner } = await ownedRunningBox(t, "air");
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/Box Air takes automatic daily snapshots/);
 		expect(await snapshotsOf(t, boxId)).toHaveLength(0);
 		expect(await boxOperations(t, boxId)).toEqual([]);
@@ -144,7 +144,7 @@ describe("taking a manual snapshot", () => {
 		const t = testConvex();
 		const { boxId, owner } = await ownedRunningBox(t);
 
-		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+		await owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 		expect(await boxOperations(t, boxId)).toMatchObject([
 			{ type: "snapshot", status: "pending", trigger: "owner" }
@@ -165,7 +165,7 @@ describe("taking a manual snapshot", () => {
 		});
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/only available while the box is running/);
 	});
 
@@ -178,7 +178,7 @@ describe("taking a manual snapshot", () => {
 		});
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/already in progress/);
 	});
 
@@ -191,7 +191,7 @@ describe("taking a manual snapshot", () => {
 		});
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/moments ago/);
 	});
 
@@ -203,7 +203,7 @@ describe("taking a manual snapshot", () => {
 				NOW - DEFAULT_SNAPSHOT_POLICY.manualMinIntervalMinutes * MINUTE_MS - 1
 		});
 
-		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+		await owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 		expect(await boxOperations(t, boxId)).toHaveLength(1);
 	});
@@ -220,7 +220,7 @@ describe("taking a manual snapshot", () => {
 		}
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/snapshot limit/);
 		expect(await snapshotsOf(t, boxId)).toHaveLength(PRO_MANUAL_CAP);
 	});
@@ -236,7 +236,7 @@ describe("taking a manual snapshot", () => {
 			});
 		}
 
-		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+		await owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 		expect(await boxOperations(t, boxId)).toHaveLength(1);
 	});
@@ -251,7 +251,7 @@ describe("splitting a box's snapshot allowance", () => {
 		const { boxId, owner } = await ownedRunningBox(t);
 		const cap = BOX_PLANS.pro.snapshotCap;
 
-		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+		await owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 			manualCap: cap,
 			slug: "mine"
 		});
@@ -268,7 +268,7 @@ describe("splitting a box's snapshot allowance", () => {
 		const { owner } = await ownedRunningBox(t);
 
 		await expect(
-			owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 				manualCap: BOX_PLANS.pro.snapshotCap + 1,
 				slug: "mine"
 			})
@@ -282,7 +282,7 @@ describe("splitting a box's snapshot allowance", () => {
 		const { owner } = await ownedRunningBox(t, "air");
 
 		await expect(
-			owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+			owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 				manualCap: 1,
 				slug: "mine"
 			})
@@ -302,14 +302,14 @@ describe("splitting a box's snapshot allowance", () => {
 			});
 		}
 
-		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+		await owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 			manualCap: 0,
 			slug: "mine"
 		});
 
 		expect(await snapshotsOf(t, boxId)).toHaveLength(PRO_MANUAL_CAP);
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow(/snapshot limit/);
 	});
 
@@ -323,11 +323,11 @@ describe("splitting a box's snapshot allowance", () => {
 			});
 		}
 
-		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+		await owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 			manualCap: PRO_MANUAL_CAP + 1,
 			slug: "mine"
 		});
-		await owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+		await owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 		expect(await boxOperations(t, boxId)).toHaveLength(1);
 	});
@@ -605,7 +605,7 @@ describe("automatic snapshots", () => {
 	test("skips a box whose owner kept no slots for automatic snapshots", async () => {
 		const t = testConvex();
 		const { boxId, owner } = await ownedRunningBox(t);
-		await owner.as.mutation(api.user.boxes.setSnapshotSplit, {
+		await owner.as.mutation(api.owner.boxes.setSnapshotSplit, {
 			manualCap: BOX_PLANS.pro.snapshotCap,
 			slug: "mine"
 		});
@@ -1063,7 +1063,7 @@ describe("the edges of the manual capture guards", () => {
 			});
 
 			await expect(
-				owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+				owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 			).rejects.toThrow("already in progress");
 		}
 	);
@@ -1082,7 +1082,7 @@ describe("the edges of the manual capture guards", () => {
 			});
 
 			await expect(
-				owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+				owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 			).resolves.not.toThrow();
 		}
 	);
@@ -1099,7 +1099,7 @@ describe("the edges of the manual capture guards", () => {
 		});
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).resolves.not.toThrow();
 	});
 
@@ -1112,7 +1112,7 @@ describe("the edges of the manual capture guards", () => {
 		});
 
 		await expect(
-			owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" })
+			owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" })
 		).rejects.toThrow("moments ago");
 	});
 });
@@ -1755,7 +1755,7 @@ describe("what a snapshot looks like to a page", () => {
 			});
 		});
 
-		const [view] = await owner.as.query(api.user.boxes.snapshots, {
+		const [view] = await owner.as.query(api.owner.boxes.snapshots, {
 			slug: "mine"
 		});
 
@@ -1785,7 +1785,7 @@ describe("what a snapshot looks like to a page", () => {
 			});
 		});
 
-		const [view] = await owner.as.query(api.user.boxes.snapshots, {
+		const [view] = await owner.as.query(api.owner.boxes.snapshots, {
 			slug: "mine"
 		});
 
@@ -2517,7 +2517,7 @@ describe("counting against the cap it stops at", () => {
 	}
 
 	const capture = (t: Harness, owner: { as: Harness }) =>
-		owner.as.mutation(api.user.boxes.createSnapshot, { slug: "mine" });
+		owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 	// One below the cap is room for exactly one more.
 	test("allows a capture with one slot left", async () => {
@@ -2664,8 +2664,8 @@ describe("keeping two owners' manual captures apart", () => {
 			)
 		);
 
-		await first.as.mutation(api.user.boxes.createSnapshot, { slug: "one" });
-		await second.as.mutation(api.user.boxes.createSnapshot, { slug: "two" });
+		await first.as.mutation(api.owner.boxes.createSnapshot, { slug: "one" });
+		await second.as.mutation(api.owner.boxes.createSnapshot, { slug: "two" });
 
 		for (const boxId of boxes) {
 			expect(await boxOperations(t, boxId)).toHaveLength(1);

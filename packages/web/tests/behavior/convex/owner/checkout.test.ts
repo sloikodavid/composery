@@ -48,7 +48,7 @@ describe("opening a checkout", () => {
 		await seedSettings(t);
 		const user = await seedUser(t);
 
-		const result = await user.as.action(api.user.checkout.createCheckout, {
+		const result = await user.as.action(api.owner.checkout.createCheckout, {
 			billingInterval: "year",
 			plan: "pro",
 			slug: "my-box"
@@ -74,7 +74,7 @@ describe("opening a checkout", () => {
 		await seedSettings(t);
 		const user = await seedUser(t);
 
-		await user.as.action(api.user.checkout.createCheckout, {
+		await user.as.action(api.owner.checkout.createCheckout, {
 			billingInterval: "month",
 			plan: "air",
 			slug: "my-box"
@@ -106,7 +106,7 @@ describe("opening a checkout", () => {
 		});
 
 		await expect(
-			owner.as.action(api.user.checkout.createCheckout, {
+			owner.as.action(api.owner.checkout.createCheckout, {
 				billingInterval: "month",
 				plan: "air",
 				slug: "my-box"
@@ -135,7 +135,7 @@ describe("opening a checkout", () => {
 			});
 		});
 
-		const result = await user.as.action(api.user.checkout.createCheckout, {
+		const result = await user.as.action(api.owner.checkout.createCheckout, {
 			billingInterval: "month",
 			plan: "air",
 			slug: "my-box"
@@ -161,12 +161,12 @@ describe("opening a checkout", () => {
 		await seedSettings(t);
 		const user = await seedUser(t);
 
-		await user.as.action(api.user.checkout.createCheckout, {
+		await user.as.action(api.owner.checkout.createCheckout, {
 			billingInterval: "month",
 			plan: "air",
 			slug: "my-box"
 		});
-		await user.as.action(api.user.checkout.createCheckout, {
+		await user.as.action(api.owner.checkout.createCheckout, {
 			billingInterval: "year",
 			plan: "pro",
 			slug: "my-box"
@@ -190,7 +190,7 @@ describe("opening a checkout", () => {
 		createCheckoutSession.mockRejectedValue(new Error("Polar is down"));
 
 		await expect(
-			user.as.action(api.user.checkout.createCheckout, {
+			user.as.action(api.owner.checkout.createCheckout, {
 				billingInterval: "month",
 				plan: "air",
 				slug: "my-box"
@@ -227,7 +227,7 @@ describe("reporting a finished checkout to its customer", () => {
 				...intent
 			});
 		});
-		return await user.as.query(api.user.checkout.completedCheckout, {
+		return await user.as.query(api.owner.checkout.completedCheckout, {
 			checkoutId: "checkout_1"
 		});
 	}
@@ -282,7 +282,7 @@ describe("reporting a finished checkout to its customer", () => {
 		});
 
 		expect(
-			await other.as.query(api.user.checkout.completedCheckout, {
+			await other.as.query(api.owner.checkout.completedCheckout, {
 				checkoutId: "checkout_1"
 			})
 		).toBeNull();
@@ -298,7 +298,7 @@ describe("reporting a finished checkout to its customer", () => {
 // has to be refunded.
 describe("telling a customer whether a name is free", () => {
 	const availability = (as: Harness, slug: string) =>
-		as.query(api.user.checkout.slugAvailability, { slug });
+		as.query(api.owner.checkout.slugAvailability, { slug });
 
 	async function buyer(t: Harness) {
 		return await seedUser(t, { clerkUserId: "buyer" });
@@ -458,10 +458,10 @@ describe("telling a customer whether a name is free", () => {
 		);
 
 		expect(
-			await t.query(api.user.checkout.slugAvailability, { slug: "free" })
+			await t.query(api.owner.checkout.slugAvailability, { slug: "free" })
 		).toMatchObject({ available: true, resumable: false });
 		expect(
-			await t.query(api.user.checkout.slugAvailability, { slug: "taken" })
+			await t.query(api.owner.checkout.slugAvailability, { slug: "taken" })
 		).toMatchObject({ available: false, resumable: false });
 	});
 

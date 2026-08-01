@@ -24,35 +24,48 @@ export default defineConfig({
 			// Behaviour projects only. An invariants test proves a string exists in
 			// a file; counting it here would report code as exercised when nothing
 			// ran it - the one direction a coverage number must never be wrong in.
+			//
+			// Named rather than left to default. Vitest 4 reports only the files a
+			// test imported unless this list exists, and the one honest question
+			// coverage answers is the opposite one - what nothing touches - which a
+			// file has to appear at zero to answer.
 			include: [
 				"packages/ide/overlay/**/*.{ts,js}",
 				"packages/shared/**/*.{ts,mjs}",
-				"packages/web/{app,components,convex,hooks,lib}/**/*.{ts,tsx}",
-				"scripts/**/*.mjs"
+				// `app/` and `components/` are absent on purpose. They are React
+				// server and client components: wiring and JSX, where a test that
+				// reached one would assert back the markup it was written from - the
+				// "run the line, assert nothing" this whole configuration is arranged
+				// to prevent, dressed as coverage.
+				//
+				// The rule that replaces the number is where a decision may live.
+				// Anything decidable belongs in `lib/` or `convex/`, which are here.
+				// When a component starts deciding, move the decision rather than
+				// build a harness to reach it. Where one already decides - the dialogs
+				// under `components/boxes/` - there is a behaviour test that drives it
+				// through `// @vitest-environment jsdom` and @testing-library/react;
+				// those tests earn their keep from their assertions, not from a
+				// percentage. What can rot in the prose pages is whether the copy
+				// still describes the service, and that is pinned where wording
+				// belongs: `packages/web/tests/invariants/legal`.
+				"packages/web/{convex,hooks,lib}/**/*.{ts,tsx}",
+				// Every pattern is anchored at the repository root, including the ones
+				// naming a package. That is not style: the sweep that finds files no
+				// test loaded walks from here, so a pattern that only resolves against
+				// some project's root finds nothing, and the file then appears solely
+				// because a test happened to import it - present when covered, absent
+				// when not, which is precisely backwards. Measured: with
+				// `packages/*/scripts` missing, `packages/ide/scripts/rebrand.mjs`
+				// still reported (a test imports it) while `types.mjs` beside it
+				// vanished.
+				"scripts/**/*.mjs",
+				"packages/*/scripts/**/*.mjs"
 			],
 			exclude: [
 				"**/_generated/**",
 				"**/tests/**",
 				"**/*.d.ts",
-				"packages/web/components/base/**",
-				// Nothing under `app/` is instrumented, because nothing in this repo can
-				// run it. Every vitest project here is `environment: "node"`, and these
-				// are React server and client components reading Convex and Clerk through
-				// hooks: covering one would mean a jsdom project, a React renderer and a
-				// mock per hook, and the test that fell out would assert back the markup
-				// it was written from - the "run the line, assert nothing" this whole
-				// configuration is arranged to prevent, dressed as coverage.
-				//
-				// The rule that replaces it is where a decision is allowed to live. A
-				// page or component here is wiring and JSX; anything decidable belongs in
-				// `lib/` or `convex/`, which are instrumented and tested. When a
-				// component starts making a decision, the fix is to move the decision,
-				// not to build a harness to reach it. What can drift in the prose pages
-				// is whether the copy still describes the service, and that is pinned
-				// where wording belongs: `packages/web/tests/invariants/legal`.
-				"packages/web/app/**",
-				"packages/web/components/**",
-				// The same rule, for the one file in `lib/` that is presentation rather
+				// The rule above, for the one file in `lib/` that is presentation rather
 				// than a decision: a map of Clerk element names to Tailwind strings. It
 				// sits here rather than beside a component because three surfaces mount
 				// Clerk, and the only test that could reach it would assert the class
@@ -121,15 +134,16 @@ export default defineConfig({
 				"packages/ide/overlay/src/node/routes/api/ratelimit.ts",
 				"packages/ide/overlay/src/node/routes/api/terminals.ts",
 				// The scripts served with those pages. They are vanilla DOM code
-				// against markup code-server renders, and this package has no browser
-				// environment at all - the `ide` projects are `environment: "node"`,
-				// like every other project here. The smoke drives the real pages.
+				// against markup code-server renders, and no test in this package
+				// builds a DOM to run them in. The smoke drives the real pages.
 				//
-				// The decisions inside them are worth a test and would be reachable
-				// from a jsdom project: that a breach check which cannot be performed
-				// proceeds rather than blocks, and that only an explicit
-				// `{ valid: false }` from the verify endpoint counts as "wrong". That
-				// project is what would let this exclusion be deleted.
+				// The decisions inside them are worth a test and nothing structural
+				// stops one: a `// @vitest-environment jsdom` docblock is all the web
+				// package's component tests need, and it works the same here. Two are
+				// waiting - that a breach check which cannot be performed proceeds
+				// rather than blocks, and that only an explicit `{ valid: false }` from
+				// the verify endpoint counts as "wrong". Writing them is what deletes
+				// this entry.
 				"packages/ide/overlay/src/browser/pages/**"
 			],
 			// Reported, never thresholded. A global percentage is the one number that
@@ -138,7 +152,12 @@ export default defineConfig({
 			// well-covered file and the figure drops. `check:coverage` gates the lines a
 			// change actually adds, which is the question with an answer, and the report
 			// below is for finding what nothing touches at all.
-			reporter: ["text-summary", "json", "lcov"]
+			//
+			// `json` is what `check:coverage` diffs against, `text-summary` is the line
+			// the run prints, and `html` is where "what does nothing touch" is answered
+			// file by file. No `lcov`: it writes an lcov.info nothing here reads, and
+			// its browsable half is `html`.
+			reporter: ["text-summary", "json", "html"]
 		},
 		projects: projects()
 	}

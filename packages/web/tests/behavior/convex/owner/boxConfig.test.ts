@@ -70,7 +70,7 @@ describe("reading the configuration", () => {
 			COMPOSERY_DISABLE_FILE_DOWNLOADS: "1"
 		});
 
-		const result = await mine.as.query(api.user.boxConfig.get, {
+		const result = await mine.as.query(api.owner.boxConfig.get, {
 			slug: "atlas"
 		});
 
@@ -92,7 +92,7 @@ describe("reading the configuration", () => {
 		const { mine } = await twoOwners(t);
 		await configuredBox(t, mine.clerkUserId, { [SECRET]: "ghp_realtoken" });
 
-		const result = await mine.as.query(api.user.boxConfig.get, {
+		const result = await mine.as.query(api.owner.boxConfig.get, {
 			slug: "atlas"
 		});
 
@@ -107,7 +107,7 @@ describe("reading the configuration", () => {
 		await configuredBox(t, mine.clerkUserId);
 
 		expect(
-			(await mine.as.query(api.user.boxConfig.get, { slug: "atlas" }))
+			(await mine.as.query(api.owner.boxConfig.get, { slug: "atlas" }))
 				?.canConfigure
 		).toBe(true);
 	});
@@ -120,10 +120,10 @@ describe("reading the configuration", () => {
 		await configuredBox(t, mine.clerkUserId, { [SECRET]: "ghp_realtoken" });
 
 		expect(
-			await theirs.as.query(api.user.boxConfig.get, { slug: "atlas" })
+			await theirs.as.query(api.owner.boxConfig.get, { slug: "atlas" })
 		).toBeNull();
 		expect(
-			await mine.as.query(api.user.boxConfig.get, { slug: "nonexistent" })
+			await mine.as.query(api.owner.boxConfig.get, { slug: "nonexistent" })
 		).toBeNull();
 	});
 });
@@ -134,7 +134,7 @@ describe("saving a configuration", () => {
 		const { mine } = await twoOwners(t);
 		const boxId = await configuredBox(t, mine.clerkUserId);
 
-		await mine.as.mutation(api.user.boxConfig.save, {
+		await mine.as.mutation(api.owner.boxConfig.save, {
 			slug: "atlas",
 			config: { COMPOSERY_DISABLE_FILE_DOWNLOADS: "1" }
 		});
@@ -152,7 +152,7 @@ describe("saving a configuration", () => {
 		const { mine } = await twoOwners(t);
 		const boxId = await configuredBox(t, mine.clerkUserId);
 
-		await mine.as.mutation(api.user.boxConfig.save, {
+		await mine.as.mutation(api.owner.boxConfig.save, {
 			slug: "atlas",
 			config: {
 				[SECRET]: "ghp_realtoken",
@@ -179,7 +179,7 @@ describe("saving a configuration", () => {
 		const boxId = await configuredBox(t, mine.clerkUserId);
 
 		await expect(
-			theirs.as.mutation(api.user.boxConfig.save, {
+			theirs.as.mutation(api.owner.boxConfig.save, {
 				slug: "atlas",
 				config: { COMPOSERY_DISABLE_FILE_DOWNLOADS: "1" }
 			})
@@ -195,7 +195,7 @@ describe("saving a configuration", () => {
 		const boxId = await configuredBox(t, mine.clerkUserId);
 
 		await expect(
-			mine.as.mutation(api.user.boxConfig.save, {
+			mine.as.mutation(api.owner.boxConfig.save, {
 				slug: "atlas",
 				config: { NOT_A_COMPOSERY_SETTING: "1" }
 			})
@@ -208,7 +208,7 @@ describe("saving a configuration", () => {
 		const { mine } = await twoOwners(t);
 		await configuredBox(t, mine.clerkUserId);
 		const save = () =>
-			mine.as.mutation(api.user.boxConfig.save, {
+			mine.as.mutation(api.owner.boxConfig.save, {
 				slug: "atlas",
 				config: { COMPOSERY_DISABLE_FILE_DOWNLOADS: "1" }
 			});

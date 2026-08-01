@@ -43,7 +43,7 @@ export function isSecretField(field: RuntimeConfigField): field is StringField {
 const TEXTAREA_MIN_LENGTH = 513;
 
 // What the form will do with one secret when it saves. `keep` is the default and
-// the only one that submits nothing at all: `api.user.boxConfig.save` reads a key
+// the only one that submits nothing at all: `api.owner.boxConfig.save` reads a key
 // missing from the payload as "leave it as it is", which is the only correct
 // reading for a value the page was never sent. Sending the key with an empty
 // string is the one way to remove it, and that is what `clear` does.

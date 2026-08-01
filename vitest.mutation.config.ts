@@ -27,9 +27,11 @@ import { projects } from "./vitest.projects.ts";
 //
 // Coverage is off here: `check:coverage` owns that question, and instrumenting
 // twice only slows the thousands of runs a mutation sweep performs.
+// No shuffle either. The ordinary suite is where order dependence is hunted, and
+// a run that executes the same tests thousands of times wants the same order
+// every time: a survivor you cannot reproduce is a survivor nobody can triage.
 export default defineConfig({
 	test: {
-		sequence: { shuffle: true },
 		projects: projects(["behavior"], { slowdown: 6 })
 	}
 });

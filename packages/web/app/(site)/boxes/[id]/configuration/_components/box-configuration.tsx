@@ -126,12 +126,12 @@ function keyForError(
 }
 
 export function BoxConfiguration({ boxId }: { boxId: string }) {
-	const detail = useQuery(api.user.boxes.getById, { boxId });
+	const detail = useQuery(api.owner.boxes.getById, { boxId });
 	const config = useQuery(
-		api.user.boxConfig.get,
+		api.owner.boxConfig.get,
 		detail ? { slug: detail.box.slug } : "skip"
 	);
-	const saveConfig = useMutation(api.user.boxConfig.save);
+	const saveConfig = useMutation(api.owner.boxConfig.save);
 	const { busy, run } = useBusyAction();
 
 	const [draft, setDraft] = useState<Record<string, string>>({});

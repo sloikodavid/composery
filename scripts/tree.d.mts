@@ -30,3 +30,5 @@ export function dropStrayTrees(current: string): string;
 export function renderTree(): string;
 
 export function renderAgentsFile(current: string, tree: string): string;
+
+export function syncTick(): boolean;

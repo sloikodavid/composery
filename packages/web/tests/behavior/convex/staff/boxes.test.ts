@@ -958,7 +958,7 @@ describe("what a staff operation does once it is allowed", () => {
 
 			await expect(
 				admin.as.mutation(api.staff.boxes.restoreSnapshot, { snapshotId })
-			).rejects.toThrow(/already in progress|busy/);
+			).rejects.toThrow(/already in flight|busy/);
 		});
 	});
 
@@ -1348,7 +1348,7 @@ describe("the operations the console starts on a box", () => {
 
 			await expect(
 				admin.as.action(api.staff.boxes.update, { boxId })
-			).rejects.toThrow(/already being updated|busy/);
+			).rejects.toThrow(/already in flight|busy/);
 		});
 
 		test("refuses a box that is not there", async () => {
@@ -1696,7 +1696,7 @@ describe("the box page the console draws", () => {
 			const boxId = await seedBox(t, { user_id: customer.clerkUserId });
 			await t.run(async (ctx) => {
 				for (const [index, type] of [
-					"box.created",
+					"box.create_succeeded",
 					"box.repair_succeeded"
 				].entries()) {
 					await ctx.db.insert("box_events", {
@@ -1715,7 +1715,7 @@ describe("the box page the console draws", () => {
 
 			expect(result.page.map((row) => row.type)).toEqual([
 				"box.repair_succeeded",
-				"box.created"
+				"box.create_succeeded"
 			]);
 		});
 
@@ -1747,7 +1747,7 @@ describe("the box page the console draws", () => {
 					await ctx.db.insert("box_events", {
 						box_id: other,
 						user_id: customer.clerkUserId,
-						type: "box.created",
+						type: "box.create_succeeded",
 						created_at: NOW
 					});
 				});

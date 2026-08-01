@@ -623,7 +623,7 @@ packages/
           theme.test.ts
         index.test.ts
       invariants/
-        tools/
+        scripts/
           colors.test.ts
     index.ts
     package.json
@@ -879,6 +879,7 @@ packages/
         capacity.ts
         capacityAlerts.ts
         cleanup.ts
+        endpoint.ts
         events.ts
         health.ts
         logs.ts
@@ -916,6 +917,10 @@ packages/
           status.ts
         legal.ts
         links.ts
+      owner/
+        boxConfig.ts
+        boxes.ts
+        checkout.ts
       staff/
         alerts.ts
         boxes.ts
@@ -924,10 +929,6 @@ packages/
         settings.ts
         stats.ts
         users.ts
-      user/
-        boxConfig.ts
-        boxes.ts
-        checkout.ts
       accountDeletion.ts
       accountDeletionLogic.ts
       accountEmail.ts
@@ -1092,6 +1093,10 @@ packages/
               path.test.ts
               plan.test.ts
               slug.test.ts
+          owner/
+            boxConfig.test.ts
+            boxes.test.ts
+            checkout.test.ts
           staff/
             alerts.test.ts
             boxes.test.ts
@@ -1100,10 +1105,6 @@ packages/
             settings.test.ts
             stats.test.ts
             users.test.ts
-          user/
-            boxConfig.test.ts
-            boxes.test.ts
-            checkout.test.ts
           accountDeletion.test.ts
           accountDeletionLogic.test.ts
           accountEmail.test.ts
@@ -1147,11 +1148,10 @@ packages/
           components.test.ts
           envExample.test.ts
           missing-box-guards.test.ts
-          operation-attribution.test.ts
           optional-range-bounds.test.ts
+          owner-authorization.test.ts
           schema-indexes.test.ts
           staff-authorization.test.ts
-          user-authorization.test.ts
         legal/
           notices.test.ts
           processors.test.ts

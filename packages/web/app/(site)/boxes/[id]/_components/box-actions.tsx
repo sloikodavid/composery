@@ -11,7 +11,7 @@ export function BoxActions({
 	boxId: string;
 	labelOnly?: boolean;
 }) {
-	const detail = useQuery(api.user.boxes.getById, { boxId });
+	const detail = useQuery(api.owner.boxes.getById, { boxId });
 	if (!detail) return null;
 	if (labelOnly) return detail.box.slug;
 

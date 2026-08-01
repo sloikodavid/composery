@@ -20,6 +20,7 @@ import type * as boxes_autoRepair from "../boxes/autoRepair.js";
 import type * as boxes_capacity from "../boxes/capacity.js";
 import type * as boxes_capacityAlerts from "../boxes/capacityAlerts.js";
 import type * as boxes_cleanup from "../boxes/cleanup.js";
+import type * as boxes_endpoint from "../boxes/endpoint.js";
 import type * as boxes_events from "../boxes/events.js";
 import type * as boxes_health from "../boxes/health.js";
 import type * as boxes_infra_cloudflareContracts from "../boxes/infra/cloudflareContracts.js";
@@ -87,6 +88,9 @@ import type * as model_box_snapshot from "../model/box/snapshot.js";
 import type * as model_box_status from "../model/box/status.js";
 import type * as model_legal from "../model/legal.js";
 import type * as model_links from "../model/links.js";
+import type * as owner_boxConfig from "../owner/boxConfig.js";
+import type * as owner_boxes from "../owner/boxes.js";
+import type * as owner_checkout from "../owner/checkout.js";
 import type * as ownerEmail from "../ownerEmail.js";
 import type * as settings from "../settings.js";
 import type * as staff_alerts from "../staff/alerts.js";
@@ -97,9 +101,6 @@ import type * as staff_settings from "../staff/settings.js";
 import type * as staff_stats from "../staff/stats.js";
 import type * as staff_users from "../staff/users.js";
 import type * as time from "../time.js";
-import type * as user_boxConfig from "../user/boxConfig.js";
-import type * as user_boxes from "../user/boxes.js";
-import type * as user_checkout from "../user/checkout.js";
 import type * as users from "../users.js";
 
 import type {
@@ -121,6 +122,7 @@ declare const fullApi: ApiFromModules<{
   "boxes/capacity": typeof boxes_capacity;
   "boxes/capacityAlerts": typeof boxes_capacityAlerts;
   "boxes/cleanup": typeof boxes_cleanup;
+  "boxes/endpoint": typeof boxes_endpoint;
   "boxes/events": typeof boxes_events;
   "boxes/health": typeof boxes_health;
   "boxes/infra/cloudflareContracts": typeof boxes_infra_cloudflareContracts;
@@ -188,6 +190,9 @@ declare const fullApi: ApiFromModules<{
   "model/box/status": typeof model_box_status;
   "model/legal": typeof model_legal;
   "model/links": typeof model_links;
+  "owner/boxConfig": typeof owner_boxConfig;
+  "owner/boxes": typeof owner_boxes;
+  "owner/checkout": typeof owner_checkout;
   ownerEmail: typeof ownerEmail;
   settings: typeof settings;
   "staff/alerts": typeof staff_alerts;
@@ -198,9 +203,6 @@ declare const fullApi: ApiFromModules<{
   "staff/stats": typeof staff_stats;
   "staff/users": typeof staff_users;
   time: typeof time;
-  "user/boxConfig": typeof user_boxConfig;
-  "user/boxes": typeof user_boxes;
-  "user/checkout": typeof user_checkout;
   users: typeof users;
 }>;
 

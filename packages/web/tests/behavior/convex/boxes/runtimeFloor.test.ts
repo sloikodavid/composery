@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
-import { OPERATION_ALLOWED_STATUSES } from "@/convex/model/box/operation";
+import { BOX_OPERATIONS } from "@/convex/model/box/operation";
 import { FLOOR_UPDATE_STATUSES } from "@/convex/boxes/runtimeFloor";
 
 import {
@@ -67,7 +67,7 @@ describe("selecting boxes past the floor deadline", () => {
 	// `running` alone and filtered on this same table afterwards, which is a
 	// filter no row could fail - and it hid `update_failed` completely.
 	test("sweeps exactly the statuses an update may begin from", () => {
-		expect(FLOOR_UPDATE_STATUSES).toBe(OPERATION_ALLOWED_STATUSES.update);
+		expect(FLOOR_UPDATE_STATUSES).toBe(BOX_OPERATIONS.update.from);
 		expect(FLOOR_UPDATE_STATUSES).toContain("update_failed");
 	});
 

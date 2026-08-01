@@ -30,21 +30,21 @@ import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
-	const detail = useQuery(api.user.boxes.getById, { boxId });
+	const detail = useQuery(api.owner.boxes.getById, { boxId });
 	const metricsSeries = useQuery(
-		api.user.boxes.metricsSeries,
+		api.owner.boxes.metricsSeries,
 		detail ? { slug: detail.box.slug, range } : "skip"
 	);
-	const customerPortalUrl = useAction(api.user.boxes.customerPortalUrl);
-	const stopBox = useMutation(api.user.boxes.stop);
-	const startBox = useMutation(api.user.boxes.start);
-	const resetBox = useMutation(api.user.boxes.reset);
-	const retryCreate = useMutation(api.user.boxes.retryCreate);
-	const changeSlug = useMutation(api.user.boxes.changeSlug);
-	const repair = useAction(api.user.boxes.repair);
-	const updateBox = useAction(api.user.boxes.update);
-	const recoveryStatus = useAction(api.user.boxes.recoveryStatus);
-	const runtimeLogs = useAction(api.user.boxes.runtimeLogs);
+	const customerPortalUrl = useAction(api.owner.boxes.customerPortalUrl);
+	const stopBox = useMutation(api.owner.boxes.stop);
+	const startBox = useMutation(api.owner.boxes.start);
+	const resetBox = useMutation(api.owner.boxes.reset);
+	const retryCreate = useMutation(api.owner.boxes.retryCreate);
+	const changeSlug = useMutation(api.owner.boxes.changeSlug);
+	const repair = useAction(api.owner.boxes.repair);
+	const updateBox = useAction(api.owner.boxes.update);
+	const recoveryStatus = useAction(api.owner.boxes.recoveryStatus);
+	const runtimeLogs = useAction(api.owner.boxes.runtimeLogs);
 	const { busy, run } = useBusyAction();
 
 	if (detail === undefined) return null;

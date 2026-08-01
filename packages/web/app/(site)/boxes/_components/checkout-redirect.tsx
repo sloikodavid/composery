@@ -14,7 +14,7 @@ import { boxPath } from "@/convex/model/box/path";
 export function CheckoutRedirect({ checkoutId }: { checkoutId?: string }) {
 	const router = useRouter();
 	const checkout = useQuery(
-		api.user.checkout.completedCheckout,
+		api.owner.checkout.completedCheckout,
 		checkoutId ? { checkoutId } : "skip"
 	);
 	const outcome = checkout?.outcome;

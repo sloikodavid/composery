@@ -1375,7 +1375,7 @@ describe("refusing to purge a box that is not due", () => {
 				await ctx.db.insert("box_events", {
 					box_id: boxId,
 					user_id: "user_owner",
-					type: "box.created",
+					type: "box.create_succeeded",
 					message: "created",
 					created_at: 1
 				})

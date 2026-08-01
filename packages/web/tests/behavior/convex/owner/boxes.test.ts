@@ -61,7 +61,7 @@ describe("reading a box", () => {
 			slug: "mine"
 		});
 
-		const result = await mine.as.query(api.user.boxes.getById, { boxId });
+		const result = await mine.as.query(api.owner.boxes.getById, { boxId });
 
 		expect(result?.box).toMatchObject({ id: boxId, slug: "mine" });
 	});
@@ -71,7 +71,7 @@ describe("reading a box", () => {
 		const { mine, theirs } = await twoOwners(t);
 		const boxId = await seedBox(t, { user_id: mine.clerkUserId });
 
-		expect(await theirs.as.query(api.user.boxes.getById, { boxId })).toBeNull();
+		expect(await theirs.as.query(api.owner.boxes.getById, { boxId })).toBeNull();
 	});
 
 	test("hides a deleted box from its former owner", async () => {
@@ -82,7 +82,7 @@ describe("reading a box", () => {
 			status: "deleted"
 		});
 
-		expect(await mine.as.query(api.user.boxes.getById, { boxId })).toBeNull();
+		expect(await mine.as.query(api.owner.boxes.getById, { boxId })).toBeNull();
 	});
 
 	// A malformed id must read as "no box", not as an error that says the id was
@@ -92,7 +92,7 @@ describe("reading a box", () => {
 		const { mine } = await twoOwners(t);
 
 		expect(
-			await mine.as.query(api.user.boxes.getById, { boxId: "not-an-id" })
+			await mine.as.query(api.owner.boxes.getById, { boxId: "not-an-id" })
 		).toBeNull();
 	});
 
@@ -101,7 +101,7 @@ describe("reading a box", () => {
 		const { mine } = await twoOwners(t);
 		const boxId = await seedBox(t, { user_id: mine.clerkUserId });
 
-		await expect(t.query(api.user.boxes.getById, { boxId })).rejects.toThrow(
+		await expect(t.query(api.owner.boxes.getById, { boxId })).rejects.toThrow(
 			/Authentication required/
 		);
 	});
@@ -118,7 +118,7 @@ describe("reading a box", () => {
 		const boxId = await seedBox(t, { user_id: suspended.clerkUserId });
 
 		await expect(
-			suspended.as.query(api.user.boxes.getById, { boxId })
+			suspended.as.query(api.owner.boxes.getById, { boxId })
 		).rejects.toMatchObject({
 			data: {
 				kind: "account_unavailable",
@@ -136,7 +136,7 @@ describe("listing boxes", () => {
 		await seedBox(t, { user_id: mine.clerkUserId, slug: "mine" });
 		await seedBox(t, { user_id: theirs.clerkUserId, slug: "theirs" });
 
-		const page = await mine.as.query(api.user.boxes.list, {
+		const page = await mine.as.query(api.owner.boxes.list, {
 			paginationOpts: { cursor: null, numItems: 10 }
 		});
 
@@ -153,7 +153,7 @@ describe("listing boxes", () => {
 			status: "deleted"
 		});
 
-		const page = await mine.as.query(api.user.boxes.list, {
+		const page = await mine.as.query(api.owner.boxes.list, {
 			paginationOpts: { cursor: null, numItems: 10 }
 		});
 
@@ -167,7 +167,7 @@ describe("listing boxes", () => {
 
 		const page = await t
 			.withIdentity({ subject: "brand_new", email: "new@example.com" })
-			.query(api.user.boxes.list, {
+			.query(api.owner.boxes.list, {
 				paginationOpts: { cursor: null, numItems: 10 }
 			});
 
@@ -185,7 +185,7 @@ describe("acting on a box", () => {
 			status: "running"
 		});
 
-		await mine.as.mutation(api.user.boxes.stop, { slug: "mine" });
+		await mine.as.mutation(api.owner.boxes.stop, { slug: "mine" });
 
 		expect(await readBox(t, boxId)).toMatchObject({ status: "stopping" });
 	});
@@ -200,7 +200,7 @@ describe("acting on a box", () => {
 		});
 
 		await expect(
-			theirs.as.mutation(api.user.boxes.stop, { slug: "mine" })
+			theirs.as.mutation(api.owner.boxes.stop, { slug: "mine" })
 		).rejects.toThrow(/Box not found/);
 		expect(await readBox(t, boxId)).toMatchObject({ status: "running" });
 	});
@@ -217,10 +217,10 @@ describe("acting on a box", () => {
 		});
 
 		const forOthers = await theirs.as
-			.mutation(api.user.boxes.stop, { slug: "mine" })
+			.mutation(api.owner.boxes.stop, { slug: "mine" })
 			.catch((error: unknown) => String((error as { data: string }).data));
 		const forMissing = await theirs.as
-			.mutation(api.user.boxes.stop, { slug: "nothing-here" })
+			.mutation(api.owner.boxes.stop, { slug: "nothing-here" })
 			.catch((error: unknown) => String((error as { data: string }).data));
 
 		expect(forOthers).toBe(forMissing);
@@ -236,7 +236,7 @@ describe("acting on a box", () => {
 		});
 
 		await expect(
-			mine.as.mutation(api.user.boxes.reset, {
+			mine.as.mutation(api.owner.boxes.reset, {
 				confirmation: "Mine",
 				slug: "mine"
 			})
@@ -253,7 +253,7 @@ describe("acting on a box", () => {
 			status: "running"
 		});
 
-		await mine.as.mutation(api.user.boxes.reset, {
+		await mine.as.mutation(api.owner.boxes.reset, {
 			confirmation: "mine",
 			slug: "mine"
 		});
@@ -304,7 +304,7 @@ describe("the certificate reissue budget", () => {
 		);
 
 		await expect(
-			mine.as.mutation(api.user.boxes.reset, {
+			mine.as.mutation(api.owner.boxes.reset, {
 				confirmation: "mine",
 				slug: "mine"
 			})
@@ -329,7 +329,7 @@ describe("the certificate reissue budget", () => {
 		]);
 
 		await expect(
-			mine.as.mutation(api.user.boxes.reset, {
+			mine.as.mutation(api.owner.boxes.reset, {
 				confirmation: "mine",
 				slug: "mine"
 			})
@@ -355,7 +355,7 @@ describe("the certificate reissue budget", () => {
 			}))
 		);
 
-		await mine.as.mutation(api.user.boxes.reset, {
+		await mine.as.mutation(api.owner.boxes.reset, {
 			confirmation: "mine",
 			slug: "mine"
 		});
@@ -380,7 +380,7 @@ describe("the certificate reissue budget", () => {
 			}))
 		);
 
-		await mine.as.mutation(api.user.boxes.reset, {
+		await mine.as.mutation(api.owner.boxes.reset, {
 			confirmation: "mine",
 			slug: "mine"
 		});
@@ -399,7 +399,7 @@ describe("changing a box's address", () => {
 			status: "running"
 		});
 
-		const result = await mine.as.mutation(api.user.boxes.changeSlug, {
+		const result = await mine.as.mutation(api.owner.boxes.changeSlug, {
 			newSlug: "new",
 			slug: "old"
 		});
@@ -419,7 +419,7 @@ describe("changing a box's address", () => {
 			status: "running"
 		});
 
-		const result = await mine.as.mutation(api.user.boxes.changeSlug, {
+		const result = await mine.as.mutation(api.owner.boxes.changeSlug, {
 			newSlug: "  New-Slug  ",
 			slug: "old"
 		});
@@ -437,7 +437,7 @@ describe("changing a box's address", () => {
 		await seedBox(t, { user_id: theirs.clerkUserId, slug: "taken" });
 
 		await expect(
-			mine.as.mutation(api.user.boxes.changeSlug, {
+			mine.as.mutation(api.owner.boxes.changeSlug, {
 				newSlug: "taken",
 				slug: "old"
 			})
@@ -450,7 +450,7 @@ describe("changing a box's address", () => {
 		await seedBox(t, { user_id: mine.clerkUserId, slug: "old" });
 
 		await expect(
-			mine.as.mutation(api.user.boxes.changeSlug, {
+			mine.as.mutation(api.owner.boxes.changeSlug, {
 				newSlug: "-",
 				slug: "old"
 			})
@@ -484,7 +484,7 @@ describe("snapshots", () => {
 		const boxId = await seedBox(t, { user_id: mine.clerkUserId, slug: "mine" });
 		const snapshotId = await completeSnapshot(t, boxId, mine.clerkUserId);
 
-		const rows = await mine.as.query(api.user.boxes.snapshots, {
+		const rows = await mine.as.query(api.owner.boxes.snapshots, {
 			slug: "mine"
 		});
 
@@ -498,7 +498,7 @@ describe("snapshots", () => {
 		await completeSnapshot(t, boxId, mine.clerkUserId);
 
 		expect(
-			await theirs.as.query(api.user.boxes.snapshots, { slug: "mine" })
+			await theirs.as.query(api.owner.boxes.snapshots, { slug: "mine" })
 		).toEqual([]);
 	});
 
@@ -513,7 +513,7 @@ describe("snapshots", () => {
 		const snapshotId = await completeSnapshot(t, boxId, mine.clerkUserId);
 
 		await expect(
-			theirs.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId })
+			theirs.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId })
 		).rejects.toThrow(/Snapshot not found/);
 	});
 
@@ -533,7 +533,7 @@ describe("snapshots", () => {
 		);
 
 		await expect(
-			mine.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId })
+			mine.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId })
 		).rejects.toThrow(/finished snapshot/);
 	});
 
@@ -547,7 +547,7 @@ describe("snapshots", () => {
 		});
 		const snapshotId = await completeSnapshot(t, boxId, mine.clerkUserId);
 
-		await mine.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId });
+		await mine.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId });
 
 		expect(await readBox(t, boxId)).toMatchObject({ status: "restoring" });
 	});
@@ -559,7 +559,7 @@ describe("snapshots", () => {
 		const snapshotId = await completeSnapshot(t, boxId, mine.clerkUserId);
 
 		await expect(
-			theirs.as.mutation(api.user.boxes.deleteSnapshot, { snapshotId })
+			theirs.as.mutation(api.owner.boxes.deleteSnapshot, { snapshotId })
 		).rejects.toThrow(/Snapshot not found/);
 		expect(
 			await t.run(async (ctx) => await ctx.db.get(snapshotId))
@@ -572,7 +572,7 @@ describe("snapshots", () => {
 		const boxId = await seedBox(t, { user_id: mine.clerkUserId, slug: "mine" });
 		const snapshotId = await completeSnapshot(t, boxId, mine.clerkUserId);
 
-		await mine.as.mutation(api.user.boxes.deleteSnapshot, { snapshotId });
+		await mine.as.mutation(api.owner.boxes.deleteSnapshot, { snapshotId });
 
 		expect(
 			await t.run(async (ctx) => await ctx.db.get(snapshotId))
@@ -606,7 +606,7 @@ describe("opening the subscription portal", () => {
 		const owner = await ownedBox(t, "deleting");
 
 		await expect(
-			owner.as.action(api.user.boxes.customerPortalUrl, { slug: "atlas" })
+			owner.as.action(api.owner.boxes.customerPortalUrl, { slug: "atlas" })
 		).rejects.toThrow("Subscription management is unavailable");
 	});
 
@@ -618,7 +618,7 @@ describe("opening the subscription portal", () => {
 		const owner = await ownedBox(t, "deleted");
 
 		await expect(
-			owner.as.action(api.user.boxes.customerPortalUrl, { slug: "atlas" })
+			owner.as.action(api.owner.boxes.customerPortalUrl, { slug: "atlas" })
 		).rejects.toThrow("Box not found.");
 	});
 });
@@ -725,7 +725,7 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 			...(needsSnapshot ? { snapshotId: box.snapshotId } : {}),
 			...rest
 		};
-		const reference = api.user.boxes[name];
+		const reference = api.owner.boxes[name];
 		if (kind === "query") return as.query(reference as never, args as never);
 		if (kind === "action") return as.action(reference as never, args as never);
 		return as.mutation(reference as never, args as never);
@@ -816,7 +816,7 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 			email: "stranger@example.com"
 		});
 
-		const page = (await stranger.as.query(api.user.boxes.list, {
+		const page = (await stranger.as.query(api.owner.boxes.list, {
 			paginationOpts: PAGE
 		})) as { page: unknown[] };
 
@@ -850,7 +850,7 @@ describe("what an owner's own buttons do", () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t);
 
-			await owner.as.action(api.user.boxes.repair, { slug: "mine" });
+			await owner.as.action(api.owner.boxes.repair, { slug: "mine" });
 
 			expect(await boxOperations(t, boxId)).toMatchObject([
 				{ type: "repair", trigger: "owner" }
@@ -862,11 +862,11 @@ describe("what an owner's own buttons do", () => {
 		test("tells the owner when a repair is already running", async () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t);
-			await owner.as.action(api.user.boxes.repair, { slug: "mine" });
+			await owner.as.action(api.owner.boxes.repair, { slug: "mine" });
 
 			await expect(
-				owner.as.action(api.user.boxes.repair, { slug: "mine" })
-			).rejects.toThrow(/already being repaired|busy/);
+				owner.as.action(api.owner.boxes.repair, { slug: "mine" })
+			).rejects.toThrow(/already in flight|busy/);
 			expect(await boxOperations(t, boxId)).toHaveLength(1);
 		});
 
@@ -878,7 +878,7 @@ describe("what an owner's own buttons do", () => {
 				const t = testConvex();
 				const { boxId, owner } = await myBox(t);
 
-				await owner.as.action(api.user.boxes.repair, { slug });
+				await owner.as.action(api.owner.boxes.repair, { slug });
 
 				expect(await boxOperations(t, boxId)).toHaveLength(1);
 			}
@@ -890,7 +890,7 @@ describe("what an owner's own buttons do", () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t);
 
-			await owner.as.action(api.user.boxes.update, { slug: "mine" });
+			await owner.as.action(api.owner.boxes.update, { slug: "mine" });
 
 			expect(await boxOperations(t, boxId)).toMatchObject([
 				{ type: "update", trigger: "owner" }
@@ -902,11 +902,11 @@ describe("what an owner's own buttons do", () => {
 		test("tells the owner when an update is already running", async () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t);
-			await owner.as.action(api.user.boxes.update, { slug: "mine" });
+			await owner.as.action(api.owner.boxes.update, { slug: "mine" });
 
 			await expect(
-				owner.as.action(api.user.boxes.update, { slug: "mine" })
-			).rejects.toThrow(/already being updated|busy/);
+				owner.as.action(api.owner.boxes.update, { slug: "mine" })
+			).rejects.toThrow(/already in flight|busy/);
 			expect(await boxOperations(t, boxId)).toHaveLength(1);
 		});
 	});
@@ -916,7 +916,7 @@ describe("what an owner's own buttons do", () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t, { status: "create_failed" });
 
-			await owner.as.mutation(api.user.boxes.retryCreate, { slug: "mine" });
+			await owner.as.mutation(api.owner.boxes.retryCreate, { slug: "mine" });
 
 			expect(await boxOperations(t, boxId)).toMatchObject([
 				{ type: "create", trigger: "owner" }
@@ -929,9 +929,9 @@ describe("what an owner's own buttons do", () => {
 			const t = testConvex();
 			const { boxId, owner } = await myBox(t, { status: "create_failed" });
 
-			await owner.as.mutation(api.user.boxes.retryCreate, { slug: "mine" });
+			await owner.as.mutation(api.owner.boxes.retryCreate, { slug: "mine" });
 			await owner.as
-				.mutation(api.user.boxes.retryCreate, { slug: "mine" })
+				.mutation(api.owner.boxes.retryCreate, { slug: "mine" })
 				.catch(() => undefined);
 
 			expect(await boxOperations(t, boxId)).toHaveLength(1);
@@ -944,7 +944,7 @@ describe("what an owner's own buttons do", () => {
 			const { boxId, owner } = await myBox(t);
 
 			expect(
-				await owner.as.mutation(api.user.boxes.changeSlug, {
+				await owner.as.mutation(api.owner.boxes.changeSlug, {
 					newSlug: "renamed",
 					slug: "mine"
 				})
@@ -966,7 +966,7 @@ describe("what an owner's own buttons do", () => {
 			const { boxId, owner } = await myBox(t);
 
 			expect(
-				await owner.as.mutation(api.user.boxes.changeSlug, {
+				await owner.as.mutation(api.owner.boxes.changeSlug, {
 					newSlug: "  Renamed  ",
 					slug: "mine"
 				})
@@ -983,7 +983,7 @@ describe("what an owner's own buttons do", () => {
 				const { boxId, owner } = await myBox(t);
 
 				await expect(
-					owner.as.mutation(api.user.boxes.changeSlug, {
+					owner.as.mutation(api.owner.boxes.changeSlug, {
 						newSlug,
 						slug: "mine"
 					})
@@ -1003,7 +1003,7 @@ describe("what an owner's own buttons do", () => {
 			});
 
 			await expect(
-				stranger.as.mutation(api.user.boxes.changeSlug, {
+				stranger.as.mutation(api.owner.boxes.changeSlug, {
 					newSlug: "!!",
 					slug: "mine"
 				})
@@ -1016,7 +1016,7 @@ describe("what an owner's own buttons do", () => {
 			await seedBox(t, { user_id: owner.clerkUserId, slug: "taken" });
 
 			await expect(
-				owner.as.mutation(api.user.boxes.changeSlug, {
+				owner.as.mutation(api.owner.boxes.changeSlug, {
 					newSlug: "taken",
 					slug: "mine"
 				})
@@ -1042,7 +1042,7 @@ describe("what an owner's own buttons do", () => {
 				});
 			});
 
-			const samples = await owner.as.query(api.user.boxes.metricsSeries, {
+			const samples = await owner.as.query(api.owner.boxes.metricsSeries, {
 				slug: "mine"
 			});
 
@@ -1056,7 +1056,7 @@ describe("what an owner's own buttons do", () => {
 			const { owner } = await myBox(t);
 
 			expect(
-				await owner.as.query(api.user.boxes.metricsSeries, { slug: "mine" })
+				await owner.as.query(api.owner.boxes.metricsSeries, { slug: "mine" })
 			).toEqual([{ slug: "mine", samples: [] }]);
 		});
 	});
@@ -1098,12 +1098,12 @@ describe("pressing a button twice", () => {
 	// the owner is told for a repeat (null where the repeat is silent).
 	const REPEATS = {
 		createSnapshot: { kind: "mutation", from: "running", repeat: /already/ },
-		repair: { kind: "action", from: "running", repeat: /already being/ },
+		repair: { kind: "action", from: "running", repeat: /already in flight/ },
 		reset: { kind: "mutation", from: "running", repeat: null },
 		retryCreate: { kind: "mutation", from: "create_failed", repeat: null },
 		start: { kind: "mutation", from: "stopped", repeat: null },
 		stop: { kind: "mutation", from: "running", repeat: null },
-		update: { kind: "action", from: "running", repeat: /already being/ }
+		update: { kind: "action", from: "running", repeat: /already in flight/ }
 	} as const;
 
 	// Reset asks for the slug typed back as confirmation; nothing else takes an
@@ -1113,7 +1113,7 @@ describe("pressing a button twice", () => {
 		name: keyof typeof REPEATS,
 		slug = "atlas"
 	) => {
-		const reference = api.user.boxes[name];
+		const reference = api.owner.boxes[name];
 		const payload = {
 			slug,
 			...(name === "reset" ? { confirmation: slug } : {})
@@ -1179,11 +1179,11 @@ describe("pressing a button twice", () => {
 			const t = testConvex();
 			const { boxId, owner } = await box(t);
 
-			await owner.as.mutation(api.user.boxes.changeSlug, {
+			await owner.as.mutation(api.owner.boxes.changeSlug, {
 				slug: "atlas",
 				newSlug: "renamed"
 			});
-			await owner.as.mutation(api.user.boxes.changeSlug, {
+			await owner.as.mutation(api.owner.boxes.changeSlug, {
 				slug: "atlas",
 				newSlug: "renamed"
 			});
@@ -1198,13 +1198,13 @@ describe("pressing a button twice", () => {
 			const t = testConvex();
 			const { boxId, owner } = await box(t);
 
-			await owner.as.mutation(api.user.boxes.changeSlug, {
+			await owner.as.mutation(api.owner.boxes.changeSlug, {
 				slug: "atlas",
 				newSlug: "first"
 			});
 
 			await expect(
-				owner.as.mutation(api.user.boxes.changeSlug, {
+				owner.as.mutation(api.owner.boxes.changeSlug, {
 					slug: "atlas",
 					newSlug: "second"
 				})
@@ -1234,11 +1234,11 @@ describe("pressing a button twice", () => {
 			const { boxId, owner } = await box(t);
 			const snapshotId = await snapshot(t, boxId, NOW - 1000);
 
-			await owner.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId });
+			await owner.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId });
 
 			await expect(
-				owner.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId })
-			).rejects.toThrow("Restore is already in progress.");
+				owner.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId })
+			).rejects.toThrow(/already in flight/);
 			expect(await boxOperations(t, boxId)).toHaveLength(1);
 		});
 
@@ -1261,7 +1261,7 @@ describe("pressing a button twice", () => {
 				);
 
 				await expect(
-					owner.as.mutation(api.user.boxes.restoreSnapshot, { snapshotId })
+					owner.as.mutation(api.owner.boxes.restoreSnapshot, { snapshotId })
 				).rejects.toThrow("Only a finished snapshot can be restored.");
 				expect(await boxOperations(t, boxId)).toEqual([]);
 			}
@@ -1290,7 +1290,7 @@ describe("reading a box's logs", () => {
 		const owner = await box(t, status);
 
 		expect(
-			await owner.as.action(api.user.boxes.runtimeLogs, { slug: "atlas" })
+			await owner.as.action(api.owner.boxes.runtimeLogs, { slug: "atlas" })
 		).toEqual({ logs: null });
 	});
 
@@ -1299,7 +1299,7 @@ describe("reading a box's logs", () => {
 		const owner = await box(t, "running");
 
 		await expect(
-			owner.as.action(api.user.boxes.runtimeLogs, { slug: "nothing-here" })
+			owner.as.action(api.owner.boxes.runtimeLogs, { slug: "nothing-here" })
 		).rejects.toThrow("Box not found.");
 	});
 });

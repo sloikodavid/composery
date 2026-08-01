@@ -56,8 +56,14 @@ export function projects(
 			test: {
 				name: `${suite.name}:${kind}`,
 				root: path(suite.root),
-				include: [`tests/${kind}/**/*.test.ts`],
-				environment: "node" as const,
+				// `.tsx` too, because the layout enforcer accepts one and vitest's own
+				// default include does: a glob narrower than both would leave a real
+				// test file unscheduled and report zero failures forever.
+				//
+				// No `environment`: vitest's default is already `node`, and a file that
+				// needs a DOM says so in a `// @vitest-environment jsdom` docblock,
+				// which is the only place the choice is visible per test.
+				include: [`tests/${kind}/**/*.test.{ts,tsx}`],
 				testTimeout: KINDS[kind] * slowdown,
 				// Setup is where a harness boots - a backend, a prebuild, a container
 				// fixture - so a hook that inherited vitest's stock 10s while its tests

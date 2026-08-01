@@ -13,7 +13,7 @@ import {
 	autoRepairDecision,
 	type AutoRepairFacts
 } from "@/convex/boxes/autoRepair";
-import { OPERATION_ALLOWED_STATUSES } from "@/convex/model/box/operation";
+import { BOX_OPERATIONS } from "@/convex/model/box/operation";
 
 import {
 	boxOperations,
@@ -159,11 +159,11 @@ describe("autoRepairDecision", () => {
 describe("the sweep feeds every status the decision can act on", () => {
 	test("probes exactly the statuses a repair may begin from", () => {
 		expect([...SWEPT_STATUSES].sort()).toEqual(
-			[...OPERATION_ALLOWED_STATUSES.repair].sort()
+			[...BOX_OPERATIONS.repair.from].sort()
 		);
 	});
 
-	test.each(OPERATION_ALLOWED_STATUSES.repair)(
+	test.each(BOX_OPERATIONS.repair.from)(
 		"sweeps %s, which the decision can approve",
 		(status) => {
 			expect(SWEPT_STATUSES).toContain(status);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { BOX_STATUSES, type BoxStatus } from "@/convex/model/box/status";
-import { type BoxOperationType, OPERATION_ALLOWED_STATUSES, OPERATION_FAILURE_STATUS, boxEventType } from "@/convex/model/box/operation";
+import { type BoxOperationType, BOX_OPERATIONS, BOX_OPERATION_TYPES, boxEventType } from "@/convex/model/box/operation";
 import { HOUR_MS } from "@/convex/time";
 import {
 	operationLiveness,
@@ -109,18 +109,18 @@ describe("operationLiveness", () => {
 	});
 });
 
-// The sweep puts a rescued box into the status `OPERATION_FAILURE_STATUS` names,
+// The sweep puts a rescued box into the status `BOX_OPERATIONS` names,
 // so that table has to answer for every operation type - and has to name a status
 // that actually exists.
-describe("OPERATION_FAILURE_STATUS", () => {
-	const types = Object.keys(OPERATION_FAILURE_STATUS) as BoxOperationType[];
+describe("BOX_OPERATIONS", () => {
+	const types = BOX_OPERATION_TYPES as BoxOperationType[];
 
 	test("covers every operation type", () => {
 		expect(types.length).toBeGreaterThanOrEqual(14);
 	});
 
 	test.each(types)("%s names a real box status", (type) => {
-		const status = OPERATION_FAILURE_STATUS[type];
+		const status = BOX_OPERATIONS[type].onFailure ?? undefined;
 		if (status !== undefined) expect(BOX_STATUSES).toContain(status);
 	});
 
@@ -137,9 +137,9 @@ describe("OPERATION_FAILURE_STATUS", () => {
 	test.each(types)(
 		"%s leaves the box in a status delete can act on",
 		(type) => {
-			const status = OPERATION_FAILURE_STATUS[type];
+			const status = BOX_OPERATIONS[type].onFailure ?? undefined;
 			if (status === undefined) return;
-			expect(OPERATION_ALLOWED_STATUSES.delete).toContain(status);
+			expect(BOX_OPERATIONS.delete.from).toContain(status);
 		}
 	);
 
@@ -147,7 +147,7 @@ describe("OPERATION_FAILURE_STATUS", () => {
 	// flight" - the operation is precisely what has just stopped, so the box would
 	// look busy with nothing running and refuse every action.
 	test.each(types)("%s does not leave the box looking busy", (type) => {
-		const status = OPERATION_FAILURE_STATUS[type];
+		const status = BOX_OPERATIONS[type].onFailure ?? undefined;
 		if (status === undefined) return;
 		expect(TRANSIENT_STATUSES).not.toContain(status);
 	});

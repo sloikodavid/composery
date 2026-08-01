@@ -1,12 +1,39 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
 	compareEntries,
 	entryLabel,
 	GIT_FILE_ARGS,
 	linkTarget,
-	MODES
+	MODES,
+	syncTick
 } from "../../scripts/tree.mjs";
+
+// A locked file is the normal state of this one - ripgrep maps it during a
+// search, an editor or a scanner opens it, every agent follows
+// `CLAUDE.md` to it - and Windows refuses the write. Node reports `UNKNOWN`,
+// which ended the watch and took `pnpm dev` with it. `readFileSync` returns
+// nothing so the tick has something to write.
+vi.mock("node:fs", async (importOriginal) => ({
+	...(await importOriginal<typeof import("node:fs")>()),
+	readFileSync: () => "",
+	writeFileSync: () => {
+		throw Object.assign(new Error("UNKNOWN: unknown error, open"), {
+			code: "UNKNOWN"
+		});
+	}
+}));
+
+describe("tree watch", () => {
+	test("survives a write the operating system refuses", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		expect(syncTick()).toBe(false);
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining("UNKNOWN"));
+
+		warn.mockRestore();
+	});
+});
 
 describe("tree path discovery", () => {
 	test("includes unstaged new files but not ignored scratch", () => {

@@ -6,12 +6,12 @@ import { describe, expect, test } from "vitest";
 // Every owner-facing endpoint is checked against somebody who does not own the
 // box.
 //
-// `convex/user/boxes.ts` is the boundary between two paying customers. Each
+// `convex/owner/boxes.ts` is the boundary between two paying customers. Each
 // endpoint resolves its box by (owner, slug) rather than by id, so the ownership
 // check is the lookup itself rather than a separate guard - easy to get right,
 // and easy to regress in one line. Behind it are stop, reset, rename and delete.
 //
-// The behaviour is tested in `tests/behavior/convex/user/boxes.test.ts`, whose
+// The behaviour is tested in `tests/behavior/convex/owner/boxes.test.ts`, whose
 // `ENDPOINTS` table drives every one of them as a signed-out caller and as a
 // different signed-in customer, and asserts that a write refuses without
 // confirming the box exists while a read answers with nothing at all. What that
@@ -26,14 +26,14 @@ const read = (path: string) =>
 	readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 function publicEndpoints() {
-	const source = read("../../../convex/user/boxes.ts");
+	const source = read("../../../convex/owner/boxes.ts");
 	return [
 		...source.matchAll(/export const (\w+) = (query|mutation|action)\(/g)
 	].map((match) => match[1] as string);
 }
 
 function coveredEndpoints() {
-	const source = read("../../behavior/convex/user/boxes.test.ts");
+	const source = read("../../behavior/convex/owner/boxes.test.ts");
 	const table = /const ENDPOINTS = \{([\s\S]*?)\n\t\} as const;/.exec(source);
 	return [...(table?.[1] ?? "").matchAll(/^\t\t(\w+):/gm)].map(
 		(match) => match[1] as string

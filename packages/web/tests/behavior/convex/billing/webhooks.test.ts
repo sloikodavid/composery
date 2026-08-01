@@ -25,7 +25,7 @@ const { CHECKOUT_INTENT_METADATA_KEYS } =
 	await import("@/convex/checkout/checkoutIntents");
 // The real slug, because a fixture spelling it by hand would keep passing after
 // the field was renamed in Polar and here.
-const { TERMS_FIELD_SLUG } = await import("@/lib/cloud-legal");
+const { TERMS_FIELD_SLUG } = await import("@/convex/model/legal");
 const {
 	boxOperations,
 	readBox,

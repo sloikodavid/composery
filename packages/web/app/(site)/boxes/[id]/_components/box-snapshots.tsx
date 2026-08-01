@@ -18,11 +18,11 @@ export function BoxSnapshots({
 	split: SnapshotSplit;
 	status: BoxStatus;
 }) {
-	const snapshots = useQuery(api.user.boxes.snapshots, { slug });
-	const createSnapshot = useMutation(api.user.boxes.createSnapshot);
-	const restoreSnapshot = useMutation(api.user.boxes.restoreSnapshot);
-	const deleteSnapshot = useMutation(api.user.boxes.deleteSnapshot);
-	const setSnapshotSplit = useMutation(api.user.boxes.setSnapshotSplit);
+	const snapshots = useQuery(api.owner.boxes.snapshots, { slug });
+	const createSnapshot = useMutation(api.owner.boxes.createSnapshot);
+	const restoreSnapshot = useMutation(api.owner.boxes.restoreSnapshot);
+	const deleteSnapshot = useMutation(api.owner.boxes.deleteSnapshot);
+	const setSnapshotSplit = useMutation(api.owner.boxes.setSnapshotSplit);
 
 	return (
 		<SnapshotsDialog
