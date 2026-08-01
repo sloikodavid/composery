@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { cn } from "@/lib/utils";
+import { cn } from "@/ui/lib/utils";
 
 // A product screenshot that swaps with the theme so the shot always matches the
 // page it sits on: the light UI render on light pages, the dark UI render on

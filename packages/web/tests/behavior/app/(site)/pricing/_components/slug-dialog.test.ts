@@ -50,9 +50,9 @@ vi.mock("convex/react", () => ({
 vi.mock("sonner", () => ({
 	toast: { error: vi.fn(), success: vi.fn() }
 }));
-vi.mock("@/components/animated-icon", () => import("@/tests/support/ui"));
-vi.mock("@/components/base/dialog", () => import("@/tests/support/ui"));
-vi.mock("@/components/base/input", () => import("@/tests/support/ui"));
+vi.mock("@/ui/animated-icon", () => import("@/tests/support/ui"));
+vi.mock("@/ui/base/dialog", () => import("@/tests/support/ui"));
+vi.mock("@/ui/base/input", () => import("@/tests/support/ui"));
 vi.mock("@/app/(site)/pricing/_components/fading-text", () => ({
 	FadingText: ({ text }: { text: string }) => text
 }));

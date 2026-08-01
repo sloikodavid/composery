@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/ui/lib/utils";
 
 export function FadingText({
 	className,

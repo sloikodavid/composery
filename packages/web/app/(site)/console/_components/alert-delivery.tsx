@@ -3,7 +3,7 @@
 import { useQuery } from "convex/react";
 import { TriangleAlertIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateTime } from "@/ui/lib/datetime";
 
 // Only renders when email delivery is unhealthy, so a working deployment shows
 // nothing here.

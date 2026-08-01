@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { source } from "@/lib/source";
+import { source } from "@/ui/lib/source";
 import { WEBSITE_ORIGIN } from "shared";
 
 // Public, indexable routes only; auth-gated surfaces (/boxes, /console) and

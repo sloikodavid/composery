@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { Footer } from "@/components/footer";
-import { Header } from "@/components/header";
+import { Footer } from "@/ui/footer";
+import { Header } from "@/ui/header";
 
 // The marketing/app chrome: the floating Header pill plus the width-constrained
 // content column. Lives in this route group (not the root layout) so the /docs

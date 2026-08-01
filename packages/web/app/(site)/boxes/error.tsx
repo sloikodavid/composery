@@ -1,10 +1,10 @@
 "use client";
 
 import { ConstructionIcon } from "lucide-react";
-import { PageTemplate } from "@/components/page-template";
-import { Card, CardContent } from "@/components/base/card";
-import { ErrorPage, type ErrorBoundaryProps } from "@/components/error-page";
-import { accountBlock } from "@/lib/error-message";
+import { PageTemplate } from "@/ui/page-template";
+import { Card, CardContent } from "@/ui/base/card";
+import { ErrorPage, type ErrorBoundaryProps } from "@/ui/error-page";
+import { accountBlock } from "@/ui/lib/error-message";
 
 // Every Convex entry point behind these pages refuses a suspended or
 // mid-deletion account the same way, and says why in the same two strings (see

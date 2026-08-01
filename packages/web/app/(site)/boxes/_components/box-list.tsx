@@ -3,14 +3,11 @@
 import { usePaginatedQuery } from "convex/react";
 import { LoaderIcon } from "lucide-react";
 import Link from "next/link";
-import {
-	AnimatedIconAnchor,
-	AnimatedIconButton
-} from "@/components/animated-icon";
-import { StatusText } from "@/components/boxes/status-text";
-import { buttonVariants } from "@/components/base/button";
+import { AnimatedIconAnchor, AnimatedIconButton } from "@/ui/animated-icon";
+import { StatusText } from "@/ui/box/status-text";
+import { buttonVariants } from "@/ui/base/button";
 import { api } from "@/convex/_generated/api";
-import { formatDate } from "@/lib/datetime";
+import { formatDate } from "@/ui/lib/datetime";
 import { boxPath } from "@/convex/model/box/path";
 
 const BOX_PAGE_SIZE = 25;

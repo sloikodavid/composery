@@ -5,47 +5,59 @@
 // plain .json file to say why an entry exists - and an ignore list without
 // reasons is one nobody can ever safely shrink.
 //
-// ignoreDependencies holds tools reached other than by import: shadcn is a CLI,
-// tailwindcss and tw-animate-css are consumed from CSS
-// that knip does not follow, and sharp/png-to-ico/fontkit are used by the shared
-// asset generators through dynamic requires. @vscode/codicons and lucide-static
-// are read as files rather than imported - the colour console serves
+// Nothing here restates a default. knip reports an entry that changes no result
+// as a configuration hint, and an exclusion carried past the problem it solved
+// is the kind that outlives every reason anyone could give for it - so a name
+// below is a claim that knip gets this one wrong, and `pnpm check:knip` prints a
+// hint the moment that stops being true.
+//
+// packages/web's `project` names .css and .mdx so knip follows what they import.
+// tailwindcss and tw-animate-css are reached only from `@import` lines in
+// app/globals.css, and listing those extensions resolves them for real - which
+// beats two ignore entries asserting the same thing where nothing can check it.
+//
+// ignoreDependencies is what is left: packages read as files rather than
+// imported. The colour console serves
 // `node_modules/@vscode/codicons/dist/codicon.css` and
 // `node_modules/lucide-static/sprite.svg` over HTTP, and its invariants test
 // reads the same codicon CSS to prove every glyph the IDE preview draws is a
 // real one. A path in a string is exactly what a static scan cannot follow.
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
+	// `knip` exits 0 when hints are all it found, so an entry that stopped
+	// changing a result could sit here through every green run that reported it.
+	// This makes the hint the failure it already describes.
+	"treatConfigHintsAsErrors": true,
 	"workspaces": {
 		".": {
 			"entry": [
 				"scripts/*.mjs",
 				"tests/**/*.test.ts",
-				// Both vitest configs are entry points. The mutation one is reached by
-				// name from `stryker.config.json` rather than by an import, which is
-				// the same blind spot the ignoreDependencies note above describes: a
-				// path in a string is what a static scan cannot follow.
-				"vitest.config.ts",
-				"vitest.mutation.config.ts",
-				"eslint.config.mjs"
+				// Reached by name from `stryker.config.json` rather than by an import,
+				// which is the same blind spot the ignoreDependencies note describes: a
+				// path in a string is what a static scan cannot follow. The plain
+				// `vitest.config.ts` beside it needs no entry - knip already knows it.
+				"vitest.mutation.config.ts"
 			],
 			"project": ["scripts/**/*.mjs", "tests/**/*.ts", "*.ts", "*.mjs"]
 		},
 		"packages/shared": {
-			"entry": ["index.ts", "scripts/**/*.mjs"],
+			"entry": ["scripts/**/*.mjs"],
 			"project": ["**/*.{ts,mjs}"]
 		},
 		"packages/web": {
-			"entry": [
-				"proxy.ts",
-				"convex/**/*.ts",
-				"tests/**/*.test.ts",
-				"scripts/**/*.mjs",
-				"source.config.ts",
-				"next.config.ts"
-			],
-			"project": ["**/*.{ts,tsx}", "scripts/**/*.mjs"],
-			"ignore": ["convex/_generated/**", ".source/**"]
+			// convex/ is an entry surface, not a library: the deployment calls these
+			// exports, so no import inside the checkout reaches most of them.
+			"entry": ["convex/**/*.ts", "tests/**/*.test.ts", "scripts/**/*.mjs"],
+			"project": ["**/*.{ts,tsx,css,mdx}", "scripts/**/*.mjs"],
+			// Written by `convex dev`, and it trails the source it is generated from
+			// until the next run, so a finding here reports a stale artifact rather
+			// than code anyone can fix. `ignore` is the only key that reaches it: the
+			// convex modules import `./_generated/server`, and knip follows an import
+			// into a file no project or entry glob selects. fumadocs-mdx's .source is
+			// not listed beside it - nothing knip resolves imports that tree, so the
+			// entry would sit here earning nothing.
+			"ignore": ["convex/_generated/**"]
 		},
 		"packages/ide": {
 			"entry": ["tests/**/*.test.ts", "scripts/*.mjs"],
@@ -55,17 +67,7 @@
 	"ignore": [
 		"packages/ide/overlay/**",
 		"packages/ide/upstream/**",
-		"packages/web/components/base/**"
+		"packages/web/ui/base/**"
 	],
-	"ignoreDependencies": [
-		"@vscode/codicons",
-		"lucide-static",
-		"sharp",
-		"png-to-ico",
-		"fontkit",
-		"shadcn",
-		"tailwindcss",
-		"tw-animate-css"
-	],
-	"ignoreBinaries": ["docker", "cargo", "quilt", "adb"]
+	"ignoreDependencies": ["@vscode/codicons", "lucide-static"]
 }

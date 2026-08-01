@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CopyEmail } from "@/components/copy-email";
-import { LegalPage, LegalSection } from "@/components/legal-page";
+import { CopyEmail } from "@/ui/copy-email";
+import { LegalPage, LegalSection } from "@/ui/legal-page";
 import { OWNER, WEBSITE_DOMAIN } from "shared";
 
 export const metadata: Metadata = {

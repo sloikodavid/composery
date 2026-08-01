@@ -23,9 +23,12 @@ Four planes, and the rule is who may read it.
   box authorization flow is all of `convex/box/auth.ts` because nothing else
   reaches it, while `convex/boxes/` holds what both the owner and the console
   surfaces share.
-- **`app/`, `components/`, `hooks/`, `lib/`** - the browser plane. `lib/` is
-  Next-only by definition now; anything Convex also reads belongs in
-  `convex/model/`.
+- **`app/` and `ui/`** - the browser plane, split by one question: `app/` is the
+  route tree, `ui/` is everything else it needs. Inside `ui/`, `base/` is the
+  shadcn primitives, `box/` is box-domain components, `icons/` is the glyph
+  registry, `hooks/` is React hooks, `lib/` is the non-React helpers, and loose
+  `.tsx` files at the root are shared app UI. All of it is Next-only by
+  definition; anything Convex also reads belongs in `convex/model/`.
 
 What stays loose at `convex/` root is what belongs to the deployment rather than
 a domain: `schema`, `env`, `settings`, `crons`, `http`, `time`, `users`, and the
@@ -33,12 +36,12 @@ two Convex config files.
 
 ## Naming
 
-- `app/`, `components/`, `lib/` filenames: kebab-case (regular Next.js modules).
+- `app/` and `ui/` filenames: kebab-case (regular Next.js modules).
 - `convex/` filenames: camelCase, because the path becomes a generated API identifier (`convex/staff/boxes.ts` -> `api.staff.boxes.reset`).
 - Database/schema fields and persisted status/type literals: snake_case (stored data, not JS names).
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- A directory is part of a name: inside `convex/boxes/`, `components/boxes/` and `convex/model/box/` the `box` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
+- A directory is part of a name: inside `convex/boxes/`, `ui/box/` and `convex/model/box/` the `box` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
 - The same operation is named the same on both sides. `api.owner.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
 - An **alert** is an incident record for staff (`raiseAlert`). A **notice** is a message to a person (`convex/notice/`). Name the thing, never the channel: `sendOwnerNotice`, not `sendOwnerEmail`.
 
@@ -48,7 +51,7 @@ two Convex config files.
 - The begin-status and failure-status unions are **derived** from that table, never listed beside it. A hand-written subset is what the type checker cannot check, and the begin-status one had already drifted to carry `running` and `suspended`, which no operation moves a box to.
 - **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/boxes/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
 - A `system:` sweep still names its own trigger, because it is not one of the two audiences. A new automatic caller adds its own `system:` literal rather than borrowing one.
-- **The interface reads the same catalogue.** `PRIMARY_ACTION` in `components/boxes/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
+- **The interface reads the same catalogue.** `PRIMARY_ACTION` in `ui/box/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
 - `convex/boxes/lifecycle.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
 - Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
@@ -59,22 +62,22 @@ two Convex config files.
 
 Four buckets, by what a file is rather than what it does:
 
-- `components/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
-- `components/boxes/` - box-domain UI, mirroring `convex/model/box/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`boxes/status-action.tsx`, not `boxes/box-status-action.tsx`).
-- `components/icons/` - see below.
-- `components/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
+- `ui/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
+- `ui/box/` - box-domain UI, mirroring `convex/model/box/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`).
+- `ui/icons/` - see below.
+- `ui/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
 
 ## Icons
 
 **Which kind.** An icon is animated iff it sits inside something hoverable and focusable as a unit - a button, a link, a clickable breadcrumb - because that element is what starts the animation. Everything else is a static `lucide-react` glyph: menu items, the current-page breadcrumb, status and empty-state glyphs, spinners, sort indicators. The rule is about the container, not the picture, so the same glyph can legitimately appear both ways.
 
-**How they're reached.** Static glyphs are imported from `lucide-react`. Animated ones are never imported by name outside `components/animated-icon` - call sites name them (`icon="download"`, or `<AnimatedIcon icon="check" iconRef={ref} />` when the trigger lays its own icon out). A test enforces this; without it, `CheckIcon` means two different components depending on the import line.
+**How they're reached.** Static glyphs are imported from `lucide-react`. Animated ones are never imported by name outside `ui/animated-icon` - call sites name them (`icon="download"`, or `<AnimatedIcon icon="check" iconRef={ref} />` when the trigger lays its own icon out). A test enforces this; without it, `CheckIcon` means two different components depending on the import line.
 
-- Every icon shares one shell (`components/icons/create.tsx`): the hover/handle wiring and the stock lucide `<svg>` props live there once, so an icon file is its variants plus its `<svg>` body and nothing else.
-- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `components/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `components/icons/<name>.tsx` -> add a line to the `ICONS` map in `components/animated-icon`. `AnimatedIconName` reads off that map, and `tests/invariants/components/icons/registry.test.ts` fails if you skip the last step.
+- Every icon shares one shell (`ui/icons/create.tsx`): the hover/handle wiring and the stock lucide `<svg>` props live there once, so an icon file is its variants plus its `<svg>` body and nothing else.
+- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `ui/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `ui/icons/<name>.tsx` -> add a line to the `ICONS` map in `ui/animated-icon`. `AnimatedIconName` reads off that map, and `tests/invariants/ui/icons/registry.test.ts` fails if you skip the last step.
 - It lands in `base/` because `@lucide-animated` items are `registry:ui`, which the CLI writes to `aliases.ui`; `--path` does not override that. Nothing to fix - the file has to be rewritten by hand anyway, so move it while you rewrite it.
 - Anything that renders an animated icon inside its own trigger uses `useAnimatedIconHandlers` rather than repeating the four handlers - it carries the `:focus-visible` guard that keeps programmatic focus (a dialog autofocusing its first button) from freezing the icon mid-pose.
-- `icons/<name>.tsx` is a glyph registered in the map; `icons/<name>-logo.tsx` is a static brand logo that is not. Keeping those apart is what stops a second `XIcon` (the dismiss glyph vs the X/Twitter logo) from existing.
+- `ui/icons/<name>.tsx` is a glyph registered in the map; `icons/<name>-logo.tsx` is a static brand logo that is not. Keeping those apart is what stops a second `XIcon` (the dismiss glyph vs the X/Twitter logo) from existing.
 - Consistency within a set: prefer the animated icon in animated-leaning contexts; stay static where motion is meaningless. Matching an external design 1:1 overrides this.
 
 ## Living setup docs

@@ -82,6 +82,98 @@ describe("toolchain pins", () => {
 		expect(nodeVersion).toMatch(/^\d+\.\d+\.\d+$/);
 	});
 
+	// The catalog in pnpm-workspace.yaml is the only place a version shared by two
+	// workspace packages is written down, and this is what makes that sentence
+	// true rather than a wish. It is checked in both directions on purpose: a
+	// shared dependency that skips the catalog is the drift the catalog exists to
+	// stop, and an entry with one consumer is indirection that prevents nothing
+	// while reading like a rule. Enumerated from the manifests, never listed, so a
+	// package or dependency added later cannot slip past.
+	describe("the catalog holds the dependencies more than one package declares", () => {
+		const manifests = ["packages/web", "packages/ide", "packages/shared"]
+			.map((dir) => `${dir}/package.json`)
+			.concat("package.json")
+			.map((path) => ({
+				path,
+				json: JSON.parse(readRepoFile(path)) as {
+					dependencies?: Record<string, string>;
+					devDependencies?: Record<string, string>;
+				}
+			}));
+
+		// name -> every manifest that declares it, with the range it asks for.
+		const declarations = new Map<string, { path: string; range: string }[]>();
+		for (const { path, json } of manifests) {
+			for (const deps of [json.dependencies, json.devDependencies]) {
+				for (const [name, range] of Object.entries(deps ?? {})) {
+					declarations.set(name, [
+						...(declarations.get(name) ?? []),
+						{ path, range }
+					]);
+				}
+			}
+		}
+
+		const catalog = (
+			parse(readRepoFile("pnpm-workspace.yaml")) as {
+				catalog?: Record<string, string>;
+			}
+		).catalog;
+
+		test("the manifest scan found something to check", () => {
+			// Without this, every assertion below passes on an empty enumeration.
+			expect(manifests).toHaveLength(4);
+			expect(declarations.size).toBeGreaterThan(20);
+			expect(Object.keys(catalog ?? {}).length).toBeGreaterThan(0);
+		});
+
+		test("every dependency two packages declare is in the catalog", () => {
+			const shared = [...declarations]
+				.filter(([, sites]) => sites.length > 1)
+				.map(([name]) => name);
+
+			// A workspace link is a name two packages can share without a version to
+			// drift, so it is not the catalog's business.
+			const versioned = shared.filter((name) =>
+				declarations
+					.get(name)
+					?.every(({ range }) => !range.startsWith("workspace:"))
+			);
+
+			expect(versioned.sort()).toEqual(Object.keys(catalog ?? {}).sort());
+		});
+
+		test("every shared declaration reads the catalog rather than a literal", () => {
+			for (const name of Object.keys(catalog ?? {})) {
+				for (const { path, range } of declarations.get(name) ?? []) {
+					expect(range, `${path} declares ${name}`).toBe("catalog:");
+				}
+			}
+		});
+	});
+
+	// The coverage provider is released in lockstep with the runner and refuses to
+	// load against a different minor, so these two are one version written twice.
+	// The copy cannot be removed - they are separate packages on the registry - and
+	// nothing derives one from the other, so this is the duplication ladder's last
+	// rung. Renovate groups them ("vitest") so they move together; this is what
+	// notices when something moves only one of them.
+	test("the coverage provider version matches the vitest runner", () => {
+		const catalog = (
+			parse(readRepoFile("pnpm-workspace.yaml")) as {
+				catalog: Record<string, string>;
+			}
+		).catalog;
+		const coverage = (
+			JSON.parse(readRepoFile("package.json")) as {
+				devDependencies: Record<string, string>;
+			}
+		).devDependencies["@vitest/coverage-v8"];
+
+		expect(catalog.vitest).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(coverage).toBe(catalog.vitest);
+	});
+
 	test("package engines match the pinned Node version", () => {
 		const nodeMajor = Number(nodeVersion.split(".")[0]);
 

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage, LegalSection } from "@/components/legal-page";
+import { LegalPage, LegalSection } from "@/ui/legal-page";
 
 export const metadata: Metadata = { title: "Cookie Notice" };
 

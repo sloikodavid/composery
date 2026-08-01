@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage, LegalSection } from "@/components/legal-page";
+import { LegalPage, LegalSection } from "@/ui/legal-page";
 import { GITHUB_REPO_URL } from "@/convex/model/links";
 
 export const metadata: Metadata = { title: "Licences" };

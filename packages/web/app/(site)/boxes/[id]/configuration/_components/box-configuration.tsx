@@ -3,23 +3,23 @@
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { Button } from "@/components/base/button";
+import { AnimatedIconButton } from "@/ui/animated-icon";
+import { Button } from "@/ui/base/button";
 import {
 	Card,
 	CardContent,
 	CardDescription,
 	CardHeader,
 	CardTitle
-} from "@/components/base/card";
-import { Notice, recreateNotice } from "@/components/boxes/operation-dialog";
-import { StatusText } from "@/components/boxes/status-text";
+} from "@/ui/base/card";
+import { Notice, recreateNotice } from "@/ui/box/operation-dialog";
+import { StatusText } from "@/ui/box/status-text";
 import { api } from "@/convex/_generated/api";
 import type { RuntimeConfigField } from "@/convex/boxes/runtimeConfig";
-import { useBusyAction } from "@/hooks/use-busy-action";
-import { useReseed } from "@/hooks/use-reseed";
+import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import { useReseed } from "@/ui/hooks/use-reseed";
 import { boxPath } from "@/convex/model/box/path";
-import { errorMessage } from "@/lib/error-message";
+import { errorMessage } from "@/ui/lib/error-message";
 import {
 	ConfigField,
 	isDangerousField,

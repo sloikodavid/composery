@@ -7,8 +7,8 @@ import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
-import { clerkAppearance, clerkLocalization } from "@/lib/clerk-appearance";
-import { nextEnv } from "@/lib/env";
+import { clerkAppearance, clerkLocalization } from "@/ui/lib/clerk-appearance";
+import { nextEnv } from "@/ui/lib/env";
 
 const convexUrl = nextEnv.NEXT_PUBLIC_CONVEX_URL;
 

@@ -14,11 +14,11 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/base/button";
+import { AnimatedIconButton } from "@/ui/animated-icon";
+import { buttonVariants } from "@/ui/base/button";
 import { Faq } from "./faq";
-import { GitHubLogo } from "@/components/icons/github-logo";
-import { PageTemplate } from "@/components/page-template";
+import { GitHubLogo } from "@/ui/icons/github-logo";
+import { PageTemplate } from "@/ui/page-template";
 import { SlugDialog } from "./slug-dialog";
 import {
 	BOX_BILLING,
@@ -34,7 +34,7 @@ import {
 	type BoxPlan
 } from "@/convex/model/box/plan";
 import { GITHUB_REPO_URL } from "@/convex/model/links";
-import { cn } from "@/lib/utils";
+import { cn } from "@/ui/lib/utils";
 
 type Feature = { icon: LucideIcon; text: string };
 

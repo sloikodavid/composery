@@ -1,5 +1,5 @@
 import { SearchXIcon } from "lucide-react";
-import { PageTemplate } from "@/components/page-template";
+import { PageTemplate } from "@/ui/page-template";
 
 export default function NotFound() {
 	return (

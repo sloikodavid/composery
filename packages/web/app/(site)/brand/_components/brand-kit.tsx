@@ -1,8 +1,8 @@
 "use client";
 
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { BrandIcon } from "@/components/brand-icon";
-import { BrandLogo } from "@/components/logo";
+import { AnimatedIconButton } from "@/ui/animated-icon";
+import { BrandIcon } from "@/ui/brand-icon";
+import { BrandLogo } from "@/ui/logo";
 import {
 	BRAND_ASSETS,
 	BRAND_PALETTE,
@@ -12,7 +12,7 @@ import {
 	copySvg,
 	downloadPng,
 	downloadSvg
-} from "@/lib/brand-assets";
+} from "@/ui/lib/brand-assets";
 
 const SCHEMES: BrandAssetScheme[] = ["light", "dark"];
 const TYPES: { label: string; type: BrandAssetType }[] = [

@@ -6,8 +6,11 @@ import {
 	DEFAULT_THRESHOLDS,
 	type ThresholdSetting
 } from "@/convex/boxes/metricThresholds";
-import { useBusyAction } from "@/hooks/use-busy-action";
-import { useSettingDraft, type SettingDraft } from "@/hooks/use-setting-draft";
+import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import {
+	useSettingDraft,
+	type SettingDraft
+} from "@/ui/hooks/use-setting-draft";
 import {
 	FLAG_SIGNALS,
 	flagDisplayValue,

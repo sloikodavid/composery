@@ -744,93 +744,6 @@ packages/
       providers.tsx
       robots.ts
       sitemap.ts
-    components/
-      base/
-        badge.tsx
-        button.tsx
-        card.tsx
-        chart.tsx
-        dialog.tsx
-        dropdown-menu.tsx
-        input.tsx
-        label.tsx
-        select.tsx
-        separator.tsx
-        sonner.tsx
-        table.tsx
-        textarea.tsx
-      boxes/
-        actions-bar.tsx
-        change-slug-dialog.tsx
-        chart-card.tsx
-        flags-table.tsx
-        metrics-chart.tsx
-        monitor-card.tsx
-        operation-dialog.tsx
-        qr-dialog.tsx
-        repair-dialog.tsx
-        reset-dialog.tsx
-        running-indicator.tsx
-        snapshots-dialog.tsx
-        status-action.tsx
-        status-button.tsx
-        status-text.tsx
-        tone-icon.tsx
-        update-dialog.tsx
-      icons/
-        arrow-right.tsx
-        arrow-up-right.tsx
-        book-open.tsx
-        check.tsx
-        construction.tsx
-        convex.tsx
-        copy.tsx
-        create.tsx
-        credit-card.tsx
-        delete.tsx
-        download.tsx
-        github-logo.tsx
-        hetzner.tsx
-        layout-grid.tsx
-        linkedin-logo.tsx
-        lock.tsx
-        login.tsx
-        pen-tool.tsx
-        play.tsx
-        plug-zap.tsx
-        plus.tsx
-        polar.tsx
-        rotate-cw.tsx
-        scan-text.tsx
-        square-pen.tsx
-        sun-moon.tsx
-        vercel.tsx
-        wallet.tsx
-        washing-machine.tsx
-        wrench.tsx
-        x-logo.tsx
-        x.tsx
-      animated-icon.tsx
-      api-operation.tsx
-      brand-icon.tsx
-      confirm-dialog.tsx
-      copy-email.tsx
-      copy-link-button.tsx
-      dismiss-button.tsx
-      error-page.tsx
-      footer.tsx
-      fumadocs-narrow-header.tsx
-      fumadocs-theme-toggle.tsx
-      header.tsx
-      legal-page.tsx
-      logo.tsx
-      mdx.tsx
-      open-in.tsx
-      openapi-page.tsx
-      page-template.tsx
-      sort-header.tsx
-      theme-provider.tsx
-      theme-toggle.tsx
     convex/
       _generated/
         api.d.ts
@@ -950,34 +863,6 @@ packages/
       time.ts
       tsconfig.json
       users.ts
-    hooks/
-      use-busy-action.ts
-      use-is-touch.ts
-      use-reseed.ts
-      use-setting-draft.ts
-      use-table-sort.ts
-    lib/
-      boxes/
-        repair.ts
-        update.ts
-      auth-routing.ts
-      brand-assets.ts
-      browser-theme.ts
-      clerk-appearance.ts
-      clipboard.ts
-      dashboards.ts
-      datetime.ts
-      docs.ts
-      env.ts
-      error-message.ts
-      highlight-logs.ts
-      layout.shared.tsx
-      logo-data.ts
-      nav-links.ts
-      openapi.ts
-      route-guards.ts
-      source.ts
-      utils.ts
     patches/
       fumadocs-mdx@15.0.12.patch
       fumadocs-ui@16.10.4.patch
@@ -1032,15 +917,6 @@ packages/
             pricing/
               _components/
                 slug-dialog.test.ts
-        components/
-          boxes/
-            change-slug-dialog.test.ts
-            repair-dialog.test.ts
-            reset-dialog.test.ts
-            status-action.test.ts
-          animated-icon.test.ts
-          confirm-dialog.test.ts
-          theme-provider.test.ts
         convex/
           account/
             deletion.test.ts
@@ -1122,34 +998,40 @@ packages/
           http.test.ts
           settings.test.ts
           users.test.ts
-        hooks/
-          use-is-touch.test.ts
-          use-setting-draft.test.ts
-          use-table-sort.test.ts
-        lib/
-          boxes/
-            repair.test.ts
-            update.test.ts
-          auth-routing.test.ts
-          brand-assets-download.test.ts
-          brand-assets.test.ts
-          browser-theme.test.ts
-          clipboard.test.ts
-          dashboards.test.ts
-          datetime.test.ts
-          error-message.test.ts
-          highlight-logs.test.ts
-          nav-links.test.ts
-          openapi.test.ts
-          route-guards.test.ts
         scripts/
           env.test.ts
         support/
           ssh.test.ts
+        ui/
+          box/
+            change-slug-dialog.test.ts
+            repair-dialog.test.ts
+            reset-dialog.test.ts
+            status-action.test.ts
+          hooks/
+            use-is-touch.test.ts
+            use-setting-draft.test.ts
+            use-table-sort.test.ts
+          lib/
+            box/
+              repair.test.ts
+              update.test.ts
+            auth-routing.test.ts
+            brand-assets-download.test.ts
+            brand-assets.test.ts
+            browser-theme.test.ts
+            clipboard.test.ts
+            dashboards.test.ts
+            datetime.test.ts
+            error-message.test.ts
+            highlight-logs.test.ts
+            nav-links.test.ts
+            openapi.test.ts
+            route-guards.test.ts
+          animated-icon.test.ts
+          confirm-dialog.test.ts
+          theme-provider.test.ts
       invariants/
-        components/
-          icons/
-            registry.test.ts
         convex/
           alert-remedies.test.ts
           audience-directories.test.ts
@@ -1163,13 +1045,131 @@ packages/
         legal/
           notices.test.ts
           processors.test.ts
-        lib/
-          table-columns.test.ts
+        ui/
+          icons/
+            registry.test.ts
+          lib/
+            table-columns.test.ts
         next-env-example.test.ts
       support/
         convex.ts
         ssh.ts
         ui.tsx
+    ui/
+      base/
+        badge.tsx
+        button.tsx
+        card.tsx
+        chart.tsx
+        dialog.tsx
+        dropdown-menu.tsx
+        input.tsx
+        label.tsx
+        select.tsx
+        separator.tsx
+        sonner.tsx
+        table.tsx
+        textarea.tsx
+      box/
+        actions-bar.tsx
+        change-slug-dialog.tsx
+        chart-card.tsx
+        flags-table.tsx
+        metrics-chart.tsx
+        monitor-card.tsx
+        operation-dialog.tsx
+        qr-dialog.tsx
+        repair-dialog.tsx
+        reset-dialog.tsx
+        running-indicator.tsx
+        snapshots-dialog.tsx
+        status-action.tsx
+        status-button.tsx
+        status-text.tsx
+        tone-icon.tsx
+        update-dialog.tsx
+      hooks/
+        use-busy-action.ts
+        use-is-touch.ts
+        use-reseed.ts
+        use-setting-draft.ts
+        use-table-sort.ts
+      icons/
+        arrow-right.tsx
+        arrow-up-right.tsx
+        book-open.tsx
+        check.tsx
+        construction.tsx
+        convex.tsx
+        copy.tsx
+        create.tsx
+        credit-card.tsx
+        delete.tsx
+        download.tsx
+        github-logo.tsx
+        hetzner.tsx
+        layout-grid.tsx
+        linkedin-logo.tsx
+        lock.tsx
+        login.tsx
+        pen-tool.tsx
+        play.tsx
+        plug-zap.tsx
+        plus.tsx
+        polar.tsx
+        rotate-cw.tsx
+        scan-text.tsx
+        square-pen.tsx
+        sun-moon.tsx
+        vercel.tsx
+        wallet.tsx
+        washing-machine.tsx
+        wrench.tsx
+        x-logo.tsx
+        x.tsx
+      lib/
+        box/
+          repair.ts
+          update.ts
+        auth-routing.ts
+        brand-assets.ts
+        browser-theme.ts
+        clerk-appearance.ts
+        clipboard.ts
+        dashboards.ts
+        datetime.ts
+        docs.ts
+        env.ts
+        error-message.ts
+        highlight-logs.ts
+        layout.shared.tsx
+        logo-data.ts
+        nav-links.ts
+        openapi.ts
+        route-guards.ts
+        source.ts
+        utils.ts
+      animated-icon.tsx
+      api-operation.tsx
+      brand-icon.tsx
+      confirm-dialog.tsx
+      copy-email.tsx
+      copy-link-button.tsx
+      dismiss-button.tsx
+      error-page.tsx
+      footer.tsx
+      fumadocs-narrow-header.tsx
+      fumadocs-theme-toggle.tsx
+      header.tsx
+      legal-page.tsx
+      logo.tsx
+      mdx.tsx
+      open-in.tsx
+      openapi-page.tsx
+      page-template.tsx
+      sort-header.tsx
+      theme-provider.tsx
+      theme-toggle.tsx
     .env.example.convex.dev
     .env.example.convex.prod
     .env.example.next.dev

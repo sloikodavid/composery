@@ -40,16 +40,17 @@ export default defineConfig({
 			// reported, because a test imports it, while `types.mjs` beside it
 			// vanished.
 			//
-			// `packages/web/app` and `packages/web/components` are absent on purpose.
-			// They are React server and client components: wiring and JSX, where a
-			// test that reached one would assert back the markup it was written from
+			// `packages/web/app` and the component buckets under `packages/web/ui` are
+			// absent on purpose. They are React server and client components: wiring
+			// and JSX, where a test that reached one would assert back the markup it
+			// was written from
 			// - the "run the line, assert nothing" this whole configuration is
 			// arranged to prevent, dressed as coverage. The rule that replaces the
 			// number is where a decision may live: anything decidable belongs in
-			// `lib/` or `convex/`, which are here, so when a component starts
+			// `ui/lib/` or `convex/`, which are here, so when a component starts
 			// deciding the fix is to move the decision rather than build a harness to
 			// reach it. Where one already decides - the dialogs under
-			// `components/boxes/` - a behaviour test drives it through a
+			// `ui/box/` - a behaviour test drives it through a
 			// `// @vitest-environment jsdom` header and @testing-library/react; those
 			// tests earn their keep from their assertions, not from a percentage.
 			// What can rot in the prose pages is whether the copy still describes the
@@ -58,7 +59,8 @@ export default defineConfig({
 			include: [
 				"packages/ide/overlay/**/*.{ts,js}",
 				"packages/shared/**/*.{ts,mjs}",
-				"packages/web/{convex,hooks,lib}/**/*.{ts,tsx}",
+				"packages/web/convex/**/*.{ts,tsx}",
+				"packages/web/ui/{hooks,lib}/**/*.{ts,tsx}",
 				"scripts/**/*.mjs",
 				"packages/*/scripts/**/*.mjs"
 			],
@@ -71,7 +73,7 @@ export default defineConfig({
 				// sits here rather than beside a component because three surfaces mount
 				// Clerk, and the only test that could reach it would assert the class
 				// strings back - the styling restated as an expectation.
-				"packages/web/lib/clerk-appearance.ts",
+				"packages/web/ui/lib/clerk-appearance.ts",
 				// A box workflow handler is a sequence of `step.runAction` calls against
 				// a durable execution engine, Hetzner, Cloudflare, and SSH. Covering one
 				// means standing up the workflow component and mocking all four, and

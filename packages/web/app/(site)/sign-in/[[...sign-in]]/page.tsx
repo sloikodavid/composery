@@ -1,8 +1,8 @@
 import { SignIn } from "@clerk/nextjs";
 import type { Metadata } from "next";
-import { normalizeInternalReturnPath } from "@/lib/auth-routing";
-import { signInAppearance } from "@/lib/clerk-appearance";
-import { redirectIfSignedIn } from "@/lib/route-guards";
+import { normalizeInternalReturnPath } from "@/ui/lib/auth-routing";
+import { signInAppearance } from "@/ui/lib/clerk-appearance";
+import { redirectIfSignedIn } from "@/ui/lib/route-guards";
 
 export const dynamic = "force-dynamic";
 

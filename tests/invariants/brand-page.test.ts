@@ -12,7 +12,7 @@ describe("brand surfaces", () => {
 		expect(
 			existsSync(resolve(repoRoot, "packages/web/app/(site)/design/page.tsx"))
 		).toBe(false);
-		expect(readRepoFile("packages/web/lib/nav-links.ts")).not.toContain(
+		expect(readRepoFile("packages/web/ui/lib/nav-links.ts")).not.toContain(
 			'"/design"'
 		);
 	});

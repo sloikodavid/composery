@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { SnapshotsDialog } from "@/components/boxes/snapshots-dialog";
+import { SnapshotsDialog } from "@/ui/box/snapshots-dialog";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { isOperationAllowed } from "@/convex/model/box/operation";

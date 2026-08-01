@@ -7,31 +7,28 @@ import {
 	useQuery
 } from "convex/react";
 import { useState, type ReactNode } from "react";
-import { AnimatedIconButton } from "@/components/animated-icon";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { BoxStatusAction } from "@/components/boxes/status-action";
-import { ChangeSlugDialog } from "@/components/boxes/change-slug-dialog";
-import { FlagsTable } from "@/components/boxes/flags-table";
-import { MonitorCard } from "@/components/boxes/monitor-card";
-import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
-import { RepairDialog } from "@/components/boxes/repair-dialog";
-import { ResetDialog } from "@/components/boxes/reset-dialog";
-import { SortHeader } from "@/components/sort-header";
-import { StatusText } from "@/components/boxes/status-text";
+import { AnimatedIconButton } from "@/ui/animated-icon";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { BoxStatusAction } from "@/ui/box/status-action";
+import { ChangeSlugDialog } from "@/ui/box/change-slug-dialog";
+import { FlagsTable } from "@/ui/box/flags-table";
+import { MonitorCard } from "@/ui/box/monitor-card";
+import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/ui/open-in";
+import { RepairDialog } from "@/ui/box/repair-dialog";
+import { ResetDialog } from "@/ui/box/reset-dialog";
+import { SortHeader } from "@/ui/sort-header";
+import { StatusText } from "@/ui/box/status-text";
 import {
 	boxEventLabel,
 	failureNotice,
 	operationLabel
 } from "@/convex/model/box/operation";
-import { UpdateDialog } from "@/components/boxes/update-dialog";
-import {
-	DEFAULT_RANGE,
-	type MetricsRange
-} from "@/components/boxes/metrics-chart";
+import { UpdateDialog } from "@/ui/box/update-dialog";
+import { DEFAULT_RANGE, type MetricsRange } from "@/ui/box/metrics-chart";
 import { BoxSnapshots } from "./snapshots";
 import { SuspendDialog } from "./suspend-dialog";
-import { Card, CardContent } from "@/components/base/card";
-import { Separator } from "@/components/base/separator";
+import { Card, CardContent } from "@/ui/base/card";
+import { Separator } from "@/ui/base/separator";
 import {
 	Table,
 	TableBody,
@@ -41,12 +38,12 @@ import {
 	TableHeader,
 	TableLoadingRow,
 	TableRow
-} from "@/components/base/table";
+} from "@/ui/base/table";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { useBusyAction } from "@/hooks/use-busy-action";
-import { useTableSort } from "@/hooks/use-table-sort";
-import { formatDateTime } from "@/lib/datetime";
+import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import { useTableSort } from "@/ui/hooks/use-table-sort";
+import { formatDateTime } from "@/ui/lib/datetime";
 import { BOX_PLANS, boxPlanServerType } from "@/convex/model/box/plan";
 
 // The stored rows themselves, not a hand-copied shape of them. Restating the

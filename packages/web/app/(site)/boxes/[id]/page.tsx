@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { BoxActions } from "./_components/box-actions";
 import { BoxDetail } from "./_components/box-detail";
-import { PageTemplate } from "@/components/page-template";
-import { redirectIfSignedOut } from "@/lib/route-guards";
+import { PageTemplate } from "@/ui/page-template";
+import { redirectIfSignedOut } from "@/ui/lib/route-guards";
 
 export const dynamic = "force-dynamic";
 

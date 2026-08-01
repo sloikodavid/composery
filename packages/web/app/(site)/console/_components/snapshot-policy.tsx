@@ -6,8 +6,11 @@ import {
 	DEFAULT_SNAPSHOT_POLICY,
 	type SnapshotPolicy
 } from "@/convex/boxes/snapshotPolicy";
-import { useBusyAction } from "@/hooks/use-busy-action";
-import { useSettingDraft, type SettingDraft } from "@/hooks/use-setting-draft";
+import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import {
+	useSettingDraft,
+	type SettingDraft
+} from "@/ui/hooks/use-setting-draft";
 import { NumberField, SettingsCard, SettingsRow } from "./settings-card";
 
 type FieldKey = keyof SnapshotPolicy;

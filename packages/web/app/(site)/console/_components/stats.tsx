@@ -9,17 +9,17 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 	type ChartConfig
-} from "@/components/base/chart";
+} from "@/ui/base/chart";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/components/base/select";
-import { ChartCard } from "@/components/boxes/chart-card";
+} from "@/ui/base/select";
+import { ChartCard } from "@/ui/box/chart-card";
 import { api } from "@/convex/_generated/api";
-import { formatDate } from "@/lib/datetime";
+import { formatDate } from "@/ui/lib/datetime";
 
 type Overview = NonNullable<
 	ReturnType<typeof useQuery<typeof api.staff.stats.overview>>

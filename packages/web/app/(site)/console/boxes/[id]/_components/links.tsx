@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
+import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/ui/open-in";
 import { api } from "@/convex/_generated/api";
 
 // The console dashboard links beside the slug in the breadcrumb. Shares the

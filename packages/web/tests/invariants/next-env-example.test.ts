@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { NEXT_ENV_NAMES } from "@/lib/env";
+import { NEXT_ENV_NAMES } from "@/ui/lib/env";
 
 // The other half of the rule in packages/web/CLAUDE.md -> "Living setup docs":
 // each plane's `.env.example.*` files are the single documented list of that
@@ -21,17 +21,17 @@ import { NEXT_ENV_NAMES } from "@/lib/env";
 // file of ours mentioning them; those are listed below with the SDK that reads
 // each. Both planes are now checked the same way.
 //
-// This replaced a scan of every `.ts`/`.tsx` under `app/`, `components/`,
-// `hooks/` and `lib/` for `process.env.X` spellings - which could only ever see
+// This replaced a scan of every `.ts`/`.tsx` under `app/` and `ui/`
+// for `process.env.X` spellings - which could only ever see
 // a read written as a literal, and went stale the moment one moved.
 
 const WEB_DIR = resolve(import.meta.dirname, "../..");
 
 // Everything Next builds and serves. `convex/` is the other plane and has its
 // own checklist; `tests/` is not shipped.
-const PLANE = ["app", "components", "hooks", "lib"];
+const PLANE = ["app", "ui"];
 const PLANE_FILES = ["next.config.ts", "proxy.ts", "source.config.ts"];
-const DOOR = "lib/env.ts";
+const DOOR = "ui/lib/env.ts";
 
 const DEV = ".env.example.next.dev";
 const PROD = ".env.example.next.prod";
@@ -100,7 +100,7 @@ describe("Next environment example checklist", () => {
 	// A bare `process.env` read in a component is a variable that can ship
 	// undeclared and undocumented, which is what this file exists to stop - the
 	// same test `convex/envExample.test.ts` carries for the other plane.
-	test("lib/env.ts is the only module that touches process.env", () => {
+	test("ui/lib/env.ts is the only module that touches process.env", () => {
 		const offenders = sourceFiles().filter(
 			(file) =>
 				file !== DOOR &&

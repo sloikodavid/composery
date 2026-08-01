@@ -3,8 +3,8 @@
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER } from "@/convex/settings";
-import { useBusyAction } from "@/hooks/use-busy-action";
-import { useSettingDraft } from "@/hooks/use-setting-draft";
+import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import { useSettingDraft } from "@/ui/hooks/use-setting-draft";
 import { NumberField, SettingsCard, SettingsRow } from "./settings-card";
 
 export function CheckoutLimit({ max }: { max?: number }) {

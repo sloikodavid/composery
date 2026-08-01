@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { AnimatedIconLink } from "@/components/animated-icon";
-import { buttonVariants } from "@/components/base/button";
+import { AnimatedIconLink } from "@/ui/animated-icon";
+import { buttonVariants } from "@/ui/base/button";
 import { ThemedShot } from "./_components/themed-shot";
 import { GITHUB_REPO_URL } from "@/convex/model/links";
 import {

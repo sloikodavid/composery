@@ -50,7 +50,7 @@ const WRITES_YML_FOR_SOMEONE_ELSE = new Map([
 	[
 		"packages/ide/tests/behavior/scripts/rebrand.test.ts",
 		"asserts the extension set that scan accepts"
-	],
+	]
 ]);
 
 // Markdown we ship or hand to a reader. `packages/ide/upstream` is someone

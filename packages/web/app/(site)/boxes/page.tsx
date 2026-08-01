@@ -2,10 +2,10 @@ import { WashingMachineIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { BoxList } from "./_components/box-list";
 import { CheckoutRedirect } from "./_components/checkout-redirect";
-import { AnimatedIconLink } from "@/components/animated-icon";
-import { PageTemplate } from "@/components/page-template";
-import { buttonVariants } from "@/components/base/button";
-import { redirectIfSignedOut } from "@/lib/route-guards";
+import { AnimatedIconLink } from "@/ui/animated-icon";
+import { PageTemplate } from "@/ui/page-template";
+import { buttonVariants } from "@/ui/base/button";
+import { redirectIfSignedOut } from "@/ui/lib/route-guards";
 
 export const dynamic = "force-dynamic";
 
