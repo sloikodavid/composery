@@ -81,7 +81,7 @@ describe("recording an operation failure", () => {
 		});
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "the host never answered",
 			operationId,
@@ -104,7 +104,7 @@ describe("recording an operation failure", () => {
 		});
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "boom",
 			operationId,
@@ -124,7 +124,7 @@ describe("recording an operation failure", () => {
 		});
 		const operationId = await openOperation(t, boxId, "snapshot");
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "hetzner said no",
 			operationId
@@ -145,7 +145,7 @@ describe("recording an operation failure", () => {
 		});
 		const operationId = await openOperation(t, boxId, "repair");
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "ssh refused",
 			operationId,
@@ -168,7 +168,7 @@ describe("recording an operation failure", () => {
 		const operationId = await openOperation(t, boxId);
 		await t.run(async (ctx) => await ctx.db.delete(boxId));
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "box vanished",
 			operationId,
@@ -203,7 +203,7 @@ describe("staff alerting on failure", () => {
 			});
 			const operationId = await openOperation(t, boxId, type);
 
-			await t.mutation(internal.boxes.status.markOperationFailed, {
+			await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 				boxId,
 				error: "ssh refused",
 				operationId,
@@ -233,7 +233,7 @@ describe("staff alerting on failure", () => {
 		await t.run(async (ctx) => await ctx.db.delete(operationId));
 
 		await expect(
-			t.mutation(internal.boxes.status.markOperationFailed, {
+			t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 				boxId,
 				error: "transient",
 				operationId,
@@ -252,7 +252,7 @@ describe("staff alerting on failure", () => {
 		});
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "the host never answered",
 			operationId,
@@ -277,7 +277,7 @@ describe("staff alerting on failure", () => {
 		});
 		const operationId = await openOperation(t, boxId, "change_slug");
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "cloudflare said no",
 			operationId,
@@ -297,7 +297,7 @@ describe("staff alerting on failure", () => {
 		const operationId = await openOperation(t, boxId);
 
 		for (let attempt = 0; attempt < 3; attempt += 1) {
-			await t.mutation(internal.boxes.status.markOperationFailed, {
+			await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 				boxId,
 				error: "boom",
 				operationId,
@@ -316,7 +316,7 @@ describe("settling an operation", () => {
 		const boxId = await seedBox(t, { user_id: owner.clerkUserId });
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.settleOperation, { operationId });
+		await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
 
 		expect(await readOperation(t, operationId)).toMatchObject({
 			status: "succeeded",
@@ -331,14 +331,14 @@ describe("settling an operation", () => {
 		const owner = await seedUser(t);
 		const boxId = await seedBox(t, { user_id: owner.clerkUserId });
 		const operationId = await openOperation(t, boxId);
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "boom",
 			operationId,
 			targetBoxStatus: "reset_failed"
 		});
 
-		await t.mutation(internal.boxes.status.settleOperation, { operationId });
+		await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
 
 		expect(await readOperation(t, operationId)).toMatchObject({
 			status: "failed",
@@ -359,7 +359,7 @@ describe("the workflow completion callback", () => {
 		});
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.finishBoxOperation, {
+		await t.mutation(internal.boxes.lifecycle.finishBoxOperation, {
 			workflowId: "wf_1" as never,
 			result: { kind: "canceled" },
 			context: { boxId, operationId }
@@ -385,7 +385,7 @@ describe("the workflow completion callback", () => {
 		});
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.finishBoxOperation, {
+		await t.mutation(internal.boxes.lifecycle.finishBoxOperation, {
 			workflowId: "wf_1" as never,
 			result: { kind: "success", returnValue: null },
 			context: { boxId, operationId }
@@ -403,7 +403,7 @@ describe("the workflow completion callback", () => {
 		const boxId = await seedBox(t, { user_id: owner.clerkUserId });
 		const operationId = await openOperation(t, boxId);
 
-		await t.mutation(internal.boxes.status.finishBoxOperation, {
+		await t.mutation(internal.boxes.lifecycle.finishBoxOperation, {
 			workflowId: "wf_1" as never,
 			result: { kind: "failed", error: "out of retries" },
 			context: { boxId, operationId }
@@ -424,9 +424,9 @@ describe("the workflow completion callback", () => {
 			status: "running"
 		});
 		const operationId = await openOperation(t, boxId);
-		await t.mutation(internal.boxes.status.settleOperation, { operationId });
+		await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
 
-		await t.mutation(internal.boxes.status.finishBoxOperation, {
+		await t.mutation(internal.boxes.lifecycle.finishBoxOperation, {
 			workflowId: "wf_1" as never,
 			result: { kind: "failed", error: "late news" },
 			context: { boxId, operationId }
@@ -454,7 +454,7 @@ describe("the event an ended operation records", () => {
 		});
 		const operationId = await openOperation(t, boxId, "stop");
 
-		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
 			boxId,
 			operationId,
 			status: "stopped"
@@ -474,7 +474,7 @@ describe("the event an ended operation records", () => {
 		});
 		const operationId = await openOperation(t, boxId, "update");
 
-		await t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
 			boxId,
 			operationId,
 			outcome: "skipped",
@@ -495,7 +495,7 @@ describe("the event an ended operation records", () => {
 		});
 		const operationId = await openOperation(t, boxId, "repair");
 
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "the host never answered",
 			operationId,
@@ -538,7 +538,7 @@ describe("committing a slug change", () => {
 		const boxId = await seedBox(t, { user_id: owner.clerkUserId, slug: "old" });
 		const operationId = await openSlugChange(t, boxId, "new");
 
-		await t.mutation(internal.boxes.status.swapSlug, {
+		await t.mutation(internal.boxes.lifecycle.swapSlug, {
 			boxId,
 			operationId,
 			newSlug: "new",
@@ -572,7 +572,7 @@ describe("committing a slug change", () => {
 		await openSlugChange(t, otherId, "new");
 
 		await expect(
-			t.mutation(internal.boxes.status.swapSlug, {
+			t.mutation(internal.boxes.lifecycle.swapSlug, {
 				boxId,
 				operationId,
 				newSlug: "new",
@@ -591,7 +591,7 @@ describe("committing a slug change", () => {
 		const operationId = await openSlugChange(t, boxId, "new");
 
 		await expect(
-			t.mutation(internal.boxes.status.swapSlug, {
+			t.mutation(internal.boxes.lifecycle.swapSlug, {
 				boxId,
 				operationId,
 				newSlug: "new",
@@ -635,7 +635,7 @@ describe("recording a completed deletion", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await deletedBox(t);
 
-		await t.mutation(internal.boxes.status.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
 
 		expect(await readBox(t, boxId)).toMatchObject({
 			status: "deleted",
@@ -655,7 +655,7 @@ describe("recording a completed deletion", () => {
 		await t.run(async (ctx) => await ctx.db.delete(operationId));
 
 		await expect(
-			t.mutation(internal.boxes.status.markDeleted, { boxId, operationId })
+			t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId })
 		).rejects.toThrow("Operation not found.");
 	});
 
@@ -665,7 +665,7 @@ describe("recording a completed deletion", () => {
 		await t.run(async (ctx) => await ctx.db.delete(boxId));
 
 		await expect(
-			t.mutation(internal.boxes.status.markDeleted, { boxId, operationId })
+			t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId })
 		).rejects.toThrow("Box not found.");
 	});
 
@@ -679,7 +679,7 @@ describe("recording a completed deletion", () => {
 			parking_volume_stage: "restoring"
 		});
 
-		await t.mutation(internal.boxes.status.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
 
 		expect(
 			await scheduledArgs<{ volumeId: number }>(
@@ -693,7 +693,7 @@ describe("recording a completed deletion", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await deletedBox(t);
 
-		await t.mutation(internal.boxes.status.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
 
 		expect(
 			await scheduledJobs(t, "boxes/infra/hetznerVps:deleteParkingVolume")
@@ -714,7 +714,7 @@ describe("settling an operation into a terminal box status", () => {
 		await t.run(async (ctx) => await ctx.db.delete(operationId));
 
 		await expect(
-			t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+			t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
 				boxId,
 				operationId,
 				status: "stopped"
@@ -751,7 +751,7 @@ describe("what a workflow records when it finishes", () => {
 		const t = testConvex();
 		const { operationId } = await boxWithOperation(t, "reset");
 
-		await t.mutation(internal.boxes.status.markOperationRunning, {
+		await t.mutation(internal.boxes.lifecycle.markOperationRunning, {
 			operationId
 		});
 
@@ -768,7 +768,7 @@ describe("what a workflow records when it finishes", () => {
 		const t = testConvex();
 		const { boxId } = await boxWithOperation(t, "create");
 
-		await t.mutation(internal.boxes.status.recordServerCreated, {
+		await t.mutation(internal.boxes.lifecycle.recordServerCreated, {
 			boxId,
 			serverId: 77,
 			serverType: "cx23",
@@ -793,7 +793,7 @@ describe("what a workflow records when it finishes", () => {
 		const t = testConvex();
 		const { boxId } = await boxWithOperation(t, "repair");
 
-		await t.mutation(internal.boxes.status.recordServerRebuilt, {
+		await t.mutation(internal.boxes.lifecycle.recordServerRebuilt, {
 			boxId,
 			serverId: 77,
 			serverType: "cx23",
@@ -810,7 +810,7 @@ describe("what a workflow records when it finishes", () => {
 		const t = testConvex();
 		const { boxId } = await boxWithOperation(t, "create");
 
-		await t.mutation(internal.boxes.status.recordDnsCreated, {
+		await t.mutation(internal.boxes.lifecycle.recordDnsCreated, {
 			boxId,
 			aRecordId: "rec_a",
 			aaaaRecordId: "rec_aaaa"
@@ -829,7 +829,7 @@ describe("what a workflow records when it finishes", () => {
 			status: "creating"
 		});
 
-		await t.mutation(internal.boxes.status.markCreateSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.markCreateSucceeded, {
 			boxId,
 			operationId
 		});
@@ -855,7 +855,7 @@ describe("what a workflow records when it finishes", () => {
 				status: type === "repair" ? "repairing" : "resetting"
 			});
 
-			await t.mutation(internal.boxes.status[mutation], {
+			await t.mutation(internal.boxes.lifecycle[mutation], {
 				boxId,
 				operationId
 			});
@@ -889,7 +889,7 @@ describe("advancing a box to a new runtime image", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await updatingBox(t);
 
-		await t.mutation(internal.boxes.status.markUpdateSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.markUpdateSucceeded, {
 			boxId,
 			operationId,
 			runtimeImage: "sha256:new",
@@ -909,7 +909,7 @@ describe("advancing a box to a new runtime image", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await updatingBox(t);
 
-		await t.mutation(internal.boxes.status.markUpdateSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.markUpdateSucceeded, {
 			boxId,
 			operationId,
 			runtimeImage: "sha256:new",
@@ -931,7 +931,7 @@ describe("advancing a box to a new runtime image", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await updatingBox(t);
 
-		await t.mutation(internal.boxes.status.markUpdateSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.markUpdateSucceeded, {
 			boxId,
 			operationId,
 			runtimeImage: "sha256:new",
@@ -950,7 +950,7 @@ describe("advancing a box to a new runtime image", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await updatingBox(t);
 
-		await t.mutation(internal.boxes.status.setRuntimeImage, {
+		await t.mutation(internal.boxes.lifecycle.setRuntimeImage, {
 			boxId,
 			runtimeImage: "sha256:rebuilt",
 			runtimeVersion: "2.0.0"
@@ -983,7 +983,7 @@ describe("applying a configuration change", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await configuringBox(t);
 
-		await t.mutation(internal.boxes.status.markConfigApplied, {
+		await t.mutation(internal.boxes.lifecycle.markConfigApplied, {
 			boxId,
 			operationId,
 			config: { COMPOSERY_GITHUB_TOKEN: "ghp_secret" }
@@ -1004,7 +1004,7 @@ describe("applying a configuration change", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await configuringBox(t);
 
-		await t.mutation(internal.boxes.status.markConfigApplied, {
+		await t.mutation(internal.boxes.lifecycle.markConfigApplied, {
 			boxId,
 			operationId,
 			config: { COMPOSERY_GITHUB_TOKEN: "ghp_secret", COMPOSERY_TZ: "UTC" }
@@ -1036,7 +1036,7 @@ describe("recording a password change", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await passwordBox(t);
 
-		await t.mutation(internal.boxes.status.updateRuntimeAuthHash, {
+		await t.mutation(internal.boxes.lifecycle.updateRuntimeAuthHash, {
 			boxId,
 			operationId,
 			runtimeAuthHash: "$argon2id$new"
@@ -1059,7 +1059,7 @@ describe("recording a password change", () => {
 		const otherOperation = await openOperation(t, other, "change_password");
 
 		await expect(
-			t.mutation(internal.boxes.status.updateRuntimeAuthHash, {
+			t.mutation(internal.boxes.lifecycle.updateRuntimeAuthHash, {
 				boxId,
 				operationId: otherOperation,
 				runtimeAuthHash: "$argon2id$new"
@@ -1086,7 +1086,7 @@ describe("tracking a repair's parking volume", () => {
 		const t = testConvex();
 		const boxId = await repairingBox(t);
 
-		await t.mutation(internal.boxes.status.recordParkingVolume, {
+		await t.mutation(internal.boxes.lifecycle.recordParkingVolume, {
 			boxId,
 			volumeId: 909
 		});
@@ -1107,12 +1107,12 @@ describe("tracking a repair's parking volume", () => {
 	test("crosses to restoring once the copy has verified", async () => {
 		const t = testConvex();
 		const boxId = await repairingBox(t);
-		await t.mutation(internal.boxes.status.recordParkingVolume, {
+		await t.mutation(internal.boxes.lifecycle.recordParkingVolume, {
 			boxId,
 			volumeId: 909
 		});
 
-		await t.mutation(internal.boxes.status.markParkingRestoring, { boxId });
+		await t.mutation(internal.boxes.lifecycle.markParkingRestoring, { boxId });
 
 		expect(await readBox(t, boxId)).toMatchObject({
 			parking_volume_id: 909,
@@ -1125,12 +1125,12 @@ describe("tracking a repair's parking volume", () => {
 	test("clears the pointer only once the volume is gone", async () => {
 		const t = testConvex();
 		const boxId = await repairingBox(t);
-		await t.mutation(internal.boxes.status.recordParkingVolume, {
+		await t.mutation(internal.boxes.lifecycle.recordParkingVolume, {
 			boxId,
 			volumeId: 909
 		});
 
-		await t.mutation(internal.boxes.status.clearParkingVolume, { boxId });
+		await t.mutation(internal.boxes.lifecycle.clearParkingVolume, { boxId });
 
 		const box = await readBox(t, boxId);
 		expect(box).not.toHaveProperty("parking_volume_id");
@@ -1149,7 +1149,7 @@ describe("tracking a repair's parking volume", () => {
 		await t.run(async (ctx) => await ctx.db.delete(boxId));
 
 		await expect(
-			t.mutation(internal.boxes.status.recordParkingVolume, {
+			t.mutation(internal.boxes.lifecycle.recordParkingVolume, {
 				boxId,
 				volumeId: 909
 			})
@@ -1164,7 +1164,7 @@ describe("tracking a repair's parking volume", () => {
 			await t.run(async (ctx) => await ctx.db.delete(boxId));
 
 			await expect(
-				t.mutation(internal.boxes.status[mutation], { boxId })
+				t.mutation(internal.boxes.lifecycle[mutation], { boxId })
 			).rejects.toThrow("Box not found.");
 		}
 	);
@@ -1245,7 +1245,7 @@ describe("a callback whose box was deleted underneath it", () => {
 			await t.run(async (ctx) => await ctx.db.delete(boxId));
 
 			await expect(
-				t.mutation(internal.boxes.status[name as keyof typeof CALLBACKS], {
+				t.mutation(internal.boxes.lifecycle[name as keyof typeof CALLBACKS], {
 					boxId,
 					...CALLBACKS[name as keyof typeof CALLBACKS](operationId)
 				} as never)
@@ -1278,7 +1278,7 @@ describe("the record a step leaves in the box's history", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.mutation(internal.boxes.status[action], { boxId, ...SERVER });
+		await t.mutation(internal.boxes.lifecycle[action], { boxId, ...SERVER });
 
 		expect(await boxEvents(t, boxId)).toMatchObject([
 			{
@@ -1308,7 +1308,7 @@ describe("the record a step leaves in the box's history", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.mutation(internal.boxes.status.recordDnsCreated, {
+		await t.mutation(internal.boxes.lifecycle.recordDnsCreated, {
 			boxId,
 			aRecordId: "a-1",
 			aaaaRecordId: "aaaa-1"
@@ -1335,7 +1335,7 @@ describe("the record a step leaves in the box's history", () => {
 		});
 		const operationId = await openOperation(t, boxId, "change_slug");
 
-		await t.mutation(internal.boxes.status.swapSlug, {
+		await t.mutation(internal.boxes.lifecycle.swapSlug, {
 			boxId,
 			operationId,
 			newARecordId: "a-2",
@@ -1359,7 +1359,7 @@ describe("the record a step leaves in the box's history", () => {
 		const boxId = await box(t);
 		const operationId = await openOperation(t, boxId, "change_config");
 
-		await t.mutation(internal.boxes.status.markConfigApplied, {
+		await t.mutation(internal.boxes.lifecycle.markConfigApplied, {
 			boxId,
 			operationId,
 			config: {
@@ -1384,7 +1384,7 @@ describe("the record a step leaves in the box's history", () => {
 		const boxId = await box(t);
 		const operationId = await openOperation(t, boxId, "change_password");
 
-		await t.mutation(internal.boxes.status.updateRuntimeAuthHash, {
+		await t.mutation(internal.boxes.lifecycle.updateRuntimeAuthHash, {
 			boxId,
 			operationId,
 			runtimeAuthHash: "$argon2id$new"
@@ -1404,7 +1404,7 @@ describe("the record a step leaves in the box's history", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.mutation(internal.boxes.status.markParkingRestoring, { boxId });
+		await t.mutation(internal.boxes.lifecycle.markParkingRestoring, { boxId });
 
 		expect(await boxEvents(t, boxId)).toMatchObject([
 			{ type: "box.parking_volume_restoring" }
@@ -1420,7 +1420,7 @@ describe("recording the image a box runs", () => {
 		const owner = await seedUser(t);
 		const boxId = await seedBox(t, { user_id: owner.clerkUserId });
 
-		await t.mutation(internal.boxes.status.setRuntimeImage, {
+		await t.mutation(internal.boxes.lifecycle.setRuntimeImage, {
 			boxId,
 			runtimeImage: "ghcr.io/composery/composery@sha256:next",
 			runtimeVersion: "1.4.0"
@@ -1442,7 +1442,7 @@ describe("recording the image a box runs", () => {
 			runtime_version: "1.3.0"
 		});
 
-		await t.mutation(internal.boxes.status.setRuntimeImage, {
+		await t.mutation(internal.boxes.lifecycle.setRuntimeImage, {
 			boxId,
 			runtimeImage: "ghcr.io/composery/composery@sha256:next",
 			runtimeVersion: null
@@ -1473,7 +1473,7 @@ describe("settling an operation a workflow left open", () => {
 			const t = testConvex();
 			const operationId = await operationWith(t, status);
 
-			await t.mutation(internal.boxes.status.settleOperation, { operationId });
+			await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
 
 			expect(await readOperation(t, operationId)).toMatchObject({
 				status: "succeeded",
@@ -1490,7 +1490,7 @@ describe("settling an operation a workflow left open", () => {
 			const t = testConvex();
 			const operationId = await operationWith(t, status);
 
-			await t.mutation(internal.boxes.status.settleOperation, { operationId });
+			await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
 
 			expect(await readOperation(t, operationId)).toMatchObject({ status });
 		}
@@ -1504,7 +1504,7 @@ describe("settling an operation a workflow left open", () => {
 		await t.run(async (ctx) => await ctx.db.delete(operationId));
 
 		await expect(
-			t.mutation(internal.boxes.status.settleOperation, { operationId })
+			t.mutation(internal.boxes.lifecycle.settleOperation, { operationId })
 		).resolves.not.toThrow();
 	});
 });
@@ -1543,7 +1543,7 @@ describe("settling a box and its operation together", () => {
 		operationId: Id<"box_operations">,
 		args: object = {}
 	) =>
-		t.mutation(internal.boxes.status.setBoxStatusWithOperationSucceeded, {
+		t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
 			boxId,
 			operationId,
 			status: "stopped",
@@ -1708,7 +1708,7 @@ describe("finishing an update", () => {
 		});
 		const operationId = await openOperation(t, boxId, "update");
 
-		await t.mutation(internal.boxes.status.markUpdateSucceeded, {
+		await t.mutation(internal.boxes.lifecycle.markUpdateSucceeded, {
 			boxId,
 			operationId,
 			runtimeImage: "ghcr.io/composery/composery@sha256:new",
@@ -1748,7 +1748,7 @@ describe("what a completed delete hands on", () => {
 			status: "deleting"
 		});
 		const operationId = await openOperation(t, boxId, "delete");
-		await t.mutation(internal.boxes.status.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
 		return boxId;
 	}
 

@@ -153,3 +153,15 @@ export const boxesForSubscriptionReconciliationPage = internalQuery({
 			});
 	}
 });
+
+// Whether this box is one the caller may be shown at all. The narrowest read
+// gate there is, and a type predicate so a caller that passes it stops holding a
+// nullable box. Deliberately beside the two resolvers above: "which box is
+// this" and "may they see it" are one question asked twice, and they were in two
+// files, one of which held nothing else.
+export function ownerCanReadBox<T extends { status: string; user_id: string }>(
+	box: T | null,
+	userId: string
+): box is T {
+	return box !== null && box.user_id === userId && box.status !== "deleted";
+}

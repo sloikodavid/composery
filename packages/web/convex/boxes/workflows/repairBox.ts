@@ -76,7 +76,7 @@ export const repairBox = defineBoxWorkflow({
 				volumeId = created.volumeId;
 				// Persist the id before a single byte is copied, so a crash from here on
 				// can never orphan the volume.
-				await step.runMutation(internal.boxes.status.recordParkingVolume, {
+				await step.runMutation(internal.boxes.lifecycle.recordParkingVolume, {
 					boxId: args.boxId,
 					volumeId
 				});
@@ -100,7 +100,7 @@ export const repairBox = defineBoxWorkflow({
 			);
 			// The one-way gate: only now is the volume authoritative and the
 			// destructive rebuild permitted.
-			await step.runMutation(internal.boxes.status.markParkingRestoring, {
+			await step.runMutation(internal.boxes.lifecycle.markParkingRestoring, {
 				boxId: args.boxId
 			});
 		}
@@ -129,7 +129,7 @@ export const repairBox = defineBoxWorkflow({
 			{ serverId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.status.recordServerRebuilt, {
+		await step.runMutation(internal.boxes.lifecycle.recordServerRebuilt, {
 			boxId: args.boxId,
 			serverId: server.serverId,
 			serverType: server.serverType,
@@ -173,7 +173,7 @@ export const repairBox = defineBoxWorkflow({
 			{ volumeId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.status.clearParkingVolume, {
+		await step.runMutation(internal.boxes.lifecycle.clearParkingVolume, {
 			boxId: args.boxId
 		});
 
@@ -184,7 +184,7 @@ export const repairBox = defineBoxWorkflow({
 			{ boxId: args.boxId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.status.markRepairSucceeded, {
+		await step.runMutation(internal.boxes.lifecycle.markRepairSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId
 		});

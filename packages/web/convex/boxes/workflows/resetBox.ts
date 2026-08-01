@@ -12,7 +12,7 @@ export const resetBox = defineBoxWorkflow({
 
 		await rebuildRuntime(step, box);
 
-		await step.runMutation(internal.boxes.status.markResetSucceeded, {
+		await step.runMutation(internal.boxes.lifecycle.markResetSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId
 		});

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
@@ -36,12 +36,17 @@ const PUBLIC_FUNCTION = /^export const (\w+) = (?:query|mutation|action)\(/gm;
 
 const root = fileURLToPath(new URL("../../..", import.meta.url));
 
+// Tracked files, because the rule is about what gets committed rather than what
+// happens to be on disk. Filtered to what still exists: a file moved with `mv`
+// rather than `git mv` sits in the index until the next `git add`, and a working
+// copy mid-refactor should not read as a rule violation.
 const convexFiles = execFileSync("git", ["ls-files", "convex"], {
 	cwd: root,
 	encoding: "utf8"
 })
 	.split("\n")
-	.filter((file) => file.endsWith(".ts") && !file.includes("_generated"));
+	.filter((file) => file.endsWith(".ts") && !file.includes("_generated"))
+	.filter((file) => existsSync(new URL(file, `file:///${root}/`)));
 
 function publicFunctionsIn(file: string) {
 	const source = readFileSync(new URL(file, `file:///${root}/`), "utf8");

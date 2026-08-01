@@ -48,7 +48,7 @@ export const updateBox = defineBoxWorkflow({
 		// anyway would drop the owner's terminals for no change at all.
 		if (box.runtime_image === release.image) {
 			await step.runMutation(
-				internal.boxes.status.setBoxStatusWithOperationSucceeded,
+				internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
 				{
 					boxId: args.boxId,
 					operationId: args.operationId,
@@ -65,7 +65,7 @@ export const updateBox = defineBoxWorkflow({
 			{ retry: true }
 		);
 
-		await step.runMutation(internal.boxes.status.markUpdateSucceeded, {
+		await step.runMutation(internal.boxes.lifecycle.markUpdateSucceeded, {
 			boxId: args.boxId,
 			operationId: args.operationId,
 			runtimeImage: release.image,

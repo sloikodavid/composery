@@ -183,7 +183,7 @@ describe("the operation lock", () => {
 		const boxId = await boxFor(t, { user_id: owner.clerkUserId });
 
 		const first = await start(t, boxId, "snapshot");
-		await t.mutation(internal.boxes.status.settleOperation, {
+		await t.mutation(internal.boxes.lifecycle.settleOperation, {
 			operationId: first!
 		});
 
@@ -201,7 +201,7 @@ describe("the operation lock", () => {
 		});
 
 		const first = await start(t, boxId, "reset");
-		await t.mutation(internal.boxes.status.markOperationFailed, {
+		await t.mutation(internal.boxes.lifecycle.markOperationFailed, {
 			boxId,
 			error: "boom",
 			operationId: first!,

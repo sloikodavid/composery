@@ -7,7 +7,7 @@ import { vi } from "vitest";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import schema from "@/convex/schema";
 
-// `convex-test` resolves a function reference like `boxes/access:get` by looking
+// `convex-test` resolves a function reference like `boxes/queries:boxBySlug` by looking
 // the path up in a module map, and it can only build that map from an
 // `import.meta.glob` written where the glob's base is statically known. Tests
 // live outside `convex/` (docs/developing/testing.md), so the glob is written

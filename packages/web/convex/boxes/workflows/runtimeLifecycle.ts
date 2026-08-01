@@ -55,7 +55,7 @@ export async function createRuntime(
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.status.recordServerCreated, {
+	await step.runMutation(internal.boxes.lifecycle.recordServerCreated, {
 		boxId,
 		serverId: server.serverId,
 		serverType: server.serverType,
@@ -70,7 +70,7 @@ export async function createRuntime(
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.status.recordDnsCreated, {
+	await step.runMutation(internal.boxes.lifecycle.recordDnsCreated, {
 		boxId,
 		aRecordId: dns.aRecordId,
 		aaaaRecordId: dns.aaaaRecordId
@@ -92,7 +92,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.status.setRuntimeImage, {
+	await step.runMutation(internal.boxes.lifecycle.setRuntimeImage, {
 		boxId: box._id,
 		runtimeImage: release.image,
 		runtimeVersion: release.version
@@ -104,7 +104,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 		{ retry: true }
 	);
 
-	await step.runMutation(internal.boxes.status.recordServerRebuilt, {
+	await step.runMutation(internal.boxes.lifecycle.recordServerRebuilt, {
 		boxId: box._id,
 		serverId: server.serverId,
 		serverType: server.serverType,

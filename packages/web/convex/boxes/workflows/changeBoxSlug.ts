@@ -49,7 +49,7 @@ export const changeBoxSlug = defineBoxWorkflow({
 				{ retry: true }
 			);
 
-			await step.runMutation(internal.boxes.status.swapSlug, {
+			await step.runMutation(internal.boxes.lifecycle.swapSlug, {
 				boxId: args.boxId,
 				operationId: args.operationId,
 				newSlug: args.newSlug,

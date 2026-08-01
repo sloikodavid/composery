@@ -29,7 +29,7 @@ export async function startWorkflow(
 		// see: a workflow cancelled from outside, or one whose failure-recording
 		// mutation itself threw. Without it those leave the operation active
 		// forever, and an active operation blocks every later action on the box.
-		onComplete: internal.boxes.status.finishBoxOperation,
+		onComplete: internal.boxes.lifecycle.finishBoxOperation,
 		context
 	});
 }
@@ -77,14 +77,14 @@ export function defineBoxWorkflow<
 		},
 		handler: async (step, args) => {
 			const typedArgs = args as BoxWorkflowArgs<Extra>;
-			await step.runMutation(internal.boxes.status.markOperationRunning, {
+			await step.runMutation(internal.boxes.lifecycle.markOperationRunning, {
 				operationId: typedArgs.operationId
 			});
 
 			try {
 				await config.run(step, typedArgs);
 			} catch (error) {
-				await step.runMutation(internal.boxes.status.markOperationFailed, {
+				await step.runMutation(internal.boxes.lifecycle.markOperationFailed, {
 					boxId: typedArgs.boxId,
 					operationId: typedArgs.operationId,
 					error: operationError(error),
@@ -93,7 +93,7 @@ export function defineBoxWorkflow<
 				throw error;
 			}
 
-			await step.runMutation(internal.boxes.status.settleOperation, {
+			await step.runMutation(internal.boxes.lifecycle.settleOperation, {
 				operationId: typedArgs.operationId
 			});
 		}

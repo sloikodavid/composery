@@ -20,7 +20,7 @@ export const createBox = defineBoxWorkflow({
 				{ retry: true }
 			);
 
-			await step.runMutation(internal.boxes.status.setRuntimeImage, {
+			await step.runMutation(internal.boxes.lifecycle.setRuntimeImage, {
 				boxId: args.boxId,
 				runtimeImage: release.image,
 				runtimeVersion: release.version
@@ -28,7 +28,7 @@ export const createBox = defineBoxWorkflow({
 
 			await createRuntime(step, args.boxId, box.slug, box.plan);
 
-			await step.runMutation(internal.boxes.status.markCreateSucceeded, {
+			await step.runMutation(internal.boxes.lifecycle.markCreateSucceeded, {
 				boxId: args.boxId,
 				operationId: args.operationId
 			});

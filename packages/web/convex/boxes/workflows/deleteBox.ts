@@ -15,7 +15,7 @@ export const deleteBox = defineBoxWorkflow({
 
 		await deleteRuntime(step, box);
 
-		await step.runMutation(internal.boxes.status.markDeleted, {
+		await step.runMutation(internal.boxes.lifecycle.markDeleted, {
 			boxId: args.boxId,
 			operationId: args.operationId
 		});

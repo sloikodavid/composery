@@ -9,7 +9,15 @@ vi.mock("@/components/base/button", () => import("@/tests/support/ui"));
 vi.mock("@/components/base/dialog", () => import("@/tests/support/ui"));
 vi.mock("@/components/boxes/status-button", () => import("@/tests/support/ui"));
 
-import { BoxStatusAction } from "@/components/boxes/status-action";
+import {
+	BoxStatusAction,
+	PRIMARY_ACTION
+} from "@/components/boxes/status-action";
+import {
+	isOperationAllowed,
+	type BoxOperationType
+} from "@/convex/model/box/operation";
+import type { BoxStatus } from "@/convex/model/box/status";
 
 afterEach(cleanup);
 
@@ -102,5 +110,24 @@ describe("BoxStatusAction", () => {
 				}) as HTMLButtonElement
 			).disabled
 		).toBe(true);
+	});
+});
+
+// The page and the control plane hold one rule between them: a button is only
+// offered where the operation behind it may actually begin. `PRIMARY_ACTION` is
+// what the component branches on, so this pins the page to the catalogue rather
+// than to a copy of it - which is what the status literals it used to test were.
+describe("the action a status leads with", () => {
+	const rows = Object.entries(PRIMARY_ACTION) as [
+		BoxStatus,
+		BoxOperationType
+	][];
+
+	test("offers an action for every status that has one", () => {
+		expect(rows.length).toBeGreaterThan(3);
+	});
+
+	test.each(rows)("%s offers %s, which is legal from it", (status, type) => {
+		expect(isOperationAllowed(status, type)).toBe(true);
 	});
 });

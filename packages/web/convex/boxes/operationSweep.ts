@@ -17,7 +17,7 @@ import {
 import { vBoxOperationType } from "../schema";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import { recordOperationFailure } from "./status";
+import { recordOperationFailure } from "./lifecycle";
 import { activeOperation } from "./views";
 import { workflow } from "./workflows/boxWorkflow";
 import { HOUR_MS, MINUTE_MS } from "../time";

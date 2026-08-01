@@ -25,7 +25,7 @@ import {
 	latestUpdate,
 	safeBox
 } from "../boxes/views";
-import { ownerCanReadBox } from "../boxes/access";
+import { ownerCanReadBox } from "../boxes/queries";
 import {
 	markSnapshotDeleting,
 	snapshotView,

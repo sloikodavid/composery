@@ -15,7 +15,7 @@ export const changeBoxPassword = defineBoxWorkflow({
 			{ retry: true }
 		);
 
-		await step.runMutation(internal.boxes.status.updateRuntimeAuthHash, {
+		await step.runMutation(internal.boxes.lifecycle.updateRuntimeAuthHash, {
 			boxId: args.boxId,
 			operationId: args.operationId,
 			runtimeAuthHash: args.runtimeAuthHash

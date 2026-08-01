@@ -16,7 +16,7 @@ export const stopBox = defineBoxWorkflow({
 		);
 
 		await step.runMutation(
-			internal.boxes.status.setBoxStatusWithOperationSucceeded,
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
 			{
 				boxId: args.boxId,
 				operationId: args.operationId,
