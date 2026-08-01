@@ -33,7 +33,7 @@ export async function notFoundIfNotStaff() {
 	}
 
 	const isStaff = await fetchQuery(
-		api.users.canAccessStaffConsole,
+		api.owner.account.canAccessStaffConsole,
 		{},
 		{ token }
 	);

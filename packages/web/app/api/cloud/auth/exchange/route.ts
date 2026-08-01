@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 	}
 
 	try {
-		const result = await fetchAction(api.boxes.auth.exchangeAuthorizationCode, {
+		const result = await fetchAction(api.box.auth.exchangeAuthorizationCode, {
 			boxId: body.boxId as Id<"boxes">,
 			code: body.code,
 			codeVerifier: body.codeVerifier,

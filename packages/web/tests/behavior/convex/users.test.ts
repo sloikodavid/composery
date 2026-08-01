@@ -45,7 +45,7 @@ describe("identity to user record", () => {
 
 		await t
 			.withIdentity({ subject: "clerk_1", email: "first@example.com" })
-			.mutation(api.users.ensureCurrentUser, {});
+			.mutation(api.owner.account.ensureCurrentUser, {});
 
 		expect(await readUser(t, "clerk_1")).toMatchObject({
 			clerk_user_id: "clerk_1",
@@ -62,18 +62,20 @@ describe("identity to user record", () => {
 			email: "first@example.com"
 		});
 
-		await as.mutation(api.users.ensureCurrentUser, {});
+		await as.mutation(api.owner.account.ensureCurrentUser, {});
 
 		expect((await readUser(t, "clerk_1"))?.role).toBe("user");
-		expect(await as.query(api.users.canAccessStaffConsole, {})).toBe(false);
+		expect(await as.query(api.owner.account.canAccessStaffConsole, {})).toBe(
+			false
+		);
 	});
 
 	test("reuses the existing row when the same identity calls again", async () => {
 		const t = testConvex();
 		const as = t.withIdentity({ subject: "clerk_1", email: "a@example.com" });
 
-		await as.mutation(api.users.ensureCurrentUser, {});
-		await as.mutation(api.users.ensureCurrentUser, {});
+		await as.mutation(api.owner.account.ensureCurrentUser, {});
+		await as.mutation(api.owner.account.ensureCurrentUser, {});
 
 		const rows = await t.run(
 			async (ctx) => await ctx.db.query("users").collect()
@@ -86,10 +88,10 @@ describe("identity to user record", () => {
 
 		await t
 			.withIdentity({ subject: "clerk_1", email: "old@example.com" })
-			.mutation(api.users.ensureCurrentUser, {});
+			.mutation(api.owner.account.ensureCurrentUser, {});
 		await t
 			.withIdentity({ subject: "clerk_1", email: "new@example.com" })
-			.mutation(api.users.ensureCurrentUser, {});
+			.mutation(api.owner.account.ensureCurrentUser, {});
 
 		const rows = await t.run(
 			async (ctx) => await ctx.db.query("users").collect()
@@ -107,7 +109,7 @@ describe("identity to user record", () => {
 			role: "admin"
 		});
 
-		await admin.as.mutation(api.users.ensureCurrentUser, {});
+		await admin.as.mutation(api.owner.account.ensureCurrentUser, {});
 
 		expect((await readUser(t, "clerk_admin"))?.role).toBe("admin");
 	});
@@ -115,9 +117,9 @@ describe("identity to user record", () => {
 	test("refuses an unauthenticated caller", async () => {
 		const t = testConvex();
 
-		await expect(t.mutation(api.users.ensureCurrentUser, {})).rejects.toThrow(
-			/Authentication required/
-		);
+		await expect(
+			t.mutation(api.owner.account.ensureCurrentUser, {})
+		).rejects.toThrow(/Authentication required/);
 	});
 
 	// Clerk only puts `email` in the session token once someone customises it, so
@@ -255,9 +257,9 @@ describe("an account that may not act", () => {
 		const t = testConvex();
 		const admin = await seedUser(t, { role: "admin", suspended: true });
 
-		expect(await admin.as.query(api.users.canAccessStaffConsole, {})).toBe(
-			false
-		);
+		expect(
+			await admin.as.query(api.owner.account.canAccessStaffConsole, {})
+		).toBe(false);
 		await expect(admin.as.query(api.staff.boxes.search, {})).rejects.toThrow(
 			/Staff access required/
 		);
@@ -269,9 +271,9 @@ describe("an account that may not act", () => {
 		const t = testConvex();
 		const admin = await seedUser(t, { role: "admin", deletionPending: true });
 
-		expect(await admin.as.query(api.users.canAccessStaffConsole, {})).toBe(
-			false
-		);
+		expect(
+			await admin.as.query(api.owner.account.canAccessStaffConsole, {})
+		).toBe(false);
 	});
 
 	// `ensureCurrentUser` is the one write path a blocked account still reaches,
@@ -284,7 +286,7 @@ describe("an account that may not act", () => {
 			suspendedReason: "abuse"
 		});
 
-		await user.as.mutation(api.users.ensureCurrentUser, {});
+		await user.as.mutation(api.owner.account.ensureCurrentUser, {});
 
 		expect(await readUser(t, user.clerkUserId)).toMatchObject({
 			suspended: true,
@@ -305,7 +307,7 @@ describe("an account that may not act", () => {
 		const boxId = await seedBox(t, { user_id: user.clerkUserId });
 
 		await expect(
-			user.as.action(api.boxes.auth.createAuthorizationCode, {
+			user.as.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: "a".repeat(43),
 				redirectUri: "https://box.dev.composery.cloud/ide/",
@@ -325,7 +327,7 @@ describe("an account that may not act", () => {
 		await expect(
 			t
 				.withIdentity({ subject: "ghost", email: "ghost@example.com" })
-				.action(api.boxes.auth.createAuthorizationCode, {
+				.action(api.box.auth.createAuthorizationCode, {
 					boxId,
 					codeChallenge: "a".repeat(43),
 					redirectUri: "https://box.dev.composery.cloud/ide/",
@@ -553,7 +555,9 @@ describe("whether to offer the console", () => {
 	test("says no to nobody at all", async () => {
 		const t = testConvex();
 
-		expect(await t.query(api.users.canAccessStaffConsole, {})).toBe(false);
+		expect(await t.query(api.owner.account.canAccessStaffConsole, {})).toBe(
+			false
+		);
 	});
 
 	// Signed in with no row yet: the first page load can race the mutation that
@@ -564,7 +568,7 @@ describe("whether to offer the console", () => {
 		expect(
 			await t
 				.withIdentity({ subject: "clerk_unknown" })
-				.query(api.users.canAccessStaffConsole, {})
+				.query(api.owner.account.canAccessStaffConsole, {})
 		).toBe(false);
 	});
 
@@ -593,7 +597,7 @@ describe("whether to offer the console", () => {
 		expect(
 			await t
 				.withIdentity({ subject: "clerk_1" })
-				.query(api.users.canAccessStaffConsole, {})
+				.query(api.owner.account.canAccessStaffConsole, {})
 		).toBe(
 			(ROLE_CAPABILITIES[role] as readonly string[]).includes("staff_console")
 		);

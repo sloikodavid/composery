@@ -29,35 +29,36 @@ export default defineConfig({
 			// test imported unless this list exists, and the one honest question
 			// coverage answers is the opposite one - what nothing touches - which a
 			// file has to appear at zero to answer.
+			//
+			// Every pattern is therefore anchored at the repository root, including
+			// the ones naming a package. That is not style: the sweep for files no
+			// test loaded walks from here, so a pattern that only resolves against
+			// some project's root finds nothing, and its files then appear solely
+			// because a test happened to import one - present when covered, absent
+			// when not, which is precisely backwards. Measured: with
+			// `packages/*/scripts` missing, `packages/ide/scripts/rebrand.mjs` still
+			// reported, because a test imports it, while `types.mjs` beside it
+			// vanished.
+			//
+			// `packages/web/app` and `packages/web/components` are absent on purpose.
+			// They are React server and client components: wiring and JSX, where a
+			// test that reached one would assert back the markup it was written from
+			// - the "run the line, assert nothing" this whole configuration is
+			// arranged to prevent, dressed as coverage. The rule that replaces the
+			// number is where a decision may live: anything decidable belongs in
+			// `lib/` or `convex/`, which are here, so when a component starts
+			// deciding the fix is to move the decision rather than build a harness to
+			// reach it. Where one already decides - the dialogs under
+			// `components/boxes/` - a behaviour test drives it through a
+			// `// @vitest-environment jsdom` header and @testing-library/react; those
+			// tests earn their keep from their assertions, not from a percentage.
+			// What can rot in the prose pages is whether the copy still describes the
+			// service, and that is pinned where wording belongs:
+			// `packages/web/tests/invariants/legal`.
 			include: [
 				"packages/ide/overlay/**/*.{ts,js}",
 				"packages/shared/**/*.{ts,mjs}",
-				// `app/` and `components/` are absent on purpose. They are React
-				// server and client components: wiring and JSX, where a test that
-				// reached one would assert back the markup it was written from - the
-				// "run the line, assert nothing" this whole configuration is arranged
-				// to prevent, dressed as coverage.
-				//
-				// The rule that replaces the number is where a decision may live.
-				// Anything decidable belongs in `lib/` or `convex/`, which are here.
-				// When a component starts deciding, move the decision rather than
-				// build a harness to reach it. Where one already decides - the dialogs
-				// under `components/boxes/` - there is a behaviour test that drives it
-				// through `// @vitest-environment jsdom` and @testing-library/react;
-				// those tests earn their keep from their assertions, not from a
-				// percentage. What can rot in the prose pages is whether the copy
-				// still describes the service, and that is pinned where wording
-				// belongs: `packages/web/tests/invariants/legal`.
 				"packages/web/{convex,hooks,lib}/**/*.{ts,tsx}",
-				// Every pattern is anchored at the repository root, including the ones
-				// naming a package. That is not style: the sweep that finds files no
-				// test loaded walks from here, so a pattern that only resolves against
-				// some project's root finds nothing, and the file then appears solely
-				// because a test happened to import it - present when covered, absent
-				// when not, which is precisely backwards. Measured: with
-				// `packages/*/scripts` missing, `packages/ide/scripts/rebrand.mjs`
-				// still reported (a test imports it) while `types.mjs` beside it
-				// vanished.
 				"scripts/**/*.mjs",
 				"packages/*/scripts/**/*.mjs"
 			],
@@ -80,9 +81,9 @@ export default defineConfig({
 				//
 				// What is decidable about a workflow is deliberately not in the handler,
 				// and every piece of it is covered elsewhere: where a failure leaves the
-				// box (`OPERATION_FAILURE_STATUS`), which states may begin an operation
-				// (`OPERATION_ALLOWED_STATUSES`), what a plan provisions
-				// (`lib/box-plan`). The handler is the wiring between them.
+				// box, which states may begin an operation, and what a plan provisions -
+				// all of it one row per operation in `convex/model/box/operation.ts` and
+				// `convex/model/box/plan.ts`. The handler is the wiring between them.
 				//
 				// The real check on that wiring is the system smoke, not a unit test.
 				"packages/web/convex/boxes/workflows/**",
@@ -138,7 +139,7 @@ export default defineConfig({
 				// builds a DOM to run them in. The smoke drives the real pages.
 				//
 				// The decisions inside them are worth a test and nothing structural
-				// stops one: a `// @vitest-environment jsdom` docblock is all the web
+				// stops one: a `// @vitest-environment jsdom` header is all the web
 				// package's component tests need, and it works the same here. Two are
 				// waiting - that a breach check which cannot be performed proceeds
 				// rather than blocks, and that only an explicit `{ valid: false }` from
@@ -156,7 +157,7 @@ export default defineConfig({
 			// `json` is what `check:coverage` diffs against, `text-summary` is the line
 			// the run prints, and `html` is where "what does nothing touch" is answered
 			// file by file. No `lcov`: it writes an lcov.info nothing here reads, and
-			// its browsable half is `html`.
+			// the half anyone opens is `html`.
 			reporter: ["text-summary", "json", "html"]
 		},
 		projects: projects()

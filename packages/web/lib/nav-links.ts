@@ -26,7 +26,7 @@ const STAFF_LINKS: NavLink[] = [
 // USER_LINKS while the query is in flight puts Boxes on the bar and then
 // displaces it again a round trip later when Console turns up beside it.
 export function useAuthedNavLinks(): NavLink[] {
-	const staff = useQuery(api.users.canAccessStaffConsole);
+	const staff = useQuery(api.owner.account.canAccessStaffConsole);
 	if (staff === undefined) return [];
 	return [...USER_LINKS, ...(staff ? STAFF_LINKS : [])];
 }

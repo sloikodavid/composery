@@ -616,7 +616,7 @@ describe("the prices the pricing page may show", () => {
 		vi.stubEnv("POLAR_ENVIRONMENT", "sandbox");
 	}
 
-	const pricing = () => testConvex().query(api.billing.polar.boxPricing, {});
+	const pricing = () => testConvex().query(api.site.pricing.boxPricing, {});
 
 	// Minor units to a monthly figure: a monthly product divides by one, an
 	// annual one by twelve. Showing an annual total as a monthly price is the

@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
+import type { RecoveryStatus } from "@/convex/model/box/recovery";
 
 vi.mock("sonner", () => ({
 	toast: { error: vi.fn(), success: vi.fn() }

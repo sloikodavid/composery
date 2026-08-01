@@ -194,7 +194,7 @@ async function upsertUser(ctx: WriterCtx, clerkUserId: string, email: string) {
 	return user;
 }
 
-async function ensureUserRecord(ctx: WriterCtx) {
+export async function ensureUserRecord(ctx: WriterCtx) {
 	const identity = await requireIdentity(ctx);
 	return await upsertUser(ctx, identity.subject, emailFromIdentity(identity));
 }
@@ -260,17 +260,6 @@ export async function requireCapabilityInAction(
 	return user;
 }
 
-// The app calls this once per load so a browsing account exists before staff
-// ever need to find it. It returns nothing: the caller only needs the row to be
-// there, and shipping the role and suspension reason to every page was a payload
-// nobody read.
-export const ensureCurrentUser = mutation({
-	args: {},
-	handler: async (ctx) => {
-		await ensureUserRecord(ctx);
-	}
-});
-
 export const ensureUserForIdentity = internalMutation({
 	args: {
 		clerkUserId: v.string(),
@@ -278,23 +267,6 @@ export const ensureUserForIdentity = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		return await upsertUser(ctx, args.clerkUserId, args.email);
-	}
-});
-
-// Whether to offer the console at all - the nav link and the page's own server
-// guard ask this and nothing else. It answers `false` rather than throwing,
-// because "you are an ordinary customer" is the expected case here, not a
-// failure; every backend endpoint behind the console still checks the specific
-// capability it needs, which is where the boundary actually is.
-export const canAccessStaffConsole = query({
-	args: {},
-	handler: async (ctx) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) return false;
-		return userHasCapability(
-			await findUserByClerkId(ctx, identity.subject),
-			"staff_console"
-		);
 	}
 });
 

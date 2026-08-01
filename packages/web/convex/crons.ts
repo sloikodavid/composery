@@ -13,7 +13,7 @@ crons.interval(
 crons.interval(
 	"delete expired box authorization records",
 	{ minutes: 15 },
-	internal.boxes.auth.deleteExpiredAuthRecords
+	internal.box.auth.deleteExpiredAuthRecords
 );
 
 crons.interval(

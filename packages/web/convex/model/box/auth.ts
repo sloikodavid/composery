@@ -2,7 +2,7 @@
 //
 // One home because both ends check them: the Next routes under `app/api/cloud/`
 // and `app/boxes/authorize/`, which turn a malformed request into a 400 rather
-// than a Convex exception, and the Convex actions in `convex/boxes/auth.ts`,
+// than a Convex exception, and the Convex actions in `convex/box/auth.ts`,
 // which are the boundary that actually decides. Those two lists of literals had
 // drifted into four spellings of "43 characters of base64url" and three of
 // "an argon2id hash, at most 512 bytes", so tightening one could only ever
@@ -12,7 +12,7 @@
 // constants are exported for the tests that pin them and for nothing else.
 // Importing `ARGON2ID_HASH` and `MAX_HASH_LENGTH` to write
 // `regex.test(x) || x.length > max` at the call site is how a fifth spelling
-// gets written, which is exactly what `convex/boxes/auth.ts` had done at all
+// gets written, which is exactly what `convex/box/auth.ts` had done at all
 // four of its entry points.
 //
 // Every secret in this flow - the authorization code, its PKCE verifier and

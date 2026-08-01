@@ -42,7 +42,7 @@ import {
 // `box` is deliberately absent from this type even though the operation
 // catalogue knows about it: the running instance authenticates with a grant
 // rather than a session, so its one operation (`change_password`) comes through
-// `convex/boxes/auth.ts` and never through here.
+// `convex/box/auth.ts` and never through here.
 export type EndpointAudience = "owner" | "staff";
 
 // The capability the console asks for before touching somebody else's box.

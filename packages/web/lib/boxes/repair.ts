@@ -1,4 +1,4 @@
-import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
+import type { RecoveryStatus } from "@/convex/model/box/recovery";
 
 // What a box dialog makes of a state it read rather than one it controls.
 // `muted` means "we could not read this", never "this is fine" - `summarize`

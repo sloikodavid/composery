@@ -103,28 +103,6 @@ export function floorDeadlinePassed(
 // Null means we have no cached release to compare against - never refreshed yet,
 // or a channel tag that resolved to no version. Callers must read that as "not
 // known", never as "you are current".
-export const fleetVersion = query({
-	args: {},
-	returns: v.object({
-		image: v.union(v.string(), v.null()),
-		version: v.union(v.string(), v.null())
-	}),
-	handler: async (ctx) => {
-		const settings = await readGlobalSettings(ctx);
-		return {
-			// The digest is what a box compares against its own
-			// COMPOSERY_RUNTIME_IMAGE, so both surfaces answer from one fact rather
-			// than one comparing labels and the other digests. It is not a secret to
-			// withhold: it is the content address of a public image, and anyone can
-			// resolve the same tag themselves. What stays behind the authenticated
-			// queries is everything *about the fleet* - the floor, its deadline, and
-			// how many boxes there are.
-			image: settings.runtimeRelease?.image ?? null,
-			version: settings.runtimeRelease?.version ?? null
-		};
-	}
-});
-
 // Refresh the cached fleet release. Scheduled hourly rather than computed per
 // box or per page view: it is one registry round trip for the whole fleet, and
 // the answer is identical for every box.

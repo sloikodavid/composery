@@ -7,7 +7,7 @@ Four planes, and the rule is who may read it.
 - **`convex/model/`** - the words both planes speak. No React, no `_generated`, no
   Convex runtime, relative imports only (`convex/tsconfig.json` has no path
   aliases). A box's statuses, its operations, its plans, its metrics and its slug
-  rules live here, and `convex/schema.ts` builds its validators *from* them. The
+  rules live here, and `convex/schema.ts` builds its validators _from_ them. The
   dependency runs one way: the model knows nothing about the database, and
   everything that knows about the database reads the model.
 - **`convex/owner/`, `convex/staff/`, `convex/box/`** - public surfaces, named for

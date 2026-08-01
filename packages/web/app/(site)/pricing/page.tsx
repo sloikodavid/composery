@@ -26,7 +26,7 @@ export default async function PricingPage({
 		: "year";
 	// Read on the server so the price is in the delivered HTML: it is the one
 	// number a visitor and a crawler come to this page for.
-	const pricing = await fetchQuery(api.billing.polar.boxPricing, {});
+	const pricing = await fetchQuery(api.site.pricing.boxPricing, {});
 
 	return (
 		<Pricing

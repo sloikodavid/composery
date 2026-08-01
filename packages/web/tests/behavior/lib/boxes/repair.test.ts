@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
+import type { RecoveryStatus } from "@/convex/model/box/recovery";
 import { buildChecks, diskState, summarize } from "@/lib/boxes/repair";
 
 const HEALTHY: RecoveryStatus = {

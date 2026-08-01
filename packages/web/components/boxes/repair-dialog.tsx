@@ -21,7 +21,7 @@ import {
 } from "@/components/boxes/operation-dialog";
 import { ToneIcon } from "@/components/boxes/tone-icon";
 import { isOperationAllowed } from "@/convex/model/box/operation";
-import type { RecoveryStatus } from "@/convex/boxes/recoveryTypes";
+import type { RecoveryStatus } from "@/convex/model/box/recovery";
 import { type BoxStatus } from "@/convex/model/box/status";
 import { errorMessage } from "@/lib/error-message";
 import { CHECKS, summarize } from "@/lib/boxes/repair";

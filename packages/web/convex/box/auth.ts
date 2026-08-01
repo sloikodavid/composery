@@ -12,7 +12,7 @@ import { requireActiveUserInAction } from "../users";
 import { cloudUrl } from "../env";
 import { vBoxAuthorizationType } from "../schema";
 import { isFlowSecret, isPasswordHash, isRedirectUri } from "../model/box/auth";
-import { startBoxOperation } from "./operations";
+import { startBoxOperation } from "../boxes/operations";
 import { MINUTE_MS } from "../time";
 
 const AUTHORIZATION_CODE_TTL_MS = 2 * MINUTE_MS;
@@ -79,7 +79,7 @@ export const createAuthorizationCode = action({
 			throw new ConvexError("Invalid authorization request.");
 		}
 
-		const box = await ctx.runQuery(internal.boxes.auth.boxForAuthorization, {
+		const box = await ctx.runQuery(internal.box.auth.boxForAuthorization, {
 			boxId: args.boxId
 		});
 		if (!box || box.user_id !== user.clerk_user_id || box.deleted_at) {
@@ -93,7 +93,7 @@ export const createAuthorizationCode = action({
 		// ownership right here, so re-running the flow is how password recovery
 		// and changes work on cloud boxes.
 		const code = base64url(bytes(32));
-		await ctx.runMutation(internal.boxes.auth.storeAuthorizationCode, {
+		await ctx.runMutation(internal.box.auth.storeAuthorizationCode, {
 			boxId: box._id,
 			codeHash: await sha256(code),
 			codeChallenge: args.codeChallenge,
@@ -125,7 +125,7 @@ export const exchangeAuthorizationCode = action({
 			throw new ConvexError("Invalid authorization code.");
 		}
 		const grant = args.type === "password" ? base64url(bytes(32)) : undefined;
-		await ctx.runMutation(internal.boxes.auth.exchangeCode, {
+		await ctx.runMutation(internal.box.auth.exchangeCode, {
 			boxId: args.boxId,
 			codeHash: await sha256(args.code),
 			codeChallenge: await sha256(args.codeVerifier),
@@ -150,7 +150,7 @@ export const installPassword = action({
 		if (!isFlowSecret(args.grant) || !isPasswordHash(args.runtimeAuthHash)) {
 			throw new ConvexError("Invalid password hash.");
 		}
-		await ctx.runMutation(internal.boxes.auth.claimGrantForPassword, {
+		await ctx.runMutation(internal.box.auth.claimGrantForPassword, {
 			boxId: args.boxId,
 			grantHash: await sha256(args.grant),
 			runtimeAuthHash: args.runtimeAuthHash
@@ -177,7 +177,7 @@ export const changePassword = action({
 		) {
 			throw new ConvexError("Invalid password hash.");
 		}
-		await ctx.runMutation(internal.boxes.auth.applyPasswordChange, args);
+		await ctx.runMutation(internal.box.auth.applyPasswordChange, args);
 		return { accepted: true };
 	}
 });
@@ -212,7 +212,7 @@ export const applyPasswordChange = internalMutation({
 		// works until the next restart and then silently reverts.
 		await ctx.scheduler.runAfter(
 			PASSWORD_RECONCILE_DELAY_MS,
-			internal.boxes.auth.reconcilePassword,
+			internal.box.auth.reconcilePassword,
 			{
 				boxId: box._id,
 				idempotencyKey: `password:${box._id}:${timestamp}`,
@@ -338,7 +338,7 @@ export const claimGrantForPassword = internalMutation({
 		});
 		await ctx.scheduler.runAfter(
 			PASSWORD_RECONCILE_DELAY_MS,
-			internal.boxes.auth.reconcilePassword,
+			internal.box.auth.reconcilePassword,
 			{
 				boxId: grant.box_id,
 				idempotencyKey: `password:${grant._id}`,
@@ -357,7 +357,7 @@ export const reconcilePassword = internalAction({
 		attempt: v.number()
 	},
 	handler: async (ctx, args) => {
-		const box = await ctx.runQuery(internal.boxes.auth.boxForAuthorization, {
+		const box = await ctx.runQuery(internal.box.auth.boxForAuthorization, {
 			boxId: args.boxId
 		});
 		if (
@@ -384,7 +384,7 @@ export const reconcilePassword = internalAction({
 			if (args.attempt >= PASSWORD_RECONCILE_MAX_ATTEMPTS) throw error;
 			await ctx.scheduler.runAfter(
 				PASSWORD_RECONCILE_RETRY_MS,
-				internal.boxes.auth.reconcilePassword,
+				internal.box.auth.reconcilePassword,
 				{ ...args, attempt: args.attempt + 1 }
 			);
 		}
@@ -420,7 +420,7 @@ export const deleteExpiredAuthRecords = internalMutation({
 		if (full) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.boxes.auth.deleteExpiredAuthRecords,
+				internal.box.auth.deleteExpiredAuthRecords,
 				{}
 			);
 		}

@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 
 import { api, internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { isBoxIdeRedirect } from "@/convex/boxes/auth";
+import { isBoxIdeRedirect } from "@/convex/box/auth";
 
 import {
 	boxOperations,
@@ -136,7 +136,7 @@ describe("deleting expired authorization records", () => {
 		await seedAuthRecords(t, { codes: 3, grants: 2, live: 2 });
 
 		const deleted = await t.mutation(
-			internal.boxes.auth.deleteExpiredAuthRecords,
+			internal.box.auth.deleteExpiredAuthRecords,
 			{}
 		);
 
@@ -148,7 +148,7 @@ describe("deleting expired authorization records", () => {
 		const t = testConvex();
 		await seedAuthRecords(t, { codes: 3 });
 
-		await t.mutation(internal.boxes.auth.deleteExpiredAuthRecords, {});
+		await t.mutation(internal.box.auth.deleteExpiredAuthRecords, {});
 
 		expect(await scheduledJobs(t)).toEqual([]);
 	});
@@ -161,13 +161,13 @@ describe("deleting expired authorization records", () => {
 		await seedAuthRecords(t, { codes: 201 });
 
 		const deleted = await t.mutation(
-			internal.boxes.auth.deleteExpiredAuthRecords,
+			internal.box.auth.deleteExpiredAuthRecords,
 			{}
 		);
 
 		expect(deleted).toBe(200);
 		expect(
-			await scheduledJobs(t, "boxes/auth:deleteExpiredAuthRecords")
+			await scheduledJobs(t, "box/auth:deleteExpiredAuthRecords")
 		).toHaveLength(1);
 	});
 });
@@ -203,7 +203,7 @@ describe("authorizing a box through its owner's session", () => {
 
 		const { code } = await t
 			.withIdentity(owner.identity)
-			.action(api.boxes.auth.createAuthorizationCode, {
+			.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: CHALLENGE,
 				redirectUri: redirect,
@@ -233,7 +233,7 @@ describe("authorizing a box through its owner's session", () => {
 		await expect(
 			t
 				.withIdentity(stranger.identity)
-				.action(api.boxes.auth.createAuthorizationCode, {
+				.action(api.box.auth.createAuthorizationCode, {
 					boxId,
 					codeChallenge: CHALLENGE,
 					redirectUri: redirect,
@@ -252,7 +252,7 @@ describe("authorizing a box through its owner's session", () => {
 		await expect(
 			t
 				.withIdentity(owner.identity)
-				.action(api.boxes.auth.createAuthorizationCode, {
+				.action(api.box.auth.createAuthorizationCode, {
 					boxId,
 					codeChallenge: CHALLENGE,
 					redirectUri: "https://elsewhere.example/callback",
@@ -269,7 +269,7 @@ describe("authorizing a box through its owner's session", () => {
 		await expect(
 			t
 				.withIdentity(owner.identity)
-				.action(api.boxes.auth.createAuthorizationCode, {
+				.action(api.box.auth.createAuthorizationCode, {
 					boxId,
 					codeChallenge: "too-short",
 					redirectUri: redirect,
@@ -287,7 +287,7 @@ describe("authorizing a box through its owner's session", () => {
 		const { boxId, owner } = await ownedBox(t);
 		const { code } = await t
 			.withIdentity(owner.identity)
-			.action(api.boxes.auth.createAuthorizationCode, {
+			.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: CHALLENGE,
 				redirectUri: redirect,
@@ -295,7 +295,7 @@ describe("authorizing a box through its owner's session", () => {
 			});
 
 		await expect(
-			t.action(api.boxes.auth.exchangeAuthorizationCode, {
+			t.action(api.box.auth.exchangeAuthorizationCode, {
 				boxId,
 				code,
 				codeVerifier: "b".repeat(43),
@@ -323,13 +323,13 @@ describe("authorizing a box through its owner's session", () => {
 
 		const { code } = await t
 			.withIdentity(owner.identity)
-			.action(api.boxes.auth.createAuthorizationCode, {
+			.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: challenge,
 				redirectUri: redirect,
 				type: "password"
 			});
-		const exchanged = await t.action(api.boxes.auth.exchangeAuthorizationCode, {
+		const exchanged = await t.action(api.box.auth.exchangeAuthorizationCode, {
 			boxId,
 			code,
 			codeVerifier: verifier,
@@ -339,7 +339,7 @@ describe("authorizing a box through its owner's session", () => {
 		expect(exchanged.type).toBe("password");
 		if (exchanged.type !== "password") return;
 
-		await t.action(api.boxes.auth.installPassword, {
+		await t.action(api.box.auth.installPassword, {
 			boxId,
 			grant: exchanged.grant,
 			runtimeAuthHash: HASH
@@ -368,13 +368,13 @@ describe("authorizing a box through its owner's session", () => {
 			.replace(/=+$/g, "");
 		const { code } = await t
 			.withIdentity(owner.identity)
-			.action(api.boxes.auth.createAuthorizationCode, {
+			.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: challenge,
 				redirectUri: redirect,
 				type: "password"
 			});
-		await t.action(api.boxes.auth.exchangeAuthorizationCode, {
+		await t.action(api.box.auth.exchangeAuthorizationCode, {
 			boxId,
 			code,
 			codeVerifier: verifier,
@@ -383,7 +383,7 @@ describe("authorizing a box through its owner's session", () => {
 		});
 
 		await expect(
-			t.action(api.boxes.auth.exchangeAuthorizationCode, {
+			t.action(api.box.auth.exchangeAuthorizationCode, {
 				boxId,
 				code,
 				codeVerifier: verifier,
@@ -423,7 +423,7 @@ describe("recording a password change made on the box", () => {
 		current: string,
 		next: string
 	) =>
-		t.mutation(internal.boxes.auth.applyPasswordChange, {
+		t.mutation(internal.box.auth.applyPasswordChange, {
 			boxId,
 			currentRuntimeAuthHash: current,
 			runtimeAuthHash: next
@@ -477,7 +477,7 @@ describe("recording a password change made on the box", () => {
 		expect(
 			await scheduledArgs<{ runtimeAuthHash: string; attempt: number }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).toMatchObject([{ runtimeAuthHash: NEXT, attempt: 1 }]);
 	});
@@ -490,7 +490,7 @@ describe("recording a password change made on the box", () => {
 
 		await apply(t, boxId, CURRENT, CURRENT);
 
-		expect(await scheduledJobs(t, "boxes/auth:reconcilePassword")).toEqual([]);
+		expect(await scheduledJobs(t, "box/auth:reconcilePassword")).toEqual([]);
 	});
 
 	test.each([
@@ -502,7 +502,7 @@ describe("recording a password change made on the box", () => {
 		const boxId = await boxWithPassword(t);
 
 		await expect(
-			t.action(api.boxes.auth.changePassword, {
+			t.action(api.box.auth.changePassword, {
 				boxId,
 				currentRuntimeAuthHash: current,
 				runtimeAuthHash: next
@@ -531,7 +531,7 @@ describe("reconciling a password onto the host", () => {
 		hash: string,
 		attempt = 1
 	) =>
-		t.action(internal.boxes.auth.reconcilePassword, {
+		t.action(internal.box.auth.reconcilePassword, {
 			boxId,
 			idempotencyKey: `password:${boxId}`,
 			runtimeAuthHash: hash,
@@ -591,10 +591,7 @@ describe("reconciling a password onto the host", () => {
 		await reconcile(t, boxId, HASH);
 
 		expect(
-			await scheduledArgs<{ attempt: number }>(
-				t,
-				"boxes/auth:reconcilePassword"
-			)
+			await scheduledArgs<{ attempt: number }>(t, "box/auth:reconcilePassword")
 		).toMatchObject([{ attempt: 2 }]);
 	});
 
@@ -617,7 +614,7 @@ describe("reconciling a password onto the host", () => {
 		);
 
 		await expect(reconcile(t, boxId, HASH, 20)).rejects.toThrow();
-		expect(await scheduledJobs(t, "boxes/auth:reconcilePassword")).toEqual([]);
+		expect(await scheduledJobs(t, "box/auth:reconcilePassword")).toEqual([]);
 	});
 });
 
@@ -662,7 +659,7 @@ describe("exchanging a code for a session", () => {
 		type: "password" | "session",
 		grantHash?: string
 	) =>
-		t.mutation(internal.boxes.auth.exchangeCode, {
+		t.mutation(internal.box.auth.exchangeCode, {
 			boxId,
 			codeHash: "hashed-code",
 			codeChallenge: CHALLENGE,
@@ -787,7 +784,7 @@ describe("claiming a setup grant", () => {
 	}
 
 	const claim = (t: Harness, boxId: Id<"boxes">, runtimeAuthHash = HASH) =>
-		t.mutation(internal.boxes.auth.claimGrantForPassword, {
+		t.mutation(internal.box.auth.claimGrantForPassword, {
 			boxId,
 			grantHash: "hashed-grant",
 			runtimeAuthHash
@@ -806,7 +803,7 @@ describe("claiming a setup grant", () => {
 		expect(
 			await scheduledArgs<{ runtimeAuthHash: string; attempt: number }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).toMatchObject([{ runtimeAuthHash: HASH, attempt: 1 }]);
 	});
@@ -917,7 +914,7 @@ describe("the authorization flow end to end", () => {
 	) {
 		return await t
 			.withIdentity(owner.identity)
-			.action(api.boxes.auth.createAuthorizationCode, {
+			.action(api.box.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: CHALLENGE,
 				redirectUri: REDIRECT,
@@ -930,7 +927,7 @@ describe("the authorization flow end to end", () => {
 		boxId: Id<"boxes">,
 		overrides: Record<string, unknown> = {}
 	) =>
-		t.action(api.boxes.auth.exchangeAuthorizationCode, {
+		t.action(api.box.auth.exchangeAuthorizationCode, {
 			boxId,
 			code: "c".repeat(43),
 			codeVerifier: VERIFIER,
@@ -945,7 +942,7 @@ describe("the authorization flow end to end", () => {
 
 		const { code } = await authorize(t, owner, boxId);
 		const exchanged = await exchange(t, boxId, { code });
-		const installed = await t.action(api.boxes.auth.installPassword, {
+		const installed = await t.action(api.box.auth.installPassword, {
 			boxId,
 			grant: exchanged.type === "password" ? exchanged.grant : "",
 			runtimeAuthHash: HASH
@@ -1091,7 +1088,7 @@ describe("the authorization flow end to end", () => {
 		const exchanged = await exchange(t, boxId, { code });
 
 		await expect(
-			t.action(api.boxes.auth.installPassword, {
+			t.action(api.box.auth.installPassword, {
 				boxId,
 				grant: exchanged.type === "password" ? exchanged.grant : "",
 				runtimeAuthHash: HASH,
@@ -1145,7 +1142,7 @@ describe("the authorization flow end to end", () => {
 		const { code } = await authorize(t, owner, boxId);
 		const exchanged = await exchange(t, boxId, { code });
 
-		await t.action(api.boxes.auth.installPassword, {
+		await t.action(api.box.auth.installPassword, {
 			boxId,
 			grant: exchanged.type === "password" ? exchanged.grant : "",
 			runtimeAuthHash: HASH
@@ -1154,7 +1151,7 @@ describe("the authorization flow end to end", () => {
 		expect(
 			await scheduledArgs<{ runtimeAuthHash: string }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).toMatchObject([{ runtimeAuthHash: HASH, attempt: 1 }]);
 	});
@@ -1169,7 +1166,7 @@ describe("the authorization flow end to end", () => {
 		const exchanged = await exchange(t, boxId, { code });
 		const grant = exchanged.type === "password" ? exchanged.grant : "";
 		const install = () =>
-			t.action(api.boxes.auth.installPassword, {
+			t.action(api.box.auth.installPassword, {
 				boxId,
 				grant,
 				runtimeAuthHash: HASH
@@ -1187,14 +1184,14 @@ describe("the authorization flow end to end", () => {
 		const { code } = await authorize(t, owner, boxId);
 		const exchanged = await exchange(t, boxId, { code });
 		const grant = exchanged.type === "password" ? exchanged.grant : "";
-		await t.action(api.boxes.auth.installPassword, {
+		await t.action(api.box.auth.installPassword, {
 			boxId,
 			grant,
 			runtimeAuthHash: HASH
 		});
 
 		await expect(
-			t.action(api.boxes.auth.installPassword, {
+			t.action(api.box.auth.installPassword, {
 				boxId,
 				grant,
 				runtimeAuthHash: `${HASH}other`
@@ -1211,7 +1208,7 @@ describe("the authorization flow end to end", () => {
 		vi.setSystemTime(NOW + 10 * 60 * 1000 + 1);
 
 		await expect(
-			t.action(api.boxes.auth.installPassword, {
+			t.action(api.box.auth.installPassword, {
 				boxId,
 				grant: exchanged.type === "password" ? exchanged.grant : "",
 				runtimeAuthHash: HASH
@@ -1238,7 +1235,7 @@ describe("recording a change made on the box itself", () => {
 	}
 
 	const change = (t: Harness, boxId: Id<"boxes">, args: object = {}) =>
-		t.action(api.boxes.auth.changePassword, {
+		t.action(api.box.auth.changePassword, {
 			boxId,
 			currentRuntimeAuthHash: CURRENT,
 			runtimeAuthHash: NEXT,
@@ -1302,7 +1299,7 @@ describe("recording a change made on the box itself", () => {
 		expect(
 			await scheduledArgs<{ idempotencyKey: string }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).toMatchObject([{ runtimeAuthHash: NEXT, attempt: 1 }]);
 	});
@@ -1324,7 +1321,7 @@ describe("recording a change made on the box itself", () => {
 		const keys = (
 			await scheduledArgs<{ idempotencyKey: string }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).map((args) => args.idempotencyKey);
 		expect(new Set(keys).size).toBe(2);
@@ -1340,7 +1337,7 @@ describe("recording a change made on the box itself", () => {
 		expect(await change(t, boxId, { runtimeAuthHash: CURRENT })).toEqual({
 			accepted: true
 		});
-		expect(await scheduledJobs(t, "boxes/auth:reconcilePassword")).toEqual([]);
+		expect(await scheduledJobs(t, "box/auth:reconcilePassword")).toEqual([]);
 	});
 });
 
@@ -1371,7 +1368,7 @@ describe("the instant a window closes", () => {
 		);
 
 		await expect(
-			t.mutation(internal.boxes.auth.exchangeCode, {
+			t.mutation(internal.box.auth.exchangeCode, {
 				boxId,
 				codeHash: "hash",
 				codeChallenge: "challenge",
@@ -1399,7 +1396,7 @@ describe("the instant a window closes", () => {
 		);
 
 		await expect(
-			t.mutation(internal.boxes.auth.claimGrantForPassword, {
+			t.mutation(internal.box.auth.claimGrantForPassword, {
 				boxId,
 				grantHash: "grant",
 				runtimeAuthHash: HASH
@@ -1426,7 +1423,7 @@ describe("the instant a window closes", () => {
 				})
 		);
 		const claim = () =>
-			t.mutation(internal.boxes.auth.claimGrantForPassword, {
+			t.mutation(internal.box.auth.claimGrantForPassword, {
 				boxId,
 				grantHash: "grant",
 				runtimeAuthHash: HASH
@@ -1460,7 +1457,7 @@ describe("reconciling a password onto a box", () => {
 			runtime_auth_hash: HASH
 		});
 
-		await t.action(internal.boxes.auth.reconcilePassword, {
+		await t.action(internal.box.auth.reconcilePassword, {
 			boxId,
 			idempotencyKey: "password:once",
 			runtimeAuthHash: HASH,
@@ -1490,7 +1487,7 @@ describe("a reconciliation that has been overtaken", () => {
 			runtime_auth_hash: "$argon2id$newer"
 		});
 
-		await t.action(internal.boxes.auth.reconcilePassword, {
+		await t.action(internal.box.auth.reconcilePassword, {
 			boxId,
 			idempotencyKey: "password:stale",
 			runtimeAuthHash: "$argon2id$older",
@@ -1510,7 +1507,7 @@ describe("a reconciliation that has been overtaken", () => {
 			deleted_at: NOW - 1
 		});
 
-		await t.action(internal.boxes.auth.reconcilePassword, {
+		await t.action(internal.box.auth.reconcilePassword, {
 			boxId,
 			idempotencyKey: "password:gone",
 			runtimeAuthHash: "$argon2id$hash",
@@ -1544,7 +1541,7 @@ describe("keeping two setups apart", () => {
 						created_at: NOW - 1000
 					})
 			);
-			await t.mutation(internal.boxes.auth.claimGrantForPassword, {
+			await t.mutation(internal.box.auth.claimGrantForPassword, {
 				boxId,
 				grantHash: token,
 				runtimeAuthHash: HASH
@@ -1554,7 +1551,7 @@ describe("keeping two setups apart", () => {
 		const keys = (
 			await scheduledArgs<{ idempotencyKey: string }>(
 				t,
-				"boxes/auth:reconcilePassword"
+				"box/auth:reconcilePassword"
 			)
 		).map((args) => args.idempotencyKey);
 		expect(keys).toHaveLength(2);

@@ -47,7 +47,7 @@ describe("reporting a box's recovery status", () => {
 			vi.fn(async () => ({ ok: true }) as Response)
 		);
 
-		const status = await t.action(internal.boxes.recovery.status, { boxId });
+		const status = await t.action(internal.boxes.health.recoveryStatus, { boxId });
 
 		expect(status).toMatchObject({ httpReachable: true });
 		// SSH cannot connect from a test, so the host half degrades rather than
@@ -66,7 +66,7 @@ describe("reporting a box's recovery status", () => {
 		);
 
 		expect(
-			await t.action(internal.boxes.recovery.status, { boxId })
+			await t.action(internal.boxes.health.recoveryStatus, { boxId })
 		).toMatchObject({ hostReachable: false, httpReachable: false });
 	});
 
@@ -82,7 +82,7 @@ describe("reporting a box's recovery status", () => {
 
 		expect(
 			Object.keys(
-				await t.action(internal.boxes.recovery.status, { boxId })
+				await t.action(internal.boxes.health.recoveryStatus, { boxId })
 			).sort()
 		).toEqual([
 			"caddy",

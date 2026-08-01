@@ -21,7 +21,7 @@ const CACHE_CONTROL = "public, max-age=300, s-maxage=300";
 
 export async function GET() {
 	try {
-		const release = await fetchQuery(api.boxes.runtimeRelease.fleetVersion, {});
+		const release = await fetchQuery(api.box.release.fleetVersion, {});
 		return NextResponse.json(release, {
 			headers: { "Cache-Control": CACHE_CONTROL }
 		});

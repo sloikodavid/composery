@@ -9,7 +9,7 @@ import {
 	requireActiveUserInAction
 } from "../users";
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
-import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
 import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
 import {
 	requireOwnerBox,
@@ -244,7 +244,7 @@ export const recoveryStatus = action({
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const box = await requireOwnerBoxInAction(ctx, args.slug);
-		return await ctx.runAction(internal.boxes.recovery.status, {
+		return await ctx.runAction(internal.boxes.health.recoveryStatus, {
 			boxId: box._id
 		});
 	}

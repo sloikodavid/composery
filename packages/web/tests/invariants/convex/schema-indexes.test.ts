@@ -66,7 +66,7 @@ function sourceFiles(dir: string): string[] {
 // `withIndex` names reached from `.query("<table>")`, and separately the ones
 // reached from a `.query(someVariable)` loop, which could be any table.
 // Accepting those against every table is what keeps this from reporting the
-// deliberately shared sweep in boxes/auth.ts as dead.
+// deliberately shared sweep in box/auth.ts as dead.
 function queriedIndexNames(): {
 	anyTable: Set<string>;
 	byTable: Map<string, Set<string>>;
@@ -112,7 +112,7 @@ describe("schema indexes", () => {
 			"slug_status"
 		);
 		expect(byTable.get("boxes")).toContain("slug_status");
-		// Reached through `.query(table)` in boxes/auth.ts, so it only resolves if
+		// Reached through `.query(table)` in box/auth.ts, so it only resolves if
 		// the dynamic-table arm below ran.
 		expect(anyTable).toContain("expires_at");
 	});

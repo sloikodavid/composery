@@ -114,68 +114,26 @@ export function boxSellableForProductId(
 // that covers a deployment those webhooks have not fired for yet. Null means the
 // product has not been read, and the page renders no figure rather than one this
 // repo made up.
-const vPlanPricing = v.object({
-	month: v.union(v.number(), v.null()),
-	year: v.union(v.number(), v.null())
-});
-
-export const boxPricing = query({
-	args: {},
-	returns: v.object({
-		currency: v.union(v.string(), v.null()),
-		plans: v.object({
-			air: vPlanPricing,
-			pro: vPlanPricing
-		})
-	}),
-	handler: async (ctx) => {
-		const products = await polarServer().listProducts(ctx);
-
-		function priceOf(sellable: BoxSellable) {
-			const productId = configuredProductId(sellable);
-			const product = productId
-				? products.find(
-						(candidate) => candidate.id === productId && !candidate.isArchived
-					)
-				: undefined;
-			return product?.prices.find(
-				(price) => !price.isArchived && typeof price.priceAmount === "number"
-			);
-		}
-
-		function monthlyPrice(sellable: BoxSellable) {
-			const amount = priceOf(sellable)?.priceAmount;
-			return typeof amount === "number"
-				? monthlyPriceFromMinorUnits(sellable.billingInterval, amount)
-				: null;
-		}
-
-		// One currency for the whole page: Polar denominates a product, and the
-		// first one that has been read speaks for the rest. A catalogue that
-		// disagreed with itself would be a Polar misconfiguration, not something
-		// the pricing page should try to render.
-		const currency =
-			BOX_PLAN_ORDER.flatMap((plan) =>
-				(Object.keys(BOX_BILLING) as BoxBillingInterval[]).map(
-					(billingInterval) => priceOf({ billingInterval, plan })?.priceCurrency
-				)
-			).find((value) => typeof value === "string") ?? null;
-
-		return {
-			currency,
-			plans: {
-				air: {
-					month: monthlyPrice({ billingInterval: "month", plan: "air" }),
-					year: monthlyPrice({ billingInterval: "year", plan: "air" })
-				},
-				pro: {
-					month: monthlyPrice({ billingInterval: "month", plan: "pro" }),
-					year: monthlyPrice({ billingInterval: "year", plan: "pro" })
-				}
-			}
-		};
-	}
-});
+// The live price of one sellable, or undefined where its product has not been
+// read yet. Archived products and archived prices are skipped: Polar keeps both
+// after a reprice, and taking the first match would quote a price nothing sells.
+//
+// Exported for `convex/site/pricing.ts`, which is the only surface that renders
+// a figure. What a box *costs* is Polar's; what a box *is* is `model/box/plan`.
+export function boxSellablePrice(
+	products: Awaited<ReturnType<ReturnType<typeof polarServer>["listProducts"]>>,
+	sellable: BoxSellable
+) {
+	const productId = configuredProductId(sellable);
+	const product = productId
+		? products.find(
+				(candidate) => candidate.id === productId && !candidate.isArchived
+			)
+		: undefined;
+	return product?.prices.find(
+		(price) => !price.isArchived && typeof price.priceAmount === "number"
+	);
+}
 
 // Pull the product catalogue from Polar into the component's tables. The
 // webhooks only fire on a change, so without this a deployment that has never

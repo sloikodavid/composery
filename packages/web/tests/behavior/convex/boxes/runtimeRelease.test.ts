@@ -181,7 +181,7 @@ describe("the fleet's current release", () => {
 		const t = testConvex();
 		await seedSettings(t);
 
-		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+		expect(await t.query(api.box.release.fleetVersion, {})).toEqual({
 			image: null,
 			version: null
 		});
@@ -192,7 +192,7 @@ describe("the fleet's current release", () => {
 	test("answers a deployment with no settings at all with nothing", async () => {
 		const t = testConvex();
 
-		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+		expect(await t.query(api.box.release.fleetVersion, {})).toEqual({
 			image: null,
 			version: null
 		});
@@ -208,7 +208,7 @@ describe("the fleet's current release", () => {
 			}
 		});
 
-		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+		expect(await t.query(api.box.release.fleetVersion, {})).toEqual({
 			image: "ghcr.io/sloikodavid/composery@sha256:current",
 			version: "1.4.0"
 		});
@@ -226,7 +226,7 @@ describe("the fleet's current release", () => {
 			}
 		});
 
-		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+		expect(await t.query(api.box.release.fleetVersion, {})).toEqual({
 			image: "ghcr.io/sloikodavid/composery@sha256:current",
 			version: null
 		});
@@ -266,7 +266,7 @@ describe("refreshing the fleet's release", () => {
 
 		await t.action(internal.boxes.runtimeRelease.refreshRuntimeRelease, {});
 
-		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+		expect(await t.query(api.box.release.fleetVersion, {})).toEqual({
 			image: `ghcr.io/sloikodavid/composery@${DIGEST}`,
 			version: "1.4.0"
 		});

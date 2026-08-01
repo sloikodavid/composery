@@ -5,7 +5,7 @@ import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../../_generated/server";
 import { requiredEnv, runtimeDomain, websiteOrigin } from "../../env";
-import { vRecoveryStatus, type RecoveryStatus } from "../recoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "../../model/box/recovery";
 import {
 	renderComposeryEnv,
 	renderCaddyfile,

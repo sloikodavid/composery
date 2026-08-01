@@ -36,7 +36,7 @@ export function Providers({ children }: { children: ReactNode }) {
 }
 
 function UserBootstrap() {
-	const ensureCurrentUser = useMutation(api.users.ensureCurrentUser);
+	const ensureCurrentUser = useMutation(api.owner.account.ensureCurrentUser);
 
 	useEffect(() => {
 		void ensureCurrentUser();

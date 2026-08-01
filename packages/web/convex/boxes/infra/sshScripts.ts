@@ -8,7 +8,7 @@ import {
 	COMPOSERY_ENV_PATH,
 	type RuntimeArtifacts
 } from "./runtimeArtifacts.ts";
-import type { RecoveryStatus } from "../recoveryTypes.ts";
+import type { RecoveryStatus } from "../../model/box/recovery";
 
 // Hetzner exposes an attached Volume at a stable, id-derived path, so the box
 // scripts never have to guess a `/dev/sd*` letter that can shift between boots.

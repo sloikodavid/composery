@@ -19,7 +19,7 @@ import {
 	requireCapabilityInAction
 } from "../users";
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
-import { vRecoveryStatus, type RecoveryStatus } from "../boxes/recoveryTypes";
+import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
 import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
 import {
 	requireStaffBox,
@@ -565,7 +565,7 @@ export const recoveryStatus = action({
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
-		return await ctx.runAction(internal.boxes.recovery.status, {
+		return await ctx.runAction(internal.boxes.health.recoveryStatus, {
 			boxId: box._id
 		});
 	}
