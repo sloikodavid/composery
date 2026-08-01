@@ -5,8 +5,6 @@ import type { Doc } from "./_generated/dataModel";
 import {
 	internalMutation,
 	internalQuery,
-	mutation,
-	query,
 	type ActionCtx,
 	type MutationCtx,
 	type QueryCtx

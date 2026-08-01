@@ -106,108 +106,108 @@ import type * as time from "../time.js";
 import type * as users from "../users.js";
 
 import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
+	ApiFromModules,
+	FilterApi,
+	FunctionReference
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "account/deletion": typeof account_deletion;
-  "account/deletionLogic": typeof account_deletionLogic;
-  "billing/polar": typeof billing_polar;
-  "billing/reconciliation": typeof billing_reconciliation;
-  "billing/webhooks": typeof billing_webhooks;
-  "box/auth": typeof box_auth;
-  "box/release": typeof box_release;
-  "boxes/access": typeof boxes_access;
-  "boxes/autoRepair": typeof boxes_autoRepair;
-  "boxes/capacity": typeof boxes_capacity;
-  "boxes/capacityAlerts": typeof boxes_capacityAlerts;
-  "boxes/cleanup": typeof boxes_cleanup;
-  "boxes/endpoint": typeof boxes_endpoint;
-  "boxes/events": typeof boxes_events;
-  "boxes/health": typeof boxes_health;
-  "boxes/infra/cloudflareContracts": typeof boxes_infra_cloudflareContracts;
-  "boxes/infra/cloudflareDns": typeof boxes_infra_cloudflareDns;
-  "boxes/infra/hetznerContracts": typeof boxes_infra_hetznerContracts;
-  "boxes/infra/hetznerVps": typeof boxes_infra_hetznerVps;
-  "boxes/infra/providerResponse": typeof boxes_infra_providerResponse;
-  "boxes/infra/registryContracts": typeof boxes_infra_registryContracts;
-  "boxes/infra/runtimeArtifacts": typeof boxes_infra_runtimeArtifacts;
-  "boxes/infra/runtimeImageRegistry": typeof boxes_infra_runtimeImageRegistry;
-  "boxes/infra/runtimeImages": typeof boxes_infra_runtimeImages;
-  "boxes/infra/ssh": typeof boxes_infra_ssh;
-  "boxes/infra/sshKeys": typeof boxes_infra_sshKeys;
-  "boxes/infra/sshScripts": typeof boxes_infra_sshScripts;
-  "boxes/infra/sshTransport": typeof boxes_infra_sshTransport;
-  "boxes/logs": typeof boxes_logs;
-  "boxes/metricThresholds": typeof boxes_metricThresholds;
-  "boxes/metrics": typeof boxes_metrics;
-  "boxes/metricsPoll": typeof boxes_metricsPoll;
-  "boxes/operationSweep": typeof boxes_operationSweep;
-  "boxes/operations": typeof boxes_operations;
-  "boxes/queries": typeof boxes_queries;
-  "boxes/reconcile": typeof boxes_reconcile;
-  "boxes/retention": typeof boxes_retention;
-  "boxes/runtimeConfig": typeof boxes_runtimeConfig;
-  "boxes/runtimeFloor": typeof boxes_runtimeFloor;
-  "boxes/runtimeRelease": typeof boxes_runtimeRelease;
-  "boxes/slugAvailability": typeof boxes_slugAvailability;
-  "boxes/snapshotPolicy": typeof boxes_snapshotPolicy;
-  "boxes/snapshots": typeof boxes_snapshots;
-  "boxes/status": typeof boxes_status;
-  "boxes/views": typeof boxes_views;
-  "boxes/workflows/boxWorkflow": typeof boxes_workflows_boxWorkflow;
-  "boxes/workflows/changeBoxConfig": typeof boxes_workflows_changeBoxConfig;
-  "boxes/workflows/changeBoxPassword": typeof boxes_workflows_changeBoxPassword;
-  "boxes/workflows/changeBoxSlug": typeof boxes_workflows_changeBoxSlug;
-  "boxes/workflows/createBox": typeof boxes_workflows_createBox;
-  "boxes/workflows/deleteBox": typeof boxes_workflows_deleteBox;
-  "boxes/workflows/repairBox": typeof boxes_workflows_repairBox;
-  "boxes/workflows/resetBox": typeof boxes_workflows_resetBox;
-  "boxes/workflows/runtimeLifecycle": typeof boxes_workflows_runtimeLifecycle;
-  "boxes/workflows/snapshotWorkflows": typeof boxes_workflows_snapshotWorkflows;
-  "boxes/workflows/startBox": typeof boxes_workflows_startBox;
-  "boxes/workflows/stopBox": typeof boxes_workflows_stopBox;
-  "boxes/workflows/suspendBox": typeof boxes_workflows_suspendBox;
-  "boxes/workflows/unsuspendBox": typeof boxes_workflows_unsuspendBox;
-  "boxes/workflows/updateBox": typeof boxes_workflows_updateBox;
-  "checkout/checkoutConversion": typeof checkout_checkoutConversion;
-  "checkout/checkoutIntents": typeof checkout_checkoutIntents;
-  crons: typeof crons;
-  env: typeof env;
-  http: typeof http;
-  "model/box/auth": typeof model_box_auth;
-  "model/box/billing": typeof model_box_billing;
-  "model/box/metric": typeof model_box_metric;
-  "model/box/operation": typeof model_box_operation;
-  "model/box/path": typeof model_box_path;
-  "model/box/plan": typeof model_box_plan;
-  "model/box/recovery": typeof model_box_recovery;
-  "model/box/slug": typeof model_box_slug;
-  "model/box/snapshot": typeof model_box_snapshot;
-  "model/box/status": typeof model_box_status;
-  "model/legal": typeof model_legal;
-  "model/links": typeof model_links;
-  "notice/account": typeof notice_account;
-  "notice/email": typeof notice_email;
-  "notice/legal": typeof notice_legal;
-  "notice/owner": typeof notice_owner;
-  "owner/account": typeof owner_account;
-  "owner/boxConfig": typeof owner_boxConfig;
-  "owner/boxes": typeof owner_boxes;
-  "owner/checkout": typeof owner_checkout;
-  settings: typeof settings;
-  "site/pricing": typeof site_pricing;
-  "staff/alerts": typeof staff_alerts;
-  "staff/boxes": typeof staff_boxes;
-  "staff/checkout": typeof staff_checkout;
-  "staff/metrics": typeof staff_metrics;
-  "staff/settings": typeof staff_settings;
-  "staff/stats": typeof staff_stats;
-  "staff/users": typeof staff_users;
-  time: typeof time;
-  users: typeof users;
+	"account/deletion": typeof account_deletion;
+	"account/deletionLogic": typeof account_deletionLogic;
+	"billing/polar": typeof billing_polar;
+	"billing/reconciliation": typeof billing_reconciliation;
+	"billing/webhooks": typeof billing_webhooks;
+	"box/auth": typeof box_auth;
+	"box/release": typeof box_release;
+	"boxes/access": typeof boxes_access;
+	"boxes/autoRepair": typeof boxes_autoRepair;
+	"boxes/capacity": typeof boxes_capacity;
+	"boxes/capacityAlerts": typeof boxes_capacityAlerts;
+	"boxes/cleanup": typeof boxes_cleanup;
+	"boxes/endpoint": typeof boxes_endpoint;
+	"boxes/events": typeof boxes_events;
+	"boxes/health": typeof boxes_health;
+	"boxes/infra/cloudflareContracts": typeof boxes_infra_cloudflareContracts;
+	"boxes/infra/cloudflareDns": typeof boxes_infra_cloudflareDns;
+	"boxes/infra/hetznerContracts": typeof boxes_infra_hetznerContracts;
+	"boxes/infra/hetznerVps": typeof boxes_infra_hetznerVps;
+	"boxes/infra/providerResponse": typeof boxes_infra_providerResponse;
+	"boxes/infra/registryContracts": typeof boxes_infra_registryContracts;
+	"boxes/infra/runtimeArtifacts": typeof boxes_infra_runtimeArtifacts;
+	"boxes/infra/runtimeImageRegistry": typeof boxes_infra_runtimeImageRegistry;
+	"boxes/infra/runtimeImages": typeof boxes_infra_runtimeImages;
+	"boxes/infra/ssh": typeof boxes_infra_ssh;
+	"boxes/infra/sshKeys": typeof boxes_infra_sshKeys;
+	"boxes/infra/sshScripts": typeof boxes_infra_sshScripts;
+	"boxes/infra/sshTransport": typeof boxes_infra_sshTransport;
+	"boxes/logs": typeof boxes_logs;
+	"boxes/metricThresholds": typeof boxes_metricThresholds;
+	"boxes/metrics": typeof boxes_metrics;
+	"boxes/metricsPoll": typeof boxes_metricsPoll;
+	"boxes/operationSweep": typeof boxes_operationSweep;
+	"boxes/operations": typeof boxes_operations;
+	"boxes/queries": typeof boxes_queries;
+	"boxes/reconcile": typeof boxes_reconcile;
+	"boxes/retention": typeof boxes_retention;
+	"boxes/runtimeConfig": typeof boxes_runtimeConfig;
+	"boxes/runtimeFloor": typeof boxes_runtimeFloor;
+	"boxes/runtimeRelease": typeof boxes_runtimeRelease;
+	"boxes/slugAvailability": typeof boxes_slugAvailability;
+	"boxes/snapshotPolicy": typeof boxes_snapshotPolicy;
+	"boxes/snapshots": typeof boxes_snapshots;
+	"boxes/status": typeof boxes_status;
+	"boxes/views": typeof boxes_views;
+	"boxes/workflows/boxWorkflow": typeof boxes_workflows_boxWorkflow;
+	"boxes/workflows/changeBoxConfig": typeof boxes_workflows_changeBoxConfig;
+	"boxes/workflows/changeBoxPassword": typeof boxes_workflows_changeBoxPassword;
+	"boxes/workflows/changeBoxSlug": typeof boxes_workflows_changeBoxSlug;
+	"boxes/workflows/createBox": typeof boxes_workflows_createBox;
+	"boxes/workflows/deleteBox": typeof boxes_workflows_deleteBox;
+	"boxes/workflows/repairBox": typeof boxes_workflows_repairBox;
+	"boxes/workflows/resetBox": typeof boxes_workflows_resetBox;
+	"boxes/workflows/runtimeLifecycle": typeof boxes_workflows_runtimeLifecycle;
+	"boxes/workflows/snapshotWorkflows": typeof boxes_workflows_snapshotWorkflows;
+	"boxes/workflows/startBox": typeof boxes_workflows_startBox;
+	"boxes/workflows/stopBox": typeof boxes_workflows_stopBox;
+	"boxes/workflows/suspendBox": typeof boxes_workflows_suspendBox;
+	"boxes/workflows/unsuspendBox": typeof boxes_workflows_unsuspendBox;
+	"boxes/workflows/updateBox": typeof boxes_workflows_updateBox;
+	"checkout/checkoutConversion": typeof checkout_checkoutConversion;
+	"checkout/checkoutIntents": typeof checkout_checkoutIntents;
+	crons: typeof crons;
+	env: typeof env;
+	http: typeof http;
+	"model/box/auth": typeof model_box_auth;
+	"model/box/billing": typeof model_box_billing;
+	"model/box/metric": typeof model_box_metric;
+	"model/box/operation": typeof model_box_operation;
+	"model/box/path": typeof model_box_path;
+	"model/box/plan": typeof model_box_plan;
+	"model/box/recovery": typeof model_box_recovery;
+	"model/box/slug": typeof model_box_slug;
+	"model/box/snapshot": typeof model_box_snapshot;
+	"model/box/status": typeof model_box_status;
+	"model/legal": typeof model_legal;
+	"model/links": typeof model_links;
+	"notice/account": typeof notice_account;
+	"notice/email": typeof notice_email;
+	"notice/legal": typeof notice_legal;
+	"notice/owner": typeof notice_owner;
+	"owner/account": typeof owner_account;
+	"owner/boxConfig": typeof owner_boxConfig;
+	"owner/boxes": typeof owner_boxes;
+	"owner/checkout": typeof owner_checkout;
+	settings: typeof settings;
+	"site/pricing": typeof site_pricing;
+	"staff/alerts": typeof staff_alerts;
+	"staff/boxes": typeof staff_boxes;
+	"staff/checkout": typeof staff_checkout;
+	"staff/metrics": typeof staff_metrics;
+	"staff/settings": typeof staff_settings;
+	"staff/stats": typeof staff_stats;
+	"staff/users": typeof staff_users;
+	time: typeof time;
+	users: typeof users;
 }>;
 
 /**
@@ -219,8 +219,8 @@ declare const fullApi: ApiFromModules<{
  * ```
  */
 export declare const api: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "public">
+	typeof fullApi,
+	FunctionReference<any, "public">
 >;
 
 /**
@@ -232,12 +232,12 @@ export declare const api: FilterApi<
  * ```
  */
 export declare const internal: FilterApi<
-  typeof fullApi,
-  FunctionReference<any, "internal">
+	typeof fullApi,
+	FunctionReference<any, "internal">
 >;
 
 export declare const components: {
-  polar: import("@convex-dev/polar/_generated/component.js").ComponentApi<"polar">;
-  resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
-  workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
+	polar: import("@convex-dev/polar/_generated/component.js").ComponentApi<"polar">;
+	resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+	workflow: import("@convex-dev/workflow/_generated/component.js").ComponentApi<"workflow">;
 };

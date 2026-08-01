@@ -18,7 +18,7 @@ import { formatDateTime } from "@/lib/datetime";
 // domain, so a healthy alert channel says nothing about whether a box owner or a
 // legal notice can be delivered - and those are precisely the two that fail
 // invisibly, because nobody on this side of the service is waiting for them.
-export function ConsoleAlertDelivery() {
+export function AlertDelivery() {
 	const health = useQuery(api.staff.alerts.health, {});
 	if (!health) return null;
 

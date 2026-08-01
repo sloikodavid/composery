@@ -41,7 +41,7 @@ export const probeRuntime = internalAction({
 // the single Repair action is the only thing that changes a box.
 //
 // It lives beside the liveness probe rather than in a module of its own because
-// they answer the same question at two depths, and the sweep that calls the
+// they answer the same question at two levels of detail, and the sweep that calls the
 // cheap one has to mean the same thing by "reachable" as the dialog does.
 export const recoveryStatus = internalAction({
 	args: { boxId: v.id("boxes") },

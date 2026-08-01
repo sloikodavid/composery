@@ -61,7 +61,7 @@ function capacityStatus(
 	return `${capacity.availableNewBoxes} additional box${capacity.availableNewBoxes === 1 ? "" : "es"} can be reserved.`;
 }
 
-export function ConsoleCapacity({
+export function Capacity({
 	capacity,
 	serverLimit,
 	snapshotLimit

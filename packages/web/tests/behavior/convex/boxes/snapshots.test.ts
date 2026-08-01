@@ -4,8 +4,7 @@ import { api, internal } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import {
 	DEFAULT_SNAPSHOT_POLICY,
-	SNAPSHOT_INCOMPLETE_RETENTION_MS,
-	snapshotIdempotencyBucket
+	SNAPSHOT_INCOMPLETE_RETENTION_MS
 } from "@/convex/boxes/snapshotPolicy";
 import {
 	type BoxPlan,

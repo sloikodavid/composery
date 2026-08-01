@@ -250,7 +250,10 @@ describe("which lifecycle outcomes email the owner", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(await emailedNotices(t, boxId)).toEqual(["deleted"]);
 	});
@@ -270,18 +273,24 @@ describe("which lifecycle outcomes email the owner", () => {
 			status: "stopping"
 		});
 
-		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
-			boxId: suspended,
-			operationId: await openOperation(t, suspended, "suspend", {
-				reason: AUTOMATIC_REASON
-			}),
-			status: "suspended"
-		});
-		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
-			boxId: stopped,
-			operationId: await openOperation(t, stopped, "stop"),
-			status: "stopped"
-		});
+		await t.mutation(
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
+			{
+				boxId: suspended,
+				operationId: await openOperation(t, suspended, "suspend", {
+					reason: AUTOMATIC_REASON
+				}),
+				status: "suspended"
+			}
+		);
+		await t.mutation(
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
+			{
+				boxId: stopped,
+				operationId: await openOperation(t, stopped, "stop"),
+				status: "stopped"
+			}
+		);
 
 		expect(await emailedNotices(t, suspended)).toEqual(["suspended"]);
 		expect(await emailedNotices(t, stopped)).toEqual([]);
@@ -327,11 +336,14 @@ describe("which lifecycle outcomes email the owner", () => {
 			status: "unsuspending"
 		});
 
-		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
-			boxId,
-			operationId: await openOperation(t, boxId, "unsuspend"),
-			status: "running"
-		});
+		await t.mutation(
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
+			{
+				boxId,
+				operationId: await openOperation(t, boxId, "unsuspend"),
+				status: "running"
+			}
+		);
 
 		expect(await emailedNotices(t, boxId)).toEqual(["unsuspended"]);
 	});
@@ -379,7 +391,10 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(await emailedNotices(t, boxId)).toEqual([]);
 		expect(await readBox(t, boxId)).toMatchObject({ status: "deleted" });
@@ -400,7 +415,10 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(await emailedNotices(t, boxId)).toEqual([]);
 		expect(await readBox(t, boxId)).toMatchObject({ status: "deleted" });
@@ -484,7 +502,10 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(await emailedNotices(t, boxId)).toEqual([]);
 		expect(await readBox(t, boxId)).toMatchObject({ status: "deleted" });
@@ -641,7 +662,10 @@ describe("when a box notice cannot be queued", () => {
 			status: "deleting"
 		});
 		const operationId = await openOperation(t, boxId, "delete");
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 		return boxId;
 	}
 
@@ -717,7 +741,10 @@ describe("where a reply to a box notice goes", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(sent).toMatchObject([{ replyTo: [SUPPORT_EMAIL] }]);
 	});
@@ -733,7 +760,10 @@ describe("where a reply to a box notice goes", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		const [message] = sent;
 		expect(message.text).toContain(message.replyTo?.[0]);

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { ConsoleBoxActions } from "./_components/console-box-actions";
-import { ConsoleBoxDetail } from "./_components/console-box-detail";
-import { ConsoleBoxLinks } from "./_components/console-box-links";
+import { BoxActions } from "./_components/actions";
+import { BoxDetail } from "./_components/detail";
+import { BoxLinks } from "./_components/links";
 import { PageTemplate } from "@/components/page-template";
 import { notFoundIfNotStaff } from "@/lib/route-guards";
 
@@ -22,19 +22,19 @@ export default async function ConsoleBoxPage({
 
 	return (
 		<PageTemplate
-			actions={<ConsoleBoxActions boxId={id} />}
+			actions={<BoxActions boxId={id} />}
 			breadcrumbs={[
 				{ href: "/console", icon: "layout-grid", label: "Console" },
 				{
 					label: (
 						<span className="inline-flex items-center gap-1">
-							<ConsoleBoxLinks boxId={id} showSlug />
+							<BoxLinks boxId={id} showSlug />
 						</span>
 					)
 				}
 			]}
 		>
-			<ConsoleBoxDetail boxId={id} />
+			<BoxDetail boxId={id} />
 		</PageTemplate>
 	);
 }

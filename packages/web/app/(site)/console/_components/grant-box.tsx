@@ -26,7 +26,7 @@ import { SettingsCard } from "./settings-card";
 // The plan is picked here and never changes by itself afterwards: a comp has no
 // subscription, so nothing reconciles it. Staff move a comp between plans by
 // resizing it from the box's own console page.
-export function ConsoleGrantBox() {
+export function GrantBox() {
 	const grantComp = useMutation(api.staff.boxes.grantComp);
 	const { run, busy } = useBusyAction();
 	const [email, setEmail] = useState("");

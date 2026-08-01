@@ -10,11 +10,19 @@ Four planes, and the rule is who may read it.
   rules live here, and `convex/schema.ts` builds its validators _from_ them. The
   dependency runs one way: the model knows nothing about the database, and
   everything that knows about the database reads the model.
-- **`convex/owner/`, `convex/staff/`, `convex/box/`** - public surfaces, named for
-  who calls them. A file here holds `query`/`mutation`/`action` and nothing else
-  worth reading; the work is one call down.
+- **`convex/owner/`, `convex/staff/`, `convex/box/`, `convex/site/`** - the four
+  audiences, named for who calls them: a signed-in customer, the console, a
+  running instance with a grant, and a stranger with no identity at all.
+  **Every public function lives in one of these and nowhere else** -
+  `tests/invariants/convex/audience-directories.test.ts` fails if a fifth
+  appears - so "what can be called from outside, and by whom" is a directory
+  listing rather than a search.
 - **`convex/<domain>/`** (`boxes/`, `billing/`, `checkout/`, `notice/`,
   `account/`) - internal only. Nothing outside the deployment may call these.
+  Machinery used by exactly one audience lives with that audience instead: the
+  box authorization flow is all of `convex/box/auth.ts` because nothing else
+  reaches it, while `convex/boxes/` holds what both the owner and the console
+  surfaces share.
 - **`app/`, `components/`, `hooks/`, `lib/`** - the browser plane. `lib/` is
   Next-only by definition now; anything Convex also reads belongs in
   `convex/model/`.
@@ -40,6 +48,8 @@ two Convex config files.
 - The begin-status and failure-status unions are **derived** from that table, never listed beside it. A hand-written subset is what the type checker cannot check, and the begin-status one had already drifted to carry `running` and `suspended`, which no operation moves a box to.
 - **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/boxes/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
 - A `system:` sweep still names its own trigger, because it is not one of the two audiences. A new automatic caller adds its own `system:` literal rather than borrowing one.
+- **The interface reads the same catalogue.** `PRIMARY_ACTION` in `components/boxes/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
+- `convex/boxes/lifecycle.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
 - Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `convex/model/box/plan.ts`. `BoxPlan` is the key of that table and `vBoxPlan` is built from it, so a plan cannot exist in one and not the other. Adding a plan is a row there and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.

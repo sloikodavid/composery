@@ -17,8 +17,8 @@ import { describe, expect, test } from "vitest";
 // among internal modules - the box's whole authorization flow in `boxes/`, the
 // fleet version beside the release internals, the pricing query among the
 // billing plumbing, and two account functions among twelve identity helpers -
-// so answering that question meant grepping for three keywords across ninety
-// files and hoping.
+// so answering that question meant a search for three keywords across ninety
+// files, and no way to know the answer was complete.
 //
 // This cannot be derived or typed away: TypeScript has no way to say "a value of
 // this type may only be exported from these directories", and Convex derives
@@ -79,7 +79,7 @@ describe("public functions live in an audience directory", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	// The other half of the rule, and the one that rots quietly: an audience
+	// The other half of the rule, and the one that goes stale quietly: an audience
 	// directory whose files stopped being public is a name that no longer means
 	// anything, and the next reader files an internal helper there.
 	test("every audience directory still holds a public surface", () => {

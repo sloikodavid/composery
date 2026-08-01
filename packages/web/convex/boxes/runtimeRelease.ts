@@ -1,7 +1,5 @@
-import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalAction, query } from "../_generated/server";
-import { readGlobalSettings } from "../settings";
+import { internalAction } from "../_generated/server";
 
 // How a box's recorded runtime image compares to the fleet's, and what that
 // means for its owner. Pure, so the whole matrix is testable without a registry

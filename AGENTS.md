@@ -657,24 +657,24 @@ packages/
           page.tsx
         console/
           _components/
-            console-alert-delivery.tsx
-            console-capacity.tsx
-            console-checkout-limit.tsx
-            console-failures.tsx
-            console-grant-box.tsx
-            console-home.tsx
-            console-metrics.tsx
-            console-snapshot-policy.tsx
-            console-stats.tsx
-            console-thresholds.tsx
+            alert-delivery.tsx
+            capacity.tsx
+            checkout-limit.tsx
+            failures.tsx
+            grant-box.tsx
+            home.tsx
+            metrics.tsx
             settings-card.tsx
+            snapshot-policy.tsx
+            stats.tsx
+            thresholds.tsx
           boxes/
             [id]/
               _components/
-                console-box-actions.tsx
-                console-box-detail.tsx
-                console-box-links.tsx
-                console-box-snapshots.tsx
+                actions.tsx
+                detail.tsx
+                links.tsx
+                snapshots.tsx
                 suspend-dialog.tsx
               page.tsx
           page.tsx
@@ -838,10 +838,16 @@ packages/
         dataModel.d.ts
         server.d.ts
         server.js
+      account/
+        deletion.ts
+        deletionLogic.ts
       billing/
         polar.ts
         reconciliation.ts
         webhooks.ts
+      box/
+        auth.ts
+        release.ts
       boxes/
         infra/
           cloudflareContracts.ts
@@ -873,8 +879,6 @@ packages/
           suspendBox.ts
           unsuspendBox.ts
           updateBox.ts
-        access.ts
-        auth.ts
         autoRepair.ts
         capacity.ts
         capacityAlerts.ts
@@ -882,6 +886,7 @@ packages/
         endpoint.ts
         events.ts
         health.ts
+        lifecycle.ts
         logs.ts
         metrics.ts
         metricsPoll.ts
@@ -890,8 +895,6 @@ packages/
         operationSweep.ts
         queries.ts
         reconcile.ts
-        recovery.ts
-        recoveryTypes.ts
         retention.ts
         runtimeConfig.ts
         runtimeFloor.ts
@@ -899,7 +902,6 @@ packages/
         slugAvailability.ts
         snapshotPolicy.ts
         snapshots.ts
-        status.ts
         views.ts
       checkout/
         checkoutConversion.ts
@@ -912,15 +914,24 @@ packages/
           operation.ts
           path.ts
           plan.ts
+          recovery.ts
           slug.ts
           snapshot.ts
           status.ts
         legal.ts
         links.ts
+      notice/
+        account.ts
+        email.ts
+        legal.ts
+        owner.ts
       owner/
+        account.ts
         boxConfig.ts
         boxes.ts
         checkout.ts
+      site/
+        pricing.ts
       staff/
         alerts.ts
         boxes.ts
@@ -929,17 +940,11 @@ packages/
         settings.ts
         stats.ts
         users.ts
-      accountDeletion.ts
-      accountDeletionLogic.ts
-      accountEmail.ts
       auth.config.ts
       convex.config.ts
       crons.ts
-      email.ts
       env.ts
       http.ts
-      legalNotice.ts
-      ownerEmail.ts
       schema.ts
       settings.ts
       time.ts
@@ -1037,10 +1042,15 @@ packages/
           confirm-dialog.test.ts
           theme-provider.test.ts
         convex/
+          account/
+            deletion.test.ts
+            deletionLogic.test.ts
           billing/
             polar.test.ts
             reconciliation.test.ts
             webhooks.test.ts
+          box/
+            auth.test.ts
           boxes/
             infra/
               cloudflareDns.test.ts
@@ -1056,12 +1066,11 @@ packages/
               sshTransport.test.ts
             workflows/
               boxWorkflow.test.ts
-            access.test.ts
-            auth.test.ts
             autoRepair.test.ts
             capacity.test.ts
             capacityAlerts.test.ts
             cleanup.test.ts
+            lifecycle.test.ts
             logs.test.ts
             metrics.test.ts
             metricsPoll.test.ts
@@ -1079,7 +1088,6 @@ packages/
             slugAvailability.test.ts
             snapshotPolicy.test.ts
             snapshots.test.ts
-            status.test.ts
             views.test.ts
           checkout/
             checkoutConversion.test.ts
@@ -1093,6 +1101,10 @@ packages/
               path.test.ts
               plan.test.ts
               slug.test.ts
+          notice/
+            account.test.ts
+            legal.test.ts
+            owner.test.ts
           owner/
             boxConfig.test.ts
             boxes.test.ts
@@ -1105,14 +1117,9 @@ packages/
             settings.test.ts
             stats.test.ts
             users.test.ts
-          accountDeletion.test.ts
-          accountDeletionLogic.test.ts
-          accountEmail.test.ts
           crons.test.ts
           env.test.ts
           http.test.ts
-          legalNotice.test.ts
-          ownerEmail.test.ts
           settings.test.ts
           users.test.ts
         hooks/
@@ -1145,6 +1152,7 @@ packages/
             registry.test.ts
         convex/
           alert-remedies.test.ts
+          audience-directories.test.ts
           components.test.ts
           envExample.test.ts
           missing-box-guards.test.ts
@@ -1312,6 +1320,7 @@ tests/
     desktop-integration.test.ts
     docs-links.test.ts
     keystore-contract.test.ts
+    prettier-config.test.ts
     runbook-windows.test.ts
     runtime-init.test.ts
     stale-references.test.ts
@@ -1355,6 +1364,7 @@ LICENSE
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
+prettier.config.mjs
 README.md
 renovate.json
 SECURITY.md

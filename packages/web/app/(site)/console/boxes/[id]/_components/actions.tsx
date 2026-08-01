@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { BoxActionsBar } from "@/components/boxes/actions-bar";
 import { api } from "@/convex/_generated/api";
 
-export function ConsoleBoxActions({ boxId }: { boxId: string }) {
+export function BoxActions({ boxId }: { boxId: string }) {
 	const detail = useQuery(api.staff.boxes.getById, { boxId });
 	if (!detail?.box.runtimeUrl) return null;
 

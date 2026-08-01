@@ -21,16 +21,14 @@ import { StatusText } from "@/components/boxes/status-text";
 import {
 	boxEventLabel,
 	failureNotice,
-	operationLabel,
-	type BoxOperationStatus,
-	type BoxOperationType
+	operationLabel
 } from "@/convex/model/box/operation";
 import { UpdateDialog } from "@/components/boxes/update-dialog";
 import {
 	DEFAULT_RANGE,
 	type MetricsRange
 } from "@/components/boxes/metrics-chart";
-import { ConsoleBoxSnapshots } from "./console-box-snapshots";
+import { BoxSnapshots } from "./snapshots";
 import { SuspendDialog } from "./suspend-dialog";
 import { Card, CardContent } from "@/components/base/card";
 import { Separator } from "@/components/base/separator";
@@ -235,7 +233,7 @@ function BoxAuditHistory({ boxId }: { boxId: Id<"boxes"> }) {
 	);
 }
 
-export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
+export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
 	const detail = useQuery(api.staff.boxes.getById, { boxId });
 	const metricsSeries = useQuery(
@@ -539,7 +537,7 @@ export function ConsoleBoxDetail({ boxId }: { boxId: string }) {
 										)}
 									</ConfirmDialog>
 								) : null}
-								<ConsoleBoxSnapshots
+								<BoxSnapshots
 									boxId={box.id}
 									plan={box.plan}
 									split={box.snapshots}

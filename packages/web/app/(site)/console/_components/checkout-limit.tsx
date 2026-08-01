@@ -7,7 +7,7 @@ import { useBusyAction } from "@/hooks/use-busy-action";
 import { useSettingDraft } from "@/hooks/use-setting-draft";
 import { NumberField, SettingsCard, SettingsRow } from "./settings-card";
 
-export function ConsoleCheckoutLimit({ max }: { max?: number }) {
+export function CheckoutLimit({ max }: { max?: number }) {
 	const setMax = useMutation(
 		api.staff.settings.setMaxActiveCheckoutIntentsPerUser
 	);

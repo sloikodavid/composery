@@ -21,7 +21,25 @@ const eslintConfig = defineConfig([
 		// Generated: by `convex dev`/`convex codegen`, and by `fumadocs-mdx`.
 		"convex/_generated/**",
 		".source/**"
-	])
+	]),
+	{
+		rules: {
+			// Two ways of saying "this binding is deliberately not read", both of
+			// which the code already used and neither of which the rule honoured -
+			// so the convention was decorative and the warnings were noise that a
+			// real unused variable could hide in.
+			//
+			// `ignoreRestSiblings` covers destructuring purely to omit: the endpoint
+			// tables pull `readsEmpty` and `skipStranger` out so `...rest` carries
+			// only real arguments, and both are read a few lines later off the table
+			// itself. `argsIgnorePattern` covers a signature a stub has to match but
+			// does not use, which the fetch mocks already spelled `_input`/`_init`.
+			"@typescript-eslint/no-unused-vars": [
+				"warn",
+				{ argsIgnorePattern: "^_", ignoreRestSiblings: true }
+			]
+		}
+	}
 ]);
 
 export default eslintConfig;

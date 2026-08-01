@@ -3,15 +3,15 @@
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useState } from "react";
-import { ConsoleAlertDelivery } from "./console-alert-delivery";
-import { ConsoleCapacity } from "./console-capacity";
-import { ConsoleCheckoutLimit } from "./console-checkout-limit";
-import { ConsoleFailures } from "./console-failures";
-import { ConsoleGrantBox } from "./console-grant-box";
-import { ConsoleMetrics } from "./console-metrics";
-import { ConsoleSnapshotPolicy } from "./console-snapshot-policy";
-import { ConsoleStats } from "./console-stats";
-import { ConsoleThresholds } from "./console-thresholds";
+import { AlertDelivery } from "./alert-delivery";
+import { Capacity } from "./capacity";
+import { CheckoutLimit } from "./checkout-limit";
+import { Failures } from "./failures";
+import { GrantBox } from "./grant-box";
+import { Metrics } from "./metrics";
+import { SnapshotPolicy } from "./snapshot-policy";
+import { Stats } from "./stats";
+import { Thresholds } from "./thresholds";
 import { FlagsTable } from "@/components/boxes/flags-table";
 import { DismissButton } from "@/components/dismiss-button";
 import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
@@ -83,10 +83,10 @@ export function ConsoleHome() {
 
 	return (
 		<div className="space-y-6">
-			<ConsoleStats />
+			<Stats />
 
-			<ConsoleFailures />
-			<ConsoleAlertDelivery />
+			<Failures />
+			<AlertDelivery />
 
 			<div className="space-y-3">
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -232,16 +232,16 @@ export function ConsoleHome() {
 
 			<div className="grid gap-3">
 				{settings ? (
-					<ConsoleCapacity
+					<Capacity
 						capacity={settings.capacity}
 						serverLimit={settings.hetznerServerLimit}
 						snapshotLimit={settings.hetznerSnapshotLimit}
 					/>
 				) : null}
-				<ConsoleGrantBox />
-				<ConsoleCheckoutLimit max={settings?.maxActiveCheckoutIntentsPerUser} />
-				<ConsoleThresholds thresholds={settings?.thresholds} />
-				<ConsoleSnapshotPolicy policy={settings?.snapshotPolicy} />
+				<GrantBox />
+				<CheckoutLimit max={settings?.maxActiveCheckoutIntentsPerUser} />
+				<Thresholds thresholds={settings?.thresholds} />
+				<SnapshotPolicy policy={settings?.snapshotPolicy} />
 				{/* The only record that a threshold, policy or reservation limit was
 				    changed at all: unlike the checkout and capacity toggles, those
 				    raise no alert. */}
@@ -348,7 +348,7 @@ export function ConsoleHome() {
 				</Table>
 			</div>
 
-			<ConsoleMetrics />
+			<Metrics />
 
 			<FlagsTable flags={flags} showBox />
 		</div>

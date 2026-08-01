@@ -8,7 +8,7 @@ import { isOperationAllowed } from "@/convex/model/box/operation";
 import { type BoxStatus } from "@/convex/model/box/status";
 import type { BoxPlan, SnapshotSplit } from "@/convex/model/box/plan";
 
-export function ConsoleBoxSnapshots({
+export function BoxSnapshots({
 	boxId,
 	plan,
 	split,

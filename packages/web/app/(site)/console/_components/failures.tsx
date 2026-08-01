@@ -25,7 +25,7 @@ type FailedOperation = NonNullable<
 
 // Only renders when something is actually wrong, so a healthy console stays
 // clean and this reads as an alert rather than a permanent panel.
-export function ConsoleFailures() {
+export function Failures() {
 	const failures = useQuery(api.staff.boxes.recentFailedOperations, {});
 	const dismissFailure = useMutation(api.staff.boxes.dismissFailedOperation);
 	const dismissAllFailures = useMutation(

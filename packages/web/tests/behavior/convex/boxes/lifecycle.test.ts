@@ -454,11 +454,14 @@ describe("the event an ended operation records", () => {
 		});
 		const operationId = await openOperation(t, boxId, "stop");
 
-		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
-			boxId,
-			operationId,
-			status: "stopped"
-		});
+		await t.mutation(
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
+			{
+				boxId,
+				operationId,
+				status: "stopped"
+			}
+		);
 
 		expect((await boxEvents(t, boxId)).map((event) => event.type)).toEqual([
 			"box.stop_succeeded"
@@ -474,12 +477,15 @@ describe("the event an ended operation records", () => {
 		});
 		const operationId = await openOperation(t, boxId, "update");
 
-		await t.mutation(internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded, {
-			boxId,
-			operationId,
-			outcome: "skipped",
-			status: "running"
-		});
+		await t.mutation(
+			internal.boxes.lifecycle.setBoxStatusWithOperationSucceeded,
+			{
+				boxId,
+				operationId,
+				outcome: "skipped",
+				status: "running"
+			}
+		);
 
 		expect((await boxEvents(t, boxId)).map((event) => event.type)).toEqual([
 			"box.update_skipped"
@@ -635,7 +641,10 @@ describe("recording a completed deletion", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await deletedBox(t);
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(await readBox(t, boxId)).toMatchObject({
 			status: "deleted",
@@ -679,7 +688,10 @@ describe("recording a completed deletion", () => {
 			parking_volume_stage: "restoring"
 		});
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(
 			await scheduledArgs<{ volumeId: number }>(
@@ -693,7 +705,10 @@ describe("recording a completed deletion", () => {
 		const t = testConvex();
 		const { boxId, operationId } = await deletedBox(t);
 
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 
 		expect(
 			await scheduledJobs(t, "boxes/infra/hetznerVps:deleteParkingVolume")
@@ -1473,7 +1488,9 @@ describe("settling an operation a workflow left open", () => {
 			const t = testConvex();
 			const operationId = await operationWith(t, status);
 
-			await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
+			await t.mutation(internal.boxes.lifecycle.settleOperation, {
+				operationId
+			});
 
 			expect(await readOperation(t, operationId)).toMatchObject({
 				status: "succeeded",
@@ -1490,7 +1507,9 @@ describe("settling an operation a workflow left open", () => {
 			const t = testConvex();
 			const operationId = await operationWith(t, status);
 
-			await t.mutation(internal.boxes.lifecycle.settleOperation, { operationId });
+			await t.mutation(internal.boxes.lifecycle.settleOperation, {
+				operationId
+			});
 
 			expect(await readOperation(t, operationId)).toMatchObject({ status });
 		}
@@ -1748,7 +1767,10 @@ describe("what a completed delete hands on", () => {
 			status: "deleting"
 		});
 		const operationId = await openOperation(t, boxId, "delete");
-		await t.mutation(internal.boxes.lifecycle.markDeleted, { boxId, operationId });
+		await t.mutation(internal.boxes.lifecycle.markDeleted, {
+			boxId,
+			operationId
+		});
 		return boxId;
 	}
 

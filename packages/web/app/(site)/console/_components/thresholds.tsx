@@ -49,7 +49,7 @@ function toSettings(draft: SettingDraft): ThresholdSetting[] {
 	}));
 }
 
-export function ConsoleThresholds({
+export function Thresholds({
 	thresholds
 }: {
 	thresholds?: ThresholdSetting[];

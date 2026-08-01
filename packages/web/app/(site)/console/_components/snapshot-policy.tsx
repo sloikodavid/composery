@@ -41,7 +41,7 @@ function toPolicy(draft: SettingDraft): SnapshotPolicy {
 	};
 }
 
-export function ConsoleSnapshotPolicy({ policy }: { policy?: SnapshotPolicy }) {
+export function SnapshotPolicy({ policy }: { policy?: SnapshotPolicy }) {
 	const setSnapshotPolicy = useMutation(api.staff.settings.setSnapshotPolicy);
 	const { run, busy } = useBusyAction();
 	const { draft, dirty, setDraft, setField } = useSettingDraft(

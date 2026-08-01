@@ -7,7 +7,7 @@ import { api } from "@/convex/_generated/api";
 // The console dashboard links beside the slug in the breadcrumb. Shares the
 // boxDetail subscription with the detail view, so it adds no extra reads; the
 // group stays hidden until the box record is loaded, then fades in together.
-export function ConsoleBoxLinks({
+export function BoxLinks({
 	boxId,
 	showSlug = false
 }: {

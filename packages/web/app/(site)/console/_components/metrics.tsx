@@ -15,7 +15,7 @@ import { api } from "@/convex/_generated/api";
 
 // The all-boxes overlay: the top boxes ranked by the selected metric's latest
 // rolled-up hour, so a fleet of any size stays readable.
-export function ConsoleMetrics() {
+export function Metrics() {
 	const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
 	const series = useQuery(api.staff.metrics.series, {

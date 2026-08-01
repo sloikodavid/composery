@@ -114,7 +114,7 @@ function tiles(data: Overview | undefined, range: StatsRange) {
 
 // Fleet + funnel overview at the top of the console: current state as tiles,
 // signups and boxes over the trailing window as a trend.
-export function ConsoleStats() {
+export function Stats() {
 	const [range, setRange] = useState<StatsRange>(DEFAULT_STATS_RANGE);
 	const data = useQuery(api.staff.stats.overview, { range });
 

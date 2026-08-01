@@ -1,14 +1,10 @@
 import { Polar } from "@convex-dev/polar";
 import { v } from "convex/values";
 import { components } from "../_generated/api";
-import { internalAction, query } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { optionalEnv, requiredEnv, type ConvexEnvName } from "../env";
-import {
-	BOX_BILLING,
-	type BoxBillingInterval,
-	monthlyPriceFromMinorUnits
-} from "../model/box/billing";
-import { BOX_PLAN_ORDER, type BoxPlan } from "../model/box/plan";
+import { type BoxBillingInterval } from "../model/box/billing";
+import { type BoxPlan } from "../model/box/plan";
 
 const POLAR_API_HOSTS = {
 	production: "https://api.polar.sh",
@@ -106,17 +102,15 @@ export function boxSellableForProductId(
 	return null;
 }
 
-// The price the pricing page shows, read from the Polar product that will
-// actually charge the visitor, so repricing in Polar needs no deploy here.
+// The live price of one sellable, read from the Polar product that will actually
+// charge the visitor, or undefined where this deployment has not read that
+// product yet. Archived products and archived prices are skipped: Polar keeps
+// both after a price change, and taking the first match would quote a price
+// nothing sells.
 //
-// Reads the products the component keeps in sync locally - the product.created /
-// product.updated webhooks registered in webhooks.ts, plus the hourly cron below
-// that covers a deployment those webhooks have not fired for yet. Null means the
-// product has not been read, and the page renders no figure rather than one this
-// repo made up.
-// The live price of one sellable, or undefined where its product has not been
-// read yet. Archived products and archived prices are skipped: Polar keeps both
-// after a reprice, and taking the first match would quote a price nothing sells.
+// Reads what the component keeps in sync locally - the product.created and
+// product.updated webhooks registered in webhooks.ts, plus the hourly cron
+// below that covers a deployment those webhooks have not fired for yet.
 //
 // Exported for `convex/site/pricing.ts`, which is the only surface that renders
 // a figure. What a box *costs* is Polar's; what a box *is* is `model/box/plan`.
