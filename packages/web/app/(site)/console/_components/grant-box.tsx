@@ -2,16 +2,16 @@
 
 import { useMutation } from "convex/react";
 import { useState } from "react";
-import { Input } from "@/ui/base/input";
+import { Input } from "@/components/base/input";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/ui/base/select";
+} from "@/components/base/select";
 import { api } from "@/convex/_generated/api";
-import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import { useBusyAction } from "@/hooks/use-busy-action";
 import {
 	BOX_PLANS,
 	BOX_PLAN_ORDER,

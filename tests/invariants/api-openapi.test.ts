@@ -65,7 +65,7 @@ function interfaceFields(source: string, name: string): string[] {
 }
 
 describe("the spec is where the website looks for it", () => {
-	test("packages/web/ui/lib/openapi.ts points at the file this suite reads", () => {
+	test("packages/web/lib/docs/openapi.ts points at the file this suite reads", () => {
 		// `createOpenAPI` takes the path as a plain string, so nothing type-checks
 		// it and nothing fails loudly when it goes stale: fumadocs resolves it at
 		// build time, and a miss renders the API pages without any operations
@@ -73,7 +73,7 @@ describe("the spec is where the website looks for it", () => {
 		// simply load it from here - which leaves pinning the pair, the last rung
 		// of the ladder in AGENTS.md, as the only thing that can catch a rename
 		// that updates one spelling and not the other.
-		expect(readRepoFile("packages/web/ui/lib/openapi.ts")).toContain(
+		expect(readRepoFile("packages/web/lib/docs/openapi.ts")).toContain(
 			'instance: "../../docs/openapi.yaml"'
 		);
 	});

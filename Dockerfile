@@ -1,6 +1,6 @@
 # Node major is pinned by the IDE (its native modules target this ABI). Builder and
 # runtime share this one ARG; bump both together when the IDE moves Node major.
-ARG NODE_IMAGE=node:24.18.0-trixie-slim@sha256:366fdef91728b1b7fa18c84fba63b6e79ed77b7e10cc206878e9705da4d7b169
+ARG NODE_IMAGE=node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc
 
 # Keep the exact Caddy release aligned with the outer-edge Compose recipes.
 FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS caddy-bin
@@ -70,7 +70,7 @@ RUN printf 'source=https://github.com/coder/code-server\ncommit=%s\n' "${COMPOSE
     > build/release/.composery-upstream
 
 # Build the Composery CLI. cargo-chef caches the dependency compile so source-only edits skip it.
-FROM rust:1.96.1-slim-trixie@sha256:31ee7fc65186be7e0e0ccb3f2ca305f14e4739e7642a1ae65753aa5d7b874523 AS cli-chef
+FROM rust:1.97.1-slim-trixie@sha256:5c6f46a6e4472ab1ca7ba7d494e6677f2f219ebc02f32025d3986f057635ec9c AS cli-chef
 # renovate: datasource=crate depName=cargo-chef
 ARG CARGO_CHEF_VERSION=0.1.77
 RUN cargo install cargo-chef --version "${CARGO_CHEF_VERSION}" --locked
@@ -97,9 +97,9 @@ FROM ${NODE_IMAGE} AS runtime
 # renovate: datasource=npm depName=bun
 ARG BUN_VERSION=1.3.14
 # renovate: datasource=npm depName=npm
-ARG NPM_VERSION=11.17.0
+ARG NPM_VERSION=12.0.2
 # renovate: datasource=npm depName=pnpm
-ARG PNPM_VERSION=11.7.0
+ARG PNPM_VERSION=11.18.0
 
 ENV BROWSER="/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh" \
   EDITOR="code --wait" \

@@ -12,7 +12,7 @@ pnpm-lock.yaml
 packages/ide/overlay/lib/vscode/extensions/composery-qr/qrcode-generator.js
 packages/shared/scripts/colors/index.html
 packages/web/convex/_generated/**
-packages/web/ui/lib/logo-data.ts
+packages/web/lib/logo-data.ts
 tests/fixtures/*.pem
 # This test contains intentionally unlisted scanner inputs.
 tests/behavior/scripts/whitelist.test.ts

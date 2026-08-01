@@ -98,7 +98,7 @@ either an owner action or an expired floor deadline.
 
 Composery drives a box over SSH and parses its internals - service states, the
 persistence engine the box chose, the environment the editor process started
-with. Those readers live in `packages/web/convex/boxes/infra/`.
+with. Those readers live in `packages/web/convex/fleet/infra/`.
 
 **Every runtime version at or above the floor has to keep working with them.**
 Changing what a box prints - a CLI's output shape, a service name, a variable
@@ -215,7 +215,7 @@ reconciliation failures also create rate-limited staff alerts.
 ## Automatic repair
 
 A box that stops answering its health probe is repaired without its owner asking,
-but only after every gate in `packages/web/convex/boxes/autoRepair.ts` passes. The
+but only after every gate in `packages/web/convex/fleet/autoRepair.ts` passes. The
 gates exist because a Composery box is a root-capable machine its owner is
 supposed to break, so "not serving" is a normal state for someone mid-experiment
 and an unconditional healer would fight them:

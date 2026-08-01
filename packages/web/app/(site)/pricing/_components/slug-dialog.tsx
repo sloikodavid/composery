@@ -4,7 +4,7 @@ import { useUser } from "@clerk/nextjs";
 import { useAction, useConvexAuth, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { AnimatedIconButton } from "@/ui/animated-icon";
+import { AnimatedIconButton } from "@/components/animated-icon";
 import {
 	Dialog,
 	DialogContent,
@@ -12,8 +12,8 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle
-} from "@/ui/base/dialog";
-import { Input } from "@/ui/base/input";
+} from "@/components/base/dialog";
+import { Input } from "@/components/base/input";
 import { api } from "@/convex/_generated/api";
 import { FadingText } from "./fading-text";
 import type { BoxBillingInterval } from "@/convex/model/box/billing";
@@ -23,8 +23,8 @@ import {
 	sanitizeSlug,
 	SLUG_MAX_LENGTH
 } from "@/convex/model/box/slug";
-import { errorMessage } from "@/ui/lib/error-message";
-import { signInUrlForReturnPath } from "@/ui/lib/auth-routing";
+import { errorMessage } from "@/lib/error-message";
+import { signInUrlForReturnPath } from "@/lib/auth-routing";
 
 // Naming the box, asked once and away from the cards.
 //

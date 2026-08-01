@@ -1,9 +1,9 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { isMarkdownPreferred, rewritePath } from "fumadocs-core/negotiation";
 import { NextResponse } from "next/server";
-import { parseAuthorizedParties } from "@/ui/lib/auth-routing";
-import { docsContentRoute, docsRoute } from "@/ui/lib/docs";
-import { nextEnv } from "@/ui/lib/env";
+import { parseAuthorizedParties } from "@/lib/auth-routing";
+import { docsContentRoute, docsRoute } from "@/lib/docs/routes";
+import { nextEnv } from "@/lib/env";
 
 const authorizedParties = parseAuthorizedParties(
 	nextEnv.CLERK_AUTHORIZED_PARTIES

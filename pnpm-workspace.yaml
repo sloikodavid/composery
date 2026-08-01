@@ -1,37 +1,49 @@
 packages:
   - packages/*
 
-# Single-source the versions shared across packages so they can't drift.
-# Reference as "catalog:".
+# Every dependency more than one workspace package declares, and nothing else.
+# The catalog exists to stop those copies drifting, so a single-consumer entry
+# would be indirection that prevents nothing while reading like a rule. Both
+# directions are enforced by `tests/invariants/toolchain-pins.test.ts`, which is
+# what keeps this an absolute rule rather than a convention. Reference as
+# "catalog:".
 catalog:
-  "@types/node": 24.13.2
-  "@types/react": ^19.2.15
-  concurrently: ^10.0.3
+  "@types/node": 24.13.3
+  concurrently: ^10.0.4
   eslint: 9.39.5
-  prettier: 3.9.5
+  sharp: ^0.35.3
   typescript: 6.0.3
   vitest: 4.1.10
-  # Must track vitest exactly: the coverage provider is versioned with the runner.
-  "@vitest/coverage-v8": 4.1.10
 
 patchedDependencies:
   fumadocs-mdx@15.0.12: packages/web/patches/fumadocs-mdx@15.0.12.patch
   fumadocs-ui@16.10.4: packages/web/patches/fumadocs-ui@16.10.4.patch
 
-# @clerk/nextjs@7.4.2 and @clerk/ui@1.14.0 are pinned, but their @clerk/* deps
-# float on caret ranges. A fresh resolve floats them past what @clerk/ui@1.14.0
-# was built against (it imports an internal hook @clerk/shared dropped after
-# 4.14.0). Pin the whole set to the versions the standalone website shipped with.
+# @clerk/nextjs and @clerk/ui are pinned, but every @clerk/* package they pull in
+# floats on a caret range, and those packages import each other's internals. A
+# fresh resolve therefore combines versions never built against each other
+# - which is how @clerk/ui once ended up calling a hook @clerk/shared had already
+# dropped. Pin the whole set to one coherent release instead, so the resolve
+# cannot invent a combination nobody shipped. Renovate moves them as one group.
 overrides:
-  "@clerk/shared": 4.14.0
-  "@clerk/react": 6.7.2
-  "@clerk/backend": 3.4.14
-  "@clerk/localizations": 4.7.0
+  "@clerk/shared": 4.25.10
+  "@clerk/react": 6.12.10
+  "@clerk/backend": 3.15.0
+  "@clerk/localizations": 4.13.10
 
+# ws@7, reached deep inside the Clerk dependency tree, asks for utf-8-validate
+# ^5, while the ws@8 copies beside it resolve 6. Both are optional native modules
+# the build never compiles, so one version is correct - this says which, instead
+# of leaving a warning nobody can act on.
 peerDependencyRules:
   allowedVersions:
     "ws@7>utf-8-validate": "6"
 
+# Which dependencies may run install scripts. Only names actually in the tree
+# belong here: pnpm writes a placeholder for any ignored build it meets, so a
+# name it never meets decides nothing. `false` is a recorded refusal - the
+# optional native modules (bufferutil, utf-8-validate) and core-js's postinstall
+# banner, none of which we want built.
 allowBuilds:
   "@clerk/shared": true
   "@tailwindcss/oxide": true
@@ -42,6 +54,4 @@ allowBuilds:
   unrs-resolver: true
   bufferutil: false
   core-js: false
-  msw: false
   utf-8-validate: false
-  dtrace-provider: false

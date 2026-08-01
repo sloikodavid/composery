@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { BoxActions } from "./_components/actions";
 import { BoxDetail } from "./_components/detail";
 import { BoxLinks } from "./_components/links";
-import { PageTemplate } from "@/ui/page-template";
-import { notFoundIfNotStaff } from "@/ui/lib/route-guards";
+import { PageTemplate } from "@/components/page-template";
+import { notFoundIfNotStaff } from "@/lib/route-guards";
 
 export const dynamic = "force-dynamic";
 

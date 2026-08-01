@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderRuntimeArtifacts } from "../../../packages/web/convex/boxes/infra/runtimeArtifacts.ts";
+import { renderRuntimeArtifacts } from "../../../packages/web/convex/fleet/infra/runtimeArtifacts.ts";
 import {
 	INSPECT_SCRIPT,
 	applyRuntimeConfigScript,
@@ -17,7 +17,7 @@ import {
 	unmountParkingScript,
 	updateScript,
 	verifyParkingScript
-} from "../../../packages/web/convex/boxes/infra/sshScripts.ts";
+} from "../../../packages/web/convex/fleet/infra/sshScripts.ts";
 
 const artifacts = renderRuntimeArtifacts({
 	cloudBoxId: "box_123",

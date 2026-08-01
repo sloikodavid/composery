@@ -80,7 +80,15 @@ const NOT_IN_THE_CHECKOUT = new Set([
 	// persistence crate's own tests. It names nothing in this checkout and never
 	// will - `persistence` is a directory here as well, which is the only reason
 	// the sweep looks at it at all.
-	"persistence/config.json"
+	"persistence/config.json",
+	// A module specifier handed to `require.resolve`, not a path: it resolves
+	// through node_modules to whichever Convex the deployment installed. The
+	// sweep sees a slash and a `.json` and cannot tell the two apart.
+	"convex/package.json",
+	// The body of `packages/web/package.json`'s `env:deploy` script, which runs
+	// with that package as its working directory. Correct there, and nowhere
+	// else - which is exactly what makes it look dangling from the root.
+	"scripts/env.mjs"
 ]);
 
 const files = tracked.filter(
@@ -145,7 +153,7 @@ function bases(file: string): string[] {
 // a bare `lib/openapi.ts` meaningful in one place and meaningless in another.
 //
 // The third clause is the one with a history. A comment in
-// `convex/boxes/workflows/repairBox.ts` pointed at `workflows/changeBoxPlan.ts`,
+// `convex/fleet/workflows/repairBox.ts` pointed at `workflows/changeBoxPlan.ts`,
 // a file - and a feature - that has never existed, and this sweep did not read
 // it: `workflows` is not a top-level root and not one of the web package's, so
 // the path was discarded before anything tried to resolve it. Every directory

@@ -8,7 +8,7 @@ import {
 	writeFileSync
 } from "node:fs";
 import { dirname, matchesGlob, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { TextDecoder } from "node:util";
 
 const HEADER = `/*
@@ -20,7 +20,10 @@ Ruling:
   U+0008, U+000B, U+000C, U+000E-U+001F, or U+007F, or contents inside Git
   submodules. Filenames and symbolic-link targets remain covered.
 - Standard 3, 4, 6, and 8 digit CSS hexadecimal colors are accepted by syntax
-  and do not appear in this list.
+  and do not appear in this list. So are content-addressed digests: a run of
+  exactly 40, 64, or 128 lowercase hexadecimal digits, which is what a pinned
+  Git commit, image digest, or integrity hash is. Both are computed, not
+  written, so their fragments are not words this repository keeps.
 - Digits are exact units. Other visible text is evaluated as Unicode grapheme
   clusters. Identifiers split at letter-number, lower-upper, and acronym-word
   boundaries. Lowercase, Titlecase, and UPPERCASE ASCII forms share one lowercase
@@ -42,6 +45,18 @@ const ASCII_UPPER = /^[A-Z]+$/;
 const ASCII_TITLE = /^[A-Z][a-z]*$/;
 const CSS_COLOR_AT_START =
 	/^#(?:[0-9A-Fa-f]{8}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{3})(?![0-9A-Fa-f])/;
+// A content-addressed digest - a Git object name, an image digest, an integrity
+// hash - is a number the machine computed, not a word anybody wrote. Splitting
+// one yields fragments like "ddec" and "fdef", and every pinned digest in the
+// repository was adding a handful. That is the failure this list is meant
+// to prevent, arriving through the list itself: each digest bump adds new
+// nonsense units and orphans the ones it replaced, so the only way to keep the
+// check passing is to keep growing the vocabulary until it says nothing. The
+// lengths are exactly the three the repository pins - SHA-1, SHA-256, SHA-512 -
+// and a run one character longer or shorter is still read as a word, because
+// then it is not a digest and the question about the source is a real one.
+const DIGEST_AT_START =
+	/^(?:[0-9a-f]{128}|[0-9a-f]{64}|[0-9a-f]{40})(?![0-9a-f])/;
 
 function compare(left, right) {
 	return left < right ? -1 : left > right ? 1 : 0;
@@ -92,9 +107,11 @@ function lexicalUnits(value, exact) {
 	const result = [];
 	for (let cursor = 0; cursor < segments.length;) {
 		const segment = segments[cursor];
-		const color = value.slice(segment.index).match(CSS_COLOR_AT_START)?.[0];
-		if (color) {
-			const end = segment.index + color.length;
+		const rest = value.slice(segment.index);
+		const skipped =
+			rest.match(CSS_COLOR_AT_START)?.[0] ?? rest.match(DIGEST_AT_START)?.[0];
+		if (skipped) {
+			const end = segment.index + skipped.length;
 			do cursor++;
 			while (cursor < segments.length && segments[cursor].index < end);
 			continue;
@@ -496,10 +513,7 @@ export function writeRepositoryWhitelist(root, { acceptNew = false } = {}) {
 }
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-if (
-	process.argv[1] &&
-	pathToFileURL(resolve(process.argv[1])).href === import.meta.url
-) {
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	if (process.argv.slice(2).includes("--write")) {
 		const acceptNew = process.argv.slice(2).includes("--accept-new");
 		const result = writeRepositoryWhitelist(repositoryRoot, { acceptNew });

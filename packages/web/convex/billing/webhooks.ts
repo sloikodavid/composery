@@ -2,7 +2,7 @@ import type { PolarWebhookEvent } from "@convex-dev/polar";
 import type { HttpRouter } from "convex/server";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
-import { startBoxOperation } from "../boxes/operations";
+import { startBoxOperation } from "../fleet/operations";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { requiredEnv } from "../env";
 import { TERMS_FIELD_SLUG } from "../model/legal";
@@ -211,7 +211,7 @@ export async function handleRefundedOrder(
 		order.metadata,
 		order.checkoutId
 	);
-	const boxId = await ctx.runQuery(internal.boxes.queries.boxIdBySubscription, {
+	const boxId = await ctx.runQuery(internal.fleet.queries.boxIdBySubscription, {
 		subscriptionId: order.subscriptionId
 	});
 	if (!intentId && !boxId) return;
@@ -234,7 +234,7 @@ export async function handleRevokedSubscription(
 	ctx: RouteCtx,
 	subscriptionId: string
 ) {
-	const boxId = await ctx.runQuery(internal.boxes.queries.boxIdBySubscription, {
+	const boxId = await ctx.runQuery(internal.fleet.queries.boxIdBySubscription, {
 		subscriptionId
 	});
 	if (!boxId) return;

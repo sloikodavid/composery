@@ -18,23 +18,23 @@ import {
 	requireCapability,
 	requireCapabilityInAction
 } from "../users";
-import { fetchRuntimeLogsSafely } from "../boxes/logs";
+import { fetchRuntimeLogsSafely } from "../fleet/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
-import { startBoxOperation, startBoxSuspension } from "../boxes/operations";
+import { startBoxOperation, startBoxSuspension } from "../fleet/operations";
 import {
 	requireStaffBox,
 	requireStaffBoxInAction,
 	startFor,
 	startForOrFail
-} from "../boxes/endpoint";
-import { currentSuspensionReason } from "../boxes/queries";
-import { appendBoxEvent } from "../boxes/events";
+} from "../fleet/endpoint";
+import { currentSuspensionReason } from "../fleet/queries";
+import { appendBoxEvent } from "../fleet/events";
 
-import { assertSlugAvailable } from "../boxes/slugAvailability";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
-import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+import { assertSlugAvailable } from "../fleet/slugAvailability";
+import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
+import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
 import { readGlobalSettings } from "../settings";
-import { workflow } from "../boxes/workflows/boxWorkflow";
+import { workflow } from "../fleet/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../account/deletionLogic";
 import { requiredEnv } from "../env";
 import { vBoxPlan } from "../schema";
@@ -46,12 +46,12 @@ import {
 	latestRepair,
 	latestUpdate,
 	staffBox
-} from "../boxes/views";
+} from "../fleet/views";
 import {
 	markSnapshotDeleting,
 	snapshotView,
 	startManualSnapshot
-} from "../boxes/snapshots";
+} from "../fleet/snapshots";
 import { isValidSlug, sanitizeSlug } from "../model/box/slug";
 import { boxEventType, operationLabel } from "../model/box/operation";
 import { DAY_MS } from "../time";
@@ -545,7 +545,7 @@ export const runtimeLogs = action({
 		await requireCapabilityInAction(ctx, "box_operations");
 
 		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
+			internal.fleet.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
@@ -561,11 +561,11 @@ export const recoveryStatus = action({
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
+			internal.fleet.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
-		return await ctx.runAction(internal.boxes.health.recoveryStatus, {
+		return await ctx.runAction(internal.fleet.health.recoveryStatus, {
 			boxId: box._id
 		});
 	}
@@ -600,7 +600,7 @@ export const cancelOperation = action({
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const operation = await ctx.runQuery(
-			internal.boxes.operationSweep.activeOperationForBox,
+			internal.fleet.operationSweep.activeOperationForBox,
 			{ boxId: args.boxId }
 		);
 		if (!operation) {
@@ -612,7 +612,7 @@ export const cancelOperation = action({
 				.cancel(ctx, operation.workflowId as WorkflowId)
 				.catch(() => undefined);
 		}
-		await ctx.runMutation(internal.boxes.operationSweep.failOrphanedOperation, {
+		await ctx.runMutation(internal.fleet.operationSweep.failOrphanedOperation, {
 			error: `The ${operationLabel(operation.type, true)} operation was cancelled by staff after it stopped making progress.`,
 			operationId: operation.operationId
 		});
@@ -712,7 +712,7 @@ export const deleteSnapshot = mutation({
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) throw new ConvexError("Snapshot not found.");
 		await markSnapshotDeleting(ctx, args.snapshotId);
-		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.fleet.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId
 		});
 	}

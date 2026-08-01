@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
-import { CAPACITY_BOX_STATUSES } from "@/convex/boxes/capacity";
+import { CAPACITY_BOX_STATUSES } from "@/convex/fleet/capacity";
 
 import {
 	seedBox,

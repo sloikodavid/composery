@@ -160,7 +160,7 @@ pub fn hash_secret(secret: &str) -> String {
 
 fn generate(name: &str) -> Result<NewKey> {
     let mut secret_bytes = [0u8; 32];
-    getrandom::getrandom(&mut secret_bytes)
+    getrandom::fill(&mut secret_bytes)
         .map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
     let secret = format!(
         "{KEY_PREFIX}{}",
@@ -168,7 +168,7 @@ fn generate(name: &str) -> Result<NewKey> {
     );
 
     let mut id_bytes = [0u8; 6];
-    getrandom::getrandom(&mut id_bytes).map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
+    getrandom::fill(&mut id_bytes).map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
     let id = format!("k_{}", hex_encode(&id_bytes));
 
     let prefix: String = secret.chars().take(KEY_PREFIX.len() + 8).collect();

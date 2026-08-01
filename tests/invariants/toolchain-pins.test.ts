@@ -174,6 +174,39 @@ describe("toolchain pins", () => {
 		expect(coverage).toBe(catalog.vitest);
 	});
 
+	// @types/node is not a dependency to keep current, it is a description of the
+	// runtime underneath. A newer major types APIs the shipped Node does not have,
+	// so the compiler goes on passing while it describes a machine we do not run.
+	// Renovate cannot derive that ceiling, so it is written there as a number; this
+	// is what stops that number and the runtime from drifting apart.
+	test("@types/node describes the pinned Node major, and Renovate's ceiling agrees", () => {
+		const nodeMajor = Number(nodeVersion.split(".")[0]);
+		const catalog = (
+			parse(readRepoFile("pnpm-workspace.yaml")) as {
+				catalog: Record<string, string>;
+			}
+		).catalog;
+
+		expect(catalog["@types/node"]).toMatch(
+			new RegExp(String.raw`^${nodeMajor}\.\d+\.\d+$`)
+		);
+
+		const renovate = JSON.parse(readRepoFile("renovate.json")) as {
+			packageRules: {
+				matchPackageNames?: string[];
+				allowedVersions?: string;
+			}[];
+		};
+		const ceiling = renovate.packageRules.find(
+			(rule) =>
+				rule.allowedVersions !== undefined &&
+				rule.matchPackageNames?.length === 1 &&
+				rule.matchPackageNames[0] === "@types/node"
+		)?.allowedVersions;
+
+		expect(ceiling).toBe(`<${nodeMajor + 1}`);
+	});
+
 	test("package engines match the pinned Node version", () => {
 		const nodeMajor = Number(nodeVersion.split(".")[0]);
 

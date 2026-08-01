@@ -128,6 +128,26 @@ describe("source whitelist", () => {
 		).toEqual([" ", "source"]);
 	});
 
+	// Every pinned digest in the repository used to donate a handful of fragments
+	// like "ddec" to the vocabulary, and a bump orphaned those and proposed more.
+	// The second half is the one that can fail: the rule is bounded to the three
+	// digest lengths, so a run one character short is still read as an identifier
+	// and still asks its question. Without that bound this would quietly stop
+	// reading every lowercase hexadecimal name in the repository.
+	test("accepts content-addressed digests structurally without listing them", () => {
+		const commit = "3d3c42e5aac5ba805825da76410c181273ba90b1";
+		const image =
+			"ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc";
+
+		expect(
+			createWhitelist({ sources: [text("source", `${commit} ${image}`)] })
+		).toEqual([" ", "source"]);
+
+		expect(
+			createWhitelist({ sources: [text("source", commit.slice(0, 39))] })
+		).not.toEqual(["source"]);
+	});
+
 	test("does not scan ignored text contents but still scans the filename", () => {
 		const entries = createWhitelist({
 			patterns: ["**/*.svg"],

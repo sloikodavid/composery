@@ -14,7 +14,7 @@ import { describe, expect, test } from "vitest";
 //
 // The point is that "what can be called from outside, and by whom" is a
 // directory listing rather than a search. Four public functions used to sit
-// among internal modules - the box's whole authorization flow in `boxes/`, the
+// among internal modules - the box's whole authorization flow in `fleet/`, the
 // fleet version beside the release internals, the pricing query among the
 // billing plumbing, and two account functions among twelve identity helpers -
 // so answering that question meant a search for three keywords across ninety

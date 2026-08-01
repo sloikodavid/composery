@@ -21,14 +21,17 @@ Four planes, and the rule is who may read it.
   `account/`) - internal only. Nothing outside the deployment may call these.
   Machinery used by exactly one audience lives with that audience instead: the
   box authorization flow is all of `convex/box/auth.ts` because nothing else
-  reaches it, while `convex/boxes/` holds what both the owner and the console
+  reaches it, while `convex/fleet/` holds what both the owner and the console
   surfaces share.
-- **`app/` and `ui/`** - the browser plane, split by one question: `app/` is the
-  route tree, `ui/` is everything else it needs. Inside `ui/`, `base/` is the
-  shadcn primitives, `box/` is box-domain components, `icons/` is the glyph
-  registry, `hooks/` is React hooks, `lib/` is the non-React helpers, and loose
-  `.tsx` files at the root are shared app UI. All of it is Next-only by
-  definition; anything Convex also reads belongs in `convex/model/`.
+- **`app/`, `components/`, `hooks/`, `lib/`** - the browser plane, split by
+  what a file _is_ rather than what it is about. `app/` is the route tree,
+  `components/` is React, `hooks/` is React hooks, `lib/` is everything that is
+  not React. That is a checkable distinction, and it is the one both the Next.js
+  community and Feature-Sliced Design draw - in FSD `ui` and `lib` are sibling
+  _segments_, never nested. These were briefly folded into one `ui/` directory,
+  which stopped being true the moment `ui/lib/env.ts` existed: all but two of
+  its nineteen files contained no React at all. Fewer directories is not a
+  reason; a name that stops being true is a cost.
 
 What stays loose at `convex/` root is what belongs to the deployment rather than
 a domain: `schema`, `env`, `settings`, `crons`, `http`, `time`, `users`, and the
@@ -36,48 +39,49 @@ two Convex config files.
 
 ## Naming
 
-- `app/` and `ui/` filenames: kebab-case (regular Next.js modules).
+- `app/`, `components/`, `hooks/`, `lib/` filenames: kebab-case (regular Next.js modules).
 - `convex/` filenames: camelCase, because the path becomes a generated API identifier (`convex/staff/boxes.ts` -> `api.staff.boxes.reset`).
 - Database/schema fields and persisted status/type literals: snake_case (stored data, not JS names).
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- A directory is part of a name: inside `convex/boxes/`, `ui/box/` and `convex/model/box/` the `box` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
+- A directory is part of a name: inside `convex/fleet/`, `components/box/` and `convex/model/box/` the `box` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
 - The same operation is named the same on both sides. `api.owner.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
 - An **alert** is an incident record for staff (`raiseAlert`). A **notice** is a message to a person (`convex/notice/`). Name the thing, never the channel: `sendOwnerNotice`, not `sendOwnerEmail`.
 
 ## Box operations
 
-- **One row per operation, in `convex/model/box/operation.ts`.** What it is called, which statuses it may begin from, which status the box wears while it runs, where a failure leaves it, whether that failure pages a person, and what the owner is told - all of it, keyed by operation type and exhaustive by `satisfies`. This was six parallel tables in three files; adding an operation is now adding a row. The workflow that carries it out is the one thing kept out (it needs `_generated`), and it lives in `convex/boxes/operations.ts` keyed by the same names.
+- **One row per operation, in `convex/model/box/operation.ts`.** What it is called, which statuses it may begin from, which status the box wears while it runs, where a failure leaves it, whether that failure pages a person, and what the owner is told - all of it, keyed by operation type and exhaustive by `satisfies`. This was six parallel tables in three files; adding an operation is now adding a row. The workflow that carries it out is the one thing kept out (it needs `_generated`), and it lives in `convex/fleet/operations.ts` keyed by the same names.
 - The begin-status and failure-status unions are **derived** from that table, never listed beside it. A hand-written subset is what the type checker cannot check, and the begin-status one had already drifted to carry `running` and `suspended`, which no operation moves a box to.
-- **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/boxes/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
+- **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/fleet/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
 - A `system:` sweep still names its own trigger, because it is not one of the two audiences. A new automatic caller adds its own `system:` literal rather than borrowing one.
-- **The interface reads the same catalogue.** `PRIMARY_ACTION` in `ui/box/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
-- `convex/boxes/lifecycle.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
-- Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
+- **The interface reads the same catalogue.** `PRIMARY_ACTION` in `components/box/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
+- `convex/fleet/lifecycle.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
+- Retention and purge windows live in `convex/fleet/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `convex/model/box/plan.ts`. `BoxPlan` is the key of that table and `vBoxPlan` is built from it, so a plan cannot exist in one and not the other. Adding a plan is a row there and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
-- Cloud box runtime settings are defined once in `convex/boxes/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
+- Cloud box runtime settings are defined once in `convex/fleet/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
 
 ## Components
 
 Four buckets, by what a file is rather than what it does:
 
-- `ui/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
-- `ui/box/` - box-domain UI, mirroring `convex/model/box/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`).
-- `ui/icons/` - see below.
-- `ui/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
+- `components/base/` - the shadcn primitives, and the `shadcn add` target (`aliases.ui` in `components.json`). Regenerable vendor code: hand-edit sparingly and expect re-add diffs.
+- `components/box/` - box-domain UI, mirroring `convex/model/box/` and `app/(site)/boxes/`. Inside it the `box-` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`).
+- `components/icons/` - see below.
+- `components/docs/` - the documentation site's own components (fumadocs chrome, the OpenAPI renderer, MDX). It is a second product sharing this app's chrome, and its parts are named `openapi-*` rather than `api-*` so nothing reads as the deployment's own HTTP API under `app/api/`.
+- `components/` itself - shared app UI only. A component with one consumer belongs in that page's `_components/`, not here.
 
 ## Icons
 
 **Which kind.** An icon is animated iff it sits inside something hoverable and focusable as a unit - a button, a link, a clickable breadcrumb - because that element is what starts the animation. Everything else is a static `lucide-react` glyph: menu items, the current-page breadcrumb, status and empty-state glyphs, spinners, sort indicators. The rule is about the container, not the picture, so the same glyph can legitimately appear both ways.
 
-**How they're reached.** Static glyphs are imported from `lucide-react`. Animated ones are never imported by name outside `ui/animated-icon` - call sites name them (`icon="download"`, or `<AnimatedIcon icon="check" iconRef={ref} />` when the trigger lays its own icon out). A test enforces this; without it, `CheckIcon` means two different components depending on the import line.
+**How they're reached.** Static glyphs are imported from `lucide-react`. Animated ones are never imported by name outside `components/animated-icon` - call sites name them (`icon="download"`, or `<AnimatedIcon icon="check" iconRef={ref} />` when the trigger lays its own icon out). A test enforces this; without it, `CheckIcon` means two different components depending on the import line.
 
-- Every icon shares one shell (`ui/icons/create.tsx`): the hover/handle wiring and the stock lucide `<svg>` props live there once, so an icon file is its variants plus its `<svg>` body and nothing else.
-- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `ui/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `ui/icons/<name>.tsx` -> add a line to the `ICONS` map in `ui/animated-icon`. `AnimatedIconName` reads off that map, and `tests/invariants/ui/icons/registry.test.ts` fails if you skip the last step.
+- Every icon shares one shell (`components/icons/create.tsx`): the hover/handle wiring and the stock lucide `<svg>` props live there once, so an icon file is its variants plus its `<svg>` body and nothing else.
+- Add one: `pnpm dlx shadcn add @lucide-animated/<name>` -> the file lands in `components/base/<name>.tsx` -> rewrite it as a `createAnimatedIcon` call at `components/icons/<name>.tsx` -> add a line to the `ICONS` map in `components/animated-icon`. `AnimatedIconName` reads off that map, and `tests/invariants/components/icons/registry.test.ts` fails if you skip the last step.
 - It lands in `base/` because `@lucide-animated` items are `registry:ui`, which the CLI writes to `aliases.ui`; `--path` does not override that. Nothing to fix - the file has to be rewritten by hand anyway, so move it while you rewrite it.
 - Anything that renders an animated icon inside its own trigger uses `useAnimatedIconHandlers` rather than repeating the four handlers - it carries the `:focus-visible` guard that keeps programmatic focus (a dialog autofocusing its first button) from freezing the icon mid-pose.
-- `ui/icons/<name>.tsx` is a glyph registered in the map; `icons/<name>-logo.tsx` is a static brand logo that is not. Keeping those apart is what stops a second `XIcon` (the dismiss glyph vs the X/Twitter logo) from existing.
+- `components/icons/<name>.tsx` is a glyph registered in the map; `icons/<name>-logo.tsx` is a static brand logo that is not. Keeping those apart is what stops a second `XIcon` (the dismiss glyph vs the X/Twitter logo) from existing.
 - Consistency within a set: prefer the animated icon in animated-leaning contexts; stay static where motion is meaningless. Matching an external design 1:1 overrides this.
 
 ## Living setup docs

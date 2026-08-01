@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { BoxActionsBar } from "@/ui/box/actions-bar";
+import { BoxActionsBar } from "@/components/box/actions-bar";
 import { api } from "@/convex/_generated/api";
 
 export function BoxActions({

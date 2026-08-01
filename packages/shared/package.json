@@ -14,7 +14,7 @@
 	"devDependencies": {
 		"@vscode/codicons": "0.0.46-24",
 		"fontkit": "^2.0.4",
-		"lucide-static": "^1.27.0",
+		"lucide-static": "^1.28.0",
 		"png-to-ico": "^3.0.2",
 		"sharp": "catalog:"
 	}

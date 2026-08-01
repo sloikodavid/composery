@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -185,7 +185,7 @@ export function main({
 	};
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	try {
 		const result = main();
 		if (result.blocked) process.exitCode = 1;

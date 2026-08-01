@@ -26,7 +26,7 @@ import { describe, expect, test } from "vitest";
 // Why an invariant and not a behaviour test: the failure is a query that returns
 // too much, and provoking it needs a row with the field absent in whichever
 // table a future sweep happens to touch. A behaviour test proves one instance -
-// and `tests/behavior/convex/boxes/snapshots.test.ts` does, deliberately - while
+// and `tests/behavior/convex/fleet/snapshots.test.ts` does, deliberately - while
 // the class lives in how the query is built, which is what this reads. The two
 // are not substitutes; the instance proves the fix, this stops the next one.
 

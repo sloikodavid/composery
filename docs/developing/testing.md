@@ -30,7 +30,7 @@ Inside a `tests/` directory the first subdirectory names the kind, and below tha
 the path mirrors the source it covers.
 
 ```text
-packages/web/tests/behavior/convex/boxes/capacity.test.ts
+packages/web/tests/behavior/convex/fleet/capacity.test.ts
 packages/ide/tests/invariants/patches.test.ts
 tests/system/smoke.mjs
 ```

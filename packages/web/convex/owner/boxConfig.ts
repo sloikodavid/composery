@@ -1,15 +1,15 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { currentUserForRead, requireActiveUser } from "../users";
-import { findOwnedBoxBySlug } from "../boxes/queries";
+import { findOwnedBoxBySlug } from "../fleet/queries";
 import {
 	RUNTIME_CONFIG_FIELDS,
 	RuntimeConfigError,
 	SECRET_CONFIG_KEYS,
 	applySecretIntent,
 	normalizeRuntimeConfig
-} from "../boxes/runtimeConfig";
-import { startBoxOperation } from "../boxes/operations";
+} from "../fleet/runtimeConfig";
+import { startBoxOperation } from "../fleet/operations";
 import { isOperationAllowed } from "../model/box/operation";
 import { sanitizeSlug } from "../model/box/slug";
 

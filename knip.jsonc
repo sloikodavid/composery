@@ -49,15 +49,7 @@
 			// convex/ is an entry surface, not a library: the deployment calls these
 			// exports, so no import inside the checkout reaches most of them.
 			"entry": ["convex/**/*.ts", "tests/**/*.test.ts", "scripts/**/*.mjs"],
-			"project": ["**/*.{ts,tsx,css,mdx}", "scripts/**/*.mjs"],
-			// Written by `convex dev`, and it trails the source it is generated from
-			// until the next run, so a finding here reports a stale artifact rather
-			// than code anyone can fix. `ignore` is the only key that reaches it: the
-			// convex modules import `./_generated/server`, and knip follows an import
-			// into a file no project or entry glob selects. fumadocs-mdx's .source is
-			// not listed beside it - nothing knip resolves imports that tree, so the
-			// entry would sit here earning nothing.
-			"ignore": ["convex/_generated/**"]
+			"project": ["**/*.{ts,tsx,css,mdx}", "scripts/**/*.mjs"]
 		},
 		"packages/ide": {
 			"entry": ["tests/**/*.test.ts", "scripts/*.mjs"],
@@ -67,7 +59,7 @@
 	"ignore": [
 		"packages/ide/overlay/**",
 		"packages/ide/upstream/**",
-		"packages/web/ui/base/**"
+		"packages/web/components/base/**"
 	],
 	"ignoreDependencies": ["@vscode/codicons", "lucide-static"]
 }

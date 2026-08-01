@@ -15,7 +15,7 @@
 //
 // What is deliberately NOT here: the workflow that carries the operation out.
 // That reference needs `_generated`, which would drag Convex into a module the
-// browser reads. It lives in `convex/boxes/operations.ts`, keyed by these same
+// browser reads. It lives in `convex/fleet/operations.ts`, keyed by these same
 // names and pinned exhaustive by `satisfies`, so the two cannot drift.
 import { boxStatusesExcept, type BoxStatus } from "./status";
 

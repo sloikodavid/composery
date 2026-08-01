@@ -3,8 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 import { TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
-import { DismissButton } from "@/ui/dismiss-button";
-import { OpenInConvex } from "@/ui/open-in";
+import { DismissButton } from "@/components/dismiss-button";
+import { OpenInConvex } from "@/components/open-in";
 import {
 	Table,
 	TableBody,
@@ -12,10 +12,10 @@ import {
 	TableHead,
 	TableHeader,
 	TableRow
-} from "@/ui/base/table";
+} from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
-import { useBusyAction } from "@/ui/hooks/use-busy-action";
-import { formatDateTime } from "@/ui/lib/datetime";
+import { useBusyAction } from "@/hooks/use-busy-action";
+import { formatDateTime } from "@/lib/datetime";
 import { operationLabel } from "@/convex/model/box/operation";
 import { consoleBoxPath } from "@/convex/model/box/path";
 

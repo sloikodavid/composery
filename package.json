@@ -4,9 +4,9 @@
 	"private": true,
 	"license": "Apache-2.0",
 	"type": "module",
-	"packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
+	"packageManager": "pnpm@11.18.0+sha512.33d83c77da82f49fba836925c6f1b841181ec3132b670639bd012f7075f5c7cf634c5f870147c19aae7478fac01df09d8892e880454896edd23ee9b33757563c",
 	"engines": {
-		"node": ">=24.18.0 <25"
+		"node": ">=24.18.1 <25"
 	},
 	"scripts": {
 		"dev": "concurrently -n tree,docker,convex,next,colors -c green,blue,yellow,yellow,cyan \"pnpm dev:tree\" \"pnpm dev:docker\" \"pnpm dev:convex\" \"pnpm dev:next\" \"pnpm dev:colors\"",
@@ -28,6 +28,9 @@
 		"check:ide": "pnpm --filter ide check",
 		"check:cli": "node scripts/cli.mjs",
 		"check:shared": "pnpm --filter shared check",
+		"check:coverage": "node scripts/coverage.mjs",
+		"check:knip": "knip",
+		"check:mutants": "node scripts/mutants.mjs",
 		"fix": "pnpm fix:tree && pnpm fix:runbook && pnpm fix:lint && pnpm fix:format && pnpm fix:cli && pnpm fix:whitelist",
 		"fix:tree": "node scripts/tree.mjs --write",
 		"fix:runbook": "node scripts/runbook.mjs --write",
@@ -45,28 +48,7 @@
 		"runtime-artifacts:validate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/system/runtime-artifacts/run.mjs",
 		"templates:compose": "node tests/system/templates/run.mjs compose",
 		"assets": "pnpm --filter shared build",
-		"setup": "node scripts/setup.mjs",
-		"check:coverage": "node scripts/coverage.mjs",
-		"check:knip": "knip",
-		"check:mutants": "node scripts/mutants.mjs"
-	},
-	"prettier": {
-		"useTabs": true,
-		"trailingComma": "none",
-		"overrides": [
-			{
-				"comment": "packages/ide/upstream/.prettierrc.yaml verbatim. These files are copied into code-server's src/ and have to read like the files around them, so the fork's formatter is the one that owns them.",
-				"files": "packages/ide/overlay/src/**",
-				"options": {
-					"printWidth": 120,
-					"semi": false,
-					"trailingComma": "all",
-					"arrowParens": "always",
-					"singleQuote": false,
-					"useTabs": false
-				}
-			}
-		]
+		"setup": "node scripts/setup.mjs"
 	},
 	"devDependencies": {
 		"@eslint/js": "9.39.5",
@@ -74,14 +56,14 @@
 		"@stryker-mutator/vitest-runner": "^9.6.1",
 		"@types/jsdom": "^28.0.3",
 		"@types/node": "catalog:",
-		"@vitest/coverage-v8": "catalog:",
+		"@vitest/coverage-v8": "4.1.10",
 		"ajv": "^8.20.0",
 		"concurrently": "catalog:",
 		"eslint": "catalog:",
 		"fast-check": "^4.9.0",
-		"jsdom": "^29.1.1",
-		"knip": "^6.29.0",
-		"prettier": "catalog:",
+		"jsdom": "^30.0.1",
+		"knip": "^6.31.0",
+		"prettier": "3.9.6",
 		"typescript": "catalog:",
 		"typescript-eslint": "8.65.0",
 		"vitest": "catalog:",

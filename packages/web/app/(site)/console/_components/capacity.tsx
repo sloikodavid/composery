@@ -2,9 +2,9 @@
 
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { CapacityUsage } from "@/convex/boxes/capacity";
-import { useBusyAction } from "@/ui/hooks/use-busy-action";
-import { useSettingDraft } from "@/ui/hooks/use-setting-draft";
+import type { CapacityUsage } from "@/convex/fleet/capacity";
+import { useBusyAction } from "@/hooks/use-busy-action";
+import { useSettingDraft } from "@/hooks/use-setting-draft";
 import { NumberField, SettingsCard, SettingsRow } from "./settings-card";
 
 const LIMIT_MAX = 100_000;

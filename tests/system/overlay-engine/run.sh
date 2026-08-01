@@ -71,7 +71,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Production runtime flags, mirroring renderCompose() in
-# packages/web/convex/boxes/infra/runtimeArtifacts.ts.
+# packages/web/convex/fleet/infra/runtimeArtifacts.ts.
 PROD_FLAGS=(
   --privileged
   --cgroupns=host

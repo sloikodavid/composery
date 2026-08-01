@@ -40,17 +40,17 @@ export default defineConfig({
 			// reported, because a test imports it, while `types.mjs` beside it
 			// vanished.
 			//
-			// `packages/web/app` and the component buckets under `packages/web/ui` are
+			// `packages/web/app` and `packages/web/components` are
 			// absent on purpose. They are React server and client components: wiring
 			// and JSX, where a test that reached one would assert back the markup it
 			// was written from
 			// - the "run the line, assert nothing" this whole configuration is
 			// arranged to prevent, dressed as coverage. The rule that replaces the
 			// number is where a decision may live: anything decidable belongs in
-			// `ui/lib/` or `convex/`, which are here, so when a component starts
+			// `lib/` or `convex/`, which are here, so when a component starts
 			// deciding the fix is to move the decision rather than build a harness to
 			// reach it. Where one already decides - the dialogs under
-			// `ui/box/` - a behaviour test drives it through a
+			// `components/box/` - a behaviour test drives it through a
 			// `// @vitest-environment jsdom` header and @testing-library/react; those
 			// tests earn their keep from their assertions, not from a percentage.
 			// What can rot in the prose pages is whether the copy still describes the
@@ -60,7 +60,7 @@ export default defineConfig({
 				"packages/ide/overlay/**/*.{ts,js}",
 				"packages/shared/**/*.{ts,mjs}",
 				"packages/web/convex/**/*.{ts,tsx}",
-				"packages/web/ui/{hooks,lib}/**/*.{ts,tsx}",
+				"packages/web/{hooks,lib}/**/*.{ts,tsx}",
 				"scripts/**/*.mjs",
 				"packages/*/scripts/**/*.mjs"
 			],
@@ -73,7 +73,7 @@ export default defineConfig({
 				// sits here rather than beside a component because three surfaces mount
 				// Clerk, and the only test that could reach it would assert the class
 				// strings back - the styling restated as an expectation.
-				"packages/web/ui/lib/clerk-appearance.ts",
+				"packages/web/lib/clerk-appearance.ts",
 				// A box workflow handler is a sequence of `step.runAction` calls against
 				// a durable execution engine, Hetzner, Cloudflare, and SSH. Covering one
 				// means standing up the workflow component and mocking all four, and
@@ -88,7 +88,7 @@ export default defineConfig({
 				// `convex/model/box/plan.ts`. The handler is the wiring between them.
 				//
 				// The real check on that wiring is the system smoke, not a unit test.
-				"packages/web/convex/boxes/workflows/**",
+				"packages/web/convex/fleet/workflows/**",
 				// The same argument one layer down, and the reason `sshScripts.ts`
 				// exists: what is left in `ssh.ts` is an ssh2 connection and the
 				// actions that drive it. Covering a line of it means mocking ssh2 and
@@ -96,7 +96,7 @@ export default defineConfig({
 				// - the fidelity flags a Repair stands on, the escaping a password
 				// change stands on, the parse behind the Repair dialog - moved next
 				// door, where it is pure and instrumented.
-				"packages/web/convex/boxes/infra/ssh.ts",
+				"packages/web/convex/fleet/infra/ssh.ts",
 				// Covered, but not attributably. Every file below stands on upstream
 				// code-server modules - `../cli`, `../http`, `../util`, `../vscode`,
 				// `../../wsRouter` - which exist only in the tree the image build

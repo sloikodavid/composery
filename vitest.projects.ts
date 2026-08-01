@@ -61,7 +61,7 @@ export function projects(
 				// test file unscheduled and report zero failures forever.
 				//
 				// No `environment`: vitest's default is already `node`, and a file that
-				// needs a DOM says so in a `// @vitest-environment jsdom` docblock,
+				// needs a DOM says so in a `// @vitest-environment jsdom` header,
 				// which is the only place the choice is visible per test.
 				include: [`tests/${kind}/**/*.test.{ts,tsx}`],
 				testTimeout: KINDS[kind] * slowdown,

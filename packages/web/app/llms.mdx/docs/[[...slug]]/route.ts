@@ -1,4 +1,4 @@
-import { getLLMText, getPageMarkdownUrl, source } from "@/ui/lib/source";
+import { getLLMText, getPageMarkdownUrl, source } from "@/lib/docs/source";
 import { notFound } from "next/navigation";
 
 export const revalidate = false;

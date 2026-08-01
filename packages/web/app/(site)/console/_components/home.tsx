@@ -12,13 +12,13 @@ import { Metrics } from "./metrics";
 import { SnapshotPolicy } from "./snapshot-policy";
 import { Stats } from "./stats";
 import { Thresholds } from "./thresholds";
-import { FlagsTable } from "@/ui/box/flags-table";
-import { DismissButton } from "@/ui/dismiss-button";
-import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/ui/open-in";
-import { SortHeader } from "@/ui/sort-header";
-import { StatusText } from "@/ui/box/status-text";
-import { AnimatedIconButton } from "@/ui/animated-icon";
-import { Input } from "@/ui/base/input";
+import { FlagsTable } from "@/components/box/flags-table";
+import { DismissButton } from "@/components/dismiss-button";
+import { OpenInConvex, OpenInHetzner, OpenInPolar } from "@/components/open-in";
+import { SortHeader } from "@/components/sort-header";
+import { StatusText } from "@/components/box/status-text";
+import { AnimatedIconButton } from "@/components/animated-icon";
+import { Input } from "@/components/base/input";
 import {
 	Table,
 	TableBody,
@@ -28,11 +28,11 @@ import {
 	TableHeader,
 	TableLoadingRow,
 	TableRow
-} from "@/ui/base/table";
+} from "@/components/base/table";
 import { api } from "@/convex/_generated/api";
-import { useBusyAction } from "@/ui/hooks/use-busy-action";
-import { useTableSort } from "@/ui/hooks/use-table-sort";
-import { formatDate, formatDateTime } from "@/ui/lib/datetime";
+import { useBusyAction } from "@/hooks/use-busy-action";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import { consoleBoxPath } from "@/convex/model/box/path";
 
 type ConsoleBox = NonNullable<

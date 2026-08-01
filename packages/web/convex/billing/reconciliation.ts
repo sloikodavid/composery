@@ -1,8 +1,8 @@
 import { components, internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "../boxes/queries";
-import { startBoxOperation } from "../boxes/operations";
+import { SUBSCRIPTION_RECONCILIATION_STATUSES } from "../fleet/queries";
+import { startBoxOperation } from "../fleet/operations";
 import { boxSellableForProductId } from "./polar";
 import { HOUR_MS } from "../time";
 
@@ -139,7 +139,7 @@ export const reconcileBoxSubscriptions = internalAction({
 
 				for (;;) {
 					const page: ReconciliationPage = await ctx.runQuery(
-						internal.boxes.queries.boxesForSubscriptionReconciliationPage,
+						internal.fleet.queries.boxesForSubscriptionReconciliationPage,
 						{ cursor, status }
 					);
 					for (const box of page.page) {

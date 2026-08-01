@@ -1,9 +1,9 @@
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { RootProvider } from "fumadocs-ui/provider/next";
 import type { ReactNode } from "react";
-import { Footer } from "@/ui/footer";
-import { baseOptions } from "@/ui/lib/layout.shared";
-import { source } from "@/ui/lib/source";
+import { Footer } from "@/components/footer";
+import { baseOptions } from "@/lib/docs/layout";
+import { source } from "@/lib/docs/source";
 
 // The docs subtree gets fumadocs' own chrome (sidebar, TOC, search) instead of
 // the marketing Header that wraps the (site) group. RootProvider supplies the

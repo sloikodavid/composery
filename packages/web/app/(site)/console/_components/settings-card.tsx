@@ -1,8 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AnimatedIconButton, type AnimatedIconName } from "@/ui/animated-icon";
-import { Input } from "@/ui/base/input";
+import {
+	AnimatedIconButton,
+	type AnimatedIconName
+} from "@/components/animated-icon";
+import { Input } from "@/components/base/input";
 
 // The shell every staff settings panel wears: a card, a titled header carrying
 // the action that commits it (and sometimes Reset), and rows that divide. Five

@@ -26,7 +26,7 @@ const SCHEMA_URLS = {
 	render: "https://render.com/schema/render.yaml.json",
 	// renovate: datasource=github-releases depName=kubernetes/kubernetes
 	kubernetes:
-		"https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.2/api/openapi-spec/swagger.json"
+		"https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.3/api/openapi-spec/swagger.json"
 };
 const RUN_ID = `${Date.now()}-${process.pid}`;
 

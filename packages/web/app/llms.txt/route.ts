@@ -1,4 +1,4 @@
-import { source } from "@/ui/lib/source";
+import { source } from "@/lib/docs/source";
 import { llms } from "fumadocs-core/source";
 
 export const revalidate = false;

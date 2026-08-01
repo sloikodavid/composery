@@ -52,7 +52,7 @@ describe("the overlay is formatted with upstream's own prettier options", () => 
 	// repository the check above would still pass while every other file silently
 	// changed style.
 	test.each([
-		"packages/web/ui/lib/utils.ts",
+		"packages/web/lib/utils.ts",
 		"scripts/tree.mjs",
 		"tests/support/repo.ts"
 	])("%s keeps this repository's own style", async (path) => {

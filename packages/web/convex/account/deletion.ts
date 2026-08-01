@@ -8,13 +8,13 @@ import {
 	type ActionCtx
 } from "../_generated/server";
 import { revokePolarSubscription } from "../billing/polar";
-import { startBoxOperation } from "../boxes/operations";
-import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+import { startBoxOperation } from "../fleet/operations";
+import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
 	terminalCheckoutSecretPatch
-} from "../boxes/retention";
+} from "../fleet/retention";
 import { releaseIntentDoc } from "../checkout/checkoutIntents";
 import { findUserByClerkId } from "../users";
 import {

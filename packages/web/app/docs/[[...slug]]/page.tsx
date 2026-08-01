@@ -9,10 +9,10 @@ import {
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getMDXComponents } from "@/ui/mdx";
+import { getMDXComponents } from "@/components/docs/mdx";
 import { GITHUB_REPO_URL } from "@/convex/model/links";
 import { REPO } from "shared";
-import { getPageImage, getPageMarkdownUrl, source } from "@/ui/lib/source";
+import { getPageImage, getPageMarkdownUrl, source } from "@/lib/docs/source";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
 	const params = await props.params;

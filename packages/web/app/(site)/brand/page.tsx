@@ -1,7 +1,7 @@
 import { SwatchBookIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { BrandKit } from "./_components/brand-kit";
-import { PageTemplate } from "@/ui/page-template";
+import { PageTemplate } from "@/components/page-template";
 
 export const metadata: Metadata = {
 	title: "Brand",

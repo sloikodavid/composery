@@ -227,7 +227,7 @@ describe("system harnesses are reachable", () => {
 // The block form is the dangerous one: it silences every mutant of those kinds in
 // its range, including ones tests were killing, and the report says only that the
 // count of ignored mutants went up. Measured while writing these: one block pair
-// around a short helper in `convex/boxes/snapshots.ts` took Ignored from 14 to 151
+// around a short helper in `convex/fleet/snapshots.ts` took Ignored from 14 to 151
 // and Killed from 303 to 193 - about a hundred and ten real kills hidden, with
 // nothing in the run that looked wrong.
 //

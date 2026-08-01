@@ -3,7 +3,7 @@ import { fetchAction } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { signInUrlForReturnPath } from "@/ui/lib/auth-routing";
+import { signInUrlForReturnPath } from "@/lib/auth-routing";
 import {
 	CLOUD_AUTH_HEADERS,
 	isAuthorizationType,

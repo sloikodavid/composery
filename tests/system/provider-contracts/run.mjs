@@ -1,11 +1,11 @@
 import {
 	CLOUDFLARE_OPENAPI_URL,
 	cloudflareResponseContracts
-} from "../../../packages/web/convex/boxes/infra/cloudflareContracts.ts";
+} from "../../../packages/web/convex/fleet/infra/cloudflareContracts.ts";
 import {
 	HETZNER_OPENAPI_URL,
 	hetznerResponseContracts
-} from "../../../packages/web/convex/boxes/infra/hetznerContracts.ts";
+} from "../../../packages/web/convex/fleet/infra/hetznerContracts.ts";
 
 const providers = [
 	{

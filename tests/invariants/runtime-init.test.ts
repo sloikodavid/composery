@@ -80,7 +80,7 @@ describe("runtime process managers", () => {
 
 		for (const path of [
 			"Dockerfile",
-			"packages/web/convex/boxes/infra/runtimeArtifacts.ts",
+			"packages/web/convex/fleet/infra/runtimeArtifacts.ts",
 			"templates/systemd-caddy-compose/compose.yaml",
 			"templates/supervisor-caddy-compose/compose.yaml"
 		]) {
@@ -309,7 +309,7 @@ describe("runtime process managers", () => {
 		// benefit - and every other assertion in this file already reads its
 		// evidence off disk.
 		const RUNTIME_CONFIG_KEYS = [
-			...readRepoFile("packages/web/convex/boxes/runtimeConfig.ts").matchAll(
+			...readRepoFile("packages/web/convex/fleet/runtimeConfig.ts").matchAll(
 				/^\t\tkey: "([A-Z_]+)"/gm
 			)
 		].map((match) => match[1] as string);
@@ -372,7 +372,7 @@ describe("runtime process managers", () => {
 		expect(entrypoint).toContain("umask 077");
 		expect(service).toContain("EnvironmentFile=-/run/composery.env");
 		expect(
-			readRepoFile("packages/web/convex/boxes/infra/runtimeArtifacts.ts")
+			readRepoFile("packages/web/convex/fleet/infra/runtimeArtifacts.ts")
 		).toContain("`COMPOSERY_HASHED_PASSWORD=${quoteEnvFileValue");
 		expect(readRepoFile("packages/ide/scripts/rebrand.mjs")).toContain(
 			'"process.env.COMPOSERY_HASHED_PASSWORD"'

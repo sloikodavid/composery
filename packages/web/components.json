@@ -15,11 +15,11 @@
 	"menuColor": "default",
 	"menuAccent": "subtle",
 	"aliases": {
-		"components": "@/ui",
-		"utils": "@/ui/lib/utils",
-		"ui": "@/ui/base",
-		"lib": "@/ui/lib",
-		"hooks": "@/ui/hooks"
+		"components": "@/components",
+		"utils": "@/lib/utils",
+		"ui": "@/components/base",
+		"lib": "@/lib",
+		"hooks": "@/hooks"
 	},
 	"registries": {
 		"@lucide-animated": "https://lucide-animated.com/r/{name}.json"

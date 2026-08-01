@@ -164,7 +164,7 @@ describe("change-password route", () => {
 		expect(apply).toContain("internal.box.auth.reconcilePassword");
 		// ...and the reconcile has to re-render the env file from the new hash,
 		// not merely restart the instance on the old one.
-		const ssh = readRepoFile("packages/web/convex/boxes/infra/ssh.ts");
+		const ssh = readRepoFile("packages/web/convex/fleet/infra/ssh.ts");
 		const rewrite = ssh.slice(
 			ssh.indexOf("export const rewritePasswordAndRestart")
 		);

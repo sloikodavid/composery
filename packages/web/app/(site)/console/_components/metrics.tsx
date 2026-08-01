@@ -9,8 +9,8 @@ import {
 	MetricsLineChart,
 	MetricsRangeSelect,
 	type MetricsRange
-} from "@/ui/box/metrics-chart";
-import { ChartCard } from "@/ui/box/chart-card";
+} from "@/components/box/metrics-chart";
+import { ChartCard } from "@/components/box/chart-card";
 import { api } from "@/convex/_generated/api";
 
 // The all-boxes overlay: the top boxes ranked by the selected metric's latest

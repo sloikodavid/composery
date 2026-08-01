@@ -3,7 +3,7 @@ import type { MutationCtx } from "../_generated/server";
 import { boxPath } from "../model/box/path";
 import { SUPPORT_EMAIL } from "../model/links";
 import { optionalWebsiteUrl } from "../env";
-import { appendBoxEvent } from "../boxes/events";
+import { appendBoxEvent } from "../fleet/events";
 import { noticesSender, customerEmailAlertKey, resendClient } from "./email";
 import { raiseAlert } from "../staff/alerts";
 import { findUserByClerkId } from "../users";
@@ -33,7 +33,7 @@ import type { OperationTrigger } from "../schema";
 // this is not. The console's suspend dialog offers customer-worded presets
 // ("Suspended for violating Composery's Terms of Service.") under a field that
 // tells staff, in as many words, that the reason is shown to the account owner -
-// and it already is, twice: `boxes/queries.ts` serves it to the owner's own box
+// and it already is, twice: `fleet/queries.ts` serves it to the owner's own box
 // page for every suspension regardless of trigger, and `users.ts` puts an
 // account's reason in the block card. So withholding it here protected nothing.
 // It only meant the email said less than the page it linked to, which is the one

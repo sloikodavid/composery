@@ -6,24 +6,27 @@ import {
 	AnimatedIconAnchor,
 	AnimatedIconButton,
 	AnimatedIconLink
-} from "@/ui/animated-icon";
-import { BoxStatusAction } from "@/ui/box/status-action";
-import { ChangeSlugDialog } from "@/ui/box/change-slug-dialog";
-import { MonitorCard } from "@/ui/box/monitor-card";
-import { RepairDialog } from "@/ui/box/repair-dialog";
-import { ResetDialog } from "@/ui/box/reset-dialog";
-import { UpdateDialog } from "@/ui/box/update-dialog";
-import { DEFAULT_RANGE, type MetricsRange } from "@/ui/box/metrics-chart";
+} from "@/components/animated-icon";
+import { BoxStatusAction } from "@/components/box/status-action";
+import { ChangeSlugDialog } from "@/components/box/change-slug-dialog";
+import { MonitorCard } from "@/components/box/monitor-card";
+import { RepairDialog } from "@/components/box/repair-dialog";
+import { ResetDialog } from "@/components/box/reset-dialog";
+import { UpdateDialog } from "@/components/box/update-dialog";
+import {
+	DEFAULT_RANGE,
+	type MetricsRange
+} from "@/components/box/metrics-chart";
 import { BoxSnapshots } from "./box-snapshots";
-import { Card, CardContent } from "@/ui/base/card";
-import { buttonVariants } from "@/ui/base/button";
+import { Card, CardContent } from "@/components/base/card";
+import { buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
-import { useBusyAction } from "@/ui/hooks/use-busy-action";
+import { useBusyAction } from "@/hooks/use-busy-action";
 import { boxPath } from "@/convex/model/box/path";
 import { BOX_PLANS } from "@/convex/model/box/plan";
-import { formatDate } from "@/ui/lib/datetime";
+import { formatDate } from "@/lib/datetime";
 import { failureNotice } from "@/convex/model/box/operation";
-import { cn } from "@/ui/lib/utils";
+import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);

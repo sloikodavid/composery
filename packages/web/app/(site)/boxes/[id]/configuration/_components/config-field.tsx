@@ -1,8 +1,8 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/ui/base/badge";
-import { Button } from "@/ui/base/button";
+import { Badge } from "@/components/base/badge";
+import { Button } from "@/components/base/button";
 import {
 	Dialog,
 	DialogClose,
@@ -11,18 +11,18 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle
-} from "@/ui/base/dialog";
-import { Input } from "@/ui/base/input";
-import { Label } from "@/ui/base/label";
+} from "@/components/base/dialog";
+import { Input } from "@/components/base/input";
+import { Label } from "@/components/base/label";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/ui/base/select";
-import { Textarea } from "@/ui/base/textarea";
-import type { RuntimeConfigField } from "@/convex/boxes/runtimeConfig";
+} from "@/components/base/select";
+import { Textarea } from "@/components/base/textarea";
+import type { RuntimeConfigField } from "@/convex/fleet/runtimeConfig";
 
 type StringField = Extract<RuntimeConfigField, { kind: "string" }>;
 

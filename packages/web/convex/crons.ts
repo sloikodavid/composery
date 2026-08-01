@@ -1,6 +1,6 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
-import { METRICS_POLL_INTERVAL_MINUTES } from "./boxes/metrics";
+import { METRICS_POLL_INTERVAL_MINUTES } from "./fleet/metrics";
 
 const crons = cronJobs();
 
@@ -19,7 +19,7 @@ crons.interval(
 crons.interval(
 	"reconcile capacity alerts",
 	{ minutes: 15 },
-	internal.boxes.capacityAlerts.reconcile
+	internal.fleet.capacityAlerts.reconcile
 );
 
 crons.interval(
@@ -62,45 +62,45 @@ crons.hourly(
 crons.hourly(
 	"finish failed box deletions",
 	{ minuteUTC: 27 },
-	internal.boxes.cleanup.finishFailedDeletions
+	internal.fleet.cleanup.finishFailedDeletions
 );
 
 crons.interval(
 	"poll box metrics",
 	{ minutes: METRICS_POLL_INTERVAL_MINUTES },
-	internal.boxes.metricsPoll.pollBoxMetrics
+	internal.fleet.metricsPoll.pollBoxMetrics
 );
 
 crons.hourly(
 	"roll up hourly box metrics",
 	{ minuteUTC: 4 },
-	internal.boxes.metrics.rollupHourlyMetrics,
+	internal.fleet.metrics.rollupHourlyMetrics,
 	{}
 );
 
 crons.daily(
 	"delete old box metrics",
 	{ hourUTC: 4, minuteUTC: 23 },
-	internal.boxes.metrics.deleteOldSamples
+	internal.fleet.metrics.deleteOldSamples
 );
 
 crons.daily(
 	"normalize deleted boxes",
 	{ hourUTC: 4, minuteUTC: 29 },
-	internal.boxes.cleanup.normalizeDeletedBoxes
+	internal.fleet.cleanup.normalizeDeletedBoxes
 );
 
 crons.daily(
 	"purge expired deleted boxes",
 	{ hourUTC: 4, minuteUTC: 31 },
-	internal.boxes.cleanup.scheduleExpiredBoxPurges,
+	internal.fleet.cleanup.scheduleExpiredBoxPurges,
 	{}
 );
 
 crons.daily(
 	"purge expired checkout records",
 	{ hourUTC: 4, minuteUTC: 37 },
-	internal.boxes.cleanup.purgeExpiredCheckoutRecords
+	internal.fleet.cleanup.purgeExpiredCheckoutRecords
 );
 
 crons.daily(
@@ -130,7 +130,7 @@ crons.daily(
 crons.interval(
 	"sweep box health",
 	{ minutes: METRICS_POLL_INTERVAL_MINUTES },
-	internal.boxes.autoRepair.sweepBoxHealth
+	internal.fleet.autoRepair.sweepBoxHealth
 );
 
 // An operation nothing will ever finish holds its box's lock for ever, and every
@@ -140,7 +140,7 @@ crons.interval(
 crons.interval(
 	"sweep stuck box operations",
 	{ minutes: 15 },
-	internal.boxes.operationSweep.sweepStuckOperations
+	internal.fleet.operationSweep.sweepStuckOperations
 );
 
 // Hourly rather than per box or per page view: one registry round trip answers
@@ -148,7 +148,7 @@ crons.interval(
 crons.hourly(
 	"refresh runtime release",
 	{ minuteUTC: 26 },
-	internal.boxes.runtimeRelease.refreshRuntimeRelease
+	internal.fleet.runtimeRelease.refreshRuntimeRelease
 );
 
 // The product webhooks only fire on a change, so a deployment that has not seen
@@ -165,28 +165,28 @@ crons.hourly(
 crons.hourly(
 	"update boxes past their floor deadline",
 	{ minuteUTC: 41 },
-	internal.boxes.runtimeFloor.updateBoxesPastDeadline,
+	internal.fleet.runtimeFloor.updateBoxesPastDeadline,
 	{}
 );
 
 crons.daily(
 	"snapshot running boxes",
 	{ hourUTC: 3, minuteUTC: 7 },
-	internal.boxes.snapshots.scheduleAutomaticSnapshots,
+	internal.fleet.snapshots.scheduleAutomaticSnapshots,
 	{}
 );
 
 crons.daily(
 	"delete expired snapshots",
 	{ hourUTC: 4, minuteUTC: 41 },
-	internal.boxes.snapshots.deleteExpiredSnapshots
+	internal.fleet.snapshots.deleteExpiredSnapshots
 );
 
 // Runs after the snapshot/expiry crons so it reconciles the settled state.
 crons.daily(
 	"reconcile Hetzner resources",
 	{ hourUTC: 5, minuteUTC: 17 },
-	internal.boxes.reconcile.reconcileHetznerResources
+	internal.fleet.reconcile.reconcileHetznerResources
 );
 
 export default crons;

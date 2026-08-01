@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,16 +48,29 @@ const changed = (git(["diff", "--name-only", "--diff-filter=d", base]) ?? "")
 	.split("\n")
 	.filter(Boolean);
 
-// Only source is worth mutating: a mutated test proves nothing, and a mutated
-// generated file is not code anyone wrote.
-const ts = changed.filter(
-	(f) =>
-		/\.(ts|tsx|mjs)$/.test(f) &&
-		!/(^|\/)tests\//.test(f) &&
-		!/\.test\.[cm]?tsx?$/.test(f) &&
-		!/_generated\//.test(f) &&
-		!/^packages\/ide\/(upstream|build)\//.test(f)
+// What counts as mutable source is decided once, in stryker.config.json, and
+// read back here rather than restated - the diff run and the nightly sweep have
+// to mean the same thing by it. The two copies had already drifted: a
+// hand-written filter here admitted every `.tsx` under `app/` and `components/`,
+// which the config excludes and no test covers, so a change touching one page
+// handed Stryker files whose every mutant survives by construction and failed
+// the gate with a list nobody was ever going to kill.
+const stryker = JSON.parse(
+	readFileSync(resolve(REPO_ROOT, "stryker.config.json"), "utf8")
 );
+const mutable = new Set(
+	globSync(
+		stryker.mutate.filter((p) => !p.startsWith("!")),
+		{
+			cwd: REPO_ROOT,
+			exclude: stryker.mutate
+				.filter((p) => p.startsWith("!"))
+				.map((p) => p.slice(1))
+		}
+	).map((f) => f.split("\\").join("/"))
+);
+
+const ts = changed.filter((f) => mutable.has(f));
 const rust = changed.filter(
 	(f) => f.startsWith("packages/cli/") && f.endsWith(".rs")
 );
@@ -80,20 +93,17 @@ if (ts.length) {
 	// config that is the committed one plus this run's scope. Writing it out beats
 	// mutating stryker.config.json in place: nothing here can leave the checked-in
 	// config holding a diff-shaped `mutate` list.
-	const base = JSON.parse(
-		readFileSync(resolve(REPO_ROOT, "stryker.config.json"), "utf8")
-	);
 	mkdirSync(dirname(STRYKER_CONFIG), { recursive: true });
 	writeFileSync(
 		STRYKER_CONFIG,
 		JSON.stringify(
 			{
-				...base,
+				...stryker,
 				mutate: ts,
 				// Nothing may survive on a line this change introduced. Equivalent
 				// mutants are real, so the escape is a disable comment carrying its
 				// reason - a decision in the diff rather than a threshold lowered.
-				thresholds: { ...base.thresholds, break: 100 }
+				thresholds: { ...stryker.thresholds, break: 100 }
 			},
 			null,
 			"	"

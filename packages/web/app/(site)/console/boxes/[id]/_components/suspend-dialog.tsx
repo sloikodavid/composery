@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { Button } from "@/ui/base/button";
+import { Button } from "@/components/base/button";
 import {
 	Dialog,
 	DialogClose,
@@ -11,16 +11,16 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle
-} from "@/ui/base/dialog";
-import { Label } from "@/ui/base/label";
+} from "@/components/base/dialog";
+import { Label } from "@/components/base/label";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
 	SelectValue
-} from "@/ui/base/select";
-import { Textarea } from "@/ui/base/textarea";
+} from "@/components/base/select";
+import { Textarea } from "@/components/base/textarea";
 
 const SUSPENSION_REASONS: Array<{ label: string; reason: string }> = [
 	{

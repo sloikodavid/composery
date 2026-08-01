@@ -16,6 +16,10 @@
 	"git-submodules": {
 		"enabled": true
 	},
+	"kubernetes": {
+		"description": "The Kubernetes manager ships with no file patterns, so it sees nothing until it is told where to look. Point it at the deployment template; without this the manifest is the one recipe Renovate cannot read.",
+		"managerFilePatterns": ["/^templates/kubernetes/.+\\.yaml$/"]
+	},
 	"packageRules": [
 		{
 			"description": "Major updates: never automerge, hold for manual approval on the dashboard.",
@@ -35,14 +39,24 @@
 			"pinDigests": true
 		},
 		{
-			"description": "Group Node runtime pins so .nvmrc, package engines, and the Docker base image move together.",
-			"matchPackageNames": ["node", "library/node"],
+			"description": "Group Node runtime pins so .nvmrc, package engines, the Docker base image and the type definitions move together.",
+			"matchPackageNames": ["node", "library/node", "@types/node"],
 			"groupName": "node runtime"
+		},
+		{
+			"description": "@types/node describes the runtime, so its major is the Node major, not a version to chase: a newer major types APIs the shipped Node does not have and the compiler stops saying anything true. Node's own major is pinned by the IDE's native-module ABI, so raise this ceiling only when that moves; a test pins the pair.",
+			"matchPackageNames": ["@types/node"],
+			"allowedVersions": "<25"
 		},
 		{
 			"description": "Group Rust toolchain pins so the CI toolchain and the Docker build image move together; Cargo's rust-version is pinned to them by a test.",
 			"matchPackageNames": ["rust", "library/rust", "dtolnay/rust-toolchain"],
 			"groupName": "rust toolchain"
+		},
+		{
+			"description": "The coverage provider is released in lockstep with the runner and refuses to load against a different minor, so move them together; a test pins the pair.",
+			"matchPackageNames": ["vitest", "@vitest/coverage-v8"],
+			"groupName": "vitest"
 		},
 		{
 			"description": "Automerge low-risk updates once CI + smoke pass.",

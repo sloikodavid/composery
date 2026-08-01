@@ -5,19 +5,19 @@ import {
 	internalQuery,
 	type MutationCtx
 } from "../_generated/server";
-import { assertSlugAvailable } from "../boxes/slugAvailability";
+import { assertSlugAvailable } from "../fleet/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
-} from "../boxes/retention";
+} from "../fleet/retention";
 import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
 import { LEGAL_VERSION } from "../model/legal";
-import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
-import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
+import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
+import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
 import { vBoxPlan } from "../schema";
 import { HOUR_MS } from "../time";
 
