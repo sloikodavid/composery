@@ -1,13 +1,13 @@
-import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
-import { boxPath } from "./model/box/path";
-import { SUPPORT_EMAIL } from "./model/links";
-import { optionalWebsiteUrl } from "./env";
-import { appendBoxEvent } from "./boxes/events";
+import type { Doc } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+import { boxPath } from "../model/box/path";
+import { SUPPORT_EMAIL } from "../model/links";
+import { optionalWebsiteUrl } from "../env";
+import { appendBoxEvent } from "../boxes/events";
 import { noticesSender, customerEmailAlertKey, resendClient } from "./email";
-import { raiseAlert } from "./staff/alerts";
-import { findUserByClerkId } from "./users";
-import type { OperationTrigger } from "./schema";
+import { raiseAlert } from "../staff/alerts";
+import { findUserByClerkId } from "../users";
+import type { OperationTrigger } from "../schema";
 
 // What a box owner is told by email, and when.
 //
@@ -138,7 +138,7 @@ export function ownerNoticeEmail(
 // failed operation, because a failed operation is what puts a box into a failure
 // status and holds its lock. So the whole body is caught, and so is the alert
 // that reports the catch: there is nothing behind that alert to rescue it.
-export async function sendOwnerEmail(
+export async function sendOwnerNotice(
 	ctx: MutationCtx,
 	box: Doc<"boxes">,
 	notice: OwnerNotice

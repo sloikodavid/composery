@@ -506,7 +506,7 @@ export default defineSchema({
 		.index("created_at", ["created_at"]),
 
 	// A legal notice as it was actually sent. One row per entry in
-	// `lib/cloud-legal.ts`, created the first time the sweep reaches it.
+	// `convex/model/legal.ts`, created the first time the sweep reaches it.
 	//
 	// The text is copied in rather than read back out of the code it came from,
 	// because this is evidence: the repository can be edited, and a record that

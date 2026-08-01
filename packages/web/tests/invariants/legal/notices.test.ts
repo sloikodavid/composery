@@ -89,7 +89,7 @@ describe("account notices", () => {
 		(version) => {
 			expect(
 				announcedVersions(),
-				`No entry in LEGAL_NOTICES announces ${version}. A revision of the legal documents that nobody was told about is not one Composery may rely on - see lib/cloud-legal.ts.`
+				`No entry in LEGAL_NOTICES announces ${version}. A revision of the legal documents that nobody was told about is not one Composery may rely on - see convex/model/legal.ts.`
 			).toContain(version);
 		}
 	);

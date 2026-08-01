@@ -9,7 +9,7 @@ import {
 import { consoleBoxPath } from "../model/box/path";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
+import { boxDeletionIdempotencyKey } from "../account/deletionLogic";
 import { startBoxOperation } from "./operations";
 import {
 	billingRecordPurgeAt,

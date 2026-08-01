@@ -10,7 +10,7 @@ import {
 	stubDeploymentEnv,
 	testConvex,
 	type Harness
-} from "../../support/convex.ts";
+} from "../../../support/convex.ts";
 
 // A legal notice is the one email this service is obliged to deliver to a named
 // person, and the one whose failure looks exactly like success: nothing throws,
@@ -130,7 +130,7 @@ async function seedUserAt(
 }
 
 const send = (t: Harness) =>
-	t.mutation(internal.legalNotice.sendLegalNotice, NOTICE);
+	t.mutation(internal.notice.legal.sendLegalNotice, NOTICE);
 
 describe("sending a legal notice", () => {
 	test("records one recipient per account holder", async () => {
@@ -290,7 +290,7 @@ describe("sending a legal notice", () => {
 
 		await send(t);
 		expect(await recipients(t)).toHaveLength(50);
-		const continued = await scheduledJobs(t, "legalNotice:sendLegalNotice");
+		const continued = await scheduledJobs(t, "notice/legal:sendLegalNotice");
 		expect(continued).toHaveLength(1);
 
 		// An account that appears between the two pages is outside the cutoff and
@@ -362,7 +362,7 @@ describe("purging notice records", () => {
 
 		// Six calendar years on, plus a day.
 		vi.setSystemTime(Date.UTC(2032, 8, 2, 9, 0, 0));
-		await t.mutation(internal.legalNotice.purgeExpiredLegalNotices, {});
+		await t.mutation(internal.notice.legal.purgeExpiredLegalNotices, {});
 
 		expect(await recipients(t)).toEqual([]);
 		expect(await notices(t)).toEqual([]);
@@ -373,7 +373,7 @@ describe("purging notice records", () => {
 		await seedUser(t, { clerkUserId: "clerk_a", email: "a@example.com" });
 		await send(t);
 
-		await t.mutation(internal.legalNotice.purgeExpiredLegalNotices, {});
+		await t.mutation(internal.notice.legal.purgeExpiredLegalNotices, {});
 
 		expect(await recipients(t)).toHaveLength(1);
 		expect(await notices(t)).toHaveLength(1);
@@ -521,10 +521,10 @@ describe("the sweep", () => {
 	// send each, in declaration order.
 	test("schedules every declared notice, verbatim", async () => {
 		const t = testConvex();
-		await t.mutation(internal.legalNotice.sweepLegalNotices, {});
+		await t.mutation(internal.notice.legal.sweepLegalNotices, {});
 
 		expect(
-			await scheduledArgs<typeof NOTICE>(t, "legalNotice:sendLegalNotice")
+			await scheduledArgs<typeof NOTICE>(t, "notice/legal:sendLegalNotice")
 		).toEqual([
 			{
 				noticeId: "terms-2026-09-15",
@@ -662,7 +662,7 @@ describe("re-running a notice that already finished", () => {
 // survive, or a retention period becomes advisory.
 describe("how far the purge goes in one run", () => {
 	const purge = (t: Harness) =>
-		t.mutation(internal.legalNotice.purgeExpiredLegalNotices, {});
+		t.mutation(internal.notice.legal.purgeExpiredLegalNotices, {});
 
 	async function expiredRecipients(t: Harness, count: number) {
 		await t.run(async (ctx) => {

@@ -1,7 +1,7 @@
 import { Resend } from "@convex-dev/resend";
-import { components, internal } from "./_generated/api";
-import { optionalEnv } from "./env";
-import { HOUR_MS } from "./time";
+import { components, internal } from "../_generated/api";
+import { optionalEnv } from "../env";
+import { HOUR_MS } from "../time";
 
 // The deployment's one mail client, and the one answer to "can this deployment
 // send that?".
@@ -15,7 +15,7 @@ import { HOUR_MS } from "./time";
 // stays stable - who receives it and why it was sent both follow from it:
 //
 //   - `alertsSender`   an incident on this deployment (convex/staff/alerts.ts)
-//   - `noticesSender`  one customer's box             (convex/ownerEmail.ts)
+//   - `noticesSender`  one customer's box             (convex/notice/owner.ts)
 //   - `accountsSender` the account itself     (accountEmail.ts, legalNotice.ts)
 //
 // One word per sender - `alerts`, `notices`, `accounts` - names the variable,

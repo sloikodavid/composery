@@ -1,30 +1,30 @@
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 import {
 	internalAction,
 	internalMutation,
 	internalQuery,
 	type ActionCtx
-} from "./_generated/server";
-import { revokePolarSubscription } from "./billing/polar";
-import { startBoxOperation } from "./boxes/operations";
-import { reconcileCapacityAlert } from "./boxes/capacityAlerts";
+} from "../_generated/server";
+import { revokePolarSubscription } from "../billing/polar";
+import { startBoxOperation } from "../boxes/operations";
+import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
 	terminalCheckoutSecretPatch
-} from "./boxes/retention";
-import { releaseIntentDoc } from "./checkout/checkoutIntents";
-import { findUserByClerkId } from "./users";
+} from "../boxes/retention";
+import { releaseIntentDoc } from "../checkout/checkoutIntents";
+import { findUserByClerkId } from "../users";
 import {
 	accountDeletionBoxTargets,
 	accountDeletionReady,
 	boxDeletionIdempotencyKey,
 	scrubbedAccountEmail,
 	scrubbedUserId
-} from "./accountDeletionLogic";
-import { DAY_MS, MINUTE_MS } from "./time";
+} from "./deletionLogic";
+import { DAY_MS, MINUTE_MS } from "../time";
 
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * MINUTE_MS;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
@@ -44,7 +44,7 @@ async function stateForClerkUser(
 	ctx: Pick<ActionCtx, "runQuery">,
 	clerkUserId: string
 ): Promise<DeletionState> {
-	return await ctx.runQuery(internal.accountDeletion.accountDeletionState, {
+	return await ctx.runQuery(internal.account.deletion.accountDeletionState, {
 		clerkUserId
 	});
 }
@@ -74,7 +74,7 @@ async function scheduleFinalizer(
 	delayMs = ACCOUNT_DELETION_FINALIZER_DELAY_MS
 ) {
 	await ctx.runMutation(
-		internal.accountDeletion.scheduleAccountDeletionFinalizer,
+		internal.account.deletion.scheduleAccountDeletionFinalizer,
 		{
 			clerkUserId,
 			delayMs
@@ -166,7 +166,7 @@ export const scheduleAccountDeletionFinalizer = internalMutation({
 	handler: async (ctx, args) => {
 		await ctx.scheduler.runAfter(
 			args.delayMs,
-			internal.accountDeletion.finalizeAccountDeletion,
+			internal.account.deletion.finalizeAccountDeletion,
 			{ clerkUserId: args.clerkUserId }
 		);
 	}
@@ -199,7 +199,7 @@ export const finishAccountDeletion = internalMutation({
 		}
 		await ctx.scheduler.runAfter(
 			0,
-			internal.accountDeletion.pseudonymizeDeletedAccountRecords,
+			internal.account.deletion.pseudonymizeDeletedAccountRecords,
 			{
 				deletedUserId,
 				deletedEmail: scrubbedAccountEmail(user._id),
@@ -290,7 +290,7 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 		if (users.length === ACCOUNT_DELETION_PAGE_SIZE) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.accountDeletion.purgeExpiredDeletedAccounts,
+				internal.account.deletion.purgeExpiredDeletedAccounts,
 				{}
 			);
 		}
@@ -346,7 +346,7 @@ export const pseudonymizeDeletedAccountRecords = internalMutation({
 		) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.accountDeletion.pseudonymizeDeletedAccountRecords,
+				internal.account.deletion.pseudonymizeDeletedAccountRecords,
 				args
 			);
 		}
@@ -366,7 +366,7 @@ export const requestAccountDeletionForClerkUser = internalAction({
 	},
 	handler: async (ctx, args) => {
 		const marked = await ctx.runMutation(
-			internal.accountDeletion.markAccountDeletionPending,
+			internal.account.deletion.markAccountDeletionPending,
 			args
 		);
 		if (!marked) return;
@@ -402,7 +402,7 @@ export const finalizeAccountDeletion = internalAction({
 
 		const refreshed = await stateForClerkUser(ctx, args.clerkUserId);
 		if (accountDeletionReady(refreshed.boxes)) {
-			await ctx.runMutation(internal.accountDeletion.finishAccountDeletion, {
+			await ctx.runMutation(internal.account.deletion.finishAccountDeletion, {
 				clerkUserId: args.clerkUserId
 			});
 			return;
@@ -423,7 +423,7 @@ export const sweepPendingAccountDeletions = internalAction({
 				isDone: boolean;
 				page: Doc<"users">[];
 			} = await ctx.runQuery(
-				internal.accountDeletion.pendingAccountDeletionsPage,
+				internal.account.deletion.pendingAccountDeletionsPage,
 				{ cursor }
 			);
 

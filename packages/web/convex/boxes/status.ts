@@ -7,7 +7,7 @@ import { vBoxFailureStatus, vServerLocation, vServerType } from "../schema";
 import { type BoxFailureStatus, boxEventType, operationLabel, isActiveOperationStatus, BOX_OPERATIONS } from "../model/box/operation";
 import { staffConsoleUrl } from "../env";
 import { raiseAlert } from "../staff/alerts";
-import { sendOwnerEmail } from "../ownerEmail";
+import { sendOwnerNotice } from "../notice/owner";
 import { consoleBoxPath } from "../model/box/path";
 import { appendBoxEvent } from "./events";
 import { reconcileCapacityAlert } from "./capacityAlerts";
@@ -311,7 +311,7 @@ export async function recordOperationFailure(
 	// names, provider messages and addresses; the owner is told the outcome and
 	// that a person already knows.
 	if (operation.type === "create") {
-		await sendOwnerEmail(ctx, box, { type: "create_failed" });
+		await sendOwnerNotice(ctx, box, { type: "create_failed" });
 	}
 }
 
@@ -627,7 +627,7 @@ export const markDeleted = internalMutation({
 		// never by the owner pressing a button and watching it finish - so this is
 		// the point at which someone's work becomes permanently unavailable while
 		// they are not looking at us. The trigger says which of the three it was.
-		await sendOwnerEmail(ctx, box, {
+		await sendOwnerNotice(ctx, box, {
 			type: "deleted",
 			trigger: operation.trigger
 		});
@@ -716,13 +716,13 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 		// so a future caller that reports progress through it cannot make this
 		// announce a suspension that has not happened yet.
 		if (operation.type === "suspend" && args.status === "suspended") {
-			await sendOwnerEmail(ctx, box, {
+			await sendOwnerNotice(ctx, box, {
 				type: "suspended",
 				reason: suspensionReason(operation.metadata)
 			});
 		}
 		if (operation.type === "unsuspend" && args.status === "running") {
-			await sendOwnerEmail(ctx, box, { type: "unsuspended" });
+			await sendOwnerNotice(ctx, box, { type: "unsuspended" });
 		}
 	}
 });

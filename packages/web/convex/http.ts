@@ -3,7 +3,7 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { registerPolarWebhookRoutes } from "./billing/webhooks";
-import { resendClient } from "./email";
+import { resendClient } from "./notice/email";
 import { optionalEnv } from "./env";
 
 type ClerkUserDeletedPayload = {
@@ -66,7 +66,7 @@ http.route({
 		}
 
 		await ctx.runAction(
-			internal.accountDeletion.requestAccountDeletionForClerkUser,
+			internal.account.deletion.requestAccountDeletionForClerkUser,
 			{ clerkUserId }
 		);
 

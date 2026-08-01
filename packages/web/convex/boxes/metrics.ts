@@ -55,7 +55,7 @@ export const vPolledStatus = v.union(
 	v.literal("suspended")
 );
 
-// Both validators are built from the vocabulary in `lib/boxes/metrics.ts`
+// Both validators are built from the vocabulary in `convex/model/box/metric.ts`
 // rather than restating it, so what the console's pickers offer and what these
 // arguments accept are the same list by construction.
 export const vRolledMetric = v.union(

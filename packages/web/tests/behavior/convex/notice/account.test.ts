@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
-import { accountNoticeEmail } from "@/convex/accountEmail";
-import { customerEmailAlertKey } from "@/convex/email";
+import { accountNoticeEmail } from "@/convex/notice/account";
+import { customerEmailAlertKey } from "@/convex/notice/email";
 import { BOXES_PATH } from "@/convex/model/box/path";
 import { SUPPORT_EMAIL } from "@/convex/model/links";
 
@@ -12,7 +12,7 @@ import {
 	stubDeploymentEnv,
 	testConvex,
 	type Harness
-} from "../../support/convex.ts";
+} from "../../../support/convex.ts";
 
 // What an account holder is told when staff suspend or restore their account,
 // and - the half this exists for - exactly when.

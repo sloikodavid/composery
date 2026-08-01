@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { customerEmailAlertKey } from "@/convex/email";
-import { ownerNoticeEmail } from "@/convex/ownerEmail";
+import { customerEmailAlertKey } from "@/convex/notice/email";
+import { ownerNoticeEmail } from "@/convex/notice/owner";
 import { SUPPORT_EMAIL } from "@/convex/model/links";
 
-// One address the deployment cannot hand over, so `sendOwnerEmail`'s never-throw
+// One address the deployment cannot hand over, so `sendOwnerNotice`'s never-throw
 // contract is reachable from here at all. Arranged rather than found: the
 // component accepts an impossible address at queue time and lets Resend reject
 // it later. Same wrapper as `accountEmail.test.ts`, for the same reason - a
@@ -54,13 +54,13 @@ import {
 	stubDeploymentEnv,
 	testConvex,
 	type Harness
-} from "../../support/convex.ts";
+} from "../../../support/convex.ts";
 
 // The four things a box owner is told, and the two ways of getting one wrong:
 // saying something that was never true of their box, or repeating something
 // written for staff. The wiring tests below run the real lifecycle mutations
 // rather than calling the sender, because "which events reach an owner" is a
-// property of those mutations and a test that called `sendOwnerEmail` directly
+// property of those mutations and a test that called `sendOwnerNotice` directly
 // would keep passing after the call site was deleted.
 
 const NOW = Date.UTC(2026, 6, 28, 9, 0, 0);

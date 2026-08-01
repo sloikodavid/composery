@@ -1506,7 +1506,7 @@ describe("settling an operation a workflow left open", () => {
 // operation, and names the event from the operation row rather than from the
 // caller. Stop, start, suspend, unsuspend and a settled update all arrive here.
 describe("settling a box and its operation together", () => {
-	// A sender has to be configured or `sendOwnerEmail` returns before doing
+	// A sender has to be configured or `sendOwnerNotice` returns before doing
 	// anything, and every announcement here would silently pass.
 	beforeEach(() => {
 		vi.stubEnv(

@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { action, internalMutation } from "../_generated/server";
-import { sendAccountEmail } from "../accountEmail";
+import { sendAccountNotice } from "../notice/account";
 import { startBoxSuspension } from "../boxes/operations";
 import {
 	findUserByClerkId,
@@ -54,7 +54,7 @@ export const setUserSuspension = internalMutation({
 		// `user` is the row as it was before the patch above, which is what makes
 		// the comparison possible; nothing this email reads from it was changed.
 		if (user.suspended !== args.suspended) {
-			await sendAccountEmail(
+			await sendAccountNotice(
 				ctx,
 				user,
 				args.suspended

@@ -54,9 +54,9 @@ describe("privacy policy processor list", () => {
 	// page said so for exactly as long as nobody re-read it against the code.
 	test("does not describe Resend as staff-only while owners are emailed", () => {
 		const emailsOwners = readFileSync(
-			join(repoRoot, "packages/web/convex/ownerEmail.ts"),
+			join(repoRoot, "packages/web/convex/notice/owner.ts"),
 			"utf8"
-		).includes("sendOwnerEmail");
+		).includes("sendOwnerNotice");
 
 		expect(emailsOwners).toBe(true);
 		expect(privacy).not.toContain("Resend (staff-only");

@@ -8,9 +8,8 @@
  * @module
  */
 
-import type * as accountDeletion from "../accountDeletion.js";
-import type * as accountDeletionLogic from "../accountDeletionLogic.js";
-import type * as accountEmail from "../accountEmail.js";
+import type * as account_deletion from "../account/deletion.js";
+import type * as account_deletionLogic from "../account/deletionLogic.js";
 import type * as billing_polar from "../billing/polar.js";
 import type * as billing_reconciliation from "../billing/reconciliation.js";
 import type * as billing_webhooks from "../billing/webhooks.js";
@@ -73,10 +72,8 @@ import type * as boxes_workflows_updateBox from "../boxes/workflows/updateBox.js
 import type * as checkout_checkoutConversion from "../checkout/checkoutConversion.js";
 import type * as checkout_checkoutIntents from "../checkout/checkoutIntents.js";
 import type * as crons from "../crons.js";
-import type * as email from "../email.js";
 import type * as env from "../env.js";
 import type * as http from "../http.js";
-import type * as legalNotice from "../legalNotice.js";
 import type * as model_box_auth from "../model/box/auth.js";
 import type * as model_box_billing from "../model/box/billing.js";
 import type * as model_box_metric from "../model/box/metric.js";
@@ -88,10 +85,13 @@ import type * as model_box_snapshot from "../model/box/snapshot.js";
 import type * as model_box_status from "../model/box/status.js";
 import type * as model_legal from "../model/legal.js";
 import type * as model_links from "../model/links.js";
+import type * as notice_account from "../notice/account.js";
+import type * as notice_email from "../notice/email.js";
+import type * as notice_legal from "../notice/legal.js";
+import type * as notice_owner from "../notice/owner.js";
 import type * as owner_boxConfig from "../owner/boxConfig.js";
 import type * as owner_boxes from "../owner/boxes.js";
 import type * as owner_checkout from "../owner/checkout.js";
-import type * as ownerEmail from "../ownerEmail.js";
 import type * as settings from "../settings.js";
 import type * as staff_alerts from "../staff/alerts.js";
 import type * as staff_boxes from "../staff/boxes.js";
@@ -110,9 +110,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  accountDeletion: typeof accountDeletion;
-  accountDeletionLogic: typeof accountDeletionLogic;
-  accountEmail: typeof accountEmail;
+  "account/deletion": typeof account_deletion;
+  "account/deletionLogic": typeof account_deletionLogic;
   "billing/polar": typeof billing_polar;
   "billing/reconciliation": typeof billing_reconciliation;
   "billing/webhooks": typeof billing_webhooks;
@@ -175,10 +174,8 @@ declare const fullApi: ApiFromModules<{
   "checkout/checkoutConversion": typeof checkout_checkoutConversion;
   "checkout/checkoutIntents": typeof checkout_checkoutIntents;
   crons: typeof crons;
-  email: typeof email;
   env: typeof env;
   http: typeof http;
-  legalNotice: typeof legalNotice;
   "model/box/auth": typeof model_box_auth;
   "model/box/billing": typeof model_box_billing;
   "model/box/metric": typeof model_box_metric;
@@ -190,10 +187,13 @@ declare const fullApi: ApiFromModules<{
   "model/box/status": typeof model_box_status;
   "model/legal": typeof model_legal;
   "model/links": typeof model_links;
+  "notice/account": typeof notice_account;
+  "notice/email": typeof notice_email;
+  "notice/legal": typeof notice_legal;
+  "notice/owner": typeof notice_owner;
   "owner/boxConfig": typeof owner_boxConfig;
   "owner/boxes": typeof owner_boxes;
   "owner/checkout": typeof owner_checkout;
-  ownerEmail: typeof ownerEmail;
   settings: typeof settings;
   "staff/alerts": typeof staff_alerts;
   "staff/boxes": typeof staff_boxes;

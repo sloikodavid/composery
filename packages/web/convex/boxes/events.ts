@@ -6,7 +6,7 @@ type WriteDbCtx = { db: DatabaseWriter };
 
 // `type` is the closed union rather than `string`, which is what makes the
 // audit history unable to grow a row nothing can name: every member of it has a
-// label in `lib/boxes/operations.ts`, so a new event is named in the same edit
+// label in `convex/model/box/operation.ts`, so a new event is named in the same edit
 // that writes it or it does not compile.
 export async function appendBoxEvent(
 	ctx: WriteDbCtx,

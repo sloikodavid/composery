@@ -12,7 +12,7 @@ import { describe, expect, test } from "vitest";
 // a dashboard for a variable nothing reads, and the obvious conclusion from not
 // finding it ("this is already unset, so that is not the problem") is wrong.
 //
-// Found by one being wrong: `ownerEmail.ts` told staff to check
+// Found by one being wrong: `notice/owner.ts` told staff to check
 // `BOXES_EMAIL_FROM` long after the variable became `RESEND_BOXES_FROM`. Nothing
 // caught it, because prose inside a template literal is invisible to every other
 // check here - `envExample.test.ts` compares the example files against the reads,

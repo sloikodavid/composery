@@ -71,7 +71,7 @@ export function unpaidCheckoutPurgeAt(finishedAt: number) {
 	return finishedAt + UNPAID_CHECKOUT_RETENTION_MS;
 }
 
-// Also the window on a legal notice record (convex/legalNotice.ts), and not by
+// Also the window on a legal notice record (convex/notice/legal.ts), and not by
 // coincidence: both are evidence held against a claim, and the period that
 // decides how long either is worth holding is the six years the Statute of
 // Limitations 1957 gives a contract action in Ireland. Shortening this shortens

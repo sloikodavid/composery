@@ -35,7 +35,7 @@ import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { readGlobalSettings } from "../settings";
 import { workflow } from "../boxes/workflows/boxWorkflow";
-import { boxDeletionIdempotencyKey } from "../accountDeletionLogic";
+import { boxDeletionIdempotencyKey } from "../account/deletionLogic";
 import { requiredEnv } from "../env";
 import { vBoxPlan } from "../schema";
 import { defaultManualSnapshotCap } from "../model/box/plan";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
-import { ACCOUNT_DELETION_ALERT_AFTER_MS } from "@/convex/accountDeletion";
+import { ACCOUNT_DELETION_ALERT_AFTER_MS } from "@/convex/account/deletion";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 
 import {
@@ -12,7 +12,7 @@ import {
 	stubDeploymentEnv,
 	testConvex,
 	type Harness
-} from "../../support/convex.ts";
+} from "../../../support/convex.ts";
 
 // Deleting an account is the one operation here that destroys a customer's work
 // on purpose, and the whole of it runs unattended behind a webhook - nobody
@@ -65,7 +65,7 @@ describe("marking an account for deletion", () => {
 		const user = await seedUser(t);
 		await seedIntent(t, { user_id: user.clerkUserId });
 
-		await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+		await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 			clerkUserId: user.clerkUserId
 		});
 
@@ -91,7 +91,7 @@ describe("marking an account for deletion", () => {
 			box_id: boxId
 		});
 
-		await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+		await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 			clerkUserId: user.clerkUserId
 		});
 
@@ -102,7 +102,7 @@ describe("marking an account for deletion", () => {
 		const t = testConvex();
 
 		expect(
-			await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+			await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 				clerkUserId: "never-signed-in"
 			})
 		).toBeNull();
@@ -122,7 +122,7 @@ describe("the webhook's own action", () => {
 		});
 
 		await t.action(
-			internal.accountDeletion.requestAccountDeletionForClerkUser,
+			internal.account.deletion.requestAccountDeletionForClerkUser,
 			{ clerkUserId: user.clerkUserId }
 		);
 
@@ -134,7 +134,7 @@ describe("the webhook's own action", () => {
 			})
 		]);
 		expect(
-			await scheduledJobs(t, "accountDeletion:finalizeAccountDeletion")
+			await scheduledJobs(t, "account/deletion:finalizeAccountDeletion")
 		).toHaveLength(1);
 	});
 
@@ -144,7 +144,7 @@ describe("the webhook's own action", () => {
 		const t = testConvex();
 
 		await t.action(
-			internal.accountDeletion.requestAccountDeletionForClerkUser,
+			internal.account.deletion.requestAccountDeletionForClerkUser,
 			{ clerkUserId: "never-signed-in" }
 		);
 
@@ -158,13 +158,13 @@ describe("finishing a deletion", () => {
 		const user = await seedUser(t, { deletionPending: true });
 		await seedBox(t, { user_id: user.clerkUserId, status: "stopped" });
 
-		await t.action(internal.accountDeletion.finalizeAccountDeletion, {
+		await t.action(internal.account.deletion.finalizeAccountDeletion, {
 			clerkUserId: user.clerkUserId
 		});
 
 		expect((await users(t))[0].deletion_finished_at).toBeUndefined();
 		expect(
-			await scheduledJobs(t, "accountDeletion:finalizeAccountDeletion")
+			await scheduledJobs(t, "account/deletion:finalizeAccountDeletion")
 		).toHaveLength(1);
 	});
 
@@ -176,7 +176,7 @@ describe("finishing a deletion", () => {
 		});
 		await seedBox(t, { user_id: user.clerkUserId, status: "deleted" });
 
-		await t.action(internal.accountDeletion.finalizeAccountDeletion, {
+		await t.action(internal.account.deletion.finalizeAccountDeletion, {
 			clerkUserId: user.clerkUserId
 		});
 
@@ -200,7 +200,7 @@ describe("finishing a deletion", () => {
 		const t = testConvex();
 		const user = await seedUser(t, { email: "live@example.com" });
 
-		await t.mutation(internal.accountDeletion.finishAccountDeletion, {
+		await t.mutation(internal.account.deletion.finishAccountDeletion, {
 			clerkUserId: user.clerkUserId
 		});
 
@@ -234,7 +234,7 @@ describe("finishing a deletion", () => {
 		});
 
 		await t.mutation(
-			internal.accountDeletion.pseudonymizeDeletedAccountRecords,
+			internal.account.deletion.pseudonymizeDeletedAccountRecords,
 			{
 				clerkUserId: user.clerkUserId,
 				deletedEmail: "deleted-user-x@deleted.invalid",
@@ -282,7 +282,7 @@ describe("purging a finished deletion", () => {
 		const t = testConvex();
 		await seedFinished(t, NOW - 1);
 
-		await t.mutation(internal.accountDeletion.purgeExpiredDeletedAccounts, {});
+		await t.mutation(internal.account.deletion.purgeExpiredDeletedAccounts, {});
 
 		expect(await users(t)).toEqual([]);
 	});
@@ -294,7 +294,7 @@ describe("purging a finished deletion", () => {
 		const userId = await seedFinished(t, NOW - 1);
 		await seedBox(t, { user_id: "deleted:1", status: "deleted" });
 
-		await t.mutation(internal.accountDeletion.purgeExpiredDeletedAccounts, {});
+		await t.mutation(internal.account.deletion.purgeExpiredDeletedAccounts, {});
 
 		const row = await t.run(async (ctx) => await ctx.db.get(userId));
 		expect(row?.purge_at).toBeGreaterThan(NOW);
@@ -314,7 +314,7 @@ describe("purging a finished deletion", () => {
 				})
 		);
 
-		await t.mutation(internal.accountDeletion.purgeExpiredDeletedAccounts, {});
+		await t.mutation(internal.account.deletion.purgeExpiredDeletedAccounts, {});
 
 		const [row] = await users(t);
 		expect(row.purge_at).toBeUndefined();
@@ -344,12 +344,12 @@ describe("the finalizer that has to finish or say why", () => {
 	}
 
 	const finalize = (t: Harness, clerkUserId = "user_going") =>
-		t.action(internal.accountDeletion.finalizeAccountDeletion, {
+		t.action(internal.account.deletion.finalizeAccountDeletion, {
 			clerkUserId
 		});
 
 	const finalizers = (t: Harness) =>
-		scheduledJobs(t, "accountDeletion:finalizeAccountDeletion");
+		scheduledJobs(t, "account/deletion:finalizeAccountDeletion");
 
 	test("finishes the deletion once no box is left", async () => {
 		const t = testConvex();
@@ -481,10 +481,10 @@ describe("sweeping up deletions that lost their finalizer", () => {
 			);
 		}
 
-		await t.action(internal.accountDeletion.sweepPendingAccountDeletions, {});
+		await t.action(internal.account.deletion.sweepPendingAccountDeletions, {});
 
 		expect(
-			await scheduledJobs(t, "accountDeletion:finalizeAccountDeletion")
+			await scheduledJobs(t, "account/deletion:finalizeAccountDeletion")
 		).toHaveLength(3);
 	});
 
@@ -492,10 +492,10 @@ describe("sweeping up deletions that lost their finalizer", () => {
 		const t = testConvex();
 		await seedUser(t, { clerkUserId: "user_staying" });
 
-		await t.action(internal.accountDeletion.sweepPendingAccountDeletions, {});
+		await t.action(internal.account.deletion.sweepPendingAccountDeletions, {});
 
 		expect(
-			await scheduledJobs(t, "accountDeletion:finalizeAccountDeletion")
+			await scheduledJobs(t, "account/deletion:finalizeAccountDeletion")
 		).toEqual([]);
 	});
 
@@ -518,10 +518,10 @@ describe("sweeping up deletions that lost their finalizer", () => {
 			}
 		});
 
-		await t.action(internal.accountDeletion.sweepPendingAccountDeletions, {});
+		await t.action(internal.account.deletion.sweepPendingAccountDeletions, {});
 
 		expect(
-			await scheduledJobs(t, "accountDeletion:finalizeAccountDeletion")
+			await scheduledJobs(t, "account/deletion:finalizeAccountDeletion")
 		).toHaveLength(101);
 	});
 });
@@ -545,7 +545,7 @@ describe("what marking an account pending releases", () => {
 				})
 		);
 
-		await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+		await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 			clerkUserId: owner.clerkUserId
 		});
 
@@ -573,7 +573,7 @@ describe("what marking an account pending releases", () => {
 				})
 		);
 
-		await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+		await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 			clerkUserId: owner.clerkUserId
 		});
 
@@ -587,7 +587,7 @@ describe("what marking an account pending releases", () => {
 		const t = testConvex();
 		const owner = await seedUser(t, { clerkUserId: "user_going" });
 		const mark = () =>
-			t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+			t.mutation(internal.account.deletion.markAccountDeletionPending, {
 				clerkUserId: owner.clerkUserId
 			});
 
@@ -604,7 +604,7 @@ describe("what marking an account pending releases", () => {
 		const t = testConvex();
 
 		expect(
-			await t.mutation(internal.accountDeletion.markAccountDeletionPending, {
+			await t.mutation(internal.account.deletion.markAccountDeletionPending, {
 				clerkUserId: "user_missing"
 			})
 		).toBeNull();

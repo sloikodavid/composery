@@ -1,10 +1,10 @@
-import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
-import { BOXES_PATH } from "./model/box/path";
-import { SUPPORT_EMAIL } from "./model/links";
-import { optionalWebsiteUrl } from "./env";
+import type { Doc } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+import { BOXES_PATH } from "../model/box/path";
+import { SUPPORT_EMAIL } from "../model/links";
+import { optionalWebsiteUrl } from "../env";
 import { accountsSender, customerEmailAlertKey, resendClient } from "./email";
-import { raiseAlert } from "./staff/alerts";
+import { raiseAlert } from "../staff/alerts";
 
 // What an account holder is told when their account changes under them.
 //
@@ -74,12 +74,12 @@ export function accountNoticeEmail(notice: AccountNotice) {
 
 // Email an account holder. Never throws.
 //
-// Same discipline, and the same reason, as `sendOwnerEmail`: the caller is a
+// Same discipline, and the same reason, as `sendOwnerNotice`: the caller is a
 // mutation whose real work - the account is suspended - has already happened in
 // the same transaction. A notice that could not be sent must not undo it, so the
 // whole body is caught, and so is the alert reporting the catch, because there
 // is nothing behind that alert to rescue it.
-export async function sendAccountEmail(
+export async function sendAccountNotice(
 	ctx: MutationCtx,
 	user: Doc<"users">,
 	notice: AccountNotice

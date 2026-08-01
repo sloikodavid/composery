@@ -6,7 +6,7 @@ import {
 	deletionIdempotencyKey,
 	scrubbedAccountEmail,
 	scrubbedUserId
-} from "@/convex/accountDeletionLogic";
+} from "@/convex/account/deletionLogic";
 
 describe("accountDeletionBoxTargets", () => {
 	test("targets only boxes that have not finished deleting", () => {

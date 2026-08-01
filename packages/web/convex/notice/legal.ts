@@ -1,12 +1,12 @@
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
-import { internalMutation, type MutationCtx } from "./_generated/server";
-import { LEGAL_NOTICES } from "./model/legal";
-import { SUPPORT_EMAIL } from "./model/links";
-import { billingRecordPurgeAt } from "./boxes/retention";
+import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
+import { internalMutation, type MutationCtx } from "../_generated/server";
+import { LEGAL_NOTICES } from "../model/legal";
+import { SUPPORT_EMAIL } from "../model/links";
+import { billingRecordPurgeAt } from "../boxes/retention";
 import { accountsSender, resendClient } from "./email";
-import { raiseAlert } from "./staff/alerts";
+import { raiseAlert } from "../staff/alerts";
 
 // What every account holder is told, and the proof that they were told it.
 //
@@ -226,7 +226,7 @@ export const sendLegalNotice = internalMutation({
 		});
 
 		if (!page.isDone) {
-			await ctx.scheduler.runAfter(0, internal.legalNotice.sendLegalNotice, {
+			await ctx.scheduler.runAfter(0, internal.notice.legal.sendLegalNotice, {
 				noticeId: args.noticeId,
 				subject: args.subject,
 				text: args.text
@@ -252,7 +252,7 @@ export const sweepLegalNotices = internalMutation({
 			// of one notice's recipients cannot be rolled back by a different
 			// notice's failure, and the sweep's own transaction stays a few writes
 			// however many notices the repository has accumulated.
-			await ctx.scheduler.runAfter(0, internal.legalNotice.sendLegalNotice, {
+			await ctx.scheduler.runAfter(0, internal.notice.legal.sendLegalNotice, {
 				noticeId: notice.id,
 				subject: notice.subject,
 				text: notice.text
@@ -295,7 +295,7 @@ export const purgeExpiredLegalNotices = internalMutation({
 		if (recipients.length === NOTICE_PAGE_SIZE) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.legalNotice.purgeExpiredLegalNotices,
+				internal.notice.legal.purgeExpiredLegalNotices,
 				{}
 			);
 		}

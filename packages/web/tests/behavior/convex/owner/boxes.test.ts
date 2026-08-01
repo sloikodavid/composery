@@ -636,7 +636,7 @@ describe("opening the subscription portal", () => {
 // error.
 //
 // A table rather than eighteen tests, pinned by
-// `tests/invariants/convex/user-authorization.test.ts` so an endpoint added
+// `tests/invariants/convex/owner-authorization.test.ts` so an endpoint added
 // later cannot quietly miss it.
 describe("an owner-facing endpoint reached by somebody else", () => {
 	// Named as they are called, with the arguments each needs. `noBox` marks the

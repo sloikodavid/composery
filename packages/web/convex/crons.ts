@@ -35,7 +35,7 @@ crons.interval(
 crons.interval(
 	"send legal notices",
 	{ minutes: 15 },
-	internal.legalNotice.sweepLegalNotices
+	internal.notice.legal.sweepLegalNotices
 );
 
 // Boxes follow their subscriptions: one that has ended is deleted, and one whose
@@ -52,7 +52,7 @@ crons.hourly(
 crons.hourly(
 	"account deletion finalization",
 	{ minuteUTC: 19 },
-	internal.accountDeletion.sweepPendingAccountDeletions
+	internal.account.deletion.sweepPendingAccountDeletions
 );
 
 // A deletion that stopped part-way leaves the record claiming a box exists when
@@ -106,7 +106,7 @@ crons.daily(
 crons.daily(
 	"purge expired deleted accounts",
 	{ hourUTC: 4, minuteUTC: 39 },
-	internal.accountDeletion.purgeExpiredDeletedAccounts
+	internal.account.deletion.purgeExpiredDeletedAccounts
 );
 
 crons.daily(
@@ -118,7 +118,7 @@ crons.daily(
 crons.daily(
 	"purge expired legal notices",
 	{ hourUTC: 4, minuteUTC: 47 },
-	internal.legalNotice.purgeExpiredLegalNotices
+	internal.notice.legal.purgeExpiredLegalNotices
 );
 
 // Aligned with metrics polling: both sweep every running box, and the
