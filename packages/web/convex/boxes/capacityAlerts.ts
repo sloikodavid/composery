@@ -22,6 +22,11 @@ export function capacityAlertTransition(
 	if (usage.limitBlockReason) {
 		return { type: "blocked", reason: usage.limitBlockReason };
 	}
+	// Unreachable, and kept because the type system cannot see that: getting here
+	// means `limitBlockReason` is null *and* differs from `previous`, so `previous`
+	// is not null. The two returns below need that, and there is no assertion-free
+	// way to tell TypeScript. No test can distinguish either branch of it.
+	// Stryker disable next-line ConditionalExpression,ObjectLiteral,StringLiteral: unreachable narrowing - the first comparison above already returned for every input that could reach it with a null `previous`.
 	if (!previous) return { type: "none" };
 	if (usage.blockReason === "limits_not_configured") return { type: "clear" };
 	return { type: "recovered", reason: previous };
@@ -41,6 +46,11 @@ export async function reconcileCapacityAlert(ctx: MutationCtx) {
 	);
 	if (transition.type === "none") return transition;
 
+	// Also unreachable, for the same shape of reason: with no settings row there
+	// are no limits, so `readCapacityUsage` reports `limits_not_configured` with
+	// no limit block, and `capacityAlertTransition` has already returned "none"
+	// above. It stays because `stored` is what the patches below write to.
+	// Stryker disable next-line ConditionalExpression: no settings row means no limits, which the "none" return above has already handled.
 	if (!stored) return transition;
 	if (transition.type === "clear") {
 		await ctx.db.patch(stored._id, {

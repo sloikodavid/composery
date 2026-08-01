@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import { sanitizeSlug } from "../../lib/boxes/slug";
 import { boxStatusesExcept, vBoxStatus } from "../schema";
+import { suspensionReason } from "./retention";
 
 // Resolve a (sanitized) slug to its box for query and mutation handlers. The
 // owner and staff read paths all start here instead of repeating the index scan.
@@ -58,17 +59,17 @@ export async function currentSuspensionReason(
 	box: { _id: Id<"boxes">; status: string }
 ) {
 	if (!hasCurrentSuspension(box.status)) return null;
-	const operations = await ctx.db
+	const operation = await ctx.db
 		.query("box_operations")
 		.withIndex("box_id_type_created_at", (builder) =>
 			builder.eq("box_id", box._id).eq("type", "suspend")
 		)
 		.order("desc")
 		.first();
-	if (!operations) return null;
-
-	const reason = operations.metadata?.reason;
-	return typeof reason === "string" && reason.trim() ? reason : null;
+	// The same narrowing the suspension email and the deletion tombstone use, not
+	// a third copy of it: whether a reason is usable prose is one question, and
+	// two answers to it is how one surface comes to show "[object Object]".
+	return suspensionReason(operation?.metadata) ?? null;
 }
 
 export const boxIdBySubscription = internalQuery({

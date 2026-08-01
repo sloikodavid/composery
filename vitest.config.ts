@@ -81,55 +81,45 @@ export default defineConfig({
 				// change stands on, the parse behind the Repair dialog - moved next
 				// door, where it is pure and instrumented.
 				"packages/web/convex/boxes/infra/ssh.ts",
-				// Express routers over upstream code-server modules - `../cli`,
-				// `../http`, `../util`, `../constants` - which exist only in the tree
-				// the image build assembles, and over `req.args`, which code-server
-				// populates. `packages/ide/tests/support/overlay.ts` can evaluate an overlay file
-				// that stands on its own (`authErrors`, `loginRateLimit`); it cannot
-				// conjure the half of code-server these four sit inside, and the
-				// alternative - paraphrasing their logic into a test - would assert
-				// the paraphrase. The real check on them is the system smoke.
+				// Covered, but not attributably. Every file below stands on upstream
+				// code-server modules - `../cli`, `../http`, `../util`, `../vscode`,
+				// `../../wsRouter` - which exist only in the tree the image build
+				// assembles, so a test reaches them through the overlay loader. That
+				// loader re-prints a module to CommonJS, and v8's ranges then land on
+				// the wrong lines of the original: `api/config` reports its whole
+				// `apiConfig` literal unreached while a test drives it 19 times, and
+				// `api/auth` reports the body of `httpAuth` unreached while two tests
+				// drive both its branches. Measured, not assumed - dropping an entry
+				// here turns `check:coverage` red on lines the suite provably covers.
 				//
-				// Scoped to the four routers by name rather than to the directory, so
-				// a helper that does stand on its own stays instrumented and has to
-				// earn its coverage.
+				// So these earn their correctness from assertions rather than from a
+				// percentage, and every one of them has them, in
+				// packages/ide/tests/behavior/src/node/routes/ - each guard checked by
+				// breaking it and watching one test fail. That this stays true is not an
+				// honour system: packages/ide/tests/invariants/coverage-exclusions.test.ts
+				// reads this very list and fails if one of these stops being loaded by a
+				// behaviour test. What must not happen is paraphrasing any of them into a
+				// test, which would assert the paraphrase.
+				//
+				// The whole reasoning, and the two repairs already measured and
+				// rejected, live once beside the loader in
+				// packages/ide/tests/support/overlay.ts. Priced there so it is not
+				// re-investigated here.
+				//
+				// Scoped by name rather than by directory, so a sibling that does stand
+				// on its own stays instrumented and has to earn its coverage: `cloud`,
+				// `envFlag`, `session`, `loginRateLimit`, `pwned` and
+				// `persistence/readiness` all do.
 				"packages/ide/overlay/src/node/routes/authPage.ts",
 				"packages/ide/overlay/src/node/routes/changePassword.ts",
 				"packages/ide/overlay/src/node/routes/cloudAuth.ts",
 				"packages/ide/overlay/src/node/routes/register.ts",
-				// `passwordConfig` reads upstream's `../util` and `../cli`;
-				// `api/terminals` reaches the VS Code pty host through `../vscode`
-				// and code-server's own `wsRouter`. Same boundary, same reason.
-				//
-				// Their siblings are all instrumented and tested, which is what makes
-				// this list a boundary rather than a blanket: `cloud`, `envFlag`,
-				// `session`, `loginRateLimit`, `pwned`, `api/config` and
-				// `persistence/readiness` each stand on their own and earn their
-				// coverage.
 				"packages/ide/overlay/src/node/routes/passwordConfig.ts",
-				"packages/ide/overlay/src/node/routes/api/terminals.ts",
-				// Covered, but not attributably. Every limit in `api/config` is
-				// asserted by
-				// `packages/ide/tests/behavior/src/node/routes/api/config.test.ts`.
-				// Vitest resolves the module and its extensionless `../../envFlag`
-				// import fine - a direct `await import(...)` runs green - but doing
-				// that pulls the file into the root TypeScript program, which is
-				// `nodenext` and rejects the import, while code-server's tsconfig is
-				// `moduleResolution: "node"`, where extensionless is the required
-				// spelling every file in `overlay/src/` uses. No spelling satisfies
-				// both, and a `@ts-expect-error` at the import site cannot suppress an
-				// error raised inside the imported file. So the test reaches it through
-				// the overlay loader, and v8 does not map a vm-evaluated module back
-				// onto these lines.
-				//
-				// The fix that would work is a second TypeScript project for
-				// `packages/ide/tests/` on `moduleResolution: "node"`, and it is not
-				// worth it: this is the only entry above it would buy anything for.
-				// The two names below import `../util`, `../../wsRouter` and
-				// `../vscode`, which exist only in the tree the image build assembles,
-				// so no resolution setting makes them importable from here. Priced
-				// once so it is not re-investigated.
 				"packages/ide/overlay/src/node/routes/api/config.ts",
+				"packages/ide/overlay/src/node/routes/api/auth.ts",
+				"packages/ide/overlay/src/node/routes/api/keystore.ts",
+				"packages/ide/overlay/src/node/routes/api/ratelimit.ts",
+				"packages/ide/overlay/src/node/routes/api/terminals.ts",
 				// The scripts served with those pages. They are vanilla DOM code
 				// against markup code-server renders, and this package has no browser
 				// environment at all - the `ide` projects are `environment: "node"`,

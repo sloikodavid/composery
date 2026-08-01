@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { isValidSlug } from "../../lib/boxes/slug";
 import { boxStatusesExcept } from "../schema";
+import { ACTIVE_OPERATION_STATUSES } from "./operationRules";
 
 type ReadCtx = { db: DatabaseReader };
 
@@ -45,31 +46,47 @@ async function activeIntentWithSlug(
 	return intent && intent._id !== ignoreIntentId ? intent : null;
 }
 
-async function activeSlugOperation(ctx: ReadCtx, slug: string) {
-	const pending = await ctx.db
-		.query("box_operations")
-		.withIndex("reserved_slug_status", (query) =>
-			query.eq("reserved_slug", slug).eq("status", "pending")
-		)
-		.first();
+async function activeSlugOperation(
+	ctx: ReadCtx,
+	slug: string,
+	ignoreOperationId?: Id<"box_operations">
+) {
+	// The same list every other reader of "is this operation still going" asks,
+	// rather than the two literals this spelled out: an active status added to
+	// that table but not pasted in here would be an operation holding a slug
+	// nothing could see it holding.
+	for (const status of ACTIVE_OPERATION_STATUSES) {
+		const matches = await ctx.db
+			.query("box_operations")
+			.withIndex("reserved_slug_status", (query) =>
+				query.eq("reserved_slug", slug).eq("status", status)
+			)
+			.take(2);
+		const match = matches.find(
+			(operation) => operation._id !== ignoreOperationId
+		);
+		if (match) return match;
+	}
 
-	if (pending) return pending;
-
-	return await ctx.db
-		.query("box_operations")
-		.withIndex("reserved_slug_status", (query) =>
-			query.eq("reserved_slug", slug).eq("status", "running")
-		)
-		.first();
+	return null;
 }
 
 // What already holds this slug that the caller is allowed to be. One shape for
 // both readers, because "is it free" and "insist it is free" must never disagree
 // about who is asking - a caller that could name the box it is renaming but not
 // the reservation it is resuming would refuse that caller their own slug.
+//
+// `operationId` is that reservation, and it was the missing one. A slug change
+// starts by writing `reserved_slug` on its own operation row, so by the time the
+// workflow reached `swapSlug` to commit the rename, the only thing standing
+// between the box and its new slug was the operation performing the rename.
+// Every slug change failed on its last mutation, after the DNS records were
+// created and the proxy reloaded - the owner saw "The slug change did not
+// finish" and a box still on its old slug.
 export type SlugHolder = {
 	boxId?: Id<"boxes">;
 	intentId?: Id<"box_checkout_intents">;
+	operationId?: Id<"box_operations">;
 };
 
 export async function isSlugAvailable(
@@ -80,7 +97,7 @@ export async function isSlugAvailable(
 	if (!isValidSlug(slug)) return false;
 	if (await activeBoxWithSlug(ctx, slug, ignore?.boxId)) return false;
 	if (await activeIntentWithSlug(ctx, slug, ignore?.intentId)) return false;
-	if (await activeSlugOperation(ctx, slug)) return false;
+	if (await activeSlugOperation(ctx, slug, ignore?.operationId)) return false;
 	return true;
 }
 

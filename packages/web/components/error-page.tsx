@@ -15,9 +15,9 @@ export type ErrorBoundaryProps = {
 // about.
 //
 // Shared because a boundary that recognises one particular error still has to
-// handle every other one, and `boxes/error.tsx` handled them by pasting this
-// page - down to the console.error and the sentence - which is how the two came
-// to be two things that have to be kept the same.
+// handle every other one, and `app/(site)/boxes/error.tsx` handled them by
+// pasting this page - down to the console.error and the sentence - which is how
+// the two came to be two things that have to be kept the same.
 export function ErrorPage({ error, reset }: ErrorBoundaryProps) {
 	useEffect(() => {
 		console.error(error);

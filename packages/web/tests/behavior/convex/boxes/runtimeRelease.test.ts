@@ -1,4 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+import { api, internal } from "@/convex/_generated/api";
+
+import { seedSettings, testConvex } from "../../../support/convex.ts";
 import {
 	floorDeadlinePassed,
 	runtimeStanding
@@ -162,5 +166,109 @@ describe("floorDeadlinePassed", () => {
 		});
 
 		expect(floorDeadlinePassed(compliant, Number.MAX_SAFE_INTEGER)).toBe(false);
+	});
+});
+
+// What a box is told the fleet is running, and the one query that answers it
+// without a session.
+//
+// It is deliberately public: the digest is the content address of a public
+// image, and a box compares it against its own COMPOSERY_RUNTIME_IMAGE to decide
+// whether it is out of date. What stays behind the authenticated queries is
+// everything about the fleet itself - the floor, its deadline, the box count.
+describe("the fleet's current release", () => {
+	test("answers a deployment that has never resolved one with nothing", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+
+		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+			image: null,
+			version: null
+		});
+	});
+
+	// A deployment with no settings row at all is the same answer, not a crash:
+	// this is the query every box calls on a schedule.
+	test("answers a deployment with no settings at all with nothing", async () => {
+		const t = testConvex();
+
+		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+			image: null,
+			version: null
+		});
+	});
+
+	test("answers with the release that was recorded", async () => {
+		const t = testConvex();
+		await seedSettings(t, {
+			runtime_release: {
+				image: "ghcr.io/sloikodavid/composery@sha256:current",
+				version: "1.4.0",
+				checked_at: 1
+			}
+		});
+
+		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+			image: "ghcr.io/sloikodavid/composery@sha256:current",
+			version: "1.4.0"
+		});
+	});
+
+	// A release resolved without a readable label is still a release: the digest
+	// is what every comparison is made from, and the label is decoration on it.
+	test("answers with a digest whose version could not be read", async () => {
+		const t = testConvex();
+		await seedSettings(t, {
+			runtime_release: {
+				image: "ghcr.io/sloikodavid/composery@sha256:current",
+				version: null,
+				checked_at: 1
+			}
+		});
+
+		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+			image: "ghcr.io/sloikodavid/composery@sha256:current",
+			version: null
+		});
+	});
+});
+
+// The hourly refresh: one registry round trip for the whole fleet, because the
+// answer is the same for every box.
+describe("refreshing the fleet's release", () => {
+	const DIGEST = `sha256:${"a".repeat(64)}`;
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.unstubAllEnvs();
+	});
+
+	test("records what the configured channel resolves to", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		vi.stubEnv("RUNTIME_IMAGE", "ghcr.io/sloikodavid/composery:edge");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: URL | string) => ({
+				ok: true,
+				status: 200,
+				headers: new Headers({ "Docker-Content-Digest": DIGEST }),
+				json: async () =>
+					String(input).includes("/blobs/")
+						? {
+								config: {
+									Labels: { "org.opencontainers.image.version": "1.4.0" }
+								}
+							}
+						: { config: { digest: `sha256:${"c".repeat(64)}` } }
+			}))
+		);
+
+		await t.action(internal.boxes.runtimeRelease.refreshRuntimeRelease, {});
+
+		expect(await t.query(api.boxes.runtimeRelease.fleetVersion, {})).toEqual({
+			image: `ghcr.io/sloikodavid/composery@${DIGEST}`,
+			version: "1.4.0"
+		});
 	});
 });

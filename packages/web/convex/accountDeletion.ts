@@ -202,6 +202,7 @@ export const finishAccountDeletion = internalMutation({
 			internal.accountDeletion.pseudonymizeDeletedAccountRecords,
 			{
 				deletedUserId,
+				deletedEmail: scrubbedAccountEmail(user._id),
 				clerkUserId: args.clerkUserId
 			}
 		);
@@ -244,7 +245,12 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 				});
 				continue;
 			}
-			const [box, intent, event] = await Promise.all([
+			// Every table that can still point at this account. The tombstone exists
+			// only to keep those pointers meaningful, so it outlives the last one and
+			// not a day longer - which is also exactly what the Privacy Policy says
+			// happens, and a table missing from this list is that sentence quietly
+			// becoming untrue.
+			const [box, intent, event, notice] = await Promise.all([
 				ctx.db
 					.query("boxes")
 					.withIndex("user_id_created_at", (query) =>
@@ -262,10 +268,16 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 					.withIndex("user_id", (query) =>
 						query.eq("user_id", user.clerk_user_id)
 					)
+					.first(),
+				ctx.db
+					.query("legal_notice_recipients")
+					.withIndex("user_id", (query) =>
+						query.eq("user_id", user.clerk_user_id)
+					)
 					.first()
 			]);
 
-			if (box || intent || event) {
+			if (box || intent || event || notice) {
 				await ctx.db.patch(user._id, {
 					purge_at: timestamp + ACCOUNT_PURGE_RETRY_MS,
 					updated_at: timestamp
@@ -288,6 +300,7 @@ export const purgeExpiredDeletedAccounts = internalMutation({
 export const pseudonymizeDeletedAccountRecords = internalMutation({
 	args: {
 		clerkUserId: v.string(),
+		deletedEmail: v.string(),
 		deletedUserId: v.string()
 	},
 	handler: async (ctx, args) => {
@@ -301,6 +314,10 @@ export const pseudonymizeDeletedAccountRecords = internalMutation({
 			.query("box_events")
 			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
 			.take(ACCOUNT_DELETION_PAGE_SIZE);
+		const notices = await ctx.db
+			.query("legal_notice_recipients")
+			.withIndex("user_id", (query) => query.eq("user_id", args.clerkUserId))
+			.take(ACCOUNT_DELETION_PAGE_SIZE);
 
 		for (const box of boxes) {
 			await ctx.db.patch(box._id, { user_id: args.deletedUserId });
@@ -308,10 +325,24 @@ export const pseudonymizeDeletedAccountRecords = internalMutation({
 		for (const event of events) {
 			await ctx.db.patch(event._id, { user_id: args.deletedUserId });
 		}
+		// A notice record loses the address but keeps the fact. Both halves are
+		// deliberate: the address is personal data this person asked us to erase,
+		// while "the account holder was told, on this date, and it was delivered"
+		// is the evidence that we discharged an obligation owed to them - kept for
+		// the same six years, and for the same reason, as the billing record beside
+		// it. Erasure under Article 17 GDPR does not reach a record retained for
+		// the establishment or defence of legal claims, and this is one.
+		for (const notice of notices) {
+			await ctx.db.patch(notice._id, {
+				user_id: args.deletedUserId,
+				email: args.deletedEmail
+			});
+		}
 
 		if (
 			boxes.length === ACCOUNT_DELETION_PAGE_SIZE ||
-			events.length === ACCOUNT_DELETION_PAGE_SIZE
+			events.length === ACCOUNT_DELETION_PAGE_SIZE ||
+			notices.length === ACCOUNT_DELETION_PAGE_SIZE
 		) {
 			await ctx.scheduler.runAfter(
 				0,

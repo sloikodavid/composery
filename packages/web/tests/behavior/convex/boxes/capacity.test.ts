@@ -1,12 +1,22 @@
 import { describe, expect, test } from "vitest";
 import {
 	CAPACITY_BOX_STATUSES,
+	readCapacityUsage,
 	capacityAvailability,
+	capacityBlockMessage,
 	largestSnapshotSlotsPerBox,
 	reservedSnapshotCommitments,
 	snapshotSlotsForPlan
 } from "@/convex/boxes/capacity";
 import { vBoxStatus } from "@/convex/schema";
+
+import {
+	seedBox,
+	seedSettings,
+	seedUser,
+	testConvex,
+	type Harness
+} from "../../../support/convex.ts";
 import { BOX_PLANS } from "@/lib/boxes/plan";
 
 describe("box capacity", () => {
@@ -188,5 +198,332 @@ describe("box capacity", () => {
 				}))
 			})
 		).toBe(9);
+	});
+});
+
+// The sentence a blocked visitor reads on the pricing page. It is the only
+// public account of why they cannot buy, so a wrong or empty one turns a
+// deliberate, explainable pause into a page that appears broken.
+describe("what a blocked visitor is told", () => {
+	test.each([
+		["manual_pause", "temporarily paused"],
+		["limits_not_configured", "infrastructure capacity is configured"],
+		["server_limit", "server capacity is fully committed"],
+		["snapshot_limit", "snapshot capacity is fully committed"]
+	] as const)("explains %s in its own words", (reason, fragment) => {
+		expect(capacityBlockMessage(reason)).toContain(fragment);
+	});
+
+	test("says nothing at all when checkout is open", () => {
+		expect(capacityBlockMessage(null)).toBeNull();
+	});
+
+	test("gives each reason a distinct sentence", () => {
+		const messages = (
+			[
+				"manual_pause",
+				"limits_not_configured",
+				"server_limit",
+				"snapshot_limit"
+			] as const
+		).map(capacityBlockMessage);
+
+		expect(new Set(messages).size).toBe(messages.length);
+	});
+});
+
+// "Configured" means both allocations, not either. Reading it as `||` would let
+// one unset limit be treated as room, which is the direction that oversells the
+// fleet rather than the one that refuses a sale.
+describe("a half-configured allocation", () => {
+	test.each([
+		["server", { hetznerServerLimit: null, hetznerSnapshotLimit: 100 }],
+		["snapshot", { hetznerServerLimit: 10, hetznerSnapshotLimit: null }]
+	] as const)(
+		"refuses checkout with only the %s limit missing",
+		(_name, limits) => {
+			expect(
+				capacityAvailability({
+					activeCheckoutCount: 0,
+					checkoutEnabled: true,
+					liveBoxCount: 0,
+					snapshotCommitments: 0,
+					snapshotSlotsPerBox: 3,
+					...limits
+				})
+			).toMatchObject({
+				availableNewBoxes: 0,
+				blockReason: "limits_not_configured",
+				checkoutAvailable: false,
+				limitBlockReason: null
+			});
+		}
+	);
+});
+
+// The boundary is "one more complete box still fits", so the last free slot has
+// to be sellable. Both comparisons had a passing test either side of the edge
+// and none on it.
+describe("the last remaining slot", () => {
+	test("still sells the final server", () => {
+		expect(
+			capacityAvailability({
+				activeCheckoutCount: 0,
+				checkoutEnabled: true,
+				hetznerServerLimit: 10,
+				hetznerSnapshotLimit: 1000,
+				liveBoxCount: 9,
+				snapshotCommitments: 0,
+				snapshotSlotsPerBox: 3
+			})
+		).toMatchObject({ availableNewBoxes: 1, checkoutAvailable: true });
+	});
+
+	test("still sells a box whose snapshots exactly fill the remainder", () => {
+		expect(
+			capacityAvailability({
+				activeCheckoutCount: 0,
+				checkoutEnabled: true,
+				hetznerServerLimit: 10,
+				hetznerSnapshotLimit: 100,
+				liveBoxCount: 0,
+				snapshotCommitments: 97,
+				snapshotSlotsPerBox: 3
+			})
+		).toMatchObject({ availableNewBoxes: 1, checkoutAvailable: true });
+	});
+
+	test("blocks on servers once the last one is taken", () => {
+		expect(
+			capacityAvailability({
+				activeCheckoutCount: 0,
+				checkoutEnabled: true,
+				hetznerServerLimit: 10,
+				hetznerSnapshotLimit: 1000,
+				liveBoxCount: 10,
+				snapshotCommitments: 0,
+				snapshotSlotsPerBox: 3
+			})
+		).toMatchObject({ limitBlockReason: "server_limit" });
+	});
+
+	test("blocks on snapshots one slot short of a whole package", () => {
+		expect(
+			capacityAvailability({
+				activeCheckoutCount: 0,
+				checkoutEnabled: true,
+				hetznerServerLimit: 10,
+				hetznerSnapshotLimit: 100,
+				liveBoxCount: 0,
+				snapshotCommitments: 98,
+				snapshotSlotsPerBox: 3
+			})
+		).toMatchObject({ limitBlockReason: "snapshot_limit" });
+	});
+});
+
+// A snapshot row commits a provider slot for one of two reasons, and they are
+// genuinely independent: it is going to exist, or it already does.
+describe("what a snapshot row commits", () => {
+	const rows = (
+		status: "pending" | "complete" | "failed",
+		imageId?: number
+	) => [{ boxId: "box", status, imageId }];
+
+	test("counts a pending capture that has no provider image yet", () => {
+		expect(
+			reservedSnapshotCommitments({
+				activeCheckoutPlans: [],
+				liveBoxes: [],
+				snapshotRows: rows("pending")
+			})
+		).toBe(1);
+	});
+
+	test("counts a failed row that still holds a provider image", () => {
+		expect(
+			reservedSnapshotCommitments({
+				activeCheckoutPlans: [],
+				liveBoxes: [],
+				snapshotRows: rows("failed", 42)
+			})
+		).toBe(1);
+	});
+
+	// An inactive row is not one of the box's snapshots, so it must not count
+	// against the box's own entitlement - only against the provider image it
+	// still holds, which the case above covers.
+	test("does not spend a box's entitlement on an inactive row", () => {
+		expect(
+			reservedSnapshotCommitments({
+				activeCheckoutPlans: [],
+				liveBoxes: [{ id: "box", plan: "pro" }],
+				snapshotRows: [
+					{ boxId: "box", status: "failed", imageId: undefined },
+					{ boxId: "box", status: "complete", imageId: 1 }
+				]
+			})
+		).toBe(snapshotSlotsForPlan("pro"));
+	});
+
+	test("counts nothing for a failed row whose image never existed", () => {
+		expect(
+			reservedSnapshotCommitments({
+				activeCheckoutPlans: [],
+				liveBoxes: [],
+				snapshotRows: rows("failed")
+			})
+		).toBe(0);
+	});
+});
+
+// Reading the fleet's commitments out of the database. The arithmetic above is
+// pure and was covered; what was not is which rows are fed into it - and an
+// intent counted twice is a slot the fleet reserves and never sells.
+describe("reading capacity from the database", () => {
+	async function intent(
+		t: Harness,
+		slug: string,
+		overrides: { status?: "active" | "released"; boxId?: string } = {}
+	) {
+		await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: "user_buyer",
+					slug,
+					plan: "pro",
+					status: overrides.status ?? "active",
+					box_id: overrides.boxId as never,
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+	}
+
+	const usage = async (t: Harness) =>
+		await t.run(async (ctx) =>
+			readCapacityUsage(ctx, {
+				checkoutEnabled: true,
+				hetznerServerLimit: 100,
+				hetznerSnapshotLimit: 1000
+			})
+		);
+
+	test("counts a live box and an outstanding checkout as separate commitments", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		await seedBox(t, { user_id: owner.clerkUserId, slug: "live" });
+		await intent(t, "buying");
+
+		expect(await usage(t)).toMatchObject({
+			liveBoxCount: 1,
+			activeCheckoutCount: 1,
+			serverCommitments: 2
+		});
+	});
+
+	// An intent that has already become a box is counted once, as the box. It
+	// stays `active` until the workflow finishes, so without this the fleet
+	// reserves a second server and a second snapshot package for a box it is
+	// already holding one for.
+	test("counts a converted checkout once, as the box it became", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "live"
+		});
+		await intent(t, "live", { boxId });
+
+		expect(await usage(t)).toMatchObject({
+			liveBoxCount: 1,
+			activeCheckoutCount: 0,
+			serverCommitments: 1
+		});
+	});
+
+	test("ignores a checkout that is no longer active", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		await intent(t, "abandoned", { status: "released" });
+
+		expect(await usage(t)).toMatchObject({
+			activeCheckoutCount: 0,
+			serverCommitments: 0
+		});
+	});
+
+	// The rows that already exist, read from the table rather than assumed. A box
+	// that has filled some of its entitlement does not reserve those slots twice,
+	// and a row belonging to no live box still holds the provider image it made.
+	test("counts a box's existing snapshots inside its own entitlement", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "live",
+			plan: "pro"
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert("box_snapshots", {
+				box_id: boxId,
+				user_id: owner.clerkUserId,
+				class: "manual",
+				status: "complete",
+				hetzner_image_id: 1,
+				created_at: 1
+			});
+		});
+
+		expect(await usage(t)).toMatchObject({
+			snapshotCommitments: snapshotSlotsForPlan("pro")
+		});
+	});
+
+	test("keeps counting a snapshot whose box is already gone", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "gone",
+			status: "deleted"
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert("box_snapshots", {
+				box_id: boxId,
+				user_id: owner.clerkUserId,
+				class: "manual",
+				status: "complete",
+				hetzner_image_id: 7,
+				created_at: 1
+			});
+		});
+
+		expect(await usage(t)).toMatchObject({
+			liveBoxCount: 0,
+			snapshotCommitments: 1
+		});
+	});
+
+	// A deleted box holds no Hetzner server, so its tombstone must not keep
+	// reserving one - that is a slot the fleet can never sell again.
+	test("stops counting a box once it is deleted", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "gone",
+			status: "deleted"
+		});
+
+		expect(await usage(t)).toMatchObject({
+			liveBoxCount: 0,
+			serverCommitments: 0
+		});
 	});
 });

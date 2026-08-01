@@ -1,6 +1,5 @@
 "use node";
 
-import ssh2 from "ssh2";
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
@@ -23,24 +22,24 @@ import {
 	parseParkingVerification,
 	parseRuntimeInspection,
 	reloadCaddyfileScript,
+	repairScript,
 	rewritePasswordScript,
 	runtimeLogsScript,
-	sshFailure,
 	unmountParkingScript,
+	updateScript,
 	verifyParkingScript
 } from "./sshScripts";
 import { privateKey } from "./sshKeys";
 import { HOUR_MS, MINUTE_MS } from "../../time";
+import { runSsh, type SshTarget } from "./sshTransport";
 
-const { Client } = ssh2;
+export { runSsh } from "./sshTransport";
 
-type SshTarget = {
-	host: string;
-	privateKey: string;
-	username: string;
-};
-
-function runtimePort() {
+// The port the editor listens on inside the box, read from the deployment's own
+// configuration. A non-integer or non-positive value would be rendered straight
+// into a compose file and a Caddyfile, so it is refused here rather than
+// producing a host that boots into a broken proxy.
+export function runtimePort() {
 	const value = Number(requiredEnv("RUNTIME_PORT"));
 	if (!Number.isInteger(value) || value <= 0) {
 		throw new Error("RUNTIME_PORT must be a positive integer.");
@@ -48,7 +47,10 @@ function runtimePort() {
 	return value;
 }
 
-function logTail(value: number) {
+// How many lines of runtime log to fetch. Clamped rather than trusted: the log
+// stream is read over SSH into memory, so the ceiling is what keeps a caller
+// asking for a million lines from being a request the action cannot survive.
+export function logTail(value: number) {
 	if (!Number.isInteger(value) || value <= 0) {
 		throw new Error("Log tail must be a positive integer.");
 	}
@@ -61,83 +63,6 @@ export function sshTarget(host: string): SshTarget {
 		username: requiredEnv("SSH_USER"),
 		privateKey: privateKey()
 	};
-}
-
-export async function runSsh(
-	target: SshTarget,
-	command: string,
-	options: { maxOutputBytes?: number; timeoutMs?: number } = {}
-) {
-	return await new Promise<{ stderr: string; stdout: string }>(
-		(resolve, reject) => {
-			const client = new Client();
-			let done = false;
-			let outputBytes = 0;
-			const maxOutputBytes = options.maxOutputBytes ?? 10 * 1024 * 1024;
-			const timeout = setTimeout(
-				() => finish(new Error("SSH command timed out.")),
-				options.timeoutMs ?? 10 * MINUTE_MS
-			);
-
-			function finish(
-				error?: Error,
-				output?: { stderr: string; stdout: string }
-			) {
-				if (done) return;
-				done = true;
-				clearTimeout(timeout);
-				client.end();
-				if (error) reject(error);
-				else resolve(output ?? { stderr: "", stdout: "" });
-			}
-
-			client
-				.on("ready", () => {
-					client.exec(command, (error, stream) => {
-						if (error) {
-							finish(error);
-							return;
-						}
-
-						let stdout = "";
-						let stderr = "";
-						stream.on("data", (chunk: Buffer) => {
-							if (done) return;
-							outputBytes += chunk.length;
-							if (outputBytes > maxOutputBytes) {
-								finish(new Error("SSH command output exceeded its limit."));
-								return;
-							}
-							stdout += chunk.toString("utf8");
-						});
-						stream.stderr.on("data", (chunk: Buffer) => {
-							if (done) return;
-							outputBytes += chunk.length;
-							if (outputBytes > maxOutputBytes) {
-								finish(new Error("SSH command output exceeded its limit."));
-								return;
-							}
-							stderr += chunk.toString("utf8");
-						});
-						stream.on("error", finish);
-						stream.on("close", (code: number | null) => {
-							if (code && code !== 0) {
-								finish(new Error(sshFailure(stderr, code)));
-								return;
-							}
-							finish(undefined, { stdout, stderr });
-						});
-					});
-				})
-				.on("error", finish)
-				.connect({
-					host: target.host,
-					username: target.username,
-					privateKey: target.privateKey,
-					readyTimeout: MINUTE_MS
-				});
-		}
-	);
 }
 
 export const inspectRuntime = internalAction({
@@ -172,7 +97,10 @@ export const inspectRuntime = internalAction({
 // image known to serve. The row is only advanced once the new one has answered
 // (see `updateBox`), which is what makes a failed update leave a compose file
 // Repair can roll back from.
-function runtimeArtifactsForBox(box: Doc<"boxes">, runtimeImage?: string) {
+export function runtimeArtifactsForBox(
+	box: Doc<"boxes">,
+	runtimeImage?: string
+) {
 	const image = runtimeImage ?? box.runtime_image;
 	if (!image) {
 		throw new Error("Box has no runtime image.");
@@ -206,10 +134,7 @@ export const repairRuntime = internalAction({
 		}
 		const artifacts = runtimeArtifactsForBox(box);
 
-		await runSsh(
-			sshTarget(box.hetzner_ipv4),
-			bootstrapScript({ ...artifacts, type: "repair" })
-		);
+		await runSsh(sshTarget(box.hetzner_ipv4), repairScript(artifacts));
 	}
 });
 
@@ -239,10 +164,7 @@ export const updateRuntime = internalAction({
 		}
 		const artifacts = runtimeArtifactsForBox(box, args.runtimeImage);
 
-		await runSsh(
-			sshTarget(box.hetzner_ipv4),
-			bootstrapScript({ ...artifacts, type: "update" })
-		);
+		await runSsh(sshTarget(box.hetzner_ipv4), updateScript(artifacts));
 	}
 });
 
@@ -385,7 +307,7 @@ export const reloadSlug = internalAction({
 
 // -- Repair (clean host, current files) -------------------------------------
 
-function requireBoxHost(box: Doc<"boxes">) {
+export function requireBoxHost(box: Doc<"boxes">) {
 	if (!box.hetzner_ipv4) {
 		throw new Error(
 			"This box has no reachable host. A host with broken networking or SSH can only be recovered by Restore."
@@ -487,12 +409,26 @@ async function verifyParking(
 		{ maxOutputBytes: 4 * 1024 * 1024, timeoutMs: HOUR_MS }
 	);
 	const diffs = parseParkingVerification(stdout);
-	if (diffs.length > 0) {
-		const shown = diffs.slice(0, 50).join("\n");
-		throw new Error(
-			`Parking copy verification (${direction}) found ${diffs.length} difference(s); refusing to continue:\n${shown}`
-		);
-	}
+	const failure = parkingVerificationFailure(direction, diffs);
+	if (failure) throw new Error(failure);
+}
+
+// The data-safety gate of a repair, as a decision rather than a step.
+//
+// Any difference at all stops the repair: the copy either matched or it did not,
+// and continuing past a mismatch is the one path that ends with an owner's files
+// gone. The count is reported in full and the list truncated, because the number
+// is what tells an operator how bad it is while a million-line error is one
+// nobody reads - and it was unreachable inside the SSH call that produced it.
+export const PARKING_DIFFS_SHOWN = 50;
+
+export function parkingVerificationFailure(
+	direction: "out" | "back",
+	diffs: readonly string[]
+) {
+	if (diffs.length === 0) return null;
+	const shown = diffs.slice(0, PARKING_DIFFS_SHOWN).join("\n");
+	return `Parking copy verification (${direction}) found ${diffs.length} difference(s); refusing to continue:\n${shown}`;
 }
 
 export const verifyParkingCopy = internalAction({

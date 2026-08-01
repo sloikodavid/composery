@@ -1,6 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
+import type { z } from "zod";
 import { internal } from "../../_generated/api";
 import { internalAction } from "../../_generated/server";
 import {
@@ -13,6 +14,27 @@ import {
 	type ServerType
 } from "../../schema";
 import { optionalEnv, requiredEnv } from "../../env";
+import {
+	hetznerActionResponseSchema,
+	hetznerCreateImageResponseSchema,
+	hetznerCreateServerResponseSchema,
+	hetznerCreateVolumeResponseSchema,
+	hetznerImageResponseSchema,
+	hetznerImagesResponseSchema,
+	hetznerMetricsResponseSchema,
+	hetznerPagedImageSummariesResponseSchema,
+	hetznerPagedPrimaryIpsResponseSchema,
+	hetznerPagedServerSummariesResponseSchema,
+	hetznerPagedVolumeSummariesResponseSchema,
+	hetznerRebuildResponseSchema,
+	hetznerServerListResponseSchema,
+	hetznerServerResponseSchema,
+	hetznerVolumeResponseSchema,
+	type HetznerAction,
+	type HetznerImage,
+	type HetznerServer
+} from "./hetznerContracts";
+import { decodeProviderResponse } from "./providerResponse";
 import { authorizedPublicKey } from "./sshKeys";
 
 export type PlacementCandidate = {
@@ -25,11 +47,28 @@ export type PlacementCandidate = {
 // the one its plan advertises would be selling a machine it does not run. Only
 // the location varies, so a region with no capacity right now falls through to
 // the next one.
+// How long each poll is willing to wait, as attempts three seconds apart.
+//
+// Named rather than inline because they are tuning, not behaviour: what a test
+// pins is that the wait ends and says which resource it gave up on, and it reads
+// the ceiling from here so a retune moves the test with the code instead of
+// failing it. Exported for that and for nothing else.
+export const HETZNER_POLL_INTERVAL_MS = 3000;
+// A server reports "running" within a minute or two of a create.
+export const HETZNER_SERVER_POLL_ATTEMPTS = 30;
+// Actions cover volume formats and image captures, which take longer.
+export const HETZNER_ACTION_POLL_ATTEMPTS = 60;
+
 export function placementCandidates(
 	serverType: ServerType,
 	locations: readonly ServerLocation[] = SERVER_LOCATIONS
-) {
-	return locations.map((location) => ({ serverType, location }));
+): [PlacementCandidate, ...PlacementCandidate[]] {
+	const [first, ...rest] = locations;
+	if (!first) throw new Error("No Hetzner placement candidates configured.");
+	return [first, ...rest].map((location) => ({
+		serverType,
+		location
+	})) as [PlacementCandidate, ...PlacementCandidate[]];
 }
 
 function parseAllowedList<const T extends string>(
@@ -59,85 +98,7 @@ export function parseLocations(value: string | undefined): ServerLocation[] {
 	return parseAllowedList(value, SERVER_LOCATIONS);
 }
 
-type HetznerServer = {
-	created?: string;
-	datacenter?: { location?: { name?: string } };
-	id: number;
-	location?: { name?: string };
-	name?: string;
-	public_net?: {
-		ipv4?: { id?: number; ip?: string };
-		ipv6?: { id?: number; ip?: string };
-	};
-	server_type?: { name?: string };
-	status?: string;
-};
-
-type HetznerPagination = {
-	meta?: { pagination?: { next_page?: number | null } };
-};
-
-type HetznerAction = {
-	error?: { code?: string; message?: string } | null;
-	id: number;
-	status?: string;
-};
-
-type HetznerCreateResponse = {
-	server?: HetznerServer;
-};
-
-type HetznerListResponse = {
-	servers?: HetznerServer[];
-};
-
-type HetznerActionResponse = {
-	action?: HetznerAction;
-};
-
-type HetznerRebuildResponse = {
-	action?: HetznerAction;
-	root_password?: string | null;
-};
-
-type HetznerImage = {
-	id: number;
-	type?: string;
-	status?: string;
-	image_size?: number | null;
-	disk_size?: number;
-	created?: string;
-	description?: string;
-	labels?: Record<string, string>;
-	bound_to?: number | null;
-	created_from?: { id?: number; name?: string } | null;
-};
-
 export type { HetznerAction, HetznerImage };
-
-type HetznerPrimaryIp = {
-	assignee_id?: number | null;
-	created?: string;
-	id: number;
-	ip?: string;
-};
-
-type HetznerCreateImageResponse = {
-	action?: HetznerAction;
-	image?: HetznerImage;
-};
-
-type HetznerImageResponse = {
-	image: HetznerImage;
-};
-
-type HetznerImagesResponse = {
-	images?: HetznerImage[];
-};
-
-type HetznerPrimaryIpsResponse = {
-	primary_ips?: HetznerPrimaryIp[];
-};
 
 export class HetznerApiError extends Error {
 	constructor(
@@ -168,7 +129,37 @@ function hetznerHeaders() {
 	};
 }
 
-async function hetznerRequest<T>(path: string, init?: RequestInit) {
+function hetznerError(body: unknown) {
+	if (!body || typeof body !== "object" || !("error" in body)) return undefined;
+	const error = body.error;
+	if (!error || typeof error !== "object") return undefined;
+	return {
+		code:
+			"code" in error && typeof error.code === "string"
+				? error.code
+				: undefined,
+		message:
+			"message" in error && typeof error.message === "string"
+				? error.message
+				: undefined
+	};
+}
+
+async function hetznerRequest<Schema extends z.ZodType>(
+	path: string,
+	schema: Schema,
+	init?: RequestInit
+): Promise<z.output<Schema>>;
+async function hetznerRequest(
+	path: string,
+	schema: undefined,
+	init?: RequestInit
+): Promise<void>;
+async function hetznerRequest(
+	path: string,
+	schema: z.ZodType | undefined,
+	init?: RequestInit
+) {
 	const response = await fetch(`https://api.hetzner.cloud/v1${path}`, {
 		...init,
 		headers: {
@@ -177,34 +168,33 @@ async function hetznerRequest<T>(path: string, init?: RequestInit) {
 		}
 	});
 	const text = await response.text();
-	type ResponseBody = T & { error?: { code?: string; message?: string } };
-	let body: ResponseBody;
+	let body: unknown = {};
 	try {
-		body = text ? (JSON.parse(text) as ResponseBody) : ({} as ResponseBody);
+		body = text ? JSON.parse(text) : {};
 	} catch {
 		// Gateways can answer with non-JSON (HTML error pages); keep the status
 		// instead of surfacing a bare SyntaxError.
-		body = {} as ResponseBody;
 	}
 
 	if (!response.ok) {
-		if (body.error?.code === "resource_limit_exceeded") {
+		const error = hetznerError(body);
+		if (error?.code === "resource_limit_exceeded") {
 			// Hetzner has no quota endpoint, so this 403 is the only signal that the
 			// project's server or snapshot limit is full. Log it loudly (the path
 			// says whether it was a server create or a create_image) so the limit
 			// gets raised; the caller still handles the throw as a normal failure.
 			console.warn(
-				`[hetzner] resource limit exceeded on ${path}: ${body.error.message ?? ""}`
+				`[hetzner] resource limit exceeded on ${path}: ${error.message ?? ""}`
 			);
 		}
 		throw new HetznerApiError(
-			body.error?.message ?? `Hetzner API ${response.status}.`,
+			error?.message ?? `Hetzner API ${response.status}.`,
 			response.status,
-			body.error?.code
+			error?.code
 		);
 	}
 
-	return body;
+	return schema ? decodeProviderResponse("Hetzner", schema, body) : undefined;
 }
 
 function isNotFound(error: unknown) {
@@ -213,11 +203,16 @@ function isNotFound(error: unknown) {
 
 export { isNotFound as isHetznerNotFound };
 
-function normalizeIpv6ForDns(ip: string) {
+// Hetzner reports a box's IPv6 as the /64 it owns; a DNS AAAA record takes an
+// address. Publishing the prefix verbatim is a record no resolver can answer.
+export function normalizeIpv6ForDns(ip: string) {
 	return ip.split("/")[0];
 }
 
-function splitKeyRefs(value: string | undefined) {
+// Hetzner accepts an SSH key by numeric id or by name, in one comma-separated
+// variable, so a purely numeric entry is sent as a number and everything else as
+// the name it is.
+export function splitKeyRefs(value: string | undefined) {
 	return (value ?? "")
 		.split(",")
 		.map((part) => part.trim())
@@ -225,14 +220,19 @@ function splitKeyRefs(value: string | undefined) {
 		.map((part) => (/^\d+$/.test(part) ? Number(part) : part));
 }
 
-function yamlSingleQuote(value: string) {
+// The one escaping boundary in this file. `renderCloudInitUserData` interpolates
+// two operator-set values into a YAML document that becomes the first thing a
+// fresh host runs as root, so a value carrying a newline is refused rather than
+// escaped: single quotes cannot span lines in YAML, and there is no correct
+// reading of an `SSH_USER` that contains one.
+export function yamlSingleQuote(value: string) {
 	if (/[\r\n]/.test(value)) {
 		throw new Error("Cloud-init values must stay on one line.");
 	}
 	return `'${value.replace(/'/g, "''")}'`;
 }
 
-function renderCloudInitUserData() {
+export function renderCloudInitUserData() {
 	return `#cloud-config
 disable_root: false
 ssh_pwauth: false
@@ -251,7 +251,6 @@ export function createServerPayload(
 ) {
 	const sshKeys = splitKeyRefs(requiredEnv("HETZNER_SSH_KEYS"));
 	const firewallId = requiredEnv("HETZNER_FIREWALL_ID");
-	const networkId = optionalEnv("HETZNER_NETWORK_ID");
 
 	return {
 		name: `composery-${slug}`,
@@ -260,8 +259,9 @@ export function createServerPayload(
 		location: candidate.location,
 		ssh_keys: sshKeys,
 		user_data: renderCloudInitUserData(),
+		// No private network: Hetzner firewalls do not filter private network
+		// traffic, so a shared network would let one box reach another.
 		firewalls: [{ firewall: Number(firewallId) }],
-		networks: networkId ? [Number(networkId)] : undefined,
 		public_net: {
 			enable_ipv4: true,
 			enable_ipv6: true
@@ -296,15 +296,27 @@ function isServerLocation(value: string | undefined): value is ServerLocation {
 }
 
 function serverLocation(server: HetznerServer) {
-	return server.datacenter?.location?.name ?? server.location?.name;
+	return server.location.name;
 }
 
-function materializeServer(
-	server: HetznerServer,
-	fallback?: PlacementCandidate
+function responseServer(
+	response: z.output<typeof hetznerServerResponseSchema>,
+	serverId: number
 ) {
-	const ipv4 = server.public_net?.ipv4?.ip;
-	const ipv6 = server.public_net?.ipv6?.ip;
+	if (!response.server) {
+		throw new Error(`Hetzner did not return server ${serverId}.`);
+	}
+	return response.server;
+}
+
+// One Hetzner server response turned into the fields the box row keeps.
+//
+// The provider's answer is authoritative. A type or location outside our own
+// unions is rejected instead of being replaced with what the request asked for.
+// Missing addresses are fatal because the box needs both DNS records.
+export function materializeServer(server: HetznerServer) {
+	const ipv4 = server.public_net.ipv4?.ip;
+	const ipv6 = server.public_net.ipv6?.ip;
 
 	if (!ipv4 || !ipv6) {
 		throw new Error("Hetzner server is missing public IPv4 or IPv6.");
@@ -312,31 +324,25 @@ function materializeServer(
 
 	const apiServerType = server.server_type?.name;
 	const apiLocation = serverLocation(server);
-	const serverType = isServerType(apiServerType)
-		? apiServerType
-		: fallback?.serverType;
-	const location = isServerLocation(apiLocation)
-		? apiLocation
-		: fallback?.location;
-
-	if (!serverType || !location) {
+	if (!isServerType(apiServerType) || !isServerLocation(apiLocation)) {
 		throw new Error("Hetzner server returned unsupported type or location.");
 	}
 
 	return {
 		serverId: server.id,
-		serverType,
-		location,
+		serverType: apiServerType,
+		location: apiLocation,
 		ipv4,
 		ipv6: normalizeIpv6ForDns(ipv6)
 	};
 }
 
 async function findExistingServer(slug: string) {
-	const response = await hetznerRequest<HetznerListResponse>(
-		composeryServerListPath(slug)
+	const response = await hetznerRequest(
+		composeryServerListPath(slug),
+		hetznerServerListResponseSchema
 	);
-	const servers = response.servers ?? [];
+	const servers = response.servers;
 
 	return (
 		servers.find(
@@ -350,40 +356,42 @@ async function findExistingServer(slug: string) {
 	);
 }
 
-async function existingCreatedServer(
-	slug: string,
-	fallback: PlacementCandidate
-) {
+async function existingCreatedServer(slug: string) {
 	const existing = await findExistingServer(slug);
 	if (!existing) return null;
 	const ready = await waitForServer(existing.id);
-	return materializeServer(ready, fallback);
+	return materializeServer(ready);
 }
 
 async function waitForServer(serverId: number) {
-	for (let attempt = 0; attempt < 30; attempt += 1) {
-		const response = await hetznerRequest<{ server: HetznerServer }>(
-			`/servers/${serverId}`
+	for (let attempt = 0; attempt < HETZNER_SERVER_POLL_ATTEMPTS; attempt += 1) {
+		const response = await hetznerRequest(
+			`/servers/${serverId}`,
+			hetznerServerResponseSchema
 		);
+		const server = responseServer(response, serverId);
 
 		if (
-			response.server.status === "running" &&
-			response.server.public_net?.ipv4?.ip &&
-			response.server.public_net?.ipv6?.ip
+			server.status === "running" &&
+			server.public_net.ipv4?.ip &&
+			server.public_net.ipv6?.ip
 		) {
-			return response.server;
+			return server;
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await new Promise((resolve) =>
+			setTimeout(resolve, HETZNER_POLL_INTERVAL_MS)
+		);
 	}
 
 	throw new Error(`Hetzner server ${serverId} did not become ready.`);
 }
 
 async function waitForActionSuccess(actionId: number) {
-	for (let attempt = 0; attempt < 60; attempt += 1) {
-		const response = await hetznerRequest<HetznerActionResponse>(
-			`/actions/${actionId}`
+	for (let attempt = 0; attempt < HETZNER_ACTION_POLL_ATTEMPTS; attempt += 1) {
+		const response = await hetznerRequest(
+			`/actions/${actionId}`,
+			hetznerActionResponseSchema
 		);
 		const action = response.action;
 
@@ -394,7 +402,9 @@ async function waitForActionSuccess(actionId: number) {
 			);
 		}
 
-		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await new Promise((resolve) =>
+			setTimeout(resolve, HETZNER_POLL_INTERVAL_MS)
+		);
 	}
 
 	throw new Error(`Hetzner action ${actionId} did not finish in time.`);
@@ -407,18 +417,18 @@ async function createHetznerServer(
 	let createdServerId: number | undefined;
 
 	try {
-		const response = await hetznerRequest<HetznerCreateResponse>("/servers", {
-			method: "POST",
-			body: JSON.stringify(createServerPayload(candidate, slug))
-		});
-
-		if (!response.server?.id) {
-			throw new Error("Hetzner did not return a server id.");
-		}
+		const response = await hetznerRequest(
+			"/servers",
+			hetznerCreateServerResponseSchema,
+			{
+				method: "POST",
+				body: JSON.stringify(createServerPayload(candidate, slug))
+			}
+		);
 
 		createdServerId = response.server.id;
 		const server = await waitForServer(response.server.id);
-		return materializeServer(server, candidate);
+		return materializeServer(server);
 	} catch (error) {
 		if (createdServerId) {
 			throw new HetznerServerCreatedButNotReadyError(createdServerId, error);
@@ -427,13 +437,13 @@ async function createHetznerServer(
 	}
 }
 
-type HetznerMetricsResponse = {
-	metrics?: {
-		time_series?: Record<string, { values?: [number, string][] }>;
-	};
-};
-
-function seriesMean(
+// The mean of one Hetzner metrics series, and the reason it is careful: this
+// number reaches `recordSample`, which compares it against a threshold that can
+// suspend a paying customer's box. A missing series is 0 rather than NaN, and a
+// non-numeric point is dropped rather than poisoning the average - either would
+// otherwise propagate into a comparison whose answer is somebody's box going
+// off the air.
+export function seriesMean(
 	timeSeries: Record<string, { values?: [number, string][] }>,
 	name: string
 ) {
@@ -456,10 +466,11 @@ export async function fetchServerMetricsSample(
 		end: end.toISOString(),
 		step: "60"
 	});
-	const response = await hetznerRequest<HetznerMetricsResponse>(
-		`/servers/${serverId}/metrics?${params.toString()}`
+	const response = await hetznerRequest(
+		`/servers/${serverId}/metrics?${params.toString()}`,
+		hetznerMetricsResponseSchema
 	);
-	const timeSeries = response.metrics?.time_series ?? {};
+	const timeSeries = response.metrics.time_series;
 
 	return {
 		cpuPercent: seriesMean(timeSeries, "cpu"),
@@ -489,13 +500,8 @@ export const createServer = internalAction({
 			: parseLocations(optionalEnv("HETZNER_BOX_LOCATIONS"));
 		const candidates = placementCandidates(args.serverType, locations);
 		let lastError: string | undefined;
-		const fallbackCandidate = candidates[0];
 
-		if (!fallbackCandidate) {
-			throw new Error("No Hetzner placement candidates configured.");
-		}
-
-		const existing = await existingCreatedServer(args.slug, fallbackCandidate);
+		const existing = await existingCreatedServer(args.slug);
 		if (existing) return existing;
 
 		for (const candidate of candidates) {
@@ -522,7 +528,7 @@ export const createServer = internalAction({
 					throw error;
 				}
 
-				const recovered = await existingCreatedServer(args.slug, candidate);
+				const recovered = await existingCreatedServer(args.slug);
 				if (recovered) return recovered;
 				lastError = error instanceof Error ? error.message : String(error);
 			}
@@ -544,8 +550,9 @@ export const rebuildServer = internalAction({
 
 		const image = args.image ?? requiredEnv("HETZNER_BOX_IMAGE");
 
-		const response = await hetznerRequest<HetznerRebuildResponse>(
+		const response = await hetznerRequest(
 			`/servers/${args.serverId}/actions/rebuild`,
+			hetznerRebuildResponseSchema,
 			{
 				method: "POST",
 				// Always send the current key. Hetzner supports user_data on rebuilds,
@@ -554,8 +561,7 @@ export const rebuildServer = internalAction({
 				body: JSON.stringify(rebuildServerPayload(image))
 			}
 		);
-
-		if (!response.action?.id) {
+		if (!response.action) {
 			throw new Error("Hetzner rebuild did not return an action id.");
 		}
 
@@ -572,7 +578,7 @@ export const deleteServer = internalAction({
 		if (!args.serverId) return;
 
 		try {
-			await hetznerRequest(`/servers/${args.serverId}`, {
+			await hetznerRequest(`/servers/${args.serverId}`, undefined, {
 				method: "DELETE"
 			});
 		} catch (error) {
@@ -627,11 +633,12 @@ export const listUnassignedPrimaryIps = internalAction({
 		}[] = [];
 		let page: number | null = 1;
 		while (page) {
-			const body: HetznerPrimaryIpsResponse & HetznerPagination =
-				await hetznerRequest<HetznerPrimaryIpsResponse & HetznerPagination>(
-					primaryIpListPath(page)
+			const body: z.output<typeof hetznerPagedPrimaryIpsResponseSchema> =
+				await hetznerRequest(
+					primaryIpListPath(page),
+					hetznerPagedPrimaryIpsResponseSchema
 				);
-			for (const primaryIp of body.primary_ips ?? []) {
+			for (const primaryIp of body.primary_ips) {
 				if (!isUnassignedPrimaryIp(primaryIp)) continue;
 				unassigned.push({
 					primaryIpId: primaryIp.id,
@@ -639,21 +646,23 @@ export const listUnassignedPrimaryIps = internalAction({
 					createdAtMs: parseCreatedMs(primaryIp.created)
 				});
 			}
-			page = body.meta?.pagination?.next_page ?? null;
+			page = body.meta.pagination.next_page;
 		}
 		return unassigned;
 	}
 });
 
 async function waitForServerGone(serverId: number) {
-	for (let attempt = 0; attempt < 30; attempt += 1) {
+	for (let attempt = 0; attempt < HETZNER_SERVER_POLL_ATTEMPTS; attempt += 1) {
 		try {
-			await hetznerRequest<{ server: HetznerServer }>(`/servers/${serverId}`);
+			await hetznerRequest(`/servers/${serverId}`, hetznerServerResponseSchema);
 		} catch (error) {
 			if (isNotFound(error)) return;
 			throw error;
 		}
-		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await new Promise((resolve) =>
+			setTimeout(resolve, HETZNER_POLL_INTERVAL_MS)
+		);
 	}
 
 	throw new Error(`Hetzner server ${serverId} was not deleted in time.`);
@@ -670,16 +679,19 @@ export const waitServerDeleted = internalAction({
 });
 
 async function serverStatus(serverId: number) {
-	const response = await hetznerRequest<{ server: HetznerServer }>(
-		`/servers/${serverId}`
+	const response = await hetznerRequest(
+		`/servers/${serverId}`,
+		hetznerServerResponseSchema
 	);
-	return response.server.status;
+	return responseServer(response, serverId).status;
 }
 
 async function waitForServerOff(serverId: number) {
-	for (let attempt = 0; attempt < 30; attempt += 1) {
+	for (let attempt = 0; attempt < HETZNER_SERVER_POLL_ATTEMPTS; attempt += 1) {
 		if ((await serverStatus(serverId)) === "off") return true;
-		await new Promise((resolve) => setTimeout(resolve, 3000));
+		await new Promise((resolve) =>
+			setTimeout(resolve, HETZNER_POLL_INTERVAL_MS)
+		);
 	}
 	return false;
 }
@@ -691,9 +703,13 @@ export const powerOffServer = internalAction({
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
 		if ((await serverStatus(args.serverId)) === "off") return;
-		await hetznerRequest(`/servers/${args.serverId}/actions/poweroff`, {
-			method: "POST"
-		});
+		await hetznerRequest(
+			`/servers/${args.serverId}/actions/poweroff`,
+			undefined,
+			{
+				method: "POST"
+			}
+		);
 	}
 });
 
@@ -705,14 +721,18 @@ export const stopServer = internalAction({
 		if (!args.serverId) return;
 		if ((await serverStatus(args.serverId)) === "off") return;
 
-		await hetznerRequest(`/servers/${args.serverId}/actions/shutdown`, {
-			method: "POST"
-		});
+		await hetznerRequest(
+			`/servers/${args.serverId}/actions/shutdown`,
+			undefined,
+			{ method: "POST" }
+		);
 		if (await waitForServerOff(args.serverId)) return;
 
-		await hetznerRequest(`/servers/${args.serverId}/actions/poweroff`, {
-			method: "POST"
-		});
+		await hetznerRequest(
+			`/servers/${args.serverId}/actions/poweroff`,
+			undefined,
+			{ method: "POST" }
+		);
 		if (!(await waitForServerOff(args.serverId))) {
 			throw new Error(`Hetzner server ${args.serverId} did not power off.`);
 		}
@@ -725,9 +745,11 @@ export const powerOnServer = internalAction({
 	},
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
-		await hetznerRequest(`/servers/${args.serverId}/actions/poweron`, {
-			method: "POST"
-		});
+		await hetznerRequest(
+			`/servers/${args.serverId}/actions/poweron`,
+			undefined,
+			{ method: "POST" }
+		);
 	}
 });
 
@@ -747,11 +769,13 @@ export function createSnapshotImagePayload(slug: string, description: string) {
 	};
 }
 
-export function parseCreateImageResponse(body: HetznerCreateImageResponse): {
+export function parseCreateImageResponse(
+	body: z.output<typeof hetznerCreateImageResponseSchema>
+): {
 	actionId: number;
 	imageId: number;
 } {
-	if (!body.action?.id || !body.image?.id) {
+	if (!body.action || !body.image) {
 		throw new Error(
 			"Hetzner create_image did not return an action and image id."
 		);
@@ -807,10 +831,11 @@ export const createSnapshotImage = internalAction({
 		// The timestamped description is built here rather than in the workflow
 		// handler, which must stay deterministic across replays.
 		const description = `composery-web ${args.slug} ${args.snapshotClass} ${new Date().toISOString()}`;
-		let response: HetznerCreateImageResponse;
+		let response: z.output<typeof hetznerCreateImageResponseSchema>;
 		try {
-			response = await hetznerRequest<HetznerCreateImageResponse>(
+			response = await hetznerRequest(
 				`/servers/${args.serverId}/actions/create_image`,
+				hetznerCreateImageResponseSchema,
 				{
 					method: "POST",
 					body: JSON.stringify(
@@ -845,12 +870,10 @@ export const getAction = internalAction({
 		error: v.optional(v.string())
 	}),
 	handler: async (_ctx, args) => {
-		const response = await hetznerRequest<HetznerActionResponse>(
-			`/actions/${args.actionId}`
+		const response = await hetznerRequest(
+			`/actions/${args.actionId}`,
+			hetznerActionResponseSchema
 		);
-		if (!response.action) {
-			throw new Error(`Hetzner action ${args.actionId} not found.`);
-		}
 		return parseActionStatus(response.action);
 	}
 });
@@ -862,9 +885,13 @@ export const getImage = internalAction({
 		imageSizeGb: v.optional(v.number())
 	}),
 	handler: async (_ctx, args) => {
-		const response = await hetznerRequest<HetznerImageResponse>(
-			`/images/${args.imageId}`
+		const response = await hetznerRequest(
+			`/images/${args.imageId}`,
+			hetznerImageResponseSchema
 		);
+		if (!response.image) {
+			throw new Error(`Hetzner image ${args.imageId} not found.`);
+		}
 		return parseImageResponse(response.image);
 	}
 });
@@ -879,10 +906,11 @@ export const listSnapshotImages = internalAction({
 		})
 	),
 	handler: async (_ctx, args) => {
-		const response = await hetznerRequest<HetznerImagesResponse>(
-			snapshotImageListPath(args.slug)
+		const response = await hetznerRequest(
+			snapshotImageListPath(args.slug),
+			hetznerImagesResponseSchema
 		);
-		return (response.images ?? []).map((image) => ({
+		return response.images.map((image) => ({
 			imageId: image.id,
 			status: image.status ?? "creating",
 			imageSizeGb: image.image_size ?? undefined
@@ -927,17 +955,18 @@ export const listProductSnapshotImages = internalAction({
 		const images: { imageId: number; createdAtMs: number }[] = [];
 		let page: number | null = 1;
 		while (page) {
-			const body: HetznerImagesResponse & HetznerPagination =
-				await hetznerRequest<HetznerImagesResponse & HetznerPagination>(
-					productImageListPath(page)
+			const body: z.output<typeof hetznerPagedImageSummariesResponseSchema> =
+				await hetznerRequest(
+					productImageListPath(page),
+					hetznerPagedImageSummariesResponseSchema
 				);
-			for (const image of body.images ?? []) {
+			for (const image of body.images) {
 				images.push({
 					imageId: image.id,
 					createdAtMs: parseCreatedMs(image.created)
 				});
 			}
-			page = body.meta?.pagination?.next_page ?? null;
+			page = body.meta.pagination.next_page;
 		}
 		return images;
 	}
@@ -962,18 +991,19 @@ export const listProductServers = internalAction({
 		}[] = [];
 		let page: number | null = 1;
 		while (page) {
-			const body: HetznerListResponse & HetznerPagination =
-				await hetznerRequest<HetznerListResponse & HetznerPagination>(
-					productServerListPath(page)
+			const body: z.output<typeof hetznerPagedServerSummariesResponseSchema> =
+				await hetznerRequest(
+					productServerListPath(page),
+					hetznerPagedServerSummariesResponseSchema
 				);
-			for (const server of body.servers ?? []) {
+			for (const server of body.servers) {
 				servers.push({
 					serverId: server.id,
 					name: server.name,
 					createdAtMs: parseCreatedMs(server.created)
 				});
 			}
-			page = body.meta?.pagination?.next_page ?? null;
+			page = body.meta.pagination.next_page;
 		}
 		return servers;
 	}
@@ -984,7 +1014,9 @@ export const deleteImage = internalAction({
 	handler: async (_ctx, args) => {
 		if (!args.imageId) return;
 		try {
-			await hetznerRequest(`/images/${args.imageId}`, { method: "DELETE" });
+			await hetznerRequest(`/images/${args.imageId}`, undefined, {
+				method: "DELETE"
+			});
 		} catch (error) {
 			if (!isNotFound(error)) throw error;
 		}
@@ -1008,26 +1040,6 @@ export type CreatedServer = {
 // they are never a permanent home for box data - only a short-lived staging
 // area, created at the start of a repair and deleted the moment the files are
 // safely back on the fresh host.
-
-type HetznerVolume = {
-	id: number;
-	name?: string;
-	size?: number;
-	location?: { name?: string };
-	server?: number | null;
-	linux_device?: string;
-	status?: string;
-	created?: string;
-	labels?: Record<string, string>;
-};
-
-type HetznerVolumeResponse = { volume: HetznerVolume };
-type HetznerVolumesResponse = { volumes?: HetznerVolume[] };
-type HetznerCreateVolumeResponse = {
-	volume?: HetznerVolume;
-	action?: HetznerAction;
-	next_actions?: HetznerAction[];
-};
 
 // Hetzner Volume minimum is 10 GB and the size must be a whole number of GB.
 export const PARKING_VOLUME_MIN_GB = 10;
@@ -1083,15 +1095,16 @@ export function productVolumeListPath(page: number) {
 	return `/volumes?${params.toString()}`;
 }
 
-async function waitForVolumeActions(actions: (HetznerAction | undefined)[]) {
+async function waitForVolumeActions(actions: ({ id: number } | undefined)[]) {
 	for (const action of actions) {
 		if (action?.id) await waitForActionSuccess(action.id);
 	}
 }
 
 async function getVolume(volumeId: number) {
-	const response = await hetznerRequest<HetznerVolumeResponse>(
-		`/volumes/${volumeId}`
+	const response = await hetznerRequest(
+		`/volumes/${volumeId}`,
+		hetznerVolumeResponseSchema
 	);
 	return response.volume;
 }
@@ -1105,8 +1118,9 @@ export const createParkingVolume = internalAction({
 	returns: v.object({ volumeId: v.number(), sizeGb: v.number() }),
 	handler: async (_ctx, args) => {
 		const sizeGb = parkingVolumeSizeGb(args.usedBytes);
-		const response = await hetznerRequest<HetznerCreateVolumeResponse>(
+		const response = await hetznerRequest(
 			"/volumes",
+			hetznerCreateVolumeResponseSchema,
 			{
 				method: "POST",
 				body: JSON.stringify(
@@ -1114,15 +1128,9 @@ export const createParkingVolume = internalAction({
 				)
 			}
 		);
-		if (!response.volume?.id) {
-			throw new Error("Hetzner did not return a volume id.");
-		}
 		// Wait for create and the format that rides on it, so the box can mount the
 		// volume straight away.
-		await waitForVolumeActions([
-			response.action,
-			...(response.next_actions ?? [])
-		]);
+		await waitForVolumeActions([response.action, ...response.next_actions]);
 		return { volumeId: response.volume.id, sizeGb };
 	}
 });
@@ -1140,8 +1148,9 @@ export const attachParkingVolume = internalAction({
 		// Idempotent: a resumed repair may find it already on this server.
 		if (volume.server === args.serverId) return;
 
-		const response = await hetznerRequest<HetznerActionResponse>(
+		const response = await hetznerRequest(
 			`/volumes/${args.volumeId}/actions/attach`,
+			hetznerActionResponseSchema,
 			{
 				method: "POST",
 				body: JSON.stringify(attachVolumePayload(args.serverId))
@@ -1154,7 +1163,7 @@ export const attachParkingVolume = internalAction({
 export const detachParkingVolume = internalAction({
 	args: { volumeId: v.number() },
 	handler: async (_ctx, args) => {
-		let volume: HetznerVolume;
+		let volume: z.output<typeof hetznerVolumeResponseSchema>["volume"];
 		try {
 			volume = await getVolume(args.volumeId);
 		} catch (error) {
@@ -1164,8 +1173,9 @@ export const detachParkingVolume = internalAction({
 		// Idempotent: nothing to do if it is already detached.
 		if (!volume.server) return;
 
-		const response = await hetznerRequest<HetznerActionResponse>(
+		const response = await hetznerRequest(
 			`/volumes/${args.volumeId}/actions/detach`,
+			hetznerActionResponseSchema,
 			{ method: "POST" }
 		);
 		await waitForVolumeActions([response.action]);
@@ -1175,7 +1185,7 @@ export const detachParkingVolume = internalAction({
 export const deleteParkingVolume = internalAction({
 	args: { volumeId: v.number() },
 	handler: async (_ctx, args) => {
-		let volume: HetznerVolume;
+		let volume: z.output<typeof hetznerVolumeResponseSchema>["volume"];
 		try {
 			volume = await getVolume(args.volumeId);
 		} catch (error) {
@@ -1185,14 +1195,17 @@ export const deleteParkingVolume = internalAction({
 		// Hetzner refuses to delete an attached volume, so detach first (the server
 		// may already be gone, in which case it is detached anyway).
 		if (volume.server) {
-			const response = await hetznerRequest<HetznerActionResponse>(
+			const response = await hetznerRequest(
 				`/volumes/${args.volumeId}/actions/detach`,
+				hetznerActionResponseSchema,
 				{ method: "POST" }
 			);
 			await waitForVolumeActions([response.action]);
 		}
 		try {
-			await hetznerRequest(`/volumes/${args.volumeId}`, { method: "DELETE" });
+			await hetznerRequest(`/volumes/${args.volumeId}`, undefined, {
+				method: "DELETE"
+			});
 		} catch (error) {
 			if (!isNotFound(error)) throw error;
 		}
@@ -1208,17 +1221,18 @@ export const listProductVolumes = internalAction({
 		const volumes: { volumeId: number; createdAtMs: number }[] = [];
 		let page: number | null = 1;
 		while (page) {
-			const body: HetznerVolumesResponse & HetznerPagination =
-				await hetznerRequest<HetznerVolumesResponse & HetznerPagination>(
-					productVolumeListPath(page)
+			const body: z.output<typeof hetznerPagedVolumeSummariesResponseSchema> =
+				await hetznerRequest(
+					productVolumeListPath(page),
+					hetznerPagedVolumeSummariesResponseSchema
 				);
-			for (const volume of body.volumes ?? []) {
+			for (const volume of body.volumes) {
 				volumes.push({
 					volumeId: volume.id,
 					createdAtMs: parseCreatedMs(volume.created)
 				});
 			}
-			page = body.meta?.pagination?.next_page ?? null;
+			page = body.meta.pagination.next_page;
 		}
 		return volumes;
 	}

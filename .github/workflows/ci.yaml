@@ -139,6 +139,14 @@ jobs:
           fi
       - name: Check repository
         run: pnpm check
+      - name: Check provider contracts
+        run: pnpm providers:schema
+
+      - name: Check the registry client
+        run: pnpm registry:live
+
+      - name: Validate runtime artifacts
+        run: pnpm runtime-artifacts:validate
       # Run the whole build so every build:* target is covered with no list here to
       # drift. Catches bundling errors tsc can't (web's SSR/prerender, e.g.
       # ConvexReactClient's URL validation) and builds the

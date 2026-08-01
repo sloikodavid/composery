@@ -126,6 +126,21 @@ export async function boxMetricsSamples(
 ) {
 	const { hourly, windowMs } = METRICS_RANGE_CONFIG[range];
 	const since = Date.now() - windowMs;
+	// How many rows the window can hold, plus slack for polls that landed closer
+	// together than the nominal interval. Only an upper bound is needed: the
+	// index below already excludes everything older than the window, so any
+	// limit at or above the window's capacity selects exactly the same rows.
+	const perRow = hourly ? HOUR_MS : METRICS_POLL_INTERVAL_MS;
+	// Stryker disable next-line ArithmeticOperator: widening this bound selects the same rows, so no test can observe the change.
+	const limit = Math.ceil(windowMs / perRow) + 12;
+
+	// Both branches read newest-first so the bound keeps the newest rows rather
+	// than the oldest, then reverse into the order a chart is read in.
+	//
+	// A surviving `"desc"` mutant on either is a limit of the harness rather
+	// than a gap: convex-test sorts descending for every value that is not
+	// exactly "asc", so no test can tell the literal from any other. That is
+	// recorded once, with the rest of its kind, in tests/support/convex.ts.
 	if (hourly) {
 		const samples = await ctx.db
 			.query("box_metrics_hourly")
@@ -133,7 +148,7 @@ export async function boxMetricsSamples(
 				query.eq("box_id", boxId).gte("hour_start", since)
 			)
 			.order("desc")
-			.take(Math.ceil(windowMs / HOUR_MS) + 12);
+			.take(limit);
 		return samples.reverse().map(hourlySampleView);
 	}
 	const samples = await ctx.db
@@ -142,7 +157,7 @@ export async function boxMetricsSamples(
 			query.eq("box_id", boxId).gte("sampled_at", since)
 		)
 		.order("desc")
-		.take(Math.ceil(windowMs / METRICS_POLL_INTERVAL_MS) + 12);
+		.take(limit);
 	return samples.reverse().map(metricsSampleView);
 }
 
@@ -219,6 +234,7 @@ export const recordSample = internalMutation({
 		const samples = await ctx.db
 			.query("box_metrics")
 			.withIndex("box_id_sampled_at", (query) => query.eq("box_id", args.boxId))
+			// Newest first: the window below is a count of the most recent samples.
 			.order("desc")
 			.take(longestWindow);
 
@@ -239,6 +255,8 @@ export const recordSample = internalMutation({
 				.withIndex("box_id_signal", (query) =>
 					query.eq("box_id", args.boxId).eq("signal", threshold.signal)
 				)
+				// The most recent flag for this signal, which is what the cooloff
+				// below is measured from.
 				.order("desc")
 				.first();
 			if (lastFlag && now - lastFlag.created_at < FLAG_COOLOFF_MS) continue;
@@ -334,6 +352,10 @@ export const rollupHourlyMetrics = internalMutation({
 			args.hourStart ?? Math.floor(Date.now() / HOUR_MS) * HOUR_MS - HOUR_MS;
 		const statusIndex = args.statusIndex ?? 0;
 		const status = ROLLUP_BOX_STATUSES[statusIndex];
+		// The walk has run past the end of the list. Stopping here rather than
+		// querying for an undefined status is the difference between a no-op and
+		// a query nobody meant to make.
+		// Stryker disable next-line ConditionalExpression: an index past the end matches no box either way, so both paths write nothing and schedule nothing.
 		if (!status) return;
 
 		const page = await ctx.db

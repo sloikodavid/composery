@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { gitFiles } from "../../scripts/tree.mjs";
+import { gitFiles, MODES, renderTree } from "../../scripts/tree.mjs";
 
 // A fact about this checkout's index, not about the function that reads it.
 //
@@ -24,7 +24,7 @@ import { gitFiles } from "../../scripts/tree.mjs";
 // covered the day it lands.
 
 describe("tree path discovery", () => {
-	const files = gitFiles();
+	const files = gitFiles().map((entry) => entry.path);
 
 	// Directory segments specifically: re-resolving a *directory* is the failure
 	// this guards, and it is the one a case-insensitive filesystem hides.
@@ -48,5 +48,34 @@ describe("tree path discovery", () => {
 		);
 
 		expect(foldedAway).toEqual([]);
+	});
+});
+
+// A path whose name does not say what it is. The listing this generates is
+// loaded into every agent's context as the map of the repository, so a symlink
+// that reads as an ordinary file gets edited instead of the file it points at,
+// and a submodule reads as a directory this repository's patches do not own.
+//
+// Checked against the rendered tree rather than the labelling function, because
+// only that reaches the wiring: every assertion on `entryLabel` alone stays
+// green with it unwired from the generator.
+describe("index entries that are not plain files", () => {
+	const special = gitFiles().filter((entry) => entry.mode !== MODES.file);
+	const tree = renderTree();
+
+	test("the repository still has one to check", () => {
+		expect(special.length).toBeGreaterThan(0);
+	});
+
+	test("each is announced in the tree as what it is", () => {
+		const unannounced = special.filter(({ mode, path }) => {
+			const name = path.split("/").at(-1);
+			if (mode === MODES.symlink) return !tree.includes(`${name} -> `);
+			if (mode === MODES.submodule)
+				return !tree.includes(`${name}/ (submodule)`);
+			return !tree.includes(`${name}*`);
+		});
+
+		expect(unannounced).toEqual([]);
 	});
 });

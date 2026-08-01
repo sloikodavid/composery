@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
 	DEFAULT_THRESHOLDS,
 	crossedValue,
+	isEnabled,
 	resolveThresholds,
 	thresholdsToStored,
 	validateThresholds
@@ -111,5 +112,80 @@ describe("validateThresholds", () => {
 				DEFAULT_THRESHOLDS[1]
 			])
 		).toThrow("Sustained samples for egress_bandwidth");
+	});
+});
+
+// Zero is the documented "off" value, so the boundary between disabled and
+// enabled is the whole of what this function decides.
+describe("whether a threshold is armed", () => {
+	test("treats zero as disabled and anything above it as armed", () => {
+		expect(
+			isEnabled({ signal: "egress_bandwidth", value: 0, sustainedSamples: 3 })
+		).toBe(false);
+		expect(
+			isEnabled({ signal: "egress_bandwidth", value: 1, sustainedSamples: 3 })
+		).toBe(true);
+	});
+});
+
+// Each rejection is a separate rule, and each boundary sits one step from a
+// value an operator will legitimately enter: 0 disables a signal, and one
+// sample is a real - if twitchy - window.
+describe("the edges of a valid threshold", () => {
+	const signals = (
+		overrides: { value?: number; sustainedSamples?: number } = {}
+	) => DEFAULT_THRESHOLDS.map((row) => ({ ...row, ...overrides }));
+
+	test("accepts zero, which disables the signal rather than being invalid", () => {
+		expect(() => validateThresholds(signals({ value: 0 }))).not.toThrow();
+	});
+
+	test("rejects a negative value", () => {
+		expect(() => validateThresholds(signals({ value: -1 }))).toThrow(
+			/must be >= 0/
+		);
+	});
+
+	test("accepts a single-sample window", () => {
+		expect(() =>
+			validateThresholds(signals({ sustainedSamples: 1 }))
+		).not.toThrow();
+	});
+
+	test("rejects a window of no samples", () => {
+		expect(() => validateThresholds(signals({ sustainedSamples: 0 }))).toThrow(
+			/positive integer/
+		);
+	});
+
+	test("rejects a signal it does not know", () => {
+		expect(() =>
+			validateThresholds([
+				...DEFAULT_THRESHOLDS,
+				{ signal: "cpu" as never, value: 1, sustainedSamples: 1 }
+			])
+		).toThrow(/Unknown threshold signal/);
+	});
+
+	test("rejects the same signal twice", () => {
+		expect(() =>
+			validateThresholds([...DEFAULT_THRESHOLDS, DEFAULT_THRESHOLDS[0]!])
+		).toThrow(/Duplicate threshold/);
+	});
+
+	test("names the signals that are missing", () => {
+		expect(() => validateThresholds([DEFAULT_THRESHOLDS[0]!])).toThrow(
+			new RegExp(DEFAULT_THRESHOLDS[1]!.signal)
+		);
+	});
+
+	// More than one missing signal is a readable list, not a run-on: the operator
+	// reads this in the console and has to see which ones to add.
+	test("lists several missing signals separated for a reader", () => {
+		expect(() => validateThresholds([])).toThrow(
+			`Provide a threshold for every signal (${DEFAULT_THRESHOLDS.map(
+				(row) => row.signal
+			).join(", ")} missing).`
+		);
 	});
 });

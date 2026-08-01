@@ -199,28 +199,14 @@ export const setSnapshotPolicy = mutation({
 			reject(error, "Invalid snapshot policy.");
 		}
 
-		// A policy that lengthens retention commits more snapshot slots for boxes
-		// that already exist, so it is admitted against the same Hetzner allocation
-		// a new box is. Only a policy that makes it worse is refused - a deployment
-		// already over its limit must still be able to shorten retention.
-		const currentSettings = await readGlobalSettings(ctx);
-		if (currentSettings.hetznerSnapshotLimit !== null) {
-			const currentCapacity = await readCapacityUsage(ctx, currentSettings);
-			const nextCapacity = await readCapacityUsage(ctx, {
-				...currentSettings,
-				snapshotPolicy: args.policy
-			});
-			if (
-				nextCapacity.snapshotCommitments >
-					currentSettings.hetznerSnapshotLimit &&
-				nextCapacity.snapshotCommitments > currentCapacity.snapshotCommitments
-			) {
-				throw new ConvexError(
-					`This snapshot policy would commit ${nextCapacity.snapshotCommitments} slots, above the configured Hetzner snapshot limit of ${currentSettings.hetznerSnapshotLimit}. Increase the Hetzner allocation first.`
-				);
-			}
-		}
-
+		// No capacity check, and that is a fact about the policy rather than an
+		// omission: a snapshot policy is timing only. How many snapshots a box may
+		// hold is its plan's `snapshotCap`, and `reservedSnapshotCommitments` reads
+		// that and the rows already taken - neither of which retention days or a
+		// manual interval can move. This used to admit the policy against capacity
+		// by comparing `readCapacityUsage` before and after; that function never
+		// read the policy, so the comparison was of a value with itself and the
+		// guard could not refuse anything.
 		await writeSnapshotPolicy(ctx, args.policy, staffUser.clerk_user_id);
 		await reconcileCapacityAlert(ctx);
 	}

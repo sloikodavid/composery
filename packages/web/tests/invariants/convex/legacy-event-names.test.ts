@@ -26,6 +26,12 @@ const MIGRATION = "convex/boxes/rename.ts";
 // reason about it; none of them records an event.
 const ALLOWED = [
 	MIGRATION,
+	// The migration's own behaviour test. It seeds each retired name into a test
+	// database for the one purpose of watching the migration remove it, so it is
+	// the migration's subject rather than a second writer of these rows - and
+	// without it the rewrite that converges the fleet's audit history would be
+	// run against production having never been executed once.
+	"tests/behavior/convex/boxes/rename.test.ts",
 	"tests/behavior/lib/boxes/operations.test.ts",
 	"tests/invariants/convex/legacy-event-names.test.ts"
 ];

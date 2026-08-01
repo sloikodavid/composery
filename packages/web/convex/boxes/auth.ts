@@ -12,10 +12,9 @@ import { requireActiveUserInAction } from "../users";
 import { cloudUrl } from "../env";
 import { vBoxAuthorizationType } from "../schema";
 import {
-	ARGON2ID_HASH,
-	BASE64URL_SHA256,
-	MAX_HASH_LENGTH,
-	MAX_REDIRECT_URI_LENGTH
+	isFlowSecret,
+	isPasswordHash,
+	isRedirectUri
 } from "../../lib/boxes/auth";
 import { startBoxOperation } from "./operations";
 import { MINUTE_MS } from "../time";
@@ -35,10 +34,12 @@ function bytes(length: number) {
 function base64url(value: Uint8Array) {
 	let binary = "";
 	for (const byte of value) binary += String.fromCharCode(byte);
-	return btoa(binary)
-		.replace(/\+/g, "-")
-		.replace(/\//g, "_")
-		.replace(/=+$/g, "");
+	const padded = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_");
+	// Every value rendered here is exactly 32 bytes - 32 random bytes, or a
+	// SHA-256 digest - so base64 pads it with exactly one trailing "=". The
+	// pattern is written for any length anyway, which is why it strips a run.
+	// Stryker disable next-line Regex: with a single "=" to remove, stripping one and stripping a run are the same edit.
+	return padded.replace(/=+$/g, "");
 }
 
 async function sha256(value: string) {
@@ -78,7 +79,7 @@ export const createAuthorizationCode = action({
 	returns: v.object({ code: v.string(), redirectUri: v.string() }),
 	handler: async (ctx, args) => {
 		const user = await requireActiveUserInAction(ctx);
-		if (!BASE64URL_SHA256.test(args.codeChallenge)) {
+		if (!isFlowSecret(args.codeChallenge)) {
 			throw new ConvexError("Invalid authorization request.");
 		}
 
@@ -121,9 +122,9 @@ export const exchangeAuthorizationCode = action({
 	),
 	handler: async (ctx, args) => {
 		if (
-			!BASE64URL_SHA256.test(args.code) ||
-			!BASE64URL_SHA256.test(args.codeVerifier) ||
-			args.redirectUri.length > MAX_REDIRECT_URI_LENGTH
+			!isFlowSecret(args.code) ||
+			!isFlowSecret(args.codeVerifier) ||
+			!isRedirectUri(args.redirectUri)
 		) {
 			throw new ConvexError("Invalid authorization code.");
 		}
@@ -150,11 +151,7 @@ export const installPassword = action({
 	},
 	returns: v.object({ accepted: v.boolean() }),
 	handler: async (ctx, args) => {
-		if (
-			!BASE64URL_SHA256.test(args.grant) ||
-			!ARGON2ID_HASH.test(args.runtimeAuthHash) ||
-			args.runtimeAuthHash.length > MAX_HASH_LENGTH
-		) {
+		if (!isFlowSecret(args.grant) || !isPasswordHash(args.runtimeAuthHash)) {
 			throw new ConvexError("Invalid password hash.");
 		}
 		await ctx.runMutation(internal.boxes.auth.claimGrantForPassword, {
@@ -179,10 +176,8 @@ export const changePassword = action({
 	returns: v.object({ accepted: v.boolean() }),
 	handler: async (ctx, args) => {
 		if (
-			!ARGON2ID_HASH.test(args.currentRuntimeAuthHash) ||
-			!ARGON2ID_HASH.test(args.runtimeAuthHash) ||
-			args.currentRuntimeAuthHash.length > MAX_HASH_LENGTH ||
-			args.runtimeAuthHash.length > MAX_HASH_LENGTH
+			!isPasswordHash(args.currentRuntimeAuthHash) ||
+			!isPasswordHash(args.runtimeAuthHash)
 		) {
 			throw new ConvexError("Invalid password hash.");
 		}
@@ -383,6 +378,10 @@ export const reconcilePassword = internalAction({
 				// The owner changed the password on the box itself; this reconciles the
 				// hash we hold with what they set, so it is their action, not ours.
 				trigger: "owner",
+				// Stryker disable next-line ObjectLiteral: these are the workflow's
+				// arguments, not the operation's, so nothing outside the workflow
+				// body reads them back - and a workflow body cannot run in the test
+				// harness (packages/web/tests/support/convex.ts records why).
 				workflowArgs: { runtimeAuthHash: args.runtimeAuthHash }
 			});
 		} catch (error) {
@@ -396,20 +395,38 @@ export const reconcilePassword = internalAction({
 	}
 });
 
+const AUTH_RECORD_DELETE_BATCH = 200;
+
 export const deleteExpiredAuthRecords = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const timestamp = Date.now();
 		let deleted = 0;
+		let full = false;
 		for (const table of ["box_auth_codes", "box_auth_grants"] as const) {
 			const rows = await ctx.db
 				.query(table)
 				.withIndex("expires_at", (query) => query.lt("expires_at", timestamp))
-				.take(200);
+				.take(AUTH_RECORD_DELETE_BATCH);
 			for (const row of rows) {
 				await ctx.db.delete(row._id as Id<typeof table>);
 				deleted += 1;
 			}
+			if (rows.length === AUTH_RECORD_DELETE_BATCH) full = true;
+		}
+		// A full batch means there was more than this transaction could take, so it
+		// says so and comes back. Without this the sweep deleted at most 400 rows
+		// per quarter hour whatever it found: an authorization code lives two
+		// minutes, so a fleet minting them faster than that ceiling would grow both
+		// tables without bound, for ever, while the cron reported success every
+		// fifteen minutes. Every other sweep in this codebase re-drives on a full
+		// batch; this one did not.
+		if (full) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.boxes.auth.deleteExpiredAuthRecords,
+				{}
+			);
 		}
 		return deleted;
 	}

@@ -23,6 +23,12 @@ export default function CookiesPage() {
 						A local theme preference remembers light, dark, or system
 						appearance. This is stored only to provide the setting you select.
 					</li>
+					<li>
+						On your own box, served from its own address, a{" "}
+						<code>composery-session</code> cookie keeps you signed in to the
+						editor after you enter that box&apos;s password. It is set by the
+						box itself, and signing out or changing the password ends it.
+					</li>
 				</ul>
 			</LegalSection>
 			<LegalSection title="Cookieless measurement">

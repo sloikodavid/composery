@@ -1,71 +1,201 @@
 # Conventions
 
-- Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- Every version pin needs a Renovate path or a stated reason it cannot have one: actions carry `@<sha> # vX.Y.Z`, Docker carries `tag@digest`, a bare `ARG` carries a `# renovate:` datasource comment. Some pins stay unmanaged on purpose - apt tracks Debian, runner labels track GitHub. See `renovate.json`.
-- Use `tmp/` for scratch files and artifacts (gitignored).
-- No abstraction for confirmed single-use code.
-- When one value ends up in two places: remove the second copy, else derive it from the first, else pin the pair with a test - in that order. The test is the last resort, because it makes the duplication permanent and invites satisfying the test instead of asking why there are two copies. It earns its place only where an external tool has to read the copy.
-- A rule here solves a specific problem; check that problem is yours before applying it. In particular, a rule that manages unavoidable duplication never justifies creating some.
-- One name per concept, the plainest one: Create (not Provision/Spawn), Delete (not Erase/Destroy), Start (not Open/Boot), Stop (not Close/Halt), Finish (not Complete/End), Type (not Mode/Kind), Contents (not Material), Index (not Main). Where an external API forces its own word, keep theirs at the boundary and ours everywhere inside.
-- An action is named for what it acts on. Acting on a whole thing takes the bare verb (`repair`, `reset`, `update`); acting on one of its attributes takes verb + attribute (`change_slug`, `change_password`). That rule decides operation types, event names, function names, and button labels alike, so a name that needs an exception is usually the wrong name.
-- When adding or changing an environment-driven IDE setting, update the canonical `docs/configuration.md` entry and decide whether an owner can set it through `packages/web/convex/boxes/runtimeConfig.ts`. If it is offered there, give enum values explicit user-facing labels and keep the runtime/configuration wiring test green; if it is not, record the managed or infrastructure reason beside that allowlist.
-- Identifiers and prose are separate vocabularies. Never build user-visible text by reformatting an identifier: a stored value that also has to read well in English can be neither consistent nor readable. Map identifiers to labels explicitly.
-- `**box**` **is the web package's word and stays there.** It is the name of the record Composery Cloud keeps for one running instance, so it is correct in `packages/web/**`, in `docs/developing/web/**`, and in the identifiers those own wherever they are referenced - the `boxes` tables and modules, `/boxes/*` routes, `COMPOSERY_CLOUD_BOX_ID`. In prose everywhere else - the IDE, the CLI, `rootfs/`, user-facing docs, comments, and every string a user reads - say "Composery", "this Composery", "your Composery", or "your instance". Where the thing meant is really the server or the machine, say that. Do not coin a third word.
-- The container is not a boundary against the person using it: it is privileged and root-capable, and cloud owners control their host too (the Hetzner firewall is the real boundary - see `docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*` variable on their own instance is a supported surface, so every env-driven feature must behave correctly when they do.
-- Uniform behaviour, accurate reporting. Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could take anyway; do branch on it where the same action carries a different consequence, so warnings stay true rather than merely cautious. Holding the password never requires a Composery website account - proving the current password is enough to change it anywhere, and the website account is for recovering a password you cannot produce.
+Decisions already made. Reasons appear only where the rule is counterintuitive or
+where the why prevents a wrong repair. Depth: `docs/developing/`.
+
+A rule here solves a specific problem - check it is yours before applying it. A
+rule that manages unavoidable duplication never justifies creating some.
+
+## Working here
+
+- `pnpm install <package>@latest`. Never hand-edit package.json.
+- Every version pin needs a Renovate path or a stated reason it cannot have one:
+  actions `@<sha> # vX.Y.Z`, Docker `tag@digest`, bare `ARG` a `# renovate:`
+  comment. Some stay unmanaged on purpose (apt, runner labels). See
+  `renovate.json`.
+- `tmp/` for scratch and artifacts. Gitignored.
+- `whitelist.jsonc` is the generated source-unit baseline and the only check on
+  the vocabulary this repository accepts. **A flagged unit is a question about
+  the source, never about the list.** Growing the list is how the check stops
+  working, so `pnpm fix:whitelist` prunes and sorts but refuses new entries: read
+  the unit, then fix the typo, the accidental name, or the word that repeats a
+  word the list already has. Only a word carrying a meaning no listed word carries earns
+  `node scripts/whitelist.mjs --write --accept-new`, and its reason belongs in
+  the commit text. The same rule owns `.whitelistignore`: it hides contents we do
+  not write (generated, vendored, binary), never a file with an awkward word in
+  it. CI checks, never rewrites.
+
+## Duplication
+
+One value in two places: **remove the copy, else derive it, else pin the pair
+with a test** - in that order. The test is a last resort; it makes the
+duplication permanent and invites satisfying the test instead of asking why
+there are two copies. It earns its place only where an external tool must read
+the copy.
+
+No abstraction for confirmed single-use code.
+
+## Naming
+
+- One name per concept, the plainest: Create (not Provision/Spawn), Delete (not
+  Erase/Destroy), Start (not Open/Boot), Stop (not Close/Halt), Finish (not
+  Complete/End), Type (not Mode/Kind), Contents (not Material), Index (not
+  Main). Where an external API forces its word, keep theirs at the boundary,
+  ours inside.
+- An action is named for what it acts on: a whole thing takes the bare verb
+  (`repair`, `reset`), an attribute takes verb + attribute (`change_slug`). This
+  decides operation types, event names, functions and button labels alike - a
+  name needing an exception is usually the wrong name.
+- Identifiers and prose are separate vocabularies. Never build user-visible text
+  by reformatting an identifier; map them to labels explicitly.
+- **`box` is the web package's word** - the record Composery Cloud keeps for one
+  running instance. Correct in `packages/web/**`, `docs/developing/web/**`, and
+  the identifiers those own. Everywhere else say "Composery", "your Composery",
+  or "your instance"; if you mean the server, say server. No third word.
+
+## Prose
+
+Reader-facing sentences (docs, UI, errors, CLI output, template READMEs, commit
+and PR text) follow **Simplified Technical English (ASD-STE100)** as far as it fits: one word per meaning per
+part of speech, plainest verb, active voice, simple tenses, one instruction per
+sentence, condition first, articles kept, noun stacks of three at most, ~20
+words per instruction. It is one-name-per-concept applied to sentences.
+
+Internal prose that carries an argument - this file, test headers, comments
+explaining why - keeps the vocabulary and drops the length limit. STE is a
+default, not a gate: technical names, upstream spellings, quoted strings and
+legal copy beat it. Deviate deliberately; `whitelist.jsonc` is the only check
+and it merely lists every word, so a new word is a unit somebody must accept.
+
+**Docs describe the system, never one account's state.** A doc must be
+executable from nothing by someone with no access to the deployment: say what to
+configure and how to know it worked. No values read out of a live console, no
+"you will see three records", no step marked skippable because of how one
+account looks today, no plan or tier assumed. Write conditional steps as
+conditions ("if the zone arrived with the registrar's mail records, delete
+them"). What the repository fixes - providers, variable names, paths, record
+shapes - is stated flatly. Test: would it still be correct for a fork, or for
+this deployment rebuilt tomorrow?
+
+## Trust and reporting
+
+The container is not a boundary against its user: privileged, root-capable, and
+cloud owners control the host too - the Hetzner firewall is the real boundary
+(`docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*`
+variable on their instance is a supported surface; every env-driven feature must
+behave correctly when they do.
+
+Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could
+take anyway. Do branch on it where the same action carries a different
+consequence, so warnings stay true rather than merely cautious. Holding the
+password never requires a website account - proving the current password is
+enough anywhere; the account recovers a password you cannot produce.
+
+New or changed env-driven IDE setting: update `docs/configuration.md`, then
+decide whether an owner may set it via `convex/boxes/runtimeConfig.ts`. Offered
+there - give enum values explicit labels, keep the wiring test green. Not
+offered - record the managed or infrastructure reason beside the allowlist.
 
 ## Correctness
 
-- Check claims against the artifact, not the source you assume produces it: run the generator, read the built tree, query the deployment. A grep that misses one spelling reads as proof of absence.
-- A check that cannot fail is worse than no check: it reports success forever. Before trusting a new test or guard, break what it guards and watch it fail. Substring assertions are the usual culprit - `HASHED_PASSWORD` matches inside `COMPOSERY_HASHED_PASSWORD`.
-- Silent success is worse than a crash. A documented variable nothing reads, a repair job checking the wrong name, a gate no sweep can reach: each looks healthy for exactly as long as nobody checks. Make the inert path say so.
-- Where a wrong value would remove a protection, fail towards keeping it: enable on an explicit `1`/`true` and treat everything else, typos included, as off.
-- Prefer one absolute rule to a rule plus a remembered exception, even when the exception is provably safe today.
-- Fix the class, not the instance. A bug found by reading is usually one of several. Best is designing the class out - one source of truth, a derived value, a state made unrepresentable - so no guard is needed; next best is a test that catches the next instance; worst is a hand-patch of the one you saw.
-- Persistence cost is bounded by construction; never add an exclusion to fix a performance or memory problem - if cost scales with a workload's shape, that is the bug, not the workload.
+- Check claims against the artifact, not the source you assume produces it. A
+  grep that misses one spelling is not proof of absence.
+- **A check that cannot fail is worse than no check.** Break what a new test or
+  guard protects and watch it fail before trusting it. Substring assertions are
+  the usual culprit (`HASHED_PASSWORD` matches inside
+  `COMPOSERY_HASHED_PASSWORD`).
+- **Silent success is worse than a crash.** A variable nothing reads, a repair
+  job checking the wrong name, a gate no sweep reaches - each looks healthy
+  exactly as long as nobody checks. Make the inert path say so.
+- Where a wrong value would remove a protection, fail towards keeping it: enable
+  on explicit `1`/`true`, treat everything else - typos included - as off.
+- Prefer one absolute rule to a rule plus a remembered exception.
+- **Fix the class, not the instance.** Best: design it out (one source of truth,
+  a derived value, an unrepresentable state). Next: a test catching the next
+  instance. Worst: hand-patching the one you saw.
+- Persistence cost is bounded by construction. Never add an exclusion to fix a
+  performance problem - if cost scales with a workload's shape, that is the bug.
 
 ## Tests
 
-The full doctrine is `docs/developing/testing.md`, and every rule in it names the
-check that enforces it - `tests/invariants/tests.test.ts`. A rule with no enforcer
-is deleted from the doc rather than left as an honour system, because nobody here
-remembers the last review.
+Full doctrine: `docs/developing/testing.md`; every rule there names its enforcer
+(`tests/invariants/tests.test.ts`), and a rule with no enforcer is deleted.
 
-- Test code is structurally excluded from the shipped tree: a `*.test.ts` lives
-  under a `tests/` directory, never beside its subject. Rust satisfies the same
-  rule with `#[cfg(test)]`, which compiles out and can reach private items, so
-  inline unit tests stay inline and `<crate>/tests/` holds the public-surface ones.
+- `*.test.ts` lives under a `tests/` directory, never beside its subject. Rust
+  meets the same rule with `#[cfg(test)]`, so its unit tests stay inline and
+  `<crate>/tests/` holds the public-surface ones.
 - The owning `tests/` directory belongs to the package the test constrains; what
-  constrains no single package, or the agreement between two, lives in the root.
-  Inside it the first subdirectory is the kind and the rest mirrors the source.
-- Three kinds, decided by what a test may touch, never by how it feels.
-  `behavior/` runs the real module. `invariants/` reads the checkout and asserts a
-  fact about it - the last rung of the duplication ladder, so its header says why
-  that duplication cannot be removed or derived. `system/` needs a built artifact
-  and is the only kind allowed to sleep or retry.
+  constrains none, or the agreement between two, lives in the root. Inside, the
+  first subdirectory is the kind, the rest mirrors the source.
+- **Three kinds, by what a test may touch.** `behavior/` runs the real module.
+  `invariants/` reads the checkout and asserts a fact about it - last rung of the
+  duplication ladder, so its header says why that duplication cannot be removed.
+  `system/` needs a built artifact and alone may sleep or retry.
 - `expect(source).toContain(...)` over code that could have run is the one shape
-  that cannot fail for the right reason. The extraction helpers that make it
-  possible are confined to `invariants/`; everything else loads the module.
-- A patch is a call site. Logic lives in an overlay module the patch calls, because
-  code written inside a diff can only be reached by evaluating its added lines - no
-  coverage tool instruments that, and every assertion around it degrades to a grep.
-- Coverage's only honest job is finding code nothing touches, so there is no
-  percentage target and no global threshold: `check:coverage` gates the lines a
-  change adds, and the overall figure is a report you read. `check:mutants` is what
-  says the touching meant anything, and a surviving mutant is killed or annotated
-  with its reason, never ignored.
-- `test(`, never `it(`. A test name completes a present-indicative sentence about
-  its subject; `should` is filler. No `.only`, `.skip` or `.todo` in the tree.
+  that cannot fail for the right reason. Its helpers are confined to
+  `invariants/`; everything else loads the module.
+- A patch is a call site: logic lives in an overlay module the patch calls. Code
+  inside a diff is reachable only by evaluating its added lines, which no
+  coverage tool instruments.
+- `test(`, never `it(`. The name completes a present-indicative sentence;
+  `should` is filler. No `.only`, `.skip`, `.todo`.
 
-## IDE / upstream naming
+Coverage only finds code nothing touches - no percentage target, no threshold.
+`check:coverage` gates added lines; `check:mutants` says whether touching them
+meant anything.
 
-`packages/ide/` is a hard fork of code-server (submodule at `packages/ide/upstream`). We own the fork. Split rule: files that do not exist upstream live in `packages/ide/overlay/` (path-mirrored onto the tree); every change to an upstream file is a patch in `packages/ide/patches/` (one concern per patch - a hunk belongs in the patch whose name describes it; a patch may span code-server's `src/` and `lib/vscode/*` when they are one concern), applied with quilt fuzz=0 so upstream bumps fail loudly. Never keep a modified copy of an upstream file in the overlay.
+**A surviving mutant is killed or annotated with its reason - but read it
+first.** Some cannot be killed by any test, and chasing those is how a suite
+acquires tests written to move a number:
 
-- Repo packages stay domain nouns (`ide`, `web`, `shared`, `cli`). Shipped product surfaces are Composery: binary/path/product metadata/settings/cookie/socket names and product-specific env vars take `COMPOSERY_` names. `PORT` stays generic. `docs/configuration.md` is the canonical variable list - a test pins it to real wiring, so add there rather than enumerating names here.
-- Keep `code-server` only for upstream provenance and patch coordinates: the submodule source, source URLs/commit metadata, patch removed/context lines, and VS Code subtree internals where the name belongs to upstream.
-- `packages/ide/scripts/rebrand.mjs` runs on the assembled build tree after quilt and overlay, before the upstream build. It owns _every_ rename, without exception: no patch in the series renames an upstream identifier, string or environment variable, and a hunk that would only rename belongs there instead. A patch anchors on upstream's spelling and lets the rewrite happen afterwards - so `CS_DISABLE_FILE_UPLOADS` in a hunk is what ships as `COMPOSERY_DISABLE_FILE_UPLOADS`. The rule is absolute because any split leaves a name's home unknowable. Variables Composery introduces outright have no upstream spelling to rename, so those are written directly where they are read.
-- No hybrid visible names like `composery-code-server`. A visible service or supervisor program is named for what it runs rather than for the product - `ide`, `persistence`, `caddy`, `cron` - and both init systems use the same set, so one runbook line covers `supervisorctl restart ide` and `systemctl restart ide` alike. There is no `composery` service; `tests/invariants/runtime-init.test.ts` fails if one comes back.
-- The `composery` prefix is namespacing, not decoration: use `composery`/`composery-` only for identifiers injected into a shared upstream namespace (CSS classes, custom properties, DOM attributes, command/setting/contribution/extension IDs). Never on things we own outright - TS files, symbols, types, or patch filenames.
+- Module-scope mutants (lookup maps, `internalMutation({...})` arguments) are
+  evaluated once per worker and never re-evaluated, so the flip never takes
+  effect. They report `coveredBy: 1` and survive under every `coverageAnalysis`.
+  Apply the edit by hand: if tests fail, the report is wrong.
+- The harness cannot see some real work - `.order("desc")` (convex-test sorts
+  descending for anything but `"asc"`), or anything read only inside a workflow
+  body. Recorded in `packages/web/tests/support/convex.ts`.
+- Some guards are unreachable by construction and kept anyway, because the
+  alternative is a silent wrong answer once what makes them unreachable moves.
+
+Silence one line at a time: `// Stryker disable next-line <mutators>: <why>`.
+The block form also silences mutants tests were killing, showing only a higher
+ignored count. The directive must be the **last** comment line and must precede
+a **statement** - inside a method chain it is ignored. Confirm `Ignored` moved.
+
+## IDE fork
+
+`packages/ide/` is a hard fork of code-server (submodule `packages/ide/upstream`).
+**Split rule:** files that do not exist upstream live in `overlay/`; every change
+to an upstream file is a patch in `patches/` - one concern per patch (a hunk
+belongs in the patch whose name describes it; one patch may span `src/` and
+`lib/vscode/*` when they are one concern), quilt fuzz=0 so upstream bumps fail
+loudly. Never keep a modified copy of an upstream
+file in the overlay.
+
+- **An overlay path is its destination path.** `overlay/` mirrors the tree the
+  build assembles - no timing, phase or second location to pick. When upstream's
+  release step would not carry a file we add, patch the enumeration
+  (`release-contents.diff`), never copy after the build. No test can enforce
+  this: a wrong-but-plausible path simply never reaches the output.
+- **`rebrand.mjs` owns every rename.** It runs on the assembled tree after quilt
+  and overlay, before the upstream build. No patch renames an upstream
+  identifier, string or variable; a hunk that would only rename belongs there.
+  Patches anchor on upstream spelling, so `CS_DISABLE_FILE_UPLOADS` ships as
+  `COMPOSERY_DISABLE_FILE_UPLOADS`. Absolute - any split leaves a name's home
+  unknowable. Variables Composery introduces outright are written where read.
+- Repo packages stay domain nouns (`ide`, `web`, `shared`, `cli`). Shipped
+  surfaces are Composery: binary, path, product metadata, settings, cookie and
+  socket names and product-specific env vars take `COMPOSERY_`. `PORT` stays
+  generic. `docs/configuration.md` is the canonical variable list.
+- Keep `code-server` only for upstream provenance and patch coordinates.
+- No hybrid names like `composery-code-server`. A visible service is named for
+  what it runs (`ide`, `persistence`, `caddy`, `cron`), identical across both
+  init systems, so one runbook line covers `supervisorctl restart ide` and
+  `systemctl restart ide`. There is no `composery` service.
+- The `composery` prefix is namespacing, not decoration: only for identifiers
+  injected into a shared upstream namespace (CSS classes, custom properties, DOM
+  attributes, command/setting/extension IDs). Never on things we own outright.
 
 @package.json
 
@@ -93,7 +223,7 @@ remembers the last review.
       SKILL.md
     simplify-implementation.md
 .claude/
-  skills
+  skills -> .agents/skills/
 .github/
   ISSUE_TEMPLATE/
     bug.yaml
@@ -233,17 +363,6 @@ packages/
             composery-updates/
               extension.js
               package.json
-          out/
-            vs/
-              code/
-                browser/
-                  workbench/
-                    workbench-assets/
-                      fonts.css
-                      geist-mono.woff2
-                      inter.woff2
-                      narrow.css
-                      touch.css
           src/
             vs/
               base/
@@ -256,6 +375,12 @@ packages/
               code/
                 browser/
                   workbench/
+                    media/
+                      fonts.css
+                      geist-mono.woff2
+                      inter.woff2
+                      narrow.css
+                      touch.css
                     shell.ts
               editor/
                 browser/
@@ -372,6 +497,7 @@ packages/
       proxy-root.diff
       qr-action.diff
       readiness.diff
+      release-contents.diff
       request-host-trust.diff
       series
       sessions.diff
@@ -449,16 +575,26 @@ packages/
               readiness.test.ts
             routes/
               api/
+                auth.test.ts
                 config.test.ts
+                keystore.test.ts
+                ratelimit.test.ts
+                terminals.test.ts
               authErrors.test.ts
+              authPage.test.ts
+              changePassword.test.ts
+              cloudAuth.test.ts
               loginRateLimit.test.ts
+              passwordConfig.test.ts
               pwned.test.ts
+              register.test.ts
             cloud.test.ts
             envFlag.test.ts
         session.test.ts
       invariants/
         auth-error-codes.test.ts
         auth-routes.test.ts
+        coverage-exclusions.test.ts
         env-flags.test.ts
         patch-call-sites.test.ts
         patches.test.ts
@@ -467,8 +603,8 @@ packages/
       support/
         overlay.ts
         patch.ts
+    upstream/ (submodule)
     package.json
-    upstream
   shared/
     scripts/
       colors/
@@ -708,13 +844,19 @@ packages/
         webhooks.ts
       boxes/
         infra/
+          cloudflareContracts.ts
           cloudflareDns.ts
+          hetznerContracts.ts
           hetznerVps.ts
+          providerResponse.ts
+          registryContracts.ts
           runtimeArtifacts.ts
+          runtimeImageRegistry.ts
           runtimeImages.ts
           ssh.ts
           sshKeys.ts
           sshScripts.ts
+          sshTransport.ts
         workflows/
           boxWorkflow.ts
           changeBoxConfig.ts
@@ -777,12 +919,14 @@ packages/
         checkout.ts
       accountDeletion.ts
       accountDeletionLogic.ts
+      accountEmail.ts
       auth.config.ts
       convex.config.ts
       crons.ts
       email.ts
       env.ts
       http.ts
+      legalNotice.ts
       ownerEmail.ts
       schema.ts
       settings.ts
@@ -871,6 +1015,8 @@ packages/
         lib.mjs
         README.md
         run.sh
+      env.d.mts
+      env.mjs
     tests/
       behavior/
         app/
@@ -896,10 +1042,15 @@ packages/
             infra/
               cloudflareDns.test.ts
               hetznerVps.test.ts
+              providerRequests.test.ts
+              providerResponse.test.ts
               runtimeArtifacts.test.ts
               runtimeImages.test.ts
+              ssh.test.ts
+              sshActions.test.ts
               sshKeys.test.ts
               sshScripts.test.ts
+              sshTransport.test.ts
             workflows/
               boxWorkflow.test.ts
             access.test.ts
@@ -908,7 +1059,9 @@ packages/
             capacity.test.ts
             capacityAlerts.test.ts
             cleanup.test.ts
+            logs.test.ts
             metrics.test.ts
+            metricsPoll.test.ts
             metricThresholds.test.ts
             operationRules.test.ts
             operations.test.ts
@@ -916,8 +1069,11 @@ packages/
             purgeBox.test.ts
             queries.test.ts
             reconcile.test.ts
+            recovery.test.ts
+            rename.test.ts
             retention.test.ts
             runtimeConfig.test.ts
+            runtimeFloor.test.ts
             runtimeRelease.test.ts
             slugAvailability.test.ts
             snapshotPolicy.test.ts
@@ -932,26 +1088,32 @@ packages/
             boxes.test.ts
             checkout.test.ts
             metrics.test.ts
+            settings.test.ts
             stats.test.ts
             users.test.ts
           user/
+            boxConfig.test.ts
             boxes.test.ts
             checkout.test.ts
           accountDeletion.test.ts
           accountDeletionLogic.test.ts
+          accountEmail.test.ts
           crons.test.ts
           env.test.ts
           http.test.ts
+          legalNotice.test.ts
           ownerEmail.test.ts
           settings.test.ts
           users.test.ts
         hooks/
+          use-is-touch.test.ts
           use-setting-draft.test.ts
           use-table-sort.test.ts
         lib/
           boxes/
             auth.test.ts
             billing.test.ts
+            metrics.test.ts
             operations.test.ts
             plan.test.ts
             repair.test.ts
@@ -959,29 +1121,45 @@ packages/
             slug.test.ts
             update.test.ts
           auth-routing.test.ts
+          brand-assets-download.test.ts
           brand-assets.test.ts
           browser-theme.test.ts
           clipboard.test.ts
           dashboards.test.ts
           datetime.test.ts
           error-message.test.ts
+          highlight-logs.test.ts
+          nav-links.test.ts
           openapi.test.ts
+          route-guards.test.ts
+        scripts/
+          env.test.ts
+        support/
+          ssh.test.ts
       invariants/
         components/
           icons/
             registry.test.ts
         convex/
+          alert-remedies.test.ts
+          components.test.ts
           envExample.test.ts
           legacy-event-names.test.ts
+          missing-box-guards.test.ts
+          operation-attribution.test.ts
           optional-range-bounds.test.ts
           schema-indexes.test.ts
+          staff-authorization.test.ts
+          user-authorization.test.ts
         legal/
+          notices.test.ts
           processors.test.ts
         lib/
           table-columns.test.ts
         next-env-example.test.ts
       support/
         convex.ts
+        ssh.ts
         ui.tsx
     .env.example.convex.dev
     .env.example.convex.prod
@@ -989,7 +1167,7 @@ packages/
     .env.example.next.prod
     .gitignore
     AGENTS.md
-    CLAUDE.md
+    CLAUDE.md -> packages/web/AGENTS.md
     components.json
     convex.json
     eslint.config.mjs
@@ -1073,6 +1251,8 @@ scripts/
   setup.mjs
   tree.d.mts
   tree.mjs
+  whitelist.d.mts
+  whitelist.mjs
   write-formatted.mjs
 templates/
   fly/
@@ -1112,6 +1292,8 @@ templates/
   README.md
 tests/
   behavior/
+    scripts/
+      whitelist.test.ts
     mutants-script.test.ts
     runbook-script.test.ts
     setup.test.ts
@@ -1144,6 +1326,12 @@ tests/
     overlay-engine/
       Dockerfile
       run.sh
+    provider-contracts/
+      run.mjs
+    registry/
+      run.mjs
+    runtime-artifacts/
+      run.mjs
     templates/
       run.mjs
     smoke.mjs
@@ -1154,9 +1342,10 @@ tests/
 .gitmodules
 .nvmrc
 .prettierignore
+.whitelistignore
 AGENTS.md
 CHANGELOG.md
-CLAUDE.md
+CLAUDE.md -> AGENTS.md
 compose.dev.yaml
 Dockerfile
 eslint.config.mjs
@@ -1173,6 +1362,7 @@ tsconfig.json
 vitest.config.ts
 vitest.mutation.config.ts
 vitest.projects.ts
+whitelist.jsonc
 ```
 
 <!-- tree:finish -->

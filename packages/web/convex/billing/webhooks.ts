@@ -48,7 +48,10 @@ async function intentIdForOrder(
 ) {
 	const metadataIntentId = metadata[CHECKOUT_INTENT_METADATA_KEYS.intentId];
 
-	if (typeof metadataIntentId === "string" && metadataIntentId) {
+	// Only the type is checked here. Whether the text is a usable id is the
+	// lookup's own question, and it answers null for anything that is not - an
+	// emptiness test alongside it reads as though it were not safe to ask.
+	if (typeof metadataIntentId === "string") {
 		const intentId = await ctx.runQuery(
 			internal.checkout.checkoutIntents.checkoutIntentIdFromString,
 			{ intentId: metadataIntentId }

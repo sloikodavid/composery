@@ -1,41 +1,59 @@
+import type { Id } from "../_generated/dataModel";
 import { internalAction, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { readGlobalSettings } from "../settings";
 import { startBoxOperation } from "./operations";
-import { isOperationAllowed } from "./operationRules";
+import { OPERATION_ALLOWED_STATUSES } from "./operationRules";
 import { floorDeadlinePassed, runtimeStanding } from "./runtimeRelease";
 
-// Boxes whose floor deadline has passed and which are still below it.
+// Which boxes the floor sweep considers: exactly the statuses an update may
+// begin from, read from the table that enforces it rather than restated here.
 //
-// Only `running` boxes are returned. A stopped or suspended box cannot be
-// updated over SSH at all, and a box mid-operation must not have one queued
-// behind it - `startOperation` would refuse anyway, but asking it to refuse
-// once per box per hour turns a normal state into a stream of failures. Those
-// boxes are simply picked up by a later run, once they are running again.
+// That table is `["running", "update_failed"]`, and the second entry is the
+// whole reason this is derived. The sweep used to query `running` alone and
+// filter on the same table afterwards - a filter that could not fail, because
+// every row it saw was already `running`. So a box whose forced update failed
+// landed in `update_failed` and left the only set this sweep looks at, for ever:
+// it stayed below the mandatory floor with nothing retrying it and no failure to
+// read, which is precisely the outcome a deadline exists to prevent.
+//
+// The statuses left out are left out by that table, not by this one. A stopped
+// or suspended box cannot be reached over SSH, and a box mid-operation must not
+// have one queued behind it; both are picked up by a later run once they are
+// eligible again.
+export const FLOOR_UPDATE_STATUSES = OPERATION_ALLOWED_STATUSES.update;
+
+// Boxes whose floor deadline has passed and which are still below it.
 export const boxesPastFloorDeadline = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const settings = await readGlobalSettings(ctx);
+		// A cost guard, not a decision: `floorDeadlinePassed` already refuses every
+		// box when no deadline is set, so removing this changes nothing but the
+		// hourly table scan it saves on the deployments that have no floor - which
+		// is most of them. Equivalent by construction, hence the annotation rather
+		// than a test that could only assert the same empty list twice.
+		// Stryker disable next-line ConditionalExpression: skipping the scan is the whole effect; the answer is identical either way.
 		if (!settings.minimumRuntime?.deadline) return [];
 
 		const now = Date.now();
-		const boxes = await ctx.db
-			.query("boxes")
-			.withIndex("status", (query) => query.eq("status", "running"))
-			.collect();
-
-		return boxes
-			.filter((box) => {
-				if (!isOperationAllowed(box.status, "update")) return false;
+		const boxIds: Id<"boxes">[] = [];
+		for (const status of FLOOR_UPDATE_STATUSES) {
+			const boxes = await ctx.db
+				.query("boxes")
+				.withIndex("status", (query) => query.eq("status", status))
+				.collect();
+			for (const box of boxes) {
 				const standing = runtimeStanding({
 					boxImage: box.runtime_image,
 					boxVersion: box.runtime_version,
 					fleet: settings.runtimeRelease,
 					minimum: settings.minimumRuntime
 				});
-				return floorDeadlinePassed(standing, now);
-			})
-			.map((box) => ({ boxId: box._id, slug: box.slug }));
+				if (floorDeadlinePassed(standing, now)) boxIds.push(box._id);
+			}
+		}
+		return boxIds;
 	}
 });
 
@@ -54,18 +72,19 @@ export const boxesPastFloorDeadline = internalQuery({
 export const updateBoxesPastDeadline = internalAction({
 	args: {},
 	handler: async (ctx) => {
-		const targets = await ctx.runQuery(
+		const boxIds = await ctx.runQuery(
 			internal.boxes.runtimeFloor.boxesPastFloorDeadline,
 			{}
 		);
 
-		for (const target of targets) {
+		for (const boxId of boxIds) {
 			try {
-				await startBoxOperation(ctx, target.boxId, "update", {
-					// Keyed by box and floor deadline, so a box that fails to cross one
-					// deadline is retried on the next run, but a box already being
-					// updated for this deadline is not queued twice.
-					idempotencyKey: `floor-update:${target.boxId}`,
+				await startBoxOperation(ctx, boxId, "update", {
+					// Keyed by box alone, and deliberately not by the deadline: the key
+					// only ever matches an operation that is still pending or running, so
+					// it stops a second update being queued behind one in flight while
+					// leaving a box whose update failed free to be retried next run.
+					idempotencyKey: `floor-update:${boxId}`,
 					metadata: { reason: "minimum_runtime_version" },
 					trigger: "system:runtime_floor"
 				});

@@ -116,20 +116,34 @@ The editor is built from pristine upstream (the `packages/ide/upstream/`
 submodule, pinned in `.gitmodules`) plus our overlay and patch stack. It is not a
 hard fork: `src/` is never checked in. `packages/ide/scripts/build.sh` copies the
 submodule into a scratch `build/` tree, appends our `patches/series` to
-upstream's, `quilt push -a` (fuzz=0), path-mirrors `overlay/` onto the tree,
-runs `packages/ide/scripts/rebrand.mjs`, then runs the upstream `npm ci` / build /
+upstream's, `quilt push -a` (fuzz=0), path-mirrors `overlay/` onto the tree, runs
+`packages/ide/scripts/rebrand.mjs`, then runs the upstream `npm ci` / build /
 release.
 
-There are two kinds of customization, kept deliberately separate:
+There are four kinds of customization, kept deliberately separate:
 
 - **Patches** (`packages/ide/patches/`) modify files that exist upstream, in
   either code-server's `src/` or VS Code's `lib/vscode/*`. Each patch owns one
   concern and applies at fuzz 0, so an upstream move fails loudly instead of
   leaving a customization inert.
 - **Overlay** (`packages/ide/overlay/`) contains only files that do not exist
-  upstream, path-mirrored onto the tree after quilt push. It carries new
-  server modules and routes, browser assets/pages, and extensions. Never place
-  a modified copy of an upstream file here.
+  upstream, path-mirrored onto the tree after quilt push in one copy. It carries
+  new server modules and routes, browser assets/pages, and extensions. An overlay
+  path is its destination path; there is no phase or second location to choose,
+  and nothing is copied after the build. Never place a modified copy of an
+  upstream file here - that is a patch. Two things are allowed to take an
+  upstream path, both pinned by the shadow test: a file a patch deletes
+  (`auth.diff` removes code-server's login and error pages, ours arrive in their
+  place), and upstream's brand assets, which we replace because rebranding a
+  binary has no other mechanism - `rebrand.mjs` rewrites text, and quilt cannot
+  apply a binary diff.
+- **Patches against upstream's copy lists** (`release-contents.diff`) are how a
+  file we add reaches the built product when upstream's build enumerates what
+  ships and does not know about ours. code-server's release step treats
+  `src/browser/pages` as templates (`*.html`, `*.css`) so our page scripts need a
+  line there; VS Code's `build/next/index.ts` copies resources by path so the
+  workbench media goes on that list. Doing it there rather than copying into the
+  release afterwards is what keeps `build.sh` free of a post-build phase.
 - **Rebrand** (`packages/ide/scripts/rebrand.mjs`) is a generated transformation over the
   assembled tree. It owns every product name and product-specific env var:
   `COMPOSERY_PASSWORD`, `COMPOSERY_HASHED_PASSWORD`, `COMPOSERY_PROXY_URI`,
@@ -153,9 +167,10 @@ versions. On each bump:
   target. The authoring recipe is in `packages/ide/scripts/build.sh`; do not duplicate
   it here.
 - Re-check overlay collisions.
-  Every overlay path must remain absent upstream. If upstream adds a file at one
-  of those paths, move our concern into a patch or choose a genuinely owned new
-  module rather than masking the upstream file.
+  Every `overlay/` path must remain absent upstream, unless a patch
+  deletes it outright. If upstream adds a file at one of those paths, move our
+  concern into a patch or choose a genuinely owned new module rather than
+  masking the upstream file. `pnpm check:test` fails on a new collision.
 - Re-run the rebrand check.
   `pnpm check:ide` assembles the server tree, runs `rebrand.mjs`, and typechecks
   it. If upstream introduces new live product names, add an explicit replacement

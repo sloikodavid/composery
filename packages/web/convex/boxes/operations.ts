@@ -174,7 +174,10 @@ export const startOperation = internalMutation({
 
 		const plan = BOX_OPERATION_PLANS[args.type];
 		const timestamp = Date.now();
-		if ("targetStatus" in plan && plan.targetStatus) {
+		// Presence alone: an entry that has the key always names a status, because
+		// the table above is literals rather than a `Record` with optional values.
+		// The truthiness check that used to follow could not fail.
+		if ("targetStatus" in plan) {
 			await ctx.db.patch(box._id, {
 				status: plan.targetStatus,
 				updated_at: timestamp

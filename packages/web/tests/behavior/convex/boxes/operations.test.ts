@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { BoxOperationType } from "@/convex/schema";
+import { startBoxSuspension } from "@/convex/boxes/operations";
 
 import {
 	boxOperations,
@@ -295,5 +296,153 @@ describe("slug reservation", () => {
 		await expect(
 			start(t, boxId, "change_slug", { reservedSlug: "Not A Slug" })
 		).rejects.toThrow(/unavailable/i);
+	});
+});
+
+// The idempotency key covers an operation that is still going and nothing more,
+// which is what makes a retry safe without making a later, deliberate repeat
+// impossible.
+describe("the window an idempotency key covers", () => {
+	async function startWith(t: Harness, boxId: Id<"boxes">, key: string) {
+		return await t.mutation(internal.boxes.operations.startOperation, {
+			boxId,
+			idempotencyKey: key,
+			trigger: "owner",
+			type: "snapshot"
+		});
+	}
+
+	test.each(["pending", "running"] as const)(
+		"refuses a duplicate while the first is still %s",
+		async (status) => {
+			const t = testConvex();
+			const owner = await seedUser(t);
+			const boxId = await seedBox(t, { user_id: owner.clerkUserId });
+			const first = await startWith(t, boxId, "same-key");
+			await t.run(async (ctx) => await ctx.db.patch(first!, { status }));
+
+			expect(await startWith(t, boxId, "same-key")).toBeNull();
+		}
+	);
+
+	test.each(["succeeded", "failed"] as const)(
+		"allows the same key again once the first has %s",
+		async (status) => {
+			const t = testConvex();
+			const owner = await seedUser(t);
+			const boxId = await seedBox(t, { user_id: owner.clerkUserId });
+			const first = await startWith(t, boxId, "same-key");
+			await t.run(async (ctx) => await ctx.db.patch(first!, { status }));
+
+			expect(await startWith(t, boxId, "same-key")).not.toBeNull();
+		}
+	);
+});
+
+// Suspend and unsuspend are one helper with a boolean, so the key it builds has
+// to name the box: a key that did not would let one box's suspension swallow
+// every other box's.
+describe("suspending a box through the shared helper", () => {
+	test("keys each box's suspension to that box", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const first = await seedBox(t, { user_id: owner.clerkUserId, slug: "one" });
+		const second = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "two"
+		});
+
+		await t.run(async (ctx) => {
+			await startBoxSuspension(ctx, {
+				boxId: first,
+				idempotencyKeyPrefix: "abuse",
+				suspend: true,
+				trigger: "staff"
+			});
+			await startBoxSuspension(ctx, {
+				boxId: second,
+				idempotencyKeyPrefix: "abuse",
+				suspend: true,
+				trigger: "staff"
+			});
+		});
+
+		expect(await boxOperations(t, first)).toMatchObject([
+			{ type: "suspend", idempotency_key: `abuse:${first}` }
+		]);
+		expect(await boxOperations(t, second)).toMatchObject([
+			{ type: "suspend", idempotency_key: `abuse:${second}` }
+		]);
+	});
+
+	test("starts an unsuspend when asked to lift one", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "suspended"
+		});
+
+		await t.run(async (ctx) => {
+			await startBoxSuspension(ctx, {
+				boxId,
+				idempotencyKeyPrefix: "lift",
+				suspend: false,
+				trigger: "staff"
+			});
+		});
+
+		expect(await boxOperations(t, boxId)).toMatchObject([
+			{ type: "unsuspend" }
+		]);
+	});
+});
+
+// A reserved slug is admitted against everything holding one *except* the box
+// doing the reserving. Renaming a box to the name it already answers on is a
+// no-op, not a collision - and the gate that could not say so would refuse it.
+describe("reserving a slug for the box that already holds it", () => {
+	test("admits a slug change to the box's own current slug", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "atlas"
+		});
+
+		const operationId = await t.mutation(
+			internal.boxes.operations.startOperation,
+			{
+				boxId,
+				idempotencyKey: `change-slug:${boxId}:atlas`,
+				reservedSlug: "atlas",
+				trigger: "owner",
+				type: "change_slug",
+				workflowArgs: { newSlug: "atlas" }
+			}
+		);
+
+		expect(operationId).not.toBeNull();
+	});
+
+	test("still refuses a slug another live box answers on", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "atlas"
+		});
+		await seedBox(t, { user_id: owner.clerkUserId, slug: "taken" });
+
+		await expect(
+			t.mutation(internal.boxes.operations.startOperation, {
+				boxId,
+				idempotencyKey: `change-slug:${boxId}:taken`,
+				reservedSlug: "taken",
+				trigger: "owner",
+				type: "change_slug",
+				workflowArgs: { newSlug: "taken" }
+			})
+		).rejects.toThrow("Slug is unavailable.");
 	});
 });

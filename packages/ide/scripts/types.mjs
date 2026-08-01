@@ -29,9 +29,9 @@ function run(command, args, options = {}) {
 }
 
 // Typecheck the IDE server tree exactly as build.sh assembles it: pristine
-// upstream src + every code-server-side patch + overlay's new files. Sources
-// come from git blobs (always LF) so the patches apply on Windows working
-// trees too.
+// upstream src + every code-server-side patch + the build overlay's new files.
+// Sources come from git blobs (always LF) so the patches apply on Windows
+// working trees too.
 const UPSTREAM = join(PACKAGE_ROOT, "upstream");
 const OVERLAY = join(PACKAGE_ROOT, "overlay");
 // The files this tree actually holds (see the git archive below). Everything

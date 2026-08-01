@@ -15,7 +15,7 @@ import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
-import { CLOUD_TERMS_VERSION } from "../../lib/cloud-legal";
+import { LEGAL_VERSION } from "../../lib/cloud-legal";
 import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { reconcileCapacityAlert } from "../boxes/capacityAlerts";
 import { vBoxPlan } from "../schema";
@@ -360,7 +360,7 @@ export const recordInitialPaidOrder = internalMutation({
 			polar_subscription_id: args.subscriptionId,
 			polar_initial_order_id: intent.polar_initial_order_id ?? args.orderId,
 			terms_accepted_at: intent.terms_accepted_at ?? args.termsAcceptedAt,
-			terms_version: intent.terms_version ?? CLOUD_TERMS_VERSION,
+			terms_version: intent.terms_version ?? LEGAL_VERSION,
 			purge_at: billingRecordPurgeAt(timestamp),
 			updated_at: timestamp
 		});

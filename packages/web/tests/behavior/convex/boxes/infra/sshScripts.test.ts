@@ -10,9 +10,11 @@ import {
 	parkingVolumeDevicePath,
 	parseParkingVerification,
 	parseRuntimeInspection,
+	repairScript,
 	reloadCaddyfileScript,
 	rewritePasswordScript,
 	runtimeLogsScript,
+	updateScript,
 	sshFailure,
 	unmountParkingScript,
 	verifyParkingScript
@@ -37,6 +39,10 @@ The runtime came up but its editor never started.
 	test("falls back to the exit code when the script said nothing", () => {
 		expect(sshFailure("", 137)).toBe("SSH command failed with exit 137.");
 		expect(sshFailure("\n  \n", 2)).toBe("SSH command failed with exit 2.");
+	});
+
+	test("removes whitespace around the last error line", () => {
+		expect(sshFailure("progress\n  failed here  \n", 1)).toBe("failed here");
 	});
 });
 
@@ -80,6 +86,13 @@ arbitrary=value
 			caddy: "unknown",
 			ide: "unknown"
 		});
+	});
+
+	test("accepts padded output and both persistence engines", () => {
+		expect(parseRuntimeInspection("  engine=overlay  \n").engine).toBe(
+			"overlay"
+		);
+		expect(parseRuntimeInspection("engine=copy\n").engine).toBe("copy");
 	});
 
 	// `df` failing still prints the key, with nothing after it. Reading that as a
@@ -157,9 +170,9 @@ describe("runtime bootstrap and repair scripts", () => {
 		runtimeImage: "ghcr.io/sloikodavid/composery@sha256:abc",
 		runtimePort: 8080
 	});
-	const repair = bootstrapScript({ ...artifacts, type: "repair" });
+	const repair = repairScript(artifacts);
 	const bootstrap = bootstrapScript(artifacts);
-	const update = bootstrapScript({ ...artifacts, type: "update" });
+	const update = updateScript(artifacts);
 
 	// Force-recreate is the entire difference between a repair and a no-op: a
 	// wedged container whose config still matches is exactly what `up -d` skips.
@@ -339,6 +352,7 @@ describe("repair parking scripts", () => {
 				"composery_data: >f+++++++++ foo\ncaddy_data: cL+++ bar\n"
 			)
 		).toEqual(["composery_data: >f+++++++++ foo", "caddy_data: cL+++ bar"]);
+		expect(parseParkingVerification("changed  \n")).toEqual(["changed"]);
 	});
 });
 
@@ -363,12 +377,15 @@ describe("the parking volume's device path", () => {
 describe("rewriting a running box", () => {
 	test("applies a configuration and waits for the editor to come back", () => {
 		const script = applyRuntimeConfigScript("COMPOSERY_DISABLE_API=1");
+		const leadingNewline = applyRuntimeConfigScript("\nA=1");
 
 		expect(script).toContain("set -euo pipefail");
 		// The env file is written through a quoted heredoc, so nothing in an
 		// owner's value is expanded by the shell on the way in.
 		expect(script).toContain("<<'__COMPOSERY_ENV__'");
 		expect(script).toContain("COMPOSERY_DISABLE_API=1");
+		expect(script).toContain("COMPOSERY_DISABLE_API=1\n__COMPOSERY_ENV__");
+		expect(leadingNewline).toContain("\nA=1\n__COMPOSERY_ENV__");
 		expect(script).toContain("--force-recreate --no-deps composery");
 		// Recreating is not the same as serving: a configuration that stops the
 		// box booting has to fail the operation, not report a clean apply.

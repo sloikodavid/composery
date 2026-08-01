@@ -271,6 +271,18 @@ export const vStaffAlertQueueStatus = v.union(
 	v.literal("queue_failed")
 );
 
+// A notice is queued per recipient in the same mutation that records the
+// recipient, so there is no state between "not recorded" and "handed to Resend".
+// Deliberately narrower than `vStaffAlertQueueStatus`: an alert can sit at
+// `disabled` or `no_recipients` waiting for configuration, whereas a notice that
+// cannot be sent is not started at all, and a row that exists is a row that was
+// attempted. A status that can never occur is a status nothing can be trusted to
+// mean.
+export const vLegalNoticeQueueStatus = v.union(
+	v.literal("queued"),
+	v.literal("queue_failed")
+);
+
 const vMetadata = v.optional(v.record(v.string(), v.any()));
 
 export default defineSchema({
@@ -586,6 +598,49 @@ export default defineSchema({
 		.index("email_id", ["email_id"])
 		.index("purge_at", ["purge_at"])
 		.index("created_at", ["created_at"]),
+
+	// A legal notice as it was actually sent. One row per entry in
+	// `lib/cloud-legal.ts`, created the first time the sweep reaches it.
+	//
+	// The text is copied in rather than read back out of the code it came from,
+	// because this is evidence: the repository can be edited, and a record that
+	// resolves its own contents through today's source can only ever say what the
+	// notice would say now. `started_at` is the recipient cutoff and the reason
+	// this row exists at all - it fixes who "every account holder" meant at the
+	// moment the send began, so a signup arriving mid-send is not half-notified.
+	legal_notices: defineTable({
+		notice_id: v.string(),
+		subject: v.string(),
+		text: v.string(),
+		started_at: v.number(),
+		// Where the walk through `users` got to. Absent once the walk is done.
+		cursor: v.optional(v.string()),
+		finished_at: v.optional(v.number()),
+		recipient_count: v.number(),
+		purge_at: v.number()
+	}).index("notice_id", ["notice_id"]),
+
+	// One row per person told, which is the only form this evidence can take. The
+	// obligation under Article 19 of Directive (EU) 2019/770 and Article 34 GDPR
+	// is owed to each customer individually, so "we mailed everybody" answers a
+	// question nobody asks: what has to be answerable is whether this person was
+	// told, when, and whether it arrived.
+	legal_notice_recipients: defineTable({
+		notice_id: v.string(),
+		user_id: v.string(),
+		email: v.string(),
+		email_id: v.optional(v.string()),
+		queue_status: vLegalNoticeQueueStatus,
+		last_email_event: v.optional(v.string()),
+		delivery_error: v.optional(v.string()),
+		created_at: v.number(),
+		purge_at: v.number()
+	})
+		.index("notice_id_user_id", ["notice_id", "user_id"])
+		.index("notice_id_queue_status", ["notice_id", "queue_status"])
+		.index("email_id", ["email_id"])
+		.index("user_id", ["user_id"])
+		.index("purge_at", ["purge_at"]),
 
 	// One row, by construction: nothing inserts a second, and every reader takes
 	// the first. It carried a `key: "global"` column and an index over it - a

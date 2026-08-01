@@ -8,6 +8,13 @@
 // "an argon2id hash, at most 512 bytes", so tightening one could only ever
 // tighten one.
 //
+// The predicates below are the shared form, and every caller uses one - the
+// constants are exported for the tests that pin them and for nothing else.
+// Importing `ARGON2ID_HASH` and `MAX_HASH_LENGTH` to write
+// `regex.test(x) || x.length > max` at the call site is how a fifth spelling
+// gets written, which is exactly what `convex/boxes/auth.ts` had done at all
+// four of its entry points.
+//
 // Every secret in this flow - the authorization code, its PKCE verifier and
 // challenge, the setup grant - is 32 random bytes or a SHA-256 digest rendered
 // as unpadded base64url, which is exactly 43 characters. That is why one

@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { action, internalMutation } from "../_generated/server";
+import { sendAccountEmail } from "../accountEmail";
 import { startBoxSuspension } from "../boxes/operations";
 import {
 	findUserByClerkId,
@@ -40,6 +41,27 @@ export const setUserSuspension = internalMutation({
 			suspended_at: args.suspended ? Date.now() : undefined,
 			updated_at: Date.now()
 		});
+
+		// Told once, when it actually changes.
+		//
+		// Gated on the previous value rather than sent unconditionally, because this
+		// mutation is idempotent by design - the console re-suspends an already
+		// suspended account without complaint, and the sweep-like retries around it
+		// mean the same call can legitimately arrive twice. An email is the one
+		// effect here that a person notices, so re-sending it turns a harmless
+		// no-op into "Composery suspended my account again".
+		//
+		// `user` is the row as it was before the patch above, which is what makes
+		// the comparison possible; nothing this email reads from it was changed.
+		if (user.suspended !== args.suspended) {
+			await sendAccountEmail(
+				ctx,
+				user,
+				args.suspended
+					? { type: "suspended", reason: args.reason?.trim() || undefined }
+					: { type: "unsuspended" }
+			);
+		}
 	}
 });
 

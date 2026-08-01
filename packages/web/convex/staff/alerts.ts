@@ -8,7 +8,12 @@ import {
 	type MutationCtx,
 	type QueryCtx
 } from "../_generated/server";
-import { alertSender, emailDeliveryTracked, resendClient } from "../email";
+import {
+	alertsSender,
+	emailDeliveryTracked,
+	emailSendersConfigured,
+	resendClient
+} from "../email";
 import { staffConsoleUrl } from "../env";
 import {
 	requireCapability,
@@ -35,7 +40,10 @@ const RETRY_BATCH = 20;
 const PURGE_BATCH = 200;
 const RECENT_ALERT_LIMIT = 50;
 const RECENT_ISSUE_LIMIT = 10;
-const STALE_DELIVERY_MS = 30 * MINUTE_MS;
+// How long an alert may go without a delivery event before the panel calls the
+// silence a problem. Exported for the test that pins that behaviour, so a
+// retune moves the test with it rather than failing it.
+export const STALE_DELIVERY_MS = 30 * MINUTE_MS;
 
 type AlertInput = {
 	key: string;
@@ -71,7 +79,7 @@ async function alertRecipients(ctx: Pick<QueryCtx, "db">) {
 }
 
 async function enqueueAlert(ctx: MutationCtx, alert: Doc<"staff_alerts">) {
-	const from = alertSender();
+	const from = alertsSender();
 	if (!from) {
 		await ctx.db.patch(alert._id, {
 			queue_status: "disabled",
@@ -169,8 +177,17 @@ function recipients(to: string | string[]) {
 	return Array.isArray(to) ? to.join(", ") : to;
 }
 
-// A delivery failure for mail that is not a staff alert - which, since this
-// deployment sends exactly two kinds, means a box owner notice (convex/ownerEmail.ts).
+// A delivery failure for mail that belongs to no row in this deployment - which
+// means a box owner notice (convex/ownerEmail.ts), the one stream that keeps no
+// record of its own.
+//
+// Reached by elimination, and that is safe only for as long as elimination is
+// exhaustive. It very nearly was not: this used to say "since this deployment
+// sends exactly two kinds", and a third kind would have inherited the sentence
+// "a box owner was not told what happened to their box" for a bounced legal
+// notice - a false statement about the wrong customer, arriving in place of a
+// true one. Every stream added since keeps a row and is matched by lookup above,
+// so the fallback narrows rather than widens.
 //
 // Owner notices carry no row of their own, on the argument that an individual
 // bounce has no action behind it: the address came from Clerk, there is no
@@ -210,6 +227,41 @@ function undeliveredNoticeAlert(
 	};
 }
 
+// What became of a legal notice, recorded against the person it was owed to.
+//
+// This is the half of the evidence that Resend owns. Queueing proves we tried;
+// only the delivery event distinguishes a customer who was informed from one who
+// was not, and for a notice given under Article 19 of Directive (EU) 2019/770 or
+// Article 34 GDPR that distinction is the whole record. So the event is written
+// to the row whatever it says, and only a failure additionally alerts.
+async function recordNoticeEvent(
+	ctx: MutationCtx,
+	recipient: Doc<"legal_notice_recipients">,
+	event: EmailEvent
+) {
+	await ctx.db.patch(recipient._id, {
+		last_email_event: event.type,
+		delivery_error: deliveryError(event)
+	});
+	if (!deliveryFailed(event.type)) return;
+
+	const complaint = event.type === "email.complained";
+	await raiseAlert(ctx, {
+		key: `legal-notice-undelivered:${recipient._id}`,
+		severity: "critical",
+		subject: complaint
+			? "A customer marked a Composery legal notice as spam"
+			: "A Composery legal notice was not delivered",
+		text: `Notice ${recipient.notice_id} was not delivered to ${recipient.email}.\n\n${
+			deliveryError(event) ?? event.type
+		}\n\n${
+			complaint
+				? "The notice arrived and the customer rejected it, so the obligation is discharged but the channel is damaged: legal notices share a verified sender domain with box owner notices, and repeated complaints degrade both. Review what was sent."
+				: "This customer has not been told, and a notice of this kind is owed to them individually rather than to the customer base in aggregate. Reaching them by another route is a manual step, and it is one somebody has to take."
+		}\n\n${staffConsoleUrl()}`
+	});
+}
+
 export const recordEmailEvent = internalMutation({
 	args: vOnEmailEventArgs,
 	handler: async (ctx, args) => {
@@ -217,23 +269,33 @@ export const recordEmailEvent = internalMutation({
 			.query("staff_alerts")
 			.withIndex("email_id", (query) => query.eq("email_id", args.id))
 			.first();
-		if (!alert) {
-			const notice = undeliveredNoticeAlert(args.id, args.event);
-			if (notice) await raiseAlert(ctx, notice);
+		if (alert) {
+			await ctx.db.patch(alert._id, {
+				last_email_event: args.event.type,
+				delivery_error: deliveryError(args.event),
+				updated_at: Date.now()
+			});
 			return;
 		}
-		await ctx.db.patch(alert._id, {
-			last_email_event: args.event.type,
-			delivery_error: deliveryError(args.event),
-			updated_at: Date.now()
-		});
+
+		const recipient = await ctx.db
+			.query("legal_notice_recipients")
+			.withIndex("email_id", (query) => query.eq("email_id", args.id))
+			.first();
+		if (recipient) {
+			await recordNoticeEvent(ctx, recipient, args.event);
+			return;
+		}
+
+		const notice = undeliveredNoticeAlert(args.id, args.event);
+		if (notice) await raiseAlert(ctx, notice);
 	}
 });
 
 export const retryPending = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		if (!alertSender()) return 0;
+		if (!alertsSender()) return 0;
 		let retried = 0;
 		for (const status of [
 			"pending",
@@ -305,7 +367,11 @@ export const health = query({
 		const now = Date.now();
 
 		return {
-			sendingConfigured: Boolean(alertSender()),
+			// Every sender, not just this module's own. Three separate variables
+			// have no implication between them, so each has to be
+			// reported on its own line or an unset one is invisible until the day it
+			// was needed - see `emailSendersConfigured`.
+			senders: emailSendersConfigured(),
 			deliveryTrackingConfigured: tracked,
 			recipientCount: (await alertRecipients(ctx)).length,
 			recentIssues: recent

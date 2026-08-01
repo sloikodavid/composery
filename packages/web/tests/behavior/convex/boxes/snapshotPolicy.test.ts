@@ -9,6 +9,8 @@ import {
 	SNAPSHOT_SCHEDULE_STAGGER_MS,
 	resolveSnapshotPolicy,
 	snapshotEvictionCount,
+	snapshotPollOutcome,
+	snapshotSizeBytes,
 	snapshotExpiry,
 	snapshotIdempotencyBucket,
 	snapshotPolicyToStored,
@@ -153,5 +155,116 @@ describe("snapshotEvictionCount", () => {
 
 	test("evicts enough snapshots to land at the cap after inserting", () => {
 		expect(snapshotEvictionCount(9, 7)).toBe(3);
+	});
+});
+
+// Well below the cap the answer is "none", not a negative number. The guard is
+// what makes that true: the arithmetic alone returns a negative count, and a
+// caller passing it to `.take()` would ask the database for a negative page.
+describe("evictions well below the cap", () => {
+	test("asks for no evictions rather than a negative count", () => {
+		expect(snapshotEvictionCount(0, 7)).toBe(0);
+		expect(snapshotEvictionCount(3, 7)).toBe(0);
+	});
+});
+
+// The capture loop's whole decision, lifted out of the workflow body where no
+// test could reach any of its four branches. A snapshot is an owner's only copy
+// of their files at a point in time, so each terminal answer here is one that
+// either keeps it or throws it away.
+describe("what the capture loop does about one Hetzner action", () => {
+	test("finishes on success", () => {
+		expect(snapshotPollOutcome({ status: "success", waitedMs: 0 })).toEqual({
+			type: "complete"
+		});
+	});
+
+	test("repeats the reason Hetzner gave for an error", () => {
+		expect(
+			snapshotPollOutcome({
+				status: "error",
+				error: "server has a running action",
+				waitedMs: 0
+			})
+		).toEqual({ type: "failed", error: "server has a running action" });
+	});
+
+	// A failure with no reason still has to say something: "no error recorded"
+	// reaching an operator as an empty string is a failure nobody can triage.
+	test("names the failure even when Hetzner gave no reason", () => {
+		expect(
+			snapshotPollOutcome({ status: "error", error: null, waitedMs: 0 })
+		).toEqual({
+			type: "failed",
+			error: "Hetzner snapshot creation failed."
+		});
+	});
+
+	test("waits while the action is still running", () => {
+		expect(snapshotPollOutcome({ status: "running", waitedMs: 0 })).toEqual({
+			type: "wait",
+			delayMs: SNAPSHOT_POLL_FAST_MS
+		});
+	});
+
+	test("backs off once the fast window has passed", () => {
+		expect(
+			snapshotPollOutcome({ status: "running", waitedMs: 5 * 60_000 })
+		).toEqual({ type: "wait", delayMs: SNAPSHOT_POLL_SLOW_MS });
+	});
+
+	test("gives up on an action still running past the deadline", () => {
+		expect(
+			snapshotPollOutcome({
+				status: "running",
+				waitedMs: SNAPSHOT_CAPTURE_DEADLINE_MS
+			})
+		).toEqual({
+			type: "failed",
+			error: "Snapshot creation did not finish before the deadline."
+		});
+	});
+
+	// Ordering, and the reason it is the order it is: an action that has already
+	// succeeded is a success however long the loop took to notice. Failing it
+	// would abandon a snapshot image that exists and bills until reconciliation
+	// finds it - and would tell the owner their snapshot failed when it did not.
+	test("honours a success that arrived after the deadline", () => {
+		expect(
+			snapshotPollOutcome({
+				status: "success",
+				waitedMs: SNAPSHOT_CAPTURE_DEADLINE_MS * 10
+			})
+		).toEqual({ type: "complete" });
+	});
+
+	test("still reports Hetzner's own error past the deadline", () => {
+		expect(
+			snapshotPollOutcome({
+				status: "error",
+				error: "quota exceeded",
+				waitedMs: SNAPSHOT_CAPTURE_DEADLINE_MS * 10
+			})
+		).toEqual({ type: "failed", error: "quota exceeded" });
+	});
+});
+
+// Hetzner reports gigabytes; the row stores bytes. The snapshot list prints it.
+describe("recording how big a snapshot is", () => {
+	test("converts gigabytes to bytes", () => {
+		expect(snapshotSizeBytes(2.5)).toBe(2_500_000_000);
+	});
+
+	test("rounds to whole bytes", () => {
+		expect(snapshotSizeBytes(1.0000000004)).toBe(1_000_000_000);
+	});
+
+	// No size yet is no size, not zero: a stored 0 renders as a snapshot that
+	// captured nothing, which is a different and alarming claim.
+	test.each([
+		["an image with no size reported", undefined],
+		["a size of zero", 0]
+	])("records nothing for %s", (_name, sizeGb) => {
+		expect(snapshotSizeBytes(sizeGb)).toBeUndefined();
 	});
 });

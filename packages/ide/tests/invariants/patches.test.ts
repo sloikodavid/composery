@@ -19,8 +19,10 @@ import { readRepoFile, repoRoot } from "../../../../tests/support/repo.ts";
 import { addedLines, applyPatch, postImageLines } from "../support/patch.ts";
 
 const PATCHES_DIR = "packages/ide/patches";
+// VS Code's own convention for stylesheets beside a module, and the path
+// release-contents.diff adds to the build's verbatim-copy list.
 const ASSETS =
-	"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets";
+	"packages/ide/overlay/lib/vscode/src/vs/code/browser/workbench/media";
 // The two small-screen gates are whole files we own, so they live in the overlay
 // rather than in a /dev/null patch. See "overlay never shadows an upstream file".
 const OVERLAY_VSCODE_SRC = "packages/ide/overlay/lib/vscode/src";
@@ -862,20 +864,19 @@ describe("adaptive favicon", () => {
 
 	// One script for every surface, so the workbench and the auth pages cannot
 	// drift into two behaviours. It lives with the pages because that is the path
-	// all three can reach; the release step that carries pages JS across is what
-	// puts it there, so pin that too.
+	// all three can reach, and upstream's release step ships that directory as
+	// templates only - *.html and *.css - so the script reaching the release at
+	// all is something release-contents.diff does. Pin that, or the page loads a
+	// 404 and nothing fails until someone opens it.
 	test("there is exactly one favicon script, and the release ships it", () => {
 		expect(
-			existsSync(
-				resolve(
-					repoRoot,
-					"packages/ide/overlay/lib/vscode/out/vs/code/browser/workbench/workbench-assets/favicon.js"
-				)
-			),
-			"a second favicon script under workbench-assets"
+			existsSync(resolve(repoRoot, `${ASSETS}/favicon.js`)),
+			"a second favicon script under the workbench media"
 		).toBe(false);
-		expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
-			'cp "$BUILD/src/browser/pages/"*.js "$BUILD/release/src/browser/pages/"'
+		expect(
+			addedLines(readRepoFile(`${PATCHES_DIR}/release-contents.diff`))
+		).toContain(
+			'rsync src/browser/pages/*.js "$RELEASE_PATH/src/browser/pages"'
 		);
 	});
 });
@@ -1129,42 +1130,136 @@ describe("persistence readiness cache", () => {
 // upstream moves under them. Whole files we own are copied over the tree
 // instead, which has no such tripwire: if upstream ever ships a file at one of
 // our overlay paths, the copy would silently replace it and the loss would look
-// exactly like nothing happening. This is that tripwire.
-describe("overlay never shadows an upstream file", () => {
-	const OVERLAY_SRC = "packages/ide/overlay/lib/vscode/src";
-	const UPSTREAM_SRC = "packages/ide/upstream/lib/vscode/src";
+// exactly like nothing happening. This is that tripwire, and it covers the whole
+// overlay - it used to guard lib/vscode/src alone, which is the half where the
+// rule was never at risk. The half it missed, src/browser/pages, is the half that
+// really does take upstream paths.
+describe("the overlay never shadows an upstream file", () => {
+	const OVERLAY = "packages/ide/overlay";
+	const UPSTREAM = "packages/ide/upstream";
 
-	function overlayFiles(dir: string, base = ""): string[] {
+	function filesUnder(dir: string, base = ""): string[] {
 		const root = resolve(repoRoot, dir);
 		if (!existsSync(root)) return [];
 		return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
 			const relative = base ? posix.join(base, entry.name) : entry.name;
 			return entry.isDirectory()
-				? overlayFiles(posix.join(dir, entry.name), relative)
+				? filesUnder(posix.join(dir, entry.name), relative)
 				: [relative];
 		});
 	}
 
-	test("every overlaid VS Code source file is one upstream does not have", () => {
-		const files = overlayFiles(OVERLAY_SRC);
+	// Paths the series deletes outright (`+++ /dev/null`). Quilt runs first, so
+	// upstream no longer owns these by the time the overlay lands and replacing
+	// them wholesale is the intended move - auth.diff removes code-server's login
+	// and error pages, and ours arrive here. Read from the patches rather than
+	// listed, so the exception cannot outlive the deletion that earns it.
+	const deletedByPatch = new Set(
+		seriesNames.flatMap((name) =>
+			[
+				...readRepoFile(`${PATCHES_DIR}/${name}`).matchAll(
+					/^--- a\/(\S+)\r?\n\+\+\+ \/dev\/null/gm
+				)
+			].map((match) => match[1]!)
+		)
+	);
+
+	test("a patch deletion is what lets an overlay file take an upstream path", () => {
+		// The set is the exception list, so an empty one would silently turn the
+		// test below into the narrower check it replaced.
+		expect(deletedByPatch).toContain("src/browser/pages/login.html");
+		expect(deletedByPatch).toContain("src/browser/pages/error.html");
+	});
+
+	// The other way an overlay file may take an upstream path, and the only one:
+	// upstream's own brand assets, replaced in place. This is what rebranding a
+	// binary means - rebrand.mjs owns every rename in the assembled tree, but it
+	// rewrites text and cannot repaint an icon, and a deletion patch is not
+	// available either, because quilt applies with GNU patch and that cannot take
+	// a git binary diff.
+	//
+	// The four PWA icons are not even a choice: vscode.ts builds the manifest's
+	// icon list by interpolating `pwa-icon-${size}.png` and `-maskable-`, so those
+	// filenames are upstream's API for our branding. Renaming ours to dodge the
+	// collision would ship code-server's icons on the installed app.
+	//
+	// Pinned as an exact set rather than a `media/**` rule: replacing an asset is
+	// intended, replacing code never is, and a wildcard would stop telling the
+	// difference the first time a .ts landed there.
+	const REPLACED_BRAND_ASSETS = [
+		"src/browser/media/favicon.ico",
+		"src/browser/media/favicon.svg",
+		"src/browser/media/pwa-icon-192.png",
+		"src/browser/media/pwa-icon-512.png",
+		"src/browser/media/pwa-icon-maskable-192.png",
+		"src/browser/media/pwa-icon-maskable-512.png"
+	];
+
+	test("every overlaid file is one upstream does not have, or one we knowingly replace", () => {
+		const files = filesUnder(OVERLAY);
 
 		// A green run here must mean the check ran, not that the tree was empty.
 		expect(files.length).toBeGreaterThan(0);
 
-		for (const file of files) {
-			expect(
-				existsSync(resolve(repoRoot, UPSTREAM_SRC, file)),
-				`${file} exists upstream - it must be a patch, not an overlay file`
-			).toBe(false);
+		const shadowed = files.filter(
+			(file) =>
+				existsSync(resolve(repoRoot, UPSTREAM, file)) &&
+				!deletedByPatch.has(file)
+		);
+
+		// Equality, not a subset: an entry that stops shadowing anything is a
+		// stale exception granting cover it no longer needs, and would hide the
+		// next real collision at that path.
+		expect(shadowed.sort()).toEqual([...REPLACED_BRAND_ASSETS].sort());
+	});
+
+	test("nothing we knowingly replace is code", () => {
+		// The exception exists because a binary cannot be patched or deleted. A
+		// text file has both routes open, so it never qualifies.
+		for (const asset of REPLACED_BRAND_ASSETS) {
+			expect(asset, `${asset} could be a patch`).toMatch(
+				/\.(png|ico|svg|woff2?)$/
+			);
 		}
 	});
 
-	test("the build copies the overlaid VS Code sources onto the tree", () => {
-		// An overlay directory nothing installs is a documented no-op: the files
-		// would read as shipped while never reaching the build.
+	test("the build installs the overlay in one unconditional mirror", () => {
+		// An overlay file nothing installs is a documented no-op: it would read as
+		// shipped while never reaching the build. One mirror of the whole tree is
+		// what makes that unrepresentable rather than merely checked - a
+		// per-subtree enumeration would silently skip whatever it forgot to name.
 		expect(readRepoFile("packages/ide/scripts/build.sh")).toContain(
-			'cp -r "$PACKAGE_ROOT/overlay/lib/vscode/src/." "$BUILD/lib/vscode/src/"'
+			'cp -r "$PACKAGE_ROOT/overlay/." "$BUILD/"'
 		);
+	});
+
+	test("nothing is copied into the built tree after the build", () => {
+		// The overlay has no timing dimension, and that is load-bearing: it is why
+		// an overlay path needs no phase attached to it and why AGENTS.md has no
+		// rule to state. Getting our files into the release is upstream's copy
+		// lists (release-contents.diff), never a step here reaching into $BUILD's
+		// output - a copy that landed at the wrong moment would be undone by the
+		// build with nothing failing.
+		const build = readRepoFile("packages/ide/scripts/build.sh");
+		const afterBuild = build.slice(build.indexOf("npm run release"));
+		expect(afterBuild).not.toMatch(/^\s*(cp|rsync|install)\s/m);
+	});
+
+	test("every workbench asset is one the page loads", () => {
+		// An asset nobody references is dead weight that still ships, and this is
+		// the only subtree whose files reach the browser without a module import
+		// to make an unused one obvious.
+		const page = addedLines(readRepoFile(`${PATCHES_DIR}/workbench-page.diff`));
+		const fonts = readRepoFile(`${ASSETS}/fonts.css`);
+		const assets = readdirSync(resolve(repoRoot, ASSETS));
+
+		expect(assets.length).toBeGreaterThan(0);
+		for (const asset of assets) {
+			expect(
+				page.includes(asset) || fonts.includes(asset),
+				`${asset} is shipped but nothing loads it`
+			).toBe(true);
+		}
 	});
 });
 

@@ -201,6 +201,7 @@ export const convertCheckoutIntentToBox = internalMutation({
 			},
 			trigger: "owner"
 		});
+		// Stryker disable next-line ConditionalExpression,StringLiteral: unreachable - the key names the box inserted two statements above, so no operation can already hold it. Kept because it is the assertion, not the handling: the alternative is returning a box nothing is building.
 		if (!operationId)
 			throw new ConvexError("Provision operation already exists.");
 

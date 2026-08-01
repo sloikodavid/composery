@@ -56,6 +56,19 @@ describe("sanitizeSlug", () => {
 	test("drops invalid characters but keeps the dashes around them", () => {
 		expect(sanitizeSlug("café-Æ-🐍-box")).toBe("caf---box");
 	});
+
+	// A grapheme is not a character here, and the difference is visible.
+	//
+	// `1️⃣` is three codepoints - DIGIT ONE, VARIATION SELECTOR-16, COMBINING
+	// ENCLOSING KEYCAP - so what the reader typed as one emoji contains a literal
+	// ASCII `1`, and a filter over `[a-z0-9-]` keeps it. That is the right
+	// behaviour: the rule is "characters a DNS label may hold", and this one may.
+	// It is pinned because it reads like a bug at a glance, and the next person to
+	// notice it should find this rather than "fix" the filter into stripping
+	// digits that arrived inside something decorative.
+	test("keeps the ASCII a decorative grapheme is built from", () => {
+		expect(sanitizeSlug("café-Æ-1️⃣-box")).toBe("caf--1-box");
+	});
 });
 
 describe("isValidSlug", () => {

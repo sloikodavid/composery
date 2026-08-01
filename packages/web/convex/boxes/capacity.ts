@@ -2,7 +2,6 @@ import type { Doc } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import { boxStatusesExcept, type BoxPlan, type BoxStatus } from "../schema";
 import { BOX_PLANS, BOX_PLAN_ORDER } from "../../lib/boxes/plan";
-import type { SnapshotPolicy } from "./snapshotPolicy";
 
 // Every status but "deleted" holds a Hetzner server, so every one of them counts
 // against the allocation.
@@ -27,11 +26,15 @@ export type CapacityLimitBlockReason = Extract<
 	"server_limit" | "snapshot_limit"
 >;
 
+// The settings capacity is a function of, and only those. It named
+// `snapshotPolicy` too, which nothing here ever read - and one caller believed
+// that name enough to admit a policy change against a before/after comparison
+// that could only ever return the same number. A policy is timing; how many
+// snapshots a box commits is its plan's `snapshotCap`.
 export type CapacityConfig = {
 	checkoutEnabled: boolean;
 	hetznerServerLimit: number | null;
 	hetznerSnapshotLimit: number | null;
-	snapshotPolicy: SnapshotPolicy;
 };
 
 export type CapacityUsage = {

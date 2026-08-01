@@ -25,9 +25,11 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 //     is fixed at volume -> server, so a resumed repair can never overwrite the
 //     parked files with an empty server.
 //
-// This is the only operation that moves a box's files. A plan change does not:
-// every box keeps one disk for its whole life, so changing plan is a provider
-// resize of the machine around that disk (see workflows/changeBoxPlan.ts).
+// This is the only operation that moves a box's files, and nothing else ever
+// needs to: a box keeps one disk for its whole life. There is no plan change to
+// move them for either - a plan is fixed at purchase, and a subscription that
+// drifts off it is reported to staff rather than acted on (see
+// `convex/billing/reconciliation.ts`).
 //
 // No pre-repair Hetzner snapshot is taken: the verified parking volume is the
 // safety net, and a snapshot would burn a per-box snapshot slot (which gates

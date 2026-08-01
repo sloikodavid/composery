@@ -253,3 +253,167 @@ describe("converting a paid checkout into a box", () => {
 		]);
 	});
 });
+
+// What a live reservation is worth at the moment the payment lands.
+//
+// An active intent already holds one server and its snapshot allowance - that
+// is what reserving means, and it is why checkout blocks when the fleet is full.
+// So a paid order against a live reservation converts whatever the fleet's
+// standing is: the capacity was taken when the customer started, and re-asking
+// for it here would refund somebody who queued correctly because somebody else
+// filled the fleet while their card cleared.
+//
+// The mirror of that is already tested above: a reservation that lapsed has
+// given the capacity back and must re-acquire it. Both sides are needed, because
+// a check that ran in either case would look right in the other's test.
+describe("a paid order against a reservation that is still live", () => {
+	test("converts even when the fleet has no room left", async () => {
+		const t = testConvex();
+		await seedSettings(t, { hetzner_server_limit: 0 });
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId, {
+			status: "active"
+		});
+
+		const result = await convert(t, intentId, "air");
+
+		expect(result.unfulfilled).toBeNull();
+		expect(result.boxId).toBeTruthy();
+	});
+
+	// Nothing is refused, so nothing is reported: an alert here would fire on
+	// every sale made while the fleet is full, which is the ordinary state of a
+	// deployment running near its ceiling.
+	test("reports nothing to staff for it", async () => {
+		const t = testConvex();
+		await seedSettings(t, { hetzner_server_limit: 0 });
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId, {
+			status: "active"
+		});
+
+		await convert(t, intentId, "air");
+
+		expect(
+			(await staffAlerts(t)).filter((alert) =>
+				alert.key.startsWith("capacity_unavailable:")
+			)
+		).toEqual([]);
+	});
+
+	// A lapsed reservation converts too when there *is* room - the payment is
+	// proof of sale, and losing the reservation is not by itself a reason to
+	// refuse somebody who paid.
+	test.each(["expired", "released"] as const)(
+		"still converts a %s reservation when there is room",
+		async (status) => {
+			const t = testConvex();
+			await seedSettings(t);
+			const owner = await seedUser(t);
+			const intentId = await seedIntent(t, owner.clerkUserId, { status });
+
+			const result = await convert(t, intentId, "air");
+
+			expect(result.unfulfilled).toBeNull();
+			expect(
+				await t.run(async (ctx) => await ctx.db.get(intentId))
+			).toMatchObject({ box_id: result.boxId });
+		}
+	);
+
+	// The box it creates is the one the sale is for, and the operation that
+	// builds it is keyed to that box so a re-delivered webhook cannot start a
+	// second provision.
+	test("starts exactly one provision for the box it creates", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId);
+
+		const { boxId } = await convert(t, intentId, "air");
+		await convert(t, intentId, "air");
+
+		expect(await boxOperations(t, boxId!)).toMatchObject([
+			{ type: "create", trigger: "owner" }
+		]);
+	});
+});
+
+// Two sales in a row.
+//
+// The provision is keyed on the box it creates, which is what stops a
+// re-delivered webhook starting a second one. The same key seen from the other
+// side has to vary: a key that had stopped naming the box would absorb the
+// second sale's provision as a repeat of the first, and that customer's box
+// would sit in "creating" with nothing building it - the worst shape of failure
+// here, because the sale succeeded and the money was taken.
+describe("each sale provisions its own box", () => {
+	test("gives two conversions two boxes, each with its own provision", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const first = await seedIntent(t, owner.clerkUserId);
+		const second = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: owner.clerkUserId,
+					slug: "second",
+					plan: "air",
+					status: "active",
+					created_at: NOW - 500,
+					updated_at: NOW - 500
+				})
+		);
+
+		const one = await convert(t, first, "air");
+		const two = await convert(t, second, "air");
+
+		expect(one.boxId).not.toBe(two.boxId);
+		expect(await boxOperations(t, one.boxId!)).toHaveLength(1);
+		expect(await boxOperations(t, two.boxId!)).toHaveLength(1);
+	});
+});
+
+// Refusing to convert what it cannot convert.
+//
+// This mutation runs off a paid order, so every refusal here is a sale that has
+// gone through with no box behind it. Each one throws rather than returning
+// quietly, because the webhook handler above turns a throw into a Polar retry -
+// and a quiet return would let Polar mark the delivery successful with nothing
+// done.
+describe("refusing to convert what it cannot convert", () => {
+	test("refuses a reservation that is no longer there", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId);
+		await t.run(async (ctx) => await ctx.db.delete(intentId));
+
+		await expect(convert(t, intentId, "air")).rejects.toThrow(
+			"Checkout intent not found."
+		);
+	});
+
+	// Records what built the box, so the box's own history names the sale it came
+	// from rather than starting at "created".
+	test("records the box's creation against the operation that runs it", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId);
+
+		const { boxId } = await convert(t, intentId, "air");
+
+		const [operation] = await boxOperations(t, boxId!);
+		const events = await t.run(
+			async (ctx) =>
+				await ctx.db
+					.query("box_events")
+					.withIndex("box_id_created_at", (query) => query.eq("box_id", boxId!))
+					.collect()
+		);
+		expect(events).toMatchObject([
+			{ type: "box.create_started", metadata: { operationId: operation._id } }
+		]);
+	});
+});

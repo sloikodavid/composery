@@ -188,7 +188,7 @@ bin/ide ide-linux.sh ide-darwin.sh ide.cmd composery-current ide@ ide.service id
 envPaths("composery", { suffix: "" }) path.join(p, "composery")
 Composery override Composery Composery Composery composery io.composery.ide
 https://github.com/sloikodavid/composery https://github.com/sloikodavid/composery https://www.composery.io
-https://www.composery.io https://www.composery.io test.composery.io composery.io sloikodavid@gmail.com
+https://www.composery.io https://www.composery.io test.composery.io composery.io support@composery.io
 Composery Composery Composery
 sed -i.bak "s/@@APPNAME@@/ide/g"
 "applicationName": "composery"

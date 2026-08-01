@@ -25,7 +25,6 @@ RUN apt-get update \
     pkg-config \
     python-is-python3 \
     quilt \
-    rsync \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 

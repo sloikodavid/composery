@@ -1,121 +1,374 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { internal } from "@/convex/_generated/api";
 import {
 	parseImageReference,
+	pickLinuxManifest,
+	registryTokenUrl,
+	resolveRelease,
 	runtimeImageManifestUrl
-} from "@/convex/boxes/infra/runtimeImages";
+} from "@/convex/boxes/infra/runtimeImageRegistry";
+import { testConvex } from "../../../../support/convex.ts";
 
-describe("parseImageReference", () => {
-	test("defaults a bare name to Docker Hub library/", () => {
-		expect(parseImageReference("nginx")).toEqual({
-			registry: "docker.io",
-			repository: "library/nginx",
-			reference: "latest"
-		});
+const DIGEST = `sha256:${"a".repeat(64)}`;
+const CONFIG = `sha256:${"c".repeat(64)}`;
+const CHILD = `sha256:${"d".repeat(64)}`;
+const challenge =
+	'Bearer realm="https://auth.test/token",service="registry.test",scope="repository:team/image:pull"';
+
+type Reply = {
+	body?: unknown;
+	digest?: string | null;
+	jsonError?: boolean;
+	status?: number;
+	wwwAuthenticate?: string;
+};
+
+function response({
+	body,
+	digest = DIGEST,
+	jsonError = false,
+	status = 200,
+	wwwAuthenticate
+}: Reply = {}) {
+	const headers = new Headers();
+	if (digest) headers.set("Docker-Content-Digest", digest);
+	if (wwwAuthenticate) headers.set("www-authenticate", wwwAuthenticate);
+	return {
+		ok: status >= 200 && status < 300,
+		status,
+		headers,
+		json: async () => {
+			if (jsonError) throw new SyntaxError("invalid JSON");
+			return body;
+		}
+	} as Response;
+}
+
+function queuedFetch(...replies: Reply[]) {
+	let nextReply = 0;
+	const fetch = vi.fn(
+		async (_input: RequestInfo | URL, _init?: RequestInit) => {
+			const reply = replies[nextReply++];
+			if (!reply)
+				throw new Error("The registry received an unexpected request.");
+			return response(reply);
+		}
+	);
+	vi.stubGlobal("fetch", fetch);
+	return fetch;
+}
+
+const configManifest = { config: { digest: CONFIG } };
+const labelledConfig = (version: unknown = "1.4.0") => ({
+	config: { Labels: { "org.opencontainers.image.version": version } }
+});
+const index = (os = "linux", architecture = "amd64") => ({
+	manifests: [{ digest: CHILD, platform: { architecture, os } }]
+});
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
+});
+
+describe("an image reference", () => {
+	test.each([
+		[
+			"a bare Docker Hub name",
+			"nginx",
+			{
+				registry: "docker.io",
+				repository: "library/nginx",
+				reference: "latest"
+			}
+		],
+		[
+			"a Docker Hub namespace",
+			"team/image:edge",
+			{ registry: "docker.io", repository: "team/image", reference: "edge" }
+		],
+		[
+			"a registry with a port",
+			"registry.test:5000/team/image:edge",
+			{
+				registry: "registry.test:5000",
+				repository: "team/image",
+				reference: "edge"
+			}
+		],
+		[
+			"localhost",
+			"localhost/image",
+			{ registry: "localhost", repository: "image", reference: "latest" }
+		],
+		[
+			"an immutable digest",
+			`ghcr.io/team/image@${DIGEST}`,
+			{ registry: "ghcr.io", repository: "team/image", reference: DIGEST }
+		]
+	] as const)("parses %s", (_name, image, expected) => {
+		expect(parseImageReference(image)).toEqual(expected);
 	});
 
-	test("defaults a missing tag to latest", () => {
-		expect(parseImageReference("user/img")).toEqual({
-			registry: "docker.io",
-			repository: "user/img",
-			reference: "latest"
-		});
-	});
-
-	test("keeps a namespaced Docker Hub name as-is", () => {
-		expect(parseImageReference("user/img:1.27")).toEqual({
-			registry: "docker.io",
-			repository: "user/img",
-			reference: "1.27"
-		});
-	});
-
-	test("detects a registry host by dot, port, or localhost", () => {
-		expect(parseImageReference("ghcr.io/owner/img:tag")).toEqual({
-			registry: "ghcr.io",
-			repository: "owner/img",
-			reference: "tag"
-		});
-		expect(parseImageReference("registry:5000/team/img:tag")).toEqual({
-			registry: "registry:5000",
-			repository: "team/img",
-			reference: "tag"
-		});
-		expect(parseImageReference("localhost:5000/img")).toEqual({
-			registry: "localhost:5000",
-			repository: "img",
-			reference: "latest"
-		});
-	});
-
-	test("treats the last colon as the tag separator, not a host port", () => {
-		const parsed = parseImageReference("registry:5000/team/img:1.27");
-		expect(parsed.registry).toBe("registry:5000");
-		expect(parsed.reference).toBe("1.27");
-	});
-
-	test("preserves nested repository paths", () => {
-		expect(parseImageReference("ghcr.io/org/team/img:v2")).toEqual({
-			registry: "ghcr.io",
-			repository: "org/team/img",
-			reference: "v2"
-		});
-	});
-
-	// Everything resolved after creation is a digest reference, so this is the
-	// path that matters most. Splitting on the last colon instead would yield the
-	// repository "composery@sha256" and the tag "abc" - a perfectly well-formed
-	// URL for an image that does not exist, so the failure would be a 404 far from
-	// its cause rather than anything that names the real problem.
-	test("splits a digest reference on the @, not the last colon", () => {
-		expect(
-			parseImageReference("ghcr.io/sloikodavid/composery@sha256:abc123")
-		).toEqual({
-			registry: "ghcr.io",
-			repository: "sloikodavid/composery",
-			reference: "sha256:abc123"
-		});
-	});
-
-	test("handles a digest on Docker Hub and on a host with a port", () => {
-		expect(parseImageReference("nginx@sha256:def")).toEqual({
-			registry: "docker.io",
-			repository: "library/nginx",
-			reference: "sha256:def"
-		});
-		expect(parseImageReference("registry:5000/team/img@sha256:def")).toEqual({
-			registry: "registry:5000",
-			repository: "team/img",
-			reference: "sha256:def"
-		});
-	});
-
-	test("does not add library/ to a non-Docker-Hub registry", () => {
-		const parsed = parseImageReference("ghcr.io/nginx");
-		expect(parsed.repository).toBe("nginx");
-		expect(parsed.registry).toBe("ghcr.io");
+	test("builds the Registry V2 manifest URL", () => {
+		expect(runtimeImageManifestUrl("nginx:edge")).toBe(
+			"https://registry-1.docker.io/v2/library/nginx/manifests/edge"
+		);
+		expect(runtimeImageManifestUrl(`ghcr.io/team/image@${DIGEST}`)).toBe(
+			`https://ghcr.io/v2/team/image/manifests/${DIGEST}`
+		);
 	});
 });
 
-describe("runtimeImageManifestUrl", () => {
-	test("builds a v2 manifest URL without mistaking host ports for tags", () => {
-		expect(runtimeImageManifestUrl("registry:5000/team/img:tag")).toBe(
-			"https://registry:5000/v2/team/img/manifests/tag"
-		);
-		expect(runtimeImageManifestUrl("nginx")).toBe(
-			"https://registry-1.docker.io/v2/library/nginx/manifests/latest"
-		);
-	});
-
-	test("addresses a digest reference by its digest", () => {
+describe("a multi-platform manifest", () => {
+	test("selects Linux deterministically and ignores malformed entries", () => {
 		expect(
-			runtimeImageManifestUrl("ghcr.io/sloikodavid/composery@sha256:abc123")
-		).toBe("https://ghcr.io/v2/sloikodavid/composery/manifests/sha256:abc123");
+			pickLinuxManifest([
+				null,
+				{ digest: DIGEST },
+				{
+					digest: "not-a-digest",
+					platform: { os: "linux", architecture: "amd64" }
+				},
+				{ digest: DIGEST, platform: { os: "windows", architecture: "amd64" } },
+				{ digest: CHILD, platform: { os: "linux", architecture: "arm64" } },
+				{ digest: DIGEST, platform: { os: "linux", architecture: "amd64" } }
+			])
+		).toBe(DIGEST);
+		expect(pickLinuxManifest(index("linux", "arm64").manifests)).toBe(CHILD);
+		expect(pickLinuxManifest(index("windows").manifests)).toBeUndefined();
+		expect(pickLinuxManifest(undefined)).toBeUndefined();
+	});
+});
+
+describe("a registry authentication challenge", () => {
+	test("preserves the realm, service, scope, and quoted equals signs", () => {
+		const url = registryTokenUrl(
+			'Bearer   realm="https://auth.test/token?seed=a=b",service="registry.test",scope="repository:team/say-\\"hi\\":pull"'
+		);
+
+		expect(url.origin + url.pathname).toBe("https://auth.test/token");
+		expect(url.searchParams.get("seed")).toBe("a=b");
+		expect(url.searchParams.get("service")).toBe("registry.test");
+		expect(url.searchParams.get("scope")).toBe('repository:team/say-"hi":pull');
 	});
 
-	test("uses Docker Hub's registry API host for Docker Hub references", () => {
-		expect(runtimeImageManifestUrl("nginx:1.27")).toBe(
-			"https://registry-1.docker.io/v2/library/nginx/manifests/1.27"
+	test("accepts unquoted parameters and omits absent parameters", () => {
+		const full = registryTokenUrl(
+			"Bearer realm=https://auth.test/token,service=registry.test,scope=repository:team/image:pull"
 		);
-		expect(parseImageReference("nginx:1.27").registry).toBe("docker.io");
+		expect(full.searchParams.get("service")).toBe("registry.test");
+		expect(full.searchParams.get("scope")).toBe("repository:team/image:pull");
+
+		const realmOnly = registryTokenUrl(
+			'Bearer realm="https://auth.test/token"'
+		);
+		expect(realmOnly.search).toBe("");
+	});
+
+	test.each([
+		[null, "Registry did not return auth challenge"],
+		[
+			'Basic realm="https://auth.test"',
+			"Registry auth challenge is not Bearer"
+		],
+		[
+			'Basic Bearer realm="https://auth.test"',
+			"Registry auth challenge is not Bearer"
+		],
+		['Bearer service="registry.test"', "Registry auth challenge missing realm"]
+	] as const)("rejects an unusable challenge", (value, message) => {
+		expect(() => registryTokenUrl(value)).toThrow(message);
+	});
+});
+
+describe("resolving a registry release", () => {
+	test("pins a tag and reads its multi-platform version label", async () => {
+		const fetch = queuedFetch(
+			{},
+			{ body: index() },
+			{ body: configManifest },
+			{ body: labelledConfig(" 1.4.0\n") }
+		);
+
+		await expect(resolveRelease("ghcr.io/team/image:edge")).resolves.toEqual({
+			image: `ghcr.io/team/image@${DIGEST}`,
+			version: "1.4.0"
+		});
+		expect(fetch).toHaveBeenCalledTimes(4);
+		expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+			"https://ghcr.io/v2/team/image/manifests/edge",
+			`https://ghcr.io/v2/team/image/manifests/${DIGEST}`,
+			`https://ghcr.io/v2/team/image/manifests/${CHILD}`,
+			`https://ghcr.io/v2/team/image/blobs/${CONFIG}`
+		]);
+		expect(fetch.mock.calls[0][1]).toMatchObject({
+			headers: expect.objectContaining({
+				Accept: expect.stringContaining(
+					"application/vnd.oci.image.index.v1+json"
+				)
+			})
+		});
+		expect(fetch.mock.calls[3][1]).toMatchObject({
+			headers: expect.objectContaining({ Accept: "*/*" })
+		});
+	});
+
+	test("does not resolve an already pinned digest again", async () => {
+		const fetch = queuedFetch(
+			{ body: configManifest },
+			{ body: labelledConfig() }
+		);
+
+		await expect(
+			resolveRelease(`ghcr.io/team/image@${DIGEST}`)
+		).resolves.toEqual({
+			image: `ghcr.io/team/image@${DIGEST}`,
+			version: "1.4.0"
+		});
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	test.each([
+		[
+			"the manifest is refused",
+			[{ status: 500, body: configManifest }, { body: labelledConfig() }]
+		],
+		["the manifest is not JSON", [{ jsonError: true }]],
+		["the manifest has the wrong shape", [{ body: { config: { digest: 7 } } }]],
+		["the index has no Linux image", [{ body: index("windows") }]],
+		[
+			"the platform manifest is refused",
+			[
+				{ body: index() },
+				{ status: 404, body: configManifest },
+				{ body: labelledConfig() }
+			]
+		],
+		[
+			"the platform manifest is malformed",
+			[{ body: index() }, { jsonError: true }]
+		],
+		["the platform manifest has no config", [{ body: index() }, { body: {} }]],
+		[
+			"the config blob is refused",
+			[{ body: configManifest }, { status: 403, body: labelledConfig() }]
+		],
+		[
+			"the config blob is malformed",
+			[{ body: configManifest }, { jsonError: true }]
+		],
+		[
+			"the config blob has no config object",
+			[{ body: configManifest }, { body: {} }]
+		],
+		[
+			"the config object has no labels",
+			[{ body: configManifest }, { body: { config: {} } }]
+		],
+		[
+			"the version label is absent",
+			[{ body: configManifest }, { body: { config: { Labels: {} } } }]
+		],
+		[
+			"the version label is blank",
+			[{ body: configManifest }, { body: labelledConfig("  ") }]
+		]
+	] as const)("keeps the digest when %s", async (_name, versionReplies) => {
+		queuedFetch({}, ...versionReplies);
+		await expect(resolveRelease("ghcr.io/team/image:edge")).resolves.toEqual({
+			image: `ghcr.io/team/image@${DIGEST}`,
+			version: null
+		});
+	});
+
+	test.each([
+		[{ status: 404 }, "Unable to resolve runtime image digest: 404"],
+		[{ digest: null }, "Registry returned an invalid Docker-Content-Digest"],
+		[
+			{ digest: "sha256:not-a-digest" },
+			"Registry returned an invalid Docker-Content-Digest"
+		]
+	] as const)("rejects a tag it cannot pin", async (reply, message) => {
+		queuedFetch(reply);
+		await expect(resolveRelease("ghcr.io/team/image:edge")).rejects.toThrow(
+			message
+		);
+	});
+
+	test("authenticates each registry walk and accepts access_token", async () => {
+		const fetch = queuedFetch(
+			{ status: 401, wwwAuthenticate: challenge },
+			{ body: { access_token: "issued" }, digest: null },
+			{},
+			{ status: 401, wwwAuthenticate: challenge },
+			{ body: { access_token: "issued" }, digest: null },
+			{ body: configManifest },
+			{ body: labelledConfig() }
+		);
+
+		await expect(resolveRelease("ghcr.io/team/image:edge")).resolves.toEqual({
+			image: `ghcr.io/team/image@${DIGEST}`,
+			version: "1.4.0"
+		});
+		expect(fetch.mock.calls[2][1]).toMatchObject({
+			headers: expect.objectContaining({ Authorization: "Bearer issued" })
+		});
+		expect(fetch.mock.calls[6][1]).toMatchObject({
+			headers: expect.objectContaining({ Authorization: "Bearer issued" })
+		});
+	});
+
+	test.each([
+		[
+			[{ status: 401, wwwAuthenticate: challenge }, { status: 403 }],
+			"Unable to fetch registry auth token"
+		],
+		[
+			[{ status: 401, wwwAuthenticate: challenge }, { body: {} }],
+			"Registry token response did not contain a token"
+		],
+		[
+			[
+				{ status: 401, wwwAuthenticate: challenge },
+				{ jsonError: true, digest: null }
+			],
+			"Invalid registry token response"
+		]
+	] as const)(
+		"rejects an unusable token response",
+		async (replies, message) => {
+			queuedFetch(...replies);
+			await expect(resolveRelease("ghcr.io/team/image:edge")).rejects.toThrow(
+				message
+			);
+		}
+	);
+});
+
+describe("the Convex registry actions", () => {
+	test("resolve an explicit image and the configured channel", async () => {
+		vi.stubEnv("RUNTIME_IMAGE", "ghcr.io/team/image:edge");
+		queuedFetch(
+			{},
+			{ body: configManifest },
+			{ body: labelledConfig() },
+			{},
+			{ body: configManifest },
+			{ body: labelledConfig() }
+		);
+		const t = testConvex();
+
+		await expect(
+			t.action(internal.boxes.infra.runtimeImages.resolveRuntimeRelease, {
+				image: "ghcr.io/team/image:edge"
+			})
+		).resolves.toMatchObject({ image: `ghcr.io/team/image@${DIGEST}` });
+		await expect(
+			t.action(
+				internal.boxes.infra.runtimeImages.resolveConfiguredRuntimeRelease,
+				{}
+			)
+		).resolves.toMatchObject({ image: `ghcr.io/team/image@${DIGEST}` });
 	});
 });

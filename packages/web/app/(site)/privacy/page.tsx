@@ -67,12 +67,12 @@ export default function PrivacyPage() {
 					(application backend), Polar (merchant of record and billing), Hetzner
 					(European cloud infrastructure and snapshots), Cloudflare (DNS and
 					network services), Vercel (website hosting and cookieless
-					measurements), Resend (security and operational alerts, and service
-					notices about your own boxes), and Have I Been Pwned (k-anonymous
-					password checks). These providers process data under their own terms
-					and/or our processor agreements. Where data leaves the EEA or UK, we
-					rely on an adequacy decision or appropriate contractual safeguards
-					supplied by the provider.
+					measurements), Resend (security and operational alerts, service
+					notices about your own boxes, and legal notices about your account),
+					and Have I Been Pwned (k-anonymous password checks). These providers
+					process data under their own terms and/or our processor agreements.
+					Where data leaves the EEA or UK, we rely on an adequacy decision or
+					appropriate contractual safeguards supplied by the provider.
 				</p>
 			</LegalSection>
 			<LegalSection title="Retention and deletion">
@@ -101,6 +101,15 @@ export default function PrivacyPage() {
 					<li>
 						Staff-only operational alert records, including their delivery state
 						and incident context, are removed after 180 days.
+					</li>
+					<li>
+						When we send you a legal notice - a change to these documents or the
+						service, or a personal data breach - we keep a record of which
+						notice, the address it was sent to, when, and whether it was
+						delivered, for six years. That record is how we show a notice we
+						were required to give you was actually given. Deleting your account
+						replaces the address in it with a non-identifying value and keeps
+						the rest.
 					</li>
 					<li>
 						Deleting your account immediately revokes its subscriptions and
@@ -133,9 +142,11 @@ export default function PrivacyPage() {
 						Cookie Notice
 					</Link>
 					. We will update this notice when our processing changes and show the
-					new date above. Material changes affecting an active account will be
-					brought to your attention through the service or by email where
-					appropriate.
+					new date above. Where a change materially affects an active account we
+					will email you about it rather than rely on you re-reading this page.
+					If a personal data breach is likely to result in a high risk to your
+					rights and freedoms, we will contact you directly and without undue
+					delay.
 				</p>
 			</LegalSection>
 		</LegalPage>

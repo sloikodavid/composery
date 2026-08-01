@@ -6,6 +6,7 @@ import {
 	deletedBoxDataPatch,
 	deletedBoxPurgeAt,
 	retainedOperationMetadata,
+	suspensionReason,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
 } from "@/convex/boxes/retention";
@@ -90,5 +91,40 @@ describe("box retention", () => {
 			polar_checkout_url: undefined,
 			runtime_auth_hash: undefined
 		});
+	});
+});
+
+// A suspension reason reaches an owner's inbox, so a value that is not usable
+// prose has to be nothing rather than something that renders as an empty line
+// where an explanation should be.
+describe("the reason a suspension records", () => {
+	test("keeps a real reason", () => {
+		expect(suspensionReason({ reason: "Sustained egress" })).toBe(
+			"Sustained egress"
+		);
+	});
+
+	test.each([
+		["no metadata at all", undefined],
+		["metadata with no reason", {}],
+		["a reason that is only whitespace", { reason: "   " }],
+		["an empty reason", { reason: "" }],
+		["a reason that is not a string", { reason: { text: "nope" } }]
+	])("has nothing to say for %s", (_name, metadata) => {
+		expect(suspensionReason(metadata)).toBeUndefined();
+	});
+});
+
+describe("what a deleted box's operations keep", () => {
+	test("keeps nothing from an operation that is not a suspension", () => {
+		expect(
+			retainedOperationMetadata("change_slug", { reason: "Sustained egress" })
+		).toBeUndefined();
+	});
+
+	test("keeps nothing when a suspension recorded no usable reason", () => {
+		expect(
+			retainedOperationMetadata("suspend", { reason: "  " })
+		).toBeUndefined();
 	});
 });

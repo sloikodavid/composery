@@ -263,7 +263,7 @@ export const alertRepairsExhausted = internalMutation({
 			key: `auto-repair-exhausted:${args.boxId}:${window}`,
 			severity: "critical",
 			subject: `Box ${box.slug} is down and automatic repair has given up`,
-			text: `Box ${box.slug} (${box._id}) has failed ${args.consecutiveFailures} consecutive health probes and has already been repaired automatically ${MAX_AUTO_REPAIRS_PER_WINDOW} times in the last 24 hours, which is the limit.\n\nNothing further will be attempted automatically. A box needing this many repairs in a day is either being broken deliberately by its owner or has a problem repair does not fix, so it needs a person: check the box's recent operations and repair history, then repair it by hand if that is the right call.\n\n${staffConsoleUrl(consoleBoxPath(box._id))}`
+			text: `Box ${box.slug} (${box._id}) has failed ${args.consecutiveFailures} consecutive health probes and has already been repaired automatically ${MAX_AUTO_REPAIRS_PER_WINDOW} times in the last ${AUTO_REPAIR_WINDOW_MS / HOUR_MS} hours, which is the limit.\n\nNothing further will be attempted automatically. A box needing this many repairs in a day is either being broken deliberately by its owner or has a problem repair does not fix, so it needs a person: check the box's recent operations and repair history, then repair it by hand if that is the right call.\n\n${staffConsoleUrl(consoleBoxPath(box._id))}`
 		});
 	}
 });
@@ -277,26 +277,26 @@ export const alertRepairsExhausted = internalMutation({
 export const sweepBoxHealth = internalAction({
 	args: {},
 	handler: async (ctx) => {
-		const boxes: { boxId: Id<"boxes">; slug: string }[] = await ctx.runQuery(
+		const boxIds: Id<"boxes">[] = await ctx.runQuery(
 			internal.boxes.autoRepair.sweptBoxes,
 			{}
 		);
 
-		for (const box of boxes) {
+		for (const boxId of boxIds) {
 			try {
 				const { reachable } = await ctx.runAction(
 					internal.boxes.health.probeRuntime,
-					{ boxId: box.boxId }
+					{ boxId }
 				);
 				await ctx.runMutation(internal.boxes.autoRepair.recordProbe, {
-					boxId: box.boxId,
+					boxId,
 					reachable
 				});
 				if (reachable) continue;
 
 				const facts = await ctx.runQuery(
 					internal.boxes.autoRepair.autoRepairFacts,
-					{ boxId: box.boxId }
+					{ boxId }
 				);
 				if (!facts) continue;
 
@@ -305,25 +305,25 @@ export const sweepBoxHealth = internalAction({
 					if (decision.reason === "attempt_limit_reached") {
 						await ctx.runMutation(
 							internal.boxes.autoRepair.alertRepairsExhausted,
-							{
-								boxId: box.boxId,
-								consecutiveFailures: facts.consecutiveFailures
-							}
+							{ boxId, consecutiveFailures: facts.consecutiveFailures }
 						);
 					}
 					continue;
 				}
 
-				await startBoxOperation(ctx, box.boxId, "repair", {
+				await startBoxOperation(ctx, boxId, "repair", {
 					// Deliberately not keyed by time: while an automatic repair is still
 					// in flight this key deduplicates the next sweep's attempt, and once
 					// it settles a later sweep may try again - bounded by the window
 					// count rather than by the key.
-					idempotencyKey: `auto-repair:${box.boxId}`,
+					idempotencyKey: `auto-repair:${boxId}`,
 					metadata: {
 						reason: `Unreachable for ${facts.consecutiveFailures} consecutive health checks.`
 					},
-					trigger: "system:auto_repair"
+					// The constant, not the literal: `autoRepairFacts` counts a box's
+					// automatic repairs by matching this exact string, so a second spelling
+					// is an attempt limit that stops counting.
+					trigger: AUTO_REPAIR_TRIGGER
 				});
 			} catch {
 				// Busy, no longer eligible, or a probe that threw. All are normal and
@@ -336,16 +336,14 @@ export const sweepBoxHealth = internalAction({
 export const sweptBoxes = internalQuery({
 	args: {},
 	handler: async (ctx) => {
-		const boxes: { boxId: Id<"boxes">; slug: string }[] = [];
+		const boxIds: Id<"boxes">[] = [];
 		for (const status of SWEPT_STATUSES) {
 			const page = await ctx.db
 				.query("boxes")
 				.withIndex("status", (query) => query.eq("status", status))
 				.collect();
-			for (const box of page) {
-				boxes.push({ boxId: box._id, slug: box.slug });
-			}
+			for (const box of page) boxIds.push(box._id);
 		}
-		return boxes;
+		return boxIds;
 	}
 });

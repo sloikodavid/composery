@@ -4,20 +4,21 @@ coverage/
 vendor/
 tmp/
 pnpm-lock.yaml
+whitelist.jsonc
 # Ours, but not written for this repo's formatter. Every file here is copied
 # into someone else's tree and has to read like its neighbours, so formatting
 # them to this repo's style would rewrite them into a style unlike every file
 # around them.
 #
 # overlay/lib/vscode/ lands inside VS Code's tree, whose wrapping prettier does
-# not reproduce, so it stays unformatted; the compiler covers what it can - see
-# the overlay pass in packages/ide/scripts/types.mjs.
+# not reproduce, so it stays unformatted; the compiler covers what it can - see the overlay pass in
+# packages/ide/scripts/types.mjs.
 #
-# overlay/src/ lands in code-server's src/, and that style is a prettier config
-# we can simply adopt: the `packages/ide/overlay/src/**` override in
-# package.json is upstream's own .prettierrc.yaml, so `check:format` enforces it
-# rather than an exclusion asserting a rule nothing checked. Half that tree had
-# drifted to tabs and semicolons while this comment claimed otherwise.
+# overlay/src/ lands in code-server's src/, and that style is a prettier
+# config we can simply adopt: the `packages/ide/overlay/src/**` override
+# in package.json is upstream's own .prettierrc.yaml, so `check:format` enforces
+# it rather than an exclusion asserting a rule nothing checked. Half that tree
+# had drifted to tabs and semicolons while this comment claimed otherwise.
 packages/ide/overlay/lib/vscode/
 packages/ide/overlay/src/browser/media/
 packages/ide/upstream/

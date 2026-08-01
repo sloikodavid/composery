@@ -30,9 +30,59 @@ const COMPONENTS = [polar, resend, workflow];
 
 export type Harness = TestConvex<typeof schema>;
 
+// Why `convex/boxes/workflows/*` have no behaviour tests, established by
+// measurement rather than assumed.
+//
+// A workflow really does start here - `startOperation` hands one to the
+// component, driving the clock runs it, and its failure is recorded correctly.
+// What it cannot do is take a step: every step is an action, and an action
+// invoked through the workflow component's workpool runs in a context with no
+// `process`, so it settles as failed with "process is not defined".
+//
+// Established by controlled experiment rather than inferred. In one test the
+// *same* action was called both ways: `t.action(...)` succeeded, and the
+// workpool's invocation of it failed with that error. It is not our
+// `requiredEnv` - replacing the action with one that does nothing at all fails
+// identically - and `vi.stubGlobal("process", process)` does not reach it. So it
+// is the component's runner, and no arrangement of test code routes around it.
+//
+// So a workflow body can be observed failing but never succeeding, which is
+// worth no test. What is testable is what the bodies decide, and those have been
+// lifted out into modules the bodies call - `snapshotPollOutcome`,
+// `parkingVerificationFailure`, `runtimeArtifactsForBox`, `dnsRecordAction`.
+// Delete this note when the component's runner exposes `process`.
+//
+// Two more things this harness cannot distinguish, recorded so the next person
+// reading a mutation report does not re-derive them.
+//
+// `.order("desc")` is one of them: convex-test decides direction with
+// `order === "asc" ? 1 : -1`, so every value that is not exactly `"asc"` sorts
+// descending. A mutant that rewrites `"desc"` to `""` therefore behaves
+// identically and no test can kill it. The same goes for the table name inside
+// `v.id("box_snapshots")` - nothing here checks which table an id came from, so
+// emptying that string changes nothing either. Both are real code doing real
+// work; they are simply invisible to this harness.
 export function testConvex(): Harness {
-	const t = convexTest(schema, modules);
-	for (const component of COMPONENTS) component.register(t);
+	return registerComponents(convexTest(schema, modules));
+}
+
+// The same harness with the schema's validators switched off, which is exactly
+// how `convex/boxes/rename.ts` is run: its whole job is to rewrite values the
+// current unions no longer contain, so the deployment is pushed with
+// `schemaValidation: false`, the migration runs, and validation goes back on -
+// that final push being the check that it finished.
+//
+// A validated harness cannot even seed the rows that migration exists for, so a
+// test using one can only ever assert that it leaves current values alone. This
+// is confined to migrations for that reason: everywhere else the schema is the
+// thing under test, and a harness that stopped enforcing it would let a test
+// pass on a row the deployment would reject.
+export function unvalidatedTestConvex(): Harness {
+	return registerComponents(convexTest(undefined, modules)) as Harness;
+}
+
+function registerComponents<T extends { run: unknown }>(t: T) {
+	for (const component of COMPONENTS) component.register(t as never);
 	return t;
 }
 

@@ -75,7 +75,12 @@ const NOT_IN_THE_CHECKOUT = new Set([
 	// Written by cargo-mutants during the nightly run.
 	"packages/cli/mutants.out",
 	// Created by the operator from .env.example.next.dev; gitignored by design.
-	"packages/web/.env.local"
+	"packages/web/.env.local",
+	// A path on a running Composery, joined onto a temp directory by the
+	// persistence crate's own tests. It names nothing in this checkout and never
+	// will - `persistence` is a directory here as well, which is the only reason
+	// the sweep looks at it at all.
+	"persistence/config.json"
 ]);
 
 const files = tracked.filter(
@@ -106,15 +111,7 @@ for (const file of tracked) {
 // are legitimate, so a reference counts as live if it resolves against any of
 // them, or against the submodule and node_modules that git does not track.
 function resolves(path: string, from: string): boolean {
-	const bases = [""];
-	let dir = posix.dirname(from);
-	while (dir && dir !== ".") {
-		bases.push(`${dir}/`);
-		dir = posix.dirname(dir);
-	}
-	if (WEB.test(from)) bases.push(WEB_BASE);
-
-	return bases.some((base) => {
+	return bases(from).some((base) => {
 		const candidate = normalize(base + path)
 			.split("\\")
 			.join("/");
@@ -129,12 +126,38 @@ function resolves(path: string, from: string): boolean {
 	});
 }
 
+// Every directory a path could be written relative to: the repository root, the
+// file's own directory and each of its ancestors, and - inside the web package -
+// that package's root. The same list `resolves` walks, so "read" and "resolves"
+// can never disagree about what a path was measured against.
+function bases(file: string): string[] {
+	const found = [""];
+	let dir = posix.dirname(file);
+	while (dir && dir !== ".") {
+		found.push(`${dir}/`);
+		dir = posix.dirname(dir);
+	}
+	if (WEB.test(file)) found.push(WEB_BASE);
+	return found;
+}
+
 // Which roots a given file is allowed to name, which is the whole of what makes
 // a bare `lib/openapi.ts` meaningful in one place and meaningless in another.
+//
+// The third clause is the one with a history. A comment in
+// `convex/boxes/workflows/repairBox.ts` pointed at `workflows/changeBoxPlan.ts`,
+// a file - and a feature - that has never existed, and this sweep did not read
+// it: `workflows` is not a top-level root and not one of the web package's, so
+// the path was discarded before anything tried to resolve it. Every directory
+// name in the repository is a root somebody writes relative to, and enumerating
+// them is the list that falls behind. So a first segment that names a real
+// directory beside the file, or beside any of its ancestors, is read too - which
+// is exactly the condition under which a reader would have followed it.
 function reads(file: string, path: string): boolean {
 	if (IDE.test(file)) return ROOTS.has(path.split("/")[0] ?? "");
 	const root = path.split("/")[0] ?? "";
-	return ROOTS.has(root) || (WEB.test(file) && WEB_ROOTS.has(root));
+	if (ROOTS.has(root) || (WEB.test(file) && WEB_ROOTS.has(root))) return true;
+	return bases(file).some((base) => trackedDirs.has(`${base}${root}`));
 }
 
 const dangling = files.flatMap((file) =>

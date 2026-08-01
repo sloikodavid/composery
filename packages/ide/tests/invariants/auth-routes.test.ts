@@ -5,11 +5,22 @@ import { describe, expect, test } from "vitest";
 import { readRepoFile, repoRoot } from "../../../../tests/support/repo.ts";
 import { addedLines } from "../support/patch.ts";
 
-// Overlay route files compile with the upstream IDE tsconfig, so they cannot be
-// imported here (see tests/support and the overlay typecheck script); their
-// behavior is exercised by the smoke. These tests pin the security wiring of
-// the register / change-password flows at the source level so a refactor
-// cannot silently drop it.
+// What is left of the auth flows once the routes themselves are run rather than
+// read. Every remaining check is one no running module can make:
+//
+//   - the text of `auth.diff`, because a patch can only ever be read - login and
+//     the workbench command live inside it;
+//   - agreements between this package and packages/web, where neither side's own
+//     tests can load the other's copy;
+//   - facts about the tree as a whole, like every auth link staying relative to
+//     a mount this server cannot know.
+//
+// Everything that used to be a `toContain` over a route's own source has moved
+// next door to packages/ide/tests/behavior/src/node/routes/, which drives the
+// shipped module through the overlay loader
+// (packages/ide/tests/support/overlay.ts). Anything added here that a test could
+// instead run belongs there: a grep over code that could have executed is the
+// one shape that cannot fail for the right reason.
 
 const register = readRepoFile(
 	"packages/ide/overlay/src/node/routes/register.ts"
@@ -79,64 +90,26 @@ describe("auth page navigation", () => {
 	});
 });
 
-describe("register route", () => {
-	test("rejects cross-origin POSTs (drive-by workspace claim)", () => {
-		expect(register).toContain('router.post("/", ensureOrigin,');
-	});
-
-	test("refuses to run once a password is managed or configured", () => {
-		const guard = register.indexOf(
-			"isEnvPasswordManaged(req.args) || hasPassword(req.args)"
-		);
-		const post = register.indexOf('router.post("/"');
-		expect(guard).toBeGreaterThanOrEqual(0);
-		expect(post).toBeGreaterThan(guard);
-	});
-
-	test("only a cloud setup grant may bypass the configured-password guard", () => {
-		const grantBypass = register.indexOf(
-			"cloudConfig && hasCloudSetupGrant(req)"
-		);
-		const guard = register.indexOf(
-			"isEnvPasswordManaged(req.args) || hasPassword(req.args)"
-		);
-		expect(grantBypass).toBeGreaterThanOrEqual(0);
-		expect(grantBypass).toBeLessThan(guard);
-		// Overwriting an existing password is the cloud change/recovery flow;
-		// self-hosted registration must never overwrite.
-		expect(register).toContain("allowExisting: !!cloudConfig");
-	});
-
-	test("a grant cannot write a password the environment already outranks", () => {
-		// Cloud owners control their host, so COMPOSERY_PASSWORD on a cloud
-		// instance is reachable. It wins at every restart, so the grant flow has to
-		// say so rather than store a password that silently stops working.
-		const grantBypass = register.indexOf(
-			"cloudConfig && hasCloudSetupGrant(req)"
-		);
-		const envGuard = register.indexOf('error: "env-managed"');
-		expect(envGuard).toBeGreaterThan(grantBypass);
-		// ...and inside the grant branch, before the handler can write.
-		expect(envGuard).toBeLessThan(register.indexOf('router.get("/"'));
-		// That the login page can render the code this sends it is no longer a
-		// fact about this route: `every code that is sent can be rendered by the
-		// page it is sent to` proves it for every redirect in the tree.
-	});
-});
+// The register route is run rather than read, in
+// packages/ide/tests/behavior/src/node/routes/register.test.ts: that it refuses
+// once a password exists, that only a setup grant may pass that guard, that the
+// environment still outranks the grant, and that `ensureOrigin` stands in front
+// of the claim. Each of those was checked by breaking it and watching a test
+// fail, which is what a `toContain` over the same code could never do.
 
 describe("change-password route", () => {
-	test("rejects cross-origin POSTs", () => {
-		expect(changePassword).toContain('router.post("/", ensureOrigin,');
-	});
-
-	test("cloud instances change their password on the same terms as self-hosted", () => {
-		// Holding the password must never require a Composery website
-		// account: someone handed the password can rotate it. The grant flow
-		// stays the recovery path for a password you cannot produce, offered as
-		// a link rather than forced on everyone who wants to change one.
-		expect(changePassword).not.toContain(
-			'redirect(req, res, "_composery/cloud/authorize"'
-		);
+	// What this route does is run rather than read, in
+	// packages/ide/tests/behavior/src/node/routes/changePassword.test.ts: that a
+	// cloud instance changes its password on the same terms as a self-hosted
+	// one, that the website is told before anything is written locally, that a
+	// wrong guess costs a token and a right one does not, and that `ensureOrigin`
+	// stands in front of both POSTs. What is left here is the part no single
+	// module can show - that the budget being spent is *login's*, which lives in
+	// a patch, and that only one of it exists.
+	test("the recovery link is offered from the page, not forced on the route", () => {
+		// Holding the password must never require a Composery website account:
+		// someone handed the password can rotate it. The grant flow stays the
+		// recovery path for a password you cannot produce.
 		expect(
 			readRepoFile("packages/ide/overlay/src/node/routes/authPage.ts")
 		).toContain(
@@ -144,20 +117,11 @@ describe("change-password route", () => {
 		);
 	});
 
-	test("records the change with the website before writing it locally", () => {
-		// Convex is the source of truth across rebuilds (bootstrapBox re-renders
-		// the env file from it), so a local-only change would be restored on the
-		// next bootstrap. Failing that call must abort the write, not follow it.
-		const sync = changePassword.indexOf("changeCloudPassword(");
-		const write = changePassword.indexOf("writeHashedPassword(req.args");
-		expect(sync).toBeGreaterThanOrEqual(0);
-		expect(write).toBeGreaterThan(sync);
-	});
-
 	test("guessing here spends login's own per-source budget", () => {
 		// /change-password/verify answers the same question as /login, so a
 		// limiter of its own would just be a way around login's. One shared
-		// instance, keyed the same way, is what makes that impossible.
+		// instance, keyed the same way, is what makes that impossible - and
+		// login lives in a patch, which can only ever be read.
 		const login = addedLines(readRepoFile("packages/ide/patches/auth.diff"));
 		for (const source of [changePassword, login]) {
 			expect(source).toContain(
@@ -166,66 +130,22 @@ describe("change-password route", () => {
 			expect(source).toContain("loginRateLimit.canTry(source)");
 			expect(source).toContain("loginRateLimit.recordFailure(source)");
 		}
-		// ...only one instance exists to share...
+		// ...and only one instance exists to share.
 		expect(
 			readRepoFile("packages/ide/overlay/src/node/routes/loginRateLimit.ts")
 		).toContain("export const loginRateLimit = new LoginRateLimit()");
 		expect(changePassword).not.toMatch(/new\s+\w*(?:RateLimit|Limiter)/);
-		// ...and both places that will answer "is this the password?" spend it:
-		// the /verify step the page calls, and the submit that follows.
-		for (const call of ["canTry(source)", "recordFailure(source)"]) {
-			expect(
-				changePassword.split(`loginRateLimit.${call}`).length - 1,
-				call
-			).toBe(2);
-		}
-
-		const canTry = changePassword.indexOf("loginRateLimit.canTry(source)");
-		const validate = changePassword.indexOf(
-			"isPasswordValid(req.args, currentPassword)"
-		);
-		expect(canTry).toBeGreaterThanOrEqual(0);
-		expect(validate).toBeGreaterThan(canTry);
 	});
 
-	test("failed current-password checks consume a rate-limit token", () => {
-		const validate = changePassword.indexOf(
-			"isPasswordValid(req.args, currentPassword)"
-		);
-		const removeToken = changePassword.indexOf(
-			"loginRateLimit.recordFailure(source)"
-		);
-		const incorrectRedirect = changePassword.indexOf(
-			'error: "incorrect-current"'
-		);
-		expect(removeToken).toBeGreaterThan(validate);
-		expect(incorrectRedirect).toBeGreaterThan(removeToken);
-	});
-
-	test("self-hosted writes require the validated current password first", () => {
-		const validate = changePassword.indexOf(
-			"isPasswordValid(req.args, currentPassword)"
-		);
-		const write = changePassword.indexOf("writeHashedPassword(req.args,");
-		expect(validate).toBeGreaterThanOrEqual(0);
-		expect(write).toBeGreaterThan(validate);
-	});
-
-	test("a cloud instance changes its password here, not only through the website", () => {
+	test("the workbench asks the same question the route does", () => {
 		// The website renders COMPOSERY_HASHED_PASSWORD into every cloud
 		// instance's env file, so a rule of "the environment owns the password"
-		// locked the change and recovery flows out of every one that had a
-		// password. It does not:
-		// the change is recorded in Convex first, and the reconcile carries it
-		// back into that same variable.
-		const passwordConfig = readRepoFile(
-			"packages/ide/overlay/src/node/routes/passwordConfig.ts"
-		);
-		expect(passwordConfig).toContain(
-			"!!args.usingEnvPassword || !!(args.usingEnvHashedPassword && !cloudConfig)"
-		);
-		// One predicate, so the page link, the route guard and the workbench
-		// command cannot disagree about whether the password can be changed.
+		// would lock the change and recovery flows out of every cloud instance
+		// that had one. That `isEnvPasswordManaged` says otherwise is run in
+		// packages/ide/tests/behavior/src/node/routes/passwordConfig.test.ts;
+		// what is pinned here is that the workbench command reads the same
+		// predicate rather than a second copy of the rule, because that half
+		// lives in a patch.
 		expect(
 			addedLines(readRepoFile("packages/ide/patches/auth.diff"))
 		).toContain(
@@ -293,20 +213,16 @@ describe("signed sessions", () => {
 		);
 	});
 
-	test("Composery session and password capabilities cannot be interchanged", () => {
-		expect(cloudAuth).toContain("body.type !== transaction.type");
-		expect(cloudAuth).toContain('transaction.type === "session"');
-		expect(readRepoFile("packages/web/convex/boxes/auth.ts")).toContain(
-			"code.type !== args.type"
-		);
-	});
+	// That the two capabilities cannot be interchanged is no longer read at all:
+	// both ends run it. The instance refuses a grant of the kind it did not ask
+	// for in
+	// packages/ide/tests/behavior/src/node/routes/cloudAuth.test.ts, and the
+	// website refuses to issue one in
+	// packages/web/tests/behavior/convex/boxes/auth.test.ts.
 });
 
 describe("disabled authentication", () => {
 	const disableAuth = readRepoFile("packages/ide/patches/auth.diff");
-	const cloudAuth = readRepoFile(
-		"packages/ide/overlay/src/node/routes/cloudAuth.ts"
-	);
 
 	test("only an explicit 1/true unprotects the instance", () => {
 		// Every other value, typos included, has to leave sign-in required: a
@@ -348,9 +264,7 @@ describe("disabled authentication", () => {
 		expect(disableAuth).toContain('args.password || args["hashed-password"]');
 	});
 
-	test("the cloud grant flow stops when sign-in does", () => {
-		// Its only job is setting the password; with sign-in off it would
-		// pass the ownership check, report success, and gate nothing.
-		expect(cloudAuth).toContain("req.args.auth !== AuthType.Password");
-	});
+	// That the cloud flows stop here too - with sign-in off their only job would
+	// be to report a success that gates nothing - is run in
+	// packages/ide/tests/behavior/src/node/routes/cloudAuth.test.ts.
 });

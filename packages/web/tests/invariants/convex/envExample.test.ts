@@ -69,4 +69,20 @@ describe("Convex environment example checklist", () => {
 		}
 		expect(offenders).toEqual([]);
 	});
+
+	// Convex performs the real declaration validation, but its config cannot be
+	// imported outside the Convex analyzer: the component config entry points
+	// throw when their runtime-only metadata is absent. This extraction is the
+	// unavoidable pin between the registry and that external tool boundary.
+	test("convex.config.ts gives the registry to the deploy validator", () => {
+		const source = readFileSync(join(convexDir, "convex.config.ts"), "utf8");
+		const imported =
+			/import \{ (\w+) \} from "\.\/env";/.exec(source)?.[1] ?? null;
+		const declared = /defineApp\(\{ env: (\w+) \}\)/.exec(source)?.[1] ?? null;
+
+		expect({ imported, declared }).toEqual({
+			imported: "CONVEX_ENV",
+			declared: "CONVEX_ENV"
+		});
+	});
 });

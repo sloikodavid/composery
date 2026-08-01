@@ -154,15 +154,30 @@ export const ICON_XML = iconSvg();
 
 // --- Identity --------------------------------------------------------------
 
+// Marketing site. The hosted cloud's own domains are env-driven at runtime
+// (CLOUD_DOMAIN / WEBSITE_ORIGIN, see packages/web/convex/env.ts); these are the
+// build-time defaults for static site copy and links.
+export const WEBSITE_DOMAIN = "composery.io";
+export const WEBSITE_ORIGIN = "https://www.composery.io";
+
 // The legal person behind Composery Cloud. Shown on the Terms and Privacy pages
 // and used as the merchant/support identity. The address is a legal requirement
 // for the terms; swap all four fields to re-owner the hosted service.
+//
+// The email is a role address on the marketing domain, not a person's mailbox,
+// and that is deliberate rather than cosmetic. It is printed on the Terms and
+// the Privacy Policy as the address for exercising a data-subject right, it is
+// the `Reply-To` on every customer email, and it is the security contact the IDE
+// ships (see packages/ide/scripts/rebrand.mjs). All three outlive whoever reads
+// them today, so none of them may name an individual's inbox. Where it is
+// delivered is a DNS concern and is configured, not committed - see
+// docs/developing/web/services/cloudflare.md, "Support mail".
 export const OWNER = {
 	legalName: "David Sloiko",
 	tradingName: "Composery",
 	jurisdiction: "Ireland",
 	address: "20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland",
-	email: "sloikodavid@gmail.com"
+	email: `support@${WEBSITE_DOMAIN}`
 } as const;
 
 // GitHub coordinates. A fork repoints these once and every derived URL follows.
@@ -177,12 +192,6 @@ export const SOCIAL = {
 	x: "sloikodavid",
 	linkedin: "composery"
 } as const;
-
-// Marketing site. The hosted cloud's own domains are env-driven at runtime
-// (CLOUD_DOMAIN / WEBSITE_ORIGIN, see packages/web/convex/env.ts); these are the
-// build-time defaults for static site copy and links.
-export const WEBSITE_DOMAIN = "composery.io";
-export const WEBSITE_ORIGIN = "https://www.composery.io";
 
 // Published runtime image on ghcr. Infra files that can't import TS (Dockerfile,
 // compose, templates/, .env.example.*) hardcode this same string - keep in sync.

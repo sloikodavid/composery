@@ -5,7 +5,8 @@ import {
 	RuntimeConfigError,
 	SECRET_CONFIG_KEYS,
 	applySecretIntent,
-	normalizeRuntimeConfig
+	normalizeRuntimeConfig,
+	runtimeConfigField
 } from "@/convex/boxes/runtimeConfig";
 import { renderComposeryEnv } from "@/convex/boxes/infra/runtimeArtifacts";
 
@@ -253,5 +254,21 @@ describe("renderComposeryEnv with owner configuration", () => {
 		expect(renderComposeryEnv({ ...managed, config: {} })).toBe(
 			renderComposeryEnv(managed)
 		);
+	});
+});
+
+// The lookup the Configuration page uses to turn a stored key back into the
+// field that describes it. A key with no field renders no control, so this is
+// what decides whether a saved setting is visible to its owner at all.
+describe("looking a runtime setting up by its key", () => {
+	test("finds the field for every key the allowlist offers", () => {
+		for (const field of RUNTIME_CONFIG_FIELDS) {
+			expect(runtimeConfigField(field.key)).toBe(field);
+		}
+	});
+
+	test("finds nothing for a key Composery does not offer", () => {
+		expect(runtimeConfigField("COMPOSERY_NOT_A_SETTING")).toBeUndefined();
+		expect(runtimeConfigField("")).toBeUndefined();
 	});
 });

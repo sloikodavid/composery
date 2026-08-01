@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { components, internal } from "@/convex/_generated/api";
+import { reconciliationFailureAlert } from "@/convex/billing/reconciliation";
 
 import {
 	boxOperations,
@@ -348,5 +349,81 @@ describe("a subscription that no longer matches its box's plan", () => {
 		await sweep(t);
 
 		expect(await staffAlerts(t)).toEqual([]);
+	});
+});
+
+// What staff are told when the sweep stops early.
+//
+// The sweep runs hourly and re-raises whatever stopped it, so the alert is the
+// only durable record of a failure that Convex's action log will age out. Two
+// things have to hold: the cause travels with it, and an outage that lasts all
+// day does not become either one missed alert or twenty-four ignored ones.
+describe("reporting that reconciliation stopped early", () => {
+	const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+	test("carries the cause into the alert staff read", () => {
+		const alert = reconciliationFailureAlert(
+			new Error("Polar returned 503"),
+			NOW
+		);
+
+		expect(alert.text).toContain("Polar returned 503");
+		expect(alert.severity).toBe("critical");
+	});
+
+	// A sweep can be stopped by something that was never an Error - a rejected
+	// string, a thrown object - and an alert that said "[object Object]" would
+	// send staff to the logs with nothing to search for.
+	test.each([
+		["a plain string", "connection reset", "connection reset"],
+		["a thrown object", { code: 500 }, "[object Object]"]
+	])("still says something for %s", (_name, thrown, expected) => {
+		expect(reconciliationFailureAlert(thrown, NOW).text).toContain(expected);
+	});
+
+	// It names what stopped, not just that something did: the reader is deciding
+	// whether boxes have gone unchecked.
+	test("says what stopped and where to look", () => {
+		const alert = reconciliationFailureAlert(new Error("boom"), NOW);
+
+		expect(alert.subject).toBe("Polar subscription reconciliation failed");
+		expect(alert.text).toContain("before it could check every box");
+	});
+
+	// Measured from the start of the window the clock is in, because that is what
+	// the key divides by - not from whenever the first failure happened.
+	const WINDOW_START = Math.floor(NOW / SIX_HOURS) * SIX_HOURS;
+
+	test("repeats within one six-hour window under one key", () => {
+		const first = reconciliationFailureAlert(new Error("a"), WINDOW_START);
+		const later = reconciliationFailureAlert(
+			new Error("b"),
+			WINDOW_START + SIX_HOURS - 1
+		);
+
+		expect(later.key).toBe(first.key);
+	});
+
+	// A failure still going in the next window is news again - it has outlasted
+	// six hourly attempts, and staff who dismissed the first one need telling.
+	test("becomes a new alert in the next window", () => {
+		const first = reconciliationFailureAlert(new Error("a"), WINDOW_START);
+		const next = reconciliationFailureAlert(
+			new Error("a"),
+			WINDOW_START + SIX_HOURS
+		);
+
+		expect(next.key).not.toBe(first.key);
+	});
+
+	// The window is anchored to the clock rather than to the first failure, so
+	// two deployments failing at the same moment agree on the window, and a
+	// restart cannot start a fresh one.
+	test("anchors the window to the clock, not to the first failure", () => {
+		const window = Math.floor(NOW / SIX_HOURS);
+
+		expect(reconciliationFailureAlert(new Error("a"), NOW).key).toBe(
+			`subscription-reconciliation-failed:${window}`
+		);
 	});
 });

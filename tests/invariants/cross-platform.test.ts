@@ -124,14 +124,25 @@ describe("cross-platform checks", () => {
 		expect(drift?.run).toContain("--untracked-files=all");
 
 		const vercel = JSON.parse(readRepoFile("packages/web/vercel.json")) as {
+			buildCommand?: string;
 			git?: { deploymentEnabled?: Record<string, boolean> };
 			github?: { silent?: boolean };
 		};
+		expect(vercel.buildCommand).toBe(
+			"pnpm env:deploy && npx convex deploy --cmd 'pnpm build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL"
+		);
 		expect(vercel.git?.deploymentEnabled).toEqual({
 			"*": false,
 			deploy: true
 		});
 		expect(vercel.github?.silent).toBe(true);
+
+		const webPackage = JSON.parse(
+			readRepoFile("packages/web/package.json")
+		) as {
+			scripts?: Record<string, string>;
+		};
+		expect(webPackage.scripts?.["env:deploy"]).toBe("node scripts/env.mjs");
 	});
 
 	test("every publication workflow depends on the complete CI tier", () => {

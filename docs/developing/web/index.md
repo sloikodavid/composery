@@ -73,8 +73,10 @@ different things, not two spellings of one domain.
    [Hetzner](services/hetzner.md), [Cloudflare](services/cloudflare.md)). Each page names the
    value/variable it produces; some need the Convex URLs from step 1.
 4. Configure [Resend](services/resend.md) and its delivery webhook for
-   production staff alerts and box owner notices. Polar, not Resend, sends
-   customer billing email.
+   production staff alerts, box owner notices and account legal notices, and
+   Cloudflare Email Routing for the support address
+   ([Cloudflare](services/cloudflare.md), "Support mail"). Polar, not Resend,
+   sends customer billing email.
 5. Enter the collected values into the Convex deployment env per deployment
    ([Convex](services/convex.md) - "Set Convex environment variables").
 6. Configure [Vercel](services/vercel.md) (frontend env, prod deploy key, build
@@ -132,6 +134,14 @@ version:
      `pnpm-workspace.yaml`, all outside the package.
 2. Add `www.<website-domain>` under Settings -> Domains. The documentation is
    served at `/docs` on that same origin - there is no separate docs subdomain.
-3. Push to `main`. Confirmed production [Convex](services/convex.md) env (at least
-   `CLERK_FRONTEND_API_URL`) and Vercel Production env vars must be in place
-   first; see [Vercel](services/vercel.md) for the checklist.
+3. Push to `main`. Every production [Convex](services/convex.md) and Vercel
+   environment name must be in place first, and `CLERK_FRONTEND_API_URL` must be
+   non-empty; see [Vercel](services/vercel.md) for the checklist.
+
+Environment drift is reported inside those deploys, with no separate audit
+login. Before either provider changes, the Vercel build compares both live name
+sets with their production examples. A missing example name blocks the whole
+deployment; an additional name is logged as drift and the deployment continues.
+Neither check requests, compares, or prints configured values, and an empty
+value counts as present. Existing explicit semantic checks can still reject an
+empty value, as Convex auth does for `CLERK_FRONTEND_API_URL`.

@@ -14,6 +14,27 @@ import ts from "typescript";
 // a module, never its text, which is what keeps a behaviour test from quietly
 // becoming a grep over source. The patch-extraction helpers next door are the
 // text-handling ones and are confined to `invariants/`.
+//
+// Coverage attribution is the trap here. Vitest maps v8's ranges through the
+// source map of *its own* esbuild transform of the same path, which preserves
+// line numbers; `transpileModule` re-prints the AST, which does not. Where the
+// two disagree the report is simply wrong, in both directions - `api/config.ts`
+// is 42 source lines emitted as 73 and shows its whole `apiConfig` literal as
+// unreached while a test drives it 19 times, and `api/auth.ts` shows the body of
+// `httpAuth` unreached while two tests drive both its branches.
+//
+// Alignment is incidental, not a property to reason about: an interop preamble
+// causes it, so do parameter properties, so does any construct the re-print
+// spells differently. `cloud.ts` happens to line up and reports an unreachable
+// probe at exactly the right lines; that is luck, not a rule.
+//
+// So a module loaded here earns its correctness from its assertions, never from
+// a percentage, and belongs in the coverage exclusions in vitest.config.ts.
+// Measured dead ends, so they are not retried: `esModuleInterop: false` drops
+// the preamble and breaks the modules that need the interop, and an inline
+// `sourceMap` is ignored because vitest never sees a `vm.Script`. The fix that
+// would work is evaluating these as ES modules rather than re-printing them to
+// CommonJS, which needs `--experimental-vm-modules`.
 
 function transpileToCommonJs(source: string): string {
 	return ts.transpileModule(source, {

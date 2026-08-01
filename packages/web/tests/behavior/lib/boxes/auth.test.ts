@@ -142,3 +142,56 @@ describe("cloud auth response headers", () => {
 		});
 	});
 });
+
+// A non-string that stringifies into a valid shape is the whole reason these
+// predicates test `typeof` before they test the pattern: a regex coerces its
+// argument, so `{ toString: () => "<43 chars>" }` matches without the guard.
+// Every caller here is validating a JSON body it did not write.
+describe("values that only look like the shape they claim", () => {
+	const impostor = (value: string) => ({ toString: () => value });
+
+	test("refuses an object that stringifies into a flow secret", () => {
+		const value = "a".repeat(43);
+		expect(BASE64URL_SHA256.test(value)).toBe(true);
+		expect(isFlowSecret(impostor(value))).toBe(false);
+	});
+
+	test("refuses an object that stringifies into an oauth state", () => {
+		expect(isOauthState(impostor("a".repeat(64)))).toBe(false);
+	});
+
+	test("refuses an object that stringifies into a box id", () => {
+		expect(isBoxIdString(impostor("j57abc"))).toBe(false);
+	});
+
+	test("refuses an object that stringifies into a password hash", () => {
+		expect(
+			isPasswordHash(impostor("$argon2id$v=19$m=65536$c2FsdA$aGFzaA"))
+		).toBe(false);
+	});
+});
+
+// The bound is inclusive: a hash exactly at the limit is a hash we accept, and
+// tightening it by one would reject a legitimate argon2id encoding that happens
+// to land on the boundary.
+describe("the edges of the bounded shapes", () => {
+	test("accepts a password hash exactly at the length limit", () => {
+		const exact = `$argon2id$${"a".repeat(MAX_HASH_LENGTH - "$argon2id$".length)}`;
+		expect(exact.length).toBe(MAX_HASH_LENGTH);
+		expect(isPasswordHash(exact)).toBe(true);
+		expect(isPasswordHash(`${exact}a`)).toBe(false);
+	});
+});
+
+// The prefix is anchored, and the anchor is the check. A hash is a credential
+// the box computed; a string that merely contains `$argon2id$` somewhere is one
+// an attacker composed, and accepting it would write a value into the control
+// plane that no box can ever match.
+describe("where the argon2id prefix has to be", () => {
+	test("requires the prefix at the very start", () => {
+		expect(isPasswordHash("$argon2id$v=19$m=65536$c2FsdA$aGFzaA")).toBe(true);
+		expect(isPasswordHash("x$argon2id$v=19$m=65536$c2FsdA$aGFzaA")).toBe(false);
+		expect(isPasswordHash(" $argon2id$v=19$m=65536$c2FsdA$aGFzaA")).toBe(false);
+		expect(isPasswordHash("$argon2i$$argon2id$")).toBe(false);
+	});
+});

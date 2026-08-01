@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import { CAPACITY_BOX_STATUSES } from "@/convex/boxes/capacity";
 
 import {
 	seedBox,
 	seedUser,
 	stubDeploymentEnv,
-	testConvex
+	testConvex,
+	type Harness
 } from "../../../support/convex.ts";
 
 // The console's overview tiles. Every number here is a count of rows staff act
@@ -119,5 +121,184 @@ describe("the overview", () => {
 		await expect(
 			customer.as.query(api.staff.stats.overview, {})
 		).rejects.toThrow(/Staff access required/);
+	});
+});
+
+// The console's counters, and the one property that makes them trustworthy:
+// every count is bounded, and says when it hit its bound.
+//
+// A count that silently stopped at its cap would read as a fleet that stopped
+// growing. Reporting "capped" beside the number is what lets the page say "at
+// least N" instead of stating a wrong total as fact.
+describe("counting the fleet for the console", () => {
+	async function cast(t: Harness) {
+		const admin = await seedUser(t, {
+			clerkUserId: "admin",
+			email: "admin@example.com",
+			role: "admin"
+		});
+		const customer = await seedUser(t, {
+			clerkUserId: "customer",
+			email: "customer@example.com"
+		});
+		return { admin, customer };
+	}
+
+	const stats = (
+		admin: Awaited<ReturnType<typeof cast>>["admin"],
+		args: Record<string, unknown> = {}
+	) => admin.as.query(api.staff.stats.overview, args);
+
+	async function boxes(
+		t: Harness,
+		status: Doc<"boxes">["status"],
+		count: number,
+		createdAt = NOW - 1000
+	) {
+		await t.run(async (ctx) => {
+			for (let index = 0; index < count; index += 1) {
+				await ctx.db.insert("boxes", {
+					user_id: "customer",
+					slug: `${status}-${index}`,
+					plan: "air",
+					manual_snapshot_cap: 0,
+					status,
+					created_at: createdAt,
+					updated_at: createdAt
+				});
+			}
+		});
+	}
+
+	test("counts running and suspended boxes separately", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "running", 3);
+		await boxes(t, "suspended", 2);
+
+		expect(await stats(admin)).toMatchObject({
+			runningBoxes: 3,
+			suspendedBoxes: 2
+		});
+	});
+
+	// "Active" is every status that holds capacity, which is what the number is
+	// for - it is compared against the provider limit.
+	test("counts every capacity-holding box as active", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "running", 2);
+		await boxes(t, "stopped", 1);
+
+		expect((await stats(admin)).activeBoxes).toBe(3);
+	});
+
+	// A deleted box holds nothing, so it is not part of the fleet's size.
+	test("leaves deleted boxes out of the fleet's size", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "running", 1);
+		await boxes(t, "deleted", 5);
+
+		expect((await stats(admin)).activeBoxes).toBe(1);
+	});
+
+	// Failures are counted apart because they are the number somebody acts on.
+	test("counts the failed boxes on their own", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "create_failed", 2);
+		await boxes(t, "running", 1);
+
+		expect((await stats(admin)).failedBoxes).toBe(2);
+	});
+
+	// Conversion is the checkout funnel: reservations opened against
+	// reservations that became boxes.
+	test("reports the share of reservations that became boxes", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await t.run(async (ctx) => {
+			for (const [index, status] of [
+				"converted",
+				"converted",
+				"released",
+				"expired"
+			].entries()) {
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: "customer",
+					slug: `intent-${index}`,
+					plan: "air",
+					status: status as "converted",
+					created_at: NOW - 1000,
+					updated_at: NOW - 1000
+				});
+			}
+		});
+
+		expect(await stats(admin)).toMatchObject({
+			totalIntents: 4,
+			convertedIntents: 2,
+			conversionRate: 0.5
+		});
+	});
+
+	// No reservations at all is not a division: a deployment that has sold
+	// nothing reports zero rather than NaN, which would render as "NaN%".
+	test("reports a zero conversion rate before anything was sold", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+
+		expect((await stats(admin)).conversionRate).toBe(0);
+	});
+
+	// The series is one row per day of the window, oldest first, so the chart
+	// has an x-axis even on days nothing happened.
+	test("gives one row per day of the window", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+
+		const result = await stats(admin, { range: "7d" });
+
+		expect(result.windowDays).toBe(7);
+		expect(result.series).toHaveLength(7);
+		expect(
+			result.series.every((row, index) =>
+				index === 0 ? true : row.at > result.series[index - 1].at
+			)
+		).toBe(true);
+	});
+
+	test("counts a box created today against today's row", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "running", 2, NOW);
+
+		const result = await stats(admin, { range: "7d" });
+
+		expect(result.series.at(-1)).toMatchObject({ boxes: 2 });
+		expect(result.windowNewBoxes).toBe(2);
+	});
+
+	// A box created before the window is part of the fleet but not of its
+	// growth - counting it twice would overstate every chart.
+	test("leaves a box older than the window out of the growth series", async () => {
+		const t = testConvex();
+		const { admin } = await cast(t);
+		await boxes(t, "running", 1, NOW - 60 * 24 * 60 * 60 * 1000);
+
+		const result = await stats(admin, { range: "7d" });
+
+		expect(result.activeBoxes).toBe(1);
+		expect(result.windowNewBoxes).toBe(0);
+	});
+
+	test("refuses the counters to somebody who is not staff", async () => {
+		const t = testConvex();
+		const { customer } = await cast(t);
+
+		await expect(
+			customer.as.query(api.staff.stats.overview, {})
+		).rejects.toThrow("Staff access required.");
 	});
 });

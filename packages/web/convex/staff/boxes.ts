@@ -50,8 +50,8 @@ import { isValidSlug, sanitizeSlug } from "../../lib/boxes/slug";
 import { boxEventType, operationLabel } from "../../lib/boxes/operations";
 import { DAY_MS } from "../time";
 
-const STAFF_BOX_LIST_LIMIT = 50;
-const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
+export const STAFF_BOX_LIST_LIMIT = 50;
+export const STAFF_BOX_SEARCH_SCAN_LIMIT = 500;
 const STAFF_FAILURE_FEED_WINDOW_MS = 7 * DAY_MS;
 const STAFF_FAILURE_FEED_LIMIT = 25;
 const STAFF_FAILURE_DISMISS_BATCH = 100;

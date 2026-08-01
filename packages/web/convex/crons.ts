@@ -28,6 +28,16 @@ crons.interval(
 	internal.staff.alerts.retryPending
 );
 
+// Deploying a notice is what sends it, and this is what notices the deploy. It
+// finds nothing on almost every run - there are only ever a handful of declared
+// notices and a finished one returns on a single point read - which is the
+// normal state for the mechanism that has to work on the day it does not.
+crons.interval(
+	"send legal notices",
+	{ minutes: 15 },
+	internal.legalNotice.sweepLegalNotices
+);
+
 // Boxes follow their subscriptions: one that has ended is deleted, and one whose
 // product no longer names the plan it runs on is reported to staff - a box's
 // plan is fixed at purchase, so that drift has no automatic answer. The webhooks
@@ -103,6 +113,12 @@ crons.daily(
 	"purge expired staff alerts",
 	{ hourUTC: 4, minuteUTC: 43 },
 	internal.staff.alerts.purgeExpired
+);
+
+crons.daily(
+	"purge expired legal notices",
+	{ hourUTC: 4, minuteUTC: 47 },
+	internal.legalNotice.purgeExpiredLegalNotices
 );
 
 // Aligned with metrics polling: both sweep every running box, and the

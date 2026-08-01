@@ -17,6 +17,7 @@ import { boxEventType, operationLabel } from "../../lib/boxes/operations";
 import { appendBoxEvent } from "./events";
 import {
 	isActiveOperationStatus,
+	OPERATION_FAILURE_CRITICAL,
 	OPERATION_FAILURE_STATUS
 } from "./operationRules";
 import { reconcileCapacityAlert } from "./capacityAlerts";
@@ -267,6 +268,12 @@ export async function recordOperationFailure(
 ) {
 	const box = await ctx.db.get(input.boxId);
 	const operation = await ctx.db.get(input.operationId);
+	// Closing the operation is the part that must always happen, so there is no
+	// tolerant reading of a row that is not there: the patch below throws on one
+	// regardless. Saying so here is what keeps every line after it from carrying a
+	// `null` branch nothing can reach - the shape that had the alert's severity
+	// deciding what to do about an operation whose type it could not know.
+	if (!operation) throw new ConvexError("Box operation not found.");
 	const timestamp = Date.now();
 
 	if (box && input.targetBoxStatus) {
@@ -289,33 +296,16 @@ export async function recordOperationFailure(
 	// pre-rename names (`box.stopped`, `box.suspended`, `box.update_not_needed`)
 	// that `rename.ts` exists to migrate away from - each one undoing that
 	// migration the next time the operation ran.
-	//
-	// The patch above would have thrown on a missing operation, so this is the
-	// type system's question rather than a state that happens - and the alert
-	// below still goes out either way, which is why this guards the one line
-	// that needs a row to name it rather than returning early.
-	if (operation) {
-		await appendBoxEvent(ctx, box, boxEventType(operation.type, "failed"), {
-			message: input.error
-		});
-	}
+	await appendBoxEvent(ctx, box, boxEventType(operation.type, "failed"), {
+		message: input.error
+	});
 
-	const operationType = operation
-		? operationLabel(operation.type, true)
-		: "unknown";
-	const critical = new Set([
-		"create",
-		"delete",
-		"reset",
-		"restore",
-		"repair",
-		// An update recreates the container of a box that was working, so a
-		// failure can leave it not serving - the same blast radius as a repair.
-		"update"
-	]).has(operationType);
+	const operationType = operationLabel(operation.type, true);
 	await raiseAlert(ctx, {
 		key: `box-operation-failed:${input.operationId}`,
-		severity: critical ? "critical" : "warning",
+		severity: OPERATION_FAILURE_CRITICAL[operation.type]
+			? "critical"
+			: "warning",
 		subject: `Box ${box.slug}: ${operationType} failed`,
 		text: `${operationType} failed for box ${box.slug} (${box._id}).\n\n${input.error}\n\nReview the operation: ${staffConsoleUrl(consoleBoxPath(box._id))}`
 	});
@@ -331,7 +321,7 @@ export async function recordOperationFailure(
 	// The error itself is not forwarded. It is written for staff and carries host
 	// names, provider messages and addresses; the owner is told the outcome and
 	// that a person already knows.
-	if (operation?.type === "create") {
+	if (operation.type === "create") {
 		await sendOwnerEmail(ctx, box, { type: "create_failed" });
 	}
 }
@@ -392,7 +382,13 @@ export const swapSlug = internalMutation({
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
 		if (!box) throw new ConvexError("Box not found.");
-		await assertSlugAvailable(ctx, args.newSlug, { boxId: args.boxId });
+		// Naming this operation as well as the box: it is the row that reserved the
+		// slug in the first place, so without it the rename is refused by its own
+		// reservation.
+		await assertSlugAvailable(ctx, args.newSlug, {
+			boxId: args.boxId,
+			operationId: args.operationId
+		});
 
 		const oldSlug = box.slug;
 		const timestamp = Date.now();
@@ -513,6 +509,8 @@ export const markConfigApplied = internalMutation({
 		// The keys, never the values: a box's configuration can hold a GitHub token
 		// and an event log is read by staff.
 		await appendBoxEvent(ctx, box, boxEventType("change_config", "succeeded"), {
+			// Sorted so the history reads the same however the keys arrived.
+			// Stryker disable next-line MethodExpression: Convex already returns a record's fields in key order, so no test here can see the difference - the sort is what keeps that true if it ever stops being.
 			metadata: { keys: Object.keys(args.config).sort() }
 		});
 	}
@@ -642,7 +640,7 @@ export const markDeleted = internalMutation({
 		// they are not looking at us. The trigger says which of the three it was.
 		await sendOwnerEmail(ctx, box, {
 			type: "deleted",
-			trigger: operation?.trigger
+			trigger: operation.trigger
 		});
 		await ctx.scheduler.runAfter(0, internal.boxes.cleanup.deleteRuntimeData, {
 			boxId: box._id
@@ -728,14 +726,13 @@ export const setBoxStatusWithOperationSucceeded = internalMutation({
 		// mutation also carries the transient `suspending`/`unsuspending` statuses -
 		// so a future caller that reports progress through it cannot make this
 		// announce a suspension that has not happened yet.
-		if (operation?.type === "suspend" && args.status === "suspended") {
+		if (operation.type === "suspend" && args.status === "suspended") {
 			await sendOwnerEmail(ctx, box, {
 				type: "suspended",
-				trigger: operation.trigger,
 				reason: suspensionReason(operation.metadata)
 			});
 		}
-		if (operation?.type === "unsuspend" && args.status === "running") {
+		if (operation.type === "unsuspend" && args.status === "running") {
 			await sendOwnerEmail(ctx, box, { type: "unsuspended" });
 		}
 	}

@@ -9,8 +9,9 @@ import { fileURLToPath } from "node:url";
 // nothing. This asks something narrower and unfakeable in that direction: did
 // anything at all execute the code you just wrote?
 //
-// The global figure is a ratchet instead, held by `thresholds.autoUpdate` in
-// vitest.config.ts. See docs/developing/testing.md.
+// The global figure is reported and never thresholded - there is no ratchet to
+// hold it, deliberately, because it falls when a well-covered file is deleted.
+// See vitest.config.ts and docs/developing/testing.md.
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const COVERAGE = resolve(REPO_ROOT, "coverage/coverage-final.json");

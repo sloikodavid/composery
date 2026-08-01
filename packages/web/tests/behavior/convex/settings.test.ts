@@ -287,3 +287,38 @@ describe("what a settings form may not save", () => {
 		});
 	});
 });
+
+// The settings row is created on first write, not seeded, so a fresh deployment
+// takes this branch for its very first staff action.
+describe("writing settings on a deployment that has none", () => {
+	test("creates the row, with checkout open unless told otherwise", async () => {
+		const t = testConvex();
+
+		await t.mutation(internal.settings.recordRuntimeRelease, {
+			image: "sha256:first",
+			version: "1.0.0"
+		});
+
+		expect(
+			await t.run((ctx) => ctx.db.query("settings").first())
+		).toMatchObject({
+			checkout_enabled: true,
+			runtime_release: { image: "sha256:first", version: "1.0.0" }
+		});
+	});
+
+	// A schedule writes with no actor, and stamping one would credit a person
+	// with a change nobody made.
+	test("records no actor for a write the schedule made", async () => {
+		const t = testConvex();
+
+		await t.mutation(internal.settings.recordRuntimeRelease, {
+			image: "sha256:first",
+			version: null
+		});
+
+		expect(
+			await t.run((ctx) => ctx.db.query("settings").first())
+		).not.toHaveProperty("updated_by");
+	});
+});

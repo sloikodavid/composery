@@ -17,8 +17,9 @@ vi.mock("@/convex/billing/polar", async (importOriginal) => {
 });
 
 const { api } = await import("@/convex/_generated/api");
-const { seedSettings, seedUser, stubDeploymentEnv, testConvex } =
+const { seedBox, seedSettings, seedUser, stubDeploymentEnv, testConvex } =
 	await import("../../../support/convex.ts");
+type Harness = ReturnType<typeof testConvex>;
 
 const NOW = Date.UTC(2026, 6, 28, 10, 0, 0);
 
@@ -286,4 +287,195 @@ describe("reporting a finished checkout to its customer", () => {
 			})
 		).toBeNull();
 	});
+});
+
+// Whether a name is free, asked before anybody pays for it.
+//
+// This is the only thing standing between two customers buying the same name,
+// and it is asked from the pricing page while somebody is typing. Both answers
+// are load-bearing in different directions: a false "taken" loses a sale, and a
+// false "available" takes money for a name that cannot be delivered - which then
+// has to be refunded.
+describe("telling a customer whether a name is free", () => {
+	const availability = (as: Harness, slug: string) =>
+		as.query(api.user.checkout.slugAvailability, { slug });
+
+	async function buyer(t: Harness) {
+		return await seedUser(t, { clerkUserId: "buyer" });
+	}
+
+	test("says a name nobody holds is free", async () => {
+		const t = testConvex();
+		const me = await buyer(t);
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			available: true,
+			resumable: false,
+			slug: "wanted"
+		});
+	});
+
+	// The answer carries the normalised name, so the client reserves and buys the
+	// same string it was told about rather than what was typed.
+	test.each([
+		["WANTED", "wanted"],
+		["  wanted  ", "wanted"]
+	])("normalises %p to %p in its answer", async (typed, slug) => {
+		const t = testConvex();
+		const me = await buyer(t);
+
+		expect(await availability(me.as, typed)).toMatchObject({ slug });
+	});
+
+	test("says a name an existing box holds is taken", async () => {
+		const t = testConvex();
+		const me = await buyer(t);
+		await seedBox(t, { user_id: me.clerkUserId, slug: "wanted" });
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			available: false
+		});
+	});
+
+	// Somebody else mid-checkout holds the name for the length of their session.
+	test("says a name another customer is buying is taken", async () => {
+		const t = testConvex();
+		const me = await buyer(t);
+		await seedUser(t, { clerkUserId: "other", email: "other@example.com" });
+		await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: "other",
+					slug: "wanted",
+					plan: "air",
+					status: "active",
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			available: false
+		});
+	});
+
+	// The caller's own reservation is not "taken" from their point of view -
+	// otherwise pressing Continue would flip the name to unavailable underneath
+	// them, and a returning customer could never resume.
+	test("does not call a customer's own reservation taken", async () => {
+		const t = testConvex();
+		const me = await buyer(t);
+		await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: me.clerkUserId,
+					slug: "wanted",
+					plan: "air",
+					status: "active",
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			available: true
+		});
+	});
+
+	// Resumable is what puts "continue where you left off" on the page, and it
+	// needs a checkout URL to send them to - a reservation without one is not
+	// something to resume.
+	test("offers to resume only once there is a checkout to return to", async () => {
+		const t = testConvex();
+		const me = await buyer(t);
+		const intentId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: me.clerkUserId,
+					slug: "wanted",
+					plan: "air",
+					status: "active",
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			resumable: false
+		});
+
+		await t.run(
+			async (ctx) =>
+				await ctx.db.patch(intentId, {
+					polar_checkout_url: "https://polar.test/checkout/abc"
+				})
+		);
+
+		expect(await availability(me.as, "wanted")).toMatchObject({
+			resumable: true
+		});
+	});
+
+	// A reservation that already ended holds nothing, so the name is free again.
+	test.each(["released", "expired"] as const)(
+		"frees a name whose reservation %s",
+		async (status) => {
+			const t = testConvex();
+			const me = await buyer(t);
+			await t.run(
+				async (ctx) =>
+					await ctx.db.insert("box_checkout_intents", {
+						user_id: "other",
+						slug: "wanted",
+						plan: "air",
+						status,
+						created_at: 1,
+						updated_at: 1
+					})
+			);
+
+			expect(await availability(me.as, "wanted")).toMatchObject({
+				available: true
+			});
+		}
+	);
+
+	// The page asks this before anyone signs in, so it has to answer without an
+	// identity - and cannot offer to resume a checkout it has no way to attribute.
+	test("answers a signed-out visitor without offering a resume", async () => {
+		const t = testConvex();
+		await seedUser(t, { clerkUserId: "other", email: "other@example.com" });
+		await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: "other",
+					slug: "taken",
+					plan: "air",
+					status: "active",
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+
+		expect(
+			await t.query(api.user.checkout.slugAvailability, { slug: "free" })
+		).toMatchObject({ available: true, resumable: false });
+		expect(
+			await t.query(api.user.checkout.slugAvailability, { slug: "taken" })
+		).toMatchObject({ available: false, resumable: false });
+	});
+
+	// A name that is not a name at all is not available - answering otherwise
+	// would let the client offer a checkout the reservation would then refuse.
+	test.each(["", "  ", "!!", "-nope-"])(
+		"says %p is not available",
+		async (slug) => {
+			const t = testConvex();
+			const me = await buyer(t);
+
+			expect(await availability(me.as, slug)).toMatchObject({
+				available: false
+			});
+		}
+	);
 });

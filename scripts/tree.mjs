@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve } from "node:path";
 import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
 
@@ -17,14 +17,26 @@ const watch = process.argv.includes("--watch");
 const TREE_NOTE =
 	"> Live-updated by `scripts/tree.mjs` when `pnpm dev` or `pnpm dev:tree` is running. Manually update with `pnpm fix:tree`.";
 
+// The index modes this tree can distinguish. Everything else is a plain file.
+export const MODES = {
+	executable: "100755",
+	file: "100644",
+	submodule: "160000",
+	symlink: "120000"
+};
+
 // Include new, non-ignored files before they are staged. A tree check that is
 // green before `git add` but turns red after it is not checking the artifact a
-// contributor is about to commit.
+// contributor is about to commit. `--stage` carries the mode, which is the only
+// thing that tells a symlink, a submodule and a file apart - a path alone says
+// they are all the same kind of thing, and an agent reading this listing then
+// edits `CLAUDE.md` instead of the `AGENTS.md` it points at.
 export const GIT_FILE_ARGS = [
 	"ls-files",
 	"--cached",
 	"--others",
 	"--exclude-standard",
+	"--stage",
 	"-z"
 ];
 
@@ -35,11 +47,70 @@ export const GIT_FILE_ARGS = [
 // macOS' case-insensitive lookup, so `pnpm fix:tree` wrote a name no
 // case-sensitive checkout has and CI failed on every commit afterwards. The
 // index is what gets pushed, so the index is the only authority here.
+//
+// That applies to the mode too, so it is read from the index rather than
+// lstat'd: a checkout with core.symlinks=false holds a symlink as an ordinary
+// file on disk, and the tree would then describe the machine instead of the
+// repository. `--stage` prints `<mode> <object> <stage>\t<path>` for indexed
+// entries and a bare path for untracked ones, which have no mode to report.
 export function gitFiles() {
 	return execFileSync("git", GIT_FILE_ARGS, { cwd: REPO_ROOT })
 		.toString("utf8")
 		.split("\0")
-		.filter(Boolean);
+		.filter(Boolean)
+		.map((record) => {
+			const staged = /^(\d{6}) ([0-9a-f]+) \d+\t([\s\S]*)$/.exec(record);
+			return staged
+				? { mode: staged[1], object: staged[2], path: staged[3] }
+				: { mode: MODES.file, object: "", path: record };
+		});
+}
+
+// A symlink's blob is its target path, so the tree can name it without touching
+// the filesystem. Read per object rather than per entry: the two `CLAUDE.md`
+// links are the same blob.
+function readBlobs(entries) {
+	const objects = entries
+		.filter((entry) => entry.mode === MODES.symlink)
+		.map((entry) => entry.object);
+
+	return new Map(
+		[...new Set(objects)].map((object) => [
+			object,
+			execFileSync("git", ["cat-file", "blob", object], {
+				cwd: REPO_ROOT
+			}).toString("utf8")
+		])
+	);
+}
+
+// Where a symlink points, as a path of this tree.
+//
+// The stored target is relative to the link, so `packages/web/CLAUDE.md ->
+// AGENTS.md` names neither the file it points at nor the one at the root - the
+// reader has to resolve it and can pick wrong. Resolved against the tree's own
+// root there is nothing left to work out, and the target is a line above.
+//
+// A target the index does not hold is not this repository's to describe: it
+// resolves against whatever the checkout happens to sit next to, so printing it
+// would state a fact about one machine. It is named as the one thing that is
+// true everywhere instead.
+export function linkTarget(path, target, paths) {
+	const resolved = posix.normalize(posix.join(posix.dirname(path), target));
+	const prefix = `${resolved}/`;
+
+	if (paths.has(resolved)) return resolved;
+	if (paths.values().some((entry) => entry.startsWith(prefix))) return prefix;
+	return "(outside this repository)";
+}
+
+// What one line says about itself. `->` and `*` are `ls -F`'s, so nothing here
+// needs a legend to be read correctly.
+export function entryLabel({ mode, name, target, type }) {
+	if (mode === MODES.symlink) return `${name} -> ${target}`;
+	if (mode === MODES.submodule) return `${name}/ (submodule)`;
+	if (mode === MODES.executable) return `${name}*`;
+	return type === "directory" ? `${name}/` : name;
 }
 
 // Directories before files, then by name under a pinned locale. localeCompare
@@ -59,14 +130,34 @@ export function renderTree() {
 		type: "directory"
 	};
 
-	for (const path of [...gitFiles(), AGENTS_FILE]) {
+	const files = [
+		...gitFiles(),
+		{ mode: MODES.file, object: "", path: AGENTS_FILE }
+	];
+	const blobs = readBlobs(files);
+	const paths = new Set(files.map((entry) => entry.path));
+
+	for (const { mode, object, path } of files) {
 		const parts = path.split("/").filter(Boolean);
 		let current = root;
 		for (const [index, name] of parts.entries()) {
-			const type = index === parts.length - 1 ? "file" : "directory";
+			const leaf = index === parts.length - 1;
+			// A submodule is a leaf in this index but a directory on disk, and it
+			// sorts and prints as one - its contents belong to another repository
+			// and are deliberately not listed.
+			const type = !leaf || mode === MODES.submodule ? "directory" : "file";
 			let next = current.children.get(name);
 			if (!next) {
-				next = { children: new Map(), name, type };
+				next = {
+					children: new Map(),
+					mode: leaf ? mode : MODES.file,
+					name,
+					target:
+						mode === MODES.symlink && leaf
+							? linkTarget(path, blobs.get(object), paths)
+							: undefined,
+					type
+				};
 				current.children.set(name, next);
 			}
 			current = next;
@@ -80,8 +171,8 @@ export function renderTree() {
 			return [`${"  ".repeat(depth)}... (${entries.length} items)`];
 
 		return entries.flatMap((entry) => [
-			`${"  ".repeat(depth)}${entry.name}${entry.type === "directory" ? "/" : ""}`,
-			...(entry.type === "directory" ? renderNode(entry, depth + 1) : [])
+			`${"  ".repeat(depth)}${entryLabel(entry)}`,
+			...(entry.children.size ? renderNode(entry, depth + 1) : [])
 		]);
 	}
 

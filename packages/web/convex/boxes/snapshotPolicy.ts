@@ -115,6 +115,47 @@ export function snapshotExpiry(
 	return createdAt + retentionDays * DAY_MS;
 }
 
+export type SnapshotPollOutcome =
+	| { type: "complete" }
+	| { type: "failed"; error: string }
+	| { type: "wait"; delayMs: number };
+
+// What the capture loop does about one Hetzner action status, decided in one
+// place instead of as four branches inside a workflow body nothing can reach.
+//
+// The deadline is checked *after* the terminal statuses, and that order is the
+// point: an action that has already succeeded is a success even if the loop took
+// longer than the deadline to notice, and failing it there would delete a
+// snapshot image that exists and bill for it until reconciliation finds it.
+export function snapshotPollOutcome(input: {
+	error?: string | null;
+	status: string;
+	waitedMs: number;
+}): SnapshotPollOutcome {
+	if (input.status === "success") return { type: "complete" };
+	if (input.status === "error") {
+		return {
+			type: "failed",
+			error: input.error ?? "Hetzner snapshot creation failed."
+		};
+	}
+	if (input.waitedMs >= SNAPSHOT_CAPTURE_DEADLINE_MS) {
+		return {
+			type: "failed",
+			error: "Snapshot creation did not finish before the deadline."
+		};
+	}
+	return { type: "wait", delayMs: snapshotPollDelayMs(input.waitedMs) };
+}
+
+// Hetzner reports an image's size in gigabytes; the row stores bytes, so the
+// chart and the console are not each doing this multiplication. An image with no
+// size yet is stored as no size rather than as zero, which would read as a
+// snapshot that captured nothing.
+export function snapshotSizeBytes(imageSizeGb: number | undefined) {
+	return imageSizeGb ? Math.round(imageSizeGb * 1e9) : undefined;
+}
+
 // Pure (no clock read) so it stays safe to call inside a workflow handler.
 export function snapshotPollDelayMs(waitedMs: number) {
 	return waitedMs < SNAPSHOT_POLL_FAST_WINDOW_MS
@@ -125,6 +166,18 @@ export function snapshotPollDelayMs(waitedMs: number) {
 export function snapshotScheduleDelayMs(scheduledIndex: number) {
 	return scheduledIndex * SNAPSHOT_SCHEDULE_STAGGER_MS;
 }
+
+// The window one automatic snapshot's idempotency key covers, and therefore the
+// cadence of the "snapshot running boxes" cron: a re-run of tonight's sweep
+// deduplicates against tonight's key, and tomorrow's does not.
+//
+// Its own constant because it used to borrow `manualMinIntervalMinutes` - an
+// operator setting about a different thing entirely. Set that above a day and
+// consecutive nights fall into one bucket, so `startBoxOperation` returns null
+// and the box simply does not get its daily snapshot. Nothing fails, nothing is
+// recorded, and the first symptom is a restore that has nothing recent to
+// restore from. `tests/behavior/convex/crons.test.ts` pins the cron to it.
+export const AUTOMATIC_SNAPSHOT_INTERVAL_MS = DAY_MS;
 
 // No defaults: every caller holds the resolved policy already, and a default
 // here would silently answer with the shipped one when a deployment had

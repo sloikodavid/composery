@@ -212,6 +212,43 @@ agent usually writes the test, this is the load-bearing check and not a nicety.
   annotated as equivalent with the reason. An untriaged survivor list is a
   coverage percentage wearing a different hat.
 
+### Survivors that are not gaps
+
+Some mutants cannot be killed by any test, and treating the report as a to-do
+list is how a suite acquires tests written to move a number rather than to state
+a truth. Read the survivor before writing anything, and check `coveredBy` in the
+JSON report:
+
+- **Module-scope mutants cannot be flipped.** A lookup map, a `Record` of
+  renames, the object passed to `internalMutation({...})` - anything evaluated
+  when the module is first imported into a Vitest worker keeps the value it got
+  then, because the module is not re-evaluated per mutant. Such a mutant reports
+  `coveredBy: 1` (only the test that first imported the module) and survives
+  under every `coverageAnalysis` setting. Applying the same edit by hand and
+  running the suite is what tells you apart: if tests fail, the report is wrong
+  and there is nothing to write.
+- **The harness cannot see some real work.** `.order("desc")` is one:
+  `convex-test` sorts descending for every value that is not exactly `"asc"`, so
+  the literal is invisible. A workflow body is another - it cannot run here at
+  all, so `workflowArgs` is unreadable. Both are recorded, with the rest of their
+  kind, in `packages/web/tests/support/convex.ts`.
+- **Some guards are unreachable by construction** and are kept anyway, because
+  the alternative to the guard is a silent wrong answer if the thing that makes
+  it unreachable ever moves. Annotate with what makes it unreachable today.
+
+**Silence a mutant one line at a time.** `// Stryker disable next-line
+<mutators>: <why>` only. The block form (`disable` … `restore`) silences
+everything of those kinds in its range including mutants tests were killing, and
+the only trace is a higher ignored count: one block pair around a short helper
+took Ignored from 14 to 151 and Killed from 303 to 193. `tests/invariants/
+tests.test.ts` fails on a block form and on a directive with no reason.
+
+Two placement rules follow from how Stryker attaches a directive: it must be the
+**last** comment line before the code, and it must precede a **statement** - one
+inside a method chain (above `.order("desc")`) is silently ignored. Confirm the
+`Ignored` count moved; a mutant you believe you annotated that still reads
+`Survived` was never annotated.
+
 ## Commands
 
 | Command                                   | What it does                                                                                         |
@@ -223,6 +260,9 @@ agent usually writes the test, this is the load-bearing check and not a nicety.
 | `pnpm check:knip`                         | Unused files, exports and dependencies - the rot agents leave behind.                                |
 | `pnpm smoke`                              | Boots the built image and exercises it.                                                              |
 | `pnpm templates:schema`                   | Validates provider manifests against live schemas and Fly's strict validator.                        |
+| `pnpm providers:schema`                   | Checks provider response decoders against the current Hetzner and Cloudflare OpenAPI specifications. |
+| `pnpm registry:live`                      | Resolves a public multi-platform image through the real Registry V2 authentication and pull API.     |
+| `pnpm runtime-artifacts:validate`         | Checks every rendered host script with Bash and the rendered Compose file with Docker Compose.       |
 | `pnpm templates:compose`                  | Builds the image and boots every copied Compose deployment recipe.                                   |
 | `bash tests/system/overlay-engine/run.sh` | Proves persistence survives a container being destroyed.                                             |
 

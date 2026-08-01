@@ -1,10 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import { vSnapshotClass } from "../../schema";
-import {
-	SNAPSHOT_CAPTURE_DEADLINE_MS,
-	snapshotPollDelayMs
-} from "../snapshotPolicy";
+import { snapshotPollOutcome, snapshotSizeBytes } from "../snapshotPolicy";
 import { defineBoxWorkflow, operationError } from "./boxWorkflow";
 
 // Capture holds the single-active-operation lock: a Hetzner `create_image` is a
@@ -52,18 +49,15 @@ export const captureSnapshot = defineBoxWorkflow({
 					{ actionId },
 					{ retry: true }
 				);
-				if (action.status === "success") break;
-				if (action.status === "error") {
-					throw new Error(action.error ?? "Hetzner snapshot creation failed.");
-				}
-				if (waited >= SNAPSHOT_CAPTURE_DEADLINE_MS) {
-					throw new Error(
-						"Snapshot creation did not finish before the deadline."
-					);
-				}
-				const delay = snapshotPollDelayMs(waited);
-				await step.sleep(delay);
-				waited += delay;
+				const outcome = snapshotPollOutcome({
+					error: action.error,
+					status: action.status,
+					waitedMs: waited
+				});
+				if (outcome.type === "complete") break;
+				if (outcome.type === "failed") throw new Error(outcome.error);
+				await step.sleep(outcome.delayMs);
+				waited += outcome.delayMs;
 			}
 
 			const image = await step.runAction(
@@ -74,9 +68,7 @@ export const captureSnapshot = defineBoxWorkflow({
 			await step.runMutation(internal.boxes.snapshots.completeSnapshot, {
 				snapshotRowId,
 				operationId: args.operationId,
-				sizeBytes: image.imageSizeGb
-					? Math.round(image.imageSizeGb * 1e9)
-					: undefined
+				sizeBytes: snapshotSizeBytes(image.imageSizeGb)
 			});
 		} catch (error) {
 			await step.runMutation(internal.boxes.snapshots.failSnapshot, {

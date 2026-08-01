@@ -7,8 +7,7 @@ import {
 	CardTitle
 } from "@/components/base/card";
 import { PageTemplate } from "@/components/page-template";
-
-const LEGAL_UPDATED = "21 July 2026";
+import { legalUpdatedLabel } from "@/lib/cloud-legal";
 
 export function LegalPage({
 	title,
@@ -20,7 +19,7 @@ export function LegalPage({
 	return (
 		<PageTemplate breadcrumbs={[{ icon: ScaleIcon, label: title }]}>
 			<article className="space-y-4 text-sm leading-6 text-muted-foreground">
-				<p>Last updated: {LEGAL_UPDATED}</p>
+				<p>Last updated: {legalUpdatedLabel()}</p>
 				{children}
 			</article>
 		</PageTemplate>

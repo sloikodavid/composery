@@ -103,6 +103,37 @@ export const OPERATION_FAILURE_STATUS = {
 	change_config: "running"
 } satisfies Record<BoxOperationType, BoxFailureStatus | undefined>;
 
+// Whether a failure of this operation pages staff rather than filing a warning.
+//
+// Critical means "this box may not be serving now": the operation either builds
+// the box, tears it down, or recreates the container of one that was working.
+// Everything else fails leaving a box exactly as usable as it was.
+//
+// Keyed by the operation type, and exhaustive by `satisfies`, because the check
+// this replaced tested membership of a `Set` of type names against
+// `operationLabel(type, true)` - prose, not an identifier. Only the five types
+// whose label happens to equal their name matched, so a failed `delete` (label
+// "remove") - the one failure that ends with an owner's files gone and nobody
+// watching - was filed as a warning for as long as that code existed.
+export const OPERATION_FAILURE_CRITICAL = {
+	create: true,
+	delete: true,
+	reset: true,
+	restore: true,
+	repair: true,
+	// An update recreates the container of a box that was working, so a failure
+	// can leave it not serving - the same blast radius as a repair.
+	update: true,
+	stop: false,
+	start: false,
+	change_password: false,
+	change_slug: false,
+	change_config: false,
+	suspend: false,
+	unsuspend: false,
+	snapshot: false
+} satisfies Record<BoxOperationType, boolean>;
+
 export const ACTIVE_OPERATION_STATUSES = [
 	"pending",
 	"running"

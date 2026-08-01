@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { utils } from "ssh2";
+
+import { generateParseableKeyPair } from "../../../../support/ssh.ts";
 import { authorizedPublicKey, privateKey } from "@/convex/boxes/infra/sshKeys";
 
 // `vi.stubEnv`, never a module-load snapshot of `process.env`. A snapshot taken
@@ -15,9 +17,7 @@ afterEach(() => {
 
 describe("ssh key helpers", () => {
 	test("derives the authorized public key from SSH_PRIVATE_KEY", () => {
-		const keyPair = utils.generateKeyPairSync("ed25519", {
-			comment: "composery-test"
-		});
+		const keyPair = generateParseableKeyPair("composery-test");
 		vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
 
 		const parsedKey = utils.parseKey(keyPair.private);
@@ -26,6 +26,28 @@ describe("ssh key helpers", () => {
 		expect(privateKey()).toBe(keyPair.private);
 		expect(authorizedPublicKey()).toBe(
 			`${parsedKey.type} ${parsedKey.getPublicSSH().toString("base64")} composery-web`
+		);
+	});
+});
+
+// The deployment's key is what every box is built to trust. A key that cannot be
+// parsed has to stop the create rather than reach a host as the string
+// "undefined undefined composery-web", which would be authorized for nothing and
+// leave a box nobody can log into.
+describe("a private key the deployment cannot use", () => {
+	test("says so rather than deriving a public key from nothing", () => {
+		vi.stubEnv("SSH_PRIVATE_KEY", "-----BEGIN OPENSSH PRIVATE KEY-----\nnope");
+
+		expect(() => authorizedPublicKey()).toThrow(
+			/SSH_PRIVATE_KEY could not be parsed: /
+		);
+	});
+
+	test("says so for a value that is not a key at all", () => {
+		vi.stubEnv("SSH_PRIVATE_KEY", "not-a-key");
+
+		expect(() => authorizedPublicKey()).toThrow(
+			"SSH_PRIVATE_KEY could not be parsed:"
 		);
 	});
 });

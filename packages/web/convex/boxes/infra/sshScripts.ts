@@ -1,24 +1,14 @@
-// The shell Composery sends to a box, and how it reads what comes back.
-//
-// Split from `ssh.ts` because the two halves answer to different rules. This one
-// is pure: given a volume id or a box's rendered artifacts it returns a string,
-// and given a host's output it returns a decision. Every line of it is
-// reachable from a test with no host, no key and no network, which is what lets
-// the flags a Repair's fidelity depends on - and the parse that decides whether
-// a copy was faithful - be checked rather than reasoned about.
-//
-// `ssh.ts` is the other half: an ssh2 connection and the actions that drive it.
-// Nothing there can be covered without asserting a mock of ssh2, so it is
-// excluded from coverage; keeping it in one file with this meant the exclusion
-// would have had to cover this too.
+// The shell Composery sends to a box, and how it reads what comes back. Script
+// rendering is pure; the SSH transport and the actions that select a script are
+// separate boundaries.
 
 import {
 	COMPOSERY_CADDYFILE_PATH,
 	COMPOSERY_COMPOSE_PATH,
 	COMPOSERY_ENV_PATH,
 	type RuntimeArtifacts
-} from "./runtimeArtifacts";
-import type { RecoveryStatus } from "../recoveryTypes";
+} from "./runtimeArtifacts.ts";
+import type { RecoveryStatus } from "../recoveryTypes.ts";
 
 // Hetzner exposes an attached Volume at a stable, id-derived path, so the box
 // scripts never have to guess a `/dev/sd*` letter that can shift between boots.
@@ -84,19 +74,14 @@ ${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}`;
 //
 // Both repair and update hold until the editor answers, so success means the
 // box genuinely serves. Named volumes (the box's files) survive all three.
-export type BootstrapType = "bootstrap" | "repair" | "update";
+type StartType = "bootstrap" | "repair" | "update";
 
-export function bootstrapScript({
+function startScript({
 	caddyfile,
 	compose,
 	env,
-	type = "bootstrap"
-}: {
-	caddyfile: string;
-	compose: string;
-	env: string;
-	type?: BootstrapType;
-}) {
+	type
+}: RuntimeArtifacts & { type: StartType }) {
 	return `set -euo pipefail
 ${writeRuntimeFilesScript({ caddyfile, compose, env })}
 ${
@@ -112,6 +97,18 @@ ${
 }
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d${type === "repair" ? " --force-recreate" : ""}
 ${type === "bootstrap" ? "" : AWAIT_IDE}`;
+}
+
+export function bootstrapScript(artifacts: RuntimeArtifacts) {
+	return startScript({ ...artifacts, type: "bootstrap" });
+}
+
+export function repairScript(artifacts: RuntimeArtifacts) {
+	return startScript({ ...artifacts, type: "repair" });
+}
+
+export function updateScript(artifacts: RuntimeArtifacts) {
+	return startScript({ ...artifacts, type: "update" });
 }
 
 // The whole stderr stream is not an error message. `docker compose` narrates
@@ -344,7 +341,7 @@ export function parseParkingVerification(stdout: string): string[] {
 	return stdout
 		.split("\n")
 		.map((line) => line.trimEnd())
-		.filter((line) => line.trim().length > 0);
+		.filter((line) => line.length > 0);
 }
 
 // Prints one `key=value` line per layer the Repair dialog shows. `set +e` keeps
@@ -378,18 +375,20 @@ function componentState(value: string | undefined) {
 }
 
 export function parseRuntimeInspection(stdout: string): RecoveryStatus {
-	const values = new Map(
-		stdout
-			.split("\n")
-			.map((line) => line.trim().split("=", 2))
-			.filter((parts): parts is [string, string] => parts.length === 2)
-	);
+	const values = new Map<string, string>();
+	for (const line of stdout.split("\n")) {
+		const trimmed = line.trim();
+		const separator = trimmed.indexOf("=");
+		values.set(trimmed.slice(0, separator), trimmed.slice(separator + 1));
+	}
 	// The owner is root on their own host, so every line here is untrusted
 	// input. `df` prints a plain integer percentage and nothing else qualifies:
 	// `Number` alone would take "0x10" as 16, and an empty value - what a failed
 	// `df` leaves behind - as a perfectly empty disk.
-	const rawDisk = values.get("disk_used_percent") ?? "";
-	const diskUsedPercent = /^\d{1,3}$/.test(rawDisk) ? Number(rawDisk) : 101;
+	const rawDisk = values.get("disk_used_percent");
+	const diskUsedPercent = /^\d{1,3}$/.test(String(rawDisk))
+		? Number(rawDisk)
+		: Number.NaN;
 	const rawEngine = values.get("engine");
 	return {
 		hostReachable: true,

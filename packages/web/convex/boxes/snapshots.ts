@@ -17,6 +17,7 @@ import { boxEventType } from "../../lib/boxes/operations";
 import { reconcileCapacityAlert } from "./capacityAlerts";
 import { startBoxOperation } from "./operations";
 import {
+	AUTOMATIC_SNAPSHOT_INTERVAL_MS,
 	SNAPSHOT_INCOMPLETE_RETENTION_MS,
 	SNAPSHOT_RETENTION_SWEEP_BATCH,
 	snapshotEvictionCount,
@@ -62,21 +63,27 @@ async function countActiveSnapshotsByClass(
 	limit: number
 ) {
 	let count = 0;
+	// Loosening this bound reaches the same verdict by construction: a wider
+	// `take` still returns only the rows that exist, and stopping a status later
+	// still leaves `count` at or above the limit. What the verdict is used for is
+	// covered; how few rows it read to get there is not observable, which is why
+	// mutants on the bound itself survive.
 	for (const status of ACTIVE_SNAPSHOT_STATUSES) {
-		const remaining = limit - count;
-		if (remaining <= 0) return { count, exact: false };
-
+		// `limit - count` is always at least one here, so there is no budget check
+		// at the top of the loop: the return below leaves as soon as the budget is
+		// spent, and every caller asks for a cap plus at least one. A guard here
+		// duplicated that condition and could not fire.
 		const rows = await ctx.db
 			.query("box_snapshots")
 			.withIndex("box_id_class_status_created_at", (builder) =>
 				builder.eq("box_id", boxId).eq("class", cls).eq("status", status)
 			)
-			.take(remaining);
+			.take(limit - count);
 		count += rows.length;
 
-		if (count >= limit) {
-			return { count, exact: false };
-		}
+		// Stopped early, so `count` is a floor rather than the total - which is
+		// what `exact` reports, and what admission refuses on rather than guessing.
+		if (count >= limit) return { count, exact: false };
 	}
 
 	return { count, exact: true };
@@ -87,6 +94,9 @@ async function oldestAutomaticCompleteSnapshotIds(
 	boxId: Id<"boxes">,
 	limit: number
 ) {
+	// An early exit rather than a decision: asking for none would take none
+	// anyway, so this only saves the query.
+	// Stryker disable next-line ConditionalExpression,EqualityOperator: `.take(0)` returns nothing, so skipping the query and running it are the same answer.
 	if (limit <= 0) return [];
 
 	const rows = await ctx.db
@@ -233,8 +243,16 @@ export async function startManualSnapshot(
 	const operationId = await startBoxOperation(ctx, box._id, "snapshot", {
 		idempotencyKey: `${idempotencyKeyPrefix}:${box._id}:${snapshotIdempotencyBucket(Date.now(), manualMinIntervalMs)}`,
 		trigger,
+		// Stryker disable next-line ObjectLiteral,StringLiteral: read only inside the workflow body, which this harness cannot run (packages/web/tests/support/convex.ts).
 		workflowArgs: { class: "manual" }
 	});
+	// `startBoxOperation` hands back nothing when an active operation already
+	// holds this key, and without this the caller would report a capture that is
+	// never going to happen. No test reaches it: the same active operation is
+	// refused as "this box is busy" before the key is ever compared, so the only
+	// way here is a reordering of those two checks - which is exactly the change
+	// this guard is here to survive.
+	// Stryker disable next-line ConditionalExpression,BlockStatement: unreachable while the busy check precedes the idempotency check; kept so a reordering cannot turn a deduplicated start into a silent success.
 	if (!operationId) {
 		throw new ConvexError("A snapshot is already in progress.");
 	}
@@ -344,18 +362,27 @@ export const markRestoreSucceeded = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const now = Date.now();
-		await ctx.db.patch(args.boxId, { status: "running", updated_at: now });
+		// The operation closes first and unconditionally, for the reason
+		// `completeSnapshot` above states: the restore succeeded, and an operation
+		// left open blocks every later action on the box - including the teardown
+		// that would be why the box is no longer there.
+		//
+		// This used to patch the box first, which threw on a missing one and left
+		// the operation open for ever - and made the `box` guard below unreachable,
+		// so the code read as though it handled the case it was failing.
 		await ctx.db.patch(args.operationId, {
 			status: "succeeded",
 			finished_at: now,
 			updated_at: now
 		});
+
 		const box = await ctx.db.get(args.boxId);
-		if (box) {
-			await appendBoxEvent(ctx, box, boxEventType("restore", "succeeded"), {
-				metadata: { snapshotRowId: args.snapshotRowId }
-			});
-		}
+		if (!box) return;
+
+		await ctx.db.patch(args.boxId, { status: "running", updated_at: now });
+		await appendBoxEvent(ctx, box, boxEventType("restore", "succeeded"), {
+			metadata: { snapshotRowId: args.snapshotRowId }
+		});
 	}
 });
 
@@ -401,6 +428,9 @@ export async function markSnapshotDeleting(
 	const snapshot = await ctx.db.get(snapshotRowId);
 	if (!snapshot) return null;
 
+	// Only a row that is not already being deleted needs moving; re-patching one
+	// that is would write the value it already holds.
+	// Stryker disable next-line ConditionalExpression,StringLiteral: patching "deleting" over "deleting" leaves the row identical, so a test cannot see the difference.
 	if (snapshot.status !== "deleting") {
 		await ctx.db.patch(snapshotRowId, { status: "deleting" });
 	}
@@ -434,7 +464,9 @@ export const runDelete = internalAction({
 		);
 		if (!target) return;
 
-		if (target.imageId) {
+		// Presence, not truthiness: a row that never reached Hetzner has no image
+		// id at all, which is the only case that may skip the provider delete.
+		if (target.imageId !== undefined) {
 			await ctx.runAction(internal.boxes.infra.hetznerVps.deleteImage, {
 				imageId: target.imageId
 			});
@@ -560,13 +592,14 @@ export const startAutomaticSnapshot = internalMutation({
 			return;
 		}
 
-		const { snapshotPolicy } = await readGlobalSettings(ctx);
-		const manualMinIntervalMs = manualSnapshotIntervalMs(snapshotPolicy);
-
 		try {
 			await startBoxOperation(ctx, args.boxId, "snapshot", {
-				idempotencyKey: `auto-snapshot:${args.boxId}:${snapshotIdempotencyBucket(Date.now(), manualMinIntervalMs)}`,
+				// Bucketed by the automatic cadence, not by the manual cooldown: this
+				// key exists to make one night's sweep idempotent, and an operator's
+				// manual-interval setting has nothing to say about that.
+				idempotencyKey: `auto-snapshot:${args.boxId}:${snapshotIdempotencyBucket(Date.now(), AUTOMATIC_SNAPSHOT_INTERVAL_MS)}`,
 				trigger: "system:auto_snapshot",
+				// Stryker disable next-line ObjectLiteral,StringLiteral: read only inside the workflow body, which this harness cannot run (packages/web/tests/support/convex.ts).
 				workflowArgs: { class: "scheduled" }
 			});
 		} catch (error) {

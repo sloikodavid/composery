@@ -6,7 +6,8 @@ import { OWNER, WEBSITE_DOMAIN } from "shared";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
-	robots: { follow: true, index: false }
+	description:
+		"The agreement between you and Composery for the hosted Composery Cloud service."
 };
 
 export default function TermsPage() {
@@ -87,11 +88,18 @@ export default function TermsPage() {
 			<LegalSection title="Availability and changes">
 				<p>
 					We aim to provide a reliable service but do not promise uninterrupted
-					or error-free operation. Features may change. We will give reasonable
-					advance notice of a material adverse change or discontinuation where
-					practicable. We may update these terms prospectively; material changes
-					will be notified through the service or email and will not
-					retroactively rewrite an accrued right.
+					or error-free operation. Features may change. Where we modify the
+					service in a way that negatively affects your access to or use of it
+					by more than a minor degree, or discontinue it, we will email you
+					reasonably in advance with what is changing, when it takes effect, and
+					your right to end the agreement free of charge within 30 days of that
+					email or of the change itself, whichever is later. That right does not
+					arise where we let you keep the service unmodified at no extra cost.
+				</p>
+				<p>
+					We may update these terms prospectively. We will email you about a
+					material change rather than rely on you noticing this page, and no
+					update retroactively rewrites a right that has already accrued.
 				</p>
 			</LegalSection>
 			<LegalSection title="Warranties and liability">

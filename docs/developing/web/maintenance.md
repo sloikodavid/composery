@@ -178,6 +178,7 @@ All fixed times are UTC.
 | Delete expired box authorization records | Every 15 minutes |
 | Reconcile capacity alerts                | Every 15 minutes |
 | Retry staff alerts                       | Every 15 minutes |
+| Send legal notices                       | Every 15 minutes |
 | Subscription reconciliation              | Hourly at :11    |
 | Account deletion finalization            | Hourly at :19    |
 | Finish failed box deletions              | Hourly at :27    |
@@ -189,6 +190,7 @@ All fixed times are UTC.
 | Purge expired checkout records           | Daily at 04:37   |
 | Purge expired deleted accounts           | Daily at 04:39   |
 | Purge expired staff alerts               | Daily at 04:43   |
+| Purge expired legal notices              | Daily at 04:47   |
 | Sweep box health                         | Every 10 minutes |
 | Sweep stuck box operations               | Every 15 minutes |
 | Refresh runtime release                  | Hourly at :26    |
@@ -273,3 +275,13 @@ for 180 days for support, security, and claim handling. Paid billing evidence
 remains for six calendar years for accounting; a specific dispute or legal hold
 may extend one record. Account deletion pseudonymizes retained links and removes
 the account tombstone once no retained record still refers to it.
+
+Legal notice records - which notice went to which account, when, and what Resend
+reported about it - are held for the same six years, from the day the notice was
+sent rather than the day the box ended. They are not in the table above because
+they carry no window of their own: they read the paid-billing constant, on the
+argument that both are evidence held against a claim and the period that decides
+either is the six years the Statute of Limitations 1957 allows a contract action
+in Ireland. Account deletion replaces the address in one with a non-identifying
+value and keeps the rest, so the tombstone outlives them and is removed only once
+none is left.

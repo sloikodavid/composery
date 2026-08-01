@@ -103,6 +103,30 @@ async function reconcileBox(ctx: ActionCtx, box: Doc<"boxes">) {
 	await reportPlanMismatch(ctx, box, subscription);
 }
 
+// What staff are told when the sweep stops early, kept out of the catch block
+// that sends it. Nothing in the harness can make the sweep throw, so a payload
+// written inline there could only be checked by reading it - and the two things
+// worth checking are exactly the ones reading does worst: whether the message
+// carries the cause, and how often an hourly failure is allowed to repeat.
+//
+// Windowed to six hours rather than deduplicated outright. The sweep runs every
+// hour, so an outage that lasts a day would otherwise raise one alert staff
+// might miss, or twenty-four they would learn to ignore; four is a number that
+// keeps arriving without becoming noise.
+export function reconciliationFailureAlert(error: unknown, at: number) {
+	const message = error instanceof Error ? error.message : String(error);
+	return {
+		key: `subscription-reconciliation-failed:${Math.floor(at / (6 * HOUR_MS))}`,
+		severity: "critical" as const,
+		subject: "Polar subscription reconciliation failed",
+		text: `The hourly subscription reconciliation stopped before it could check every box.
+
+${message}
+
+Review the Convex action logs and Polar subscription state.`
+	};
+}
+
 // The hourly floor under Polar's webhooks: boxes whose subscription has ended get
 // deleted, and boxes whose subscription has drifted from the plan they were sold
 // on get reported.
@@ -127,18 +151,10 @@ export const reconcileBoxSubscriptions = internalAction({
 				}
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const sixHourWindow = Math.floor(Date.now() / (6 * HOUR_MS));
-			await ctx.runMutation(internal.staff.alerts.raise, {
-				key: `subscription-reconciliation-failed:${sixHourWindow}`,
-				severity: "critical",
-				subject: "Polar subscription reconciliation failed",
-				text: `The hourly subscription reconciliation stopped before it could check every box.
-
-${message}
-
-Review the Convex action logs and Polar subscription state.`
-			});
+			await ctx.runMutation(
+				internal.staff.alerts.raise,
+				reconciliationFailureAlert(error, Date.now())
+			);
 			throw error;
 		}
 	}

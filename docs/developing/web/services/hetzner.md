@@ -115,7 +115,7 @@ created once in the console and referenced by id.
    This firewall is the real boundary because box owners effectively control
    their host. Port 22 remains public because Convex has no fixed egress IP;
    cloud-init disables SSH passwords. ICMP is needed for path-MTU discovery.
-   Leave `HETZNER_NETWORK_ID` empty: Hetzner firewalls do not filter private
+   Boxes join no private network: Hetzner firewalls do not filter private
    network traffic, so a shared network would let customer boxes bypass this
    isolation.
 

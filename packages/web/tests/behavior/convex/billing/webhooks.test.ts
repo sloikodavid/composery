@@ -425,3 +425,223 @@ describe("a checkout that ended without paying", () => {
 		}
 	);
 });
+
+// Matching a paid order back to the reservation it belongs to.
+//
+// Two independent routes to the same answer, tried in order: the intent id
+// Composery wrote into the checkout's metadata, then the Polar checkout id the
+// reservation recorded. Two, because either can be missing - metadata does not
+// survive every way a checkout can be recreated, and a checkout id is not
+// written until Polar has one - and matching the wrong reservation would convert
+// somebody else's.
+//
+// The metadata route reads a field Polar hands back as unknown JSON, so the
+// cases below are the shapes an outside system can actually put there, not
+// hypotheticals: absent, empty, and not-a-string all have to fall through to the
+// second route rather than throw or match nothing.
+describe("matching a paid order to its reservation", () => {
+	const metadata = (value: unknown) => ({
+		[CHECKOUT_INTENT_METADATA_KEYS.intentId]: value
+	});
+
+	test.each([
+		["an empty string", ""],
+		["a number", 7],
+		["null", null]
+	])(
+		"falls back to the checkout id when the metadata id is %s",
+		async (_name, value) => {
+			const t = testConvex();
+			await seedSettings(t);
+			const owner = await seedUser(t);
+			const intentId = await seedIntent(t, owner.clerkUserId);
+
+			await handlePaidOrder(
+				routeCtx(t),
+				paidOrder({ metadata: metadata(value) })
+			);
+
+			expect(
+				await t.run(async (ctx) => await ctx.db.get(intentId))
+			).toMatchObject({ status: "converted" });
+			expect(revokeAndRefundPolarOrder).not.toHaveBeenCalled();
+		}
+	);
+
+	// A metadata id that is well-formed but names no reservation falls through
+	// too, rather than being taken as proof there is none.
+	test("falls back when the metadata id matches no reservation", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId);
+		const stale = await t.run(async (ctx) => {
+			const id = await ctx.db.insert("box_checkout_intents", {
+				user_id: owner.clerkUserId,
+				slug: "gone",
+				plan: "air",
+				status: "released",
+				created_at: 1,
+				updated_at: 1
+			});
+			await ctx.db.delete(id);
+			return id;
+		});
+
+		await handlePaidOrder(
+			routeCtx(t),
+			paidOrder({ metadata: metadata(stale) })
+		);
+
+		expect(
+			await t.run(async (ctx) => await ctx.db.get(intentId))
+		).toMatchObject({ status: "converted" });
+	});
+
+	// The metadata id wins when both routes are available and disagree: it names
+	// this order's reservation, while a checkout id can be shared by a checkout
+	// that was recreated.
+	test("prefers the metadata id over the checkout id", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const byCheckout = await seedIntent(t, owner.clerkUserId);
+		const byMetadata = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_checkout_intents", {
+					user_id: owner.clerkUserId,
+					slug: "second",
+					plan: "air",
+					status: "active",
+					created_at: NOW - 500,
+					updated_at: NOW - 500
+				})
+		);
+
+		await handlePaidOrder(
+			routeCtx(t),
+			paidOrder({ metadata: metadata(byMetadata) })
+		);
+
+		expect(
+			await t.run(async (ctx) => await ctx.db.get(byMetadata))
+		).toMatchObject({ status: "converted" });
+		expect(
+			await t.run(async (ctx) => await ctx.db.get(byCheckout))
+		).toMatchObject({ status: "active" });
+	});
+
+	// No route at all. The order is still refused loudly rather than dropped -
+	// somebody has been charged.
+	test("refuses an order carrying neither route", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		await seedIntent(t, owner.clerkUserId);
+
+		await handlePaidOrder(
+			routeCtx(t),
+			paidOrder({ checkoutId: null, metadata: {} })
+		);
+
+		expect(revokeAndRefundPolarOrder).toHaveBeenCalledWith(
+			expect.objectContaining({ idempotencyKey: "unmatched-checkout:order_1" })
+		);
+	});
+
+	// Polar sends no custom-field object at all when a checkout has no custom
+	// fields, which is not the same as a Terms box left unticked - but it is the
+	// same answer, and reading it must not throw on the way there.
+	test("refuses an order carrying no custom fields at all", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		await seedIntent(t, owner.clerkUserId);
+
+		await handlePaidOrder(
+			routeCtx(t),
+			paidOrder({ customFieldData: undefined })
+		);
+
+		expect(revokeAndRefundPolarOrder).toHaveBeenCalledWith(
+			expect.objectContaining({ idempotencyKey: "missing-terms:order_1" })
+		);
+	});
+});
+
+// What a refused order tells the people who have to fix it.
+//
+// Every refusal here has already taken somebody's money and given it back
+// automatically, so the alert is not a warning - it is the record of a completed
+// financial event that nobody chose. It has to carry the order, the customer and
+// the reason, because reconciling it in Polar afterwards needs all three, and
+// the comment goes onto the refund itself where the customer's own receipt shows
+// it.
+describe("what a refused order tells the people who have to fix it", () => {
+	test("names the order, the customer and the subscription when nothing matched", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+
+		await handlePaidOrder(routeCtx(t), paidOrder());
+
+		const [alert] = await staffAlerts(t);
+		expect(alert.text).toContain("order_1");
+		expect(alert.text).toContain("cus_1");
+		expect(alert.text).toContain("sub_1");
+		// Says the money is already back, so nobody refunds it a second time by
+		// hand.
+		expect(alert.text).toContain("refunded automatically");
+	});
+
+	// The comment rides on the refund in Polar, so it is what the finance record
+	// says this refund was for.
+	test("says on the refund itself why it was made", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+
+		await handlePaidOrder(routeCtx(t), paidOrder());
+
+		expect(revokeAndRefundPolarOrder).toHaveBeenCalledWith(
+			expect.objectContaining({
+				comment:
+					"The paid order could not be linked to a Composery checkout intent."
+			})
+		);
+	});
+
+	test("gives a missing Terms acceptance its own reason on the refund", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const owner = await seedUser(t);
+		const intentId = await seedIntent(t, owner.clerkUserId);
+
+		await handlePaidOrder(routeCtx(t), paidOrder({ customFieldData: {} }));
+
+		expect(revokeAndRefundPolarOrder).toHaveBeenCalledWith(
+			expect.objectContaining({
+				comment: "Required supplier Terms acceptance was missing."
+			})
+		);
+		const [alert] = await staffAlerts(t);
+		expect(alert.text).toContain(String(intentId));
+	});
+
+	// A refund arriving for an order Composery never linked to anything is not an
+	// error to report - there is nothing to release and nothing to delete.
+	test("does nothing for a full refund it can match to neither", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+
+		await handleRefundedOrder(
+			routeCtx(t),
+			paidOrder({
+				checkoutId: null,
+				metadata: {},
+				refundableAmount: 0,
+				subscriptionId: "sub_x"
+			})
+		);
+
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+});

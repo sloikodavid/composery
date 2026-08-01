@@ -52,9 +52,9 @@ the notch upstream's default keeps it out of.
 +		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" data-light="{{BASE}}/_static/src/browser/media/favicon-light.svg" data-dark="{{BASE}}/_static/src/browser/media/favicon-dark.svg" />
  		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
  		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/narrow.css">
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/touch.css">
-+		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench-assets/fonts.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/narrow.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/touch.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/fonts.css">
 +		<!-- First paint: paint the brand background so the workbench never flashes white before its theme applies. Colours are the brand light/dark backgrounds. -->
 +		<style>
 +			html, body { background-color: #cdc9c4; }

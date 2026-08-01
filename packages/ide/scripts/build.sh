@@ -3,11 +3,11 @@
 # Composery = pristine code-server (submodule) + our overlay + our patches.
 #
 #   upstream/   code-server, pinned submodule (brings its own lib/vscode)
-#   overlay/    files that do not exist upstream, path-mirrored onto the tree:
-#               new server routes (src/node/routes/api, register, ...), auth pages,
-#               media, bundled extensions, workbench assets. Never a modified copy
-#               of an upstream file - those are patches, so upstream bumps fail
-#               loudly instead of silently reverting.
+#   overlay/    files that do not exist upstream. It mirrors the source tree, so
+#               an overlay path IS its destination path - that alone decides
+#               where a new file goes, and there is nothing else to know. Never a
+#               modified copy of an upstream file: those are patches, so upstream
+#               bumps fail loudly instead of silently reverting.
 #   patches/    series = our diffs; all apply -p1 from the code-server root.
 #               One concern per patch (a hunk belongs in the patch whose name
 #               describes it); a patch may span code-server's src/ and
@@ -47,15 +47,16 @@ echo "== 4. apply the whole stack (code-server's own + our VS Code-side patches)
 # failure, never a silent mis-apply.
 ( cd "$BUILD" && QUILT_PATCHES=patches quilt push -a --fuzz=0 )
 
-echo "== 5. overlay: our whole owned files, path-mirrored =="
-cp -r "$PACKAGE_ROOT/overlay/src/." "$BUILD/src/"
-cp -r "$PACKAGE_ROOT/overlay/lib/vscode/extensions/." "$BUILD/lib/vscode/extensions/"
-# Whole files we own inside VS Code's source tree. Without this a brand-new file
-# under lib/vscode/src could only arrive as a /dev/null patch, which made the
-# overlay-vs-patch split a rule plus an exception. A regen test refuses to let
-# anything here shadow a path that exists upstream, so the tripwire quilt gives
-# us for modified files is not lost for whole ones.
-cp -r "$PACKAGE_ROOT/overlay/lib/vscode/src/." "$BUILD/lib/vscode/src/"
+echo "== 5. overlay: our whole owned files, path-mirrored onto the source tree =="
+# One unconditional mirror, never a list of subtrees: an enumeration is a second
+# place to remember, and the copy it forgets is silent - a new directory here
+# would read as shipped while reaching nothing.
+# This reaches VS Code's source tree too, so a brand-new file under
+# lib/vscode/src need not arrive as a /dev/null patch. A regen test refuses to
+# let anything here shadow a path that exists upstream (except one a patch
+# deletes), so the tripwire quilt gives us for modified files is not lost for
+# whole ones.
+cp -r "$PACKAGE_ROOT/overlay/." "$BUILD/"
 
 echo "== 6. rebrand the assembled IDE tree and fail on old live product names =="
 node "$PACKAGE_ROOT/scripts/rebrand.mjs" "$BUILD"
@@ -69,13 +70,13 @@ echo "== 7. IDE build (npm: install -> server -> vscode -> release) =="
 # same content = same URLs (caches stay valid), any change = new URLs everywhere.
 # scripts/ and ../shared/*.ts are hashed too: rebrand.mjs rewrites the
 # assembled tree from both, so a rename-rule or brand-constant change alters
-# shipped code without touching patches or overlay.
+# shipped code without touching patches or the overlay.
 COMPOSERY_STATIC_STAMP=$( { (cd "$PACKAGE_ROOT" && find patches overlay scripts ../shared/*.ts -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum); git -C "$PACKAGE_ROOT/upstream" rev-parse HEAD 2>/dev/null || true; } | sha256sum | cut -c1-40 )
 export COMPOSERY_STATIC_STAMP
 echo "static stamp: $COMPOSERY_STATIC_STAMP"
 # npm ci is skipped when node_modules came with the tree: the Docker ide-base
 # layer pre-installs it in pristine upstream (keyed by the upstream commit) so
-# overlay/patch edits do not recompile the native modules every build.
+# overlay and patch edits do not recompile the native modules every build.
 ( cd "$BUILD" \
   && { [ -d node_modules ] || CI=true npm ci; } \
   && npm run build \
@@ -85,12 +86,8 @@ echo "static stamp: $COMPOSERY_STATIC_STAMP"
 # literal string `= 1`, so any other spelling silently ships a release with no
 # bin/ launcher and no node_modules (the IDE service then FATALs at boot).
 
-echo "== 8. output-overlay: workbench-assets into the built VS Code bundle (post-build) =="
-rsync -a "$PACKAGE_ROOT/overlay/lib/vscode/out/" "$BUILD/release/lib/vscode/out/"
-# Upstream's release step ships only pages *.html/*.css - carry our pages JS
-# from the rebranded build tree, or the login page 404s auth.js and every page
-# including the workbench 404s favicon.js (all of them load the one copy from
-# /_static, so this is the only place it arrives).
-cp "$BUILD/src/browser/pages/"*.js "$BUILD/release/src/browser/pages/"
+# Nothing follows the build. Both copy steps that used to live here were upstream
+# enumerating what its release ships, which is a patch (release-contents.diff),
+# not a phase of ours: the build produces the release, whole.
 
 echo "Release: $BUILD/release"

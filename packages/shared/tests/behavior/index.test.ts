@@ -60,7 +60,7 @@ describe("shared brand identity", () => {
 				jurisdiction: "Ireland",
 				address:
 					"20 Templegreen, Newcastle West, Co. Limerick, V42 AH01, Ireland",
-				email: "sloikodavid@gmail.com"
+				email: "support@composery.io"
 			},
 			REPO: { owner: "sloikodavid", name: "composery", branch: "main" },
 			SOCIAL: { x: "sloikodavid", linkedin: "composery" },

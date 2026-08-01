@@ -91,6 +91,50 @@ adds, moves, or removes tracked paths, run `pnpm fix:tree`; do not manually
 rewrite the generated block. Generated Convex API files may change after
 function/schema changes and should be reviewed like any other generated diff.
 
+## Source whitelist
+
+`pnpm check:whitelist` derives a dump from every Git-owned or untracked,
+non-Git-ignored path and compares it with the root `whitelist.jsonc`. CI fails
+for an added or removed unit or casing form.
+
+The list is the vocabulary gate, so a new entry is a cost: the word stays until
+somebody removes it, and a list that grows on demand checks nothing. A flagged
+unit asks about the source. Most answers are there: a typo, an accidental
+filename, a word that repeats a word the list already has. `pnpm fix:whitelist`
+prunes unused entries and repairs the order, but it refuses new entries and
+exits with an error that names them. A word that carries a meaning no listed
+word carries is accepted with
+`node scripts/whitelist.mjs --write --accept-new`; record why in the commit
+text. Review the resulting diff.
+
+The lexical grammar is deliberately small. Filename extensions have no special
+meaning, so `123.test.ts` becomes `1`, `2`, `3`, `.`, `test`, `.`, and `ts`.
+Whitespace, punctuation, emoji, combining sequences, and other visible text use
+Unicode grapheme clusters, so `1️⃣`, `👩‍💻`, skin-tone sequences, and flags each
+remain one exact unit. Bare number segments become separate digits.
+Letter/number transitions, lowercase-to-uppercase transitions, and the
+last-uppercase-to-word transition split identifiers: `win32AppId` becomes
+`win`, `3`, `2`, `App`, and `Id`, while `APIOperation` becomes `API` and
+`Operation`. An existing complete unit wins first, so explicitly recording
+`iPhone` prevents that run from becoming `i` and `Phone`. No substring or
+dictionary-based split occurs.
+
+The JSONC body is one array of strings. A lowercase ASCII entry accepts its
+lowercase, Titlecase, and uppercase forms, so `"api"` accepts `api`, `Api`, and
+`API`. Other mixed casing is exact: `"iPhone"` accepts only `iPhone`. Non-ASCII
+text is also exact because Unicode casing can expand or depend on language.
+Standard three-, four-, six-, and eight-digit CSS colors are accepted
+structurally and omitted instead of producing fragments such as `fff`.
+
+The required comment at the top of `whitelist.jsonc` is the authoritative
+coverage ruling. The scanner does not cover the whitelist's own contents,
+invalid UTF-8 or contents with the control ranges named in the ruling, contents
+selected by `.whitelistignore`, or contents inside a Git submodule; it still
+scans every filename and symbolic-link target. Ignore patterns are positive
+repository-relative file globs. Negation, directory rules, duplicates, and
+patterns that match nothing fail, so every rule is explicit and effective.
+There is no inline suppression mechanism and the checker has no warnings mode.
+
 ## Change workflow
 
 1. Pull the target branch and inspect `git status`; never discard unrelated

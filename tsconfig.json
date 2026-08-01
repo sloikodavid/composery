@@ -19,6 +19,7 @@
 		"tests/**/*.ts",
 		"packages/ide/tests/**/*.ts",
 		"scripts/runbook.d.mts",
+		"scripts/whitelist.d.mts",
 		"vitest*.ts"
 	]
 }

@@ -219,3 +219,58 @@ describe("system harnesses are reachable", () => {
 		expect(unreachable).toEqual([]);
 	});
 });
+
+// A mutant is silenced one line at a time, never in bulk.
+//
+// Stryker takes `// Stryker disable <mutators>` as a switch that stays on until a
+// matching `restore`, and `// Stryker disable next-line <mutators>` as one line.
+// The block form is the dangerous one: it silences every mutant of those kinds in
+// its range, including ones tests were killing, and the report says only that the
+// count of ignored mutants went up. Measured while writing these: one block pair
+// around a short helper in `convex/boxes/snapshots.ts` took Ignored from 14 to 151
+// and Killed from 303 to 193 - about a hundred and ten real kills hidden, with
+// nothing in the run that looked wrong.
+//
+// `next-line` cannot do that: its blast radius is one line, and a line it does
+// not reach stays measured. The rule is therefore absolute rather than "use the
+// block form carefully", because the failure is invisible in the only report
+// anyone reads.
+describe("mutants are silenced one line at a time", () => {
+	const sourceFiles = checkoutFiles.filter(
+		(f) => /\.[cm]?tsx?$/.test(f) && !/\.test\.[cm]?tsx?$/.test(f)
+	);
+
+	// A green run has to mean the tree is clean, not that the pattern stopped
+	// matching the directive Stryker actually understands.
+	test("there are narrow disables to find", () => {
+		const narrow = sourceFiles.filter((f) =>
+			read(f).includes("Stryker disable next-line")
+		);
+
+		expect(narrow.length).toBeGreaterThan(0);
+	});
+
+	test("no source file opens a disable block", () => {
+		const blockForm = sourceFiles.filter((f) =>
+			/\/\/\s*Stryker\s+disable\s+(?!next-line)/.test(read(f))
+		);
+
+		expect(blockForm).toEqual([]);
+	});
+
+	// Every silenced mutant says why. A bare directive is the same untriaged
+	// survivor the doctrine forbids, just hidden from the report.
+	test("every disable carries its reason", () => {
+		const unexplained = sourceFiles.flatMap((f) =>
+			read(f)
+				.split("\n")
+				.filter(
+					(line) =>
+						line.includes("Stryker disable next-line") && !line.includes(":")
+				)
+				.map(() => f)
+		);
+
+		expect([...new Set(unexplained)]).toEqual([]);
+	});
+});

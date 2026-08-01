@@ -445,3 +445,204 @@ function fakeAuth(subject: string) {
 		})
 	} as never;
 }
+
+// An address that changed at Clerk.
+//
+// Clerk owns the address; this row is a copy kept so the backend can send mail
+// and so staff can find an account by what a customer quotes. A copy that stops
+// following its source is the worst kind: every page still renders, and the only
+// symptom is receipts going to an address the customer no longer reads.
+describe("following an account's address when it changes", () => {
+	const sync = (t: Harness, clerkUserId: string, email: string) =>
+		t.mutation(internal.users.ensureUserForIdentity, { clerkUserId, email });
+
+	test("moves the address on the same row", async () => {
+		const t = testConvex();
+		await sync(t, "clerk_1", "old@example.com");
+
+		await sync(t, "clerk_1", "new@example.com");
+
+		const rows = await t.run(
+			async (ctx) => await ctx.db.query("users").collect()
+		);
+		expect(rows).toMatchObject([{ email: "new@example.com" }]);
+	});
+
+	// The row is the account, so nothing else about it may move with the address
+	// - least of all the role or a suspension somebody set deliberately.
+	test("keeps the role and the suspension the row already had", async () => {
+		const t = testConvex();
+		await sync(t, "clerk_1", "old@example.com");
+		await t.run(async (ctx) => {
+			const row = await ctx.db.query("users").first();
+			await ctx.db.patch(row!._id, {
+				role: "admin",
+				suspended: true,
+				suspended_reason: "abuse"
+			});
+		});
+
+		await sync(t, "clerk_1", "new@example.com");
+
+		expect(await readUser(t, "clerk_1")).toMatchObject({
+			email: "new@example.com",
+			role: "admin",
+			suspended: true,
+			suspended_reason: "abuse"
+		});
+	});
+
+	// Staff search by address, so the new one has to be findable and the old one
+	// must not still answer - support acting on a stale hit would be looking at
+	// somebody else's account.
+	test("makes the new address the one that finds the account", async () => {
+		const t = testConvex();
+		await sync(t, "clerk_1", "old@example.com");
+
+		await sync(t, "clerk_1", "new@example.com");
+
+		const byOld = await t.run(
+			async (ctx) =>
+				await ctx.db
+					.query("users")
+					.withIndex("email", (query) => query.eq("email", "old@example.com"))
+					.first()
+		);
+		expect(byOld).toBeNull();
+	});
+
+	test("leaves the row alone when the address has not changed", async () => {
+		const t = testConvex();
+		await sync(t, "clerk_1", "same@example.com");
+		const before = await readUser(t, "clerk_1");
+
+		await sync(t, "clerk_1", "same@example.com");
+
+		expect(await readUser(t, "clerk_1")).toEqual(before);
+	});
+
+	// Two accounts are two rows even when one takes an address the other used to
+	// hold - which is what happens when somebody moves an address between their
+	// own accounts.
+	test("gives a second account its own row", async () => {
+		const t = testConvex();
+		await sync(t, "clerk_1", "shared@example.com");
+		await sync(t, "clerk_1", "moved@example.com");
+
+		await sync(t, "clerk_2", "shared@example.com");
+
+		const rows = await t.run(
+			async (ctx) => await ctx.db.query("users").collect()
+		);
+		expect(rows).toHaveLength(2);
+		expect(await readUser(t, "clerk_2")).toMatchObject({
+			email: "shared@example.com"
+		});
+	});
+});
+
+// Whether the console is offered at all.
+//
+// This is the only question the nav link and the page's server guard ask, and it
+// answers `false` rather than throwing because "you are an ordinary customer" is
+// the ordinary case here. Every endpoint behind the console still checks the
+// capability it needs, so a wrong answer here shows a link that leads to
+// refusals - but a wrong answer the other way hides the console from the people
+// who run the deployment.
+describe("whether to offer the console", () => {
+	test("says no to nobody at all", async () => {
+		const t = testConvex();
+
+		expect(await t.query(api.users.canAccessStaffConsole, {})).toBe(false);
+	});
+
+	// Signed in with no row yet: the first page load can race the mutation that
+	// creates it, and the answer has to be "no" rather than a crash.
+	test("says no to an identity with no account row", async () => {
+		const t = testConvex();
+
+		expect(
+			await t
+				.withIdentity({ subject: "clerk_unknown" })
+				.query(api.users.canAccessStaffConsole, {})
+		).toBe(false);
+	});
+
+	// Asked of every role there is, against that role's own capability list.
+	//
+	// Today the two roles hold everything and nothing, so this cannot tell
+	// "console access" apart from "any staff power at all" - and it is written
+	// against the capability rather than the role name so that it starts telling
+	// them apart by itself on the day a role holds some powers but not this one.
+	test.each(
+		Object.keys(ROLE_CAPABILITIES) as (keyof typeof ROLE_CAPABILITIES)[]
+	)("answers a %s by that role's own capabilities", async (role) => {
+		const t = testConvex();
+		await t.run(
+			async (ctx) =>
+				await ctx.db.insert("users", {
+					clerk_user_id: "clerk_1",
+					email: "person@example.com",
+					role,
+					suspended: false,
+					created_at: 1,
+					updated_at: 1
+				})
+		);
+
+		expect(
+			await t
+				.withIdentity({ subject: "clerk_1" })
+				.query(api.users.canAccessStaffConsole, {})
+		).toBe(
+			(ROLE_CAPABILITIES[role] as readonly string[]).includes("staff_console")
+		);
+	});
+});
+
+// What an account is told when it is on its way out.
+//
+// The block is returned instead of every ordinary answer, so its words are the
+// entire explanation somebody gets for a page that has stopped working. "Being
+// deleted" and "suspended" are different situations with different remedies, and
+// telling one as the other sends the reader to support for something they cannot
+// be helped with.
+describe("telling an account why it cannot act", () => {
+	const block = (over: Record<string, unknown>) =>
+		accountBlock({
+			deletion_pending: false,
+			deletion_finished_at: undefined,
+			suspended: false,
+			suspended_reason: undefined,
+			...over
+		} as Parameters<typeof accountBlock>[0]);
+
+	test("says nothing about an ordinary account", () => {
+		expect(block({})).toBeNull();
+	});
+
+	// Both halves of a deletion block: the moment it is asked for, and after it
+	// has finished. The second matters because the row outlives the boxes.
+	test.each([
+		["asked for", { deletion_pending: true }],
+		["already finished", { deletion_finished_at: 1 }]
+	])("explains a deletion %s", (_name, over) => {
+		const answer = block(over);
+
+		expect(answer).toMatchObject({
+			kind: "account_unavailable",
+			title: "This account is being deleted"
+		});
+		// Names the consequence, because "account unavailable" alone reads as a
+		// fault the reader should report rather than something they asked for.
+		expect(answer?.detail).toContain("removes every box");
+	});
+
+	// A deletion in flight outranks a suspension: it is the one that is about to
+	// destroy data, and it is the one the reader can no longer undo.
+	test("reports a deletion ahead of a suspension", () => {
+		expect(block({ deletion_pending: true, suspended: true })).toMatchObject({
+			kind: "account_unavailable"
+		});
+	});
+});

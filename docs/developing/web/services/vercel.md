@@ -22,17 +22,12 @@ Project settings:
 
 - Framework preset: Next.js.
 - Install command: `pnpm install`.
-- Build command:
-
-  ```text
-  npx convex deploy --cmd 'pnpm build' --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL
-  ```
-
-  It deploys [Convex](convex.md) first, injects the correct
-  `NEXT_PUBLIC_CONVEX_URL` into the Next.js build, then builds the frontend.
-  That first step is why a post-build Vercel Deployment Check is insufficient:
-  the backend would already have changed. The `deploy` branch prevents the
-  build from starting until CI is green.
+- Build command override: disabled. `packages/web/vercel.json` owns the build
+  command: it runs the environment check, deploys [Convex](convex.md),
+  injects the correct `NEXT_PUBLIC_CONVEX_URL`, then builds the frontend. This
+  repository-owned order means missing environment names stop the build before
+  either provider changes; a post-build check is insufficient. The `deploy`
+  branch prevents the build from starting until CI is green.
 
 - Project Settings -> Environments -> Production -> Branch Tracking: production
   branch = `deploy`.
@@ -92,9 +87,20 @@ start with `prod:<production-deployment-name>|`. A `dev:` key or a raw
 deploy log must name the production Convex URL; if it names the deployment that
 local `.env.local` calls `CONVEX_DEPLOYMENT`, the wrong key was pasted.
 
-```bash
-vercel env ls production
-```
+The repository-owned build command runs `pnpm env:deploy` first. A name absent
+from `.env.example.next.prod` blocks the entire Vercel and Convex deployment. An
+additional application name is logged as drift and the deployment continues.
+The check enumerates properties only: it never reads or prints values, and an
+empty value counts as present.
+
+Vercel exposes configured variables in the same process namespace as documented
+Vercel system variables and the build container's own names. Exact project
+names cannot be distinguished from that merged namespace without a separately
+authenticated Vercel API request, so the
+check excludes Vercel-prefixed and standard Node/package-manager/build names
+before reporting additions. A future platform-injected name may therefore appear
+as non-blocking drift until that infrastructure class is known; it can
+never make a missing required name pass.
 
 ## Analytics & privacy
 
@@ -128,6 +134,8 @@ the Terms and Privacy pages and require express consent in both instances.
 ## References
 
 - Vercel environment variables: https://vercel.com/docs/environment-variables
+- Vercel system environment variables: https://vercel.com/docs/environment-variables/system-environment-variables
+- Vercel repository configuration: https://vercel.com/docs/project-configuration/vercel-json
 - Vercel env CLI: https://vercel.com/docs/cli/env
 - Vercel custom domains: https://vercel.com/docs/domains/set-up-custom-domain
 - Vercel Git deployment configuration: https://vercel.com/docs/project-configuration/git-configuration

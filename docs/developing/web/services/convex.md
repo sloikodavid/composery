@@ -46,17 +46,27 @@ non-secret defaults and a comment on each saying where to obtain the value. Copy
 from them; this page does not restate the names, and a variable absent from those
 files does not belong on the deployment. No variable is set on both planes.
 
-Only `CLERK_FRONTEND_API_URL` is required at deploy time. Convex evaluates
-`convex/auth.config.ts` during every push, and it calls
-`requiredEnv("CLERK_FRONTEND_API_URL")`, so a deployment with that var unset fails
-the deploy with `Missing Convex environment variable: CLERK_FRONTEND_API_URL`.
-Every other backend var is read inside functions at runtime, so a missing one
-breaks only the feature that first reads it. The environment examples are the
-source-of-truth checklist; keep optional keys present with an empty value.
+The names are declared once in `convex/env.ts` and passed to
+`defineApp({ env })` in `convex/convex.config.ts`. Convex's native deployment
+validation evaluates every declared name during `convex dev` and
+`convex deploy`, so a missing name rejects the push even if the Vercel check is
+ever skipped. Each declaration uses `v.string()`: empty is valid at this
+name-presence layer.
+
+The production Vercel check also runs `convex env list --names-only` with
+the `CONVEX_DEPLOY_KEY` already used for the deploy. It needs no interactive CLI
+login and requests only names. Missing example names block before either
+provider changes; additional names are logged as drift and do not block. The
+check never requests, compares, or prints values.
+
+The auth configuration still calls `requiredEnv("CLERK_FRONTEND_API_URL")`, so
+that value must be non-empty before any functions are uploaded. Other names may
+have an empty value: their feature either treats that as unconfigured or reports
+it when first used. The environment examples are the source-of-truth checklist;
+keep optional keys present with an empty value.
 
 For a one-off from the CLI, `convex env set NAME value` (dev) or
-`convex env set --prod NAME value` works too. Check what is set with
-`convex env list` (dev) or `convex env list --prod`. After setting them, push and
+`convex env set --prod NAME value` works too. After setting them, push and
 codegen again:
 
 ```bash

@@ -11,11 +11,13 @@ import {
 	OPERATION_FAILURE_STATUS
 } from "@/convex/boxes/operationRules";
 import { boxEventType } from "@/lib/boxes/operations";
+import { HOUR_MS } from "@/convex/time";
 import {
 	operationLiveness,
 	OPERATION_ORPHAN_GRACE_MS,
 	OPERATION_RUNNING_ALERT_MS
 } from "@/convex/boxes/operationSweep";
+import { workflow } from "@/convex/boxes/workflows/boxWorkflow";
 import {
 	readBox,
 	readOperation,
@@ -78,6 +80,29 @@ describe("operationLiveness", () => {
 				workflowStatus: { type: "inProgress" }
 			})
 		).toEqual({ orphaned: false });
+	});
+
+	// The three reasons are three different facts about the world, and the error
+	// is the only record of which one applied - it is what staff read on the
+	// rescued operation. Collapsing any two would report a workflow that was never
+	// started as one that vanished, which points an investigation at the wrong
+	// half of the system.
+	test("distinguishes the three reasons an operation is beyond saving", () => {
+		const reason = (input: Parameters<typeof operationLiveness>[0]) => {
+			const result = operationLiveness(input);
+			return result.orphaned ? result.error : null;
+		};
+		const never = reason({ workflowId: undefined, workflowStatus: null });
+		const lost = reason({ workflowId: "wf_1", workflowStatus: null });
+		const ended = reason({
+			workflowId: "wf_1",
+			workflowStatus: { type: "failed" }
+		});
+
+		expect(never).toMatch(/No workflow was recorded/);
+		expect(lost).toMatch(/no longer exists/);
+		expect(ended).toMatch(/ended as "failed"/);
+		expect(new Set([never, lost, ended]).size).toBe(3);
 	});
 
 	test("always explains why it closed an operation", () => {
@@ -153,6 +178,10 @@ describe("the stuck-operation sweep", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.unstubAllEnvs();
+		// The two live-workflow tests below stub the component's `status`. Without
+		// this the stub outlives them and every later test reads a workflow that is
+		// still running, which is the answer this sweep is built to act on.
+		vi.restoreAllMocks();
 	});
 
 	async function stuckOperation(
@@ -309,6 +338,97 @@ describe("the stuck-operation sweep", () => {
 		]);
 	});
 
+	// How long it has been going is the whole of what makes this alert
+	// actionable: a person decides whether to cancel a repair from that number,
+	// and it is the only part of the message that is computed rather than copied.
+	test("says how long the operation has been running, in whole hours", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "slow",
+			status: "repairing"
+		});
+		const operationId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_operations", {
+					box_id: boxId,
+					type: "repair",
+					status: "running",
+					idempotency_key: `slow:${boxId}`,
+					trigger: "owner",
+					created_at: NOW - 9 * HOUR_MS,
+					updated_at: NOW
+				})
+		);
+
+		await t.mutation(internal.boxes.operationSweep.alertLongRunningOperation, {
+			boxId,
+			createdAt: NOW - 9 * HOUR_MS,
+			operationId,
+			type: "repair"
+		});
+
+		const [alert] = await staffAlerts(t);
+		expect(alert.subject).toBe("Box slow: repair has been running 9h");
+		// Lower case in both places, because both are sentences: "a repair
+		// operation on box slow", not "a Repair operation".
+		expect(alert.text).toContain("A repair operation on box slow");
+		expect(alert.text).toContain("running for 9 hours");
+	});
+
+	// Reached through the sweep rather than by calling the alert directly: the
+	// branch that decides an operation is merely slow, not orphaned, is the one
+	// that must never close it, and calling the mutation by hand skips it.
+	test("alerts on a live operation past the reporting window without closing it", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			slug: "slow",
+			status: "repairing"
+		});
+		const operationId = await stuckOperation(t, boxId, {
+			createdAt: NOW - OPERATION_RUNNING_ALERT_MS - 1,
+			workflowId: "wf_live"
+		});
+		vi.spyOn(workflow, "status").mockResolvedValue({
+			type: "inProgress"
+		} as never);
+
+		await t.action(internal.boxes.operationSweep.sweepStuckOperations, {});
+
+		expect(await readOperation(t, operationId)).toMatchObject({
+			status: "pending"
+		});
+		expect(await staffAlerts(t)).toMatchObject([
+			{ key: `box-operation-long-running:${operationId}`, severity: "warning" }
+		]);
+	});
+
+	// Slow is not the same as stuck. Inside the grace window between the two
+	// thresholds a live operation is simply working, and telling staff about it
+	// is how a warning stops being read.
+	test("says nothing about a live operation that has not reached the window", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "repairing"
+		});
+		await stuckOperation(t, boxId, {
+			createdAt: NOW - OPERATION_RUNNING_ALERT_MS + 1,
+			workflowId: "wf_live"
+		});
+		vi.spyOn(workflow, "status").mockResolvedValue({
+			type: "inProgress"
+		} as never);
+
+		await t.action(internal.boxes.operationSweep.sweepStuckOperations, {});
+
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+
 	test("lists only operations older than the cutoff it was given", async () => {
 		const t = testConvex();
 		const owner = await seedUser(t);
@@ -333,5 +453,119 @@ describe("the stuck-operation sweep", () => {
 		);
 
 		expect(listed.map((row) => row.operationId)).toEqual([old]);
+	});
+});
+
+// The two guards that keep the rescue from acting on something it should not.
+describe("what the rescue refuses to touch", () => {
+	const NOW = Date.UTC(2026, 5, 6, 7, 8, 9);
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		stubDeploymentEnv();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+	});
+
+	// An operation that has already settled is somebody else's recorded outcome.
+	// Reopening it would overwrite a success with a failure nobody experienced.
+	test.each(["succeeded", "failed"] as const)(
+		"leaves an operation that already %s alone",
+		async (status) => {
+			const t = testConvex();
+			const owner = await seedUser(t);
+			const boxId = await seedBox(t, {
+				user_id: owner.clerkUserId,
+				status: "running"
+			});
+			const operationId = await t.run(
+				async (ctx) =>
+					await ctx.db.insert("box_operations", {
+						box_id: boxId,
+						type: "repair",
+						status,
+						idempotency_key: `settled:${boxId}`,
+						trigger: "owner",
+						created_at: NOW,
+						updated_at: NOW
+					})
+			);
+
+			await t.mutation(internal.boxes.operationSweep.failOrphanedOperation, {
+				error: "should not be recorded",
+				operationId
+			});
+
+			expect(await readOperation(t, operationId)).toMatchObject({ status });
+			expect(await readBox(t, boxId)).toMatchObject({ status: "running" });
+		}
+	);
+
+	// The alert is named from the box, so a box that has since been deleted has
+	// nothing to name it with - and staff already know about a deleted box.
+	test("raises no long-running alert for a box that is gone", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, { user_id: owner.clerkUserId });
+		const operationId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_operations", {
+					box_id: boxId,
+					type: "repair",
+					status: "running",
+					idempotency_key: `slow:${boxId}`,
+					trigger: "owner",
+					created_at: NOW - OPERATION_RUNNING_ALERT_MS - 1,
+					updated_at: NOW
+				})
+		);
+		await t.run(async (ctx) => await ctx.db.delete(boxId));
+
+		await t.mutation(internal.boxes.operationSweep.alertLongRunningOperation, {
+			boxId,
+			createdAt: NOW - OPERATION_RUNNING_ALERT_MS - 1,
+			operationId,
+			type: "repair"
+		});
+
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+
+	// The window is inclusive: an operation that has run for exactly the reporting
+	// threshold has reached it.
+	test("reports an operation that has run for exactly the window", async () => {
+		const t = testConvex();
+		const owner = await seedUser(t);
+		const boxId = await seedBox(t, {
+			user_id: owner.clerkUserId,
+			status: "repairing"
+		});
+		const operationId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert("box_operations", {
+					box_id: boxId,
+					type: "repair",
+					status: "pending",
+					idempotency_key: `exact:${boxId}`,
+					trigger: "owner",
+					workflow_id: "wf_live",
+					created_at: NOW - OPERATION_RUNNING_ALERT_MS,
+					updated_at: NOW
+				})
+		);
+		vi.spyOn(workflow, "status").mockResolvedValue({
+			type: "inProgress"
+		} as never);
+
+		await t.action(internal.boxes.operationSweep.sweepStuckOperations, {});
+		vi.restoreAllMocks();
+
+		expect(await staffAlerts(t)).toMatchObject([
+			{ key: `box-operation-long-running:${operationId}` }
+		]);
 	});
 });

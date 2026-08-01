@@ -178,6 +178,54 @@ complete alert boundary lives in [Resend](services/resend.md#alert-policy).
 8. Reconcile any paid-unfulfilled order in Polar and Convex; confirm revocation,
    refund, deletion cleanup, and webhook/reconciliation completion.
 
+## Publishing a legal change
+
+Changing the Terms, Privacy Policy or Cookie Notice and telling existing
+customers you changed them are one act. The repository enforces that: append to
+`LEGAL_VERSIONS` in **packages/web/lib/cloud-legal.ts** and
+`tests/invariants/legal/notices.test.ts` fails until an entry in
+`LEGAL_NOTICES` announces that version.
+
+The obligation is Article 19 of Directive (EU) 2019/770 - in Ireland the
+Consumer Rights Act 2022 - where the change negatively affects a customer's
+access to or use of the service by more than a minor degree. It requires notice
+**reasonably in advance**, **on a durable medium**, of what is changing, when,
+and of the right to terminate free of charge within 30 days of the notice or the
+change, whichever is later. Email is a durable medium; this website is not. See
+[Resend](services/resend.md), "Legal notices".
+
+Two deploys, in this order:
+
+1. **Announce.** Add the `LEGAL_NOTICES` entry, with `version` set to the
+   version you are about to publish, and deploy. The notice text must state what
+   changes, the date it takes effect, and the termination right in the
+   customer's own words. Do **not** touch `LEGAL_VERSIONS` or the page copy yet:
+   the documents on the site must still be the ones customers agreed to while
+   the advance-notice period runs. Within 15 minutes the sweep mails every
+   account that existed when it started and records a row for each.
+2. **Publish, on the effective date.** Edit the page copy and append the version
+   to `LEGAL_VERSIONS`. The last-updated date on all three pages and the
+   `terms_version` stamped on new orders both follow from it; neither is written
+   by hand.
+
+A change that affects nobody's access - a clarification, a new processor already
+covered by the same purpose - still gets a version and still gets a notice,
+because the version is what customers' acceptance records point at. If it truly
+warrants no version, it warrants no date change either: fix the wording and
+leave both alone.
+
+Before step 1, check the console shows no legal-notice sender problem. A notice
+deployed to a deployment with no `RESEND_ACCOUNTS_FROM` sends to nobody, records
+nobody, and raises a critical alert - recoverable, because nothing is marked as
+told, but only if somebody reads the alert.
+
+For a personal data breach the shape is the same and the urgency is not: one
+`LEGAL_NOTICES` entry with no `version`, deployed as soon as the wording is
+right. Article 34 GDPR requires direct communication without undue delay wherever
+the breach is likely to be a high risk to the people in it; separately, Article
+33 requires notifying the Data Protection Commission within 72 hours, which is
+not something this repository does for you.
+
 ## Routine checks
 
 - Review `/console` for failed operations, abuse flags, capacity commitments,
@@ -190,9 +238,10 @@ complete alert boundary lives in [Resend](services/resend.md#alert-policy).
   [Automatic repair and the operation lock](maintenance.md#automatic-repair).
 - Review Convex function and cron failures, Polar webhook deliveries, Hetzner
   actions/resources/limits, Cloudflare records, and Vercel production health.
-- Confirm Polar owns customer billing email, that Resend delivery is healthy,
-  and that Resend's own customer mail is still only the four box owner notices.
-  See [Resend](services/resend.md).
+- Confirm Polar owns customer billing email, that every Resend sender reports
+  healthy in the console's delivery panel, and that Resend's own customer mail is
+  still only the four box owner notices, the two account notices, and whatever
+  legal notices the repository declares. See [Resend](services/resend.md).
 - Before changing destructive behavior, read the deletion, retention, refund,
   and reconciliation sections in [Polar](services/polar.md),
   [Hetzner](services/hetzner.md), and [Maintenance](maintenance.md).
