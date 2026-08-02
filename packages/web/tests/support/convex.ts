@@ -209,7 +209,33 @@ export function staffAlerts(t: Harness) {
 // chosen - not what the provider says about it. Reading the queue asserts the
 // decision without letting a behaviour test reach the network, which is the line
 // `docs/developing/testing.md` draws around this kind.
+// A scheduled function is named by a string - `"boxes/cleanup:purgeBox"` - and a
+// string is the one argument the type checker cannot follow. A name that has
+// rotted filters to nothing, so `expect(await scheduledJobs(t, stale)).toEqual([])`
+// passes forever: the check reports "nothing was scheduled" when what it means
+// is "I looked in the wrong place". Every rename in this package's history has
+// left a handful of these behind, and none of them failed.
+//
+// So the name is resolved against the module map before it is used. The map is
+// the same one `convex-test` resolves function references through, so a name
+// that passes here is a name the deployment can actually schedule.
+function assertScheduleTarget(name: string) {
+	const [modulePath, exportName] = name.split(":");
+	if (!modulePath || !exportName) {
+		throw new Error(
+			`Scheduled function name must be "<module>:<export>", got "${name}".`
+		);
+	}
+	const key = `../../convex/${modulePath}.ts`;
+	if (!(key in modules)) {
+		throw new Error(
+			`No Convex module "${modulePath}" - "${name}" cannot be scheduled by anything.`
+		);
+	}
+}
+
 export async function scheduledJobs(t: Harness, name?: string) {
+	if (name !== undefined) assertScheduleTarget(name);
 	const jobs = await t.run(
 		async (ctx) => await ctx.db.system.query("_scheduled_functions").collect()
 	);
