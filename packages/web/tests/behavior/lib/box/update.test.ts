@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { RuntimeStanding } from "@/convex/fleet/runtimeRelease";
+import type { RuntimeStanding } from "@/convex/boxes/version";
 import { formatDateTime } from "@/lib/datetime";
 import { standingNotices } from "@/lib/box/update";
 

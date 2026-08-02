@@ -158,13 +158,13 @@ describe("change-password route", () => {
 		// password from, and it still holds the old hash after a local change.
 		// Recording the new one in Convex alone leaves a password that works
 		// until the next restart and then silently reverts.
-		const auth = readRepoFile("packages/web/convex/box/auth.ts");
+		const auth = readRepoFile("packages/web/convex/instance/auth.ts");
 		const start = auth.indexOf("export const applyPasswordChange");
 		const apply = auth.slice(start, auth.indexOf("\nexport const", start + 1));
-		expect(apply).toContain("internal.box.auth.reconcilePassword");
+		expect(apply).toContain("internal.instance.auth.reconcilePassword");
 		// ...and the reconcile has to re-render the env file from the new hash,
 		// not merely restart the instance on the old one.
-		const ssh = readRepoFile("packages/web/convex/fleet/infra/ssh.ts");
+		const ssh = readRepoFile("packages/web/convex/boxes/infra/ssh.ts");
 		const rewrite = ssh.slice(
 			ssh.indexOf("export const rewritePasswordAndRestart")
 		);
@@ -218,7 +218,7 @@ describe("signed sessions", () => {
 	// for in
 	// packages/ide/tests/behavior/src/node/routes/cloudAuth.test.ts, and the
 	// website refuses to issue one in
-	// packages/web/tests/behavior/convex/box/auth.test.ts.
+	// packages/web/tests/behavior/convex/instance/auth.test.ts.
 });
 
 describe("disabled authentication", () => {

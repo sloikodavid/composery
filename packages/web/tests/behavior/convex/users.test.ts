@@ -307,7 +307,7 @@ describe("an account that may not act", () => {
 		const boxId = await seedBox(t, { user_id: user.clerkUserId });
 
 		await expect(
-			user.as.action(api.box.auth.createAuthorizationCode, {
+			user.as.action(api.instance.auth.createAuthorizationCode, {
 				boxId,
 				codeChallenge: "a".repeat(43),
 				redirectUri: "https://box.dev.composery.cloud/ide/",
@@ -327,7 +327,7 @@ describe("an account that may not act", () => {
 		await expect(
 			t
 				.withIdentity({ subject: "ghost", email: "ghost@example.com" })
-				.action(api.box.auth.createAuthorizationCode, {
+				.action(api.instance.auth.createAuthorizationCode, {
 					boxId,
 					codeChallenge: "a".repeat(43),
 					redirectUri: "https://box.dev.composery.cloud/ide/",

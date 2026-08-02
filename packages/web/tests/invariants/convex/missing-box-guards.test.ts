@@ -5,14 +5,14 @@ import { describe, expect, test } from "vitest";
 // ---------------------------------------------------------------------------
 // Every workflow callback that reads its box refuses one that is gone.
 //
-// `convex/fleet/lifecycle.ts` is where a workflow records what a step did. A
+// `convex/boxes/operation/record.ts` is where a workflow records what a step did. A
 // workflow holds its boxId across steps that talk to Hetzner and Cloudflare and
 // take minutes, so the row really can be removed underneath it by a staff purge
 // or a finished delete - and the mutation that comes back would then patch a
 // document that is not there.
 //
 // The behaviour of the guard is tested in
-// `tests/behavior/convex/fleet/lifecycle.test.ts`, which drives every one of these
+// `tests/behavior/convex/boxes/operation/record.test.ts`, which drives every one of these
 // against a deleted box. What that cannot do is notice a callback added
 // afterwards without the check: it would simply not be in the table, and every
 // case there would still pass. This is that missing rung - it reads the module
@@ -21,7 +21,9 @@ import { describe, expect, test } from "vitest";
 // ---------------------------------------------------------------------------
 
 const source = readFileSync(
-	fileURLToPath(new URL("../../../convex/fleet/lifecycle.ts", import.meta.url)),
+	fileURLToPath(
+		new URL("../../../convex/boxes/operation/record.ts", import.meta.url)
+	),
 	"utf8"
 );
 

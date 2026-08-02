@@ -14,12 +14,12 @@ import {
 	thresholdsToStored,
 	resolveThresholds,
 	type ThresholdSetting
-} from "./fleet/metricThresholds";
+} from "./boxes/metrics";
 import {
 	resolveSnapshotPolicy,
 	snapshotPolicyToStored,
 	type SnapshotPolicy
-} from "./fleet/snapshotPolicy";
+} from "./boxes/snapshotPolicy";
 import { staffConsoleUrl } from "./env";
 import { raiseAlert } from "./staff/alerts";
 
@@ -247,7 +247,7 @@ export async function writeSnapshotPolicy(
 // Stop selling boxes, from an action.
 //
 // Deliberately one-way. The two callers are provider quota failures in
-// `fleet/infra/hetznerVps.ts`, and both close checkout; a generic boolean
+// `boxes/infra/hetznerVps.ts`, and both close checkout; a generic boolean
 // reachable from any action could also re-open it, which is a decision that
 // belongs to a person looking at the Hetzner allocation. Turning it back on is
 // the staff mutation, and only that.
@@ -308,7 +308,7 @@ export const setMinimumRuntime = internalMutation({
 			// Raising the floor is what retires a compatibility path, so the alert
 			// names the obligation rather than just the value: until every box has
 			// crossed it, the control plane still has to read older boxes.
-			text: `${args.updatedBy} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/fleet/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
+			text: `${args.updatedBy} set the minimum runtime version to ${args.version ?? args.image} (${deadline}).\n\nBoxes below the floor are warned until the deadline and updated automatically after it. Until they have all crossed, the readers in packages/web/convex/boxes/infra/ must keep working with the older version.\n\nReview the fleet: ${staffConsoleUrl()}`
 		});
 	}
 });

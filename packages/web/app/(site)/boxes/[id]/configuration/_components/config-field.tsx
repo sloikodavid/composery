@@ -22,7 +22,7 @@ import {
 	SelectValue
 } from "@/components/base/select";
 import { Textarea } from "@/components/base/textarea";
-import type { RuntimeConfigField } from "@/convex/fleet/runtimeConfig";
+import type { RuntimeConfigField } from "@/convex/boxes/configuration";
 
 type StringField = Extract<RuntimeConfigField, { kind: "string" }>;
 

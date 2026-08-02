@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { query, type QueryCtx } from "../_generated/server";
 import { requireCapability } from "../users";
 import { type BoxStatus } from "../model/box/status";
-import { CAPACITY_BOX_STATUSES } from "../fleet/capacity";
+import { CAPACITY_BOX_STATUSES } from "../boxes/capacity";
 import { DAY_MS } from "../time";
 
 const COUNT_CAP = 1_000;

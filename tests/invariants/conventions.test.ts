@@ -117,12 +117,12 @@ describe("one spelling of the entry-point guard", () => {
 	// `import { GIT_FILE_ARGS } from "scripts/tree.mjs"` would walk the checkout
 	// and rewrite AGENTS.md as a side effect of reading one constant.
 	//
-	// Five scripts need that test and all five had it, which is why nothing was
-	// broken; they simply wrote it two ways. `tree` and `runbook` used a
-	// truthiness check plus a comparison across three lines, the three
-	// `packages/shared` generators used `?? ""` and bound a single-use
-	// `scriptPath` const. Same semantics, two shapes, so neither reads as the
-	// house form and a sixth script had two precedents to copy.
+	// Every script that needs the test had it, which is why nothing was broken;
+	// they simply wrote it two ways. `tree` used a truthiness check plus a
+	// comparison across three lines, the three `packages/shared` generators used
+	// `?? ""` and bound a single-use `scriptPath` const. Same semantics, two
+	// shapes, so neither reads as the house form and the next script had two
+	// precedents to copy.
 	const GUARD =
 		'resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)';
 	const scripts = files.filter(

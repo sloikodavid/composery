@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import {
 	DEFAULT_THRESHOLDS,
 	type ThresholdSetting
-} from "@/convex/fleet/metricThresholds";
+} from "@/convex/boxes/metrics";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useSettingDraft, type SettingDraft } from "@/hooks/use-setting-draft";
 import {

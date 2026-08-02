@@ -1,4 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import {
+	afterEach,
+	beforeEach,
+	describe,
+	expect,
+	test,
+	vi,
+	type MockInstance
+} from "vitest";
 
 import {
 	compareEntries,
@@ -9,29 +17,84 @@ import {
 	syncTick
 } from "../../scripts/tree.mjs";
 
-// A locked file is the normal state of this one - ripgrep maps it during a
-// search, an editor or a scanner opens it, every agent follows
-// `CLAUDE.md` to it - and Windows refuses the write. Node reports `UNKNOWN`,
-// which ended the watch and took `pnpm dev` with it. `readFileSync` returns
-// nothing so the tick has something to write.
+// The watch reads this file, renders the tree into it and writes it back, and
+// both halves of that have failed on a real machine. The file system is stubbed
+// so a test can put either failure under the tick.
+const fs = vi.hoisted(() => ({
+	contents: "",
+	rename: vi.fn(),
+	write: vi.fn()
+}));
+
 vi.mock("node:fs", async (importOriginal) => ({
 	...(await importOriginal<typeof import("node:fs")>()),
-	readFileSync: () => "",
-	writeFileSync: () => {
-		throw Object.assign(new Error("UNKNOWN: unknown error, open"), {
-			code: "UNKNOWN"
-		});
-	}
+	readFileSync: () => fs.contents,
+	renameSync: fs.rename,
+	writeFileSync: fs.write
 }));
 
 describe("tree watch", () => {
+	let warn: MockInstance<typeof console.warn>;
+
+	// `mockReset`, not `mockClear`: a refused write set in one test is an
+	// implementation, and tests here run in a seeded order, so a cleared-but-kept
+	// one refuses in whichever test runs next.
+	beforeEach(() => {
+		fs.rename.mockReset();
+		fs.write.mockReset();
+		warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		warn.mockRestore();
+	});
+
+	// A read of nothing is a file another process is part way through writing -
+	// `git checkout`, a rebase, an editor, a rewrite script. Rendered into, it takes
+	// every convention above the markers with it and leaves the tree alone in the
+	// file. That happened, and the watch reported success while doing it.
+	//
+	// The silent return is the whole of it: a tick that throws on the empty read
+	// also writes nothing, so the warning has to stay unused for this to be the
+	// guard rather than the accident.
+	test("writes nothing when the file reads as empty", () => {
+		fs.contents = "";
+
+		expect(syncTick()).toBe(false);
+		expect(fs.write).not.toHaveBeenCalled();
+		expect(fs.rename).not.toHaveBeenCalled();
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	// Windows refuses about one write in ten here, because something always holds
+	// this file open. Uncaught, that ended the watch and took `pnpm dev` with it.
 	test("survives a write the operating system refuses", () => {
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		fs.contents = "# Conventions\n";
+		fs.write.mockImplementation(() => {
+			throw Object.assign(new Error("UNKNOWN: unknown error, open"), {
+				code: "UNKNOWN"
+			});
+		});
 
 		expect(syncTick()).toBe(false);
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining("UNKNOWN"));
+		expect(fs.rename).not.toHaveBeenCalled();
+	});
 
-		warn.mockRestore();
+	// The staged file is renamed over the target, so no reader can catch this
+	// file empty - the watch itself is one of those readers.
+	test("replaces the file by renaming a staged copy over it", () => {
+		fs.contents = "# Conventions\n";
+
+		expect(syncTick()).toBe(true);
+		expect(fs.write).toHaveBeenCalledWith(
+			expect.stringContaining("tmp"),
+			expect.stringContaining("<!-- tree:start -->")
+		);
+		expect(fs.rename).toHaveBeenCalledWith(
+			expect.stringContaining("tmp"),
+			expect.stringContaining("AGENTS.md")
+		);
 	});
 });
 

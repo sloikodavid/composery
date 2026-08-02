@@ -1,17 +1,17 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
-import { appendBoxEvent } from "../fleet/events";
+import { appendBoxEvent } from "../boxes/operation/event";
 import { boxEventType } from "../model/box/operation";
-import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
-import { startBoxOperation } from "../fleet/operations";
-import { isSlugAvailable } from "../fleet/slugAvailability";
+import { reconcileCapacityAlert } from "../boxes/capacity";
+import { startBoxOperation } from "../boxes/operation/start";
+import { isSlugAvailable } from "../boxes/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch
-} from "../fleet/retention";
+} from "../boxes/retention";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "./checkoutIntents";
-import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { raiseAlert } from "../staff/alerts";
 import { vBoxPlan } from "../schema";

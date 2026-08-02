@@ -56,7 +56,7 @@ jobs:
       - name: Check repository
         run: pnpm check:portable
       # The two artifacts a contributor builds from their own machine. The image
-      # (build:docker) is Linux-only by nature and stays on the linux job.
+      # (build:image) is Linux-only by nature and stays on the linux job.
       - name: Build website
         run: pnpm build:web
         env:
@@ -140,13 +140,13 @@ jobs:
       - name: Check repository
         run: pnpm check
       - name: Check provider contracts
-        run: pnpm providers:schema
+        run: pnpm system:providers
 
       - name: Check the registry client
-        run: pnpm registry:live
+        run: pnpm system:registry
 
       - name: Validate runtime artifacts
-        run: pnpm runtime-artifacts:validate
+        run: pnpm system:artifacts
       # Run the whole build so every build:* target is covered with no list here to
       # drift. Catches bundling errors tsc can't (web's SSR/prerender, e.g.
       # ConvexReactClient's URL validation) and builds the

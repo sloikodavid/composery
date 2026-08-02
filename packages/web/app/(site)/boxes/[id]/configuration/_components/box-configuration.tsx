@@ -15,7 +15,7 @@ import {
 import { Notice, recreateNotice } from "@/components/box/operation-dialog";
 import { StatusText } from "@/components/box/status-text";
 import { api } from "@/convex/_generated/api";
-import type { RuntimeConfigField } from "@/convex/fleet/runtimeConfig";
+import type { RuntimeConfigField } from "@/convex/boxes/configuration";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useReseed } from "@/hooks/use-reseed";
 import { boxPath } from "@/convex/model/box/path";

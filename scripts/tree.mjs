@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync
+} from "node:fs";
 import { basename, dirname, join, posix, resolve } from "node:path";
 import { setInterval } from "node:timers";
 import { fileURLToPath } from "node:url";
@@ -226,21 +232,40 @@ export function renderAgentsFile(current, tree) {
 	return `${cleaned.trimEnd()}\n\n${tree}`;
 }
 
-function expectedAgentsFile() {
+// The file as it is, or nothing if it is between two states.
+//
+// Everything outside the markers is carried over from this read, so a read that
+// arrives early destroys it: another process truncates the file to write it -
+// `git checkout`, a rebase, an editor, a rewrite script - the watch tick lands
+// in that window, reads nothing, and writes back a file that is only the tree.
+// Every convention above the markers is then gone, and the watch reports
+// success. A file that exists but reads empty is being written, never authored,
+// so the tick leaves it alone and takes the next read instead.
+function readAgentsFile() {
 	const file = join(REPO_ROOT, AGENTS_FILE);
-	const current = existsSync(file) ? readFileSync(file, "utf8") : "";
-	return renderAgentsFile(current, renderTree());
+	if (!existsSync(file)) return "";
+	const current = readFileSync(file, "utf8");
+	return current.trim() ? current : undefined;
 }
 
 function syncTree({ quiet = false } = {}) {
 	const file = join(REPO_ROOT, AGENTS_FILE);
-	const expected = expectedAgentsFile();
-	const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+	const current = readAgentsFile();
+	if (current === undefined) return false;
 
-	if (actual === expected) return false;
+	const expected = renderAgentsFile(current, renderTree());
+	if (current === expected) return false;
 
-	mkdirSync(dirname(file), { recursive: true });
-	writeFileSync(file, expected);
+	// Write through a rename so no reader ever sees this file empty. A plain
+	// write truncates first, and the readers are constant - agents follow the
+	// `CLAUDE.md` symlink here, and this watch itself reads before it writes.
+	// The staging file goes to `tmp/`, which is ignored: left behind by a crash
+	// beside `AGENTS.md` it would be an untracked file, and untracked files are
+	// listed, so the tree would name a file that is not part of the repository.
+	const staged = join(REPO_ROOT, "tmp", `${AGENTS_FILE}.tmp`);
+	mkdirSync(dirname(staged), { recursive: true });
+	writeFileSync(staged, expected);
+	renameSync(staged, file);
 	if (!quiet) console.log(`Updated ${AGENTS_FILE}`);
 	return true;
 }
@@ -251,10 +276,11 @@ function syncTree({ quiet = false } = {}) {
 // mapped, and this file is read often: ripgrep maps it during a repository
 // search, an editor or a scanner opens it, and every agent follows the
 // `CLAUDE.md` symlink to it. Node has no errno for that refusal and reports
-// `UNKNOWN` (-4094). An uncaught one took down the whole of `pnpm dev` for a
-// lock that was gone a second later. The write is not lost: the file still differs
-// from the tree, so the next tick writes it. A lock that never clears says so
-// once a second rather than silently leaving the listing stale.
+// `UNKNOWN` (-4094). It is not the same failure every tick - one write in about
+// ten was refused when this was measured - and an uncaught one took down the
+// whole of `pnpm dev`. The write is not lost: the file still differs from the
+// tree, so the next tick writes it. A lock that never clears says so once a
+// second rather than silently leaving the listing stale.
 //
 // Exported so a test can prove a failed write does not end the watch.
 export function syncTick() {
@@ -274,9 +300,8 @@ if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
 	} else if (write) {
 		syncTree();
 	} else {
-		const file = join(REPO_ROOT, AGENTS_FILE);
-		const expected = expectedAgentsFile();
-		const actual = existsSync(file) ? readFileSync(file, "utf8") : "";
+		const actual = readAgentsFile() ?? "";
+		const expected = renderAgentsFile(actual, renderTree());
 
 		if (actual !== expected) {
 			// Naming the drifting lines is the whole value of this check on a CI

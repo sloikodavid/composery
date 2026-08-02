@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 	// proved the current password on the box itself).
 	if (isPasswordChangeRequest(body)) {
 		try {
-			const result = await fetchAction(api.box.auth.changePassword, {
+			const result = await fetchAction(api.instance.auth.changePassword, {
 				boxId: body.boxId as Id<"boxes">,
 				currentRuntimeAuthHash: body.currentRuntimeAuthHash,
 				runtimeAuthHash: body.runtimeAuthHash
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 	}
 
 	try {
-		const result = await fetchAction(api.box.auth.installPassword, {
+		const result = await fetchAction(api.instance.auth.installPassword, {
 			boxId: body.boxId as Id<"boxes">,
 			grant: body.grant,
 			runtimeAuthHash: body.runtimeAuthHash

@@ -7,7 +7,7 @@ import { vi } from "vitest";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import schema from "@/convex/schema";
 
-// `convex-test` resolves a function reference like `fleet/queries:boxBySlug` by looking
+// `convex-test` resolves a function reference like `boxes/queries:boxBySlug` by looking
 // the path up in a module map, and it can only build that map from an
 // `import.meta.glob` written where the glob's base is statically known. Tests
 // live outside `convex/` (docs/developing/testing.md), so the glob is written
@@ -30,7 +30,7 @@ const COMPONENTS = [polar, resend, workflow];
 
 export type Harness = TestConvex<typeof schema>;
 
-// Why `convex/fleet/workflows/*` have no behaviour tests, established by
+// Why `convex/boxes/workflows/*` have no behaviour tests, established by
 // measurement rather than assumed.
 //
 // A workflow really does start here - `startOperation` hands one to the

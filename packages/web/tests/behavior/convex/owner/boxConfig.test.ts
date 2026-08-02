@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { api } from "@/convex/_generated/api";
-import { SECRET_CONFIG_KEYS } from "@/convex/fleet/runtimeConfig";
+import { SECRET_CONFIG_KEYS } from "@/convex/boxes/configuration";
 
 import {
 	boxOperations,
@@ -21,7 +21,7 @@ import {
 // instead.
 //
 // What a value is allowed to be is `normalizeRuntimeConfig`, tested next door in
-// convex/fleet/runtimeConfig.test.ts. What this file decides is who may ask,
+// convex/boxes/configuration.test.ts. What this file decides is who may ask,
 // what comes back, and what is recorded.
 const NOW = Date.UTC(2026, 2, 3, 4, 5, 6);
 const SECRET = SECRET_CONFIG_KEYS[0] ?? "COMPOSERY_GITHUB_TOKEN";
@@ -168,7 +168,7 @@ describe("saving a configuration", () => {
 	});
 
 	// That a secret the page could not round-trip is kept rather than cleared is
-	// `applySecretIntent`, covered in convex/fleet/runtimeConfig.test.ts. It
+	// `applySecretIntent`, covered in convex/boxes/configuration.test.ts. It
 	// cannot be asserted from here: the configuration is handed to the workflow,
 	// and a workflow's arguments are not observable - the reason is written out
 	// in tests/support/convex.ts.

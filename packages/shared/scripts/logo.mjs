@@ -12,7 +12,7 @@
 //
 // The app's live UI ships Inter Variable. The logo is outlined, so use Inter
 // Display SemiBold to bake in the display optical design deterministically.
-// Regenerate via `pnpm assets`.
+// Regenerate via `pnpm fix:assets`.
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -106,7 +106,7 @@ export async function generateLogo({
 // The Composery logo: the icon plus styled text outlined from Inter Display
 // SemiBold, so the asset is self-contained and font-free. The styled text is
 // fill="currentColor", so it follows the text color (dark on light, light on
-// dark). Regenerate after the icon or logo text changes: \`pnpm assets\`.
+// dark). Regenerate after the icon or logo text changes: \`pnpm fix:assets\`.
 export const LOGO_INNER = ${JSON.stringify(inner)};
 export const LOGO_VIEWBOX = ${JSON.stringify(viewBox)};
 export const LOGO_WIDTH = ${width};

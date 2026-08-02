@@ -423,7 +423,7 @@ describe("theme generator", () => {
 
 	test("check mode reports stale generated files without replacing them", async () => {
 		await expect(generate(true)).rejects.toThrow(
-			"Theme outputs are stale; run `pnpm assets`"
+			"Theme outputs are stale; run `pnpm fix:assets`"
 		);
 		expect(host.writes).toEqual([]);
 	});

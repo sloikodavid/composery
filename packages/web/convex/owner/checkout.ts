@@ -9,11 +9,11 @@ import {
 	polarServer,
 	selectPolarCheckoutProduct
 } from "../billing/polar";
-import { isSlugAvailable } from "../fleet/slugAvailability";
+import { isSlugAvailable } from "../boxes/slugAvailability";
 import { CHECKOUT_INTENT_METADATA_KEYS } from "../checkout/checkoutIntents";
 import { websiteOrigin } from "../env";
 import { isValidSlug, sanitizeSlug } from "../model/box/slug";
-import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
 import { vBoxPlan } from "../schema";
 

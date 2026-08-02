@@ -279,7 +279,7 @@ export default defineSchema({
 		runtime_version: v.optional(v.string()),
 		runtime_auth_hash: v.optional(v.string()),
 		// The owner's own environment variables for this box, already validated
-		// against the allowlist in `fleet/runtimeConfig.ts`. Held on the row rather
+		// against the allowlist in `boxes/configuration.ts`. Held on the row rather
 		// than applied once, because every path that rewrites the box's env file
 		// renders it from here - so a Reset, Repair, update, or password change
 		// cannot quietly revert what the owner configured.

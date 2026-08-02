@@ -950,7 +950,7 @@ await emitRaw(workbenchPagePath, workbenchPageSource);
 
 if (check && stale.length)
 	throw new Error(
-		`Theme outputs are stale; run \`pnpm assets\`:\n${stale
+		`Theme outputs are stale; run \`pnpm fix:assets\`:\n${stale
 			.map((path) => `  ${path}`)
 			.join("\n")}`
 	);

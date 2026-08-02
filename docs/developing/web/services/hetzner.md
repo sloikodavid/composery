@@ -5,13 +5,13 @@ description: Provision and reset boxes on Hetzner Cloud, plus per-box snapshots 
 
 Everything below is in the Hetzner Console (`console.hetzner.cloud`), inside the
 project for this environment. Every Convex deployment **must** get its own
-Hetzner project: the daily reconciliation cron (`convex/fleet/reconcile.ts`)
+Hetzner project: the daily reconciliation cron (`convex/boxes/reconcile.ts`)
 assumes it owns everything labeled `product=composery-web` in its project and
 auto-deletes snapshot images it finds no `box_snapshots` row for, so a prod and
 dev deployment sharing one project would destroy each other's snapshots. The
 code manages servers (create, get, list, rebuild, delete, power on/off) and
 deletes the Primary IPs attached to deleted boxes
-(`convex/fleet/infra/hetznerVps.ts`); the API token, SSH key, and firewall are
+(`convex/boxes/infra/hetznerVps.ts`); the API token, SSH key, and firewall are
 created once in the console and referenced by id.
 
 ## Create the resources
@@ -26,7 +26,7 @@ created once in the console and referenced by id.
    project resource, so dev and prod cannot share one registration anyway; using
    distinct keys also keeps a leaked dev key from reaching the prod fleet, since
    the private half is that deployment's trust root. The code constrains only
-   two things, both from `convex/fleet/infra/ssh.ts`: the key must be a type
+   two things, both from `convex/boxes/infra/ssh.ts`: the key must be a type
    `ssh2` can parse (RSA, ECDSA, or Ed25519, in OpenSSH or PEM form), and it
    **must have no passphrase** - the backend never supplies a `passphrase` to
    `ssh2` (`sshTarget` builds only `host`/`username`/`privateKey`), so an
@@ -47,7 +47,7 @@ created once in the console and referenced by id.
    dedicated `-f` path so you do not overwrite your personal `id_ed25519`. This
    writes each private key to `~/.ssh/composery_web_<env>` and each public key to
    `~/.ssh/composery_web_<env>.pub`. The `-C` comment is local bookkeeping only:
-   `authorizedPublicKey()` in `convex/fleet/infra/sshKeys.ts` rebuilds the public
+   `authorizedPublicKey()` in `convex/boxes/infra/sshKeys.ts` rebuilds the public
    line from the private key with a fixed `composery-web` comment, so the same
    text lands in `authorized_keys` whatever you name the key. Change a comment
    later with `ssh-keygen -c -C <comment> -f <keyfile>`, which rewrites it in
@@ -109,7 +109,7 @@ created once in the console and referenced by id.
    all outbound is allowed - adding any outbound rule flips outbound to
    default-deny). Read the
    numeric id from the firewall's URL -> `HETZNER_FIREWALL_ID`. Required:
-   provisioning fails fast (`requiredEnv` in `convex/fleet/infra/hetznerVps.ts`)
+   provisioning fails fast (`requiredEnv` in `convex/boxes/infra/hetznerVps.ts`)
    rather than create an unfirewalled, internet-exposed box.
 
    This firewall is the real boundary because box owners effectively control
@@ -239,7 +239,7 @@ Composery continues through the configured placement candidates instead.
 `HETZNER_BOX_IMAGE` must be `docker-ce` - Hetzner's Docker CE app image
 (Ubuntu-based, Docker and the Compose plugin preinstalled), referenced by that
 name on server create. Bootstrap relies on Docker already being present (it goes
-straight to `docker compose ... pull` / `up` in `convex/fleet/infra/ssh.ts`); it
+straight to `docker compose ... pull` / `up` in `convex/boxes/infra/ssh.ts`); it
 does not install Docker, so a plain Ubuntu image would fail. Using the app image
 also cuts the slowest part of first boot - installing Docker - so the box reaches
 a live URL a minute or so sooner. The runtime image itself is still pulled from
@@ -291,8 +291,8 @@ Hetzner Cloud _Snapshots_ (`POST /servers/{id}/actions/create_image` with
 is not involved at all - Hetzner snapshots the disk at the hypervisor - so no
 credential, encryption key, or pipeline lives on the box, and a box with full
 root cannot read, list, overwrite, or delete its own snapshots. All snapshot API
-calls are in `convex/fleet/infra/hetznerVps.ts`, alongside the rest of the
-Hetzner client; row state and retention live in `convex/fleet/snapshots.ts`.
+calls are in `convex/boxes/infra/hetznerVps.ts`, alongside the rest of the
+Hetzner client; row state and retention live in `convex/boxes/snapshots.ts`.
 
 There are **no new environment variables.** Snapshots reuse the existing
 `HETZNER_CLOUD_TOKEN` already set above.
@@ -306,7 +306,7 @@ There are **no new environment variables.** Snapshots reuse the existing
   a quiet over-subscription of the fleet's quota.
 - **Retention is automatic.** The daily `deleteExpiredSnapshots` cron deletes each
   snapshot's Hetzner image **and** its Convex record together once it passes the
-  per-class retention in `convex/fleet/snapshotPolicy.ts`. Those windows and the
+  per-class retention in `convex/boxes/snapshotPolicy.ts`. Those windows and the
   manual cooldown are staff-editable in `/console` without a deploy; the counts
   are not, because they are what a plan sells.
 - **Provider snapshot quota.** The active approved value is whatever the Hetzner

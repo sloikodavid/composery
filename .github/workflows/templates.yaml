@@ -28,7 +28,7 @@ jobs:
         with:
           version: 0.4.77
       - name: Validate provider manifests
-        run: pnpm templates:schema
+        run: pnpm system:templates
 
   compose:
     name: compose / all
@@ -49,4 +49,4 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Boot copied Compose templates
-        run: pnpm templates:compose
+        run: pnpm system:compose

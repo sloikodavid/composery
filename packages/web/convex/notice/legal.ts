@@ -4,7 +4,7 @@ import type { Doc } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import { LEGAL_NOTICES } from "../model/legal";
 import { SUPPORT_EMAIL } from "../model/links";
-import { billingRecordPurgeAt } from "../fleet/retention";
+import { billingRecordPurgeAt } from "../boxes/retention";
 import { accountsSender, resendClient } from "./email";
 import { raiseAlert } from "../staff/alerts";
 

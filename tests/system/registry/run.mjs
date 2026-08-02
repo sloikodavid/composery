@@ -1,4 +1,4 @@
-import { resolveRelease } from "../../../packages/web/convex/fleet/infra/runtimeImageRegistry.ts";
+import { resolveRelease } from "../../../packages/web/convex/boxes/infra/registry.ts";
 
 // This is the image every self-hosting guide and managed box uses. Resolve it
 // without credentials so a deleted or private release fails before deployment.

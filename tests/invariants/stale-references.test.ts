@@ -153,7 +153,7 @@ function bases(file: string): string[] {
 // a bare `lib/openapi.ts` meaningful in one place and meaningless in another.
 //
 // The third clause is the one with a history. A comment in
-// `convex/fleet/workflows/repairBox.ts` pointed at `workflows/changeBoxPlan.ts`,
+// `convex/boxes/workflows/repairBox.ts` pointed at `workflows/changeBoxPlan.ts`,
 // a file - and a feature - that has never existed, and this sweep did not read
 // it: `workflows` is not a top-level root and not one of the web package's, so
 // the path was discarded before anything tried to resolve it. Every directory

@@ -250,7 +250,7 @@ describe("which lifecycle outcomes email the owner", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -274,7 +274,7 @@ describe("which lifecycle outcomes email the owner", () => {
 		});
 
 		await t.mutation(
-			internal.fleet.lifecycle.setBoxStatusWithOperationSucceeded,
+			internal.boxes.operation.record.setBoxStatusWithOperationSucceeded,
 			{
 				boxId: suspended,
 				operationId: await openOperation(t, suspended, "suspend", {
@@ -284,7 +284,7 @@ describe("which lifecycle outcomes email the owner", () => {
 			}
 		);
 		await t.mutation(
-			internal.fleet.lifecycle.setBoxStatusWithOperationSucceeded,
+			internal.boxes.operation.record.setBoxStatusWithOperationSucceeded,
 			{
 				boxId: stopped,
 				operationId: await openOperation(t, stopped, "stop"),
@@ -315,7 +315,7 @@ describe("which lifecycle outcomes email the owner", () => {
 			});
 
 			await t.mutation(
-				internal.fleet.lifecycle.setBoxStatusWithOperationSucceeded,
+				internal.boxes.operation.record.setBoxStatusWithOperationSucceeded,
 				{
 					boxId,
 					operationId: await openOperation(t, boxId, type),
@@ -337,7 +337,7 @@ describe("which lifecycle outcomes email the owner", () => {
 		});
 
 		await t.mutation(
-			internal.fleet.lifecycle.setBoxStatusWithOperationSucceeded,
+			internal.boxes.operation.record.setBoxStatusWithOperationSucceeded,
 			{
 				boxId,
 				operationId: await openOperation(t, boxId, "unsuspend"),
@@ -363,13 +363,13 @@ describe("which lifecycle outcomes email the owner", () => {
 			status: "resetting"
 		});
 
-		await t.mutation(internal.fleet.lifecycle.markOperationFailed, {
+		await t.mutation(internal.boxes.operation.record.markOperationFailed, {
 			boxId: created,
 			error: "hetzner said 409 on 10.0.0.4",
 			operationId: await openOperation(t, created, "create"),
 			targetBoxStatus: "create_failed"
 		});
-		await t.mutation(internal.fleet.lifecycle.markOperationFailed, {
+		await t.mutation(internal.boxes.operation.record.markOperationFailed, {
 			boxId: reset,
 			error: "the host never answered",
 			operationId: await openOperation(t, reset, "reset"),
@@ -391,7 +391,7 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -415,7 +415,7 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -502,7 +502,7 @@ describe("when an owner cannot be reached", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -662,7 +662,7 @@ describe("when a box notice cannot be queued", () => {
 			status: "deleting"
 		});
 		const operationId = await openOperation(t, boxId, "delete");
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -741,7 +741,7 @@ describe("where a reply to a box notice goes", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});
@@ -760,7 +760,7 @@ describe("where a reply to a box notice goes", () => {
 		});
 		const operationId = await openOperation(t, boxId, "delete");
 
-		await t.mutation(internal.fleet.lifecycle.markDeleted, {
+		await t.mutation(internal.boxes.operation.record.markDeleted, {
 			boxId,
 			operationId
 		});

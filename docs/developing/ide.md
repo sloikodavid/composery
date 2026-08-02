@@ -24,7 +24,7 @@ the generated TypeScript form; `index.ts` re-exports both areas and derives the
 logo and app colours from the website area.
 
 Run `pnpm dev:colors` for the local editor, or edit `theme.json` directly, then
-run `pnpm assets`. It lists every role in one place, grouped by what the role
+run `pnpm fix:assets`. It lists every role in one place, grouped by what the role
 does rather than by which surface uses it, and switches its own chrome and the
 preview between light and dark together. Its web and ide previews are
 representative component and workbench states, not copied production screens.

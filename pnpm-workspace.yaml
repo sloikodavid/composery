@@ -9,15 +9,14 @@ packages:
 # "catalog:".
 catalog:
   "@types/node": 24.13.3
-  concurrently: ^10.0.4
   eslint: 9.39.5
   sharp: ^0.35.3
   typescript: 6.0.3
   vitest: 4.1.10
 
 patchedDependencies:
-  fumadocs-mdx@15.0.12: packages/web/patches/fumadocs-mdx@15.0.12.patch
-  fumadocs-ui@16.10.4: packages/web/patches/fumadocs-ui@16.10.4.patch
+  fumadocs-mdx@15.2.1: packages/web/patches/fumadocs-mdx@15.2.1.patch
+  fumadocs-ui@16.14.0: packages/web/patches/fumadocs-ui@16.14.0.patch
 
 # @clerk/nextjs and @clerk/ui are pinned, but every @clerk/* package they pull in
 # floats on a caret range, and those packages import each other's internals. A

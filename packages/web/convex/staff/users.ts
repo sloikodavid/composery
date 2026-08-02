@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { action, internalMutation } from "../_generated/server";
 import { sendAccountNotice } from "../notice/account";
-import { startBoxSuspension } from "../fleet/operations";
+import { startBoxSuspension } from "../boxes/operation/start";
 import {
 	findUserByClerkId,
 	isInternalRole,
@@ -90,7 +90,7 @@ export const setUserSuspended = action({
 				continueCursor: string;
 				isDone: boolean;
 				page: Doc<"boxes">[];
-			} = await ctx.runQuery(internal.fleet.queries.boxesForUserStatusPage, {
+			} = await ctx.runQuery(internal.boxes.queries.boxesForUserStatusPage, {
 				clerkUserId: args.clerkUserId,
 				cursor,
 				status

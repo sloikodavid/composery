@@ -254,7 +254,7 @@ describe("text brand asset generator", () => {
 			expect(exit).toHaveBeenCalledWith(1);
 			expect(error).toHaveBeenCalledWith(
 				expect.stringMatching(
-					/^Brand assets are stale - run `pnpm assets`:\n {2}packages/
+					/^Brand assets are stale - run `pnpm fix:assets`:\n {2}packages/
 				)
 			);
 			const message = error.mock.calls[0]?.[0] as string;

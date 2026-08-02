@@ -1,7 +1,7 @@
 // What a box's telemetry is called, and the units it is quoted in.
 //
 // Vocabulary only - no query, no validator, no chart. It sits here because both
-// planes read it: `convex/fleet/metrics.ts` builds its validators and its alert
+// planes read it: `convex/boxes/metrics.ts` builds its validators and its alert
 // text from these lists, and the console's chart, thresholds panel and flags
 // table draw from the same rows. The three of them each used to keep their own
 // copy, so one signal was "outbound bandwidth" in the alert an operator got,

@@ -5,19 +5,19 @@ import {
 	internalQuery,
 	type MutationCtx
 } from "../_generated/server";
-import { assertSlugAvailable } from "../fleet/slugAvailability";
+import { assertSlugAvailable } from "../boxes/slugAvailability";
 import {
 	billingRecordPurgeAt,
 	terminalCheckoutSecretPatch,
 	unpaidCheckoutPurgeAt
-} from "../fleet/retention";
+} from "../boxes/retention";
 import {
 	MAX_ACTIVE_CHECKOUT_INTENTS_PER_USER,
 	readGlobalSettings
 } from "../settings";
 import { LEGAL_VERSION } from "../model/legal";
-import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
-import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
+import { reconcileCapacityAlert } from "../boxes/capacity";
 import { vBoxPlan } from "../schema";
 import { HOUR_MS } from "../time";
 
@@ -45,7 +45,7 @@ export const CHECKOUT_INTENT_METADATA_KEYS = {
 // and attaching. Once a checkout exists, the reservation runs to that checkout's
 // expiry - Polar sets it and its API offers no way to choose it, so this is not
 // the reservation's lifetime and must not be documented as one.
-// runbook: Unattached checkout reservation
+// window: Unattached checkout reservation
 export const CHECKOUT_ATTACH_GRACE_MS = HOUR_MS;
 
 export function paidOrderRecordingStatus(

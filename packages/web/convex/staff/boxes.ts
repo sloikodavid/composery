@@ -18,23 +18,26 @@ import {
 	requireCapability,
 	requireCapabilityInAction
 } from "../users";
-import { fetchRuntimeLogsSafely } from "../fleet/logs";
+import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
-import { startBoxOperation, startBoxSuspension } from "../fleet/operations";
+import {
+	startBoxOperation,
+	startBoxSuspension
+} from "../boxes/operation/start";
 import {
 	requireStaffBox,
 	requireStaffBoxInAction,
 	startFor,
 	startForOrFail
-} from "../fleet/endpoint";
-import { currentSuspensionReason } from "../fleet/queries";
-import { appendBoxEvent } from "../fleet/events";
+} from "../boxes/operation/endpoint";
+import { currentSuspensionReason } from "../boxes/queries";
+import { appendBoxEvent } from "../boxes/operation/event";
 
-import { assertSlugAvailable } from "../fleet/slugAvailability";
-import { capacityBlockMessage, readCapacityUsage } from "../fleet/capacity";
-import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
+import { assertSlugAvailable } from "../boxes/slugAvailability";
+import { capacityBlockMessage, readCapacityUsage } from "../boxes/capacity";
+import { reconcileCapacityAlert } from "../boxes/capacity";
 import { readGlobalSettings } from "../settings";
-import { workflow } from "../fleet/workflows/boxWorkflow";
+import { workflow } from "../boxes/workflows/boxWorkflow";
 import { boxDeletionIdempotencyKey } from "../account/deletionLogic";
 import { requiredEnv } from "../env";
 import { vBoxPlan } from "../schema";
@@ -46,12 +49,12 @@ import {
 	latestRepair,
 	latestUpdate,
 	staffBox
-} from "../fleet/views";
+} from "../boxes/views";
 import {
 	markSnapshotDeleting,
 	snapshotView,
 	startManualSnapshot
-} from "../fleet/snapshots";
+} from "../boxes/snapshots";
 import { isValidSlug, sanitizeSlug } from "../model/box/slug";
 import { boxEventType, operationLabel } from "../model/box/operation";
 import { DAY_MS } from "../time";
@@ -545,7 +548,7 @@ export const runtimeLogs = action({
 		await requireCapabilityInAction(ctx, "box_operations");
 
 		const box = await ctx.runQuery(
-			internal.fleet.queries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
@@ -561,11 +564,11 @@ export const recoveryStatus = action({
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const box = await ctx.runQuery(
-			internal.fleet.queries.getBoxLifecycleSnapshot,
+			internal.boxes.queries.getBoxLifecycleSnapshot,
 			{ boxId: args.boxId }
 		);
 		if (!box) throw new ConvexError("Box not found.");
-		return await ctx.runAction(internal.fleet.health.recoveryStatus, {
+		return await ctx.runAction(internal.boxes.health.recoveryStatus, {
 			boxId: box._id
 		});
 	}
@@ -600,7 +603,7 @@ export const cancelOperation = action({
 	handler: async (ctx, args): Promise<void> => {
 		await requireCapabilityInAction(ctx, "box_operations");
 		const operation = await ctx.runQuery(
-			internal.fleet.operationSweep.activeOperationForBox,
+			internal.boxes.operation.sweep.activeOperationForBox,
 			{ boxId: args.boxId }
 		);
 		if (!operation) {
@@ -612,10 +615,13 @@ export const cancelOperation = action({
 				.cancel(ctx, operation.workflowId as WorkflowId)
 				.catch(() => undefined);
 		}
-		await ctx.runMutation(internal.fleet.operationSweep.failOrphanedOperation, {
-			error: `The ${operationLabel(operation.type, true)} operation was cancelled by staff after it stopped making progress.`,
-			operationId: operation.operationId
-		});
+		await ctx.runMutation(
+			internal.boxes.operation.sweep.failOrphanedOperation,
+			{
+				error: `The ${operationLabel(operation.type, true)} operation was cancelled by staff after it stopped making progress.`,
+				operationId: operation.operationId
+			}
+		);
 	}
 });
 
@@ -712,7 +718,7 @@ export const deleteSnapshot = mutation({
 		const snapshot = await ctx.db.get(args.snapshotId);
 		if (!snapshot) throw new ConvexError("Snapshot not found.");
 		await markSnapshotDeleting(ctx, args.snapshotId);
-		await ctx.scheduler.runAfter(0, internal.fleet.snapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId
 		});
 	}

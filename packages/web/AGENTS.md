@@ -10,18 +10,24 @@ Four planes, and the rule is who may read it.
   rules live here, and `convex/schema.ts` builds its validators _from_ them. The
   dependency runs one way: the model knows nothing about the database, and
   everything that knows about the database reads the model.
-- **`convex/owner/`, `convex/staff/`, `convex/box/`, `convex/site/`** - the four
-  audiences, named for who calls them: a signed-in customer, the console, a
-  running instance with a grant, and a stranger with no identity at all.
-  **Every public function lives in one of these and nowhere else** -
+- **`convex/owner/`, `convex/staff/`, `convex/instance/`, `convex/site/`** - the
+  four audiences, named for who calls them: a signed-in customer, the console, a
+  running instance authenticating with a grant, and a stranger with no identity
+  at all. **Every public function lives in one of these and nowhere else** -
   `tests/invariants/convex/audience-directories.test.ts` fails if a fifth
   appears - so "what can be called from outside, and by whom" is a directory
   listing rather than a search.
+
+  The audience is `instance` rather than `box` because a _box_ is the record
+  this deployment keeps, and a record calls nothing; the running instance is what
+  calls home. That also stops an audience and a domain from differing by a plural
+  alone, which read as a per-box/all-boxes distinction that was never the rule.
+
 - **`convex/<domain>/`** (`boxes/`, `billing/`, `checkout/`, `notice/`,
   `account/`) - internal only. Nothing outside the deployment may call these.
   Machinery used by exactly one audience lives with that audience instead: the
-  box authorization flow is all of `convex/box/auth.ts` because nothing else
-  reaches it, while `convex/fleet/` holds what both the owner and the console
+  box authorization flow is all of `convex/instance/auth.ts` because nothing else
+  reaches it, while `convex/boxes/` holds what both the owner and the console
   surfaces share.
 - **`app/`, `components/`, `hooks/`, `lib/`** - the browser plane, split by
   what a file _is_ rather than what it is about. `app/` is the route tree,
@@ -44,22 +50,22 @@ two Convex config files.
 - Database/schema fields and persisted status/type literals: snake_case (stored data, not JS names).
 - Environment variables and deployment constants: SCREAMING_SNAKE_CASE.
 - Install deps with `pnpm install <package>@latest`, not by hand-editing package.json.
-- A directory is part of a name: inside `convex/fleet/`, `components/box/` and `convex/model/box/` the `box` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
+- A directory is part of a name: inside `convex/boxes/`, `components/box/` and `convex/model/box/` the `box` prefix is redundant (`box/status-action.tsx`, not `box/box-status-action.tsx`), and so is `Box` in a function reached as `api.staff.boxes.*`.
 - The same operation is named the same on both sides. `api.owner.boxes.reset` and `api.staff.boxes.reset` are one action with two audiences, not two actions.
 - An **alert** is an incident record for staff (`raiseAlert`). A **notice** is a message to a person (`convex/notice/`). Name the thing, never the channel: `sendOwnerNotice`, not `sendOwnerEmail`.
 
 ## Box operations
 
-- **One row per operation, in `convex/model/box/operation.ts`.** What it is called, which statuses it may begin from, which status the box wears while it runs, where a failure leaves it, whether that failure pages a person, and what the owner is told - all of it, keyed by operation type and exhaustive by `satisfies`. This was six parallel tables in three files; adding an operation is now adding a row. The workflow that carries it out is the one thing kept out (it needs `_generated`), and it lives in `convex/fleet/operations.ts` keyed by the same names.
+- **One row per operation, in `convex/model/box/operation.ts`.** What it is called, which statuses it may begin from, which status the box wears while it runs, where a failure leaves it, whether that failure pages a person, and what the owner is told - all of it, keyed by operation type and exhaustive by `satisfies`. This was six parallel tables in three files; adding an operation is now adding a row. The workflow that carries it out is the one thing kept out (it needs `_generated`), and it lives in `convex/boxes/operation/start.ts` keyed by the same names.
 - The begin-status and failure-status unions are **derived** from that table, never listed beside it. A hand-written subset is what the type checker cannot check, and the begin-status one had already drifted to carry `running` and `suspended`, which no operation moves a box to.
-- **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/fleet/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
+- **An endpoint names its audience and its operation, and nothing else.** `startFor(ctx, "owner" | "staff", box, type)` in `convex/boxes/operation/endpoint.ts` derives the authorization, the addressing, the idempotency key and the `trigger` from that one argument. Do not write a `trigger` literal in an endpoint - nothing takes one. Automatic repair decides whether a person is working on a box from that field alone, which is why it is not a thing a copied endpoint can get wrong any more.
 - A `system:` sweep still names its own trigger, because it is not one of the two audiences. A new automatic caller adds its own `system:` literal rather than borrowing one.
 - **The interface reads the same catalogue.** `PRIMARY_ACTION` in `components/box/status-action.tsx` says which operation a status leads with - a product decision - and a behaviour test drives every row through `isOperationAllowed`, so the page cannot offer a button for something the control plane would refuse. Branching on the status literal instead is what let the page keep a second copy of `from`.
-- `convex/fleet/lifecycle.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
-- Retention and purge windows live in `convex/fleet/retention.ts`; read the window from there rather than restating a duration.
+- `convex/boxes/operation/record.ts` is where a workflow records what a step did (`markCreateSucceeded`, `swapSlug`, `markDeleted`). "Status" as a concept is `convex/model/box/status.ts`; the three `status-*.tsx` components render it. Three different things, three different names.
+- Retention and purge windows live in `convex/boxes/retention.ts`; read the window from there rather than restating a duration.
 - `purge_at` is optional, and Convex orders a missing field below every number in an index, so a bare `lte("purge_at", now)` also selects every row that never got one. Bound every such range from below (`gte("purge_at", 0)`); a test enforces it.
 - What a plan is - its Hetzner machine, the specification the pricing page prints, and which snapshot classes it gets - lives once in `convex/model/box/plan.ts`. `BoxPlan` is the key of that table and `vBoxPlan` is built from it, so a plan cannot exist in one and not the other. Adding a plan is a row there and two Polar product IDs. A plan's _caps_ (how many snapshots, how long they are kept) are staff settings; a plan's _capabilities_ are not.
-- Cloud box runtime settings are defined once in `convex/fleet/runtimeConfig.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
+- Cloud box runtime settings are defined once in `convex/boxes/configuration.ts`; the Configuration page derives its controls from those field records. Every IDE environment setting added or changed must be checked against that allowlist and `../../docs/configuration.md`. Offer owner-settable capabilities there with explicit labels for stored enum values; omit managed/infrastructure values only with the reason documented beside the allowlist.
 
 ## Components
 

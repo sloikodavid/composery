@@ -7,14 +7,14 @@ import { describe, expect, test } from "vitest";
 // Every function reachable from outside this deployment lives in a directory
 // named for who calls it.
 //
-// `owner/` is a signed-in customer, `staff/` is the console, `box/` is a running
+// `owner/` is a signed-in customer, `staff/` is the console, `instance/` is a running
 // instance authenticating with a grant, `site/` is a stranger with no identity
 // at all. Everything else under `convex/` is internal and unreachable from a
 // client.
 //
 // The point is that "what can be called from outside, and by whom" is a
 // directory listing rather than a search. Four public functions used to sit
-// among internal modules - the box's whole authorization flow in `fleet/`, the
+// among internal modules - the box's whole authorization flow in `boxes/`, the
 // fleet version beside the release internals, the pricing query among the
 // billing plumbing, and two account functions among twelve identity helpers -
 // so answering that question meant a search for three keywords across ninety
@@ -27,7 +27,7 @@ import { describe, expect, test } from "vitest";
 // directory exists.
 // ---------------------------------------------------------------------------
 
-const AUDIENCES = ["owner", "staff", "box", "site"];
+const AUDIENCES = ["owner", "staff", "instance", "site"];
 
 // `export const x = query({` - the three builders that produce something a
 // client can call. Deliberately not `internalQuery`/`internalMutation`/

@@ -45,7 +45,7 @@ linkThemeExtension();
 // build.sh runs inside the image, so the host command is the same everywhere;
 // naming it kept sending Windows and macOS contributors after a Linux script.
 console.log(
-	"\nSetup complete. Check with: pnpm check  Build the image with: pnpm build:docker"
+	"\nSetup complete. Check with: pnpm check  Build the image with: pnpm build:image"
 );
 
 // Symlinks the Composery theme extension into the real VS Code extensions

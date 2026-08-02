@@ -44,12 +44,12 @@ rather than one contributor's afternoon.
 Quilt and a local Rust toolchain are not prerequisites off Linux. Two targets
 need Linux, and reach for Docker when they cannot find it:
 
-| Target                            | Off Linux                                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `pnpm check:cli`                  | Runs cargo in the Dockerfile's Rust image; the persistence crate needs Linux inotify/xattr |
-| `pnpm build:docker`, `pnpm smoke` | Build and run the shipped Linux image through Docker Desktop                               |
+| Target                                  | Off Linux                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `pnpm check:cli`                        | Runs cargo in the Dockerfile's Rust image; the persistence crate needs Linux inotify/xattr |
+| `pnpm build:image`, `pnpm system:smoke` | Build and run the shipped Linux image through Docker Desktop                               |
 
-So `pnpm check` and `pnpm smoke` want Docker running on a Windows or macOS
+So `pnpm check` and `pnpm system:smoke` want Docker running on a Windows or macOS
 host; everything else is native. The IDE fork builds inside the image, so
 `packages/ide/scripts/build.sh` is never run from the host.
 
@@ -76,7 +76,7 @@ are Quilt patches and fork-only files are path-mirrored under `overlay`.
 pnpm dev
 pnpm check
 pnpm build
-pnpm smoke
+pnpm system:smoke
 ```
 
 `pnpm dev` starts the tree watcher, development container, Convex, Next.js,
@@ -85,6 +85,19 @@ and local theme editor. Run narrower scripts while iterating, such as
 gate covers TypeScript, ESLint, Prettier, Vitest, the generated repository tree,
 Renovate config, the IDE patch stack, Rust formatting/lints/tests, and brand
 assets. CI then runs the complete build as a separate bundling gate.
+
+Every root script is named for what it acts on, in four families:
+
+| Family              | Names                                                                        |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `dev:<pane>`        | One long-running process, so `pnpm dev` can start and colour each on its own |
+| `build:<artifact>`  | One thing produced: the website, the runtime image                           |
+| `system:<harness>`  | One directory under `tests/system/`                                          |
+| `check:` and `fix:` | The same name on both sides, one pair per generated artifact                 |
+
+There is no `build:convex`: Convex has no build step. Vercel's build command
+runs `convex deploy` around the website build, which is why the website is one
+target and the image is the other.
 
 `scripts/tree.mjs` owns the tree embedded in the root `AGENTS.md`. If a change
 adds, moves, or removes tracked paths, run `pnpm fix:tree`; do not manually

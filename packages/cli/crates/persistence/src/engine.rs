@@ -24,7 +24,7 @@ use crate::{internal::StateDb, layout, paths::Paths};
 /// `init/overlay.sh`, the daemon stand-down, the hygiene pass) is finished and
 /// **proven end to end on a booted container**.
 ///
-/// `true`: `tests/system/overlay-engine/run.sh` boots real privileged containers on the
+/// `true`: `tests/system/overlay/run.sh` boots real privileged containers on the
 /// real `rootfs/` tree and a real `composery` binary, and shows systemd as PID 1
 /// on an overlay root, files surviving a recreate, an image upgrade landing over
 /// a live upper, the hygiene pass reconciling a stale whiteout while keeping a
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn this_build_ships_with_the_overlay_engine_ready() {
-        // `tests/system/overlay-engine/run.sh` proves the engine on a booted container,
+        // `tests/system/overlay/run.sh` proves the engine on a booted container,
         // so the shipped constant is on: `auto` probes, a successful probe gives
         // overlay, a failing one still falls back to copy. Both run through the
         // real constant, so turning the gate back off flips both outcomes and

@@ -30,7 +30,7 @@ Inside a `tests/` directory the first subdirectory names the kind, and below tha
 the path mirrors the source it covers.
 
 ```text
-packages/web/tests/behavior/convex/fleet/capacity.test.ts
+packages/web/tests/behavior/convex/boxes/capacity.test.ts
 packages/ide/tests/invariants/patches.test.ts
 tests/system/smoke.mjs
 ```
@@ -74,7 +74,7 @@ nothing ran it.
 
 Runs a built artifact: the Docker image, privileged containers, a device. Not
 vitest, not in-process, and the only kind allowed to sleep or retry. Slow, few,
-and irreplaceable - `tests/system/overlay-engine/run.sh` is the only proof that a
+and irreplaceable - `tests/system/overlay/run.sh` is the only proof that an
 instance's filesystem survives being recreated, which is the product's core promise.
 
 Every system harness is reachable from a workflow. One that is not is invisible,
@@ -251,20 +251,24 @@ inside a method chain (above `.order("desc")`) is silently ignored. Confirm the
 
 ## Commands
 
-| Command                                   | What it does                                                                                         |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `pnpm check:test`                         | The whole suite, shuffled, with coverage. One vitest run; every project lives in `vitest.config.ts`. |
-| `pnpm vitest run --project web:behavior`  | One suite. Projects are named `<package>:<kind>`.                                                    |
-| `pnpm check:coverage`                     | Fails on any line the current diff adds that no behaviour test reaches.                              |
-| `pnpm check:mutants`                      | Stryker and `cargo-mutants` over the current diff. Nothing may survive.                              |
-| `pnpm check:knip`                         | Unused files, exports and dependencies - the rot agents leave behind.                                |
-| `pnpm smoke`                              | Boots the built image and exercises it.                                                              |
-| `pnpm templates:schema`                   | Validates provider manifests against live schemas and Fly's strict validator.                        |
-| `pnpm providers:schema`                   | Checks provider response decoders against the current Hetzner and Cloudflare OpenAPI specifications. |
-| `pnpm registry:live`                      | Resolves a public multi-platform image through the real Registry V2 authentication and pull API.     |
-| `pnpm runtime-artifacts:validate`         | Checks every rendered host script with Bash and the rendered Compose file with Docker Compose.       |
-| `pnpm templates:compose`                  | Builds the image and boots every copied Compose deployment recipe.                                   |
-| `bash tests/system/overlay-engine/run.sh` | Proves persistence survives a container being destroyed.                                             |
+| Command                                  | What it does                                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `pnpm check:test`                        | The whole suite, shuffled, with coverage. One vitest run; every project lives in `vitest.config.ts`. |
+| `pnpm vitest run --project web:behavior` | One suite. Projects are named `<package>:<kind>`.                                                    |
+| `pnpm check:coverage`                    | Fails on any line the current diff adds that no behaviour test reaches.                              |
+| `pnpm check:mutants`                     | Stryker and `cargo-mutants` over the current diff. Nothing may survive.                              |
+| `pnpm check:knip`                        | Unused files, exports and dependencies - the rot agents leave behind.                                |
+| `pnpm system:smoke`                      | Boots the built image and exercises it.                                                              |
+| `pnpm system:templates`                  | Validates provider manifests against live schemas and Fly's strict validator.                        |
+| `pnpm system:providers`                  | Checks provider response decoders against the current Hetzner and Cloudflare OpenAPI specifications. |
+| `pnpm system:registry`                   | Resolves a public multi-platform image through the real Registry V2 authentication and pull API.     |
+| `pnpm system:artifacts`                  | Checks every rendered host script with Bash and the rendered Compose file with Docker Compose.       |
+| `pnpm system:compose`                    | Builds the image and boots every copied Compose deployment recipe.                                   |
+| `pnpm system:overlay`                    | Proves persistence survives a container being destroyed.                                             |
+
+Every `system:` script is one harness under `tests/system/`, named for its
+directory, so the list above and that directory hold the same names. None runs
+from `pnpm check`: each needs the network, a built image, or Docker.
 
 `check:coverage`, `check:mutants` and `check:knip` sit outside `check:portable`
 and run from `pnpm check`: none has OS-specific behaviour to repeat on three

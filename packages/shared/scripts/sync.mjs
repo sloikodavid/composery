@@ -226,7 +226,7 @@ export async function syncAssets({
 	if (check) {
 		if (stale.length) {
 			console.error(
-				`Brand assets are stale - run \`pnpm assets\`:\n${stale
+				`Brand assets are stale - run \`pnpm fix:assets\`:\n${stale
 					.map((path) => `  ${path}`)
 					.join("\n")}`
 			);

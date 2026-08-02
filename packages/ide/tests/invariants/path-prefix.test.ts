@@ -70,7 +70,7 @@ describe("IDE public path boundary", () => {
 	test("cloud authorization receives its callback from the IDE", () => {
 		const cloudAuth = read("packages/ide/overlay/src/node/routes/cloudAuth.ts");
 		const authorize = read("packages/web/app/boxes/authorize/route.ts");
-		const auth = read("packages/web/convex/box/auth.ts");
+		const auth = read("packages/web/convex/instance/auth.ts");
 
 		expect(cloudAuth).toContain(
 			'authorization.searchParams.set("redirect_uri", callbackUrl(req))'

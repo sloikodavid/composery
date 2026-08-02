@@ -8,29 +8,29 @@ import {
 	requireActiveUser,
 	requireActiveUserInAction
 } from "../users";
-import { fetchRuntimeLogsSafely } from "../fleet/logs";
+import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
-import { boxMetricsSamples, vMetricsRange } from "../fleet/metrics";
+import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
 import {
 	requireOwnerBox,
 	requireOwnerBoxInAction,
 	startFor,
 	startForOrFail
-} from "../fleet/endpoint";
-import { currentSuspensionReason, findOwnedBoxBySlug } from "../fleet/queries";
+} from "../boxes/operation/endpoint";
+import { currentSuspensionReason, findOwnedBoxBySlug } from "../boxes/queries";
 import {
 	boxRuntimeStanding,
 	latestFailure,
 	latestRepair,
 	latestUpdate,
 	safeBox
-} from "../fleet/views";
-import { ownerCanReadBox } from "../fleet/queries";
+} from "../boxes/views";
+import { ownerCanReadBox } from "../boxes/queries";
 import {
 	markSnapshotDeleting,
 	snapshotView,
 	startManualSnapshot
-} from "../fleet/snapshots";
+} from "../boxes/snapshots";
 import { websiteOrigin } from "../env";
 import { polarServer } from "../billing/polar";
 import { boxPath } from "../model/box/path";
@@ -201,7 +201,7 @@ export const customerPortalUrl = action({
 		const user = await requireActiveUserInAction(ctx);
 
 		const box: Doc<"boxes"> | null = await ctx.runQuery(
-			internal.fleet.queries.boxByOwnerSlug,
+			internal.boxes.queries.boxByOwnerSlug,
 			{
 				userId: user.clerk_user_id,
 				slug: sanitizeSlug(args.slug)
@@ -244,7 +244,7 @@ export const recoveryStatus = action({
 	returns: vRecoveryStatus,
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const box = await requireOwnerBoxInAction(ctx, args.slug);
-		return await ctx.runAction(internal.fleet.health.recoveryStatus, {
+		return await ctx.runAction(internal.boxes.health.recoveryStatus, {
 			boxId: box._id
 		});
 	}
@@ -439,7 +439,7 @@ export const deleteSnapshot = mutation({
 		const user = await requireActiveUser(ctx);
 		await requireOwnedSnapshot(ctx, user.clerk_user_id, args.snapshotId);
 		await markSnapshotDeleting(ctx, args.snapshotId);
-		await ctx.scheduler.runAfter(0, internal.fleet.snapshots.runDelete, {
+		await ctx.scheduler.runAfter(0, internal.boxes.snapshots.runDelete, {
 			snapshotRowId: args.snapshotId
 		});
 	}

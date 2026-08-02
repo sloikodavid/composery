@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import crons from "@/convex/crons";
-import { AUTOMATIC_SNAPSHOT_INTERVAL_MS } from "@/convex/fleet/snapshotPolicy";
+import { AUTOMATIC_SNAPSHOT_INTERVAL_MS } from "@/convex/boxes/snapshotPolicy";
 import { DAY_MS } from "@/convex/time";
 
 // The catalogue sync is the floor under a webhook that was missed or never sent:

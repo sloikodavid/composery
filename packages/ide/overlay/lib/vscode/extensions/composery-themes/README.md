@@ -26,7 +26,7 @@ release tree during the build, so the themes are available with no Dockerfile or
    Development Host with this extension loaded.
 2. In that window: `Ctrl+K Ctrl+T` -> pick **Composery Dark** or
    **Composery Light**.
-3. Edit `packages/shared/theme.json`, run `pnpm assets`, then `Ctrl+R`
+3. Edit `packages/shared/theme.json`, run `pnpm fix:assets`, then `Ctrl+R`
    (reload window) to see changes.
 
 Note: with this installed, users who already set `workbench.colorTheme` keep

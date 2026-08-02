@@ -846,27 +846,27 @@ packages/
         polar.ts
         reconciliation.ts
         webhooks.ts
-      box/
-        auth.ts
-        release.ts
-      checkout/
-        checkoutConversion.ts
-        checkoutIntents.ts
-      fleet/
+      boxes/
         infra/
+          artifacts.ts
           cloudflareContracts.ts
           cloudflareDns.ts
           hetznerContracts.ts
           hetznerVps.ts
+          image.ts
           providerResponse.ts
+          registry.ts
           registryContracts.ts
-          runtimeArtifacts.ts
-          runtimeImageRegistry.ts
-          runtimeImages.ts
           ssh.ts
           sshKeys.ts
           sshScripts.ts
           sshTransport.ts
+        operation/
+          endpoint.ts
+          event.ts
+          record.ts
+          start.ts
+          sweep.ts
         workflows/
           boxWorkflow.ts
           changeBoxConfig.ts
@@ -885,28 +885,26 @@ packages/
           updateBox.ts
         autoRepair.ts
         capacity.ts
-        capacityAlerts.ts
         cleanup.ts
-        endpoint.ts
-        events.ts
+        configuration.ts
         health.ts
-        lifecycle.ts
         logs.ts
         metrics.ts
         metricsPoll.ts
-        metricThresholds.ts
-        operations.ts
-        operationSweep.ts
         queries.ts
         reconcile.ts
         retention.ts
-        runtimeConfig.ts
-        runtimeFloor.ts
-        runtimeRelease.ts
         slugAvailability.ts
         snapshotPolicy.ts
         snapshots.ts
+        version.ts
         views.ts
+      checkout/
+        checkoutConversion.ts
+        checkoutIntents.ts
+      instance/
+        auth.ts
+        release.ts
       model/
         box/
           auth.ts
@@ -981,8 +979,8 @@ packages/
       route-guards.ts
       utils.ts
     patches/
-      fumadocs-mdx@15.0.12.patch
-      fumadocs-ui@16.10.4.patch
+      fumadocs-mdx@15.2.1.patch
+      fumadocs-ui@16.14.0.patch
     public/
       marketing/
         composery-editor-dark.png
@@ -1051,49 +1049,50 @@ packages/
             polar.test.ts
             reconciliation.test.ts
             webhooks.test.ts
-          box/
-            auth.test.ts
-          checkout/
-            checkoutConversion.test.ts
-            checkoutIntents.test.ts
-          fleet/
+          boxes/
             infra/
+              artifacts.test.ts
               cloudflareDns.test.ts
               hetznerVps.test.ts
+              image.test.ts
               providerRequests.test.ts
               providerResponse.test.ts
-              runtimeArtifacts.test.ts
-              runtimeImages.test.ts
               ssh.test.ts
               sshActions.test.ts
               sshKeys.test.ts
               sshScripts.test.ts
               sshTransport.test.ts
+            operation/
+              record.test.ts
+              start.test.ts
+              sweep.test.ts
             workflows/
               boxWorkflow.test.ts
             autoRepair.test.ts
             capacity.test.ts
             capacityAlerts.test.ts
             cleanup.test.ts
-            lifecycle.test.ts
+            configuration.test.ts
             logs.test.ts
             metrics.test.ts
             metricsPoll.test.ts
             metricThresholds.test.ts
-            operations.test.ts
-            operationSweep.test.ts
             purgeBox.test.ts
             queries.test.ts
             reconcile.test.ts
             recovery.test.ts
             retention.test.ts
-            runtimeConfig.test.ts
-            runtimeFloor.test.ts
-            runtimeRelease.test.ts
             slugAvailability.test.ts
             snapshotPolicy.test.ts
             snapshots.test.ts
+            version.test.ts
+            versionFloor.test.ts
             views.test.ts
+          checkout/
+            checkoutConversion.test.ts
+            checkoutIntents.test.ts
+          instance/
+            auth.test.ts
           model/
             box/
               auth.test.ts
@@ -1258,8 +1257,6 @@ scripts/
   cli.mjs
   coverage.mjs
   mutants.mjs
-  runbook.d.mts
-  runbook.mjs
   setup.mjs
   tree.d.mts
   tree.mjs
@@ -1307,7 +1304,6 @@ tests/
     scripts/
       whitelist.test.ts
     mutants-script.test.ts
-    runbook-script.test.ts
     setup.test.ts
     tree-agents-file.test.ts
     tree-script.test.ts
@@ -1322,9 +1318,9 @@ tests/
     cross-platform.test.ts
     desktop-integration.test.ts
     docs-links.test.ts
+    fixed-windows.test.ts
     keystore-contract.test.ts
     prettier-config.test.ts
-    runbook-windows.test.ts
     runtime-init.test.ts
     stale-references.test.ts
     templates.test.ts
@@ -1336,14 +1332,14 @@ tests/
   support/
     repo.ts
   system/
-    overlay-engine/
+    artifacts/
+      run.mjs
+    overlay/
       Dockerfile
       run.sh
-    provider-contracts/
+    providers/
       run.mjs
     registry/
-      run.mjs
-    runtime-artifacts/
       run.mjs
     templates/
       run.mjs

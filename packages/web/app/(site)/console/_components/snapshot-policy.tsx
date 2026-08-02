@@ -5,7 +5,7 @@ import { api } from "@/convex/_generated/api";
 import {
 	DEFAULT_SNAPSHOT_POLICY,
 	type SnapshotPolicy
-} from "@/convex/fleet/snapshotPolicy";
+} from "@/convex/boxes/snapshotPolicy";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { useSettingDraft, type SettingDraft } from "@/hooks/use-setting-draft";
 import { NumberField, SettingsCard, SettingsRow } from "./settings-card";

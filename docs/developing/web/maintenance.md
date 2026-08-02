@@ -98,7 +98,7 @@ either an owner action or an expired floor deadline.
 
 Composery drives a box over SSH and parses its internals - service states, the
 persistence engine the box chose, the environment the editor process started
-with. Those readers live in `packages/web/convex/fleet/infra/`.
+with. Those readers live in `packages/web/convex/boxes/infra/`.
 
 **Every runtime version at or above the floor has to keep working with them.**
 Changing what a box prints - a CLI's output shape, a service name, a variable
@@ -121,7 +121,7 @@ new image ships a new lower, and the boot-time hygiene pass reconciles the
 upper's deletion markers against the previous and current image baselines before
 mounting. The policy is documented in
 `packages/cli/crates/persistence/src/overlay.rs` and exercised against real
-booted containers by `tests/system/overlay-engine/run.sh`. An update is therefore not a
+booted containers by `tests/system/overlay/run.sh`. An update is therefore not a
 special case for persistence; it is the upgrade path that engine already
 implements.
 
@@ -156,10 +156,10 @@ define evidence retention, retry cadence, or background workload:
 | Unpaid checkout record             | 30 days                             |
 | Paid billing record                | 6 calendar years after the box ends |
 
-Each row is bound to the constant that produces it by a `// runbook:` comment on
-that constant, and `tests/invariants/runbook-windows.test.ts` fails if a number here stops
+Each row is bound to the constant that produces it by a `// window:` comment on
+that constant, and `tests/invariants/fixed-windows.test.ts` fails if a number here stops
 matching the code or a row loses its constant. Cadences that come from a cron
-are stated once under [Scheduled work](#scheduled-work) instead.
+are declared in `convex/crons.ts` and are not restated here.
 
 Paid initial-fulfillment failure, provider cleanup, capacity admission, and
 refund behavior are specified once in [Operations](operations.md),
@@ -168,44 +168,11 @@ refund behavior are specified once in [Operations](operations.md),
 ## Scheduled work
 
 Convex owns every periodic backend job; no separate worker service is required.
-All fixed times are UTC.
-
-<!-- cron-schedule:start -->
-
-| Job                                      | Schedule         |
-| ---------------------------------------- | ---------------- |
-| Release expired checkout intents         | Every 15 minutes |
-| Delete expired box authorization records | Every 15 minutes |
-| Reconcile capacity alerts                | Every 15 minutes |
-| Retry staff alerts                       | Every 15 minutes |
-| Send legal notices                       | Every 15 minutes |
-| Subscription reconciliation              | Hourly at :11    |
-| Account deletion finalization            | Hourly at :19    |
-| Finish failed box deletions              | Hourly at :27    |
-| Poll box metrics                         | Every 10 minutes |
-| Roll up hourly box metrics               | Hourly at :04    |
-| Delete old box metrics                   | Daily at 04:23   |
-| Normalize deleted boxes                  | Daily at 04:29   |
-| Purge expired deleted boxes              | Daily at 04:31   |
-| Purge expired checkout records           | Daily at 04:37   |
-| Purge expired deleted accounts           | Daily at 04:39   |
-| Purge expired staff alerts               | Daily at 04:43   |
-| Purge expired legal notices              | Daily at 04:47   |
-| Sweep box health                         | Every 10 minutes |
-| Sweep stuck box operations               | Every 15 minutes |
-| Refresh runtime release                  | Hourly at :26    |
-| Sync Polar products                      | Hourly at :33    |
-| Update boxes past their floor deadline   | Hourly at :41    |
-| Snapshot running boxes                   | Daily at 03:07   |
-| Delete expired snapshots                 | Daily at 04:41   |
-| Reconcile Hetzner resources              | Daily at 05:17   |
-
-<!-- cron-schedule:finish -->
-
-The table above is generated from **packages/web/convex/crons.ts** by
-`scripts/runbook.mjs`; do not edit it by hand. `pnpm check:runbook` fails when it
-has drifted and `pnpm fix:runbook` rewrites it. Job names are Convex's own, so
-what you read here is what appears in the dashboard and the logs.
+Every job and the time it runs are declared in
+**packages/web/convex/crons.ts**, which is one file of literal declarations and
+the only place a schedule is stated. Read it there. Each name in it is Convex's
+own, so what that file calls a job is what the Convex dashboard and the logs
+call it. All fixed times are UTC.
 
 Hetzner reconciliation deletes untracked product snapshot images only after a
 two-hour grace period. It never deletes an untracked server automatically; it
@@ -215,7 +182,7 @@ reconciliation failures also create rate-limited staff alerts.
 ## Automatic repair
 
 A box that stops answering its health probe is repaired without its owner asking,
-but only after every gate in `packages/web/convex/fleet/autoRepair.ts` passes. The
+but only after every gate in `packages/web/convex/boxes/autoRepair.ts` passes. The
 gates exist because a Composery box is a root-capable machine its owner is
 supposed to break, so "not serving" is a normal state for someone mid-experiment
 and an unconditional healer would fight them:

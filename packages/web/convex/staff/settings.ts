@@ -12,10 +12,10 @@ import {
 	writeThresholds
 } from "../settings";
 import { requireCapability, requireCapabilityInAction } from "../users";
-import { validateThresholds } from "../fleet/metricThresholds";
-import { validateSnapshotPolicy } from "../fleet/snapshotPolicy";
-import { readCapacityUsage } from "../fleet/capacity";
-import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
+import { validateThresholds } from "../boxes/metrics";
+import { validateSnapshotPolicy } from "../boxes/snapshotPolicy";
+import { readCapacityUsage } from "../boxes/capacity";
+import { reconcileCapacityAlert } from "../boxes/capacity";
 
 // The staff console's half of the settings row: who may change a setting, and
 // what a valid value is. The row itself, and the alert a change raises, are
@@ -104,7 +104,7 @@ export const setMinimumRuntimeToCurrent = action({
 		}
 
 		const release = await ctx.runAction(
-			internal.fleet.infra.runtimeImages.resolveConfiguredRuntimeRelease,
+			internal.boxes.infra.image.resolveConfiguredRuntimeRelease,
 			{}
 		);
 		await ctx.runMutation(internal.settings.setMinimumRuntime, {

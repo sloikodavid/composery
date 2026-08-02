@@ -8,13 +8,13 @@ import {
 	type ActionCtx
 } from "../_generated/server";
 import { revokePolarSubscription } from "../billing/polar";
-import { startBoxOperation } from "../fleet/operations";
-import { reconcileCapacityAlert } from "../fleet/capacityAlerts";
+import { startBoxOperation } from "../boxes/operation/start";
+import { reconcileCapacityAlert } from "../boxes/capacity";
 import {
 	billingRecordPurgeAt,
 	deletedCheckoutSlug,
 	terminalCheckoutSecretPatch
-} from "../fleet/retention";
+} from "../boxes/retention";
 import { releaseIntentDoc } from "../checkout/checkoutIntents";
 import { findUserByClerkId } from "../users";
 import {
@@ -29,10 +29,10 @@ import { DAY_MS, MINUTE_MS } from "../time";
 const ACCOUNT_DELETION_FINALIZER_DELAY_MS = 15 * MINUTE_MS;
 const ACCOUNT_DELETION_PAGE_SIZE = 100;
 const ACCOUNT_PURGE_RETRY_MS = DAY_MS;
-// Exported only because the operator runbook states it: `// runbook:` binds the
-// number in the doc to this constant, and the test that pins the pair reads the
-// exported value.
-// runbook: Stuck account-deletion alert
+// Exported only because the Fixed windows table states it: `// window:` binds
+// the number in the doc to this constant, and the test that pins the pair reads
+// the exported value.
+// window: Stuck account-deletion alert
 export const ACCOUNT_DELETION_ALERT_AFTER_MS = DAY_MS;
 
 type DeletionState = {

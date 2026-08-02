@@ -31,10 +31,10 @@ import { DAY_MS, MINUTE_MS } from "../time";
 // what became of a message Resend accepted arrives later as an email event.
 
 const RECIPIENT_LIMIT = 50;
-// Exported only because the operator runbook states it: `// runbook:` binds the
-// number in the doc to this constant, and the test that pins the pair reads the
-// exported value.
-// runbook: Staff-alert record retention
+// Exported only because the Fixed windows table states it: `// window:` binds
+// the number in the doc to this constant, and the test that pins the pair reads
+// the exported value.
+// window: Staff-alert record retention
 export const STAFF_ALERT_RETENTION_MS = 180 * DAY_MS;
 const RETRY_BATCH = 20;
 const PURGE_BATCH = 200;

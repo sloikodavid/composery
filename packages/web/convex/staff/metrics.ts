@@ -13,7 +13,7 @@ import {
 	boxMetricsSamples,
 	vMetricsRange,
 	vRolledMetric
-} from "../fleet/metrics";
+} from "../boxes/metrics";
 import type { MetricsRange, RolledMetric } from "../model/box/metric";
 
 const FLAG_LIST_LIMIT = 50;

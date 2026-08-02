@@ -137,9 +137,9 @@ describe("check:mutants", () => {
 	});
 
 	test("mutates only the changed files the mutation config already claims", async () => {
-		host.mutable = ["packages/web/convex/fleet/lifecycle.ts"];
+		host.mutable = ["packages/web/convex/boxes/operation/record.ts"];
 		arrange([
-			"packages/web/convex/fleet/lifecycle.ts",
+			"packages/web/convex/boxes/operation/record.ts",
 			// Real source, changed, and deliberately outside the `mutate` set: no
 			// test covers it, so every mutant would survive by construction and the
 			// gate would fail on a list nobody could ever kill.
@@ -150,7 +150,7 @@ describe("check:mutants", () => {
 
 		const written = host.writes.find((w) => w.path.endsWith(".json"));
 		expect(JSON.parse(written?.contents ?? "{}")).toMatchObject({
-			mutate: ["packages/web/convex/fleet/lifecycle.ts"],
+			mutate: ["packages/web/convex/boxes/operation/record.ts"],
 			// Raised for the diff run: a change may not introduce a survivor.
 			thresholds: { break: 100 }
 		});

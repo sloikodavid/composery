@@ -28,7 +28,7 @@ jobs:
   # Nightly rather than per-PR, and alongside the smoke rather than inside it:
   # this builds two fixture images and boots six privileged containers, and it is
   # the slowest thing in the repository by a wide margin.
-  overlay-engine:
+  overlay:
     name: overlay engine
     runs-on: ubuntu-24.04
     # A hang detector, not a budget. Six boots plus two image builds run around
@@ -39,5 +39,7 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The one system harness called by path rather than through `pnpm
+      # system:overlay`: it needs nothing installed, so the job has no pnpm.
       - name: Prove the overlay engine end to end
-        run: bash tests/system/overlay-engine/run.sh
+        run: bash tests/system/overlay/run.sh

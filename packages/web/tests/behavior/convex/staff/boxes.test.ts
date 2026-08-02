@@ -974,7 +974,7 @@ describe("what a staff operation does once it is allowed", () => {
 			expect(await t.run((ctx) => ctx.db.get(snapshotId))).toMatchObject({
 				status: "deleting"
 			});
-			expect(await scheduledJobs(t, "fleet/snapshots:runDelete")).toHaveLength(
+			expect(await scheduledJobs(t, "boxes/snapshots:runDelete")).toHaveLength(
 				1
 			);
 		});

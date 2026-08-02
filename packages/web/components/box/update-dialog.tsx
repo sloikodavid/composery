@@ -19,7 +19,7 @@ import {
 	type OperationNotice
 } from "@/components/box/operation-dialog";
 import { isOperationAllowed } from "@/convex/model/box/operation";
-import type { RuntimeStanding } from "@/convex/fleet/runtimeRelease";
+import type { RuntimeStanding } from "@/convex/boxes/version";
 import { type BoxStatus } from "@/convex/model/box/status";
 import { formatDateTime } from "@/lib/datetime";
 import { standingNotices } from "@/lib/box/update";

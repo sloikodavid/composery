@@ -1,4 +1,4 @@
-import type { RuntimeStanding } from "@/convex/fleet/runtimeRelease";
+import type { RuntimeStanding } from "@/convex/boxes/version";
 import { formatDateTime } from "@/lib/datetime";
 import type { Tone } from "@/lib/box/repair";
 
