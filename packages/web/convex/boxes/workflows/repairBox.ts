@@ -9,17 +9,17 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // in a way no in-place fix can heal (broken Docker, a mangled boot disk, wrecked
 // systemd/nftables, or an unreachable SSH service) is read through Hetzner
 // Rescue instead. Rescue boots independently of that disk, so Repair can park
-// the Docker volumes on a transient Hetzner Volume before the server is rebuilt from
-// HETZNER_BOX_IMAGE, and the files are copied back and verified before the
+// the Docker volumes on a transient Hetzner Volume before the server is rebuilt
+// from HETZNER_BOX_IMAGE, and the files are copied back and verified before the
 // volume is deleted. Rewriting the runtime files and force-recreating the
 // containers on the fresh host (repairRuntime) is the final step, so a wedged
 // container is healed by the same action.
 //
 // Crash safety rests on two things, both persisted on the box row:
 //   * parking_volume_id, set the instant the volume exists and cleared only
-//     after it is deleted, so an interrupted repair leaves a recoverable
-//     pointer instead of an orphan (reconciliation reclaims any volume no live
-//     box points at);
+//     after the fresh server has a verified copy. External deletion follows the
+//     clear, so an interruption leaves either a recoverable pointer or a harmless
+//     orphan (reconciliation reclaims any volume no live box points at);
 //   * parking_volume_stage, the one-way gate between the two halves. The
 //     destructive server rebuild only runs after the copy onto the volume has
 //     verified (stage crosses to "restoring"), and once there the copy direction
@@ -58,7 +58,7 @@ export const repairBox = defineBoxWorkflow({
 		// the owner still has one Repair action and no diagnosis to make.
 		try {
 			await step.runAction(
-				internal.boxes.infra.ssh.repairRuntime,
+				internal.boxes.infra.host.repairRuntime,
 				{ boxId: args.boxId },
 				{ retry: true }
 			);
@@ -87,6 +87,7 @@ export const repairBox = defineBoxWorkflow({
 				const created = await step.runAction(
 					internal.boxes.infra.hetznerVps.createParkingVolume,
 					{
+						boxRef: String(args.boxId),
 						slug: box.slug,
 						location: box.hetzner_location,
 						sizeGb: BOX_PLANS[box.plan].diskGb
@@ -122,20 +123,20 @@ export const repairBox = defineBoxWorkflow({
 				{ retry: true }
 			);
 			await step.runAction(
-				internal.boxes.infra.ssh.copyToParking,
+				internal.boxes.infra.host.copyToParking,
 				{ boxId: args.boxId, volumeId },
-				{ retry: true }
-			);
-			await step.runAction(
-				internal.boxes.infra.ssh.unmountParkingFromRescue,
-				{ boxId: args.boxId },
 				{ retry: true }
 			);
 			// Verify the copy while the box's files still exist, before anything
 			// irreversible. "rsync exited 0" is not proof; this compares the trees.
 			await step.runAction(
-				internal.boxes.infra.ssh.verifyParkingCopy,
+				internal.boxes.infra.host.verifyParkingCopy,
 				{ boxId: args.boxId, volumeId },
+				{ retry: true }
+			);
+			await step.runAction(
+				internal.boxes.infra.host.unmountParkingFromRescue,
+				{ boxId: args.boxId },
 				{ retry: true }
 			);
 			// The one-way gate: only now is the volume authoritative and the
@@ -189,12 +190,12 @@ export const repairBox = defineBoxWorkflow({
 			{ retry: true }
 		);
 		await step.runAction(
-			internal.boxes.infra.ssh.copyFromParking,
+			internal.boxes.infra.host.copyFromParking,
 			{ boxId: args.boxId, volumeId },
 			{ retry: true }
 		);
 		await step.runAction(
-			internal.boxes.infra.ssh.verifyParkingBack,
+			internal.boxes.infra.host.verifyParkingBack,
 			{ boxId: args.boxId, volumeId },
 			{ retry: true }
 		);
@@ -204,7 +205,7 @@ export const repairBox = defineBoxWorkflow({
 		// there, reconciliation deletes the harmless orphan; no persisted pointer
 		// can ever name a volume that was already deleted.
 		await step.runAction(
-			internal.boxes.infra.ssh.unmountParking,
+			internal.boxes.infra.host.unmountParking,
 			{ boxId: args.boxId },
 			{ retry: true }
 		);
@@ -225,7 +226,7 @@ export const repairBox = defineBoxWorkflow({
 		// Rewrite the runtime files, force-recreate the stack, and hold until the
 		// editor answers, so a reported success means the box genuinely serves.
 		await step.runAction(
-			internal.boxes.infra.ssh.repairRuntime,
+			internal.boxes.infra.host.repairRuntime,
 			{ boxId: args.boxId },
 			{ retry: true }
 		);

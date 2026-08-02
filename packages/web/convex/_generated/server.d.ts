@@ -35,6 +35,8 @@ type Env = {
   readonly HETZNER_CLOUD_TOKEN: string;
   readonly HETZNER_FIREWALL_ID: string;
   readonly HETZNER_SSH_KEYS: string;
+  readonly HOST_SSH_PRIVATE_KEY: string;
+  readonly HOST_SSH_USER: string;
   readonly POLAR_BOX_AIR_ANNUAL_PRODUCT_ID: string;
   readonly POLAR_BOX_AIR_MONTHLY_PRODUCT_ID: string;
   readonly POLAR_BOX_PRO_ANNUAL_PRODUCT_ID: string;
@@ -49,8 +51,6 @@ type Env = {
   readonly RESEND_WEBHOOK_SECRET: string;
   readonly RUNTIME_IMAGE: string;
   readonly RUNTIME_PORT: string;
-  readonly SSH_PRIVATE_KEY: string;
-  readonly SSH_USER: string;
   readonly WEBSITE_ORIGIN: string;
 };
 

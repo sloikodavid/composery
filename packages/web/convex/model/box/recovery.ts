@@ -16,7 +16,6 @@ export const vRuntimeEngine = v.union(
 export const vRecoveryStatus = v.object({
 	hostReachable: v.boolean(),
 	httpReachable: v.boolean(),
-	diskUsedPercent: v.union(v.number(), v.null()),
 	engine: vRuntimeEngine,
 	docker: vRuntimeComponentState,
 	outerCaddy: vRuntimeComponentState,

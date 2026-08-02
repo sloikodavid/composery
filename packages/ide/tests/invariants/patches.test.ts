@@ -1555,3 +1555,86 @@ describe("default layout", () => {
 		}
 	});
 });
+
+// The welcome grid and the builtin extension hold the same agent list twice, and
+// they cannot share one: the grid is workbench source assembled by the patch
+// stack, the list is an extension the workbench loads at runtime, and the two
+// trees compile apart. Nor can the copies check each other at runtime - a card
+// whose id the extension does not know silently falls through to the generic
+// picker, which looks like a working button. So pin them here, plus the two
+// things that only look right until somebody counts: the icon set on disk and
+// the number the "More agents" card advertises.
+describe("welcome agent cards", () => {
+	const AGENT_MEDIA = "packages/ide/overlay/src/browser/media/agents";
+	const EXTENSION =
+		"packages/ide/overlay/lib/vscode/extensions/composery-agents/extension.js";
+
+	// Every entry of the extension's AGENTS array, in declaration order.
+	const agents = [
+		...readRepoFile(EXTENSION).matchAll(/\n\t\{(?<body>[\s\S]*?)\n\t\}/g)
+	].map((entry) => {
+		// Drop the nested `extension: { ... }` first: it carries an id and a name
+		// of its own, which are the VS Code extension's, not the agent's.
+		const body = (entry.groups?.body ?? "").replace(/\{[^}]*\}/g, "");
+		const field = (key: string) =>
+			new RegExp(`${key}: "([^"]+)"`).exec(body)?.[1];
+		return {
+			id: field("id"),
+			name: field("name"),
+			owner: field("owner"),
+			additional: body.includes("additional: true")
+		};
+	});
+	const featured = agents.filter((agent) => !agent.additional);
+	const additional = agents.filter((agent) => agent.additional);
+
+	// Every card the welcome grid builds, in display order.
+	const cards = [
+		...addedLines(readRepoFile(`${PATCHES_DIR}/defaults.diff`)).matchAll(
+			/\{ id: '(?<id>[^']+)', name: '(?<name>[^']+)', tagline: '(?<tagline>[^']+)' \}/g
+		)
+	].map((card) => card.groups!);
+
+	// Both sides parsed something, so a regex that stops matching fails here
+	// rather than passing every comparison below on two empty lists.
+	test("both agent lists are readable", () => {
+		expect(featured.length).toBeGreaterThan(0);
+		expect(additional.length).toBeGreaterThan(0);
+		expect(cards.length).toBe(featured.length);
+	});
+
+	test("a card exists for each featured agent, and for nothing else", () => {
+		expect(cards.map((card) => card.id)).toEqual(
+			featured.map((agent) => agent.id)
+		);
+		expect(cards.map((card) => [card.name, card.tagline])).toEqual(
+			featured.map((agent) => [agent.name, agent.owner])
+		);
+	});
+
+	// A card tints its logo through a CSS mask, so a missing file paints
+	// nothing at all rather than a broken image.
+	test("the shipped logos are exactly the featured agents", () => {
+		const icons = readdirSync(resolve(repoRoot, AGENT_MEDIA)).filter((name) =>
+			name.endsWith(".svg")
+		);
+
+		expect(icons.sort()).toEqual(
+			featured.map((agent) => `${agent.id}.svg`).sort()
+		);
+
+		// Each logo is a third party's mark, kept only under the attribution the
+		// NOTICE carries; a file it does not name ships without one.
+		const notice = readRepoFile(`${AGENT_MEDIA}/NOTICE`);
+		for (const icon of icons) expect(notice).toContain(icon);
+		for (const named of notice.match(/[\w-]+\.svg/g) ?? []) {
+			expect(icons).toContain(named);
+		}
+	});
+
+	test("the More agents card counts the agents it opens", () => {
+		expect(addedLines(readRepoFile(`${PATCHES_DIR}/defaults.diff`))).toContain(
+			`'Browse ${additional.length} more choices'`
+		);
+	});
+});

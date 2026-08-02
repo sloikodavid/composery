@@ -50,13 +50,15 @@ describe("IDE public path boundary", () => {
 			"handle /proxy/* {",
 			"handle /absproxy/* {",
 			"handle /_composery/healthz* {",
-			"handle /_composery/api/v1/* {"
+			"handle /_composery/api/v1/* {",
+			// SSH enrollment is its own namespace, not a corner of the API.
+			"handle /_composery/ssh/* {"
 		]) {
 			expect(lines.has(route), route).toBe(true);
 		}
 		expect(
 			lines.has(
-				"@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt"
+				"@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/_composery/ssh /ide/_composery/ssh/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt"
 			)
 		).toBe(true);
 		expect(

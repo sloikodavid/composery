@@ -26,7 +26,7 @@ created once in the console and referenced by id.
    project resource, so dev and prod cannot share one registration anyway; using
    distinct keys also keeps a leaked dev key from reaching the prod fleet, since
    the private half is that deployment's trust root. The code constrains only
-   two things, both from `convex/boxes/infra/ssh.ts`: the key must be a type
+   two things, both from `convex/boxes/infra/host.ts`: the key must be a type
    `ssh2` can parse (RSA, ECDSA, or Ed25519, in OpenSSH or PEM form), and it
    **must have no passphrase** - the backend never supplies a `passphrase` to
    `ssh2` (`sshTarget` builds only `host`/`username`/`privateKey`), so an
@@ -47,7 +47,7 @@ created once in the console and referenced by id.
    dedicated `-f` path so you do not overwrite your personal `id_ed25519`. This
    writes each private key to `~/.ssh/composery_web_<env>` and each public key to
    `~/.ssh/composery_web_<env>.pub`. The `-C` comment is local bookkeeping only:
-   `authorizedPublicKey()` in `convex/boxes/infra/sshKeys.ts` rebuilds the public
+   `authorizedPublicKey()` in `convex/boxes/infra/hostCredentials.ts` rebuilds the public
    line from the private key with a fixed `composery-web` comment, so the same
    text lands in `authorized_keys` whatever you name the key. Change a comment
    later with `ssh-keygen -c -C <comment> -f <keyfile>`, which rewrites it in
@@ -69,12 +69,12 @@ created once in the console and referenced by id.
 
      Hetzner injects that key into every server it
      creates in this project. The backend also derives this same public key from
-     `SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create,
+     `HOST_SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create,
      reset, and snapshot restore. Hetzner added `user_data` to its rebuild API;
      sending the current value on every rebuild keeps control-plane access from
      depending only on the key selected when the server was first created.
 
-   - **Private key** -> `SSH_PRIVATE_KEY`, as a single line with each newline
+   - **Private key** -> `HOST_SSH_PRIVATE_KEY`, as a single line with each newline
      escaped as `\n` (the code reverses this with `.replace(/\\n/g, "\n")`).
      Produce that exact value and paste it into the Convex dashboard:
 
@@ -82,7 +82,7 @@ created once in the console and referenced by id.
      awk '{printf "%s\\n", $0}' ~/.ssh/composery_web_dev
      ```
 
-   Keep `SSH_USER=root` unless the image's default login user differs. The
+   Keep `HOST_SSH_USER=root` unless the image's default login user differs. The
    backend uses this key for the whole box lifecycle and recovery channel, not
    as customer-facing SSH access. The private key and `HETZNER_CLOUD_TOKEN` are
    both Convex deployment secrets; that deployment is therefore the fleet trust
@@ -92,7 +92,7 @@ created once in the console and referenced by id.
    `HETZNER_SSH_KEYS` selects the keys that server creation and Hetzner Rescue
    inject. Existing installed systems keep whatever was written into
    `authorized_keys`, while rebuilds install the public key derived from the
-   current `SSH_PRIVATE_KEY`.
+   current `HOST_SSH_PRIVATE_KEY`.
    During rotation, install and test the new public key on existing servers
    before replacing the Convex secret, update `HETZNER_SSH_KEYS`, and treat
    revocation of a compromised key as fleet maintenance.
@@ -101,21 +101,43 @@ created once in the console and referenced by id.
    key has been removed from every existing server.
 
 3. **Firewall.** Create a firewall in the Hetzner project (Project -> Firewalls).
-   Add inbound rules allowing TCP **22**, **80**, and **443** plus **ICMP**, all
-   from any IPv4 and IPv6 (sources `0.0.0.0/0` and `::/0`), and nothing else;
-   define **no outbound rules** (in Hetzner firewalls, zero outbound rules means
-   all outbound is allowed - adding any outbound rule flips outbound to
-   default-deny). Read the
+   Add inbound rules allowing TCP **22**, **2222**, **80**, and **443** plus
+   **ICMP**, all from any IPv4 and IPv6 (sources `0.0.0.0/0` and `::/0`), and
+   nothing else; define **no outbound rules** (in Hetzner firewalls, zero outbound
+   rules means all outbound is allowed - adding any outbound rule flips outbound
+   to default-deny). Read the
    numeric id from the firewall's URL -> `HETZNER_FIREWALL_ID`. Required:
    provisioning fails fast (`requiredEnv` in `convex/boxes/infra/hetznerVps.ts`)
    rather than create an unfirewalled, internet-exposed box.
 
-   This firewall is the real boundary because box owners effectively control
-   their host. Port 22 remains public because Convex has no fixed egress IP;
-   cloud-init disables SSH passwords. ICMP is needed for path-MTU discovery.
-   Boxes join no private network: Hetzner firewalls do not filter private
-   network traffic, so a shared network would let customer boxes bypass this
-   isolation.
+   The two SSH ports are different services and both are needed. **22** is the
+   instance's own sshd, which a box owner reaches; **2222** is the host's, which
+   only this deployment reaches (`HOST_SSH_PORT`). Cloud-init moves the host's
+   sshd aside on the first boot so the instance's container - which shares the
+   host's network stack - can bind 22. Opening 2222 is therefore a prerequisite,
+   not an addition: a firewall without it leaves every box unreachable by the
+   control plane the moment cloud-init finishes.
+
+   Port 22 remains public because Convex has no fixed egress IP; cloud-init
+   disables SSH passwords. ICMP is needed for path-MTU discovery. Boxes join no
+   private network: Hetzner firewalls do not filter private network traffic, so a
+   shared network would let customer boxes bypass this isolation.
+
+   **Ports an owner opens.** Because both containers run on the host's network
+   stack, a process an owner starts binds the machine's real interface. Whether
+   anyone reaches it is decided here and nowhere else - the instance runs no
+   firewall of its own, exactly as a plain VPS does not. Securing what they
+   expose is the owner's, the same as on any server they rent.
+
+   Leaving this firewall at the four ports above is the conservative default and
+   means owner-opened ports stay private. Widening it - to a range, or to all TCP
+   and UDP - is what sells boxes as ordinary servers, and it is a deliberate
+   change of posture rather than a setting: every abuse complaint for what runs
+   behind it arrives here, and the plan's included traffic is this deployment's
+   bill rather than the owner's.
+
+   Whichever you choose, keep **2222** open. A box whose control port is closed is
+   a box this deployment cannot repair, update, or migrate.
 
 4. **Project id.** Read the numeric id from the project's console URL
    (`console.hetzner.cloud/projects/<id>/...`)
@@ -244,7 +266,7 @@ Composery continues through the configured placement candidates instead.
 `HETZNER_BOX_IMAGE` must be `docker-ce` - Hetzner's Docker CE app image
 (Ubuntu-based, Docker and the Compose plugin preinstalled), referenced by that
 name on server create. Bootstrap relies on Docker already being present (it goes
-straight to `docker compose ... pull` / `up` in `convex/boxes/infra/ssh.ts`); it
+straight to `docker compose ... pull` / `up` in `convex/boxes/infra/host.ts`); it
 does not install Docker, so a plain Ubuntu image would fail. Using the app image
 also cuts the slowest part of first boot - installing Docker - so the box reaches
 a live URL a minute or so sooner. The runtime image itself is still pulled from

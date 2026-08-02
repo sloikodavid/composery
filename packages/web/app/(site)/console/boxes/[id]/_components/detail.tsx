@@ -24,6 +24,7 @@ import {
 	operationLabel
 } from "@/convex/model/box/operation";
 import { UpdateDialog } from "@/components/box/update-dialog";
+import { UsageCard } from "@/components/box/usage-card";
 import {
 	DEFAULT_RANGE,
 	type MetricsRange
@@ -594,6 +595,8 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					status={box.status}
 				/>
 			) : null}
+
+			<UsageCard readings={detail.usage} />
 
 			<FlagsTable boxId={box.id} flags={flags} />
 

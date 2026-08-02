@@ -22,8 +22,8 @@ To skip the SSH step, paste
 into the Droplet's **user data** field at creation - it installs Docker and brings Composery
 up behind Caddy on first boot.
 
-A Droplet is a full VM, so it allows privileged containers and host cgroups: the
-`systemd + Caddy` recipe (closest to Composery Cloud) works, as does `supervisor + Caddy`.
+A Droplet is a full VM, so it allows privileged containers and host cgroups. Both the
+`systemd + Caddy` and `supervisor + Caddy` recipes work.
 
 Open `https://<your-domain>/ide/`. State lives in the `composery_data` volume; snapshot the
 Droplet before major image upgrades.

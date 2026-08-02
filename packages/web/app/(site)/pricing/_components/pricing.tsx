@@ -2,6 +2,7 @@
 
 import {
 	AngryIcon,
+	ArrowUpDownIcon,
 	ContainerIcon,
 	CpuIcon,
 	EarthLockIcon,
@@ -33,6 +34,7 @@ import {
 	boxPlanSpecification,
 	type BoxPlan
 } from "@/convex/model/box/plan";
+import { boxPlanTrafficLabel } from "@/convex/model/box/usage";
 import { GITHUB_REPO_URL } from "@/convex/model/links";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +60,10 @@ const SELF_HOSTED_FEATURES: Feature[] = [
 function planFeatures(plan: BoxPlan): Feature[] {
 	return [
 		{ icon: CpuIcon, text: boxPlanSpecification(plan) },
+		// The allowance a buyer is committing to, on the card that sells it. It was
+		// nowhere before: an owner found out what a box may send only by exceeding
+		// it, which is the one moment it is too late to have been told.
+		{ icon: ArrowUpDownIcon, text: boxPlanTrafficLabel(plan) },
 		...HOSTED_FEATURES,
 		{
 			icon: HistoryIcon,

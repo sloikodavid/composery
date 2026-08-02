@@ -17,7 +17,7 @@ import {
 	unmountParkingScript,
 	updateScript,
 	verifyParkingScript
-} from "../../../packages/web/convex/boxes/infra/sshScripts.ts";
+} from "../../../packages/web/convex/boxes/infra/hostScripts.ts";
 
 const artifacts = renderRuntimeArtifacts({
 	cloudBoxId: "box_123",

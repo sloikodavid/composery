@@ -140,7 +140,13 @@ const TONE_COLOR: Record<Tone, string> = {
 	danger: "text-destructive"
 };
 
-export type StatusTextProps = { className?: string } & (
+export type StatusTextProps = {
+	className?: string;
+	// The status glyph's own classes. Exists so a caller rendering a second glyph
+	// beside this one can size the two alike: a 14px glyph and a 16px glyph in the
+	// same slot put their labels two pixels apart, which reads as the text moving.
+	iconClassName?: string;
+} & (
 	| { kind: "box"; status: BoxStatus }
 	| { kind: "operation"; status: BoxOperationStatus }
 	| { kind: "snapshot"; status: SnapshotStatus }
@@ -188,13 +194,14 @@ export function StatusText(props: StatusTextProps) {
 	return (
 		<span className={cn("inline-flex items-center gap-1.5", props.className)}>
 			{live ? (
-				<RunningIndicator />
+				<RunningIndicator className={props.iconClassName} />
 			) : (
 				<Icon
 					className={cn(
 						"size-3.5",
 						TONE_COLOR[entry.tone],
-						spinning && "animate-spin"
+						spinning && "animate-spin",
+						props.iconClassName
 					)}
 				/>
 			)}

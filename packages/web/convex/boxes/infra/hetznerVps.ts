@@ -20,7 +20,6 @@ import {
 	hetznerCreateVolumeResponseSchema,
 	hetznerFullImagesResponseSchema,
 	hetznerImageResponseSchema,
-	hetznerImagesResponseSchema,
 	hetznerMetricsResponseSchema,
 	hetznerPagedImageSummariesResponseSchema,
 	hetznerPagedPrimaryIpsResponseSchema,
@@ -34,8 +33,9 @@ import {
 	type HetznerImage,
 	type HetznerServer
 } from "./hetznerContracts";
+import { HOST_SSH_PORT } from "./artifacts";
 import { decodeProviderResponse } from "./providerResponse";
-import { authorizedPublicKey } from "./sshKeys";
+import { authorizedPublicKey } from "./hostCredentials";
 
 export type PlacementCandidate = {
 	serverType: ServerType;
@@ -317,7 +317,7 @@ export function sshKeyIds(value: string | undefined) {
 // two operator-set values into a YAML document that becomes the first thing a
 // fresh host runs as root, so a value carrying a newline is refused rather than
 // escaped: single quotes cannot span lines in YAML, and there is no correct
-// reading of an `SSH_USER` that contains one.
+// reading of an `HOST_SSH_USER` that contains one.
 export function yamlSingleQuote(value: string) {
 	if (/[\r\n]/.test(value)) {
 		throw new Error("Cloud-init values must stay on one line.");
@@ -330,17 +330,27 @@ export function renderCloudInitUserData() {
 disable_root: false
 ssh_pwauth: false
 users:
-  - name: ${yamlSingleQuote(requiredEnv("SSH_USER"))}
+  - name: ${yamlSingleQuote(requiredEnv("HOST_SSH_USER"))}
     shell: /bin/bash
     lock_passwd: true
     ssh_authorized_keys:
       - ${yamlSingleQuote(authorizedPublicKey())}
+write_files:
+  - path: /etc/ssh/sshd_config.d/composery-control.conf
+    permissions: '0644'
+    content: |
+      # Composery's control plane reaches this host here. Port 22 is left for the
+      # instance, whose container shares this network stack.
+      Port ${HOST_SSH_PORT}
+runcmd:
+  - [ systemctl, restart, ssh ]
 `;
 }
 
 export function createServerPayload(
 	candidate: PlacementCandidate,
-	slug: string
+	slug: string,
+	boxRef: string
 ) {
 	const sshKeys = sshKeyIds(requiredEnv("HETZNER_SSH_KEYS"));
 	const firewallId = requiredEnv("HETZNER_FIREWALL_ID");
@@ -361,6 +371,7 @@ export function createServerPayload(
 		},
 		labels: {
 			product: "composery-web",
+			box_ref: boxRef,
 			box_slug: slug
 		}
 	};
@@ -380,9 +391,9 @@ export function rescuePayload() {
 	};
 }
 
-export function composeryServerListPath(slug: string) {
+export function composeryServerListPath(boxRef: string) {
 	const params = new URLSearchParams({
-		label_selector: `product=composery-web,box_slug=${slug}`
+		label_selector: `product=composery-web,box_ref=${boxRef}`
 	});
 	return `/servers?${params.toString()}`;
 }
@@ -437,9 +448,9 @@ export function materializeServer(server: HetznerServer) {
 	};
 }
 
-async function findExistingServer(slug: string) {
+async function findExistingServer(boxRef: string) {
 	const response = await hetznerRequest(
-		composeryServerListPath(slug),
+		composeryServerListPath(boxRef),
 		hetznerServerListResponseSchema
 	);
 	const servers = response.servers;
@@ -456,8 +467,8 @@ async function findExistingServer(slug: string) {
 	);
 }
 
-async function existingCreatedServer(slug: string) {
-	const existing = await findExistingServer(slug);
+async function existingCreatedServer(boxRef: string) {
+	const existing = await findExistingServer(boxRef);
 	if (!existing) return null;
 	const ready = await waitForServer(existing.id);
 	return materializeServer(ready);
@@ -512,7 +523,8 @@ async function waitForActionSuccess(actionId: number) {
 
 async function createHetznerServer(
 	candidate: PlacementCandidate,
-	slug: string
+	slug: string,
+	boxRef: string
 ) {
 	let createdServerId: number | undefined;
 
@@ -522,7 +534,7 @@ async function createHetznerServer(
 			hetznerCreateServerResponseSchema,
 			{
 				method: "POST",
-				body: JSON.stringify(createServerPayload(candidate, slug)),
+				body: JSON.stringify(createServerPayload(candidate, slug, boxRef)),
 				retry: false
 			}
 		);
@@ -584,6 +596,29 @@ export async function fetchServerMetricsSample(
 	};
 }
 
+// What this server has sent this billing period, and what its machine includes.
+//
+// Read off the server object rather than the metrics endpoint on purpose: the
+// metrics series carries bandwidth *rates*, and adding those up over a month to
+// guess a total would produce a number that disagrees with the one the provider
+// bills on. These two fields are that number.
+//
+// Null where the provider did not report one, so a caller cannot mistake "not
+// reported" for zero bytes sent - which for a signal measured against an
+// allowance is the reading that says everything is fine.
+export async function fetchServerUsage(serverId: number): Promise<{
+	outgoingBytes: number;
+	includedBytes: number;
+} | null> {
+	const server = await getServer(serverId);
+	const outgoingBytes = server.outgoing_traffic;
+	const includedBytes = server.included_traffic;
+	if (typeof outgoingBytes !== "number" || typeof includedBytes !== "number") {
+		return null;
+	}
+	return { outgoingBytes, includedBytes };
+}
+
 export const createServer = internalAction({
 	args: {
 		boxId: v.id("boxes"),
@@ -596,18 +631,19 @@ export const createServer = internalAction({
 		slug: v.string()
 	},
 	handler: async (ctx, args) => {
+		const boxRef = String(args.boxId);
 		const locations = args.location
 			? [args.location]
 			: parseLocations(optionalEnv("HETZNER_BOX_LOCATIONS"));
 		const candidates = placementCandidates(args.serverType, locations);
 		let lastError: string | undefined;
 
-		const existing = await existingCreatedServer(args.slug);
+		const existing = await existingCreatedServer(boxRef);
 		if (existing) return existing;
 
 		for (const candidate of candidates) {
 			try {
-				return await createHetznerServer(candidate, args.slug);
+				return await createHetznerServer(candidate, args.slug, boxRef);
 			} catch (error) {
 				if (error instanceof HetznerServerCreatedButNotReadyError) {
 					throw error;
@@ -629,7 +665,7 @@ export const createServer = internalAction({
 					throw error;
 				}
 
-				const recovered = await existingCreatedServer(args.slug);
+				const recovered = await existingCreatedServer(boxRef);
 				if (recovered) return recovered;
 				lastError = error instanceof Error ? error.message : String(error);
 			}
@@ -779,12 +815,16 @@ export const waitServerDeleted = internalAction({
 	}
 });
 
-async function serverStatus(serverId: number) {
+async function getServer(serverId: number) {
 	const response = await hetznerRequest(
 		`/servers/${serverId}`,
 		hetznerServerResponseSchema
 	);
-	return responseServer(response, serverId).status;
+	return responseServer(response, serverId);
+}
+
+async function serverStatus(serverId: number) {
+	return (await getServer(serverId)).status;
 }
 
 async function waitForServerOff(serverId: number) {
@@ -804,13 +844,17 @@ export const powerOffServer = internalAction({
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
 		if ((await serverStatus(args.serverId)) === "off") return;
-		const response = await hetznerRequest(
-			`/servers/${args.serverId}/actions/poweroff`,
-			hetznerActionResponseSchema,
-			{
-				method: "POST"
-			}
-		);
+		let response: z.output<typeof hetznerActionResponseSchema>;
+		try {
+			response = await hetznerRequest(
+				`/servers/${args.serverId}/actions/poweroff`,
+				hetznerActionResponseSchema,
+				{ method: "POST", retry: false }
+			);
+		} catch (error) {
+			if (await waitForServerOff(args.serverId)) return;
+			throw error;
+		}
 		await waitForActionSuccess(response.action.id);
 		if (!(await waitForServerOff(args.serverId))) {
 			throw new Error(`Hetzner server ${args.serverId} did not power off.`);
@@ -826,18 +870,29 @@ export const stopServer = internalAction({
 		if (!args.serverId) return;
 		if ((await serverStatus(args.serverId)) === "off") return;
 
-		await hetznerRequest(
-			`/servers/${args.serverId}/actions/shutdown`,
-			hetznerActionResponseSchema,
-			{ method: "POST" }
-		);
+		try {
+			await hetznerRequest(
+				`/servers/${args.serverId}/actions/shutdown`,
+				hetznerActionResponseSchema,
+				{ method: "POST", retry: false }
+			);
+		} catch {
+			// The state poll below decides whether the request took effect. If it did
+			// not, the same path escalates to a provider power-off.
+		}
 		if (await waitForServerOff(args.serverId)) return;
 
-		const response = await hetznerRequest(
-			`/servers/${args.serverId}/actions/poweroff`,
-			hetznerActionResponseSchema,
-			{ method: "POST" }
-		);
+		let response: z.output<typeof hetznerActionResponseSchema>;
+		try {
+			response = await hetznerRequest(
+				`/servers/${args.serverId}/actions/poweroff`,
+				hetznerActionResponseSchema,
+				{ method: "POST", retry: false }
+			);
+		} catch (error) {
+			if (await waitForServerOff(args.serverId)) return;
+			throw error;
+		}
 		await waitForActionSuccess(response.action.id);
 		if (!(await waitForServerOff(args.serverId))) {
 			throw new Error(`Hetzner server ${args.serverId} did not power off.`);
@@ -851,12 +906,27 @@ export const powerOnServer = internalAction({
 	},
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
-		if ((await serverStatus(args.serverId)) === "running") return;
-		const response = await hetznerRequest(
-			`/servers/${args.serverId}/actions/poweron`,
-			hetznerActionResponseSchema,
-			{ method: "POST" }
-		);
+		const status = await serverStatus(args.serverId);
+		if (status === "running") return;
+		if (status !== "off") {
+			await waitForServer(args.serverId);
+			return;
+		}
+		let response: z.output<typeof hetznerActionResponseSchema>;
+		try {
+			response = await hetznerRequest(
+				`/servers/${args.serverId}/actions/poweron`,
+				hetznerActionResponseSchema,
+				{ method: "POST", retry: false }
+			);
+		} catch (error) {
+			try {
+				await waitForServer(args.serverId);
+				return;
+			} catch {
+				throw error;
+			}
+		}
 		await waitForActionSuccess(response.action.id);
 		await waitForServer(args.serverId);
 	}
@@ -871,32 +941,53 @@ export const bootServerInRescue = internalAction({
 		if (!args.serverId) {
 			throw new Error("Box has no Hetzner server to rescue.");
 		}
-		const enabled = await hetznerRequest(
-			`/servers/${args.serverId}/actions/enable_rescue`,
-			hetznerActionResponseSchema,
-			{ method: "POST", body: JSON.stringify(rescuePayload()) }
-		);
-		await waitForActionSuccess(enabled.action.id);
+		// Repair powers the server off before this step. If a previous attempt lost
+		// the power-on response, a running server is the expected result and the
+		// following Rescue SSH probe proves which OS answered.
+		const server = await getServer(args.serverId);
+		if (server.status !== "off") {
+			await waitForServer(args.serverId);
+			return;
+		}
 
-		const actionName =
-			(await serverStatus(args.serverId)) === "off" ? "poweron" : "reset";
-		const booted = await hetznerRequest(
-			`/servers/${args.serverId}/actions/${actionName}`,
-			hetznerActionResponseSchema,
-			{ method: "POST" }
-		);
+		if (server.rescue_enabled !== true) {
+			let enabled: z.output<typeof hetznerActionResponseSchema> | undefined;
+			try {
+				enabled = await hetznerRequest(
+					`/servers/${args.serverId}/actions/enable_rescue`,
+					hetznerActionResponseSchema,
+					{
+						method: "POST",
+						body: JSON.stringify(rescuePayload()),
+						retry: false
+					}
+				);
+			} catch (error) {
+				if ((await getServer(args.serverId)).rescue_enabled !== true)
+					throw error;
+			}
+			if (enabled) await waitForActionSuccess(enabled.action.id);
+		}
+
+		let booted: z.output<typeof hetznerActionResponseSchema>;
+		try {
+			booted = await hetznerRequest(
+				`/servers/${args.serverId}/actions/poweron`,
+				hetznerActionResponseSchema,
+				{ method: "POST", retry: false }
+			);
+		} catch (error) {
+			try {
+				await waitForServer(args.serverId);
+				return;
+			} catch {
+				throw error;
+			}
+		}
 		await waitForActionSuccess(booted.action.id);
 		await waitForServer(args.serverId);
 	}
 });
-
-export function snapshotImageListPath(slug: string) {
-	const params = new URLSearchParams({
-		type: "snapshot",
-		label_selector: `product=composery-web,box_slug=${slug}`
-	});
-	return `/images?${params.toString()}`;
-}
 
 export function createSnapshotImagePayload(
 	slug: string,
@@ -1069,28 +1160,6 @@ export const getImage = internalAction({
 	}
 });
 
-export const listSnapshotImages = internalAction({
-	args: { slug: v.string() },
-	returns: v.array(
-		v.object({
-			imageId: v.number(),
-			status: v.string(),
-			imageSizeGb: v.optional(v.number())
-		})
-	),
-	handler: async (_ctx, args) => {
-		const response = await hetznerRequest(
-			snapshotImageListPath(args.slug),
-			hetznerImagesResponseSchema
-		);
-		return response.images.map((image) => ({
-			imageId: image.id,
-			status: image.status ?? "creating",
-			imageSizeGb: image.image_size ?? undefined
-		}));
-	}
-});
-
 // `created` is always present on Hetzner resources; fall back to "now" so an
 // unparseable timestamp is treated as freshly created and skipped by the
 // reconciliation age guard rather than risking deletion of something we can't
@@ -1221,7 +1290,8 @@ export function parkingVolumeName(slug: string) {
 export function createVolumePayload(
 	slug: string,
 	location: ServerLocation,
-	sizeGb: number
+	sizeGb: number,
+	boxRef: string
 ) {
 	return {
 		name: parkingVolumeName(slug),
@@ -1232,7 +1302,12 @@ export function createVolumePayload(
 		// parked files.
 		format: "ext4" as const,
 		automount: false,
-		labels: { product: "composery-web", box_slug: slug, role: "parking" }
+		labels: {
+			product: "composery-web",
+			box_ref: boxRef,
+			box_slug: slug,
+			role: "parking"
+		}
 	};
 }
 
@@ -1250,18 +1325,18 @@ export function productVolumeListPath(page: number) {
 	return `/volumes?${params.toString()}`;
 }
 
-export function parkingVolumeListPath(slug: string) {
+export function parkingVolumeListPath(boxRef: string) {
 	const params = new URLSearchParams({
-		label_selector: `product=composery-web,role=parking,box_slug=${slug}`,
+		label_selector: `product=composery-web,role=parking,box_ref=${boxRef}`,
 		per_page: "50",
 		page: "1"
 	});
 	return `/volumes?${params.toString()}`;
 }
 
-async function existingParkingVolumeId(slug: string) {
+async function existingParkingVolumeId(boxRef: string) {
 	const response = await hetznerRequest(
-		parkingVolumeListPath(slug),
+		parkingVolumeListPath(boxRef),
 		hetznerPagedVolumeSummariesResponseSchema
 	);
 	return response.volumes.sort((left, right) =>
@@ -1285,6 +1360,7 @@ async function getVolume(volumeId: number) {
 
 export const createParkingVolume = internalAction({
 	args: {
+		boxRef: v.string(),
 		slug: v.string(),
 		location: vServerLocation,
 		sizeGb: v.number()
@@ -1294,7 +1370,7 @@ export const createParkingVolume = internalAction({
 		if (!Number.isSafeInteger(args.sizeGb) || args.sizeGb < 10) {
 			throw new Error("A parking volume needs a valid provider disk size.");
 		}
-		const existing = await existingParkingVolumeId(args.slug);
+		const existing = await existingParkingVolumeId(args.boxRef);
 		if (existing) return { volumeId: existing, sizeGb: args.sizeGb };
 
 		let response: z.output<typeof hetznerCreateVolumeResponseSchema>;
@@ -1305,13 +1381,18 @@ export const createParkingVolume = internalAction({
 				{
 					method: "POST",
 					body: JSON.stringify(
-						createVolumePayload(args.slug, args.location, args.sizeGb)
+						createVolumePayload(
+							args.slug,
+							args.location,
+							args.sizeGb,
+							args.boxRef
+						)
 					),
 					retry: false
 				}
 			);
 		} catch (error) {
-			const recovered = await existingParkingVolumeId(args.slug);
+			const recovered = await existingParkingVolumeId(args.boxRef);
 			if (recovered) return { volumeId: recovered, sizeGb: args.sizeGb };
 			throw error;
 		}
@@ -1335,60 +1416,60 @@ export const attachParkingVolume = internalAction({
 		// Idempotent: a resumed repair may find it already on this server.
 		if (volume.server === args.serverId) return;
 
-		const response = await hetznerRequest(
-			`/volumes/${args.volumeId}/actions/attach`,
-			hetznerActionResponseSchema,
-			{
-				method: "POST",
-				body: JSON.stringify(attachVolumePayload(args.serverId))
-			}
-		);
+		let response: z.output<typeof hetznerActionResponseSchema>;
+		try {
+			response = await hetznerRequest(
+				`/volumes/${args.volumeId}/actions/attach`,
+				hetznerActionResponseSchema,
+				{
+					method: "POST",
+					body: JSON.stringify(attachVolumePayload(args.serverId)),
+					retry: false
+				}
+			);
+		} catch (error) {
+			if ((await getVolume(args.volumeId)).server === args.serverId) return;
+			throw error;
+		}
 		await waitForVolumeActions([response.action]);
 	}
 });
 
+async function ensureVolumeDetached(volumeId: number) {
+	let volume: z.output<typeof hetznerVolumeResponseSchema>["volume"];
+	try {
+		volume = await getVolume(volumeId);
+	} catch (error) {
+		if (isNotFound(error)) return;
+		throw error;
+	}
+	if (!volume.server) return;
+
+	let response: z.output<typeof hetznerActionResponseSchema>;
+	try {
+		response = await hetznerRequest(
+			`/volumes/${volumeId}/actions/detach`,
+			hetznerActionResponseSchema,
+			{ method: "POST", retry: false }
+		);
+	} catch (error) {
+		if (!(await getVolume(volumeId)).server) return;
+		throw error;
+	}
+	await waitForVolumeActions([response.action]);
+}
+
 export const detachParkingVolume = internalAction({
 	args: { volumeId: v.number() },
-	handler: async (_ctx, args) => {
-		let volume: z.output<typeof hetznerVolumeResponseSchema>["volume"];
-		try {
-			volume = await getVolume(args.volumeId);
-		} catch (error) {
-			if (isNotFound(error)) return;
-			throw error;
-		}
-		// Idempotent: nothing to do if it is already detached.
-		if (!volume.server) return;
-
-		const response = await hetznerRequest(
-			`/volumes/${args.volumeId}/actions/detach`,
-			hetznerActionResponseSchema,
-			{ method: "POST" }
-		);
-		await waitForVolumeActions([response.action]);
-	}
+	handler: async (_ctx, args) => await ensureVolumeDetached(args.volumeId)
 });
 
 export const deleteParkingVolume = internalAction({
 	args: { volumeId: v.number() },
 	handler: async (_ctx, args) => {
-		let volume: z.output<typeof hetznerVolumeResponseSchema>["volume"];
-		try {
-			volume = await getVolume(args.volumeId);
-		} catch (error) {
-			if (isNotFound(error)) return;
-			throw error;
-		}
 		// Hetzner refuses to delete an attached volume, so detach first (the server
 		// may already be gone, in which case it is detached anyway).
-		if (volume.server) {
-			const response = await hetznerRequest(
-				`/volumes/${args.volumeId}/actions/detach`,
-				hetznerActionResponseSchema,
-				{ method: "POST" }
-			);
-			await waitForVolumeActions([response.action]);
-		}
+		await ensureVolumeDetached(args.volumeId);
 		try {
 			await hetznerRequest(`/volumes/${args.volumeId}`, undefined, {
 				method: "DELETE"

@@ -160,8 +160,7 @@ pub fn hash_secret(secret: &str) -> String {
 
 fn generate(name: &str) -> Result<NewKey> {
     let mut secret_bytes = [0u8; 32];
-    getrandom::fill(&mut secret_bytes)
-        .map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
+    getrandom::fill(&mut secret_bytes).map_err(|error| anyhow::anyhow!("getrandom: {error}"))?;
     let secret = format!(
         "{KEY_PREFIX}{}",
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret_bytes)

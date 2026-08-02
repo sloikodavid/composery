@@ -31,17 +31,6 @@ function serviceState(state: ComponentState): {
 	}
 }
 
-export function diskState(percent: number | null): {
-	label: string;
-	tone: Tone;
-} {
-	if (percent === null) return { label: "Unknown", tone: "muted" };
-	return {
-		label: `${percent}% used`,
-		tone: percent >= 90 ? "bad" : percent >= 75 ? "warn" : "ok"
-	};
-}
-
 // Informational, not pass/fail: both engines are healthy answers, so neither is
 // an issue. Only the daemon can name the live engine, so an unreadable one is
 // `muted` ("we could not read this") like every other unread check - never a
@@ -59,6 +48,13 @@ function engineState(engine: RecoveryStatus["engine"]): {
 // label and description do not depend on the box, so the dialog can lay every
 // row out before the check returns and fill in only the state - the list never
 // changes height, which is what stops the modal resizing under the pointer.
+//
+// Every row is a layer Repair can rebuild. A full disk used to sit here too
+// and was the one row that broke the rule: it is a level against an allowance
+// rather than a service that is up or down, and rebuilding the host does not
+// free a byte of it. It is now a meter on the box page beside this button, with
+// its own limit, its own notice and its own remedy - see
+// `components/box/usage-card.tsx` and `convex/model/box/usage.ts`.
 export const CHECKS: {
 	label: string;
 	description: string;
@@ -109,11 +105,6 @@ export const CHECKS: {
 		label: "Persistence",
 		description: "Saves your files.",
 		read: (status) => serviceState(status.persistence)
-	},
-	{
-		label: "Disk",
-		description: "Space in use.",
-		read: (status) => diskState(status.diskUsedPercent)
 	},
 	{
 		label: "Persistence engine",

@@ -25,6 +25,7 @@ RUN apt-get update \
     pkg-config \
     python-is-python3 \
     quilt \
+    rsync \
     unzip \
   && rm -rf /var/lib/apt/lists/*
 
@@ -127,16 +128,26 @@ RUN apt-get update \
     cron \
     curl \
     desktop-file-utils \
+    file \
     git \
+    git-lfs \
+    gnupg \
+    iproute2 \
     jq \
     less \
     libfile-mimeinfo-perl \
+    lsof \
     mailcap \
     nano \
     openssh-client \
+    openssh-server \
+    pipx \
     procps \
     python3 \
+    python3-pip \
+    python3-venv \
     ripgrep \
+    rsync \
     shared-mime-info \
     sudo \
     supervisor \
@@ -144,16 +155,58 @@ RUN apt-get update \
     tar \
     tmux \
     unzip \
-    vim-tiny \
+    vim \
     wget \
     xdg-user-dirs \
     xdg-utils \
     xz-utils \
     zip
 
+# Native modules are the common case, not the exception: node-gyp needs a compiler
+# and `npm install` failing is the worst possible first minute. Shipping the
+# toolchain also costs *less* than letting each owner install it themselves -
+# persistence would store a private copy of the same packages in every delta.
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    python3-dev
+
+# Docker, from Docker's own apt repository - the vendor's documented install path,
+# not get.docker.com piped into a build and not Debian's `docker.io` fork. Apt stays
+# unpinned here for the same reason as the block above.
+RUN install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+  && chmod a+r /etc/apt/keyrings/docker.asc \
+  && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian %s stable\n' \
+    "$(dpkg --print-architecture)" "$(. /etc/os-release && echo "$VERSION_CODENAME")" \
+    > /etc/apt/sources.list.d/docker.list \
+  && apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-ce \
+    docker-ce-cli \
+    docker-compose-plugin
+
+# Debian marks the system Python externally managed, which makes `pip install` refuse
+# to run at all. Nothing in the image imports the system site-packages, so the marker
+# only removes a capability owners expect; pip falls back to a ~/.local install,
+# which is already on PATH and already persisted. venv and pipx stay available for
+# anyone who wants isolation. No -f: if the path moves, fail the build rather than
+# quietly restore the block.
+RUN rm /usr/lib/python3*/EXTERNALLY-MANAGED
+
 # cron's PAM stack fails `pam_loginuid.so` in an unprivileged container (no writable
 # /proc/self/loginuid), silently killing cron jobs. Make it optional so crontab works.
 RUN sed -i 's/session\s\+required\s\+pam_loginuid/session optional pam_loginuid/' /etc/pam.d/cron
+
+# openssh-server's postinst generates host keys at install time, which would bake
+# one SSH identity into the image and hand it to every instance that ever pulls it -
+# anyone with the image could then impersonate any of them. Delete them here; ssh.sh
+# runs `ssh-keygen -A` at first boot so each instance generates its own, and
+# persistence keeps them.
+RUN rm -f /etc/ssh/ssh_host_*
 
 RUN npm install --global \
     "bun@${BUN_VERSION}" \
@@ -163,7 +216,11 @@ RUN npm install --global \
 
 RUN groupmod --new-name user node \
   && usermod --login user --home /home/user --move-home node \
-  && mkdir -p /home/user
+  && mkdir -p /home/user \
+  # Docker's group is joined here, not where Docker is installed: this is the
+  # step that creates the account, and `usermod -aG` on a user that does not
+  # exist yet fails the build.
+  && usermod -aG docker user
 
 COPY --from=ide-builder /src/packages/ide/build/release /opt/composery/ide/current
 COPY --from=cli-builder /out/composery /opt/composery/bin/composery
@@ -189,7 +246,9 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && chown -R user:user /home/user \
   && chmod 0440 /etc/sudoers.d/user \
   && chmod +x /opt/composery/entrypoint.sh \
+  && chmod +x /opt/composery/docker.sh \
   && chmod +x /opt/composery/ide.sh \
+  && chmod +x /opt/composery/ssh.sh \
   && chmod +x /opt/composery/remove-password.sh \
   && chmod +x /opt/composery/watchdog.sh \
   && chmod +x /opt/composery/init/*.sh \
@@ -199,6 +258,10 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && ln -sf /usr/lib/systemd/system/persistence.service /etc/systemd/system/multi-user.target.wants/persistence.service \
   && ln -sf /usr/lib/systemd/system/ide.service /etc/systemd/system/multi-user.target.wants/ide.service \
   && ln -sf /usr/lib/systemd/system/caddy.service /etc/systemd/system/multi-user.target.wants/caddy.service \
+  && ln -sf /dev/null /etc/systemd/system/ssh.socket \
+  && ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/ssh.service \
+  && ln -sf /lib/systemd/system/containerd.service /etc/systemd/system/multi-user.target.wants/containerd.service \
+  && ln -sf /lib/systemd/system/docker.service /etc/systemd/system/multi-user.target.wants/docker.service \
   && ln -sf /opt/composery/ide/current/lib/vscode/bin/remote-cli/ide /usr/local/bin/code \
   && ln -sf /opt/composery/ide/current/bin/ide /usr/local/bin/ide \
   && ln -sf /opt/composery/bin/composery /usr/local/bin/composery \

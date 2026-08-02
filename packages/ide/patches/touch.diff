@@ -55,14 +55,30 @@ neither pops nor closes it. Transient overlays (quick input, context menus)
 dismiss on a deliberate press outside them, never on focus-out - on touch the
 soft keyboard churns focus with no intent to dismiss (opening a menu blurs the
 field, the keyboard closing, iOS pulling focus to <body>), so a blur is not a
-dismissal and ignoreFocusOut is honoured. Nothing autofocuses a search field on
+dismissal and ignoreFocusOut is honoured. For a context menu that press has
+nowhere to land but the full-screen block the context view puts up, which is a
+child of the container the outside-press listener treats as inside - so the
+block itself carries the dismissal, or the menu has none at all but Escape
+(device-verified: the press blurred the surface underneath and left an invisible
+block over a workbench that answered nothing). Nothing autofocuses a search field on
 touch (settings, keybindings, extensions, search, SCM - upstream exempted iOS
 only); editables keep the OS text-selection menu instead of the void - all but the
 invisible IME shims the editor and the terminal park inside their own text, which
 touch.css takes out of hit-testing so a hold there reaches the surface it looks
 like it landed on (device-verified: it reached nothing at all before).
 
-Terminal. Focus on Tap; autocomplete=off so Android IMEs drop the suggestion
+Terminal. Focus on Tap, and the soft keyboard on a tap and nothing else
+(touchKeyboard.ts). Focus is not the lever here that it is everywhere else:
+xterm holds its hidden textarea focused for as long as the terminal is the
+active surface, so the caret stays visible with the keyboard dismissed and
+focus() raises nothing. What raises it again is the browser, for any press
+landing on the focused editable - which on a phone is every swipe of the
+buffer - and it does so even though this layer cancels the whole sequence
+(device-verified: touchstart, every touchmove and touchend all report
+defaultPrevented, no Tap is emitted, no focus lever is called, and the keyboard
+still comes up). preventDefault does not reach that decision, so the hold is
+taken away from the browser with inputmode="none" between taps.
+autocomplete=off so Android IMEs drop the suggestion
 strip over shell input; the initial hint is tappable (Gesture.ignoreTarget).
 Text selection is a whole contribution of ours in the overlay
 (terminal.touchSelection.contribution.ts) - a hold word-selects through xterm's
@@ -1659,7 +1675,29 @@ short layouts its row back.
  		this.contextViewService.showContextView({
  			getAnchor: () => delegate.getAnchor(),
  			canRelayout: false,
-@@ -94,9 +103,16 @@ export class ContextMenuHandler {
+@@ -76,7 +85,20 @@ export class ContextMenuHandler {
+ 					this.block.style.zIndex = '-1';
+ 
+ 					this.blockDisposable?.dispose();
+-					this.blockDisposable = addDisposableListener(this.block, EventType.MOUSE_DOWN, e => e.stopPropagation());
++					this.blockDisposable = addDisposableListener(this.block, EventType.MOUSE_DOWN, e => {
++						e.stopPropagation();
++						// Composery: on touch this backdrop is the deliberate dismissal, because
++						// it is the only thing a press outside the menu can reach - it covers the
++						// viewport, and it is a child of the container the outside-press listener
++						// below treats as "inside". Upstream is saved by the menu's blur, which
++						// touch does not use (see the onDidBlur gate). Without this a menu could
++						// only be dismissed with Escape: device-verified, the press lands here,
++						// blurs the surface underneath, and leaves an invisible full-screen block
++						// over a workbench that no longer answers anything.
++						if (isTouch(mainWindow)) {
++							this.contextViewService.hideContextView(true);
++						}
++					});
+ 				}
+ 
+ 				const menuDisposables = new DisposableStore();
+@@ -94,9 +116,16 @@ export class ContextMenuHandler {
  				);
  
  				menu.onDidCancel(() => this.contextViewService.hideContextView(true), null, menuDisposables);
@@ -1678,7 +1716,7 @@ short layouts its row back.
  				menuDisposables.add(addDisposableListener(targetWindow, EventType.MOUSE_DOWN, (e: MouseEvent) => {
  					if (e.defaultPrevented) {
  						return;
-@@ -125,7 +141,16 @@ export class ContextMenuHandler {
+@@ -125,7 +154,16 @@ export class ContextMenuHandler {
  			},
  
  			focus: () => {
@@ -1696,7 +1734,7 @@ short layouts its row back.
  			},
  
  			onHide: (didCancel?: boolean) => {
-@@ -140,7 +165,9 @@ export class ContextMenuHandler {
+@@ -140,7 +178,9 @@ export class ContextMenuHandler {
  				this.blockDisposable = null;
  
  				if (!!this.lastContainer && (getActiveElement() === this.lastContainer || isAncestor(getActiveElement(), this.lastContainer))) {
@@ -2515,15 +2553,24 @@ short layouts its row back.
  		} else {
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
-@@ -8,6 +8,7 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+@@ -8,6 +8,8 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
  import { DataTransfers } from '../../../../base/browser/dnd.js';
  import * as dom from '../../../../base/browser/dom.js';
  import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
++import { softKeyboard } from '../../../../base/browser/softKeyboard.js';
 +import { Gesture, EventType as TouchEventType } from '../../../../base/browser/touch.js';
  import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
  import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
  import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
-@@ -1130,6 +1131,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -65,6 +67,7 @@ import { getColorClass, createColorStyleElement, getStandardColors } from './ter
+ import { TerminalProcessManager } from './terminalProcessManager.js';
+ import { ITerminalStatusList, TerminalStatus, TerminalStatusList } from './terminalStatusList.js';
+ import { getTerminalResourcesFromDragEvent, getTerminalUri } from './terminalUri.js';
++import { TouchKeyboard } from './touchKeyboard.js';
+ import { TerminalWidgetManager } from './widgets/widgetManager.js';
+ import { LineDataEventAddon } from './xterm/lineDataEventAddon.js';
+ import { XtermTerminal, getXtermScaledDimensions } from './xterm/xtermTerminal.js';
+@@ -1130,6 +1133,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  			throw new Error('xterm elements not set after open');
  		}
  
@@ -2537,17 +2584,30 @@ short layouts its row back.
  		this._setAriaLabel(xterm.raw, this._instanceId, this._title);
  
  		xterm.raw.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
-@@ -1202,9 +1210,18 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1202,9 +1212,31 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  				listener.dispose();
  			});
  		}));
 -		this._register(dom.addDisposableListener(xterm.raw.element, 'touchstart', () => {
 +		// Composery: focus on Tap rather than raw touchstart - a touch that begins a scroll
-+		// of the terminal buffer must not focus the terminal and pop the on-screen keyboard.
++		// of the terminal buffer is not a request to make the terminal the active surface.
++		// The keyboard is a separate question, and focus is no lever on it: xterm holds this
++		// textarea focused with the keyboard dismissed, so what raises the keyboard again is
++		// the browser, for any press landing on the focused editable - it does that even
++		// though this sequence is preventDefault()ed end to end. touchKeyboard.ts holds the
++		// browser off between taps; the blur drops a hold that has nothing left to guard.
 +		this._register(Gesture.addTarget(xterm.raw.element));
++		const touchKeyboard = new TouchKeyboard(xterm.raw.textarea);
++		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Start, () => {
++			touchKeyboard.press(softKeyboard(dom.getWindow(xterm.raw.element)).open);
++		}));
 +		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Tap, () => {
++			touchKeyboard.tap(softKeyboard(dom.getWindow(xterm.raw.element)).open);
  			xterm.raw.focus();
  		}));
++		this._register(dom.addDisposableListener(xterm.raw.textarea, dom.EventType.BLUR, () => {
++			touchKeyboard.release();
++		}));
 +		// Composery: every other refresh of the selection context keys hangs off a mouse or
 +		// key event, so a selection made by a long-press - which produces neither, and does
 +		// not focus the terminal either, since that would pop the keyboard over it - left

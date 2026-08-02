@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { HOST_SSH_PORT } from "@/convex/boxes/infra/artifacts";
 import {
 	seedBox,
 	seedUser,
@@ -20,7 +21,7 @@ const ssh = vi.hoisted(() => ({
 	stdout: ""
 }));
 
-vi.mock("@/convex/boxes/infra/sshTransport", () => ({
+vi.mock("@/convex/boxes/infra/hostTransport", () => ({
 	runSsh: vi.fn(
 		async (
 			target: (typeof ssh.calls)[number]["target"],
@@ -40,8 +41,8 @@ beforeEach(() => {
 	ssh.stderr = "";
 	ssh.stdout = "";
 	stubDeploymentEnv();
-	vi.stubEnv("SSH_PRIVATE_KEY", "private");
-	vi.stubEnv("SSH_USER", "composery");
+	vi.stubEnv("HOST_SSH_PRIVATE_KEY", "private");
+	vi.stubEnv("HOST_SSH_USER", "composery");
 	vi.stubEnv("RUNTIME_PORT", "8080");
 });
 
@@ -68,17 +69,19 @@ describe("writing a box's runtime files", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.action(internal.boxes.infra.ssh.repairRuntime, { boxId });
+		await t.action(internal.boxes.infra.host.repairRuntime, { boxId });
 		expect(sent()).toContain("sha256:current");
 		expect(sent()).toContain("--force-recreate");
 		expect(ssh.calls[0].target).toEqual({
 			host: "1.2.3.4",
+			// The host's own sshd moved off 22 so the instance could have it.
+			port: HOST_SSH_PORT,
 			privateKey: "private",
 			username: "composery"
 		});
 
 		ssh.calls.length = 0;
-		await t.action(internal.boxes.infra.ssh.updateRuntime, {
+		await t.action(internal.boxes.infra.host.updateRuntime, {
 			boxId,
 			runtimeImage: "ghcr.io/composery/composery@sha256:next"
 		});
@@ -91,7 +94,7 @@ describe("writing a box's runtime files", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.action(internal.boxes.infra.ssh.bootstrapRuntime, { boxId });
+		await t.action(internal.boxes.infra.host.bootstrapRuntime, { boxId });
 		expect(sent()).not.toContain(
 			"The runtime came up but its editor never started"
 		);
@@ -101,7 +104,7 @@ describe("writing a box's runtime files", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.action(internal.boxes.infra.ssh.applyRuntimeConfig, {
+		await t.action(internal.boxes.infra.host.applyRuntimeConfig, {
 			boxId,
 			config: { COMPOSERY_DISABLE_FILE_UPLOADS: "1" }
 		});
@@ -114,7 +117,7 @@ describe("writing a box's runtime files", () => {
 			runtime_config: { COMPOSERY_DISABLE_FILE_UPLOADS: "1" }
 		});
 
-		await t.action(internal.boxes.infra.ssh.rewritePasswordAndRestart, {
+		await t.action(internal.boxes.infra.host.rewritePasswordAndRestart, {
 			boxId,
 			runtimeAuthHash: "$argon2id$new"
 		});
@@ -129,7 +132,7 @@ describe("writing a box's runtime files", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 
-		await t.action(internal.boxes.infra.ssh.reloadSlug, {
+		await t.action(internal.boxes.infra.host.reloadSlug, {
 			boxId,
 			newSlug: "renamed"
 		});
@@ -139,14 +142,13 @@ describe("writing a box's runtime files", () => {
 
 describe("inspecting and reading a box", () => {
 	const inspect = (t: Harness, boxId: Id<"boxes">) =>
-		t.action(internal.boxes.infra.ssh.inspectRuntime, { boxId });
+		t.action(internal.boxes.infra.host.inspectRuntime, { boxId });
 
 	test("parses inspection output and turns connection failure into unreachable", async () => {
 		const t = testConvex();
 		const boxId = await box(t);
 		ssh.stdout = [
 			"host_reachable=true",
-			"disk_used_percent=42",
 			"engine=overlay",
 			"docker=active",
 			"outer_caddy=active",
@@ -156,7 +158,6 @@ describe("inspecting and reading a box", () => {
 			"ide=active"
 		].join("\n");
 		await expect(inspect(t, boxId)).resolves.toMatchObject({
-			diskUsedPercent: 42,
 			hostReachable: true,
 			ide: "active"
 		});
@@ -173,7 +174,7 @@ describe("inspecting and reading a box", () => {
 		ssh.stdout = "editor listening on 8080";
 
 		await expect(
-			t.action(internal.boxes.infra.ssh.fetchRuntimeLogs, {
+			t.action(internal.boxes.infra.host.fetchRuntimeLogs, {
 				boxId,
 				tail: 1_000_000
 			})
@@ -190,13 +191,13 @@ describe("parking a box's files", () => {
 		ssh.stdout = ["home/user/notes.md", "home/user/project/main.rs"].join("\n");
 
 		await expect(
-			t.action(internal.boxes.infra.ssh.verifyParkingCopy, {
+			t.action(internal.boxes.infra.host.verifyParkingCopy, {
 				boxId,
 				volumeId: 909
 			})
 		).rejects.toThrow("verification (out) found 2 difference(s)");
 		await expect(
-			t.action(internal.boxes.infra.ssh.verifyParkingBack, {
+			t.action(internal.boxes.infra.host.verifyParkingBack, {
 				boxId,
 				volumeId: 909
 			})
@@ -207,7 +208,7 @@ describe("parking a box's files", () => {
 		const t = testConvex();
 		const boxId = await box(t);
 		await expect(
-			t.action(internal.boxes.infra.ssh.verifyParkingCopy, {
+			t.action(internal.boxes.infra.host.verifyParkingCopy, {
 				boxId,
 				volumeId: 909
 			})
@@ -217,11 +218,11 @@ describe("parking a box's files", () => {
 	test("uses the rescue root account for the copy and its verification", async () => {
 		const t = testConvex();
 		const boxId = await box(t);
-		await t.action(internal.boxes.infra.ssh.copyToParking, {
+		await t.action(internal.boxes.infra.host.copyToParking, {
 			boxId,
 			volumeId: 909
 		});
-		await t.action(internal.boxes.infra.ssh.verifyParkingCopy, {
+		await t.action(internal.boxes.infra.host.verifyParkingCopy, {
 			boxId,
 			volumeId: 909
 		});
@@ -246,7 +247,7 @@ describe("SSH command policy", () => {
 			const t = testConvex();
 			const boxId = await box(t);
 			ssh.stdout = stdout;
-			await t.action(internal.boxes.infra.ssh[action], {
+			await t.action(internal.boxes.infra.host[action], {
 				boxId,
 				...args
 			} as never);
@@ -280,7 +281,7 @@ describe("an action against a box with no host", () => {
 			const boxId = await box(t, { hetzner_ipv4: undefined });
 
 			await expect(
-				t.action(internal.boxes.infra.ssh[action], {
+				t.action(internal.boxes.infra.host[action], {
 					boxId,
 					...args
 				} as never)
@@ -293,7 +294,7 @@ describe("an action against a box with no host", () => {
 		const t = testConvex();
 		const boxId = await box(t, { hetzner_ipv4: undefined });
 		await expect(
-			t.action(internal.boxes.infra.ssh.inspectRuntime, { boxId })
+			t.action(internal.boxes.infra.host.inspectRuntime, { boxId })
 		).resolves.toMatchObject({ hostReachable: false });
 		expect(ssh.calls).toEqual([]);
 	});

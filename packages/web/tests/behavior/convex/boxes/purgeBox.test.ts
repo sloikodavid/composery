@@ -114,6 +114,14 @@ function rowFor(
 				auto_suspended: false,
 				created_at: NOW
 			};
+		case "box_usage":
+			return {
+				box_id: boxId,
+				signal: "disk",
+				used_bytes: 1,
+				allowance_bytes: 2,
+				sampled_at: NOW
+			};
 		case "box_health":
 			return {
 				box_id: boxId,

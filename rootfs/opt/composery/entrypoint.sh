@@ -38,6 +38,14 @@ finalize() {
   # After the delta is live, or a restored/overlaid delta would put the password back.
   /opt/composery/remove-password.sh
 
+  # Deployment-supplied SSH keys are written here rather than by the service,
+  # because this value is an authorized_keys file and therefore multi-line. The
+  # systemd profile bridges settings to its units through the `env | grep` file
+  # built below, which keeps only a value's first line - so reading it there would
+  # honour one key under systemd and all of them under supervisor.
+  /opt/composery/ssh.sh install-keys
+
+
   case "${COMPOSERY_INIT:-supervisor}" in
     supervisor)
       exec /opt/composery/init/supervisor.sh

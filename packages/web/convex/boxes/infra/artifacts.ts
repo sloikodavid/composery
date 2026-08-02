@@ -10,16 +10,38 @@ export const COMPOSERY_VOLUME_NAMES = [
 export const CADDY_IMAGE =
 	"caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648";
 
+// The port the host's own sshd listens on, which is deliberately not 22.
+//
+// Port 22 belongs to the instance: a box is meant to be reachable the way any
+// server is, and `ssh box.example.com` with no `-p` is most of what that means.
+// The control plane has no such need - nobody types it - so it moves out of the
+// way. This also has to happen on the very first boot, before the runtime is
+// ever brought up, because the container shares the host's network stack and its
+// sshd would otherwise find port 22 already taken.
+export const HOST_SSH_PORT = 2222;
+
 export type RuntimeArtifacts = {
 	caddyfile: string;
 	compose: string;
 	env: string;
 };
 
-export function renderCaddyfile(domain: string, runtimePort: number) {
-	return `${domain} {
+// Both containers share the host's network stack, so there is no compose network
+// to resolve a service name on - the editor is simply a port on this machine.
+//
+// A custom domain is served *alongside* the managed one, never instead of it.
+// The managed name is how the control plane and the owner always reach a box, so
+// a registrar change or an expired domain costs its own certificate and nothing
+// else. Caddy obtains one per name in the block.
+export function renderCaddyfile(
+	domain: string,
+	runtimePort: number,
+	customDomain?: string
+) {
+	const names = [domain, customDomain].filter(Boolean).join(", ");
+	return `${names} {
 \tencode gzip
-\treverse_proxy composery:${runtimePort}
+\treverse_proxy 127.0.0.1:${runtimePort}
 }
 `;
 }
@@ -123,6 +145,29 @@ function quoteEnvFileValue(value: string) {
 	return `'${value}'`;
 }
 
+// Both services run on the host's own network stack.
+//
+// This is what makes a box behave like the server an owner paid for rather than a
+// container with three holes in it. A bridged network can only ever publish the
+// ports this file names, so running a database, a game server, or anything else
+// on an ordinary port was impossible - not discouraged, impossible. On the host
+// stack a process an owner starts binds the machine's real interface, and what is
+// reachable becomes a firewall decision they can make instead of a compose file
+// they cannot edit.
+//
+// Three consequences, each handled rather than tolerated:
+//
+//   - There is no compose network, so Caddy reaches the editor at 127.0.0.1
+//     rather than by service name (`renderCaddyfile`).
+//   - Nothing is published or exposed, because there is no boundary left to
+//     publish through: a bind is already on the interface.
+//   - The editor's own port would be on that interface too, so COMPOSERY_BIND
+//     pins it to loopback. Only Caddy is meant to reach it, and the firewall is
+//     no longer the thing keeping that true.
+//
+// SSH is the reason the ordering matters elsewhere: the instance's sshd takes
+// port 22 here, so a host's own sshd has to have moved to the control port
+// first. `renderCloudInitUserData` does that on the very first boot.
 export function renderCompose(runtimeImage: string, runtimePort: number) {
 	const [dataVolume, caddyDataVolume, caddyConfigVolume] =
 		COMPOSERY_VOLUME_NAMES;
@@ -135,9 +180,7 @@ services:
     container_name: caddy
     restart: always
     logging: *logging
-    ports:
-      - "80:80"
-      - "443:443"
+    network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${caddyDataVolume}:/data
@@ -152,8 +195,10 @@ services:
     restart: always
     logging: *logging
     init: true
+    network_mode: host
     env_file: ./composery.env
     environment:
+      - COMPOSERY_BIND=127.0.0.1
       - COMPOSERY_PERSISTENCE=overlay
       - PORT=${runtimePort}
     privileged: true
@@ -164,8 +209,6 @@ services:
       - /tmp
     volumes:
       - ${dataVolume}:/data
-    expose:
-      - "${runtimePort}"
 
 volumes:
   ${dataVolume}:
@@ -181,6 +224,7 @@ export function renderRuntimeArtifacts({
 	cloudBoxId,
 	cloudOrigin,
 	config,
+	customDomain,
 	domain,
 	runtimeAuthHash,
 	runtimeImage,
@@ -189,13 +233,14 @@ export function renderRuntimeArtifacts({
 	cloudBoxId?: string;
 	cloudOrigin?: string;
 	config?: Readonly<Record<string, string>>;
+	customDomain?: string;
 	domain: string;
 	runtimeAuthHash?: string;
 	runtimeImage: string;
 	runtimePort: number;
 }): RuntimeArtifacts {
 	return {
-		caddyfile: renderCaddyfile(domain, runtimePort),
+		caddyfile: renderCaddyfile(domain, runtimePort, customDomain),
 		compose: renderCompose(runtimeImage, runtimePort),
 		env: renderComposeryEnv({
 			cloudBoxId,

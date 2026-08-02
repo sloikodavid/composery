@@ -60,7 +60,7 @@ export const updateBox = defineBoxWorkflow({
 		}
 
 		await step.runAction(
-			internal.boxes.infra.ssh.updateRuntime,
+			internal.boxes.infra.host.updateRuntime,
 			{ boxId: args.boxId, runtimeImage: release.image },
 			{ retry: true }
 		);

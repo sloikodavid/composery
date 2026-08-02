@@ -35,6 +35,13 @@ type PlanDefinition = {
 	// How many of that allowance a new box reserves for manual snapshots. Ignored,
 	// and pinned to zero, on a plan without them.
 	snapshotManualDefault: number;
+	// Outbound traffic the plan includes each month, in decimal terabytes - the
+	// unit the provider bills in. It is the only allowance on a box that is not a
+	// property of the machine, so it is stated per plan rather than derived from
+	// the server type: what a box may send is what Composery sells, and the
+	// provider's own included amount is the floor under it rather than the promise.
+	// `boxes/usage.ts` alerts staff if the provider ever reports less than this.
+	trafficTb: number;
 	vcpu: number;
 };
 
@@ -48,6 +55,7 @@ export const BOX_PLANS = {
 		serverType: "cx23",
 		snapshotCap: 3,
 		snapshotManualDefault: 0,
+		trafficTb: 20,
 		vcpu: 2
 	},
 	pro: {
@@ -59,6 +67,7 @@ export const BOX_PLANS = {
 		serverType: "cx43",
 		snapshotCap: 5,
 		snapshotManualDefault: 2,
+		trafficTb: 20,
 		vcpu: 8
 	}
 } as const satisfies Record<string, PlanDefinition>;

@@ -323,7 +323,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  	}
 --- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
 +++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
-@@ -77,6 +77,7 @@ import { getUriLabelForShell, getShellIntegrationTimeout, getWorkspaceForTermina
+@@ -79,6 +79,7 @@ import { getUriLabelForShell, getShellIntegrationTimeout, getWorkspaceForTermina
  import { IEditorService } from '../../../services/editor/common/editorService.js';
  import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
  import { IHistoryService } from '../../../services/history/common/history.js';
@@ -331,7 +331,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  import { isHorizontal, IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
  import { IPathService } from '../../../services/path/common/pathService.js';
  import { IPreferencesService } from '../../../services/preferences/common/preferences.js';
-@@ -405,6 +406,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -407,6 +408,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		@ICommandService private readonly _commandService: ICommandService,
  		@IAccessibilitySignalService private readonly _accessibilitySignalService: IAccessibilitySignalService,
  		@IViewDescriptorService private readonly _viewDescriptorService: IViewDescriptorService,
@@ -339,7 +339,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  	) {
  		super();
  
-@@ -535,6 +537,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -537,6 +539,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		this.statusList = this._register(this._scopedInstantiationService.createInstance(TerminalStatusList));
  		this._initDimensions();
  		this._processManager = this._createProcessManager();
@@ -351,7 +351,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  
  		this._containerReadyBarrier = new AutoOpenBarrier(Constants.WaitForContainerThreshold);
  		this._attachBarrier = new AutoOpenBarrier(1000);
-@@ -1200,6 +1207,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1202,6 +1209,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  
  			return true;
  		});
@@ -360,7 +360,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  		this._register(dom.addDisposableListener(xterm.raw.element, 'mousedown', () => {
  			// We need to listen to the mouseup event on the document since the user may release
  			// the mouse button anywhere outside of _xterm.element.
-@@ -1252,6 +1261,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1267,6 +1276,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  
  	private _setFocus(focused?: boolean): void {
  		if (focused) {
@@ -368,7 +368,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  			this._terminalFocusContextKey.set(true);
  			this._setShellIntegrationContextKey();
  			this._onDidFocus.fire(this);
-@@ -1447,7 +1457,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1462,7 +1472,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  			// Resize to re-evaluate dimensions, this will ensure when switching to a terminal it is
  			// using the most up to date dimensions (eg. when terminal is created in the background
  			// using cached dimensions of a split terminal).
@@ -381,7 +381,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  		}
  		if (didChange) {
  			this._onDidChangeVisibility.fire(visible);
-@@ -1582,7 +1596,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -1597,7 +1611,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		}));
  
  		this._initialDataEventsListener.value = processManager.onProcessData(ev => this._initialDataEvents?.push(ev.data));
@@ -395,7 +395,7 @@ terminal, receives its output or owns its replay is that channel's own registry
  		this._register(processManager.onEnvironmentVariableInfoChanged(e => this._onEnvironmentVariableInfoChanged(e)));
  		this._register(processManager.onPtyDisconnect(() => {
  			if (this.xterm) {
-@@ -2099,6 +2118,24 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+@@ -2114,6 +2133,24 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
  		await this._processManager.setDimensions(rawXterm.cols, rawXterm.rows, undefined, roundedPixelWidth, roundedPixelHeight);
  	}
  

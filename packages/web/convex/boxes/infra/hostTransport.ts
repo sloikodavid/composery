@@ -2,7 +2,7 @@
 
 import ssh2 from "ssh2";
 import { MINUTE_MS } from "../../time";
-import { sshFailure } from "./sshScripts";
+import { sshFailure } from "./hostScripts";
 
 const { Client } = ssh2;
 
@@ -83,6 +83,8 @@ export async function runSsh(
 				.on("error", fail)
 				.connect({
 					host: target.host,
+					keepaliveCountMax: 6,
+					keepaliveInterval: 10_000,
 					...(target.port ? { port: target.port } : {}),
 					username: target.username,
 					privateKey: target.privateKey,

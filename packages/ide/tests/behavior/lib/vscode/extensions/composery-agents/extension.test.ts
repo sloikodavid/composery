@@ -75,6 +75,7 @@ describe("agent setup extension", () => {
 		await installAgent("additional");
 
 		expect(offered.map((agent) => agent.id)).toEqual([
+			"openclaw",
 			"kimi",
 			"grok",
 			"aider",

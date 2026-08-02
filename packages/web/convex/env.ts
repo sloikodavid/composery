@@ -42,8 +42,8 @@ export const CONVEX_ENV = {
 	RUNTIME_IMAGE: v.string(),
 	RUNTIME_PORT: v.string(),
 	// Box SSH access
-	SSH_USER: v.string(),
-	SSH_PRIVATE_KEY: v.string(),
+	HOST_SSH_USER: v.string(),
+	HOST_SSH_PRIVATE_KEY: v.string(),
 	// Resend. One sender per class of mail, named for what the mail is about:
 	// an incident, one box, or the account itself. See convex/email.ts.
 	//

@@ -7,10 +7,12 @@ import {
 	logTail,
 	parkingVerificationFailure,
 	requireBoxHost,
+	rescueSshTarget,
 	runtimeArtifactsForBox,
 	runtimePort,
 	sshTarget
-} from "@/convex/boxes/infra/ssh";
+} from "@/convex/boxes/infra/host";
+import { HOST_SSH_PORT } from "@/convex/boxes/infra/artifacts";
 
 // The decisions inside the SSH layer, rather than the SSH layer. Each one used
 // to sit inside an action whose first statement is a network call, so nothing
@@ -23,8 +25,8 @@ afterEach(() => {
 
 function stubHostEnv() {
 	const keyPair = generateParseableKeyPair();
-	vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
-	vi.stubEnv("SSH_USER", "composery");
+	vi.stubEnv("HOST_SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+	vi.stubEnv("HOST_SSH_USER", "composery");
 	vi.stubEnv("RUNTIME_PORT", "8080");
 	vi.stubEnv("CLOUD_DOMAIN", "dev.composery.cloud");
 	vi.stubEnv("WEBSITE_ORIGIN", "https://composery.test");
@@ -214,8 +216,21 @@ describe("addressing a box's host", () => {
 
 		expect(sshTarget("1.2.3.4")).toEqual({
 			host: "1.2.3.4",
+			port: HOST_SSH_PORT,
 			username: "composery",
 			privateKey: keyPair.private
 		});
+	});
+
+	// Port 22 on a box belongs to the instance, whose container shares the host's
+	// network stack. Rescue is a different operating system netboot in place of
+	// the installed one, so its sshd is on 22 like any stock system - following
+	// the control port there would make the one way back into a broken host fail.
+	test("does not move rescue off the port a netboot system answers on", () => {
+		stubHostEnv();
+
+		expect(sshTarget("1.2.3.4").port).toBe(HOST_SSH_PORT);
+		expect(HOST_SSH_PORT).not.toBe(22);
+		expect(rescueSshTarget("1.2.3.4").port).toBeUndefined();
 	});
 });

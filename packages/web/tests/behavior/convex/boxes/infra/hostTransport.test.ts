@@ -1,7 +1,7 @@
 import { createServer, type AddressInfo } from "node:net";
 import ssh2, { type Connection, type ServerChannel } from "ssh2";
 import { describe, expect, test } from "vitest";
-import { runSsh } from "@/convex/boxes/infra/sshTransport";
+import { runSsh } from "@/convex/boxes/infra/hostTransport";
 import { generateParseableKeyPair } from "../../../../support/ssh.ts";
 
 const { Server } = ssh2;

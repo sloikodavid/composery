@@ -1,11 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { RecoveryStatus } from "@/convex/model/box/recovery";
-import { buildChecks, diskState, summarize } from "@/lib/box/repair";
+import { buildChecks, summarize } from "@/lib/box/repair";
 
 const HEALTHY: RecoveryStatus = {
 	hostReachable: true,
 	httpReachable: true,
-	diskUsedPercent: 12,
 	engine: "copy",
 	docker: "active",
 	outerCaddy: "active",
@@ -61,11 +60,6 @@ describe("repair status", () => {
 				label: "Persistence",
 				description: "Saves your files.",
 				state: { label: "Running", tone: "ok" }
-			},
-			{
-				label: "Disk",
-				description: "Space in use.",
-				state: { label: "12% used", tone: "ok" }
 			},
 			{
 				label: "Persistence engine",
@@ -141,7 +135,6 @@ describe("repair status", () => {
 			summaryOf({
 				hostReachable: true,
 				httpReachable: true,
-				diskUsedPercent: null,
 				engine: "unknown",
 				docker: "unknown",
 				outerCaddy: "unknown",
@@ -158,13 +151,14 @@ describe("repair status", () => {
 		});
 	});
 
-	// `muted` has to mean "unknown" and nothing else, or the check above cannot
-	// tell an unread disk from a roomy one.
-	test("tones the disk by how full it is, muted only when unmeasured", () => {
-		expect(diskState(null)).toEqual({ label: "Unknown", tone: "muted" });
-		expect(diskState(0)).toEqual({ label: "0% used", tone: "ok" });
-		expect(diskState(74)).toEqual({ label: "74% used", tone: "ok" });
-		expect(diskState(75)).toEqual({ label: "75% used", tone: "warn" });
-		expect(diskState(90)).toEqual({ label: "90% used", tone: "bad" });
+	// A full disk was a row here once, and it was the only one Repair could not
+	// act on: rebuilding the host frees no bytes. It is a usage meter now, with its
+	// own limit and its own remedy, so this list is layers and nothing else - a
+	// disk row back in this list means the summary has started counting something
+	// Repair cannot fix as a reason to press Repair.
+	test("lists only layers a repair rebuilds", () => {
+		expect(buildChecks(HEALTHY).map((check) => check.label)).not.toContain(
+			"Disk"
+		);
 	});
 });

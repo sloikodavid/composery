@@ -9,7 +9,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { fetchServerMetricsSample } from "./infra/hetznerVps";
+import { fetchServerMetricsSample, fetchServerUsage } from "./infra/hetznerVps";
 import { startBoxSuspension } from "./operation/start";
 import { METRICS_POLL_INTERVAL_MS, POLLED_STATUSES } from "./metrics";
 
@@ -55,6 +55,33 @@ async function pollTargets(ctx: ActionCtx, targets: PollTarget[]) {
 					}
 				} catch (error) {
 					console.error(`Metrics poll failed for box ${target.slug}.`, error);
+				}
+
+				// Traffic rides this sweep rather than getting one of its own: it is
+				// read from the same provider, for the same set of boxes, on an
+				// interval that already fits a counter which moves over a month. What
+				// it is not is a metric - it is a level against the allowance the plan
+				// sold - so it is recorded through `boxes/usage.ts` and not beside the
+				// rates above.
+				//
+				// After the abuse path, and in a catch of its own, because the two are
+				// not one job. A provider that answers the metrics endpoint and not the
+				// server one used to take the suspension down with it - the sweep had
+				// already flagged the box for its own rate, and a failed usage
+				// read meant nothing was done about it. Ordering alone is not enough:
+				// the reading is the less important of the two, so it goes last and it
+				// fails alone.
+				try {
+					const usage = await fetchServerUsage(target.serverId);
+					if (usage) {
+						await ctx.runMutation(internal.boxes.usage.recordTrafficUsage, {
+							boxId: target.boxId,
+							outgoingBytes: usage.outgoingBytes,
+							providerIncludedBytes: usage.includedBytes
+						});
+					}
+				} catch (error) {
+					console.error(`Usage poll failed for box ${target.slug}.`, error);
 				}
 			})
 		);

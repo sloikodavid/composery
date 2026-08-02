@@ -11,20 +11,20 @@ its TLS edge**.
 For a dashboard over Docker instead of raw Compose (Coolify, Dokploy, CapRover) or a fully
 managed VM (Elestio), see [Other PaaS & self-hosted platforms](other-platforms.md).
 
-- **Init** - `systemd` runs as PID 1 (the closest shape to Composery Cloud; needs a
-  privileged container with host cgroup access) or `supervisor` (works on any host,
+- **Init** - `systemd` runs as PID 1 and needs a privileged container with host cgroup
+  access. `supervisor` works on any host,
   including rootless or locked-down ones). Selected by `COMPOSERY_INIT` in `compose.yaml`.
 - **TLS** - bundle **Caddy** for automatic HTTPS when Composery owns the domain, or run
   with **no proxy** when your own reverse proxy or a platform terminates TLS.
 
 That gives four recipes:
 
-| Recipe                                                                                                      | When                                                                           |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [systemd + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-caddy-compose)       | Recommended VPS - Hetzner/DigitalOcean-style host with a domain. Cloud parity. |
-| [systemd, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-compose)           | Privileged host where your own proxy terminates TLS.                           |
-| [supervisor + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-caddy-compose) | Locked-down or rootless host with a domain.                                    |
-| [supervisor, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-compose)     | Quick trial, or behind your own proxy. Also the `docker run` quickstart.       |
+| Recipe                                                                                                      | When                                                                     |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [systemd + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-caddy-compose)       | Recommended VPS with a domain and host cgroup access.                    |
+| [systemd, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/systemd-compose)           | Privileged host where your own proxy terminates TLS.                     |
+| [supervisor + Caddy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-caddy-compose) | Locked-down or rootless host with a domain.                              |
+| [supervisor, no proxy](https://github.com/sloikodavid/composery/tree/main/templates/supervisor-compose)     | Quick trial, or behind your own proxy. Also the `docker run` quickstart. |
 
 If unsure: a VPS with a domain wants a **Caddy** variant; use **systemd** when the host
 allows privileged containers and host cgroups, otherwise **supervisor**.
@@ -36,7 +36,7 @@ To skip the SSH steps entirely, paste
 into the server's **user data** field when you create it (DigitalOcean, Hetzner, Vultr,
 Linode, ...). Point DNS at the server and set your domain in the file first; the server
 boots with Composery behind Caddy over HTTPS. It installs Docker and runs the
-`supervisor + Caddy` recipe on first boot.
+`systemd + Caddy` recipe on first boot.
 
 ## Deploy (Caddy variants)
 

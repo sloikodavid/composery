@@ -96,7 +96,7 @@ export default defineConfig({
 				// - the fidelity flags a Repair stands on, the escaping a password
 				// change stands on, the parse behind the Repair dialog - moved next
 				// door, where it is pure and instrumented.
-				"packages/web/convex/boxes/infra/ssh.ts",
+				"packages/web/convex/boxes/infra/host.ts",
 				// Covered, but not attributably. Every file below stands on upstream
 				// code-server modules - `../cli`, `../http`, `../util`, `../vscode`,
 				// `../../wsRouter` - which exist only in the tree the image build

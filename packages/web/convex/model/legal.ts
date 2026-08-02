@@ -21,7 +21,7 @@
 // The first version needs no notice because it supersedes nothing. That is a
 // property of being first rather than an exception granted to it, so the rule
 // stays absolute: every version with a predecessor has a notice naming it.
-export const LEGAL_VERSIONS = ["2026-07-16"] as const;
+export const LEGAL_VERSIONS = ["2026-07-16", "2026-08-02"] as const;
 
 export const LEGAL_VERSION = LEGAL_VERSIONS[
 	LEGAL_VERSIONS.length - 1
@@ -90,4 +90,32 @@ export type LegalNotice = {
 // is changing, when it takes effect, and that they may terminate. Write it into
 // `text` in full: this array is the record of what was said, and the sent copy
 // stored against each notice is taken from it.
-export const LEGAL_NOTICES: readonly LegalNotice[] = [];
+export const LEGAL_NOTICES: readonly LegalNotice[] = [
+	{
+		id: "2026-08-02-allowances",
+		version: "2026-08-02",
+		subject: "A change to your Composery Terms: disk and traffic allowances",
+		// Written out in full, in the customer's terms, because this array is the
+		// record of what was said and the copy stored against the send is taken from
+		// it. Three things Article 19 requires and one this owes anyway: what is
+		// changing, when it takes effect, the right to end the agreement free of
+		// charge, and - because the honest reading of this change is that it is
+		// mostly disclosure - what is not changing.
+		//
+		// The percentages are typed out rather than derived from `USAGE_STEPS`, and
+		// that is deliberate: every other surface derives them so it cannot promise a
+		// schedule the code does not keep, but a notice is evidence of what a
+		// customer was told on a particular day. Text that resolves through today's
+		// source can only ever say what the notice would say now, which is the one
+		// thing this record must not do. Retuning the steps writes a new notice; it
+		// does not edit this one.
+		text: [
+			'We have added a section to the Composery Terms of Service called "Disk and traffic allowances". It takes effect on 2 August 2026.',
+			"What it says: every plan includes a fixed disk and a monthly outbound traffic allowance. Both figures are on the pricing page and are now shown as meters on your box's own page. Traffic arriving at your box is not counted, and the outbound counter starts again at the beginning of your billing month.",
+			"We will email you at 80% and again at 95% of either allowance. Passing an allowance does not by itself switch your box off. Where use stays materially above what your plan includes, we will contact you and agree a larger allowance, a charge for the excess, or a cut in use before taking any other step, and we will not charge you for excess we did not tell you about first.",
+			"Your plan, your price, your disk and your snapshots are unchanged, and the allowance is the one your box has always had - what is new is that it is written down, shown to you, and warned about before it runs out.",
+			"If this change does not suit you, you may end your agreement free of charge within 30 days of this email or of the change taking effect, whichever is later. Cancel from the billing link on your box's page, or reply to this email and we will do it for you.",
+			"The full Terms are at https://www.composery.io/terms, and https://www.composery.io/docs/limits explains the allowances and how to read the meters."
+		].join("\n\n")
+	}
+];

@@ -203,17 +203,16 @@ user's own choice simply replaces it and then persists:
  		const gettingStartedPage = $('.gettingStarted', {}, this.categoriesPageScrollbar.getDomNode(), this.stepsSlide);
  		this.container.appendChild(gettingStartedPage);
  
-@@ -930,66 +941,112 @@ export class GettingStartedPage extends EditorPane {
+@@ -930,66 +941,111 @@ export class GettingStartedPage extends EditorPane {
  
  		let gettingStartedCoder: HTMLElement = $('.header', {});
  		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
 -			gettingStartedCoder = $('.gettingStartedCategory', {},
 +			const composeryAgents = [
-+				{ id: 'claude', name: 'Claude Code', tagline: 'Anthropic' },
++				{ id: 'claude-code', name: 'Claude Code', tagline: 'Anthropic' },
 +				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
 +				{ id: 'opencode', name: 'OpenCode', tagline: 'Anomaly' },
 +				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
-+				{ id: 'openclaw', name: 'OpenClaw', tagline: 'OpenClaw Foundation' },
 +				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
 +			];
 +			const moreAgents = $('button.composery-agent', {
@@ -245,7 +244,7 @@ user's own choice simply replaces it and then persists:
 +					style: 'display: flex;flex-direction: column;min-width: 0;',
 +				},
 +					$('span', { style: 'font-weight: 600;' }, 'More agents…'),
-+					$('span', { style: 'font-size: 12px;opacity: 0.7;' }, 'Browse 9 more choices'),
++					$('span', { style: 'font-size: 12px;opacity: 0.7;' }, 'Browse 10 more choices'),
 +				),
 +			);
 +			moreAgents.addEventListener('click', () => {

@@ -9,7 +9,7 @@ describe("operationError", () => {
 			operationError(
 				new Error(
 					`Uncaught Error: The runtime came up but its editor never started.
-    at Channel.<anonymous> (../../../convex/boxes/infra/ssh.ts:156:13)
+    at Channel.<anonymous> (../../../convex/boxes/infra/host.ts:156:13)
     at Channel.emit (node:events:518:28)`
 				)
 			)

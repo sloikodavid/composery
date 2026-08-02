@@ -10,6 +10,9 @@ import {
 import { BoxStatusAction } from "@/components/box/status-action";
 import { ChangeSlugDialog } from "@/components/box/change-slug-dialog";
 import { MonitorCard } from "@/components/box/monitor-card";
+import { AgentStack } from "@/components/box/agent-stack";
+import { SshDialog } from "@/components/box/ssh-dialog";
+import { UsageCard } from "@/components/box/usage-card";
 import { RepairDialog } from "@/components/box/repair-dialog";
 import { ResetDialog } from "@/components/box/reset-dialog";
 import { UpdateDialog } from "@/components/box/update-dialog";
@@ -19,7 +22,7 @@ import {
 } from "@/components/box/metrics-chart";
 import { BoxSnapshots } from "./box-snapshots";
 import { Card, CardContent } from "@/components/base/card";
-import { buttonVariants } from "@/components/base/button";
+import { Button, buttonVariants } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
 import { boxPath } from "@/convex/model/box/path";
@@ -30,6 +33,7 @@ import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
+	const [sshOpen, setSshOpen] = useState(false);
 	const detail = useQuery(api.owner.boxes.getById, { boxId });
 	const metricsSeries = useQuery(
 		api.owner.boxes.metricsSeries,
@@ -85,6 +89,8 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 				status={box.status}
 			/>
 
+			<UsageCard readings={detail.usage} />
+
 			<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
 				<BoxStatusAction
 					retry={{
@@ -105,6 +111,14 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 							run("stop", "Stopping box", () => stopBox({ slug: box.slug }))
 					}}
 				/>
+				<Button
+					disabled={box.status !== "running"}
+					onClick={() => setSshOpen(true)}
+					variant="outline"
+				>
+					<AgentStack />
+					Connect remotely
+				</Button>
 				{box.comp ? (
 					<AnimatedIconButton
 						disabled
@@ -112,7 +126,7 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 						iconPosition="start"
 						variant="outline"
 					>
-						Comped {BOX_PLANS[box.plan].label}
+						Comped - {BOX_PLANS[box.plan].label}
 					</AnimatedIconButton>
 				) : (
 					<AnimatedIconButton
@@ -188,6 +202,13 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 					slug={box.slug}
 				/>
 			</div>
+
+			<SshDialog
+				host={new URL(box.runtimeUrl).host}
+				onOpenChange={setSshOpen}
+				open={sshOpen}
+				slug={box.slug}
+			/>
 		</div>
 	);
 }

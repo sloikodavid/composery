@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from "lucide-react";
+import { usageStepsPhrase } from "@/convex/model/box/usage";
 
 const FAQ: { question: string; answer: string }[] = [
 	{
@@ -22,14 +23,31 @@ const FAQ: { question: string; answer: string }[] = [
 			"No - pick the one you want at checkout, because a box stays on the plan it was bought on. If you outgrow it, the practical move is to spin up a new box on the bigger plan and copy across, or get in touch and we'll help. We'd rather be straight about this than sell you a switch that turns into a migration."
 	},
 	{
+		// The figure is deliberately not repeated here. Each card above prints its
+		// own plan's allowance from the plan table, and a number typed into this
+		// answer as well is the copy that keeps advertising the old one.
+		question: "Are there limits on disk or network traffic?",
+		answer: `Yes, and both are on your box's page so you can watch them. The disk is the one on the plan you bought. Outbound traffic has a monthly allowance, shown on each card above, that counts from the start of your billing month - inbound traffic is not counted at all. We email you at ${usageStepsPhrase()} of either, so you hear about it while you can still do something. Going a little over does not cut the box off; sustained excess is something we get in touch about.`
+	},
+	{
 		question: "How much control do I get over the OS?",
 		answer:
-			"Pretty much full control. You get passwordless sudo and systemd, so you can apt install packages, edit any file, and set up scheduled automations. It runs as a container, so custom kernel stuff is probably the one thing you can't do."
+			"Pretty much full control. You get passwordless sudo and systemd, so you can apt install packages, edit any file, and set up scheduled automations. Docker is installed, so devcontainers and docker compose work too. It runs as a container, so custom kernel stuff is probably the one thing you can't do."
 	},
 	{
 		question: "Can I run a dev server and open it in the browser?",
 		answer:
-			"Yes. Anything you run on a port shows up in the Ports panel and opens at your box URL under /proxy/3000/ - signed in as you, not open to the world. Direct ports aren't reachable from the internet: the box only accepts HTTPS on its own domain."
+			"Yes. Anything you run on a port shows up in the Ports panel and opens at your box URL under /proxy/3000/ - signed in as you, not open to the world. You can also reach any port privately over SSH with a tunnel: ssh -L 5432:localhost:5432 your-box. Ports are not open to the internet: the box accepts HTTPS on its own domain and SSH, and nothing else."
+	},
+	{
+		question: "Can I connect Claude or ChatGPT to it?",
+		answer:
+			"Yes. Your box speaks SSH, so Claude Desktop and ChatGPT Desktop can work inside it - your files, your terminal, your running services. Copy the setup prompt from the box page, paste it into either one, and it connects itself. The agent keeps running when you close the tab."
+	},
+	{
+		question: "Can I use it like a normal server over SSH?",
+		answer:
+			"Yes. A shell, scp and sftp, rsync, git push, and tunnels all work, and desktop editors can open it over SSH. Access is granted per device and can be revoked one device at a time."
 	},
 	{
 		question: "What does it take to self-host?",

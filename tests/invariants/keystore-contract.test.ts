@@ -130,11 +130,170 @@ describe("the API key store is the same file on both sides", () => {
 		expect(rustPaths).toContain(
 			'std::env::var("COMPOSERY_DOCKER_VOLUME_PATH")'
 		);
-		expect(tsConfig).toContain(
+		// The TypeScript side reads the volume root from one module both surfaces
+		// share, so the API and SSH cannot end up looking in different places
+		// after somebody sets COMPOSERY_DOCKER_VOLUME_PATH.
+		expect(readRepoFile("packages/ide/overlay/src/node/volume.ts")).toContain(
 			'process.env.COMPOSERY_DOCKER_VOLUME_PATH?.trim() || "/data"'
 		);
 
 		expect(rust).toContain('volume_root().join("api").join("keys.json")');
-		expect(tsConfig).toContain('path.join(DATA_ROOT, "api", "keys.json")');
+		expect(tsConfig).toContain('path.join(volumeRoot(), "api", "keys.json")');
+	});
+});
+
+// ---------------------------------------------------------------------------
+// The SSH enrollment store is the second file with two writers, and it exists
+// *because* it has two: the editor's extension host mints a token by running the
+// Rust CLI, and the instance's server process redeems it in TypeScript. Anything
+// held in one process's memory would mint tokens the other could never redeem -
+// a feature that looks implemented and works for nobody.
+//
+// Same duplication, same last rung, and one more field to get wrong than the key
+// store has: `expires_at` is milliseconds on both sides. Rust's own `now_secs`
+// helper sits one import away, so seconds is the plausible mistake, and it would
+// produce tokens that expired in 1970 rather than an error anybody could see.
+// ---------------------------------------------------------------------------
+
+const rustEnrollments = readRepoFile(
+	"packages/cli/crates/composery/src/enrollments.rs"
+);
+const tsCertificates = readRepoFile(
+	"packages/ide/overlay/src/node/ssh/certificates.ts"
+);
+
+describe("the SSH enrollment store both languages write", () => {
+	test("is the same path under the volume root", () => {
+		expect(rustEnrollments).toContain(
+			'volume_root().join("ssh").join("enrollments.json")'
+		);
+		expect(tsCertificates).toContain('path.join(sshDir(), "enrollments.json")');
+		expect(tsCertificates).toContain('path.join(sshConfig.dataRoot, "ssh")');
+	});
+
+	test("carries the same record fields", () => {
+		const rustBody = /pub struct EnrollmentRecord \{([^}]*)\}/.exec(
+			rustEnrollments
+		)?.[1];
+		const tsBody =
+			/interface EnrollmentRecord extends Enrollment \{([^}]*)\}/.exec(
+				tsCertificates
+			)?.[1];
+		const tsBase = /interface Enrollment \{([^}]*)\}/.exec(tsCertificates)?.[1];
+		if (!rustBody || !tsBody || tsBase === undefined) {
+			throw new Error("enrollment record shape not found on both sides");
+		}
+
+		const rustNames = [...rustBody.matchAll(/pub (\w+):/g)]
+			.map((match) => match[1] ?? "")
+			.sort();
+		const tsNames = [...`${tsBase}${tsBody}`.matchAll(/^\s*(\w+)\??:/gm)]
+			.map((match) => match[1] ?? "")
+			.sort();
+
+		expect(rustNames).toEqual(["expires_at", "hash", "name"]);
+		expect(tsNames).toEqual(rustNames);
+	});
+
+	test("hashes the token the same way, and stores only the hash", () => {
+		expect(rustEnrollments).toContain("hash: hash_secret(&token)");
+		expect(tsCertificates).toContain(
+			'return "sha256:" + crypto.createHash("sha256").update(token).digest("hex")'
+		);
+		// The prefix has to match or every token minted by one side is unknown to
+		// the other, with no error to read - just a rejected enrollment.
+		expect(rustEnrollments).toContain(
+			'const TOKEN_PREFIX: &str = "composery_ssh_"'
+		);
+		expect(tsCertificates).toContain("`composery_ssh_${crypto.randomBytes(24)");
+	});
+
+	test("expires in milliseconds on both sides", () => {
+		expect(rustEnrollments).toContain("now_ms + ttl_secs() * 1000");
+		expect(rustEnrollments).toContain("elapsed.as_millis() as u64");
+		expect(tsCertificates).toContain("now + sshConfig.enrollmentTtlSec * 1000");
+	});
+
+	test("agrees on the default and the ceiling for how long a token lives", () => {
+		const tsSshConfig = readRepoFile(
+			"packages/ide/overlay/src/node/ssh/config.ts"
+		);
+		expect(rustEnrollments).toContain("const DEFAULT_TTL_SECS: u64 = 600");
+		expect(rustEnrollments).toContain("const MAX_TTL_SECS: u64 = 3600");
+		expect(rustEnrollments).toContain(
+			'std::env::var("COMPOSERY_SSH_ENROLLMENT_TTL")'
+		);
+		expect(tsSshConfig).toContain(
+			'int("COMPOSERY_SSH_ENROLLMENT_TTL", 600, MAX_ENROLLMENT_TTL_SEC)'
+		);
+		expect(tsSshConfig).toContain("const MAX_ENROLLMENT_TTL_SEC = 60 * 60");
+	});
+
+	test("writes a bare array, not the key store's versioned object", () => {
+		expect(rustEnrollments).toContain("serde_json::to_vec(records)");
+		expect(tsCertificates).toContain("JSON.stringify(records)");
+	});
+});
+
+// The certificate store has two writers for a reason that cannot be designed
+// away: enrollment is an HTTP route and must issue inline, while listing and
+// revoking need no network and belong on the instance. So TypeScript appends and
+// Rust revokes, over one file, in two languages with no shared type.
+describe("the SSH certificate store both languages write", () => {
+	const rustCertificates = readRepoFile(
+		"packages/cli/crates/composery/src/certificates.rs"
+	);
+
+	test("is the same path under the volume root", () => {
+		expect(rustCertificates).toContain(
+			'volume_root().join("ssh").join("certificates.json")'
+		);
+		expect(tsCertificates).toContain(
+			'path.join(sshDir(), "certificates.json")'
+		);
+	});
+
+	test("carries the same record fields", () => {
+		const rustBody = /pub struct CertificateRecord \{([^}]*)\}/.exec(
+			rustCertificates
+		)?.[1];
+		const tsBody = /export interface CertificateRecord \{([^}]*)\}/.exec(
+			tsCertificates
+		)?.[1];
+		if (!rustBody || !tsBody) {
+			throw new Error("certificate record shape not found on both sides");
+		}
+		const rustNames = [...rustBody.matchAll(/pub (\w+):/g)]
+			.map((match) => match[1] ?? "")
+			.sort();
+		const tsNames = [...tsBody.matchAll(/^\s*(\w+)\??:/gm)]
+			.map((match) => match[1] ?? "")
+			.sort();
+
+		expect(rustNames).toEqual([
+			"created_at",
+			"expires_at",
+			"name",
+			"revoked_at",
+			"serial"
+		]);
+		expect(tsNames).toEqual(rustNames);
+	});
+
+	test("wraps the records in the same versioned object", () => {
+		expect(rustCertificates).toContain("pub struct CertificateStore");
+		expect(rustCertificates).toContain(
+			"pub certificates: Vec<CertificateRecord>"
+		);
+		expect(tsCertificates).toContain("interface CertificateStore");
+		expect(tsCertificates).toContain("certificates: CertificateRecord[]");
+	});
+
+	// A serial revoked in the records but absent from the list sshd reads is a
+	// certificate the interface calls dead and the server still accepts.
+	test("revokes by the serial TypeScript allocated", () => {
+		expect(tsCertificates).toContain("nextSerial(store.certificates)");
+		expect(tsCertificates).toContain('"-z",');
+		expect(rustCertificates).toContain('format!("serial: {}", record.serial)');
 	});
 });

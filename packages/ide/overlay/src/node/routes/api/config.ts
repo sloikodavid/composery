@@ -1,6 +1,7 @@
 import * as path from "path"
 
 import { envFlag } from "../../envFlag"
+import { volumeRoot } from "../../volume"
 
 export const MAX_TERMINAL_TIMEOUT_SEC = 24 * 60 * 60
 const MAX_TERMINAL_OUTPUT_BYTES = 64 * 1024 * 1024
@@ -34,8 +35,6 @@ export const apiConfig = {
 }
 
 // Cross-language contract: volume root, `api/keys.json` path, and JSON shape must match Rust keystore.rs.
-const DATA_ROOT = process.env.COMPOSERY_DOCKER_VOLUME_PATH?.trim() || "/data"
-
 export function keysPath(): string {
-  return path.join(DATA_ROOT, "api", "keys.json")
+  return path.join(volumeRoot(), "api", "keys.json")
 }

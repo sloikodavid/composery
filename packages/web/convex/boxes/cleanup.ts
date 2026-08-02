@@ -221,17 +221,25 @@ export const deleteRuntimeData = internalMutation({
 			.query("box_health")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
+		// Usage is what a box spent of what it was allowed. A deleted box spends
+		// nothing, and leaving the rows behind would keep a full-disk reading against
+		// a box no host answers for.
+		const usage = await ctx.db
+			.query("box_usage")
+			.withIndex("box_id_signal", (query) => query.eq("box_id", args.boxId))
+			.take(DELETE_BATCH_SIZE);
 		for (const row of [
 			...authCodes,
 			...authGrants,
 			...metrics,
 			...hourlyMetrics,
-			...health
+			...health,
+			...usage
 		]) {
 			await ctx.db.delete(row._id);
 		}
 		if (
-			[authCodes, authGrants, metrics, hourlyMetrics, health].some(
+			[authCodes, authGrants, metrics, hourlyMetrics, health, usage].some(
 				(rows) => rows.length === DELETE_BATCH_SIZE
 			)
 		) {
@@ -440,6 +448,10 @@ export const purgeBox = internalMutation({
 			.query("box_health")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
 			.take(DELETE_BATCH_SIZE);
+		const usage = await ctx.db
+			.query("box_usage")
+			.withIndex("box_id_signal", (query) => query.eq("box_id", args.boxId))
+			.take(DELETE_BATCH_SIZE);
 		const intents = await ctx.db
 			.query("box_checkout_intents")
 			.withIndex("box_id", (query) => query.eq("box_id", args.boxId))
@@ -457,7 +469,8 @@ export const purgeBox = internalMutation({
 			...metrics,
 			...hourlyMetrics,
 			...flags,
-			...health
+			...health,
+			...usage
 		];
 		for (const row of rows) await ctx.db.delete(row._id);
 		for (const intent of intents) {

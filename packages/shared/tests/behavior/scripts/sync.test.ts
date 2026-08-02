@@ -97,6 +97,7 @@ describe("text brand asset generator", () => {
 			)
 		).toEqual([
 			"packages/web/app/brand.css",
+			"packages/ide/overlay/lib/vscode/extensions/composery-ssh/prompt.js",
 			"packages/ide/overlay/src/browser/pages/auth.html",
 			"packages/ide/overlay/src/browser/pages/error.html",
 			"packages/ide/overlay/src/browser/pages/brand.css",
@@ -258,7 +259,7 @@ describe("text brand asset generator", () => {
 				)
 			);
 			const message = error.mock.calls[0]?.[0] as string;
-			expect(message.split("\n")).toHaveLength(12);
+			expect(message.split("\n")).toHaveLength(13);
 			expect(host.writes).toEqual([]);
 		} finally {
 			exit.mockRestore();

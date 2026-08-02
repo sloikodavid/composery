@@ -125,7 +125,7 @@ export const restoreBox = defineBoxWorkflow({
 		);
 
 		await step.runAction(
-			internal.boxes.infra.ssh.bootstrapRuntime,
+			internal.boxes.infra.host.bootstrapRuntime,
 			{ boxId: args.boxId },
 			{ retry: true }
 		);

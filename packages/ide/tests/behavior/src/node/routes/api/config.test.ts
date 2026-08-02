@@ -49,7 +49,16 @@ function load(env: Record<string, string | undefined> = {}) {
 			"../../../../../../overlay/src/node/routes/api/config.ts",
 			import.meta.url
 		),
-		dependencies: { "../../envFlag": envFlag },
+		// Both are `.ts` siblings the loader's Node resolution cannot find by
+		// extensionless path, so both are injected. `volume` is the module the API
+		// and the SSH surface now share for the data root.
+		dependencies: {
+			"../../envFlag": envFlag,
+			"../../volume": {
+				volumeRoot: () =>
+					globals.process?.env?.COMPOSERY_DOCKER_VOLUME_PATH?.trim() || "/data"
+			}
+		},
 		globals
 	}).exports;
 }

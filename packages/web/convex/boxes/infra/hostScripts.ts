@@ -227,8 +227,18 @@ resolve_source_mp() {
 
 // Wait for the attached volume's stable by-id device node, then mount it once.
 // Idempotent so a retried step does not fail on an already-mounted volume.
-function mountParkingScript(volumeId: number) {
+function mountParkingScript(volumeId: number, initialize = false) {
 	const device = parkingVolumeDevicePath(volumeId);
+	const mount = initialize
+		? `if ! mount "$device" ${PARKING_MOUNT}; then
+  if blkid -p "$device" >/dev/null 2>&1; then
+    echo "The parking volume has a filesystem that cannot be mounted." >&2
+    exit 1
+  fi
+  mkfs.ext4 -F "$device"
+  mount "$device" ${PARKING_MOUNT}
+fi`
+		: `mount "$device" ${PARKING_MOUNT}`;
 	return `device="${device}"
 attempt=1
 while [ "$attempt" -le 30 ]; do
@@ -238,7 +248,9 @@ while [ "$attempt" -le 30 ]; do
 done
 if [ ! -b "$device" ]; then echo "Parking volume device $device never appeared." >&2; exit 1; fi
 mkdir -p ${PARKING_MOUNT}
-mountpoint -q ${PARKING_MOUNT} || mount "$device" ${PARKING_MOUNT}`;
+if ! mountpoint -q ${PARKING_MOUNT}; then
+  ${mount}
+fi`;
 }
 
 // Copy from the stopped boot disk while Hetzner Rescue is running. This path
@@ -246,7 +258,7 @@ mountpoint -q ${PARKING_MOUNT} || mount "$device" ${PARKING_MOUNT}`;
 export function copyToParkingFromRescueScript(volumeId: number) {
 	return `set -euo pipefail
 ${ENSURE_RSYNC}
-${mountParkingScript(volumeId)}
+${mountParkingScript(volumeId, true)}
 ${RESCUE_VOLUME_ENUMERATION}
 for key in $VOLUME_KEYS; do
 	mp="$(resolve_source_mp "$key")"
@@ -379,6 +391,12 @@ export function unmountParkingScript() {
 if mountpoint -q ${PARKING_MOUNT}; then umount ${PARKING_MOUNT}; fi`;
 }
 
+export function unmountRescueScript() {
+	return `set -euo pipefail
+if mountpoint -q ${RESCUE_SOURCE_MOUNT}; then umount ${RESCUE_SOURCE_MOUNT}; fi
+if mountpoint -q ${PARKING_MOUNT}; then umount ${PARKING_MOUNT}; fi`;
+}
+
 // Any itemized line rsync's verification pass printed is a difference, so any
 // non-empty content means the copy is not faithful. Pure and total so the
 // decision is unit-testable without a host.
@@ -399,8 +417,6 @@ state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{e
 printf 'outer_caddy=%s\\n' "\${state:-missing}"
 state="$(docker inspect --format '{{if .State.Running}}active{{else}}inactive{{end}}' composery 2>/dev/null)"
 printf 'composery=%s\\n' "\${state:-missing}"
-disk="$(df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
-printf 'disk_used_percent=%s\\n' "$disk"
 for service in persistence caddy ide; do
 	state="$(docker exec composery supervisorctl status "$service" 2>/dev/null | awk '{ print $2 }')"
 	case "$state" in RUNNING) state=active ;; STOPPED|STARTING|BACKOFF|STOPPING|EXITED|FATAL) state=inactive ;; *) state=missing ;; esac
@@ -412,6 +428,54 @@ done
 engine="$(docker exec composery /opt/composery/bin/composery persistence status 2>/dev/null | sed -n 's/^[[:space:]]*engine:[[:space:]]*//p' | head -n 1)"
 printf 'engine=%s\\n' "\${engine:-unknown}"
 `;
+
+// How full the box's disk is, in bytes rather than the percentage `df` prints.
+//
+// Bytes because the owner is shown "38.2 GB of 40 GB", and a percentage cannot
+// be turned back into that. `-B1` asks coreutils for one-byte blocks, so no
+// factor is applied on either side of the wire.
+//
+// This used to be one line inside `INSPECT_SCRIPT`, reporting a percentage to
+// the Repair dialog. It moved out when disk stopped being a repair check and
+// became a usage meter: Repair asks which layer is broken, and a full disk is
+// the one row in that list Repair could not fix.
+export const DISK_SCRIPT = `set +e
+df -PB1 / 2>/dev/null | awk 'NR == 2 { print "disk_total_bytes=" $2; print "disk_used_bytes=" $3 }'
+`;
+
+// The owner is root on their own host, so this is untrusted input and every
+// value has to be a plain decimal integer to count. An unreadable answer is
+// null, never zero: "we could not measure this" and "this disk is empty" are
+// opposite facts, and only one of them makes the box look fine.
+export function parseDiskUsage(
+	stdout: string
+): { totalBytes: number; usedBytes: number } | null {
+	const values = new Map<string, string>();
+	for (const line of stdout.split("\n")) {
+		const trimmed = line.trim();
+		const separator = trimmed.indexOf("=");
+		if (separator > 0) {
+			values.set(trimmed.slice(0, separator), trimmed.slice(separator + 1));
+		}
+	}
+	const total = wholeNumber(values.get("disk_total_bytes"));
+	const used = wholeNumber(values.get("disk_used_bytes"));
+	// A used figure above the total is not a fuller disk, it is a reading that
+	// does not describe a filesystem, and recording it would draw a meter past its
+	// own end and email somebody about it.
+	if (total === null || used === null || total === 0 || used > total) {
+		return null;
+	}
+	return { totalBytes: total, usedBytes: used };
+}
+
+// `Number` alone would take "0x10" as 16 and "" as 0, which is how a failed `df`
+// becomes a perfectly empty disk.
+function wholeNumber(raw: string | undefined) {
+	if (raw === undefined || !/^\d{1,19}$/.test(raw)) return null;
+	const value = Number(raw);
+	return Number.isSafeInteger(value) ? value : null;
+}
 
 function componentState(value: string | undefined) {
 	return value === "active" || value === "inactive" || value === "missing"
@@ -426,19 +490,10 @@ export function parseRuntimeInspection(stdout: string): RecoveryStatus {
 		const separator = trimmed.indexOf("=");
 		values.set(trimmed.slice(0, separator), trimmed.slice(separator + 1));
 	}
-	// The owner is root on their own host, so every line here is untrusted
-	// input. `df` prints a plain integer percentage and nothing else qualifies:
-	// `Number` alone would take "0x10" as 16, and an empty value - what a failed
-	// `df` leaves behind - as a perfectly empty disk.
-	const rawDisk = values.get("disk_used_percent");
-	const diskUsedPercent = /^\d{1,3}$/.test(String(rawDisk))
-		? Number(rawDisk)
-		: Number.NaN;
 	const rawEngine = values.get("engine");
 	return {
 		hostReachable: true,
 		httpReachable: false,
-		diskUsedPercent: diskUsedPercent <= 100 ? diskUsedPercent : null,
 		engine:
 			rawEngine === "overlay" || rawEngine === "copy" ? rawEngine : "unknown",
 		docker: componentState(values.get("docker")),
@@ -453,7 +508,6 @@ export function parseRuntimeInspection(stdout: string): RecoveryStatus {
 export const UNREACHABLE_STATUS: RecoveryStatus = {
 	hostReachable: false,
 	httpReachable: false,
-	diskUsedPercent: null,
 	engine: "unknown",
 	docker: "unknown",
 	outerCaddy: "unknown",
@@ -462,3 +516,43 @@ export const UNREACHABLE_STATUS: RecoveryStatus = {
 	caddy: "unknown",
 	ide: "unknown"
 };
+
+// Mint a single-use SSH enrollment token on the box.
+//
+// The CLI inside the container is the single writer of that store, so the
+// website asks it rather than reproducing the hashing and expiry it would have to
+// match exactly. The name is passed as its own argument - never interpolated into
+// the shell - because it is text an owner typed.
+//
+// `--json` so the answer is parsed rather than scraped, and the token is printed
+// once by design: nothing here can recover it afterwards, which is why a failure
+// to read it must fail loudly rather than return an empty string.
+export function sshEnrollScript(name: string) {
+	return `set -euo pipefail
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery composery ssh enroll --json --name ${shellQuote(name)}`;
+}
+
+// Single-quote a value for /bin/sh. Every embedded quote is closed, escaped and
+// reopened, which is the one form that is safe for arbitrary text.
+export function shellQuote(value: string) {
+	return `'${value.replace(/'/g, `'\''`)}'`;
+}
+
+// Read and revoke the certificates an instance has issued.
+//
+// The website reads these through to the box rather than keeping its own copy: a
+// list here would be a second answer to "what can reach this box", and only one
+// of the two could ever be right. Issuing stays where it has to be - inline in
+// the enrollment route - so the CLI is the only other writer.
+export function sshListScript() {
+	return `set -euo pipefail
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery composery ssh list --json`;
+}
+
+export function sshRevokeScript(serial: number) {
+	if (!Number.isSafeInteger(serial) || serial <= 0) {
+		throw new Error("A certificate serial must be a positive integer.");
+	}
+	return `set -euo pipefail
+docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery composery ssh revoke --json ${serial}`;
+}

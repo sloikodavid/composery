@@ -126,6 +126,33 @@ file copy will do. Use the platform's own volume backup or snapshot feature; you
 host to run the commands above on. See [Persistence](../persistence.md#engines) for which
 engine a target gets, and `composery persistence status` for which one an instance chose.
 
+## SSH
+
+Composery runs an SSH service, so an instance works like an ordinary server - shell,
+`scp`/`sftp`, `rsync`, tunnels, and your desktop editor's remote mode. See
+[SSH](../ssh.md) for how access is granted and revoked.
+
+sshd listens on port **22 inside the container** and reaches nothing until you publish it,
+so leaving it enabled costs nothing until you decide otherwise. The compose recipes carry
+the mapping commented out; `2222` on the host is the usual choice, because your own server
+already uses 22.
+
+```yaml
+ports:
+  - "2222:22"
+```
+
+Only keys are accepted - there is no password login to brute force. Set
+`COMPOSERY_SSH_AUTHORIZED_KEYS` to your public key before the instance starts, or sign in
+to the editor and append it to `~/.ssh/authorized_keys`. Those are separate files, so the
+deployment's keys and your own can never overwrite each other.
+
+Each instance generates its own host key on first boot and
+[persistence](../persistence.md) keeps it, so a client's `known_hosts` entry stays valid
+across restarts and upgrades.
+
+`COMPOSERY_DISABLE_SSH` stops the service entirely.
+
 ## Hardening
 
 Whatever target you pick, treat the browser password and reverse proxy as the security
@@ -140,6 +167,7 @@ boundary - Composery is intentionally root-capable inside the container:
   restart;
 - keep the image [updated](#updating);
 - do not expose port `8080` directly when a public Caddy/nginx/Traefik edge terminates TLS;
+- publish [SSH](#ssh) only when you want it, and keep it to keys you can account for;
 - [back up](#backing-up-the-volume) the named Docker volume or the mounted `/data` disk
   before major upgrades.
 

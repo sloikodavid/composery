@@ -102,6 +102,20 @@ export const recordServerRebuilt = internalMutation({
 	}
 });
 
+// Written only after `checkCustomDomain` observed the name resolving to this box.
+// Null clears it, which is what takes the name back out of the Caddyfile.
+export const setCustomDomain = internalMutation({
+	args: { boxId: v.id("boxes"), domain: v.union(v.string(), v.null()) },
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await ctx.db.patch(args.boxId, {
+			custom_domain: args.domain ?? undefined,
+			updated_at: Date.now()
+		});
+		return null;
+	}
+});
+
 export const setRuntimeImage = internalMutation({
 	args: {
 		boxId: v.id("boxes"),

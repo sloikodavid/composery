@@ -235,6 +235,43 @@ function assertUserEnvironment() {
 	execSh("pgrep -x cron >/dev/null");
 
 	execSh("test -s /etc/machine-id");
+
+	assertDeveloperToolchain();
+}
+
+// Each of these is a capability an owner reaches for on day one, and each fails
+// quietly enough to survive a release: a compiler nobody invokes until an install
+// script does, LFS filters that report success while writing pointer files, a
+// Python that refuses to install anything. Exercise them, never just look them up.
+function assertDeveloperToolchain() {
+	log(
+		"checking the developer toolchain works, not merely that it is installed"
+	);
+
+	userBash(
+		false,
+		'echo "int main(void){return 0;}" | cc -x c - -o /tmp/cc-probe'
+	);
+
+	// The apt package registers the LFS filters itself. Assert the filters, not the
+	// binary: a git-lfs whose filters are missing checks out pointer files and
+	// reports success.
+	userBash(false, 'test -n "$(git config --system --get filter.lfs.smudge)"');
+
+	userBash(
+		false,
+		"python3 -m venv /tmp/venv-probe && /tmp/venv-probe/bin/pip --version >/dev/null"
+	);
+
+	// Offline on purpose: pip refuses an externally managed environment before it
+	// reaches the network, so this check needs no package index.
+	userBash(false, "python3 -m pip --version >/dev/null");
+	userBash(
+		false,
+		"! python3 -m pip install --user --no-index --no-deps composery-probe 2>&1 | grep -q externally-managed"
+	);
+
+	userBash(false, "command -v gpg rsync file lsof pipx vim >/dev/null");
 }
 
 function userBash(loginShell, script) {

@@ -1,4 +1,3 @@
-const os = require("node:os");
 const vscode = require("vscode");
 const qrcode = require("./qrcode-generator.js");
 
@@ -56,38 +55,12 @@ function isReachableFromAnotherDevice(url) {
 	return true;
 }
 
-// Addresses another device could try instead. A suggestion, never a substitution:
-// in a container these are the container's own addresses, and only the reader can
-// tell which of them their phone is actually on.
-function networkAddresses(url) {
-	return [
-		...new Set(
-			Object.values(os.networkInterfaces())
-		.flat()
-		.filter((iface) => iface && !iface.internal && iface.family === "IPv4")
-			.map((iface) => iface.address)
-		)
-	]
-		// Prefer the ranges normally used by a physical LAN over the 172.16/12
-		// range commonly claimed by container bridges.
-		.sort((left, right) => networkAddressPriority(left) - networkAddressPriority(right))
-		.map((address) => {
-			const alternative = new URL(url.href);
-			alternative.hostname = address;
-			return alternative.href;
-		})
-		// Bridges and VPNs push this list out; a few candidates is a hint, a
-		// dozen is noise.
-		.slice(0, 3);
-}
-
-function networkAddressPriority(address) {
-	if (address.startsWith("192.168.")) return 0;
-	if (address.startsWith("10.")) return 1;
-	if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) return 2;
-	if (address.startsWith("169.254.")) return 4;
-	return 3;
-}
+// Said once, and nothing else. Composery runs in a container behind a published
+// port, so this process only ever sees the container's own addresses - none of
+// them is the address a phone would dial, and offering one was offering a dead
+// link. There is no better address to name, so the message names none.
+const UNREACHABLE =
+	"This address only works on this device, so Composery cannot make a QR code for it.";
 
 function render(url) {
 	const qr = qrcode(0, "M");
@@ -189,7 +162,7 @@ function activate(context) {
 	let rendered;
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand(COMMAND, async (value) => {
+		vscode.commands.registerCommand(COMMAND, (value) => {
 			let url;
 			try {
 				url = new URL(typeof value === "string" ? value : "");
@@ -201,16 +174,7 @@ function activate(context) {
 			}
 
 			if (!isReachableFromAnotherDevice(url)) {
-				const alternatives = networkAddresses(url);
-				const selected = await vscode.window.showWarningMessage(
-					alternatives.length
-						? "This address only works on this device. Try one below. Composery found these addresses on this computer, but cannot tell which one your other device can use."
-						: "This address only works on this device. Reopen Composery using this computer's network address, then show the QR code again.",
-					...alternatives
-				);
-				if (selected) {
-					await vscode.env.openExternal(vscode.Uri.parse(selected));
-				}
+				vscode.window.showWarningMessage(UNREACHABLE);
 				return;
 			}
 

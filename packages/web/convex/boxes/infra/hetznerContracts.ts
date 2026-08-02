@@ -14,8 +14,16 @@ export const hetznerActionSchema = z.looseObject({
 export const hetznerServerSchema = z.looseObject({
 	id,
 	name: z.string(),
+	rescue_enabled: z.boolean().optional(),
 	status: z.string(),
 	created: z.string(),
+	// Bytes this server has sent, and bytes its plan includes, for the provider's
+	// current billing period. Optional because every other reader of this schema
+	// wants an address or a status and must not start failing if the provider ever
+	// stops sending a counter - the usage sweep is the one caller that needs
+	// them, and it says so by refusing to record a sample without both.
+	outgoing_traffic: z.number().nullable().optional(),
+	included_traffic: z.number().nullable().optional(),
 	public_net: z.looseObject({
 		ipv4: ip.nullable(),
 		ipv6: ip.nullable()
@@ -96,15 +104,6 @@ export const hetznerCreateImageResponseSchema = z.looseObject({
 });
 export const hetznerImageResponseSchema = z.looseObject({
 	image: hetznerImageSchema.optional()
-});
-export const hetznerImagesResponseSchema = z.looseObject({
-	images: z.array(
-		z.looseObject({
-			id,
-			status: z.string(),
-			image_size: z.number().nullable()
-		})
-	)
 });
 export const hetznerFullImagesResponseSchema = z.looseObject({
 	images: z.array(hetznerImageSchema)
@@ -249,13 +248,6 @@ export const hetznerResponseContracts = [
 		path: "/images/{id}",
 		status: "200",
 		schema: hetznerImageResponseSchema
-	},
-	{
-		name: "list snapshot fields",
-		method: "get",
-		path: "/images",
-		status: "200",
-		schema: z.intersection(hetznerImagesResponseSchema, paginationSchema)
 	},
 	{
 		name: "list image reconciliation fields",

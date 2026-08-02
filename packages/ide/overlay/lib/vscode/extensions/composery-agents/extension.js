@@ -4,7 +4,7 @@ const vscode = require("vscode");
 // including setup commands and optional editor integrations, lives here.
 const AGENTS = [
 	{
-		id: "claude",
+		id: "claude-code",
 		name: "Claude Code",
 		owner: "Anthropic",
 		command: "curl -fsSL https://claude.ai/install.sh | bash",
@@ -31,16 +31,17 @@ const AGENTS = [
 		command: "npm install -g --ignore-scripts @earendil-works/pi-coding-agent"
 	},
 	{
-		id: "openclaw",
-		name: "OpenClaw",
-		owner: "OpenClaw Foundation",
-		command: "npm install -g openclaw@latest"
-	},
-	{
 		id: "hermes",
 		name: "Hermes",
 		owner: "Nous Research",
 		command: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+	},
+	{
+		id: "openclaw",
+		name: "OpenClaw",
+		owner: "OpenClaw Foundation",
+		command: "npm install -g openclaw@latest",
+		additional: true
 	},
 	{
 		id: "kimi",
@@ -59,7 +60,7 @@ const AGENTS = [
 	},
 	{
 		id: "aider",
-		name: "aider",
+		name: "Aider",
 		owner: "Aider-AI",
 		command: "curl -LsSf https://aider.chat/install.sh | sh",
 		additional: true

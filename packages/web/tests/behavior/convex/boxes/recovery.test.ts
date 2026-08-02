@@ -17,8 +17,8 @@ import {
 
 beforeEach(() => {
 	stubDeploymentEnv();
-	vi.stubEnv("SSH_USER", "composery");
-	vi.stubEnv("SSH_PRIVATE_KEY", "not-a-key");
+	vi.stubEnv("HOST_SSH_USER", "composery");
+	vi.stubEnv("HOST_SSH_PRIVATE_KEY", "not-a-key");
 });
 
 afterEach(() => {
@@ -89,7 +89,6 @@ describe("reporting a box's recovery status", () => {
 		).toEqual([
 			"caddy",
 			"composery",
-			"diskUsedPercent",
 			"docker",
 			"engine",
 			"hostReachable",

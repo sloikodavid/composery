@@ -19,27 +19,42 @@ describe("runtime artifacts", () => {
 		});
 
 		expect(artifacts.caddyfile).toBe(
-			"my-box.composery.cloud {\n\tencode gzip\n\treverse_proxy composery:8080\n}\n"
+			"my-box.composery.cloud {\n\tencode gzip\n\treverse_proxy 127.0.0.1:8080\n}\n"
 		);
 		const compose = parse(artifacts.compose);
 		expect(compose.services.caddy).toMatchObject({
 			depends_on: { composery: { condition: "service_healthy" } },
 			image: CADDY_IMAGE,
 			logging: { driver: "local" },
-			ports: ["80:80", "443:443"],
+			// Nothing is published: on the host's own network stack a bind is
+			// already on the interface, so a published port would be a second
+			// mapping of something already mapped.
+			network_mode: "host",
 			restart: "always"
 		});
 		expect(compose.services.composery).toMatchObject({
 			env_file: "./composery.env",
-			environment: ["COMPOSERY_PERSISTENCE=overlay", "PORT=8080"],
+			// COMPOSERY_BIND is what stops the editor's own port being published
+			// along with everything else an owner binds. Without it the editor
+			// would answer on the public interface and the firewall would be the
+			// only thing between it and the internet.
+			environment: [
+				"COMPOSERY_BIND=127.0.0.1",
+				"COMPOSERY_PERSISTENCE=overlay",
+				"PORT=8080"
+			],
 			image: "ghcr.io/sloikodavid/composery@sha256:abc",
 			init: true,
 			logging: { driver: "local" },
+			network_mode: "host",
 			privileged: true,
 			restart: "always",
 			stop_grace_period: "1m",
 			volumes: ["composery_data:/data"]
 		});
+		// A published or exposed port would mean the bridge is still in play.
+		expect(compose.services.caddy.ports).toBeUndefined();
+		expect(compose.services.composery.expose).toBeUndefined();
 		expect(Object.keys(compose.volumes)).toEqual([...COMPOSERY_VOLUME_NAMES]);
 		for (const name of COMPOSERY_VOLUME_NAMES) {
 			expect(compose.volumes[name]).toEqual({ name });

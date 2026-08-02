@@ -71,6 +71,17 @@ crons.interval(
 	internal.boxes.metricsPoll.pollBoxMetrics
 );
 
+// Hourly, and not on the metrics interval, because this is the one sweep that
+// opens an SSH connection per box. A disk fills over hours, so an hourly reading
+// answers the question the meter asks - and the box page states when the reading
+// was taken rather than implying it is live. Outbound traffic is not here: the
+// provider already reports it over HTTP, so it rides the metrics poll.
+crons.hourly(
+	"sample box disk usage",
+	{ minuteUTC: 51 },
+	internal.boxes.usage.sweepBoxDiskUsage
+);
+
 crons.hourly(
 	"roll up hourly box metrics",
 	{ minuteUTC: 4 },

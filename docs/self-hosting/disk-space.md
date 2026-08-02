@@ -38,6 +38,30 @@ docker system df
 
 Only include `--volumes` when unused Docker volumes do not contain data you need.
 
+## Docker inside Composery
+
+Composery ships its own Docker daemon, and it is the largest thing that will grow
+your `/data` volume. Its storage deliberately lives there rather than on the
+container's root filesystem: `/etc/docker/daemon.json` sets `data-root` to
+`/data/docker`, and `/etc/containerd/config.toml` sets containerd's `root` to
+`/data/containerd`. Since Docker Engine 29 the containerd store holds the image
+layers and container snapshots, so both settings are needed - `data-root` alone
+would move volumes and daemon state while every layer stayed on the root
+filesystem. See [Persistence](../persistence.md).
+
+The practical consequence: images you pull inside Composery consume the volume you
+sized, not the image. On a small instance a few large images are the whole disk.
+Prune from a terminal **inside** Composery, which is where that daemon runs:
+
+```bash
+docker system df
+docker image prune -a -f
+docker builder prune -a -f
+```
+
+`df -h /data` shows what is left. This is separate from the host-level cleanup
+below, which reclaims space from the Docker that runs Composery itself.
+
 ## Linux
 
 On native Linux, Docker normally stores its data directly on the host filesystem.

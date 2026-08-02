@@ -81,9 +81,14 @@ this deployment rebuilt tomorrow?
 
 The container is not a boundary against its user: privileged, root-capable, and
 cloud owners control the host too - the Hetzner firewall is the real boundary
-(`docs/developing/web/services/hetzner.md`). An owner setting any `COMPOSERY_*`
-variable on their instance is a supported surface; every env-driven feature must
-behave correctly when they do.
+(`docs/developing/web/services/hetzner.md`). Both cloud containers now run on the
+host's network stack, so a process an owner starts binds the machine's real
+interface: that firewall is what decides whether anyone reaches it, and it is the
+only thing that does. A deployment that widens it to sell ordinary server ports
+moves the boundary onto each box's own firewall, which its owner can turn off -
+so widening it is a change of posture to make deliberately, never a convenience.
+An owner setting any `COMPOSERY_*` variable on their instance is a supported
+surface; every env-driven feature must behave correctly when they do.
 
 Never gate on `COMPOSERY_CLOUD_BOX_ID` to withhold a capability an owner could
 take anyway. Do branch on it where the same action carries a different
@@ -282,12 +287,15 @@ docs/
     railway.md
     render.md
     vps.md
+  agents.md
   api.mdx
   configuration.md
   index.md
+  limits.md
   meta.json
   openapi.yaml
   persistence.md
+  ssh.md
 packages/
   cli/
     crates/
@@ -297,7 +305,10 @@ packages/
             api.rs
             mod.rs
             persistence.rs
+            ssh.rs
+          certificates.rs
           cli.rs
+          enrollments.rs
           keystore.rs
           lib.rs
           main.rs
@@ -354,6 +365,11 @@ packages/
             composery-shortcuts/
               extension.js
               package.json
+            composery-ssh/
+              extension.js
+              package.json
+              prompt.js
+              README.md
             composery-themes/
               themes/
                 composery-dark.json
@@ -410,6 +426,7 @@ packages/
                   terminal/
                     browser/
                       shortcuts.contribution.ts
+                      touchKeyboard.ts
                       xtermCell.ts
                       xtermResize.ts
                     common/
@@ -426,11 +443,10 @@ packages/
         browser/
           media/
             agents/
-              claude.svg
+              claude-code.svg
               codex.svg
               hermes.svg
               NOTICE
-              openclaw.svg
               opencode.svg
               pi.svg
             composery-logo.svg
@@ -476,9 +492,14 @@ packages/
             passwordConfig.ts
             pwned.ts
             register.ts
+            ssh.ts
+          ssh/
+            certificates.ts
+            config.ts
           cloud.ts
           envFlag.ts
           session.ts
+          volume.ts
     patches/
       api.diff
       auth.diff
@@ -503,6 +524,7 @@ packages/
       sessions.diff
       shell-entry.diff
       shortcuts-bridge.diff
+      ssh-menu.diff
       static-stamp.diff
       terminal-clients.diff
       terminal-sharing.diff
@@ -528,6 +550,8 @@ packages/
               composery-qr/
                 extension.test.ts
               composery-shortcuts/
+                extension.test.ts
+              composery-ssh/
                 extension.test.ts
               composery-updates/
                 extension.test.ts
@@ -560,6 +584,7 @@ packages/
                   contrib/
                     terminal/
                       browser/
+                        touchKeyboard.test.ts
                         xtermResize.test.ts
                       common/
                         remote/
@@ -588,6 +613,8 @@ packages/
               passwordConfig.test.ts
               pwned.test.ts
               register.test.ts
+            ssh/
+              certificates.test.ts
             cloud.test.ts
             envFlag.test.ts
         session.test.ts
@@ -622,11 +649,13 @@ packages/
           sync.test.ts
           theme.test.ts
         index.test.ts
+        ssh.test.ts
       invariants/
         scripts/
           colors.test.ts
     index.ts
     package.json
+    ssh.ts
     theme.json
     theme.ts
   web/
@@ -761,6 +790,7 @@ packages/
         textarea.tsx
       box/
         actions-bar.tsx
+        agent-stack.tsx
         change-slug-dialog.tsx
         chart-card.tsx
         flags-table.tsx
@@ -772,11 +802,13 @@ packages/
         reset-dialog.tsx
         running-indicator.tsx
         snapshots-dialog.tsx
+        ssh-dialog.tsx
         status-action.tsx
         status-button.tsx
         status-text.tsx
         tone-icon.tsx
         update-dialog.tsx
+        usage-card.tsx
       docs/
         mdx.tsx
         narrow-header.tsx
@@ -788,6 +820,7 @@ packages/
         arrow-up-right.tsx
         book-open.tsx
         check.tsx
+        claude-logo.tsx
         construction.tsx
         convex.tsx
         copy.tsx
@@ -801,6 +834,7 @@ packages/
         linkedin-logo.tsx
         lock.tsx
         login.tsx
+        openai-logo.tsx
         pen-tool.tsx
         play.tsx
         plug-zap.tsx
@@ -853,14 +887,14 @@ packages/
           cloudflareDns.ts
           hetznerContracts.ts
           hetznerVps.ts
+          host.ts
+          hostCredentials.ts
+          hostScripts.ts
+          hostTransport.ts
           image.ts
           providerResponse.ts
           registry.ts
           registryContracts.ts
-          ssh.ts
-          sshKeys.ts
-          sshScripts.ts
-          sshTransport.ts
         operation/
           endpoint.ts
           event.ts
@@ -897,6 +931,7 @@ packages/
         slugAvailability.ts
         snapshotPolicy.ts
         snapshots.ts
+        usage.ts
         version.ts
         views.ts
       checkout/
@@ -909,6 +944,7 @@ packages/
         box/
           auth.ts
           billing.ts
+          domain.ts
           metric.ts
           operation.ts
           path.ts
@@ -916,7 +952,9 @@ packages/
           recovery.ts
           slug.ts
           snapshot.ts
+          ssh.ts
           status.ts
+          usage.ts
         legal.ts
         links.ts
       notice/
@@ -959,6 +997,7 @@ packages/
       box/
         repair.ts
         update.ts
+        usage.ts
       docs/
         layout.tsx
         openapi.ts
@@ -1054,14 +1093,14 @@ packages/
               artifacts.test.ts
               cloudflareDns.test.ts
               hetznerVps.test.ts
+              host.test.ts
+              hostActions.test.ts
+              hostCredentials.test.ts
+              hostScripts.test.ts
+              hostTransport.test.ts
               image.test.ts
               providerRequests.test.ts
               providerResponse.test.ts
-              ssh.test.ts
-              sshActions.test.ts
-              sshKeys.test.ts
-              sshScripts.test.ts
-              sshTransport.test.ts
             operation/
               record.test.ts
               start.test.ts
@@ -1085,6 +1124,8 @@ packages/
             slugAvailability.test.ts
             snapshotPolicy.test.ts
             snapshots.test.ts
+            usage.test.ts
+            usageSweep.test.ts
             version.test.ts
             versionFloor.test.ts
             views.test.ts
@@ -1102,6 +1143,7 @@ packages/
               path.test.ts
               plan.test.ts
               slug.test.ts
+              usage.test.ts
           notice/
             account.test.ts
             legal.test.ts
@@ -1131,6 +1173,7 @@ packages/
           box/
             repair.test.ts
             update.test.ts
+            usage.test.ts
           docs/
             openapi.test.ts
           auth-routing.test.ts
@@ -1168,6 +1211,7 @@ packages/
         lib/
           table-columns.test.ts
         next-env-example.test.ts
+        usage-limits-doc.test.ts
       support/
         convex.ts
         ssh.ts
@@ -1193,12 +1237,27 @@ rootfs/
   etc/
     caddy/
       Caddyfile
+    containerd/
+      config.toml
+    docker/
+      daemon.json
+    ssh/
+      sshd_config.d/
+        composery.conf
     sudoers.d/
       user
     supervisor/
       conf.d/
         composery.conf
       supervisord.conf
+    systemd/
+      system/
+        containerd.service.d/
+          composery.conf
+        docker.service.d/
+          composery.conf
+        ssh.service.d/
+          composery.conf
     xdg/
       mimeapps.list
     mailcap
@@ -1233,9 +1292,11 @@ rootfs/
         overlay.sh
         supervisor.sh
         systemd.sh
+      docker.sh
       entrypoint.sh
       ide.sh
       remove-password.sh
+      ssh.sh
       watchdog.sh
   usr/
     lib/
@@ -1322,6 +1383,7 @@ tests/
     fixed-windows.test.ts
     keystore-contract.test.ts
     prettier-config.test.ts
+    repair-workflow.test.ts
     runtime-init.test.ts
     stale-references.test.ts
     templates.test.ts

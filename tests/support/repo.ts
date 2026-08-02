@@ -27,10 +27,15 @@ export function readRepoDir(
 	path: string,
 	options: { recursive?: boolean; withFileTypes: true }
 ): Dirent[];
+// The implementation's return type is written out rather than inferred. `options
+// as never` makes TypeScript resolve `readdirSync` to its string[] overload, so
+// an inferred signature is narrower than the Dirent[] overload above and the two
+// stop being compatible - which is a type error about this file, not about any
+// caller, and so goes unnoticed until a full typecheck runs.
 export function readRepoDir(
 	path: string,
 	options?: { recursive?: boolean; withFileTypes?: true }
-) {
+): string[] | Dirent[] {
 	return readdirSync(resolve(repoRoot, path), options as never);
 }
 

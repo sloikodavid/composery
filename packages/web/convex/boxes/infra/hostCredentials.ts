@@ -6,14 +6,14 @@ import { requiredEnv } from "../../env";
 const { utils } = ssh2;
 
 export function privateKey() {
-	return requiredEnv("SSH_PRIVATE_KEY").replace(/\\n/g, "\n");
+	return requiredEnv("HOST_SSH_PRIVATE_KEY").replace(/\\n/g, "\n");
 }
 
 export function authorizedPublicKey() {
 	const parsedKey = utils.parseKey(privateKey());
 	if (parsedKey instanceof Error) {
 		throw new Error(
-			`SSH_PRIVATE_KEY could not be parsed: ${parsedKey.message}`
+			`HOST_SSH_PRIVATE_KEY could not be parsed: ${parsedKey.message}`
 		);
 	}
 

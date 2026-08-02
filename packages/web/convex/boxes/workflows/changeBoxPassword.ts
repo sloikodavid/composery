@@ -7,7 +7,7 @@ export const changeBoxPassword = defineBoxWorkflow({
 	type: "change_password",
 	run: async (step, args) => {
 		await step.runAction(
-			internal.boxes.infra.ssh.rewritePasswordAndRestart,
+			internal.boxes.infra.host.rewritePasswordAndRestart,
 			{
 				boxId: args.boxId,
 				runtimeAuthHash: args.runtimeAuthHash

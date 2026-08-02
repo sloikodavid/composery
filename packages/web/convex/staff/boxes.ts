@@ -55,6 +55,7 @@ import {
 	snapshotView,
 	startManualSnapshot
 } from "../boxes/snapshots";
+import { boxUsage } from "../boxes/usage";
 import { isValidSlug, sanitizeSlug } from "../model/box/slug";
 import { boxEventType, operationLabel } from "../model/box/operation";
 import { DAY_MS } from "../time";
@@ -328,7 +329,10 @@ export const getById = query({
 			update: await latestUpdate(ctx.db, box._id),
 			// Read the same standing the owner page reads, so staff are never told a
 			// different story about the version a box is on than its owner is.
-			runtime: await boxRuntimeStanding(ctx.db, box)
+			runtime: await boxRuntimeStanding(ctx.db, box),
+			// And the same readings, for the same reason: a support conversation about
+			// a full disk is one where both sides have to be looking at one number.
+			usage: await boxUsage(ctx.db, box._id)
 		};
 	}
 });

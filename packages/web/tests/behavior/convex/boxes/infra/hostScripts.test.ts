@@ -5,12 +5,14 @@ import {
 	renderRuntimeArtifacts
 } from "@/convex/boxes/infra/artifacts";
 import {
+	DISK_SCRIPT,
 	INSPECT_SCRIPT,
 	applyRuntimeConfigScript,
 	bootstrapScript,
 	copyFromParkingScript,
 	copyToParkingFromRescueScript,
 	parkingVolumeDevicePath,
+	parseDiskUsage,
 	parseParkingVerification,
 	parseRuntimeInspection,
 	repairScript,
@@ -20,8 +22,9 @@ import {
 	updateScript,
 	sshFailure,
 	unmountParkingScript,
+	unmountRescueScript,
 	verifyParkingScript
-} from "@/convex/boxes/infra/sshScripts";
+} from "@/convex/boxes/infra/hostScripts";
 
 // Removals the script makes that are not its own scratch.
 //
@@ -73,7 +76,6 @@ describe("runtime inspection", () => {
 docker=active
 outer_caddy=inactive
 composery=active
-disk_used_percent=91
 persistence=active
 caddy=missing
 ide=unexpected
@@ -82,7 +84,6 @@ arbitrary=value
 		).toEqual({
 			hostReachable: true,
 			httpReachable: false,
-			diskUsedPercent: 91,
 			engine: "unknown",
 			docker: "active",
 			outerCaddy: "inactive",
@@ -97,7 +98,6 @@ arbitrary=value
 		expect(parseRuntimeInspection("")).toEqual({
 			hostReachable: true,
 			httpReachable: false,
-			diskUsedPercent: null,
 			engine: "unknown",
 			docker: "unknown",
 			outerCaddy: "unknown",
@@ -113,31 +113,6 @@ arbitrary=value
 			"overlay"
 		);
 		expect(parseRuntimeInspection("engine=copy\n").engine).toBe("copy");
-	});
-
-	// `df` failing still prints the key, with nothing after it. Reading that as a
-	// number gives 0, and the dialog would calmly show an empty disk for a box
-	// whose disk we never measured.
-	test("reports an unmeasurable disk as unknown, not as empty", () => {
-		expect(parseRuntimeInspection("disk_used_percent=\n").diskUsedPercent).toBe(
-			null
-		);
-		expect(
-			parseRuntimeInspection("disk_used_percent=0\n").diskUsedPercent
-		).toBe(0);
-	});
-
-	// The box owner is root on their own host, so this output is whatever that
-	// host chose to print. Nothing out of range may be shown as a real reading.
-	test("refuses disk readings a real filesystem could not produce", () => {
-		for (const raw of ["-5", "101", "1e999", "nonsense", "0x10"]) {
-			expect(
-				parseRuntimeInspection(`disk_used_percent=${raw}\n`).diskUsedPercent
-			).toBe(null);
-		}
-		expect(
-			parseRuntimeInspection("disk_used_percent=100\n").diskUsedPercent
-		).toBe(100);
 	});
 
 	// Every key printed by the script, read back out of the script itself:
@@ -156,11 +131,10 @@ arbitrary=value
 	// quiet box rather than a broken check - so pin the two together.
 	test("prints a key for every field the Repair dialog reads", () => {
 		const keys = emittedKeys(INSPECT_SCRIPT);
-		expect(keys).toHaveLength(8);
+		expect(keys).toHaveLength(7);
 
 		const stdout = keys
 			.map((key) => {
-				if (key === "disk_used_percent") return `${key}=42`;
 				if (key === "engine") return `${key}=copy`;
 				return `${key}=active`;
 			})
@@ -169,7 +143,6 @@ arbitrary=value
 		expect(parseRuntimeInspection(stdout)).toEqual({
 			hostReachable: true,
 			httpReachable: false,
-			diskUsedPercent: 42,
 			engine: "copy",
 			docker: "active",
 			outerCaddy: "active",
@@ -177,6 +150,72 @@ arbitrary=value
 			persistence: "active",
 			caddy: "active",
 			ide: "active"
+		});
+	});
+});
+
+// The host prints one key per line. Joined rather than written as one escaped
+// literal, so each key stays a separate word: an escaped newline joins the line
+// before it to the line after for anything reading this file as text, and the
+// repository's vocabulary check is one of those things.
+function lines(...values: string[]) {
+	return values.map((value) => `${value}\n`).join("");
+}
+
+const TOTAL = "disk_total_bytes";
+const USED = "disk_used_bytes";
+
+describe("disk usage", () => {
+	// The script asks for one-byte blocks, so the numbers crossing the wire are
+	// the numbers stored. Dropping `-B1` would silently multiply every box's
+	// disk reading by 1024 and email its owner about a disk that is not full.
+	test("asks the host for bytes rather than blocks", () => {
+		expect(DISK_SCRIPT).toContain("df -PB1 /");
+	});
+
+	test("reads the total and used figures off the second line", () => {
+		expect(
+			parseDiskUsage(lines(`${TOTAL}=42949672960`, `${USED}=8589934592`))
+		).toEqual({ totalBytes: 42_949_672_960, usedBytes: 8_589_934_592 });
+	});
+
+	test("ignores anything else the host printed", () => {
+		expect(
+			parseDiskUsage(
+				lines(
+					"banner from host",
+					`${TOTAL}=100`,
+					"arbitrary=value",
+					`${USED}=25`
+				)
+			)
+		).toEqual({ totalBytes: 100, usedBytes: 25 });
+	});
+
+	// `df` failing still runs the script, which then prints nothing at all.
+	// Reading a missing value as 0 would report a perfectly empty disk for a box
+	// nobody measured - the answer that makes the box look fine, and the wrong one.
+	test("reports an unmeasurable disk as unknown, not as empty", () => {
+		expect(parseDiskUsage("")).toBe(null);
+		expect(parseDiskUsage(lines(`${TOTAL}=`, `${USED}=`))).toBe(null);
+		expect(parseDiskUsage(lines(`${TOTAL}=100`))).toBe(null);
+	});
+
+	// The box owner is root on their own host, so this output is whatever that
+	// host chose to print. Nothing that could not describe a filesystem may pass.
+	test("refuses readings a real filesystem could not produce", () => {
+		for (const raw of ["-5", "1e999", "nonsense", "0x10", " 100"]) {
+			expect(parseDiskUsage(lines(`${TOTAL}=${raw}`, `${USED}=1`))).toBe(null);
+		}
+		// Used above total is not a fuller disk; it is a reading that describes no
+		// filesystem, and storing it would draw a meter past its own end.
+		expect(parseDiskUsage(lines(`${TOTAL}=100`, `${USED}=101`))).toBe(null);
+		// A zero-size filesystem has no percentage to report, and dividing by it is
+		// how a box with no reading gets a real-looking one.
+		expect(parseDiskUsage(lines(`${TOTAL}=0`, `${USED}=0`))).toBe(null);
+		expect(parseDiskUsage(lines(`${TOTAL}=100`, `${USED}=100`))).toEqual({
+			totalBytes: 100,
+			usedBytes: 100
 		});
 	});
 });
@@ -342,6 +381,18 @@ describe("repair parking scripts", () => {
 		expect(copyOut).not.toContain("docker ");
 	});
 
+	// Hetzner normally formats the volume in its create action. If that action
+	// failed after the volume itself was created, Repair would otherwise reuse the
+	// same unmountable volume for ever. Only the outbound path can initialize it:
+	// the boot disk is still authoritative there, while copy-back never may.
+	test("initializes only a new parking volume with no filesystem", () => {
+		expect(copyOut).toContain('blkid -p "$device"');
+		expect(copyOut).toContain('mkfs.ext4 -F "$device"');
+		for (const script of [copyBack, verifyOut, verifyBack]) {
+			expect(script).not.toContain("mkfs.ext4");
+		}
+	});
+
 	// The parked copy is the only copy once the server is gone. Nothing on the
 	// restore path may reformat the volume or remove a volume's contents.
 	test("never reformats the volume or destroys data on the way back", () => {
@@ -456,6 +507,15 @@ describe("releasing a parking volume", () => {
 		expect(script).toContain("mountpoint -q");
 		expect(script).toContain("umount");
 		expect(script).toContain("set -euo pipefail");
+	});
+
+	test("unmounts both rescue filesystems before the provider detaches them", () => {
+		const script = unmountRescueScript();
+		expect(script).toContain("/mnt/composery-source");
+		expect(script).toContain("/mnt/composery-parking");
+		expect(script.indexOf("/mnt/composery-source")).toBeLessThan(
+			script.indexOf("/mnt/composery-parking")
+		);
 	});
 });
 

@@ -11,6 +11,7 @@ import {
 import { fetchRuntimeLogsSafely } from "../boxes/logs";
 import { vRecoveryStatus, type RecoveryStatus } from "../model/box/recovery";
 import { boxMetricsSamples, vMetricsRange } from "../boxes/metrics";
+import { boxUsage } from "../boxes/usage";
 import {
 	requireOwnerBox,
 	requireOwnerBoxInAction,
@@ -18,6 +19,16 @@ import {
 	startForOrFail
 } from "../boxes/operation/endpoint";
 import { currentSuspensionReason, findOwnedBoxBySlug } from "../boxes/queries";
+import { normalizeDomain, requiredEnv, runtimeDomain } from "../env";
+import {
+	isValidCustomDomain,
+	normalizeCustomDomain
+} from "../model/box/domain";
+import { sshSetupPrompt } from "shared";
+import { vSshCertificate, type SshCertificate } from "../model/box/ssh";
+// Port 22 on a box is the instance's own sshd: its container shares the host's
+// network stack, and cloud-init moved the host's sshd aside so this could be true.
+const INSTANCE_SSH_PORT = 22;
 import {
 	boxRuntimeStanding,
 	latestFailure,
@@ -165,7 +176,8 @@ export const getById = query({
 			failure: await latestFailure(ctx.db, box._id),
 			repair: await latestRepair(ctx.db, box._id),
 			update: await latestUpdate(ctx.db, box._id),
-			runtime: await boxRuntimeStanding(ctx.db, box)
+			runtime: await boxRuntimeStanding(ctx.db, box),
+			usage: await boxUsage(ctx.db, box._id)
 		};
 	}
 });
@@ -236,6 +248,150 @@ export const runtimeLogs = action({
 		if (box.status !== "running") return { logs: null };
 
 		return await fetchRuntimeLogsSafely(ctx, box._id);
+	}
+});
+
+// The setup prompt an owner copies to connect a device or an AI agent.
+//
+// The website originates the token by asking the box for one, and renders the
+// prompt from `shared` - the same module the editor's own command uses, so the
+// two surfaces cannot drift into producing different instructions.
+//
+// What it deliberately does not do is list or revoke certificates. Those live on
+// the instance; a copy here would be a second list nobody could keep true. See
+// `docs/ssh.md`.
+export const sshSetup = action({
+	args: { slug: v.string(), name: v.string() },
+	returns: v.object({
+		expiresAt: v.number(),
+		host: v.string(),
+		prompt: v.string()
+	}),
+	handler: async (
+		ctx,
+		args
+	): Promise<{ expiresAt: number; host: string; prompt: string }> => {
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		if (box.status !== "running") {
+			throw new ConvexError("This box must be running to connect over SSH.");
+		}
+		const name = args.name.trim();
+		if (!name || name.length > 64) {
+			throw new ConvexError(
+				"Give this connection a name of 1 to 64 characters."
+			);
+		}
+
+		const { token, expiresAt } = await ctx.runAction(
+			internal.boxes.infra.host.mintSshEnrollment,
+			{ boxId: box._id, name }
+		);
+		const host = runtimeDomain(box.slug);
+		return {
+			expiresAt,
+			host,
+			prompt: sshSetupPrompt({
+				alias: `composery-${box.slug}`,
+				enrollUrl: `https://${host}/_composery/ssh/enroll`,
+				host,
+				port: INSTANCE_SSH_PORT,
+				token,
+				user: "user"
+			})
+		};
+	}
+});
+
+// What can currently reach this box, read live from the box rather than stored
+// here. Reading through is not the same as mirroring: nothing on this side is
+// kept, so there is no second answer to go stale.
+export const sshDevices = action({
+	args: { slug: v.string() },
+	returns: v.array(vSshCertificate),
+	handler: async (ctx, args): Promise<SshCertificate[]> => {
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		if (box.status !== "running") return [];
+
+		return await ctx.runAction(internal.boxes.infra.host.listSshCertificates, {
+			boxId: box._id
+		});
+	}
+});
+
+export const revokeSshDevice = action({
+	args: { slug: v.string(), serial: v.number() },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		if (box.status !== "running") {
+			throw new ConvexError("This box must be running to revoke SSH access.");
+		}
+		const revoked: boolean = await ctx.runAction(
+			internal.boxes.infra.host.revokeSshCertificate,
+			{ boxId: box._id, serial: args.serial }
+		);
+		if (!revoked) {
+			throw new ConvexError("That access was already revoked, or is unknown.");
+		}
+		return null;
+	}
+});
+
+// Point your own domain at this box, or take it off again.
+//
+// The name is only stored once it is observed to resolve to this box. Caddy asks
+// a certificate authority for a certificate the moment a name enters its config,
+// and a name that points elsewhere fails that challenge on a schedule until the
+// authority rate-limits the box - which costs the managed name its certificate
+// too. Refusing here turns a fleet-visible outage into a sentence.
+export const setCustomDomain = action({
+	args: { slug: v.string(), domain: v.union(v.string(), v.null()) },
+	returns: v.null(),
+	handler: async (ctx, args): Promise<null> => {
+		const box = await requireOwnerBoxInAction(ctx, args.slug);
+		if (box.status !== "running") {
+			throw new ConvexError("This box must be running to change its domain.");
+		}
+
+		if (args.domain === null) {
+			await ctx.runMutation(internal.boxes.operation.record.setCustomDomain, {
+				boxId: box._id,
+				domain: null
+			});
+			await ctx.runAction(internal.boxes.infra.host.reloadCustomDomain, {
+				boxId: box._id
+			});
+			return null;
+		}
+
+		const domain = normalizeCustomDomain(args.domain);
+		if (!isValidCustomDomain(domain)) {
+			throw new ConvexError("That is not a domain name.");
+		}
+		if (domain.endsWith(`.${normalizeDomain(requiredEnv("CLOUD_DOMAIN"))}`)) {
+			throw new ConvexError(
+				"That domain is managed by Composery and is already pointing here."
+			);
+		}
+
+		const resolves: boolean = await ctx.runAction(
+			internal.boxes.infra.host.checkCustomDomain,
+			{ boxId: box._id, domain }
+		);
+		if (!resolves) {
+			throw new ConvexError(
+				`${domain} does not point at this box yet. Add an A record for ${box.hetzner_ipv4 ?? "this box's address"} and try again once it has propagated.`
+			);
+		}
+
+		await ctx.runMutation(internal.boxes.operation.record.setCustomDomain, {
+			boxId: box._id,
+			domain
+		});
+		await ctx.runAction(internal.boxes.infra.host.reloadCustomDomain, {
+			boxId: box._id
+		});
+		return null;
 	}
 });
 

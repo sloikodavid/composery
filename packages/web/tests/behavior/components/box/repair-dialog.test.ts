@@ -25,7 +25,6 @@ import { RepairDialog } from "@/components/box/repair-dialog";
 const HEALTHY: RecoveryStatus = {
 	hostReachable: true,
 	httpReachable: true,
-	diskUsedPercent: 12,
 	engine: "copy",
 	docker: "active",
 	outerCaddy: "active",

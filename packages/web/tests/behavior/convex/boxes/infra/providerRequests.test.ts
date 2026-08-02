@@ -50,10 +50,11 @@ function queuedFetch(
 	return fetch;
 }
 
-function server(status = "running") {
+function server(status = "running", rescueEnabled = false) {
 	return {
 		id: 42,
 		name: "composery-atlas",
+		rescue_enabled: rescueEnabled,
 		status,
 		created: "2026-08-01T00:00:00Z",
 		public_net: {
@@ -93,8 +94,8 @@ beforeEach(() => {
 	vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
 	vi.stubEnv("HETZNER_FIREWALL_ID", "42");
 	vi.stubEnv("HETZNER_SSH_KEYS", "123,456");
-	vi.stubEnv("SSH_PRIVATE_KEY", privateKey);
-	vi.stubEnv("SSH_USER", "root");
+	vi.stubEnv("HOST_SSH_PRIVATE_KEY", privateKey);
+	vi.stubEnv("HOST_SSH_USER", "root");
 	vi.stubEnv("CLOUDFLARE_DNS_TOKEN", "token");
 	vi.stubEnv("CLOUDFLARE_ZONE_ID", "zone");
 });
@@ -342,18 +343,18 @@ describe("the Hetzner response boundary", () => {
 	test("boots the provider rescue OS with the configured recovery keys", async () => {
 		runPollsImmediately();
 		const fetch = queuedFetch(
+			{ body: { server: server("off") } },
 			{
 				body: { action: { id: 7, status: "running", error: null } },
 				status: 201
 			},
 			{ body: { action: { id: 7, status: "success", error: null } } },
-			{ body: { server: server("off") } },
 			{
 				body: { action: { id: 8, status: "running", error: null } },
 				status: 201
 			},
 			{ body: { action: { id: 8, status: "success", error: null } } },
-			{ body: { server: server("running") } }
+			{ body: { server: server("running", true) } }
 		);
 
 		await expect(
@@ -361,12 +362,109 @@ describe("the Hetzner response boundary", () => {
 				serverId: 42
 			})
 		).resolves.toBeNull();
-		expect(fetch.mock.calls[0][0]).toContain("/actions/enable_rescue");
-		expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+		expect(requestAt(fetch, 1).url).toContain("/actions/enable_rescue");
+		expect(JSON.parse(String(requestAt(fetch, 1).init.body))).toEqual({
 			type: "linux64",
 			ssh_keys: [123, 456]
 		});
-		expect(fetch.mock.calls[3][0]).toContain("/actions/poweron");
+		expect(requestAt(fetch, 3).url).toContain("/actions/poweron");
+	});
+
+	test("accepts a lost rescue-enable response once the provider reports it enabled", async () => {
+		runPollsImmediately();
+		const replies: (Error | Response)[] = [
+			response({ server: server("off") }),
+			new TypeError("connection closed after request"),
+			response({ server: server("off", true) }),
+			response({ action: { id: 8, status: "success", error: null } }, 201),
+			response({ action: { id: 8, status: "success", error: null } }),
+			response({ server: server("running", true) })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.bootServerInRescue, {
+				serverId: 42
+			})
+		).resolves.toBeNull();
+		expect(requestAt(fetch, 3).url).toContain("/actions/poweron");
+	});
+
+	test("accepts a lost rescue power-on response once the server is running", async () => {
+		runPollsImmediately();
+		const replies: (Error | Response)[] = [
+			response({ server: server("off", true) }),
+			new TypeError("connection closed after request"),
+			response({ server: server("running", true) })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.bootServerInRescue, {
+				serverId: 42
+			})
+		).resolves.toBeNull();
+		expect(requestAt(fetch, 1).url).toContain("/actions/poweron");
+	});
+
+	test("accepts a power-on whose response was lost once the server is running", async () => {
+		runPollsImmediately();
+		const replies: (Error | Response)[] = [
+			response({ server: server("off") }),
+			new TypeError("connection closed after request"),
+			response({ server: server("running") })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.powerOnServer, {
+				serverId: 42
+			})
+		).resolves.toBeNull();
+		expect(fetch).toHaveBeenCalledTimes(3);
+		expect(requestAt(fetch, 1).url).toContain("/actions/poweron");
+	});
+
+	test("accepts an attach whose response was lost once the volume is attached", async () => {
+		const replies: (Error | Response)[] = [
+			response({ volume: { server: null } }),
+			new TypeError("connection closed after request"),
+			response({ volume: { server: 42 } })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.attachParkingVolume, {
+				serverId: 42,
+				volumeId: 9
+			})
+		).resolves.toBeNull();
+		expect(fetch).toHaveBeenCalledTimes(3);
+		expect(requestAt(fetch, 1).url).toContain("/actions/attach");
 	});
 
 	test("recovers a snapshot whose create response was lost without creating twice", async () => {

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 
 import { generateParseableKeyPair, envPrivateKey } from "../../support/ssh.ts";
 
-// The helper every test that stubs SSH_PRIVATE_KEY goes through, and the one
+// The helper every test that stubs HOST_SSH_PRIVATE_KEY goes through, and the one
 // thing it promises: the key it hands back parses.
 //
 // `utils.generateKeyPairSync` alone does not promise that - measured at 77

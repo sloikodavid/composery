@@ -21,12 +21,19 @@ writable layer and its delta copy, so a 10 GB changed file outside `/data` costs
 20 GB of host disk (the overlay engine stores it once). `df -h /data` shows the durable
 disk's ordinary filesystem usage.
 
-If you run Docker inside your Composery, point its `data-root` at `/data` - add
-`{"data-root": "/data/docker"}` to `/etc/docker/daemon.json` and restart it. Left at
-`/var/lib/docker`, the daemon sits on Composery's own root filesystem: under the overlay
-engine it cannot nest `overlay2` and silently falls back to the slower `fuse-overlayfs`,
-and under the copy engine its layers are churning, regenerable files that the delta has no
-reason to carry. On `/data` it gets native `overlay2` and stores its layers once.
+Composery ships Docker, already pointed at the volume. `/etc/docker/daemon.json` sets
+`data-root` to `/data/docker`, and `/etc/containerd/config.toml` sets `root` to
+`/data/containerd`. Both are needed: Docker Engine 29 and later keep images and container
+snapshots under containerd, which `data-root` does not cover, so setting it alone would
+move volumes and daemon state while leaving every image layer on the root filesystem.
+There the layers cost you twice - under the overlay engine Docker cannot nest `overlay2`
+and falls back to the slower `fuse-overlayfs`, and under the copy engine they are
+churning, regenerable files the delta has no reason to carry. On the volume Docker and
+containerd each get a native filesystem, and your images are stored once.
+
+Docker needs `CAP_SYS_ADMIN`. It runs wherever the overlay engine runs, and on a platform
+that cannot grant container privileges it stays down and says why in the container log
+rather than restarting forever. `COMPOSERY_DISABLE_DOCKER` turns it off.
 
 The volume must be a normal block-backed Linux filesystem (ext4, xfs, btrfs, or a Docker
 named volume). Network filesystems such as NFS are not supported: persistence relies on

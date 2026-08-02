@@ -13,7 +13,7 @@ export async function fetchRuntimeLogsSafely(
 ): Promise<{ logs: string | null }> {
 	try {
 		const logs: string = await ctx.runAction(
-			internal.boxes.infra.ssh.fetchRuntimeLogs,
+			internal.boxes.infra.host.fetchRuntimeLogs,
 			{ boxId, tail: RUNTIME_LOG_LINES }
 		);
 		return { logs };

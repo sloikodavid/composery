@@ -2,12 +2,15 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { utils } from "ssh2";
 
 import { generateParseableKeyPair } from "../../../../support/ssh.ts";
-import { authorizedPublicKey, privateKey } from "@/convex/boxes/infra/sshKeys";
+import {
+	authorizedPublicKey,
+	privateKey
+} from "@/convex/boxes/infra/hostCredentials";
 
 // `vi.stubEnv`, never a module-load snapshot of `process.env`. A snapshot taken
 // when the file is imported is only correct if this file has the process to
 // itself: with file isolation off - which is how mutation testing runs the suite
-// - a sibling that also saves and restores `SSH_PRIVATE_KEY` captures whatever
+// - a sibling that also saves and restores `HOST_SSH_PRIVATE_KEY` captures whatever
 // this one happened to leave set, and then restores it over the top. Two files
 // hand-rolling the same save/restore is how a key nobody wrote turns up in a
 // third test.
@@ -16,9 +19,9 @@ afterEach(() => {
 });
 
 describe("ssh key helpers", () => {
-	test("derives the authorized public key from SSH_PRIVATE_KEY", () => {
+	test("derives the authorized public key from HOST_SSH_PRIVATE_KEY", () => {
 		const keyPair = generateParseableKeyPair("composery-test");
-		vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+		vi.stubEnv("HOST_SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
 
 		const parsedKey = utils.parseKey(keyPair.private);
 		if (parsedKey instanceof Error) throw parsedKey;
@@ -36,18 +39,21 @@ describe("ssh key helpers", () => {
 // leave a box nobody can log into.
 describe("a private key the deployment cannot use", () => {
 	test("says so rather than deriving a public key from nothing", () => {
-		vi.stubEnv("SSH_PRIVATE_KEY", "-----BEGIN OPENSSH PRIVATE KEY-----\nnope");
+		vi.stubEnv(
+			"HOST_SSH_PRIVATE_KEY",
+			"-----BEGIN OPENSSH PRIVATE KEY-----\nnope"
+		);
 
 		expect(() => authorizedPublicKey()).toThrow(
-			/SSH_PRIVATE_KEY could not be parsed: /
+			/HOST_SSH_PRIVATE_KEY could not be parsed: /
 		);
 	});
 
 	test("says so for a value that is not a key at all", () => {
-		vi.stubEnv("SSH_PRIVATE_KEY", "not-a-key");
+		vi.stubEnv("HOST_SSH_PRIVATE_KEY", "not-a-key");
 
 		expect(() => authorizedPublicKey()).toThrow(
-			"SSH_PRIVATE_KEY could not be parsed:"
+			"HOST_SSH_PRIVATE_KEY could not be parsed:"
 		);
 	});
 });

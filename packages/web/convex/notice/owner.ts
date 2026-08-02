@@ -8,15 +8,21 @@ import { noticesSender, customerEmailAlertKey, resendClient } from "../email";
 import { raiseAlert } from "../staff/alerts";
 import { findUserByClerkId } from "../users";
 import type { OperationTrigger } from "../schema";
+import {
+	USAGE_SIGNALS,
+	formatBytes,
+	type UsageSignal,
+	type UsageStep
+} from "../model/box/usage";
 
 // What a box owner is told by email, and when.
 //
-// Four notices, not a feed. Each one is a fact about the owner's own box that
+// Five notices, not a feed. Each one is a fact about the owner's own box that
 // they cannot learn any other way at the moment it becomes true: nobody opens
 // the website to check whether the box they were not using is still there. Every
 // other thing a box does - started, stopped, snapshotted, an update waiting - is
 // already on its page for whoever goes looking, and mailing those would train an
-// owner to ignore the four that matter.
+// owner to ignore the five that matter.
 //
 // The boundary with the other two senders is absolute, because two systems
 // mailing about the same event is how a customer ends up believing the wrong
@@ -41,11 +47,29 @@ import type { OperationTrigger } from "../schema";
 //
 // Because the trigger no longer decides anything, a suspension notice does not
 // carry one.
+// A box near a limit is the fifth, and it earns its place on the same test the
+// other four pass. An allowance is spent inside the box, by whatever the owner
+// left running, and the moment it matters is before it runs out - which is
+// exactly when nobody is looking at the meter. It is also the one notice with
+// something the owner can do about it while there is still time, so the message
+// carries the remedy rather than only the number.
+//
+// It is sent once per step per period, never per sample: `boxes/usage.ts` holds
+// the step it last announced, and a level that stays high stays quiet. A meter
+// that mailed every ten minutes is how an owner learns that mail from Composery
+// is noise.
 export type OwnerNotice =
 	| { type: "deleted"; trigger: OperationTrigger | undefined }
 	| { type: "suspended"; reason: string | undefined }
 	| { type: "unsuspended" }
-	| { type: "create_failed" };
+	| { type: "create_failed" }
+	| {
+			type: "usage";
+			signal: UsageSignal;
+			step: UsageStep;
+			usedBytes: number;
+			allowanceBytes: number;
+	  };
 
 // Why a box was deleted, in the owner's terms.
 //
@@ -119,6 +143,25 @@ export function ownerNoticeEmail(
 		};
 	}
 
+	if (notice.type === "usage") {
+		const { label, consequence, remedy } = USAGE_SIGNALS[notice.signal];
+		return {
+			// The signal in lower case inside the sentence, the same rule
+			// `flagSignalLabel` follows: a leading capital mid-subject reads as a
+			// proper noun.
+			subject: `Your Composery box ${box.slug} has used ${notice.step}% of its ${label.toLowerCase()}`,
+			text: paragraphs([
+				`Your box ${box.slug} has used ${formatBytes(
+					notice.usedBytes
+				)} of the ${formatBytes(notice.allowanceBytes)} it includes.`,
+				consequence,
+				remedy,
+				link ? `The box: ${link}` : undefined,
+				reply
+			])
+		};
+	}
+
 	return {
 		subject: `Your Composery box ${box.slug} could not be created`,
 		text: paragraphs([
@@ -179,8 +222,16 @@ export async function sendOwnerNotice(
 		// than a table of its own because that log is already owner-scoped, already
 		// shown in the console beside the event being reported, and already carries
 		// the retention and purge rules a customer's record needs.
+		// The signal is recorded beside the notice type rather than folded into it,
+		// because support's question is "which limit did we warn them about" and a
+		// row saying only `usage` cannot answer it. Everything else has one subject
+		// and carries no signal at all.
 		await appendBoxEvent(ctx, box, "box.owner_emailed", {
-			metadata: { notice: notice.type, emailId }
+			metadata: {
+				notice: notice.type,
+				emailId,
+				...(notice.type === "usage" ? { signal: notice.signal } : {})
+			}
 		});
 		// Reached only when the mail component itself throws - a rejected key, a
 		// network failure. No test reaches it: the component in the harness

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { BOX_PLANS } from "@/convex/model/box/plan";
 
 import {
 	boxOperations,
@@ -53,15 +54,37 @@ function stubMetrics(egressBps: number) {
 			}
 		}
 	};
-	const fetchMock = vi.fn(async () =>
+	// The poll asks two endpoints per box: the metrics series above, and the
+	// server object carrying the traffic counters. Routed by path rather than
+	// answered alike, because "the provider answered one and not the other" is a
+	// case this sweep has to survive - see the traffic tests below.
+	const fetchMock = vi.fn(async (url: string) =>
 		Promise.resolve({
 			ok: true,
 			status: 200,
-			text: async () => JSON.stringify(body)
+			text: async () =>
+				JSON.stringify(
+					url.includes("/metrics") ? body : { server: serverBody() }
+				)
 		} as unknown as Response)
 	);
 	vi.stubGlobal("fetch", fetchMock);
 	return fetchMock;
+}
+
+// Enough of a Hetzner server for `fetchServerUsage` to read its counters.
+function serverBody(outgoing = 1_000_000_000, included = TRAFFIC_ALLOWANCE) {
+	return {
+		id: 1,
+		name: "composery-atlas",
+		status: "running",
+		created: "2026-07-01T00:00:00+00:00",
+		outgoing_traffic: outgoing,
+		included_traffic: included,
+		public_net: { ipv4: { ip: "1.2.3.4" }, ipv6: { ip: "2a01::/64" } },
+		server_type: { name: "cx23" },
+		location: { name: "nbg1" }
+	};
 }
 
 async function seedPolledBox(
@@ -83,6 +106,11 @@ const samples = (t: Harness) =>
 // Comfortably over the shipped 25 Mbit/s egress default, and under it.
 const OVER = 500_000_000;
 const UNDER = 1_000;
+
+const TRAFFIC_ALLOWANCE = BOX_PLANS.air.trafficTb * 1_000 ** 4;
+
+const usageRows = (t: Harness) =>
+	t.run((ctx) => ctx.db.query("box_usage").collect());
 
 describe("polling the fleet's metrics", () => {
 	test("records a sample for a running box", async () => {
@@ -111,6 +139,69 @@ describe("polling the fleet's metrics", () => {
 		await t.action(internal.boxes.metricsPoll.pollBoxMetrics, {});
 
 		expect(await samples(t)).toHaveLength(2);
+	});
+
+	// Traffic rides this sweep. It is not a metric - it is a level against the
+	// allowance the plan sold - so it lands in `box_usage` rather than beside the
+	// rates, measured against the plan and not against whatever the provider says
+	// it includes.
+	test("records the box's outbound traffic against its plan's allowance", async () => {
+		const t = testConvex();
+		await seedSettings(t);
+		const boxId = await seedPolledBox(t, { slug: "atlas" });
+		stubMetrics(UNDER);
+
+		await t.action(internal.boxes.metricsPoll.pollBoxMetrics, {});
+
+		expect(await usageRows(t)).toMatchObject([
+			{
+				box_id: boxId,
+				signal: "traffic",
+				used_bytes: 1_000_000_000,
+				allowance_bytes: TRAFFIC_ALLOWANCE
+			}
+		]);
+	});
+
+	// The regression this ordering exists for. The sweep had already decided a box
+	// flagged for its own rate; a provider that answered the metrics endpoint and
+	// not the server one used to take the suspension down with it, so the flag was
+	// raised and nothing was done about it.
+	test("suspends a flagged box even when the traffic read fails", async () => {
+		const t = testConvex();
+		await seedSettings(t, { auto_suspend_enabled: true });
+		const boxId = await seedPolledBox(t, { slug: "noisy" });
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string) => {
+				if (!url.includes("/metrics")) throw new Error("provider unavailable");
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({
+							metrics: {
+								time_series: {
+									cpu: { values: [[1, "5"]] },
+									"network.0.bandwidth.in": { values: [[1, "1"]] },
+									"network.0.bandwidth.out": { values: [[1, String(OVER)]] },
+									"network.0.pps.in": { values: [[1, "1"]] },
+									"network.0.pps.out": { values: [[1, "1"]] },
+									"disk.0.bandwidth.read": { values: [[1, "1"]] },
+									"disk.0.bandwidth.write": { values: [[1, "1"]] }
+								}
+							}
+						})
+				} as unknown as Response;
+			})
+		);
+
+		for (let poll = 0; poll < 3; poll += 1) {
+			await t.action(internal.boxes.metricsPoll.pollBoxMetrics, {});
+		}
+
+		expect(await boxOperations(t, boxId)).toMatchObject([{ type: "suspend" }]);
+		expect(await usageRows(t)).toEqual([]);
 	});
 
 	// A box with no Hetzner server has nothing to ask Hetzner about, and asking

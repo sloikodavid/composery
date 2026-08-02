@@ -26,7 +26,7 @@ export const changeBoxConfig = defineBoxWorkflow({
 	type: "change_config",
 	run: async (step, args) => {
 		await step.runAction(
-			internal.boxes.infra.ssh.applyRuntimeConfig,
+			internal.boxes.infra.host.applyRuntimeConfig,
 			{ boxId: args.boxId, config: args.config },
 			{ retry: true }
 		);

@@ -179,7 +179,9 @@ describe("the terminal API spec matches the routes that serve it", () => {
 		// added here and never placed on the page is documented to nobody, and the
 		// page cannot say so - it just quietly lacks a section.
 		const rendered = [
-			...docs.matchAll(/<APIOperation path="([^"]+)" method="(\w+)" \/>/g)
+			// Whitespace-tolerant because prettier wraps a long tag across lines, and
+			// a single-line pattern would then report the operation as unrendered.
+			...docs.matchAll(/<APIOperation\s+path="([^"]+)"\s+method="(\w+)"\s*\/>/g)
 		]
 			.map((match) => `${match[2]} ${match[1]}`)
 			.sort();

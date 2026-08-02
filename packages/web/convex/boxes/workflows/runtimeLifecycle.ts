@@ -77,7 +77,7 @@ export async function createRuntime(
 	});
 
 	await step.runAction(
-		internal.boxes.infra.ssh.bootstrapRuntime,
+		internal.boxes.infra.host.bootstrapRuntime,
 		{ boxId },
 		{ retry: true }
 	);
@@ -114,7 +114,7 @@ export async function rebuildRuntime(step: WorkflowCtx, box: Doc<"boxes">) {
 	});
 
 	await step.runAction(
-		internal.boxes.infra.ssh.bootstrapRuntime,
+		internal.boxes.infra.host.bootstrapRuntime,
 		{ boxId: box._id },
 		{ retry: true }
 	);

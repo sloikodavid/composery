@@ -56,7 +56,7 @@ import {
 	type Harness
 } from "../../../support/convex.ts";
 
-// The four things a box owner is told, and the two ways of getting one wrong:
+// The five things a box owner is told, and the two ways of getting one wrong:
 // saying something that was never true of their box, or repeating something
 // written for staff. The wiring tests below run the real lifecycle mutations
 // rather than calling the sender, because "which events reach an owner" is a
@@ -179,6 +179,48 @@ describe("what a suspension notice says", () => {
 
 		expect(text).toContain("Nothing has been deleted");
 		expect(text).toContain("have the suspension reviewed");
+	});
+});
+
+describe("what a usage notice says", () => {
+	// The one notice an owner can act on while there is still time, so it has to
+	// carry both figures and the remedy - a percentage alone tells somebody they
+	// have a problem without telling them the size of it or what to do.
+	test("gives both figures, the cost of running out, and the way out", () => {
+		const { subject, text } = ownerNoticeEmail(
+			{
+				type: "usage",
+				signal: "disk",
+				step: 80,
+				usedBytes: 32_000_000_000,
+				allowanceBytes: 40_000_000_000
+			},
+			BOX
+		);
+
+		expect(subject).toBe("Your Composery box atlas has used 80% of its disk");
+		expect(text).toContain("32.0 GB of the 40.0 GB it includes");
+		expect(text).toContain("stops the box writing");
+		expect(text).toContain("prune Docker images");
+	});
+
+	test("names the signal it is about, so two limits cannot read alike", () => {
+		const { subject, text } = ownerNoticeEmail(
+			{
+				type: "usage",
+				signal: "traffic",
+				step: 95,
+				usedBytes: 19_000_000_000_000,
+				allowanceBytes: 20_000_000_000_000
+			},
+			BOX
+		);
+
+		expect(subject).toBe(
+			"Your Composery box atlas has used 95% of its outbound traffic"
+		);
+		expect(text).toContain("19.0 TB of the 20.0 TB it includes");
+		expect(text).not.toContain("disk");
 	});
 });
 

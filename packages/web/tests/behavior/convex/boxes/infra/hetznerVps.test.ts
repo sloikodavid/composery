@@ -1,5 +1,6 @@
 import ssh2 from "ssh2";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { HOST_SSH_PORT } from "@/convex/boxes/infra/artifacts";
 import {
 	HetznerApiError,
 	attachVolumePayload,
@@ -16,20 +17,20 @@ import {
 	parseCreateImageResponse,
 	parseImageResponse,
 	parseLocations,
+	renderCloudInitUserData,
 	placementCandidates,
 	primaryIpListPath,
 	productVolumeListPath,
 	rebuildServerPayload,
 	rescuePayload,
-	sshKeyIds,
-	snapshotImageListPath
+	sshKeyIds
 } from "@/convex/boxes/infra/hetznerVps";
 import {
 	type HetznerAction,
 	type HetznerImage,
 	type HetznerServer
 } from "@/convex/boxes/infra/hetznerContracts";
-import { authorizedPublicKey } from "@/convex/boxes/infra/sshKeys";
+import { authorizedPublicKey } from "@/convex/boxes/infra/hostCredentials";
 
 const { utils } = ssh2;
 
@@ -45,8 +46,8 @@ function stubHostEnv() {
 	vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
 	vi.stubEnv("HETZNER_FIREWALL_ID", "42");
 	vi.stubEnv("HETZNER_SSH_KEYS", "123,456");
-	vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
-	vi.stubEnv("SSH_USER", "root");
+	vi.stubEnv("HOST_SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
+	vi.stubEnv("HOST_SSH_USER", "root");
 }
 
 const server = (extra: Partial<HetznerServer> = {}): HetznerServer => ({
@@ -87,10 +88,10 @@ const image = (extra: Partial<HetznerImage> = {}): HetznerImage => ({
 describe("server requests", () => {
 	test("finds a prior create by immutable labels", () => {
 		const query = new URLSearchParams(
-			composeryServerListPath("atlas").split("?")[1]
+			composeryServerListPath("box123").split("?")[1]
 		);
 		expect(query.get("label_selector")).toBe(
-			"product=composery-web,box_slug=atlas"
+			"product=composery-web,box_ref=box123"
 		);
 	});
 
@@ -98,7 +99,8 @@ describe("server requests", () => {
 		stubHostEnv();
 		const payload = createServerPayload(
 			{ serverType: "cx23", location: "nbg1" },
-			"atlas"
+			"atlas",
+			"box123"
 		);
 
 		expect(payload).toMatchObject({
@@ -108,7 +110,26 @@ describe("server requests", () => {
 			ssh_keys: [123, 456],
 			public_net: { enable_ipv4: true, enable_ipv6: true }
 		});
+		expect(payload.labels).toMatchObject({ box_ref: "box123" });
 		expect(payload.user_data).toContain(authorizedPublicKey());
+	});
+
+	// The instance's container shares the host's network stack, so its sshd wants
+	// port 22 on this machine. If the host's own sshd were still there the
+	// container could not bind it, and a box would come up with no SSH at all -
+	// on a host the control plane could still reach, so nothing would look wrong.
+	// Cloud-init is the only moment this can be arranged: it runs before the
+	// runtime is ever started.
+	test("moves the host's own sshd aside on the first boot, for the instance", () => {
+		stubHostEnv();
+		const userData = renderCloudInitUserData();
+
+		expect(userData).toContain(`Port ${HOST_SSH_PORT}`);
+		expect(HOST_SSH_PORT).not.toBe(22);
+		expect(userData).toContain("/etc/ssh/sshd_config.d/composery-control.conf");
+		// Written and then applied - a drop-in nothing reloads is a file that
+		// takes effect at the next reboot, which is not when this is needed.
+		expect(userData).toContain("systemctl, restart, ssh");
 	});
 
 	test("sends current SSH access when it rebuilds any image", () => {
@@ -161,7 +182,7 @@ describe("materialising a provider server", () => {
 });
 
 describe("snapshot values", () => {
-	test("labels a capture so reconciliation can find it", () => {
+	test("labels a capture with its stable row reference", () => {
 		expect(createSnapshotImagePayload("atlas", "desc", "snapshot123")).toEqual({
 			type: "snapshot",
 			description: "desc",
@@ -171,12 +192,6 @@ describe("snapshot values", () => {
 				snapshot_ref: "snapshot123"
 			}
 		});
-		const query = new URLSearchParams(
-			snapshotImageListPath("atlas").split("?")[1]
-		);
-		expect(query.get("label_selector")).toBe(
-			"product=composery-web,box_slug=atlas"
-		);
 	});
 
 	test("maps action and image states to workflow values", () => {
@@ -209,23 +224,26 @@ describe("snapshot values", () => {
 describe("parking volumes", () => {
 	test("creates a labelled preformatted volume in the server location", () => {
 		expect(parkingVolumeName("atlas")).toBe("composery-park-atlas");
-		expect(createVolumePayload("atlas", "nbg1", 12)).toMatchObject({
+		expect(createVolumePayload("atlas", "nbg1", 12, "box123")).toMatchObject({
 			name: "composery-park-atlas",
 			location: "nbg1",
 			size: 12,
 			format: "ext4",
 			automount: false
 		});
+		expect(
+			createVolumePayload("atlas", "nbg1", 12, "box123").labels
+		).toMatchObject({ box_ref: "box123" });
 		expect(attachVolumePayload(42)).toEqual({ server: 42, automount: false });
 		const query = new URLSearchParams(productVolumeListPath(2).split("?")[1]);
 		expect(query.get("label_selector")).toBe(
 			"product=composery-web,role=parking"
 		);
 		const repairQuery = new URLSearchParams(
-			parkingVolumeListPath("atlas").split("?")[1]
+			parkingVolumeListPath("box123").split("?")[1]
 		);
 		expect(repairQuery.get("label_selector")).toBe(
-			"product=composery-web,role=parking,box_slug=atlas"
+			"product=composery-web,role=parking,box_ref=box123"
 		);
 	});
 });

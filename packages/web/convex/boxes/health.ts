@@ -49,7 +49,7 @@ export const recoveryStatus = internalAction({
 	handler: async (ctx, args): Promise<RecoveryStatus> => {
 		const [http, host] = await Promise.all([
 			ctx.runAction(internal.boxes.health.probeRuntime, args),
-			ctx.runAction(internal.boxes.infra.ssh.inspectRuntime, args)
+			ctx.runAction(internal.boxes.infra.host.inspectRuntime, args)
 		]);
 		return { ...host, httpReachable: http.reachable };
 	}

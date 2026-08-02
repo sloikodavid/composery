@@ -8,11 +8,11 @@ const { utils } = ssh2;
 // times in a thousand, a private key that its own `utils.parseKey` then rejects
 // with "Malformed OpenSSH private key". Measured directly: of 20,000 generated
 // pairs, 77 failed to parse, and the same 77 failed whether or not the key had
-// been through the escape/unescape round trip `SSH_PRIVATE_KEY` uses - so the
+// been through the escape/unescape round trip `HOST_SSH_PRIVATE_KEY` uses - so the
 // defect is in the generator, not in anything this repository does with it.
 //
 // Four in a thousand is invisible in one test and constant in a suite: every
-// file that stubs `SSH_PRIVATE_KEY` calls this, `check:mutants` aborts outright
+// file that stubs `HOST_SSH_PRIVATE_KEY` calls this, `check:mutants` aborts outright
 // when its initial run trips one, and a red build that goes green on re-run is
 // the kind nobody trusts or investigates.
 //
@@ -35,7 +35,7 @@ export function generateParseableKeyPair(comment = "composery-test") {
 	);
 }
 
-// The form `SSH_PRIVATE_KEY` is set in: Convex environment variables are single
+// The form `HOST_SSH_PRIVATE_KEY` is set in: Convex environment variables are single
 // line, so `sshKeys.privateKey()` unescapes `\n` when it reads one back.
 export function envPrivateKey(privateKey: string) {
 	return privateKey.replace(/\n/g, "\\n");

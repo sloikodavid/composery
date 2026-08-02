@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CopyEmail } from "@/components/copy-email";
 import { LegalPage, LegalSection } from "@/components/legal-page";
 import { OWNER, WEBSITE_DOMAIN } from "shared";
+import { usageStepsPhrase } from "@/convex/model/box/usage";
 
 export const metadata: Metadata = {
 	title: "Terms of Service",
@@ -71,6 +72,29 @@ export default function TermsPage() {
 					amount of that order. A full refund ends access to the corresponding
 					box; a partial refund alone does not. Nothing here limits a mandatory
 					consumer right or remedy.
+				</p>
+			</LegalSection>
+			<LegalSection title="Disk and traffic allowances">
+				<p>
+					Each plan includes a fixed disk and a monthly outbound traffic
+					allowance. Both figures are on the pricing page at the time of sale
+					and on the box&apos;s own page while it runs. Traffic arriving at a
+					box is not counted, and the outbound counter starts again at the
+					beginning of the box&apos;s billing month.
+				</p>
+				<p>
+					Composery emails you at {usageStepsPhrase()} of either allowance, at
+					the address on your account. Passing an allowance does not by itself
+					switch a box off. Where use stays materially above what the plan
+					includes, we will contact you and agree a larger allowance, a charge
+					for the excess, or a cut in use before taking any other step, and we
+					will not charge for excess we did not tell you about first.
+				</p>
+				<p>
+					Separately from these allowances, a box sending at a high rate for a
+					sustained period may be suspended automatically under Acceptable use
+					below. That protects the service and other customers, and it is
+					measured on rate rather than on a monthly total.
 				</p>
 			</LegalSection>
 			<LegalSection title="Acceptable use">

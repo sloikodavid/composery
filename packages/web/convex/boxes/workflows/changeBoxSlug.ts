@@ -41,7 +41,7 @@ export const changeBoxSlug = defineBoxWorkflow({
 			if (!dns) throw new Error("DNS records were not created.");
 
 			await step.runAction(
-				internal.boxes.infra.ssh.reloadSlug,
+				internal.boxes.infra.host.reloadSlug,
 				{
 					boxId: args.boxId,
 					newSlug: args.newSlug
@@ -73,7 +73,7 @@ export const changeBoxSlug = defineBoxWorkflow({
 			if (dns) {
 				await step
 					.runAction(
-						internal.boxes.infra.ssh.reloadSlug,
+						internal.boxes.infra.host.reloadSlug,
 						{
 							boxId: args.boxId,
 							newSlug: box.slug

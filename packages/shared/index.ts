@@ -1,6 +1,12 @@
 import { ideFeatures, ideTheme, theme } from "./theme.ts";
 
 export { ideFeatures, ideTheme, theme } from "./theme.ts";
+export {
+	knownHostsEntry,
+	sshConfigEntry,
+	sshSetupPrompt,
+	type SshConnection
+} from "./ssh.ts";
 
 // The single source of truth for who/what this project is: brand, identity, and
 // the pure (zero-dependency) icon-SVG builders derived from them. Everything here

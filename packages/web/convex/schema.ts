@@ -12,6 +12,7 @@ import {
 import { BOX_PLAN_ORDER, SERVER_TYPES } from "./model/box/plan";
 import { SNAPSHOT_CLASSES, SNAPSHOT_STATUSES } from "./model/box/snapshot";
 import { BOX_STATUSES } from "./model/box/status";
+import { USAGE_SIGNAL_NAMES } from "./model/box/usage";
 
 // Turn a list of the model's words into a Convex validator.
 //
@@ -128,6 +129,10 @@ export const SERVER_LOCATIONS = vServerLocation.members.map(
 );
 
 export const vBoxFlagSignal = literals(BOX_FLAG_SIGNALS);
+
+// What a box can run out of. Two signals, one shape - see `model/box/usage.ts`
+// for why a level against an allowance is not a metric and not a flag.
+export const vUsageSignal = literals(USAGE_SIGNAL_NAMES);
 
 export const vThreshold = v.object({
 	signal: vBoxFlagSignal,
@@ -290,6 +295,16 @@ export default defineSchema({
 		hetzner_location: v.optional(vServerLocation),
 		hetzner_ipv4: v.optional(v.string()),
 		hetzner_ipv6: v.optional(v.string()),
+		// A domain the owner points at this box themselves, served alongside its
+		// composery.cloud name rather than instead of it: the managed name is how
+		// the control plane and the owner always reach the box, and losing it to a
+		// registrar change would take the box with it.
+		//
+		// Only ever written after the name is observed to resolve to this box's own
+		// address. Caddy asks a certificate authority for a certificate the moment
+		// the name appears in its config, and a name that does not point here fails
+		// that challenge on a schedule until the authority rate-limits the box.
+		custom_domain: v.optional(v.string()),
 		dns_record_id: v.optional(v.string()),
 		dns_record_aaaa_id: v.optional(v.string()),
 		// Set the instant a Repair's parking volume is created and cleared only
@@ -441,6 +456,38 @@ export default defineSchema({
 	})
 		.index("box_id_hour_start", ["box_id", "hour_start"])
 		.index("hour_start", ["hour_start"]),
+
+	// One row per box per usage signal: what it has spent of what it is allowed.
+	//
+	// Deliberately not a series. A level against an allowance is only ever read as
+	// its latest value - the meter on the box page, the step that decides a notice -
+	// so keeping history would be paying per box per sample for a number nothing
+	// asks the past of. `box_metrics` already holds the rates, with a retention
+	// window, for anyone who wants a shape over time.
+	//
+	// `used_bytes` and `allowance_bytes` are stored and the percentage is derived
+	// from them by `usagePercent` wherever it is needed. Storing the percentage too
+	// would be a third number that can disagree with the two it comes from.
+	box_usage: defineTable({
+		box_id: v.id("boxes"),
+		signal: vUsageSignal,
+		used_bytes: v.number(),
+		allowance_bytes: v.number(),
+		// The highest step (see `USAGE_STEPS`) this box has already been told about.
+		// Cleared the moment usage falls back below it, which is the one rule that
+		// also handles the provider resetting its traffic counter at the start of a
+		// billing month - a counter that went down has, by definition, stopped
+		// at the level the owner was told about.
+		noticed_step: v.optional(v.number()),
+		// When a counter was last seen to go down. Set only for a signal that resets -
+		// traffic does, a disk does not - and it is what lets the box page say which
+		// period the figure covers instead of implying it is all-time.
+		counter_reset_at: v.optional(v.number()),
+		sampled_at: v.number()
+		// One index, and a box's whole set is read through its `box_id` prefix. A
+		// second index on `box_id` alone would select exactly the same rows in
+		// exactly the same order at the cost of a second write per sample.
+	}).index("box_id_signal", ["box_id", "signal"]),
 
 	box_flags: defineTable({
 		box_id: v.id("boxes"),
