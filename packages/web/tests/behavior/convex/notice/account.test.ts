@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import { accountNoticeEmail } from "@/convex/notice/account";
-import { customerEmailAlertKey } from "@/convex/notice/email";
+import { customerEmailAlertKey } from "@/convex/email";
 import { BOXES_PATH } from "@/convex/model/box/path";
 import { SUPPORT_EMAIL } from "@/convex/model/links";
 

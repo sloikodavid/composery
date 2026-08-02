@@ -191,6 +191,7 @@ RUN find /home/user -name .gitkeep -type f -delete \
   && chmod +x /opt/composery/entrypoint.sh \
   && chmod +x /opt/composery/ide.sh \
   && chmod +x /opt/composery/remove-password.sh \
+  && chmod +x /opt/composery/watchdog.sh \
   && chmod +x /opt/composery/init/*.sh \
   && chmod +x /usr/local/bin/xclip /usr/local/bin/xsel /usr/local/bin/wl-paste /usr/local/bin/wl-copy \
   && rm -f /etc/systemd/system/multi-user.target.wants/supervisor.service \

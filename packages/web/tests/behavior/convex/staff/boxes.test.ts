@@ -18,6 +18,7 @@ import {
 	seedUser,
 	stubDeploymentEnv,
 	testConvex,
+	type Caller,
 	type Harness
 } from "../../../support/convex.ts";
 
@@ -761,7 +762,7 @@ describe("a staff endpoint reached by somebody who is not staff", () => {
 	// capability check - the thing under test - would never be reached.
 	async function callAs(
 		t: Harness,
-		as: Harness,
+		as: Caller,
 		name: keyof typeof ENDPOINTS,
 		ids: Subject
 	) {
@@ -780,11 +781,15 @@ describe("a staff endpoint reached by somebody who is not staff", () => {
 			...rest
 		};
 		const reference = api.staff.boxes[name];
-		if (kind === "query")
-			return await as.query(reference as never, args as never);
-		if (kind === "action")
-			return await as.action(reference as never, args as never);
-		return await as.mutation(reference as never, args as never);
+		// One dynamic dispatch over a table of endpoints, which no signature can
+		// follow: the reference and its arguments are chosen at run time. Cast
+		// once, at the call, rather than giving each argument the `never` and
+		// leaving the checker a tuple it then refuses.
+		const call = as[kind] as (
+			reference: unknown,
+			args: unknown
+		) => Promise<unknown>;
+		return await call(reference, args);
 	}
 
 	type Subject = {
@@ -2095,9 +2100,11 @@ describe("what a console action records", () => {
 		const entry = CONSOLE[name] as { kind: string; args?: object };
 		const reference = api.staff.boxes[name];
 		const payload = { boxId, ...entry.args };
-		return entry.kind === "action"
-			? admin.as.action(reference as never, payload as never)
-			: admin.as.mutation(reference as never, payload as never);
+		const call = admin.as[entry.kind === "action" ? "action" : "mutation"] as (
+			reference: unknown,
+			payload: unknown
+		) => Promise<unknown>;
+		return call(reference, payload);
 	};
 
 	// Renaming needs a second free name per box, so each case gets its own.
@@ -2138,9 +2145,10 @@ describe("what a console action records", () => {
 		const reference = api.staff.boxes[name];
 		const send = (boxId: Id<"boxes">, suffix: string) => {
 			const payload = { boxId, ...renameArgs(name, suffix) };
-			return CONSOLE[name].kind === "action"
-				? admin.as.action(reference as never, payload as never)
-				: admin.as.mutation(reference as never, payload as never);
+			const call = admin.as[
+				CONSOLE[name].kind === "action" ? "action" : "mutation"
+			] as (reference: unknown, payload: unknown) => Promise<unknown>;
+			return call(reference, payload);
 		};
 		await send(first, "one");
 		await send(second, "two");

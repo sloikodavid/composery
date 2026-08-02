@@ -3,9 +3,9 @@ Persistence readiness gate: until the rootfs delta is applied, every HTTP/WS req
 diff --git a/src/node/routes/health.ts b/src/node/routes/health.ts
 --- a/src/node/routes/health.ts
 +++ b/src/node/routes/health.ts
-@@ -1,12 +1,15 @@
+@@ -1,12 +1,16 @@
  import { Router } from "express"
-+import { checkPersistenceReadiness } from "../persistence/readiness"
++import { checkPersistenceReadiness, healthHttpStatus } from "../persistence/readiness"
  import { wss, Router as WsRouter } from "../wsRouter"
  
  export const router = Router()
@@ -14,8 +14,10 @@ diff --git a/src/node/routes/health.ts b/src/node/routes/health.ts
 -  res.json({
 +router.get("/", async (req, res) => {
 +  const persistence = await checkPersistenceReadiness()
-+  res.status(persistence.ready ? 200 : 503).json({
-     status: req.heart.alive() ? "alive" : "expired",
++  const alive = req.heart.alive()
++  res.status(healthHttpStatus(alive, persistence.ready)).json({
+-    status: req.heart.alive() ? "alive" : "expired",
++    status: alive ? "alive" : "expired",
      lastHeartbeat: req.heart.lastHeartbeat,
 +    persistence,
    })

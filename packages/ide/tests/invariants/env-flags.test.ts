@@ -1,8 +1,6 @@
-import { readdirSync } from "node:fs";
-
 import { describe, expect, test } from "vitest";
 
-import { readRepoFile } from "../../../../tests/support/repo.ts";
+import { readRepoDir, readRepoFile } from "../../../../tests/support/repo.ts";
 import { addedLines } from "../support/patch.ts";
 
 // ---------------------------------------------------------------------------
@@ -37,7 +35,7 @@ const FLAGS = [
 ] as const;
 
 function overlayFiles(dir: string): string[] {
-	return readdirSync(dir, { recursive: true, withFileTypes: true })
+	return readRepoDir(dir, { recursive: true, withFileTypes: true })
 		.filter((entry) => entry.isFile() && /\.[cm]?[jt]s$/.test(entry.name))
 		.map((entry) => `${entry.parentPath}/${entry.name}`.replace(/\\/g, "/"));
 }
@@ -47,7 +45,7 @@ describe("one reading of a boolean environment variable", () => {
 		// Guards every list-driven test below: a rename of the patches directory
 		// would otherwise report unanimous agreement over an empty list.
 		expect(FLAGS.length).toBeGreaterThan(0);
-		expect(readdirSync(PATCHES_DIR).length).toBeGreaterThan(0);
+		expect(readRepoDir(PATCHES_DIR).length).toBeGreaterThan(0);
 	});
 
 	test.each(FLAGS)("%s is read through envFlag", (flag, patch) => {
@@ -59,7 +57,7 @@ describe("one reading of a boolean environment variable", () => {
 	test("no patch carries its own reading", () => {
 		// A patch is a call site, so a hunk may call envFlag but never restate
 		// what it decides. This is the shape the stack actually had.
-		const offenders = readdirSync(PATCHES_DIR)
+		const offenders = readRepoDir(PATCHES_DIR)
 			.filter((name) => name.endsWith(".diff"))
 			.filter((name) =>
 				addedLines(readRepoFile(`${PATCHES_DIR}/${name}`)).includes(

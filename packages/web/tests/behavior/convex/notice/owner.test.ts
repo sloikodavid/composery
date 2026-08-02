@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { customerEmailAlertKey } from "@/convex/notice/email";
+import { customerEmailAlertKey } from "@/convex/email";
 import { ownerNoticeEmail } from "@/convex/notice/owner";
 import { SUPPORT_EMAIL } from "@/convex/model/links";
 
@@ -531,8 +531,10 @@ describe("each notice, whole", () => {
 	const BOX = { slug: "atlas", url: "https://composery.test/boxes/abc" };
 	const REPLY = `Reply to this email if you need a hand - it reaches ${SUPPORT_EMAIL}.`;
 
-	const body = (notice: Parameters<typeof ownerNoticeEmail>[0], box = BOX) =>
-		ownerNoticeEmail(notice, box).text;
+	const body = (
+		notice: Parameters<typeof ownerNoticeEmail>[0],
+		box: Parameters<typeof ownerNoticeEmail>[1] = BOX
+	) => ownerNoticeEmail(notice, box).text;
 
 	test("a deletion the subscription ended", () => {
 		expect(

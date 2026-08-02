@@ -65,6 +65,7 @@ import type * as boxes_workflows_updateBox from "../boxes/workflows/updateBox.js
 import type * as checkout_checkoutConversion from "../checkout/checkoutConversion.js";
 import type * as checkout_checkoutIntents from "../checkout/checkoutIntents.js";
 import type * as crons from "../crons.js";
+import type * as email from "../email.js";
 import type * as env from "../env.js";
 import type * as http from "../http.js";
 import type * as instance_auth from "../instance/auth.js";
@@ -82,7 +83,6 @@ import type * as model_box_status from "../model/box/status.js";
 import type * as model_legal from "../model/legal.js";
 import type * as model_links from "../model/links.js";
 import type * as notice_account from "../notice/account.js";
-import type * as notice_email from "../notice/email.js";
 import type * as notice_legal from "../notice/legal.js";
 import type * as notice_owner from "../notice/owner.js";
 import type * as owner_account from "../owner/account.js";
@@ -165,6 +165,7 @@ declare const fullApi: ApiFromModules<{
   "checkout/checkoutConversion": typeof checkout_checkoutConversion;
   "checkout/checkoutIntents": typeof checkout_checkoutIntents;
   crons: typeof crons;
+  email: typeof email;
   env: typeof env;
   http: typeof http;
   "instance/auth": typeof instance_auth;
@@ -182,7 +183,6 @@ declare const fullApi: ApiFromModules<{
   "model/legal": typeof model_legal;
   "model/links": typeof model_links;
   "notice/account": typeof notice_account;
-  "notice/email": typeof notice_email;
   "notice/legal": typeof notice_legal;
   "notice/owner": typeof notice_owner;
   "owner/account": typeof owner_account;

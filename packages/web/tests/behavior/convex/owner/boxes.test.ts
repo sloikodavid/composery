@@ -11,6 +11,7 @@ import {
 	seedUser,
 	stubDeploymentEnv,
 	testConvex,
+	type Caller,
 	type Harness
 } from "../../../support/convex.ts";
 
@@ -640,9 +641,27 @@ describe("opening the subscription portal", () => {
 // A table rather than eighteen tests, pinned by
 // `tests/invariants/convex/owner-authorization.test.ts` so an endpoint added
 // later cannot quietly miss it.
+// What one row of the endpoint table may carry, beyond the arguments an
+// endpoint takes. Every field is optional because most rows need none of them.
+type EndpointFlags = {
+	byId?: boolean;
+	kind: "action" | "mutation" | "query";
+	needsSnapshot?: boolean;
+	noBox?: boolean;
+	readsEmpty?: boolean;
+	skipStranger?: boolean;
+};
+
 describe("an owner-facing endpoint reached by somebody else", () => {
 	// Named as they are called, with the arguments each needs. `noBox` marks the
 	// two that take no box at all.
+	//
+	// `flags` reads one entry as the full shape rather than as its own literal
+	// type. Indexing the table directly gives the union of the entries, and only
+	// some of them carry `readsEmpty` or `skipStranger` - so `ENDPOINTS[name].
+	// readsEmpty` does not typecheck even though it is exactly the question being
+	// asked. The table keeps its literal keys either way, which is what `names`
+	// and the authorization invariant are built from.
 	const ENDPOINTS = {
 		changeSlug: { kind: "mutation", newSlug: "renamed" },
 		createSnapshot: { kind: "mutation" },
@@ -701,7 +720,7 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 	// real ones - a malformed argument would be refused by the validator and the
 	// ownership lookup, the thing under test, would never be reached.
 	function call(
-		as: Harness,
+		as: Caller,
 		name: keyof typeof ENDPOINTS,
 		box: Owned
 	): Promise<unknown> {
@@ -728,9 +747,15 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 			...rest
 		};
 		const reference = api.owner.boxes[name];
-		if (kind === "query") return as.query(reference as never, args as never);
-		if (kind === "action") return as.action(reference as never, args as never);
-		return as.mutation(reference as never, args as never);
+		// One dynamic dispatch over a table of endpoints, which no signature can
+		// follow: the reference and its arguments are chosen at run time. Cast once,
+		// at the call, rather than giving each argument the `never` type and
+		// leaving the checker a tuple it then refuses.
+		const call = as[kind] as (
+			reference: unknown,
+			args: unknown
+		) => Promise<unknown>;
+		return call(reference, args);
 	}
 
 	const names = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
@@ -751,9 +776,11 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 	// the box refuses, and says only "not found" - never "not yours", which would
 	// confirm the slug to somebody guessing. The reads answer with nothing at
 	// all, which tells a guesser even less.
-	const strangers = names.filter((name) => !ENDPOINTS[name].skipStranger);
+	const flags = (name: keyof typeof ENDPOINTS): EndpointFlags =>
+		ENDPOINTS[name];
+	const strangers = names.filter((name) => !flags(name).skipStranger);
 
-	test.each(strangers.filter((name) => !ENDPOINTS[name].readsEmpty))(
+	test.each(strangers.filter((name) => !flags(name).readsEmpty))(
 		"%s refuses another customer's box without confirming it exists",
 		async (name) => {
 			const t = testConvex();
@@ -769,7 +796,7 @@ describe("an owner-facing endpoint reached by somebody else", () => {
 		}
 	);
 
-	test.each(strangers.filter((name) => ENDPOINTS[name].readsEmpty))(
+	test.each(strangers.filter((name) => flags(name).readsEmpty))(
 		"%s shows another customer's box as nothing at all",
 		async (name) => {
 			const t = testConvex();
@@ -1120,9 +1147,12 @@ describe("pressing a button twice", () => {
 			slug,
 			...(name === "reset" ? { confirmation: slug } : {})
 		};
-		return REPEATS[name].kind === "action"
-			? owner.as.action(reference as never, payload as never)
-			: owner.as.mutation(reference as never, payload as never);
+		// The same dynamic dispatch as the endpoint table above, cast once.
+		const call = owner.as[REPEATS[name].kind] as (
+			reference: unknown,
+			payload: unknown
+		) => Promise<unknown>;
+		return call(reference, payload);
 	};
 
 	const names = Object.keys(REPEATS) as (keyof typeof REPEATS)[];

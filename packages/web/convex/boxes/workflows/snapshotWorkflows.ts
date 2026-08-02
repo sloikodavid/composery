@@ -32,7 +32,8 @@ export const captureSnapshot = defineBoxWorkflow({
 				{
 					serverId: box.hetzner_server_id,
 					slug: box.slug,
-					snapshotClass: args.class
+					snapshotClass: args.class,
+					snapshotRef: snapshotRowId
 				},
 				{ retry: true }
 			);
@@ -42,33 +43,50 @@ export const captureSnapshot = defineBoxWorkflow({
 				actionId
 			});
 
+			if (actionId !== undefined) {
+				let waited = 0;
+				for (;;) {
+					const action = await step.runAction(
+						internal.boxes.infra.hetznerVps.getAction,
+						{ actionId },
+						{ retry: true }
+					);
+					const outcome = snapshotPollOutcome({
+						error: action.error,
+						status: action.status,
+						waitedMs: waited
+					});
+					if (outcome.type === "complete") break;
+					if (outcome.type === "failed") throw new Error(outcome.error);
+					await step.sleep(outcome.delayMs);
+					waited += outcome.delayMs;
+				}
+			}
+
+			let imageSizeGb: number | undefined;
 			let waited = 0;
 			for (;;) {
-				const action = await step.runAction(
-					internal.boxes.infra.hetznerVps.getAction,
-					{ actionId },
+				const image = await step.runAction(
+					internal.boxes.infra.hetznerVps.getImage,
+					{ imageId },
 					{ retry: true }
 				);
 				const outcome = snapshotPollOutcome({
-					error: action.error,
-					status: action.status,
+					status: image.status === "available" ? "success" : "running",
 					waitedMs: waited
 				});
-				if (outcome.type === "complete") break;
+				if (outcome.type === "complete") {
+					imageSizeGb = image.imageSizeGb;
+					break;
+				}
 				if (outcome.type === "failed") throw new Error(outcome.error);
 				await step.sleep(outcome.delayMs);
 				waited += outcome.delayMs;
 			}
-
-			const image = await step.runAction(
-				internal.boxes.infra.hetznerVps.getImage,
-				{ imageId },
-				{ retry: true }
-			);
 			await step.runMutation(internal.boxes.snapshots.completeSnapshot, {
 				snapshotRowId,
 				operationId: args.operationId,
-				sizeBytes: snapshotSizeBytes(image.imageSizeGb)
+				sizeBytes: snapshotSizeBytes(imageSizeGb)
 			});
 		} catch (error) {
 			await step.runMutation(internal.boxes.snapshots.failSnapshot, {

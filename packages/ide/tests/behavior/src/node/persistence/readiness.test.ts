@@ -8,6 +8,7 @@ type Readiness = {
 		message: string;
 		updatedAt?: string;
 	}>;
+	healthHttpStatus: (alive: boolean, persistenceReady: boolean) => 200 | 503;
 	renderStartupPage: (healthUrl: string) => string;
 };
 
@@ -142,6 +143,17 @@ describe("reading the persistence ready file", () => {
 				message: "persistence ready file is invalid"
 			});
 		}
+	});
+});
+
+describe("the health route status", () => {
+	test("reports healthy only when persistence and the IDE heartbeat are ready", () => {
+		const { healthHttpStatus } = load({ error: { code: "ENOENT" } });
+
+		expect(healthHttpStatus(true, true)).toBe(200);
+		expect(healthHttpStatus(false, true)).toBe(503);
+		expect(healthHttpStatus(true, false)).toBe(503);
+		expect(healthHttpStatus(false, false)).toBe(503);
 	});
 });
 

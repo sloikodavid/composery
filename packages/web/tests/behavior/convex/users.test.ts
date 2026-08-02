@@ -15,7 +15,8 @@ import {
 	seedBox,
 	seedUser,
 	stubDeploymentEnv,
-	testConvex
+	testConvex,
+	type Harness
 } from "../../support/convex.ts";
 
 // Every Convex entry point in this deployment starts by turning a Clerk identity

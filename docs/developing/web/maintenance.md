@@ -88,11 +88,15 @@ in the interface and nothing else decides from it. This holds whatever the
 channel points at - a moving tag, a pinned minor line, or a digest during a
 rollback - so no surface needs to special-case one of them.
 
+A managed runtime that served and then fails three internal checks exits so
+Docker can restart it. A runtime that never served does not exit itself, which
+prevents a bad configuration from becoming a restart loop. The external repair
+gates still decide what happens next.
+
 The console owns the **minimum runtime version**, the floor below which a box is
 not allowed to stay. Above the floor a box updates only when its owner asks; at
 or below it the owner is warned with a deadline and the box is updated
-automatically once that deadline passes. No box's container restarts without
-either an owner action or an expired floor deadline.
+automatically once that deadline passes.
 
 ### The floor is a support obligation
 
@@ -195,8 +199,9 @@ and an unconditional healer would fight them:
 - the box's status must independently allow a repair, which already excludes a
   stopped, suspended, or mid-operation box;
 - and a box may only be repaired automatically twice in a day. Past that it is a
-  person's problem: each repair parks the box's files on a Hetzner Volume and
-  takes the box down while it runs, so an unbounded healer is an unbounded bill.
+  person's problem. Repair first reconciles the containers and checks the public
+  endpoint. It only parks the files and rebuilds the host when that does not
+  recover service, but an unbounded healer would still be an unbounded loop.
   Reaching that limit raises a critical staff alert - a box nobody is going to fix
   automatically must not also be a box nobody knows about.
 

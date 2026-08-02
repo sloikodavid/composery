@@ -2,7 +2,6 @@ import ssh2 from "ssh2";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
 	HetznerApiError,
-	PARKING_VOLUME_MIN_GB,
 	attachVolumePayload,
 	composeryServerListPath,
 	createServerPayload,
@@ -12,7 +11,7 @@ import {
 	isUnassignedPrimaryIp,
 	materializeServer,
 	parkingVolumeName,
-	parkingVolumeSizeGb,
+	parkingVolumeListPath,
 	parseActionStatus,
 	parseCreateImageResponse,
 	parseImageResponse,
@@ -21,6 +20,8 @@ import {
 	primaryIpListPath,
 	productVolumeListPath,
 	rebuildServerPayload,
+	rescuePayload,
+	sshKeyIds,
 	snapshotImageListPath
 } from "@/convex/boxes/infra/hetznerVps";
 import {
@@ -43,7 +44,7 @@ function stubHostEnv() {
 	});
 	vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
 	vi.stubEnv("HETZNER_FIREWALL_ID", "42");
-	vi.stubEnv("HETZNER_SSH_KEYS", "123,composery-key");
+	vi.stubEnv("HETZNER_SSH_KEYS", "123,456");
 	vi.stubEnv("SSH_PRIVATE_KEY", keyPair.private.replace(/\n/g, "\\n"));
 	vi.stubEnv("SSH_USER", "root");
 }
@@ -104,7 +105,7 @@ describe("server requests", () => {
 			name: "composery-atlas",
 			server_type: "cx23",
 			location: "nbg1",
-			ssh_keys: [123, "composery-key"],
+			ssh_keys: [123, 456],
 			public_net: { enable_ipv4: true, enable_ipv6: true }
 		});
 		expect(payload.user_data).toContain(authorizedPublicKey());
@@ -161,10 +162,14 @@ describe("materialising a provider server", () => {
 
 describe("snapshot values", () => {
 	test("labels a capture so reconciliation can find it", () => {
-		expect(createSnapshotImagePayload("atlas", "desc")).toEqual({
+		expect(createSnapshotImagePayload("atlas", "desc", "snapshot123")).toEqual({
 			type: "snapshot",
 			description: "desc",
-			labels: { product: "composery-web", box_slug: "atlas" }
+			labels: {
+				product: "composery-web",
+				box_slug: "atlas",
+				snapshot_ref: "snapshot123"
+			}
 		});
 		const query = new URLSearchParams(
 			snapshotImageListPath("atlas").split("?")[1]
@@ -202,13 +207,6 @@ describe("snapshot values", () => {
 });
 
 describe("parking volumes", () => {
-	test("sizes from measured bytes with slack and a provider minimum", () => {
-		expect(parkingVolumeSizeGb(0)).toBe(PARKING_VOLUME_MIN_GB);
-		expect(parkingVolumeSizeGb(30 * 1e9)).toBe(39);
-		expect(() => parkingVolumeSizeGb(Number.NaN)).toThrow();
-		expect(() => parkingVolumeSizeGb(-1)).toThrow();
-	});
-
 	test("creates a labelled preformatted volume in the server location", () => {
 		expect(parkingVolumeName("atlas")).toBe("composery-park-atlas");
 		expect(createVolumePayload("atlas", "nbg1", 12)).toMatchObject({
@@ -223,7 +221,29 @@ describe("parking volumes", () => {
 		expect(query.get("label_selector")).toBe(
 			"product=composery-web,role=parking"
 		);
+		const repairQuery = new URLSearchParams(
+			parkingVolumeListPath("atlas").split("?")[1]
+		);
+		expect(repairQuery.get("label_selector")).toBe(
+			"product=composery-web,role=parking,box_slug=atlas"
+		);
 	});
+});
+
+describe("recovery keys", () => {
+	test("uses numeric ids for both creation and rescue", () => {
+		stubHostEnv();
+		expect(sshKeyIds("123, 456")).toEqual([123, 456]);
+		expect(rescuePayload()).toEqual({
+			type: "linux64",
+			ssh_keys: [123, 456]
+		});
+	});
+
+	test.each([undefined, "", "name", "0", "-1", "1.5"])(
+		"refuses a key list rescue cannot use: %s",
+		(value) => expect(() => sshKeyIds(value)).toThrow(/numeric key ids/)
+	);
 });
 
 describe("provider identifiers", () => {

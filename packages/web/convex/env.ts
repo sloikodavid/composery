@@ -45,7 +45,7 @@ export const CONVEX_ENV = {
 	SSH_USER: v.string(),
 	SSH_PRIVATE_KEY: v.string(),
 	// Resend. One sender per class of mail, named for what the mail is about:
-	// an incident, one box, or the account itself. See convex/notice/email.ts.
+	// an incident, one box, or the account itself. See convex/email.ts.
 	//
 	// Prefixed like every other provider here, and for a reason that only shows
 	// up outside this file: a deployment's variables are read in an alphabetical

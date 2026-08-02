@@ -184,20 +184,6 @@ describe("inspecting and reading a box", () => {
 });
 
 describe("parking a box's files", () => {
-	test("measures usage and rejects output without a measurement", async () => {
-		const t = testConvex();
-		const boxId = await box(t);
-		ssh.stdout = "used_bytes=21474836480";
-		await expect(
-			t.action(internal.boxes.infra.ssh.measureParkingUsage, { boxId })
-		).resolves.toEqual({ usedBytes: 21474836480 });
-
-		ssh.stdout = "df failed";
-		await expect(
-			t.action(internal.boxes.infra.ssh.measureParkingUsage, { boxId })
-		).rejects.toThrow("Could not measure the box's volume usage");
-	});
-
 	test("stops on a copy difference and names its direction", async () => {
 		const t = testConvex();
 		const boxId = await box(t);
@@ -228,26 +214,32 @@ describe("parking a box's files", () => {
 		).resolves.toBeNull();
 	});
 
-	test("reports the SSH reason when repair cannot reach the host", async () => {
+	test("uses the rescue root account for the copy and its verification", async () => {
 		const t = testConvex();
 		const boxId = await box(t);
-		ssh.error = new Error("Permission denied (publickey).");
-
-		await expect(
-			t.action(internal.boxes.infra.ssh.requireReachableHost, { boxId })
-		).rejects.toThrow(/Restore it instead.*Permission denied/);
+		await t.action(internal.boxes.infra.ssh.copyToParking, {
+			boxId,
+			volumeId: 909
+		});
+		await t.action(internal.boxes.infra.ssh.verifyParkingCopy, {
+			boxId,
+			volumeId: 909
+		});
+		expect(ssh.calls.map((call) => call.target.username)).toEqual([
+			"root",
+			"root"
+		]);
 	});
 });
 
 describe("SSH command policy", () => {
 	test.each([
 		["inspectRuntime", {}, 64 * 1024, 20_000, ""],
-		["requireReachableHost", {}, undefined, 30_000, ""],
-		["measureParkingUsage", {}, 64 * 1024, 5 * 60_000, "used_bytes=1"],
 		["copyToParking", { volumeId: 9 }, undefined, 60 * 60_000, ""],
 		["copyFromParking", { volumeId: 9 }, undefined, 60 * 60_000, ""],
 		["verifyParkingCopy", { volumeId: 9 }, 4 * 1024 * 1024, 60 * 60_000, ""],
-		["unmountParking", {}, undefined, 5 * 60_000, ""]
+		["unmountParking", {}, undefined, 5 * 60_000, ""],
+		["unmountParkingFromRescue", {}, undefined, 5 * 60_000, ""]
 	] as const)(
 		"gives %s its bounded transport policy",
 		async (action, args, maxOutputBytes, timeoutMs, stdout) => {
@@ -275,13 +267,12 @@ describe("an action against a box with no host", () => {
 		["rewritePasswordAndRestart", { runtimeAuthHash: "$argon2id$new" }],
 		["fetchRuntimeLogs", { tail: 100 }],
 		["reloadSlug", { newSlug: "renamed" }],
-		["requireReachableHost", {}],
-		["measureParkingUsage", {}],
 		["copyToParking", { volumeId: 9 }],
 		["copyFromParking", { volumeId: 9 }],
 		["verifyParkingCopy", { volumeId: 9 }],
 		["verifyParkingBack", { volumeId: 9 }],
-		["unmountParking", {}]
+		["unmountParking", {}],
+		["unmountParkingFromRescue", {}]
 	] as const)(
 		"refuses %s before opening a connection",
 		async (action, args) => {

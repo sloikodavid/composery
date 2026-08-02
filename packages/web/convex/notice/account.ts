@@ -3,7 +3,7 @@ import type { MutationCtx } from "../_generated/server";
 import { BOXES_PATH } from "../model/box/path";
 import { SUPPORT_EMAIL } from "../model/links";
 import { optionalWebsiteUrl } from "../env";
-import { accountsSender, customerEmailAlertKey, resendClient } from "./email";
+import { accountsSender, customerEmailAlertKey, resendClient } from "../email";
 import { raiseAlert } from "../staff/alerts";
 
 // What an account holder is told when their account changes under them.

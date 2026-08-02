@@ -106,6 +106,9 @@ export const hetznerImagesResponseSchema = z.looseObject({
 		})
 	)
 });
+export const hetznerFullImagesResponseSchema = z.looseObject({
+	images: z.array(hetznerImageSchema)
+});
 export const hetznerPagedImageSummariesResponseSchema = z.intersection(
 	z.looseObject({
 		images: z.array(z.looseObject({ id, created: z.string() }))
@@ -190,6 +193,41 @@ export const hetznerResponseContracts = [
 		path: "/servers/{id}/actions/rebuild",
 		status: "201",
 		schema: hetznerRebuildResponseSchema
+	},
+	{
+		name: "enable server rescue",
+		method: "post",
+		path: "/servers/{id}/actions/enable_rescue",
+		status: "201",
+		schema: hetznerActionResponseSchema
+	},
+	{
+		name: "power a server on",
+		method: "post",
+		path: "/servers/{id}/actions/poweron",
+		status: "201",
+		schema: hetznerActionResponseSchema
+	},
+	{
+		name: "power a server off",
+		method: "post",
+		path: "/servers/{id}/actions/poweroff",
+		status: "201",
+		schema: hetznerActionResponseSchema
+	},
+	{
+		name: "reset a server",
+		method: "post",
+		path: "/servers/{id}/actions/reset",
+		status: "201",
+		schema: hetznerActionResponseSchema
+	},
+	{
+		name: "shut a server down",
+		method: "post",
+		path: "/servers/{id}/actions/shutdown",
+		status: "201",
+		schema: hetznerActionResponseSchema
 	},
 	{
 		name: "read server metrics",

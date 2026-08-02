@@ -35,6 +35,7 @@ import {
 	seedUser,
 	stubDeploymentEnv,
 	testConvex,
+	type Caller,
 	type Harness
 } from "../../../support/convex.ts";
 
@@ -2519,7 +2520,7 @@ describe("counting against the cap it stops at", () => {
 		return { boxId, owner };
 	}
 
-	const capture = (t: Harness, owner: { as: Harness }) =>
+	const capture = (t: Harness, owner: { as: Caller }) =>
 		owner.as.mutation(api.owner.boxes.createSnapshot, { slug: "mine" });
 
 	// One below the cap is room for exactly one more.

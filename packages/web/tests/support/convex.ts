@@ -2,10 +2,11 @@ import polar from "@convex-dev/polar/test";
 import resend from "@convex-dev/resend/test";
 import workflow from "@convex-dev/workflow/test";
 import { convexTest, type TestConvex } from "convex-test";
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import schema from "@/convex/schema";
+import { hetznerBackoff } from "@/convex/boxes/infra/hetznerVps";
 
 // `convex-test` resolves a function reference like `boxes/queries:boxBySlug` by looking
 // the path up in a module map, and it can only build that map from an
@@ -29,6 +30,16 @@ const modules = import.meta.glob("../../convex/**/*.*s");
 const COMPONENTS = [polar, resend, workflow];
 
 export type Harness = TestConvex<typeof schema>;
+
+// The same harness scoped to one signed-in identity, which is what `seedUser`
+// hands back as `as`. `withIdentity` returns a deliberately narrower handle - it
+// has no `withIdentity` or `registerComponent` of its own, because scoping an
+// already-scoped harness is not a thing - so a helper that takes "a signed-in
+// caller" has to name this rather than `Harness`. Thirty of this suite's
+// long-standing type errors were exactly that mistake, and they persisted
+// because the tests still ran: `vitest` strips types rather than checking them,
+// so nothing but `tsc` was ever going to say so.
+export type Caller = ReturnType<Harness["withIdentity"]>;
 
 // Why `convex/boxes/workflows/*` have no behaviour tests, established by
 // measurement rather than assumed.
@@ -69,6 +80,19 @@ export function testConvex(): Harness {
 function registerComponents<T extends { run: unknown }>(t: T) {
 	for (const component of COMPONENTS) component.register(t as never);
 	return t;
+}
+
+// Make the Hetzner client's retry backoff immediate for one test file.
+//
+// A suite that stubs `fetch` to fail is asking what happens after the retries -
+// staff paged, the run re-thrown, the other boxes still polled - not how many
+// seconds the client waits. On a fake clock the backoff timer never fires at
+// all, so without this the action parks until the test times out and reports a
+// hang where the code is doing exactly what it should.
+export function withoutHetznerBackoff() {
+	beforeEach(() => {
+		vi.spyOn(hetznerBackoff, "wait").mockResolvedValue(undefined);
+	});
 }
 
 // The deployment variables a box's own row needs to render. `safeBox` builds a

@@ -13,7 +13,7 @@ import {
 	emailDeliveryTracked,
 	emailSendersConfigured,
 	resendClient
-} from "../notice/email";
+} from "../email";
 import { staffConsoleUrl } from "../env";
 import {
 	requireCapability,

@@ -18,6 +18,7 @@ import {
 	hetznerCreateImageResponseSchema,
 	hetznerCreateServerResponseSchema,
 	hetznerCreateVolumeResponseSchema,
+	hetznerFullImagesResponseSchema,
 	hetznerImageResponseSchema,
 	hetznerImagesResponseSchema,
 	hetznerMetricsResponseSchema,
@@ -57,6 +58,14 @@ export const HETZNER_POLL_INTERVAL_MS = 3000;
 export const HETZNER_SERVER_POLL_ATTEMPTS = 30;
 // Actions cover volume formats and image captures, which take longer.
 export const HETZNER_ACTION_POLL_ATTEMPTS = 60;
+
+// Match the official hcloud clients: one request may be retried five times for
+// the provider's documented transient failures. Each attempt has its own
+// deadline, so a broken socket cannot consume the whole Convex action forever.
+export const HETZNER_REQUEST_RETRIES = 5;
+export const HETZNER_REQUEST_TIMEOUT_MS = 15_000;
+const HETZNER_RETRY_BASE_MS = 1_000;
+const HETZNER_RETRY_CAP_MS = 60_000;
 
 export function placementCandidates(
 	serverType: ServerType,
@@ -123,8 +132,10 @@ class HetznerServerCreatedButNotReadyError extends Error {
 
 function hetznerHeaders() {
 	return {
+		Accept: "application/json",
 		Authorization: `Bearer ${requiredEnv("HETZNER_CLOUD_TOKEN")}`,
-		"Content-Type": "application/json"
+		"Content-Type": "application/json",
+		"User-Agent": "composery-web"
 	};
 }
 
@@ -144,56 +155,132 @@ function hetznerError(body: unknown) {
 	};
 }
 
+type HetznerRequestInit = RequestInit & { retry?: boolean };
+
 async function hetznerRequest<Schema extends z.ZodType>(
 	path: string,
 	schema: Schema,
-	init?: RequestInit
+	init?: HetznerRequestInit
 ): Promise<z.output<Schema>>;
 async function hetznerRequest(
 	path: string,
 	schema: undefined,
-	init?: RequestInit
+	init?: HetznerRequestInit
 ): Promise<void>;
 async function hetznerRequest(
 	path: string,
 	schema: z.ZodType | undefined,
-	init?: RequestInit
+	init?: HetznerRequestInit
 ) {
-	const response = await fetch(`https://api.hetzner.cloud/v1${path}`, {
-		...init,
-		headers: {
-			...hetznerHeaders(),
-			...init?.headers
+	const { retry = true, ...requestInit } = init ?? {};
+	for (let attempt = 0; ; attempt += 1) {
+		let response: Response;
+		try {
+			response = await fetch(`https://api.hetzner.cloud/v1${path}`, {
+				...requestInit,
+				headers: {
+					...hetznerHeaders(),
+					...requestInit.headers
+				},
+				signal: requestInit.signal
+					? AbortSignal.any([
+							requestInit.signal,
+							AbortSignal.timeout(HETZNER_REQUEST_TIMEOUT_MS)
+						])
+					: AbortSignal.timeout(HETZNER_REQUEST_TIMEOUT_MS)
+			});
+		} catch (error) {
+			// A caller cancellation is final. A network failure or this boundary's
+			// attempt timeout is transient, which is how the official clients read it.
+			if (
+				requestInit.signal?.aborted ||
+				!retry ||
+				attempt >= HETZNER_REQUEST_RETRIES
+			) {
+				throw error;
+			}
+			await waitForHetznerRetry(attempt);
+			continue;
 		}
-	});
-	const text = await response.text();
-	let body: unknown = {};
-	try {
-		body = text ? JSON.parse(text) : {};
-	} catch {
-		// Gateways can answer with non-JSON (HTML error pages); keep the status
-		// instead of surfacing a bare SyntaxError.
-	}
 
-	if (!response.ok) {
-		const error = hetznerError(body);
-		if (error?.code === "resource_limit_exceeded") {
+		const text = await response.text();
+		let body: unknown = {};
+		try {
+			body = text ? JSON.parse(text) : {};
+		} catch {
+			// Gateways can answer with non-JSON (HTML error pages); keep the status
+			// instead of surfacing a bare SyntaxError.
+		}
+
+		if (response.ok) {
+			return schema
+				? decodeProviderResponse("Hetzner", schema, body)
+				: undefined;
+		}
+
+		const providerError = hetznerError(body);
+		const error = new HetznerApiError(
+			providerError?.message ?? `Hetzner API ${response.status}.`,
+			response.status,
+			providerError?.code
+		);
+		if (
+			retry &&
+			attempt < HETZNER_REQUEST_RETRIES &&
+			isRetryableHetznerError(error)
+		) {
+			await waitForHetznerRetry(attempt);
+			continue;
+		}
+
+		if (error.code === "resource_limit_exceeded") {
 			// Hetzner has no quota endpoint, so this 403 is the only signal that the
 			// project's server or snapshot limit is full. Log it loudly (the path
 			// says whether it was a server create or a create_image) so the limit
 			// gets raised; the caller still handles the throw as a normal failure.
 			console.warn(
-				`[hetzner] resource limit exceeded on ${path}: ${error.message ?? ""}`
+				`[hetzner] resource limit exceeded on ${path}: ${error.message}`
 			);
 		}
-		throw new HetznerApiError(
-			error?.message ?? `Hetzner API ${response.status}.`,
-			response.status,
-			error?.code
-		);
+		throw error;
 	}
+}
 
-	return schema ? decodeProviderResponse("Hetzner", schema, body) : undefined;
+export function isRetryableHetznerError(error: HetznerApiError) {
+	return (
+		error.status === 502 ||
+		error.status === 504 ||
+		error.code === "bad_gateway" ||
+		error.code === "conflict" ||
+		error.code === "rate_limit_exceeded" ||
+		error.code === "timeout"
+	);
+}
+
+export function hetznerRetryDelayMs(attempt: number, random = Math.random) {
+	const ceiling = Math.min(
+		HETZNER_RETRY_CAP_MS,
+		HETZNER_RETRY_BASE_MS * 2 ** Math.max(0, attempt)
+	);
+	return Math.round(
+		HETZNER_RETRY_BASE_MS + random() * (ceiling - HETZNER_RETRY_BASE_MS)
+	);
+}
+
+// The backoff sleep, behind a seam so a suite can make it immediate.
+//
+// Everything about the retry that matters in production - how many attempts,
+// how long each waits, the jitter - stays here and stays real. Only the waiting
+// itself is substitutable, which is the seam docs/developing/testing.md asks for
+// around the clock: a test that stubs `fetch` to fail is asking what happens
+// after the retries, not how many seconds they take, and on a fake clock the
+// timer never fires at all.
+export const hetznerBackoff = {
+	wait: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+};
+
+async function waitForHetznerRetry(attempt: number) {
+	await hetznerBackoff.wait(hetznerRetryDelayMs(attempt));
 }
 
 function isNotFound(error: unknown) {
@@ -208,15 +295,22 @@ export function normalizeIpv6ForDns(ip: string) {
 	return ip.split("/")[0];
 }
 
-// Hetzner accepts an SSH key by numeric id or by name, in one comma-separated
-// variable, so a purely numeric entry is sent as a number and everything else as
-// the name it is.
-export function splitKeyRefs(value: string | undefined) {
-	return (value ?? "")
+// Rescue accepts only SSH key ids. Use that stricter shape for server creation
+// too, so a key configuration that cannot recover a server cannot create one.
+export function sshKeyIds(value: string | undefined) {
+	const parts = (value ?? "")
 		.split(",")
 		.map((part) => part.trim())
-		.filter(Boolean)
-		.map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+		.filter(Boolean);
+	const ids = parts.map(Number);
+	if (
+		ids.length === 0 ||
+		parts.some((part) => !/^\d+$/.test(part)) ||
+		ids.some((id) => !Number.isSafeInteger(id) || id <= 0)
+	) {
+		throw new Error("HETZNER_SSH_KEYS must contain positive numeric key ids.");
+	}
+	return ids;
 }
 
 // The one escaping boundary in this file. `renderCloudInitUserData` interpolates
@@ -248,7 +342,7 @@ export function createServerPayload(
 	candidate: PlacementCandidate,
 	slug: string
 ) {
-	const sshKeys = splitKeyRefs(requiredEnv("HETZNER_SSH_KEYS"));
+	const sshKeys = sshKeyIds(requiredEnv("HETZNER_SSH_KEYS"));
 	const firewallId = requiredEnv("HETZNER_FIREWALL_ID");
 
 	return {
@@ -276,6 +370,13 @@ export function rebuildServerPayload(image: number | string) {
 	return {
 		image,
 		user_data: renderCloudInitUserData()
+	};
+}
+
+export function rescuePayload() {
+	return {
+		type: "linux64" as const,
+		ssh_keys: sshKeyIds(requiredEnv("HETZNER_SSH_KEYS"))
 	};
 }
 
@@ -421,7 +522,8 @@ async function createHetznerServer(
 			hetznerCreateServerResponseSchema,
 			{
 				method: "POST",
-				body: JSON.stringify(createServerPayload(candidate, slug))
+				body: JSON.stringify(createServerPayload(candidate, slug)),
+				retry: false
 			}
 		);
 
@@ -702,13 +804,17 @@ export const powerOffServer = internalAction({
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
 		if ((await serverStatus(args.serverId)) === "off") return;
-		await hetznerRequest(
+		const response = await hetznerRequest(
 			`/servers/${args.serverId}/actions/poweroff`,
-			undefined,
+			hetznerActionResponseSchema,
 			{
 				method: "POST"
 			}
 		);
+		await waitForActionSuccess(response.action.id);
+		if (!(await waitForServerOff(args.serverId))) {
+			throw new Error(`Hetzner server ${args.serverId} did not power off.`);
+		}
 	}
 });
 
@@ -722,16 +828,17 @@ export const stopServer = internalAction({
 
 		await hetznerRequest(
 			`/servers/${args.serverId}/actions/shutdown`,
-			undefined,
+			hetznerActionResponseSchema,
 			{ method: "POST" }
 		);
 		if (await waitForServerOff(args.serverId)) return;
 
-		await hetznerRequest(
+		const response = await hetznerRequest(
 			`/servers/${args.serverId}/actions/poweroff`,
-			undefined,
+			hetznerActionResponseSchema,
 			{ method: "POST" }
 		);
+		await waitForActionSuccess(response.action.id);
 		if (!(await waitForServerOff(args.serverId))) {
 			throw new Error(`Hetzner server ${args.serverId} did not power off.`);
 		}
@@ -744,11 +851,42 @@ export const powerOnServer = internalAction({
 	},
 	handler: async (_ctx, args) => {
 		if (!args.serverId) return;
-		await hetznerRequest(
+		if ((await serverStatus(args.serverId)) === "running") return;
+		const response = await hetznerRequest(
 			`/servers/${args.serverId}/actions/poweron`,
-			undefined,
+			hetznerActionResponseSchema,
 			{ method: "POST" }
 		);
+		await waitForActionSuccess(response.action.id);
+		await waitForServer(args.serverId);
+	}
+});
+
+// Start the provider's independent rescue OS. The installed disk, Docker, and
+// configured SSH user are not involved, which makes this the recovery boundary
+// for a host that cannot boot or answer normally.
+export const bootServerInRescue = internalAction({
+	args: { serverId: v.optional(v.number()) },
+	handler: async (_ctx, args) => {
+		if (!args.serverId) {
+			throw new Error("Box has no Hetzner server to rescue.");
+		}
+		const enabled = await hetznerRequest(
+			`/servers/${args.serverId}/actions/enable_rescue`,
+			hetznerActionResponseSchema,
+			{ method: "POST", body: JSON.stringify(rescuePayload()) }
+		);
+		await waitForActionSuccess(enabled.action.id);
+
+		const actionName =
+			(await serverStatus(args.serverId)) === "off" ? "poweron" : "reset";
+		const booted = await hetznerRequest(
+			`/servers/${args.serverId}/actions/${actionName}`,
+			hetznerActionResponseSchema,
+			{ method: "POST" }
+		);
+		await waitForActionSuccess(booted.action.id);
+		await waitForServer(args.serverId);
 	}
 });
 
@@ -760,12 +898,38 @@ export function snapshotImageListPath(slug: string) {
 	return `/images?${params.toString()}`;
 }
 
-export function createSnapshotImagePayload(slug: string, description: string) {
+export function createSnapshotImagePayload(
+	slug: string,
+	description: string,
+	snapshotRef: string
+) {
 	return {
 		type: "snapshot" as const,
 		description,
-		labels: { product: "composery-web", box_slug: slug }
+		labels: {
+			product: "composery-web",
+			box_slug: slug,
+			snapshot_ref: snapshotRef
+		}
 	};
+}
+
+export function snapshotRefImageListPath(snapshotRef: string) {
+	const params = new URLSearchParams({
+		type: "snapshot",
+		label_selector: `product=composery-web,snapshot_ref=${snapshotRef}`
+	});
+	return `/images?${params.toString()}`;
+}
+
+async function existingSnapshotImage(snapshotRef: string) {
+	const response = await hetznerRequest(
+		snapshotRefImageListPath(snapshotRef),
+		hetznerFullImagesResponseSchema
+	);
+	return response.images.sort((left, right) =>
+		right.created.localeCompare(left.created)
+	)[0];
 }
 
 export function parseCreateImageResponse(
@@ -816,16 +980,20 @@ export const createSnapshotImage = internalAction({
 	args: {
 		serverId: v.optional(v.number()),
 		slug: v.string(),
-		snapshotClass: vSnapshotClass
+		snapshotClass: vSnapshotClass,
+		snapshotRef: v.string()
 	},
 	returns: v.object({
-		actionId: v.number(),
+		actionId: v.optional(v.number()),
 		imageId: v.number()
 	}),
 	handler: async (ctx, args) => {
 		if (!args.serverId) {
 			throw new Error("Box has no Hetzner server to snapshot.");
 		}
+
+		const existing = await existingSnapshotImage(args.snapshotRef);
+		if (existing) return { actionId: undefined, imageId: existing.id };
 
 		// The timestamped description is built here rather than in the workflow
 		// handler, which must stay deterministic across replays.
@@ -838,11 +1006,17 @@ export const createSnapshotImage = internalAction({
 				{
 					method: "POST",
 					body: JSON.stringify(
-						createSnapshotImagePayload(args.slug, description)
-					)
+						createSnapshotImagePayload(args.slug, description, args.snapshotRef)
+					),
+					retry: false
 				}
 			);
 		} catch (error) {
+			const recovered = await existingSnapshotImage(args.snapshotRef);
+			// No action to wait for: the image was already there, so the caller has
+			// nothing to poll. Named rather than omitted, so the two returns are one
+			// shape and a caller can destructure either.
+			if (recovered) return { actionId: undefined, imageId: recovered.id };
 			if (
 				error instanceof HetznerApiError &&
 				error.code === "resource_limit_exceeded"
@@ -1040,24 +1214,6 @@ export type CreatedServer = {
 // area, created at the start of a repair and deleted the moment the files are
 // safely back on the fresh host.
 
-// Hetzner Volume minimum is 10 GB and the size must be a whole number of GB.
-export const PARKING_VOLUME_MIN_GB = 10;
-// The copied delta needs slack for the destination filesystem's own metadata and
-// for growth between measuring and copying; under-sizing only fails the copy
-// (before anything destructive), so erring large is the safe direction.
-const PARKING_VOLUME_HEADROOM_FACTOR = 1.2;
-const PARKING_VOLUME_HEADROOM_GB = 3;
-
-export function parkingVolumeSizeGb(usedBytes: number) {
-	if (!Number.isFinite(usedBytes) || usedBytes < 0) {
-		throw new Error("Cannot size a parking volume from an unmeasured usage.");
-	}
-	const gb =
-		Math.ceil((usedBytes * PARKING_VOLUME_HEADROOM_FACTOR) / 1e9) +
-		PARKING_VOLUME_HEADROOM_GB;
-	return Math.max(PARKING_VOLUME_MIN_GB, gb);
-}
-
 export function parkingVolumeName(slug: string) {
 	return `composery-park-${slug}`;
 }
@@ -1094,6 +1250,25 @@ export function productVolumeListPath(page: number) {
 	return `/volumes?${params.toString()}`;
 }
 
+export function parkingVolumeListPath(slug: string) {
+	const params = new URLSearchParams({
+		label_selector: `product=composery-web,role=parking,box_slug=${slug}`,
+		per_page: "50",
+		page: "1"
+	});
+	return `/volumes?${params.toString()}`;
+}
+
+async function existingParkingVolumeId(slug: string) {
+	const response = await hetznerRequest(
+		parkingVolumeListPath(slug),
+		hetznerPagedVolumeSummariesResponseSchema
+	);
+	return response.volumes.sort((left, right) =>
+		right.created.localeCompare(left.created)
+	)[0]?.id;
+}
+
 async function waitForVolumeActions(actions: ({ id: number } | undefined)[]) {
 	for (const action of actions) {
 		if (action?.id) await waitForActionSuccess(action.id);
@@ -1112,25 +1287,38 @@ export const createParkingVolume = internalAction({
 	args: {
 		slug: v.string(),
 		location: vServerLocation,
-		usedBytes: v.number()
+		sizeGb: v.number()
 	},
 	returns: v.object({ volumeId: v.number(), sizeGb: v.number() }),
 	handler: async (_ctx, args) => {
-		const sizeGb = parkingVolumeSizeGb(args.usedBytes);
-		const response = await hetznerRequest(
-			"/volumes",
-			hetznerCreateVolumeResponseSchema,
-			{
-				method: "POST",
-				body: JSON.stringify(
-					createVolumePayload(args.slug, args.location, sizeGb)
-				)
-			}
-		);
+		if (!Number.isSafeInteger(args.sizeGb) || args.sizeGb < 10) {
+			throw new Error("A parking volume needs a valid provider disk size.");
+		}
+		const existing = await existingParkingVolumeId(args.slug);
+		if (existing) return { volumeId: existing, sizeGb: args.sizeGb };
+
+		let response: z.output<typeof hetznerCreateVolumeResponseSchema>;
+		try {
+			response = await hetznerRequest(
+				"/volumes",
+				hetznerCreateVolumeResponseSchema,
+				{
+					method: "POST",
+					body: JSON.stringify(
+						createVolumePayload(args.slug, args.location, args.sizeGb)
+					),
+					retry: false
+				}
+			);
+		} catch (error) {
+			const recovered = await existingParkingVolumeId(args.slug);
+			if (recovered) return { volumeId: recovered, sizeGb: args.sizeGb };
+			throw error;
+		}
 		// Wait for create and the format that rides on it, so the box can mount the
 		// volume straight away.
 		await waitForVolumeActions([response.action, ...response.next_actions]);
-		return { volumeId: response.volume.id, sizeGb };
+		return { volumeId: response.volume.id, sizeGb: args.sizeGb };
 	}
 });
 

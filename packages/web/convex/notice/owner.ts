@@ -4,7 +4,7 @@ import { boxPath } from "../model/box/path";
 import { SUPPORT_EMAIL } from "../model/links";
 import { optionalWebsiteUrl } from "../env";
 import { appendBoxEvent } from "../boxes/operation/event";
-import { noticesSender, customerEmailAlertKey, resendClient } from "./email";
+import { noticesSender, customerEmailAlertKey, resendClient } from "../email";
 import { raiseAlert } from "../staff/alerts";
 import { findUserByClerkId } from "../users";
 import type { OperationTrigger } from "../schema";

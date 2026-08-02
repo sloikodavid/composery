@@ -921,7 +921,6 @@ packages/
         links.ts
       notice/
         account.ts
-        email.ts
         legal.ts
         owner.ts
       owner/
@@ -942,6 +941,7 @@ packages/
       auth.config.ts
       convex.config.ts
       crons.ts
+      email.ts
       env.ts
       http.ts
       schema.ts
@@ -1236,6 +1236,7 @@ rootfs/
       entrypoint.sh
       ide.sh
       remove-password.sh
+      watchdog.sh
   usr/
     lib/
       systemd/

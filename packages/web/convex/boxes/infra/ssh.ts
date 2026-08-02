@@ -17,8 +17,7 @@ import {
 	applyRuntimeConfigScript,
 	bootstrapScript,
 	copyFromParkingScript,
-	copyToParkingScript,
-	measureUsageScript,
+	copyToParkingFromRescueScript,
 	parseParkingVerification,
 	parseRuntimeInspection,
 	reloadCaddyfileScript,
@@ -63,6 +62,10 @@ export function sshTarget(host: string): SshTarget {
 		username: requiredEnv("SSH_USER"),
 		privateKey: privateKey()
 	};
+}
+
+export function rescueSshTarget(host: string): SshTarget {
+	return { host, username: "root", privateKey: privateKey() };
 }
 
 export const inspectRuntime = internalAction({
@@ -316,48 +319,6 @@ export function requireBoxHost(box: Doc<"boxes">) {
 	return box.hetzner_ipv4;
 }
 
-// Repair's precondition: the host must answer over SSH. A host whose networking
-// or sshd is broken cannot be reached by any of the repair steps, so we say so
-// up front rather than failing five steps in - Restore is the tool for that box.
-export const requireReachableHost = internalAction({
-	args: { boxId: v.id("boxes") },
-	handler: async (ctx, args) => {
-		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		const host = requireBoxHost(box);
-		try {
-			await runSsh(sshTarget(host), "true", { timeoutMs: 30_000 });
-		} catch (error) {
-			throw new Error(
-				`This box's host is not reachable over SSH, so it cannot be repaired. Restore it instead. (${error instanceof Error ? error.message : String(error)})`
-			);
-		}
-	}
-});
-
-export const measureParkingUsage = internalAction({
-	args: { boxId: v.id("boxes") },
-	returns: v.object({ usedBytes: v.number() }),
-	handler: async (ctx, args): Promise<{ usedBytes: number }> => {
-		const box = await ctx.runQuery(
-			internal.boxes.queries.getBoxLifecycleSnapshot,
-			{ boxId: args.boxId }
-		);
-		const host = requireBoxHost(box);
-		const { stdout } = await runSsh(sshTarget(host), measureUsageScript(), {
-			maxOutputBytes: 64 * 1024,
-			timeoutMs: 5 * MINUTE_MS
-		});
-		const match = stdout.match(/used_bytes=(\d+)/);
-		if (!match) {
-			throw new Error("Could not measure the box's volume usage.");
-		}
-		return { usedBytes: Number(match[1]) };
-	}
-});
-
 export const copyToParking = internalAction({
 	args: { boxId: v.id("boxes"), volumeId: v.number() },
 	handler: async (ctx, args) => {
@@ -366,9 +327,13 @@ export const copyToParking = internalAction({
 			{ boxId: args.boxId }
 		);
 		const host = requireBoxHost(box);
-		await runSsh(sshTarget(host), copyToParkingScript(args.volumeId), {
-			timeoutMs: HOUR_MS
-		});
+		await runSsh(
+			rescueSshTarget(host),
+			copyToParkingFromRescueScript(args.volumeId),
+			{
+				timeoutMs: HOUR_MS
+			}
+		);
 	}
 });
 
@@ -404,7 +369,7 @@ async function verifyParking(
 	);
 	const host = requireBoxHost(box);
 	const { stdout } = await runSsh(
-		sshTarget(host),
+		direction === "out" ? rescueSshTarget(host) : sshTarget(host),
 		verifyParkingScript(direction, volumeId),
 		{ maxOutputBytes: 4 * 1024 * 1024, timeoutMs: HOUR_MS }
 	);
@@ -454,6 +419,20 @@ export const unmountParking = internalAction({
 		);
 		const host = requireBoxHost(box);
 		await runSsh(sshTarget(host), unmountParkingScript(), {
+			timeoutMs: 5 * MINUTE_MS
+		});
+	}
+});
+
+export const unmountParkingFromRescue = internalAction({
+	args: { boxId: v.id("boxes") },
+	handler: async (ctx, args) => {
+		const box = await ctx.runQuery(
+			internal.boxes.queries.getBoxLifecycleSnapshot,
+			{ boxId: args.boxId }
+		);
+		const host = requireBoxHost(box);
+		await runSsh(rescueSshTarget(host), unmountParkingScript(), {
 			timeoutMs: 5 * MINUTE_MS
 		});
 	}

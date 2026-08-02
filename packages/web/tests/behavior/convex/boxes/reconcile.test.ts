@@ -9,6 +9,7 @@ import {
 	staffAlerts,
 	stubDeploymentEnv,
 	testConvex,
+	withoutHetznerBackoff,
 	type Harness
 } from "../../../support/convex.ts";
 
@@ -57,6 +58,8 @@ describe("isReclaimable", () => {
 const NOW = Date.UTC(2026, 9, 1, 6, 0, 0);
 const OLD = new Date(NOW - RECONCILE_MIN_AGE_MS - 1).toISOString();
 const FRESH = new Date(NOW - 1000).toISOString();
+
+withoutHetznerBackoff();
 
 beforeEach(() => {
 	vi.useFakeTimers();

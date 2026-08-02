@@ -10,6 +10,7 @@ import {
 	seedUser,
 	stubDeploymentEnv,
 	testConvex,
+	withoutHetznerBackoff,
 	type Harness
 } from "../../../support/convex.ts";
 
@@ -20,6 +21,8 @@ import {
 // the air without a person asking.
 
 const NOW = Date.UTC(2026, 7, 9, 10, 11, 12);
+
+withoutHetznerBackoff();
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -147,6 +150,10 @@ describe("polling the fleet's metrics", () => {
 			})
 		);
 
+		// The Hetzner client retries a network failure with exponential backoff,
+		// and this file runs on a fake clock, so the sweep only settles once those
+		// sleeps are advanced. What is under test is that the other box is still
+		// polled, not how long the broken one takes to give up.
 		await t.action(internal.boxes.metricsPoll.pollBoxMetrics, {});
 
 		expect(await samples(t)).toHaveLength(1);

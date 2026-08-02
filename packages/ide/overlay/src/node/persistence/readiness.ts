@@ -9,6 +9,14 @@ type PersistenceReadiness = {
   updatedAt?: string
 }
 
+// The health route is patched upstream code, so keep its decision here where a
+// behavior test can execute it. Persistence readiness alone is not health: an
+// expired IDE heartbeat means the process is still answering HTTP but can no
+// longer serve the workbench.
+export function healthHttpStatus(alive: boolean, persistenceReady: boolean): 200 | 503 {
+  return alive && persistenceReady ? 200 : 503
+}
+
 const cacheTtlMs = 1000
 let cached: { value: PersistenceReadiness; at: number } | undefined
 

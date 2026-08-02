@@ -1,4 +1,5 @@
 import { internal } from "../../_generated/api";
+import { BOX_PLANS } from "../../model/box/plan";
 import { defineBoxWorkflow } from "./boxWorkflow";
 
 // Repair - gives a box a clean host while keeping its files. It is the box's one
@@ -6,9 +7,9 @@ import { defineBoxWorkflow } from "./boxWorkflow";
 // broken host. Restore and Reset both give a clean disk but rewind or erase the
 // files; Repair is the only path that keeps them. A host the owner has damaged
 // in a way no in-place fix can heal (broken Docker, a mangled boot disk, wrecked
-// systemd/nftables) can only be cleaned by a fresh boot of the base image, and
-// that wipes the boot disk holding the box's Docker volumes. So the files are
-// parked on a transient Hetzner Volume, the server is rebuilt from
+// systemd/nftables, or an unreachable SSH service) is read through Hetzner
+// Rescue instead. Rescue boots independently of that disk, so Repair can park
+// the Docker volumes on a transient Hetzner Volume before the server is rebuilt from
 // HETZNER_BOX_IMAGE, and the files are copied back and verified before the
 // volume is deleted. Rewriting the runtime files and force-recreating the
 // containers on the fresh host (repairRuntime) is the final step, so a wedged
@@ -51,26 +52,45 @@ export const repairBox = defineBoxWorkflow({
 		}
 		const serverId = box.hetzner_server_id;
 
+		// Most outages are a stopped or wedged container, not a damaged boot disk.
+		// Reconcile the declared runtime first and accept it only after the public
+		// health boundary answers. Any failure falls through to provider rescue;
+		// the owner still has one Repair action and no diagnosis to make.
+		try {
+			await step.runAction(
+				internal.boxes.infra.ssh.repairRuntime,
+				{ boxId: args.boxId },
+				{ retry: true }
+			);
+			const health = await step.runAction(
+				internal.boxes.health.probeRuntime,
+				{ boxId: args.boxId },
+				{ retry: true }
+			);
+			if (health.reachable) {
+				await step.runMutation(
+					internal.boxes.operation.record.markRepairSucceeded,
+					{ boxId: args.boxId, operationId: args.operationId }
+				);
+				return;
+			}
+		} catch {
+			// Rescue is the fallback and records the operation's final result.
+		}
+
 		// PARKING PHASE. The box's own server still holds the authoritative files;
 		// nothing destructive has happened. Skipped entirely when a resumed repair
 		// has already crossed into "restoring".
 		let volumeId = box.parking_volume_id;
 		if (box.parking_volume_stage !== "restoring") {
 			if (volumeId === undefined) {
-				// Precondition, checked once up front: the host must answer over SSH.
-				await step.runAction(
-					internal.boxes.infra.ssh.requireReachableHost,
-					{ boxId: args.boxId },
-					{ retry: true }
-				);
-				const { usedBytes } = await step.runAction(
-					internal.boxes.infra.ssh.measureParkingUsage,
-					{ boxId: args.boxId },
-					{ retry: true }
-				);
 				const created = await step.runAction(
 					internal.boxes.infra.hetznerVps.createParkingVolume,
-					{ slug: box.slug, location: box.hetzner_location, usedBytes },
+					{
+						slug: box.slug,
+						location: box.hetzner_location,
+						sizeGb: BOX_PLANS[box.plan].diskGb
+					},
 					{ retry: true }
 				);
 				volumeId = created.volumeId;
@@ -89,9 +109,26 @@ export const repairBox = defineBoxWorkflow({
 				{ volumeId, serverId },
 				{ retry: true }
 			);
+			// Ask the installed OS to stop cleanly, with a provider power-off fallback,
+			// then boot the independent rescue OS with the recovery key.
+			await step.runAction(
+				internal.boxes.infra.hetznerVps.stopServer,
+				{ serverId },
+				{ retry: true }
+			);
+			await step.runAction(
+				internal.boxes.infra.hetznerVps.bootServerInRescue,
+				{ serverId },
+				{ retry: true }
+			);
 			await step.runAction(
 				internal.boxes.infra.ssh.copyToParking,
 				{ boxId: args.boxId, volumeId },
+				{ retry: true }
+			);
+			await step.runAction(
+				internal.boxes.infra.ssh.unmountParkingFromRescue,
+				{ boxId: args.boxId },
 				{ retry: true }
 			);
 			// Verify the copy while the box's files still exist, before anything
@@ -162,11 +199,10 @@ export const repairBox = defineBoxWorkflow({
 			{ retry: true }
 		);
 
-		// Copy-back verified: the fresh host now holds files identical to the ones
-		// parked (and so identical to the originals, which were verified equal to
-		// the parked copy before the rebuild). The volume is redundant, so unmount,
-		// detach, and delete it - then clear the pointer - before the final
-		// bring-up, exactly as the ordered steps require.
+		// Copy-back verified: the fresh host is authoritative again. Unmount and
+		// detach first, then clear the pointer before deletion. If execution stops
+		// there, reconciliation deletes the harmless orphan; no persisted pointer
+		// can ever name a volume that was already deleted.
 		await step.runAction(
 			internal.boxes.infra.ssh.unmountParking,
 			{ boxId: args.boxId },
@@ -177,14 +213,14 @@ export const repairBox = defineBoxWorkflow({
 			{ volumeId },
 			{ retry: true }
 		);
+		await step.runMutation(internal.boxes.operation.record.clearParkingVolume, {
+			boxId: args.boxId
+		});
 		await step.runAction(
 			internal.boxes.infra.hetznerVps.deleteParkingVolume,
 			{ volumeId },
 			{ retry: true }
 		);
-		await step.runMutation(internal.boxes.operation.record.clearParkingVolume, {
-			boxId: args.boxId
-		});
 
 		// Rewrite the runtime files, force-recreate the stack, and hold until the
 		// editor answers, so a reported success means the box genuinely serves.

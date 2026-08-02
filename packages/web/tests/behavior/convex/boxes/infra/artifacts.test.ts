@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { parse } from "yaml";
 import {
 	CADDY_IMAGE,
+	COMPOSERY_VOLUME_NAMES,
 	renderComposeryEnv,
 	renderRuntimeArtifacts
 } from "@/convex/boxes/infra/artifacts";
@@ -22,24 +23,27 @@ describe("runtime artifacts", () => {
 		);
 		const compose = parse(artifacts.compose);
 		expect(compose.services.caddy).toMatchObject({
-			depends_on: { composery: { condition: "service_started" } },
+			depends_on: { composery: { condition: "service_healthy" } },
 			image: CADDY_IMAGE,
-			ports: ["80:80", "443:443"]
+			logging: { driver: "local" },
+			ports: ["80:80", "443:443"],
+			restart: "always"
 		});
 		expect(compose.services.composery).toMatchObject({
-			cgroup: "host",
 			env_file: "./composery.env",
-			environment: ["COMPOSERY_INIT=systemd", "PORT=8080"],
+			environment: ["COMPOSERY_PERSISTENCE=overlay", "PORT=8080"],
 			image: "ghcr.io/sloikodavid/composery@sha256:abc",
+			init: true,
+			logging: { driver: "local" },
 			privileged: true,
-			stop_signal: "SIGRTMIN+3",
-			volumes: ["/sys/fs/cgroup:/sys/fs/cgroup:rw", "composery_data:/data"]
+			restart: "always",
+			stop_grace_period: "1m",
+			volumes: ["composery_data:/data"]
 		});
-		expect(compose.volumes).toEqual({
-			caddy_config: { name: "caddy_config" },
-			caddy_data: { name: "caddy_data" },
-			composery_data: { name: "composery_data" }
-		});
+		expect(Object.keys(compose.volumes)).toEqual([...COMPOSERY_VOLUME_NAMES]);
+		for (const name of COMPOSERY_VOLUME_NAMES) {
+			expect(compose.volumes[name]).toEqual({ name });
+		}
 		expect(artifacts.env.trim().split("\n")).toEqual([
 			"COMPOSERY_HASHED_PASSWORD='$argon2id$v=19$m=1,t=1,p=1$salt$hash'",
 			"COMPOSERY_CLOUD_BOX_ID='box_123'",

@@ -1,12 +1,15 @@
+import { spawnSync } from "node:child_process";
 import { describe, expect, test } from "vitest";
-import { renderRuntimeArtifacts } from "@/convex/boxes/infra/artifacts";
+import {
+	COMPOSERY_VOLUME_NAMES,
+	renderRuntimeArtifacts
+} from "@/convex/boxes/infra/artifacts";
 import {
 	INSPECT_SCRIPT,
 	applyRuntimeConfigScript,
 	bootstrapScript,
 	copyFromParkingScript,
-	copyToParkingScript,
-	measureUsageScript,
+	copyToParkingFromRescueScript,
 	parkingVolumeDevicePath,
 	parseParkingVerification,
 	parseRuntimeInspection,
@@ -19,6 +22,23 @@ import {
 	unmountParkingScript,
 	verifyParkingScript
 } from "@/convex/boxes/infra/sshScripts";
+
+// Removals the script makes that are not its own scratch.
+//
+// `rm` anywhere used to be forbidden outright, which is the right idea and
+// the wrong rule: these scripts stage files through `mktemp`, and the EXIT trap
+// that removes that same path is the thing keeping a half-written compose file
+// off the box. A guard that fails on it teaches the next person to delete the
+// guard. So the trap is named exactly - same variable, EXIT, nothing else - and
+// every other removal is still refused.
+const CLEANUP_TRAP = /^trap 'rm -[rf]+ "\$\w+"' EXIT$/;
+
+function removalsOutsideCleanup(script: string) {
+	return script
+		.split("\n")
+		.filter((line) => /\brm\s+-/.test(line))
+		.filter((line) => !CLEANUP_TRAP.test(line.trim()));
+}
 
 describe("ssh failures", () => {
 	// What a failed repair actually leaves on stderr: compose progress, then the
@@ -194,11 +214,11 @@ describe("runtime bootstrap and repair scripts", () => {
 	// known to serve.
 	test("waits for the editor to answer before calling a repair or update done", () => {
 		for (const script of [repair, update]) {
-			expect(script).toContain("systemctl is-active --quiet ide.service");
+			expect(script).toContain("/_composery/healthz");
 			expect(script).toContain("exit 1");
 			expect(script.trimEnd().endsWith("exit 1")).toBe(true);
 		}
-		expect(bootstrap).not.toContain("ide.service");
+		expect(bootstrap).not.toContain("/_composery/healthz");
 	});
 
 	// An update exists to move the box to a new image. If that image cannot be
@@ -222,6 +242,11 @@ describe("runtime bootstrap and repair scripts", () => {
 		expect(repair).toContain("compose -p composery -f");
 		expect(repair).toContain(" pull ");
 		expect(repair).toContain("set -euo pipefail");
+		expect(repair).toContain("mktemp -d /opt/composery-web/.stage.");
+		expect(repair).toContain("config -q");
+		expect(repair.indexOf("config -q")).toBeLessThan(
+			repair.indexOf('mv -f "$stage/compose.yaml"')
+		);
 	});
 
 	// Repair exists to get a broken box serving again. Under `set -e` a pruned
@@ -240,7 +265,7 @@ describe("runtime bootstrap and repair scripts", () => {
 	test("never removes the volumes holding the box's files", () => {
 		expect(repair).not.toMatch(/\bdown\b/);
 		expect(repair).not.toMatch(/\bvolume\s+rm\b/);
-		expect(repair).not.toMatch(/\brm\s+-/);
+		expect(removalsOutsideCleanup(repair)).toEqual([]);
 		expect(repair).not.toMatch(/--volumes\b/);
 	});
 
@@ -267,29 +292,25 @@ describe("repair parking scripts", () => {
 		runtimePort: 8080
 	});
 	const volumeId = 4242;
-	const copyOut = copyToParkingScript(volumeId);
+	const copyOut = copyToParkingFromRescueScript(volumeId);
 	const copyBack = copyFromParkingScript(artifacts, volumeId);
 	const verifyOut = verifyParkingScript("out", volumeId);
 	const verifyBack = verifyParkingScript("back", volumeId);
-	const measure = measureUsageScript();
+	const everyScript = [copyOut, copyBack, verifyOut, verifyBack];
 
-	const everyScript = [copyOut, copyBack, verifyOut, verifyBack, measure];
+	test("is valid Bash before any host receives it", () => {
+		const result = spawnSync("bash", ["-n"], {
+			input: everyScript.join("\n"),
+			encoding: "utf8"
+		});
+		expect(result.status, result.stderr).toBe(0);
+	});
 
-	// The whole point of deriving the set: a volume added to renderCompose later
-	// is copied automatically. A hardcoded list would silently stop covering it.
-	test("derives the volume set from the compose file, never a hardcoded list", () => {
+	// The runtime and Repair import one list, so a new persistent volume cannot
+	// silently exist outside recovery.
+	test("uses every volume name rendered into compose", () => {
 		for (const script of everyScript) {
-			expect(script).toContain(
-				"docker compose -p composery -f /opt/composery-web/compose.yaml config --volumes"
-			);
-		}
-		// The copy logic must not name any volume itself. copyBack legitimately
-		// embeds the whole compose file (which declares the names), so it is checked
-		// separately - every other script has no business mentioning a volume name.
-		for (const script of [copyOut, verifyOut, verifyBack, measure]) {
-			for (const name of ["composery_data", "caddy_data", "caddy_config"]) {
-				expect(script).not.toContain(name);
-			}
+			for (const name of COMPOSERY_VOLUME_NAMES) expect(script).toContain(name);
 		}
 	});
 
@@ -314,12 +335,11 @@ describe("repair parking scripts", () => {
 		expect(verifyBack).toContain('"/mnt/composery-parking/$key/" "$mp/"');
 	});
 
-	// The box is wiped for the whole repair, so a moving copy is pointless and
-	// dangerous - stop the stack so the volumes are quiescent.
-	test("stops the stack before copying it out", () => {
-		expect(copyOut).toContain(
-			"docker compose -p composery -f /opt/composery-web/compose.yaml stop"
-		);
+	test("reads a stopped boot disk without the installed OS or Docker", () => {
+		expect(copyOut).toContain("lsblk -rpn");
+		expect(copyOut).toContain("mount -o ro");
+		expect(copyOut).toContain("/var/lib/docker/volumes/$1/_data");
+		expect(copyOut).not.toContain("docker ");
 	});
 
 	// The parked copy is the only copy once the server is gone. Nothing on the
@@ -327,7 +347,7 @@ describe("repair parking scripts", () => {
 	test("never reformats the volume or destroys data on the way back", () => {
 		expect(copyBack).not.toContain("mkfs");
 		expect(copyBack).not.toMatch(/\bvolume\s+rm\b/);
-		expect(copyBack).not.toMatch(/\brm\s+-/);
+		expect(removalsOutsideCleanup(copyBack)).toEqual([]);
 		// It materializes the empty volumes without starting anything, then copies.
 		expect(copyBack).toContain(
 			"docker compose -p composery -f /opt/composery-web/compose.yaml create"
@@ -337,11 +357,6 @@ describe("repair parking scripts", () => {
 		);
 		// And it lays the runtime files down first (needs the compose file present).
 		expect(copyBack).toContain(artifacts.compose);
-	});
-
-	test("sizes from real used bytes", () => {
-		expect(measure).toContain("du -sb");
-		expect(measure).toContain("used_bytes=");
 	});
 
 	test("treats any itemized verification line as a difference, empty as clean", () => {
@@ -366,7 +381,9 @@ describe("the parking volume's device path", () => {
 	});
 
 	test("is the path the mount script actually waits for", () => {
-		expect(copyToParkingScript(1234)).toContain(parkingVolumeDevicePath(1234));
+		expect(copyToParkingFromRescueScript(1234)).toContain(
+			parkingVolumeDevicePath(1234)
+		);
 	});
 });
 
@@ -383,13 +400,15 @@ describe("rewriting a running box", () => {
 		// The env file is written through a quoted heredoc, so nothing in an
 		// owner's value is expanded by the shell on the way in.
 		expect(script).toContain("<<'__COMPOSERY_ENV__'");
+		expect(script).toContain("mktemp /opt/composery-web/composery.env.");
+		expect(script.indexOf("chmod 0600")).toBeLessThan(script.indexOf("mv -f"));
 		expect(script).toContain("COMPOSERY_DISABLE_API=1");
 		expect(script).toContain("COMPOSERY_DISABLE_API=1\n__COMPOSERY_ENV__");
 		expect(leadingNewline).toContain("\nA=1\n__COMPOSERY_ENV__");
 		expect(script).toContain("--force-recreate --no-deps composery");
 		// Recreating is not the same as serving: a configuration that stops the
 		// box booting has to fail the operation, not report a clean apply.
-		expect(script).toContain("systemctl is-active --quiet ide.service");
+		expect(script).toContain("/_composery/healthz");
 		expect(script.trimEnd().endsWith("exit 1")).toBe(true);
 	});
 
@@ -412,6 +431,7 @@ ${hash}`);
 		// reads as "the password did not take" on every change.
 		expect(script).toContain(String.raw`tr "\000" "\n"`);
 		expect(script).toContain('test "${pid:-0}" -gt 0');
+		expect(script).toContain("supervisorctl pid ide");
 		expect(script).toContain("COMPOSERY_HASHED_PASSWORD=");
 	});
 
@@ -440,12 +460,10 @@ describe("releasing a parking volume", () => {
 });
 
 describe("reading a box's logs", () => {
-	test("asks the container's journal first and compose's capture second", () => {
+	test("reads the one compose log stream", () => {
 		const script = runtimeLogsScript(200);
 
-		expect(script).toContain("journalctl -u ide -u caddy -u persistence");
-		expect(script).toContain("-n 200");
 		expect(script).toContain("--tail 200");
-		expect(script).toContain("||");
+		expect(script).not.toContain("journalctl");
 	});
 });

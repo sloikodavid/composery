@@ -286,7 +286,7 @@ export const markCreating = internalMutation({
 	args: {
 		snapshotRowId: v.id("box_snapshots"),
 		imageId: v.number(),
-		actionId: v.number()
+		actionId: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const snapshot = await ctx.db.get(args.snapshotRowId);

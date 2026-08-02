@@ -1,8 +1,6 @@
-import { execFileSync } from "node:child_process";
-
 import { describe, expect, test } from "vitest";
 
-import { readRepoFile } from "../support/repo.ts";
+import { readRepoFile, trackedFiles } from "../support/repo.ts";
 
 // ---------------------------------------------------------------------------
 // One spelling per concept, for the choices no compiler and no linter can see:
@@ -27,13 +25,7 @@ import { readRepoFile } from "../support/repo.ts";
 // which is already more common.
 // ---------------------------------------------------------------------------
 
-const files = execFileSync("git", ["ls-files"], {
-	cwd: process.cwd(),
-	encoding: "utf8",
-	maxBuffer: 64 * 1024 * 1024
-})
-	.split("\n")
-	.filter(Boolean);
+const files = trackedFiles();
 
 // This file, which quotes `.yml` throughout in order to forbid it. Named rather
 // than derived from `import.meta` so the exemption is one visible path.

@@ -74,6 +74,31 @@ describe("runtime process managers", () => {
 		expect(config).toContain("serverurl=unix:///run/supervisor.sock");
 	});
 
+	// Docker restart policies only react when PID 1 exits; an unhealthy container
+	// otherwise stays unhealthy for ever. The watchdog deliberately exits only a
+	// runtime that served earlier, so a bad startup cannot become a restart loop.
+	test("restarts a failed running runtime without looping a failed boot", () => {
+		const supervisor = readRepoFile(
+			"rootfs/etc/supervisor/conf.d/composery.conf"
+		);
+		const watchdog = readShellCode("rootfs/opt/composery/watchdog.sh");
+		const artifacts = readRepoFile(
+			"packages/web/convex/boxes/infra/artifacts.ts"
+		);
+
+		expect(supervisor).toContain("[program:watchdog]");
+		expect(watchdog).toContain("was_healthy=false");
+		expect(watchdog).toContain('if [ "$was_healthy" = false ]');
+		expect(watchdog.indexOf('if [ "$was_healthy" = false ]')).toBeLessThan(
+			watchdog.indexOf("kill -TERM 1")
+		);
+		expect(watchdog).toContain('if [ "$failures" -lt 3 ]');
+		expect(artifacts).toContain("restart: always");
+		expect(artifacts).toContain("init: true");
+		expect(artifacts).not.toContain("cgroup: host");
+		expect(artifacts).not.toContain("/sys/fs/cgroup:/sys/fs/cgroup");
+	});
+
 	test("keeps the outer Caddy version identical across hosted and self-hosted recipes", () => {
 		const image =
 			"caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648";

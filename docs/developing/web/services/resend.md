@@ -50,7 +50,7 @@ addresses on it, alongside the support address
 
 **One word per sender, used at every layer.** `alerts`, `notices` and
 `accounts` each name the environment variable, the display name, the local part
-in front of the `@`, the helper in `convex/notice/email.ts` and the key the console's
+in front of the `@`, the helper in `convex/email.ts` and the key the console's
 delivery panel reports. There is no mapping between layers because there is
 nothing to map - pick the word and the rest follows.
 
@@ -167,7 +167,7 @@ being enforced, with Microsoft rejecting outright rather than filtering.
 **convex/staff/alerts.ts** inserts a deduplicated **staff_alerts** row before
 trying email. The row records queue state, recipient count, Resend email ID,
 latest delivery event, and any error. Disabled, recipient-less, or failed queue
-attempts retry every 15 minutes. Rows remain for 180 days. **convex/notice/email.ts**
+attempts retry every 15 minutes. Rows remain for 180 days. **convex/email.ts**
 owns the Resend client and answers whether a given class of mail can be sent at
 all, so no two senders can disagree about it.
 

@@ -7,6 +7,11 @@ import {
 	stubDeploymentEnv,
 	testConvex
 } from "../../../../support/convex.ts";
+import {
+	hetznerRetryDelayMs,
+	HetznerApiError,
+	isRetryableHetznerError
+} from "@/convex/boxes/infra/hetznerVps";
 
 const privateKey = ssh2.utils
 	.generateKeyPairSync("ed25519", { comment: "provider-test" })
@@ -18,6 +23,19 @@ function response(body: unknown, status = 200) {
 		status,
 		text: async () => (body === undefined ? "" : JSON.stringify(body))
 	} as Response;
+}
+
+// One recorded request, as the arguments fetch was actually called with.
+// Indexing `mock.calls` directly types the call as an empty tuple whenever the
+// stub was written without parameters, so a test reading the second request
+// asks for element one of nothing - which the checker rejects and a reader
+// cannot see. Asking through here says which call is missing instead.
+function requestAt(fetch: ReturnType<typeof vi.fn>, index: number) {
+	const call = fetch.mock.calls[index] as [string, RequestInit] | undefined;
+	if (!call) {
+		throw new Error(`fetch was called fewer than ${index + 1} times.`);
+	}
+	return { init: call[1] ?? {}, url: String(call[0]) };
 }
 
 function queuedFetch(
@@ -47,6 +65,21 @@ function server(status = "running") {
 	};
 }
 
+function snapshot() {
+	return {
+		id: 91,
+		type: "snapshot",
+		status: "creating",
+		image_size: null,
+		disk_size: 40,
+		created: "2026-08-01T00:00:00Z",
+		description: "atlas",
+		labels: { product: "composery-web", snapshot_ref: "snapshot123" },
+		bound_to: null,
+		created_from: { id: 42, name: "composery-atlas" }
+	};
+}
+
 function runPollsImmediately() {
 	vi.spyOn(globalThis, "setTimeout").mockImplementation((callback) => {
 		if (typeof callback === "function") callback();
@@ -59,7 +92,7 @@ beforeEach(() => {
 	vi.stubEnv("HETZNER_CLOUD_TOKEN", "token");
 	vi.stubEnv("HETZNER_BOX_IMAGE", "ubuntu-24.04");
 	vi.stubEnv("HETZNER_FIREWALL_ID", "42");
-	vi.stubEnv("HETZNER_SSH_KEYS", "123,composery-key");
+	vi.stubEnv("HETZNER_SSH_KEYS", "123,456");
 	vi.stubEnv("SSH_PRIVATE_KEY", privateKey);
 	vi.stubEnv("SSH_USER", "root");
 	vi.stubEnv("CLOUDFLARE_DNS_TOKEN", "token");
@@ -72,6 +105,84 @@ afterEach(() => {
 });
 
 describe("the Hetzner response boundary", () => {
+	test("uses the official bounded transient-error policy", () => {
+		for (const [status, code] of [
+			[409, "conflict"],
+			[429, "rate_limit_exceeded"],
+			[502, undefined],
+			[502, "bad_gateway"],
+			[504, "timeout"]
+		] as const) {
+			expect(
+				isRetryableHetznerError(new HetznerApiError("transient", status, code))
+			).toBe(true);
+		}
+		expect(
+			isRetryableHetznerError(
+				new HetznerApiError("operator input", 422, "invalid_input")
+			)
+		).toBe(false);
+	});
+
+	test("backs off exponentially with bounded jitter", () => {
+		expect(hetznerRetryDelayMs(0, () => 0)).toBe(1_000);
+		expect(hetznerRetryDelayMs(1, () => 0)).toBe(1_000);
+		expect(hetznerRetryDelayMs(1, () => 1)).toBe(2_000);
+		expect(hetznerRetryDelayMs(20, () => 1)).toBe(60_000);
+	});
+
+	test("retries a transient gateway response", async () => {
+		runPollsImmediately();
+		const fetch = queuedFetch(
+			{ body: "upstream unavailable", status: 502 },
+			{ body: { action: { id: 7, status: "success", error: null } } }
+		);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.getAction, {
+				actionId: 7
+			})
+		).resolves.toEqual({ status: "success" });
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	test("retries a network failure", async () => {
+		runPollsImmediately();
+		const replies: (Error | Response)[] = [
+			new TypeError("fetch failed"),
+			response({ action: { id: 7, status: "success", error: null } })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.getAction, {
+				actionId: 7
+			})
+		).resolves.toEqual({ status: "success" });
+		expect(fetch).toHaveBeenCalledTimes(2);
+	});
+
+	test("does not retry an operator error", async () => {
+		runPollsImmediately();
+		const fetch = queuedFetch({
+			body: { error: { code: "invalid_input", message: "bad request" } },
+			status: 422
+		});
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.getAction, {
+				actionId: 7
+			})
+		).rejects.toThrow("bad request");
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
+
 	test("decodes a documented action response", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -212,7 +323,10 @@ describe("the Hetzner response boundary", () => {
 		runPollsImmediately();
 		const fetch = queuedFetch(
 			{ body: { server: server() } },
-			{ body: undefined, status: 201 },
+			{
+				body: { action: { id: 7, status: "running", error: null } },
+				status: 201
+			},
 			{ body: { server: server("running") } },
 			{ body: { server: server("off") } }
 		);
@@ -223,6 +337,65 @@ describe("the Hetzner response boundary", () => {
 			})
 		).resolves.toBeNull();
 		expect(fetch.mock.calls[1][0]).toContain("/actions/shutdown");
+	});
+
+	test("boots the provider rescue OS with the configured recovery keys", async () => {
+		runPollsImmediately();
+		const fetch = queuedFetch(
+			{
+				body: { action: { id: 7, status: "running", error: null } },
+				status: 201
+			},
+			{ body: { action: { id: 7, status: "success", error: null } } },
+			{ body: { server: server("off") } },
+			{
+				body: { action: { id: 8, status: "running", error: null } },
+				status: 201
+			},
+			{ body: { action: { id: 8, status: "success", error: null } } },
+			{ body: { server: server("running") } }
+		);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.bootServerInRescue, {
+				serverId: 42
+			})
+		).resolves.toBeNull();
+		expect(fetch.mock.calls[0][0]).toContain("/actions/enable_rescue");
+		expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
+			type: "linux64",
+			ssh_keys: [123, 456]
+		});
+		expect(fetch.mock.calls[3][0]).toContain("/actions/poweron");
+	});
+
+	test("recovers a snapshot whose create response was lost without creating twice", async () => {
+		const replies: (Error | Response)[] = [
+			response({ images: [] }),
+			new TypeError("connection closed after request"),
+			response({ images: [snapshot()] })
+		];
+		const fetch = vi.fn(async () => {
+			const reply = replies.shift();
+			if (reply instanceof Error) throw reply;
+			if (reply) return reply;
+			throw new Error("The provider received an unexpected request.");
+		});
+		vi.stubGlobal("fetch", fetch);
+
+		await expect(
+			testConvex().action(internal.boxes.infra.hetznerVps.createSnapshotImage, {
+				serverId: 42,
+				slug: "atlas",
+				snapshotClass: "manual",
+				snapshotRef: "snapshot123"
+			})
+		).resolves.toEqual({ imageId: 91 });
+		expect(fetch).toHaveBeenCalledTimes(3);
+		expect(requestAt(fetch, 1).init.method).toBe("POST");
+		expect(
+			JSON.parse(String(requestAt(fetch, 1).init.body)).labels.snapshot_ref
+		).toBe("snapshot123");
 	});
 });
 

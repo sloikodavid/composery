@@ -16,6 +16,8 @@ vi.mock("@/convex/billing/polar", async (importOriginal) => {
 	};
 });
 
+import type { Caller } from "../../../support/convex.ts";
+
 const { api } = await import("@/convex/_generated/api");
 const { seedBox, seedSettings, seedUser, stubDeploymentEnv, testConvex } =
 	await import("../../../support/convex.ts");
@@ -297,7 +299,7 @@ describe("reporting a finished checkout to its customer", () => {
 // false "available" takes money for a name that cannot be delivered - which then
 // has to be refunded.
 describe("telling a customer whether a name is free", () => {
-	const availability = (as: Harness, slug: string) =>
+	const availability = (as: Caller, slug: string) =>
 		as.query(api.owner.checkout.slugAvailability, { slug });
 
 	async function buyer(t: Harness) {

@@ -57,20 +57,17 @@ created once in the console and referenced by id.
    Run the rest of this step once per deployment, pairing each environment's key
    with that environment's Hetzner project and Convex deployment.
    - **Public key** -> add it as an SSH key in that environment's Hetzner project
-     (Project -> Security -> SSH Keys). Put that name or id in `HETZNER_SSH_KEYS`
-     (comma-separated for multiple). The name is the practical choice - it is what
-     the console shows, and `splitKeyRefs` passes any non-numeric entry through for
-     Hetzner to resolve by name. The catch is that renaming the key in the console
-     then breaks server creation until this value is updated to match. The numeric
-     id survives renames but is not shown in the console, which lists SSH keys
-     without per-key pages; read it from the API instead:
+     (Project -> Security -> SSH Keys). Put its numeric id in `HETZNER_SSH_KEYS`
+     (comma-separated for multiple). Hetzner Rescue accepts ids but not names, so
+     the backend refuses a name before it can create a server that it cannot later
+     repair. The console does not show the id. Read it from the API:
 
      ```bash
      curl -s -H "Authorization: Bearer $HETZNER_CLOUD_TOKEN" \
        https://api.hetzner.cloud/v1/ssh_keys
      ```
 
-     Whichever form you use, Hetzner injects that key into every server it
+     Hetzner injects that key into every server it
      creates in this project. The backend also derives this same public key from
      `SSH_PRIVATE_KEY` and passes it as cloud-init `user_data` on server create,
      reset, and snapshot restore. Hetzner added `user_data` to its rebuild API;
@@ -92,12 +89,13 @@ created once in the console and referenced by id.
    root. A box only receives the public key, and SSH agent forwarding is not
    used.
 
-   `HETZNER_SSH_KEYS` only affects Hetzner's create-time injection. Existing
-   running servers keep whatever was written into `authorized_keys`, while reset
-   rebuilds install the public key derived from the current `SSH_PRIVATE_KEY`.
+   `HETZNER_SSH_KEYS` selects the keys that server creation and Hetzner Rescue
+   inject. Existing installed systems keep whatever was written into
+   `authorized_keys`, while rebuilds install the public key derived from the
+   current `SSH_PRIVATE_KEY`.
    During rotation, install and test the new public key on existing servers
-   before replacing the Convex secret, update `HETZNER_SSH_KEYS` for new
-   servers, and treat revocation of a compromised key as fleet maintenance.
+   before replacing the Convex secret, update `HETZNER_SSH_KEYS`, and treat
+   revocation of a compromised key as fleet maintenance.
    Hetzner remembers keys selected at server creation and can inject them again
    during a rebuild, so replacing a Convex secret alone does not prove the old
    key has been removed from every existing server.
@@ -132,6 +130,13 @@ created once in the console and referenced by id.
 The provisioning code labels servers `product=composery-web` and
 `box_slug=<slug>`, creates public IPv4/IPv6, waits for running, then SSHes in and
 bootstraps Docker Compose.
+
+The managed Compose project uses Docker's `always` restart policy and its
+container-native init. It does not bind the host cgroup tree into the runtime.
+The cloud profile pins overlay persistence, so a host that cannot provide the
+required mount capability fails instead of silently selecting a different
+engine. Docker's `local` log driver rotates both service logs by default, which
+keeps normal output from filling the boot disk.
 
 The server type is not configurable: it is the box's [plan](#plans), because a
 box provisioned on a type other than the one its plan advertises would be
@@ -268,18 +273,18 @@ parallel, and lays out each layer - website, server, Docker, reverse proxy,
 runtime container, the inner editor/web-server/persistence services, and disk -
 in plain language, read-only. Its single **Repair** action is the box's one
 recovery lever: it gives the box a clean host while keeping its files, so the
-owner never has to tell a wedged container apart from a broken host. It parks the
-box's Docker volumes on a transient Hetzner Volume, rebuilds the server from
-`HETZNER_BOX_IMAGE`, copies the files back and verifies them before deleting the
-volume, then rewrites the Composery-managed files in `/opt/composery-web` from
-Convex state and force-recreates the stack (`repairRuntime`) - so a wedged
-container and a broken host are both healed by the same action
-(`workflows/repairBox.ts`). Because it is the box's heavyweight recovery action,
-it is gated by a typed-slug confirmation and is honest about the several-minute
-downtime and the reachable-host precondition (a host with broken networking or
-SSH must use Restore instead, since Repair can't reach it to save the files). It
-reuses the same artifact renderers as provisioning, so there is no separate
-recovery seed to drift. A separate Reset button rebuilds the disk from a clean
+owner never has to tell a wedged container apart from a broken host. It first
+rewrites the managed files, recreates the containers, and checks the public
+endpoint. If that works, Repair stops there. Otherwise it parks the Docker
+volumes on a transient Hetzner Volume, rebuilds the server from
+`HETZNER_BOX_IMAGE`, copies the files back, and verifies them before deleting
+the volume (`workflows/repairBox.ts`). It is gated by a typed-slug confirmation
+and is honest about possible downtime. The host rebuild stops the installed
+system, boots Hetzner Rescue, mounts the boot disk read-only, and copies every
+managed volume before the rebuild. The copy does not depend on the installed
+network, SSH service, Docker daemon, or systemd. It reuses the same artifact
+renderers as provisioning, so there is no separate recovery seed to drift. A
+separate Reset button rebuilds the disk from a clean
 image without preserving files; it is the final, explicitly destructive option
 and does not delete existing snapshots.
 

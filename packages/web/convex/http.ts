@@ -3,7 +3,7 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { registerPolarWebhookRoutes } from "./billing/webhooks";
-import { resendClient } from "./notice/email";
+import { resendClient } from "./email";
 import { optionalEnv } from "./env";
 
 type ClerkUserDeletedPayload = {

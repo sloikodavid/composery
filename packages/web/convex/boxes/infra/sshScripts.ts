@@ -6,6 +6,7 @@ import {
 	COMPOSERY_CADDYFILE_PATH,
 	COMPOSERY_COMPOSE_PATH,
 	COMPOSERY_ENV_PATH,
+	COMPOSERY_VOLUME_NAMES,
 	type RuntimeArtifacts
 } from "./artifacts.ts";
 import type { RecoveryStatus } from "../../model/box/recovery";
@@ -24,13 +25,27 @@ function heredoc(path: string, delimiter: string, contents: string) {
 ${contents}${contents.endsWith("\n") ? "" : "\n"}${delimiter}`;
 }
 
+function replaceFileScript(
+	path: string,
+	delimiter: string,
+	contents: string,
+	mode: "0600" | "0644"
+) {
+	return `temp="$(mktemp ${path}.XXXXXX)"
+trap 'rm -f "$temp"' EXIT
+${heredoc('"$temp"', delimiter, contents)}
+chmod ${mode} "$temp"
+mv -f "$temp" ${path}
+trap - EXIT`;
+}
+
 // `docker compose up -d` returns once the container is created, not once the
 // editor is serving, so a crash-looping box would report a clean repair. The
 // owner is root on this host and can break it in ways we cannot enumerate -
 // the only honest answer is to watch the editor come back, or fail.
 const AWAIT_IDE = `attempt=1
 while [ "$attempt" -le 60 ]; do
-	if docker exec composery systemctl is-active --quiet ide.service 2>/dev/null; then
+	if docker exec composery sh -lc 'curl -fsS "http://127.0.0.1:\${PORT:-8080}/_composery/healthz" >/dev/null' 2>/dev/null; then
 		exit 0
 	fi
 	sleep 2
@@ -50,9 +65,19 @@ function writeRuntimeFilesScript({
 	env
 }: RuntimeArtifacts) {
 	return `install -d /opt/composery-web
-${heredoc(COMPOSERY_COMPOSE_PATH, "__COMPOSERY_COMPOSE__", compose)}
-${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
-${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}`;
+stage="$(mktemp -d /opt/composery-web/.stage.XXXXXX)"
+trap 'rm -rf "$stage"' EXIT
+${heredoc('"$stage/compose.yaml"', "__COMPOSERY_COMPOSE__", compose)}
+${heredoc('"$stage/composery.env"', "__COMPOSERY_ENV__", env)}
+${heredoc('"$stage/Caddyfile"', "__COMPOSERY_CADDY__", caddyfile)}
+docker compose -p composery -f "$stage/compose.yaml" config -q
+chmod 0644 "$stage/compose.yaml" "$stage/Caddyfile"
+chmod 0600 "$stage/composery.env"
+mv -f "$stage/composery.env" ${COMPOSERY_ENV_PATH}
+mv -f "$stage/Caddyfile" ${COMPOSERY_CADDYFILE_PATH}
+mv -f "$stage/compose.yaml" ${COMPOSERY_COMPOSE_PATH}
+trap - EXIT
+rmdir "$stage"`;
 }
 
 // Writes the runtime files and brings the stack up. The three callers differ on
@@ -151,21 +176,54 @@ const RSYNC_FIDELITY_FLAGS = "-aHAXS --numeric-ids";
 // rather than a missing tool.
 const ENSURE_RSYNC = `command -v rsync >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync; }`;
 
-// Derives the exact set of Docker volumes to copy from the rendered compose file
-// on the host - never a hardcoded list, so a volume added to renderCompose later
-// is picked up automatically - and resolves each compose volume key to the host
-// mountpoint of the real Docker volume compose created for it (via compose's own
-// project/volume labels, which hold whatever name it assigned). Emitting nothing
-// is treated as an error, not an empty success.
-const VOLUME_ENUMERATION = `resolve_mp() {
-	vol="$(docker volume ls -q --filter label=com.docker.compose.project=composery --filter "label=com.docker.compose.volume=$1")"
-	if [ -z "$vol" ]; then echo "No Docker volume found for compose volume '$1'." >&2; return 1; fi
-	mp="$(docker volume inspect --format '{{ .Mountpoint }}' "$vol")"
-	if [ -z "$mp" ]; then echo "Docker volume '$vol' has no mountpoint." >&2; return 1; fi
+const VOLUME_KEYS = `VOLUME_KEYS="${COMPOSERY_VOLUME_NAMES.join(" ")}"`;
+
+// Resolve the named volumes from Docker only after a clean host has created
+// them. The names come from the same constant that renders compose, so adding a
+// volume changes the runtime and Repair together.
+const VOLUME_ENUMERATION = `${VOLUME_KEYS}
+resolve_mp() {
+	mp="$(docker volume inspect --format '{{ .Mountpoint }}' "$1")"
+	if [ -z "$mp" ]; then echo "Docker volume '$1' has no mountpoint." >&2; return 1; fi
 	printf '%s' "$mp"
-}
-VOLUME_KEYS="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} config --volumes)"
-if [ -z "$VOLUME_KEYS" ]; then echo "The compose file declares no volumes to copy." >&2; exit 1; fi`;
+}`;
+
+export const RESCUE_SOURCE_MOUNT = "/mnt/composery-source";
+
+// Rescue runs outside the installed OS. It finds the boot filesystem by the
+// data it must contain instead of assuming a device letter or partition number.
+// The attached parking device is excluded before any mount is attempted.
+const RESCUE_VOLUME_ENUMERATION = `${VOLUME_KEYS}
+parking_device="$(readlink -f "$device")"
+source_root=""
+while read -r candidate fs_type device_type; do
+	case "$device_type:$fs_type" in
+		part:ext2|part:ext3|part:ext4|part:xfs|part:btrfs|lvm:ext2|lvm:ext3|lvm:ext4|lvm:xfs|lvm:btrfs|disk:ext2|disk:ext3|disk:ext4|disk:xfs|disk:btrfs) ;;
+		*) continue ;;
+	esac
+	candidate="$(readlink -f "$candidate")"
+	[ "$candidate" = "$parking_device" ] && continue
+	mkdir -p ${RESCUE_SOURCE_MOUNT}
+	umount ${RESCUE_SOURCE_MOUNT} >/dev/null 2>&1 || true
+	if mount -o ro "$candidate" ${RESCUE_SOURCE_MOUNT} 2>/dev/null; then
+		if [ -d ${RESCUE_SOURCE_MOUNT}/var/lib/docker/volumes ]; then
+			source_root=${RESCUE_SOURCE_MOUNT}
+			break
+		fi
+		umount ${RESCUE_SOURCE_MOUNT}
+	fi
+done <<__COMPOSERY_BLOCK_DEVICES__
+$(lsblk -rpn -o NAME,FSTYPE,TYPE)
+__COMPOSERY_BLOCK_DEVICES__
+if [ -z "$source_root" ]; then
+	echo "No boot filesystem containing the Composery volumes was found." >&2
+	exit 1
+fi
+resolve_source_mp() {
+	mp="$source_root/var/lib/docker/volumes/$1/_data"
+	if [ ! -d "$mp" ]; then echo "Composery volume '$1' is missing from the boot filesystem." >&2; return 1; fi
+	printf '%s' "$mp"
+}`;
 
 // Wait for the attached volume's stable by-id device node, then mount it once.
 // Idempotent so a retried step does not fail on an already-mounted volume.
@@ -183,31 +241,15 @@ mkdir -p ${PARKING_MOUNT}
 mountpoint -q ${PARKING_MOUNT} || mount "$device" ${PARKING_MOUNT}`;
 }
 
-// Sum the actual used bytes of the box volumes, so the parking volume is sized
-// from real usage rather than the whole disk. `du -sb` counts apparent bytes.
-export function measureUsageScript() {
-	return `set -euo pipefail
-${VOLUME_ENUMERATION}
-total=0
-for key in $VOLUME_KEYS; do
-	mp="$(resolve_mp "$key")"
-	bytes="$(du -sb "$mp" | awk 'NR == 1 { print $1 }')"
-	total=$((total + bytes))
-done
-printf 'used_bytes=%s\\n' "$total"`;
-}
-
-// Copy every box volume onto the parking volume. The stack is stopped first so
-// the copy is a consistent, quiescent snapshot rather than a moving target - the
-// box is down for the whole repair anyway.
-export function copyToParkingScript(volumeId: number) {
+// Copy from the stopped boot disk while Hetzner Rescue is running. This path
+// needs neither the installed OS nor Docker nor the configured SSH account.
+export function copyToParkingFromRescueScript(volumeId: number) {
 	return `set -euo pipefail
 ${ENSURE_RSYNC}
-${VOLUME_ENUMERATION}
-docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} stop
 ${mountParkingScript(volumeId)}
+${RESCUE_VOLUME_ENUMERATION}
 for key in $VOLUME_KEYS; do
-	mp="$(resolve_mp "$key")"
+	mp="$(resolve_source_mp "$key")"
 	mkdir -p "${PARKING_MOUNT}/$key"
 	rsync ${RSYNC_FIDELITY_FLAGS} --delete "$mp/" "${PARKING_MOUNT}/$key/"
 done`;
@@ -245,16 +287,19 @@ export function verifyParkingScript(
 	direction: "out" | "back",
 	volumeId: number
 ) {
+	const enumeration =
+		direction === "out" ? RESCUE_VOLUME_ENUMERATION : VOLUME_ENUMERATION;
+	const resolver = direction === "out" ? "resolve_source_mp" : "resolve_mp";
 	const compare =
 		direction === "out"
 			? `rsync ${RSYNC_FIDELITY_FLAGS} -ni -c --delete "$mp/" "${PARKING_MOUNT}/$key/"`
 			: `rsync ${RSYNC_FIDELITY_FLAGS} -ni -c --delete "${PARKING_MOUNT}/$key/" "$mp/"`;
 	return `set -euo pipefail
 ${ENSURE_RSYNC}
-${VOLUME_ENUMERATION}
 ${mountParkingScript(volumeId)}
+${enumeration}
 for key in $VOLUME_KEYS; do
-	mp="$(resolve_mp "$key")"
+	mp="$(${resolver} "$key")"
 	out="$(${compare})"
 	if [ -n "$out" ]; then printf '%s\\n' "$out" | sed "s#^#$key: #"; fi
 done`;
@@ -267,7 +312,7 @@ done`;
 // recreates the runtime without disturbing the proxy in front of it, and the
 // second `up -d` puts back anything the first stopped.
 function rewriteEnvAndRecreate(env: string) {
-	return `${heredoc(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env)}
+	return `${replaceFileScript(COMPOSERY_ENV_PATH, "__COMPOSERY_ENV__", env, "0600")}
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d --force-recreate --no-deps composery
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d`;
 }
@@ -299,7 +344,7 @@ __COMPOSERY_EXPECTED_HASH__
 )"
 attempt=1
 while [ "$attempt" -le 30 ]; do
-	actual_hash="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery sh -lc 'systemctl is-active --quiet ide.service && pid="$(systemctl show --property=MainPID --value ide.service)" && test "\${pid:-0}" -gt 0 && tr "\\000" "\\n" < "/proc/$pid/environ" | sed -n "s/^COMPOSERY_HASHED_PASSWORD=//p"' 2>/dev/null || true)"
+	actual_hash="$(docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery sh -lc 'pid="$(supervisorctl pid ide)" && test "\${pid:-0}" -gt 0 && tr "\\000" "\\n" < "/proc/$pid/environ" | sed -n "s/^COMPOSERY_HASHED_PASSWORD=//p"' 2>/dev/null || true)"
 	if [ "$actual_hash" = "$expected_hash" ]; then
 		exit 0
 	fi
@@ -314,7 +359,7 @@ exit 1
 // The box's own logs, read from inside the container where the services write
 // them, and from compose's capture if the container is too broken to answer.
 export function runtimeLogsScript(tail: number) {
-	return `docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery journalctl -u ide -u caddy -u persistence --no-pager --output=cat -n ${tail} || docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} logs --no-log-prefix --tail ${tail} caddy composery`;
+	return `docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} logs --no-log-prefix --tail ${tail} caddy composery`;
 }
 
 // Write the box's new Caddyfile and make Caddy pick it up. A slug change is the
@@ -323,7 +368,7 @@ export function runtimeLogsScript(tail: number) {
 // there is nothing running to reload.
 export function reloadCaddyfileScript(caddyfile: string) {
 	return `set -euo pipefail
-${heredoc(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile)}
+${replaceFileScript(COMPOSERY_CADDYFILE_PATH, "__COMPOSERY_CADDY__", caddyfile, "0644")}
 docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T caddy caddy reload --config /etc/caddy/Caddyfile || docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} up -d caddy
 `;
 }
@@ -357,8 +402,8 @@ printf 'composery=%s\\n' "\${state:-missing}"
 disk="$(df -P / 2>/dev/null | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
 printf 'disk_used_percent=%s\\n' "$disk"
 for service in persistence caddy ide; do
-	state="$(docker exec composery systemctl is-active "$service.service" 2>/dev/null)"
-	case "$state" in active) ;; inactive|failed|activating|deactivating) state=inactive ;; *) state=missing ;; esac
+	state="$(docker exec composery supervisorctl status "$service" 2>/dev/null | awk '{ print $2 }')"
+	case "$state" in RUNNING) state=active ;; STOPPED|STARTING|BACKOFF|STOPPING|EXITED|FATAL) state=inactive ;; *) state=missing ;; esac
 	printf '%s=%s\\n' "$service" "$state"
 done
 # Which persistence engine this boot chose. Only the daemon can answer, so a box

@@ -1,6 +1,11 @@
 export const COMPOSERY_COMPOSE_PATH = "/opt/composery-web/compose.yaml";
 export const COMPOSERY_ENV_PATH = "/opt/composery-web/composery.env";
 export const COMPOSERY_CADDYFILE_PATH = "/opt/composery-web/Caddyfile";
+export const COMPOSERY_VOLUME_NAMES = [
+	"composery_data",
+	"composery_caddy_data",
+	"composery_caddy_config"
+] as const;
 // renovate: datasource=docker depName=caddy
 export const CADDY_IMAGE =
 	"caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648";
@@ -119,50 +124,56 @@ function quoteEnvFileValue(value: string) {
 }
 
 export function renderCompose(runtimeImage: string, runtimePort: number) {
-	return `services:
+	const [dataVolume, caddyDataVolume, caddyConfigVolume] =
+		COMPOSERY_VOLUME_NAMES;
+	return `x-logging: &logging
+  driver: local
+
+services:
   caddy:
     image: ${CADDY_IMAGE}
     container_name: caddy
-    restart: unless-stopped
+    restart: always
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ${caddyDataVolume}:/data
+      - ${caddyConfigVolume}:/config
     depends_on:
       composery:
-        condition: service_started
+        condition: service_healthy
 
   composery:
     image: ${runtimeImage}
     container_name: composery
-    restart: unless-stopped
+    restart: always
+    logging: *logging
+    init: true
     env_file: ./composery.env
     environment:
-      - COMPOSERY_INIT=systemd
+      - COMPOSERY_PERSISTENCE=overlay
       - PORT=${runtimePort}
     privileged: true
-    cgroup: host
-    stop_signal: SIGRTMIN+3
+    stop_grace_period: 1m
     tmpfs:
       - /run
       - /run/lock
       - /tmp
     volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-      - composery_data:/data
+      - ${dataVolume}:/data
     expose:
       - "${runtimePort}"
 
 volumes:
-  composery_data:
-    name: composery_data
-  caddy_data:
-    name: caddy_data
-  caddy_config:
-    name: caddy_config
+  ${dataVolume}:
+    name: ${dataVolume}
+  ${caddyDataVolume}:
+    name: ${caddyDataVolume}
+  ${caddyConfigVolume}:
+    name: ${caddyConfigVolume}
 `;
 }
 

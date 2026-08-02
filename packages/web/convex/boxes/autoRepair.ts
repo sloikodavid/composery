@@ -318,9 +318,11 @@ export const sweepBoxHealth = internalAction({
 					// is an attempt limit that stops counting.
 					trigger: AUTO_REPAIR_TRIGGER
 				});
-			} catch {
+			} catch (error) {
 				// Busy, no longer eligible, or a probe that threw. All are normal and
-				// all resolve themselves on the next sweep.
+				// all resolve themselves on the next sweep. Report the skipped box so a
+				// broken sweep path cannot look like a healthy fleet.
+				console.error(`[auto-repair] could not sweep box ${boxId}`, error);
 			}
 		}
 	}
