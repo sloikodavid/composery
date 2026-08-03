@@ -259,7 +259,7 @@ inside a method chain (above `.order("desc")`) is silently ignored. Confirm the
 | `pnpm check:mutants`                     | Stryker and `cargo-mutants` over the current diff. Nothing may survive.                              |
 | `pnpm check:knip`                        | Unused files, exports and dependencies - the rot agents leave behind.                                |
 | `pnpm system:smoke`                      | Boots the built image and exercises it.                                                              |
-| `pnpm system:templates`                  | Validates provider manifests against live schemas and Fly's strict validator.                        |
+| `pnpm system:templates`                  | Validates every deployment manifest that has a published schema, plus Fly's strict validator.        |
 | `pnpm system:providers`                  | Checks provider response decoders against the current Hetzner and Cloudflare OpenAPI specifications. |
 | `pnpm system:registry`                   | Resolves a public multi-platform image through the real Registry V2 authentication and pull API.     |
 | `pnpm system:artifacts`                  | Checks every rendered host script with Bash and the rendered Compose file with Docker Compose.       |

@@ -19,7 +19,7 @@ import { CopyLinkButton } from "@/components/copy-link-button";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useBusyAction } from "@/hooks/use-busy-action";
 
-// Connect a device or an AI assistant to this box over SSH.
+// Connect a device or an AI agent to this box over SSH.
 //
 // Two ways in, presented the way a sign-in dialog presents two ways in: the one
 // most people want, a rule, then the one for people who already know what they

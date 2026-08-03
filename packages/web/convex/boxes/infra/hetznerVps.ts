@@ -21,11 +21,11 @@ import {
 	hetznerFullImagesResponseSchema,
 	hetznerImageResponseSchema,
 	hetznerMetricsResponseSchema,
+	hetznerOptionalActionResponseSchema,
 	hetznerPagedImageSummariesResponseSchema,
 	hetznerPagedPrimaryIpsResponseSchema,
 	hetznerPagedServerSummariesResponseSchema,
 	hetznerPagedVolumeSummariesResponseSchema,
-	hetznerRebuildResponseSchema,
 	hetznerServerListResponseSchema,
 	hetznerServerResponseSchema,
 	hetznerVolumeResponseSchema,
@@ -688,7 +688,7 @@ export const rebuildServer = internalAction({
 
 		const response = await hetznerRequest(
 			`/servers/${args.serverId}/actions/rebuild`,
-			hetznerRebuildResponseSchema,
+			hetznerOptionalActionResponseSchema,
 			{
 				method: "POST",
 				// Always send the current key. Hetzner supports user_data on rebuilds,
@@ -950,11 +950,12 @@ export const bootServerInRescue = internalAction({
 		}
 
 		if (server.rescue_enabled !== true) {
-			let enabled: z.output<typeof hetznerActionResponseSchema> | undefined;
+			let enabled:
+				z.output<typeof hetznerOptionalActionResponseSchema> | undefined;
 			try {
 				enabled = await hetznerRequest(
 					`/servers/${args.serverId}/actions/enable_rescue`,
-					hetznerActionResponseSchema,
+					hetznerOptionalActionResponseSchema,
 					{
 						method: "POST",
 						body: JSON.stringify(rescuePayload()),
@@ -965,7 +966,10 @@ export const bootServerInRescue = internalAction({
 				if ((await getServer(args.serverId)).rescue_enabled !== true)
 					throw error;
 			}
-			if (enabled) await waitForActionSuccess(enabled.action.id);
+			// Nothing to wait on when the provider omits the action, and nothing lost
+			// either: the rescue OS is on by the time it answers, and the SSH probe
+			// after the power-on is what proves which OS came up.
+			if (enabled?.action) await waitForActionSuccess(enabled.action.id);
 		}
 
 		let booted: z.output<typeof hetznerActionResponseSchema>;

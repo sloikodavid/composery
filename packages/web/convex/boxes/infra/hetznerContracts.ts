@@ -22,8 +22,14 @@ export const hetznerServerSchema = z.looseObject({
 	// wants an address or a status and must not start failing if the provider ever
 	// stops sending a counter - the usage sweep is the one caller that needs
 	// them, and it says so by refusing to record a sample without both.
-	outgoing_traffic: z.number().nullable().optional(),
-	included_traffic: z.number().nullable().optional(),
+	//
+	// Whole bytes, as the provider declares them. `int` rather than `number` is
+	// what `system:providers` compares: it reads both schemas as JSON Schema and
+	// matches type names, where Hetzner's "integer" is not the "number" a bare
+	// `z.number()` emits. It also states the safe-integer ceiling this side has
+	// and their int64 does not.
+	outgoing_traffic: z.number().int().nullable().optional(),
+	included_traffic: z.number().int().nullable().optional(),
 	public_net: z.looseObject({
 		ipv4: ip.nullable(),
 		ipv6: ip.nullable()
@@ -81,7 +87,7 @@ const hetznerServerSummarySchema = z.looseObject({
 	// reclaiming leaked resources because the provider changed a field the audit
 	// wanted.
 	server_type: z.looseObject({ name: z.string() }).optional(),
-	included_traffic: z.number().nullable().optional()
+	included_traffic: z.number().int().nullable().optional()
 });
 export const hetznerPagedServerSummariesResponseSchema = z.intersection(
 	z.looseObject({ servers: z.array(hetznerServerSummarySchema) }),
@@ -93,7 +99,13 @@ export const hetznerCreateServerResponseSchema = z.looseObject({
 export const hetznerActionResponseSchema = z.looseObject({
 	action: hetznerActionSchema
 });
-export const hetznerRebuildResponseSchema = z.looseObject({
+// The two endpoints that hand back a root password - rebuild and enable rescue -
+// and the only two whose response Hetzner documents without a `required` list. So
+// the action is theirs to omit, and a runtime that demands it is asking for more
+// than the provider promises, which is exactly what `system:providers` fails on.
+// One schema for both, because they are one shape and one reason, and a caller
+// that must check for the action before waiting on it either way.
+export const hetznerOptionalActionResponseSchema = z.looseObject({
 	action: hetznerActionSchema.optional()
 });
 
@@ -199,14 +211,14 @@ export const hetznerResponseContracts = [
 		method: "post",
 		path: "/servers/{id}/actions/rebuild",
 		status: "201",
-		schema: hetznerRebuildResponseSchema
+		schema: hetznerOptionalActionResponseSchema
 	},
 	{
 		name: "enable server rescue",
 		method: "post",
 		path: "/servers/{id}/actions/enable_rescue",
 		status: "201",
-		schema: hetznerActionResponseSchema
+		schema: hetznerOptionalActionResponseSchema
 	},
 	{
 		name: "power a server on",

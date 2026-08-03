@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,10 @@ const SCHEMA_URLS = {
 	render: "https://render.com/schema/render.yaml.json",
 	// renovate: datasource=github-releases depName=kubernetes/kubernetes
 	kubernetes:
-		"https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.3/api/openapi-spec/swagger.json"
+		"https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.3/api/openapi-spec/swagger.json",
+	// renovate: datasource=github-releases depName=canonical/cloud-init
+	cloudConfig:
+		"https://raw.githubusercontent.com/canonical/cloud-init/26.2/cloudinit/config/schemas/schema-cloud-config-v1.json"
 };
 const RUN_ID = `${Date.now()}-${process.pid}`;
 
@@ -59,27 +62,10 @@ try {
 }
 
 async function validateProviderSchemas() {
-	log("validating Fly config with flyctl's strict platform schema");
-	const flyPath = templatePath("fly/fly.toml");
-	const fly = run(
-		process.env.FLYCTL_PATH ?? "flyctl",
-		["config", "validate", "--strict", "--config", flyPath],
-		{
-			capture: true,
-			// The command requires a syntactically valid token before doing its
-			// entirely local validation. This documented test value grants no
-			// access and keeps schema validation independent of a repository secret.
-			env: { FLY_API_TOKEN: process.env.FLY_API_TOKEN ?? "fm2_test" }
-		}
-	);
-	process.stdout.write(fly.stdout);
-	process.stderr.write(fly.stderr);
-	if (`${fly.stdout}\n${fly.stderr}`.includes("WARN")) {
-		throw new Error("flyctl reported a configuration warning.");
-	}
+	validateFly();
 
 	log(`validating Render Blueprint against ${SCHEMA_URLS.render}`);
-	await validateJsonSchema(
+	validateJsonSchema(
 		parse(readTemplate("render/render.yaml")),
 		await fetchJson(SCHEMA_URLS.render),
 		"Render Blueprint",
@@ -93,7 +79,7 @@ async function validateProviderSchemas() {
 		);
 	}
 	log(`validating Railway config against ${railway.$schema}`);
-	await validateJsonSchema(
+	validateJsonSchema(
 		railway,
 		await fetchJson(railway.$schema),
 		"Railway config",
@@ -101,10 +87,82 @@ async function validateProviderSchemas() {
 	);
 
 	log(`validating Kubernetes resources against ${SCHEMA_URLS.kubernetes}`);
-	await validateKubernetes(await fetchJson(SCHEMA_URLS.kubernetes));
+	validateKubernetes(await fetchJson(SCHEMA_URLS.kubernetes));
+
+	log(`validating cloud-config against ${SCHEMA_URLS.cloudConfig}`);
+	validateCloudConfig(await fetchJson(SCHEMA_URLS.cloudConfig));
 }
 
-async function validateJsonSchema(value, schema, label, AjvClass) {
+// What `--strict` gives is a type check, not a schema: it rejects broken TOML, a
+// value of the wrong type and a missing app name, and it accepts an unknown key,
+// an unknown VM size and a mount with no destination. So the warning text does
+// the rest of the work here - flyctl exits 0 on a config it only warns about -
+// and that makes one word load bearing, which is a weak thing to depend on.
+//
+// So the reading is proved on every run. A `[[services]]` block with no ports of
+// its own is a shape flyctl warns about and still calls valid. If that copy
+// comes back clean and accepted, the warning went unread, and the clean result
+// for the shipped config means nothing.
+function validateFly() {
+	log("validating Fly config with flyctl");
+	const shipped = runFly(templatePath("fly/fly.toml"), true);
+	if (!shipped.output.includes("Configuration is valid")) {
+		throw new Error("flyctl did not report the Fly config as valid.");
+	}
+	if (shipped.output.includes("WARN")) {
+		throw new Error("flyctl reported a configuration warning.");
+	}
+
+	const control = resolve(REPO_ROOT, "tmp", "fly-warning-control.toml");
+	mkdirSync(dirname(control), { recursive: true });
+	writeFileSync(
+		control,
+		`${readTemplate("fly/fly.toml")}
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+`
+	);
+	const warned = runFly(control, false);
+	if (warned.status === 0 && !warned.output.includes("WARN")) {
+		throw new Error(
+			"flyctl accepts a service with no ports and says nothing, so the warning check above cannot fail."
+		);
+	}
+	log(
+		"flyctl accepts the Fly config, and still reports a warning when there is one"
+	);
+}
+
+function runFly(config, echo) {
+	const result = run(
+		process.env.FLYCTL_PATH ?? "flyctl",
+		["config", "validate", "--strict", "--config", config],
+		{
+			capture: true,
+			// A validation error has to fail the run, but the control config is
+			// asked whether flyctl objects at all - either answer is one to read.
+			check: echo,
+			// The command requires a syntactically valid token before doing its
+			// entirely local validation. This documented test value grants no
+			// access and keeps schema validation independent of a repository secret.
+			env: { FLY_API_TOKEN: process.env.FLY_API_TOKEN ?? "fm2_test" }
+		}
+	);
+	if (echo) {
+		process.stdout.write(result.stdout);
+		process.stderr.write(result.stderr);
+	}
+	return {
+		output: `${result.stdout}\n${result.stderr}`,
+		status: result.status
+	};
+}
+
+// Deliberately not `async`. Every failure here is a throw, and a promise nobody
+// waits for turns a throw into a rejection nothing reads - the validator would
+// report a pass it never performed.
+function validateJsonSchema(value, schema, label, AjvClass) {
 	const ajv = new AjvClass({
 		allErrors: true,
 		strict: false,
@@ -120,7 +178,7 @@ async function validateJsonSchema(value, schema, label, AjvClass) {
 	}
 }
 
-async function validateKubernetes(openApi) {
+function validateKubernetes(openApi) {
 	if (openApi.swagger !== "2.0" || !openApi.definitions) {
 		throw new Error(
 			"Kubernetes did not return its published OpenAPI v2 schema."
@@ -148,38 +206,101 @@ async function validateKubernetes(openApi) {
 		}
 	}
 
-	const resources = parseAllDocuments(
-		readTemplate("kubernetes/composery.yaml")
-	).map((document) => {
-		if (document.errors.length > 0) {
-			throw document.errors[0];
-		}
-		return document.toJS();
-	});
-	if (resources.length === 0) {
-		throw new Error("The Kubernetes template contains no resources.");
+	// Every manifest in the folder, read from the folder. Naming them here is how
+	// `ingress.yaml` sat unchecked beside a validated `composery.yaml`: the list
+	// said what somebody remembered to add, and a manifest nobody adds to it is
+	// one nothing reads until a cluster rejects it.
+	//
+	// Everything that is not documentation counts as a manifest. Selecting by
+	// extension instead would rebuild the same hole one extension down: a file
+	// somebody spells another way is then skipped without a word, which is how
+	// the list-shaped version failed in the first place.
+	const manifests = readdirSync(templatePath("kubernetes"))
+		.filter((entry) => !entry.endsWith(".md"))
+		.sort();
+	if (manifests.length === 0) {
+		throw new Error("The Kubernetes template folder holds no manifest.");
 	}
 
-	for (const resource of resources) {
-		const type = `${resource?.apiVersion}:${resource?.kind}`;
-		const definition = definitionsByType.get(type);
-		if (!definition) {
-			throw new Error(`The Kubernetes schema has no definition for ${type}.`);
+	for (const manifest of manifests) {
+		const resources = parseAllDocuments(
+			readTemplate(`kubernetes/${manifest}`)
+		).map((document) => {
+			if (document.errors.length > 0) {
+				throw document.errors[0];
+			}
+			return document.toJS();
+		});
+		if (resources.length === 0) {
+			throw new Error(`${manifest} contains no resource.`);
 		}
-		const validate = ajv.getSchema(
-			`${SCHEMA_URLS.kubernetes}#/definitions/${definition}`
-		);
-		if (!validate) {
-			throw new Error(`Could not compile the Kubernetes schema for ${type}.`);
-		}
-		if (!validate(resource)) {
-			throw new Error(
-				`${type} is invalid:\n${ajv.errorsText(validate.errors, {
-					separator: "\n"
-				})}`
+
+		for (const resource of resources) {
+			const type = `${resource?.apiVersion}:${resource?.kind}`;
+			const definition = definitionsByType.get(type);
+			if (!definition) {
+				throw new Error(
+					`The Kubernetes schema has no definition for ${type} (${manifest}).`
+				);
+			}
+			const validate = ajv.getSchema(
+				`${SCHEMA_URLS.kubernetes}#/definitions/${definition}`
 			);
+			if (!validate) {
+				throw new Error(`Could not compile the Kubernetes schema for ${type}.`);
+			}
+			if (!validate(resource)) {
+				throw new Error(
+					`${manifest} ${type} is invalid:\n${ajv.errorsText(validate.errors, {
+						separator: "\n"
+					})}`
+				);
+			}
 		}
+		log(`${manifest} matches the Kubernetes schema`);
 	}
+}
+
+// The one-paste installer has no reader at all between the paste and the boot,
+// and a key cloud-init does not know is skipped in silence on somebody else's
+// new server.
+function validateCloudConfig(schema) {
+	// cloud-init publishes draft-04 and Ajv 8 reads draft-07 onward, so the draft
+	// is dropped and the schema read as the default one. Exactly one keyword pair
+	// means different things across that gap -
+	// `exclusiveMinimum`/`exclusiveMaximum` carry a boolean in draft-04 and a
+	// number after it - and this schema uses neither, which is what makes the two
+	// readings accept and reject the same documents. Refuse the schema, never the
+	// template, if a later cloud-init adds one: a keyword read as the wrong draft
+	// validates something nobody asked for and still passes.
+	const draft04 = findDraft04Bounds(schema);
+	if (draft04.length > 0) {
+		throw new Error(
+			`The cloud-config schema now uses draft-04 ${draft04.join(", ")}; Ajv would read it as a later draft.`
+		);
+	}
+	delete schema.$schema;
+
+	validateJsonSchema(
+		parse(readTemplate("user-data/user-data.yaml")),
+		schema,
+		"cloud-config",
+		Ajv
+	);
+	log("user-data.yaml matches the cloud-config schema");
+}
+
+// A draft-04 bound is the boolean form; a property a user config happens to call
+// `exclusiveMinimum` holds a schema object and is not one.
+function findDraft04Bounds(value) {
+	if (Array.isArray(value)) return value.flatMap(findDraft04Bounds);
+	if (!value || typeof value !== "object") return [];
+	return Object.entries(value).flatMap(([key, child]) =>
+		(key === "exclusiveMinimum" || key === "exclusiveMaximum") &&
+		typeof child === "boolean"
+			? [key]
+			: findDraft04Bounds(child)
+	);
 }
 
 function makeObjectsStrict(value) {

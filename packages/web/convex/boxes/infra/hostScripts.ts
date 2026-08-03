@@ -534,8 +534,13 @@ docker compose -p composery -f ${COMPOSERY_COMPOSE_PATH} exec -T composery compo
 
 // Single-quote a value for /bin/sh. Every embedded quote is closed, escaped and
 // reopened, which is the one form that is safe for arbitrary text.
+//
+// The replacement is four characters - quote, backslash, quote, quote - and it
+// has to be written where a backslash survives. Spelled as a template literal it
+// was not: `'\''` is an escaped quote inside one, so the backslash never reached
+// the output and every quote in a value closed the string meant to hold it.
 export function shellQuote(value: string) {
-	return `'${value.replace(/'/g, `'\''`)}'`;
+	return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 // Read and revoke the certificates an instance has issued.

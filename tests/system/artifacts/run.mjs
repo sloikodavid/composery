@@ -3,21 +3,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderRuntimeArtifacts } from "../../../packages/web/convex/boxes/infra/artifacts.ts";
-import {
-	INSPECT_SCRIPT,
-	applyRuntimeConfigScript,
-	bootstrapScript,
-	copyFromParkingScript,
-	copyToParkingScript,
-	measureUsageScript,
-	reloadCaddyfileScript,
-	repairScript,
-	rewritePasswordScript,
-	runtimeLogsScript,
-	unmountParkingScript,
-	updateScript,
-	verifyParkingScript
-} from "../../../packages/web/convex/boxes/infra/hostScripts.ts";
+// Reached through the namespace rather than by name, so the guard below can ask
+// the module what it exports instead of comparing it to a second list here.
+import * as hostScripts from "../../../packages/web/convex/boxes/infra/hostScripts.ts";
 
 const artifacts = renderRuntimeArtifacts({
 	cloudBoxId: "box_123",
@@ -29,30 +17,68 @@ const artifacts = renderRuntimeArtifacts({
 	runtimePort: 8080
 });
 
+// Every script this deployment can send to a host, keyed by the export it comes
+// from and called the way its caller calls it. One export can produce more than
+// one shape, so each holds a list: `bash -n` only ever sees the text it is
+// handed, and a branch nobody rendered is a branch nobody parsed.
 const scripts = {
-	"apply configuration": applyRuntimeConfigScript(artifacts.env),
-	bootstrap: bootstrapScript(artifacts),
-	"copy back": copyFromParkingScript(artifacts, 42),
-	"copy out": copyToParkingScript(42),
-	inspection: INSPECT_SCRIPT,
-	"measure usage": measureUsageScript(),
-	"reload Caddy": reloadCaddyfileScript(artifacts.caddyfile),
-	repair: repairScript(artifacts),
-	"rewrite password": rewritePasswordScript(artifacts.env, "$argon2id$hash"),
-	"runtime logs": runtimeLogsScript(100),
-	"unmount parking": unmountParkingScript(),
-	update: updateScript(artifacts),
-	"verify back": verifyParkingScript("back", 42),
-	"verify out": verifyParkingScript("out", 42)
+	DISK_SCRIPT: [hostScripts.DISK_SCRIPT],
+	INSPECT_SCRIPT: [hostScripts.INSPECT_SCRIPT],
+	applyRuntimeConfigScript: [
+		hostScripts.applyRuntimeConfigScript(artifacts.env)
+	],
+	bootstrapScript: [hostScripts.bootstrapScript(artifacts)],
+	copyFromParkingScript: [hostScripts.copyFromParkingScript(artifacts, 42)],
+	copyToParkingFromRescueScript: [
+		hostScripts.copyToParkingFromRescueScript(42)
+	],
+	reloadCaddyfileScript: [
+		hostScripts.reloadCaddyfileScript(artifacts.caddyfile)
+	],
+	repairScript: [hostScripts.repairScript(artifacts)],
+	rewritePasswordScript: [
+		hostScripts.rewritePasswordScript(artifacts.env, "$argon2id$hash")
+	],
+	runtimeLogsScript: [hostScripts.runtimeLogsScript(100)],
+	// A name is the owner's own text, so the one with a quote in it is the shape
+	// worth parsing: the quoting it goes through is what makes it one word.
+	sshEnrollScript: [hostScripts.sshEnrollScript("a phone's name")],
+	sshListScript: [hostScripts.sshListScript()],
+	sshRevokeScript: [hostScripts.sshRevokeScript(42)],
+	unmountParkingScript: [hostScripts.unmountParkingScript()],
+	unmountRescueScript: [hostScripts.unmountRescueScript()],
+	updateScript: [hostScripts.updateScript(artifacts)],
+	verifyParkingScript: [
+		hostScripts.verifyParkingScript("out", 42),
+		hostScripts.verifyParkingScript("back", 42)
+	]
 };
 
-for (const [name, script] of Object.entries(scripts)) {
-	const checked = spawnSync("bash", ["-n"], {
-		encoding: "utf8",
-		input: script
-	});
-	if (checked.status !== 0) {
-		throw new Error(`${name} is not valid Bash:\n${checked.stderr}`);
+// `bash -n` proves only what it is handed, so a script nobody added above is a
+// script nothing checks - and it fails silently, by passing. The module's own
+// exports are the list: anything named for a script has to appear here.
+const unchecked = Object.keys(hostScripts).filter(
+	(name) => /(?:Script|_SCRIPT)$/.test(name) && !(name in scripts)
+);
+if (unchecked.length > 0) {
+	throw new Error(
+		`hostScripts exports scripts this check never parses: ${unchecked.join(", ")}.`
+	);
+}
+
+let parsed = 0;
+for (const [name, shapes] of Object.entries(scripts)) {
+	for (const [index, script] of shapes.entries()) {
+		const checked = spawnSync("bash", ["-n"], {
+			encoding: "utf8",
+			input: script
+		});
+		if (checked.status !== 0) {
+			throw new Error(
+				`${name}${shapes.length > 1 ? ` (shape ${index + 1})` : ""} is not valid Bash:\n${checked.stderr}`
+			);
+		}
+		parsed += 1;
 	}
 }
 
@@ -77,6 +103,4 @@ try {
 	await rm(directory, { force: true, recursive: true });
 }
 
-console.log(
-	`validated ${Object.keys(scripts).length} Bash scripts and Compose`
-);
+console.log(`validated ${parsed} Bash scripts and Compose`);
