@@ -75,6 +75,48 @@ const rust = changed.filter(
 	(f) => f.startsWith("packages/cli/") && f.endsWith(".rs")
 );
 
+// The lines this change introduced, as `path:start-end`, which is the form
+// Stryker's `mutate` takes to scope a run below file level.
+//
+// Whole files are what the threshold below could not survive. `break: 100` says
+// nothing may survive on a line this change introduced; a whole file asks that
+// of every line the file already had, so a small change to hetznerVps.ts
+// needed tests for 176 mutants in code that change never saw -
+// and the answer to those is the nightly sweep, not a gate on whoever edited
+// something else in the same file. The Rust half was always scoped this way
+// (`--in-diff`); this is the same rule in the form Stryker reads it.
+// One diff per file, so which file a hunk belongs to is the loop variable rather
+// than something parsed back out of a `+++ b/` header. With `--unified=0` the
+// output still carries the added lines, and an added line is written with a `+`
+// in front of it - so a source line reading `++ b/x` reaches this as `+++ b/x`
+// and is not distinguishable from a header by any pattern. Asking git one file
+// at a time removes the question instead of answering it badly.
+function addedLineRanges(files) {
+	const ranges = [];
+	for (const file of files) {
+		const diff = git(["diff", "--unified=0", base, "--", file]);
+		// A file git will not diff contributes no range. `?? ""` would do the same
+		// and cannot be tested: every string that is not a diff yields no hunks, so
+		// no test can tell one fallback value from another. A guard says the same
+		// thing in a form that fails when it is wrong.
+		if (!diff) continue;
+		for (const line of diff.split("\n")) {
+			// Anchored, because an added line holding a hunk header of its own
+			// arrives as `+@@ -1 +1 @@` and would otherwise be read as one.
+			const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+			if (!hunk) continue;
+			const start = Number(hunk[1]);
+			// A hunk with no count covers exactly one line; one with `,0` only
+			// deletes, and a deleted line cannot hold a mutant.
+			const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+			if (count > 0) ranges.push(`${file}:${start}-${start + count - 1}`);
+		}
+	}
+	return ranges;
+}
+
+const tsRanges = addedLineRanges(ts);
+
 let failed = false;
 
 function run(label, command, args, options = {}) {
@@ -88,7 +130,7 @@ function run(label, command, args, options = {}) {
 	if (result.status !== 0) failed = true;
 }
 
-if (ts.length) {
+if (tsRanges.length) {
 	// Stryker has no CLI flag for the break threshold, so the run gets a generated
 	// config that is the committed one plus this run's scope. Writing it out beats
 	// mutating stryker.config.json in place: nothing here can leave the checked-in
@@ -99,7 +141,7 @@ if (ts.length) {
 		JSON.stringify(
 			{
 				...stryker,
-				mutate: ts,
+				mutate: tsRanges,
 				// Nothing may survive on a line this change introduced. Equivalent
 				// mutants are real, so the escape is a disable comment carrying its
 				// reason - a decision in the diff rather than a threshold lowered.
@@ -110,6 +152,11 @@ if (ts.length) {
 		)
 	);
 	run("TypeScript mutants", "pnpm", ["exec", "stryker", "run", STRYKER_CONFIG]);
+} else if (ts.length) {
+	// Mutable files changed and not one added line among them - a pure deletion,
+	// or a move. Said out loud, because a run that mutates nothing and a run that
+	// found nothing to mutate look identical from the exit code.
+	console.log("No added TypeScript lines; nothing to mutate.");
 } else {
 	console.log("No TypeScript source changed; nothing to mutate.");
 }

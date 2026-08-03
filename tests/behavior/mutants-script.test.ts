@@ -19,6 +19,7 @@ const host = vi.hoisted(() => ({
 	spawns: [] as string[],
 	exits: [] as number[],
 	errors: [] as string[],
+	logs: [] as string[],
 	writes: [] as { path: string; contents: string }[]
 }));
 
@@ -50,7 +51,10 @@ vi.mock("node:fs", () => ({
 	globSync: () => host.mutable
 }));
 
-function arrange(changed: string[]) {
+// One added hunk per mutable file unless a test supplies its own. The script
+// asks git per file, so each key names one file and the diffs are keyed the same
+// way rather than written out.
+function arrange(changed: string[], diffs: Record<string, string> = {}) {
 	host.git.clear();
 	host.git.set("merge-base origin/main HEAD", "abc1234def\n");
 	host.git.set(
@@ -58,15 +62,28 @@ function arrange(changed: string[]) {
 		`${changed.join("\n")}\n`
 	);
 	host.git.set("diff abc1234def -- packages/cli", "a diff\n");
+
+	for (const file of changed.filter((f) => host.mutable.includes(f))) {
+		host.git.set(
+			`diff --unified=0 abc1234def -- ${file}`,
+			diffs[file] ?? `--- a/${file}\n+++ b/${file}\n@@ -12,0 +12,3 @@\n`
+		);
+	}
 	host.spawns = [];
 	host.exits = [];
 	host.errors = [];
+	host.logs = [];
 	host.writes = [];
 
 	vi.spyOn(console, "error").mockImplementation((message: unknown) => {
 		host.errors.push(String(message));
 	});
-	vi.spyOn(console, "log").mockImplementation(() => undefined);
+	// Captured, not swallowed. A run that mutates nothing reports it by saying so
+	// and in no other way - the exit code is 0 either way - so the sentence is the
+	// result, and a test that ignores it is reading none.
+	vi.spyOn(console, "log").mockImplementation((message: unknown) => {
+		host.logs.push(String(message));
+	});
 	vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
 		host.exits.push(code ?? 0);
 		// The real script stops here; the mock has to as well, or the lines after
@@ -150,10 +167,96 @@ describe("check:mutants", () => {
 
 		const written = host.writes.find((w) => w.path.endsWith(".json"));
 		expect(JSON.parse(written?.contents ?? "{}")).toMatchObject({
-			mutate: ["packages/web/convex/boxes/operation/record.ts"],
+			// Lines, not the file. `break: 100` holds only because the scope is what
+			// this change introduced; the whole file asks a full score of code the
+			// change never touched, which is how a small edit came to need tests for
+			// 176 mutants it did not write.
+			mutate: ["packages/web/convex/boxes/operation/record.ts:12-14"],
 			// Raised for the diff run: a change may not introduce a survivor.
 			thresholds: { break: 100 }
 		});
+	});
+
+	test("mutates every added range, across files and hunks", async () => {
+		const record = "packages/web/convex/boxes/operation/record.ts";
+		const start = "packages/web/convex/boxes/operation/start.ts";
+		host.mutable = [record, start];
+		// Counts run past a single digit on both sides of the hunk header. With
+		// `@@ -9,3 +9,5 @@` alone, a pattern reading one digit where it should read
+		// several answers identically, and the test cannot tell them apart.
+		arrange([record, start], {
+			[record]: [
+				`--- a/${record}`,
+				`+++ b/${record}`,
+				// No count at all means exactly one line - the spelling git uses most,
+				// and the one an off-by-one reads straight past.
+				"@@ -4 +4 @@",
+				"@@ -20,14 +21,2 @@",
+				""
+			].join("\n"),
+			[start]: [
+				`--- a/${start}`,
+				`+++ b/${start}`,
+				"@@ -9,3 +9,12 @@",
+				// An added line carrying a hunk header of its own. git writes it with a
+				// `+` in front, so only the anchor keeps it from being read as one.
+				"+@@ -777,7 +777,7 @@",
+				""
+			].join("\n")
+		});
+
+		await runScript();
+
+		const written = host.writes.find((w) => w.path.endsWith(".json"));
+		const config = JSON.parse(written?.contents ?? "{}") as {
+			mutate?: string[];
+		};
+		expect(config.mutate).toEqual([
+			`${record}:4-4`,
+			`${record}:21-22`,
+			`${start}:9-20`
+		]);
+	});
+
+	test("contributes no range for a file git will not diff", async () => {
+		const record = "packages/web/convex/boxes/operation/record.ts";
+		host.mutable = [record];
+		arrange([record]);
+		// git named the file and then refuses to diff it. The pair cannot normally
+		// disagree, which is the point: the answer has to stay "no lines added"
+		// rather than become a crash on `undefined`.
+		host.git.delete(`diff --unified=0 abc1234def -- ${record}`);
+
+		await runScript();
+
+		expect(host.spawns.some((call) => call.includes("stryker"))).toBe(false);
+		expect(host.logs).toContain(
+			"No added TypeScript lines; nothing to mutate."
+		);
+		expect(host.exits).toEqual([]);
+	});
+
+	test("mutates nothing when the change only deletes lines", async () => {
+		const record = "packages/web/convex/boxes/operation/record.ts";
+		host.mutable = [record];
+		arrange([record], {
+			[record]: [
+				`--- a/${record}`,
+				`+++ b/${record}`,
+				// `+12,0` adds no line. Mutating `12-11` is a range Stryker rejects,
+				// and a deleted line cannot hold a mutant anyway.
+				"@@ -12,3 +12,0 @@",
+				""
+			].join("\n")
+		});
+
+		await runScript();
+
+		expect(host.spawns.some((call) => call.includes("stryker"))).toBe(false);
+		expect(host.logs).toContain(
+			"No added TypeScript lines; nothing to mutate."
+		);
+		expect(host.exits).toEqual([]);
 	});
 
 	test("runs no mutation when every changed file is outside the mutate set", async () => {
@@ -163,6 +266,17 @@ describe("check:mutants", () => {
 		await runScript();
 
 		expect(host.spawns.some((call) => call.includes("stryker"))).toBe(false);
+		// A different sentence from the deletion-only case above, and the pair is
+		// what separates them: "nothing to mutate" is the same exit code whether no
+		// mutable file changed or one did and added no line. Only the wording says
+		// which, so only the wording can be wrong.
+		expect(host.logs).toContain(
+			"No TypeScript source changed; nothing to mutate."
+		);
+		// Nothing to ask git about either, so it is never asked.
+		expect(host.spawns.some((call) => call.includes("--unified=0"))).toBe(
+			false
+		);
 		expect(host.exits).toEqual([]);
 	});
 });
