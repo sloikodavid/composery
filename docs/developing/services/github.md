@@ -94,13 +94,31 @@ gh label create dependencies --color 0366d6 --description "Dependency updates"
 Branch protection is a repository ruleset (Settings -> Rules -> Rulesets)
 named `Protect main`, targeting `refs/heads/main`, with no bypass actors:
 
-| Rule                   | Parameters             |
-| ---------------------- | ---------------------- |
-| Require a pull request | 1 approving review     |
-| Required status checks | `all checks` and `cla` |
-| Require linear history | -                      |
-| Restrict deletions     | -                      |
-| Block force pushes     | -                      |
+| Rule                                       | Parameters             |
+| ------------------------------------------ | ---------------------- |
+| Require a pull request                     | 0 approving reviews    |
+| Required status checks                     | `all checks` and `cla` |
+| Require branches to be up to date (strict) | on                     |
+| Require linear history                     | -                      |
+| Restrict deletions                         | -                      |
+| Block force pushes                         | -                      |
+
+**This ruleset is what stops a commit reaching production before the checks
+pass**, so its enforcement is `active` and its bypass list is empty. Nothing
+downstream re-checks: Vercel tracks `main` directly, so a commit that reaches
+`main` is a commit that deploys.
+
+Two parameters carry that weight and are easy to get wrong:
+
+- **0 approving reviews.** The pull request itself is the gate - work lands on a
+  branch, the checks run, and merging waits for them. A review count above the
+  number of people who can review blocks every merge, which is why enforcement
+  cannot simply be switched on with a `1` left in place. Raise it when a second
+  person can approve.
+- **Strict status checks.** Without it a stale branch may merge, and the tree
+  that lands on `main` is one no run ever tested - exactly the commit the gate
+  exists to stop. With it, and with rebase-only merging, the tested tree and the
+  merged tree are the same tree.
 
 Required status check contexts must exactly equal the check-run names GitHub
 reports on a commit, not workflow file names. `all checks` is the one fail-closed
@@ -113,11 +131,19 @@ gh api repos/<github-user>/composery/commits/main/check-runs \
   --jq '.check_runs[].name'
 ```
 
-Enforcement on the canonical repository is currently **disabled**: a solo
-maintainer pushes reviewed work directly to `main`, and a required-review rule
-with no second reviewer would block every merge. Create the ruleset disabled
-so the configuration is ready, and enable enforcement as soon as more than one
-person lands changes.
+Confirm the three settings that no test in the repository can see:
+
+```bash
+gh api repos/<github-user>/composery/rulesets --jq '.[] | select(.name=="Protect main") | .id' \
+  | xargs -I{} gh api repos/<github-user>/composery/rulesets/{} \
+  --jq '{enforcement, bypass: (.bypass_actors | length),
+         strict: (.rules[] | select(.type=="required_status_checks")
+                  | .parameters.strict_required_status_checks_policy)}'
+```
+
+It must report `active`, `0`, and `true`. A bypass actor, a lapsed enforcement
+flag, or `strict: false` each reopens the path to production without changing a
+file, and the only symptom from inside the repository is a red run on `main`.
 
 ## Actions
 
@@ -125,14 +151,13 @@ Settings -> Actions -> General: Actions enabled, all actions allowed, default
 workflow token permissions **read-only**. Workflows elevate per-file through
 their `permissions:` blocks, which is why none of this needs org-level policy:
 
-| Workflow             | Trigger                               | Elevated permissions and why                                                                      |
-| -------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `ci.yaml`            | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result     |
-| `deploy.yaml`        | completed `ci` on `main`              | production job can fast-forward `deploy`, but only after a successful same-repository push CI run |
-| `smoke.yaml`         | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state     |
-| `smoke-nightly.yaml` | schedule, dispatch                    | none - uncached image smoke                                                                       |
-| `release.yaml`       | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions           |
-| `cla.yaml`           | PR events/comments                    | signature branch, PR comments, and recheck permissions                                            |
+| Workflow             | Trigger                               | Elevated permissions and why                                                                  |
+| -------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `ci.yaml`            | pull requests, pushes to `main`, call | none; grouped platform and smoke checks finish in the stable, fail-closed `all checks` result |
+| `smoke.yaml`         | call                                  | none; boots the image and logs the informational Trivy scan without changing repository state |
+| `smoke-nightly.yaml` | schedule, dispatch                    | none - uncached image smoke                                                                   |
+| `release.yaml`       | dispatch                              | revalidates the exact ref before image release, ghcr, provenance, and Trivy permissions       |
+| `cla.yaml`           | PR events/comments                    | signature branch, PR comments, and recheck permissions                                        |
 
 Operational notes:
 
@@ -229,12 +254,11 @@ approval held for majors and for `packages/ide/upstream` submodule bumps
 
 ## Vercel connection
 
-The production website deploys from the CI-owned `deploy` branch through the
-Vercel GitHub App, installed during `vercel link`. A non-forced push advances
-that branch only when the separate `deploy` workflow observes a successful
-same-repository push run of `ci`; `packages/web/vercel.json`
-rejects Git deployments from every other branch. That connection and everything
-after it is [Web / Vercel](../web/services/vercel.md).
+The production website deploys from `main` through the Vercel GitHub App,
+installed during `vercel link`. `packages/web/vercel.json` rejects Git
+deployments from every other branch, and the `Protect main` ruleset above is
+what makes tracking `main` safe: no commit reaches it without `all checks`. That
+connection and everything after it is [Web / Vercel](../web/services/vercel.md).
 
 ## Running your own
 

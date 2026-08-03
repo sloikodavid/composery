@@ -13,10 +13,13 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: smoke-${{ github.ref }}
-  cancel-in-progress: true
-
+# No concurrency group. `github.ref` inside a called workflow is the *caller's*
+# ref, so `smoke-${{ github.ref }}` gave a release dispatched against main and a
+# push-triggered ci on main one shared group with cancel-in-progress: starting
+# either one killed the other's smoke, failing `all checks` on a run that was
+# healthy. Every caller already carries a group that covers its own reruns, and
+# a release must never be cancelled by an unrelated push, so the caller owns
+# this decision and this file states none.
 jobs:
   smoke:
     name: ${{ matrix.arch }}

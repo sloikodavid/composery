@@ -92,29 +92,25 @@ describe("cross-platform checks", () => {
 		expect(ci.jobs.linux?.name).toBe("checks / linux");
 		expect(ci.jobs["windows-macos"]?.name).toBe("checks / ${{ matrix.os }}");
 
+		// No job here may hold a write token, and now there is no workflow that
+		// does either. Production used to be a `deploy` branch that a second
+		// workflow fast-forwarded after watching ci finish - a pointer whose
+		// only job was to answer "did this commit pass?" downstream of the merge.
+		// The `Protect main` ruleset answers it upstream instead, by refusing the
+		// merge, so every commit on main is a commit `all checks` passed and
+		// Vercel can track main directly.
+		//
+		// The half of that guarantee this test cannot see: enforcement, strict
+		// status checks and an empty bypass list are GitHub settings, not files.
+		// `docs/developing/services/github.md` is where they are specified, and a
+		// red run on main is what a bypass looks like from in here.
 		const writable = Object.entries(ci.jobs)
 			.filter(([, job]) => job.permissions?.contents === "write")
 			.map(([name]) => name);
 		expect(writable).toEqual([]);
-
-		const deployWorkflow = workflow(".github/workflows/deploy.yaml");
-		expect(deployWorkflow.on?.workflow_run).toEqual({
-			workflows: ["ci"],
-			types: ["completed"],
-			branches: ["main"]
-		});
-		const production = deployWorkflow.jobs.production;
-		expect(production?.if).toContain(
-			"github.event.workflow_run.conclusion == 'success'"
-		);
-		expect(production?.if).toContain(
-			"github.event.workflow_run.head_repository.full_name == github.repository"
-		);
-		expect(production?.permissions).toEqual({ contents: "write" });
-		const deploy = production?.steps?.find(
-			(step) => step.name === "Advance production"
-		);
-		expect(deploy?.run).toContain("refs/heads/deploy");
+		expect(
+			readdirSync(resolve(repoRoot, ".github/workflows")).sort()
+		).not.toContain("deploy.yaml");
 
 		const drift = ci.jobs.linux?.steps?.find(
 			(step) => step.name === "Check for source drift"
@@ -133,7 +129,7 @@ describe("cross-platform checks", () => {
 		);
 		expect(vercel.git?.deploymentEnabled).toEqual({
 			"*": false,
-			deploy: true
+			main: true
 		});
 		expect(vercel.github?.silent).toBe(true);
 
