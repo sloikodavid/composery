@@ -14,8 +14,12 @@ on:
 permissions:
   contents: read
 
+# `github.workflow` is the calling workflow's name, so a validation run nested
+# inside a release never shares a group with a push-triggered run of this file.
+# Relying on `inputs.ref` alone to separate them worked only because "main" and
+# "refs/heads/main" happen to spell differently.
 concurrency:
-  group: ci-${{ inputs.ref || github.ref }}
+  group: ci-${{ github.workflow }}-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -108,6 +112,15 @@ jobs:
         uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
+      # Before the install below, not after it, which is the order mutants.yaml
+      # already uses. This action restores `~/.cargo/bin` on entry and saves it
+      # after the job, so running it second meant cargo-mutants was compiled from
+      # source on every run and the result thrown away - minutes on the one job
+      # every pull request waits for.
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: packages/cli
       # The Rust half of check:mutants. Installed here rather than by the script:
       # a missing binary makes that script exit non-zero instead of skipping, so
       # the gate cannot go quiet by losing a tool.
@@ -117,10 +130,6 @@ jobs:
       # digest to protect. `--locked` keeps its own dependency resolution fixed.
       - name: Install cargo-mutants
         run: cargo install cargo-mutants --locked
-      - name: Set up Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          workspaces: packages/cli
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # A check can accidentally become inert while its fixer remains correct.

@@ -3,11 +3,12 @@ title: Vercel
 description: Configure and deploy the Next.js app to Vercel Production, plus cookieless analytics.
 ---
 
-You only deploy production from the CI-owned git branch `deploy`. CI
-finishes in the fail-closed `all checks` result; the separate `deploy` workflow
-then fast-forwards `deploy` to that exact `main` commit. Nobody pushes it
-manually. Local development never goes through Vercel; it uses `pnpm run dev`
-with `.env.local` (see
+Production deploys from `main`, and nothing in this repository re-checks the
+commit on the way: the `Protect main` ruleset
+([GitHub](../../services/github.md#ruleset-protect-main)) refuses any merge that
+has not passed the fail-closed `all checks` result, so every commit on `main` is
+already a validated commit. Local development never goes through Vercel; it uses
+`pnpm run dev` with `.env.local` (see
 [index](../index.md#local-development)). So Vercel only needs Production
 configuration.
 
@@ -26,22 +27,30 @@ Project settings:
   command: it runs the environment check, deploys [Convex](convex.md),
   injects the correct `NEXT_PUBLIC_CONVEX_URL`, then builds the frontend. This
   repository-owned order means missing environment names stop the build before
-  either provider changes; a post-build check is insufficient. The `deploy`
-  branch prevents the build from starting until CI is green.
+  either provider changes; a post-build check is insufficient.
 
 - Project Settings -> Environments -> Production -> Branch Tracking: production
-  branch = `deploy`.
+  branch = `main`.
 - Project Settings -> Build and Deployment -> Ignored Build Step = **Only build
   production**. There is no preview Convex backend, so any other branch has
   nowhere correct to point.
 
 `packages/web/vercel.json` also sets `git.deploymentEnabled` to `true` only for
-`deploy` and `false` for `*`. This is the executable half of the boundary:
-`main`, pull requests, and failed commits cannot start a Vercel or Convex
-deployment even if a dashboard branch setting is changed accidentally. It also
-sets `github.silent` because there is no preview deployment for a pull-request
+`main` and `false` for `*`. This is the executable half of the boundary: pull
+request branches and every other ref cannot start a Vercel or Convex deployment
+even if a dashboard branch setting is changed accidentally. It also sets
+`github.silent` because there is no preview deployment for a pull-request
 comment to announce; the GitHub check remains the visible record that Vercel
 correctly ignored the branch.
+
+**Enabling previews is not a one-line change.** The build command runs
+`pnpm env:deploy && npx convex deploy`, and `packages/web/scripts/env.mjs`
+targets Vercel Production and Convex Production only - it has no `VERCEL_ENV`
+branch. A preview build would therefore check a preview environment against the
+production example file and, holding a `prod:` `CONVEX_DEPLOY_KEY`, deploy
+functions and schema to the production Convex deployment from a pull-request
+branch. Previews need a Convex preview deploy key and a preview target in
+`env.mjs` before the `*` entry above may be widened.
 
 Plus the two project-level settings `packages/web/vercel.json` cannot encode
 (covered in [index](../index.md#production-deploy)): **Root Directory** = `packages/web`, and

@@ -236,7 +236,6 @@ file in the overlay.
   workflows/
     ci.yaml
     cla.yaml
-    deploy.yaml
     mutants.yaml
     release.yaml
     smoke-nightly.yaml
@@ -287,7 +286,7 @@ docs/
     railway.md
     render.md
     vps.md
-  agents.md
+  ai-agents.md
   api.mdx
   configuration.md
   index.md
