@@ -13,7 +13,7 @@ editor's terminals; this is SSH, with its own credential and its own namespace. 
 instance can run either without the other.
 
 To point Claude Desktop or ChatGPT Desktop at an instance, see
-[AI assistants](agents.md) - this page is the mechanism underneath it.
+[AI agents](ai-agents.md) - this page is the mechanism underneath it.
 
 ## Reaching it
 

@@ -1,10 +1,10 @@
 ---
-title: AI assistants
+title: AI agents
 description: Connect Claude Desktop or ChatGPT Desktop to your Composery and let it work in the machine, not beside it.
 ---
 
-Composery runs an [SSH](ssh.md) service, so an instance is a machine an AI assistant
-can be pointed at. The assistant runs **in** it: your files, your terminal, your
+Composery runs an [SSH](ssh.md) service, so an instance is a machine an AI agent
+can be pointed at. The agent runs **in** it: your files, your terminal, your
 installed tools, your running services - not a copy of them, and not a sandbox that
 disappears.
 
@@ -22,7 +22,7 @@ On a Composery Cloud instance, open your box's page and choose **Connect
 remotely**. In a self-hosted editor, run **Composery: Connect Over SSH** from the
 File menu or the command palette.
 
-Either one gives you a prompt to paste into the assistant. It generates its own
+Either one gives you a prompt to paste into the agent. It generates its own
 keypair on your machine, asks the instance for a certificate, writes the
 `~/.ssh/config` entry, and connects itself. You never handle a private key, and
 the only secret in the prompt is a token that works once and expires in minutes.
@@ -70,7 +70,7 @@ credentials and tools rather than your laptop's.
 
 ## Why a persistent machine matters here
 
-An assistant working over SSH keeps running when you close the lid. Start a long
+An agent working over SSH keeps running when you close the lid. Start a long
 job, disconnect, and reconnect later to the same instance with the same processes
 and the same state - `tmux` is installed for exactly this. That is the difference
 between a computer you own and a session that ends with the tab.

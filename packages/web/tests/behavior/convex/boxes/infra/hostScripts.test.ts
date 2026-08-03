@@ -20,7 +20,11 @@ import {
 	rewritePasswordScript,
 	runtimeLogsScript,
 	updateScript,
+	shellQuote,
+	sshEnrollScript,
 	sshFailure,
+	sshListScript,
+	sshRevokeScript,
 	unmountParkingScript,
 	unmountRescueScript,
 	verifyParkingScript
@@ -337,13 +341,19 @@ describe("repair parking scripts", () => {
 	const verifyBack = verifyParkingScript("back", volumeId);
 	const everyScript = [copyOut, copyBack, verifyOut, verifyBack];
 
+	// The only test here that starts a process, and how long that takes is a fact
+	// about the machine rather than about the scripts: `bash` on a Windows
+	// developer's PATH can be WSL's, which boots a virtual machine on first use
+	// and spends seconds before it reads a line. CI resolves Git Bash and returns
+	// in milliseconds. The allowance is sized for the slow reading so a correct
+	// script is never reported as a broken one.
 	test("is valid Bash before any host receives it", () => {
 		const result = spawnSync("bash", ["-n"], {
 			input: everyScript.join("\n"),
 			encoding: "utf8"
 		});
 		expect(result.status, result.stderr).toBe(0);
-	});
+	}, 120_000);
 
 	// The runtime and Repair import one list, so a new persistent volume cannot
 	// silently exist outside recovery.
@@ -525,5 +535,53 @@ describe("reading a box's logs", () => {
 
 		expect(script).toContain("--tail 200");
 		expect(script).not.toContain("journalctl");
+	});
+});
+
+// A certificate is named by its owner, so the name is arbitrary text that ends
+// up on a command line. Asserting the quoted string alone is not enough here:
+// the broken spelling this replaced looked plausible and only a shell could say
+// it was wrong, so bash is asked whether it parses and what it gets.
+describe("naming a certificate", () => {
+	const parse = (script: string) =>
+		spawnSync("bash", ["-n"], { input: script, encoding: "utf8" });
+
+	// `String.raw`, because the expectation is one backslash and an ordinary
+	// string literal is where the original lost it: "\'" and `\'` are both just a
+	// quote. Written this way the four characters are on the page.
+	test("closes, escapes and reopens every quote in a name", () => {
+		expect(shellQuote("a phone's name")).toBe(String.raw`'a phone'\''s name'`);
+		expect(shellQuote("plain")).toBe("'plain'");
+		expect(shellQuote("''")).toBe(String.raw`''\'''\'''`);
+	});
+
+	test("hands bash a name it reads back whole", () => {
+		const name = "the owner's laptop; rm -rf /";
+		const read = spawnSync("bash", ["-c", `printf '%s' ${shellQuote(name)}`], {
+			encoding: "utf8"
+		});
+
+		expect(read.status, read.stderr).toBe(0);
+		expect(read.stdout).toBe(name);
+	});
+
+	test("is valid Bash for every certificate command", () => {
+		for (const script of [
+			sshEnrollScript("a phone's name"),
+			sshListScript(),
+			sshRevokeScript(42)
+		]) {
+			const result = parse(script);
+			expect(result.status, result.stderr).toBe(0);
+		}
+	});
+
+	// A serial is a number this deployment read back from the box, and it is
+	// interpolated bare. Anything but a positive whole number is a bug upstream,
+	// and refusing it here is what keeps it from becoming shell text.
+	test("refuses a serial that is not a positive whole number", () => {
+		for (const serial of [0, -1, 1.5, Number.NaN, Number.MAX_VALUE]) {
+			expect(() => sshRevokeScript(serial)).toThrow();
+		}
 	});
 });

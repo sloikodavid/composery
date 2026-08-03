@@ -10,7 +10,7 @@ It's like VS Code, but it sits on a server, and is thus reachable from any brows
 - You are `user`, a normal account with passwordless `sudo` - root whenever you need it.
 - `cron` runs, so `crontab -e` schedules jobs.
 - For incoming network requests, see [webhooks](api.mdx#webhooks).
-- Reach it over [SSH](ssh.md), or connect your [AI agent](agents.md) to it.
+- Reach it over [SSH](ssh.md), or connect your [AI agent](ai-agents.md) to it.
 - **Outbound mail on port 25 will not work on most hosts.** Cloud providers block
   it to limit spam, and Hetzner - which Composery Cloud runs on - blocks **25 and
   465** by default. Port **587** is not blocked, so send through an authenticated

@@ -209,3 +209,101 @@ describe("every repository path named in prose exists", () => {
 		expect(unused).toEqual([]);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// A GitHub URL into this repository makes the same claim as a bare path, and
+// the sweep above cannot see one: every segment of a URL path follows a slash,
+// and CANDIDATE refuses to start a match there. So the links that carry a
+// reader from a doc page to a file were the one set of paths here that nothing
+// read at all.
+//
+// They also fail worse than a comment does. `templates/user-data/user-data.yaml`
+// fetches three of them on a fresh server's first boot, so a moved template is
+// not a dead link somebody eventually reports - it is a 404 in the middle of a
+// stranger's install, on a machine nobody here can see.
+//
+// Duplication, and why it cannot be removed: a docs page cannot link to a file
+// on GitHub without writing its path, and the URL is the point of the link. So
+// the copy stays and this walks it, exactly as the sweep above does.
+// ---------------------------------------------------------------------------
+
+// `blob` and `raw` both name a file's contents; `tree` names a directory. The
+// kind is checked, not only that something is there, because that is the half a
+// browser accepts and `curl` does not.
+const REPO_URL =
+	/https:\/\/(?:github\.com\/sloikodavid\/composery\/(blob|raw|tree)|raw\.githubusercontent\.com\/sloikodavid\/composery())\/([\w.-]+)\/([\w./-]+)/g;
+
+// This pattern names the repository outright, so unlike CANDIDATE it cannot
+// mistake anything for a link and needs no list of extensions to stay honest.
+// It reads every tracked file that is not an image, which is what keeps a link
+// written in `Dockerfile`, a Cargo manifest or an overlay `.js` - none of them
+// files SEARCHED reads - from being the one nobody checks. An allowlist here
+// would have to grow with every file type somebody writes a link in, and the
+// day it falls behind is the day it goes quiet rather than red.
+// The three binary types this checkout holds, and no more. A fourth one added
+// later costs one pointless read, never a wrong answer - no byte sequence spells
+// this repository's own URL by accident - so guessing at types nobody has
+// committed would buy nothing and would be one more list to keep current.
+const BINARY = /\.(png|woff2|ico)$/;
+const linked = tracked.filter(
+	(file) =>
+		!BINARY.test(file) &&
+		!file.startsWith("packages/ide/upstream") &&
+		file !== "tests/invariants/stale-references.test.ts" &&
+		// Not every tracked entry is a file to open. `.claude/skills` is a symlink
+		// to a directory and `git ls-files` reports it like any other path, so
+		// reading it fails as a directory and takes this whole file down before a
+		// single test runs. SEARCHED hid that by accident - the entry has no
+		// extension, so no allowlist of extensions ever reached it.
+		isFile(file)
+);
+
+// Deliberately without a catch. A tracked path that is not there at all is the
+// sweep above's business and it throws for one; hiding that here would let this
+// sweep report a clean result over a file it never opened.
+function isFile(file: string): boolean {
+	return statSync(resolve(repoRoot, file)).isFile();
+}
+
+const links = linked.flatMap((file) =>
+	[...readRepoFile(file).matchAll(REPO_URL)].map((match) => ({
+		file,
+		// The empty capture on the raw host: that host serves file contents and
+		// nothing else, so it names its own kind.
+		kind: match[1] || "raw",
+		ref: match[3] ?? "",
+		// A URL ending a sentence takes the full stop with it. No path here ends
+		// in a dot, so dropping trailing ones can only remove prose.
+		path: (match[4] ?? "").replace(/\.+$/, "")
+	}))
+);
+
+describe("every GitHub link into this repository resolves", () => {
+	test("the sweep finds the links it is meant to find", () => {
+		// Green has to mean the links resolved, not that the pattern stopped
+		// matching. Both go to zero the same way.
+		expect(links.length).toBeGreaterThan(10);
+	});
+
+	test("each one names a file or directory that is still here", () => {
+		const dead = links
+			.filter(({ kind, path }) =>
+				kind === "tree" ? !trackedDirs.has(path) : !trackedSet.has(path)
+			)
+			.map(({ file, kind, path }) => `${file}: ${kind} ${path}`);
+
+		expect([...new Set(dead)].sort()).toEqual([]);
+	});
+
+	test("each one reads the default branch", () => {
+		// A link to any other ref is unreadable from this checkout: nothing here
+		// can say whether that ref still holds the file. Keeping the rule absolute
+		// is what keeps the check above meaningful for every link, rather than for
+		// the ones somebody remembered to leave on `main`.
+		const pinned = links
+			.filter(({ ref }) => ref !== "main")
+			.map(({ file, ref }) => `${file}: ${ref}`);
+
+		expect([...new Set(pinned)].sort()).toEqual([]);
+	});
+});
