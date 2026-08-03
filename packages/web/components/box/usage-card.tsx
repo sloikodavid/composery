@@ -1,5 +1,5 @@
 import { ToneIcon } from "@/components/box/tone-icon";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDate, formatDateTime } from "@/lib/datetime";
 import { usageMeter, type UsageReading } from "@/lib/box/usage";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +72,19 @@ export function UsageCard({
 	// than it is.
 	const sampledAt = Math.min(...readings.map((reading) => reading.sampledAt));
 
+	// When a counter was last seen to start over, if any of these has one.
+	//
+	// Only a signal `USAGE_SIGNALS` marks as resetting can carry this, so there is
+	// no second reading to confuse it with - the alternative, inferring a reset
+	// from a figure that merely went down, is what would have let a `docker prune`
+	// print itself here as the day the billing month began.
+	//
+	// It is also the only reader of `counter_reset_at`, which is what keeps that
+	// column from being one nothing looks at.
+	const resetAt = readings
+		.map((reading) => reading.counterResetAt)
+		.find((at) => at !== null);
+
 	return (
 		<div
 			className={cn(
@@ -86,7 +99,15 @@ export function UsageCard({
 			</div>
 			<p className="mt-3 text-xs text-muted-foreground">
 				Measured {formatDateTime(sampledAt)}. Outbound traffic counts from the
-				start of the box&apos;s billing month.
+				start of the box&apos;s billing month
+				{/* Absent while the counter has never been seen to start over, which is
+				    every box in its first billing month. `null` and `undefined` both
+				    mean that, so the test is for a real timestamp rather than against
+				    one of the two ways of not having one. */}
+				{typeof resetAt === "number"
+					? `, last seen to start over ${formatDate(resetAt)}`
+					: ""}
+				.
 			</p>
 		</div>
 	);

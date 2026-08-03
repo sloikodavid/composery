@@ -17,6 +17,7 @@ import {
 	USAGE_SIGNALS,
 	formatBytes,
 	planTrafficAllowanceBytes,
+	trafficAllowanceGap,
 	usagePercent,
 	usageStepReached,
 	type UsageSignal,
@@ -75,6 +76,13 @@ export function usageCrossing(
 	const step = usageStepReached(percent);
 	if (step === null) return { step: null, announce: false };
 	const previous = previousStep ?? null;
+	// The null arm is written out because it is the case this function exists for -
+	// nobody has been told anything yet - but it cannot be observed separately:
+	// every step is a positive number, and `step > null` coerces to `step > 0`,
+	// which is already true. So the mutant that drops it agrees with it on every
+	// input, and killing it would take a test asserting a thing JavaScript does
+	// rather than a thing this decides.
+	// Stryker disable next-line ConditionalExpression: `step > null` is `step > 0` and every step is positive, so both arms answer alike.
 	return { step, announce: previous === null || step > previous };
 }
 
@@ -110,11 +118,14 @@ async function recordUsage(
 	const percent = usagePercent(usedBytes, allowanceBytes);
 	const { step, announce } = usageCrossing(existing?.noticed_step, percent);
 
-	// A counter that went down has rolled over. Recorded for the traffic signal
-	// only in practice, because a disk does not reset - but decided by what the
-	// numbers did rather than by which signal this is, so a provider that starts
-	// resetting something else is described correctly without an edit here.
-	const reset = existing !== null && usedBytes < existing.used_bytes;
+	// A counter that went down has rolled over into a new period - but only for a
+	// signal that has periods. `USAGE_SIGNALS[signal].resets` says which do, and
+	// asking it first is what stops a disk emptied by a `docker prune` from being
+	// recorded as the start of a billing month.
+	const reset =
+		USAGE_SIGNALS[signal].resets &&
+		existing !== null &&
+		usedBytes < existing.used_bytes;
 
 	const row = {
 		box_id: box._id,
@@ -131,6 +142,12 @@ async function recordUsage(
 		await ctx.db.insert("box_usage", row);
 	}
 
+	// `usageCrossing` never announces without a step, so the second test is the
+	// type checker's rather than a case that happens: it is what narrows `step`
+	// from `UsageStep | null` to `UsageStep` for the notice below. Kept rather
+	// than asserted around, because a non-null assertion here would be a claim
+	// nothing checks again once that function changes.
+	// Stryker disable next-line ConditionalExpression: an announced crossing always carries a step, so this arm is unreachable.
 	if (!announce || step === null) return;
 
 	await sendOwnerNotice(ctx, box, {
@@ -166,16 +183,15 @@ async function recordUsage(
 
 // Outbound bytes this billing period, as the provider counts them.
 //
-// The provider's own included amount comes along and is checked rather than
-// used: what a box may send is what Composery sold it, and if the machine behind
-// that plan ever includes less, the deployment is selling an allowance it does
-// not buy. That is a pricing fault nothing else would notice - every box would
-// stay under its published limit and quietly run up a bill - so it says so.
+// It records and nothing else. Whether the machine behind a plan includes as much
+// as that plan sells is a question about the catalogue rather than about this
+// box, it has the same answer for every box on the type, and it changes about
+// never - so it is asked once a day by `boxes/reconcile.ts` rather than by every
+// box on every poll. This path stays a recording.
 export const recordTrafficUsage = internalMutation({
 	args: {
 		boxId: v.id("boxes"),
-		outgoingBytes: v.number(),
-		providerIncludedBytes: v.number()
+		outgoingBytes: v.number()
 	},
 	handler: async (ctx, args) => {
 		const box = await ctx.db.get(args.boxId);
@@ -183,21 +199,41 @@ export const recordTrafficUsage = internalMutation({
 
 		const allowance = planTrafficAllowanceBytes(box.plan);
 		await recordUsage(ctx, box, "traffic", args.outgoingBytes, allowance);
+	}
+});
 
-		if (args.providerIncludedBytes >= allowance) return;
+// The catalogue audit: does the machine behind each plan include as much traffic
+// as that plan sells?
+//
+// Raised from the daily reconciliation rather than from the poll, because it is a
+// fact about a server type and not about any box - so asking it once a day covers
+// the whole fleet, including plans that happen to have no running box today, and
+// the poll goes back to being a recording.
+//
+// Keyed by the type and the figure reported, so a second type - or the same type
+// drifting to a different figure - is a second alert rather than one swallowed by
+// the first.
+export const alertTrafficAllowanceGap = internalMutation({
+	args: {
+		serverType: v.string(),
+		includedBytes: v.number()
+	},
+	handler: async (ctx, args) => {
+		const gap = trafficAllowanceGap(args.serverType, args.includedBytes);
+		if (!gap) return;
+
+		const { plan, allowanceBytes, includedBytes } = gap;
 		await raiseAlert(ctx, {
-			key: `usage-allowance:${box.plan}:${args.providerIncludedBytes}`,
+			key: `usage-allowance:${args.serverType}:${includedBytes}`,
 			severity: "critical",
-			subject: `${BOX_PLANS[box.plan].label} sells more traffic than its machine includes`,
-			text: `${BOX_PLANS[box.plan].label} publishes ${formatBytes(
-				allowance
+			subject: `${BOX_PLANS[plan].label} sells more traffic than its machine includes`,
+			text: `${BOX_PLANS[plan].label} publishes ${formatBytes(
+				allowanceBytes
 			)} of outbound traffic a month, but ${
-				box.hetzner_server_type
-			} in ${box.hetzner_location} reports only ${formatBytes(
-				args.providerIncludedBytes
-			)} included.\n\nEvery box on this plan can therefore stay inside its published allowance and still be billed for excess. Either lower trafficTb in convex/model/box/plan.ts and announce the change, or move the plan to a machine that includes what it sells.\n\n${staffConsoleUrl(
-				consoleBoxPath(box._id)
-			)}`
+				args.serverType
+			} reports only ${formatBytes(
+				includedBytes
+			)} included.\n\nEvery box on this plan can therefore stay inside its published allowance and still be billed for the excess, so no box's own meter will ever show this.\n\nEither lower trafficTb in convex/model/box/plan.ts - which is a change to what the plan sells, so it needs a pricing-page update and a legal notice - or move the plan to a machine that includes what it sells.`
 		});
 	}
 });
@@ -246,6 +282,17 @@ type DiskSweepPage = {
 	page: DiskSweepTarget[];
 };
 
+// A list in runs of at most `size`, covering every item exactly once and in
+// order. Pure, so what the sweep does concurrently is decided by something with
+// a right answer rather than by index arithmetic nothing can check.
+export function batches<T>(items: readonly T[], size: number): T[][] {
+	const runs: T[][] = [];
+	for (let index = 0; index < items.length; index += size) {
+		runs.push(items.slice(index, index + size));
+	}
+	return runs;
+}
+
 // Ask every running box how full its disk is.
 //
 // Hourly rather than on the metrics interval, and that is a cost decision with a
@@ -268,40 +315,56 @@ export const sweepBoxDiskUsage = internalAction({
 				{ cursor }
 			);
 
-			for (
-				let index = 0;
-				index < page.page.length;
-				index += DISK_SWEEP_CONCURRENCY
-			) {
+			// The batching is a rate limit on how many hosts are asked at once, and a
+			// rate limit has no observable answer: recording is an upsert keyed by box
+			// and signal, so a batch that ran wide, ran twice, or ran one slice too
+			// many leaves exactly the same rows behind.
+			//
+			// So `batches` is a named function tested on its own rather than index
+			// arithmetic inline. That is not decoration: the arithmetic version put its
+			// bound inside a multi-line `for` header, where a `Stryker disable
+			// next-line` cannot reach the line the mutant lands on - a suppression that
+			// reads as deliberate and does nothing. Splitting the list is a pure
+			// function with a right answer, and it is checked like one.
+			for (const batch of batches(page.page, DISK_SWEEP_CONCURRENCY)) {
 				await Promise.all(
-					page.page
-						.slice(index, index + DISK_SWEEP_CONCURRENCY)
-						.map(async (target) => {
-							try {
-								const disk = await ctx.runAction(
-									internal.boxes.infra.host.inspectDiskUsage,
-									{ boxId: target.boxId }
-								);
-								// A host that could not be read reports null rather than zero, and
-								// nothing is stored: the last real reading stays on the page with
-								// its own timestamp, which is a truthful "this is what we last
-								// saw" instead of an empty disk nobody has.
-								if (!disk) return;
-								await ctx.runMutation(internal.boxes.usage.recordDiskUsage, {
-									boxId: target.boxId,
-									usedBytes: disk.usedBytes,
-									totalBytes: disk.totalBytes
-								});
-							} catch (error) {
-								console.error(
-									`Disk usage sweep failed for box ${target.slug}.`,
-									error
-								);
-							}
-						})
+					batch.map(async (target) => {
+						try {
+							const disk = await ctx.runAction(
+								internal.boxes.infra.host.inspectDiskUsage,
+								{ boxId: target.boxId }
+							);
+							// A host that could not be read reports null rather than zero, and
+							// nothing is stored: the last real reading stays on the page with
+							// its own timestamp, which is a truthful "this is what we last
+							// saw" instead of an empty disk nobody has.
+							//
+							// Dropping this guard reads `null.usedBytes`, which throws into the
+							// catch below and also stores nothing - so the row is untouched
+							// either way and no assertion can tell the two apart. The guard is
+							// still the right code: one of those paths is a decision and the
+							// other is an exception the sweep merely survives.
+							// Stryker disable next-line ConditionalExpression: without it the read throws into the catch, which also stores nothing.
+							if (!disk) return;
+							await ctx.runMutation(internal.boxes.usage.recordDiskUsage, {
+								boxId: target.boxId,
+								usedBytes: disk.usedBytes,
+								totalBytes: disk.totalBytes
+							});
+						} catch (error) {
+							console.error(
+								`Disk usage sweep failed for box ${target.slug}.`,
+								error
+							);
+						}
+					})
 				);
 			}
 
+			// Paging out of a page size of 200 needs a fleet of more than 200 running
+			// boxes to observe, which is a fixture no behaviour test should stand up to
+			// assert a `for(;;)` continues.
+			// Stryker disable next-line ConditionalExpression: one page holds 200 boxes, so no affordable fixture reaches a second one.
 			if (page.isDone) return;
 			cursor = page.continueCursor;
 		}

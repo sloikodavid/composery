@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { internal } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { usageAlertKey, usageCrossing } from "@/convex/boxes/usage";
+import {
+	batches,
+	boxUsage,
+	usageAlertKey,
+	usageCrossing
+} from "@/convex/boxes/usage";
 import { USAGE_FULL_STEP, USAGE_STEPS } from "@/convex/model/box/usage";
 import { BOX_PLANS } from "@/convex/model/box/plan";
 
@@ -50,8 +55,7 @@ async function ownedBox(t: Harness) {
 function traffic(t: Harness, boxId: Id<"boxes">, percent: number) {
 	return t.mutation(internal.boxes.usage.recordTrafficUsage, {
 		boxId,
-		outgoingBytes: Math.round((ALLOWANCE * percent) / 100),
-		providerIncludedBytes: ALLOWANCE
+		outgoingBytes: Math.round((ALLOWANCE * percent) / 100)
 	});
 }
 
@@ -133,6 +137,27 @@ describe("deciding whether a crossing is news", () => {
 	});
 });
 
+// The sweep asks a fixed number of hosts at once, and how the list is split is
+// the only part of that with a right answer - which is why it is a function here
+// rather than index arithmetic inside the loop, where nothing could check it and
+// no suppression could honestly excuse it.
+describe("splitting a page into batches", () => {
+	test("covers every item exactly once, in order", () => {
+		expect(batches([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+	});
+
+	test("makes one batch of a page that already fits", () => {
+		expect(batches([1, 2], 5)).toEqual([[1, 2]]);
+		expect(batches([1, 2], 2)).toEqual([[1, 2]]);
+	});
+
+	// An empty page is the normal state of a fleet with nothing running, and it
+	// must produce no round trips rather than one empty one.
+	test("makes no batch at all of an empty page", () => {
+		expect(batches([], 5)).toEqual([]);
+	});
+});
+
 describe("recording a reading", () => {
 	test("stores the two figures and derives nothing else", async () => {
 		const t = testConvex();
@@ -186,13 +211,88 @@ describe("recording a reading", () => {
 		);
 	});
 
+	// Both entry points, because both are reached from a sweep that read the box
+	// list a moment earlier: a box deleted in between must make the sample a no-op
+	// rather than an error that stops the rest of the fleet being measured.
 	test("records nothing for a box that no longer exists", async () => {
 		const t = testConvex();
 		const boxId = await ownedBox(t);
 		await t.run(async (ctx) => await ctx.db.delete(boxId));
 
 		await expect(disk(t, boxId, 1)).resolves.toBeNull();
+		await expect(traffic(t, boxId, 50)).resolves.toBeNull();
 		expect(await usageRows(t, boxId)).toEqual([]);
+	});
+});
+
+// What the box page and the console are handed. Until this had a test of its own
+// every other case here read the table directly, so the one function that decides
+// what an owner actually sees could have returned anything at all.
+describe("reading a box's usage", () => {
+	function readUsage(t: Harness, boxId: Id<"boxes">) {
+		return t.run(async (ctx) => await boxUsage(ctx.db, boxId));
+	}
+
+	test("gives back both figures and the percentage between them", async () => {
+		const t = testConvex();
+		const boxId = await ownedBox(t);
+
+		await disk(t, boxId, 30_000_000_000);
+
+		expect(await readUsage(t, boxId)).toEqual([
+			{
+				signal: "disk",
+				usedBytes: 30_000_000_000,
+				allowanceBytes: 40_000_000_000,
+				percent: 75,
+				sampledAt: NOW,
+				counterResetAt: null
+			}
+		]);
+	});
+
+	// The declaration order in `USAGE_SIGNALS`, not the order the rows were
+	// written, because it is the order the page lays its meters out in - and a box
+	// whose disk happened to be sampled first would otherwise swap them.
+	test("orders the signals the way the page draws them", async () => {
+		const t = testConvex();
+		const boxId = await ownedBox(t);
+
+		await traffic(t, boxId, 10);
+		await disk(t, boxId, 1_000_000_000);
+
+		expect((await readUsage(t, boxId)).map((row) => row.signal)).toEqual([
+			"disk",
+			"traffic"
+		]);
+	});
+
+	// Absent, never zero. "We have not measured this yet" and "this box is using
+	// nothing" are different facts, and a meter drawn at 0% for the first one
+	// answers the second question while looking like an answer to the first.
+	test("leaves out a signal nothing has measured", async () => {
+		const t = testConvex();
+		const boxId = await ownedBox(t);
+
+		expect(await readUsage(t, boxId)).toEqual([]);
+
+		await disk(t, boxId, 1_000_000_000);
+		expect((await readUsage(t, boxId)).map((row) => row.signal)).toEqual([
+			"disk"
+		]);
+	});
+
+	test("carries the reset through for the signal that has one", async () => {
+		const t = testConvex();
+		const boxId = await ownedBox(t);
+
+		await traffic(t, boxId, 90);
+		await traffic(t, boxId, 1);
+
+		expect(
+			(await readUsage(t, boxId)).find((row) => row.signal === "traffic")
+				?.counterResetAt
+		).toBe(NOW);
 	});
 });
 
@@ -251,8 +351,10 @@ describe("telling the owner", () => {
 		expect(await usageEmails(t, boxId)).toEqual(["traffic", "traffic"]);
 	});
 
-	// A disk does not reset, so nothing marks one - and a reading that is simply
-	// lower than the last is not a new period to warn about all over again.
+	// A disk has no periods, so nothing about it can start one. A `docker prune`
+	// looks exactly like a counter rolling over, and recording it as one would put
+	// the day somebody tidied up on the box page as the day their billing month
+	// began.
 	test("marks no reset for a disk that merely freed some space", async () => {
 		const t = testConvex();
 		const boxId = await ownedBox(t);
@@ -260,8 +362,22 @@ describe("telling the owner", () => {
 		await disk(t, boxId, 30_000_000_000);
 		await disk(t, boxId, 29_000_000_000);
 
-		expect((await usageRows(t, boxId))[0]?.counter_reset_at).toBe(NOW);
+		expect((await usageRows(t, boxId))[0]?.counter_reset_at).toBeUndefined();
 		expect(await usageEmails(t, boxId)).toEqual([]);
+	});
+
+	// The other direction, and the one that decides what "reset" means: a counter
+	// going up is the normal case, and a counter that did not move is a poll that
+	// landed twice. Neither starts a period.
+	test("marks no reset while the traffic counter holds or rises", async () => {
+		const t = testConvex();
+		const boxId = await ownedBox(t);
+
+		await traffic(t, boxId, 10);
+		await traffic(t, boxId, 10);
+		await traffic(t, boxId, 20);
+
+		expect((await usageRows(t, boxId))[0]?.counter_reset_at).toBeUndefined();
 	});
 
 	test("tells the two signals apart, so one warning does not cover both", async () => {
@@ -287,6 +403,10 @@ describe("telling staff", () => {
 		expect(await staffAlerts(t)).toEqual([]);
 	});
 
+	// The subject and the figures, not only that something was raised. An alert is
+	// read in a mailbox next to every other alert the fleet sends, so one that does
+	// not say which box, which limit, and how far past it is one an operator has to
+	// open the console to understand at all.
 	test("raises one alert when the allowance is effectively gone", async () => {
 		const t = testConvex();
 		const boxId = await ownedBox(t);
@@ -296,9 +416,11 @@ describe("telling staff", () => {
 		expect(await staffAlerts(t)).toMatchObject([
 			{
 				key: usageAlertKey(boxId, "traffic", NOW),
-				severity: "warning"
+				severity: "warning",
+				subject: `Box box has used ${USAGE_FULL_STEP}% of its outbound traffic`
 			}
 		]);
+		expect((await staffAlerts(t))[0]?.text).toContain("20.0 TB of 20.0 TB");
 	});
 
 	// `raiseAlert` deduplicates by key for the life of the row, so a key with no
@@ -314,34 +436,92 @@ describe("telling staff", () => {
 		);
 	});
 
-	// The fault nothing else would notice: every box stays inside its published
-	// allowance and the deployment is billed for excess anyway, because the
-	// machine behind the plan includes less than the plan sells.
-	test("reports a plan that sells more traffic than its machine includes", async () => {
+	// Recording a box's traffic is a recording. Whether the plan oversells its
+	// machine is a question about the catalogue, asked once a day by the
+	// reconciliation sweep - so a poll must not raise it, however many times the
+	// box is measured.
+	test("keeps the catalogue audit out of the recording path", async () => {
 		const t = testConvex();
 		const boxId = await ownedBox(t);
 
-		await t.mutation(internal.boxes.usage.recordTrafficUsage, {
-			boxId,
-			outgoingBytes: 1,
-			providerIncludedBytes: ALLOWANCE - 1
-		});
+		await traffic(t, boxId, 10);
 
-		expect(await staffAlerts(t)).toMatchObject([
-			{ severity: "critical", subject: expect.stringContaining("Box Air") }
-		]);
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+});
+
+// The one fault in this whole feature that no box's own meter can ever show: a
+// plan selling more traffic than its machine includes leaves every box inside its
+// published allowance and the deployment billed for the excess.
+describe("the audit of what the machines include", () => {
+	function audit(t: Harness, serverType: string, includedBytes: number) {
+		return t.mutation(internal.boxes.usage.alertTrafficAllowanceGap, {
+			serverType,
+			includedBytes
+		});
+	}
+
+	const AIR_TYPE = BOX_PLANS.air.serverType;
+
+	test("reports a machine that includes less than its plan sells", async () => {
+		const t = testConvex();
+
+		await audit(t, AIR_TYPE, ALLOWANCE - 1);
+
+		// The body as well as the subject, because the body is the whole point of
+		// this one: it is the only alert whose fix is a decision about what Composery
+		// sells rather than an operation on a box, so it has to name both figures and
+		// both ways out. An operator reading "Box Air sells more traffic than its
+		// machine includes" and nothing else has been told there is a problem and not
+		// what to do about it.
+		const [alert] = await staffAlerts(t);
+		expect(alert).toMatchObject({
+			severity: "critical",
+			subject: expect.stringContaining("Box Air")
+		});
+		expect(alert?.text).toContain("publishes 20.0 TB");
+		expect(alert?.text).toContain("trafficTb");
+		// Lowering what a plan sells is a change to a sold term, so the alert has to
+		// say so rather than read as a one-line edit.
+		expect(alert?.text).toContain("legal notice");
 	});
 
 	test("says nothing while the machine includes what the plan sells", async () => {
 		const t = testConvex();
-		const boxId = await ownedBox(t);
 
-		await t.mutation(internal.boxes.usage.recordTrafficUsage, {
-			boxId,
-			outgoingBytes: 1,
-			providerIncludedBytes: ALLOWANCE
-		});
+		await audit(t, AIR_TYPE, ALLOWANCE);
+		await audit(t, AIR_TYPE, ALLOWANCE * 2);
 
 		expect(await staffAlerts(t)).toEqual([]);
+	});
+
+	// The provider names the type, so this is handed whatever string it sent. A
+	// machine nothing sells is not a fault and must not be an error either - the
+	// reconciliation sweep that calls this is also what reclaims leaked resources,
+	// and it must not stop doing that over a server type we do not recognise.
+	test("passes over a machine no plan sells", async () => {
+		const t = testConvex();
+
+		await expect(audit(t, "cx99", 1)).resolves.toBeNull();
+		expect(await staffAlerts(t)).toEqual([]);
+	});
+
+	// Keyed by the type and the figure reported, so a second machine - or the same
+	// one drifting to a different figure - is a second alert rather than one
+	// swallowed by the first. `raiseAlert` deduplicates by key for the life of the
+	// row, so a key carrying neither would report the first mismatch the fleet ever
+	// saw and nothing after it.
+	test("raises it once per machine and reported figure", async () => {
+		const t = testConvex();
+
+		await audit(t, AIR_TYPE, ALLOWANCE - 1);
+		await audit(t, AIR_TYPE, ALLOWANCE - 1);
+		expect(await staffAlerts(t)).toHaveLength(1);
+
+		await audit(t, AIR_TYPE, ALLOWANCE / 2);
+		expect(await staffAlerts(t)).toHaveLength(2);
+
+		await audit(t, BOX_PLANS.pro.serverType, 1);
+		expect(await staffAlerts(t)).toHaveLength(3);
 	});
 });

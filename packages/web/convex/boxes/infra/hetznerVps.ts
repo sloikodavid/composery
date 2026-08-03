@@ -596,27 +596,26 @@ export async function fetchServerMetricsSample(
 	};
 }
 
-// What this server has sent this billing period, and what its machine includes.
+// What this server has sent this billing period.
 //
 // Read off the server object rather than the metrics endpoint on purpose: the
 // metrics series carries bandwidth *rates*, and adding those up over a month to
 // guess a total would produce a number that disagrees with the one the provider
-// bills on. These two fields are that number.
+// bills on. This field is that number.
 //
 // Null where the provider did not report one, so a caller cannot mistake "not
 // reported" for zero bytes sent - which for a signal measured against an
 // allowance is the reading that says everything is fine.
-export async function fetchServerUsage(serverId: number): Promise<{
-	outgoingBytes: number;
-	includedBytes: number;
-} | null> {
-	const server = await getServer(serverId);
-	const outgoingBytes = server.outgoing_traffic;
-	const includedBytes = server.included_traffic;
-	if (typeof outgoingBytes !== "number" || typeof includedBytes !== "number") {
-		return null;
-	}
-	return { outgoingBytes, includedBytes };
+//
+// What the machine *includes* is deliberately not read here. That is a fact about
+// the server type rather than about this box, and asking it per box per poll
+// would be the same question several hundred times an hour; the daily
+// reconciliation asks it once per type instead (`boxes/reconcile.ts`).
+export async function fetchServerUsage(
+	serverId: number
+): Promise<{ outgoingBytes: number } | null> {
+	const outgoingBytes = (await getServer(serverId)).outgoing_traffic;
+	return typeof outgoingBytes === "number" ? { outgoingBytes } : null;
 }
 
 export const createServer = internalAction({
@@ -1222,7 +1221,12 @@ export const listProductServers = internalAction({
 		v.object({
 			serverId: v.number(),
 			name: v.optional(v.string()),
-			createdAtMs: v.number()
+			createdAtMs: v.number(),
+			// What the machine is and what it includes, for the catalogue audit in
+			// `boxes/reconcile.ts`. Both optional: a server the provider described
+			// without them is still a server this feed has to report as ours.
+			serverType: v.optional(v.string()),
+			includedTrafficBytes: v.optional(v.number())
 		})
 	),
 	handler: async () => {
@@ -1230,6 +1234,8 @@ export const listProductServers = internalAction({
 			serverId: number;
 			name?: string;
 			createdAtMs: number;
+			serverType?: string;
+			includedTrafficBytes?: number;
 		}[] = [];
 		let page: number | null = 1;
 		while (page) {
@@ -1242,7 +1248,12 @@ export const listProductServers = internalAction({
 				servers.push({
 					serverId: server.id,
 					name: server.name,
-					createdAtMs: parseCreatedMs(server.created)
+					createdAtMs: parseCreatedMs(server.created),
+					serverType: server.server_type?.name,
+					// Null and absent both mean "not reported", and neither may become
+					// zero: zero is a machine that includes no traffic at all, which
+					// would make every plan look like it oversells.
+					includedTrafficBytes: server.included_traffic ?? undefined
 				});
 			}
 			page = body.meta.pagination.next_page;

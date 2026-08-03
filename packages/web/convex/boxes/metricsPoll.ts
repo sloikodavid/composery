@@ -76,8 +76,7 @@ async function pollTargets(ctx: ActionCtx, targets: PollTarget[]) {
 					if (usage) {
 						await ctx.runMutation(internal.boxes.usage.recordTrafficUsage, {
 							boxId: target.boxId,
-							outgoingBytes: usage.outgoingBytes,
-							providerIncludedBytes: usage.includedBytes
+							outgoingBytes: usage.outgoingBytes
 						});
 					}
 				} catch (error) {

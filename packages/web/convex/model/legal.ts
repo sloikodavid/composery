@@ -115,7 +115,7 @@ export const LEGAL_NOTICES: readonly LegalNotice[] = [
 			"We will email you at 80% and again at 95% of either allowance. Passing an allowance does not by itself switch your box off. Where use stays materially above what your plan includes, we will contact you and agree a larger allowance, a charge for the excess, or a cut in use before taking any other step, and we will not charge you for excess we did not tell you about first.",
 			"Your plan, your price, your disk and your snapshots are unchanged, and the allowance is the one your box has always had - what is new is that it is written down, shown to you, and warned about before it runs out.",
 			"If this change does not suit you, you may end your agreement free of charge within 30 days of this email or of the change taking effect, whichever is later. Cancel from the billing link on your box's page, or reply to this email and we will do it for you.",
-			"The full Terms are at https://www.composery.io/terms, and https://www.composery.io/docs/limits explains the allowances and how to read the meters."
+			"The full Terms are at https://www.composery.io/terms, and https://www.composery.io/pricing shows what each plan includes."
 		].join("\n\n")
 	}
 ];

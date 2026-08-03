@@ -8,7 +8,6 @@ import {
 import { StatusText } from "@/components/box/status-text";
 import { Button } from "@/components/base/button";
 import { type BoxStatus } from "@/convex/model/box/status";
-import { cn } from "@/lib/utils";
 
 type StatusAction = {
 	disabled?: boolean;

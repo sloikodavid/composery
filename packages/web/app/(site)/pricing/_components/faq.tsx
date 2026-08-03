@@ -27,7 +27,7 @@ const FAQ: { question: string; answer: string }[] = [
 		// own plan's allowance from the plan table, and a number typed into this
 		// answer as well is the copy that keeps advertising the old one.
 		question: "Are there limits on disk or network traffic?",
-		answer: `Yes, and both are on your box's page so you can watch them. The disk is the one on the plan you bought. Outbound traffic has a monthly allowance, shown on each card above, that counts from the start of your billing month - inbound traffic is not counted at all. We email you at ${usageStepsPhrase()} of either, so you hear about it while you can still do something. Going a little over does not cut the box off; sustained excess is something we get in touch about.`
+		answer: `Yes, and both are meters on your box's page so you can watch them. The disk is the one on the plan you bought, and it counts everything on the machine - your files, the packages you installed, and the Docker images and build cache inside the box. Outbound traffic has a monthly allowance, shown on each card above, that counts from the start of your billing month. What arrives at your box is not counted at all, so pulling packages and images is free; serving a site or sending backups out is what moves it. We email you at ${usageStepsPhrase()} of either, so you hear about it while you can still do something. Going a little over does not cut the box off; sustained excess is something we get in touch about.`
 	},
 	{
 		question: "How much control do I get over the OS?",

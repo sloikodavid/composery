@@ -8,7 +8,6 @@ import {
 	USAGE_STEPS,
 	boxPlanTrafficLabel,
 	formatBytes,
-	planDiskBytes,
 	planTrafficAllowanceBytes,
 	usagePercent,
 	usageStepReached,
@@ -64,6 +63,14 @@ describe("a share of an allowance", () => {
 		expect(usagePercent(-1, 10)).toBe(null);
 		expect(usagePercent(Number.NaN, 10)).toBe(null);
 	});
+
+	// Zero is a measurement, and the one every box starts its billing month at.
+	// Folding it in with the readings that do not exist would draw "Unknown" on the
+	// traffic meter of every box that has not sent anything yet - the state with
+	// least to worry about, reported as the state we could not read.
+	test("is nothing used, not nothing known, at zero", () => {
+		expect(usagePercent(0, 20)).toBe(0);
+	});
 });
 
 describe("bytes as words", () => {
@@ -81,6 +88,20 @@ describe("bytes as words", () => {
 		expect(formatBytes(Number.NaN)).toBe("unknown");
 		expect(formatBytes(-1)).toBe("unknown");
 	});
+
+	// Zero bytes is a figure, not a missing one - see `usagePercent` above for the
+	// same distinction. "unknown of 20.0 TB" is what a fresh box would otherwise
+	// read.
+	test("count zero as none rather than as unreadable", () => {
+		expect(formatBytes(0)).toBe("0 B");
+	});
+
+	// The unit walk stops at the last unit it has a name for. Past that it would
+	// index off the end of the list and quote a figure in `undefined` - which no
+	// box will reach, and which is exactly why nothing else would ever notice.
+	test("stop at the largest unit they can name", () => {
+		expect(formatBytes(10 ** 21)).toBe("1,000,000.0 PB");
+	});
 });
 
 describe("what a plan allows", () => {
@@ -88,7 +109,6 @@ describe("what a plan allows", () => {
 		expect(planTrafficAllowanceBytes(plan)).toBe(
 			BOX_PLANS[plan].trafficTb * 1_000 ** 4
 		);
-		expect(planDiskBytes(plan)).toBe(BOX_PLANS[plan].diskGb * 1_000 ** 3);
 	});
 
 	// The pricing card prints this. A figure typed onto the card instead is the
@@ -101,6 +121,16 @@ describe("what a plan allows", () => {
 });
 
 describe("the schedule reader-facing prose derives", () => {
+	// The exact sentence, not merely the numbers in it. This lands mid-paragraph
+	// in the Terms and in the pricing FAQ, so a separator that vanished would ship
+	// "80%95%" into the agreement a customer is asked to accept.
+	test("reads as a sentence, not as a run of figures", () => {
+		expect(usageStepsPhrase()).toBe(
+			USAGE_STEPS.map((step) => `${step}%`).join(" and again at ")
+		);
+		expect(usageStepsPhrase()).toContain(" and again at ");
+	});
+
 	test("names every step, in order", () => {
 		const phrase = usageStepsPhrase();
 		for (const step of USAGE_STEPS) expect(phrase).toContain(`${step}%`);

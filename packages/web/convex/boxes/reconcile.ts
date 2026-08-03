@@ -191,13 +191,32 @@ export const reconcileHetznerResources = internalAction({
 				{}
 			);
 			const orphanedServers: { serverId: number; name?: string }[] = [];
+			// What the provider says each machine type includes, deduplicated: the
+			// figure is a property of the type, so a fleet of two hundred boxes asks
+			// the same question twice rather than two hundred times.
+			const includedByType = new Map<string, number>();
 			for (const server of servers) {
+				if (server.serverType && server.includedTrafficBytes !== undefined) {
+					includedByType.set(server.serverType, server.includedTrafficBytes);
+				}
 				const live = await ctx.runQuery(
 					internal.boxes.reconcile.serverHasLiveBox,
 					{ serverId: server.serverId }
 				);
 				if (!isReclaimable(server.createdAtMs, now, live)) continue;
 				orphanedServers.push({ serverId: server.serverId, name: server.name });
+			}
+
+			// The catalogue audit. It rides this sweep because it needs the same fleet
+			// listing, and it is the one check in the usage feature that no box's own
+			// meter can ever show: a plan selling more traffic than its machine
+			// includes leaves every box inside its published allowance and the
+			// deployment billed for the excess.
+			for (const [serverType, includedBytes] of includedByType) {
+				await ctx.runMutation(internal.boxes.usage.alertTrafficAllowanceGap, {
+					serverType,
+					includedBytes
+				});
 			}
 
 			// Not referenced against our database at all: an unassigned Primary IP

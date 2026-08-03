@@ -73,7 +73,15 @@ export const hetznerPagedServerListResponseSchema = z.intersection(
 const hetznerServerSummarySchema = z.looseObject({
 	id,
 	name: z.string().optional(),
-	created: z.string()
+	created: z.string(),
+	// The machine's type and what it includes, for the daily audit that asks
+	// whether a plan sells more traffic than the machine under it comes with.
+	// Optional for the same reason the server schema's counters are: every other
+	// reader of this feed wants an id and an age, and reconciliation must not stop
+	// reclaiming leaked resources because the provider changed a field the audit
+	// wanted.
+	server_type: z.looseObject({ name: z.string() }).optional(),
+	included_traffic: z.number().nullable().optional()
 });
 export const hetznerPagedServerSummariesResponseSchema = z.intersection(
 	z.looseObject({ servers: z.array(hetznerServerSummarySchema) }),

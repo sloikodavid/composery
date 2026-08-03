@@ -291,7 +291,6 @@ docs/
   api.mdx
   configuration.md
   index.md
-  limits.md
   meta.json
   openapi.yaml
   persistence.md
@@ -1211,7 +1210,6 @@ packages/
         lib/
           table-columns.test.ts
         next-env-example.test.ts
-        usage-limits-doc.test.ts
       support/
         convex.ts
         ssh.ts

@@ -12,13 +12,24 @@
 // forgotten; a level is compared to an allowance, told to its owner once when it
 // crosses, and never told again until it crosses again.
 
-import { BOX_PLANS, type BoxPlan } from "./plan";
+import { BOX_PLANS, BOX_PLAN_ORDER, type BoxPlan } from "./plan";
 
 // The two things a box can run out of. Declaration order is the order the box
 // page lays the meters out in.
 export const USAGE_SIGNALS = {
 	disk: {
 		label: "Disk",
+		// Whether this counter starts again on a period boundary. It decides two
+		// things at once, which is why it is a property of the signal rather than
+		// something inferred from the numbers: a signal that resets has its notice
+		// re-armed when its counter drops, and it is the only kind the box page may
+		// date ("counts from the 4th").
+		//
+		// Inferring it was the first design and it was wrong in both directions. A
+		// disk emptied by a `docker prune` looks exactly like a counter rolling over,
+		// so it was recorded as one - and the box page, which has only one such date
+		// to show, would then print a disk cleanup as the day the billing month began.
+		resets: false,
 		// The sentence the notice and the meter's caption are built from. It says
 		// what filling it costs the owner, because "80% used" on its own is a number
 		// nobody acts on.
@@ -31,8 +42,17 @@ export const USAGE_SIGNALS = {
 	},
 	traffic: {
 		label: "Outbound traffic",
+		// The provider starts this again at the top of each billing month. Nothing
+		// here knows that calendar, so the counter going down is the signal - but
+		// only for a signal that has one.
+		resets: true,
+		// Worded against the Terms, not merely near them. A notice that threatens
+		// more than the agreement allows is the one kind of wrong a warning email
+		// cannot be: "Disk and traffic allowances" promises Composery gets in touch
+		// and agrees a larger allowance, a charge, or a cut in use before any other
+		// step, so this says exactly that and no more.
 		consequence:
-			"Traffic past the monthly allowance is not cut off, but sustained excess is charged on or the box is suspended.",
+			"Going over does not switch the box off. Composery gets in touch before anything else happens.",
 		remedy:
 			"Check what is serving or sending from the box, and get in touch if you need a larger allowance."
 	}
@@ -60,6 +80,12 @@ export type UsageStep = (typeof USAGE_STEPS)[number];
 // and the level they were emailed about were different questions with different
 // answers.
 export function usageStepReached(percent: number | null): UsageStep | null {
+	// Two tests where one would do at runtime - `Number.isFinite(null)` is already
+	// false - because `Number.isFinite` is not a type guard, so dropping the null
+	// check leaves `percent` as `number | null` for the comparison below. The
+	// redundancy is the type checker's, and it is the reason the mutant that
+	// removes it cannot be killed: both branches return null for the same input.
+	// Stryker disable next-line ConditionalExpression: null already fails Number.isFinite, so the branch this removes is unreachable by a second route.
 	if (percent === null || !Number.isFinite(percent)) return null;
 	let reached: UsageStep | null = null;
 	for (const step of USAGE_STEPS) {
@@ -71,10 +97,14 @@ export function usageStepReached(percent: number | null): UsageStep | null {
 // "80% and again at 95%" - the steps as a fragment of a sentence.
 //
 // Every reader-facing surface that promises a warning schedule builds its
-// sentence from this: the pricing FAQ and the Terms are prose about a rule that
-// lives in code, and a percentage typed into either is a promise nothing keeps.
-// The documentation is markdown and cannot import it, so that one copy is pinned
-// by `tests/invariants/docs-usage-steps.test.ts` instead.
+// sentence from this, and there is deliberately no surface that does not: the
+// pricing FAQ and the Terms are prose about a rule that lives in code, and a
+// percentage typed into either is a promise nothing keeps.
+//
+// That is also the argument against documenting the schedule anywhere markdown
+// can reach. A `docs/` page stating it needed a test to pin the copy, and the
+// copy was most of what the page was - so the page went instead. These two
+// callers are the whole set, and both derive.
 export function usageStepsPhrase() {
 	return USAGE_STEPS.map((step) => `${step}%`).join(" and again at ");
 }
@@ -131,13 +161,42 @@ export function planTrafficAllowanceBytes(plan: BoxPlan): number {
 	return BOX_PLANS[plan].trafficTb * TERABYTE;
 }
 
-export function planDiskBytes(plan: BoxPlan): number {
-	return BOX_PLANS[plan].diskGb * 1_000 ** 3;
-}
+// There is deliberately no `planDiskBytes` beside it. A disk is measured against
+// the box's own filesystem, which is smaller than the plan's advertised figure by
+// the image and by what the filesystem keeps for itself - so a meter drawn
+// against the plan would sit short of full while the box had already stopped
+// being able to write.
 
-// "20 TB outbound traffic each month" - the pricing card's line and the docs'
-// figure from one function, so a plan whose allowance changes cannot keep
-// advertising the old one.
+// "20 TB outbound traffic each month" - the pricing card's line, so a plan whose
+// allowance changes cannot keep advertising the old one.
 export function boxPlanTrafficLabel(plan: BoxPlan): string {
 	return `${BOX_PLANS[plan].trafficTb} TB outbound traffic each month`;
+}
+
+// Whether a machine includes less traffic than the plan it carries sells.
+//
+// This is the one fault in the whole feature that no box's own behaviour reveals:
+// every box stays inside its published allowance, every meter reads green, and
+// the deployment is billed for excess anyway - because what Composery promises
+// and what the provider includes are two numbers that were only ever equal by
+// somebody having typed them that way.
+//
+// It answers per server type rather than per box because that is what the
+// provider's figure is a property of, and it takes a plain string because the
+// provider is who names it: a type nothing sells is not a fault, it is a machine
+// this deployment does not put boxes on, and it must not be an error either.
+export function trafficAllowanceGap(
+	serverType: string,
+	includedBytes: number
+): { plan: BoxPlan; allowanceBytes: number; includedBytes: number } | null {
+	const plan = BOX_PLAN_ORDER.find(
+		(candidate) => BOX_PLANS[candidate].serverType === serverType
+	);
+	if (!plan) return null;
+
+	const allowanceBytes = planTrafficAllowanceBytes(plan);
+	// Equal is fine, and so is a machine that includes more than we sell. Only
+	// selling more than we buy is the fault.
+	if (includedBytes >= allowanceBytes) return null;
+	return { plan, allowanceBytes, includedBytes };
 }

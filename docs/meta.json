@@ -4,7 +4,6 @@
 		"self-hosting",
 		"configuration",
 		"persistence",
-		"limits",
 		"ssh",
 		"agents",
 		"api"
