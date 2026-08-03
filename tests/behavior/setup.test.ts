@@ -17,6 +17,17 @@ const host = vi.hoisted(() => ({
 const slash = (path: string) => path.replaceAll("\\", "/");
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+// The home directory is the one fixture the running OS decides. `join` and
+// `pathToFileURL` read a path with that OS's rules, so `C:\Fixture` off Windows
+// is not a drive letter at all - it is one relative filename with backslashes in
+// it, which `pathToFileURL` then resolves against the working directory. Each
+// platform states its own spelling and its own expected URI, which is what keeps
+// the lowercase-drive-letter rule asserted on the platform that has drives.
+const WINDOWS = process.platform === "win32";
+const HOME = WINDOWS ? "C:\\Fixture" : "/fixture";
+const EXTENSIONS = `${WINDOWS ? "C:/Fixture" : "/fixture"}/.vscode/extensions`;
+const URI_EXTENSIONS = `${WINDOWS ? "/c:/Fixture" : "/fixture"}/.vscode/extensions`;
+
 vi.mock("node:child_process", () => ({
 	spawnSync: (
 		command: string,
@@ -29,7 +40,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 vi.mock("node:os", () => ({
-	homedir: () => "C:\\Fixture"
+	homedir: () => HOME
 }));
 
 vi.mock("node:fs", () => ({
@@ -73,9 +84,9 @@ vi.mock("node:fs", () => ({
 beforeEach(() => {
 	host.exists = new Set([
 		slash(resolve(repoRoot, "packages/ide/upstream/package.json")),
-		"C:/Fixture/.vscode/extensions",
-		"C:/Fixture/.vscode/extensions/extensions.json",
-		"C:/Fixture/.vscode/extensions/.obsolete"
+		EXTENSIONS,
+		`${EXTENSIONS}/extensions.json`,
+		`${EXTENSIONS}/.obsolete`
 	]);
 	host.removed.length = 0;
 	host.spawns.length = 0;
@@ -123,7 +134,7 @@ describe("repository setup", () => {
 				target: `${slash(
 					repoRoot
 				)}/packages/ide/overlay/lib/vscode/extensions/composery-themes`,
-				path: "C:/Fixture/.vscode/extensions/composery.composery-themes-1.2.3",
+				path: `${EXTENSIONS}/composery.composery-themes-1.2.3`,
 				type: "dir"
 			}
 		]);
@@ -138,7 +149,7 @@ describe("repository setup", () => {
 				version: "1.2.3",
 				location: {
 					$mid: 1,
-					path: "/c:/Fixture/.vscode/extensions/composery.composery-themes-1.2.3",
+					path: `${URI_EXTENSIONS}/composery.composery-themes-1.2.3`,
 					scheme: "file"
 				},
 				relativeLocation: "composery.composery-themes-1.2.3",
@@ -159,7 +170,7 @@ describe("repository setup", () => {
 	});
 
 	test("leaves the user profile untouched when VS Code has no extension store", async () => {
-		host.exists.delete("C:/Fixture/.vscode/extensions");
+		host.exists.delete(EXTENSIONS);
 
 		// @ts-expect-error The behavior-tested JavaScript entry point has no declaration file.
 		await import("../../scripts/setup.mjs");
