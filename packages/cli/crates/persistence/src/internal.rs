@@ -314,6 +314,7 @@ mod tests {
         let db = StateDb::open_or_rebuild(&paths).unwrap();
 
         assert_eq!(db.public_count("changed").unwrap(), 0);
+        assert_eq!(db.metadata_record_count().unwrap(), 0);
         assert!(paths.internal_dir.read_dir().unwrap().any(|entry| {
             entry
                 .unwrap()
@@ -321,6 +322,74 @@ mod tests {
                 .to_string_lossy()
                 .starts_with("state.sqlite.corrupt.")
         }));
+    }
+
+    // A symlinked state db must never be opened through the link: open() is the
+    // one place the volume's truth is read before the rebuild guard, and a
+    // write-through would hand the operator's outside file a sqlite header.
+    #[test]
+    fn open_refuses_a_symlinked_state_db_without_touching_its_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        layout::ensure(&paths).unwrap();
+        let outside = temp.path().join("outside.sqlite");
+        fs::write(&outside, "keep me").unwrap();
+        fs::remove_file(&paths.state_db).unwrap_or(());
+        symlink(&outside, &paths.state_db).unwrap();
+
+        let error = match StateDb::open(&paths) {
+            Ok(_) => panic!("symlinked state db opened"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("real file"), "{error}");
+        assert_eq!(fs::read_to_string(outside).unwrap(), "keep me");
+    }
+
+    #[test]
+    fn ensure_real_file_or_missing_rejects_an_unreachable_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        assert!(super::ensure_real_file_or_missing(&parent.join("lock")).is_err());
+    }
+
+    #[test]
+    fn open_reports_an_unreachable_state_db_as_a_stat_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let blocked = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            parent.join("persistence"),
+        );
+
+        let error = match StateDb::open(&blocked) {
+            Ok(_) => panic!("unreachable state db opened"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.starts_with("stat"), "{error}");
+    }
+
+    #[test]
+    fn fsync_parent_refuses_a_path_with_no_parent() {
+        assert!(super::fsync_parent(std::path::Path::new("plain-name")).is_err());
+    }
+
+    #[test]
+    fn timestamps_are_wall_clock_shaped() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = test_paths(temp.path());
+        layout::ensure(&paths).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+        db.record_phase_success("apply").unwrap();
+
+        let stamped = db.meta_value("last_apply_success_at").unwrap().unwrap();
+        assert!(
+            stamped.starts_with("1"),
+            "a 1970-epoch timestamp would be a broken clock: {stamped}"
+        );
+        assert_eq!(stamped.split('-').count(), 2, "{stamped}");
     }
 
     #[test]

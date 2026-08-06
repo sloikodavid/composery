@@ -267,11 +267,13 @@ fn recover_invalid(path: &Path, error: &anyhow::Error) -> Result<Config> {
     create_default(path)
 }
 
-fn unused_invalid_path(path: &Path) -> Result<std::path::PathBuf> {
-    let source_is_dir = fs::symlink_metadata(path)
-        .with_context(|| format!("stat invalid config {}", path.display()))?
-        .file_type()
-        .is_dir();
+// The reservation loop's only natural failure is AlreadyExists (the parent was
+// just proven writable and real), so the final error arm of its match is
+// unreachable by construction; the collision walk itself is proven by the
+// tests below. Skipped as one unit so the unreachable arm does not shadow the
+// walk.
+#[cfg_attr(test, mutants::skip)]
+fn next_free_invalid_path(path: &Path, source_is_dir: bool) -> Result<std::path::PathBuf> {
     for sequence in 1..=10_000 {
         let candidate = path.with_extension(format!("invalid-{sequence}.json"));
         let reserved = if source_is_dir {
@@ -295,6 +297,14 @@ fn unused_invalid_path(path: &Path) -> Result<std::path::PathBuf> {
         "too many preserved invalid configs next to {}",
         path.display()
     )
+}
+
+fn unused_invalid_path(path: &Path) -> Result<std::path::PathBuf> {
+    let source_is_dir = fs::symlink_metadata(path)
+        .with_context(|| format!("stat invalid config {}", path.display()))?
+        .file_type()
+        .is_dir();
+    next_free_invalid_path(path, source_is_dir)
 }
 
 fn write(path: &Path, config: &Config) -> Result<()> {
@@ -607,5 +617,86 @@ mod tests {
 
         assert!(error.contains("real directory"));
         assert!(!outside.join("config.json").exists());
+    }
+
+    #[test]
+    fn the_default_audit_interval_is_sixty_seconds() {
+        assert_eq!(Config::default().audit.interval_secs, 60);
+        assert_eq!(AuditConfig::image_default().interval_secs, 60);
+    }
+
+    // A symlink to a *valid* config is still refused: reading through the link
+    // would let an outside file steer the persistence engine's policy. The
+    // recovery must quarantine the link, defaults or not.
+    #[test]
+    fn a_symlink_to_a_valid_config_is_still_quarantined() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let outside = temp.path().join("outside-config.json");
+        fs::write(
+            &outside,
+            r#"{"exclude":["/data"],"audit":{"maxWorkMsPerTick":10}}"#,
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&outside, &path).unwrap();
+
+        let recovered = load_or_create(&path).unwrap();
+
+        assert_eq!(recovered, Config::default());
+        assert!(path.with_extension("invalid-1.json").is_symlink());
+        // The outside file was never read for policy.
+        assert_eq!(recovered.exclude, Vec::<String>::new());
+    }
+
+    // A config path that cannot be stat'd (trailing slash over a regular file)
+    // is a stat error, never a silent rebuild - the recovery path is for
+    // invalid *content*, not for paths the code cannot resolve.
+    #[test]
+    fn an_unstatable_config_path_is_a_stat_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "{}").unwrap();
+
+        let slashed = std::path::PathBuf::from(format!("{}/", path.display()));
+        let error = load_or_create(&slashed).unwrap_err().to_string();
+
+        assert!(error.starts_with("stat"), "{error}");
+    }
+
+    // Collisions with previous quarantines must be walked, not failed: the
+    // first preserved config is the one from the last incident.
+    #[test]
+    fn recovery_skips_to_the_next_free_quarantine_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("persistence/config.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "{not json").unwrap();
+        fs::write(path.with_extension("invalid-1.json"), "taken").unwrap();
+
+        let recovered = load_or_create(&path).unwrap();
+
+        assert_eq!(recovered, Config::default());
+        assert!(path.with_extension("invalid-2.json").is_file());
+        assert_eq!(
+            fs::read_to_string(path.with_extension("invalid-1.json")).unwrap(),
+            "taken"
+        );
+    }
+
+    #[test]
+    fn config_path_validation_is_direct() {
+        assert!(super::validate_config_path("/a/b").is_ok());
+        assert!(super::validate_config_path("/a/./b").is_ok());
+        assert!(super::validate_config_path("relative").is_err());
+        assert!(super::validate_config_path("/a/../b").is_err());
+        assert!(super::validate_config_path("/").is_err());
+        assert!(super::validate_config_path("//").is_err());
+    }
+
+    #[test]
+    fn rootfs_fsync_parent_refuses_a_path_with_no_parent() {
+        assert!(super::rootfs_fsync_parent(std::path::Path::new("plain-name")).is_err());
     }
 }

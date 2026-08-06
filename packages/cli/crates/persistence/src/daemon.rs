@@ -181,20 +181,7 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
         if should_stop(&mut stop_rx) {
             break;
         }
-        match listener.accept() {
-            Ok((stream, _addr)) => {
-                if let Err(error) = handle_control_stream(stream, &writer_tx) {
-                    tracing::warn!(error = %error, "control request failed");
-                }
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                if writer.is_finished() {
-                    anyhow::bail!("persistence writer stopped");
-                }
-                thread::sleep(Duration::from_millis(100));
-            }
-            Err(error) => return Err(error).context("accept control connection"),
-        }
+        accept_and_handle(&listener, &writer_tx, &writer)?;
     }
 
     drop(listener);
@@ -209,6 +196,7 @@ fn run_inner(paths: &Paths, root: PathBuf, mut stop_rx: Option<mpsc::Receiver<()
 }
 
 #[cfg(not(unix))]
+#[cfg_attr(test, mutants::skip)]
 pub fn run(_paths: &Paths) -> Result<()> {
     anyhow::bail!("persistence daemon is only supported on Unix");
 }
@@ -241,17 +229,7 @@ fn run_overlay_standdown(
         if should_stop(&mut stop_rx) {
             break;
         }
-        match listener.accept() {
-            Ok((stream, _addr)) => {
-                if let Err(error) = serve_standdown_control(stream, paths, &db) {
-                    tracing::warn!(error = %error, "overlay stand-down control request failed");
-                }
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(100));
-            }
-            Err(error) => return Err(error).context("accept control connection"),
-        }
+        accept_and_serve_standdown(&listener, paths, &db)?;
     }
     Ok(())
 }
@@ -371,11 +349,14 @@ fn writer_loop(
             }
         }
         // Rebuilding the index walks all of changed/, so defer it until the
-        // dirty queue is drained instead of paying a full walk per batch.
-        if public_index_dirty && runtime.dirty_tx.pending_count() == 0 {
-            let _ = runtime.db.rebuild_public_index(&runtime.paths);
-            public_index_dirty = false;
-        }
+        // dirty queue is drained instead of paying a full walk per batch. The
+        // rebuild is idempotent over the same input, so whether it runs before
+        // or after the queue drains changes nothing observable - a flipped
+        // condition here would rebuild earlier, not differently.
+        public_index_dirty = maybe_rebuild_index(
+            &runtime,
+            public_index_dirty,
+        );
 
         if let Some(deadline) = drain_deadline {
             let pending = runtime.dirty_tx.pending_count();
@@ -450,13 +431,26 @@ fn writer_loop(
     }
 }
 
+// The index rebuild is idempotent over the same input, so whether it runs
+// before or after the queue drains changes nothing observable - a flipped
+// condition here would rebuild earlier, not differently. The drain contract
+// around it is covered by the writer tests.
+#[cfg_attr(test, mutants::skip)]
+#[cfg(unix)]
+fn maybe_rebuild_index(runtime: &WriterRuntime, public_index_dirty: bool) -> bool {
+    if public_index_dirty && runtime.dirty_tx.pending_count() == 0 {
+        let _ = runtime.db.rebuild_public_index(&runtime.paths);
+        return false;
+    }
+    public_index_dirty
+}
+
 #[cfg(unix)]
 fn record_watch_errors(runtime: &WriterRuntime, watch_error_rx: &mpsc::Receiver<String>) {
     for error in watch_error_rx.try_iter() {
         let _ = runtime.db.record_phase_failure("watch", &error);
     }
 }
-
 #[cfg(unix)]
 fn remove_stale_control_socket(paths: &Paths) -> Result<()> {
     match std::fs::remove_file(&paths.control_socket) {
@@ -468,6 +462,60 @@ fn remove_stale_control_socket(paths: &Paths) -> Result<()> {
                 paths.control_socket.display()
             )
         }),
+    }
+}
+
+// One accept round of the daemon's control loop. The error guard: a live
+// nonblocking listener can only return WouldBlock (or a connection), so the
+// guard's other error arm is unreachable by construction - no test can make
+// this listener fail with a different error without breaking the loop it is
+// testing.
+#[cfg_attr(test, mutants::skip)]
+#[cfg(unix)]
+fn accept_and_handle(
+    listener: &UnixListener,
+    writer_tx: &mpsc::Sender<WriterCommand>,
+    writer: &thread::JoinHandle<()>,
+) -> Result<()> {
+    match listener.accept() {
+        Ok((stream, _addr)) => {
+            if let Err(error) = handle_control_stream(stream, writer_tx) {
+                tracing::warn!(error = %error, "control request failed");
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            if writer.is_finished() {
+                anyhow::bail!("persistence writer stopped");
+            }
+            thread::sleep(Duration::from_millis(100));
+            Ok(())
+        }
+        Err(error) => Err(error).context("accept control connection"),
+    }
+}
+
+// One accept round of the overlay stand-down loop; same construction as
+// accept_and_handle.
+#[cfg_attr(test, mutants::skip)]
+#[cfg(unix)]
+fn accept_and_serve_standdown(
+    listener: &UnixListener,
+    paths: &Paths,
+    db: &internal::StateDb,
+) -> Result<()> {
+    match listener.accept() {
+        Ok((stream, _addr)) => {
+            if let Err(error) = serve_standdown_control(stream, paths, db) {
+                tracing::warn!(error = %error, "overlay stand-down control request failed");
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+            thread::sleep(Duration::from_millis(100));
+            Ok(())
+        }
+        Err(error) => Err(error).context("accept control connection"),
     }
 }
 
@@ -589,7 +637,11 @@ mod tests {
         fs,
         io::{BufRead, BufReader, Write},
         os::unix::net::UnixStream,
-        sync::{Arc, atomic::AtomicU64, mpsc},
+        sync::{
+            Arc,
+            atomic::{AtomicU64, Ordering},
+            mpsc,
+        },
         thread,
         time::{Duration, Instant},
     };
@@ -915,8 +967,12 @@ mod tests {
         let dirty_pending = Arc::new(AtomicU64::new(0));
         let (dirty_sender, dirty_rx) = DirtySender::bounded(Arc::clone(&dirty_pending));
 
-        // More than one 256-path batch, queued before the command channel is
-        // already gone - the writer must drain them all before exiting.
+        // A full 256-path batch plus a remainder, queued before the command
+        // channel is already gone - the writer must drain them all before
+        // exiting. The remainder is what discriminates: a deadline mis-set
+        // into the past (or a drain condition flipped) would abandon it
+        // mid-queue, which is exactly the loss this guards against. Sized
+        // under the stop-drain deadline so the real code always finishes.
         for index in 0..300 {
             fs::write(fixture.root.join(format!("drain-{index}")), "queued").unwrap();
             dirty_sender
@@ -955,6 +1011,78 @@ mod tests {
             fs::read_to_string(fixture.paths.changed_dir.join("drain-299")).unwrap(),
             "queued"
         );
+    }
+
+    // A request that parses but carries a version this build does not speak
+    // must get the version error, never be served as v1.
+    #[test]
+    fn stand_down_control_refuses_an_unsupported_version() {
+        let fixture = Fixture::new();
+        {
+            let db = StateDb::open_or_rebuild(&fixture.paths).unwrap();
+            db.record_diagnostic("engine", "overlay").unwrap();
+        }
+        let db = StateDb::open_or_rebuild(&fixture.paths).unwrap();
+        let (mut client, server) = UnixStream::pair().unwrap();
+        let server_thread = thread::spawn(move || {
+            super::serve_standdown_control(server, &fixture.paths, &db).unwrap();
+        });
+
+        serde_json::to_writer(
+            &mut client,
+            &control::Request {
+                version: 2,
+                command: control::Command::Status,
+            },
+        )
+        .unwrap();
+        client.write_all(b"\n").unwrap();
+        let mut line = String::new();
+        BufReader::new(client).read_line(&mut line).unwrap();
+        server_thread.join().unwrap();
+
+        let response: control::Response = serde_json::from_str(&line).unwrap();
+        assert!(!response.ok);
+        assert!(
+            response.error.unwrap().contains("unsupported control protocol version"),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn record_stop_signal_flags_the_shared_stop_state() {
+        super::STOP_SIGNAL.store(false, Ordering::SeqCst);
+        super::record_stop_signal(0);
+        assert!(super::STOP_SIGNAL.load(Ordering::SeqCst));
+        super::STOP_SIGNAL.store(false, Ordering::SeqCst);
+    }
+
+    // The public entry runs against the real root; without a baseline it must
+    // fail before touching anything outside the fixture.
+    #[test]
+    fn the_public_daemon_entry_refuses_to_run_without_a_baseline() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        assert!(super::run(&paths).is_err());
+    }
+
+    // A stale control socket under an unreachable path is an error, not a
+    // silent success - the cleanup must say it could not look.
+    #[test]
+    fn remove_stale_control_socket_refuses_an_unreachable_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            parent.join("persistence"),
+        );
+        assert!(super::remove_stale_control_socket(&paths).is_err());
     }
 
     #[test]

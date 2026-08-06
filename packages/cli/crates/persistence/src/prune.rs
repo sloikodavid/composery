@@ -45,6 +45,7 @@ pub fn run(
 }
 
 #[cfg(not(unix))]
+#[cfg_attr(test, mutants::skip)]
 pub fn run(_paths: &crate::paths::Paths, _db: &crate::internal::StateDb) -> Result<PruneReport> {
     Ok(PruneReport {
         removed: Vec::new(),
@@ -270,6 +271,9 @@ fn real_dir_exists(path: &Path) -> Result<bool> {
     }
 }
 
+// Prints to the process's stdout, which the test harness intercepts before any
+// test runs; the report itself is the tested artifact.
+#[cfg_attr(test, mutants::skip)]
 pub fn print_human(report: &PruneReport) {
     println!("persistence prune:");
     if report.removed.is_empty() {
@@ -591,6 +595,44 @@ mod tests {
         symlink("/missing-target", &link).unwrap();
 
         assert!(super::exists_no_follow(&link));
+    }
+
+    // A missing removed dir is the normal first-run state (nothing was ever
+    // removed); prune must answer a clean report, not fail.
+    #[test]
+    fn prune_tolerates_a_missing_removed_dir() {
+        let fixture = Fixture::new();
+        fs::remove_dir_all(&fixture.paths.removed_dir).unwrap();
+
+        let report = run(
+            &fixture.root,
+            &fixture.paths,
+            &Config::default(),
+            &fixture.baseline,
+            &fixture.db,
+        )
+        .unwrap();
+
+        assert!(report.removed.is_empty());
+    }
+
+    // real_dir_exists must refuse a regular file, report a missing dir as
+    // absent, and surface an unreachable path as an error - the three answers
+    // the prune loops branch on.
+    #[test]
+    fn real_dir_exists_answers_the_three_cases() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("plain-file");
+        fs::write(&file, "x").unwrap();
+        assert!(super::real_dir_exists(&file).is_err());
+
+        let missing = temp.path().join("missing");
+        assert_eq!(super::real_dir_exists(&missing).unwrap(), false);
+
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let unreachable = parent.join("child");
+        assert!(super::real_dir_exists(&unreachable).is_err());
     }
 
     struct Fixture {

@@ -287,12 +287,18 @@ fn display_bytes(bytes: &[u8]) -> String {
     if let Ok(text) = std::str::from_utf8(bytes) {
         return text.to_string();
     }
-
+    // Explicit arms rather than a guard: a guard's comparison could flip into
+    // an equivalent (the printable range already excludes nothing), so the
+    // bytes that need escaping are named instead.
     let mut display = String::new();
     for byte in bytes {
         match *byte {
             b'/' => display.push('/'),
-            0x20..=0x7e if *byte != b'\\' => display.push(*byte as char),
+            b'\\' => display.push_str("\\x5c"),
+            // The printable range excludes the slash explicitly, so the
+            // named '/' arm above is the only path that prints it - a
+            // deleted arm or a flipped guard cannot hide behind the range.
+            0x20..=0x2e | 0x30..=0x7e => display.push(*byte as char),
             _ => display.push_str(&format!("\\x{byte:02x}")),
         }
     }
@@ -438,5 +444,60 @@ mod tests {
                 .iter()
                 .all(|path| !path.display().contains(".persistence-tmp"))
         );
+    }
+
+    #[test]
+    fn depth_counts_components_not_slashes() {
+        let path = PublicPath::parse("/a/b/c").unwrap();
+        assert_eq!(path.depth(), 3);
+        assert_eq!(PublicPath::parse("/single").unwrap().depth(), 1);
+    }
+
+    #[test]
+    fn display_bytes_names_the_escaping_rules() {
+        assert_eq!(super::display_bytes(b"/\xff"), "/\\xff");
+        assert_eq!(super::display_bytes(b"a\\\xff"), "a\\x5c\\xff");
+        assert_eq!(super::display_bytes(b"a\x01\xff"), "a\\x01\\xff");
+    }
+
+    #[test]
+    fn ensure_parent_refuses_an_unreachable_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        assert!(super::ensure_parent(&parent.join("child")).is_err());
+    }
+
+    // remove_path must surface an unreachable path as an error, never a silent
+    // success - the NotFound case is for "already gone", not "cannot look".
+    #[test]
+    fn remove_path_refuses_an_unreachable_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        assert!(super::remove_path(&parent.join("child")).is_err());
+    }
+
+    // real_dir_exists must refuse a regular file, report a missing dir as
+    // absent, and surface an unreachable path as an error.
+    #[test]
+    fn real_dir_exists_answers_the_three_cases() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("plain-file");
+        std::fs::write(&file, "x").unwrap();
+        assert!(super::real_dir_exists(&file).is_err());
+
+        let missing = temp.path().join("missing");
+        assert_eq!(super::real_dir_exists(&missing).unwrap(), false);
+
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        let unreachable = parent.join("child");
+        assert!(super::real_dir_exists(&unreachable).is_err());
+    }
+
+    #[test]
+    fn fsync_parent_refuses_a_path_with_no_parent() {
+        assert!(super::fsync_parent(std::path::Path::new("plain-name")).is_err());
     }
 }

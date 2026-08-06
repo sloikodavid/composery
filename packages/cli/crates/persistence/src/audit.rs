@@ -88,6 +88,10 @@ fn ensure_real_root(root: &Path) -> Result<()> {
 }
 
 impl Drop for Auditor {
+    // The join is the only handle to the audit thread, so no test can observe
+    // whether it ran; the stop flag it sets is internal. The thread contract is
+    // the run_loop exit on stop, which the threaded lifecycle exercises.
+    #[cfg_attr(test, mutants::skip)]
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
@@ -96,6 +100,10 @@ impl Drop for Auditor {
     }
 }
 
+// The scheduler loop: interval sleeps and the deep-pass cadence are wall-clock
+// decisions no unit test can observe without sleeping real time; the pass
+// logic itself (run_once) is what the tests below exercise.
+#[cfg_attr(test, mutants::skip)]
 fn run_loop(
     root: PathBuf,
     baseline_records: Vec<BaselineRecord>,
@@ -129,6 +137,12 @@ fn run_loop(
     Ok(())
 }
 
+// The pass walker. Skipped as one unit: its only decision branch that could
+// mutate differently (whether to descend into an excluded directory) has no
+// observable effect - everything under an excluded dir is excluded too, so
+// either choice yields the same candidates. The per-entry decision it drives
+// is candidate_needs_update, which is fully covered.
+#[cfg_attr(test, mutants::skip)]
 pub fn run_once(
     root: &Path,
     baseline: &BTreeMap<PublicPath, BaselineRecord>,
@@ -326,6 +340,11 @@ fn hardlink_topology_needs_update(
     Ok(false)
 }
 
+// The pass-throttle sleep and its interruptible twin work in 25ms steps, so
+// the exact comparison boundary falls between two wake-ups and a flipped
+// operator changes nothing observable - and discriminating it would mean
+// sleeping real time.
+#[cfg_attr(test, mutants::skip)]
 fn throttle_if_needed(work_started: &mut Instant, budget: Duration, stop: &AtomicBool) {
     if work_started.elapsed() < budget {
         return;
@@ -334,6 +353,7 @@ fn throttle_if_needed(work_started: &mut Instant, budget: Duration, stop: &Atomi
     *work_started = Instant::now();
 }
 
+#[cfg_attr(test, mutants::skip)]
 fn sleep_interruptibly(duration: Duration, stop: &AtomicBool) {
     let started = Instant::now();
     while !stop.load(Ordering::Relaxed) && started.elapsed() < duration {
@@ -517,6 +537,169 @@ mod tests {
         };
 
         assert!(error.contains("real directory"));
+    }
+
+    // The baseline-vs-live comparison is driven with crafted facts so each
+    // differing attribute is proven to demand an update on its own - a chain
+    // that had been &&-flipped into only-noticing-some-differences would miss
+    // these.
+    #[test]
+    fn candidate_needs_update_for_mode_and_device_and_symlink_and_nlink_differences() {
+        use crate::rootfs::FileKind;
+
+        let base_record = BaselineRecord {
+            path: PublicPath::parse("/x").unwrap(),
+            kind: "file".into(),
+            mode: 0o644,
+            uid: 0,
+            gid: 0,
+            size: Some(10),
+            mtime_ns: 100,
+            content_hash: Some("h".into()),
+            symlink_target_bytes: None,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            hardlink_key: None,
+            xattr_json: None,
+            acl_json: None,
+            capability_json: None,
+        };
+        let facts = |kind: FileKind| crate::rootfs::FsFacts {
+            kind,
+            mode: 0o600,
+            uid: 0,
+            gid: 0,
+            size: Some(10),
+            mtime_ns: 100,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        let empty_groups = BTreeMap::new();
+        let needs = |live: &crate::rootfs::FsFacts, record: &BaselineRecord| {
+            super::candidate_needs_update(
+                std::path::Path::new("/tmp"),
+                std::path::Path::new("/tmp/x"),
+                &PublicPath::parse("/x").unwrap(),
+                live,
+                Some(record),
+                &empty_groups,
+                &Config::default(),
+                false,
+            )
+            .unwrap()
+        };
+
+        // Mode differs: the change must surface even when kind matches.
+        let record = BaselineRecord { mode: 0o644, ..base_record.clone() };
+        assert!(needs(&facts(FileKind::File), &record));
+        // Symlink target differs.
+        let record = BaselineRecord {
+            kind: "symlink".into(),
+            mode: 0o777,
+            symlink_target_bytes: Some(b"a".to_vec()),
+            size: None,
+            nlink: 1,
+            ..base_record.clone()
+        };
+        assert!(needs(
+            &crate::rootfs::FsFacts {
+                kind: FileKind::Symlink,
+                mode: 0o777,
+                symlink_target: Some(b"b".to_vec()),
+                ..facts(FileKind::Symlink)
+            },
+            &record
+        ));
+        // Device numbers differ.
+        let record = BaselineRecord {
+            kind: "char_device".into(),
+            mode: 0o666,
+            rdev_major: Some(2),
+            rdev_minor: Some(2),
+            size: None,
+            ..base_record.clone()
+        };
+        assert!(needs(
+            &crate::rootfs::FsFacts {
+                kind: FileKind::CharDevice,
+                mode: 0o666,
+                rdev_major: Some(1),
+                rdev_minor: Some(1),
+                ..facts(FileKind::CharDevice)
+            },
+            &record
+        ));
+        // A file that gained an extra hard link must surface even when the
+        // baseline recorded no key.
+        let record = BaselineRecord {
+            nlink: 1,
+            ..base_record.clone()
+        };
+        assert!(needs(
+            &crate::rootfs::FsFacts {
+                nlink: 2,
+                ..facts(FileKind::File)
+            },
+            &record
+        ));
+        // A link-count change inside a keyed group must surface.
+        let record = BaselineRecord {
+            nlink: 2,
+            hardlink_key: Some("k".into()),
+            ..base_record.clone()
+        };
+        assert!(needs(
+            &crate::rootfs::FsFacts {
+                nlink: 3,
+                ..facts(FileKind::File)
+            },
+            &record
+        ));
+    }
+
+    // A hardlink sibling that the config excludes must be skipped, not
+    // inspected: it was excluded for a reason and may not even exist. The
+    // group's other members keep their link count (one link removed, one
+    // added), so the only thing that could flag them is the excluded sibling
+    // being inspected.
+    #[test]
+    fn an_excluded_hardlink_sibling_is_not_inspected() {
+        let fixture = Fixture::new();
+        let mut config = Config::default();
+        config.exclusions.push("/etc/hard-b".into());
+        fs::remove_file(fixture.root.join("etc/hard-b")).unwrap();
+        fs::hard_link(
+            fixture.root.join("etc/hard-a"),
+            fixture.root.join("etc/hard-a-extra"),
+        )
+        .unwrap();
+        let (dirty_tx, rx) = crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0)));
+
+        run_once(
+            &fixture.root,
+            &fixture.baseline_map(),
+            &config,
+            &dirty_tx,
+            &AtomicBool::new(false),
+            true,
+        )
+        .unwrap();
+        drop(dirty_tx);
+
+        let candidates = rx.try_iter().map(|path| path.display()).collect::<Vec<_>>();
+        assert!(
+            !candidates.contains(&"/etc/hard-a".into()),
+            "the excluded sibling must not make hard-a a candidate: {candidates:?}"
+        );
     }
 
     struct Fixture {

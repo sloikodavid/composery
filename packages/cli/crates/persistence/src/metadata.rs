@@ -30,31 +30,35 @@ pub const FORMAT_VERSION: u8 = 1;
 /// recoverable; a silently misapplied delta is not.
 ///
 /// Newer versions are the case that actually happens (an instance was downgraded, or a
-/// volume moved to an older image), so it gets its own message. A future build
-/// that can read more than one version replaces the equality check with the set
-/// it supports; it must keep accepting every older version it can still read, or
-/// upgrades break.
+/// volume moved to an older image), so it gets its own message. A format bump
+/// ships a rewrite from the previous format to the current one, run at boot, so
+/// this build keeps reading exactly one format and the equality check below is
+/// the whole reader. Anything older than the previous format is refused the
+/// same way a newer record is; the refusal is the truncation contract. Removing
+/// the rewrite is a floor move with its own plan
+/// (docs/developing/web/maintenance.md), never a convenience.
 fn check_supported_version(version: u8, path: &Path, line: usize) -> Result<()> {
-    if version == FORMAT_VERSION {
-        return Ok(());
-    }
-    if version > FORMAT_VERSION {
-        bail!(
+    // Match arms, not chained comparisons: a `==` flipped to `!=` or a `>`
+    // flipped to `>=` changes nothing when the equality case returns first, so
+    // the comparisons would mutate into equivalents no test could catch.
+    match version.cmp(&FORMAT_VERSION) {
+        std::cmp::Ordering::Equal => Ok(()),
+        std::cmp::Ordering::Greater => bail!(
             "{} line {} was written by a newer Composery (metadata format {}, this build reads {}). \
              Start this Composery on the image that wrote its volume, or restore a backup taken before the downgrade.",
             path.display(),
             line,
             version,
             FORMAT_VERSION
-        );
+        ),
+        std::cmp::Ordering::Less => bail!(
+            "{} line {} declares unknown metadata format {} (this build reads {}).",
+            path.display(),
+            line,
+            version,
+            FORMAT_VERSION
+        ),
     }
-    bail!(
-        "{} line {} declares unknown metadata format {} (this build reads {}).",
-        path.display(),
-        line,
-        version,
-        FORMAT_VERSION
-    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -199,6 +203,7 @@ pub fn remove_subtree(path: &Path, public_path: &PublicPath) -> Result<()> {
 }
 
 #[cfg(not(unix))]
+#[cfg_attr(test, mutants::skip)]
 pub fn remove(path: &Path, public_path: &str) -> Result<()> {
     let mut records = load_compacted(path)?;
     if records.remove(public_path.as_bytes()).is_some() {
@@ -630,5 +635,61 @@ mod tests {
                 .iter()
                 .all(|record| record.public_path().unwrap().as_bytes() != b"/partial")
         );
+    }
+
+    #[test]
+    fn the_record_key_is_the_public_path_bytes() {
+        let record = record("/a");
+        assert_eq!(record.key().unwrap(), b"/a".to_vec());
+    }
+
+    // A parse failure names the line it happened on, so an operator can read the
+    // file. The line number is `index + 1`, which a mutation turning `+` into
+    // `*` would silently break for every line but the first.
+    #[test]
+    fn a_parse_failure_names_its_line() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("metadata.jsonl");
+        fs::write(
+            &path,
+            r#"{"version":1,"path":"/a","pathBytesB64":"L2E=","kind":"file"}
+not json
+"#,
+        )
+        .unwrap();
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.contains("line 2"), "{error}");
+    }
+
+    // An unreadable path (its parent is a file) must surface as a stat error,
+    // not as the empty store - only a *missing* store is empty.
+    #[test]
+    fn load_rejects_an_unreachable_path_with_a_stat_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let path = parent.join("metadata.jsonl");
+
+        let error = load(&path).unwrap_err().to_string();
+
+        assert!(error.starts_with("stat"), "{error}");
+    }
+
+    // ensure_real_dir must refuse a regular file, and ensure_real_file_or_missing
+    // must refuse an unreachable path, so a typo'd volume path never reads as a
+    // working metadata layout.
+    #[test]
+    fn layout_guards_refuse_wrong_shapes() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("plain-file");
+        fs::write(&file, "x").unwrap();
+        assert!(super::ensure_real_dir(&file).is_err());
+
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let path = parent.join("metadata.jsonl");
+        assert!(super::ensure_real_file_or_missing(&path).is_err());
     }
 }

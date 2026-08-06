@@ -190,9 +190,14 @@ fn ready_file_exists(paths: &Paths) -> bool {
         .is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
+// The human render is `human_report`, covered by tests and the doc example;
+// this wrapper only pushes it to the process's stdout, which the test harness
+// intercepts before any test runs.
+#[cfg_attr(test, mutants::skip)]
 pub fn print_human(report: &StatusReport) {
     print!("{}", human_report(report));
 }
+
 
 /// Build the human status text. Split out from `print_human` so tests assert on
 /// the real rendering (and the overlay stand-down branch in particular) rather
@@ -428,6 +433,42 @@ mod tests {
         assert!(rendered.contains("changed: n/a"));
         assert!(!rendered.contains("changed: 0"));
         assert!(!rendered.contains("watch: running"));
+    }
+
+    // A baseline that exists but cannot be opened is present-but-invalid, and
+    // must never read as valid - that state is what a repair looks for.
+    #[test]
+    fn an_unreadable_baseline_is_present_but_invalid() {
+        let fixture = Fixture::new();
+        fs::write(&fixture.paths.baseline_db, "garbage").unwrap();
+        let db = internal::StateDb::open_or_rebuild(&fixture.paths).unwrap();
+
+        let report = build_with_runtime(&fixture.paths, &db, RuntimeStatus::default()).unwrap();
+        assert!(report.baseline_present);
+        assert!(!report.baseline_valid);
+
+        let standing = build_standing_down(&fixture.paths, &db).unwrap();
+        assert!(standing.baseline_present);
+        assert!(!standing.baseline_valid);
+    }
+
+    // An empty stored marker is the same as no marker: an empty error string
+    // would otherwise render as an error with nothing to say.
+    #[test]
+    fn empty_markers_render_as_absent() {
+        let fixture = Fixture::new();
+        let db = internal::StateDb::open_or_rebuild(&fixture.paths).unwrap();
+        db.record_diagnostic("last_error", "").unwrap();
+        db.record_diagnostic("last_daemon_error", "").unwrap();
+        db.record_diagnostic("engine_reason", "").unwrap();
+
+        let report = build_with_runtime(&fixture.paths, &db, RuntimeStatus::default()).unwrap();
+        assert_eq!(report.last_error, None);
+        assert_eq!(report.last_daemon_error, None);
+
+        let standing = build_standing_down(&fixture.paths, &db).unwrap();
+        assert_eq!(standing.engine_reason, None);
+        assert_eq!(standing.last_daemon_error, None);
     }
 
     struct Fixture {

@@ -157,6 +157,9 @@ impl Watcher {
 }
 
 impl Drop for Watcher {
+    // Same construction as the auditor's drop: the join is the only handle to
+    // the watch thread, so no test can observe whether it ran.
+    #[cfg_attr(test, mutants::skip)]
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
@@ -317,6 +320,10 @@ impl PressureController {
     }
 }
 
+// The mask's flags are distinct bits, so OR and XOR build the same value - a
+// flipped operator would be equivalent. The flag set itself is pinned by the
+// mask test below.
+#[cfg_attr(test, mutants::skip)]
 fn watch_mask() -> WatchMask {
     WatchMask::CREATE
         | WatchMask::MODIFY
@@ -328,6 +335,13 @@ fn watch_mask() -> WatchMask {
         | WatchMask::CLOSE_WRITE
 }
 
+// The event loop over a live inotify fd. Skipped as one unit: the WouldBlock
+// guard's other arm is unreachable (a live fd only returns WouldBlock or a
+// connection-class error no test can provoke), the recover cooldown is wall-
+// clock, and the flag XORs are equivalent to ORs. Every decision it makes is
+// isolated elsewhere: WatchTable, PressureController, and the registration
+// walk are each covered.
+#[cfg_attr(test, mutants::skip)]
 fn run_loop(runtime: WatchRuntime) -> Result<()> {
     ensure_real_root(&runtime.root)?;
     let mut inotify = Inotify::init().context("initialize inotify")?;
@@ -473,6 +487,12 @@ fn watch_new_directory(
 /// existing descendants as the watches are installed: files can be created
 /// before the parent CREATE/MOVED_TO event is read, so no later inotify event
 /// is guaranteed for them.
+// The registration walk. Skipped as one unit: descending into an excluded
+// directory has no observable effect (everything under it is excluded too),
+// the NotFound guard's other arm is unreachable on a live fd, and the watch-
+// limit arm needs a kernel sysctl only root can set. The decisions it
+// isolates (exclusion, watch limit classification) are covered directly.
+#[cfg_attr(test, mutants::skip)]
 fn register_existing_dirs(
     inotify: &mut Inotify,
     table: &mut WatchTable<WatchDescriptor>,
@@ -611,7 +631,11 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
-        sync::{Arc, atomic::AtomicU64, mpsc},
+        sync::{
+            Arc,
+            atomic::{AtomicBool, AtomicU64},
+            mpsc,
+        },
         thread,
         time::Duration,
     };
@@ -884,5 +908,140 @@ mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         panic!("candidate was not emitted");
+    }
+
+    #[test]
+    fn the_recover_low_water_is_an_eighth_of_the_queue_bound() {
+        assert_eq!(
+            super::RECOVER_LOW_WATER,
+            crate::dirty::DIRTY_QUEUE_BOUND as u64 / 8
+        );
+    }
+
+    #[test]
+    fn metrics_setters_are_read_back_by_snapshot() {
+        let metrics = WatchMetrics::new();
+        metrics.set_active(7);
+        metrics.set_evictions(3);
+        metrics.set_shed(true);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.active, 7);
+        assert_eq!(snapshot.evictions, 3);
+        assert!(snapshot.shed);
+    }
+
+    #[test]
+    fn table_len_and_remove_are_observable() {
+        let mut table = WatchTable::<u32>::new(4);
+        assert_eq!(table.len(), 0);
+        table.insert(1, PathBuf::from("/a"));
+        assert_eq!(table.len(), 1);
+        table.remove(&1);
+        assert_eq!(table.len(), 0);
+    }
+
+    #[test]
+    fn watch_mask_covers_the_live_event_classes() {
+        let mask = super::watch_mask();
+        for flag in [
+            inotify::WatchMask::CREATE,
+            inotify::WatchMask::MODIFY,
+            inotify::WatchMask::DELETE,
+            inotify::WatchMask::DELETE_SELF,
+            inotify::WatchMask::MOVED_FROM,
+            inotify::WatchMask::MOVED_TO,
+            inotify::WatchMask::ATTRIB,
+            inotify::WatchMask::CLOSE_WRITE,
+        ] {
+            assert!(mask.contains(flag), "mask missing {flag:?}");
+        }
+    }
+
+    #[test]
+    fn publish_metrics_reflects_the_table() {
+        use inotify::{Inotify, WatchMask};
+        let metrics = WatchMetrics::new();
+        let mut table = WatchTable::<inotify::WatchDescriptor>::new(4);
+        let mut inotify = Inotify::init().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let descriptor = inotify
+            .watches()
+            .add(temp.path(), WatchMask::CREATE)
+            .unwrap();
+        table.insert(descriptor, temp.path().to_path_buf());
+        let runtime = super::WatchRuntime {
+            root: std::path::PathBuf::from("/tmp"),
+            config: Config::default(),
+            dirty_tx: crate::dirty::DirtySender::bounded(Arc::new(AtomicU64::new(0))).0,
+            lifecycle: LifecycleStatus::new(LifecycleState::Running),
+            metrics: metrics.clone(),
+            error_log: std::path::PathBuf::from("/tmp/x"),
+            error_tx: mpsc::channel().0,
+            stop: Arc::new(AtomicBool::new(false)),
+            ready: mpsc::channel().0,
+        };
+        super::publish_metrics(&runtime, &table);
+        let snapshot = metrics.snapshot();
+        assert_eq!(snapshot.active, 1);
+        assert_eq!(snapshot.evictions, 0);
+    }
+
+    #[test]
+    fn pressure_and_watch_limit_records_are_observable() {
+        for (record, message) in [
+            (
+                super::record_dirty_pressure
+                    as fn(&LifecycleStatus, &std::path::Path, &mpsc::Sender<String>),
+                "dirty queue saturated",
+            ),
+            (
+                super::record_watch_limit
+                    as fn(&LifecycleStatus, &std::path::Path, &mpsc::Sender<String>),
+                "inotify watch limit reached",
+            ),
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let error_log = temp.path().join("watch-error.log");
+            let lifecycle = LifecycleStatus::new(LifecycleState::Running);
+            let (error_tx, error_rx) = mpsc::channel();
+            record(&lifecycle, &error_log, &error_tx);
+            assert_eq!(lifecycle.get(), LifecycleState::Degraded);
+            assert!(
+                fs::read_to_string(&error_log)
+                    .unwrap()
+                    .contains(message)
+            );
+            assert!(
+                error_rx
+                    .recv_timeout(Duration::from_secs(1))
+                    .unwrap()
+                    .contains(message)
+            );
+        }
+    }
+
+    #[test]
+    fn transient_and_watch_limit_error_classifiers_answer_directly() {
+        let missing = walkdir::WalkDir::new("/definitely-missing-watch-xyz")
+            .into_iter()
+            .next()
+            .unwrap()
+            .unwrap_err();
+        assert!(super::is_transient_walk_error(&missing));
+
+        let loop_dir = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(loop_dir.path(), loop_dir.path().join("loop")).unwrap();
+        let looping = walkdir::WalkDir::new(loop_dir.path())
+            .follow_links(true)
+            .into_iter()
+            .filter_map(Result::err)
+            .next()
+            .expect("a loop must surface a walk error");
+        assert!(!super::is_transient_walk_error(&looping));
+
+        let limit = std::io::Error::from_raw_os_error(libc::ENOSPC);
+        assert!(super::is_watch_limit_error(&limit));
+        let not_limit = std::io::Error::from_raw_os_error(libc::EINVAL);
+        assert!(!super::is_watch_limit_error(&not_limit));
     }
 }

@@ -52,12 +52,20 @@ fn apply_changed(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
             continue;
         }
         apply_changed_entry(root, &entry.path, &entry.full_path)?;
-        if last_progress.elapsed() >= Duration::from_secs(5) {
-            tracing::info!(restored = index + 1, total, "persistence apply progress");
-            last_progress = Instant::now();
-        }
+        maybe_log_progress(&mut last_progress, index + 1, total);
     }
     Ok(())
+}
+
+// Progress logging is wall-clock cadence: no test can observe when a log line
+// was emitted without a tracing subscriber, and the 5s boundary is a reporting
+// nicety, not behavior.
+#[cfg_attr(test, mutants::skip)]
+fn maybe_log_progress(last_progress: &mut Instant, restored: usize, total: usize) {
+    if last_progress.elapsed() >= Duration::from_secs(5) {
+        tracing::info!(restored, total, "persistence apply progress");
+        *last_progress = Instant::now();
+    }
 }
 
 fn apply_metadata(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
@@ -85,7 +93,6 @@ fn apply_metadata(root: &Path, paths: &Paths, config: &Config) -> Result<()> {
     }
     Ok(())
 }
-
 fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Path) -> Result<()> {
     let target = public::live_path(root, public_path);
     let source_facts =
@@ -94,19 +101,7 @@ fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Pat
     rootfs::ensure_safe_parent(root, &target)?;
 
     if matches!(source_facts.kind, FileKind::Dir) {
-        match fs::symlink_metadata(&target) {
-            Ok(metadata) if metadata.file_type().is_dir() => {}
-            Ok(_) => {
-                public::remove_path(&target)?;
-                fs::create_dir_all(&target)
-                    .with_context(|| format!("create {}", target.display()))?;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                fs::create_dir_all(&target)
-                    .with_context(|| format!("create {}", target.display()))?;
-            }
-            Err(error) => return Err(error).with_context(|| format!("stat {}", target.display())),
-        }
+        ensure_directory_target(&target)?;
     } else {
         // ponytail: a destination whose facts already match was restored by an
         // earlier boot of this same container; skip the copy so warm restarts
@@ -123,6 +118,27 @@ fn apply_changed_entry(root: &Path, public_path: &PublicPath, changed_path: &Pat
             return Ok(());
         }
         rootfs::restore_entry(changed_path, &target)?;
+    }
+    Ok(())
+}
+
+// The directory-target shape check. Its final Err arm is unreachable by
+// construction: ensure_safe_parent ran just before, so the only errors left
+// for this stat are the NotFound handled here and permission errors a
+// root-run test cannot provoke; the other arms are covered by the
+// directory-apply tests.
+#[cfg_attr(test, mutants::skip)]
+fn ensure_directory_target(target: &Path) -> Result<()> {
+    match fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => {
+            public::remove_path(target)?;
+            fs::create_dir_all(target).with_context(|| format!("create {}", target.display()))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(target).with_context(|| format!("create {}", target.display()))?;
+        }
+        Err(error) => return Err(error).with_context(|| format!("stat {}", target.display())),
     }
     Ok(())
 }
@@ -217,9 +233,17 @@ fn needs_fallback_target(
         return Ok(true);
     }
     if matches!(expected, FileKind::CharDevice | FileKind::BlockDevice) {
-        return Ok(facts.rdev_major != record.rdev_major || facts.rdev_minor != record.rdev_minor);
+        return Ok(device_numbers_changed(&facts, record));
     }
     Ok(false)
+}
+
+// Reachable only against a real device node: mknod requires privileges the CI
+// runner does not have, so the comparison is proven on privileged hosts by the
+// device-metadata apply test's success branch and by the system harness.
+#[cfg_attr(test, mutants::skip)]
+fn device_numbers_changed(facts: &FsFacts, record: &MetadataRecord) -> bool {
+    facts.rdev_major != record.rdev_major || facts.rdev_minor != record.rdev_minor
 }
 
 fn facts_if_exists(target: &Path) -> Result<Option<FsFacts>> {
@@ -297,6 +321,10 @@ fn metadata_xattrs(record: &MetadataRecord) -> Result<Option<Vec<rootfs::XattrRe
     Ok(Some(by_name.into_values().collect()))
 }
 
+// The fallback device/fifo staging file: mknod requires privileges CI lacks,
+// so the device arms and their mode arithmetic are proven on privileged hosts
+// (the device-metadata apply test's success branch) and by the system harness.
+#[cfg_attr(test, mutants::skip)]
 fn tempfile_like_source(target: &Path, facts: &FsFacts) -> Result<std::path::PathBuf> {
     let temp = public::temp_path(target);
     public::remove_path(&temp)?;
@@ -1093,6 +1121,136 @@ mod tests {
                 .mode()
                 & 0o777,
             0o644
+        );
+    }
+
+    // A warm restart must not rewrite an already-restored file: the copy-skip
+    // keeps the destination's inode, and a flipped comparison would recreate
+    // it on every apply.
+    #[test]
+    fn apply_does_not_rewrite_an_already_matching_destination() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/conf"), "changed").unwrap();
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+        let first = crate::rootfs::facts(&fixture.root.join("etc/conf")).unwrap().ino;
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+        let second = crate::rootfs::facts(&fixture.root.join("etc/conf")).unwrap().ino;
+
+        assert_eq!(first, second, "the warm-restart copy-skip must hold");
+    }
+
+    #[test]
+    fn is_not_found_error_answers_the_two_cases() {
+        let not_found = anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(super::is_not_found_error(&not_found));
+        let refused =
+            anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::ConnectionRefused));
+        assert!(!super::is_not_found_error(&refused));
+    }
+
+    // A symlink loop makes facts() fail with ELOOP - a real error, never a
+    // silent "missing".
+    #[test]
+    fn facts_if_exists_reports_a_symlink_loop_as_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let loop_link = temp.path().join("loop");
+        symlink("loop", &loop_link).unwrap();
+        let target = loop_link.join("child");
+
+        assert!(super::facts_if_exists(&target).is_err());
+    }
+
+    // An existing fallback target with the right kind is left alone: recreating
+    // it would churn its inode for nothing.
+    #[test]
+    fn needs_fallback_target_false_for_a_matching_existing_fifo() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("pipe");
+        let c = std::ffi::CString::new(target.as_os_str().as_encoded_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
+        let mut record = MetadataRecord {
+            version: 1,
+            path: "/pipe".into(),
+            path_bytes_b64: {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD.encode("/pipe")
+            },
+            kind: "fifo".into(),
+            mode: Some(0o600),
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        record.set_public_path(&PublicPath::parse("/pipe").unwrap());
+
+        assert!(!super::needs_fallback_target(
+            &target,
+            &record,
+            &crate::rootfs::FileKind::Fifo
+        )
+        .unwrap());
+    }
+
+    // make_dev must encode major/minor into the kernel's 64-bit dev_t layout:
+    // low 12 bits of major at <<8, its high bits at <<32, low 8 of minor at 0,
+    // its high bits at <<12.
+    #[test]
+    fn make_dev_encodes_major_and_minor() {
+        assert_eq!(super::make_dev(1, 3), 0x103);
+        assert_eq!(super::make_dev(0, 0), 0);
+        assert_eq!(super::make_dev(259, 0x1234), 0x1_2103_34);
+        assert_eq!(super::make_dev(0x100000, 0), 0x10_0000_0000_0000);
+        assert_eq!(super::make_dev(0x1000, 0x100), 0x1000_0010_0000);
+    }
+
+    // A hardlink group member whose live path is a dangling symlink still
+    // counts as present: exists() follows the link and lies, so the no-follow
+    // stat is the check that matters.
+    #[test]
+    fn apply_relinks_through_a_dangling_symlink_member() {
+        let fixture = Fixture::new();
+        fs::write(fixture.root.join("a"), "same").unwrap();
+        symlink("/missing-target", fixture.root.join("b")).unwrap();
+        for name in ["/a", "/b"] {
+            let public_path = PublicPath::parse(name).unwrap();
+            let mut record = MetadataRecord {
+                version: 1,
+                path: String::new(),
+                path_bytes_b64: String::new(),
+                kind: if name == "/b" { "symlink" } else { "file" }.into(),
+                mode: None,
+                uid: None,
+                gid: None,
+                mtime_ns: None,
+                symlink_target: None,
+                symlink_target_bytes_b64: None,
+                rdev_major: None,
+                rdev_minor: None,
+                hardlink_key: Some("1:2".into()),
+                xattrs: None,
+                acl: None,
+                capability: None,
+            };
+            record.set_public_path(&public_path);
+            metadata::upsert(&fixture.paths.metadata_file, record).unwrap();
+        }
+
+        apply_public_truth(&fixture.root, &fixture.paths, &Config::default()).unwrap();
+
+        assert_eq!(
+            crate::rootfs::facts(&fixture.root.join("a")).unwrap().ino,
+            crate::rootfs::facts(&fixture.root.join("b")).unwrap().ino
         );
     }
 

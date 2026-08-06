@@ -56,7 +56,7 @@ fn ensure_real_dir(path: &std::path::Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure;
+    use super::{ensure, remove_ready};
     use crate::paths::Paths;
     use std::{fs, os::unix::fs::symlink};
 
@@ -115,5 +115,43 @@ mod tests {
         let error = ensure(&paths).unwrap_err().to_string();
 
         assert!(error.contains("real file"));
+    }
+
+    // A layout path whose parent is a file is an error, never a silent
+    // success - a typo'd volume path must not read as a working layout.
+    #[test]
+    fn ensure_rejects_an_unreachable_layout_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            parent.join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+
+        assert!(ensure(&paths).is_err());
+    }
+
+    // Removing an absent ready file is a no-op success: the daemon may stop
+    // before it ever wrote one. Any other removal failure is an error.
+    #[test]
+    fn remove_ready_is_a_no_op_when_absent_and_an_error_when_unreachable() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        assert!(remove_ready(&paths).is_ok());
+
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let blocked = Paths::new(
+            temp.path().join("opt/persistence"),
+            parent.join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        assert!(remove_ready(&blocked).is_err());
     }
 }
