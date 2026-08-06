@@ -86,12 +86,7 @@ export function UsageCard({
 		.find((at) => at !== null);
 
 	return (
-		<div
-			className={cn(
-				"rounded-2xl bg-card px-4 py-3.5",
-				className
-			)}
-		>
+		<div className={cn("rounded-2xl bg-card px-4 py-3.5", className)}>
 			<div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
 				{readings.map((reading) => (
 					<Meter key={reading.signal} reading={reading} />
