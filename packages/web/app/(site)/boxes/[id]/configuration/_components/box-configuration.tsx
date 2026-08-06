@@ -13,7 +13,11 @@ import {
 	CardTitle
 } from "@/components/base/card";
 import { Notice, recreateNotice } from "@/components/box/operation-dialog";
-import { StatusText } from "@/components/box/status-text";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger
+} from "@/components/base/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { RuntimeConfigField } from "@/convex/boxes/configuration";
 import { useBusyAction } from "@/hooks/use-busy-action";
@@ -28,6 +32,12 @@ import {
 	SecretField,
 	type SecretIntent
 } from "./config-field";
+
+// Why every control is greyed out. A tooltip on each disabled control says
+// this where the reader is looking, instead of the page saying it once at the
+// top where it only registers for the fields below it.
+const READ_ONLY_REASON =
+	"The box is not running, so its configuration is read-only.";
 
 // Which group a variable lands in is decided by its key and its `dangerous`
 // flag, never by a list of keys held here: a variable added to the allowlist
@@ -51,7 +61,8 @@ const GROUPS: {
 		title: "Automation API"
 	},
 	{
-		description: "How the editor starts, and what it offers once it has.",
+		description:
+			"How the editor starts, and what it offers when it is running.",
 		holds: (field) => field.key.startsWith("COMPOSERY_"),
 		title: "Editor"
 	},
@@ -205,35 +216,28 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 		setSecrets({});
 		setSaveError(null);
 	}
-
 	return (
 		<div className="space-y-4">
-			{/* The one thing an owner must not be surprised by after pressing the
-			    button. `applyRuntimeConfig` writes the env file and runs
-			    `up -d --force-recreate`, so everything living inside the container
-			    goes with it - the same cost the Update dialog names, from the same
-			    sentence. */}
-			<Notice muted={false} tone="warn">
-				{recreateNotice("Saving")}
+			<Notice muted tone="muted">
+				<p className="font-medium text-foreground">The box password</p>
+				<p className="mt-0.5">
+					Removing it is not offered here: it would reopen the box on every
+					boot, including the restarts a repair or an update causes. If you
+					can&apos;t produce your password, change it from the{" "}
+					<Link className="link" href={boxPath(boxId)}>
+						box page
+					</Link>{" "}
+					instead.
+				</p>
 			</Notice>
 
-			{canConfigure ? null : (
-				<Notice muted={false} tone="muted">
-					<p>
-						A configuration is applied to a running box, so this form is
-						read-only until it is running again.
-					</p>
-					<p className="mt-1 text-muted-foreground">
-						This box is{" "}
-						<StatusText
-							className="align-middle"
-							kind="box"
-							status={box.status}
-						/>
-						. The values below are the ones it will start with.
-					</p>
-				</Notice>
-			)}
+			<p className="text-sm text-muted-foreground">
+				See the{" "}
+				<Link className="link" href="/docs/configuration">
+					configuration reference
+				</Link>{" "}
+				for the variables this page does not offer.
+			</p>
 
 			{groups.map((group) => (
 				<Card key={group.title}>
@@ -246,6 +250,7 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 							isSecretField(field) ? (
 								<SecretField
 									disabled={!canConfigure || busy !== null}
+									disabledReason={!canConfigure ? READ_ONLY_REASON : null}
 									error={errorKey === field.key ? saveError : null}
 									field={field}
 									intent={secrets[field.key] ?? KEEP_SECRET}
@@ -261,6 +266,7 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 							) : (
 								<ConfigField
 									disabled={!canConfigure || busy !== null}
+									disabledReason={!canConfigure ? READ_ONLY_REASON : null}
 									error={errorKey === field.key ? saveError : null}
 									field={field}
 									key={field.key}
@@ -276,21 +282,20 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 				</Card>
 			))}
 
-			<p className="text-sm text-muted-foreground">
-				Removing the box password isn&apos;t offered here: it would reopen the
-				box on every boot, including the restarts a repair or an update causes.
-				If you can&apos;t produce your password, change it from the{" "}
-				<Link className="link" href={boxPath(boxId)}>
-					box page
-				</Link>{" "}
-				instead.
-			</p>
-
 			{saveError && !errorKey ? (
 				<Notice muted={false} tone="bad">
 					{saveError}
 				</Notice>
 			) : null}
+
+			{/* The one thing an owner must not be surprised by after pressing the
+			    button, so it sits beside it. `applyRuntimeConfig` writes the env
+			    file and runs `up -d --force-recreate`, so everything living inside
+			    the container goes with it - the same cost the Update dialog names,
+			    from the same sentence. */}
+			<Notice muted={false} tone="warn">
+				{recreateNotice("Saving")}
+			</Notice>
 
 			<div className="flex flex-wrap items-center justify-end gap-2">
 				<Button
@@ -300,14 +305,21 @@ export function BoxConfiguration({ boxId }: { boxId: string }) {
 				>
 					Discard changes
 				</Button>
-				<AnimatedIconButton
-					disabled={!canConfigure || !dirty || busy !== null}
-					icon="check"
-					iconPosition="start"
-					onClick={save}
-				>
-					{busy === "config" ? "Configuring…" : "Configure"}
-				</AnimatedIconButton>
+				<Tooltip>
+					<TooltipTrigger render={<span className="inline-flex" />}>
+						<AnimatedIconButton
+							disabled={!canConfigure || !dirty || busy !== null}
+							icon="check"
+							iconPosition="start"
+							onClick={save}
+						>
+							{busy === "config" ? "Saving…" : "Save changes"}
+						</AnimatedIconButton>
+					</TooltipTrigger>
+					{!canConfigure ? (
+						<TooltipContent>{READ_ONLY_REASON}</TooltipContent>
+					) : null}
+				</Tooltip>
 			</div>
 		</div>
 	);

@@ -213,6 +213,7 @@ dependencies = [
  "fs2",
  "getrandom 0.4.3",
  "libc",
+ "mutants",
  "persistence",
  "serde",
  "serde_json",
@@ -536,6 +537,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mutants"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -576,6 +583,7 @@ dependencies = [
  "fs2",
  "inotify",
  "libc",
+ "mutants",
  "proptest",
  "rusqlite",
  "serde",

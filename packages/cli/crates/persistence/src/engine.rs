@@ -173,6 +173,13 @@ pub fn select_and_record(paths: &Paths) -> Result<Selection> {
 /// Returns the real failure - `EPERM` at `mount()` when unprivileged - so an
 /// explicit `overlay` pin can surface it. The full boot then rebuilds the same
 /// overlay for real in `init/overlay.sh`; this only decides the engine.
+///
+/// Skipped by cargo-mutants: the outcome is a real `mount(2)` syscall whose
+/// success depends on host privileges, so a unit test can only assert one
+/// environment's verdict. The decision logic that calls it (`select`) is fully
+/// covered; the mount itself is proven by `tests/system/overlay/run.sh` on real
+/// privileged containers.
+#[cfg_attr(test, mutants::skip)]
 #[cfg(target_os = "linux")]
 pub fn probe_overlay(volume_dir: &Path) -> Result<()> {
     use std::ffi::CString;
@@ -224,11 +231,10 @@ pub fn probe_overlay(volume_dir: &Path) -> Result<()> {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[cfg_attr(test, mutants::skip)]
 pub fn probe_overlay(_volume_dir: &Path) -> Result<()> {
     anyhow::bail!("the overlay engine is only supported on Linux");
-}
-
-#[cfg(test)]
+}#[cfg(test)]
 mod tests {
     use super::{Engine, OVERLAY_ENGINE_READY, Request, select};
     use std::cell::Cell;

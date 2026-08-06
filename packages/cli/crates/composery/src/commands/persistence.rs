@@ -79,3 +79,16 @@ pub fn run(command: PersistenceCommand, json: bool) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Status talks to the running daemon over its control socket; with no
+    // daemon, the query must fail rather than report a healthy state. The
+    // socket path is the default, which no test daemon occupies.
+    #[test]
+    fn status_fails_loudly_without_a_daemon() {
+        assert!(run(PersistenceCommand::Status, false).is_err());
+    }
+}

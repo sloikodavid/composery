@@ -2,34 +2,25 @@
 
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import {
-	AnimatedIconAnchor,
-	AnimatedIconButton,
-	AnimatedIconLink
-} from "@/components/animated-icon";
+import { AnimatedIconButton } from "@/components/animated-icon";
 import { BoxStatusAction } from "@/components/box/status-action";
-import { ChangeSlugDialog } from "@/components/box/change-slug-dialog";
 import { MonitorCard } from "@/components/box/monitor-card";
 import { AgentStack } from "@/components/box/agent-stack";
 import { SshDialog } from "@/components/box/ssh-dialog";
 import { UsageCard } from "@/components/box/usage-card";
-import { RepairDialog } from "@/components/box/repair-dialog";
-import { ResetDialog } from "@/components/box/reset-dialog";
 import { UpdateDialog } from "@/components/box/update-dialog";
 import {
 	DEFAULT_RANGE,
 	type MetricsRange
 } from "@/components/box/metrics-chart";
-import { BoxSnapshots } from "./box-snapshots";
+import { MoreMenu } from "./more-menu";
 import { Card, CardContent } from "@/components/base/card";
-import { Button, buttonVariants } from "@/components/base/button";
+import { Button } from "@/components/base/button";
 import { api } from "@/convex/_generated/api";
 import { useBusyAction } from "@/hooks/use-busy-action";
-import { boxPath } from "@/convex/model/box/path";
 import { BOX_PLANS } from "@/convex/model/box/plan";
 import { formatDate } from "@/lib/datetime";
 import { failureNotice } from "@/convex/model/box/operation";
-import { cn } from "@/lib/utils";
 
 export function BoxDetail({ boxId }: { boxId: string }) {
 	const [range, setRange] = useState<MetricsRange>(DEFAULT_RANGE);
@@ -91,116 +82,100 @@ export function BoxDetail({ boxId }: { boxId: string }) {
 
 			<UsageCard readings={detail.usage} />
 
-			<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-				<BoxStatusAction
-					retry={{
-						disabled: busy === "create",
-						onClick: () =>
-							run("create", "Creating box", () =>
-								retryCreate({ slug: box.slug })
-							)
-					}}
-					start={{
-						disabled: busy === "start",
-						onClick: () =>
-							run("start", "Starting box", () => startBox({ slug: box.slug }))
-					}}
-					status={box.status}
-					stop={{
-						onConfirm: () =>
-							run("stop", "Stopping box", () => stopBox({ slug: box.slug }))
-					}}
-				/>
-				<Button
-					disabled={box.status !== "running"}
-					onClick={() => setSshOpen(true)}
-					variant="outline"
-				>
-					<AgentStack />
-					Connect remotely
-				</Button>
-				{box.comp ? (
-					<AnimatedIconButton
-						disabled
-						icon="credit-card"
-						iconPosition="start"
+			{/* Every action lives in this one row: what an owner reaches for on
+			    the left - the status action, connecting, updating - and the plan
+			    and everything else on the right. */}
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-center gap-2">
+					<BoxStatusAction
+						retry={{
+							disabled: busy === "create",
+							onClick: () =>
+								run("create", "Creating box", () =>
+									retryCreate({ slug: box.slug })
+								)
+						}}
+						start={{
+							disabled: busy === "start",
+							onClick: () =>
+								run("start", "Starting box", () => startBox({ slug: box.slug }))
+						}}
+						status={box.status}
+						stop={{
+							onConfirm: () =>
+								run("stop", "Stopping box", () => stopBox({ slug: box.slug }))
+						}}
+					/>
+					<Button
+						disabled={box.status !== "running"}
+						onClick={() => setSshOpen(true)}
 						variant="outline"
 					>
-						Comped - {BOX_PLANS[box.plan].label}
-					</AnimatedIconButton>
-				) : (
-					<AnimatedIconButton
-						disabled={busy === "portal"}
-						icon="credit-card"
-						iconPosition="start"
-						onClick={() =>
-							run("portal", null, async () => {
-								const portal = await customerPortalUrl({ slug: box.slug });
-								window.location.assign(portal.url);
-							})
+						<AgentStack />
+						Connect remotely
+					</Button>
+					<UpdateDialog
+						boxStatus={box.status}
+						busy={busy}
+						onUpdate={() =>
+							run("update", "Updating box", () => updateBox({ slug: box.slug }))
 						}
-						variant="outline"
-					>
-						{BOX_PLANS[box.plan].label} - {billingLine}
-					</AnimatedIconButton>
-				)}
-				<AnimatedIconAnchor
-					className={cn(buttonVariants({ variant: "outline" }))}
-					href={new URL("change-password", box.runtimeUrl).toString()}
-					icon="lock"
-					iconPosition="start"
-					rel="noreferrer"
-					target="_blank"
-				>
-					Change password
-				</AnimatedIconAnchor>
-				<AnimatedIconLink
-					className={cn(buttonVariants({ variant: "outline" }))}
-					href={`${boxPath(boxId)}/configuration`}
-					icon="pen-tool"
-					iconPosition="start"
-				>
-					Configure
-				</AnimatedIconLink>
-				<ChangeSlugDialog
-					onSubmit={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
-					slug={box.slug}
-				/>
-				<BoxSnapshots
-					plan={box.plan}
-					slug={box.slug}
-					split={box.snapshots}
-					status={box.status}
-				/>
-				<UpdateDialog
-					boxStatus={box.status}
-					busy={busy}
-					onUpdate={() =>
-						run("update", "Updating box", () => updateBox({ slug: box.slug }))
-					}
-					runtime={detail.runtime}
-					slug={box.slug}
-					update={detail.update}
-				/>
-				<RepairDialog
-					boxStatus={box.status}
-					busy={busy}
-					check={() => recoveryStatus({ slug: box.slug })}
-					onRepair={() =>
-						run("repair", "Repairing box", () => repair({ slug: box.slug }))
-					}
-					repair={detail.repair}
-					slug={box.slug}
-				/>
-				<ResetDialog
-					busy={busy}
-					onReset={() =>
-						run("reset", "Resetting box", () =>
-							resetBox({ slug: box.slug, confirmation: box.slug })
-						)
-					}
-					slug={box.slug}
-				/>
+						runtime={detail.runtime}
+						slug={box.slug}
+						update={detail.update}
+					/>
+				</div>
+
+				<div className="flex flex-wrap items-center gap-2">
+					{box.comp ? (
+						<AnimatedIconButton
+							disabled
+							icon="credit-card"
+							iconPosition="start"
+							variant="outline"
+						>
+							Comped - {BOX_PLANS[box.plan].label}
+						</AnimatedIconButton>
+					) : (
+						<AnimatedIconButton
+							disabled={busy === "portal"}
+							icon="credit-card"
+							iconPosition="start"
+							onClick={() =>
+								run("portal", null, async () => {
+									const portal = await customerPortalUrl({ slug: box.slug });
+									window.location.assign(portal.url);
+								})
+							}
+							variant="outline"
+						>
+							{BOX_PLANS[box.plan].label} - {billingLine}
+						</AnimatedIconButton>
+					)}
+					<MoreMenu
+						boxId={boxId}
+						boxStatus={box.status}
+						busy={busy}
+						changeSlug={(newSlug) => changeSlug({ slug: box.slug, newSlug })}
+						checkRepair={() => recoveryStatus({ slug: box.slug })}
+						onRepair={() =>
+							run("repair", "Repairing box", () => repair({ slug: box.slug }))
+						}
+						onReset={() =>
+							run("reset", "Resetting box", () =>
+								resetBox({
+									slug: box.slug,
+									confirmation: box.slug
+								})
+							)
+						}
+						plan={box.plan}
+						repair={detail.repair}
+						runtimeUrl={box.runtimeUrl}
+						slug={box.slug}
+						split={box.snapshots}
+					/>
+				</div>
 			</div>
 
 			<SshDialog

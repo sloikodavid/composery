@@ -69,8 +69,14 @@ impl Paths {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::Paths;
+    use std::sync::Mutex;
+
+    // Tests that set COMPOSERY_DOCKER_VOLUME_PATH serialize on this lock; the
+    // volume-root tests here and the certificates tests in the composery crate
+    // are the only readers of the variable.
+    pub(crate) static VOLUME_ENV: Mutex<()> = Mutex::new(());
 
     #[test]
     fn default_paths_match_the_public_contract() {
@@ -109,5 +115,21 @@ mod tests {
             paths.control_socket.to_string_lossy(),
             "/data/persistence/.internal/control.sock"
         );
+    }
+
+    #[test]
+    fn volume_root_honours_a_real_override() {
+        let _guard = VOLUME_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_DOCKER_VOLUME_PATH", "/custom/volume") };
+        assert_eq!(super::volume_root(), std::path::PathBuf::from("/custom/volume"));
+    }
+
+    // Whitespace is not a volume path: a blank override must fall back to the
+    // contract default, never to a path that cannot exist.
+    #[test]
+    fn volume_root_refuses_a_blank_override() {
+        let _guard = VOLUME_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_DOCKER_VOLUME_PATH", "   ") };
+        assert_eq!(super::volume_root(), std::path::PathBuf::from("/data"));
     }
 }

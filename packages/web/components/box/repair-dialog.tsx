@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderIcon } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { Badge } from "@/components/base/badge";
@@ -51,25 +51,37 @@ function repairNotice(repair: RepairOperation | null) {
 // layer of the box, then offers one data-preserving Repair action - the box's
 // single recovery lever. Nothing is destroyed without a verified copy of it
 // existing first, so the action needs no confirmation step. The caller's check
-// loads the status and onRepair performs the repair.
+// loads the status and onRepair performs the repair. A caller that opens the
+// dialog from outside (a menu) passes `open` and `onOpenChange`; absent, the
+// dialog owns its state and renders its own button.
 export function RepairDialog({
 	boxStatus,
 	busy,
 	check,
+	onOpenChange,
 	onRepair,
+	open: openProp,
 	repair,
 	slug
 }: {
 	boxStatus: BoxStatus;
 	busy: string | null;
 	check: () => Promise<RecoveryStatus>;
+	onOpenChange?: (open: boolean) => void;
 	onRepair: () => Promise<void>;
+	open?: boolean;
 	repair: RepairOperation | null;
 	slug: string;
 }) {
-	const [open, setOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+	const open = openProp ?? internalOpen;
 	const [checking, setChecking] = useState(false);
 	const [status, setStatus] = useState<RecoveryStatus | null>(null);
+
+	function changeOpen(nextOpen: boolean) {
+		if (onOpenChange) onOpenChange(nextOpen);
+		else setInternalOpen(nextOpen);
+	}
 
 	// Ask the same table the backend enforces, so the dialog can never offer a
 	// repair that `startOperation` will refuse. A stopped box is the case
@@ -77,7 +89,7 @@ export function RepairDialog({
 	// layer as missing and raise a false alarm about a box that is merely off.
 	const repairable = isOperationAllowed(boxStatus, "repair");
 
-	async function refresh() {
+	const refresh = useCallback(async () => {
 		setChecking(true);
 		// Clear first, so "Check again" shows the same loading state as opening
 		// the dialog. Leaving the old rows up reads as nothing having happened.
@@ -90,15 +102,20 @@ export function RepairDialog({
 		} finally {
 			setChecking(false);
 		}
-	}
+	}, [check]);
 
-	function changeOpen(nextOpen: boolean) {
-		setOpen(nextOpen);
-		if (nextOpen && repairable) {
-			setStatus(null);
+	// Refresh when the dialog opens, whoever opened it - its own button or a
+	// menu. The closed-to-open edge is guarded because `refresh` changes
+	// identity when the caller re-renders; the effect must not re-run while it
+	// stays open. It starts false so a dialog that mounts already open (a menu
+	// opened it) refreshes on first effect instead of being skipped.
+	const wasOpen = useRef(false);
+	useEffect(() => {
+		if (!wasOpen.current && open && repairable) {
 			void refresh();
 		}
-	}
+		wasOpen.current = open;
+	}, [open, refresh, repairable]);
 
 	const summary = status ? summarize(status) : null;
 	const notice = repairNotice(repair);
@@ -106,14 +123,16 @@ export function RepairDialog({
 
 	return (
 		<>
-			<AnimatedIconButton
-				icon="wrench"
-				iconPosition="start"
-				onClick={() => changeOpen(true)}
-				variant="outline"
-			>
-				Repair
-			</AnimatedIconButton>
+			{openProp === undefined ? (
+				<AnimatedIconButton
+					icon="wrench"
+					iconPosition="start"
+					onClick={() => changeOpen(true)}
+					variant="outline"
+				>
+					Repair
+				</AnimatedIconButton>
+			) : null}
 			<Dialog onOpenChange={changeOpen} open={open}>
 				<DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
 					<DialogHeader>
@@ -166,7 +185,7 @@ export function RepairDialog({
 							    height (py-2.5 either side of a 36px body), so the list is
 							    the same size loading as loaded and the dialog never
 							    resizes. */}
-							<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
+							<div className="overflow-hidden rounded-2xl">
 								{CHECKS.map((item) => {
 									const state = status ? item.read(status) : null;
 									if (!state) {

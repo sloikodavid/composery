@@ -12,41 +12,26 @@ const CONVEX_BIN = join(
 	"main.js"
 );
 
+// The Vercel plane checks the blocking direction only: a required name that is
+// not set. Vercel exposes project variables in the same process namespace as
+// its system variables and the build container's own names, and no check can
+// split that merged namespace without a separately authenticated Vercel API
+// request - and the injected names cannot be configured away, so a reported
+// extra would be noise nobody can act on. Every Convex name is set by hand in
+// the dashboard, so there an extra name is actionable drift and is reported.
 const TARGETS = [
-	{ name: "Vercel Production", example: ".env.example.next.prod" },
-	{ name: "Convex Production", example: ".env.example.convex.prod" }
-];
-
-// Vercel exposes project variables in the same process namespace as its own
-// system variables and the build container's environment. Its project API can
-// distinguish them, but requires a separate access token. These are therefore
-// infrastructure, not application drift. Anything else is reported but never
-// blocks, so a newly injected build name can be noisy without stopping a deploy.
-const BUILD_NAMES = new Set([
-	"CI",
-	"COLORTERM",
-	"HOME",
-	"HOSTNAME",
-	"LANG",
-	"LC_ALL",
-	"LOGNAME",
-	"PATH",
-	"PWD",
-	"SHELL",
-	"TERM",
-	"TMP",
-	"TMPDIR",
-	"USER",
-	"XDG_CACHE_HOME"
-]);
-const BUILD_PREFIXES = [
-	"COREPACK_",
-	"NODE_",
-	"NPM_",
-	"npm_",
-	"PNPM_",
-	"pnpm_",
-	"VERCEL_"
+	{
+		name: "Vercel Production",
+		example: ".env.example.next.prod",
+		source: "process",
+		reportExtra: false
+	},
+	{
+		name: "Convex Production",
+		example: ".env.example.convex.prod",
+		source: "convex",
+		reportExtra: true
+	}
 ];
 
 export function envNames(contents, source) {
@@ -83,21 +68,10 @@ export function nameLines(contents, source) {
 	return names;
 }
 
-export function isBuildName(name) {
-	return (
-		BUILD_NAMES.has(name) ||
-		name === "VERCEL" ||
-		name.includes("_VERCEL_") ||
-		BUILD_PREFIXES.some((prefix) => name.startsWith(prefix))
-	);
-}
-
-export function compareNames({ expected, actual, ignore = () => false }) {
+export function compareNames({ expected, actual }) {
 	return {
 		missing: [...expected].filter((name) => !actual.has(name)).sort(),
-		extra: [...actual]
-			.filter((name) => !expected.has(name) && !ignore(name))
-			.sort()
+		extra: [...actual].filter((name) => !expected.has(name)).sort()
 	};
 }
 
@@ -128,25 +102,22 @@ export function checkDeployment({
 	convexNames,
 	read = (file) => readFileSync(join(WEB_DIR, file), "utf8")
 }) {
-	const vercelTarget = TARGETS[0];
-	const convexTarget = TARGETS[1];
-	return [
-		{
-			...vercelTarget,
-			...compareNames({
-				expected: envNames(read(vercelTarget.example), vercelTarget.example),
-				actual: new Set(Object.keys(environment)),
-				ignore: isBuildName
-			})
-		},
-		{
-			...convexTarget,
-			...compareNames({
-				expected: envNames(read(convexTarget.example), convexTarget.example),
-				actual: convexNames
-			})
-		}
-	];
+	return TARGETS.map((target) => {
+		const actual =
+			target.source === "convex"
+				? convexNames
+				: new Set(Object.keys(environment));
+		const { missing, extra } = compareNames({
+			expected: envNames(read(target.example), target.example),
+			actual
+		});
+		return {
+			name: target.name,
+			example: target.example,
+			missing,
+			extra: target.reportExtra ? extra : []
+		};
+	});
 }
 
 export function formatResult(result) {

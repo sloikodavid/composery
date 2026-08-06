@@ -107,7 +107,7 @@ function notRunningMessage(
 // only thing that reports it at all.
 function FailureStrip({ notice }: { notice: FailureNotice }) {
 	return (
-		<div className="flex items-start gap-3 border-t border-border bg-destructive/5 px-4 py-2.5 text-xs">
+		<div className="flex items-start gap-3 bg-destructive/5 px-4 py-2.5 text-xs">
 			<TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-destructive" />
 			<div className="min-w-0 flex-1">
 				<p className="font-medium text-foreground">{notice.title}</p>
@@ -207,7 +207,7 @@ export function MonitorCard({
 	return (
 		<div
 			className={cn(
-				"relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card",
+				"relative flex flex-col overflow-hidden rounded-2xl bg-card",
 				className
 			)}
 		>

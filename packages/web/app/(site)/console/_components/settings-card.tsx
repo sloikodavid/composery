@@ -8,7 +8,7 @@ import {
 import { Input } from "@/components/base/input";
 
 // The shell every staff settings panel wears: a card, a titled header carrying
-// the action that commits it (and sometimes Reset), and rows that divide. Five
+// the action that commits it (and sometimes Reset), and stacked rows. Five
 // panels drew all of that themselves, which is why no two of them agreed on the
 // details.
 //
@@ -42,8 +42,8 @@ export function SettingsCard({
 	title: string;
 }) {
 	return (
-		<div className="rounded-2xl border border-border bg-card">
-			<div className="flex items-center justify-between border-b border-border px-4 py-3">
+		<div className="rounded-2xl bg-card">
+			<div className="flex items-center justify-between px-4 py-3">
 				<div>
 					<h2 className="text-sm font-medium">{title}</h2>
 					{subtitle ? (
@@ -73,7 +73,7 @@ export function SettingsCard({
 					</AnimatedIconButton>
 				</div>
 			</div>
-			<div className="divide-y divide-border">{children}</div>
+			<div>{children}</div>
 			{footnote ? (
 				<p className="px-4 pb-3 text-xs text-pretty text-muted-foreground">
 					{footnote}

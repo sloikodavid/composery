@@ -46,7 +46,7 @@ const LEGAL_LINKS: FooterLink[] = [
 
 export function Footer() {
 	return (
-		<footer className="border-t border-border bg-footer text-footer-foreground">
+		<footer className="bg-footer text-footer-foreground">
 			<div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[minmax(0,1fr)_auto] md:gap-12">
 				<div className="max-w-sm space-y-3">
 					<Logo size="h-12" />
@@ -62,7 +62,7 @@ export function Footer() {
 					<FooterLinkGroup links={LEGAL_LINKS} title="Legal" />
 				</div>
 
-				<div className="flex flex-row items-center justify-between gap-4 border-t border-border pt-6 text-sm text-muted-foreground md:col-span-2">
+				<div className="flex flex-row items-center justify-between gap-4 pt-6 text-sm text-muted-foreground md:col-span-2">
 					<p>&copy; {new Date().getFullYear()} Composery</p>
 					<div className="flex items-center gap-5">
 						<a

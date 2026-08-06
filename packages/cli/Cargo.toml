@@ -31,3 +31,6 @@ base64 = "0.23.0"
 getrandom = "0.4.3"
 fs2 = "0.4.3"
 libc = "0.2.189"
+# The attribute cargo-mutants reads to skip a function or block that no test
+# can reach. Dev-only: the shipped binary never compiles it.
+mutants = "0.0.3"

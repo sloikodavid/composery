@@ -30,10 +30,10 @@ function buildAssets() {
 	return process.platform === "win32"
 		? run(
 				process.env.ComSpec ?? "cmd.exe",
-				["/d", "/s", "/c", "pnpm.cmd assets"],
+				["/d", "/s", "/c", "pnpm.cmd fix:assets"],
 				{ cwd: root }
 			)
-		: run("pnpm", ["assets"], { cwd: root });
+		: run("pnpm", ["fix:assets"], { cwd: root });
 }
 
 function validTheme(value, shape) {

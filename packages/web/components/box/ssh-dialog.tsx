@@ -144,15 +144,14 @@ export function SshDialog({
 }
 
 // The rule with a word in it, the way a sign-in dialog draws one. Two paths of
-// equal standing, not a heading over a fallback.
+// equal standing, not a heading over a fallback. Kept without a border to
+// match the rest of the page: the label alone separates the two halves.
 function Separated({ children }: { children: string }) {
 	return (
 		<div className="flex items-center gap-3">
-			<span className="h-px flex-1 bg-border" />
 			<span className="text-muted-foreground text-xs uppercase tracking-wide">
 				{children}
 			</span>
-			<span className="h-px flex-1 bg-border" />
 		</div>
 	);
 }

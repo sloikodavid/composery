@@ -36,7 +36,7 @@ export function Failures() {
 
 	return (
 		<div className="overflow-hidden rounded-2xl border border-destructive/40 bg-card">
-			<div className="flex flex-wrap items-center gap-x-2 border-b border-border px-4 py-3">
+			<div className="flex flex-wrap items-center gap-x-2 px-4 py-3">
 				<TriangleAlertIcon className="size-4 text-destructive" />
 				<span className="text-sm font-medium text-foreground">
 					Needs attention

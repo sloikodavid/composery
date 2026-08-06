@@ -200,6 +200,36 @@ mod tests {
         assert!(error.contains("daemon is not running"));
     }
 
+    // A real listener at the control socket path is "daemon running": the
+    // availability probe must answer true and the query must reach the socket.
+    #[test]
+    fn a_listening_socket_is_available_and_answers_queries() {
+        use std::os::unix::net::{UnixListener, UnixStream};
+        use std::thread;
+
+        let fixture = Fixture::new();
+        fs::create_dir_all(&fixture.paths.internal_dir).unwrap();
+        let listener = UnixListener::bind(&fixture.paths.control_socket).unwrap();
+        assert!(super::control_socket_available(&fixture.paths));
+
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            use std::io::{BufRead, BufReader, Write};
+            let mut line = String::new();
+            BufReader::new(stream.try_clone().unwrap())
+                .read_line(&mut line)
+                .unwrap();
+            let response = super::Response::ok(&serde_json::json!({"ready": true})).unwrap();
+            serde_json::to_writer(&mut stream, &response).unwrap();
+            stream.write_all(b"\n").unwrap();
+        });
+
+        let payload: serde_json::Value =
+            super::query(&fixture.paths, Command::Status).unwrap();
+        handle.join().unwrap();
+        assert_eq!(payload["ready"], true);
+    }
+
     struct Fixture {
         _temp: tempfile::TempDir,
         paths: Paths,

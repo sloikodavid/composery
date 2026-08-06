@@ -134,7 +134,7 @@ export function ConsoleHome() {
 					</div>
 				</div>
 
-				<div className="overflow-hidden rounded-2xl border border-border bg-card">
+				<div className="overflow-hidden rounded-2xl bg-card">
 					<Table cols={["fluid", "text", "date", "status", "actions-3"]}>
 						<TableHeader>
 							<TableRow>
@@ -171,7 +171,7 @@ export function ConsoleHome() {
 							<TableBody className="page-fade-in">
 								{sortedBoxes.map((box: ConsoleBox) => (
 									<TableRow
-										className="h-14 has-[[data-link]:hover]:bg-ghost-hover"
+										className="h-14 has-[[data-link]:hover]:bg-hover"
 										key={box.id}
 									>
 										{/* The link is an overlay so it fills the whole cell (height
@@ -253,7 +253,7 @@ export function ConsoleHome() {
 				) : null}
 			</div>
 
-			<div className="overflow-hidden rounded-2xl border border-border bg-card">
+			<div className="overflow-hidden rounded-2xl bg-card">
 				<Table
 					cols={["fluid", "text", "date", "datetime", "status", "actions-2"]}
 				>

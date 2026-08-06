@@ -74,6 +74,15 @@ mod tests {
         );
     }
 
+    // The public entry is apply(), which boots against the real root. With a
+    // fixture lacking a baseline it must fail before touching anything outside
+    // the fixture - a success here would mean the apply loop silently no-oped.
+    #[test]
+    fn the_public_apply_refuses_to_run_without_a_baseline() {
+        let fixture = Fixture::new();
+        assert!(super::apply(&fixture.paths).is_err());
+    }
+
     #[test]
     fn apply_fails_with_corrupt_baseline_and_does_not_write_ready() {
         let fixture = Fixture::new();

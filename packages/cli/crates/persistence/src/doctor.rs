@@ -89,6 +89,9 @@ pub fn run(paths: &Paths, db: &StateDb) -> Result<DoctorReport> {
     }
 }
 
+// Prints to the process's stdout, which the test harness intercepts before any
+// test runs; the report itself is the tested artifact.
+#[cfg_attr(test, mutants::skip)]
 pub fn print_human(report: &DoctorReport) {
     println!("persistence doctor:");
     println!("  metadataRecords: {}", report.metadata_records);
@@ -203,6 +206,14 @@ mod tests {
                 .iter()
                 .any(|finding| finding.contains("missing baseline"))
         );
+        // A missing baseline is one finding, not two: "invalid" is only a real
+        // statement when the file exists to be invalid.
+        assert!(
+            !missing
+                .findings
+                .iter()
+                .any(|finding| finding.contains("invalid baseline"))
+        );
 
         fs::create_dir_all(&paths.opt_dir).unwrap();
         fs::write(&paths.baseline_db, "not sqlite").unwrap();
@@ -216,6 +227,81 @@ mod tests {
                 .iter()
                 .any(|finding| finding.contains("invalid baseline"))
         );
+    }
+
+    // A metadata record whose path still exists in the baseline is not stale
+    // (the file may arrive via the baseline on apply), and a fifo/device record
+    // is never stale by itself - those kinds legitimately exist only as
+    // metadata. Both must stay silent or the doctor would report the volume
+    // broken when it is not.
+    #[test]
+    fn doctor_does_not_report_baseline_present_or_fallback_only_records_as_stale() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let paths = Paths::new(
+            root.join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        fs::create_dir_all(root.join("opt/persistence")).unwrap();
+        generate(&GenerateOptions {
+            root,
+            output: paths.baseline_db.clone(),
+        })
+        .unwrap();
+        layout::ensure(&paths).unwrap();
+        let db = StateDb::open_or_rebuild(&paths).unwrap();
+
+        let mut baseline_record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: String::new(),
+            kind: "dir".into(),
+            mode: None,
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        baseline_record.set_public_path(&PublicPath::parse("/opt/persistence").unwrap());
+        metadata::upsert(&paths.metadata_file, baseline_record).unwrap();
+
+        let mut fifo_record = MetadataRecord {
+            version: 1,
+            path: String::new(),
+            path_bytes_b64: String::new(),
+            kind: "fifo".into(),
+            mode: None,
+            uid: None,
+            gid: None,
+            mtime_ns: None,
+            symlink_target: None,
+            symlink_target_bytes_b64: None,
+            rdev_major: None,
+            rdev_minor: None,
+            hardlink_key: None,
+            xattrs: None,
+            acl: None,
+            capability: None,
+        };
+        fifo_record.set_public_path(&PublicPath::parse("/opt/persistence/pipe").unwrap());
+        metadata::upsert(&paths.metadata_file, fifo_record).unwrap();
+
+        let report = run(&paths, &db).unwrap();
+
+        let stale: Vec<_> = report
+            .findings
+            .iter()
+            .filter(|finding| finding.contains("stale metadata"))
+            .collect();
+        assert_eq!(stale, Vec::<&String>::new(), "{:?}", report.findings);
     }
 
     #[test]

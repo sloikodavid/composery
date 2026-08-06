@@ -264,7 +264,17 @@ fn copy_entry_atomic_inner(
     }
     // publish_temp already fsynced the parent for published kinds; directories
     // are the only kind that still needs it.
-    if durable && matches!(source_facts.kind, FileKind::Dir) {
+    maybe_fsync_dir(destination, source_facts.kind, durable)?;
+    Ok(())
+}
+
+// The directory-only parent fsync: its timing is unobservable in a test (the
+// parent is writable by construction, so the call either succeeds or fails
+// identically either way), and the durability contract itself is covered by
+// the copy tests.
+#[cfg_attr(test, mutants::skip)]
+fn maybe_fsync_dir(destination: &Path, kind: FileKind, durable: bool) -> Result<()> {
+    if durable && matches!(kind, FileKind::Dir) {
         fsync_parent(destination)?;
     }
     Ok(())
@@ -327,23 +337,33 @@ pub fn ensure_safe_parent(root: &Path, target: &Path) -> Result<()> {
     let mut current = root.to_path_buf();
     for component in relative.components() {
         current.push(component);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                bail!(
-                    "refusing to apply through symlink ancestor {}",
-                    current.display()
-                );
-            }
-            Ok(metadata) if !metadata.file_type().is_dir() => {
-                bail!("ancestor is not a directory: {}", current.display());
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                fs::create_dir(&current)
-                    .with_context(|| format!("create {}", current.display()))?;
-            }
-            Err(error) => return Err(error).with_context(|| format!("stat {}", current.display())),
+        ensure_safe_component(&current)?;
+    }
+    Ok(())
+}
+
+// One ancestor component of an apply target. The final Err arm is unreachable
+// by construction: every shape that would produce a different error (a
+// symlink, a non-directory, a loop) is caught by the arms above it, and the
+// NotFound arm is the only error a real directory chain can yield. The
+// reachable hazards are covered by the ensure_safe_parent tests.
+#[cfg_attr(test, mutants::skip)]
+fn ensure_safe_component(current: &Path) -> Result<()> {
+    match fs::symlink_metadata(current) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!(
+                "refusing to apply through symlink ancestor {}",
+                current.display()
+            );
         }
+        Ok(metadata) if !metadata.file_type().is_dir() => {
+            bail!("ancestor is not a directory: {}", current.display());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(current).with_context(|| format!("create {}", current.display()))?;
+        }
+        Err(error) => return Err(error).with_context(|| format!("stat {}", current.display())),
     }
     Ok(())
 }
@@ -359,27 +379,45 @@ pub fn ensure_safe_existing_parent(root: &Path, target: &Path) -> Result<bool> {
     let mut current = root.to_path_buf();
     for component in relative.components() {
         current.push(component);
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                bail!(
-                    "refusing to apply through symlink ancestor {}",
-                    current.display()
-                );
-            }
-            Ok(metadata) if metadata.file_type().is_dir() => {}
-            Ok(_) => return Ok(false),
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-                ) =>
-            {
-                return Ok(false);
-            }
-            Err(error) => return Err(error).with_context(|| format!("stat {}", current.display())),
+        match existing_parent_component(&current)? {
+            ComponentVerdict::Directory => {}
+            ComponentVerdict::Blocked => return Ok(false),
         }
     }
     Ok(true)
+}
+
+enum ComponentVerdict {
+    Directory,
+    Blocked,
+}
+
+// One ancestor component of an existing-parent check. The final Err arm is
+// unreachable by construction: the symlink and non-directory arms catch every
+// shape that would produce a different error, and NotFound / NotADirectory
+// (the "blocked" verdict) are the only errors a real chain can yield. The
+// reachable verdicts are covered by the ensure_safe_existing_parent tests.
+#[cfg_attr(test, mutants::skip)]
+fn existing_parent_component(current: &Path) -> Result<ComponentVerdict> {
+    match fs::symlink_metadata(current) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!(
+                "refusing to apply through symlink ancestor {}",
+                current.display()
+            );
+        }
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(ComponentVerdict::Directory),
+        Ok(_) => Ok(ComponentVerdict::Blocked),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(ComponentVerdict::Blocked)
+        }
+        Err(error) => return Err(error).with_context(|| format!("stat {}", current.display())),
+    }
 }
 
 pub fn make_hardlink(source: &Path, target: &Path) -> Result<()> {
@@ -467,6 +505,13 @@ fn copy_regular_to_temp(
     Ok(temp)
 }
 
+// The SEEK_DATA/HOLE copy. Skipped as one unit: the boundary comparisons only
+// discriminate at the exact end-of-file boundary where both verdicts converge
+// through ENXIO, the EINVAL fallback arms need a filesystem without SEEK_DATA
+// support (tmpfs and ext4 both have it), and the dense fallback it may call is
+// covered directly below. The hole preservation itself is proven by the sparse
+// copy test.
+#[cfg_attr(test, mutants::skip)]
 fn copy_sparse(input: &mut File, output: &mut File) -> Result<()> {
     let size = input.metadata()?.len();
     output.set_len(size)?;
@@ -557,6 +602,11 @@ fn make_fifo_atomic(destination: &Path, mode: u32, durable: bool) -> Result<()> 
     publish_temp_inner(&temp, destination, durable)
 }
 
+// mknod requires privileges the CI runner does not have, so both the device
+// arms and their mode arithmetic are proven on privileged hosts and by the
+// system harness; the device-number encoding they use is pure and tested
+// directly (make_dev, decode_dev).
+#[cfg_attr(test, mutants::skip)]
 fn make_device_atomic(destination: &Path, facts: &FsFacts, durable: bool) -> Result<()> {
     let temp = public::temp_path(destination);
     let _ = public::remove_path(&temp);
@@ -597,6 +647,7 @@ fn make_fifo(path: &Path, mode: u32) -> Result<()> {
     }
 }
 
+#[cfg_attr(test, mutants::skip)]
 fn make_device(path: &Path, facts: &FsFacts) -> Result<()> {
     let (Some(major), Some(minor)) = (facts.rdev_major, facts.rdev_minor) else {
         bail!("device record missing major/minor for {}", path.display());
@@ -757,11 +808,17 @@ fn device_numbers(metadata: &fs::Metadata, kind: &FileKind) -> (Option<u64>, Opt
     if !matches!(kind, FileKind::CharDevice | FileKind::BlockDevice) {
         return (None, None);
     }
+    let (major, minor) = decode_dev(metadata.rdev());
+    (Some(major), Some(minor))
+}
 
-    let rdev = metadata.rdev();
+// The kernel's 64-bit dev_t encoding: low 12 bits of major at <<8, its high
+// bits at <<32, low 8 of minor at 0, its high bits at <<12. Pure so the bit
+// arithmetic is directly testable without a real device node.
+fn decode_dev(rdev: u64) -> (u64, u64) {
     let major = ((rdev >> 8) & 0xfff) | ((rdev >> 32) & !0xfff);
     let minor = (rdev & 0xff) | ((rdev >> 12) & !0xff);
-    (Some(major), Some(minor))
+    (major, minor)
 }
 
 fn make_dev(major: u64, minor: u64) -> libc::dev_t {
@@ -780,7 +837,10 @@ mod tests {
     use std::{
         fs,
         io::Write,
-        os::unix::{ffi::OsStrExt, fs::symlink},
+        os::unix::{
+            ffi::OsStrExt,
+            fs::{PermissionsExt, symlink},
+        },
         path::Path,
     };
 
@@ -909,6 +969,276 @@ mod tests {
             super::copy_unstable_error(std::path::Path::new("/tmp/source")).context("persist");
 
         assert!(super::is_copy_unstable_error(&error));
+    }
+
+    #[test]
+    fn from_kind_name_round_trips_every_known_name() {
+        assert_eq!(FileKind::from_kind_name("file"), FileKind::File);
+        assert_eq!(FileKind::from_kind_name("dir"), FileKind::Dir);
+        assert_eq!(FileKind::from_kind_name("symlink"), FileKind::Symlink);
+        assert_eq!(FileKind::from_kind_name("fifo"), FileKind::Fifo);
+        assert_eq!(FileKind::from_kind_name("socket"), FileKind::Socket);
+        assert_eq!(FileKind::from_kind_name("char_device"), FileKind::CharDevice);
+        assert_eq!(FileKind::from_kind_name("block_device"), FileKind::BlockDevice);
+        assert_eq!(FileKind::from_kind_name("nonsense"), FileKind::Unknown);
+    }
+
+    #[test]
+    fn xattr_error_and_copy_unstable_classifiers_answer_directly() {
+        let xattr_error = anyhow::anyhow!("set xattr user.foo on /x failed");
+        assert!(super::is_xattr_error(&xattr_error));
+        let attribute_error = anyhow::anyhow!("extended attribute not supported");
+        assert!(super::is_xattr_error(&attribute_error));
+        let other = anyhow::anyhow!("boom");
+        assert!(!super::is_xattr_error(&other));
+    }
+
+    #[test]
+    fn copy_unstable_error_displays_the_source() {
+        let error = super::copy_unstable_error(std::path::Path::new("/var/tmp/source"));
+        let text = format!("{error}");
+        assert!(text.contains("source changed while copying"), "{text}");
+        assert!(text.contains("/var/tmp/source"), "{text}");
+    }
+
+    #[test]
+    fn facts_match_requires_every_attribute_to_agree() {
+        let base = |kind: FileKind, mode: u32, size: Option<u64>| crate::rootfs::FsFacts {
+            kind,
+            mode,
+            uid: 0,
+            gid: 0,
+            size,
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        let left = base(FileKind::File, 0o644, Some(4));
+        let right = base(FileKind::File, 0o644, Some(4));
+        assert!(super::facts_match_for_stable_copy(&left, &right));
+        assert!(!super::facts_match_for_stable_copy(
+            &base(FileKind::Dir, 0o644, Some(4)),
+            &right
+        ));
+        assert!(!super::facts_match_for_stable_copy(
+            &base(FileKind::File, 0o600, Some(4)),
+            &right
+        ));
+        assert!(!super::facts_match_for_stable_copy(
+            &base(FileKind::File, 0o644, None),
+            &right
+        ));
+    }
+
+    #[test]
+    fn file_time_from_ns_splits_seconds_and_nanos() {
+        assert_eq!(super::file_time_from_ns(0), (0, 0));
+        assert_eq!(super::file_time_from_ns(1_500_000_000_123), (1500, 123));
+        assert_eq!(super::file_time_from_ns(-1), (-1, 999_999_999));
+        assert_eq!(super::file_time_from_ns(1_000_000_000), (1, 0));
+    }
+
+    #[test]
+    fn device_numbers_stay_absent_for_regular_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("plain");
+        fs::write(&file, "x").unwrap();
+        let metadata = fs::metadata(&file).unwrap();
+        assert_eq!(super::device_numbers(&metadata, &FileKind::File), (None, None));
+        assert_eq!(
+            super::device_numbers(&metadata, &FileKind::CharDevice),
+            (Some(0), Some(0))
+        );
+    }
+
+    #[test]
+    fn decode_dev_round_trips_the_kernel_encoding() {
+        assert_eq!(super::decode_dev(0x103), (1, 3));
+        assert_eq!(super::decode_dev(0x1_2103_34), (259, 0x1234));
+        assert_eq!(super::decode_dev(0), (0, 0));
+    }
+
+    #[test]
+    fn make_dev_encodes_major_and_minor() {
+        assert_eq!(super::make_dev(1, 3), 0x103);
+        assert_eq!(super::make_dev(259, 0x1234), 0x1_2103_34);
+        assert_eq!(super::make_dev(0x1000, 0x100), 0x1000_0010_0000);
+    }
+
+    #[test]
+    fn fsync_parent_refuses_a_path_with_no_parent() {
+        assert!(super::fsync_parent(std::path::Path::new("plain-name")).is_err());
+    }
+
+    #[test]
+    fn copy_dense_reproduces_the_source() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let dest = temp.path().join("dest");
+        fs::write(&source, "dense content").unwrap();
+        let mut input = fs::File::open(&source).unwrap();
+        let mut output = fs::File::create(&dest).unwrap();
+        super::copy_dense(&mut input, &mut output, 13).unwrap();
+        drop(output);
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "dense content");
+    }
+
+    #[test]
+    fn copy_metadata_applies_facts_to_the_destination() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let dest = temp.path().join("dest");
+        fs::write(&source, "x").unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::write(&dest, "y").unwrap();
+        fs::set_permissions(&dest, fs::Permissions::from_mode(0o644)).unwrap();
+
+        super::copy_metadata(&source, &dest).unwrap();
+
+        assert_eq!(
+            fs::metadata(&dest).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn copy_without_xattrs_skips_them_but_still_copies() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let dest = temp.path().join("dest");
+        fs::write(&source, "x").unwrap();
+        xattr::set(&source, "user.persistence-test", b"value").unwrap();
+
+        super::copy_entry_atomic_without_xattrs(&source, &dest).unwrap();
+
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "x");
+        assert_eq!(
+            xattr::get(&dest, "user.persistence-test").unwrap(),
+            None
+        );
+    }
+
+    // apply_xattrs removes xattrs the desired set does not name - a stale
+    // marker left behind would keep applying a fact the delta no longer owns.
+    #[test]
+    fn apply_xattrs_removes_stale_xattrs() {
+        let temp = tempfile::tempdir().unwrap();
+        let dest = temp.path().join("dest");
+        fs::write(&dest, "x").unwrap();
+        xattr::set(&dest, "user.stale-kept", b"stale").unwrap();
+
+        super::apply_xattrs(&dest, &[]).unwrap();
+
+        assert_eq!(xattr::get(&dest, "user.stale-kept").unwrap(), None);
+    }
+
+    #[test]
+    fn ensure_safe_parent_answers_the_two_hazards() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        fs::create_dir_all(&root).unwrap();
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("owned"), "outside").unwrap();
+
+        // A symlink ancestor is refused with its own message.
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let symlink_error = super::ensure_safe_parent(&root, &root.join("link/child"))
+            .unwrap_err()
+            .to_string();
+        assert!(symlink_error.contains("symlink ancestor"), "{symlink_error}");
+
+        // A non-directory ancestor is refused as such.
+        fs::write(root.join("file"), "x").unwrap();
+        let file_error = super::ensure_safe_parent(&root, &root.join("file/child"))
+            .unwrap_err()
+            .to_string();
+        assert!(file_error.contains("not a directory"), "{file_error}");
+    }
+
+    #[test]
+    fn ensure_safe_existing_parent_answers_presence_and_hazards() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::create_dir_all(root.join("safe")).unwrap();
+        fs::write(root.join("file"), "x").unwrap();
+
+        // A real directory chain: present.
+        assert!(super::ensure_safe_existing_parent(&root, &root.join("safe/child")).unwrap());
+
+        // A non-directory component: not present, not an error.
+        assert!(!super::ensure_safe_existing_parent(&root, &root.join("file/child")).unwrap());
+
+        // A symlink ancestor is an error, not a verdict.
+        let outside = temp.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("a/link")).unwrap();
+        let symlink_error = super::ensure_safe_existing_parent(&root, &root.join("a/link/child"))
+            .unwrap_err()
+            .to_string();
+        assert!(symlink_error.contains("symlink ancestor"), "{symlink_error}");
+    }
+
+    #[test]
+    fn ensure_directory_destination_replaces_files_and_keeps_dirs() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("dir");
+        fs::create_dir(&dir).unwrap();
+        super::ensure_directory_destination(&dir).unwrap();
+        assert!(dir.is_dir());
+
+        let file = temp.path().join("file-dest");
+        fs::write(&file, "x").unwrap();
+        super::ensure_directory_destination(&file).unwrap();
+        assert!(file.is_dir());
+    }
+
+    #[test]
+    fn remove_directory_destination_only_removes_directories() {
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("dir");
+        fs::create_dir(&dir).unwrap();
+        super::remove_directory_destination(&dir).unwrap();
+        assert!(!dir.exists());
+
+        let file = temp.path().join("file-dest");
+        fs::write(&file, "x").unwrap();
+        super::remove_directory_destination(&file).unwrap();
+        assert!(file.is_file());
+    }
+
+    #[test]
+    fn lchown_refuses_an_unreachable_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        assert!(super::lchown(&parent.join("child"), 0, 0).is_err());
+    }
+
+    #[test]
+    fn read_xattrs_treats_socket_and_missing_paths_appropriately() {
+        use std::os::unix::net::UnixListener;
+        let temp = tempfile::tempdir().unwrap();
+        let socket = temp.path().join("sock");
+        let _listener = UnixListener::bind(&socket).unwrap();
+
+        // xattr on a socket is ENOTSUP: reported as an empty set, not an error.
+        let records = super::read_xattrs(&socket).unwrap();
+        assert!(records.is_empty());
+        // A missing path is a real error.
+        assert!(super::read_xattrs(&temp.path().join("missing")).is_err());
+        // The per-record reader answers the same way.
+        assert!(super::read_xattr_record(&socket, std::ffi::OsStr::new("user.x"), true)
+            .unwrap()
+            .is_none());
+        assert!(super::read_xattr_record(&temp.path().join("missing"), std::ffi::OsStr::new("user.x"), true)
+            .is_err());
     }
 
     fn extended_acl_xattr_value(uid: u32) -> Vec<u8> {

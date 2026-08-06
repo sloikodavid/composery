@@ -56,8 +56,11 @@ name-presence layer.
 The production Vercel check also runs `convex env list --names-only` with
 the `CONVEX_DEPLOY_KEY` already used for the deploy. It needs no interactive CLI
 login and requests only names. Missing example names block before either
-provider changes; additional names are logged as drift and do not block. The
-check never requests, compares, or prints values.
+provider changes; additional names are logged as drift and do not block. This
+plane alone reports additions - every Convex name is set by hand in the
+dashboard, so an extra is actionable, while the Vercel plane cannot split its
+merged build namespace and checks presence only ([Vercel](vercel.md)). The check
+never requests, compares, or prints values.
 
 The auth configuration still calls `requiredEnv("CLERK_FRONTEND_API_URL")`, so
 that value must be non-empty before any functions are uploaded. Other names may

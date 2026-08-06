@@ -25,7 +25,17 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/../.." && pwd)"
+# The repository root, walked up to from HERE: this harness once sat two
+# directories deep and "cd $HERE/../.." computed the root then, and silently
+# pointed at tests/ after the tests/system/ move - grep found no Dockerfile,
+# RUST_IMAGE came out empty, and every nightly failed on a blank base image
+# name. git answers the question instead of a depth count that must be
+# remembered: the harness always runs inside the checkout.
+REPO="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$REPO" ] || [ ! -f "$REPO/Dockerfile" ]; then
+  echo "cannot find the repository root from $HERE" >&2
+  exit 1
+fi
 # The build context and the -f Dockerfile are *host* paths, so on Git Bash / MSYS
 # they have to reach Docker in Windows form - the daemon cannot resolve
 # "/c/Users/...". The container-internal paths in the run flags must stay POSIX,
@@ -45,6 +55,12 @@ IMAGE_V2="${PREFIX}-fixture:v2"
 # One source of truth for the Rust toolchain: the cli-chef FROM line in the
 # top-level Dockerfile (the same image the shipped binary is built with).
 RUST_IMAGE="$(grep -oE 'rust:[^[:space:]]+' "$REPO/Dockerfile" | head -n1)"
+# A blank extraction is a broken source, not a build problem: fail here, where
+# the command is in view, rather than as a base-image error from inside BuildKit.
+if ! printf '%s' "$RUST_IMAGE" | grep -qE '^rust:[0-9]+\.[0-9]+\.[0-9]+'; then
+  echo "could not read the Rust build image from $REPO/Dockerfile (got '$RUST_IMAGE')" >&2
+  exit 1
+fi
 
 FAILED=0
 CHECK_FAILED=0

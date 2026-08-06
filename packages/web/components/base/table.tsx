@@ -125,13 +125,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
 }
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
-	return (
-		<tbody
-			data-slot="table-body"
-			className={cn("[&_tr:last-child]:border-0", className)}
-			{...props}
-		/>
-	);
+	return <tbody data-slot="table-body" className={className} {...props} />;
 }
 
 function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
@@ -139,7 +133,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
 		<tfoot
 			data-slot="table-footer"
 			className={cn(
-				"border-t bg-muted/50 font-medium [&>tr]:last:border-b-0",
+				"bg-muted/50 font-medium [&>tr]:last:border-b-0",
 				className
 			)}
 			{...props}
@@ -154,8 +148,9 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 			className={cn(
 				// No row-level hover: only clickable regions (e.g. a row's link
 				// cell) show a hover state, so hover always means "you can click
-				// here".
-				"border-b transition-colors data-[state=selected]:bg-selected data-[state=selected]:text-selected-foreground",
+				// here". The only line in a table is the one under its header
+				// (TableHeader), so rows do not look like separate boxes.
+				"transition-colors data-[state=selected]:bg-selected data-[state=selected]:text-selected-foreground",
 				className
 			)}
 			{...props}

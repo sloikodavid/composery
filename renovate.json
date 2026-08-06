@@ -129,7 +129,7 @@
 		{
 			"customType": "regex",
 			"managerFilePatterns": [
-				"/^packages/web/convex/boxes/infra/runtimeArtifacts\\.ts$/"
+				"/^packages/web/convex/boxes/infra/artifacts\\.ts$/"
 			],
 			"matchStrings": [
 				"//\\s*renovate:\\s*datasource=(?<datasource>docker)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*export const CADDY_IMAGE =\\s*\\n\\s*\"caddy:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
@@ -152,6 +152,15 @@
 			"datasourceTemplate": "github-releases",
 			"depNameTemplate": "kubernetes/kubernetes",
 			"extractVersionTemplate": "^v(?<version>.+)$"
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^tests/system/templates/run\\.mjs$/"],
+			"matchStrings": [
+				"// renovate: datasource=github-releases depName=canonical/cloud-init\\s*\\n\\s*cloudConfig:\\s*\\n?\\s*\"https://raw\\.githubusercontent\\.com/canonical/cloud-init/(?<currentValue>[^/\"]+)/"
+			],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "canonical/cloud-init"
 		}
 	]
 }

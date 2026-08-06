@@ -54,6 +54,12 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 // Logs to stderr so stdout stays clean for machine-readable JSON output.
+// Installing the process-global tracing subscriber is wiring: a second install
+// panics, so no test can run it twice, and observing it would mean capturing
+// the process's stderr around the subscriber. Every real `composery` call runs
+// it. Gated to test builds: a normal build must not need the dev-only mutants
+// crate.
+#[cfg_attr(test, mutants::skip)]
 pub fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -63,4 +69,36 @@ pub fn init_tracing() {
         .with_ansi(false)
         .with_writer(std::io::stderr)
         .init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands;
+
+    // version() reads the environment once per process (OnceLock), so this one
+    // test owns COMPOSERY_BUILD_VERSION and the first evaluation happens here.
+    // An empty value is the discriminating case: the real code treats it as
+    // missing (a blank version would be a lie), while removing the non-empty
+    // filter or returning a fixed string would produce the blank or a bogus
+    // value. No other test in the crate reads the variable.
+    #[test]
+    fn version_treats_a_blank_value_as_missing() {
+        unsafe { std::env::set_var("COMPOSERY_BUILD_VERSION", "") };
+        assert_eq!(version(), "unknown");
+    }
+
+    // A run that fails is the dispatch contract: run() must return the failure
+    // rather than swallow it. The empty-name refusal is deterministic - it bails
+    // before touching any filesystem state.
+    #[test]
+    fn run_propagates_command_failures() {
+        let cli = Cli {
+            json: false,
+            command: commands::Command::Api(commands::api::ApiCommand::Key(
+                commands::api::KeyCommand::Create { name: String::new() },
+            )),
+        };
+        assert!(run(cli).is_err());
+    }
 }

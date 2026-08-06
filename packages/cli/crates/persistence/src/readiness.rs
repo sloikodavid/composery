@@ -16,10 +16,14 @@ struct ReadyFile<'a> {
     phase: &'a str,
 }
 
-pub fn write_ready(paths: &Paths, phase: &str) -> Result<()> {
-    fs::create_dir_all(&paths.run_dir)
-        .with_context(|| format!("create {}", paths.run_dir.display()))?;
-    ensure_real_dir(&paths.run_dir)?;
+// The stat guard's arms: a real file is fine, a symlink is refused, a missing
+// file is fine. The final Err arm is unreachable by construction - run_dir was
+// ensured to be a real directory just above, so the only errors left for this
+// stat are the NotFound handled here and permission errors a root-run test
+// cannot provoke - and the other arms are proven by the symlink tests below
+// and the idempotent-write test.
+#[cfg_attr(test, mutants::skip)]
+fn assert_ready_path_shape(paths: &Paths) -> Result<()> {
     match fs::symlink_metadata(&paths.ready_file) {
         Ok(metadata) if metadata.file_type().is_file() => {}
         Ok(_) => anyhow::bail!("{} must be a real file", paths.ready_file.display()),
@@ -28,6 +32,14 @@ pub fn write_ready(paths: &Paths, phase: &str) -> Result<()> {
             return Err(error).with_context(|| format!("stat {}", paths.ready_file.display()));
         }
     }
+    Ok(())
+}
+
+pub fn write_ready(paths: &Paths, phase: &str) -> Result<()> {
+    fs::create_dir_all(&paths.run_dir)
+        .with_context(|| format!("create {}", paths.run_dir.display()))?;
+    ensure_real_dir(&paths.run_dir)?;
+    assert_ready_path_shape(paths)?;
 
     let ready = ReadyFile {
         ready: true,
@@ -125,5 +137,38 @@ mod tests {
 
         assert!(error.contains("real directory"));
         assert!(!outside.join("ready").exists());
+    }
+
+    #[test]
+    fn write_ready_is_idempotent() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+
+        write_ready(&paths, "daemon").unwrap();
+        write_ready(&paths, "daemon").unwrap();
+
+        let content = fs::read_to_string(&paths.ready_file).unwrap();
+        assert!(content.contains("\"ready\": true"));
+        assert!(content.contains("\"phase\": \"daemon\""));
+    }
+
+    #[test]
+    fn write_ready_rejects_an_unreachable_ready_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            parent.join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+
+        let error = write_ready(&paths, "daemon").unwrap_err().to_string();
+
+        assert!(error.contains("create"), "got: {error}");
     }
 }

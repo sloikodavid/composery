@@ -60,7 +60,7 @@ function idePageSchemeVars(c) {
 		"--vscode-input-border": c.fieldBorder,
 		"--vscode-input-foreground": c.fieldForeground,
 		"--vscode-toolbar-activeBackground": `${c.mutedForeground}50`,
-		"--vscode-toolbar-hoverBackground": c.ghostHover,
+		"--vscode-toolbar-hoverBackground": c.hover,
 		"--vscode-shadow-hover": `0 2px 8px ${c.shadow}`,
 		"--composery-selection": c.selection,
 		"--composery-scrollbar-track": c.scrollbarTrack,

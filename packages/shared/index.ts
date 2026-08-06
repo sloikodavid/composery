@@ -1,6 +1,7 @@
 import { ideFeatures, ideTheme, theme } from "./theme.ts";
 
 export { ideFeatures, ideTheme, theme } from "./theme.ts";
+export { SHIKI_THEMES } from "./shiki.ts";
 export {
 	knownHostsEntry,
 	sshConfigEntry,

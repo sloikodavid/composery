@@ -1012,15 +1012,18 @@ describe("default color theme", () => {
 	// Every theme colour that is one of ours by name, not by coincidence. Several
 	// palette entries share a hex - `foreground`, `link` and `control` are the
 	// same colour today - so a check written by matching values would pass on the
-	// wrong token and stop meaning anything the moment one of them moved.
+	// wrong token and stop meaning anything the moment one of them moved. The
+	// workbench is layered, not uniform: the editor is the page background and
+	// the chrome around it (activity bar, side bar, status bar) is the header
+	// surface, so the shared tokens are the pair, not one colour.
 	const SHARED_TOKENS: Record<string, string> = {
 		"editor.background": "background",
 		"editor.foreground": "foreground",
-		"activityBar.background": "background",
+		"activityBar.background": "header",
 		"activityBar.foreground": "foreground",
-		"sideBar.background": "background",
+		"sideBar.background": "header",
 		"sideBar.foreground": "foreground",
-		"statusBar.background": "background",
+		"statusBar.background": "header",
 		"button.secondaryBackground": "secondary-button",
 		"button.secondaryForeground": "secondary-button-foreground",
 		"button.secondaryHoverBackground": "secondary-button-hover",
@@ -1284,6 +1287,15 @@ describe("PWA install metadata", () => {
 			) as { colors: Record<string, string> }
 		).colors["editor.background"]!;
 
+	const chrome = (file: string): string =>
+		(
+			JSON.parse(
+				readRepoFile(
+					`packages/ide/overlay/lib/vscode/extensions/composery-themes/themes/${file}`
+				)
+			) as { colors: Record<string, string> }
+		).colors["titleBar.activeBackground"]!;
+
 	test("installs as a standalone window, not fullscreen", () => {
 		expect(added).toContain('display: "standalone"');
 		// Fullscreen hides the clock and battery; window-controls-overlay would
@@ -1317,18 +1329,20 @@ describe("PWA install metadata", () => {
 	});
 
 	test("splash and status bar are the theme backgrounds", () => {
-		const dark = background("composery-dark.json");
-		const light = background("composery-light.json");
+		const darkChrome = chrome("composery-dark.json");
+		const lightChrome = chrome("composery-light.json");
+		const darkEditor = background("composery-dark.json");
 
-		// One manifest colour, so it takes the dark background the launcher icon
-		// tile also uses; the metas then track the scheme the workbench starts in.
-		expect(added).toContain(`theme_color: "${dark}"`);
-		expect(added).toContain(`background_color: "${dark}"`);
+		// The manifest carries one dark scheme, so the browser chrome and the
+		// splash behind the launcher icon both take the dark surfaces; the
+		// per-scheme metas then track the scheme the workbench starts in.
+		expect(added).toContain(`theme_color: "${darkChrome}"`);
+		expect(added).toContain(`background_color: "${darkEditor}"`);
 		expect(added).toContain(
-			`<meta name="theme-color" content="${dark}" media="(prefers-color-scheme: dark)" />`
+			`<meta name="theme-color" content="${darkChrome}" media="(prefers-color-scheme: dark)" />`
 		);
 		expect(added).toContain(
-			`<meta name="theme-color" content="${light}" media="(prefers-color-scheme: light)" />`
+			`<meta name="theme-color" content="${lightChrome}" media="(prefers-color-scheme: light)" />`
 		);
 	});
 

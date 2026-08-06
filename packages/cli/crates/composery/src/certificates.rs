@@ -163,6 +163,16 @@ mod tests {
         }
     }
 
+    // The paths are the cross-language contract the TS side reads (see the
+    // module header); asserted by suffix so the volume-root override env var
+    // cannot make the test machine-dependent.
+    #[test]
+    fn store_paths_keep_the_contract_shape() {
+        assert!(store_path().ends_with("ssh/certificates.json"));
+        assert!(authority_path().ends_with("ssh/ca"));
+        assert!(revocation_list_path().ends_with("ssh/krl"));
+    }
+
     #[test]
     fn revoking_marks_only_the_named_serial() {
         let mut store = CertificateStore {
@@ -212,5 +222,77 @@ mod tests {
         assert!(!encoded.contains("revoked_at"));
         let decoded: CertificateRecord = serde_json::from_str(&encoded).expect("decode");
         assert_eq!(decoded.revoked_at, None);
+    }
+
+    #[test]
+    fn load_reads_a_written_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("certificates.json");
+        let store = CertificateStore {
+            version: 1,
+            certificates: vec![record(7, None)],
+        };
+        save(&path, &store).unwrap();
+
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded, store);
+    }
+
+    #[test]
+    fn load_reports_a_missing_store_as_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("certificates.json");
+        assert_eq!(load(&path).unwrap(), CertificateStore::default());
+    }
+
+    // A store that exists but cannot be parsed must be an error, not a silent
+    // empty store - the empty case is reserved for "never written".
+    #[test]
+    fn load_rejects_garbage_as_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("certificates.json");
+        std::fs::write(&path, "not json").unwrap();
+        assert!(load(&path).is_err());
+    }
+
+    // An unreadable path (its parent is a file) must be an error, not the
+    // empty store - only a *missing* store is "never written".
+    #[test]
+    fn load_rejects_an_unreadable_path_as_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        let path = parent.join("certificates.json");
+        assert!(load(&path).is_err());
+    }
+
+    // save must fail when the destination cannot exist, so a call that reports
+    // success can be trusted.
+    #[test]
+    fn save_fails_when_the_parent_is_a_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        let path = parent.join("certificates.json");
+        assert!(save(&path, &CertificateStore::default()).is_err());
+    }
+
+    // The revocation list is rebuilt by ssh-keygen signed with the CA key.
+    // With no CA public key to sign with, ssh-keygen must fail and the write
+    // must report it - a revoke that silently keeps the old list is the exact
+    // failure this guards against.
+    #[test]
+    fn write_revocation_list_fails_without_the_ca_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let volume = temp.path().join("volume");
+        unsafe { std::env::set_var("COMPOSERY_DOCKER_VOLUME_PATH", &volume) };
+        std::fs::create_dir_all(volume.join("ssh")).unwrap();
+
+        let mut store = CertificateStore::default();
+        store.certificates.push(record(1, Some(9)));
+        let result = write_revocation_list(&store);
+
+        unsafe { std::env::remove_var("COMPOSERY_DOCKER_VOLUME_PATH") };
+        assert!(result.is_err());
     }
 }

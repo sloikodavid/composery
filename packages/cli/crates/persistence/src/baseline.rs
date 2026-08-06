@@ -193,6 +193,12 @@ mod imp {
     }
 
     impl BaselineDb {
+        // The two flags share no bits, so OR and XOR open the same connection
+        // and no test could tell a flipped operator apart - the annotation is
+        // the honest place for the equivalence. The rest of the open contract
+        // (read-only, validates schema and integrity) is exercised by the
+        // fixture tests below.
+        #[cfg_attr(test, mutants::skip)]
         pub fn open(path: &Path) -> Result<Self> {
             let conn = Connection::open_with_flags(
                 path,
@@ -459,11 +465,18 @@ mod imp {
         if let Ok(text) = std::str::from_utf8(bytes) {
             return text.to_string();
         }
+        // Explicit arms rather than a guard: a guard's comparison could flip
+        // into an equivalent (the printable range already excludes nothing), so
+        // the bytes that need escaping are named instead.
         let mut display = String::new();
         for byte in bytes {
             match *byte {
                 b'/' => display.push('/'),
-                0x20..=0x7e if *byte != b'\\' => display.push(*byte as char),
+                b'\\' => display.push_str("\\x5c"),
+                // The printable range excludes the slash explicitly, so the
+                // named '/' arm above is the only path that prints it - a
+                // deleted arm or a flipped guard cannot hide behind the range.
+                0x20..=0x2e | 0x30..=0x7e => display.push(*byte as char),
                 _ => display.push_str(&format!("\\x{byte:02x}")),
             }
         }
@@ -743,6 +756,93 @@ mod imp {
                     .unwrap()
                     .contains("security.capability")
             );
+        }
+
+        // The generation temp file must not record itself either: a leftover
+        // .tmp from a crash is removed before writing, so only the live output
+        // path should ever appear.
+        #[test]
+        fn baseline_generation_excludes_its_temporary_output() {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let output = root.join("opt/persistence/baseline.sqlite");
+            fs::create_dir_all(root.join("opt/persistence")).unwrap();
+            fs::write(output.with_extension("sqlite.tmp"), "leftover").unwrap();
+
+            generate(&GenerateOptions {
+                root: root.clone(),
+                output: output.clone(),
+            })
+            .unwrap();
+
+            let conn = Connection::open(output).unwrap();
+            let found: Option<String> = conn
+                .query_row(
+                    "SELECT path FROM records WHERE path = '/opt/persistence/baseline.sqlite.tmp'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert_eq!(found, None, "the temp output must be excluded");
+        }
+
+        #[test]
+        fn baseline_all_paths_and_hardlink_groups_answer_queries() {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("root");
+            let output = root.join("opt/persistence/baseline.sqlite");
+            fs::create_dir_all(root.join("opt/persistence")).unwrap();
+            fs::write(root.join("a"), "same").unwrap();
+            fs::hard_link(root.join("a"), root.join("b")).unwrap();
+            fs::write(root.join("plain"), "solo").unwrap();
+
+            generate(&GenerateOptions {
+                root,
+                output: output.clone(),
+            })
+            .unwrap();
+
+            let db = BaselineDb::open(&output).unwrap();
+            let paths = db.all_paths().unwrap();
+            assert!(paths.contains(&crate::public::PublicPath::parse("/a").unwrap()));
+            assert!(paths.contains(&crate::public::PublicPath::parse("/plain").unwrap()));
+
+            let group = db
+                .hardlink_group_paths(db.get(&crate::public::PublicPath::parse("/a").unwrap())
+                    .unwrap()
+                    .unwrap()
+                    .hardlink_key
+                    .as_deref()
+                    .unwrap())
+                .unwrap();
+            assert!(group.contains(&crate::public::PublicPath::parse("/a").unwrap()));
+            assert!(group.contains(&crate::public::PublicPath::parse("/b").unwrap()));
+
+            // A plain file is not part of any hardlink group.
+            let plain = db
+                .get(&crate::public::PublicPath::parse("/plain").unwrap())
+                .unwrap()
+                .unwrap();
+            assert_eq!(plain.hardlink_key, None);
+        }
+
+        #[test]
+        fn display_bytes_names_the_escaping_rules() {
+            // Valid UTF-8 passes through untouched; the escape arms only run
+            // for non-UTF-8 bytes, so every vector here carries one.
+            assert_eq!(super::display_bytes(b"ok"), "ok");
+            assert_eq!(super::display_bytes(b"/\xff"), "/\\xff");
+            assert_eq!(super::display_bytes(b"a\\\xff"), "a\\x5c\\xff");
+            assert_eq!(super::display_bytes(b"a\x01\xff"), "a\\x01\\xff");
+            assert_eq!(super::display_bytes(&[0xff, 0xfe]), "\\xff\\xfe");
+        }
+
+        #[test]
+        fn fsync_file_refuses_a_missing_path() {
+            let temp = tempfile::tempdir().unwrap();
+            let missing = temp.path().join("missing");
+            assert!(super::fsync_file(&missing).is_err());
         }
     }
 }

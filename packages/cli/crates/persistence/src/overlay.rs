@@ -516,6 +516,7 @@ mod tests {
         test_runner::{Config as ProptestConfig, RngSeed},
     };
     use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::ffi::OsStringExt;
 
     fn record(kind: &str, content_hash: Option<&str>) -> BaselineRecord {
         BaselineRecord {
@@ -727,5 +728,163 @@ mod tests {
             fs::read_to_string(&layout.previous_baseline_id).unwrap(),
             first_id
         );
+    }
+
+    #[test]
+    fn whiteout_and_opaque_detection_answer_their_shapes() {
+        let temp = tempfile::tempdir().unwrap();
+        let plain_file = temp.path().join("plain");
+        fs::write(&plain_file, "x").unwrap();
+        let plain_metadata = fs::metadata(&plain_file).unwrap();
+        assert!(!super::is_whiteout(&plain_metadata));
+
+        let dir = temp.path().join("dir");
+        fs::create_dir(&dir).unwrap();
+        let dir_metadata = fs::metadata(&dir).unwrap();
+        assert!(!super::is_opaque_dir(&dir, &dir_metadata));
+
+        let whiteout = temp.path().join("whiteout");
+        if !make_whiteout(&whiteout) {
+            eprintln!("skipping whiteout shape test: mknod is not permitted here");
+            return;
+        }
+        assert!(super::is_whiteout(&fs::metadata(&whiteout).unwrap()));
+
+        // The opaque xattr needs CAP_SYS_ADMIN; skip when denied.
+        if xattr::set(&dir, "trusted.overlay.opaque", b"y").is_err() {
+            eprintln!("skipping opaque xattr test: xattr set is not permitted here");
+            return;
+        }
+        assert!(super::is_opaque_dir(&dir, &fs::metadata(&dir).unwrap()));
+        // A *file* carrying the marker is not an opaque directory.
+        assert!(!super::is_opaque_dir(&plain_file, &fs::metadata(&plain_file).unwrap()));
+    }
+
+    #[test]
+    fn hygiene_report_counts_and_caps() {
+        let mut report = HygieneReport::default();
+        report.whiteouts_dropped_orphan = 1;
+        report.whiteouts_dropped_reintroduced = 2;
+        report.whiteouts_dropped_changed = 3;
+        assert_eq!(report.whiteouts_dropped(), 6);
+
+        let summary = report.summary();
+        assert!(summary.contains("previousBaseline=false"));
+        assert!(summary.contains("dropped=6"));
+        assert!(summary.contains("orphan=1"));
+
+        let mut report = HygieneReport::default();
+        for index in 0..100 {
+            report.push_sample(format!("sample {index}"));
+        }
+        assert_eq!(report.samples.len(), super::MAX_SAMPLES);
+        assert_eq!(report.samples[0], "sample 0");
+        assert_eq!(report.samples[super::MAX_SAMPLES - 1], "sample 63");
+    }
+
+    #[test]
+    fn reconcile_reports_opaque_dir_shadowing_counts() {
+        let curr = build_image(&[("hidden/a.txt", "1"), ("hidden/b.txt", "2")]);
+        let upper = curr._temp.path().join("upper");
+        fs::create_dir_all(upper.join("hidden")).unwrap();
+        let marker = upper.join("hidden");
+        if xattr::set(&marker, "trusted.overlay.opaque", b"y").is_err() {
+            eprintln!("skipping opaque reconcile test: xattr set is not permitted here");
+            return;
+        }
+
+        let curr_db = BaselineDb::open(&curr.baseline).unwrap();
+        let report = reconcile(&upper, &curr.root, &curr_db, None).unwrap();
+
+        assert_eq!(report.opaque_dirs, 1);
+        assert_eq!(report.opaque_dirs_shadowing, 1);
+        assert_eq!(report.opaque_entries_shadowed, 2);
+        assert!(report.samples.iter().any(|line| line.contains("hides 2")));
+
+        // An opaque dir over a path the image ships nothing at shadows nothing.
+        let empty = build_image(&[]);
+        let empty_upper = empty._temp.path().join("upper");
+        fs::create_dir_all(empty_upper.join("empty")).unwrap();
+        if xattr::set(&empty_upper.join("empty"), "trusted.overlay.opaque", b"y").is_err() {
+            return;
+        }
+        let empty_db = BaselineDb::open(&empty.baseline).unwrap();
+        let report = reconcile(&empty_upper, &empty.root, &empty_db, None).unwrap();
+        assert_eq!(report.opaque_dirs_shadowing, 0);
+        assert_eq!(report.opaque_entries_shadowed, 0);
+    }
+
+    #[test]
+    fn count_lower_children_counts_direct_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join("dir")).unwrap();
+        fs::write(temp.path().join("dir/a"), "").unwrap();
+        fs::write(temp.path().join("dir/b"), "").unwrap();
+        assert_eq!(
+            super::count_lower_children(temp.path(), &PublicPath::parse("/dir").unwrap()),
+            2
+        );
+        assert_eq!(
+            super::count_lower_children(temp.path(), &PublicPath::parse("/missing").unwrap()),
+            0
+        );
+    }
+
+    #[test]
+    fn open_previous_baseline_reads_a_valid_stash() {
+        let image = build_image(&[("a.txt", "1")]);
+        let temp = tempfile::tempdir().unwrap();
+        let paths = Paths::new(
+            temp.path().join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        let layout = reserved(&paths);
+        layout.prepare().unwrap();
+        fs::copy(&image.baseline, &layout.previous_baseline).unwrap();
+
+        assert!(super::open_previous_baseline(&layout).is_some());
+        assert!(
+            super::open_previous_baseline(&reserved(&Paths::new(
+                temp.path().join("other-opt"),
+                temp.path().join("other-run"),
+                temp.path().join("other-data"),
+            )))
+            .is_none()
+        );
+    }
+
+    // The boot command's contract is its side effects: the baseline stash must
+    // exist and the fingerprint file must be written after a run, so the next
+    // boot can tell an upgrade from a restart.
+    #[test]
+    fn run_hygiene_command_refreshes_the_stash() {
+        let image = build_image(&[("a.txt", "1")]);
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let paths = Paths::new(
+            root.join("opt/persistence"),
+            temp.path().join("run/persistence"),
+            temp.path().join("data/persistence"),
+        );
+        fs::create_dir_all(root.join("opt/persistence")).unwrap();
+        fs::copy(&image.baseline, &paths.baseline_db).unwrap();
+        layout::ensure(&paths).unwrap();
+
+        super::run_hygiene_command(&paths).unwrap();
+
+        let layout = reserved(&paths);
+        assert!(layout.previous_baseline.exists());
+        assert!(!fs::read_to_string(&layout.previous_baseline_id)
+            .unwrap()
+            .trim()
+            .is_empty());
+    }
+
+    #[test]
+    fn path_kv_round_trips_utf8_and_refuses_garbage() {
+        assert_eq!(super::path_kv(std::path::Path::new("/data/upper")).unwrap(), "/data/upper");
+        let bad = std::path::PathBuf::from(std::ffi::OsString::from_vec(vec![0xff]));
+        assert!(super::path_kv(&bad).is_err());
     }
 }

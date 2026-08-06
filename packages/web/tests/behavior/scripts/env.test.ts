@@ -5,7 +5,6 @@ import {
 	compareNames,
 	envNames,
 	formatResult,
-	isBuildName,
 	listConvexNames,
 	main,
 	nameLines
@@ -43,24 +42,9 @@ describe("deployment environment check", () => {
 		expect(
 			compareNames({
 				expected: new Set(["MISSING", "PRESENT"]),
-				actual: new Set(["PRESENT", "EXTRA", "MANAGED"]),
-				ignore: (name) => name === "MANAGED"
+				actual: new Set(["PRESENT", "EXTRA"])
 			})
 		).toEqual({ missing: ["MISSING"], extra: ["EXTRA"] });
-	});
-
-	test("Vercel infrastructure names are not application drift", () => {
-		for (const name of [
-			"CI",
-			"PATH",
-			"VERCEL",
-			"VERCEL_ENV",
-			"NEXT_PUBLIC_VERCEL_ENV",
-			"npm_config_user_agent"
-		]) {
-			expect(isBuildName(name), name).toBe(true);
-		}
-		expect(isBuildName("UNEXPECTED_APPLICATION_NAME")).toBe(false);
 	});
 
 	test("checks Vercel property names without invoking value getters", () => {
@@ -85,7 +69,10 @@ describe("deployment environment check", () => {
 				name: "Vercel Production",
 				example: ".env.example.next.prod",
 				missing: [],
-				extra: ["UNEXPECTED"]
+				// The Vercel plane checks presence only: its namespace combines the
+				// project's variables with build-container names nobody can
+				// configure, so an extra is never ours to report.
+				extra: []
 			},
 			{
 				name: "Convex Production",
@@ -150,11 +137,16 @@ describe("deployment environment check", () => {
 			writeError
 		});
 		expect(additionalOnly.blocked).toBe(false);
-		expect(writeError).toHaveBeenCalledWith(
-			"[env] Vercel Production — additional names (drift): EXTRA. Deployment continues. Values were not read."
+		expect(write).toHaveBeenCalledWith(
+			"[env] Vercel Production matches .env.example.next.prod. Values were not read."
 		);
 		expect(writeError).toHaveBeenCalledWith(
 			"[env] Convex Production — additional names (drift): CONVEX_EXTRA. Deployment continues. Values were not read."
+		);
+		// The Vercel namespace cannot be split into project and injected names,
+		// so its additions must never reach a report.
+		expect(writeError).not.toHaveBeenCalledWith(
+			expect.stringContaining("Vercel Production — additional names")
 		);
 	});
 

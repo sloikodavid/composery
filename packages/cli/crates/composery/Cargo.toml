@@ -24,4 +24,5 @@ fs2.workspace = true
 persistence = { path = "../persistence" }
 
 [dev-dependencies]
+mutants.workspace = true
 tempfile.workspace = true

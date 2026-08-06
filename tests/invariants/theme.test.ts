@@ -80,6 +80,108 @@ describe("shared theme", () => {
 		);
 	});
 
+	// One state system, expressed as relationships rather than values. The
+	// relationship is a *raise*: the transient overlays darken in light and
+	// lighten in dark, and the solid fills sit between their scheme's
+	// background and foreground. What must not drift is the relationship, and
+	// it holds in both modes at once when the same band applies to both - a
+	// fill that collapses into its surface in one mode is a half-drift even if
+	// the other mode still looks right. The band is deliberately not an
+	// equality: dark themes need a stronger raise than light themes for the
+	// same visible lift, because their luminance scale is compressed, so
+	// forcing identical ratios is what ruins the dark scheme.
+	test("state relationships are identical across schemes", () => {
+		const share = (background: string, foreground: string, value: string) => {
+			const channel = (hex: string, index: number) =>
+				parseInt(hex.slice(index * 2 - 1, index * 2 + 1), 16);
+			const ratios = [1, 2, 3].map(
+				(index) =>
+					(channel(value, index) - channel(background, index)) /
+					(channel(foreground, index) - channel(background, index))
+			);
+			return ratios.reduce((sum, ratio) => sum + ratio, 0) / 3;
+		};
+		// The band: raised above the surface it sits on (the card role sits at
+		// ~0.04 in dark), but still a fill, not a wall. Both bounds apply to
+		// both modes.
+		const MIN_RAISE = 0.04;
+		const MAX_RAISE = 0.2;
+
+		for (const role of [
+			"muted",
+			"selected",
+			"secondaryButton",
+			"badge"
+		] as const)
+			for (const scheme of ["light", "dark"] as const)
+				expect(
+					share(
+						BRAND_THEME[scheme].background,
+						BRAND_THEME[scheme].foreground,
+						BRAND_THEME[scheme][role]
+					),
+					`${role} ${scheme} fill raise`
+				).toBeGreaterThanOrEqual(MIN_RAISE);
+		for (const role of [
+			"listHover",
+			"listSelection",
+			"tabHover",
+			"secondaryButton",
+			"badge"
+		] as const)
+			for (const scheme of ["light", "dark"] as const)
+				expect(
+					share(
+						BRAND_IDE_THEME[scheme].editor,
+						BRAND_IDE_THEME[scheme].foreground,
+						BRAND_IDE_THEME[scheme][role]
+					),
+					`${role} ${scheme} IDE fill raise`
+				).toBeGreaterThanOrEqual(MIN_RAISE);
+		// The fills are not a single unbroken ramp either: a role that swallows
+		// its foreground would read as a solid block, not a raised surface.
+		for (const scheme of ["light", "dark"] as const) {
+			expect(
+				share(
+					BRAND_THEME[scheme].background,
+					BRAND_THEME[scheme].foreground,
+					BRAND_THEME[scheme].selected
+				),
+				`selected ${scheme} fill cap`
+			).toBeLessThanOrEqual(MAX_RAISE);
+			expect(
+				share(
+					BRAND_IDE_THEME[scheme].editor,
+					BRAND_IDE_THEME[scheme].foreground,
+					BRAND_IDE_THEME[scheme].listSelection
+				),
+				`listSelection ${scheme} IDE fill cap`
+			).toBeLessThanOrEqual(MAX_RAISE);
+		}
+
+		// The transient overlays: each sits on the far pole of its scheme -
+		// black over light, white over dark - so it always darkens or lightens
+		// its surface rather than repainting it, and its alpha stays in the
+		// subtle band in both modes. A hover that became a solid repaint would
+		// fail the pole check; one that faded to nothing would fail the band.
+		for (const role of ["hover", "focus"] as const) {
+			for (const scheme of ["light", "dark"] as const) {
+				const value = BRAND_THEME[scheme][role];
+				expect(
+					parseInt(value.slice(7, 9), 16) / 255,
+					`${role} ${scheme} overlay alpha`
+				).toBeGreaterThanOrEqual(0.03);
+				expect(
+					parseInt(value.slice(7, 9), 16) / 255,
+					`${role} ${scheme} overlay alpha`
+				).toBeLessThanOrEqual(0.2);
+				expect(value.slice(1, 7), `${role} ${scheme} overlay pole`).toBe(
+					scheme === "light" ? "000000" : "ffffff"
+				);
+			}
+		}
+	});
+
 	test("every editable value is canonical hex or hex-alpha", () => {
 		// Typed at the entry point: the parsed JSON widens to `any` inside a bare
 		// Object.values walk, which silently disables every check below it.
@@ -119,6 +221,7 @@ describe("shared theme", () => {
 			["dialog", colors.dialogForeground, colors.dialog],
 			["popover", colors.popoverForeground, colors.popover],
 			["button", colors.buttonForeground, colors.button],
+			["primary button", colors.primaryButtonForeground, colors.primaryButton],
 			[
 				"secondary button",
 				colors.secondaryButtonForeground,

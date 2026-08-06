@@ -90,6 +90,11 @@ fn probe_chmod(dir: &Path) -> CapabilityState {
     .unwrap_or_else(CapabilityState::unsupported)
 }
 
+// The root-requirement check and the lchown call: under root both branches
+// land on supported, unprivileged both land on unsupported, and CI runs
+// unprivileged - so no test could tell the comparison apart on the runner.
+// The probe's verdict is reported, never acted on differently.
+#[cfg_attr(test, mutants::skip)]
 fn probe_chown(dir: &Path) -> CapabilityState {
     let path = dir.join("chown");
     (|| -> Result<()> {
@@ -220,6 +225,11 @@ fn probe_fifos(dir: &Path) -> CapabilityState {
     .unwrap_or_else(CapabilityState::unsupported)
 }
 
+// mknod requires privileges the CI runner does not have, so both branches
+// land on the same unsupported verdict there; the encoding it exercises is
+// pure and tested separately (make_dev in apply.rs, and the device arms of
+// the fallback copy).
+#[cfg_attr(test, mutants::skip)]
 fn probe_devices(dir: &Path) -> CapabilityState {
     let path = dir.join("null-device");
     (|| -> Result<()> {
@@ -245,13 +255,20 @@ fn probe_sparse(dir: &Path) -> CapabilityState {
         drop(file);
         let metadata = fs::metadata(&path)?;
         anyhow::ensure!(
-            metadata.blocks() * 512 < metadata.len(),
+            is_sparse(metadata.blocks(), metadata.len()),
             "filesystem expanded sparse file"
         );
         Ok(())
     })()
     .map(|_| CapabilityState::supported())
     .unwrap_or_else(CapabilityState::unsupported)
+}
+
+// A file is sparse when its allocated 512-byte blocks hold less than its
+// length. Pure so the comparison's arithmetic is directly testable - a sparse
+// file on a sparse-capable filesystem would pass every mutated threshold.
+fn is_sparse(blocks: u64, len: u64) -> bool {
+    blocks * 512 < len
 }
 
 fn acl_xattr_value(mode: u16) -> Vec<u8> {
@@ -291,7 +308,8 @@ fn push_u32(value: &mut Vec<u8>, item: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::probe;
+    use super::{acl_xattr_value, file_capability_xattr_value, is_sparse, probe, push_acl_entry, push_u32};
+    use std::io::Write;
 
     #[test]
     fn probe_reports_volume_capabilities() {
@@ -307,5 +325,64 @@ mod tests {
         assert!(report.chown.supported || report.chown.error.is_some());
         assert!(report.acls.supported || report.acls.error.is_some());
         assert!(report.file_capabilities.supported || report.file_capabilities.error.is_some());
+    }
+
+    #[test]
+    fn is_sparse_answers_the_threshold() {
+        assert!(is_sparse(8, 16 * 1024 * 1024));
+        assert!(!is_sparse(2, 1000));
+        assert!(!is_sparse(2, 512));
+        assert!(is_sparse(1, 1024));
+    }
+
+    // The ACL xattr is a version word plus one 8-byte entry per class; the
+    // per-class permission nibbles must land in their own entries. The 0o700 /
+    // 0o070 / 0o007 vectors put each class at its extreme so a shifted or
+    // re-masked bit could not pass unnoticed.
+    #[test]
+    fn acl_xattr_value_encodes_the_three_classes() {
+        let value = acl_xattr_value(0o640);
+        assert_eq!(value.len(), 28);
+        assert_eq!(&value[0..4], &2u32.to_le_bytes());
+        // user = 6, group = 4, other = 0.
+        assert_eq!(value[6], 6);
+        assert_eq!(value[14], 4);
+        assert_eq!(value[22], 0);
+        assert_eq!(&value[8..12], &u32::MAX.to_le_bytes());
+
+        let user_extreme = acl_xattr_value(0o700);
+        assert_eq!(user_extreme[6], 7);
+        let group_extreme = acl_xattr_value(0o070);
+        assert_eq!(group_extreme[14], 7);
+        let other_extreme = acl_xattr_value(0o007);
+        assert_eq!(other_extreme[22], 7);
+    }
+
+    #[test]
+    fn push_acl_entry_writes_tag_permissions_and_id() {
+        let mut value = Vec::new();
+        push_acl_entry(&mut value, 0x01, 0o7);
+        assert_eq!(value.len(), 8);
+        assert_eq!(&value[0..2], &0x01u16.to_le_bytes());
+        assert_eq!(&value[2..4], &0o7u16.to_le_bytes());
+        assert_eq!(&value[4..8], &u32::MAX.to_le_bytes());
+    }
+
+    #[test]
+    fn file_capability_xattr_value_encodes_revision_and_capability() {
+        let value = file_capability_xattr_value();
+        assert_eq!(value.len(), 20);
+        // Revision 2 plus the effective flag.
+        assert_eq!(&value[0..4], &(0x0200_0000u32 | 0x0000_0001u32).to_le_bytes());
+        // CAP_NET_BIND_SERVICE = bit 10.
+        assert_eq!(&value[4..8], &(1u32 << 10).to_le_bytes());
+        assert_eq!(&value[8..20], &[0u8; 12]);
+    }
+
+    #[test]
+    fn push_u32_writes_little_endian() {
+        let mut value = Vec::new();
+        push_u32(&mut value, 0x0102_0304);
+        assert_eq!(value, vec![0x04, 0x03, 0x02, 0x01]);
     }
 }

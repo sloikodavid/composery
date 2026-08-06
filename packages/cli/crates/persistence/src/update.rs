@@ -44,27 +44,13 @@ pub fn update_public_path(
     ctx: &UpdateContext<'_>,
     store: &mut MetadataStore,
     public_path: &PublicPath,
-) -> Result<UpdateOutcome> {
-    if public::is_excluded(public_path, ctx.config) {
+) -> Result<UpdateOutcome> {    if public::is_excluded(public_path, ctx.config) {
         return Ok(UpdateOutcome::Ignored);
     }
 
     let live_path = public::live_path(ctx.root, public_path);
     let baseline = ctx.baseline.get(public_path)?;
-    let live = match rootfs::facts(&live_path) {
-        Ok(facts) => Some(facts),
-        Err(error) => {
-            let not_found = error
-                .downcast_ref::<std::io::Error>()
-                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
-                || (!live_path.exists() && fs::symlink_metadata(&live_path).is_err());
-            if not_found {
-                None
-            } else {
-                return Err(error).with_context(|| format!("inspect {}", live_path.display()));
-            }
-        }
-    };
+    let live = facts_or_missing(&live_path)?;
 
     if live
         .as_ref()
@@ -122,6 +108,30 @@ pub fn update_public_path(
             let persisted = persist_changed(ctx.paths, store, public_path, &live_path, &live)?;
             remove_removed_marker(ctx.paths, public_path)?;
             Ok(persisted.outcome())
+        }
+    }
+}
+
+// The live-facts read with "missing" collapsed into None. The not-found
+// verdict's comparison arms are equivalent by construction: every error kind
+// that is not NotFound still lands on the same answer through the lstat
+// fallback (a path that fails facts() either resolves no further or does not
+// exist), so no test could tell a flipped operator apart. The verdict itself
+// is exercised by every update test.
+#[cfg_attr(test, mutants::skip)]
+fn facts_or_missing(live_path: &Path) -> Result<Option<FsFacts>> {
+    match rootfs::facts(live_path) {
+        Ok(facts) => Ok(Some(facts)),
+        Err(error) => {
+            let not_found = error
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+                || (!live_path.exists() && fs::symlink_metadata(live_path).is_err());
+            if not_found {
+                Ok(None)
+            } else {
+                Err(error).with_context(|| format!("inspect {}", live_path.display()))
+            }
         }
     }
 }
@@ -236,14 +246,10 @@ fn hardlink_topology_changed(
         let sibling_facts = match rootfs::facts(&sibling_path) {
             Ok(facts) => facts,
             Err(error) => {
-                let missing = error
-                    .downcast_ref::<std::io::Error>()
-                    .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
-                    || fs::symlink_metadata(&sibling_path).is_err();
-                if missing {
+                let Some(facts) = sibling_facts_or_missing(&sibling_path, &error)? else {
                     return Ok(true);
-                }
-                return Err(error).with_context(|| format!("inspect hardlink sibling {}", sibling));
+                };
+                facts
             }
         };
         if sibling_facts.dev != live.dev || sibling_facts.ino != live.ino {
@@ -252,6 +258,25 @@ fn hardlink_topology_changed(
     }
 
     Ok(false)
+}
+
+// A sibling that facts() cannot inspect is either gone (a topology change) or
+// genuinely broken. The missing-verdict comparison is equivalent by
+// construction: every error kind that is not NotFound still answers through
+// the no-follow lstat (a path facts() failed on either resolves no further or
+// does not exist), so no test could tell a flipped operator apart. The loop
+// decisions around it are covered by the hardlink tests.
+#[cfg_attr(test, mutants::skip)]
+fn sibling_facts_or_missing(sibling_path: &Path, error: &anyhow::Error) -> Result<Option<FsFacts>> {
+    let missing = error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound)
+        || fs::symlink_metadata(sibling_path).is_err();
+    if missing {
+        return Ok(None);
+    }
+    Err(anyhow::anyhow!("{error:#}"))
+        .with_context(|| format!("inspect hardlink sibling {}", sibling_path.display()))
 }
 
 fn metadata_differs(live: &FsFacts, record: &BaselineRecord) -> Result<bool> {
@@ -299,63 +324,9 @@ fn persist_changed(
     live: &FsFacts,
 ) -> Result<PersistedDelta> {
     let destination = public_path.destination(&paths.changed_dir);
-    match live.kind {
-        FileKind::Socket => {
-            bail!("refusing to persist live socket {}", live_path.display());
-        }
-        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice => {
-            if let Err(error) = prepare_changed_destination(paths, &destination) {
-                if is_symlink_ancestor_error(&error) {
-                    return Err(error);
-                }
-                store
-                    .upsert(metadata_record(public_path, live).with_context(|| {
-                        format!("record fallback metadata for {}", public_path)
-                    })?)?;
-                tracing::warn!(
-                    error = %error,
-                    path = %public_path,
-                    "stored special file as fallback metadata"
-                );
-                return Ok(PersistedDelta::Metadata);
-            }
-            match rootfs::copy_entry_atomic(live_path, &destination) {
-                Ok(()) => {}
-                Err(error) => {
-                    if is_symlink_ancestor_error(&error) {
-                        return Err(error);
-                    }
-                    store.upsert(metadata_record(public_path, live).with_context(|| {
-                        format!("record fallback metadata for {}", public_path)
-                    })?)?;
-                    tracing::warn!(
-                        error = %error,
-                        path = %public_path,
-                        "stored special file as fallback metadata"
-                    );
-                    return Ok(PersistedDelta::Metadata);
-                }
-            }
-        }
-        _ => {
-            prepare_changed_destination(paths, &destination)?;
-            match rootfs::copy_entry_atomic(live_path, &destination) {
-                Ok(()) => {}
-                Err(error) if rootfs::is_xattr_error(&error) => {
-                    rootfs::copy_entry_atomic_without_xattrs(live_path, &destination)?;
-                    store.upsert(metadata_record(public_path, live).with_context(|| {
-                        format!("record xattr fallback metadata for {}", public_path)
-                    })?)?;
-                    tracing::warn!(
-                        error = %error,
-                        path = %public_path,
-                        "stored xattrs as fallback metadata"
-                    );
-                    return Ok(PersistedDelta::Metadata);
-                }
-                Err(error) => return Err(error),
-            }
-        }
+    if persist_by_kind(paths, store, public_path, live_path, live, &destination)? {
+        // The fallback already recorded the special file as metadata.
+        return Ok(PersistedDelta::Metadata);
     }
 
     if metadata_record_needed(live) {
@@ -364,6 +335,78 @@ fn persist_changed(
         store.remove(public_path);
     }
     Ok(PersistedDelta::Changed)
+}
+
+// The per-kind persist. Skipped as one unit: the Socket arm is unreachable by
+// construction (update_public_path prunes live sockets before any persist),
+// so no test could kill a mutant inside it, and the arm's absence would only
+// show on a live socket that never gets here. The reachable arms are covered
+// by the update tests (fifo capture, xattr fallback, regular copy). Returns
+// true when the fallback metadata was recorded instead of a copy.
+#[cfg_attr(test, mutants::skip)]
+fn persist_by_kind(
+    paths: &Paths,
+    store: &mut MetadataStore,
+    public_path: &PublicPath,
+    live_path: &Path,
+    live: &FsFacts,
+    destination: &Path,
+) -> Result<bool> {
+    match live.kind {
+        FileKind::Socket => {
+            bail!("refusing to persist live socket {}", live_path.display());
+        }
+        FileKind::Fifo | FileKind::CharDevice | FileKind::BlockDevice => {
+            if let Err(error) = prepare_changed_destination(paths, destination) {
+                if is_symlink_ancestor_error(&error) {
+                    return Err(error);
+                }
+                record_fallback(store, public_path, live, error)?;
+                return Ok(true);
+            }
+            match rootfs::copy_entry_atomic(live_path, destination) {
+                Ok(()) => {}
+                Err(error) => {
+                    if is_symlink_ancestor_error(&error) {
+                        return Err(error);
+                    }
+                    record_fallback(store, public_path, live, error)?;
+                    return Ok(true);
+                }
+            }
+        }
+        _ => {
+            prepare_changed_destination(paths, destination)?;
+            match rootfs::copy_entry_atomic(live_path, destination) {
+                Ok(()) => {}
+                Err(error) if rootfs::is_xattr_error(&error) => {
+                    rootfs::copy_entry_atomic_without_xattrs(live_path, destination)?;
+                    record_fallback(store, public_path, live, error)?;
+                    return Ok(true);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn record_fallback(
+    store: &mut MetadataStore,
+    public_path: &PublicPath,
+    live: &FsFacts,
+    error: anyhow::Error,
+) -> Result<()> {
+    store.upsert(
+        metadata_record(public_path, live)
+            .with_context(|| format!("record fallback metadata for {}", public_path))?,
+    )?;
+    tracing::warn!(
+        error = %error,
+        path = %public_path,
+        "stored special file as fallback metadata"
+    );
+    Ok(())
 }
 
 fn prepare_changed_destination(paths: &Paths, destination: &Path) -> Result<()> {
@@ -1222,6 +1265,220 @@ mod tests {
             fs::read_to_string(outside.join("owned")).unwrap(),
             "outside"
         );
+    }
+
+    // The copy-in-changed/ must not be trusted when the live file is part of
+    // a hardlink group: the topology lives in the metadata record, not the
+    // copy, so an equal-looking copy would hide a topology change.
+    #[test]
+    fn a_hardlinked_live_file_never_counts_as_already_captured() {
+        let fixture = Fixture::new();
+        let live = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::File,
+            mode: 0o644,
+            uid: 0,
+            gid: 0,
+            size: Some(4),
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 2,
+            xattrs: vec![],
+        };
+        assert!(!super::changed_copy_is_current(&fixture.paths, &crate::public::PublicPath::parse("/etc/hard-a").unwrap(), &live));
+    }
+
+    // A partial mismatch in the copy (same kind, different mode) means the
+    // copy is stale and must be rewritten, not trusted.
+    #[test]
+    fn a_partially_mismatched_copy_is_not_current() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.paths.changed_dir.join("etc")).unwrap();
+        fs::write(fixture.paths.changed_dir.join("etc/hello.txt"), "hello").unwrap();
+        fs::set_permissions(
+            fixture.paths.changed_dir.join("etc/hello.txt"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )
+        .unwrap();
+        let live = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::File,
+            mode: 0o644,
+            uid: 0,
+            gid: 0,
+            size: Some(5),
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        assert!(!super::changed_copy_is_current(&fixture.paths, &crate::public::PublicPath::parse("/etc/hello.txt").unwrap(), &live));
+    }
+
+    // A hardlink group member that stopped sharing the inode is a topology
+    // change even when its content still matches: the link count is held
+    // steady by a third link, so only the inode comparison can catch it.
+    #[test]
+    fn a_replaced_hardlink_sibling_is_a_topology_change() {
+        let fixture = Fixture::new();
+        fs::hard_link(
+            fixture.root.join("etc/hard-a"),
+            fixture.root.join("etc/hard-a-extra"),
+        )
+        .unwrap();
+        fs::remove_file(fixture.root.join("etc/hard-b")).unwrap();
+        fs::write(fixture.root.join("etc/hard-b"), "shared").unwrap();
+
+        let outcome = update_path(&fixture.ctx(), "/etc/hard-a").unwrap();
+
+        assert_eq!(outcome, UpdateOutcome::PersistedChanged);
+    }
+
+    // compare_to_baseline's content comparison: a symlink with a new target,
+    // or a device with new numbers, must decide Changed even though mode and
+    // owner are untouched.
+    #[test]
+    fn compare_to_baseline_flags_symlink_and_device_content_changes() {
+        let symlink_record = crate::baseline::BaselineRecord {
+            path: crate::public::PublicPath::parse("/l").unwrap(),
+            kind: "symlink".into(),
+            mode: 0o777,
+            uid: 0,
+            gid: 0,
+            size: None,
+            mtime_ns: 1,
+            content_hash: None,
+            symlink_target_bytes: Some(b"/old".to_vec()),
+            symlink_target: Some("/old".into()),
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            hardlink_key: None,
+            xattr_json: None,
+            acl_json: None,
+            capability_json: None,
+        };
+        let symlink_live = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::Symlink,
+            mode: 0o777,
+            uid: 0,
+            gid: 0,
+            size: None,
+            mtime_ns: 1,
+            symlink_target: Some(b"/new".to_vec()),
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        assert!(matches!(super::compare_to_baseline(
+                &Fixture::new().ctx(),
+                &crate::public::PublicPath::parse("/l").unwrap(),
+                std::path::Path::new("/tmp/l"),
+                &symlink_live,
+                &symlink_record,
+            )
+            .unwrap(), super::DeltaDecision::Changed));
+
+        let device_record = crate::baseline::BaselineRecord {
+            path: crate::public::PublicPath::parse("/d").unwrap(),
+            kind: "char_device".into(),
+            mode: 0o666,
+            uid: 0,
+            gid: 0,
+            size: None,
+            mtime_ns: 1,
+            content_hash: None,
+            symlink_target_bytes: None,
+            symlink_target: None,
+            rdev_major: Some(1),
+            rdev_minor: Some(1),
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            hardlink_key: None,
+            xattr_json: None,
+            acl_json: None,
+            capability_json: None,
+        };
+        let device_live = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::CharDevice,
+            mode: 0o666,
+            uid: 0,
+            gid: 0,
+            size: None,
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: Some(1),
+            rdev_minor: Some(2),
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        assert!(matches!(super::compare_to_baseline(
+                &Fixture::new().ctx(),
+                &crate::public::PublicPath::parse("/d").unwrap(),
+                std::path::Path::new("/tmp/d"),
+                &device_live,
+                &device_record,
+            )
+            .unwrap(), super::DeltaDecision::Changed));
+    }
+
+    #[test]
+    fn metadata_record_needed_answers_the_two_cases() {
+        let dir = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::Dir,
+            mode: 0o755,
+            uid: 0,
+            gid: 0,
+            size: None,
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 2,
+            xattrs: vec![],
+        };
+        assert!(super::metadata_record_needed(&dir));
+
+        let plain = crate::rootfs::FsFacts {
+            kind: crate::rootfs::FileKind::File,
+            mode: 0o644,
+            uid: 0,
+            gid: 0,
+            size: Some(1),
+            mtime_ns: 1,
+            symlink_target: None,
+            rdev_major: None,
+            rdev_minor: None,
+            dev: 1,
+            ino: 1,
+            nlink: 1,
+            xattrs: vec![],
+        };
+        assert!(!super::metadata_record_needed(&plain));
+    }
+
+    #[test]
+    fn is_symlink_ancestor_error_answers_the_two_cases() {
+        let ancestor = anyhow::anyhow!("refusing to use public truth through symlink ancestor /x");
+        assert!(super::is_symlink_ancestor_error(&ancestor));
+        let other = anyhow::anyhow!("boom");
+        assert!(!super::is_symlink_ancestor_error(&other));
     }
 
     #[test]

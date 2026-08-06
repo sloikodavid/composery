@@ -21,29 +21,43 @@ import {
 } from "@/convex/model/box/slug";
 
 // Owner and console box pages share this dialog; the caller's onSubmit performs
-// the slug change (and any post-change navigation).
+// the slug change (and any post-change navigation). A caller that opens the
+// dialog from outside (a menu) passes `open` and `onOpenChange`; absent, the
+// dialog owns its state and renders its own button.
 export function ChangeSlugDialog({
+	onOpenChange,
 	onSubmit,
+	open: openProp,
 	slug
 }: {
+	onOpenChange?: (open: boolean) => void;
 	onSubmit: (newSlug: string) => Promise<unknown>;
+	open?: boolean;
 	slug: string;
 }) {
-	const [open, setOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+	const open = openProp ?? internalOpen;
 	const [newSlug, setNewSlug] = useState("");
 	const { busy, run } = useBusyAction();
 
+	function changeOpen(nextOpen: boolean) {
+		if (onOpenChange) onOpenChange(nextOpen);
+		else setInternalOpen(nextOpen);
+	}
+
 	return (
 		<>
-			<AnimatedIconButton
-				icon="square-pen"
-				iconPosition="start"
-				onClick={() => setOpen(true)}
-				variant="outline"
-			>
-				Change slug
-			</AnimatedIconButton>
-			<Dialog onOpenChange={setOpen} open={open}>
+			{openProp === undefined ? (
+				<AnimatedIconButton
+					icon="square-pen"
+					iconPosition="start"
+					onClick={() => changeOpen(true)}
+					variant="outline"
+				>
+					Change slug
+				</AnimatedIconButton>
+			) : null}
+			<Dialog onOpenChange={changeOpen} open={open}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Change slug for {slug}</DialogTitle>
@@ -75,7 +89,7 @@ export function ChangeSlugDialog({
 								run("slug", "Changing slug", async () => {
 									await onSubmit(newSlug);
 									setNewSlug("");
-									setOpen(false);
+									changeOpen(false);
 								})
 							}
 						>

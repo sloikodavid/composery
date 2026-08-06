@@ -65,16 +65,19 @@ function formatSize(bytes: number | null) {
 export function SnapshotsDialog({
 	canRestore,
 	canTake,
-	plan,
+	onOpenChange,
 	onDelete,
 	onRestore,
 	onSplitChange,
 	onTake,
+	open: openProp,
+	plan,
 	snapshots,
 	split
 }: {
 	canRestore: boolean;
 	canTake: boolean;
+	onOpenChange?: (open: boolean) => void;
 	onDelete: (id: Id<"box_snapshots">) => Promise<unknown>;
 	onRestore: (id: Id<"box_snapshots">) => Promise<unknown>;
 	onTake: () => Promise<unknown>;
@@ -84,11 +87,13 @@ export function SnapshotsDialog({
 	onSplitChange?: (manualCap: number) => Promise<unknown>;
 	// Read rather than passed as a boolean, so this dialog and the mutation that
 	// would refuse it are answering the same question from the same table.
+	open?: boolean;
 	plan: BoxPlan;
 	snapshots: SnapshotRow[] | undefined;
 	split: SnapshotSplit;
 }) {
-	const [open, setOpen] = useState(false);
+	const [internalOpen, setInternalOpen] = useState(false);
+	const open = openProp ?? internalOpen;
 	const { busy, run } = useBusyAction();
 	// The slider is dragged locally and committed on release, so a drag across
 	// five positions is one write rather than five.
@@ -97,17 +102,24 @@ export function SnapshotsDialog({
 	const cap = BOX_PLANS[plan].snapshotCap;
 	const { sort, sortedRows } = useTableSort(snapshots ?? [], SNAPSHOT_SORT);
 
+	function changeOpen(nextOpen: boolean) {
+		if (onOpenChange) onOpenChange(nextOpen);
+		else setInternalOpen(nextOpen);
+	}
+
 	return (
 		<>
-			<AnimatedIconButton
-				icon="download"
-				iconPosition="start"
-				onClick={() => setOpen(true)}
-				variant="outline"
-			>
-				Snapshot
-			</AnimatedIconButton>
-			<Dialog onOpenChange={setOpen} open={open}>
+			{openProp === undefined ? (
+				<AnimatedIconButton
+					icon="download"
+					iconPosition="start"
+					onClick={() => changeOpen(true)}
+					variant="outline"
+				>
+					Snapshot
+				</AnimatedIconButton>
+			) : null}
+			<Dialog onOpenChange={changeOpen} open={open}>
 				<DialogContent size="panel">
 					<DialogHeader>
 						<DialogTitle>Snapshots</DialogTitle>
@@ -130,7 +142,7 @@ export function SnapshotsDialog({
 					    second copy that goes wrong the first time anyone changes it. The
 					    list below is the honest answer to "how many do I have". */}
 					{onSplitChange && BOX_PLANS[plan].manualSnapshots ? (
-						<div className="space-y-2 rounded-2xl border border-border bg-card p-4">
+						<div className="space-y-2 rounded-2xl bg-card p-4">
 							<div className="flex items-baseline justify-between gap-3">
 								<label className="text-sm font-medium" htmlFor="snapshot-split">
 									How your {cap} snapshots are used
@@ -187,7 +199,7 @@ export function SnapshotsDialog({
 						</p>
 					)}
 
-					<div className="overflow-hidden rounded-2xl border border-border bg-card">
+					<div className="overflow-hidden rounded-2xl bg-card">
 						<Table cols={["fluid", "short", "short", "status", "actions-2"]}>
 							<TableHeader>
 								<TableRow>
