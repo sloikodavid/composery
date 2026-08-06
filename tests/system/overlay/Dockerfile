@@ -7,8 +7,10 @@
 # select-engine, init/overlay.sh, and the upper-hygiene pass. See run.sh.
 
 # Keep the toolchain identical to the shipped binary (the cli-chef line in the
-# top-level Dockerfile). Passed in by run.sh so there is one source of truth.
-ARG RUST_IMAGE=rust:1.96.1-slim-trixie
+# top-level Dockerfile). Passed in by run.sh, which reads that one line; no
+# default here, so a run.sh that fails to pass it fails loudly at FROM instead
+# of silently building with a stale second copy of the version.
+ARG RUST_IMAGE
 ARG FIXTURE_VERSION=1
 
 FROM ${RUST_IMAGE} AS cli-builder
