@@ -171,29 +171,33 @@ describe("text brand asset generator", () => {
 		expect(
 			output(/packages\/ide\/overlay\/src\/node\/persistence\/readiness\.ts$/)
 		).toBe(
-			"const page = '<style>body{margin:0;background:#cdc9c4;color:#323229}@media (prefers-color-scheme:dark){body{background:#1d1b1b;color:#c1b5a9}}</style>';"
+			`const page = '<style>body{margin:0;background:${theme.light.background};color:${theme.light.foreground}}@media (prefers-color-scheme:dark){body{background:${theme.dark.background};color:${theme.dark.foreground}}}</style>';`
 		);
 
 		expect(output(/packages\/web\/app\/icon\.svg$/)).toMatch(
-			/^<svg width="256" height="256" viewBox="0 0 20 20" fill="none" xmlns="http:\/\/www\.w3\.org\/2000\/svg"><style>svg\{color:#323229\}@media \(prefers-color-scheme:dark\)\{svg\{color:#c1b5a9\}\}<\/style>/
+			new RegExp(
+				`^<svg width="256" height="256" viewBox="0 0 20 20" fill="none" xmlns="http://www\\.w3\\.org/2000/svg"><style>svg\\{color:${theme.light.foreground}\\}@media \\(prefers-color-scheme:dark\\)\\{svg\\{color:${theme.dark.foreground}\\}\\}<\\/style>`
+			)
 		);
 		expect(output(/packages\/web\/public\/icon-light\.svg$/)).toContain(
-			'color="#323229"'
+			`color="${theme.light.foreground}"`
 		);
 		expect(output(/packages\/web\/public\/icon-dark\.svg$/)).toContain(
-			'color="#c1b5a9"'
+			`color="${theme.dark.foreground}"`
 		);
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon\.svg$/)
 		).toMatch(
-			/^<svg width="100%" height="100%" viewBox="0 0 20 20".*<style>svg\{color:#323229\}/
+			new RegExp(
+				`^<svg width="100%" height="100%" viewBox="0 0 20 20".*<style>svg\\{color:${theme.light.foreground}\\}`
+			)
 		);
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon-light\.svg$/)
 		).toContain('<svg width="100%" height="100%"');
 		expect(
 			output(/packages\/ide\/overlay\/src\/browser\/media\/favicon-dark\.svg$/)
-		).toContain('color="#c1b5a9"');
+		).toContain(`color="${theme.dark.foreground}"`);
 
 		expect(logs).toEqual([["Synced generated brand CSS and SVGs."]]);
 	});

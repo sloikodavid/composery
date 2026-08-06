@@ -719,6 +719,547 @@ function retint(base, web, ide, features, scheme) {
 		})
 	);
 
+	// Full registry coverage. VS Code registers hundreds of workbench colours
+	// beyond the default themes' own sets; anything this generator leaves out
+	// falls back to the registry default, which is usually the blue focus
+	// colour or a colour no theme ever tuned - so the workbench would show
+	// stray blue against a neutral palette. Every ID below maps onto an
+	// editable role instead, keeping theme.json the single source. Bracket
+	// pairs reuse the syntax roles so nesting never invents a colour the
+	// palette does not own.
+
+	// Editor lines, marks and decorations.
+	set(
+		colors,
+		[
+			"editor.lineHighlightBackground",
+			"editor.inactiveLineHighlightBackground"
+		],
+		appendAlpha(ide.foreground, "0d")
+	);
+	set(colors, ["editor.foldBackground"], appendAlpha(ide.foreground, "0a"));
+	set(colors, ["editor.foldPlaceholderForeground"], ide.mutedForeground);
+	set(
+		colors,
+		["editor.hoverHighlightBackground"],
+		appendAlpha(ide.foreground, "0a")
+	);
+	set(colors, ["editor.symbolHighlightBackground"], ide.findMatchHighlight);
+	set(colors, ["editor.rangeHighlightBackground"], ide.findMatchHighlight);
+	set(colors, ["editor.wordHighlightTextBackground"], ide.wordHighlight);
+	set(
+		colors,
+		["editor.stackFrameHighlightBackground"],
+		appendAlpha(web.info, "26")
+	);
+	set(
+		colors,
+		["editor.focusedStackFrameHighlightBackground"],
+		appendAlpha(web.warning, "33")
+	);
+	set(colors, ["editor.inlineValuesBackground"], appendAlpha(web.info, "0d"));
+	set(colors, ["editor.inlineValuesForeground"], web.info);
+	set(colors, ["editor.placeholder.foreground"], ide.placeholder);
+	set(
+		colors,
+		["editorGhostText.foreground"],
+		appendAlpha(ide.foreground, "40")
+	);
+	set(colors, ["editorUnicodeHighlight.background"], transparent);
+	set(colors, ["editorUnicodeHighlight.border"], ide.bracketMatch);
+	set(colors, ["editorLightBulb.foreground"], web.warning);
+	set(colors, ["editorLightBulbAutoFix.foreground"], web.info);
+	set(colors, ["editorGutter.commentRangeForeground"], ide.mutedForeground);
+	set(colors, ["editorGutter.foldingControlForeground"], ide.mutedForeground);
+	set(
+		colors,
+		[
+			"editorGutter.addedSecondaryBackground",
+			"editorGutter.modifiedSecondaryBackground",
+			"editorGutter.deletedSecondaryBackground"
+		],
+		ide.preformatted
+	);
+	set(colors, ["editorGutter.itemBackground"], ide.preformatted);
+	set(colors, ["editorGutter.itemGlyphForeground"], ide.foreground);
+	set(colors, ["editorGutter.commentGlyphForeground"], ide.mutedForeground);
+	set(colors, ["editorGutter.commentDraftGlyphForeground"], web.warning);
+	set(colors, ["editorGutter.commentUnresolvedGlyphForeground"], web.info);
+	set(colors, ["editorStickyScroll.background"], ide.tabBar);
+	set(colors, ["editorStickyScrollGutter.background"], ide.tabBar);
+	set(colors, ["editorStickyScrollHover.background"], ide.listHover);
+	set(colors, ["editorHoverWidget.foreground"], ide.foreground);
+	set(colors, ["editorHoverWidget.highlightForeground"], ide.focus);
+	set(colors, ["editorHoverWidget.statusBarBackground"], ide.listHover);
+	set(colors, ["editorWidget.foreground"], ide.foreground);
+	set(colors, ["editorWidget.resizeBorder"], ide.separator);
+	set(colors, ["editorActionList.background"], ide.widget);
+	set(colors, ["editorActionList.foreground"], ide.inputForeground);
+	set(colors, ["editorActionList.focusBackground"], ide.listSelection);
+	set(
+		colors,
+		["editorActionList.focusForeground"],
+		ide.listSelectionForeground
+	);
+	set(colors, ["editorSuggestWidget.foreground"], ide.inputForeground);
+	set(
+		colors,
+		[
+			"editorSuggestWidget.selectedIconForeground",
+			"editorSuggestWidget.selectedForeground"
+		],
+		ide.listSelectionForeground
+	);
+	set(
+		colors,
+		[
+			"editorSuggestWidget.focusHighlightForeground",
+			"editorSuggestWidget.highlightForeground"
+		],
+		ide.focus
+	);
+	set(colors, ["editorSuggestWidgetStatus.foreground"], ide.mutedForeground);
+	set(colors, ["editorGroupHeader.noTabsBackground"], ide.tabBar);
+	set(colors, ["editorLineNumber.dimmedForeground"], ide.ignored);
+
+	// Bracket pairs reuse the syntax roles.
+	const bracketColors = [
+		syntax.keyword,
+		syntax.string,
+		syntax.number,
+		syntax.type,
+		web.warning,
+		web.destructive
+	];
+	for (let index = 0; index < 6; index++) {
+		colors[`editorBracketHighlight.foreground${index + 1}`] =
+			bracketColors[index];
+		colors[`editorBracketPairGuide.background${index + 1}`] = appendAlpha(
+			bracketColors[index],
+			"26"
+		);
+		colors[`editorBracketPairGuide.activeBackground${index + 1}`] = appendAlpha(
+			bracketColors[index],
+			"59"
+		);
+	}
+	colors["editorBracketHighlight.unexpectedBracket.foreground"] =
+		web.destructive;
+
+	// Overview ruler and minimap markers.
+	const rulerMarkers = {
+		errorForeground: web.destructive,
+		warningForeground: web.warning,
+		infoForeground: web.info,
+		findMatchForeground: ide.findMatch,
+		selectionHighlightForeground: ide.findMatchHighlight,
+		wordHighlightForeground: ide.wordHighlight,
+		wordHighlightStrongForeground: ide.wordHighlight,
+		modifiedForeground: ide.gutterModified,
+		addedForeground: ide.gutterAdded,
+		deletedForeground: ide.gutterDeleted,
+		bracketMatchForeground: ide.bracketMatch,
+		commentForeground: ide.comment,
+		rangeHighlightForeground: ide.findMatchHighlight,
+		currentContentForeground: web.info,
+		incomingContentForeground: web.success,
+		commonContentForeground: ide.mutedForeground
+	};
+	for (const [suffix, color] of Object.entries(rulerMarkers))
+		colors[`editorOverviewRuler.${suffix}`] = color;
+	set(
+		colors,
+		[
+			"minimap.findMatchHighlight",
+			"minimap.selectionHighlight",
+			"minimap.selectionOccurrenceHighlight"
+		],
+		ide.findMatchHighlight
+	);
+	set(colors, ["minimap.errorHighlight"], web.destructive);
+	set(colors, ["minimap.warningHighlight"], web.warning);
+	set(colors, ["minimap.infoHighlight"], web.info);
+	set(colors, ["minimap.chatEditHighlight"], appendAlpha(web.info, "4d"));
+	set(colors, ["minimapGutter.addedBackground"], ide.gutterAdded);
+	set(colors, ["minimapGutter.modifiedBackground"], ide.gutterModified);
+	set(colors, ["minimapGutter.deletedBackground"], ide.gutterDeleted);
+	set(colors, ["minimapSlider.background"], ide.scrollbar);
+	set(colors, ["minimapSlider.hoverBackground"], ide.scrollbarHover);
+	set(colors, ["minimapSlider.activeBackground"], ide.scrollbarActive);
+
+	// Input validation messages.
+	for (const [status, color] of [
+		["error", web.destructive],
+		["warning", web.warning],
+		["info", web.info]
+	]) {
+		colors[`inputValidation.${status}Background`] = appendAlpha(color, "1f");
+		colors[`inputValidation.${status}Border`] = color;
+		colors[`inputValidation.${status}Foreground`] = ide.foreground;
+	}
+
+	// Lists, filters and quick input.
+	set(
+		colors,
+		["list.focusBackground", "list.inactiveFocusBackground"],
+		ide.listHover
+	);
+	set(colors, ["list.focusForeground"], ide.foreground);
+	set(
+		colors,
+		["list.hoverForeground", "list.inactiveSelectionForeground"],
+		ide.foreground
+	);
+	set(colors, ["list.inactiveSelectionIconForeground"], ide.mutedForeground);
+	set(
+		colors,
+		["list.errorForeground", "list.invalidItemForeground"],
+		web.destructive
+	);
+	set(colors, ["list.warningForeground"], web.warning);
+	set(
+		colors,
+		["list.focusHighlightForeground", "list.highlightForeground"],
+		ide.focus
+	);
+	set(colors, ["list.deemphasizedForeground"], ide.ignored);
+	set(colors, ["list.filterMatchBackground"], ide.findMatchHighlight);
+	set(colors, ["list.filterMatchBorder"], transparent);
+	set(colors, ["list.dropBetweenBackground"], ide.separator);
+	set(colors, ["list.inactiveFocusOutline"], transparent);
+	set(colors, ["listFilterWidget.background"], ide.widget);
+	set(colors, ["listFilterWidget.outline"], transparent);
+	set(colors, ["listFilterWidget.noMatchesOutline"], web.destructive);
+	set(colors, ["quickInput.list.focusBackground"], ide.listSelection);
+	set(colors, ["quickInputList.focusForeground"], ide.foreground);
+	set(colors, ["quickInputList.focusIconForeground"], ide.foreground);
+	set(colors, ["quickInputList.focusHighlightForeground"], ide.focus);
+
+	// Merge editor surfaces.
+	set(colors, ["merge.currentHeaderBackground"], appendAlpha(web.info, "26"));
+	set(colors, ["merge.currentContentBackground"], appendAlpha(web.info, "1a"));
+	set(
+		colors,
+		["merge.incomingHeaderBackground"],
+		appendAlpha(web.success, "26")
+	);
+	set(
+		colors,
+		["merge.incomingContentBackground"],
+		appendAlpha(web.success, "1a")
+	);
+	set(
+		colors,
+		["merge.commonHeaderBackground"],
+		appendAlpha(ide.foreground, "1a")
+	);
+	set(
+		colors,
+		["merge.commonContentBackground"],
+		appendAlpha(ide.foreground, "0f")
+	);
+	set(colors, ["merge.border"], transparent);
+
+	// Tabs: dirty markers and hover states.
+	set(
+		colors,
+		["tab.activeModifiedBorder", "tab.unfocusedActiveModifiedBorder"],
+		web.warning
+	);
+	set(
+		colors,
+		["tab.inactiveModifiedBorder", "tab.unfocusedInactiveModifiedBorder"],
+		appendAlpha(web.warning, "59")
+	);
+	set(
+		colors,
+		["tab.hoverForeground", "tab.unfocusedHoverForeground"],
+		ide.foreground
+	);
+	set(colors, ["tab.dragAndDropBorder"], ide.focus);
+	set(colors, ["tab.hoverBorder", "tab.unfocusedHoverBorder"], transparent);
+
+	// Terminal decorations.
+	set(colors, ["terminalCommandDecoration.defaultBackground"], ide.separator);
+	set(colors, ["terminalCommandDecoration.errorBackground"], web.destructive);
+	set(colors, ["terminalCommandDecoration.successBackground"], web.success);
+	set(colors, ["terminalCursor.background"], ide.editor);
+	set(colors, ["terminal.dropBackground"], ide.dropBackground);
+
+	// Toolbars and drag surfaces.
+	set(colors, ["toolbar.hoverBackground"], ide.listHover);
+	set(colors, ["toolbar.activeBackground"], ide.listSelection);
+	set(colors, ["toolbar.hoverOutline"], transparent);
+	set(colors, ["sash.hoverBorder"], ide.focus);
+	set(
+		colors,
+		[
+			"profiles.sashBorder",
+			"settings.sashBorder",
+			"simpleFindWidget.sashBorder"
+		],
+		ide.separator
+	);
+	set(colors, ["sideBar.dropBackground"], ide.dropBackground);
+	set(colors, ["sideBarStickyScroll.background"], ide.sideBar);
+	set(colors, ["sideBarActivityBarTop.border"], transparent);
+	set(
+		colors,
+		["activityBar.dropBorder", "activityBarTop.dropBorder"],
+		ide.focus
+	);
+	set(colors, ["activityBarTop.foreground"], ide.foreground);
+	set(colors, ["activityBarTop.inactiveForeground"], ide.activityBarInactive);
+	set(colors, ["commandCenter.background"], ide.inputBackground);
+	set(colors, ["commandCenter.foreground"], ide.inputForeground);
+	set(colors, ["commandCenter.activeBackground"], ide.listSelection);
+	set(colors, ["commandCenter.activeForeground"], ide.listSelectionForeground);
+	set(colors, ["commandCenter.inactiveForeground"], ide.mutedForeground);
+	set(colors, ["commandCenter.debuggingBackground"], ide.debugStatus);
+
+	// Peek view.
+	set(colors, ["peekViewEditorGutter.background"], ide.widget);
+	set(colors, ["peekViewEditorStickyScroll.background"], ide.widget);
+	set(colors, ["peekViewEditorStickyScrollGutter.background"], ide.widget);
+	set(colors, ["peekViewResult.fileForeground"], ide.foreground);
+	set(colors, ["peekViewResult.lineForeground"], ide.mutedForeground);
+	set(colors, ["peekViewResult.selectionBackground"], ide.listSelection);
+	set(
+		colors,
+		["peekViewResult.selectionForeground"],
+		ide.listSelectionForeground
+	);
+	set(colors, ["peekViewTitleDescription.foreground"], ide.mutedForeground);
+	set(colors, ["peekViewTitleLabel.foreground"], ide.foreground);
+	set(colors, ["breadcrumbPicker.background"], ide.widget);
+
+	// Settings editor.
+	set(colors, ["settings.checkboxBackground"], ide.inputBackground);
+	set(colors, ["settings.checkboxForeground"], ide.inputForeground);
+	set(colors, ["settings.dropdownForeground"], ide.dropdownForeground);
+	set(colors, ["settings.dropdownListBorder"], transparent);
+	set(colors, ["settings.numberInputBackground"], ide.inputBackground);
+	set(colors, ["settings.numberInputForeground"], ide.inputForeground);
+	set(colors, ["settings.textInputBackground"], ide.inputBackground);
+	set(colors, ["settings.textInputForeground"], ide.inputForeground);
+	set(colors, ["settings.rowHoverBackground"], ide.listHover);
+	set(colors, ["settings.focusedRowBackground"], ide.listSelection);
+	set(colors, ["settings.focusedRowBorder"], transparent);
+	set(colors, ["settings.headerBorder"], ide.separator);
+	set(colors, ["settings.settingsHeaderHoverForeground"], ide.foreground);
+
+	// Welcome page and walkthroughs.
+	set(colors, ["welcomePage.tileBorder"], transparent);
+	set(colors, ["welcomePage.tileHoverBackground"], ide.listHover);
+	set(colors, ["walkThrough.embeddedEditorBackground"], ide.widget);
+	set(colors, ["walkthrough.stepTitle.foreground"], ide.foreground);
+
+	// Status bar items.
+	set(colors, ["statusBarItem.activeBackground"], ide.listHover);
+	set(colors, ["statusBarItem.errorForeground"], ide.buttonForeground);
+	set(colors, ["statusBarItem.errorHoverBackground"], ide.listHover);
+	set(colors, ["statusBarItem.errorHoverForeground"], ide.foreground);
+	set(colors, ["statusBarItem.warningBackground"], web.warning);
+	set(colors, ["statusBarItem.warningForeground"], ide.buttonForeground);
+	set(colors, ["statusBarItem.warningHoverBackground"], ide.listHover);
+	set(colors, ["statusBarItem.warningHoverForeground"], ide.foreground);
+	set(colors, ["statusBarItem.prominentForeground"], ide.foreground);
+	set(colors, ["statusBarItem.prominentHoverBackground"], ide.listSelection);
+	set(colors, ["statusBarItem.prominentHoverForeground"], ide.foreground);
+	set(colors, ["statusBarItem.remoteHoverBackground"], ide.badgeHover);
+	set(colors, ["statusBarItem.remoteHoverForeground"], ide.foreground);
+	set(colors, ["statusBarItem.offlineBackground"], ide.listSelection);
+	set(colors, ["statusBarItem.offlineForeground"], ide.foreground);
+	set(colors, ["statusBarItem.offlineHoverBackground"], ide.listHover);
+	set(colors, ["statusBarItem.offlineHoverForeground"], ide.foreground);
+
+	// Extension management.
+	set(colors, ["extensionButton.background"], ide.inputBackground);
+	set(colors, ["extensionButton.foreground"], ide.inputForeground);
+	set(colors, ["extensionButton.hoverBackground"], ide.listHover);
+	set(colors, ["extensionButton.border"], transparent);
+	set(colors, ["extensionButton.separator"], ide.separator);
+	set(colors, ["extensionButton.prominentBackground"], ide.button);
+	set(colors, ["extensionButton.prominentForeground"], ide.buttonForeground);
+	set(colors, ["extensionButton.prominentHoverBackground"], ide.buttonHover);
+
+	// Notebooks.
+	set(
+		colors,
+		["notebook.editorBackground", "notebook.cellEditorBackground"],
+		ide.editor
+	);
+	set(colors, ["notebook.cellHoverBackground"], ide.listHover);
+	set(colors, ["notebook.outputContainerBackgroundColor"], ide.preformatted);
+	set(colors, ["notebook.outputContainerBorderColor"], ide.separator);
+	set(
+		colors,
+		["notebook.focusedCellBorder", "notebook.focusedEditorBorder"],
+		ide.focus
+	);
+	set(
+		colors,
+		[
+			"notebook.inactiveFocusedCellBorder",
+			"notebook.inactiveSelectedCellBorder"
+		],
+		ide.separator
+	);
+	set(colors, ["notebook.cellInsertionIndicator"], ide.focus);
+	set(colors, ["notebook.cellToolbarSeparator"], ide.separator);
+	set(colors, ["notebook.symbolHighlightBackground"], ide.findMatchHighlight);
+	set(colors, ["notebookStatusErrorIcon.foreground"], web.destructive);
+	set(colors, ["notebookStatusRunningIcon.foreground"], web.info);
+	set(colors, ["notebookStatusSuccessIcon.foreground"], web.success);
+	set(colors, ["notebookEditorOverviewRuler.runningCellForeground"], web.info);
+	set(colors, ["notebookScrollbarSlider.background"], ide.scrollbar);
+	set(colors, ["notebookScrollbarSlider.hoverBackground"], ide.scrollbarHover);
+	set(
+		colors,
+		["notebookScrollbarSlider.activeBackground"],
+		ide.scrollbarActive
+	);
+
+	// Debugging surfaces.
+	set(colors, ["debugToolBar.border"], transparent);
+	set(
+		colors,
+		["debugConsole.errorForeground", "debugView.exceptionLabelBackground"],
+		web.destructive
+	);
+	set(colors, ["debugConsole.warningForeground"], web.warning);
+	set(colors, ["debugConsole.infoForeground"], web.info);
+	set(colors, ["debugConsole.sourceForeground"], ide.mutedForeground);
+	set(colors, ["debugConsoleInputIcon.foreground"], ide.foreground);
+	set(colors, ["debugExceptionWidget.background"], ide.widget);
+	set(colors, ["debugExceptionWidget.border"], transparent);
+	set(colors, ["debugView.exceptionLabelForeground"], ide.buttonForeground);
+	set(colors, ["debugView.stateLabelBackground"], ide.listSelection);
+	set(colors, ["debugView.stateLabelForeground"], ide.foreground);
+	set(colors, ["debugView.valueChangedHighlight"], web.warning);
+	set(colors, ["debugTokenExpression.boolean"], ide.keyword);
+	set(colors, ["debugTokenExpression.number"], ide.number);
+	set(colors, ["debugTokenExpression.string"], ide.string);
+	set(colors, ["debugTokenExpression.type"], ide.type);
+	set(colors, ["debugTokenExpression.name"], ide.foreground);
+	set(colors, ["debugTokenExpression.value"], ide.foreground);
+	set(colors, ["debugTokenExpression.error"], web.destructive);
+	for (const key of [
+		"debugIcon.continueForeground",
+		"debugIcon.disconnectForeground",
+		"debugIcon.pauseForeground",
+		"debugIcon.restartForeground",
+		"debugIcon.startForeground",
+		"debugIcon.stepBackForeground",
+		"debugIcon.stepIntoForeground",
+		"debugIcon.stepOutForeground",
+		"debugIcon.stepOverForeground",
+		"debugIcon.stopForeground",
+		"debugIcon.breakpointCurrentStackframeForeground",
+		"debugIcon.breakpointStackframeForeground"
+	])
+		colors[key] = ide.foreground;
+	set(colors, ["debugIcon.breakpointForeground"], web.destructive);
+	set(colors, ["debugIcon.breakpointDisabledForeground"], ide.mutedForeground);
+	set(colors, ["debugIcon.breakpointUnverifiedForeground"], web.warning);
+
+	// Data charts and symbol icons - monochrome by default so no
+	// workbench surface invents a colour. The registry registers one colour
+	// per symbol kind; they are enumerated so a new upstream kind is visible
+	// in the generated theme instead of silently falling back to its default.
+	set(colors, ["charts.red"], web.destructive);
+	set(colors, ["charts.green"], web.success);
+	set(colors, ["charts.yellow", "charts.orange"], web.warning);
+	set(colors, ["charts.blue"], web.info);
+	set(colors, ["charts.purple"], ide.keyword);
+	set(colors, ["charts.foreground"], ide.foreground);
+	set(colors, ["charts.lines"], ide.mutedForeground);
+	for (const key of [
+		"symbolIcon.arrayForeground",
+		"symbolIcon.booleanForeground",
+		"symbolIcon.classForeground",
+		"symbolIcon.colorForeground",
+		"symbolIcon.constantForeground",
+		"symbolIcon.constructorForeground",
+		"symbolIcon.enumeratorForeground",
+		"symbolIcon.enumeratorMemberForeground",
+		"symbolIcon.eventForeground",
+		"symbolIcon.fieldForeground",
+		"symbolIcon.fileForeground",
+		"symbolIcon.folderForeground",
+		"symbolIcon.functionForeground",
+		"symbolIcon.interfaceForeground",
+		"symbolIcon.keyForeground",
+		"symbolIcon.keywordForeground",
+		"symbolIcon.methodForeground",
+		"symbolIcon.moduleForeground",
+		"symbolIcon.namespaceForeground",
+		"symbolIcon.nullForeground",
+		"symbolIcon.numberForeground",
+		"symbolIcon.objectForeground",
+		"symbolIcon.operatorForeground",
+		"symbolIcon.packageForeground",
+		"symbolIcon.propertyForeground",
+		"symbolIcon.referenceForeground",
+		"symbolIcon.snippetForeground",
+		"symbolIcon.stringForeground",
+		"symbolIcon.structForeground",
+		"symbolIcon.textForeground",
+		"symbolIcon.typeParameterForeground",
+		"symbolIcon.unitForeground",
+		"symbolIcon.variableForeground"
+	])
+		colors[key] = ide.mutedForeground;
+
+	// Git decoration remainder.
+	set(colors, ["gitDecoration.renamedResourceForeground"], web.info);
+	set(colors, ["gitDecoration.submoduleResourceForeground"], web.info);
+
+	// Diff editor remainder.
+	set(colors, ["diffEditor.unchangedRegionForeground"], ide.mutedForeground);
+	set(
+		colors,
+		["diffEditor.unchangedCodeBackground"],
+		appendAlpha(ide.foreground, "08")
+	);
+	set(colors, ["diffEditor.diagonalFill"], ide.separator);
+
+	// Chat and agents.
+	set(
+		colors,
+		["chat.requestBubbleBackground"],
+		appendAlpha(ide.foreground, "0d")
+	);
+	set(
+		colors,
+		["chat.requestBubbleHoverBackground"],
+		appendAlpha(ide.foreground, "14")
+	);
+	set(colors, ["chat.requestCodeBorder"], ide.separator);
+	set(colors, ["chat.checkpointSeparator"], ide.separator);
+	set(colors, ["agentsVoice.speakingBackground"], appendAlpha(web.info, "26"));
+	set(colors, ["agentsVoice.speakingForeground"], web.info);
+
+	// Remaining surfaces.
+	set(colors, ["banner.background"], ide.widget);
+	set(colors, ["banner.foreground", "banner.iconForeground"], ide.foreground);
+	set(colors, ["checkbox.disabled.background"], ide.preformatted);
+	set(colors, ["checkbox.disabled.foreground"], ide.mutedForeground);
+	set(colors, ["checkbox.foreground"], ide.inputForeground);
+	set(colors, ["tree.inactiveIndentGuidesStroke"], ide.indentGuide);
+	set(colors, ["tree.tableColumnsBorder"], ide.separator);
+	set(colors, ["tree.tableOddRowsBackground"], ide.preformatted);
+	set(
+		colors,
+		["testing.coveredMinimapBackground"],
+		appendAlpha(web.success, "4d")
+	);
+	set(
+		colors,
+		["testing.uncoveredMinimapBackground"],
+		appendAlpha(web.destructive, "4d")
+	);
+
 	return {
 		$schema: "vscode://schemas/color-theme",
 		name: `Composery ${scheme === "dark" ? "Dark" : "Light"}`,

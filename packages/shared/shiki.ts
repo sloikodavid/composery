@@ -1,12 +1,12 @@
-import { theme } from "./theme.ts";
+import { ideTheme, theme } from "./theme.ts";
 
-// Two Shiki themes for code highlighting, derived from the palette so code can
-// never show a colour the brand does not own. Each syntax role maps onto one of
-// the palette's own state colours: keywords take the warning tone, strings the
-// success tone, numbers the info tone, and comments and punctuation the muted
-// foreground. The background stays transparent - the code sits on the card
-// surface around it, like everything else on the page.
+// Two Shiki themes for code highlighting. Syntax roles come from the same
+// table the IDE themes are generated from (packages/shared/theme.json), so
+// code on the website and code in the editor can never drift apart. The
+// background stays transparent - the code sits on the card surface around it,
+// like everything else on the page.
 function codeTheme(mode: "light" | "dark") {
+	const syntax = ideTheme[mode];
 	const c = theme[mode];
 	return {
 		name: `composery-${mode}`,
@@ -14,29 +14,27 @@ function codeTheme(mode: "light" | "dark") {
 		bg: "transparent",
 		fg: c.foreground,
 		settings: [
-			{ scope: ["comment"], settings: { foreground: c.mutedForeground } },
+			{ scope: ["comment"], settings: { foreground: syntax.comment } },
 			{
 				scope: ["keyword", "storage"],
-				settings: { foreground: c.warning }
+				settings: { foreground: syntax.keyword }
 			},
-			{ scope: ["string"], settings: { foreground: c.success } },
+			{ scope: ["string"], settings: { foreground: syntax.string } },
 			{
 				scope: ["constant.numeric", "constant.language", "constant.other"],
-				settings: { foreground: c.info }
+				settings: { foreground: syntax.number }
 			},
 			{
 				scope: ["entity.name.function", "support.function"],
-				settings: { foreground: c.foreground }
+				settings: { foreground: syntax.function }
 			},
 			{
 				scope: ["entity.name.type", "entity.name.class", "support.type"],
-				settings: {
-					foreground: mode === "light" ? c.chart5 : c.primaryButtonHover
-				}
+				settings: { foreground: syntax.type }
 			},
 			{
 				scope: ["punctuation", "operator", "keyword.operator", "delimiter"],
-				settings: { foreground: c.mutedForeground }
+				settings: { foreground: syntax.punctuation }
 			}
 		]
 	};

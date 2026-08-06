@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+﻿import { describe, expect, test } from "vitest";
 
 import {
 	APP_DESCRIPTION,
@@ -69,27 +69,27 @@ describe("shared brand identity", () => {
 		});
 		expect(BRAND_COLORS).toEqual({
 			icon: {
-				light: "#323229",
-				dark: "#c1b5a9",
-				muted: "#564f43",
-				tileStroke: "#c1b5a9"
+				light: "#2b2b2b",
+				dark: "#e2e2e2",
+				muted: "#5f5f5f",
+				tileStroke: "#e2e2e2"
 			},
 			surface: {
-				ink: "#323229",
-				paper: "#c1b5a9",
-				canvas: "#cdc9c4",
-				border: "#c6c1bc",
-				lightText: "#323229",
-				darkText: "#c1b5a9",
-				tile: "#242121",
-				splash: "#cdc9c4",
-				splashDark: "#1d1b1b"
+				ink: "#2b2b2b",
+				paper: "#e2e2e2",
+				canvas: "#f6f6f6",
+				border: "#d6d6d6",
+				lightText: "#2b2b2b",
+				darkText: "#e2e2e2",
+				tile: "#1f1f1f",
+				splash: "#f6f6f6",
+				splashDark: "#171717"
 			},
 			state: {
-				success: "#415331",
-				warning: "#513c2c",
-				destructive: "#8a372e",
-				info: "#3d4f5c"
+				success: "#33793d",
+				warning: "#8f6f21",
+				destructive: "#b03a30",
+				info: "#2d6fa8"
 			}
 		});
 		expect(BRAND_THEME).toBe(theme);
@@ -107,7 +107,7 @@ describe("shared icon builders", () => {
 		expect(iconInner()).toBe(ICON);
 		expect(ICON_SVG).toBe(ICON);
 		expect(ICON_XML).toBe(
-			`<svg width="256" height="256" viewBox="0 0 20 20" fill="none" color="#323229" xmlns="http://www.w3.org/2000/svg">${ICON}</svg>`
+			`<svg width="256" height="256" viewBox="0 0 20 20" fill="none" color="#2b2b2b" xmlns="http://www.w3.org/2000/svg">${ICON}</svg>`
 		);
 	});
 
@@ -172,7 +172,7 @@ describe("shared icon builders", () => {
 
 	test("uses the canonical stroke and dimensions for a centered icon by default", () => {
 		expect(centeredIconSvg()).toContain(
-			'<svg width="20" height="20" viewBox="0 0 256 256" fill="none" color="#323229"'
+			'<svg width="20" height="20" viewBox="0 0 256 256" fill="none" color="#2b2b2b"'
 		);
 		expect(centeredIconSvg()).toContain(
 			'fill="currentColor" stroke="currentColor"'

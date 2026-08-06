@@ -671,6 +671,10 @@
 				background: var(--button);
 				color: var(--button-foreground);
 			}
+			.web-button.primary-action {
+				background: var(--primary-button);
+				color: var(--primary-button-foreground);
+			}
 			.web-button.outline-action {
 				border-color: var(--border);
 			}
@@ -679,10 +683,20 @@
 			.web-icon-button:hover {
 				background: var(--button-hover);
 			}
+			.web-button.primary-action:hover {
+				background: var(--primary-button-hover);
+			}
 			.web-button.primary-action:active,
 			.web-button.outline-action:active,
 			.web-icon-button:active {
 				background: var(--button-active);
+			}
+			.web-button.primary-action:active {
+				background: var(--primary-button-active);
+			}
+			.web-button.pressed,
+			.web-icon-button.pressed {
+				background: var(--focus);
 			}
 			.web-button.secondary-action {
 				background: var(--secondary-button);
@@ -2075,7 +2089,7 @@
 						</button>
 						<button
 							class="web-button primary-action"
-							data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+							data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
 							type="button"
 						>
 							Sign in
@@ -2182,7 +2196,7 @@
 					<button
 						class="web-button primary-action"
 						data-go-view="form"
-						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+						data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
 						type="button"
 					>
 						<svg class="icon" aria-hidden="true">
@@ -2464,7 +2478,7 @@
 							</button>
 							<button
 								class="web-button primary-action"
-								data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+								data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
 								type="button"
 							>
 								Save changes
@@ -2490,8 +2504,8 @@
 						<span>quiet-harbour</span>
 					</div>
 					<button
-						class="web-button outline-action"
-						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+						class="web-button outline-action pressed"
+						data-token="web.button web.buttonForeground web.buttonHover web.buttonActive web.focus"
 						type="button"
 					>
 						More actions

@@ -25,12 +25,7 @@ export function ChartCard({
 	controls: ReactNode;
 }) {
 	return (
-		<div
-			className={cn(
-				"relative rounded-2xl bg-card",
-				className
-			)}
-		>
+		<div className={cn("relative rounded-2xl bg-card", className)}>
 			<div className="absolute top-3 left-3 z-10 flex gap-2">{controls}</div>
 			<div className="p-4 pt-12">{children}</div>
 		</div>
