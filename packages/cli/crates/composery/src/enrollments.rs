@@ -152,6 +152,11 @@ pub fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // ttl_secs reads the environment on every call, so the tests that set it
+    // serialize on this lock; nothing else in the crate reads the variable.
+    static TTL_ENV: Mutex<()> = Mutex::new(());
 
     #[test]
     fn a_minted_token_is_stored_only_as_a_hash() {
@@ -164,6 +169,7 @@ mod tests {
 
     #[test]
     fn expiry_is_milliseconds_past_the_moment_it_was_minted() {
+        let _guard = TTL_ENV.lock().unwrap();
         let (new, _) = mint("laptop", 1_000).expect("mint");
         assert_eq!(new.expires_at, 1_000 + ttl_secs() * 1000);
     }
@@ -182,8 +188,13 @@ mod tests {
                 name: "old".into(),
             },
             EnrollmentRecord {
-                expires_at: 150,
+                expires_at: 100,
                 hash: "sha256:b".into(),
+                name: "exactly-now".into(),
+            },
+            EnrollmentRecord {
+                expires_at: 150,
+                hash: "sha256:c".into(),
                 name: "new".into(),
             },
         ];
@@ -205,5 +216,97 @@ mod tests {
         assert!(encoded.contains("\"expires_at\":1"));
         let decoded: Vec<EnrollmentRecord> = serde_json::from_str(&encoded).expect("decode");
         assert_eq!(decoded, records);
+    }
+
+    #[test]
+    fn the_store_path_keeps_the_contract_shape() {
+        assert!(store_path().ends_with("ssh/enrollments.json"));
+    }
+
+    #[test]
+    fn load_reads_a_written_store_and_reports_missing_as_empty() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("enrollments.json");
+        assert_eq!(load(&path).unwrap(), Vec::new());
+
+        let records = vec![EnrollmentRecord {
+            expires_at: 1,
+            hash: "sha256:a".into(),
+            name: "laptop".into(),
+        }];
+        save(&path, &records).unwrap();
+        assert_eq!(load(&path).unwrap(), records);
+    }
+
+    // Garbage in the store must be an error, not a silent empty list - the
+    // empty case is reserved for "never written".
+    #[test]
+    fn load_rejects_garbage_as_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("enrollments.json");
+        std::fs::write(&path, "not json").unwrap();
+        assert!(load(&path).is_err());
+    }
+
+    // An unreadable path (its parent is a file) must be an error, not the
+    // empty list - only a *missing* store is "never written".
+    #[test]
+    fn load_rejects_an_unreadable_path_as_an_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        let path = parent.join("enrollments.json");
+        assert!(load(&path).is_err());
+    }
+
+    #[test]
+    fn save_fails_when_the_parent_is_a_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        std::fs::write(&parent, "file").unwrap();
+        let path = parent.join("enrollments.json");
+        assert!(save(&path, &[]).is_err());
+    }
+
+    #[test]
+    fn the_default_ttl_is_the_clamp_when_unset() {
+        let _guard = TTL_ENV.lock().unwrap();
+        unsafe { std::env::remove_var("COMPOSERY_SSH_ENROLLMENT_TTL") };
+        assert_eq!(ttl_secs(), DEFAULT_TTL_SECS);
+    }
+
+    #[test]
+    fn a_zero_ttl_is_refused_and_falls_back() {
+        let _guard = TTL_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_SSH_ENROLLMENT_TTL", "0") };
+        assert_eq!(ttl_secs(), DEFAULT_TTL_SECS);
+    }
+
+    #[test]
+    fn a_valid_ttl_is_used_untouched() {
+        let _guard = TTL_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_SSH_ENROLLMENT_TTL", "45") };
+        assert_eq!(ttl_secs(), 45);
+    }
+
+    #[test]
+    fn an_overlong_ttl_is_clamped_to_the_max() {
+        let _guard = TTL_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_SSH_ENROLLMENT_TTL", "99999") };
+        assert_eq!(ttl_secs(), MAX_TTL_SECS);
+    }
+
+    #[test]
+    fn an_unparseable_ttl_falls_back() {
+        let _guard = TTL_ENV.lock().unwrap();
+        unsafe { std::env::set_var("COMPOSERY_SSH_ENROLLMENT_TTL", "soon") };
+        assert_eq!(ttl_secs(), DEFAULT_TTL_SECS);
+    }
+
+    // The wall clock feeds expires_at; a mint that stamps 0 (or 1) milliseconds
+    // past the epoch would mint already-expired tokens forever.
+    #[test]
+    fn now_ms_is_the_epoch_wall_clock() {
+        assert!(now_ms() > 1_700_000_000_000, "now_ms returned {}", now_ms());
     }
 }

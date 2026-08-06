@@ -25,3 +25,18 @@ pub fn run(command: Command, json: bool) -> Result<()> {
         Command::Ssh(command) => ssh::run(command, json),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Dispatch must carry a failure out of whichever subcommand received it.
+    // The empty-name refusal is deterministic on any machine, daemon or none.
+    #[test]
+    fn run_propagates_subcommand_failures() {
+        let command = Command::Api(api::ApiCommand::Key(api::KeyCommand::Create {
+            name: String::new(),
+        }));
+        assert!(run(command, false).is_err());
+    }
+}

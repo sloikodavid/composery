@@ -107,7 +107,12 @@ describe("shared theme", () => {
 		const MIN_RAISE = 0.04;
 		const MAX_RAISE = 0.2;
 
-		for (const role of ["muted", "selected", "secondaryButton", "badge"])
+		for (const role of [
+			"muted",
+			"selected",
+			"secondaryButton",
+			"badge"
+		] as const)
 			for (const scheme of ["light", "dark"] as const)
 				expect(
 					share(
@@ -123,7 +128,7 @@ describe("shared theme", () => {
 			"tabHover",
 			"secondaryButton",
 			"badge"
-		])
+		] as const)
 			for (const scheme of ["light", "dark"] as const)
 				expect(
 					share(
@@ -159,7 +164,7 @@ describe("shared theme", () => {
 		// its surface rather than repainting it, and its alpha stays in the
 		// subtle band in both modes. A hover that became a solid repaint would
 		// fail the pole check; one that faded to nothing would fail the band.
-		for (const role of ["hover", "focus"]) {
+		for (const role of ["hover", "focus"] as const) {
 			for (const scheme of ["light", "dark"] as const) {
 				const value = BRAND_THEME[scheme][role];
 				expect(

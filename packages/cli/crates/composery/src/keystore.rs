@@ -341,4 +341,51 @@ mod tests {
         assert!(error.contains("real directory"));
         assert!(!outside.join("keys.json").exists());
     }
+
+    #[test]
+    fn the_store_path_keeps_the_contract_shape() {
+        assert!(store_path().ends_with("api/keys.json"));
+    }
+
+    // The prefix preview is what an operator uses to tell one key from another;
+    // a wrong length would truncate or leak the secret's start.
+    #[test]
+    fn the_key_prefix_is_the_prefix_only() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("api/keys.json");
+        let mut store = KeyStore::default();
+        let new = store.create("ci").unwrap();
+        save(&path, &store).unwrap();
+        assert_eq!(
+            new.record.prefix.len(),
+            KEY_PREFIX.len() + 8,
+            "prefix was {}",
+            new.record.prefix
+        );
+        assert!(new.secret.starts_with(&new.record.prefix));
+    }
+
+    // A wall clock that reports 0 (or 1) seconds past the epoch would stamp
+    // every key as created in 1970.
+    #[test]
+    fn keys_are_stamped_with_the_wall_clock() {
+        let mut store = KeyStore::default();
+        store.create("ci").unwrap();
+        assert!(
+            store.keys[0].created_at > 1_700_000_000,
+            "created_at was {}",
+            store.keys[0].created_at
+        );
+    }
+
+    // A store path whose parent is a file is an error, not a silent success -
+    // otherwise a typo'd volume path would look like a working key store.
+    #[test]
+    fn ensure_real_file_or_missing_rejects_an_unreachable_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("not-a-dir");
+        fs::write(&parent, "file").unwrap();
+        let path = parent.join("keys.json");
+        assert!(ensure_real_file_or_missing(&path).is_err());
+    }
 }

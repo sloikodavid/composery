@@ -31,8 +31,20 @@ function walk(dir: string): string[] {
 	const found: string[] = [];
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (
-			["node_modules", ".git", "upstream", "tmp", "build", "target", ".next", ".source", "dist", "coverage"].includes(entry.name)
-		) continue;
+			[
+				"node_modules",
+				".git",
+				"upstream",
+				"tmp",
+				"build",
+				"target",
+				".next",
+				".source",
+				"dist",
+				"coverage"
+			].includes(entry.name)
+		)
+			continue;
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) found.push(...walk(path));
 		else if (statSync(path).isFile()) found.push(path);
@@ -55,7 +67,7 @@ function patternToRegex(pattern: string): RegExp {
 // are read back, because the config is the artifact being checked.
 function namesDatasource(matchString: string, datasource: string): boolean {
 	const group = /datasource=\(\?<\w+>([^)]*)\)/.exec(matchString);
-	if (group) return group[1].split("|").includes(datasource);
+	if (group) return group[1]!.split("|").includes(datasource);
 	// The literal form is followed by `\s+...` (escaped whitespace) in the
 	// config's regex string, so the boundary is a backslash or whitespace.
 	return new RegExp(`datasource=${datasource}(\\\\|\\s|$)`).test(matchString);
@@ -84,12 +96,13 @@ describe("renovate custom managers", () => {
 		const orphans: { file: string; datasource: string }[] = [];
 		for (const file of repoFiles) {
 			if (file === "renovate.json") continue;
-			if (!/\.(ts|mjs|json|yaml|yml|sh)$/.test(file) && file !== "Dockerfile") continue;
+			if (!/\.(ts|mjs|json|yaml|yml|sh)$/.test(file) && file !== "Dockerfile")
+				continue;
 			const content = readFileSync(join(repoRoot, file), "utf8");
 			for (const match of content.matchAll(
 				/(?:#|\/\/)\s*renovate:\s*datasource=(\S+)\s+depName=\S+/g
 			)) {
-				const datasource = match[1];
+				const datasource = match[1]!;
 				const covering = managers.some(
 					(manager) =>
 						manager.managerFilePatterns.some((pattern) =>

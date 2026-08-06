@@ -116,3 +116,20 @@ pub fn run(command: SshCommand, json: bool) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The empty-name refusal happens inside mint, after the lock is taken but
+    // before anything is written, so run must return it rather than report
+    // success. On a machine with no /data volume the lock itself fails first,
+    // which is the same outcome for this assertion.
+    #[test]
+    fn run_propagates_command_failures() {
+        let command = SshCommand::Enroll {
+            name: String::new(),
+        };
+        assert!(run(command, false).is_err());
+    }
+}
