@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { Badge } from "@/components/base/badge";
 import { Button } from "@/components/base/button";
 import {
 	Dialog,
@@ -22,6 +21,11 @@ import {
 	SelectValue
 } from "@/components/base/select";
 import { Textarea } from "@/components/base/textarea";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger
+} from "@/components/base/tooltip";
 import type { RuntimeConfigField } from "@/convex/boxes/configuration";
 
 type StringField = Extract<RuntimeConfigField, { kind: "string" }>;
@@ -52,6 +56,29 @@ export type SecretIntent =
 
 export const KEEP_SECRET: SecretIntent = { action: "keep" };
 
+// A disabled control receives no pointer events, so the tooltip hangs off a
+// span around it. The span mirrors the control's own width behaviour - fixed-
+// width controls shrink-wrap, fill-width ones stretch under the same cap - so
+// hovering exactly what is greyed out, and nothing more, explains why.
+function DisabledTooltip({
+	children,
+	className,
+	reason
+}: {
+	children: ReactNode;
+	className: string;
+	reason: string;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger render={<span className={className} />}>
+				{children}
+			</TooltipTrigger>
+			<TooltipContent>{reason}</TooltipContent>
+		</Tooltip>
+	);
+}
+
 function FieldRow({
 	children,
 	error,
@@ -64,12 +91,7 @@ function FieldRow({
 	return (
 		<div className="space-y-2 py-4 first:pt-0 last:pb-0">
 			<div className="space-y-1">
-				<Label className="flex-wrap gap-x-2" htmlFor={field.key}>
-					{field.label}
-					<code className="font-mono text-xs font-normal text-muted-foreground">
-						{field.key}
-					</code>
-				</Label>
+				<Label htmlFor={field.key}>{field.key}</Label>
 				<p className="text-sm text-pretty text-muted-foreground">
 					{field.description}
 				</p>
@@ -109,7 +131,7 @@ function DangerConfirm({
 		<Dialog onOpenChange={changeOpen} open={open}>
 			<DialogContent>
 				<DialogHeader>
-					<DialogTitle>{field.label}</DialogTitle>
+					<DialogTitle>{field.key}</DialogTitle>
 					<DialogDescription>{field.description}</DialogDescription>
 				</DialogHeader>
 				<p className="text-sm">
@@ -146,6 +168,7 @@ function DangerConfirm({
 // a variable added to the allowlist renders here without this file changing.
 export function ConfigField({
 	disabled,
+	disabledReason,
 	error,
 	field,
 	onChange,
@@ -153,6 +176,11 @@ export function ConfigField({
 	value
 }: {
 	disabled: boolean;
+	// Why the box makes the field read-only, when it does. Shown as a tooltip
+	// on the disabled control; null means the control is merely disabled for a
+	// state the page already explains (a save in flight, a lock waiting on its
+	// own confirmation).
+	disabledReason: string | null;
 	error: string | null;
 	field: RuntimeConfigField;
 	onChange: (value: string) => void;
@@ -262,10 +290,26 @@ export function ConfigField({
 		);
 	}
 
+	const wrapClass =
+		field.kind === "boolean" || field.kind === "enum" || field.kind === "number"
+			? "inline-flex"
+			: field.maxLength >= TEXTAREA_MIN_LENGTH
+				? "min-w-0 flex-1"
+				: "min-w-0 flex-1 max-w-md";
+
+	const wrapped =
+		disabledReason && !locked ? (
+			<DisabledTooltip className={wrapClass} reason={disabledReason}>
+				{control}
+			</DisabledTooltip>
+		) : (
+			control
+		);
+
 	return (
 		<FieldRow error={error} field={field}>
 			<div className="flex flex-wrap items-center gap-2">
-				{control}
+				{wrapped}
 				{locked && !disabled ? (
 					<Button
 						onClick={() => setConfirmOpen(true)}
@@ -294,10 +338,11 @@ export function ConfigField({
 
 // One secret variable. The value is never rendered because the page is never
 // sent it - `get` blanks secrets - so the input starts empty whether or not one
-// is stored, and the badge is what says which. Typing replaces it; Clear is the
-// only way to remove it.
+// is stored, and the placeholder is what says which. Typing replaces it; Clear
+// is the only way to remove it.
 export function SecretField({
 	disabled,
+	disabledReason,
 	error,
 	field,
 	intent,
@@ -305,37 +350,48 @@ export function SecretField({
 	stored
 }: {
 	disabled: boolean;
+	disabledReason: string | null;
 	error: string | null;
 	field: StringField;
 	intent: SecretIntent;
 	onIntentChange: (intent: SecretIntent) => void;
 	stored: boolean;
 }) {
+	const input = (
+		<Input
+			autoCapitalize="none"
+			autoComplete="off"
+			className="max-w-md"
+			disabled={disabled || intent.action === "clear"}
+			id={field.key}
+			maxLength={field.maxLength}
+			onChange={(event) =>
+				onIntentChange(
+					event.target.value === ""
+						? KEEP_SECRET
+						: { action: "set", value: event.target.value }
+				)
+			}
+			placeholder={stored ? "Leave blank to keep it" : "Not set"}
+			spellCheck={false}
+			type="password"
+			value={intent.action === "set" ? intent.value : ""}
+		/>
+	);
+
 	return (
 		<FieldRow error={error} field={field}>
 			<div className="flex flex-wrap items-center gap-2">
-				<Input
-					autoCapitalize="none"
-					autoComplete="off"
-					className="max-w-md"
-					disabled={disabled || intent.action === "clear"}
-					id={field.key}
-					maxLength={field.maxLength}
-					onChange={(event) =>
-						onIntentChange(
-							event.target.value === ""
-								? KEEP_SECRET
-								: { action: "set", value: event.target.value }
-						)
-					}
-					placeholder={stored ? "Leave blank to keep it" : "Not set"}
-					spellCheck={false}
-					type="password"
-					value={intent.action === "set" ? intent.value : ""}
-				/>
-				<Badge variant={stored ? "success" : "outline"}>
-					{stored ? "Set" : "Not set"}
-				</Badge>
+				{disabledReason ? (
+					<DisabledTooltip
+						className="min-w-0 flex-1 max-w-md"
+						reason={disabledReason}
+					>
+						{input}
+					</DisabledTooltip>
+				) : (
+					input
+				)}
 				{stored && !disabled ? (
 					<Button
 						onClick={() =>

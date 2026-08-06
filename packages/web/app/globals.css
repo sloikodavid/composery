@@ -33,12 +33,16 @@
 	--color-button-foreground: var(--button-foreground);
 	--color-button-hover: var(--button-hover);
 	--color-button-active: var(--button-active);
+	--color-primary-button: var(--primary-button);
+	--color-primary-button-foreground: var(--primary-button-foreground);
+	--color-primary-button-hover: var(--primary-button-hover);
+	--color-primary-button-active: var(--primary-button-active);
 	--color-secondary-button: var(--secondary-button);
 	--color-secondary-button-foreground: var(--secondary-button-foreground);
 	--color-secondary-button-hover: var(--secondary-button-hover);
 	--color-secondary-button-active: var(--secondary-button-active);
-	--color-ghost-hover: var(--ghost-hover);
-	--color-ghost-active: var(--ghost-active);
+	--color-hover: var(--hover);
+	--color-focus: var(--focus);
 	--color-badge: var(--badge);
 	--color-badge-foreground: var(--badge-foreground);
 	--color-badge-hover: var(--badge-hover);

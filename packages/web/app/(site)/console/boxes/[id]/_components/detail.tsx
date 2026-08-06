@@ -109,7 +109,7 @@ function AuditTable<Row extends AuditRow>({
 
 	return (
 		<>
-			<div className="overflow-hidden rounded-2xl border border-border bg-card">
+			<div className="overflow-hidden rounded-2xl bg-card">
 				<Table
 					cols={
 						status

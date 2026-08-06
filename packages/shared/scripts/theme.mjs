@@ -790,6 +790,11 @@ for (const scheme of ["light", "dark"]) {
 		["popover text", colors.popoverForeground, colors.popover],
 		["button text", colors.buttonForeground, colors.button],
 		[
+			"primary button text",
+			colors.primaryButtonForeground,
+			colors.primaryButton
+		],
+		[
 			"secondary button text",
 			colors.secondaryButtonForeground,
 			colors.secondaryButton

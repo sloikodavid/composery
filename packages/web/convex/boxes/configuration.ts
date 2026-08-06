@@ -37,12 +37,11 @@
 // actually happens and a typed confirmation, which is the honest treatment.
 
 // What every field has, whatever it holds. Written once: the four variants below
-// had their own copies of `key`/`label`/`description`, and `boolean` had two
+// had their own copies of `key`/`description`, and `boolean` had two
 // variants that differed only by whether `dangerous` was set - a second member
 // for a property the string fields already carried as optional.
 type RuntimeConfigFieldBase = {
 	key: string;
-	label: string;
 	description: string;
 	// Set where a wrong value is dangerous rather than merely wrong. The
 	// interface requires a typed confirmation for these; nothing here changes how
@@ -67,7 +66,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_AUTH",
-		label: "Disable sign-in",
 		description:
 			"Serves the editor with no sign-in at all. Anyone who reaches this box's address gets a root-capable terminal, your files, and any credentials on it.",
 		dangerous: true
@@ -75,39 +73,33 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_FILE_DOWNLOADS",
-		label: "Block file downloads",
 		description: "Stops the editor offering browser file downloads."
 	},
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_FILE_UPLOADS",
-		label: "Block file uploads",
 		description: "Stops the editor accepting browser file uploads."
 	},
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_PROXY",
-		label: "Disable the port proxy",
 		description:
 			"Turns off the routes that expose ports running inside the box."
 	},
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_API",
-		label: "Disable the automation API",
 		description:
 			"Every API endpoint returns 404. The API is already unreachable until you mint a key."
 	},
 	{
 		kind: "boolean",
 		key: "COMPOSERY_DISABLE_GETTING_STARTED_OVERRIDE",
-		label: "Disable the Getting Started override",
 		description: "Restores the editor's own Getting Started page."
 	},
 	{
 		kind: "enum",
 		key: "COMPOSERY_LOG_LEVEL",
-		label: "Log level",
 		description: "How much the editor writes to its log.",
 		options: [
 			{ label: "Trace", value: "trace" },
@@ -120,7 +112,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "enum",
 		key: "COMPOSERY_SESSION_LIFETIME",
-		label: "Sign-in frequency",
 		description:
 			"How long a sign-in remains valid. The default is 8 hours. Every browser session asks again after the browser closes, with a 30-day safety cap while it remains open.",
 		options: [
@@ -134,7 +125,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "COMPOSERY_PROXY_URI",
-		label: "Port proxy address",
 		description:
 			"Template for the links shown in the Ports panel, for example https://{{port}}.example.com. The built-in path proxy works without this.",
 		maxLength: 512
@@ -142,7 +132,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "COMPOSERY_EXTENSIONS_GALLERY",
-		label: "Extension gallery",
 		description:
 			"Points the editor at a different extension gallery, in the JSON shape the editor's product configuration expects.",
 		maxLength: MAX_VALUE_LENGTH
@@ -150,7 +139,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "COMPOSERY_GITHUB_TOKEN",
-		label: "GitHub token",
 		description:
 			"Supplies the editor's GitHub authentication token. The box removes it from the environment of processes it starts.",
 		maxLength: 512,
@@ -159,7 +147,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "COMPOSERY_COOKIE_SUFFIX",
-		label: "Cookie suffix",
 		description:
 			"Distinguishes this box's session cookie when several instances share a parent domain.",
 		maxLength: 128
@@ -167,7 +154,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_RECONNECTION_GRACE_TIME",
-		label: "Reconnection grace time",
 		description:
 			"Seconds a disconnected session is held open before its terminals are discarded.",
 		min: 0,
@@ -176,7 +162,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_IDLE_TIMEOUT_SECONDS",
-		label: "Idle timeout",
 		description:
 			"Asks the editor to exit after this many idle seconds. It is restarted immediately, so this drops sessions rather than freeing the box.",
 		min: 0,
@@ -185,14 +170,12 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "LANG",
-		label: "Locale",
 		description: "Overrides the box's locale. Defaults to C.UTF-8.",
 		maxLength: 64
 	},
 	{
 		kind: "string",
 		key: "HTTPS_PROXY",
-		label: "Outbound HTTPS proxy",
 		description:
 			"Sends the box's outbound HTTPS requests through a proxy you run.",
 		maxLength: 512
@@ -200,7 +183,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "string",
 		key: "HTTP_PROXY",
-		label: "Outbound HTTP proxy",
 		description:
 			"Sends the box's outbound HTTP requests through a proxy you run.",
 		maxLength: 512
@@ -208,7 +190,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_TERMINAL_TIMEOUT",
-		label: "API terminal wait timeout",
 		description:
 			"Seconds a one-shot terminal wait may run before it is stopped.",
 		min: 1,
@@ -217,7 +198,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_TERMINAL_MAX_OUTPUT",
-		label: "API terminal output cap",
 		description:
 			"Bytes of raw merged pty output a one-shot terminal wait returns before it is truncated.",
 		min: 1,
@@ -226,7 +206,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_RATE_RPS",
-		label: "API requests per second",
 		description: "Sustained API requests per second, per key.",
 		min: 1,
 		max: 1000
@@ -234,7 +213,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_RATE_BURST",
-		label: "API burst capacity",
 		description: "API requests a key may burst above the sustained rate.",
 		min: 1,
 		max: 10_000
@@ -242,7 +220,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_MAX_SESSIONS",
-		label: "API terminal streams",
 		description:
 			"One-shot waits and WebSocket terminal attachments that may run at once, per key.",
 		min: 1,
@@ -251,7 +228,6 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 	{
 		kind: "number",
 		key: "COMPOSERY_API_AUTH_FAIL_PER_MIN",
-		label: "API failed-auth limit",
 		description:
 			"Failed API authentication attempts per minute, per address, before throttling.",
 		min: 1,

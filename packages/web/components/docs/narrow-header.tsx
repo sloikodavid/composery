@@ -40,9 +40,10 @@ const FUMADOCS_GHOST_ICON = fdButtonVariants({
 // to read as the same component as the docs' own narrow header (fumadocs'
 // `#nd-subnav`, in dist/layouts/docs/slots/header.js), since the two alternate
 // as you move between the marketing pages and the docs: same h-14, same
-// px-2.5, same border and translucent backdrop, same Logo, and the same ghost
-// icon button below. A patch pulls #nd-subnav's `ps-4 pe-2.5` to `px-2.5` to
-// close the last gap - keep the two in step when either moves.
+// px-2.5, same solid background, same Logo, and the same ghost icon button
+// below. A patch pulls #nd-subnav's `ps-4 pe-2.5` to `px-2.5` to close the last
+// gap - keep the two in step when either moves. Neither draws a border or a
+// blur; the subnav's border-b and backdrop-blur-sm are stripped in fumadocs.css.
 //
 // SidebarProvider owns the drawer's open state, the responsive drawer/full
 // switch (collapses on resize to desktop), and close-on-navigation;
@@ -61,7 +62,7 @@ export function FumadocsNarrowHeader() {
 		<Link
 			data-active={pathname.startsWith(link.href)}
 			className={cn(
-				"relative flex flex-row items-center gap-2 rounded-lg p-2 text-start text-fd-muted-foreground wrap-anywhere transition-colors hover:bg-[var(--ghost-hover)] hover:text-fd-foreground hover:transition-none data-[active=true]:bg-[var(--ghost-active)] data-[active=true]:text-fd-foreground data-[active=true]:hover:transition-colors"
+				"relative flex flex-row items-center gap-2 rounded-lg p-2 text-start text-fd-muted-foreground wrap-anywhere transition-colors hover:bg-[var(--hover)] hover:text-fd-foreground hover:transition-none data-[active=true]:bg-selected data-[active=true]:text-selected-foreground data-[active=true]:hover:transition-colors"
 			)}
 			href={link.href}
 			key={link.href}
@@ -73,7 +74,7 @@ export function FumadocsNarrowHeader() {
 	return (
 		<NextProvider>
 			<SidebarProvider>
-				<div className="flex h-14 items-center border-b border-border bg-header/80 text-header-foreground px-2.5 backdrop-blur-sm md:hidden">
+				<div className="flex h-14 items-center bg-header px-2.5 text-header-foreground md:hidden">
 					<Logo />
 					<div className="flex-1" />
 					<SidebarTrigger
@@ -84,8 +85,8 @@ export function FumadocsNarrowHeader() {
 					</SidebarTrigger>
 				</div>
 
-				<SidebarDrawerOverlay className="fixed z-40 inset-0 backdrop-blur-xs data-[state=open]:animate-fd-fade-in data-[state=closed]:animate-fd-fade-out" />
-				<SidebarDrawerContent className="fixed text-[0.9375rem] flex flex-col shadow-lg border-s inset-e-0 inset-y-0 w-[85%] max-w-[380px] z-40 bg-sidebar text-sidebar-foreground data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
+				<SidebarDrawerOverlay className="fixed z-40 inset-0 bg-overlay data-[state=open]:animate-fd-fade-in data-[state=closed]:animate-fd-fade-out" />
+				<SidebarDrawerContent className="fixed text-[0.9375rem] flex flex-col shadow-lg inset-e-0 inset-y-0 w-[85%] max-w-[380px] z-40 bg-sidebar text-sidebar-foreground data-[state=open]:animate-fd-sidebar-in data-[state=closed]:animate-fd-sidebar-out">
 					<div className="flex flex-col gap-3 p-4 pb-2">
 						<div className="flex items-center gap-1.5 text-fd-muted-foreground">
 							<div className="flex flex-1">

@@ -8,11 +8,15 @@ import { type BoxStatus } from "@/convex/model/box/status";
 import type { BoxPlan, SnapshotSplit } from "@/convex/model/box/plan";
 
 export function BoxSnapshots({
+	onOpenChange,
+	open,
 	plan,
 	slug,
 	split,
 	status
 }: {
+	onOpenChange?: (open: boolean) => void;
+	open?: boolean;
 	plan: BoxPlan;
 	slug: string;
 	split: SnapshotSplit;
@@ -29,9 +33,11 @@ export function BoxSnapshots({
 			canRestore={isOperationAllowed(status, "restore")}
 			canTake={isOperationAllowed(status, "snapshot")}
 			onDelete={(id) => deleteSnapshot({ snapshotId: id })}
+			onOpenChange={onOpenChange}
 			onRestore={(id) => restoreSnapshot({ snapshotId: id })}
 			onSplitChange={(manualCap) => setSnapshotSplit({ manualCap, slug })}
 			onTake={() => createSnapshot({ slug })}
+			open={open}
 			plan={plan}
 			split={split}
 			snapshots={snapshots}

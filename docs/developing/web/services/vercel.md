@@ -97,19 +97,20 @@ deploy log must name the production Convex URL; if it names the deployment that
 local `.env.local` calls `CONVEX_DEPLOYMENT`, the wrong key was pasted.
 
 The repository-owned build command runs `pnpm env:deploy` first. A name absent
-from `.env.example.next.prod` blocks the entire Vercel and Convex deployment. An
-additional application name is logged as drift and the deployment continues.
+from `.env.example.next.prod` blocks the entire Vercel and Convex deployment.
 The check enumerates properties only: it never reads or prints values, and an
 empty value counts as present.
 
-Vercel exposes configured variables in the same process namespace as documented
-Vercel system variables and the build container's own names. Exact project
-names cannot be distinguished from that merged namespace without a separately
-authenticated Vercel API request, so the
-check excludes Vercel-prefixed and standard Node/package-manager/build names
-before reporting additions. A future platform-injected name may therefore appear
-as non-blocking drift until that infrastructure class is known; it can
-never make a missing required name pass.
+The Vercel plane checks the blocking direction only. Vercel exposes configured
+variables in the same process namespace as its system variables and the build
+container's own names, and no check can split that merged namespace without a
+separately authenticated Vercel API request. The injected names also cannot be
+configured away, so a reported extra would be noise nobody can act on. The
+Convex plane - read with the same `CONVEX_DEPLOY_KEY`, through
+`convex env list --names-only` - reports both directions: a missing example
+name blocks, and an additional name is logged as drift the dashboard can act
+on, because every Convex name is set by hand there. Neither check reads or
+prints values.
 
 ## Analytics & privacy
 

@@ -244,6 +244,8 @@ file in the overlay.
   CLA.md
   IMAGE_RELEASE.md
   PULL_REQUEST_TEMPLATE.md
+.opencode/
+  .gitignore
 .vscode/
   extensions.json
   launch.json
@@ -670,6 +672,7 @@ packages/
               box-actions.tsx
               box-detail.tsx
               box-snapshots.tsx
+              more-menu.tsx
             configuration/
               _components/
                 box-configuration.tsx
@@ -786,6 +789,7 @@ packages/
         sonner.tsx
         table.tsx
         textarea.tsx
+        tooltip.tsx
       box/
         actions-bar.tsx
         agent-stack.tsx
@@ -1420,6 +1424,7 @@ Dockerfile
 eslint.config.mjs
 knip.jsonc
 LICENSE
+opencode.json
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
@@ -624,12 +624,12 @@
 				cursor: pointer;
 			}
 			.web-nav button:hover {
-				background: var(--ghost-hover);
+				background: var(--hover);
 				color: var(--foreground);
 			}
 			.web-nav button.current {
-				background: var(--ghost-active);
-				color: var(--foreground);
+				background: var(--selected);
+				color: var(--selected-foreground);
 			}
 			.web-account {
 				display: flex;
@@ -923,7 +923,7 @@
 				border-bottom: 0;
 			}
 			.box-row:hover {
-				background: var(--ghost-hover);
+				background: var(--hover);
 			}
 			.box-name {
 				font-weight: 600;
@@ -2054,7 +2054,7 @@
 					<nav class="web-nav" aria-label="Website pages">
 						<button
 							data-go-view="boxes"
-							data-token="web.ghostHover web.ghostActive"
+							data-token="web.hover web.selected"
 							type="button"
 						>
 							Boxes
@@ -2087,7 +2087,7 @@
 					class="web-footer"
 					data-token="web.footer web.footerForeground web.border"
 				>
-					<span>© 2026 Composery</span>
+					<span>Â© 2026 Composery</span>
 					<nav><span>Docs</span><span>Privacy</span><span>Terms</span></nav>
 				</footer>
 			</div>
@@ -2511,7 +2511,7 @@
 								class="web-card-description"
 								data-token="web.mutedForeground"
 							>
-								Composery 0.1.0 · Running in Dublin
+								Composery 0.1.0 Â· Running in Dublin
 							</div>
 						</div>
 						<span class="web-status web-success" data-token="web.success"
@@ -2606,7 +2606,7 @@
 								class="web-card-description"
 								data-token="web.mutedForeground"
 							>
-								Running · Dublin, Ireland
+								Running Â· Dublin, Ireland
 							</div>
 						</div>
 					</div>
@@ -2824,7 +2824,7 @@
 						<i class="codicon codicon-warning" aria-hidden="true"></i>
 						2
 					</span>
-					<span class="right">Ln 18, Col 27　UTF-8　TypeScript</span>
+					<span class="right">Ln 18, Col 27ã€€UTF-8ã€€TypeScript</span>
 				</footer>
 			</div>
 		</template>
@@ -2941,7 +2941,7 @@
 							class="ide-debug-status"
 							data-token="ide.debugStatus ide.debugStatusForeground"
 						>
-							Paused on breakpoint · localhost:7331
+							Paused on breakpoint Â· localhost:7331
 						</div>
 					</section>
 				</div>
@@ -2979,7 +2979,7 @@
 					<article class="ide-document" data-token="ide.editor ide.foreground">
 						<h2>Tuesday, 28 July</h2>
 						<p>
-							<b>Money</b> €4,210 invoiced this month. Two payments landed
+							<b>Money</b> â‚¬4,210 invoiced this month. Two payments landed
 							overnight.
 						</p>
 						<h3>Needs you (3)</h3>
@@ -3013,9 +3013,9 @@
 					</div>
 					<div class="ide-terminal" data-token="ide.panel ide.foreground">
 						<div><b>Claude Code</b> <span class="dim">v2.1.207</span></div>
-						<div class="dim">Fable 5 · Claude Pro</div>
+						<div class="dim">Fable 5 Â· Claude Pro</div>
 						<br />
-						<div>› Flag any invoice more than five days overdue.</div>
+						<div>â€º Flag any invoice more than five days overdue.</div>
 						<br />
 						<div class="ide-terminal-status">
 							<i
@@ -3033,8 +3033,8 @@
 								data-token="web.info"
 								aria-hidden="true"
 							></i>
-							Working…
-							<span class="dim">29s · 811 tokens</span>
+							Workingâ€¦
+							<span class="dim">29s Â· 811 tokens</span>
 						</div>
 					</div>
 				</section>
@@ -3077,7 +3077,7 @@
 					class="ide-breadcrumbs"
 					data-token="ide.breadcrumb ide.breadcrumbForeground"
 				>
-					packages › shared › scripts › colors ›
+					packages â€º shared â€º scripts â€º colors â€º
 					<span class="syn-function" data-token="ide.function"
 						>paintPreview</span
 					>
@@ -3355,7 +3355,7 @@
 								><span class="syn-punctuation" data-token="ide.punctuation"
 									>&gt;</span
 								><span class="editor-whitespace" data-token="ide.whitespace"
-									>···</span
+									>Â·Â·Â·</span
 								></span
 							>
 						</div>
@@ -3484,8 +3484,8 @@
 			<div class="ide-widget-stage" data-token="ide.editor">
 				<div class="widget-code" data-token="ide.mutedForeground">
 					export const theme = {<br />
-					　background: "#ffffff",<br />
-					　foreground: "#000000"<br />
+					ã€€background: "#ffffff",<br />
+					ã€€foreground: "#000000"<br />
 					};
 				</div>
 				<div
@@ -3965,8 +3965,8 @@
 				[
 					"Actions",
 					[
-						["web", "ghostHover", "Ghost hover"],
-						["web", "ghostActive", "Ghost pressed"],
+						["web", "hover", "Hover"],
+						["web", "focus", "Focus"],
 						["web", "link", "Link"],
 						["web", "control", "Native control accent"],
 						["ide", "link", "Link"]
@@ -4548,8 +4548,8 @@
 				const web = [...tokens].filter((token) => token.startsWith("web."));
 				const ide = [...tokens].filter((token) => token.startsWith("ide."));
 				if (area === "ide")
-					return `${ide.length} IDE roles · ${FEATURES.length} theme options · ${web.length} shared status roles`;
-				return `${web.length} web roles · every role has a reference state`;
+					return `${ide.length} IDE roles Â· ${FEATURES.length} theme options Â· ${web.length} shared status roles`;
+				return `${web.length} web roles Â· every role has a reference state`;
 			}
 
 			function render() {
@@ -4632,7 +4632,7 @@
 				const save = document.querySelector("#save");
 				save.disabled = true;
 				status.className = "";
-				status.textContent = "Saving…";
+				status.textContent = "Savingâ€¦";
 				const response = await fetch("/theme", {
 					method: "PUT",
 					headers: { "content-type": "application/json" },

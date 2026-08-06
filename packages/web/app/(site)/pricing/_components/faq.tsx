@@ -40,16 +40,6 @@ const FAQ: { question: string; answer: string }[] = [
 			"Yes. Anything you run on a port shows up in the Ports panel and opens at your box URL under /proxy/3000/ - signed in as you, not open to the world. You can also reach any port privately over SSH with a tunnel: ssh -L 5432:localhost:5432 your-box. Ports are not open to the internet: the box accepts HTTPS on its own domain and SSH, and nothing else."
 	},
 	{
-		question: "Can I connect Claude or ChatGPT to it?",
-		answer:
-			"Yes. Your box speaks SSH, so Claude Desktop and ChatGPT Desktop can work inside it - your files, your terminal, your running services. Copy the setup prompt from the box page, paste it into either one, and it connects itself. The agent keeps running when you close the tab."
-	},
-	{
-		question: "Can I use it like a normal server over SSH?",
-		answer:
-			"Yes. A shell, scp and sftp, rsync, git push, and tunnels all work, and desktop editors can open it over SSH. Access is granted per device and can be revoked one device at a time."
-	},
-	{
 		question: "What does it take to self-host?",
 		answer:
 			"Not much - a machine that runs Docker and a volume to keep your data on. The repo ships ready-made setups for Fly, Render, Railway, Kubernetes, and any VPS, with even more platforms documented."
@@ -62,19 +52,17 @@ export function Faq() {
 			<h2 className="font-heading text-2xl font-medium tracking-tight text-foreground">
 				Common questions
 			</h2>
-			<div className="divide-y divide-border border-t border-border">
-				{FAQ.map(({ question, answer }) => (
-					<details className="disclosure group" key={question}>
-						<summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-sm font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
-							{question}
-							<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-						</summary>
-						<p className="pb-4 text-sm leading-7 text-muted-foreground">
-							{answer}
-						</p>
-					</details>
-				))}
-			</div>
+			{FAQ.map(({ question, answer }) => (
+				<details className="disclosure group" key={question}>
+					<summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-2 text-sm font-medium text-foreground select-none [&::-webkit-details-marker]:hidden">
+						{question}
+						<ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+					</summary>
+					<p className="pb-3 text-sm leading-7 text-muted-foreground">
+						{answer}
+					</p>
+				</details>
+			))}
 		</section>
 	);
 }

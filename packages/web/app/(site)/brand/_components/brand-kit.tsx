@@ -102,7 +102,7 @@ export function BrandKit() {
 				<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 					{BRAND_PALETTE.map(({ hex, label }) => (
 						<button
-							className="flex items-center gap-3 rounded-2xl border border-border p-3 text-start transition-colors outline-none hover:bg-[var(--ghost-hover)] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
+							className="flex items-center gap-3 rounded-2xl border border-border p-3 text-start transition-colors outline-none hover:bg-hover focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring"
 							key={hex + label}
 							onClick={() => copyHex(hex)}
 							type="button"

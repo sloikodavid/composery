@@ -62,7 +62,7 @@ export function FlagsTable({
 	const hasCurrentFlags = flags?.some((flag) => !flag.dismissedAt) ?? false;
 
 	return (
-		<div className="overflow-hidden rounded-2xl border border-border bg-card">
+		<div className="overflow-hidden rounded-2xl bg-card">
 			<Table
 				cols={
 					showBox
@@ -112,7 +112,7 @@ export function FlagsTable({
 					<TableBody className="page-fade-in">
 						{sortedRows.map((flag) => (
 							<TableRow
-								className="[&>td]:align-top has-[[data-link]:hover]:bg-ghost-hover"
+								className="[&>td]:align-top has-[[data-link]:hover]:bg-hover"
 								key={flag.id}
 							>
 								<TableCell className="pl-4">

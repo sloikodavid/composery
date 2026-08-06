@@ -7,12 +7,10 @@ export type PlaneResult = {
 
 export function envNames(contents: string, source: string): Set<string>;
 export function nameLines(contents: string, source: string): Set<string>;
-export function isBuildName(name: string): boolean;
 
 export function compareNames(options: {
 	expected: Set<string>;
 	actual: Set<string>;
-	ignore?: (name: string) => boolean;
 }): Pick<PlaneResult, "missing" | "extra">;
 
 export function listConvexNames(options?: {

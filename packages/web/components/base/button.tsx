@@ -15,13 +15,13 @@ const buttonVariants = cva(
 		variants: {
 			variant: {
 				default:
-					"bg-button text-button-foreground hover:bg-button-hover active:bg-button-active",
+					"bg-primary-button text-primary-button-foreground hover:bg-primary-button-hover active:bg-primary-button-active",
 				outline:
 					"border-border bg-button text-button-foreground hover:bg-button-hover active:bg-button-active aria-expanded:bg-button-active aria-expanded:text-button-foreground",
 				secondary:
 					"bg-secondary-button text-secondary-button-foreground hover:bg-secondary-button-hover active:bg-secondary-button-active aria-expanded:bg-secondary-button-active aria-expanded:text-secondary-button-foreground",
 				ghost:
-					"hover:bg-ghost-hover hover:text-foreground focus-visible:bg-ghost-active active:bg-ghost-active aria-expanded:bg-ghost-active aria-expanded:text-foreground",
+					"hover:bg-hover hover:text-foreground focus-visible:bg-focus active:bg-focus aria-expanded:bg-focus aria-expanded:text-foreground",
 				destructive:
 					"bg-destructive/10 text-destructive hover:bg-destructive/16 active:bg-destructive/24 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/18 dark:hover:bg-destructive/26 dark:active:bg-destructive/34 dark:focus-visible:ring-destructive/40",
 				warning:

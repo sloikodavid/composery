@@ -114,3 +114,16 @@ index c1e84f1..9e13e8e 100644
  		].filter((v) => !!v);
  	}, [
  		githubUrl,
+diff --git a/dist/layouts/docs/slots/sidebar.js b/dist/layouts/docs/slots/sidebar.js
+index f9f6d5ae..ac06dd3b 100644
+--- a/dist/layouts/docs/slots/sidebar.js
++++ b/dist/layouts/docs/slots/sidebar.js
+@@ -155,7 +155,7 @@ function SidebarContent({ ref: refProp, className, children, ...props }) {
+ 			ref: mergeRefs(ref, refProp, asideRef),
+ 			"data-collapsed": collapsed,
+ 			"data-hovered": collapsed && hovered,
+-			className: cn("absolute flex flex-col w-full inset-s-0 inset-y-0 items-end bg-fd-card text-sm border-e duration-250 *:w-(--fd-sidebar-width)", collapsed && ["inset-y-2 rounded-xl transition-transform border w-(--fd-sidebar-width)", hovered ? "shadow-lg translate-x-2 rtl:-translate-x-2" : "-translate-x-(--fd-sidebar-width) rtl:translate-x-full"], ref.current && ref.current.getAttribute("data-collapsed") === "true" !== collapsed && "transition-[width,inset-block,translate,background-color]", className),
++			className: cn("absolute flex flex-col w-full inset-s-0 inset-y-0 items-end bg-fd-card text-sm duration-250 *:w-(--fd-sidebar-width)", collapsed && ["inset-y-2 rounded-xl transition-transform border w-(--fd-sidebar-width)", hovered ? "shadow-lg translate-x-2 rtl:-translate-x-2" : "-translate-x-(--fd-sidebar-width) rtl:translate-x-full"], ref.current && ref.current.getAttribute("data-collapsed") === "true" !== collapsed && "transition-[width,inset-block,translate,background-color]", className),
+ 			...props,
+ 			...rest,
+ 			children

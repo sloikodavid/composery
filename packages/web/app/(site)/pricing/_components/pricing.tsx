@@ -10,6 +10,7 @@ import {
 	HistoryIcon,
 	type LucideIcon,
 	MonitorCogIcon,
+	BookOpenIcon,
 	ShieldCheckIcon,
 	WalletIcon
 } from "lucide-react";
@@ -17,6 +18,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { AnimatedIconButton } from "@/components/animated-icon";
 import { buttonVariants } from "@/components/base/button";
+import { Card } from "@/components/base/card";
 import { Faq } from "./faq";
 import { GitHubLogo } from "@/components/icons/github-logo";
 import { PageTemplate } from "@/components/page-template";
@@ -51,7 +53,8 @@ const HOSTED_FEATURES: Feature[] = [
 const SELF_HOSTED_FEATURES: Feature[] = [
 	{ icon: ContainerIcon, text: "Runs anywhere, just like n8n" },
 	{ icon: FileSearchCornerIcon, text: "Fully open-source, no lock-in" },
-	{ icon: MonitorCogIcon, text: "Platform-specific hosting templates" },
+	{ icon: BookOpenIcon, text: "Documentation available" },
+	{ icon: MonitorCogIcon, text: "Platform templates available" },
 	{ icon: AngryIcon, text: "You might get a headache" }
 ];
 
@@ -156,14 +159,19 @@ function PlanCard({
 	price: string | null;
 }) {
 	return (
-		<div className="flex flex-col rounded-lg border border-border p-7 sm:p-8">
-			<h3 className="font-heading text-2xl font-medium tracking-tight text-foreground">
-				{name}
-			</h3>
-			<p className="mt-1 text-sm text-muted-foreground">{descriptor}</p>
+		<Card className="p-7 sm:p-8">
+			{/* The name and its descriptor are one block: the card's own gap would
+			    otherwise sit between them, and a title and its subtitle belong
+			    together. */}
+			<div className="space-y-1">
+				<h3 className="font-heading text-2xl font-medium tracking-tight text-foreground">
+					{name}
+				</h3>
+				<p className="text-sm text-muted-foreground">{descriptor}</p>
+			</div>
 
 			{price ? (
-				<div className="mt-6 flex items-baseline gap-1.5">
+				<div className="flex items-baseline gap-1.5">
 					<span className="font-heading text-5xl font-medium tracking-tight text-foreground tabular-nums">
 						{price}
 					</span>
@@ -173,12 +181,12 @@ function PlanCard({
 				</div>
 			) : null}
 
-			<div className="mt-6">{children}</div>
+			<div>{children}</div>
 
-			<div className="mt-7 border-t border-border pt-7">
+			<div>
 				<FeatureList features={features} />
 			</div>
-		</div>
+		</Card>
 	);
 }
 
@@ -235,6 +243,7 @@ export function Pricing({
 								icon="arrow-right"
 								onClick={() => setCheckoutPlan(plan)}
 								size="lg"
+								variant={plan === "pro" ? undefined : "outline"}
 							>
 								Get started
 							</AnimatedIconButton>

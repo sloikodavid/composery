@@ -54,7 +54,7 @@ function Tile({
 	value?: string;
 }) {
 	return (
-		<div className="rounded-2xl border border-border bg-card p-4">
+		<div className="rounded-2xl bg-card p-4">
 			<p className="text-sm text-muted-foreground">{label}</p>
 			<div className="mt-1 flex h-8 items-center">
 				{value === undefined ? (

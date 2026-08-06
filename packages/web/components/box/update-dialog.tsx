@@ -120,7 +120,7 @@ export function UpdateDialog({
 						</DialogDescription>
 					</DialogHeader>
 
-					<div className="divide-y divide-border overflow-hidden rounded-2xl border border-border">
+					<div className="overflow-hidden rounded-2xl">
 						{versions.map(([label, version]) => (
 							<div
 								className="flex items-baseline justify-between gap-3 px-3 py-2.5"

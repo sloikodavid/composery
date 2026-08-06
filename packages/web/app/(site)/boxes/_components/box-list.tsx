@@ -45,7 +45,7 @@ export function BoxList() {
 			    columns don't fit a phone. These rows read as a table from sm up -
 			    header, fixed columns, aligned - and collapse to a list below it,
 			    where the created date moves under the slug. */}
-			<div className="overflow-hidden rounded-2xl border border-border bg-card text-sm">
+			<div className="overflow-hidden rounded-2xl bg-card text-sm">
 				<div className="hidden h-10 items-center gap-3 border-b border-border px-4 font-medium text-foreground sm:flex">
 					<span className="flex-1">Slug</span>
 					<span className={DATE_COL}>Created</span>
@@ -58,13 +58,13 @@ export function BoxList() {
 						<LoaderIcon className="size-5 animate-spin text-muted-foreground" />
 					</div>
 				) : boxes.length > 0 ? (
-					<div className="page-fade-in divide-y divide-border">
+					<div className="page-fade-in">
 						{boxes.map((box) => (
 							/* The slug link fills the free space, and hovering it tints the
 							   whole row - but hovering anywhere else does nothing, so a
 							   highlighted row always means "click goes to the box". */
 							<div
-								className="flex h-14 items-center gap-3 px-4 has-[[data-link]:hover]:bg-ghost-hover"
+								className="flex h-14 items-center gap-3 px-4 transition-colors has-[[data-link]:hover]:bg-hover"
 								key={box.id}
 							>
 								{/* self-stretch, so the link is the full height of its column

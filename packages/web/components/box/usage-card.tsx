@@ -88,7 +88,7 @@ export function UsageCard({
 	return (
 		<div
 			className={cn(
-				"rounded-2xl border border-border bg-card px-4 py-3.5",
+				"rounded-2xl bg-card px-4 py-3.5",
 				className
 			)}
 		>

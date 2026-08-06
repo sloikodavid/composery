@@ -23,9 +23,9 @@ export function isOperationInFlight(operation: LastOperation | null) {
 	return operation?.status === "pending" || operation?.status === "running";
 }
 
-// One row of the notice stack. The border, the tone glyph and the muted text
-// were written out at four call sites, which is why two of them had drifted to a
-// different padding.
+// One row of the notice stack. The tone glyph and the muted text were written
+// out at four call sites, which is why two of them had drifted to a different
+// padding.
 export function Notice({
 	children,
 	muted = true,
@@ -38,7 +38,7 @@ export function Notice({
 	tone: Tone;
 }) {
 	return (
-		<div className="flex items-start gap-3 rounded-2xl border border-border px-3 py-2.5">
+		<div className="flex items-start gap-3 rounded-2xl bg-muted/50 px-3 py-2.5">
 			<ToneIcon className="mt-0.5" tone={tone} />
 			<div
 				className={`min-w-0 flex-1 text-sm${muted ? " text-muted-foreground" : ""}`}

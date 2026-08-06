@@ -141,7 +141,9 @@ version:
 Environment drift is reported inside those deploys, with no separate audit
 login. Before either provider changes, the Vercel build compares both live name
 sets with their production examples. A missing example name blocks the whole
-deployment; an additional name is logged as drift and the deployment continues.
-Neither check requests, compares, or prints configured values, and an empty
-value counts as present. Existing explicit semantic checks can still reject an
+deployment. Only the Convex plane logs additional names as drift - every Convex
+name is set by hand, so an addition is actionable; the Vercel plane cannot split
+its merged build namespace, so it checks presence only. Neither check requests,
+compares, or prints configured values, and an empty value counts as present.
+Existing explicit semantic checks can still reject an
 empty value, as Convex auth does for `CLERK_FRONTEND_API_URL`.

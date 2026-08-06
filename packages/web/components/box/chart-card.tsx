@@ -27,7 +27,7 @@ export function ChartCard({
 	return (
 		<div
 			className={cn(
-				"relative rounded-2xl border border-border bg-card",
+				"relative rounded-2xl bg-card",
 				className
 			)}
 		>

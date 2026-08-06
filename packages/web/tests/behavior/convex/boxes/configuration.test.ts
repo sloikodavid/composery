@@ -116,7 +116,6 @@ describe("normalizeRuntimeConfig", () => {
 
 	test("describes every field it offers", () => {
 		for (const field of RUNTIME_CONFIG_FIELDS) {
-			expect(field.label.length).toBeGreaterThan(0);
 			expect(field.description.length).toBeGreaterThan(0);
 			if (field.kind === "enum") {
 				for (const option of field.options) {

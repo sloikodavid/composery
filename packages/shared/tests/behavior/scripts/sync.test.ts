@@ -152,7 +152,7 @@ describe("text brand asset generator", () => {
 	--vscode-input-border: ${theme.light.fieldBorder};
 	--vscode-input-foreground: ${theme.light.fieldForeground};
 	--vscode-toolbar-activeBackground: ${theme.light.mutedForeground}50;
-	--vscode-toolbar-hoverBackground: ${theme.light.ghostHover};
+	--vscode-toolbar-hoverBackground: ${theme.light.hover};
 	--vscode-shadow-hover: 0 2px 8px ${theme.light.shadow};
 	--composery-selection: ${theme.light.selection};
 	--composery-scrollbar-track: ${theme.light.scrollbarTrack};
