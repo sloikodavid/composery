@@ -1,6 +1,6 @@
 # Node major is pinned by the IDE (its native modules target this ABI). Builder and
 # runtime share this one ARG; bump both together when the IDE moves Node major.
-ARG NODE_IMAGE=node:24.18.1-trixie-slim@sha256:ac39e4b5fcb2b1b34b20364fd58b2e898f3bb80731ee6f62a7536f9df3d6aadc
+ARG NODE_IMAGE=node:24.20.0-trixie-slim@sha256:50c3b2f6988dfc307b86e5301d69611af31f4789bdf232863b07d3b02fe55ae0
 
 # Keep the exact Caddy release aligned with the outer-edge Compose recipes.
 FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648 AS caddy-bin
