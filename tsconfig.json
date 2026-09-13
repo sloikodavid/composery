@@ -1,29 +1,14 @@
 {
+	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
 		"target": "ES2022",
 		"lib": ["DOM", "DOM.Iterable", "ESNext"],
 		"types": ["node"],
 		"module": "Preserve",
-		"moduleResolution": "Bundler",
-		"moduleDetection": "force",
 		"jsx": "react-jsx",
-		"noEmit": true,
-		"allowJs": false,
 		"resolveJsonModule": true,
-		"skipLibCheck": true,
 		"incremental": true,
 		"tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo",
-
-		"strict": true,
-		"exactOptionalPropertyTypes": true,
-		"noUncheckedIndexedAccess": true,
-		"noImplicitOverride": true,
-		"noFallthroughCasesInSwitch": true,
-		"noUncheckedSideEffectImports": true,
-		"forceConsistentCasingInFileNames": true,
-		"verbatimModuleSyntax": true,
-		"erasableSyntaxOnly": true,
-
 		"plugins": [
 			{
 				"name": "next"

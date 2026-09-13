@@ -1,7 +1,15 @@
 "use client";
 
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import type { ReactNode } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { api } from "@convex/_generated/api";
+import {
+	ConvexReactClient,
+	useAction,
+	useConvexAuth,
+	useQuery,
+} from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { type ReactNode, useEffect } from "react";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 if (!convexUrl) {
@@ -10,6 +18,27 @@ if (!convexUrl) {
 
 const convex = new ConvexReactClient(convexUrl);
 
+// Creates the signed-in user's row when the Clerk webhook has not done so yet.
+function CurrentUserSync() {
+	const { isAuthenticated } = useConvexAuth();
+	const user = useQuery(api.users.current, isAuthenticated ? {} : "skip");
+	const syncCurrentUser = useAction(api.users.syncCurrentUser);
+
+	useEffect(() => {
+		if (user === null) {
+			void syncCurrentUser();
+		}
+	}, [user, syncCurrentUser]);
+
+	return null;
+}
+
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-	return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+	return (
+		// biome-ignore lint/nursery/useReactCompiler: Convex's Clerk adapter takes the hook itself and calls it at its own top level.
+		<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+			<CurrentUserSync />
+			{children}
+		</ConvexProviderWithClerk>
+	);
 }

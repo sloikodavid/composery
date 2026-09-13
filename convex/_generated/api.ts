@@ -8,6 +8,10 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
+import type * as http from "../http.js";
+import type * as users from "../users.js";
+
 import type {
   ApiFromModules,
   FilterApi,
@@ -15,7 +19,11 @@ import type {
 } from "convex/server";
 import { anyApi, componentsGeneric } from "convex/server";
 
-const fullApi: ApiFromModules<{}> = anyApi as any;
+const fullApi: ApiFromModules<{
+  crons: typeof crons;
+  http: typeof http;
+  users: typeof users;
+}> = anyApi as any;
 
 /**
  * A utility for referencing Convex functions in your app's public API.

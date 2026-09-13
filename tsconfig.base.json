@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"moduleResolution": "Bundler",
+		"moduleDetection": "force",
+		"noEmit": true,
+		"allowJs": false,
+		"skipLibCheck": true,
+
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedSideEffectImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true
+	}
+}

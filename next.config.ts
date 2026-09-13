@@ -8,16 +8,22 @@ if (!convexUrl) {
 		"NEXT_PUBLIC_CONVEX_URL is not set. Run `bunx convex dev` to write .env.local.",
 	);
 }
-// The Convex client syncs over a WebSocket to the same host.
+
 const convexSocketUrl = convexUrl.replace(/^http/, "ws");
+
+const clerkFrontendApiUrl = process.env.CLERK_FRONTEND_API_URL;
+if (!clerkFrontendApiUrl) {
+	throw new Error("CLERK_FRONTEND_API_URL is not set.");
+}
 
 const contentSecurityPolicy = [
 	"default-src 'self'",
-	`script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
+	`script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} ${clerkFrontendApiUrl}`,
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' blob: data:",
 	"font-src 'self'",
-	`connect-src 'self' ${convexUrl} ${convexSocketUrl}`,
+	"worker-src 'self' blob:",
+	`connect-src 'self' ${convexUrl} ${convexSocketUrl} ${clerkFrontendApiUrl}`,
 	"object-src 'none'",
 	"base-uri 'self'",
 	"form-action 'self'",
