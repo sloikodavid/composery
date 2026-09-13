@@ -1,6 +1,6 @@
-const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
-const RESERVED_SLUGS = new Set([
+const RESERVED_NAMES = new Set([
 	"about",
 	"about-us",
 	"aboutus",
@@ -1431,13 +1431,13 @@ const RESERVED_SLUGS = new Set([
 	"zoom",
 ]);
 
-export const SLUG_FORMAT_MESSAGE =
+export const NAME_FORMAT_MESSAGE =
 	"Use 3 to 63 lowercase letters, digits, and single hyphens. Start and end with a letter or digit.";
 
-export function isValidSlugFormat(slug: string): boolean {
-	return SLUG_PATTERN.test(slug) && !slug.includes("--");
+export function isValidNameFormat(name: string): boolean {
+	return NAME_PATTERN.test(name) && !name.includes("--");
 }
 
-export function isReservedSlug(slug: string): boolean {
-	return RESERVED_SLUGS.has(slug);
+export function isReservedName(name: string): boolean {
+	return RESERVED_NAMES.has(name);
 }

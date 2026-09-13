@@ -27,10 +27,16 @@ export async function getCurrentUser(ctx: QueryCtx) {
 	if (identity === null) {
 		return null;
 	}
-	return await ctx.db
+	const user = await ctx.db
 		.query("users")
 		.withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", identity.subject))
 		.unique();
+	if (!user) return null;
+	const access = await ctx.db
+		.query("userAccess")
+		.withIndex("by_user_id", (q) => q.eq("userId", user._id))
+		.unique();
+	return access?.disabled ? null : user;
 }
 
 function clerkClient() {
@@ -66,7 +72,7 @@ async function storeFromClerk(ctx: ActionCtx, users: User[]) {
 		await ctx.runMutation(internal.users.store, { users: complete });
 	}
 	if (incomplete.length > 0) {
-		await ctx.runMutation(internal.users.remove, { clerkUserIds: incomplete });
+		await ctx.runMutation(internal.users.disable, { clerkUserIds: incomplete });
 	}
 }
 
@@ -182,7 +188,12 @@ export const isStored = internalQuery({
 			.query("users")
 			.withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", clerkUserId))
 			.unique();
-		return user !== null;
+		if (!user) return false;
+		const access = await ctx.db
+			.query("userAccess")
+			.withIndex("by_user_id", (q) => q.eq("userId", user._id))
+			.unique();
+		return !access?.disabled;
 	},
 });
 
@@ -210,7 +221,34 @@ export const store = internalMutation({
 				await ctx.db.insert("users", fields);
 			} else {
 				await ctx.db.patch("users", existing._id, fields);
+				const access = await ctx.db
+					.query("userAccess")
+					.withIndex("by_user_id", (q) => q.eq("userId", existing._id))
+					.unique();
+				if (access) await ctx.db.delete("userAccess", access._id);
 			}
+		}
+		return null;
+	},
+});
+
+// Missing profile fields suspend application access without deleting owned infrastructure.
+export const disable = internalMutation({
+	args: { clerkUserIds: v.array(v.string()) },
+	returns: v.null(),
+	handler: async (ctx, { clerkUserIds }) => {
+		for (const clerkUserId of clerkUserIds) {
+			const user = await ctx.db
+				.query("users")
+				.withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", clerkUserId))
+				.unique();
+			if (!user) continue;
+			const access = await ctx.db
+				.query("userAccess")
+				.withIndex("by_user_id", (q) => q.eq("userId", user._id))
+				.unique();
+			if (!access)
+				await ctx.db.insert("userAccess", { userId: user._id, disabled: true });
 		}
 		return null;
 	},
@@ -226,6 +264,11 @@ export const remove = internalMutation({
 				.withIndex("by_clerk_user_id", (q) => q.eq("clerkUserId", clerkUserId))
 				.unique();
 			if (existing !== null) {
+				const access = await ctx.db
+					.query("userAccess")
+					.withIndex("by_user_id", (q) => q.eq("userId", existing._id))
+					.unique();
+				if (access) await ctx.db.delete("userAccess", access._id);
 				await ctx.db.delete("users", existing._id);
 				await ctx.scheduler.runAfter(
 					0,

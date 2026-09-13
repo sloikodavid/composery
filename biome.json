@@ -59,5 +59,20 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["convex/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"useFilenamingConvention": {
+							"level": "error",
+							"options": { "filenameCases": ["snake_case"] }
+						}
+					}
+				}
+			}
+		}
+	]
 }

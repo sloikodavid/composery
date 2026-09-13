@@ -13,12 +13,18 @@ import {
 	query,
 } from "./_generated/server";
 import { rateLimiter, tooManyAttemptsMessage } from "./limits";
+import {
+	isReservedName,
+	isValidNameFormat,
+	NAME_FORMAT_MESSAGE,
+} from "./names";
 import { memberRole, serverRole } from "./schema";
 import {
-	isReservedSlug,
-	isValidSlugFormat,
-	SLUG_FORMAT_MESSAGE,
-} from "./slugs";
+	deleteServer,
+	provision,
+	requestKey,
+	reserve,
+} from "./server_lifecycle";
 import { getCurrentUser } from "./users";
 
 type ServerRole = Infer<typeof serverRole>;
@@ -28,7 +34,7 @@ const DELETE_BATCH_SIZE = 100;
 
 const serverSummary = v.object({
 	_id: v.id("servers"),
-	slug: v.string(),
+	name: v.string(),
 	role: serverRole,
 });
 
@@ -74,7 +80,7 @@ async function getMembership(
 		.unique();
 }
 
-async function requireRole(
+export async function requireRole(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
 	minimum: ServerRole,
@@ -96,27 +102,29 @@ async function limitServerChange(ctx: MutationCtx, userId: Id<"users">) {
 	}
 }
 
-// Checks a slug for a new claim. Every check counts as an attempt, and only an available slug counts as a claim.
-async function checkSlug(
+// Checks a name for a new claim. Every check counts as an attempt, and only an available name counts as a claim.
+async function checkName(
 	ctx: MutationCtx,
 	userId: Id<"users">,
-	slug: string,
+	name: string,
+	serverId?: Id<"servers">,
 ): Promise<Failure | null> {
-	const attempt = await rateLimiter.limit(ctx, "slugAttempt", { key: userId });
+	const attempt = await rateLimiter.limit(ctx, "nameAttempt", { key: userId });
 	if (!attempt.ok) {
 		return fail(null, tooManyAttemptsMessage(attempt.retryAfter));
 	}
-	if (!isValidSlugFormat(slug)) {
-		return fail("slug", SLUG_FORMAT_MESSAGE);
+	if (!isValidNameFormat(name)) {
+		return fail("name", NAME_FORMAT_MESSAGE);
 	}
 	const taken = await ctx.db
-		.query("serverSlugs")
-		.withIndex("by_slug", (q) => q.eq("slug", slug))
+		.query("serverNames")
+		.withIndex("by_name", (q) => q.eq("name", name))
 		.unique();
-	if (taken !== null || isReservedSlug(slug)) {
-		return fail("slug", "This slug is taken.");
+	if (taken !== null && taken.serverId === serverId) return null;
+	if (taken !== null || isReservedName(name)) {
+		return fail("name", "This name is taken.");
 	}
-	const claim = await rateLimiter.limit(ctx, "slugClaim", { key: userId });
+	const claim = await rateLimiter.limit(ctx, "nameClaim", { key: userId });
 	if (!claim.ok) {
 		return fail(null, tooManyAttemptsMessage(claim.retryAfter));
 	}
@@ -141,7 +149,7 @@ export const listMine = query({
 			if (server !== null) {
 				page.push({
 					_id: server._id,
-					slug: server.slug,
+					name: server.name,
 					role: membership.role,
 				});
 			}
@@ -150,23 +158,23 @@ export const listMine = query({
 	},
 });
 
-// Returns null when the slug is unknown or the user is not a member, so the response does not reveal which servers exist.
-export const getBySlug = query({
-	args: { slug: v.string() },
+// Returns null when the name is unknown or the user is not a member, so the response does not reveal which servers exist.
+export const getByName = query({
+	args: { name: v.string() },
 	returns: v.union(serverSummary, v.null()),
-	handler: async (ctx, { slug }) => {
+	handler: async (ctx, { name }) => {
 		const user = await getCurrentUser(ctx);
 		if (user === null) {
 			return null;
 		}
-		const slugRecord = await ctx.db
-			.query("serverSlugs")
-			.withIndex("by_slug", (q) => q.eq("slug", slug))
+		const nameRecord = await ctx.db
+			.query("serverNames")
+			.withIndex("by_name", (q) => q.eq("name", name))
 			.unique();
-		if (slugRecord === null) {
+		if (nameRecord === null) {
 			return null;
 		}
-		const server = await ctx.db.get("servers", slugRecord.serverId);
+		const server = await ctx.db.get("servers", nameRecord.serverId);
 		if (server === null) {
 			return null;
 		}
@@ -174,7 +182,7 @@ export const getBySlug = query({
 		if (membership === null) {
 			return null;
 		}
-		return { _id: server._id, slug: server.slug, role: membership.role };
+		return { _id: server._id, name: server.name, role: membership.role };
 	},
 });
 
@@ -205,50 +213,78 @@ export const listMembers = query({
 });
 
 export const create = mutation({
-	args: { slug: v.string() },
+	args: { name: v.string(), requestId: v.string() },
 	returns: v.union(
-		v.object({ ok: v.literal(true), slug: v.string() }),
+		v.object({ ok: v.literal(true), name: v.string() }),
 		failure,
 	),
-	handler: async (ctx, { slug }) => {
+	handler: async (ctx, { name, requestId }) => {
 		const user = await requireUser(ctx);
-		const problem = await checkSlug(ctx, user._id, slug);
+		requestKey(requestId);
+		const previous = await ctx.db
+			.query("serverOperations")
+			.withIndex("by_requester_id_and_request_id", (q) =>
+				q.eq("requesterId", user._id).eq("requestId", requestId),
+			)
+			.unique();
+		if (previous) {
+			if (previous.kind !== "create")
+				return fail(null, "This request ID was used for another command.");
+			if (previous.name !== name)
+				return fail(null, "This request ID was used for another name.");
+			const server = await ctx.db.get("servers", previous.serverId);
+			return server
+				? { ok: true as const, name: server.name }
+				: fail(null, "This server was deleted.");
+		}
+		const problem = await checkName(ctx, user._id, name);
 		if (problem !== null) {
 			return problem;
 		}
-		const serverId = await ctx.db.insert("servers", { slug });
-		await ctx.db.insert("serverSlugs", { slug, serverId });
+		const reservation = await reserve(ctx, user._id);
+		if (!reservation)
+			return fail(
+				null,
+				"Server provisioning is not enabled or your server limit is reached.",
+			);
+		const serverId = await ctx.db.insert("servers", { name });
+		await ctx.db.insert("serverNames", { name, serverId });
 		await ctx.db.insert("serverMembers", {
 			serverId,
 			userId: user._id,
 			role: "owner",
 		});
-		return { ok: true as const, slug };
+		await provision(ctx, serverId, user._id, requestId, name, reservation);
+		return { ok: true as const, name };
 	},
 });
 
 export const rename = mutation({
-	args: { serverId: v.id("servers"), slug: v.string() },
+	args: { serverId: v.id("servers"), name: v.string() },
 	returns: v.union(
-		v.object({ ok: v.literal(true), slug: v.string() }),
+		v.object({ ok: v.literal(true), name: v.string() }),
 		failure,
 	),
-	handler: async (ctx, { serverId, slug }) => {
+	handler: async (ctx, { serverId, name }) => {
 		const { user } = await requireRole(ctx, serverId, "write");
 		const server = await ctx.db.get("servers", serverId);
 		if (server === null) {
 			throw new ConvexError({ message: "This server no longer exists." });
 		}
-		if (server.slug === slug) {
-			return { ok: true as const, slug };
+		if (server.name === name) {
+			return { ok: true as const, name };
 		}
-		const problem = await checkSlug(ctx, user._id, slug);
+		const problem = await checkName(ctx, user._id, name, serverId);
 		if (problem !== null) {
 			return problem;
 		}
-		await ctx.db.insert("serverSlugs", { slug, serverId });
-		await ctx.db.patch("servers", serverId, { slug });
-		return { ok: true as const, slug };
+		const claim = await ctx.db
+			.query("serverNames")
+			.withIndex("by_name", (q) => q.eq("name", name))
+			.unique();
+		if (claim === null) await ctx.db.insert("serverNames", { name, serverId });
+		await ctx.db.patch("servers", serverId, { name });
+		return { ok: true as const, name };
 	},
 });
 
@@ -332,10 +368,7 @@ export const remove = mutation({
 	handler: async (ctx, { serverId }) => {
 		const { user } = await requireRole(ctx, serverId, "owner");
 		await limitServerChange(ctx, user._id);
-		await ctx.db.delete("servers", serverId);
-		await ctx.scheduler.runAfter(0, internal.servers.deleteMembers, {
-			serverId,
-		});
+		await deleteServer(ctx, serverId, user._id);
 		return null;
 	},
 });
@@ -374,10 +407,7 @@ export const removeUserMemberships = internalMutation({
 			if (membership.role === "owner") {
 				const server = await ctx.db.get("servers", membership.serverId);
 				if (server !== null) {
-					await ctx.db.delete("servers", server._id);
-					await ctx.scheduler.runAfter(0, internal.servers.deleteMembers, {
-						serverId: server._id,
-					});
+					await deleteServer(ctx, server._id);
 				}
 			}
 		}

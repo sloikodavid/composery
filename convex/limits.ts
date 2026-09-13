@@ -2,13 +2,25 @@ import { DAY, HOUR, MINUTE, RateLimiter } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
-	slugAttempt: {
+	providerRequest: {
+		kind: "token bucket",
+		rate: 2000,
+		period: HOUR,
+		capacity: 30,
+	},
+	providerCleanup: {
+		kind: "token bucket",
+		rate: 500,
+		period: HOUR,
+		capacity: 16,
+	},
+	nameAttempt: {
 		kind: "token bucket",
 		rate: 1000,
 		period: HOUR,
 		capacity: 200,
 	},
-	slugClaim: { kind: "token bucket", rate: 1000, period: DAY, capacity: 200 },
+	nameClaim: { kind: "token bucket", rate: 1000, period: DAY, capacity: 200 },
 	memberLookup: {
 		kind: "token bucket",
 		rate: 200,

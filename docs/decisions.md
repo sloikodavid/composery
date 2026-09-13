@@ -14,13 +14,23 @@ A username is the user's only handle and display name. Clerk stores usernames in
 
 Convex keeps a users table synced from Clerk, because users will see other users when servers are shared, and billing needs a local user. It is keyed by the Clerk user ID, not tokenIdentifier: the deployment trusts one issuer, and Clerk's webhooks and API know only that ID.
 
-One function syncs a user from Clerk's current state, so webhook order does not matter. The Clerk webhook, the client (when the signed-in user has no row), and an hourly reconciliation call it, because Clerk does not guarantee delivery. A user without a required field has no row, and neither has a deleted user, so a still-valid session token finds nothing.
+One function syncs a user from Clerk's current state. The Clerk webhook, the client, and hourly reconciliation call it because webhook delivery is not guaranteed. Incomplete profiles disable app access while retaining existing ownership. Confirmed account deletion removes the user and requests durable cleanup of owned infrastructure.
 
 Server access is one members table with a role: owner, write, or read. The owner is a member, so access is checked in one place, and transferring ownership swaps two roles. Server members can reach every app on the server. The owner cannot leave; deleting the owner's account deletes the server.
 
-Server slugs are globally unique and never reused: every slug a server has had stays in serverSlugs, and an old slug redirects to the current one. Slugs follow DNS label rules because they may become subdomains. The reserved list in convex/slugs.ts is deliberately large, and a reserved slug is reported as taken.
+Read and write describe control-panel permissions, not SSH or filesystem permissions. Owners will have root access. The credential model for added server members remains open and can also grant root. App-only grants will not grant server membership.
 
-Rate limits exist to protect the system, not to slow people down: an account may have one server or hundreds. Limits are per user; a global limit would let one attacker block everyone. Expected failures such as a taken slug are returned instead of thrown, because a thrown error rolls back the rate limit attempt it counted.
+Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/names.ts is deliberately large, and a reserved name is reported as taken.
+
+The code and product copy use the same term, name. There is no separate display name.
+
+Rate limits exist to protect the system, not to slow people down: an account may have one server or hundreds. Limits are per user; a global limit would let one attacker block everyone. Expected failures such as a taken name are returned instead of thrown, because a thrown error rolls back the rate limit attempt it counted.
+
+Provider API pacing is separate from user admission. Cleanup has reserved worker capacity and API allowance. Operator grants authorize billable allocations before billing exists. Capacity is released only after owned provider resources are confirmed absent.
+
+The server identity is independent of its allocation backend and provider name. Hetzner resources use an opaque controller identifier, allocation identifier, and resource kind for ownership checks. Human-readable infrastructure names contain no project or deployment name. New allocations resolve the current configuration; existing allocations retain theirs.
+
+Convex function module paths do not accept hyphens, so Convex modules use snake_case with a directory-specific filename lint rule.
 
 Server pages call `auth.protect()` themselves instead of matching routes in the proxy. Clerk deprecates `createRouteMatcher` in favor of checks at the resource.
 
