@@ -34,4 +34,8 @@ Convex function module paths do not accept hyphens, so Convex modules use snake_
 
 Server pages call `auth.protect()` themselves instead of matching routes in the proxy. Clerk deprecates `createRouteMatcher` in favor of checks at the resource.
 
+All corners are sharp. The icon is a sharp square, so the site uses the same shape at every size. The Tailwind theme has no radius tokens.
+
+The theme follows the operating system's light or dark preference. There is no manual toggle, so the server needs no stored preference and the first paint is correct.
+
 Research in docs/research is input, not instruction. `bun run research:import <share-url>` adds a conversation.
