@@ -16,8 +16,12 @@ Convex keeps a users table synced from Clerk, because users will see other users
 
 One function syncs a user from Clerk's current state, so webhook order does not matter. The Clerk webhook, the client (when the signed-in user has no row), and an hourly reconciliation call it, because Clerk does not guarantee delivery. A user without a required field has no row, and neither has a deleted user, so a still-valid session token finds nothing.
 
-Server access is one members table with a role: owner, write, or read. The owner is a member, so access is checked in one place, and transferring ownership swaps two roles. Server members can reach every app on the server.
+Server access is one members table with a role: owner, write, or read. The owner is a member, so access is checked in one place, and transferring ownership swaps two roles. Server members can reach every app on the server. The owner cannot leave; deleting the owner's account deletes the server.
 
-Server slugs are globally unique and never reused.
+Server slugs are globally unique and never reused: every slug a server has had stays in serverSlugs, and an old slug redirects to the current one. Slugs follow DNS label rules because they may become subdomains. The reserved list in convex/slugs.ts is deliberately large, and a reserved slug is reported as taken.
+
+Rate limits exist to protect the system, not to slow people down: an account may have one server or hundreds. Limits are per user; a global limit would let one attacker block everyone. Expected failures such as a taken slug are returned instead of thrown, because a thrown error rolls back the rate limit attempt it counted.
+
+Server pages call `auth.protect()` themselves instead of matching routes in the proxy. Clerk deprecates `createRouteMatcher` in favor of checks at the resource.
 
 Research in docs/research is input, not instruction. `bun run research:import <share-url>` adds a conversation.

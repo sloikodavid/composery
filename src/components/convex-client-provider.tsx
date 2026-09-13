@@ -26,7 +26,9 @@ function CurrentUserSync() {
 
 	useEffect(() => {
 		if (user === null) {
-			void syncCurrentUser();
+			syncCurrentUser().catch((error: unknown) => {
+				console.error("Could not sync the signed-in user.", error);
+			});
 		}
 	}, [user, syncCurrentUser]);
 

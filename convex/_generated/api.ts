@@ -10,6 +10,9 @@
 
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
+import type * as limits from "../limits.js";
+import type * as servers from "../servers.js";
+import type * as slugs from "../slugs.js";
 import type * as users from "../users.js";
 
 import type {
@@ -22,6 +25,9 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   crons: typeof crons;
   http: typeof http;
+  limits: typeof limits;
+  servers: typeof servers;
+  slugs: typeof slugs;
   users: typeof users;
 }> = anyApi as any;
 
@@ -51,4 +57,6 @@ export const internal: FilterApi<
   FunctionReference<any, "internal">
 > = anyApi as any;
 
-export const components = componentsGeneric() as unknown as {};
+export const components = componentsGeneric() as unknown as {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

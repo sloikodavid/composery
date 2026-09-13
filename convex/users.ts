@@ -5,7 +5,7 @@ import {
 	paginationOptsValidator,
 	paginationResultValidator,
 } from "convex/server";
-import { type Infer, v } from "convex/values";
+import { ConvexError, type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
 	type ActionCtx,
@@ -17,6 +17,7 @@ import {
 	type QueryCtx,
 	query,
 } from "./_generated/server";
+import { rateLimiter, tooManyAttemptsMessage } from "./limits";
 import schema, { userFields } from "./schema";
 
 const CLERK_PAGE_SIZE = 100;
@@ -98,7 +99,15 @@ export const syncCurrentUser = action({
 	handler: async (ctx) => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (identity === null) {
-			throw new Error("Not signed in.");
+			throw new ConvexError({ message: "Sign in to continue." });
+		}
+		const status = await rateLimiter.limit(ctx, "userSync", {
+			key: identity.subject,
+		});
+		if (!status.ok) {
+			throw new ConvexError({
+				message: tooManyAttemptsMessage(status.retryAfter),
+			});
 		}
 		const stored = await ctx.runQuery(internal.users.isStored, {
 			clerkUserId: identity.subject,
@@ -218,6 +227,11 @@ export const remove = internalMutation({
 				.unique();
 			if (existing !== null) {
 				await ctx.db.delete("users", existing._id);
+				await ctx.scheduler.runAfter(
+					0,
+					internal.servers.removeUserMemberships,
+					{ userId: existing._id },
+				);
 			}
 		}
 		return null;
