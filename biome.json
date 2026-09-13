@@ -1,0 +1,62 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"ignoreUnknown": true
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"domains": {
+			"next": "recommended",
+			"react": "recommended",
+			"project": "recommended"
+		},
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"noBeforeInteractiveScriptOutsideDocument": "error",
+				"noNextAsyncClientComponent": "error"
+			},
+			"performance": {
+				"noBarrelFile": "error",
+				"noSyncScripts": "error"
+			},
+			"style": {
+				"useFilenamingConvention": {
+					"level": "error",
+					"options": {
+						"filenameCases": ["kebab-case"]
+					}
+				}
+			},
+			"nursery": {
+				"noComponentHookFactories": "error",
+				"noFloatingPromises": "error",
+				"noMisusedPromises": "error",
+				"useReactCompiler": "error",
+				"useSortedClasses": "info"
+			}
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	}
+}
