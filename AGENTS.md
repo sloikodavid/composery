@@ -8,21 +8,19 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-<!-- BEGIN:blessed-agent-behaviors -->
+<!-- BEGIN:convex-agent-rules -->
 
-# These should be done proactively
+This project uses [Convex](https://convex.dev) as its backend.
 
-- Using the .gitignored `tmp/` as scratch for producing properly grounded outcomes.
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
 
-- Adding or updating `docs/setups/<service>.md` when an external-service change requires setup beyond setting `.env.example` values, e.g. dashboard steps, cross-service ordering, or non-obvious CLI behavior and omitting or trimming the doc when it doesn’t.
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
 
-- Using Convex, Clerk, Hetzner, Cloudflare CLIs/APIs, and being honest to the user when an action is blocked by auth/.env state, or is unperformable programmatically, so the user can do it themselves.
-
-- Avoiding the entry of secrets into the context window so they don't stay retained on the provider's servers and can't leak.
-
-- Using floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
-
-<!-- END:blessed-agent-behaviors -->
+<!-- END:convex-agent-rules -->
 
 <!-- BEGIN:inviolable-agent-rules -->
 
@@ -41,3 +39,23 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - "All working environment variables must have corresponding examples in either `.env.convex.example` or `.env.local.example`."
 
 <!-- END:inviolable-agent-rules -->
+
+<!-- BEGIN:blessed-agent-behaviors -->
+
+# Adhere to these proactively as you work
+
+- Use the .gitignored `tmp/` as scratch for producing properly grounded outcomes.
+
+- Re-use a dev server if it's up.
+
+- Stop only processes you started, tracked by PID or task ID - never by name, port, or pattern-matching, since that can hit the user's own processes. Prefer the background-task mechanism when one exists.
+
+- Add or update `docs/setups/<service>.md` when an external-service change requires setup beyond setting `.env.example` values, e.g. dashboard steps, cross-service ordering, or non-obvious CLI behavior and omitting or trimming the doc when it doesn’t.
+
+- Use Convex, Clerk, Hetzner, Cloudflare CLIs/APIs, and be honest to the user when an action is blocked by auth/.env state, or is unperformable programmatically, so the user can do it themselves.
+
+- Prevent secrets from entering the context window so they don't stay retained on the provider's servers and can't later leak.
+
+- Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
+
+<!-- END:blessed-agent-behaviors -->

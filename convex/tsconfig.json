@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		/* These settings are not required by Convex and can be modified. */
+		"allowJs": false,
+		"moduleResolution": "Bundler",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"skipLibCheck": true,
+		"allowSyntheticDefaultImports": true,
+
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedSideEffectImports": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+
+		/* These compiler options are required by Convex */
+		"target": "ESNext",
+		"lib": ["ES2023", "dom"],
+		"forceConsistentCasingInFileNames": true,
+		"module": "ESNext",
+		"isolatedModules": true,
+		"noEmit": true
+	},
+	"include": ["./**/*"],
+	"exclude": ["./_generated"]
+}
