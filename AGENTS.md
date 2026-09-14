@@ -44,8 +44,6 @@ Convex agent skills for common tasks can be installed by running
 
 - "When behavior depends on a kind, handle every kind explicitly, with a `switch` over every kind or a `Record` keyed by the kind, so that a new kind fails to compile until every place handles it."
 
-- "Authored text uses ASCII quotes, apostrophes, ellipses, and spaces, and no dashes as punctuation. Code that needs one of these characters writes an escape, such as `\u2019`. Generated and imported files keep their characters. `bun run check:characters` enforces this."
-
 - "The codebase must support development on `Windows`, `macOS`, and `Linux`, with the last taking precedence."
 
 - "Loading, success, empty, and error states must not cause avoidable reflow, layout displacement, or cumulative layout shift."

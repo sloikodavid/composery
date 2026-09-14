@@ -6,7 +6,7 @@ Use one Hetzner Cloud project per environment. Each Convex deployment needs its 
 
 1. In the project's **Security > API Tokens**, create a **Read & Write** token. Set it as `HCLOUD_TOKEN` in the matching Convex deployment's environment settings. Enter secrets in the dashboard rather than chat or shell history. This is the [official CLI variable convention](https://github.com/hetznercloud/setup-hcloud).
 2. Generate a UUID for `HCLOUD_CONTROLLER_ID`. Keep it stable across token rotations and application renames. It is not a secret. Do not copy it to an independent environment.
-3. Create a Cloud Firewall named `servers`, with label `controller-id` equal to that UUID. Initially leave inbound rules empty. Set its numeric ID as `HCLOUD_FIREWALL_ID`. The controller verifies this binding before requests; a wrong-project token must fail rather than interpret missing resources as successful deletion.
+3. Create a Cloud Firewall named `servers`, with label `controller-id` equal to that UUID. Add inbound rules from any IPv4 and IPv6 source for TCP 22, 80, and 443, UDP 443, and ICMP, and no outbound rules, so outbound traffic stays open. Other inbound ports are opened only through support. Set its numeric ID as `HCLOUD_FIREWALL_ID`. The controller verifies this binding before requests; a wrong-project token must fail rather than interpret missing resources as successful deletion.
 4. Set `HCLOUD_LOCATIONS` to the ordered, comma-separated location preference. For CX23 the initial preference is `nbg1,fsn1,hel1`. This is application configuration, not a CLI convention. Validate catalog support through the API. Advertised capacity is a hint; it does not guarantee creation.
 5. Optionally set `HCLOUD_IMAGE`; the default is `ubuntu-24.04`. The resolved image ID is stored with each allocation. Changing the setting affects new allocations only.
 6. Push the backend to the intended deployment. Use internal `allocations/grants:set` with a local user ID and a nonnegative server limit to permit provisioning. A zero limit prevents new allocations but does not delete existing servers. Public signup alone does not grant provisioning.
@@ -25,7 +25,7 @@ An authenticated Convex CLI can retrieve `HCLOUD_TOKEN` into a private subproces
 
 Use one disposable CX23 at a time and the agreed approximately EUR 1 total ceiling. Verify the provider VM and both Primary IP IDs are absent after deletion, including after interrupted tests. Stopping a VM does not end its allocation charges. Leave the shared `servers` firewall in place.
 
-Guest login is a separate check from provider running state. Backend SSH needs an inbound firewall rule that admits the backend's egress addresses. A host-key callback proves neither inbound reachability nor login. Do not broadly open inbound access just to make a check pass.
+Guest login is a separate check from provider running state. A host key callback proves neither inbound reachability nor login. Do not open inbound ports beyond the firewall rules above to make a check pass.
 
 ## Recovery
 

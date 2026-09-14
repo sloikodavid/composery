@@ -1,19 +1,23 @@
 import { lstat } from "node:fs/promises";
 
-// A replacement has the same meaning as the character it replaces.
+// characters-ignore-start: this table lists the characters that the check replaces
 const replacements = new Map([
-	["\u2018", "'"],
-	["\u2019", "'"],
-	["\u201C", '"'],
-	["\u201D", '"'],
-	["\u2026", "..."],
-	["\u00A0", " "],
-	["\u200B", ""],
+	["‘", "'"],
+	["’", "'"],
+	["“", '"'],
+	["”", '"'],
+	["…", "..."],
+	["–", "-"],
+	["—", "-"],
+	["−", "-"],
+	[" ", " "], // no-break space
+	["​", ""], // zero-width space
 ]);
-// A dash joins clauses. The sentence needs new words, not a hyphen.
-const dashes = new Set(["\u2013", "\u2014", "\u2212"]);
-const characterPattern =
-	/[\u2018\u2019\u201C\u201D\u2026\u00A0\u200B\u2013\u2014\u2212]/gu;
+// characters-ignore-end
+const characterPattern = new RegExp(
+	`[${[...replacements.keys()].join("")}]`,
+	"gu",
+);
 // A directive is the only content of its comment line.
 const directivePattern =
 	/^\s*(?:\/\/|\/\*|<!--|#)\s*characters-ignore(-start|-end)?(?::\s*(.*?))?\s*(?:\*\/|-->)?\s*$/;
@@ -69,11 +73,7 @@ async function readText(path: string) {
 }
 
 function toMessage(character: string) {
-	const shown = JSON.stringify(character);
-	if (dashes.has(character)) {
-		return `Reword the sentence without ${shown}.`;
-	}
-	return `Replace ${shown} with ${JSON.stringify(replacements.get(character))}.`;
+	return `Replace ${JSON.stringify(character)} with ${JSON.stringify(replacements.get(character))}.`;
 }
 
 function readDirective(line: string, lineNumber: number, findings: Finding[]) {
