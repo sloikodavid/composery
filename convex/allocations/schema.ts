@@ -10,13 +10,13 @@ export const powerOperationKind = v.union(
 	v.literal("forceStop"),
 );
 
-export const operationKind = v.union(
+const operationKind = v.union(
 	v.literal("create"),
 	powerOperationKind,
 	v.literal("delete"),
 );
 
-export const operationStatus = v.union(
+const operationStatus = v.union(
 	v.literal("pending"),
 	v.literal("succeeded"),
 	v.literal("blocked"),

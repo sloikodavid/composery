@@ -1,5 +1,5 @@
-import { AccountControl } from "@/components/account/control";
 import { Logo } from "@/components/brand/logo";
+import { UserControl } from "@/components/layout/user-control";
 import { Container } from "@/components/ui/container";
 
 export function Header() {
@@ -7,7 +7,7 @@ export function Header() {
 		<header>
 			<Container className="flex h-20 items-center justify-between">
 				<Logo className="text-xl" />
-				<AccountControl />
+				<UserControl />
 			</Container>
 		</header>
 	);

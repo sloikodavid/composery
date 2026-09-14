@@ -26,7 +26,7 @@ export const hetznerCloudSpec = v.object({
 	serverType: v.string(),
 });
 
-export const hetznerCloudCollection = v.union(
+const hetznerCloudCollection = v.union(
 	v.literal("servers"),
 	v.literal("primary_ips"),
 );

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { AccountButton } from "@/components/account/button";
 import { Glow } from "@/components/brand/glow";
 import { Logo } from "@/components/brand/logo";
 import { Wordmark } from "@/components/brand/wordmark";
@@ -73,11 +72,6 @@ export default function PrimitivesPage() {
 							</Button>
 						</div>
 					))}
-					<div className="flex flex-wrap items-center gap-3">
-						<Caption>account</Caption>
-						<AccountButton intent="signIn" />
-						<AccountButton intent="signUp" variant="primary" size="large" />
-					</div>
 				</Section>
 
 				<Section title="Link">
