@@ -22,9 +22,9 @@ Convex keeps a users table synced from Clerk, because users will see other users
 
 One function syncs a user from Clerk's current state. The Clerk webhook, the client, and hourly reconciliation call it because webhook delivery is not guaranteed. Incomplete profiles disable app access while retaining existing ownership. Confirmed account deletion removes the user and requests durable cleanup of owned infrastructure.
 
-Server access is one members table with a role: owner, write, or read. The owner is a member, so access is checked in one place, and transferring ownership swaps two roles. Server members can reach every app on the server. The owner cannot leave; deleting the owner's account deletes the server.
+Server ownership is stored on the server, separate from membership permissions. Membership grants reads. Rename, power, member management, SSH management, and deletion have independent permissions; new memberships default to every permission the caller can grant. Delegates can grant only permissions they hold and cannot change or remove a member with broader permissions. Only the owner can transfer ownership, to an existing active member; the previous owner stays with every membership permission. The owner cannot leave; deleting the owner's account requests durable server deletion.
 
-Read and write describe control-panel permissions, not SSH or filesystem permissions. Owners will have root access. The credential model for added server members remains open and can also grant root. App-only grants will not grant server membership.
+Platform permissions do not restrict direct SSH or filesystem access. Membership removal does not remove native SSH authorizations. SSH entries have no required platform-member association. Ownership transfer does not move the operator grant that funded an allocation; capacity stays reserved until that allocation's infrastructure is confirmed absent. Billing transfer is not implemented.
 
 Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/names.ts is deliberately large, and a reserved name is reported as taken.
 

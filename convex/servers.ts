@@ -9,7 +9,6 @@ import {
 	internalMutation,
 	type MutationCtx,
 	mutation,
-	type QueryCtx,
 	query,
 } from "./_generated/server";
 import { rateLimiter, tooManyAttemptsMessage } from "./limits";
@@ -18,24 +17,33 @@ import {
 	isValidNameFormat,
 	NAME_FORMAT_MESSAGE,
 } from "./names";
-import { memberRole, serverRole } from "./schema";
+import {
+	getMembership,
+	memberAccess,
+	requireServerAccess,
+	requireServerOwner,
+	requireUser,
+} from "./server_access";
 import {
 	deleteServer,
 	provision,
 	requestKey,
 	reserve,
 } from "./server_lifecycle";
+import {
+	allServerPermissions,
+	includesPermissions,
+	serverPermissions,
+} from "./server_permissions";
 import { getCurrentUser } from "./users";
 
-type ServerRole = Infer<typeof serverRole>;
-
-const ROLE_RANK: Record<ServerRole, number> = { read: 0, write: 1, owner: 2 };
 const DELETE_BATCH_SIZE = 100;
 
 const serverSummary = v.object({
 	_id: v.id("servers"),
 	name: v.string(),
-	role: serverRole,
+	isOwner: v.boolean(),
+	permissions: serverPermissions,
 });
 
 const memberSummary = v.object({
@@ -43,7 +51,8 @@ const memberSummary = v.object({
 	userId: v.id("users"),
 	username: v.string(),
 	imageUrl: v.string(),
-	role: serverRole,
+	isOwner: v.boolean(),
+	permissions: serverPermissions,
 });
 
 // Expected failures are returned instead of thrown, so a rate limit attempt they consume is not rolled back.
@@ -57,40 +66,6 @@ type Failure = Infer<typeof failure>;
 
 function fail(field: string | null, message: string): Failure {
 	return { ok: false, field, message };
-}
-
-async function requireUser(ctx: QueryCtx) {
-	const user = await getCurrentUser(ctx);
-	if (user === null) {
-		throw new ConvexError({ message: "Sign in to continue." });
-	}
-	return user;
-}
-
-async function getMembership(
-	ctx: QueryCtx,
-	serverId: Id<"servers">,
-	userId: Id<"users">,
-) {
-	return await ctx.db
-		.query("serverMembers")
-		.withIndex("by_server_id_and_user_id", (q) =>
-			q.eq("serverId", serverId).eq("userId", userId),
-		)
-		.unique();
-}
-
-export async function requireRole(
-	ctx: QueryCtx,
-	serverId: Id<"servers">,
-	minimum: ServerRole,
-) {
-	const user = await requireUser(ctx);
-	const membership = await getMembership(ctx, serverId, user._id);
-	if (membership === null || ROLE_RANK[membership.role] < ROLE_RANK[minimum]) {
-		throw new ConvexError({ message: "You do not have access to do this." });
-	}
-	return { user, membership };
 }
 
 async function limitServerChange(ctx: MutationCtx, userId: Id<"users">) {
@@ -150,7 +125,7 @@ export const listMine = query({
 				page.push({
 					_id: server._id,
 					name: server.name,
-					role: membership.role,
+					...memberAccess(server, membership),
 				});
 			}
 		}
@@ -182,7 +157,11 @@ export const getByName = query({
 		if (membership === null) {
 			return null;
 		}
-		return { _id: server._id, name: server.name, role: membership.role };
+		return {
+			_id: server._id,
+			name: server.name,
+			...memberAccess(server, membership),
+		};
 	},
 });
 
@@ -190,7 +169,7 @@ export const listMembers = query({
 	args: { serverId: v.id("servers"), paginationOpts: paginationOptsValidator },
 	returns: paginationResultValidator(memberSummary),
 	handler: async (ctx, { serverId, paginationOpts }) => {
-		await requireRole(ctx, serverId, "read");
+		const { server } = await requireServerAccess(ctx, serverId);
 		const result = await ctx.db
 			.query("serverMembers")
 			.withIndex("by_server_id_and_user_id", (q) => q.eq("serverId", serverId))
@@ -204,7 +183,7 @@ export const listMembers = query({
 					userId: user._id,
 					username: user.username,
 					imageUrl: user.imageUrl,
-					role: membership.role,
+					...memberAccess(server, membership),
 				});
 			}
 		}
@@ -247,12 +226,15 @@ export const create = mutation({
 				null,
 				"Server provisioning is not enabled or your server limit is reached.",
 			);
-		const serverId = await ctx.db.insert("servers", { name });
+		const serverId = await ctx.db.insert("servers", {
+			name,
+			ownerId: user._id,
+		});
 		await ctx.db.insert("serverNames", { name, serverId });
 		await ctx.db.insert("serverMembers", {
 			serverId,
 			userId: user._id,
-			role: "owner",
+			permissions: allServerPermissions,
 		});
 		await provision(ctx, serverId, user._id, requestId, name, reservation);
 		return { ok: true as const, name };
@@ -266,11 +248,7 @@ export const rename = mutation({
 		failure,
 	),
 	handler: async (ctx, { serverId, name }) => {
-		const { user } = await requireRole(ctx, serverId, "write");
-		const server = await ctx.db.get("servers", serverId);
-		if (server === null) {
-			throw new ConvexError({ message: "This server no longer exists." });
-		}
+		const { user, server } = await requireServerAccess(ctx, serverId, "rename");
 		if (server.name === name) {
 			return { ok: true as const, name };
 		}
@@ -288,76 +266,137 @@ export const rename = mutation({
 	},
 });
 
-export const addMember = mutation({
-	args: { serverId: v.id("servers"), username: v.string(), role: memberRole },
-	returns: v.union(v.object({ ok: v.literal(true) }), failure),
-	handler: async (ctx, { serverId, username, role }) => {
-		const { user: owner } = await requireRole(ctx, serverId, "owner");
-		const lookup = await rateLimiter.limit(ctx, "memberLookup", {
-			key: owner._id,
+function requireDelegation(
+	available: Infer<typeof serverPermissions>,
+	requested: Infer<typeof serverPermissions>,
+) {
+	if (!includesPermissions(available, requested))
+		throw new ConvexError({
+			message: "You cannot change permissions outside your own access.",
 		});
-		if (!lookup.ok) {
+}
+
+export const addMember = mutation({
+	args: {
+		serverId: v.id("servers"),
+		username: v.string(),
+		permissions: v.optional(serverPermissions),
+	},
+	returns: v.union(v.object({ ok: v.literal(true) }), failure),
+	handler: async (ctx, { serverId, username, permissions }) => {
+		const access = await requireServerAccess(ctx, serverId, "manageMembers");
+		const granted = permissions ?? access.permissions;
+		requireDelegation(access.permissions, granted);
+		const lookup = await rateLimiter.limit(ctx, "memberLookup", {
+			key: access.user._id,
+		});
+		if (!lookup.ok)
 			return fail(null, tooManyAttemptsMessage(lookup.retryAfter));
-		}
 		const user = await ctx.db
 			.query("users")
 			.withIndex("by_username", (q) =>
 				q.eq("username", username.trim().toLowerCase()),
 			)
 			.unique();
-		if (user === null) {
-			return fail("username", "No user has this username.");
-		}
-		if ((await getMembership(ctx, serverId, user._id)) !== null) {
+		if (user === null) return fail("username", "No user has this username.");
+		const status = await ctx.db
+			.query("userAccess")
+			.withIndex("by_user_id", (q) => q.eq("userId", user._id))
+			.unique();
+		if (status?.disabled)
+			return fail("username", "This user cannot receive server access.");
+		if (await getMembership(ctx, serverId, user._id))
 			return fail("username", "This user is already a member.");
-		}
-		await ctx.db.insert("serverMembers", { serverId, userId: user._id, role });
+		await ctx.db.insert("serverMembers", {
+			serverId,
+			userId: user._id,
+			permissions: granted,
+		});
 		return { ok: true as const };
 	},
 });
 
-export const setMemberRole = mutation({
-	args: { memberId: v.id("serverMembers"), role: memberRole },
+export const setMemberPermissions = mutation({
+	args: { memberId: v.id("serverMembers"), permissions: serverPermissions },
 	returns: v.null(),
-	handler: async (ctx, { memberId, role }) => {
+	handler: async (ctx, { memberId, permissions }) => {
 		const member = await ctx.db.get("serverMembers", memberId);
-		if (member === null) {
+		if (!member)
 			throw new ConvexError({ message: "This member no longer exists." });
-		}
-		const { user } = await requireRole(ctx, member.serverId, "owner");
-		await limitServerChange(ctx, user._id);
-		if (member.role === "owner") {
-			throw new ConvexError({ message: "The owner's role cannot change." });
-		}
-		await ctx.db.patch("serverMembers", memberId, { role });
+		const access = await requireServerAccess(
+			ctx,
+			member.serverId,
+			"manageMembers",
+		);
+		if (member.userId === access.server.ownerId)
+			throw new ConvexError({
+				message: "The owner always has every permission.",
+			});
+		requireDelegation(access.permissions, member.permissions);
+		requireDelegation(access.permissions, permissions);
+		await limitServerChange(ctx, access.user._id);
+		await ctx.db.patch("serverMembers", memberId, { permissions });
 		return null;
 	},
 });
 
-// The owner removes other members; any other member can remove themself.
+// Leaving or removing a membership does not change native SSH authorizations.
 export const removeMember = mutation({
 	args: { memberId: v.id("serverMembers") },
 	returns: v.null(),
 	handler: async (ctx, { memberId }) => {
 		const member = await ctx.db.get("serverMembers", memberId);
-		if (member === null) {
-			return null;
-		}
-		const { user, membership } = await requireRole(
-			ctx,
-			member.serverId,
-			"read",
-		);
-		await limitServerChange(ctx, user._id);
-		if (member.role === "owner") {
+		if (!member) return null;
+		const access = await requireServerAccess(ctx, member.serverId);
+		if (member.userId === access.server.ownerId)
 			throw new ConvexError({
-				message: "The owner cannot leave. Delete the server instead.",
+				message: "Transfer ownership or delete the server before leaving.",
 			});
+		if (member.userId !== access.user._id) {
+			if (!access.permissions.manageMembers)
+				throw new ConvexError({
+					message: "You do not have access to do this.",
+				});
+			requireDelegation(access.permissions, member.permissions);
 		}
-		if (membership.role !== "owner" && member.userId !== user._id) {
-			throw new ConvexError({ message: "You do not have access to do this." });
-		}
+		await limitServerChange(ctx, access.user._id);
 		await ctx.db.delete("serverMembers", memberId);
+		return null;
+	},
+});
+
+export const transferOwnership = mutation({
+	args: { memberId: v.id("serverMembers") },
+	returns: v.null(),
+	handler: async (ctx, { memberId }) => {
+		const member = await ctx.db.get("serverMembers", memberId);
+		if (!member)
+			throw new ConvexError({ message: "This member no longer exists." });
+		const access = await requireServerOwner(ctx, member.serverId);
+		if (member.userId === access.user._id) return null;
+		const user = await ctx.db.get("users", member.userId);
+		const status = await ctx.db
+			.query("userAccess")
+			.withIndex("by_user_id", (q) => q.eq("userId", member.userId))
+			.unique();
+		if (!user || status?.disabled)
+			throw new ConvexError({ message: "This user cannot receive ownership." });
+		const allocation = await ctx.db
+			.query("serverAllocations")
+			.withIndex("by_server_id", (q) => q.eq("serverId", member.serverId))
+			.unique();
+		if (allocation?.deleteRequested)
+			throw new ConvexError({
+				message: "A server being deleted cannot change ownership.",
+			});
+		await limitServerChange(ctx, access.user._id);
+		await ctx.db.patch("servers", member.serverId, { ownerId: member.userId });
+		await ctx.db.patch("serverMembers", access.membership._id, {
+			permissions: allServerPermissions,
+		});
+		await ctx.db.patch("serverMembers", memberId, {
+			permissions: allServerPermissions,
+		});
 		return null;
 	},
 });
@@ -366,7 +405,7 @@ export const remove = mutation({
 	args: { serverId: v.id("servers") },
 	returns: v.null(),
 	handler: async (ctx, { serverId }) => {
-		const { user } = await requireRole(ctx, serverId, "owner");
+		const { user } = await requireServerAccess(ctx, serverId, "delete");
 		await limitServerChange(ctx, user._id);
 		await deleteServer(ctx, serverId, user._id);
 		return null;
@@ -404,12 +443,8 @@ export const removeUserMemberships = internalMutation({
 			.take(DELETE_BATCH_SIZE);
 		for (const membership of memberships) {
 			await ctx.db.delete("serverMembers", membership._id);
-			if (membership.role === "owner") {
-				const server = await ctx.db.get("servers", membership.serverId);
-				if (server !== null) {
-					await deleteServer(ctx, server._id);
-				}
-			}
+			const server = await ctx.db.get("servers", membership.serverId);
+			if (server?.ownerId === userId) await deleteServer(ctx, server._id);
 		}
 		if (memberships.length === DELETE_BATCH_SIZE) {
 			await ctx.scheduler.runAfter(0, internal.servers.removeUserMemberships, {

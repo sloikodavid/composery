@@ -11,8 +11,8 @@ import {
 } from "./_generated/server";
 import { rateLimiter } from "./limits";
 import schema from "./schema";
+import { requireServerAccess } from "./server_access";
 import { allocationStatus, resourceKind, resourceState } from "./server_model";
-import { requireRole } from "./servers";
 
 const pool = new Workpool(components.workpool, {
 	maxParallelism: 2,
@@ -198,7 +198,7 @@ export const power = mutation({
 	},
 	returns: v.id("serverOperations"),
 	handler: async (ctx, { serverId, requestId, command }) => {
-		const { user } = await requireRole(ctx, serverId, "write");
+		const { user } = await requireServerAccess(ctx, serverId, "power");
 		requestKey(requestId);
 		const previous = await ctx.db
 			.query("serverOperations")
@@ -265,7 +265,7 @@ export const status = query({
 		}),
 	),
 	handler: async (ctx, { serverId }) => {
-		await requireRole(ctx, serverId, "read");
+		await requireServerAccess(ctx, serverId);
 		const a = await ctx.db
 			.query("serverAllocations")
 			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))

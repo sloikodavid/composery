@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { allocationFields, operationFields } from "./server_model";
+import { serverPermissions } from "./server_permissions";
 
 export const userFields = v.object({
 	clerkUserId: v.string(),
@@ -8,14 +9,6 @@ export const userFields = v.object({
 	email: v.string(),
 	imageUrl: v.string(),
 });
-
-export const serverRole = v.union(
-	v.literal("owner"),
-	v.literal("write"),
-	v.literal("read"),
-);
-
-export const memberRole = v.union(v.literal("write"), v.literal("read"));
 
 export default defineSchema({
 	users: defineTable(userFields)
@@ -62,6 +55,7 @@ export default defineSchema({
 	// The name follows DNS label rules because it can become a subdomain.
 	servers: defineTable({
 		name: v.string(),
+		ownerId: v.id("users"),
 	}),
 
 	// Claims stay after a rename or deletion. Only the same server can reuse a name.
@@ -73,7 +67,7 @@ export default defineSchema({
 	serverMembers: defineTable({
 		serverId: v.id("servers"),
 		userId: v.id("users"),
-		role: serverRole,
+		permissions: serverPermissions,
 	})
 		.index("by_server_id_and_user_id", ["serverId", "userId"])
 		.index("by_user_id", ["userId"]),
