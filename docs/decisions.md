@@ -36,6 +36,14 @@ Server pages call `auth.protect()` themselves instead of matching routes in the 
 
 All corners are sharp. The icon is a sharp square, so the site uses the same shape at every size. The Tailwind theme has no radius tokens.
 
+Two typefaces give two voices. Chakra Petch (`font-display`) is for the logo, buttons, labels, and facts such as resource sizes: the places where the product acts or makes a promise. Onest (`font-sans`) is for everything people read, including headings. Chakra Petch alone feels distant to people who have never used a server, and Onest alone does not signal infrastructure. Chakra Petch is loaded at weight 500 only; Onest is variable, with body text at 350 and headings at 550.
+
+Neutral colors are steps of Tailwind's stone palette, not custom values. Each semantic token maps to one step, dark mode uses the mirrored step, and each hover or active state is one step further toward the foreground. Brand states darken the brand color in both themes. Components use only semantic tokens, so a color changes in `globals.css` and nowhere else.
+
+Every internal link, including the logo, uses one `Link` that fades on hover with the same transition as buttons. An animated underline needs an always-present transparent underline, and Chrome paints it in the selection color when the text is selected.
+
+Components join class names with clsx, not tailwind-merge. A `className` prop adds classes and never overrides the component's own. tailwind-merge does not read the Tailwind theme, so it must be configured by hand for every custom token, and a wrong configuration silently deletes classes, for example `font-body` (a weight) next to `font-sans` (a family).
+
 The theme follows the operating system's light or dark preference. There is no manual toggle, so the server needs no stored preference and the first paint is correct.
 
 Research in docs/research is input, not instruction. `bun run research:import <share-url>` adds a conversation.

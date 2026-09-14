@@ -3,4 +3,137 @@
 @theme {
 	--radius: initial;
 	--radius-*: initial;
+
+	--color-brand: #f3511d;
+
+	--font-weight-body: 350;
+	--font-weight-heading: 550;
+
+	--tracking-display: -0.005em;
+	--tracking-label: 0.06em;
+}
+
+@theme inline {
+	--font-sans: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
+	--font-brand: var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
+
+	--color-brand-hover: oklch(from var(--color-brand) calc(l - 0.04) c h);
+	--color-brand-active: oklch(from var(--color-brand) calc(l - 0.08) c h);
+	--color-brand-foreground: var(--color-white);
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-muted: var(--muted);
+	--color-border: var(--border);
+	--color-border-hover: var(--border-hover);
+	--color-border-active: var(--border-active);
+	--color-surface: var(--surface);
+	--color-surface-hover: var(--surface-hover);
+	--color-surface-active: var(--surface-active);
+	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-primary-active: var(--primary-active);
+	--color-primary-foreground: var(--primary-foreground);
+}
+
+/*
+ * Neutrals are steps of Tailwind's stone palette. Dark mode uses the mirrored
+ * step (50 and 950, 200 and 800), and every hover or active state is one step
+ * further toward the foreground than the state before it.
+ */
+:root {
+	--background: var(--color-stone-50);
+	--foreground: var(--color-stone-950);
+	--muted: var(--color-stone-600);
+	--border: var(--color-stone-200);
+	--border-hover: var(--color-stone-400);
+	--border-active: var(--color-stone-500);
+	--surface: var(--color-white);
+	--surface-hover: var(--color-stone-100);
+	--surface-active: var(--color-stone-200);
+	--primary: var(--color-stone-950);
+	--primary-hover: var(--color-stone-800);
+	--primary-active: var(--color-stone-700);
+	--primary-foreground: var(--color-stone-50);
+
+	@media (prefers-color-scheme: dark) {
+		--background: var(--color-stone-950);
+		--foreground: var(--color-stone-50);
+		--muted: var(--color-stone-400);
+		--border: var(--color-stone-800);
+		--border-hover: var(--color-stone-600);
+		--border-active: var(--color-stone-500);
+		--surface: var(--color-stone-900);
+		--surface-hover: var(--color-stone-800);
+		--surface-active: var(--color-stone-700);
+		--primary: var(--color-stone-50);
+		--primary-hover: var(--color-stone-200);
+		--primary-active: var(--color-stone-300);
+		--primary-foreground: var(--color-stone-950);
+	}
+}
+
+/* Chakra Petch scaled to the x-height of Onest, for interface text next to body text. */
+@utility font-display {
+	font-family: var(--font-brand);
+	font-size-adjust: 0.53;
+}
+
+@layer base {
+	html {
+		scrollbar-gutter: stable;
+	}
+
+	body {
+		@apply bg-background font-body font-sans text-foreground;
+		font-synthesis: none;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4 {
+		@apply font-heading tracking-display;
+	}
+
+	:focus-visible {
+		@apply outline-2 outline-foreground outline-offset-2;
+	}
+
+	::selection {
+		@apply bg-brand text-brand-foreground;
+	}
+}
+
+@layer components {
+	/* One continuous glow in shades of the brand color. Broad shapes raise it higher in some places, and the blur blends them. */
+	.glow {
+		--glow-rich: var(--color-brand);
+		--glow-deep: oklch(from var(--color-brand) calc(l - 0.07) c h);
+		--glow-light: oklch(from var(--color-brand) calc(l + 0.1) c h);
+
+		background-image:
+			radial-gradient(
+				in oklch ellipse 40% 100% at 14% 100%,
+				var(--glow-rich),
+				transparent
+			),
+			radial-gradient(
+				in oklch ellipse 34% 62% at 42% 100%,
+				var(--glow-deep),
+				transparent
+			),
+			radial-gradient(
+				in oklch ellipse 38% 90% at 70% 100%,
+				var(--glow-light),
+				transparent
+			),
+			radial-gradient(
+				in oklch ellipse 30% 70% at 96% 100%,
+				var(--glow-rich),
+				transparent
+			),
+			linear-gradient(in oklch to top, var(--glow-rich), transparent 60%);
+		filter: blur(48px);
+	}
 }
