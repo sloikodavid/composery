@@ -1,3 +1,5 @@
+"use node";
+
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
@@ -14,6 +16,7 @@ import {
 	verifyController,
 } from "./hetzner";
 import type { WorkerUpdate } from "./server_lifecycle";
+import { bootstrapConfig, SshBootstrapError } from "./ssh/bootstrap";
 
 type Kind = "server" | "ipv4" | "ipv6";
 type Allocation = Doc<"serverAllocations">;
@@ -105,8 +108,7 @@ async function create(
 				ipv6: a.resources.ipv6.id,
 			},
 			firewalls: [{ firewall: a.firewallId }],
-			user_data:
-				"#cloud-config\nssh_pwauth: false\ndisable_root: false\nchpasswd:\n  expire: false\nusers:\n  - name: root\n    lock_passwd: true\n",
+			user_data: await bootstrapConfig(ctx, a._id),
 		});
 	} else
 		Object.assign(body, {
@@ -297,13 +299,17 @@ export const run = internalAction({
 			update = await step(ctx, claim.allocation, claim.operation);
 		} catch (error) {
 			update = {
-				error: error instanceof ProviderError ? error.code : "worker_failed",
+				error:
+					error instanceof ProviderError || error instanceof SshBootstrapError
+						? error.code
+						: "worker_failed",
 				retryAfterMs: error instanceof ProviderError ? error.retryAfterMs : 0,
 				retry:
-					!(error instanceof ProviderError) ||
-					error.status === 0 ||
-					error.status >= 500 ||
-					[412, 423, 429].includes(error.status),
+					!(error instanceof SshBootstrapError) &&
+					(!(error instanceof ProviderError) ||
+						error.status === 0 ||
+						error.status >= 500 ||
+						[412, 423, 429].includes(error.status)),
 			};
 		}
 		await ctx.runMutation(internal.server_lifecycle.record, {

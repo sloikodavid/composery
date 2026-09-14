@@ -2,8 +2,15 @@ import { verifyWebhook } from "@clerk/backend/webhooks";
 import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { env, httpAction } from "./_generated/server";
+import { registerSshHost } from "./ssh/bootstrap_http";
 
 const http = httpRouter();
+
+http.route({
+	path: "/bootstrap/ssh",
+	method: "POST",
+	handler: registerSshHost,
+});
 
 http.route({
 	path: "/webhooks/clerk",

@@ -11,6 +11,14 @@ export const userFields = v.object({
 });
 
 export default defineSchema({
+	serverSshAccess: defineTable({
+		allocationId: v.id("serverAllocations"),
+		publicKey: v.string(),
+		sealedCredential: v.string(),
+		bootstrapDigest: v.string(),
+		bootstrapExpiresAt: v.number(),
+		hostKey: v.optional(v.string()),
+	}).index("by_allocation_id", ["allocationId"]),
 	users: defineTable(userFields)
 		.index("by_clerk_user_id", ["clerkUserId"])
 		.index("by_username", ["username"]),

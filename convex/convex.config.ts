@@ -13,6 +13,7 @@ const app = defineApp({
 		HCLOUD_FIREWALL_ID: v.optional(v.string()),
 		HCLOUD_CONTROLLER_ID: v.optional(v.string()),
 		HCLOUD_IMAGE: v.optional(v.string()),
+		SSH_CREDENTIAL_KEY: v.optional(v.string()),
 	},
 });
 

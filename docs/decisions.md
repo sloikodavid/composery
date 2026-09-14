@@ -28,6 +28,8 @@ Platform permissions do not restrict direct SSH or filesystem access. Membership
 
 SSH files remain authoritative on the server. Explicit file updates compare observed bytes and metadata, coordinate cooperating writes, replace the file, and verify the result. This is not compare-and-swap against independent editors. An uncertain outcome must not trigger a blind retry or rollback. OpenSSH authentication and sessions retain their native behavior.
 
+Each allocation has a separate backend management key. Its private key is encrypted with an allocation-bound AES-GCM envelope. Cloud-init receives only its public key and a short-lived host-registration token. The server generates its host key locally; authenticated registration pins the public key without trusting the first SSH response. Duplicate registration can confirm the same key but cannot replace it. Deletion removes stored credentials after infrastructure cleanup. Host-key registration and provider running state do not establish SSH reachability.
+
 Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/names.ts is deliberately large, and a reserved name is reported as taken.
 
 The code and product copy use the same term, name. There is no separate display name.

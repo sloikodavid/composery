@@ -62,9 +62,12 @@ export async function reserve(ctx: MutationCtx, userId: Id<"users">) {
 		!env.HCLOUD_TOKEN ||
 		!env.HCLOUD_CONTROLLER_ID ||
 		!env.HCLOUD_LOCATIONS ||
-		!env.HCLOUD_FIREWALL_ID
+		!env.HCLOUD_FIREWALL_ID ||
+		!env.SSH_CREDENTIAL_KEY
 	)
 		return null;
+	if (!/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/.test(env.SSH_CREDENTIAL_KEY))
+		throw new ConvexError("The SSH credential encryption key is invalid.");
 	const locations = env.HCLOUD_LOCATIONS.split(",").map((s) => s.trim());
 	if (
 		!locations.length ||
@@ -261,6 +264,13 @@ export const status = query({
 			ipv4: v.union(v.string(), v.null()),
 			ipv6: v.union(v.string(), v.null()),
 			observedAt: v.union(v.number(), v.null()),
+			ssh: v.union(
+				v.null(),
+				v.object({
+					hostKey: v.union(v.string(), v.null()),
+					bootstrapExpiresAt: v.number(),
+				}),
+			),
 			operation: v.union(v.null(), schema.doc("serverOperations")),
 		}),
 	),
@@ -271,6 +281,10 @@ export const status = query({
 			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 			.unique();
 		if (!a) return null;
+		const ssh = await ctx.db
+			.query("serverSshAccess")
+			.withIndex("by_allocation_id", (q) => q.eq("allocationId", a._id))
+			.unique();
 		return {
 			status: a.status,
 			error: a.error ?? null,
@@ -278,6 +292,13 @@ export const status = query({
 			ipv4: a.ipv4 ?? null,
 			ipv6: a.ipv6 ?? null,
 			observedAt: a.observedAt ?? null,
+			// Registration establishes a host pin, not a successful SSH connection.
+			ssh: ssh
+				? {
+						hostKey: ssh.hostKey ?? null,
+						bootstrapExpiresAt: ssh.bootstrapExpiresAt,
+					}
+				: null,
 			operation: await ctx.db.get("serverOperations", a.operationId),
 		};
 	},
@@ -489,6 +510,11 @@ export const record = internalMutation({
 					"Cannot release an allocation before resource cleanup.",
 				);
 			const grant = await ctx.db.get("serverGrants", a.grantId);
+			const ssh = await ctx.db
+				.query("serverSshAccess")
+				.withIndex("by_allocation_id", (q) => q.eq("allocationId", a._id))
+				.unique();
+			if (ssh) await ctx.db.delete("serverSshAccess", ssh._id);
 			if (grant && a.status !== "deleted")
 				await ctx.db.patch("serverGrants", grant._id, {
 					used: Math.max(0, grant.used - 1),

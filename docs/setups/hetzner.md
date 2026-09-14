@@ -11,7 +11,11 @@ Use one Hetzner Cloud project per environment. Each Convex deployment needs its 
 5. Optionally set `HCLOUD_IMAGE`; the default is `ubuntu-24.04`. The resolved image ID is stored with each allocation. Changing the setting affects new allocations only.
 6. Push the backend to the intended deployment. Use internal `server_lifecycle:setGrant` with a local user ID and a nonnegative server limit to permit provisioning. A zero limit prevents new allocations but does not delete existing servers. Public signup alone does not grant provisioning.
 
-All variables are listed in `.env.convex.example`. They are optional at deployment time so an environment can run without provisioning. Creating a server requires the token, controller identifier, firewall ID, locations, and an available grant.
+All variables are listed in `.env.convex.example`. They are optional at deployment time so an environment can run without provisioning. Creating a server requires the token, controller identifier, firewall ID, locations, `SSH_CREDENTIAL_KEY`, and an available grant.
+
+Set `SSH_CREDENTIAL_KEY` to 32 cryptographically random bytes encoded as base64. Pipe the value into `convex env set SSH_CREDENTIAL_KEY` without displaying it. Keep a secure backup; replacing or losing this key makes stored management credentials unreadable. Do not rotate it by overwriting the environment variable while allocations retain encrypted credentials. Each allocation has a separate Ed25519 management key, encrypted with AES-256-GCM and bound to its allocation ID.
+
+The initial Ubuntu image must include Python 3 and cloud-init. Allow outbound HTTPS to the deployment's `CONVEX_SITE_URL`. Cloud-init installs the public management key for root, generates the native host keys, and reports the public Ed25519 host key to `/bootstrap/ssh`. A provisioning-delivered token authenticates the report, expires after one hour, and cannot replace an already registered host key. The report retries for a bounded period. Provider running state does not establish that registration or SSH login succeeded. Callback failure must not fall back to trusting a network-observed key. Cloud-init and provider metadata can retain the expired bootstrap token; they never receive the management private key.
 
 Do not delete or change the controller label on the shared firewall while it manages allocations. If it must be replaced, reconcile existing allocations with the replacement deliberately; changing the environment variable alone does not rewrite stored allocation bindings. Rotate tokens within the same project. Moving to another project is not token rotation.
 
@@ -21,7 +25,7 @@ An authenticated Convex CLI can retrieve `HCLOUD_TOKEN` into a private subproces
 
 Use one disposable CX23 at a time and the agreed approximately EUR 1 total ceiling. Verify the provider VM and both Primary IP IDs are absent after deletion, including after interrupted tests. Stopping a VM does not end its allocation charges. Leave the shared `servers` firewall in place.
 
-Guest login is a separate check from provider running state. It needs a temporary local SSH key, a narrow source-address firewall rule, and a trusted host-key verification path. Customer SSH is not implemented by the lifecycle feature. Do not broadly open inbound access just to make a check pass.
+Guest login is a separate check from provider running state. Backend SSH needs an inbound firewall rule that admits the backend's egress addresses. A host-key callback proves neither inbound reachability nor login. Do not broadly open inbound access just to make a check pass.
 
 ## Recovery
 

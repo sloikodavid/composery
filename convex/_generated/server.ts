@@ -47,6 +47,7 @@ type Env = {
   readonly HCLOUD_IMAGE: string | undefined;
   readonly HCLOUD_LOCATIONS: string | undefined;
   readonly HCLOUD_TOKEN: string | undefined;
+  readonly SSH_CREDENTIAL_KEY: string | undefined;
 };
 
 /**
