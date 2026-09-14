@@ -24,6 +24,9 @@ import type * as ssh_authorized_keys from "../ssh/authorized_keys.js";
 import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_inspect_key from "../ssh/inspect_key.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
+import type * as ssh_remove_keys from "../ssh/remove_keys.js";
+import type * as ssh_write_file from "../ssh/write_file.js";
+import type * as ssh_write_file_script from "../ssh/write_file_script.js";
 import type * as users from "../users.js";
 
 import type {
@@ -50,6 +53,9 @@ const fullApi: ApiFromModules<{
   "ssh/connection": typeof ssh_connection;
   "ssh/inspect_key": typeof ssh_inspect_key;
   "ssh/read_file": typeof ssh_read_file;
+  "ssh/remove_keys": typeof ssh_remove_keys;
+  "ssh/write_file": typeof ssh_write_file;
+  "ssh/write_file_script": typeof ssh_write_file_script;
   users: typeof users;
 }> = anyApi as any;
 

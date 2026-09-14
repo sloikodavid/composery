@@ -26,6 +26,8 @@ Server ownership is stored on the server, separate from membership permissions. 
 
 Platform permissions do not restrict direct SSH or filesystem access. Membership removal does not remove native SSH authorizations. SSH entries have no required platform-member association. Ownership transfer does not move the operator grant that funded an allocation; capacity stays reserved until that allocation's infrastructure is confirmed absent. Billing transfer is not implemented.
 
+SSH files remain authoritative on the server. Explicit file updates compare observed bytes and metadata, coordinate cooperating writes, replace the file, and verify the result. This is not compare-and-swap against independent editors. An uncertain outcome must not trigger a blind retry or rollback. OpenSSH authentication and sessions retain their native behavior.
+
 Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/names.ts is deliberately large, and a reserved name is reported as taken.
 
 The code and product copy use the same term, name. There is no separate display name.

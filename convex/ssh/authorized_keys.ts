@@ -1,7 +1,7 @@
 /**
  * Lossless file observations and candidate edits, without I/O or authorization.
  * Recognizing an entry's fields does not validate its key blob, option values,
- * or acceptance by sshd. Native validation must precede any remote write.
+ * or acceptance by sshd. New authorizations need validation before remote writes.
  */
 export type AuthorizedKey = Readonly<{ type: string; base64: string }>;
 export type AuthorizedKeyOption = Readonly<{
