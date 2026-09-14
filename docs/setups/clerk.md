@@ -21,13 +21,19 @@ Do these steps once for each Clerk instance (development and production) and its
    bunx clerk config patch --json '{"session":{"claims":{"aud":"convex"}}}'
    ```
 
-4. Set the Clerk secret key on the Convex deployment:
+4. Point the instance's sign-in and sign-up paths to the app's sign-in page, which also signs up new users, so links from Clerk open the app instead of the Account Portal:
+
+   ```sh
+   bunx clerk config patch --json '{"paths":{"sign_in":"/sign-in","sign_up":"/sign-in"}}'
+   ```
+
+5. Set the Clerk secret key on the Convex deployment:
 
    ```sh
    bunx convex env set CLERK_SECRET_KEY <secret-key>
    ```
 
-5. In the Clerk Dashboard, open **Webhooks** and add an endpoint. The Clerk CLI and API cannot create endpoints.
+6. In the Clerk Dashboard, open **Webhooks** and add an endpoint. The Clerk CLI and API cannot create endpoints.
    - Endpoint URL: `https://<deployment>.convex.site/webhooks/clerk`
    - Events: `user.created`, `user.updated`, `user.deleted`
 

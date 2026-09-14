@@ -1,3 +1,6 @@
+/* Clerk puts its component styles in the clerk layer, so utilities override them. */
+@layer theme, base, clerk, components, utilities;
+
 @import "tailwindcss";
 
 @theme {
@@ -24,12 +27,15 @@
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-muted: var(--muted);
+
 	--color-border: var(--border);
 	--color-border-hover: var(--border-hover);
 	--color-border-active: var(--border-active);
+
 	--color-surface: var(--surface);
 	--color-surface-hover: var(--surface-hover);
 	--color-surface-active: var(--surface-active);
+
 	--color-primary: var(--primary);
 	--color-primary-hover: var(--primary-hover);
 	--color-primary-active: var(--primary-active);
@@ -45,12 +51,15 @@
 	--background: var(--color-stone-50);
 	--foreground: var(--color-stone-950);
 	--muted: var(--color-stone-600);
+
 	--border: var(--color-stone-200);
 	--border-hover: var(--color-stone-400);
 	--border-active: var(--color-stone-500);
+
 	--surface: var(--color-white);
 	--surface-hover: var(--color-stone-100);
 	--surface-active: var(--color-stone-200);
+
 	--primary: var(--color-stone-950);
 	--primary-hover: var(--color-stone-800);
 	--primary-active: var(--color-stone-700);
@@ -60,16 +69,52 @@
 		--background: var(--color-stone-950);
 		--foreground: var(--color-stone-50);
 		--muted: var(--color-stone-400);
+
 		--border: var(--color-stone-800);
 		--border-hover: var(--color-stone-600);
 		--border-active: var(--color-stone-500);
+
 		--surface: var(--color-stone-900);
 		--surface-hover: var(--color-stone-800);
 		--surface-active: var(--color-stone-700);
+
 		--primary: var(--color-stone-50);
 		--primary-hover: var(--color-stone-200);
 		--primary-active: var(--color-stone-300);
 		--primary-foreground: var(--color-stone-950);
+	}
+}
+
+/* Clerk's prebuilt components read these variables. They refer to the semantic tokens, so Clerk follows the theme and dark mode. */
+:root {
+	--clerk-color-primary: var(--primary);
+	--clerk-color-primary-foreground: var(--primary-foreground);
+	--clerk-color-foreground: var(--foreground);
+	--clerk-color-muted-foreground: var(--muted);
+	--clerk-color-muted: var(--surface-hover);
+	--clerk-color-background: var(--surface);
+	--clerk-color-input: var(--surface);
+	--clerk-color-input-foreground: var(--foreground);
+	--clerk-color-neutral: var(--foreground);
+	--clerk-color-ring: var(--foreground);
+	--clerk-font-family: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
+	--clerk-font-family-buttons:
+		var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
+	--clerk-border-radius: 0px;
+
+	/*
+	 * Clerk makes muted panels and their items successively closer to the foreground than the card.
+	 * Shadows do not show on a dark page, so the card is lighter than the page to show elevation: halfway to the surface,
+	 * which keeps the muted panels (the surface) as close to the card as they are in light mode.
+	 */
+	@media (prefers-color-scheme: dark) {
+		--clerk-color-muted: var(--surface);
+		--clerk-color-background: color-mix(
+			in oklab,
+			var(--background),
+			var(--surface)
+		);
+		--clerk-color-input: var(--clerk-color-background);
 	}
 }
 
@@ -80,10 +125,6 @@
 }
 
 @layer base {
-	html {
-		scrollbar-gutter: stable;
-	}
-
 	body {
 		@apply bg-background font-body font-sans text-foreground;
 		font-synthesis: none;

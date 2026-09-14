@@ -26,11 +26,29 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
 	return (
 		<html lang="en" className={`${onest.variable} ${chakraPetch.variable}`}>
-			<body className="flex min-h-dvh flex-col">
-				<ClerkProvider>
+			<body>
+				<ClerkProvider
+					appearance={{
+						cssLayerName: "clerk",
+						elements: {
+							avatarBox: "rounded-none",
+							userButtonTrigger: "rounded-none",
+						},
+					}}
+					localization={{
+						userProfile: {
+							deletePage: {
+								messageLine2:
+									"This also deletes the servers that you own. You cannot undo this.",
+							},
+						},
+					}}
+				>
 					<ConvexClientProvider>
-						<Header />
-						{children}
+						<div className="flex min-h-lvh flex-col">
+							<Header />
+							{children}
+						</div>
 						<Footer />
 					</ConvexClientProvider>
 				</ClerkProvider>

@@ -18,6 +18,8 @@ import type * as server_lifecycle from "../server_lifecycle.js";
 import type * as server_model from "../server_model.js";
 import type * as server_worker from "../server_worker.js";
 import type * as servers from "../servers.js";
+import type * as ssh_authorized_keys from "../ssh/authorized_keys.js";
+import type * as ssh_read_file from "../ssh/read_file.js";
 import type * as users from "../users.js";
 
 import type {
@@ -38,6 +40,8 @@ const fullApi: ApiFromModules<{
   server_model: typeof server_model;
   server_worker: typeof server_worker;
   servers: typeof servers;
+  "ssh/authorized_keys": typeof ssh_authorized_keys;
+  "ssh/read_file": typeof ssh_read_file;
   users: typeof users;
 }> = anyApi as any;
 

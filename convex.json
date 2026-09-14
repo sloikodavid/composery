@@ -1,7 +1,8 @@
 {
 	"$schema": "./node_modules/convex/schemas/convex.schema.json",
 	"node": {
-		"nodeVersion": "24"
+		"nodeVersion": "24",
+		"externalPackages": ["ssh2"]
 	},
 	"codegen": {
 		"fileType": "ts"

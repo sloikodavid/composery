@@ -16,14 +16,24 @@ if (!clerkFrontendApiUrl) {
 	throw new Error("CLERK_FRONTEND_API_URL is not set.");
 }
 
+// Without it, Clerk sends users to its hosted Account Portal instead of the app's sign-in page.
+if (!process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL) {
+	throw new Error("NEXT_PUBLIC_CLERK_SIGN_IN_URL is not set.");
+}
+
+// Clerk's bot protection runs Cloudflare Turnstile and Clerk's fraud protection, which connects on ports other than 443.
+const clerkChallengeOrigins =
+	"https://challenges.cloudflare.com https://*.protect.clerk.com";
+
 const contentSecurityPolicy = [
 	"default-src 'self'",
-	`script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} ${clerkFrontendApiUrl}`,
+	`script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} ${clerkFrontendApiUrl} ${clerkChallengeOrigins}`,
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' blob: data:",
+	"img-src 'self' blob: data: https://img.clerk.com",
 	"font-src 'self'",
 	"worker-src 'self' blob:",
-	`connect-src 'self' ${convexUrl} ${convexSocketUrl} ${clerkFrontendApiUrl}`,
+	`frame-src ${clerkChallengeOrigins}`,
+	`connect-src 'self' ${convexUrl} ${convexSocketUrl} ${clerkFrontendApiUrl} https://img.clerk.com https://*.protect.clerk.com:*`,
 	"object-src 'none'",
 	"base-uri 'self'",
 	"form-action 'self'",

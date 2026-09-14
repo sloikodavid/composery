@@ -28,14 +28,14 @@ export function AuthButton({
 	const { isLoaded, isSignedIn } = useAuth();
 	const clerk = useClerk();
 
-	function redirect() {
-		const navigation = isSignedIn
-			? clerk.redirectToUserProfile()
-			: intent === "sign-in"
-				? clerk.redirectToSignIn()
-				: clerk.redirectToSignUp();
-		navigation.catch((error: unknown) => {
-			console.error("Could not open the Account Portal.", error);
+	function open() {
+		if (isSignedIn) {
+			clerk.openUserProfile();
+			return;
+		}
+		// The sign-in page also signs up new users, so both intents open it.
+		clerk.redirectToSignIn().catch((error: unknown) => {
+			console.error("Could not open the sign-in page.", error);
 		});
 	}
 
@@ -45,7 +45,7 @@ export function AuthButton({
 			size={size}
 			disabled={!isLoaded}
 			aria-busy={!isLoaded}
-			onClick={redirect}
+			onClick={open}
 			className={className}
 		>
 			<span className="grid *:[grid-area:1/1]">

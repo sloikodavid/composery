@@ -6,9 +6,15 @@ Node runs Next.js; Bun only installs, runs scripts, and tests. Next.js on Bun ha
 
 The Content Security Policy is static in next.config.ts. Clerk's generated policy allows scripts from any host unless nonces make every page dynamic.
 
+The header and the page fill the large viewport, so the footer is below the fold and every page scrolls. The scrollbar is then always present, and no `scrollbar-gutter` is reserved. A reserved gutter doubles the scrollbar padding that Clerk's modal adds when it locks scrolling, which moves the page sideways.
+
 `/` is one page for everyone. Signed-in parts render in the browser inside fixed-size regions, so the page stays static. Each server gets its own protected page.
 
-Clerk's hosted Account Portal does sign-in, sign-up, and the profile; the app has no Clerk UI. Sign-in is email code or Google, sign-up is public, and usernames are required. Passkeys and MFA need a paid plan.
+Clerk's prebuilt components do sign-in, sign-up, and the profile inside the app: `<SignIn />` on `/sign-in`, and `<UserButton />`, which opens `<UserProfile />`. They include CAPTCHA, legal consent, the username step after Google sign-up, and reverification, which custom flows must build and maintain. There is no sign-up URL, so `<SignIn />` signs up new users in the same flow and shows no sign-up link. Sign-in is email code or Google, sign-up is public, and usernames are required. Passkeys and MFA need a paid plan.
+
+Clerk's components keep its default theme. `--clerk-*` CSS variables refer to the semantic tokens, and Clerk hard-codes round avatars, so element classes make them square. Clerk's primary color is the neutral primary, not the brand color, because Clerk also uses it for text links and selected items.
+
+Clerk's component code loads from Clerk's CDN, not from the `@clerk/ui` package. The package pins that code but adds hundreds of dependencies, and clerk-js loads from the CDN anyway.
 
 A username is the user's only handle and display name. Clerk stores usernames in lowercase and rejects duplicates that differ only in case.
 
@@ -38,7 +44,7 @@ All corners are sharp. The icon is a sharp square, so the site uses the same sha
 
 Two typefaces give two voices. Chakra Petch (`font-display`) is for the logo, buttons, labels, and facts such as resource sizes: the places where the product acts or makes a promise. Onest (`font-sans`) is for everything people read, including headings. Chakra Petch alone feels distant to people who have never used a server, and Onest alone does not signal infrastructure. Chakra Petch is loaded at weight 500 only; Onest is variable, with body text at 350 and headings at 550.
 
-Neutral colors are steps of Tailwind's stone palette, not custom values. Each semantic token maps to one step, dark mode uses the mirrored step, and each hover or active state is one step further toward the foreground. Brand states darken the brand color in both themes. Components use only semantic tokens, so a color changes in `globals.css` and nowhere else.
+Neutral colors are steps of Tailwind's stone palette, not custom values. Each semantic token maps to one step, dark mode uses the mirrored step, and each hover or active state is one step further toward the foreground. Brand states darken the brand color in both themes. Components use only semantic tokens, so a color changes in `globals.css` and nowhere else. The one value between steps is Clerk's dark card, halfway between the page and the surface. Clerk makes muted panels, and the items on them, successively closer to the foreground than the card. In dark mode the muted panels are the surface, and the card must be lighter than the page because shadows do not show. A full step from each would put the card on the surface too.
 
 Every internal link, including the logo, uses one `Link` that fades on hover with the same transition as buttons. An animated underline needs an always-present transparent underline, and Chrome paints it in the selection color when the text is selected.
 
