@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { AuthButton } from "@/components/auth-button";
+import { AccountButton } from "@/components/account/button";
 import { Glow } from "@/components/brand/glow";
 import { Logo } from "@/components/brand/logo";
 import { Wordmark } from "@/components/brand/wordmark";
@@ -36,7 +36,7 @@ const colors = [
 function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<section className="flex flex-col gap-5 border-border border-t py-10">
-			<h2 className="font-display text-muted text-xs uppercase tracking-label">
+			<h2 className="font-brand text-muted text-xs uppercase tracking-label">
 				{title}
 			</h2>
 			{children}
@@ -74,9 +74,9 @@ export default function PrimitivesPage() {
 						</div>
 					))}
 					<div className="flex flex-wrap items-center gap-3">
-						<Caption>auth</Caption>
-						<AuthButton intent="sign-in" />
-						<AuthButton intent="sign-up" variant="primary" size="large" />
+						<Caption>account</Caption>
+						<AccountButton intent="signIn" />
+						<AccountButton intent="signUp" variant="primary" size="large" />
 					</div>
 				</Section>
 
@@ -116,7 +116,7 @@ export default function PrimitivesPage() {
 						<p className="max-w-prose text-muted text-sm">
 							Muted text is for help and secondary details.
 						</p>
-						<p className="font-display text-xs uppercase tracking-label">
+						<p className="font-brand text-xs uppercase tracking-label">
 							Label · 2 vCPU · 4 GB
 						</p>
 					</div>

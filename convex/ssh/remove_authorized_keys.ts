@@ -6,6 +6,8 @@ import { SshError } from "./connection";
 import type { SshFileObservation } from "./read_file";
 import { writeSshFile } from "./write_file";
 
+const maxRemovedLines = 256;
+
 /**
  * Internal removal of occurrences from a caller's observation of this exact file.
  * The application must supply trusted connection/path data and authorize the user.
@@ -18,8 +20,9 @@ export async function removeAuthorizedKeys(
 	observation: SshFileObservation,
 	lines: readonly number[],
 ) {
-	if (!lines.length || lines.length > 256)
+	if (lines.length === 0 || lines.length > maxRemovedLines) {
 		throw new SshError("invalid_request");
+	}
 	// Copy all mutable request data before the first await.
 	const expected = {
 		...observation,
@@ -29,6 +32,8 @@ export async function removeAuthorizedKeys(
 	const edits = lines.map((line) => ({ kind: "remove" as const, line }));
 	const file = new AuthorizedKeysFile(expected.bytes);
 	const plan = file.plan(expected.bytes, edits);
-	if (!plan.ok) throw new SshError("invalid_request");
-	return writeSshFile(connection, path, expected, plan.candidate);
+	if (!plan.ok) {
+		throw new SshError("invalid_request");
+	}
+	return await writeSshFile(connection, path, expected, plan.candidate);
 }

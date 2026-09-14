@@ -38,7 +38,7 @@ The experiment also showed that `sshd -t` accepted a server configuration whose 
 
 A content hash can detect a changed snapshot. An advisory lock can coordinate Composery operations. Atomic rename prevents readers from seeing a partially replaced file. None of these stops an independent writer from changing the target between a final check and replacement. Linux [rename semantics](https://man7.org/linux/man-pages/man2/rename.2.html) do not offer replacement conditional on an expected content hash.
 
-The file-edit report recognizes this limit. Other reports use “CAS” too loosely. We must not promise that arbitrary simultaneous external edits can never be overwritten. Moving to a dedicated file reduces normal contention but changes the product boundary and does not prevent root from writing it.
+The file-edit report recognizes this limit. Other reports use "CAS" too loosely. We must not promise that arbitrary simultaneous external edits can never be overwritten. Moving to a dedicated file reduces normal contention but changes the product boundary and does not prevent root from writing it.
 
 A separate retry problem remains: bytes can change from A to B and back to A. The original hash then matches again. Our local check reproduced this. A file revision cannot prove that an earlier operation never ran. Mutation identity, uncertain outcomes, and retry policy need their own contract.
 

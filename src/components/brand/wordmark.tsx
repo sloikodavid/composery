@@ -8,13 +8,13 @@ export const wordmarkMetrics = {
 	/** Bottom of the font's line box, below the baseline. */
 	descent: 0.308,
 	/** Top of the "C", above the baseline. */
-	capHeight: 0.703125,
+	capHeight: 0.703_125,
 	/** Bottom of the "p" and "y", below the baseline. */
-	descender: 0.21875,
+	descender: 0.218_75,
 	/** Space before the ink of the "C". */
 	inkStart: 0.0625,
 	/** Width of the ink, with the display letter spacing. */
-	inkWidth: 5.119125,
+	inkWidth: 5.119_125,
 } as const;
 
 export function Wordmark({
@@ -28,7 +28,7 @@ export function Wordmark({
 		<span
 			className={clsx(
 				// The negative end margin removes the letter spacing after the last letter.
-				"font-brand tracking-display [margin-inline-end:calc(-1*var(--tracking-display))]",
+				"font-wordmark tracking-display [margin-inline-end:calc(-1*var(--tracking-display))]",
 				className,
 			)}
 			style={style}

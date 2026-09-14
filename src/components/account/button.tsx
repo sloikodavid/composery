@@ -6,25 +6,26 @@ import {
 	type ButtonSize,
 	type ButtonVariant,
 } from "@/components/ui/button";
+import { toastManager } from "@/components/ui/toast";
 
 const signedOutLabels = {
-	"sign-in": "Sign in",
-	"sign-up": "Get started",
+	signIn: "Sign in",
+	signUp: "Get started",
 } as const;
 
-type AuthButtonProps = {
+type AccountButtonProps = {
 	intent: keyof typeof signedOutLabels;
 	variant?: ButtonVariant | undefined;
 	size?: ButtonSize | undefined;
 	className?: string | undefined;
 };
 
-export function AuthButton({
+export function AccountButton({
 	intent,
 	variant,
 	size,
 	className,
-}: AuthButtonProps) {
+}: AccountButtonProps) {
 	const { isLoaded, isSignedIn } = useAuth();
 	const clerk = useClerk();
 
@@ -36,6 +37,10 @@ export function AuthButton({
 		// The sign-in page also signs up new users, so both intents open it.
 		clerk.redirectToSignIn().catch((error: unknown) => {
 			console.error("Could not open the sign-in page.", error);
+			toastManager.add({
+				title: "Could not open the sign-in page",
+				description: "Try again.",
+			});
 		});
 	}
 

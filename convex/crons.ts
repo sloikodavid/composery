@@ -2,23 +2,25 @@ import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 
 const crons = cronJobs();
+
 crons.interval(
-	"scan provider inventory",
+	"sweep Hetzner Cloud inventory",
 	{ seconds: 30 },
-	internal.server_inventory.schedule,
+	internal.allocations.hetzner_cloud.inventory.sweep,
 	{},
 );
+
 crons.interval(
-	"reconcile servers",
+	"sweep Hetzner Cloud allocations",
 	{ seconds: 10 },
-	internal.server_lifecycle.sweep,
+	internal.allocations.hetzner_cloud.worker_state.sweep,
 	{},
 );
 
 crons.interval(
 	"reconcile users with Clerk",
 	{ hours: 1 },
-	internal.users.reconcile,
+	internal.clerk.reconcile,
 	{},
 );
 

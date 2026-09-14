@@ -17,8 +17,10 @@ const wordmarkStyle: CSSProperties = {
 
 export function Footer() {
 	return (
-		// The brand selection color would disappear on the glow, so the footer uses the primary colors.
-		<footer className="relative selection:bg-primary selection:text-primary-foreground">
+		// The content is the background color, so it reads as cut out of the glow.
+		// The brand selection color would disappear on the glow, so selection puts the
+		// same cut-out content on a primary block instead.
+		<footer className="relative text-background selection:bg-primary selection:text-primary-foreground">
 			<Glow className="mask-t-from-60% absolute inset-x-0 bottom-0 -z-10 h-[calc(100%+18rem)]" />
 			<Container className="flex flex-col gap-10 pt-40 pb-8">
 				<div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-sm">
@@ -32,7 +34,7 @@ export function Footer() {
 							</li>
 						</ul>
 					</nav>
-					<p className="font-display tracking-display">© Composery</p>
+					<p className="font-brand tracking-display">© Composery</p>
 				</div>
 				<Link href="/" className="@container block overflow-clip">
 					<Wordmark className="block whitespace-nowrap" style={wordmarkStyle} />

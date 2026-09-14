@@ -1,4 +1,4 @@
-# Hetzner
+# Hetzner Cloud
 
 Use one Hetzner Cloud project per environment. Each Convex deployment needs its own project token and controller identity. Do not give preview deployments production infrastructure credentials.
 
@@ -9,7 +9,7 @@ Use one Hetzner Cloud project per environment. Each Convex deployment needs its 
 3. Create a Cloud Firewall named `servers`, with label `controller-id` equal to that UUID. Initially leave inbound rules empty. Set its numeric ID as `HCLOUD_FIREWALL_ID`. The controller verifies this binding before requests; a wrong-project token must fail rather than interpret missing resources as successful deletion.
 4. Set `HCLOUD_LOCATIONS` to the ordered, comma-separated location preference. For CX23 the initial preference is `nbg1,fsn1,hel1`. This is application configuration, not a CLI convention. Validate catalog support through the API. Advertised capacity is a hint; it does not guarantee creation.
 5. Optionally set `HCLOUD_IMAGE`; the default is `ubuntu-24.04`. The resolved image ID is stored with each allocation. Changing the setting affects new allocations only.
-6. Push the backend to the intended deployment. Use internal `server_lifecycle:setGrant` with a local user ID and a nonnegative server limit to permit provisioning. A zero limit prevents new allocations but does not delete existing servers. Public signup alone does not grant provisioning.
+6. Push the backend to the intended deployment. Use internal `allocations/grants:set` with a local user ID and a nonnegative server limit to permit provisioning. A zero limit prevents new allocations but does not delete existing servers. Public signup alone does not grant provisioning.
 
 All variables are listed in `.env.convex.example`. They are optional at deployment time so an environment can run without provisioning. Creating a server requires the token, controller identifier, firewall ID, locations, `SSH_CREDENTIAL_KEY`, and an available grant.
 
@@ -29,8 +29,8 @@ Guest login is a separate check from provider running state. Backend SSH needs a
 
 ## Recovery
 
-Inspect the allocation's error, operation, resources, and due time. `serverInventory` contains scan progress/errors. Unresolved `serverFindings` require operator review; the controller never destroys unknown resources on that basis.
+Inspect the allocation's error and operation in `serverAllocations` and `serverOperations`, and its resources, due time, and Hetzner error code in `hetznerCloudAllocations`. `hetznerCloudScans` contains scan progress and errors. Unresolved `hetznerCloudFindings` require operator review; the controller never deletes unknown resources on that basis.
 
-For a corrected configuration or definitive provider rejection, call internal `server_lifecycle:retry` with the allocation ID. For an uncertain create, first search provider inventory and verify that no outstanding request can still create the resource. Only then may an operator supply `confirmedAbsent` (`ipv4`, `ipv6`, or `server`). An empty lookup alone is not sufficient proof. The normal worker automatically adopts matching resources that appear later.
+For a corrected configuration or definitive provider rejection, call internal `allocations/hetzner_cloud/worker_state:retry` with the allocation ID. For an uncertain create, first search provider inventory and verify that no outstanding request can still create the resource. Only then may an operator supply `confirmedAbsent` (`ipv4`, `ipv6`, or `server`). An empty lookup alone is not sufficient proof. The normal worker automatically adopts matching resources that appear later.
 
 Customer app domains, billing credentials, and customer SSH credentials are not required for this lifecycle.

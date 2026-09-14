@@ -57,6 +57,7 @@ const nextConfig: NextConfig = {
 	reactCompiler: true,
 	typedRoutes: true,
 	poweredByHeader: false,
+	// biome-ignore lint/suspicious/useAwait: Next.js requires headers() to return a promise
 	async headers() {
 		return [{ source: "/(.*)", headers: securityHeaders }];
 	},

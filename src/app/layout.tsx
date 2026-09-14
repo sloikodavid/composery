@@ -1,9 +1,10 @@
-import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { Chakra_Petch, Onest } from "next/font/google";
-import { ConvexClientProvider } from "@/components/convex-client-provider";
-import { Footer } from "@/components/footer";
-import { Header } from "@/components/header";
+import { Footer } from "@/components/layout/footer";
+import { Header } from "@/components/layout/header";
+import { ClerkClientProvider } from "@/components/providers/clerk-client";
+import { ConvexClientProvider } from "@/components/providers/convex-client";
+import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
 const onest = Onest({ subsets: ["latin"], variable: "--font-onest" });
@@ -27,31 +28,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 	return (
 		<html lang="en" className={`${onest.variable} ${chakraPetch.variable}`}>
 			<body>
-				<ClerkProvider
-					appearance={{
-						cssLayerName: "clerk",
-						elements: {
-							avatarBox: "rounded-none",
-							userButtonTrigger: "rounded-none",
-						},
-					}}
-					localization={{
-						userProfile: {
-							deletePage: {
-								messageLine2:
-									"This also deletes the servers that you own. You cannot undo this.",
-							},
-						},
-					}}
-				>
-					<ConvexClientProvider>
-						<div className="flex min-h-lvh flex-col">
-							<Header />
-							{children}
-						</div>
-						<Footer />
-					</ConvexClientProvider>
-				</ClerkProvider>
+				<ClerkClientProvider>
+					<ToastProvider>
+						<ConvexClientProvider>
+							<div className="flex min-h-lvh flex-col">
+								<Header />
+								{children}
+							</div>
+							<Footer />
+						</ConvexClientProvider>
+					</ToastProvider>
+				</ClerkClientProvider>
 			</body>
 		</html>
 	);

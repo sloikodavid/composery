@@ -25,23 +25,23 @@ When reports are ready, share their conversation URLs. Import supported sources 
 
 ## Prompt index
 
-- 01 — Define the native feature boundary (Start now).
-- 02 — Audit every authorized-key option against source (Start now).
-- 03 — Safe edits when the server is authoritative (Start now).
-- 04 — Prove the Convex-to-server control mechanism (Start now).
-- 05 — Bootstrap trust, networking, and recovery (Start now).
-- 06 — Membership permissions and SSH authority (Start now).
-- 07 — One application API for UI and programmatic clients (Start now).
-- 08 — Agent enrollment without hidden authentication assumptions (Run independently of the server module).
-- 09 — Ordinary SSH and editor connection experience (After a provisional connection contract exists).
-- 10 — Select reusable tools and libraries (Start now).
-- 11 — Live reads, operations, and future enforcement (After the file-operation contract is understood).
-- 12 — Adversarial review of the trust boundaries (After a candidate architecture exists).
-- 13 — Failure experiments and implementation acceptance (After a candidate architecture exists).
-- 14 — Delighter adapters and capability limits (After enrollment and connection contracts exist).
-- 15 — Reconcile evidence and choose implementation slices (Run last with the reports).
+- 01: Define the native feature boundary (Start now).
+- 02: Audit every authorized-key option against source (Start now).
+- 03: Safe edits when the server is authoritative (Start now).
+- 04: Prove the Convex-to-server control mechanism (Start now).
+- 05: Bootstrap trust, networking, and recovery (Start now).
+- 06: Membership permissions and SSH authority (Start now).
+- 07: One application API for UI and programmatic clients (Start now).
+- 08: Agent enrollment without hidden authentication assumptions (Run independently of the server module).
+- 09: Ordinary SSH and editor connection experience (After a provisional connection contract exists).
+- 10: Select reusable tools and libraries (Start now).
+- 11: Live reads, operations, and future enforcement (After the file-operation contract is understood).
+- 12: Adversarial review of the trust boundaries (After a candidate architecture exists).
+- 13: Failure experiments and implementation acceptance (After a candidate architecture exists).
+- 14: Delighter adapters and capability limits (After enrollment and connection contracts exist).
+- 15: Reconcile evidence and choose implementation slices (Run last with the reports).
 
-## 01 — Define the native feature boundary
+## 01: Define the native feature boundary
 
 When: Start now.
 
@@ -62,7 +62,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 02 — Audit every authorized-key option against source
+## 02: Audit every authorized-key option against source
 
 When: Start now.
 
@@ -83,7 +83,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 03 — Safe edits when the server is authoritative
+## 03: Safe edits when the server is authoritative
 
 When: Start now.
 
@@ -106,7 +106,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 04 — Prove the Convex-to-server control mechanism
+## 04: Prove the Convex-to-server control mechanism
 
 When: Start now.
 
@@ -129,7 +129,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 05 — Bootstrap trust, networking, and recovery
+## 05: Bootstrap trust, networking, and recovery
 
 When: Start now.
 
@@ -152,7 +152,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 06 — Membership permissions and SSH authority
+## 06: Membership permissions and SSH authority
 
 When: Start now.
 
@@ -175,7 +175,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 07 — One application API for UI and programmatic clients
+## 07: One application API for UI and programmatic clients
 
 When: Start now.
 
@@ -198,7 +198,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 08 — Agent enrollment without hidden authentication assumptions
+## 08: Agent enrollment without hidden authentication assumptions
 
 When: Run independently of the server module.
 
@@ -221,7 +221,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 09 — Ordinary SSH and editor connection experience
+## 09: Ordinary SSH and editor connection experience
 
 When: After a provisional connection contract exists.
 
@@ -244,7 +244,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 10 — Select reusable tools and libraries
+## 10: Select reusable tools and libraries
 
 When: Start now.
 
@@ -267,7 +267,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 11 — Live reads, operations, and future enforcement
+## 11: Live reads, operations, and future enforcement
 
 When: After the file-operation contract is understood.
 
@@ -290,7 +290,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 12 — Adversarial review of the trust boundaries
+## 12: Adversarial review of the trust boundaries
 
 When: After a candidate architecture exists.
 
@@ -313,7 +313,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 13 — Failure experiments and implementation acceptance
+## 13: Failure experiments and implementation acceptance
 
 When: After a candidate architecture exists.
 
@@ -336,7 +336,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 14 — Delighter adapters and capability limits
+## 14: Delighter adapters and capability limits
 
 When: After enrollment and connection contracts exist.
 
@@ -359,7 +359,7 @@ Research rules: use primary documentation and source code. Identify the exact re
 Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
 ```
 
-## 15 — Reconcile evidence and choose implementation slices
+## 15: Reconcile evidence and choose implementation slices
 
 When: Run last with the reports.
 

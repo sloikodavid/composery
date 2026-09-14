@@ -3,7 +3,7 @@
 import { isIP } from "node:net";
 import { Client } from "ssh2";
 
-type SshFailure =
+export type SshFailure =
 	| "invalid_request"
 	| "host_key_mismatch"
 	| "authentication_failed"
@@ -21,6 +21,17 @@ type SshFailure =
 	| "command_unavailable"
 	| "output_limit"
 	| "invalid_response";
+
+const maxPort = 65_535;
+const maxTimeoutMs = 60_000;
+
+/** Exit codes that a POSIX shell returns when it cannot run a command. */
+const commandNotExecutableExitCode = 126;
+const commandNotFoundExitCode = 127;
+export const commandExitCodes: ReadonlySet<number> = new Set([
+	commandNotExecutableExitCode,
+	commandNotFoundExitCode,
+]);
 
 /** Only stable codes escape this boundary; server text and credentials do not. */
 export class SshError extends Error {
@@ -45,7 +56,7 @@ export type SshConnectionOptions = Readonly<{
 }>;
 
 /** Each pending protocol request owns and removes its cancellation listener. */
-export function protocolRequest<T>(
+export function callSsh<T>(
 	signal: AbortSignal,
 	start: (done: (error: Error | undefined, value: T) => void) => void,
 ): Promise<T> {
@@ -63,17 +74,31 @@ export function protocolRequest<T>(
 					reject(signal.reason);
 					return;
 				}
-				if (error)
+				if (error) {
 					reject(
 						error instanceof SshError ? error : new SshError("remote_error"),
 					);
-				else resolve(value);
+				} else {
+					resolve(value);
+				}
 			});
 		} catch (error) {
 			signal.removeEventListener("abort", abort);
 			reject(error instanceof SshError ? error : new SshError("remote_error"));
 		}
 	});
+}
+
+function toConnectionFailure(
+	hostMismatch: boolean,
+	error: Error & { level?: string },
+): SshFailure {
+	if (hostMismatch) {
+		return "host_key_mismatch";
+	}
+	return error.level === "client-authentication"
+		? "authentication_failed"
+		: "connection_failed";
 }
 
 /** Own one connection and its deadline. Operations must await all protocol work. */
@@ -90,15 +115,15 @@ export async function withSshConnection<T>(
 		!isIP(input.address) ||
 		!Number.isInteger(input.port) ||
 		input.port < 1 ||
-		input.port > 65535 ||
+		input.port > maxPort ||
 		!input.username ||
 		input.username.includes("\0") ||
 		Buffer.from(input.username, "utf8").toString("utf8") !== input.username ||
 		!input.privateKey ||
-		!input.hostKey.length ||
+		input.hostKey.length === 0 ||
 		!Number.isSafeInteger(input.timeoutMs) ||
 		input.timeoutMs < 1 ||
-		input.timeoutMs > 60_000
+		input.timeoutMs > maxTimeoutMs
 	) {
 		throw new SshError("invalid_request");
 	}
@@ -108,26 +133,20 @@ export async function withSshConnection<T>(
 	const signal = lifetime.signal;
 	const cancel = () => lifetime.abort(new SshError("aborted"));
 	input.signal?.addEventListener("abort", cancel, { once: true });
-	if (input.signal?.aborted) cancel();
+	if (input.signal?.aborted) {
+		cancel();
+	}
 	const timer = setTimeout(
 		() => lifetime.abort(new SshError("deadline_exceeded")),
 		input.timeoutMs,
 	);
 	let hostMismatch = false;
 	client.on("error", (error: Error & { level?: string }) => {
-		lifetime.abort(
-			new SshError(
-				hostMismatch
-					? "host_key_mismatch"
-					: error.level === "client-authentication"
-						? "authentication_failed"
-						: "connection_failed",
-			),
-		);
+		lifetime.abort(new SshError(toConnectionFailure(hostMismatch, error)));
 	});
 	client.on("close", () => lifetime.abort(new SshError("connection_closed")));
 	try {
-		await protocolRequest<void>(signal, (done) => {
+		await callSsh<void>(signal, (done) => {
 			client.once("ready", () => done(undefined, undefined));
 			client.connect({
 				host: input.address,

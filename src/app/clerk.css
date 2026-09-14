@@ -1,0 +1,33 @@
+/* Clerk's prebuilt components read these variables. They refer to the semantic tokens, so Clerk follows the theme and dark mode. */
+:root {
+	--clerk-color-primary: var(--primary);
+	--clerk-color-primary-foreground: var(--primary-foreground);
+	--clerk-color-foreground: var(--foreground);
+	--clerk-color-muted-foreground: var(--muted);
+	--clerk-color-muted: var(--surface-hover);
+	--clerk-color-background: var(--surface);
+	--clerk-color-input: var(--surface);
+	--clerk-color-input-foreground: var(--foreground);
+	--clerk-color-neutral: var(--foreground);
+	--clerk-color-ring: var(--foreground);
+	--clerk-font-family: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
+	--clerk-font-family-buttons:
+		var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
+	--clerk-border-radius: 0px;
+	--clerk-spacing: 1rem;
+
+	/*
+	 * Clerk makes muted panels and their items successively closer to the foreground than the card.
+	 * Shadows do not show on a dark page, so the card is lighter than the page to show elevation: halfway to the surface,
+	 * which keeps the muted panels (the surface) as close to the card as they are in light mode.
+	 */
+	@media (prefers-color-scheme: dark) {
+		--clerk-color-muted: var(--surface);
+		--clerk-color-background: color-mix(
+			in oklab,
+			var(--background),
+			var(--surface)
+		);
+		--clerk-color-input: var(--clerk-color-background);
+	}
+}

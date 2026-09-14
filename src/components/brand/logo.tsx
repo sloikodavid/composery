@@ -7,8 +7,12 @@ import { Wordmark, wordmarkMetrics } from "./wordmark";
 
 const { capHeight, inkStart } = wordmarkMetrics;
 
-const frame = (capHeight * 8) / 6;
-const border = frame / 8;
+// icon.svg is 8 units wide, with a 6 unit square inside a 1 unit margin.
+const iconUnits = 8;
+const squareUnits = 6;
+
+const frame = (capHeight * iconUnits) / squareUnits;
+const border = frame / iconUnits;
 const gap = capHeight / 2;
 
 // The square is as tall as the "C", sits on the baseline, and is half its height away from the "C" ink.
@@ -25,7 +29,10 @@ export function Logo({ className }: { className?: string | undefined }) {
 	return (
 		<Link
 			href="/"
-			className={clsx("inline-block whitespace-nowrap font-brand", className)}
+			className={clsx(
+				"inline-block whitespace-nowrap font-wordmark",
+				className,
+			)}
 		>
 			<Image src={icon} alt="" style={iconStyle} />
 			<Wordmark />

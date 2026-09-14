@@ -1,9 +1,9 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { CHATGPT_SHARE_URL, readChatGptShare } from "./chatgpt";
+import { chatGptShareUrl, readChatGptShare } from "./chat-gpt";
 import type { Conversation } from "./conversation";
 
-const RESEARCH_DIRECTORY = join(
+const researchDirectory = join(
 	import.meta.dirname,
 	"..",
 	"..",
@@ -11,12 +11,12 @@ const RESEARCH_DIRECTORY = join(
 	"research",
 );
 
-const READERS: {
+const readers: {
 	url: RegExp;
 	read: (url: string) => Promise<Conversation>;
-}[] = [{ url: CHATGPT_SHARE_URL, read: readChatGptShare }];
+}[] = [{ url: chatGptShareUrl, read: readChatGptShare }];
 
-function kebabCase(text: string): string {
+function toKebabCase(text: string): string {
 	return text
 		.toLowerCase()
 		.normalize("NFKD")
@@ -25,14 +25,16 @@ function kebabCase(text: string): string {
 }
 
 async function importConversation(url: string): Promise<string> {
-	const reader = READERS.find((candidate) => candidate.url.test(url));
-	if (!reader) throw new Error(`No reader supports ${url}.`);
+	const reader = readers.find((candidate) => candidate.url.test(url));
+	if (!reader) {
+		throw new Error(`No reader supports ${url}.`);
+	}
 	const conversation = await reader.read(url);
 
 	const date = conversation.createdAt.toISOString().slice(0, 10);
 	const file = join(
-		RESEARCH_DIRECTORY,
-		`${date}-${kebabCase(conversation.title)}.md`,
+		researchDirectory,
+		`${date}-${toKebabCase(conversation.title)}.md`,
 	);
 	const header = `# ${conversation.title}\n\nSource: ${url}\n`;
 	const existing = Bun.file(file);
@@ -56,7 +58,7 @@ if (urls.length === 0) {
 	console.error("Usage: bun run research:import <share-url> [...]");
 	process.exit(1);
 }
-await mkdir(RESEARCH_DIRECTORY, { recursive: true });
+await mkdir(researchDirectory, { recursive: true });
 for (const url of urls) {
 	console.log(await importConversation(url));
 }

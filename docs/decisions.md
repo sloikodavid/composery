@@ -28,11 +28,9 @@ Platform permissions do not restrict direct SSH or filesystem access. Membership
 
 SSH files remain authoritative on the server. Explicit file updates compare observed bytes and metadata, coordinate cooperating writes, replace the file, and verify the result. This is not compare-and-swap against independent editors. An uncertain outcome must not trigger a blind retry or rollback. OpenSSH authentication and sessions retain their native behavior.
 
-Each allocation has a separate backend management key. Its private key is encrypted with an allocation-bound AES-GCM envelope. Cloud-init receives only its public key and a short-lived host-registration token. The server generates its host key locally; authenticated registration pins the public key without trusting the first SSH response. Duplicate registration can confirm the same key but cannot replace it. Deletion removes stored credentials after infrastructure cleanup. Host-key registration and provider running state do not establish SSH reachability.
+Each allocation has a separate backend management key. Its private key is encrypted with an allocation-bound AES-GCM envelope. Cloud-init receives only its public key and a short-lived host key registration token. The server generates its host key locally; authenticated registration pins the public key without trusting the first SSH response. Duplicate registration can confirm the same key but cannot replace it. Deletion removes stored credentials after infrastructure cleanup. Host-key registration and provider running state do not establish SSH reachability.
 
-Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/names.ts is deliberately large, and a reserved name is reported as taken.
-
-The code and product copy use the same term, name. There is no separate display name.
+Server names are permanently claimed by one server identity. A server can rename back to its own historical name; other servers cannot claim it, even after deletion. Every claim stays in serverNames, and an old name resolves to the current one. The name follows DNS label rules because it may become a subdomain. The reserved list in convex/servers/reserved_names.ts is deliberately large, and a reserved name is reported as taken.
 
 Rate limits exist to protect the system, not to slow people down: an account may have one server or hundreds. Limits are per user; a global limit would let one attacker block everyone. Expected failures such as a taken name are returned instead of thrown, because a thrown error rolls back the rate limit attempt it counted.
 
@@ -40,13 +38,15 @@ Provider API pacing is separate from user admission. Cleanup has reserved worker
 
 The server identity is independent of its allocation backend and provider name. Hetzner resources use an opaque controller identifier, allocation identifier, and resource kind for ownership checks. Human-readable infrastructure names contain no project or deployment name. New allocations resolve the current configuration; existing allocations retain theirs.
 
+Each backend keeps its own state in its own table, with one row for each allocation, instead of fields or a nested object in `serverAllocations`. The worker changes its lease fields every few seconds, and a change to `serverAllocations` reruns every status query that reads it. A second backend adds its own table and one `backend` value, and changes no existing table.
+
 Convex function module paths do not accept hyphens, so Convex modules use snake_case with a directory-specific filename lint rule.
 
 Server pages call `auth.protect()` themselves instead of matching routes in the proxy. Clerk deprecates `createRouteMatcher` in favor of checks at the resource.
 
 All corners are sharp. The icon is a sharp square, so the site uses the same shape at every size. The Tailwind theme has no radius tokens.
 
-Two typefaces give two voices. Chakra Petch (`font-display`) is for the logo, buttons, labels, and facts such as resource sizes: the places where the product acts or makes a promise. Onest (`font-sans`) is for everything people read, including headings. Chakra Petch alone feels distant to people who have never used a server, and Onest alone does not signal infrastructure. Chakra Petch is loaded at weight 500 only; Onest is variable, with body text at 350 and headings at 550.
+Two typefaces give two voices. Chakra Petch (`font-brand`, or `font-wordmark` without the size adjustment, which the wordmark's measured metrics need) is for the logo, buttons, labels, and facts such as resource sizes: the places where the product acts or makes a promise. Onest (`font-sans`) is for everything people read, including headings. Chakra Petch alone feels distant to people who have never used a server, and Onest alone does not signal infrastructure. Chakra Petch is loaded at weight 500 only; Onest is variable, with body text at 350 and headings at 550.
 
 Neutral colors are steps of Tailwind's stone palette, not custom values. Each semantic token maps to one step, dark mode uses the mirrored step, and each hover or active state is one step further toward the foreground. Brand states darken the brand color in both themes. Components use only semantic tokens, so a color changes in `globals.css` and nowhere else. The one value between steps is Clerk's dark card, halfway between the page and the surface. Clerk makes muted panels, and the items on them, successively closer to the foreground than the card. In dark mode the muted panels are the surface, and the card must be lighter than the page because shadows do not show. A full step from each would put the card on the surface too.
 

@@ -11,17 +11,34 @@ import ssh2 from "ssh2";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, env, internalAction } from "../_generated/server";
+import type { SshBootstrapFile } from "./cloud_init";
+import type { SshConnectionOptions } from "./connection";
 
 const { utils } = ssh2;
 
+const bootstrapLifetimeMs = 3_600_000;
+const bootstrapTokenBytes = 32;
+const bootstrapTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const credentialKeyBytes = 32;
+const credentialKeyPattern = /^[A-Za-z0-9+/]{43}=$/;
+const nonceBytes = 12;
+const authTagBytes = 16;
+const maxHostKeyLength = 256;
+const sshPort = 22;
+const connectionTimeoutMs = 30_000;
+const hostKeyType = "ssh-ed25519";
+
+type AllocationSshAccess = Doc<"allocationSshAccess">;
+
 export class SshBootstrapError extends Error {
 	readonly code:
-		| "ssh_allocation_unavailable"
-		| "ssh_bootstrap_incomplete"
-		| "ssh_credential_key_missing"
-		| "ssh_credential_key_invalid"
-		| "ssh_credential_unavailable"
-		| "ssh_bootstrap_expired";
+		| "allocation_unavailable"
+		| "bootstrap_incomplete"
+		| "credential_key_missing"
+		| "credential_key_invalid"
+		| "credential_unavailable"
+		| "bootstrap_expired";
+
 	constructor(code: SshBootstrapError["code"]) {
 		super(code);
 		this.name = "SshBootstrapError";
@@ -29,47 +46,27 @@ export class SshBootstrapError extends Error {
 	}
 }
 
-/** Allocation data must come from an authorized backend lookup, never an API body. */
-export async function connectionForAllocation(
-	ctx: ActionCtx,
-	allocation: Doc<"serverAllocations">,
-) {
-	if (
-		allocation.deleteRequested ||
-		allocation.resources.server.phase !== "present" ||
-		!allocation.ipv4
-	)
-		throw new SshBootstrapError("ssh_allocation_unavailable");
-	const access: Doc<"serverSshAccess"> | null = await ctx.runQuery(
-		internal.ssh.bootstrap_state.get,
-		{ allocationId: allocation._id },
-	);
-	if (!access?.hostKey) throw new SshBootstrapError("ssh_bootstrap_incomplete");
-	const { privateKey } = unseal(access);
-	return {
-		address: allocation.ipv4,
-		port: 22,
-		username: "root",
-		privateKey,
-		hostKey: Buffer.from(access.hostKey.split(" ")[1] ?? "", "base64"),
-		timeoutMs: 30_000,
-	};
-}
-
-function encryptionKey() {
+function getCredentialKey() {
 	const value = env.SSH_CREDENTIAL_KEY;
-	if (!value || !/^[A-Za-z0-9+/]{43}=$/.test(value))
-		throw new SshBootstrapError("ssh_credential_key_missing");
+	if (!value || !credentialKeyPattern.test(value)) {
+		throw new SshBootstrapError("credential_key_missing");
+	}
 	const key = Buffer.from(value, "base64");
-	if (key.length !== 32 || key.toString("base64") !== value)
-		throw new SshBootstrapError("ssh_credential_key_invalid");
+	if (key.length !== credentialKeyBytes || key.toString("base64") !== value) {
+		throw new SshBootstrapError("credential_key_invalid");
+	}
 	return key;
 }
 
-function seal(allocationId: string, plaintext: string) {
-	const nonce = randomBytes(12);
-	const cipher = createCipheriv("aes-256-gcm", encryptionKey(), nonce);
-	cipher.setAAD(Buffer.from(`server-ssh:${allocationId}`));
+// The allocation ID is authenticated data, so a credential cannot be moved to another allocation.
+function toAuthenticatedData(allocationId: string) {
+	return Buffer.from(`allocationSshAccess:${allocationId}`);
+}
+
+function encrypt(allocationId: string, plaintext: string) {
+	const nonce = randomBytes(nonceBytes);
+	const cipher = createCipheriv("aes-256-gcm", getCredentialKey(), nonce);
+	cipher.setAAD(toAuthenticatedData(allocationId));
 	const data = Buffer.concat([
 		cipher.update(plaintext, "utf8"),
 		cipher.final(),
@@ -77,114 +74,103 @@ function seal(allocationId: string, plaintext: string) {
 	return Buffer.concat([nonce, cipher.getAuthTag(), data]).toString("base64");
 }
 
-function unseal(access: Doc<"serverSshAccess">) {
+function decrypt(sshAccess: AllocationSshAccess) {
 	try {
-		const bytes = Buffer.from(access.sealedCredential, "base64");
+		const bytes = Buffer.from(sshAccess.encryptedCredential, "base64");
+		const dataStart = nonceBytes + authTagBytes;
 		const decipher = createDecipheriv(
 			"aes-256-gcm",
-			encryptionKey(),
-			bytes.subarray(0, 12),
+			getCredentialKey(),
+			bytes.subarray(0, nonceBytes),
 		);
-		decipher.setAAD(Buffer.from(`server-ssh:${access.allocationId}`));
-		decipher.setAuthTag(bytes.subarray(12, 28));
-		const result: unknown = JSON.parse(
+		decipher.setAAD(toAuthenticatedData(sshAccess.allocationId));
+		decipher.setAuthTag(bytes.subarray(nonceBytes, dataStart));
+		const credential: unknown = JSON.parse(
 			Buffer.concat([
-				decipher.update(bytes.subarray(28)),
+				decipher.update(bytes.subarray(dataStart)),
 				decipher.final(),
 			]).toString("utf8"),
 		);
 		if (
-			!result ||
-			typeof result !== "object" ||
-			!("privateKey" in result) ||
-			!("token" in result) ||
-			typeof result.privateKey !== "string" ||
-			typeof result.token !== "string"
-		)
-			throw new Error();
-		return { privateKey: result.privateKey, token: result.token };
+			credential === null ||
+			typeof credential !== "object" ||
+			!("privateKey" in credential) ||
+			!("token" in credential) ||
+			typeof credential.privateKey !== "string" ||
+			typeof credential.token !== "string"
+		) {
+			throw new Error("The credential has an unexpected shape.");
+		}
+		return { privateKey: credential.privateKey, token: credential.token };
 	} catch {
-		throw new SshBootstrapError("ssh_credential_unavailable");
+		throw new SshBootstrapError("credential_unavailable");
 	}
 }
 
-// Runs once during cloud-init. Credentials never enter command arguments or output.
-const reportHostKey = `import json, pathlib, time, urllib.request
-config_path = pathlib.Path("/run/composery-bootstrap.json")
-config = json.loads(config_path.read_text())
-host_key = pathlib.Path("/etc/ssh/ssh_host_ed25519_key.pub").read_text().split()
-body = json.dumps(dict(allocationId=config["allocationId"], token=config["token"],
-                       hostKey=" ".join(host_key[:2]))).encode()
-request = urllib.request.Request(config["url"], data=body, headers={"Content-Type": "application/json"})
-success = False
-for attempt in range(30):
-    try:
-        with urllib.request.urlopen(request, timeout=10) as response:
-            success = response.status == 204
-        if success:
-            break
-    except Exception:
-        pass
-    time.sleep(min(20, 1 + attempt))
-config_path.unlink(missing_ok=True)
-if not success:
-    raise SystemExit("Composery host identity registration failed.")
-`;
+function toTokenDigest(token: string) {
+	return createHash("sha256").update(token).digest("hex");
+}
 
-/** Prepare durable credentials before provider dispatch; retries use the same key. */
-export async function bootstrapConfig(
+/** Access data must come from an authorized backend lookup, never from a request body. */
+export async function getSshConnection(
 	ctx: ActionCtx,
-	allocationId: Id<"serverAllocations">,
-) {
-	let access: Doc<"serverSshAccess"> | null = await ctx.runQuery(
-		internal.ssh.bootstrap_state.get,
-		{ allocationId },
-	);
-	if (!access || (access.bootstrapExpiresAt <= Date.now() && !access.hostKey)) {
-		const key = utils.generateKeyPairSync("ed25519");
-		const token = randomBytes(32).toString("base64url");
-		access = await ctx.runMutation(internal.ssh.bootstrap_state.prepare, {
-			allocationId,
-			publicKey: key.public,
-			sealedCredential: seal(
-				allocationId,
-				JSON.stringify({ privateKey: key.private, token }),
-			),
-			bootstrapDigest: createHash("sha256").update(token).digest("hex"),
-			bootstrapExpiresAt: Date.now() + 60 * 60 * 1000,
-		});
+	allocation: Doc<"serverAllocations">,
+): Promise<SshConnectionOptions> {
+	if (allocation.deleteRequested || allocation.ipv4 === undefined) {
+		throw new SshBootstrapError("allocation_unavailable");
 	}
-	if (access.bootstrapExpiresAt <= Date.now())
-		throw new SshBootstrapError("ssh_bootstrap_expired");
-	const { token } = unseal(access);
-	const config = {
-		ssh_pwauth: false,
-		disable_root: false,
-		ssh_genkeytypes: ["ed25519", "rsa", "ecdsa"],
-		chpasswd: { expire: false },
-		users: [
-			{
-				name: "root",
-				lock_passwd: true,
-				ssh_authorized_keys: [access.publicKey],
-			},
-		],
-		write_files: [
-			{
-				path: "/run/composery-bootstrap.json",
-				permissions: "0600",
-				owner: "root:root",
-				content: JSON.stringify({
-					allocationId,
-					token,
-					url: `${env.CONVEX_SITE_URL}/bootstrap/ssh`,
-				}),
-			},
-		],
-		runcmd: [["/usr/bin/python3", "-I", "-c", reportHostKey]],
+	const sshAccess: AllocationSshAccess | null = await ctx.runQuery(
+		internal.ssh.bootstrap_state.get,
+		{ allocationId: allocation._id },
+	);
+	if (sshAccess?.hostKey === undefined) {
+		throw new SshBootstrapError("bootstrap_incomplete");
+	}
+	return {
+		address: allocation.ipv4,
+		port: sshPort,
+		username: "root",
+		privateKey: decrypt(sshAccess).privateKey,
+		hostKey: Buffer.from(sshAccess.hostKey.split(" ")[1] ?? "", "base64"),
+		timeoutMs: connectionTimeoutMs,
 	};
-	// JSON is a YAML subset; scalar contents do not become cloud-config structure.
-	return `#cloud-config\n${JSON.stringify(config)}\n`;
+}
+
+/** Retries use the same key. Only an expired bootstrap without a registered host key needs new access. */
+export function canReuseSshAccess(sshAccess: AllocationSshAccess | null) {
+	return (
+		sshAccess !== null &&
+		(sshAccess.bootstrapExpiresAt > Date.now() ||
+			sshAccess.hostKey !== undefined)
+	);
+}
+
+export function createSshAccess(allocationId: Id<"serverAllocations">) {
+	const keyPair = utils.generateKeyPairSync("ed25519");
+	const token = randomBytes(bootstrapTokenBytes).toString("base64url");
+	return {
+		allocationId,
+		publicKey: keyPair.public,
+		encryptedCredential: encrypt(
+			allocationId,
+			JSON.stringify({ privateKey: keyPair.private, token }),
+		),
+		bootstrapTokenDigest: toTokenDigest(token),
+		bootstrapExpiresAt: Date.now() + bootstrapLifetimeMs,
+	};
+}
+
+export function getSshBootstrapFile(
+	sshAccess: AllocationSshAccess,
+): SshBootstrapFile {
+	if (sshAccess.bootstrapExpiresAt <= Date.now()) {
+		throw new SshBootstrapError("bootstrap_expired");
+	}
+	return {
+		allocationId: sshAccess.allocationId,
+		token: decrypt(sshAccess).token,
+		url: `${env.CONVEX_SITE_URL}/bootstrap/ssh`,
+	};
 }
 
 export const registerHostKey = internalAction({
@@ -195,21 +181,28 @@ export const registerHostKey = internalAction({
 	},
 	returns: v.boolean(),
 	handler: async (ctx, { allocationId, token, hostKey }): Promise<boolean> => {
-		if (!/^[A-Za-z0-9_-]{43}$/.test(token) || hostKey.length > 256)
+		if (
+			!bootstrapTokenPattern.test(token) ||
+			hostKey.length > maxHostKeyLength
+		) {
 			return false;
+		}
 		const parsed = utils.parseKey(hostKey);
 		if (
 			parsed instanceof Error ||
 			Array.isArray(parsed) ||
-			parsed.type !== "ssh-ed25519" ||
+			parsed.type !== hostKeyType ||
 			parsed.isPrivateKey()
-		)
+		) {
 			return false;
-		const canonical = `ssh-ed25519 ${parsed.getPublicSSH().toString("base64")}`;
-		if (canonical !== hostKey) return false;
-		return ctx.runMutation(internal.ssh.bootstrap_state.acceptHostKey, {
+		}
+		const canonical = `${hostKeyType} ${parsed.getPublicSSH().toString("base64")}`;
+		if (canonical !== hostKey) {
+			return false;
+		}
+		return await ctx.runMutation(internal.ssh.bootstrap_state.registerHostKey, {
 			allocationId,
-			digest: createHash("sha256").update(token).digest("hex"),
+			bootstrapTokenDigest: toTokenDigest(token),
 			hostKey: canonical,
 		});
 	},

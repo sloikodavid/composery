@@ -1,4 +1,4 @@
-import { AccountControl } from "@/components/account-control";
+import { AccountControl } from "@/components/account/control";
 import { Logo } from "@/components/brand/logo";
 import { Container } from "@/components/ui/container";
 

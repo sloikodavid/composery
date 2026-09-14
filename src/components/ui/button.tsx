@@ -36,7 +36,7 @@ export function Button({
 		<button
 			type={type}
 			className={clsx(
-				"inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-display tracking-display transition-colors disabled:pointer-events-none disabled:opacity-50",
+				"inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-brand tracking-display transition-colors disabled:pointer-events-none disabled:opacity-50",
 				buttonVariants[variant],
 				buttonSizes[size],
 				className,

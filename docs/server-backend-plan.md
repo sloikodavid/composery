@@ -6,7 +6,7 @@ The first backend uses Hetzner Cloud CX23 servers. It implements creation, obser
 
 `servers` holds the stable identity and current name. `serverNames` permanently associates each claimed name with that identity. A server can rename back to its own old name; another server cannot claim it, even after deletion.
 
-`serverMembers` remains the authorization source. Read/write describe control-panel permissions, not operating-system permissions. Read members can inspect status. Write members can rename and operate power. Owners manage members and request deletion. Customer root access will be implemented separately.
+`serverMemberships` remains the authorization source. Read/write describe control-panel permissions, not operating-system permissions. Read members can inspect status. Write members can rename and operate power. Owners manage members and request deletion. Customer root access will be implemented separately.
 
 `serverAllocations` binds one server to a concrete backend and records its resolved machine configuration, IP identities, provider identity, observations, and recovery state. `serverOperations` records user commands and request IDs. A future backend can be added without changing existing allocations. No migration or cross-backend disk portability is implied.
 
@@ -38,19 +38,19 @@ Deletion records intent first. The controller removes the VM, verifies absence, 
 
 Provider action IDs accelerate progress but are not permanent resource identities. Missing actions can be reconciled from the resources. Stalled actions and identity drift produce explicit failures. Provider error codes are stored; raw responses, root passwords, and authorization headers are not logged.
 
-Inventory scans inspect one bounded provider page at a time. They wake allocations with uncertain resources and record unrecognized resources in `serverFindings` for operator review. They do not delete unknown resources. Findings are evidence requiring review, not automatic destructive instructions. Missing or changed ownership labels cannot reliably be attributed to this controller.
+Inventory scans inspect one bounded provider page at a time. They wake allocations with uncertain resources and record unrecognized resources in `hetznerCloudFindings` for operator review. They do not delete unknown resources. Findings are evidence requiring review, not automatic destructive instructions. Missing or changed ownership labels cannot reliably be attributed to this controller.
 
 ## API
 
-- `servers.create({ name, requestId })`: requires a provisioning grant; retries reuse the exact request ID and name.
-- `servers.rename({ serverId, name })`: permits names previously claimed by the same server.
-- `server_lifecycle.status({ serverId })`: member-authorized status, addresses, observation time, and current operation.
-- `server_lifecycle.power({ serverId, requestId, command })`: `start`, `stop`, or `forceStop`.
-- `servers.remove({ serverId })`: owner-authorized durable deletion.
-- Internal `server_lifecycle.setGrant({ userId, limit })`: operator admission control.
-- Internal `server_lifecycle.retry({ allocationId, confirmedAbsent? })`: operator recovery. Only confirm absence for an uncertain resource after provider verification.
+- `servers/lifecycle.create({ name, requestId })`: requires a grant; retries reuse the exact request ID and name.
+- `servers/names.rename({ serverId, name })`: permits names previously claimed by the same server.
+- `servers/lifecycle.getStatus({ serverId })`: member-authorized status, addresses, observation time, and current operation.
+- `servers/lifecycle.requestPower({ serverId, requestId, kind })`: `start`, `stop`, or `forceStop`.
+- `servers/lifecycle.requestDelete({ serverId })`: durable deletion by a member with the delete permission.
+- Internal `allocations/grants.set({ userId, limit })`: operator admission control.
+- Internal `allocations/hetzner_cloud/worker_state.retry({ allocationId, confirmedAbsent? })`: operator recovery. Only confirm absence for an uncertain resource after provider verification.
 
-No frontend changes or committed test framework are included. Disposable checks belong in `tmp/`. Setup is in [Hetzner](setups/hetzner.md).
+No frontend changes or committed test framework are included. Disposable checks belong in `tmp/`. Setup is in [Hetzner Cloud](setups/hetzner-cloud.md).
 
 ## Research disposition
 

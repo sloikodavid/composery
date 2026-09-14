@@ -1,78 +1,110 @@
-import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { ConvexError, type Infer, v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
+import {
+	internalMutation,
+	internalQuery,
+	type MutationCtx,
+	type QueryCtx,
+} from "../_generated/server";
 import schema from "../schema";
+import type { sshTables } from "./schema";
+
+// Base64 of exactly 32 bytes.
+const credentialKeyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/;
+
+type AllocationSshAccessFields = Infer<
+	typeof sshTables.allocationSshAccess.validator
+>;
+
+export function requireSshCredentialKeyFormat(value: string) {
+	if (!credentialKeyPattern.test(value)) {
+		throw new ConvexError({ message: "The SSH credential key is invalid." });
+	}
+}
+
+export async function getAllocationSshAccess(
+	ctx: QueryCtx,
+	allocationId: Id<"serverAllocations">,
+) {
+	return await ctx.db
+		.query("allocationSshAccess")
+		.withIndex("by_allocation_id", (q) => q.eq("allocationId", allocationId))
+		.unique();
+}
+
+export async function deleteAllocationSshAccess(
+	ctx: MutationCtx,
+	allocationId: Id<"serverAllocations">,
+) {
+	const sshAccess = await getAllocationSshAccess(ctx, allocationId);
+	if (sshAccess !== null) {
+		await ctx.db.delete("allocationSshAccess", sshAccess._id);
+	}
+}
+
+/**
+ * Keeps access that cloud-init can already hold. Replaces only an expired
+ * bootstrap whose host key was never registered. The caller must confirm that
+ * the server was not requested yet.
+ */
+export async function storeAllocationSshAccess(
+	ctx: MutationCtx,
+	fields: AllocationSshAccessFields,
+) {
+	const existing = await getAllocationSshAccess(ctx, fields.allocationId);
+	if (existing === null) {
+		const id = await ctx.db.insert("allocationSshAccess", fields);
+		const inserted = await ctx.db.get("allocationSshAccess", id);
+		if (inserted === null) {
+			throw new Error("The SSH access that was inserted is missing.");
+		}
+		return inserted;
+	}
+	if (
+		existing.bootstrapExpiresAt > Date.now() ||
+		existing.hostKey !== undefined
+	) {
+		return existing;
+	}
+	await ctx.db.replace("allocationSshAccess", existing._id, fields);
+	return {
+		...fields,
+		_id: existing._id,
+		_creationTime: existing._creationTime,
+	};
+}
 
 export const get = internalQuery({
 	args: { allocationId: v.id("serverAllocations") },
-	returns: v.union(schema.doc("serverSshAccess"), v.null()),
+	returns: v.union(schema.doc("allocationSshAccess"), v.null()),
 	handler: async (ctx, { allocationId }) =>
-		await ctx.db
-			.query("serverSshAccess")
-			.withIndex("by_allocation_id", (q) => q.eq("allocationId", allocationId))
-			.unique(),
+		await getAllocationSshAccess(ctx, allocationId),
 });
 
-export const prepare = internalMutation({
-	args: schema.tables.serverSshAccess.validator.fields,
-	returns: schema.doc("serverSshAccess"),
-	handler: async (ctx, input) => {
-		const allocation = await ctx.db.get(
-			"serverAllocations",
-			input.allocationId,
-		);
-		if (
-			!allocation ||
-			allocation.deleteRequested ||
-			allocation.resources.server.phase !== "pending"
-		)
-			throw new Error("ssh_bootstrap_not_pending");
-		const existing = await ctx.db
-			.query("serverSshAccess")
-			.withIndex("by_allocation_id", (q) =>
-				q.eq("allocationId", input.allocationId),
-			)
-			.unique();
-		if (existing) {
-			if (existing.bootstrapExpiresAt > Date.now() || existing.hostKey)
-				return existing;
-			await ctx.db.replace("serverSshAccess", existing._id, input);
-			return {
-				...input,
-				_id: existing._id,
-				_creationTime: existing._creationTime,
-			};
-		}
-		const id = await ctx.db.insert("serverSshAccess", input);
-		const stored = await ctx.db.get("serverSshAccess", id);
-		if (!stored) throw new Error("ssh_bootstrap_missing");
-		return stored;
-	},
-});
-
-export const acceptHostKey = internalMutation({
+// A duplicate registration can confirm the pinned host key but never replace it.
+export const registerHostKey = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
-		digest: v.string(),
+		bootstrapTokenDigest: v.string(),
 		hostKey: v.string(),
 	},
 	returns: v.boolean(),
-	handler: async (ctx, { allocationId, digest, hostKey }) => {
+	handler: async (ctx, { allocationId, bootstrapTokenDigest, hostKey }) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
-		const access = await ctx.db
-			.query("serverSshAccess")
-			.withIndex("by_allocation_id", (q) => q.eq("allocationId", allocationId))
-			.unique();
+		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
 		if (
-			!allocation ||
+			allocation === null ||
 			allocation.deleteRequested ||
-			!access ||
-			access.bootstrapExpiresAt <= Date.now() ||
-			access.bootstrapDigest !== digest ||
-			allocation.resources.server.phase === "absent"
-		)
+			sshAccess === null ||
+			sshAccess.bootstrapExpiresAt <= Date.now() ||
+			sshAccess.bootstrapTokenDigest !== bootstrapTokenDigest
+		) {
 			return false;
-		if (access.hostKey) return access.hostKey === hostKey;
-		await ctx.db.patch("serverSshAccess", access._id, { hostKey });
+		}
+		if (sshAccess.hostKey !== undefined) {
+			return sshAccess.hostKey === hostKey;
+		}
+		await ctx.db.patch("allocationSshAccess", sshAccess._id, { hostKey });
 		return true;
 	},
 });

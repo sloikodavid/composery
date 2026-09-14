@@ -2,13 +2,30 @@
 
 import type { SFTPWrapper, Stats } from "ssh2";
 import {
-	protocolRequest,
+	callSsh,
 	type SshConnectionOptions,
 	SshError,
+	type SshFailure,
 	withSshConnection,
 } from "./connection";
 
-export type SshFileRequest = SshConnectionOptions &
+/** Remote SSH file operations read and write at most this many bytes. */
+// 512 KiB.
+export const maxSshFileBytes = 524_288;
+// 32 KiB.
+const readChunkBytes = 32_768;
+const fileTypeMask = 0o17_0000;
+const regularFileType = 0o10_0000;
+
+// SFTP status codes from draft-ietf-secsh-filexfer-02.
+const sftpNoSuchFile = 2;
+const sftpPermissionDenied = 3;
+const sftpStatusFailures = new Map<unknown, SshFailure>([
+	[sftpNoSuchFile, "file_missing"],
+	[sftpPermissionDenied, "permission_denied"],
+]);
+
+export type SshReadOptions = SshConnectionOptions &
 	Readonly<{ path: string; maxBytes: number }>;
 
 export type SshFileObservation = Readonly<{
@@ -24,31 +41,25 @@ export type SshFileObservation = Readonly<{
 	}>;
 }>;
 
-function remoteError(error: unknown) {
-	if (error instanceof SshError) return error;
+function toSshError(error: unknown) {
+	if (error instanceof SshError) {
+		return error;
+	}
 	const code =
 		error && typeof error === "object" && "code" in error ? error.code : null;
-	return new SshError(
-		code === 2
-			? "file_missing"
-			: code === 3
-				? "permission_denied"
-				: "remote_error",
-	);
+	return new SshError(sftpStatusFailures.get(code) ?? "remote_error");
 }
 
-function fileRequest<T>(
+function callSftp<T>(
 	signal: AbortSignal,
 	start: (done: (error: Error | undefined, value: T) => void) => void,
 ) {
-	return protocolRequest<T>(signal, (done) =>
-		start((error, value) =>
-			done(error ? remoteError(error) : undefined, value),
-		),
+	return callSsh<T>(signal, (done) =>
+		start((error, value) => done(error ? toSshError(error) : undefined, value)),
 	);
 }
 
-function attributes(stats: Stats) {
+function toFileAttributes(stats: Stats) {
 	const { size, uid, gid, mode, mtime } = stats;
 	if (
 		![size, uid, gid, mode, mtime].every(
@@ -57,45 +68,56 @@ function attributes(stats: Stats) {
 	) {
 		throw new SshError("remote_error");
 	}
-	if ((mode & 0o170000) !== 0o100000) throw new SshError("not_regular_file");
+	if ((mode & fileTypeMask) !== regularFileType) {
+		throw new SshError("not_regular_file");
+	}
 	return { size, uid, gid, mode, mtime };
 }
 
 async function read(
 	sftp: SFTPWrapper,
-	input: SshFileRequest,
+	input: SshReadOptions,
 	signal: AbortSignal,
 ) {
 	// Refuse a known special file before open. The handle is checked again below.
-	attributes(
-		await fileRequest<Stats>(signal, (done) => sftp.lstat(input.path, done)),
+	toFileAttributes(
+		await callSftp<Stats>(signal, (done) => sftp.lstat(input.path, done)),
 	);
-	const handle = await fileRequest<Buffer>(signal, (done) =>
+	const handle = await callSftp<Buffer>(signal, (done) =>
 		sftp.open(input.path, "r", done),
 	);
-	const before = attributes(
-		await fileRequest<Stats>(signal, (done) => sftp.fstat(handle, done)),
+	const before = toFileAttributes(
+		await callSftp<Stats>(signal, (done) => sftp.fstat(handle, done)),
 	);
-	if (before.size > input.maxBytes) throw new SshError("too_large");
+	if (before.size > input.maxBytes) {
+		throw new SshError("too_large");
+	}
 	const chunks: Buffer[] = [];
 	let size = 0;
-	while (true) {
+	for (;;) {
 		// One extra byte detects growth beyond the limit without trusting stat.
-		const chunk = Buffer.alloc(Math.min(32 * 1024, input.maxBytes - size + 1));
-		const count = await fileRequest<number>(signal, (done) => {
+		const chunk = Buffer.alloc(
+			Math.min(readChunkBytes, input.maxBytes - size + 1),
+		);
+		const count = await callSftp<number>(signal, (done) => {
 			sftp.read(handle, chunk, 0, chunk.length, size, (error, bytesRead) =>
 				done(error, bytesRead),
 			);
 		});
-		if (!Number.isSafeInteger(count) || count < 0 || count > chunk.length)
+		if (!Number.isSafeInteger(count) || count < 0 || count > chunk.length) {
 			throw new SshError("remote_error");
-		if (count === 0) break;
+		}
+		if (count === 0) {
+			break;
+		}
 		size += count;
-		if (size > input.maxBytes) throw new SshError("too_large");
+		if (size > input.maxBytes) {
+			throw new SshError("too_large");
+		}
 		chunks.push(chunk.subarray(0, count));
 	}
-	const after = attributes(
-		await fileRequest<Stats>(signal, (done) => sftp.fstat(handle, done)),
+	const after = toFileAttributes(
+		await callSftp<Stats>(signal, (done) => sftp.fstat(handle, done)),
 	);
 	if (
 		size !== before.size ||
@@ -107,7 +129,7 @@ async function read(
 	) {
 		throw new SshError("changed_during_read");
 	}
-	await fileRequest<void>(signal, (done) =>
+	await callSftp<void>(signal, (done) =>
 		sftp.close(handle, (error) => done(error ?? undefined, undefined)),
 	);
 	return {
@@ -121,7 +143,7 @@ async function read(
  * change after open, and equal-size writes can evade SFTP's timestamp precision.
  */
 export async function readSshFile(
-	options: SshFileRequest,
+	options: SshReadOptions,
 ): Promise<SshFileObservation> {
 	const input = { ...options };
 	if (
@@ -130,13 +152,13 @@ export async function readSshFile(
 		Buffer.from(input.path, "utf8").toString("utf8") !== input.path ||
 		!Number.isSafeInteger(input.maxBytes) ||
 		input.maxBytes < 1 ||
-		input.maxBytes > 512 * 1024
+		input.maxBytes > maxSshFileBytes
 	) {
 		throw new SshError("invalid_request");
 	}
 	const startedAt = Date.now();
-	return withSshConnection(input, async ({ client, signal, fail }) => {
-		const sftp = await protocolRequest<SFTPWrapper>(signal, (done) => {
+	return await withSshConnection(input, async ({ client, signal, fail }) => {
+		const sftp = await callSsh<SFTPWrapper>(signal, (done) => {
 			client.sftp((error, channel) =>
 				done(error ? new SshError("sftp_unavailable") : undefined, channel),
 			);

@@ -27,26 +27,59 @@
 		},
 		"rules": {
 			"preset": "recommended",
+			"complexity": {
+				"noExcessiveCognitiveComplexity": "error",
+				"useMaxParams": "error"
+			},
 			"correctness": {
 				"noBeforeInteractiveScriptOutsideDocument": "error",
 				"noNextAsyncClientComponent": "error"
 			},
 			"performance": {
 				"noBarrelFile": "error",
-				"noSyncScripts": "error"
+				"noSyncScripts": "error",
+				"useTopLevelRegex": "error"
 			},
 			"style": {
+				"noMagicNumbers": "error",
+				"noNestedTernary": "error",
+				"noUnusedTemplateLiteral": "error",
+				"useBlockStatements": "error",
+				"useConsistentTypeDefinitions": {
+					"level": "error",
+					"options": { "style": "type" }
+				},
+				"useExplicitLengthCheck": "error",
 				"useFilenamingConvention": {
 					"level": "error",
 					"options": {
 						"filenameCases": ["kebab-case"]
 					}
-				}
+				},
+				"useNamingConvention": {
+					"level": "error",
+					"options": {
+						"conventions": [
+							{
+								"selector": { "kind": "const", "scope": "global" },
+								"formats": ["camelCase"]
+							}
+						]
+					}
+				},
+				"useNumericSeparators": "error"
+			},
+			"suspicious": {
+				"noShadow": "error",
+				"noUnnecessaryConditions": "error",
+				"useAwait": "error",
+				"useErrorMessage": "error"
 			},
 			"nursery": {
 				"noComponentHookFactories": "error",
 				"noFloatingPromises": "error",
 				"noMisusedPromises": "error",
+				"useExhaustiveSwitchCases": "error",
 				"useReactCompiler": "error",
 				"useSortedClasses": "info"
 			}

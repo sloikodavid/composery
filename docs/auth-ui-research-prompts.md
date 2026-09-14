@@ -12,14 +12,14 @@ When reports are ready, import them with `bun run research:import <url>`. Import
 
 ## Prompt index
 
-- 01 — Choose the authentication UI approach.
-- 02 — Audit a complete custom sign-in and sign-up flow.
-- 03 — Define account management and account deletion.
-- 04 — Keep layout stable under a static Content Security Policy.
-- 05 — Plan the production cutover.
-- 06 — Reconcile evidence and choose the implementation (run last).
+- 01: Choose the authentication UI approach.
+- 02: Audit a complete custom sign-in and sign-up flow.
+- 03: Define account management and account deletion.
+- 04: Keep layout stable under a static Content Security Policy.
+- 05: Plan the production cutover.
+- 06: Reconcile evidence and choose the implementation (run last).
 
-## 01 — Choose the authentication UI approach
+## 01: Choose the authentication UI approach
 
 ```text
 We are building Composery, a web control panel for customer-controlled VPSs. Stack: Next.js 16.3 App Router on Node.js 24, React 19.3 with the React Compiler, Tailwind CSS 4.3, Base UI 1.8 primitives, Convex 1.45 as the backend, and Clerk (@clerk/nextjs 7.9, @clerk/react 6.15, @clerk/backend 3.17, which is Clerk Core 3). Clients must work on Windows, macOS, and Linux.
@@ -41,7 +41,7 @@ Research rules: use primary Clerk documentation, the Clerk JavaScript monorepo s
 State the strongest simpler alternative and when it is better. Return a recommendation per surface, the decisive evidence, open questions, and pass/fail checks.
 ```
 
-## 02 — Audit a complete custom sign-in and sign-up flow
+## 02: Audit a complete custom sign-in and sign-up flow
 
 ```text
 We are building Composery, a web control panel for customer-controlled VPSs, on Next.js 16.3 App Router, React 19.3, Convex 1.45, and Clerk Core 3 (@clerk/nextjs 7.9, @clerk/react 6.15).
@@ -64,7 +64,7 @@ Research rules: use primary Clerk documentation and Clerk JavaScript monorepo so
 Return the state machine, the list of required routes and components (no visual design), a table of error codes with handling, open questions, and acceptance tests that a real browser run can pass or fail.
 ```
 
-## 03 — Define account management and account deletion
+## 03: Define account management and account deletion
 
 ```text
 We are building Composery, a web control panel for customer-controlled VPSs, on Next.js 16.3, React 19.3, Convex 1.45, and Clerk Core 3 (@clerk/nextjs 7.9).
@@ -84,7 +84,7 @@ Research rules: use primary Clerk and Convex documentation and source for the in
 Return a recommended feature scope, flows with failure handling, the ordering between Clerk and Convex for deletion, open product questions, and pass/fail checks.
 ```
 
-## 04 — Keep layout stable under a static Content Security Policy
+## 04: Keep layout stable under a static Content Security Policy
 
 ```text
 We are building Composery on Next.js 16.3 App Router, React 19.3, Tailwind CSS 4.3, Convex 1.45, and Clerk Core 3 (@clerk/nextjs 7.9). The home page is static for everyone. Signed-in parts render in the browser inside fixed-size regions so the page stays static and does not shift.
@@ -105,7 +105,7 @@ Research rules: use primary Clerk, Cloudflare Turnstile, Next.js, and MDN docume
 Return the minimal exact policy per route type, the layout reservation technique per state, open questions, and pass/fail checks (for example: zero CSP violations in the console, CLS of 0 in a Lighthouse or PerformanceObserver run).
 ```
 
-## 05 — Plan the production cutover
+## 05: Plan the production cutover
 
 ```text
 We are building Composery, a web control panel, on Next.js 16.3, Convex 1.45, and Clerk Core 3 (@clerk/nextjs 7.9, @clerk/backend 3.17). The product domain is composery.io, with DNS on Cloudflare. Only a Clerk development instance exists; there is no production instance yet. The development instance uses Clerk's shared Google OAuth credentials.
@@ -123,7 +123,7 @@ Research rules: use primary Clerk, Convex, Google Cloud, and Cloudflare document
 Return the runbook, the steps that block others, the checks after each step, and open questions.
 ```
 
-## 06 — Reconcile evidence and choose the implementation
+## 06: Reconcile evidence and choose the implementation
 
 Run last. Paste the reports from 01-05 after the prompt.
 
