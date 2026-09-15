@@ -27,7 +27,7 @@ Stand in for what a test is not about. Never stand in for what decides whether i
 
 ## Layout
 
-Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key-pair.test.ts`. A test of one module is named after that module. A test of a behavior that spans modules is named after the behavior, such as `authorized-keys-agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file. The harness lives in `tests/harness/`.
+Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file. The harness is not a mirror: it is our own code, in `tests/harness/`, named as every other folder of ours is.
 
 ## Running
 
@@ -39,6 +39,19 @@ Tests live under `tests/`, in folders that mirror the source folders they test, 
 - The network on the first run: the harness downloads the pinned Convex backend, checks its SHA-256 digest, and builds a storage template, which takes about a minute. Later runs start from the template in seconds.
 
 A missing requirement fails the run with a message that says what to do. Nothing is skipped quietly.
+
+## Pins
+
+Every version a test depends on is written down, so a run today and a run next year test the same thing.
+
+| Pin | Where | How to move it |
+|---|---|---|
+| npm packages | `bun.lock`, with `exact = true` | `bun outdated`, then `bun add <name>@<version>` |
+| The Ubuntu image | `baseImage` in `tests/harness/sshd.ts` | take the new digest from the registry |
+| The `sshd` packages | `archiveSnapshot` in the same file | pick a later day of the Ubuntu archive |
+| The Convex backend | `releaseAssets` in `tests/harness/convex-backend.ts` | take the release and its SHA-256 for every platform |
+
+A pin here cannot rot the way an apt version pin does. We pin the day of the archive, not the version of a package, and the snapshot archive keeps every day: a snapshot from June 2024 still installs today. So an old pin gives an old OpenSSH, never a broken build. That is the reason to move these on purpose: to test against what people really run, not to keep the tests working.
 
 ## Isolation
 

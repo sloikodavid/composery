@@ -46,7 +46,7 @@ A Hetzner create request is recorded as uncertain before it is sent, so a lost r
 
 Each backend keeps its own state in its own table, with one row for each allocation, instead of fields or a nested object in `serverAllocations`. The worker changes its lease fields every few seconds, and a change to `serverAllocations` reruns every status query that reads it. A second backend adds its own table and one `backend` value, and changes no existing table. A backend's own error codes stay in its table, for admins; the shared status says only that an allocation is blocked or missing.
 
-Convex function module paths do not accept hyphens, so Convex modules use snake_case with a directory-specific filename lint rule.
+A Convex module path accepts only letters, digits, underscores, and periods: the backend refuses `hyphen-probe.js` on push. So Convex modules use snake_case with a directory-specific filename lint rule, and a test that mirrors one keeps its name. Every other file is kebab-case, because a Next.js route folder becomes a URL segment.
 
 Server pages call `auth.protect()` themselves instead of matching routes in the proxy. Clerk deprecates `createRouteMatcher` in favor of checks at the resource.
 

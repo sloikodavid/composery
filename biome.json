@@ -95,7 +95,7 @@
 	},
 	"overrides": [
 		{
-			"includes": ["convex/**"],
+			"includes": ["convex/**", "tests/convex/**"],
 			"linter": {
 				"rules": {
 					"style": {
