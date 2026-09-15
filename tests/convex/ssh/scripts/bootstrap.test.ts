@@ -1,8 +1,8 @@
 import { beforeAll, expect, test } from "bun:test";
-import { renderSshBootstrapScript } from "../../../convex/ssh/bootstrap_script";
-import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
-import { generateSshKeyPair } from "../../../convex/ssh/key_pair";
-import { quoteShell, type SshdServer, useSshd } from "../../harness/sshd";
+import { discoverSshKeyAcceptance } from "../../../../convex/ssh/key_acceptance";
+import { generateSshKeyPair } from "../../../../convex/ssh/key_pair";
+import { renderSshBootstrapScript } from "../../../../convex/ssh/scripts/bootstrap";
+import { quoteShell, type SshdServer, useSshd } from "../../../harness/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

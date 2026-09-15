@@ -10,7 +10,7 @@ import {
 } from "./connection";
 import { SshError } from "./errors";
 import { maxSshFileBytes, type SshFileObservation } from "./read_file";
-import { writeFileScript } from "./write_file_script";
+import { writeFileScript } from "./scripts/write_file";
 
 const maxPathBytes = 4096;
 const maxOutputBytes = 256;

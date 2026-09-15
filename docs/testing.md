@@ -27,7 +27,7 @@ Stand in for what a test is not about. Never stand in for what decides whether i
 
 ## Layout
 
-Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file. The harness is not a mirror: it is our own code, in `tests/harness/`, named as every other folder of ours is.
+Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file, as `tests/convex/ssh/scripts/` does. The harness is not a mirror: it is our own code, in `tests/harness/`, named as every other folder of ours is.
 
 ## Running
 

@@ -11,7 +11,7 @@ import {
 	toSshProgramCommand,
 } from "./connection";
 import { SshError } from "./errors";
-import { hostnameScript } from "./hostname_script";
+import { hostnameScript } from "./scripts/hostname";
 
 const maxOutputBytes = 4096;
 const maxHostnameLength = 253;

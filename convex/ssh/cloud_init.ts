@@ -1,5 +1,5 @@
 import type { SshBootstrapFile } from "./bootstrap_state";
-import { reportHostKeyScript } from "./report_host_key_script";
+import { reportHostKeyScript } from "./scripts/report_host_key";
 
 const bootstrapFilePath = "/run/composery-bootstrap.json";
 

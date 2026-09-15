@@ -6,7 +6,6 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, env } from "../_generated/server";
 import { toConvexError } from "../errors";
-import { renderSshBootstrapScript } from "./bootstrap_script";
 import {
 	bootstrapLifetimeMs,
 	type SshBootstrapFile,
@@ -14,6 +13,7 @@ import {
 } from "./bootstrap_state";
 import { SshAccessError } from "./errors";
 import { generateSshKeyPair } from "./key_pair";
+import { renderSshBootstrapScript } from "./scripts/bootstrap";
 import { decryptSshSecrets, encryptSshSecrets } from "./secrets";
 
 const bootstrapTokenBytes = 32;

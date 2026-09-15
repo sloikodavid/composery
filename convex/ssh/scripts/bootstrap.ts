@@ -1,4 +1,4 @@
-import type { SshBootstrapFile } from "./bootstrap_state";
+import type { SshBootstrapFile } from "../bootstrap_state";
 
 /**
  * The program a person runs on their own server when Composery can no longer sign in.
