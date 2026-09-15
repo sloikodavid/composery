@@ -17,7 +17,7 @@
 		"fix": "bun --sequential --no-exit-on-error \"fix:*\"",
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
-		"verify": "bun run check && bun test --pass-with-no-tests && bun run build",
+		"verify": "bun check && bun test --pass-with-no-tests && bun run build",
 		"research:import": "bun scripts/research/import.ts"
 	},
 	"dependencies": {

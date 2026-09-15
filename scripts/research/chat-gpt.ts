@@ -16,6 +16,7 @@ const specialValues: readonly unknown[] = [
 // ChatGPT writes each citation as private-use characters in the text.
 const citationMarker = /[\uE200-\uE2FF]/u;
 const millisecondsPerSecond = 1000;
+const enqueueMarker = "streamController.enqueue(";
 
 // biome-ignore-start lint/style/useNamingConvention: ChatGPT's share data uses snake_case fields
 type Reference = { matched_text?: unknown; alt?: unknown };
@@ -125,17 +126,39 @@ function getVisibleText(message: Message): string | undefined {
 	return text === "" ? undefined : text;
 }
 
+/**
+ * Reads every string the page hands to its stream. The literals are scanned rather than matched,
+ * because a pattern for a quoted literal backtracks past the engine's limit on a long conversation
+ * and then reports no match instead of an error, which cannot be told apart from an empty page.
+ */
+function readEnqueuedChunks(html: string) {
+	const chunks: string[] = [];
+	let at = html.indexOf(enqueueMarker);
+	while (at !== -1) {
+		let index = at + enqueueMarker.length;
+		if (html[index] === '"') {
+			const start = index;
+			index += 1;
+			while (index < html.length && html[index] !== '"') {
+				index += html[index] === "\\" ? 2 : 1;
+			}
+			if (index >= html.length) {
+				break;
+			}
+			chunks.push(JSON.parse(html.slice(start, index + 1)) as string);
+		}
+		at = html.indexOf(enqueueMarker, index);
+	}
+	return chunks;
+}
+
 export async function readChatGptShare(url: string): Promise<Conversation> {
 	const response = await fetch(url);
 	if (!response.ok) {
 		throw new Error(`${url} returned ${response.status}.`);
 	}
 	const html = await response.text();
-	const chunks = Array.from(
-		html.matchAll(/streamController\.enqueue\(("(?:[^"\\]|\\.)*")\)/g),
-		(match) => JSON.parse(match[1] as string) as string,
-	);
-	const firstLine = chunks.join("").split("\n")[0];
+	const firstLine = readEnqueuedChunks(html).join("").split("\n")[0];
 	if (!firstLine) {
 		throw new Error(`${url} contains no conversation data.`);
 	}
