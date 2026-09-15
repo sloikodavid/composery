@@ -1,7 +1,7 @@
 import { internal } from "../_generated/api";
 import { httpAction } from "../_generated/server";
 import { httpStatus } from "../http_status";
-import { toBootstrapTokenDigest } from "./access_state";
+import { toBootstrapTokenDigest } from "./bootstrap_state";
 
 const maxBodyBytes = 4096;
 const maxAllocationIdLength = 100;
@@ -145,7 +145,7 @@ export const registerSshHostKey = httpAction(async (ctx, request) => {
 	}
 	try {
 		const isRegistered: boolean = await ctx.runMutation(
-			internal.ssh.access_state.registerHostKey,
+			internal.ssh.bootstrap_state.registerHostKey,
 			{
 				allocationId: registration.allocationId,
 				bootstrapTokenDigest: await toBootstrapTokenDigest(registration.token),

@@ -1,12 +1,7 @@
+import type { SshBootstrapFile } from "./bootstrap_state";
 import { reportHostKeyScript } from "./report_host_key_script";
 
 const bootstrapFilePath = "/run/composery-bootstrap.json";
-
-export type SshBootstrapFile = {
-	allocationId: string;
-	token: string;
-	url: string;
-};
 
 /** Returns cloud-config user data that installs the management key and reports the server's host key. */
 export function renderCloudInit({

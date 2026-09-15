@@ -8,9 +8,9 @@ import {
 	canReuseAllocationSshAccess,
 	generateAllocationSshAccess,
 	requireSshBootstrapFile,
-	SshAccessError,
-} from "../../ssh/access";
+} from "../../ssh/bootstrap";
 import { renderCloudInit } from "../../ssh/cloud_init";
+import { SshAccessError } from "../../ssh/errors";
 import type { powerOperationKind } from "../schema";
 import {
 	createHetznerCloudResource,

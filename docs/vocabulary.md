@@ -32,6 +32,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `error` | A result that a function throws, with a code | exception (in copy) |
 | `key pair` | A private key and its public key | credential |
 | `management key` | The key pair that Composery uses to sign in to an allocation | |
+| `pending key pair` | The management key that a renewal installs, which takes over when the server reports with it | new key |
+| `script` | Program text that runs on a server, whether Composery sends it or a person runs it | command (which is an `operation`) |
 | `authorized key` | One entry in an `authorized_keys` file: options, a public key, and a comment | credential, SSH key (in code) |
 | `edit` | One change to one file's contents, planned against the revision it was read at | change, patch |
 | `revision` | What a file held when it was read, named by a digest of those bytes | version |

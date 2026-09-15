@@ -6,6 +6,8 @@ export const sshTables = {
 		allocationId: v.id("serverAllocations"),
 		publicKey: v.string(),
 		encryptedSecrets: v.string(),
+		pendingPublicKey: v.optional(v.string()),
+		pendingEncryptedSecrets: v.optional(v.string()),
 		bootstrapTokenDigest: v.string(),
 		bootstrapExpiresAt: v.number(),
 		hostKey: v.optional(v.string()),
