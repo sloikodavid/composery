@@ -45,6 +45,8 @@ export const allocationTables = {
 		ipv4: v.optional(v.string()),
 		// A network in CIDR form, not one address: a backend assigns a server a range of its own.
 		ipv6: v.optional(v.string()),
+		// The hostname the server last reported, which the customer may have chosen themselves.
+		hostname: v.optional(v.string()),
 	}).index("by_server_id", ["serverId"]),
 
 	serverOperations: defineTable({

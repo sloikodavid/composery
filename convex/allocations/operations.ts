@@ -3,10 +3,12 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
 	internalMutation,
+	internalQuery,
 	type MutationCtx,
 	type QueryCtx,
 } from "../_generated/server";
 import { type Failure, fail, toConvexError } from "../errors";
+import schema from "../schema";
 import {
 	deleteAllocationSshAccess,
 	isSshAccessConfigured,
@@ -206,6 +208,25 @@ export async function requestAllocationDelete(
 	});
 	await wakeBackend(ctx, { ...allocation, deleteRequested: true });
 }
+
+export const getForServer = internalQuery({
+	args: { serverId: v.id("servers") },
+	returns: v.union(schema.doc("serverAllocations"), v.null()),
+	handler: async (ctx, { serverId }) =>
+		await ctx.db
+			.query("serverAllocations")
+			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
+			.unique(),
+});
+
+export const storeHostname = internalMutation({
+	args: { allocationId: v.id("serverAllocations"), hostname: v.string() },
+	returns: v.null(),
+	handler: async (ctx, { allocationId, hostname }) => {
+		await ctx.db.patch("serverAllocations", allocationId, { hostname });
+		return null;
+	},
+});
 
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },

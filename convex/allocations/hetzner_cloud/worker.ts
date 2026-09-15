@@ -208,6 +208,8 @@ async function renderUserData(ctx: ActionCtx, lease: Lease) {
 	return renderCloudInit({
 		publicKey: sshAccess.publicKey,
 		bootstrapFile: requireSshBootstrapFile(sshAccess),
+		// The create operation carries the name the server had when it was requested.
+		hostname: lease.operation.name ?? "",
 	});
 }
 

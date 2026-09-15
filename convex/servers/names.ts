@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
 	type MutationCtx,
@@ -87,6 +88,13 @@ export const rename = mutation({
 		}
 		await claimServerName(ctx, name, serverId);
 		await ctx.db.patch("servers", serverId, { name });
+		// Best effort: the rename stands whether or not the server can be reached.
+		await ctx.scheduler.runAfter(0, internal.ssh.hostname.apply, {
+			serverId,
+			expected: server.name,
+			next: name,
+			attempt: 0,
+		});
 		return { ok: true as const, name };
 	},
 });

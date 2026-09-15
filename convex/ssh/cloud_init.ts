@@ -12,12 +12,16 @@ export type SshBootstrapFile = {
 export function renderCloudInit({
 	publicKey,
 	bootstrapFile,
+	hostname,
 }: {
 	publicKey: string;
 	bootstrapFile: SshBootstrapFile;
+	hostname: string;
 }) {
 	// biome-ignore-start lint/style/useNamingConvention: cloud-init requires snake_case keys
 	const config = {
+		hostname,
+		preserve_hostname: false,
 		ssh_pwauth: false,
 		disable_root: false,
 		ssh_genkeytypes: ["ed25519", "rsa", "ecdsa"],

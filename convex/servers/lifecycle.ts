@@ -141,6 +141,8 @@ export const getStatus = query({
 		hostKeyConflictAt: v.union(v.number(), v.null()),
 		// The port that the server last reported, which a client needs to connect.
 		port: v.union(v.number(), v.null()),
+		// The hostname the server reports, which the customer may have changed themselves.
+		hostname: v.union(v.string(), v.null()),
 		operation: v.object({
 			_id: v.id("serverOperations"),
 			kind: operationKind,
@@ -168,6 +170,7 @@ export const getStatus = query({
 			hostKey: sshAccess?.hostKey ?? null,
 			hostKeyConflictAt: sshAccess?.hostKeyConflictAt ?? null,
 			port: sshAccess?.port ?? null,
+			hostname: allocation.hostname ?? null,
 			operation: {
 				_id: operation._id,
 				kind: operation.kind,

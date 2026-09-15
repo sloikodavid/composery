@@ -36,6 +36,8 @@ import type * as ssh_bootstrap_command from "../ssh/bootstrap_command.js";
 import type * as ssh_cloud_init from "../ssh/cloud_init.js";
 import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_discover_script from "../ssh/discover_script.js";
+import type * as ssh_hostname from "../ssh/hostname.js";
+import type * as ssh_hostname_script from "../ssh/hostname_script.js";
 import type * as ssh_inspect_public_key from "../ssh/inspect_public_key.js";
 import type * as ssh_keys from "../ssh/keys.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
@@ -81,6 +83,8 @@ const fullApi: ApiFromModules<{
   "ssh/cloud_init": typeof ssh_cloud_init;
   "ssh/connection": typeof ssh_connection;
   "ssh/discover_script": typeof ssh_discover_script;
+  "ssh/hostname": typeof ssh_hostname;
+  "ssh/hostname_script": typeof ssh_hostname_script;
   "ssh/inspect_public_key": typeof ssh_inspect_public_key;
   "ssh/keys": typeof ssh_keys;
   "ssh/read_file": typeof ssh_read_file;

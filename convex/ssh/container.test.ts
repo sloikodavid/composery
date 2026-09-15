@@ -6,6 +6,7 @@ import ssh2 from "ssh2";
 import { discoverSshAccounts } from "./accounts";
 import { AuthorizedKeysFile } from "./authorized_keys";
 import { type SshConnectionOptions, SshError } from "./connection";
+import { setSshHostname } from "./hostname";
 import { inspectSshPublicKey } from "./inspect_public_key";
 import { readSshFile } from "./read_file";
 import { removeAuthorizedKeys } from "./remove_authorized_keys";
@@ -303,6 +304,24 @@ test.skipIf(!hasDocker)(
 			"A key command answers for each key and connection, so its keys cannot be listed.",
 		);
 		exec("rm", "-f", "/etc/ssh/sshd_config.d/test.conf");
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"leaves a hostname that no longer matches the name Composery gave it",
+	async () => {
+		const current = exec("hostname");
+		expect(
+			await setSshHostname(connection, {
+				expected: "a-name-this-server-never-had",
+				next: "renamed",
+			}),
+		).toBe(current);
+		// Setting it to what it already is proves the write path without changing the server.
+		expect(
+			await setSshHostname(connection, { expected: current, next: current }),
+		).toBe(current);
 	},
 	testTimeoutMs,
 );

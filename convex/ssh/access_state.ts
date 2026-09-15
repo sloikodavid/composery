@@ -1,4 +1,5 @@
 import { type Infer, v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
 	env,
@@ -246,6 +247,16 @@ export const registerHostKey = internalMutation({
 			...(source === null ? {} : { hostKeySource: source }),
 			...(port === null ? {} : { port }),
 		});
+		// The first sign-in after a pin both records the hostname and proves the access works.
+		const server = await ctx.db.get("servers", allocation.serverId);
+		if (server !== null) {
+			await ctx.scheduler.runAfter(0, internal.ssh.hostname.apply, {
+				serverId: server._id,
+				expected: server.name,
+				next: server.name,
+				attempt: 0,
+			});
+		}
 		return true;
 	},
 });
