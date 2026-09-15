@@ -43,6 +43,7 @@ export const allocationTables = {
 		observedAt: v.optional(v.number()),
 		location: v.optional(v.string()),
 		ipv4: v.optional(v.string()),
+		// A network in CIDR form, not one address: a backend assigns a machine a range of its own.
 		ipv6: v.optional(v.string()),
 	}).index("by_server_id", ["serverId"]),
 

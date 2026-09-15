@@ -33,7 +33,7 @@ export const commandExitCodes: ReadonlySet<number> = new Set([
 	commandNotFoundExitCode,
 ]);
 
-/** Only stable codes escape this boundary; server text and credentials do not. */
+/** Only stable codes escape this boundary; server text and secrets do not. */
 export class SshError extends Error {
 	readonly code: SshFailure;
 	constructor(code: SshFailure) {
