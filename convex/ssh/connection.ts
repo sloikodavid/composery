@@ -1,7 +1,7 @@
 "use node";
 
 import { isIP } from "node:net";
-import { Client, type ClientChannel } from "ssh2";
+import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
 
 export type SshFailure =
 	| "invalid_request"
@@ -43,17 +43,25 @@ export class SshError extends Error {
 	}
 }
 
-export type SshConnectionOptions = Readonly<{
+/** A server that Composery connects to, and the account it names there. */
+export type SshTarget = Readonly<{
 	/** Resolve from trusted allocation state, never a caller-supplied URL. */
 	address: string;
 	port: number;
 	username: string;
-	privateKey: string;
 	/** SSH wire-format public key from an independent trusted path. */
 	hostKey: Uint8Array;
 	timeoutMs: number;
 	signal?: AbortSignal;
 }>;
+
+export type SshConnectionOptions = SshTarget & Readonly<{ privateKey: string }>;
+
+export type SshClientScope = {
+	client: Client;
+	signal: AbortSignal;
+	fail: (error: SshError) => void;
+};
 
 /** Each pending protocol request owns and removes its cancellation listener. */
 export function callSsh<T>(
@@ -101,30 +109,38 @@ function toConnectionFailure(
 		: "connection_failed";
 }
 
-/** Own one connection and its deadline. Operations must await all protocol work. */
-export async function withSshConnection<T>(
-	options: SshConnectionOptions,
-	operation: (scope: {
-		client: Client;
-		signal: AbortSignal;
-		fail: (error: SshError) => void;
-	}) => Promise<T>,
+function isValidSshTarget(target: SshTarget) {
+	return (
+		isIP(target.address) !== 0 &&
+		Number.isInteger(target.port) &&
+		target.port >= 1 &&
+		target.port <= maxPort &&
+		target.username !== "" &&
+		!target.username.includes("\0") &&
+		Buffer.from(target.username, "utf8").toString("utf8") === target.username &&
+		target.hostKey.length > 0 &&
+		Number.isSafeInteger(target.timeoutMs) &&
+		target.timeoutMs >= 1 &&
+		target.timeoutMs <= maxTimeoutMs
+	);
+}
+
+/**
+ * Owns one client, its deadline and its cancellation, and connects it to the pinned host with the
+ * authentication the caller chooses. `run` must await all protocol work.
+ */
+export async function withSshClient<T>(
+	target: SshTarget,
+	run: (
+		scope: SshClientScope & {
+			connect: (
+				authentication: Pick<ConnectConfig, "authHandler" | "privateKey">,
+			) => void;
+		},
+	) => Promise<T>,
 ): Promise<T> {
-	const input = { ...options, hostKey: Uint8Array.from(options.hostKey) };
-	if (
-		!isIP(input.address) ||
-		!Number.isInteger(input.port) ||
-		input.port < 1 ||
-		input.port > maxPort ||
-		!input.username ||
-		input.username.includes("\0") ||
-		Buffer.from(input.username, "utf8").toString("utf8") !== input.username ||
-		!input.privateKey ||
-		input.hostKey.length === 0 ||
-		!Number.isSafeInteger(input.timeoutMs) ||
-		input.timeoutMs < 1 ||
-		input.timeoutMs > maxTimeoutMs
-	) {
+	const input = { ...target, hostKey: Uint8Array.from(target.hostKey) };
+	if (!isValidSshTarget(input)) {
 		throw new SshError("invalid_request");
 	}
 	const pin = Buffer.from(input.hostKey);
@@ -146,26 +162,23 @@ export async function withSshConnection<T>(
 	});
 	client.on("close", () => lifetime.abort(new SshError("connection_closed")));
 	try {
-		await callSsh<void>(signal, (done) => {
-			client.once("ready", () => done(undefined, undefined));
-			client.connect({
-				host: input.address,
-				port: input.port,
-				username: input.username,
-				privateKey: input.privateKey,
-				readyTimeout: input.timeoutMs,
-				authHandler: ["publickey"],
-				hostVerifier: (key: Buffer) => {
-					const accepted = pin.equals(key);
-					hostMismatch ||= !accepted;
-					return accepted;
-				},
-			});
-		});
-		return await operation({
+		return await run({
 			client,
 			signal,
 			fail: (error) => lifetime.abort(error),
+			connect: (authentication) =>
+				client.connect({
+					...authentication,
+					host: input.address,
+					port: input.port,
+					username: input.username,
+					readyTimeout: input.timeoutMs,
+					hostVerifier: (key: Buffer) => {
+						const accepted = pin.equals(key);
+						hostMismatch ||= !accepted;
+						return accepted;
+					},
+				}),
 		});
 	} finally {
 		clearTimeout(timer);
@@ -173,6 +186,26 @@ export async function withSshConnection<T>(
 		// Destroy also releases remote handles after errors, cancellation, or stalls.
 		client.destroy();
 	}
+}
+
+/** Own one signed-in connection and its deadline. Operations must await all protocol work. */
+export async function withSshConnection<T>(
+	options: SshConnectionOptions,
+	operation: (scope: SshClientScope) => Promise<T>,
+): Promise<T> {
+	if (!options.privateKey) {
+		throw new SshError("invalid_request");
+	}
+	return await withSshClient(
+		options,
+		async ({ client, signal, fail, connect }) => {
+			await callSsh<void>(signal, (done) => {
+				client.once("ready", () => done(undefined, undefined));
+				connect({ privateKey: options.privateKey, authHandler: ["publickey"] });
+			});
+			return await operation({ client, signal, fail });
+		},
+	);
 }
 
 /**

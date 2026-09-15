@@ -18,6 +18,7 @@ import {
 	type SshFailure,
 } from "./connection";
 import { discoverSshServer } from "./discovery";
+import { discoverSshKeyAcceptance } from "./key_acceptance";
 import { readSshFile, type SshFileObservation } from "./read_file";
 import { type SshFileWriteResult, writeSshFile } from "./write_file";
 
@@ -70,6 +71,23 @@ type KeyFileListing = {
 	files: Awaited<ReturnType<typeof readKeyFile>>[];
 	unknowns: string[];
 };
+
+const acceptance = v.union(
+	v.literal("accepted"),
+	v.literal("refused"),
+	v.literal("unknown"),
+);
+
+type Acceptance = "accepted" | "refused" | "unknown";
+
+type AcceptanceQuestion = Readonly<{
+	account: string;
+	/** The key and options that the edited line holds afterwards, from the file as it was read. */
+	toEntry: (file: AuthorizedKeysFile) => Readonly<{
+		key: Readonly<{ type: string; base64: string }>;
+		options: readonly string[];
+	}> | null;
+}>;
 
 const authorizedKey = v.object({
 	type: v.string(),
@@ -205,6 +223,34 @@ export const list = action({
 	},
 });
 
+/**
+ * Asks the running server about the key an edit left behind. The server judges from Composery's
+ * address, so a key limited to other addresses cannot be answered for; and a write that succeeded
+ * stays a success when the question itself fails.
+ */
+async function getKeyAcceptance(
+	connection: SshConnectionOptions,
+	account: string,
+	entry: ReturnType<AcceptanceQuestion["toEntry"]>,
+): Promise<Acceptance> {
+	if (
+		entry === null ||
+		entry.options.some((option) =>
+			option.trim().toLowerCase().startsWith("from="),
+		)
+	) {
+		return "unknown";
+	}
+	try {
+		return await discoverSshKeyAcceptance(
+			{ ...connection, username: account },
+			entry.key,
+		);
+	} catch {
+		return "unknown";
+	}
+}
+
 async function applyEdits(
 	ctx: ActionCtx,
 	request: {
@@ -212,8 +258,9 @@ async function applyEdits(
 		path: string;
 		revision: string;
 		edits: readonly AuthorizedKeysEdit[];
+		question?: AcceptanceQuestion;
 	},
-) {
+): Promise<{ revision: string | null; acceptance: Acceptance | null }> {
 	if (request.edits.length === 0 || request.edits.length > maxEdits) {
 		throw toConvexError("edit_invalid");
 	}
@@ -244,6 +291,14 @@ async function applyEdits(
 		if (code !== null) {
 			throw toConvexError(code);
 		}
+		const acceptanceResult =
+			request.question === undefined
+				? null
+				: await getKeyAcceptance(
+						connection,
+						request.question.account,
+						request.question.toEntry(file),
+					);
 		// The written file names its own new state; a read that fails leaves the caller to list again.
 		try {
 			return {
@@ -254,9 +309,10 @@ async function applyEdits(
 						maxBytes: maxFileBytes,
 					}),
 				),
+				acceptance: acceptanceResult,
 			};
 		} catch {
-			return { revision: null };
+			return { revision: null, acceptance: acceptanceResult };
 		}
 	} catch (error) {
 		return toPublicError(error);
@@ -266,28 +322,39 @@ async function applyEdits(
 export const add = action({
 	args: {
 		serverId: v.id("servers"),
+		account: v.string(),
 		path: v.string(),
 		revision: v.string(),
 		key: authorizedKey,
 		options: v.array(v.string()),
 		comment: v.string(),
 	},
-	returns: v.object({ revision: v.union(v.string(), v.null()) }),
+	returns: v.object({
+		revision: v.union(v.string(), v.null()),
+		acceptance,
+	}),
 	handler: async (
 		ctx,
-		{ serverId, path, revision, key, options, comment },
-	): Promise<{ revision: string | null }> =>
-		await applyEdits(ctx, {
+		{ serverId, account, path, revision, key, options, comment },
+	): Promise<{ revision: string | null; acceptance: Acceptance }> => {
+		const result = await applyEdits(ctx, {
 			serverId,
 			path,
 			revision,
 			edits: [{ kind: "append", key, options, comment }],
-		}),
+			question: { account, toEntry: () => ({ key, options }) },
+		});
+		return {
+			revision: result.revision,
+			acceptance: result.acceptance ?? "unknown",
+		};
+	},
 });
 
 export const update = action({
 	args: {
 		serverId: v.id("servers"),
+		account: v.string(),
 		path: v.string(),
 		revision: v.string(),
 		line: v.number(),
@@ -295,12 +362,15 @@ export const update = action({
 		options: v.optional(v.array(v.string())),
 		comment: v.optional(v.string()),
 	},
-	returns: v.object({ revision: v.union(v.string(), v.null()) }),
+	returns: v.object({
+		revision: v.union(v.string(), v.null()),
+		acceptance,
+	}),
 	handler: async (
 		ctx,
-		{ serverId, path, revision, line, key, options, comment },
-	): Promise<{ revision: string | null }> =>
-		await applyEdits(ctx, {
+		{ serverId, account, path, revision, line, key, options, comment },
+	): Promise<{ revision: string | null; acceptance: Acceptance }> => {
+		const result = await applyEdits(ctx, {
 			serverId,
 			path,
 			revision,
@@ -313,7 +383,28 @@ export const update = action({
 					...(comment === undefined ? {} : { comment }),
 				},
 			],
-		}),
+			question: {
+				account,
+				toEntry: (file) => {
+					const current = file.lines.find(
+						(candidate) => candidate.line === line,
+					);
+					if (current?.kind !== "entry") {
+						return null;
+					}
+					return {
+						key: key ?? current.entry.key,
+						options:
+							options ?? current.entry.options.map((option) => option.raw),
+					};
+				},
+			},
+		});
+		return {
+			revision: result.revision,
+			acceptance: result.acceptance ?? "unknown",
+		};
+	},
 });
 
 export const remove = action({
@@ -327,11 +418,13 @@ export const remove = action({
 	handler: async (
 		ctx,
 		{ serverId, path, revision, lines },
-	): Promise<{ revision: string | null }> =>
-		await applyEdits(ctx, {
+	): Promise<{ revision: string | null }> => {
+		const result = await applyEdits(ctx, {
 			serverId,
 			path,
 			revision,
 			edits: lines.map((line) => ({ kind: "remove" as const, line })),
-		}),
+		});
+		return { revision: result.revision };
+	},
 });

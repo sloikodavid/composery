@@ -35,6 +35,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `authorized key` | One entry in an `authorized_keys` file: options, a public key, and a comment | credential, SSH key (in code) |
 | `edit` | One change to one file's contents, planned against the revision it was read at | change, patch |
 | `revision` | What a file held when it was read, named by a digest of those bytes | version |
+| `acceptance` | Whether the running SSH server lets a public key sign in to an account, as it answers Composery's address | probe, validity |
 | `host key` | The key pair that identifies a server to SSH clients | fingerprint (for the key itself) |
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
 

@@ -40,6 +40,7 @@ import type * as ssh_discovery_script from "../ssh/discovery_script.js";
 import type * as ssh_hostname from "../ssh/hostname.js";
 import type * as ssh_hostname_script from "../ssh/hostname_script.js";
 import type * as ssh_inspect_public_key from "../ssh/inspect_public_key.js";
+import type * as ssh_key_acceptance from "../ssh/key_acceptance.js";
 import type * as ssh_keys from "../ssh/keys.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
 import type * as ssh_remove_authorized_keys from "../ssh/remove_authorized_keys.js";
@@ -88,6 +89,7 @@ const fullApi: ApiFromModules<{
   "ssh/hostname": typeof ssh_hostname;
   "ssh/hostname_script": typeof ssh_hostname_script;
   "ssh/inspect_public_key": typeof ssh_inspect_public_key;
+  "ssh/key_acceptance": typeof ssh_key_acceptance;
   "ssh/keys": typeof ssh_keys;
   "ssh/read_file": typeof ssh_read_file;
   "ssh/remove_authorized_keys": typeof ssh_remove_authorized_keys;
