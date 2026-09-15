@@ -11,15 +11,29 @@ export const userFields = v.object({
 	imageUrl: v.string(),
 });
 
+export const quotaKind = v.literal("server");
+
 export default defineSchema({
 	users: defineTable(userFields)
 		.index("by_clerk_user_id", ["clerkUserId"])
 		.index("by_username", ["username"]),
 
-	// A row disables app access until the Clerk account has every required field.
 	disabledUsers: defineTable({ userId: v.id("users") }).index("by_user_id", [
 		"userId",
 	]),
+
+	userQuotas: defineTable({
+		userId: v.id("users"),
+		kind: quotaKind,
+		limit: v.number(),
+		used: v.number(),
+	}).index("by_user_id_and_kind", ["userId", "kind"]),
+
+	deploymentQuotas: defineTable({
+		kind: quotaKind,
+		limit: v.number(),
+		used: v.number(),
+	}).index("by_kind", ["kind"]),
 
 	...serverTables,
 	...allocationTables,

@@ -36,4 +36,4 @@ Run `bun test convex/ssh/authorized_keys.test.ts` for the pure module's behavior
 
 The module adds no API admission policy. Future operations must bound remote reads, response sizes, and edit batches before calling it; those limits belong to the actual transport and application contract.
 
-The first implementation slice ends at candidate bytes. Native semantic validation and the trusted remote read/write lifecycle remain explicit gates. The full option support matrix is not implemented by this lexer. No membership policy, persistent key inventory, polling, or enforcement was added.
+`convex/ssh/read_file.ts` and `convex/ssh/write_file.ts` read and replace one file on a server, and `convex/ssh/remove_authorized_keys.ts` combines them with this module to remove selected entries. No public function calls them yet. Native validation of options is not implemented: recognition is structural only.

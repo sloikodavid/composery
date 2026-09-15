@@ -1,11 +1,18 @@
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { requireServerAllocation } from "../allocations/operations";
+import { toConvexError } from "../errors";
 import { requireUser } from "../users";
 import { serverPermissions } from "./schema";
 
 export type ServerPermissions = Infer<typeof serverPermissions>;
 export type ServerPermission = keyof ServerPermissions;
+
+export type ServerAccess = {
+	isOwner: boolean;
+	permissions: Readonly<ServerPermissions>;
+};
 
 export const allServerPermissions: Readonly<ServerPermissions> = Object.freeze({
 	rename: true,
@@ -13,6 +20,11 @@ export const allServerPermissions: Readonly<ServerPermissions> = Object.freeze({
 	manageMembers: true,
 	manageSsh: true,
 	delete: true,
+});
+
+export const ownerAccess: Readonly<ServerAccess> = Object.freeze({
+	isOwner: true,
+	permissions: allServerPermissions,
 });
 
 export const serverSummary = v.object({
@@ -46,29 +58,54 @@ export async function getServerMembership(
 		.unique();
 }
 
-export function toServerAccess(
-	server: Doc<"servers">,
-	membership: Doc<"serverMemberships">,
+export async function requireServerMembership(
+	ctx: QueryCtx,
+	membershipId: Id<"serverMemberships">,
 ) {
-	const isOwner = server.ownerId === membership.userId;
-	return {
-		isOwner,
-		permissions: isOwner ? allServerPermissions : membership.permissions,
-	};
+	const membership = await ctx.db.get("serverMemberships", membershipId);
+	if (membership === null) {
+		throw toConvexError("membership_not_found");
+	}
+	return membership;
+}
+
+/** Returns null for a user who neither owns the server nor has a membership. */
+export async function getServerAccess(
+	ctx: QueryCtx,
+	server: Doc<"servers">,
+	userId: Id<"users">,
+): Promise<ServerAccess | null> {
+	if (server.ownerId === userId) {
+		return ownerAccess;
+	}
+	const membership = await getServerMembership(ctx, server._id, userId);
+	return membership === null
+		? null
+		: { isOwner: false, permissions: membership.permissions };
 }
 
 export function toServerSummary(
 	server: Doc<"servers">,
-	membership: Doc<"serverMemberships">,
+	access: ServerAccess,
 ): Infer<typeof serverSummary> {
 	return {
 		_id: server._id,
 		name: server.name,
-		...toServerAccess(server, membership),
+		isOwner: access.isOwner,
+		permissions: access.permissions,
 	};
 }
 
-/** Membership grants reads. Each platform change also needs its permission. */
+async function requireServerChangeable(ctx: QueryCtx, serverId: Id<"servers">) {
+	if ((await requireServerAllocation(ctx, serverId)).deleteRequested) {
+		throw toConvexError("server_deleting");
+	}
+}
+
+/**
+ * Access alone allows reads. A change also needs its permission, and a server
+ * that is being deleted accepts no change.
+ */
 export async function requireServerAccess(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
@@ -76,17 +113,19 @@ export async function requireServerAccess(
 ) {
 	const user = await requireUser(ctx);
 	const server = await ctx.db.get("servers", serverId);
-	const membership = await getServerMembership(ctx, serverId, user._id);
-	if (server === null || membership === null) {
-		throw new ConvexError({
-			message: "You do not have access to this server.",
-		});
+	const access =
+		server === null ? null : await getServerAccess(ctx, server, user._id);
+	// A server that the user cannot access looks the same as one that does not exist.
+	if (server === null || access === null) {
+		throw toConvexError("server_not_found");
 	}
-	const access = toServerAccess(server, membership);
-	if (permission !== undefined && !access.permissions[permission]) {
-		throw new ConvexError({ message: "You do not have access to do this." });
+	if (permission !== undefined) {
+		if (!access.permissions[permission]) {
+			throw toConvexError("permission_denied");
+		}
+		await requireServerChangeable(ctx, serverId);
 	}
-	return { user, server, membership, ...access };
+	return { user, server, ...access };
 }
 
 export async function requireServerOwner(
@@ -95,9 +134,8 @@ export async function requireServerOwner(
 ) {
 	const access = await requireServerAccess(ctx, serverId);
 	if (!access.isOwner) {
-		throw new ConvexError({
-			message: "Only the owner can transfer ownership.",
-		});
+		throw toConvexError("permission_denied");
 	}
+	await requireServerChangeable(ctx, serverId);
 	return access;
 }

@@ -10,11 +10,11 @@ import {
 	isHttpServerError,
 } from "../../http_status";
 import {
-	canReuseSshAccess,
-	createSshAccess,
-	getSshBootstrapFile,
-	SshBootstrapError,
-} from "../../ssh/bootstrap";
+	canReuseAllocationSshAccess,
+	generateAllocationSshAccess,
+	requireSshBootstrapFile,
+	SshAccessError,
+} from "../../ssh/access";
 import { renderCloudInit } from "../../ssh/cloud_init";
 import {
 	callHetznerCloud,
@@ -185,13 +185,13 @@ async function findResource(
 async function renderUserData(ctx: ActionCtx, claim: Claim) {
 	const { allocationId, epoch } = claim.hetznerCloudAllocation;
 	let sshAccess: Doc<"allocationSshAccess"> | null = await ctx.runQuery(
-		internal.ssh.bootstrap_state.get,
+		internal.ssh.access_state.get,
 		{ allocationId },
 	);
-	if (!canReuseSshAccess(sshAccess)) {
+	if (!canReuseAllocationSshAccess(sshAccess)) {
 		sshAccess = await ctx.runMutation(
-			internal.allocations.hetzner_cloud.worker_state.prepareSshAccess,
-			{ epoch, sshAccess: createSshAccess(allocationId) },
+			internal.allocations.hetzner_cloud.worker_state.storeSshAccess,
+			{ epoch, sshAccess: await generateAllocationSshAccess(allocationId) },
 		);
 	}
 	if (sshAccess === null) {
@@ -199,7 +199,7 @@ async function renderUserData(ctx: ActionCtx, claim: Claim) {
 	}
 	return renderCloudInit({
 		publicKey: sshAccess.publicKey,
-		bootstrapFile: getSshBootstrapFile(sshAccess),
+		bootstrapFile: requireSshBootstrapFile(sshAccess),
 	});
 }
 
@@ -284,7 +284,7 @@ async function createResource(
 		return toFailure("resource_missing", { retry: false, missing: true });
 	}
 	if (allocation.status === "blocked") {
-		return toFailure(allocation.error ?? "operator_retry_required", {
+		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
 			retry: false,
 		});
 	}
@@ -393,7 +393,7 @@ async function deleteResource(
 		};
 	}
 	if (allocation.status === "blocked") {
-		return toFailure(allocation.error ?? "operator_retry_required", {
+		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
 			retry: false,
 		});
 	}
@@ -443,7 +443,7 @@ async function stepPower(
 		return null;
 	}
 	if (operation.status === "blocked") {
-		return toFailure(operation.error ?? "operator_retry_required", {
+		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
 			retry: false,
 		});
 	}
@@ -595,7 +595,7 @@ function toErrorUpdate(error: unknown): HetznerCloudWorkerUpdate {
 			},
 		};
 	}
-	if (error instanceof SshBootstrapError) {
+	if (error instanceof SshAccessError) {
 		return toFailure(error.code, { retry: false });
 	}
 	return toFailure("worker_failed", { retry: true });

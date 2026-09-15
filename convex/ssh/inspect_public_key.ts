@@ -63,9 +63,8 @@ function toInspection(
 }
 
 /**
- * Ask the target's OpenSSH to parse exactly one public key. This does not check
- * authorized-key options, daemon policy, certificate trust, or private-key possession.
- * Certificate fingerprints identify the underlying key, not the certificate bytes.
+ * Asks the target's own OpenSSH to parse one public key. It checks no option, daemon
+ * policy, or certificate trust. A certificate's fingerprint is its underlying key's.
  */
 export async function inspectSshPublicKey(
 	connection: SshConnectionOptions,

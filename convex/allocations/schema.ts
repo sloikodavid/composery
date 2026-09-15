@@ -10,13 +10,13 @@ export const powerOperationKind = v.union(
 	v.literal("forceStop"),
 );
 
-const operationKind = v.union(
+export const operationKind = v.union(
 	v.literal("create"),
 	powerOperationKind,
 	v.literal("delete"),
 );
 
-const operationStatus = v.union(
+export const operationStatus = v.union(
 	v.literal("pending"),
 	v.literal("succeeded"),
 	v.literal("blocked"),
@@ -34,22 +34,12 @@ export const allocationStatus = v.union(
 );
 
 export const allocationTables = {
-	// Operator-controlled capacity before billing exists.
-	serverGrants: defineTable({
-		userId: v.id("users"),
-		limit: v.number(),
-		used: v.number(),
-	}).index("by_user_id", ["userId"]),
-
-	// Fields that code outside a backend reads. Each backend keeps its own state in its own table.
 	serverAllocations: defineTable({
 		serverId: v.id("servers"),
-		grantId: v.id("serverGrants"),
 		operationId: v.id("serverOperations"),
 		backend: allocationBackend,
 		status: allocationStatus,
 		deleteRequested: v.boolean(),
-		error: v.optional(v.string()),
 		observedAt: v.optional(v.number()),
 		location: v.optional(v.string()),
 		ipv4: v.optional(v.string()),
@@ -63,7 +53,6 @@ export const allocationTables = {
 		name: v.optional(v.string()),
 		kind: operationKind,
 		status: operationStatus,
-		error: v.optional(v.string()),
 		finishedAt: v.optional(v.number()),
 		deadlineAt: v.optional(v.number()),
 	})

@@ -37,7 +37,6 @@ export const hetznerCloudFindingReason = v.union(
 );
 
 export const hetznerCloudTables = {
-	// One row for each allocation. The worker changes these fields often, so they stay out of `serverAllocations`.
 	hetznerCloudAllocations: defineTable({
 		allocationId: v.id("serverAllocations"),
 		controllerId: v.string(),
@@ -56,6 +55,7 @@ export const hetznerCloudTables = {
 		epoch: v.number(),
 		failures: v.number(),
 		action: v.optional(v.object({ id: v.number(), startedAt: v.number() })),
+		error: v.optional(v.string()),
 		hetznerErrorCode: v.optional(v.string()),
 	})
 		.index("by_allocation_id", ["allocationId"])
@@ -70,7 +70,7 @@ export const hetznerCloudTables = {
 		error: v.optional(v.string()),
 	}).index("by_controller_id", ["controllerId"]),
 
-	// Evidence for operator review. The controller never deletes a resource because of a finding.
+	// Evidence for admin review. The controller never deletes a resource because of a finding.
 	hetznerCloudFindings: defineTable({
 		controllerId: v.string(),
 		collection: hetznerCloudCollection,

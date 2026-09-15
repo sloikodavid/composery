@@ -1,6 +1,7 @@
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import {
+	env,
 	internalMutation,
 	internalQuery,
 	type MutationCtx,
@@ -9,17 +10,38 @@ import {
 import schema from "../schema";
 import type { sshTables } from "./schema";
 
-// Base64 of exactly 32 bytes.
-const credentialKeyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/;
+// Canonical base64 of exactly 32 bytes.
+const encryptionKeyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/;
+const hexRadix = 16;
 
 type AllocationSshAccessFields = Infer<
 	typeof sshTables.allocationSshAccess.validator
 >;
 
-export function requireSshCredentialKeyFormat(value: string) {
-	if (!credentialKeyPattern.test(value)) {
-		throw new ConvexError({ message: "The SSH credential key is invalid." });
+export function isSshAccessEncryptionKey(value: string) {
+	return encryptionKeyPattern.test(value);
+}
+
+/** Throws when the encryption key is set but invalid. */
+export function isSshAccessConfigured() {
+	const value = env.SSH_ACCESS_ENCRYPTION_KEY;
+	if (!value) {
+		return false;
 	}
+	if (!isSshAccessEncryptionKey(value)) {
+		throw new Error("SSH_ACCESS_ENCRYPTION_KEY is not base64 of 32 bytes.");
+	}
+	return true;
+}
+
+export async function toBootstrapTokenDigest(token: string) {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(token),
+	);
+	return Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(hexRadix).padStart(2, "0"),
+	).join("");
 }
 
 export async function getAllocationSshAccess(
@@ -43,9 +65,9 @@ export async function deleteAllocationSshAccess(
 }
 
 /**
- * Keeps access that cloud-init can already hold. Replaces only an expired
- * bootstrap whose host key was never registered. The caller must confirm that
- * the server was not requested yet.
+ * Keeps access that cloud-init can already hold, and replaces only an expired
+ * bootstrap without a registered host key. The caller must confirm that the
+ * server was not requested yet.
  */
 export async function storeAllocationSshAccess(
 	ctx: MutationCtx,
@@ -81,17 +103,20 @@ export const get = internalQuery({
 		await getAllocationSshAccess(ctx, allocationId),
 });
 
-// A duplicate registration can confirm the pinned host key but never replace it.
+/** A repeated registration can confirm the pinned host key but never replace it. */
 export const registerHostKey = internalMutation({
 	args: {
-		allocationId: v.id("serverAllocations"),
+		allocationId: v.string(),
 		bootstrapTokenDigest: v.string(),
 		hostKey: v.string(),
 	},
 	returns: v.boolean(),
 	handler: async (ctx, { allocationId, bootstrapTokenDigest, hostKey }) => {
-		const allocation = await ctx.db.get("serverAllocations", allocationId);
-		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
+		const id = ctx.db.normalizeId("serverAllocations", allocationId);
+		const allocation =
+			id === null ? null : await ctx.db.get("serverAllocations", id);
+		const sshAccess =
+			id === null ? null : await getAllocationSshAccess(ctx, id);
 		if (
 			allocation === null ||
 			allocation.deleteRequested ||

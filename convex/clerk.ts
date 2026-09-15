@@ -1,7 +1,7 @@
 import { createClerkClient, type User } from "@clerk/backend";
 import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import { verifyWebhook } from "@clerk/backend/webhooks";
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
 	type ActionCtx,
@@ -10,6 +10,7 @@ import {
 	httpAction,
 	internalAction,
 } from "./_generated/server";
+import { toConvexError } from "./errors";
 import { httpStatus } from "./http_status";
 import { requireRateLimit } from "./rate_limits";
 import type { userFields } from "./schema";
@@ -84,7 +85,7 @@ export const syncCurrent = action({
 	handler: async (ctx) => {
 		const identity = await ctx.auth.getUserIdentity();
 		if (identity === null) {
-			throw new ConvexError({ message: "Sign in to continue." });
+			throw toConvexError("unauthenticated");
 		}
 		await requireRateLimit(ctx, "userSync", identity.subject);
 		const isEnabled: boolean = await ctx.runQuery(internal.users.isEnabled, {
@@ -97,7 +98,7 @@ export const syncCurrent = action({
 	},
 });
 
-// Webhook delivery is not guaranteed, so this runs every hour.
+/** Webhook delivery is not guaranteed, so this runs every hour. */
 export const reconcile = internalAction({
 	args: {},
 	returns: v.null(),

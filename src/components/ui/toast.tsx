@@ -25,7 +25,7 @@ function ToastList() {
 	));
 }
 
-// The viewport floats above the page, so a message never moves the layout.
+/** The viewport floats above the page, so a message never moves the layout. */
 export function ToastProvider({ children }: { children: ReactNode }) {
 	return (
 		<Toast.Provider toastManager={toastManager}>

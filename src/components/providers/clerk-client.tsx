@@ -1,7 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { ReactNode } from "react";
 
-// Clerk's own theme variables are set in app/clerk.css.
+/** Clerk's own theme variables are set in app/clerk.css. */
 export function ClerkClientProvider({ children }: { children: ReactNode }) {
 	return (
 		<ClerkProvider

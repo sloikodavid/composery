@@ -2,35 +2,39 @@ import {
 	paginationOptsValidator,
 	paginationResultValidator,
 } from "convex/server";
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalMutation, mutation, query } from "../_generated/server";
-import { getServerAllocation } from "../allocations/operations";
-import { fail, failure } from "../failures";
-import { checkRateLimit, requireRateLimit } from "../rate_limits";
-import { getCurrentUser, isUserDisabled } from "../users";
+import type { Id } from "../_generated/dataModel";
 import {
-	allServerPermissions,
+	internalMutation,
+	type MutationCtx,
+	mutation,
+	query,
+} from "../_generated/server";
+import { fail, failure, toConvexError } from "../errors";
+import { toBoundedPagination } from "../pagination";
+import { checkRateLimit, requireRateLimit } from "../rate_limits";
+import { getCurrentUser, isUserDisabled, requireUser } from "../users";
+import {
 	getServerMembership,
 	hasServerPermissions,
 	requireServerAccess,
-	requireServerOwner,
+	requireServerMembership,
 	type ServerPermissions,
 	serverSummary,
-	toServerAccess,
 	toServerSummary,
 } from "./access";
-import { requestServerDelete } from "./lifecycle";
 import { serverPermissions } from "./schema";
 
 const removeBatchSize = 100;
+// Bounds the people on one server, so each access check and member list stays small.
+const maxMembershipsPerServer = 100;
 
 const membershipSummary = v.object({
 	_id: v.id("serverMemberships"),
 	userId: v.id("users"),
 	username: v.string(),
 	imageUrl: v.string(),
-	isOwner: v.boolean(),
 	permissions: serverPermissions,
 });
 
@@ -39,12 +43,22 @@ function requireDelegation(
 	requested: Readonly<ServerPermissions>,
 ) {
 	if (!hasServerPermissions(available, requested)) {
-		throw new ConvexError({
-			message: "You cannot change permissions outside your own access.",
-		});
+		throw toConvexError("permission_denied");
 	}
 }
 
+async function isMembershipLimitReached(
+	ctx: MutationCtx,
+	serverId: Id<"servers">,
+) {
+	const memberships = await ctx.db
+		.query("serverMemberships")
+		.withIndex("by_server_id_and_user_id", (q) => q.eq("serverId", serverId))
+		.take(maxMembershipsPerServer);
+	return memberships.length === maxMembershipsPerServer;
+}
+
+/** Servers that other people share with the user. Owned servers are in ownership.listMine. */
 export const listMine = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: paginationResultValidator(serverSummary),
@@ -56,12 +70,17 @@ export const listMine = query({
 		const result = await ctx.db
 			.query("serverMemberships")
 			.withIndex("by_user_id", (q) => q.eq("userId", user._id))
-			.paginate(paginationOpts);
+			.paginate(toBoundedPagination(paginationOpts));
 		const page: Infer<typeof serverSummary>[] = [];
 		for (const membership of result.page) {
 			const server = await ctx.db.get("servers", membership.serverId);
 			if (server !== null) {
-				page.push(toServerSummary(server, membership));
+				page.push(
+					toServerSummary(server, {
+						isOwner: false,
+						permissions: membership.permissions,
+					}),
+				);
 			}
 		}
 		return { ...result, page };
@@ -72,11 +91,11 @@ export const list = query({
 	args: { serverId: v.id("servers"), paginationOpts: paginationOptsValidator },
 	returns: paginationResultValidator(membershipSummary),
 	handler: async (ctx, { serverId, paginationOpts }) => {
-		const { server } = await requireServerAccess(ctx, serverId);
+		await requireServerAccess(ctx, serverId);
 		const result = await ctx.db
 			.query("serverMemberships")
 			.withIndex("by_server_id_and_user_id", (q) => q.eq("serverId", serverId))
-			.paginate(paginationOpts);
+			.paginate(toBoundedPagination(paginationOpts));
 		const page: Infer<typeof membershipSummary>[] = [];
 		for (const membership of result.page) {
 			const user = await ctx.db.get("users", membership.userId);
@@ -86,7 +105,7 @@ export const list = query({
 					userId: user._id,
 					username: user.username,
 					imageUrl: user.imageUrl,
-					...toServerAccess(server, membership),
+					permissions: membership.permissions,
 				});
 			}
 		}
@@ -120,13 +139,19 @@ export const add = mutation({
 			)
 			.unique();
 		if (user === null) {
-			return fail("username", "No user has this username.");
+			return fail("user_not_found", "username");
 		}
 		if (await isUserDisabled(ctx, user._id)) {
-			return fail("username", "This user cannot receive server access.");
+			return fail("user_disabled", "username");
 		}
-		if ((await getServerMembership(ctx, serverId, user._id)) !== null) {
-			return fail("username", "This user is already a member.");
+		if (
+			user._id === access.server.ownerId ||
+			(await getServerMembership(ctx, serverId, user._id)) !== null
+		) {
+			return fail("user_has_access", "username");
+		}
+		if (await isMembershipLimitReached(ctx, serverId)) {
+			return fail("membership_limit_reached");
 		}
 		await ctx.db.insert("serverMemberships", {
 			serverId,
@@ -144,20 +169,12 @@ export const setPermissions = mutation({
 	},
 	returns: v.null(),
 	handler: async (ctx, { membershipId, permissions }) => {
-		const membership = await ctx.db.get("serverMemberships", membershipId);
-		if (membership === null) {
-			throw new ConvexError({ message: "This member no longer exists." });
-		}
+		const membership = await requireServerMembership(ctx, membershipId);
 		const access = await requireServerAccess(
 			ctx,
 			membership.serverId,
 			"manageMembers",
 		);
-		if (membership.userId === access.server.ownerId) {
-			throw new ConvexError({
-				message: "The owner always has every permission.",
-			});
-		}
 		requireDelegation(access.permissions, membership.permissions);
 		requireDelegation(access.permissions, permissions);
 		await requireRateLimit(ctx, "serverChange", access.user._id);
@@ -166,7 +183,6 @@ export const setPermissions = mutation({
 	},
 });
 
-// Leaving or removing a membership does not change native SSH authorizations.
 export const remove = mutation({
 	args: { membershipId: v.id("serverMemberships") },
 	returns: v.null(),
@@ -175,58 +191,18 @@ export const remove = mutation({
 		if (membership === null) {
 			return null;
 		}
-		const access = await requireServerAccess(ctx, membership.serverId);
-		if (membership.userId === access.server.ownerId) {
-			throw new ConvexError({
-				message: "Transfer ownership or delete the server before leaving.",
-			});
-		}
-		if (membership.userId !== access.user._id) {
-			if (!access.permissions.manageMembers) {
-				throw new ConvexError({
-					message: "You do not have access to do this.",
-				});
-			}
+		const user = await requireUser(ctx);
+		const isLeaving = membership.userId === user._id;
+		const access = await requireServerAccess(
+			ctx,
+			membership.serverId,
+			isLeaving ? undefined : "manageMembers",
+		);
+		if (!isLeaving) {
 			requireDelegation(access.permissions, membership.permissions);
 		}
 		await requireRateLimit(ctx, "serverChange", access.user._id);
 		await ctx.db.delete("serverMemberships", membershipId);
-		return null;
-	},
-});
-
-export const transferOwnership = mutation({
-	args: { membershipId: v.id("serverMemberships") },
-	returns: v.null(),
-	handler: async (ctx, { membershipId }) => {
-		const membership = await ctx.db.get("serverMemberships", membershipId);
-		if (membership === null) {
-			throw new ConvexError({ message: "This member no longer exists." });
-		}
-		const access = await requireServerOwner(ctx, membership.serverId);
-		if (membership.userId === access.user._id) {
-			return null;
-		}
-		const user = await ctx.db.get("users", membership.userId);
-		if (user === null || (await isUserDisabled(ctx, user._id))) {
-			throw new ConvexError({ message: "This user cannot receive ownership." });
-		}
-		const allocation = await getServerAllocation(ctx, membership.serverId);
-		if (allocation?.deleteRequested) {
-			throw new ConvexError({
-				message: "A server that is being deleted cannot change ownership.",
-			});
-		}
-		await requireRateLimit(ctx, "serverChange", access.user._id);
-		await ctx.db.patch("servers", membership.serverId, {
-			ownerId: membership.userId,
-		});
-		await ctx.db.patch("serverMemberships", access.membership._id, {
-			permissions: allServerPermissions,
-		});
-		await ctx.db.patch("serverMemberships", membershipId, {
-			permissions: allServerPermissions,
-		});
 		return null;
 	},
 });
@@ -251,7 +227,7 @@ export const removeAll = internalMutation({
 	},
 });
 
-// Runs after a user is deleted. Deleting the owner also deletes the server.
+/** Runs after a user is deleted. */
 export const removeForUser = internalMutation({
 	args: { userId: v.id("users") },
 	returns: v.null(),
@@ -262,10 +238,6 @@ export const removeForUser = internalMutation({
 			.take(removeBatchSize);
 		for (const membership of memberships) {
 			await ctx.db.delete("serverMemberships", membership._id);
-			const server = await ctx.db.get("servers", membership.serverId);
-			if (server?.ownerId === userId) {
-				await requestServerDelete(ctx, server._id);
-			}
 		}
 		if (memberships.length === removeBatchSize) {
 			await ctx.scheduler.runAfter(

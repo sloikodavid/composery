@@ -1,11 +1,11 @@
 import { httpRouter } from "convex/server";
 import { receiveClerkWebhook } from "./clerk";
-import { registerSshHostKey } from "./ssh/bootstrap_http";
+import { registerSshHostKey } from "./ssh/access_http";
 
 const http = httpRouter();
 
 http.route({
-	path: "/bootstrap/ssh",
+	path: "/ssh/host-keys",
 	method: "POST",
 	handler: registerSshHostKey,
 });

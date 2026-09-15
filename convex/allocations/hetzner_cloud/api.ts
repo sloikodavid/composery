@@ -1,5 +1,4 @@
 import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
-import { ConvexError } from "convex/values";
 import { components } from "../../_generated/api";
 import { env } from "../../_generated/server";
 import { httpStatus } from "../../http_status";
@@ -16,7 +15,7 @@ const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
 const controllerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]$/;
 
-// Paces this deployment's requests. Cleanup has its own allowance, so new work cannot block it.
+/** Paces this deployment's requests. Cleanup has its own allowance, so new work cannot block it. */
 export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
 	hetznerCloudWork: {
 		kind: "token bucket",
@@ -36,7 +35,7 @@ export type HetznerCloudErrorCode =
 	| "address_identity_mismatch"
 	| "addresses_missing"
 	| "capacity_unavailable"
-	| "credentials_missing"
+	| "token_missing"
 	| "duplicate_resources"
 	| "firewall_detached"
 	| "image_unavailable"
@@ -99,20 +98,14 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 		locations.some((location) => !locationPattern.test(location)) ||
 		new Set(locations).size !== locations.length
 	) {
-		throw new ConvexError({
-			message: "The Hetzner Cloud location configuration is invalid.",
-		});
+		throw new Error("The Hetzner Cloud location configuration is invalid.");
 	}
 	if (!controllerIdPattern.test(env.HCLOUD_CONTROLLER_ID)) {
-		throw new ConvexError({
-			message: "The Hetzner Cloud controller ID is invalid.",
-		});
+		throw new Error("The Hetzner Cloud controller ID is invalid.");
 	}
 	const firewallId = Number(env.HCLOUD_FIREWALL_ID);
 	if (!Number.isSafeInteger(firewallId) || firewallId <= 0) {
-		throw new ConvexError({
-			message: "The Hetzner Cloud firewall ID is invalid.",
-		});
+		throw new Error("The Hetzner Cloud firewall ID is invalid.");
 	}
 	return {
 		controllerId: env.HCLOUD_CONTROLLER_ID,
@@ -166,14 +159,14 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
-// No implicit retries. A request that failed can still have reached Hetzner.
+/** No implicit retries. A request that failed can still have reached Hetzner. */
 export async function callHetznerCloud(
 	path: string,
 	method = "GET",
 	body?: unknown,
 ): Promise<Record<string, unknown> | null> {
 	if (!env.HCLOUD_TOKEN) {
-		throw new HetznerCloudError("credentials_missing", {
+		throw new HetznerCloudError("token_missing", {
 			status: httpStatus.unauthorized,
 		});
 	}

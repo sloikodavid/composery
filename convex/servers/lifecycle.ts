@@ -7,46 +7,39 @@ import {
 	mutation,
 	query,
 } from "../_generated/server";
-import { reserveServerGrant } from "../allocations/grants";
 import {
 	getAllocationConfig,
 	getOperationByRequest,
-	getServerAllocation,
 	requestAllocationCreate,
 	requestAllocationDelete,
 	requestAllocationPower,
 	requireRequestId,
+	requireServerAllocation,
 } from "../allocations/operations";
-import { allocationStatus, powerOperationKind } from "../allocations/schema";
-import { fail, failure } from "../failures";
+import {
+	allocationStatus,
+	operationKind,
+	operationStatus,
+	powerOperationKind,
+} from "../allocations/schema";
+import { fail, failure } from "../errors";
+import { releaseServerQuota, reserveServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
-import schema from "../schema";
-import { getAllocationSshAccess } from "../ssh/bootstrap_state";
+import { getAllocationSshAccess } from "../ssh/access_state";
 import { requireUser } from "../users";
-import { allServerPermissions, requireServerAccess } from "./access";
+import { requireServerAccess } from "./access";
 import { checkServerNameClaim, claimServerName } from "./names";
 
-async function deleteServerData(ctx: MutationCtx, serverId: Id<"servers">) {
-	if ((await ctx.db.get("servers", serverId)) !== null) {
-		await ctx.db.delete("servers", serverId);
-	}
-	await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
-		serverId,
-	});
-}
-
-/** Deletes a server without infrastructure at once. Otherwise the allocation deletes its infrastructure first. */
 export async function requestServerDelete(
 	ctx: MutationCtx,
 	serverId: Id<"servers">,
 	requesterId?: Id<"users">,
 ) {
-	const allocation = await getServerAllocation(ctx, serverId);
-	if (allocation === null) {
-		await deleteServerData(ctx, serverId);
-		return;
-	}
-	await requestAllocationDelete(ctx, allocation, requesterId);
+	await requestAllocationDelete(
+		ctx,
+		await requireServerAllocation(ctx, serverId),
+		requesterId,
+	);
 }
 
 export const create = mutation({
@@ -60,15 +53,12 @@ export const create = mutation({
 		requireRequestId(requestId);
 		const previous = await getOperationByRequest(ctx, user._id, requestId);
 		if (previous !== null) {
-			if (previous.kind !== "create") {
-				return fail(null, "This request ID was used for another operation.");
-			}
-			if (previous.name !== name) {
-				return fail(null, "This request ID was used for another name.");
+			if (previous.kind !== "create" || previous.name !== name) {
+				return fail("request_id_conflict");
 			}
 			const server = await ctx.db.get("servers", previous.serverId);
 			return server === null
-				? fail(null, "This server was deleted.")
+				? fail("server_deleted")
 				: { ok: true as const, name: server.name };
 		}
 		const claimFailure = await checkServerNameClaim(ctx, user._id, name);
@@ -77,28 +67,22 @@ export const create = mutation({
 		}
 		const config = getAllocationConfig();
 		if (config === null) {
-			return fail(null, "Server creation is not enabled.");
+			return fail("server_capacity_unavailable");
 		}
-		const grantId = await reserveServerGrant(ctx, user._id);
-		if (grantId === null) {
-			return fail(null, "You have reached your server limit.");
+		const quotaFailure = await reserveServerQuota(ctx, user._id);
+		if (quotaFailure !== null) {
+			return quotaFailure;
 		}
 		const serverId = await ctx.db.insert("servers", {
 			name,
 			ownerId: user._id,
 		});
 		await claimServerName(ctx, name, serverId);
-		await ctx.db.insert("serverMemberships", {
-			serverId,
-			userId: user._id,
-			permissions: allServerPermissions,
-		});
 		await requestAllocationCreate(ctx, {
 			serverId,
 			requesterId: user._id,
 			requestId,
 			name,
-			grantId,
 			config,
 		});
 		return { ok: true as const, name };
@@ -120,21 +104,16 @@ export const requestPower = mutation({
 		requireRequestId(requestId);
 		const previous = await getOperationByRequest(ctx, user._id, requestId);
 		if (previous !== null) {
-			if (previous.serverId !== serverId || previous.kind !== kind) {
-				return fail(null, "This request ID was used for another operation.");
-			}
-			return { ok: true as const, operationId: previous._id };
+			return previous.serverId === serverId && previous.kind === kind
+				? { ok: true as const, operationId: previous._id }
+				: fail("request_id_conflict");
 		}
 		await requireRateLimit(ctx, "serverChange", user._id);
-		const allocation = await getServerAllocation(ctx, serverId);
-		if (allocation === null) {
-			return fail(null, "This server cannot accept a power operation.");
-		}
-		return await requestAllocationPower(ctx, allocation, {
-			requesterId: user._id,
-			requestId,
-			kind,
-		});
+		return await requestAllocationPower(
+			ctx,
+			await requireServerAllocation(ctx, serverId),
+			{ requesterId: user._id, requestId, kind },
+		);
 	},
 });
 
@@ -151,58 +130,63 @@ export const requestDelete = mutation({
 
 export const getStatus = query({
 	args: { serverId: v.id("servers") },
-	returns: v.union(
-		v.null(),
-		v.object({
-			status: allocationStatus,
-			error: v.union(v.string(), v.null()),
-			location: v.union(v.string(), v.null()),
-			ipv4: v.union(v.string(), v.null()),
-			ipv6: v.union(v.string(), v.null()),
-			observedAt: v.union(v.number(), v.null()),
-			ssh: v.union(
-				v.null(),
-				v.object({
-					hostKey: v.union(v.string(), v.null()),
-					bootstrapExpiresAt: v.number(),
-				}),
-			),
-			operation: v.union(v.null(), schema.doc("serverOperations")),
+	returns: v.object({
+		status: allocationStatus,
+		location: v.union(v.string(), v.null()),
+		ipv4: v.union(v.string(), v.null()),
+		ipv6: v.union(v.string(), v.null()),
+		observedAt: v.union(v.number(), v.null()),
+		// The pinned host key, which a client compares with the key the server offers.
+		hostKey: v.union(v.string(), v.null()),
+		operation: v.object({
+			_id: v.id("serverOperations"),
+			kind: operationKind,
+			status: operationStatus,
+			finishedAt: v.union(v.number(), v.null()),
 		}),
-	),
+	}),
 	handler: async (ctx, { serverId }) => {
 		await requireServerAccess(ctx, serverId);
-		const allocation = await getServerAllocation(ctx, serverId);
-		if (allocation === null) {
-			return null;
-		}
+		const allocation = await requireServerAllocation(ctx, serverId);
 		const sshAccess = await getAllocationSshAccess(ctx, allocation._id);
+		const operation = await ctx.db.get(
+			"serverOperations",
+			allocation.operationId,
+		);
+		if (operation === null) {
+			throw new Error("The allocation's operation is missing.");
+		}
 		return {
 			status: allocation.status,
-			error: allocation.error ?? null,
 			location: allocation.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
 			ipv6: allocation.ipv6 ?? null,
 			observedAt: allocation.observedAt ?? null,
-			// A registered host key is a pin, not proof of a successful SSH connection.
-			ssh:
-				sshAccess === null
-					? null
-					: {
-							hostKey: sshAccess.hostKey ?? null,
-							bootstrapExpiresAt: sshAccess.bootstrapExpiresAt,
-						},
-			operation: await ctx.db.get("serverOperations", allocation.operationId),
+			hostKey: sshAccess?.hostKey ?? null,
+			operation: {
+				_id: operation._id,
+				kind: operation.kind,
+				status: operation.status,
+				finishedAt: operation.finishedAt ?? null,
+			},
 		};
 	},
 });
 
-// Runs after the allocation confirms that its infrastructure is gone.
+/** Runs after the allocation confirms that its infrastructure is gone. */
 export const finishDelete = internalMutation({
 	args: { serverId: v.id("servers") },
 	returns: v.null(),
 	handler: async (ctx, { serverId }) => {
-		await deleteServerData(ctx, serverId);
+		const server = await ctx.db.get("servers", serverId);
+		if (server === null) {
+			return null;
+		}
+		await releaseServerQuota(ctx, server.ownerId);
+		await ctx.db.delete("servers", serverId);
+		await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
+			serverId,
+		});
 		return null;
 	},
 });

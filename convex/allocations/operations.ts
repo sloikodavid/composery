@@ -1,18 +1,16 @@
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import {
-	env,
 	internalMutation,
 	type MutationCtx,
 	type QueryCtx,
 } from "../_generated/server";
-import { type Failure, fail } from "../failures";
+import { type Failure, fail, toConvexError } from "../errors";
 import {
 	deleteAllocationSshAccess,
-	requireSshCredentialKeyFormat,
-} from "../ssh/bootstrap_state";
-import { releaseServerGrant } from "./grants";
+	isSshAccessConfigured,
+} from "../ssh/access_state";
 import {
 	getHetznerCloudConfig,
 	type HetznerCloudConfig,
@@ -36,21 +34,23 @@ export type AllocationConfig = {
 
 export function requireRequestId(requestId: string) {
 	if (!requestIdPattern.test(requestId)) {
-		throw new ConvexError({
-			message:
-				"Use a request ID with 8 to 100 letters, numbers, hyphens, or underscores.",
-		});
+		throw toConvexError("request_id_invalid");
 	}
 }
 
-export async function getServerAllocation(
+/** Every server has exactly one allocation from creation until the server is deleted. */
+export async function requireServerAllocation(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
 ) {
-	return await ctx.db
+	const allocation = await ctx.db
 		.query("serverAllocations")
 		.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 		.unique();
+	if (allocation === null) {
+		throw new Error("The server has no allocation.");
+	}
+	return allocation;
 }
 
 export async function getOperationByRequest(
@@ -66,16 +66,11 @@ export async function getOperationByRequest(
 		.unique();
 }
 
-/**
- * Resolves the configuration for a new allocation. Returns null when creation
- * is not configured, and throws when the configuration is invalid.
- * An existing allocation keeps the configuration that it was created with.
- */
+/** Returns null when creation is not configured. An existing allocation keeps the configuration that it was created with. */
 export function getAllocationConfig(): AllocationConfig | null {
-	if (!env.SSH_CREDENTIAL_KEY) {
+	if (!isSshAccessConfigured()) {
 		return null;
 	}
-	requireSshCredentialKeyFormat(env.SSH_CREDENTIAL_KEY);
 	const hetznerCloud = getHetznerCloudConfig();
 	return hetznerCloud === null
 		? null
@@ -96,7 +91,6 @@ export async function requestAllocationCreate(
 		requesterId: Id<"users">;
 		requestId: string;
 		name: string;
-		grantId: Id<"serverGrants">;
 		config: AllocationConfig;
 	},
 ) {
@@ -110,7 +104,6 @@ export async function requestAllocationCreate(
 	});
 	const allocationId = await ctx.db.insert("serverAllocations", {
 		serverId: request.serverId,
-		grantId: request.grantId,
 		operationId,
 		backend: request.config.backend,
 		status: "creating",
@@ -137,11 +130,13 @@ export async function requestAllocationPower(
 	},
 ): Promise<Failure | { ok: true; operationId: Id<"serverOperations"> }> {
 	if (allocation.deleteRequested) {
-		return fail(null, "This server cannot accept a power operation.");
+		throw new Error(
+			"An allocation that is being deleted accepts no power operation.",
+		);
 	}
 	const current = await ctx.db.get("serverOperations", allocation.operationId);
 	if (current?.status === "pending") {
-		return fail(null, "Wait for the current operation to finish.");
+		return fail("server_busy");
 	}
 	const backendFailure = await checkBackendPower(ctx, allocation);
 	if (backendFailure !== null) {
@@ -155,10 +150,7 @@ export async function requestAllocationPower(
 		status: "pending",
 		deadlineAt: Date.now() + getPowerDeadlineMs(allocation.backend),
 	});
-	await ctx.db.patch("serverAllocations", allocation._id, {
-		operationId,
-		error: undefined,
-	});
+	await ctx.db.patch("serverAllocations", allocation._id, { operationId });
 	await wakeBackend(ctx, allocation);
 	return { ok: true, operationId };
 }
@@ -184,7 +176,7 @@ async function wakeBackend(
 	}
 }
 
-/** Records the delete intent. The backend deletes the infrastructure and then calls `finishDelete`. */
+/** The backend deletes the infrastructure and then calls `finishDelete`. */
 export async function requestAllocationDelete(
 	ctx: MutationCtx,
 	allocation: Doc<"serverAllocations">,
@@ -211,12 +203,10 @@ export async function requestAllocationDelete(
 		operationId,
 		deleteRequested: true,
 		status: "deleting",
-		error: undefined,
 	});
 	await wakeBackend(ctx, { ...allocation, deleteRequested: true });
 }
 
-// A backend schedules this once, after it confirms that the infrastructure is absent.
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
@@ -225,7 +215,6 @@ export const finishDelete = internalMutation({
 		if (allocation === null || allocation.status !== "deleted") {
 			throw new Error("An allocation must be deleted before it is finished.");
 		}
-		await releaseServerGrant(ctx, allocation.grantId);
 		await deleteAllocationSshAccess(ctx, allocationId);
 		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
 			serverId: allocation.serverId,

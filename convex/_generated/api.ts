@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as allocations_grants from "../allocations/grants.js";
 import type * as allocations_hetzner_cloud_api from "../allocations/hetzner_cloud/api.js";
 import type * as allocations_hetzner_cloud_inventory from "../allocations/hetzner_cloud/inventory.js";
 import type * as allocations_hetzner_cloud_worker from "../allocations/hetzner_cloud/worker.js";
@@ -16,19 +15,22 @@ import type * as allocations_hetzner_cloud_worker_state from "../allocations/het
 import type * as allocations_operations from "../allocations/operations.js";
 import type * as clerk from "../clerk.js";
 import type * as crons from "../crons.js";
-import type * as failures from "../failures.js";
+import type * as errors from "../errors.js";
 import type * as http from "../http.js";
 import type * as http_status from "../http_status.js";
+import type * as pagination from "../pagination.js";
+import type * as quotas from "../quotas.js";
 import type * as rate_limits from "../rate_limits.js";
 import type * as servers_access from "../servers/access.js";
 import type * as servers_lifecycle from "../servers/lifecycle.js";
 import type * as servers_memberships from "../servers/memberships.js";
 import type * as servers_names from "../servers/names.js";
+import type * as servers_ownership from "../servers/ownership.js";
 import type * as servers_reserved_names from "../servers/reserved_names.js";
+import type * as ssh_access from "../ssh/access.js";
+import type * as ssh_access_http from "../ssh/access_http.js";
+import type * as ssh_access_state from "../ssh/access_state.js";
 import type * as ssh_authorized_keys from "../ssh/authorized_keys.js";
-import type * as ssh_bootstrap from "../ssh/bootstrap.js";
-import type * as ssh_bootstrap_http from "../ssh/bootstrap_http.js";
-import type * as ssh_bootstrap_state from "../ssh/bootstrap_state.js";
 import type * as ssh_cloud_init from "../ssh/cloud_init.js";
 import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_inspect_public_key from "../ssh/inspect_public_key.js";
@@ -47,7 +49,6 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
-  "allocations/grants": typeof allocations_grants;
   "allocations/hetzner_cloud/api": typeof allocations_hetzner_cloud_api;
   "allocations/hetzner_cloud/inventory": typeof allocations_hetzner_cloud_inventory;
   "allocations/hetzner_cloud/worker": typeof allocations_hetzner_cloud_worker;
@@ -55,19 +56,22 @@ const fullApi: ApiFromModules<{
   "allocations/operations": typeof allocations_operations;
   clerk: typeof clerk;
   crons: typeof crons;
-  failures: typeof failures;
+  errors: typeof errors;
   http: typeof http;
   http_status: typeof http_status;
+  pagination: typeof pagination;
+  quotas: typeof quotas;
   rate_limits: typeof rate_limits;
   "servers/access": typeof servers_access;
   "servers/lifecycle": typeof servers_lifecycle;
   "servers/memberships": typeof servers_memberships;
   "servers/names": typeof servers_names;
+  "servers/ownership": typeof servers_ownership;
   "servers/reserved_names": typeof servers_reserved_names;
+  "ssh/access": typeof ssh_access;
+  "ssh/access_http": typeof ssh_access_http;
+  "ssh/access_state": typeof ssh_access_state;
   "ssh/authorized_keys": typeof ssh_authorized_keys;
-  "ssh/bootstrap": typeof ssh_bootstrap;
-  "ssh/bootstrap_http": typeof ssh_bootstrap_http;
-  "ssh/bootstrap_state": typeof ssh_bootstrap_state;
   "ssh/cloud_init": typeof ssh_cloud_init;
   "ssh/connection": typeof ssh_connection;
   "ssh/inspect_public_key": typeof ssh_inspect_public_key;

@@ -1,10 +1,25 @@
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
 import { httpAction } from "../_generated/server";
 import { httpStatus } from "../http_status";
+import { toBootstrapTokenDigest } from "./access_state";
 
 const maxBodyBytes = 4096;
 const maxAllocationIdLength = 100;
+const bootstrapTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const hostKeyType = "ssh-ed25519";
+const hostKeyBytes = 32;
+// SSH wire format (RFC 8709): the type string, then the 32-byte public key, each after a 4-byte length.
+const hostKeyPrefix = new Uint8Array([
+	0,
+	0,
+	0,
+	hostKeyType.length,
+	...new TextEncoder().encode(hostKeyType),
+	0,
+	0,
+	0,
+	hostKeyBytes,
+]);
 
 async function readBody(request: Request) {
 	const reader = request.body?.getReader();
@@ -67,22 +82,48 @@ function toRegistration(bytes: Uint8Array) {
 	};
 }
 
+/** Accepts only the canonical `ssh-ed25519 <base64>` form, so a pinned key has one spelling. */
+function isHostKey(text: string) {
+	const [type, base64, ...rest] = text.split(" ");
+	if (type !== hostKeyType || base64 === undefined || rest.length > 0) {
+		return false;
+	}
+	let decoded: string;
+	try {
+		decoded = atob(base64);
+	} catch {
+		return false;
+	}
+	const bytes = Uint8Array.from(decoded, (character) =>
+		character.charCodeAt(0),
+	);
+	return (
+		btoa(decoded) === base64 &&
+		bytes.length === hostKeyPrefix.length + hostKeyBytes &&
+		hostKeyPrefix.every((byte, index) => bytes[index] === byte)
+	);
+}
+
+/** cloud_init.ts makes the server report its host key once, during first boot. */
 export const registerSshHostKey = httpAction(async (ctx, request) => {
 	const body = await readBody(request);
 	if (body === "tooLarge") {
 		return new Response(null, { status: httpStatus.contentTooLarge });
 	}
 	const registration = body === null ? null : toRegistration(body);
-	if (registration === null) {
+	if (
+		registration === null ||
+		!bootstrapTokenPattern.test(registration.token) ||
+		!isHostKey(registration.hostKey)
+	) {
 		return new Response(null, { status: httpStatus.badRequest });
 	}
 	try {
-		const isRegistered: boolean = await ctx.runAction(
-			internal.ssh.bootstrap.registerHostKey,
+		const isRegistered: boolean = await ctx.runMutation(
+			internal.ssh.access_state.registerHostKey,
 			{
-				// The action validates the database ID, the token, and the native key.
-				allocationId: registration.allocationId as Id<"serverAllocations">,
-				token: registration.token,
+				allocationId: registration.allocationId,
+				bootstrapTokenDigest: await toBootstrapTokenDigest(registration.token),
 				hostKey: registration.hostKey,
 			},
 		);
@@ -90,7 +131,7 @@ export const registerSshHostKey = httpAction(async (ctx, request) => {
 			status: isRegistered ? httpStatus.noContent : httpStatus.forbidden,
 		});
 	} catch {
-		// No request body, credential, or Hetzner error enters logs or responses.
+		// No request body, token, or error detail enters logs or responses.
 		return new Response(null, { status: httpStatus.serviceUnavailable });
 	}
 });

@@ -6,11 +6,11 @@ import {
 	type QueryCtx,
 	query,
 } from "../_generated/server";
-import { type Failure, fail, failure } from "../failures";
+import { type Failure, fail, failure } from "../errors";
 import { checkRateLimit } from "../rate_limits";
 import { getCurrentUser } from "../users";
 import {
-	getServerMembership,
+	getServerAccess,
 	requireServerAccess,
 	serverSummary,
 	toServerSummary,
@@ -18,8 +18,6 @@ import {
 import { reservedServerNames } from "./reserved_names";
 
 const namePattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
-const nameFormatMessage =
-	"Use 3 to 63 lowercase letters, digits, and single hyphens. Start and end with a letter or digit.";
 
 function isValidName(name: string) {
 	return namePattern.test(name) && !name.includes("--");
@@ -44,14 +42,14 @@ export async function checkServerNameClaim(
 		return attemptFailure;
 	}
 	if (!isValidName(name)) {
-		return fail("name", nameFormatMessage);
+		return fail("name_invalid", "name");
 	}
 	const claim = await getNameClaim(ctx, name);
 	if (claim !== null && claim.serverId === serverId) {
 		return null;
 	}
 	if (claim !== null || reservedServerNames.has(name)) {
-		return fail("name", "This name is taken.");
+		return fail("name_taken", "name");
 	}
 	return await checkRateLimit(ctx, "serverNameClaim", userId);
 }
@@ -93,7 +91,9 @@ export const rename = mutation({
 	},
 });
 
-// Returns null for an unknown name or a user who is not a member, so the response does not reveal which servers exist.
+/**
+ * Returns null for an unknown name or a user who is not a member, so the response does not reveal which servers exist.
+ */
 export const getByName = query({
 	args: { name: v.string() },
 	returns: v.union(serverSummary, v.null()),
@@ -110,7 +110,7 @@ export const getByName = query({
 		if (server === null) {
 			return null;
 		}
-		const membership = await getServerMembership(ctx, server._id, user._id);
-		return membership === null ? null : toServerSummary(server, membership);
+		const access = await getServerAccess(ctx, server, user._id);
+		return access === null ? null : toServerSummary(server, access);
 	},
 });

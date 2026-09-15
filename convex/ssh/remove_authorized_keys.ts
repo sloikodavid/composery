@@ -9,10 +9,8 @@ import { writeSshFile } from "./write_file";
 const maxRemovedLines = 256;
 
 /**
- * Internal removal of occurrences from a caller's observation of this exact file.
- * The application must supply trusted connection/path data and authorize the user.
- * Removal does not require accepting a new key blob or option value. No key lookup
- * by fingerprint: duplicate occurrences retain their separate native meanings.
+ * Removes occurrences from the caller's observation of this exact file. Lines, not
+ * fingerprints: duplicate occurrences keep their separate native meanings.
  */
 export async function removeAuthorizedKeys(
 	connection: SshConnectionOptions,

@@ -1,4 +1,4 @@
-/** Runs once during cloud-init. Credentials never enter command arguments or output. */
+/** The token never enters command arguments or output. */
 export const reportHostKeyScript = `import json, pathlib, time, urllib.request
 config_path = pathlib.Path("/run/composery-bootstrap.json")
 config = json.loads(config_path.read_text())

@@ -14,7 +14,7 @@ const app = defineApp({
 		HCLOUD_FIREWALL_ID: v.optional(v.string()),
 		HCLOUD_CONTROLLER_ID: v.optional(v.string()),
 		HCLOUD_IMAGE: v.optional(v.string()),
-		SSH_CREDENTIAL_KEY: v.optional(v.string()),
+		SSH_ACCESS_ENCRYPTION_KEY: v.optional(v.string()),
 	},
 	// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 });

@@ -10,7 +10,7 @@ import {
 } from "./connection";
 
 /** Remote SSH file operations read and write at most this many bytes. */
-// 512 KiB.
+/** 512 KiB. */
 export const maxSshFileBytes = 524_288;
 // 32 KiB.
 const readChunkBytes = 32_768;

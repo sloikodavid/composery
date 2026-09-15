@@ -2,7 +2,7 @@ import {
 	paginationOptsValidator,
 	paginationResultValidator,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
@@ -11,6 +11,8 @@ import {
 	type QueryCtx,
 	query,
 } from "./_generated/server";
+import { toConvexError } from "./errors";
+import { deleteUserQuotas } from "./quotas";
 import schema, { userFields } from "./schema";
 
 async function getUserByClerkId(ctx: QueryCtx, clerkUserId: string) {
@@ -46,7 +48,7 @@ export async function getCurrentUser(ctx: QueryCtx) {
 export async function requireUser(ctx: QueryCtx) {
 	const user = await getCurrentUser(ctx);
 	if (user === null) {
-		throw new ConvexError({ message: "Sign in to continue." });
+		throw toConvexError("unauthenticated");
 	}
 	return user;
 }
@@ -95,7 +97,6 @@ export const store = internalMutation({
 	},
 });
 
-// Missing profile fields disable app access without deleting owned infrastructure.
 export const disable = internalMutation({
 	args: { clerkUserIds: v.array(v.string()) },
 	returns: v.null(),
@@ -110,7 +111,6 @@ export const disable = internalMutation({
 	},
 });
 
-// Deletes the users. JavaScript reserves `delete`, so the function is named `remove`.
 export const remove = internalMutation({
 	args: { clerkUserIds: v.array(v.string()) },
 	returns: v.null(),
@@ -124,11 +124,17 @@ export const remove = internalMutation({
 			if (disabledUser !== null) {
 				await ctx.db.delete("disabledUsers", disabledUser._id);
 			}
+			await deleteUserQuotas(ctx, user._id);
 			await ctx.db.delete("users", user._id);
 			await ctx.scheduler.runAfter(
 				0,
 				internal.servers.memberships.removeForUser,
 				{ userId: user._id },
+			);
+			await ctx.scheduler.runAfter(
+				0,
+				internal.servers.ownership.requestDeleteForOwner,
+				{ userId: user._id, cursor: null },
 			);
 		}
 		return null;

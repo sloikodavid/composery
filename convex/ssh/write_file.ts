@@ -37,13 +37,10 @@ export type SshFileWriteResult = {
 };
 
 /**
- * Internal Linux file primitive, not an authorized-key API. Callers must validate
- * candidate semantics and bind the observation to this server and path first.
- * A lost response after dispatch is uncertain; never retry an edit automatically.
- * Success reports a completed observation, not exclusion of external writers.
- * Requires /usr/bin/python3 and Linux descriptor-relative file operations.
- * A machine crash or SIGKILL can leave a private staging file; there is no automatic
- * deletion by filename pattern, which could remove a later operation's staging file.
+ * Replaces one file only when its observed bytes and metadata still match. The
+ * caller binds the observation to this server and path, and validates the candidate.
+ * A lost response after dispatch is uncertain: never retry an edit automatically.
+ * Needs /usr/bin/python3. A crash can leave a private staging file behind.
  */
 export async function writeSshFile(
 	connection: SshConnectionOptions,

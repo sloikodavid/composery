@@ -1,5 +1,5 @@
 import { Workpool } from "@convex-dev/workpool";
-import { ConvexError, type Infer, v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { components, internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import {
@@ -8,9 +8,9 @@ import {
 	type MutationCtx,
 	type QueryCtx,
 } from "../../_generated/server";
-import { type Failure, fail } from "../../failures";
+import { type Failure, fail } from "../../errors";
 import schema from "../../schema";
-import { storeAllocationSshAccess } from "../../ssh/bootstrap_state";
+import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
 import { type HetznerCloudConfig, hetznerCloudRateLimiter } from "./api";
 import {
@@ -171,13 +171,13 @@ export async function checkHetznerCloudPower(
 		allocationId,
 	);
 	if (hetznerCloudAllocation.resources.server.status !== "present") {
-		return fail(null, "This server cannot accept a power operation.");
+		return fail("power_unavailable");
 	}
 	if (
 		hetznerCloudAllocation.leaseExpiresAt > Date.now() ||
 		hetznerCloudAllocation.action !== undefined
 	) {
-		return fail(null, "The server is being checked. Try again shortly.");
+		return fail("server_busy");
 	}
 	return null;
 }
@@ -199,6 +199,7 @@ export async function wakeHetznerCloudAllocation(
 	await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 		queue,
 		failures: 0,
+		error: undefined,
 		dueAt: Math.max(Date.now(), hetznerCloudAllocation.leaseExpiresAt),
 	});
 	if (!isLeased) {
@@ -315,7 +316,9 @@ async function getLeasedAllocation(
 	return { allocation, hetznerCloudAllocation };
 }
 
-// Recorded before the create request, so a lost response is later found by lookup and never sent again.
+/**
+ * Recorded before the create request, so a lost response is later found by lookup and never sent again.
+ */
 export const markUncertain = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -358,8 +361,10 @@ export const canSendPower = internalQuery({
 	},
 });
 
-// Stores SSH access only while the server is not yet requested, because cloud-init receives its public key.
-export const prepareSshAccess = internalMutation({
+/**
+ * Stores SSH access only while the server is not requested yet, because cloud-init receives its public key.
+ */
+export const storeSshAccess = internalMutation({
 	args: {
 		epoch: v.number(),
 		sshAccess: sshTables.allocationSshAccess.validator,
@@ -393,14 +398,10 @@ function toBackoffMs(failures: number) {
 async function blockOperation(
 	ctx: MutationCtx,
 	operationId: Id<"serverOperations">,
-	error: string,
 ) {
 	const operation = await ctx.db.get("serverOperations", operationId);
 	if (operation !== null && operation.status !== "succeeded") {
-		await ctx.db.patch("serverOperations", operationId, {
-			status: "blocked",
-			error,
-		});
+		await ctx.db.patch("serverOperations", operationId, { status: "blocked" });
 	}
 }
 
@@ -413,7 +414,6 @@ async function succeedOperation(
 		await ctx.db.patch("serverOperations", operationId, {
 			status: "succeeded",
 			finishedAt: Date.now(),
-			error: undefined,
 		});
 	}
 }
@@ -446,7 +446,6 @@ async function recordResource(
 			: "creating";
 		await ctx.db.patch("serverOperations", allocation.operationId, {
 			status: "pending",
-			error: undefined,
 		});
 	}
 }
@@ -480,7 +479,7 @@ async function recordFailure(
 			toBackoffMs(hetznerCloudAllocation.failures),
 			failure.retryAfterMs ?? 0,
 		);
-	allocationPatch.error = failure.error;
+	recording.hetznerCloudPatch.error = failure.error;
 	if (failure.missing) {
 		allocationPatch.observedAt = Date.now();
 	}
@@ -495,7 +494,7 @@ async function recordFailure(
 		retryAt,
 		Date.now() + blockedRecheckMs,
 	);
-	await blockOperation(ctx, allocation.operationId, failure.error);
+	await blockOperation(ctx, allocation.operationId);
 }
 
 async function recordDeleted(recording: Recording) {
@@ -561,11 +560,12 @@ export const record = internalMutation({
 			ctx,
 			allocation,
 			hetznerCloudAllocation,
-			allocationPatch: { error: undefined },
+			allocationPatch: {},
 			hetznerCloudPatch: {
 				leaseExpiresAt: 0,
 				dueAt: Date.now() + recordDelayMs,
 				failures: 0,
+				error: undefined,
 				hetznerErrorCode: undefined,
 			},
 		};
@@ -596,7 +596,9 @@ export const record = internalMutation({
 	},
 });
 
-// Operator recovery. Confirm absence only after checking that no earlier request can still create the resource.
+/**
+ * Admin recovery. Confirm absence only after checking that no earlier request can still create the resource.
+ */
 export const retry = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -615,16 +617,14 @@ export const retry = internalMutation({
 			allocation.status === "deleted" ||
 			hetznerCloudAllocation.leaseExpiresAt > Date.now()
 		) {
-			throw new ConvexError({
-				message: "The allocation cannot be retried now.",
-			});
+			throw new Error("The allocation cannot be retried now.");
 		}
 		const resources = { ...hetznerCloudAllocation.resources };
 		if (confirmedAbsent !== undefined) {
 			if (resources[confirmedAbsent].status !== "uncertain") {
-				throw new ConvexError({
-					message: "Only an uncertain resource needs absence confirmation.",
-				});
+				throw new Error(
+					"Only an uncertain resource needs absence confirmation.",
+				);
 			}
 			resources[confirmedAbsent] = {
 				status: allocation.deleteRequested ? "absent" : "pending",
@@ -636,20 +636,19 @@ export const retry = internalMutation({
 		);
 		await ctx.db.patch("serverOperations", allocation.operationId, {
 			status: "pending",
-			error: undefined,
 			...(operation?.deadlineAt === undefined
 				? {}
 				: { deadlineAt: Date.now() + hetznerCloudPowerDeadlineMs }),
 		});
 		await ctx.db.patch("serverAllocations", allocationId, {
 			status: allocation.deleteRequested ? "deleting" : "creating",
-			error: undefined,
 		});
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			resources,
 			failures: 0,
 			dueAt: Date.now(),
 			action: undefined,
+			error: undefined,
 			hetznerErrorCode: undefined,
 		});
 		return null;
