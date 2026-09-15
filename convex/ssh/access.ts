@@ -12,9 +12,9 @@ import {
 	isSshAccessEncryptionKey,
 	toBootstrapTokenDigest,
 } from "./access_state";
+import { toSshBootstrapCommand } from "./bootstrap_command";
 import type { SshBootstrapFile } from "./cloud_init";
 import type { SshConnectionOptions } from "./connection";
-import { toSshRepairCommand } from "./repair_command";
 
 const { utils } = ssh2;
 
@@ -160,11 +160,11 @@ export async function generateAllocationSshAccess(
 }
 
 /**
- * Gives a member the one command that makes Composery's access work again after the customer
- * changed the machine: it puts the management key back, and reports the host key and port.
- * The command must run on the machine, and the report is refused from any other address.
+ * Opens one more bootstrap window and returns the command that completes it, for a member whose
+ * machine no longer accepts Composery. The command must run on the machine itself: the report
+ * that it sends is refused from any other address.
  */
-export const repair = action({
+export const renewBootstrap = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({ command: v.string() }),
 	handler: async (ctx, { serverId }): Promise<{ command: string }> => {
@@ -180,7 +180,7 @@ export const repair = action({
 			throw toConvexError("server_busy");
 		}
 		const token = randomBytes(bootstrapTokenBytes).toString("base64url");
-		await ctx.runMutation(internal.ssh.access_state.storeRepair, {
+		await ctx.runMutation(internal.ssh.access_state.storeBootstrap, {
 			allocationId,
 			encryptedSecrets: encrypt(allocationId, {
 				privateKey: decrypt(sshAccess).privateKey,
@@ -189,7 +189,7 @@ export const repair = action({
 			bootstrapTokenDigest: await toBootstrapTokenDigest(token),
 		});
 		return {
-			command: toSshRepairCommand(
+			command: toSshBootstrapCommand(
 				{
 					...toSshBootstrapFile(sshAccess),
 					token,
