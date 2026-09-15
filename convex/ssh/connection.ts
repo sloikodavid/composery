@@ -1,7 +1,7 @@
 "use node";
 
 import { isIP } from "node:net";
-import { Client } from "ssh2";
+import { Client, type ClientChannel } from "ssh2";
 
 export type SshFailure =
 	| "invalid_request"
@@ -173,4 +173,61 @@ export async function withSshConnection<T>(
 		// Destroy also releases remote handles after errors, cancellation, or stalls.
 		client.destroy();
 	}
+}
+
+export type SshCommandResult = Readonly<{
+	stdout: string;
+	stderr: string;
+	/** Null when a signal ended the command, so an outcome cannot be read from it. */
+	exitCode: number | null;
+}>;
+
+/**
+ * Runs one repository-owned command and returns its bounded output. Caller data belongs on
+ * stdin, never in the command: the account names and paths a machine reports are its own.
+ */
+export async function runSshCommand(
+	connection: SshConnectionOptions,
+	command: string,
+	options: Readonly<{ input?: Buffer; maxOutputBytes: number }>,
+): Promise<SshCommandResult> {
+	return await withSshConnection(
+		connection,
+		async ({ client, signal, fail }) => {
+			const channel = await callSsh<ClientChannel>(signal, (done) => {
+				client.exec(command, (error, stream) =>
+					done(error ? new SshError("command_unavailable") : undefined, stream),
+				);
+			});
+			return await callSsh<SshCommandResult>(signal, (done) => {
+				const stdout: Buffer[] = [];
+				const stderr: Buffer[] = [];
+				let size = 0;
+				let exitCode: number | null = null;
+				const receive = (data: Buffer, isStdout: boolean) => {
+					size += data.length;
+					if (size > options.maxOutputBytes) {
+						fail(new SshError("output_limit"));
+						return;
+					}
+					(isStdout ? stdout : stderr).push(Buffer.from(data));
+				};
+				channel.on("data", (data: Buffer) => receive(data, true));
+				channel.stderr.on("data", (data: Buffer) => receive(data, false));
+				channel.on("error", () => fail(new SshError("remote_error")));
+				channel.stderr.on("error", () => fail(new SshError("remote_error")));
+				channel.on("exit", (code: number | null) => {
+					exitCode = code;
+				});
+				channel.on("close", () =>
+					done(undefined, {
+						stdout: Buffer.concat(stdout).toString("utf8"),
+						stderr: Buffer.concat(stderr).toString("utf8"),
+						exitCode,
+					}),
+				);
+				channel.end(options.input);
+			});
+		},
+	);
 }

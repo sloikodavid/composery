@@ -3,6 +3,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import ssh2 from "ssh2";
+import { discoverSshAccounts } from "./accounts";
 import { AuthorizedKeysFile } from "./authorized_keys";
 import { type SshConnectionOptions, SshError } from "./connection";
 import { inspectSshPublicKey } from "./inspect_public_key";
@@ -245,6 +246,60 @@ test.skipIf(!hasDocker)(
 			base64: "AAAAC3NzaC1lZDI1NTE5AAAAIA==",
 		});
 		expect(rejected.status).toBe("rejected");
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"asks the machine which accounts sign in with keys, and which files apply",
+	async () => {
+		const machine = await discoverSshAccounts(connection);
+		expect(machine.port).toBe(sshPort);
+		const root = machine.accounts.find((account) => account.name === "root");
+		expect(root).toMatchObject({ keysEnabled: true, keyAloneSignsIn: true });
+		expect(root?.sources).toContainEqual({
+			kind: "file",
+			path: keyPath,
+			state: "present",
+		});
+		// A file the configuration names but nobody created is reported, not invented.
+		expect(root?.sources).toContainEqual({
+			kind: "file",
+			path: "/root/.ssh/authorized_keys2",
+			state: "missing",
+		});
+		expect(machine.limits.length).toBeGreaterThan(0);
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"follows a moved key file and a key command instead of assuming defaults",
+	async () => {
+		exec(
+			"sh",
+			"-c",
+			[
+				"mkdir -p /etc/ssh/sshd_config.d /srv/keys",
+				"printf 'AuthorizedKeysFile /srv/keys/%%u.keys\nAuthorizedKeysCommand /usr/local/bin/lookup\nAuthorizedKeysCommandUser nobody\n' > /etc/ssh/sshd_config.d/test.conf",
+				"touch /srv/keys/root.keys && chmod 600 /srv/keys/root.keys",
+			].join(" && "),
+		);
+		const machine = await discoverSshAccounts(connection);
+		const root = machine.accounts.find((account) => account.name === "root");
+		expect(root?.sources).toContainEqual({
+			kind: "file",
+			path: "/srv/keys/root.keys",
+			state: "present",
+		});
+		expect(root?.sources).toContainEqual({
+			kind: "command",
+			command: "/usr/local/bin/lookup",
+		});
+		expect(machine.limits).toContain(
+			"A key command answers for each key and connection, so its keys cannot be listed.",
+		);
+		exec("rm", "-f", "/etc/ssh/sshd_config.d/test.conf");
 	},
 	testTimeoutMs,
 );
