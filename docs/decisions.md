@@ -62,6 +62,8 @@ Components join class names with clsx, not tailwind-merge. A `className` prop ad
 
 The theme follows the operating system's light or dark preference. There is no manual toggle, so the server needs no stored preference and the first paint is correct.
 
+Composery manages authorized key entries, and nothing else about SSH. It reads the SSH server configuration to learn which key files apply to an account, and never writes that configuration: a wrong setting there locks out every user, including Composery. One permission covers all key management, because anyone who can add a key can sign in and edit the same files by hand; a finer permission would promise a boundary that SSH does not enforce. Discovery states what it cannot know instead of guessing: a key command is a program and its keys cannot be listed, certificate sources are shown separately, and every answer comes from the configuration on disk, which the running daemon need not have reloaded.
+
 SSH host certificates are not built. Pinning at creation protects Composery's own connections, and it is the customer, not Composery, who still meets a trust-on-first-use prompt. A host certificate would fix that, and would turn a legitimate host key change from an incident into a re-signing, but its principal is a name, so it needs the DNS scheme that the app feature will define, a certificate authority to hold and rotate, and a revocation list that reaches every machine. Nothing built now is wasted: a certificate is one more line in the same file, and the pin stays valid beside it. Decide it with the app naming scheme, not before.
 
 Research in docs/research is input, not instruction. `bun run research:import <share-url>` adds a conversation.
