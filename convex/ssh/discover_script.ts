@@ -84,9 +84,9 @@ for account in sorted(pwd.getpwall(), key=lambda a: a.pw_uid)[:MAX_ACCOUNTS]:
         "name": account.pw_name,
         "home": account.pw_dir,
         "shell": account.pw_shell,
-        "keysEnabled": (settings.get("pubkeyauthentication") or ["yes"])[0] == "yes"
+        "acceptsPublicKeys": (settings.get("pubkeyauthentication") or ["yes"])[0] == "yes"
             and (account.pw_uid != 0 or root_login in ("yes", "prohibit-password", "without-password")),
-        "keyAloneSignsIn": methods == "any" or any(
+        "publicKeyAloneSignsIn": methods == "any" or any(
             chain.split(",")[0] == "publickey" and len(chain.split(",")) == 1
             for chain in methods.split()),
         "sources": sources(settings, account),

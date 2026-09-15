@@ -2,12 +2,12 @@ import type { SshBootstrapFile } from "./cloud_init";
 
 /**
  * The command a person runs on their own server when Composery can no longer sign in.
- * It asks the machine where its own key file, host key and port are, through the SSH server's
+ * It asks the server where its own key file, host key and port are, through the SSH server's
  * own effective configuration, so a moved file or a changed port needs no new version of this
  * command. It asks with `-G` first, because `-T` also runs sanity checks that fail for reasons
  * that have nothing to do with the configuration, such as a missing privilege separation
  * directory. What it cannot ask for is the shell, `awk`, and either `curl` or Python 3; a
- * machine without those reports which line failed instead of leaving a half-finished state.
+ * server without those reports which line failed instead of leaving a half-finished state.
  */
 export function toSshBootstrapCommand(
 	bootstrapFile: SshBootstrapFile,

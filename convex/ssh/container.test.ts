@@ -16,7 +16,7 @@ import { writeSshFile } from "./write_file";
  * guarantees they claim - preserved bytes, preserved metadata, a refused write after a change -
  * exist only in the interaction with sshd, not in our own code. Skipped where Docker is absent.
  */
-const image = "composery-machine-test";
+const image = "composery-server-test";
 const dockerfile = `FROM ubuntu:24.04
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends openssh-server python3 \\
@@ -233,7 +233,7 @@ test.skipIf(!hasDocker)(
 );
 
 test.skipIf(!hasDocker)(
-	"asks the machine's own OpenSSH to judge a public key",
+	"asks the server's own OpenSSH to judge a public key",
 	async () => {
 		const added = ssh2.utils.generateKeyPairSync("ed25519").public.split(" ");
 		const parsed = await inspectSshPublicKey(connection, {
@@ -251,12 +251,15 @@ test.skipIf(!hasDocker)(
 );
 
 test.skipIf(!hasDocker)(
-	"asks the machine which accounts sign in with keys, and which files apply",
+	"asks the server which accounts sign in with keys, and which files apply",
 	async () => {
-		const machine = await discoverSshAccounts(connection);
-		expect(machine.port).toBe(sshPort);
-		const root = machine.accounts.find((account) => account.name === "root");
-		expect(root).toMatchObject({ keysEnabled: true, keyAloneSignsIn: true });
+		const discovery = await discoverSshAccounts(connection);
+		expect(discovery.port).toBe(sshPort);
+		const root = discovery.accounts.find((account) => account.name === "root");
+		expect(root).toMatchObject({
+			acceptsPublicKeys: true,
+			publicKeyAloneSignsIn: true,
+		});
 		expect(root?.sources).toContainEqual({
 			kind: "file",
 			path: keyPath,
@@ -268,7 +271,7 @@ test.skipIf(!hasDocker)(
 			path: "/root/.ssh/authorized_keys2",
 			state: "missing",
 		});
-		expect(machine.limits.length).toBeGreaterThan(0);
+		expect(discovery.unknowns.length).toBeGreaterThan(0);
 	},
 	testTimeoutMs,
 );
@@ -285,8 +288,8 @@ test.skipIf(!hasDocker)(
 				"touch /srv/keys/root.keys && chmod 600 /srv/keys/root.keys",
 			].join(" && "),
 		);
-		const machine = await discoverSshAccounts(connection);
-		const root = machine.accounts.find((account) => account.name === "root");
+		const discovery = await discoverSshAccounts(connection);
+		const root = discovery.accounts.find((account) => account.name === "root");
 		expect(root?.sources).toContainEqual({
 			kind: "file",
 			path: "/srv/keys/root.keys",
@@ -296,7 +299,7 @@ test.skipIf(!hasDocker)(
 			kind: "command",
 			command: "/usr/local/bin/lookup",
 		});
-		expect(machine.limits).toContain(
+		expect(discovery.unknowns).toContain(
 			"A key command answers for each key and connection, so its keys cannot be listed.",
 		);
 		exec("rm", "-f", "/etc/ssh/sshd_config.d/test.conf");

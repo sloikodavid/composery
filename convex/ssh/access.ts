@@ -161,7 +161,7 @@ export async function generateAllocationSshAccess(
 
 /**
  * Opens one more bootstrap window and returns the command that completes it, for a member whose
- * machine no longer accepts Composery. The command must run on the machine itself: the report
+ * server no longer accepts Composery. The command must run on the server itself: the report
  * that it sends is refused from any other address.
  */
 export const renewBootstrap = action({

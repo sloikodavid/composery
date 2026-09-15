@@ -184,7 +184,7 @@ export type SshCommandResult = Readonly<{
 
 /**
  * Runs one repository-owned command and returns its bounded output. Caller data belongs on
- * stdin, never in the command: the account names and paths a machine reports are its own.
+ * stdin, never in the command: the account names and paths a server reports are its own.
  */
 export async function runSshCommand(
 	connection: SshConnectionOptions,

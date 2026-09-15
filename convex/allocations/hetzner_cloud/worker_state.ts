@@ -439,7 +439,7 @@ async function recordResource(
 		...hetznerCloudAllocation.resources,
 		[resource.kind]: resource.status,
 	};
-	// Knowing the address before the machine boots lets the host key report be bound to it.
+	// Knowing the address before the server boots lets the host key report be bound to it.
 	if (resource.address !== undefined) {
 		switch (resource.kind) {
 			case "ipv4":

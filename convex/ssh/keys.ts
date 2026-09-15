@@ -26,24 +26,24 @@ const maxFilesRead = 10;
 const maxEdits = 64;
 
 // biome-ignore-start lint/style/useNamingConvention: SSH failures and error codes use snake_case
-/** Every way the machine can refuse, stated as one public code. */
+/** Every way the server can refuse, stated as one public code. */
 const failureCodes: Record<SshFailure, ErrorCode> = {
-	aborted: "machine_unreachable",
-	authentication_failed: "machine_unreachable",
+	aborted: "server_unreachable",
+	authentication_failed: "server_unreachable",
 	changed_during_read: "file_changed",
-	command_unavailable: "machine_unsupported",
-	connection_closed: "machine_unreachable",
-	connection_failed: "machine_unreachable",
-	deadline_exceeded: "machine_unreachable",
+	command_unavailable: "server_unsupported",
+	connection_closed: "server_unreachable",
+	connection_failed: "server_unreachable",
+	deadline_exceeded: "server_unreachable",
 	file_missing: "file_unwritable",
-	host_key_mismatch: "machine_unreachable",
+	host_key_mismatch: "server_unreachable",
 	invalid_request: "edit_invalid",
-	invalid_response: "machine_unsupported",
+	invalid_response: "server_unsupported",
 	not_regular_file: "file_unwritable",
-	output_limit: "machine_unsupported",
+	output_limit: "server_unsupported",
 	permission_denied: "file_unwritable",
-	remote_error: "machine_unreachable",
-	sftp_unavailable: "machine_unsupported",
+	remote_error: "server_unreachable",
+	sftp_unavailable: "server_unsupported",
 	too_large: "file_unwritable",
 };
 
@@ -51,8 +51,8 @@ const failureCodes: Record<SshFailure, ErrorCode> = {
 const writeCodes: Record<SshFileWriteResult["status"], ErrorCode | null> = {
 	busy: "file_changed",
 	changed: "file_changed",
-	command_unavailable: "machine_unsupported",
-	deadline_exceeded: "machine_unreachable",
+	command_unavailable: "server_unsupported",
+	deadline_exceeded: "server_unreachable",
 	file_missing: "file_unwritable",
 	invalid_request: "edit_invalid",
 	metadata_not_preserved: "file_unwritable",
@@ -156,8 +156,8 @@ async function readKeyFile(
 }
 
 /**
- * Reads the key files that the machine says apply, as they are right now. Composery keeps no
- * copy: a later edit names the revision it saw, and the machine refuses a stale one.
+ * Reads the key files that the server says apply, as they are right now. Composery keeps no
+ * copy: a later edit names the revision it saw, and the server refuses a stale one.
  */
 export const list = action({
 	args: { serverId: v.id("servers") },
@@ -168,9 +168,9 @@ export const list = action({
 	handler: async (ctx, { serverId }): Promise<KeyFileListing> => {
 		const connection = await requireConnection(ctx, serverId);
 		try {
-			const machine = await discoverSshAccounts(connection);
+			const discovery = await discoverSshAccounts(connection);
 			const files: KeyFileListing["files"] = [];
-			for (const account of machine.accounts) {
+			for (const account of discovery.accounts) {
 				for (const source of account.sources) {
 					if (
 						source.kind === "file" &&
@@ -183,7 +183,7 @@ export const list = action({
 					}
 				}
 			}
-			return { files, limits: [...machine.limits] };
+			return { files, limits: [...discovery.unknowns] };
 		} catch (error) {
 			return toPublicError(error);
 		}

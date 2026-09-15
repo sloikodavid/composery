@@ -16,6 +16,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `permission` | One platform authority on a server, such as `rename` or `power` | role, right |
 | `quota` | How many of one kind of thing a user, or the whole deployment, may hold. An admin sets it, and billing sets it later | grant, allowance |
 | `limit` | A fixed cap in the code, such as members for one server | |
+| `unknown` | What a report about another system cannot establish, stated with the report | limit, caveat |
 | `rate limit` | How often one account may do something | throttle |
 | `allocation` | One real instance of a server: what currently runs it, for its lifetime | provisioning, incarnation |
 | `operation` | A recorded command on a server: `create`, `start`, `stop`, `forceStop`, `delete` | command, job |
@@ -32,6 +33,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `key pair` | A private key and its public key | credential |
 | `management key` | The key pair that Composery uses to sign in to an allocation | |
 | `authorized key` | One entry in an `authorized_keys` file: options, a public key, and a comment | credential, SSH key (in code) |
+| `edit` | One change to one file's contents, planned against the revision it was read at | change, patch |
+| `revision` | What a file held when it was read, named by a digest of those bytes | version |
 | `host key` | The key pair that identifies a server to SSH clients | fingerprint (for the key itself) |
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
 

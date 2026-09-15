@@ -139,7 +139,7 @@ export const getStatus = query({
 		// The pinned host key, which a client compares with the key the server offers.
 		hostKey: v.union(v.string(), v.null()),
 		hostKeyConflictAt: v.union(v.number(), v.null()),
-		// The port that the machine last reported, which a client needs to connect.
+		// The port that the server last reported, which a client needs to connect.
 		port: v.union(v.number(), v.null()),
 		operation: v.object({
 			_id: v.id("serverOperations"),

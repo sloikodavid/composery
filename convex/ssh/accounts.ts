@@ -26,19 +26,19 @@ export type SshAccount = Readonly<{
 	home: string;
 	shell: string;
 	/** The SSH server accepts public keys for this account, in the context we asked about. */
-	keysEnabled: boolean;
+	acceptsPublicKeys: boolean;
 	/** A key alone completes a login, rather than being one step of several. */
-	keyAloneSignsIn: boolean;
+	publicKeyAloneSignsIn: boolean;
 	sources: readonly SshKeySource[];
 }>;
 
-export type SshMachine = Readonly<{
+export type SshDiscovery = Readonly<{
 	port: number;
 	usesPam: boolean;
 	strictModes: boolean;
 	accounts: readonly SshAccount[];
 	/** What this report cannot establish, in our words, for a caller to pass on unchanged. */
-	limits: readonly string[];
+	unknowns: readonly string[];
 }>;
 
 function toText(value: unknown) {
@@ -98,47 +98,47 @@ function toAccount(value: unknown): SshAccount | null {
 		name,
 		home,
 		shell,
-		keysEnabled: account.keysEnabled === true,
-		keyAloneSignsIn: account.keyAloneSignsIn === true,
+		acceptsPublicKeys: account.acceptsPublicKeys === true,
+		publicKeyAloneSignsIn: account.publicKeyAloneSignsIn === true,
 		sources: sources.filter(
 			(source): source is SshKeySource => source !== null,
 		),
 	};
 }
 
-function toLimits(machine: SshMachine) {
-	const limits = [
+function toUnknowns(discovery: SshDiscovery) {
+	const unknowns = [
 		"The SSH server's configuration was read from disk, which the running daemon need not have reloaded.",
 		"An account that a directory service resolves on demand need not appear in this list.",
 	];
-	if (machine.usesPam) {
-		limits.push(
+	if (discovery.usesPam) {
+		unknowns.push(
 			"PAM decides whether an account may finish a login, and its policy was not evaluated.",
 		);
 	}
 	if (
-		machine.accounts.some((account) =>
+		discovery.accounts.some((account) =>
 			account.sources.some((source) => source.kind === "command"),
 		)
 	) {
-		limits.push(
+		unknowns.push(
 			"A key command answers for each key and connection, so its keys cannot be listed.",
 		);
 	}
-	return limits;
+	return unknowns;
 }
 
 /**
- * Asks a machine which accounts can sign in with a key, and which key sources apply to each.
- * The machine's own SSH server answers; nothing here assumes a path or an account. The reply is
+ * Asks a server which accounts can sign in with a key, and which key sources apply to each.
+ * The server's own SSH server answers; nothing here assumes a path or an account. The reply is
  * validated as untrusted input, because the customer controls the program that produced it.
  */
 export async function discoverSshAccounts(
 	connection: SshConnectionOptions,
-): Promise<SshMachine> {
+): Promise<SshDiscovery> {
 	const result = await runSshCommand(
 		connection,
-		// Only repository-owned source enters the command; the machine's own data comes back as JSON.
+		// Only repository-owned source enters the command; the server's own data comes back as JSON.
 		`/usr/bin/python3 -I -X utf8 -c '${discoverScript.replaceAll("'", "'\\''")}'`,
 		{ maxOutputBytes },
 	);
@@ -164,14 +164,14 @@ export async function discoverSshAccounts(
 	if (accounts === null || typeof report.port !== "number") {
 		throw new SshError("invalid_response");
 	}
-	const machine: SshMachine = {
+	const discovery: SshDiscovery = {
 		port: report.port,
 		usesPam: report.usesPam === true,
 		strictModes: report.strictModes === true,
 		accounts: accounts.filter(
 			(account): account is SshAccount => account !== null,
 		),
-		limits: [],
+		unknowns: [],
 	};
-	return { ...machine, limits: toLimits(machine) };
+	return { ...discovery, unknowns: toUnknowns(discovery) };
 }

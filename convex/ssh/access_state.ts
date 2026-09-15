@@ -65,7 +65,7 @@ function toIpv6Number(address: string) {
 	return value;
 }
 
-/** Hetzner states an IPv6 address as a network, so any address inside it is the machine. */
+/** Hetzner states an IPv6 address as a network, so any address inside it is the server. */
 function isInIpv6Network(source: string, network: string) {
 	const [prefix, length] = network.split("/");
 	const bits = Number(length ?? ipv6Bits);
@@ -159,7 +159,7 @@ export async function storeAllocationSshAccess(
 	};
 }
 
-/** Opens one bootstrap window: the next report from the machine may replace the pinned host key. */
+/** Opens one bootstrap window: the next report from the server may replace the pinned host key. */
 export const storeBootstrap = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -220,7 +220,7 @@ export const registerHostKey = internalMutation({
 		) {
 			return false;
 		}
-		// A copied bootstrap token is useless from anywhere but the machine's own addresses.
+		// A copied bootstrap token is useless from anywhere but the server's own addresses.
 		if (source !== null && isAllocationAddress(source, allocation) === false) {
 			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
 				hostKeyConflictAt: Date.now(),
@@ -233,7 +233,7 @@ export const registerHostKey = internalMutation({
 			sshAccess.hostKey !== hostKey &&
 			!isBootstrapOpen
 		) {
-			// Two machines answered for one allocation: a copied bootstrap token, or a replacement.
+			// Two servers answered for one allocation: a copied bootstrap token, or a replacement.
 			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
 				hostKeyConflictAt: Date.now(),
 			});
