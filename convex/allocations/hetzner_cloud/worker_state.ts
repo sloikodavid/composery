@@ -30,7 +30,7 @@ const backoffJitterMs = 5000;
 const maxFailures = 8;
 const blockedRecheckMs = 3_600_000;
 const sweepBatchSize = 10;
-// One claim can lead to several Hetzner requests in one step.
+// One lease can lead to several Hetzner requests in one step.
 const requestsPerClaim = 8;
 const never = Number.MAX_SAFE_INTEGER;
 
@@ -229,7 +229,7 @@ export const sweep = internalMutation({
 	},
 });
 
-export const claim = internalMutation({
+export const lease = internalMutation({
 	args: { allocationId: v.id("serverAllocations"), epoch: v.number() },
 	returns: v.union(
 		v.null(),
@@ -269,7 +269,7 @@ export const claim = internalMutation({
 			);
 			return null;
 		}
-		const lease = {
+		const leaseFields = {
 			epoch: epoch + 1,
 			leaseExpiresAt: Date.now() + leaseMs,
 			dueAt: Date.now() + leaseMs,
@@ -277,7 +277,7 @@ export const claim = internalMutation({
 		await ctx.db.patch(
 			"hetznerCloudAllocations",
 			hetznerCloudAllocation._id,
-			lease,
+			leaseFields,
 		);
 		const operation = await ctx.db.get(
 			"serverOperations",
@@ -288,7 +288,7 @@ export const claim = internalMutation({
 		}
 		return {
 			allocation,
-			hetznerCloudAllocation: { ...hetznerCloudAllocation, ...lease },
+			hetznerCloudAllocation: { ...hetznerCloudAllocation, ...leaseFields },
 			operation,
 		};
 	},
@@ -422,6 +422,8 @@ type Recording = {
 	ctx: MutationCtx;
 	allocation: Doc<"serverAllocations">;
 	hetznerCloudAllocation: HetznerCloudAllocation;
+	/** False when the operation that the run acted on was replaced while the run was outstanding. */
+	isCurrentOperation: boolean;
 	allocationPatch: Patch<Doc<"serverAllocations">>;
 	hetznerCloudPatch: Patch<HetznerCloudAllocation>;
 };
@@ -439,7 +441,8 @@ async function recordResource(
 	if (
 		resource.status.status === "present" &&
 		hetznerCloudAllocation.resources[resource.kind].status === "uncertain" &&
-		allocation.status === "blocked"
+		allocation.status === "blocked" &&
+		recording.isCurrentOperation
 	) {
 		recording.allocationPatch.status = allocation.deleteRequested
 			? "deleting"
@@ -458,6 +461,9 @@ async function recordObservation(
 	allocationPatch.observedAt = Date.now();
 	allocationPatch.ipv4 = observation.ipv4;
 	allocationPatch.ipv6 = observation.ipv6;
+	if (!recording.isCurrentOperation) {
+		return;
+	}
 	if (allocation.deleteRequested) {
 		allocationPatch.status = "deleting";
 		return;
@@ -486,7 +492,10 @@ async function recordFailure(
 	recording.hetznerCloudPatch.hetznerErrorCode = failure.hetznerErrorCode;
 	recording.hetznerCloudPatch.failures = hetznerCloudAllocation.failures + 1;
 	recording.hetznerCloudPatch.dueAt = retryAt;
-	if (failure.retry && hetznerCloudAllocation.failures < maxFailures) {
+	if (
+		!recording.isCurrentOperation ||
+		(failure.retry && hetznerCloudAllocation.failures < maxFailures)
+	) {
 		return;
 	}
 	allocationPatch.status = failure.missing ? "missing" : "blocked";
@@ -510,7 +519,9 @@ async function recordDeleted(recording: Recording) {
 	allocationPatch.ipv4 = undefined;
 	allocationPatch.ipv6 = undefined;
 	recording.hetznerCloudPatch.dueAt = never;
-	await succeedOperation(ctx, allocation.operationId);
+	if (recording.isCurrentOperation) {
+		await succeedOperation(ctx, allocation.operationId);
+	}
 	if (allocation.status !== "deleted") {
 		await ctx.scheduler.runAfter(
 			0,
@@ -540,10 +551,11 @@ export const record = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
 		epoch: v.number(),
+		operationId: v.id("serverOperations"),
 		update: hetznerCloudWorkerUpdate,
 	},
 	returns: v.null(),
-	handler: async (ctx, { allocationId, epoch, update }) => {
+	handler: async (ctx, { allocationId, epoch, operationId, update }) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
 		const hetznerCloudAllocation = await getHetznerCloudAllocation(
 			ctx,
@@ -560,6 +572,7 @@ export const record = internalMutation({
 			ctx,
 			allocation,
 			hetznerCloudAllocation,
+			isCurrentOperation: allocation.operationId === operationId,
 			allocationPatch: {},
 			hetznerCloudPatch: {
 				leaseExpiresAt: 0,
@@ -645,6 +658,8 @@ export const retry = internalMutation({
 		});
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			resources,
+			// A new epoch fences a run that is still outstanding, so its result cannot undo this.
+			epoch: hetznerCloudAllocation.epoch + 1,
 			failures: 0,
 			dueAt: Date.now(),
 			action: undefined,

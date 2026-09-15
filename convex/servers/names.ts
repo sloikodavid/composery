@@ -14,7 +14,7 @@ import {
 	requireServerAccess,
 	serverSummary,
 	toServerSummary,
-} from "./access";
+} from "./permissions";
 import { reservedServerNames } from "./reserved_names";
 
 const namePattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;

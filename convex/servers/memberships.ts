@@ -23,7 +23,7 @@ import {
 	type ServerPermissions,
 	serverSummary,
 	toServerSummary,
-} from "./access";
+} from "./permissions";
 import { serverPermissions } from "./schema";
 
 const removeBatchSize = 100;

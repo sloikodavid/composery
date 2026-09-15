@@ -27,8 +27,8 @@ import { releaseServerQuota, reserveServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getAllocationSshAccess } from "../ssh/access_state";
 import { requireUser } from "../users";
-import { requireServerAccess } from "./access";
 import { checkServerNameClaim, claimServerName } from "./names";
+import { requireServerAccess } from "./permissions";
 
 export async function requestServerDelete(
 	ctx: MutationCtx,

@@ -35,7 +35,7 @@ import {
 type ResourceKind = "server" | "ipv4" | "ipv6";
 type PowerKind = "start" | "stop" | "forceStop";
 type ObservedStatus = "running" | "stopped";
-type Claim = {
+type Lease = {
 	allocation: Doc<"serverAllocations">;
 	hetznerCloudAllocation: Doc<"hetznerCloudAllocations">;
 	operation: Doc<"serverOperations">;
@@ -182,8 +182,8 @@ async function findResource(
 	);
 }
 
-async function renderUserData(ctx: ActionCtx, claim: Claim) {
-	const { allocationId, epoch } = claim.hetznerCloudAllocation;
+async function renderUserData(ctx: ActionCtx, lease: Lease) {
+	const { allocationId, epoch } = lease.hetznerCloudAllocation;
 	let sshAccess: Doc<"allocationSshAccess"> | null = await ctx.runQuery(
 		internal.ssh.access_state.get,
 		{ allocationId },
@@ -203,8 +203,8 @@ async function renderUserData(ctx: ActionCtx, claim: Claim) {
 	});
 }
 
-async function toCreateBody(ctx: ActionCtx, claim: Claim, kind: ResourceKind) {
-	const hetznerCloudAllocation = claim.hetznerCloudAllocation;
+async function toCreateBody(ctx: ActionCtx, lease: Lease, kind: ResourceKind) {
+	const hetznerCloudAllocation = lease.hetznerCloudAllocation;
 	const { allocationId, controllerId, resources, spec } =
 		hetznerCloudAllocation;
 	if (spec === undefined) {
@@ -237,7 +237,7 @@ async function toCreateBody(ctx: ActionCtx, claim: Claim, kind: ResourceKind) {
 			) {
 				throw new HetznerCloudError("addresses_missing");
 			}
-			const userData = await renderUserData(ctx, claim);
+			const userData = await renderUserData(ctx, lease);
 			if (userData === null) {
 				return null;
 			}
@@ -263,10 +263,10 @@ async function toCreateBody(ctx: ActionCtx, claim: Claim, kind: ResourceKind) {
 
 async function createResource(
 	ctx: ActionCtx,
-	claim: Claim,
+	lease: Lease,
 	kind: ResourceKind,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const { allocation, hetznerCloudAllocation } = claim;
+	const { allocation, hetznerCloudAllocation } = lease;
 	const found = await findResource(hetznerCloudAllocation, kind);
 	if (found !== null) {
 		return {
@@ -288,7 +288,7 @@ async function createResource(
 			retry: false,
 		});
 	}
-	const body = await toCreateBody(ctx, claim, kind);
+	const body = await toCreateBody(ctx, lease, kind);
 	if (body === null) {
 		return {};
 	}
@@ -367,10 +367,10 @@ async function sendDelete(
 }
 
 async function deleteResource(
-	claim: Claim,
+	lease: Lease,
 	kind: ResourceKind,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const { allocation, hetznerCloudAllocation } = claim;
+	const { allocation, hetznerCloudAllocation } = lease;
 	const resource = hetznerCloudAllocation.resources[kind];
 	if (resource.status === "pending") {
 		return { resource: { kind, status: { status: "absent" } } };
@@ -390,6 +390,15 @@ async function deleteResource(
 				},
 			},
 			clearAction: true,
+		};
+	}
+	if (resource.status === "uncertain") {
+		// An uncertain resource that appears takes its identity first, which unblocks the allocation.
+		return {
+			resource: {
+				kind,
+				status: { status: "present", id: requireId(found.id) },
+			},
 		};
 	}
 	if (allocation.status === "blocked") {
@@ -429,11 +438,11 @@ async function stepAction(
 
 async function stepPower(
 	ctx: ActionCtx,
-	claim: Claim,
+	lease: Lease,
 	serverId: number,
 	status: ObservedStatus,
 ): Promise<HetznerCloudWorkerUpdate | null> {
-	const { allocation, hetznerCloudAllocation, operation } = claim;
+	const { allocation, hetznerCloudAllocation, operation } = lease;
 	if (
 		operation.status === "succeeded" ||
 		operation.kind === "create" ||
@@ -514,9 +523,9 @@ function requireConfiguredServer(
 
 async function observeServer(
 	ctx: ActionCtx,
-	claim: Claim,
+	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const server = await findResource(claim.hetznerCloudAllocation, "server");
+	const server = await findResource(lease.hetznerCloudAllocation, "server");
 	if (server === null) {
 		return toFailure("server_missing", { retry: false, missing: true });
 	}
@@ -529,13 +538,13 @@ async function observeServer(
 		return toFailure("server_status_changing", { retry: true });
 	}
 	const configured = requireConfiguredServer(
-		claim.hetznerCloudAllocation,
+		lease.hetznerCloudAllocation,
 		server,
 	);
 	if (!configured.isFirewallApplied) {
 		return toFailure("firewall_not_applied", { retry: true });
 	}
-	const powerUpdate = await stepPower(ctx, claim, requireId(server.id), status);
+	const powerUpdate = await stepPower(ctx, lease, requireId(server.id), status);
 	return (
 		powerUpdate ?? {
 			observation: { status, ipv4: configured.ipv4, ipv6: configured.ipv6 },
@@ -545,9 +554,9 @@ async function observeServer(
 
 async function step(
 	ctx: ActionCtx,
-	claim: Claim,
+	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const { allocation, hetznerCloudAllocation } = claim;
+	const { allocation, hetznerCloudAllocation } = lease;
 	await requireController(
 		hetznerCloudAllocation.firewallId,
 		hetznerCloudAllocation.controllerId,
@@ -558,7 +567,7 @@ async function step(
 	if (allocation.deleteRequested) {
 		for (const kind of deleteOrder) {
 			if (hetznerCloudAllocation.resources[kind].status !== "absent") {
-				return await deleteResource(claim, kind);
+				return await deleteResource(lease, kind);
 			}
 		}
 		return { deleted: true };
@@ -573,10 +582,10 @@ async function step(
 	}
 	for (const kind of createOrder) {
 		if (hetznerCloudAllocation.resources[kind].status !== "present") {
-			return await createResource(ctx, claim, kind);
+			return await createResource(ctx, lease, kind);
 		}
 	}
-	return await observeServer(ctx, claim);
+	return await observeServer(ctx, lease);
 }
 
 function toErrorUpdate(error: unknown): HetznerCloudWorkerUpdate {
@@ -605,16 +614,16 @@ export const run = internalAction({
 	args: { allocationId: v.id("serverAllocations"), epoch: v.number() },
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const claim: Claim | null = await ctx.runMutation(
-			internal.allocations.hetzner_cloud.worker_state.claim,
+		const lease: Lease | null = await ctx.runMutation(
+			internal.allocations.hetzner_cloud.worker_state.lease,
 			args,
 		);
-		if (claim === null) {
+		if (lease === null) {
 			return null;
 		}
 		let update: HetznerCloudWorkerUpdate;
 		try {
-			update = await step(ctx, claim);
+			update = await step(ctx, lease);
 		} catch (error) {
 			update = toErrorUpdate(error);
 		}
@@ -622,7 +631,8 @@ export const run = internalAction({
 			internal.allocations.hetzner_cloud.worker_state.record,
 			{
 				allocationId: args.allocationId,
-				epoch: claim.hetznerCloudAllocation.epoch,
+				epoch: lease.hetznerCloudAllocation.epoch,
+				operationId: lease.operation._id,
 				update,
 			},
 		);

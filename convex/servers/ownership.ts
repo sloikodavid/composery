@@ -10,6 +10,7 @@ import { toBoundedPagination } from "../pagination";
 import { transferServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getCurrentUser, isUserDisabled } from "../users";
+import { requestServerDelete } from "./lifecycle";
 import {
 	allServerPermissions,
 	ownerAccess,
@@ -18,8 +19,7 @@ import {
 	requireServerOwner,
 	serverSummary,
 	toServerSummary,
-} from "./access";
-import { requestServerDelete } from "./lifecycle";
+} from "./permissions";
 
 const deleteBatchSize = 20;
 
