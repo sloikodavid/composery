@@ -6,3 +6,4 @@ minimumReleaseAge = 259200
 [run]
 shell = "bun"
 bun = false
+noOrphans = true

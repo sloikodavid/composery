@@ -6,7 +6,6 @@
 		"dev": "bun --parallel \"dev:*\"",
 		"dev:convex": "convex dev",
 		"dev:next": "next dev",
-		"build": "next build",
 		"start": "next start",
 		"check": "bun --parallel --no-exit-on-error \"check:*\"",
 		"check:characters": "bun scripts/characters.ts check",
@@ -17,7 +16,7 @@
 		"fix": "bun --sequential --no-exit-on-error \"fix:*\"",
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
-		"verify": "bun check && bun test --pass-with-no-tests && bun run build",
+		"verify": "bun check && bun test && next build",
 		"research:import": "bun scripts/research/import.ts"
 	},
 	"dependencies": {
