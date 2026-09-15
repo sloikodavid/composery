@@ -175,6 +175,15 @@ export async function withSshConnection<T>(
 	}
 }
 
+/**
+ * The command that runs one repository-owned program on a server. The interpreter is an absolute
+ * path because a search path belongs to whoever owns the server, and the program is the only
+ * thing that enters shell syntax: everything a caller supplies travels on stdin.
+ */
+export function toSshProgramCommand(program: string) {
+	return `/usr/bin/python3 -I -X utf8 -c '${program.replaceAll("'", "'\\''")}'`;
+}
+
 export type SshCommandResult = Readonly<{
 	stdout: string;
 	stderr: string;

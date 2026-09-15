@@ -200,7 +200,6 @@ for account in everyone[:MAX_ACCOUNTS]:
     })
 
 print(json.dumps({
-    "port": int(first(global_settings, "port", "22")),
     "usesPam": first(global_settings, "usepam", "no") == "yes",
     "strictModes": first(global_settings, "strictmodes", "yes") == "yes",
     "accountsTruncated": len(everyone) > MAX_ACCOUNTS,

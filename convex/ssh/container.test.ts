@@ -255,7 +255,6 @@ test.skipIf(!hasDocker)(
 	"asks the server which accounts sign in with keys, and which files apply",
 	async () => {
 		const discovery = await discoverSshServer(connection);
-		expect(discovery.port).toBe(sshPort);
 		const root = discovery.accounts.find((account) => account.name === "root");
 		expect(root).toMatchObject({
 			acceptsPublicKeys: true,

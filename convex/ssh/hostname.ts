@@ -9,6 +9,7 @@ import {
 	runSshCommand,
 	type SshConnectionOptions,
 	SshError,
+	toSshProgramCommand,
 } from "./connection";
 import { hostnameScript } from "./hostname_script";
 
@@ -31,8 +32,7 @@ export async function setSshHostname(
 ) {
 	const result = await runSshCommand(
 		connection,
-		// Only repository-owned source enters the command; the names travel on stdin.
-		`/usr/bin/python3 -I -X utf8 -c '${hostnameScript.replaceAll("'", "'\\''")}'`,
+		toSshProgramCommand(hostnameScript),
 		{ input: Buffer.from(JSON.stringify(request)), maxOutputBytes },
 	);
 	if (result.exitCode !== 0) {

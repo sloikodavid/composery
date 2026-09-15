@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, action } from "../_generated/server";
 import { type ErrorCode, toConvexError } from "../errors";
 import { requireSshConnection } from "./access";
@@ -137,10 +137,10 @@ function toKeyLine(line: AuthorizedKeysLine) {
 	};
 }
 
-async function requireConnection(ctx: ActionCtx, serverId: string) {
+async function requireConnection(ctx: ActionCtx, serverId: Id<"servers">) {
 	const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
 		internal.servers.permissions.requireSshAccess,
-		{ serverId: serverId as Doc<"servers">["_id"] },
+		{ serverId },
 	);
 	return await requireSshConnection(ctx, allocation);
 }
@@ -208,7 +208,7 @@ export const list = action({
 async function applyEdits(
 	ctx: ActionCtx,
 	request: {
-		serverId: string;
+		serverId: Id<"servers">;
 		path: string;
 		revision: string;
 		edits: readonly AuthorizedKeysEdit[];

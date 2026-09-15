@@ -4,6 +4,7 @@ import {
 	runSshCommand,
 	type SshConnectionOptions,
 	SshError,
+	toSshProgramCommand,
 } from "./connection";
 import { discoveryScript } from "./discovery_script";
 
@@ -11,7 +12,6 @@ const maxOutputBytes = 262_144;
 const maxAccounts = 50;
 const maxSources = 40;
 const maxTextLength = 4096;
-const maxPort = 65_535;
 
 const fileStates = [
 	"present",
@@ -40,7 +40,6 @@ export type SshAccount = Readonly<{
 }>;
 
 export type SshDiscovery = Readonly<{
-	port: number;
 	usesPam: boolean;
 	strictModes: boolean;
 	accounts: readonly SshAccount[];
@@ -177,8 +176,7 @@ export async function discoverSshServer(
 ): Promise<SshDiscovery> {
 	const result = await runSshCommand(
 		connection,
-		// Only repository-owned source enters the command; the server's own data comes back as JSON.
-		`/usr/bin/python3 -I -X utf8 -c '${discoveryScript.replaceAll("'", "'\\''")}'`,
+		toSshProgramCommand(discoveryScript),
 		{ maxOutputBytes },
 	);
 	if (result.exitCode !== 0) {
@@ -194,22 +192,12 @@ export async function discoverSshServer(
 	if (report.error === "sshd_unavailable") {
 		throw new SshError("command_unavailable");
 	}
-	const port = report.port;
-	if (
-		typeof port !== "number" ||
-		!Number.isInteger(port) ||
-		port < 1 ||
-		port > maxPort
-	) {
-		fail();
-	}
 	const listed = Array.isArray(report.accounts) ? report.accounts : fail();
 	if (listed.length > maxAccounts) {
 		fail();
 	}
 	const accounts = listed.map(toAccount);
 	return {
-		port,
 		usesPam: toFlag(report.usesPam),
 		strictModes: toFlag(report.strictModes),
 		accounts: accounts.map((entry) => entry.account),

@@ -1,13 +1,11 @@
 "use node";
 
-import type { ClientChannel } from "ssh2";
 import type { AuthorizedKey } from "./authorized_keys";
 import {
-	callSsh,
 	commandExitCodes,
+	runSshCommand,
 	type SshConnectionOptions,
 	SshError,
-	withSshConnection,
 } from "./connection";
 
 // 128 KiB.
@@ -79,60 +77,24 @@ export async function inspectSshPublicKey(
 	) {
 		throw new SshError("invalid_request");
 	}
-	const input = Buffer.from(`${key.type} ${key.base64}\n`, "ascii");
-	return await withSshConnection(
-		connection,
-		async ({ client, signal, fail }) => {
-			const channel = await callSsh<ClientChannel>(signal, (done) => {
-				client.exec(
-					"LC_ALL=C /usr/bin/ssh-keygen -l -E sha256 -f -",
-					(error, stream) =>
-						done(
-							error ? new SshError("command_unavailable") : undefined,
-							stream,
-						),
-				);
-			});
-			return await callSsh<SshPublicKeyInspection>(signal, (done) => {
-				const stdout: Buffer[] = [];
-				const stderr: Buffer[] = [];
-				let outputBytes = 0;
-				let exitCode: number | undefined;
-				let isTerminated = false;
-				const receive = (data: Buffer, isStdout: boolean) => {
-					outputBytes += data.length;
-					if (outputBytes > maxOutputBytes) {
-						fail(new SshError("output_limit"));
-						return;
-					}
-					(isStdout ? stdout : stderr).push(Buffer.from(data));
-				};
-				channel.on("data", (data: Buffer) => receive(data, true));
-				channel.stderr.on("data", (data: Buffer) => receive(data, false));
-				channel.on("error", () => fail(new SshError("remote_error")));
-				channel.stderr.on("error", () => fail(new SshError("remote_error")));
-				channel.on("exit", (code: number | null) => {
-					if (typeof code === "number") {
-						exitCode = code;
-					} else {
-						isTerminated = true;
-					}
-				});
-				channel.on("close", () => {
-					const inspection = toInspection({
-						exitCode,
-						isTerminated,
-						stdout: Buffer.concat(stdout).toString("utf8"),
-						stderr: Buffer.concat(stderr).toString("utf8"),
-					});
-					if (typeof inspection === "string") {
-						fail(new SshError(inspection));
-					} else {
-						done(undefined, inspection);
-					}
-				});
-				channel.end(input);
-			});
-		},
+	const input = Buffer.from(
+		`${key.type} ${key.base64}
+`,
+		"ascii",
 	);
+	const result = await runSshCommand(
+		connection,
+		"LC_ALL=C /usr/bin/ssh-keygen -l -E sha256 -f -",
+		{ input, maxOutputBytes },
+	);
+	const inspection = toInspection({
+		exitCode: result.exitCode ?? undefined,
+		isTerminated: result.exitCode === null,
+		stdout: result.stdout,
+		stderr: result.stderr,
+	});
+	if (typeof inspection === "string") {
+		throw new SshError(inspection);
+	}
+	return inspection;
 }
