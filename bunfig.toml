@@ -7,3 +7,7 @@ minimumReleaseAge = 259200
 shell = "bun"
 bun = false
 noOrphans = true
+
+[test]
+root = "tests"
+preload = ["./tests/harness/preload.ts"]

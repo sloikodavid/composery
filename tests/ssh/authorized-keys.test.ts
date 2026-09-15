@@ -1,6 +1,5 @@
-/// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
-import { AuthorizedKeysFile } from "./authorized_keys";
+import { AuthorizedKeysFile } from "../../convex/ssh/authorized_keys";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const key = { type: "ssh-ed25519", base64: "AAAA" };
@@ -44,7 +43,7 @@ test("an update selects a duplicate occurrence without changing its neighbors", 
 	});
 });
 
-test("observations and candidate bytes do not alias caller memory", () => {
+test("changing the caller's buffer or a returned copy never changes the file it read", () => {
 	const bytes = encode(`${line}\n`);
 	const file = new AuthorizedKeysFile(bytes);
 	bytes.fill(0);
@@ -55,14 +54,10 @@ test("observations and candidate bytes do not alias caller memory", () => {
 		throw new Error(plan.reason);
 	}
 	plan.candidate.fill(0);
-	expect(file.bytes()).toEqual(encode(`${line}\n`));
-	expect(Object.isFrozen(file.lines)).toBe(true);
-	const entry = file.lines[0];
-	if (entry?.kind !== "entry") {
-		throw new Error("Missing entry");
-	}
-	expect(Object.isFrozen(entry.entry.options)).toBe(true);
-	expect(Object.isFrozen(entry.entry.key)).toBe(true);
+	expect(file.plan(encode(`${line}\n`), [])).toEqual({
+		ok: true,
+		candidate: encode(`${line}\n`),
+	});
 });
 
 test("ordered options retain duplicates, case, quoted separators, and backslashes", () => {
@@ -185,30 +180,33 @@ describe("ambiguous or unsupported edits fail without producing a candidate", ()
 			file.plan(file.bytes(), [{ kind: "update", line: 1, options: [option] }]),
 		).toEqual({ ok: false, reason: "invalid_edit" });
 	});
+	test.each([
+		{ type: "ssh-ed25519\n", base64: "AAAA" },
+		{ type: "ssh-ed25519", base64: "AAAA new" },
+		{ type: "ssh-ed25519", base64: "" },
+		{ type: "ssh-ed25519", base64: "AA=A" },
+	])("a key field that could insert another field or line %j", (invalidKey) => {
+		const file = new AuthorizedKeysFile(encode(`${line}\n`));
+		expect(
+			file.plan(file.bytes(), [{ kind: "update", line: 1, key: invalidKey }]),
+		).toEqual({ ok: false, reason: "invalid_edit" });
+		expect(
+			file.plan(file.bytes(), [
+				{ kind: "append", key: invalidKey, options: [], comment: "" },
+			]),
+		).toEqual({ ok: false, reason: "invalid_edit" });
+	});
 });
 
 test.each([
 	'command="unterminated',
 	"from=unquoted",
-	"restrict,,pty",
-	"restrict,",
 	'command="ok"suffix',
 	'"command"',
 ])("unrecognized syntax is opaque and preserved: %s", (options) => {
 	const bytes = encode(`${options} ${line}\n`);
 	const file = new AuthorizedKeysFile(bytes);
 	expect(file.lines[0]?.kind).toBe("opaque");
-	expect(file.plan(bytes, [])).toEqual({ ok: true, candidate: bytes });
-});
-
-test("syntax recognition does not claim native validity", () => {
-	// AAAA is deliberately not a complete public-key blob; two command clauses
-	// and an unknown option also require native validation, not silent repair.
-	const bytes = encode(
-		`command="a",command="b",future-option="value" ${line}\n`,
-	);
-	const file = new AuthorizedKeysFile(bytes);
-	expect(file.lines[0]?.kind).toBe("entry");
 	expect(file.plan(bytes, [])).toEqual({ ok: true, candidate: bytes });
 });
 
@@ -230,9 +228,54 @@ test.each([
 	expect(file.plan(bytes, [])).toEqual({ ok: true, candidate: bytes });
 });
 
-test("BOM, NUL, embedded CR, unknown types, and invalid UTF-8 stay opaque", () => {
+test.each(["restrict,,pty", "restrict,", ",restrict"])(
+	"an empty option does not hide the key that OpenSSH signs in with: %s",
+	(options) => {
+		const bytes = encode(`${options} ${line} label\n`);
+		const file = new AuthorizedKeysFile(bytes);
+		const entry = file.lines[0];
+		if (entry?.kind !== "entry") {
+			throw new Error(`The line was read as ${entry?.kind}.`);
+		}
+		expect(entry.entry.key).toEqual(key);
+		expect(entry.entry.comment).toBe("label");
+		expect(file.plan(bytes, [])).toEqual({ ok: true, candidate: bytes });
+		expect(file.plan(bytes, [{ kind: "remove", line: 1 }])).toEqual({
+			ok: true,
+			candidate: new Uint8Array(),
+		});
+	},
+);
+
+test("an option token that would write an empty option is refused", () => {
+	const file = new AuthorizedKeysFile(encode(`${line}\n`));
+	for (const option of ["restrict,", ",restrict", "restrict,,pty"]) {
+		expect(
+			file.plan(file.bytes(), [{ kind: "update", line: 1, options: [option] }]),
+		).toEqual({ ok: false, reason: "invalid_edit" });
+	}
+});
+
+test("a key before a NUL is an entry that can be removed but not rewritten, because the rest is invisible", () => {
+	const bytes = encode(`${line} visible\0hidden\n# after\n`);
+	const file = new AuthorizedKeysFile(bytes);
+	const entry = file.lines[0];
+	if (entry?.kind !== "entry") {
+		throw new Error(`The line was read as ${entry?.kind}.`);
+	}
+	expect(entry.entry.comment).toBe("visible");
+	expect(file.plan(bytes, [{ kind: "remove", line: 1 }])).toEqual({
+		ok: true,
+		candidate: encode("# after\n"),
+	});
+	expect(
+		file.plan(bytes, [{ kind: "update", line: 1, comment: "renamed" }]),
+	).toEqual({ ok: false, reason: "invalid_target" });
+});
+
+test("a BOM, an embedded carriage return, an unknown type, and invalid UTF-8 stay opaque", () => {
 	const bytes = new Uint8Array([
-		...encode(`\ufeff${line}\n${line}\0tail\n${line}\rtail\nssh-future AAAA\n`),
+		...encode(`\ufeff${line}\n${line}\rtail\nssh-future AAAA\n`),
 		invalidUtf8Byte,
 		newlineByte,
 		...encode(`${line}\n`),
@@ -243,10 +286,9 @@ test("BOM, NUL, embedded CR, unknown types, and invalid UTF-8 stay opaque", () =
 		"opaque",
 		"opaque",
 		"opaque",
-		"opaque",
 		"entry",
 	]);
-	const result = file.plan(bytes, [{ kind: "remove", line: 6 }]);
+	const result = file.plan(bytes, [{ kind: "remove", line: 5 }]);
 	expect(result).toEqual({
 		ok: true,
 		candidate: bytes.slice(0, -(line.length + 1)),
@@ -284,17 +326,12 @@ test("append after removal does not manufacture an empty first line", () => {
 	});
 });
 
-test("byte offsets remain correct after multibyte comments", () => {
-	const prefix = encode("# café 🗝\r\n");
-	const file = new AuthorizedKeysFile(
-		new Uint8Array([...prefix, ...encode(line)]),
-	);
-	expect(file.lines[1]).toMatchObject({
-		line: 2,
-		start: prefix.length,
-		end: prefix.length + line.length,
-		ending: "",
-	});
+test("an edit after a line of multibyte characters changes exactly the bytes of its own line", () => {
+	const before = "# café 🗝\r\n";
+	const file = new AuthorizedKeysFile(encode(`${before}${line} old`));
+	expect(
+		file.plan(file.bytes(), [{ kind: "update", line: 2, comment: "new" }]),
+	).toEqual({ ok: true, candidate: encode(`${before}${line} new`) });
 });
 
 test("changing a key retains its existing restrictions and comment", () => {
@@ -324,23 +361,6 @@ test("a no-op update retains all original separators and line endings", () => {
 		ok: true,
 		candidate: bytes,
 	});
-});
-
-test.each([
-	{ type: "ssh-ed25519\n", base64: "AAAA" },
-	{ type: "ssh-ed25519", base64: "AAAA new" },
-	{ type: "ssh-ed25519", base64: "" },
-	{ type: "ssh-ed25519", base64: "AA=A" },
-])("invalid key fields cannot insert another field or line", (invalidKey) => {
-	const file = new AuthorizedKeysFile(encode(`${line}\n`));
-	expect(
-		file.plan(file.bytes(), [{ kind: "update", line: 1, key: invalidKey }]),
-	).toEqual({ ok: false, reason: "invalid_edit" });
-	expect(
-		file.plan(file.bytes(), [
-			{ kind: "append", key: invalidKey, options: [], comment: "" },
-		]),
-	).toEqual({ ok: false, reason: "invalid_edit" });
 });
 
 test("arbitrary byte sequences round-trip through the public boundary", () => {

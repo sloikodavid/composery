@@ -1,7 +1,8 @@
 /**
- * Lossless file observations and candidate edits, without I/O or authorization.
- * Recognizing an entry does not mean that sshd accepts it: a new authorization
- * needs native validation before a remote write.
+ * Lossless file observations and candidate edits, without I/O or authorization. An entry is a line
+ * that OpenSSH reads a key from, and OpenSSH may still refuse it; the running server's acceptance
+ * answers that. The reverse must not happen: a line that OpenSSH signs in with is an entry, so a key
+ * that works can always be listed and removed.
  */
 export type AuthorizedKey = Readonly<{ type: string; base64: string }>;
 export type AuthorizedKeyOption = Readonly<{
@@ -63,6 +64,7 @@ const carriageReturnByte = 13;
 const optionNameCharacterPattern = /[a-zA-Z0-9-]/;
 const base64Pattern = /^[A-Za-z0-9+/]+={0,2}$/;
 const lineBreakOrNulPattern = /[\0\r\n]/;
+const lineBreakPattern = /[\r\n]/;
 const blankLinePattern = /^[ \t]*$/;
 const commentLinePattern = /^[ \t]*#/;
 const keyTypes = new Set([
@@ -181,25 +183,23 @@ function parseOption(text: string, start: number) {
 }
 
 function parseOptions(text: string): readonly AuthorizedKeyOption[] | null {
-	if (text.length === 0) {
-		return Object.freeze([]);
-	}
 	const options: AuthorizedKeyOption[] = [];
 	let index = 0;
 	while (index < text.length) {
+		// OpenSSH signs in with "restrict,,pty" and "restrict," alike, so an empty option is skipped.
+		if (text[index] === ",") {
+			index++;
+			continue;
+		}
 		const parsed = parseOption(text, index);
 		if (parsed === null) {
 			return null;
 		}
 		options.push(parsed.option);
 		index = parsed.end;
-		if (index === text.length) {
-			break;
-		}
-		if (text[index] !== "," || index + 1 === text.length) {
+		if (index < text.length && text[index] !== ",") {
 			return null;
 		}
-		index++;
 	}
 	return Object.freeze(options);
 }
@@ -223,8 +223,10 @@ function parseKeyStart(text: string, start: number) {
 	return typeEnd < 0 ? null : { options, keyStart, typeEnd };
 }
 
-function parseFields(text: string): Fields | null {
-	if (lineBreakOrNulPattern.test(text)) {
+function parseFields(line: string): Fields | null {
+	// OpenSSH reads a line as a C string, so it ends at the first NUL and signs in with what came before.
+	const text = line.split("\0", 1)[0] ?? "";
+	if (lineBreakPattern.test(text)) {
 		return null;
 	}
 	const start = skipSpaces(text, 0);
@@ -294,7 +296,13 @@ function renderKey(key: AuthorizedKey) {
 
 function renderOptions(options: readonly string[]) {
 	for (const option of options) {
-		if (!isValidText(option) || parseOptions(option)?.length !== 1) {
+		// Reading skips empty options, but writing one token must write exactly one option.
+		const parsed = parseOptions(option);
+		if (
+			!isValidText(option) ||
+			parsed?.length !== 1 ||
+			parsed[0]?.raw !== option
+		) {
 			return null;
 		}
 	}
@@ -458,11 +466,14 @@ export class AuthorizedKeysFile {
 		const text = this.#text[edit.line - 1];
 		const fields =
 			text === null || text === undefined ? null : parseFields(text);
+		// Bytes after a NUL are invisible to OpenSSH and to anyone reading the line, so such a line is
+		// removed whole and never rewritten.
 		if (
 			fields === null ||
 			text === null ||
 			text === undefined ||
-			line === undefined
+			line === undefined ||
+			text.includes("\0")
 		) {
 			return "invalid_target";
 		}
