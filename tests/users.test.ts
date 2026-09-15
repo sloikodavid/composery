@@ -4,7 +4,7 @@ import { ConvexError } from "convex/values";
 import { api, internal } from "../convex/_generated/api";
 import { type ConvexBackend, useConvexBackend } from "./harness/convex-backend";
 
-const setupTimeoutMs = 300_000;
+const setupTimeoutMs = 600_000;
 const testTimeoutMs = 60_000;
 const subjectSuffixBytes = 6;
 const tokenLifetimeSeconds = 600;

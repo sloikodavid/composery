@@ -19,7 +19,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
-import { hostname } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import {
@@ -42,21 +42,26 @@ const instanceSecret = createHash("sha256").update(instanceName).digest("hex");
 const readinessTimeoutMs = 30_000;
 const readinessDelayMs = 100;
 const stopTimeoutMs = 10_000;
-const logLineLimit = 40;
+const logLineLimit = 80;
+// The first push installs external packages from the network, which can take minutes.
+const pushTimeoutMs = 240_000;
 const httpUdfFailedStatus = 560;
 const removalRetries = 10;
 const removalDelayMs = 200;
 const hostTagLength = 8;
-// A run folder names its creation time, its test process, and its machine.
+// Folders name their test process and their machine, so a later run can tell whose they are.
 const hostTag = createHash("sha256")
 	.update(hostname())
 	.digest("hex")
 	.slice(0, hostTagLength);
 const runFolderNamePattern = /^\d+-(\d+)-([0-9a-f]{8})$/;
+const temporaryFolderNamePattern = /^cvx-(\d+)-([0-9a-f]{8})$/;
+const processGroupsFolderName = "process-groups";
 const lineBreakPattern = /\r?\n/;
 const executableMode = 0o755;
 const templateKeyLength = 16;
 const webhookSecretBytes = 24;
+const usesProcessGroups = process.platform !== "win32";
 
 /** The release asset and its SHA-256 digest, as GitHub published them, for each supported platform. */
 const releaseAssets: Record<string, { name: string; sha256: string }> = {
@@ -99,6 +104,21 @@ export type ConvexBackend = Readonly<{
 	signIn: SignInIssuer["signIn"];
 }>;
 
+/** What every process of one test run shares. */
+type RunContext = Readonly<{
+	binary: string;
+	adminKey: string;
+	folder: string;
+	environment: Record<string, string>;
+}>;
+
+type RunningBackend = Readonly<{
+	url: string;
+	stop: () => Promise<void>;
+	/** The backend's latest log lines, which say why a push or a request failed. */
+	readLog: () => string;
+}>;
+
 function findFreePort() {
 	return new Promise<number>((resolve, reject) => {
 		const server = createServer();
@@ -115,11 +135,11 @@ function findFreePort() {
 }
 
 /**
- * The backend's environment, built from nothing. A developer's own deployment, login and tokens
- * are exported in their shell, and a backend that inherited them could act on the real deployment.
+ * The environment of every process a run starts, built from nothing. A developer's own deployment,
+ * login and tokens are exported in their shell, and a process that inherited them could act on the
+ * real deployment.
  */
-function toChildEnvironment(runDirectory: string) {
-	const temporary = path.join(runDirectory, "temp");
+function toChildEnvironment(temporary: string) {
 	mkdirSync(temporary, { recursive: true });
 	// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 	const environment: Record<string, string> = {
@@ -141,11 +161,16 @@ function toChildEnvironment(runDirectory: string) {
 	return environment;
 }
 
-/** Removes a run folder, unlinking its links to the repository's modules before a recursive walk. */
-function removeRunFolder(folder: string) {
-	for (const workspace of ["workspace", "template-workspace"]) {
-		rmSync(path.join(folder, workspace, "node_modules"), { force: true });
-	}
+/**
+ * A short temporary folder for one run. The backend's Node executor listens on a Unix socket inside
+ * it, and Linux refuses a socket path longer than 108 bytes, which a folder inside the repository
+ * exceeds.
+ */
+function toTemporaryFolder() {
+	return path.join(tmpdir(), `cvx-${process.pid}-${hostTag}`);
+}
+
+function removeFolder(folder: string) {
 	rmSync(folder, {
 		recursive: true,
 		force: true,
@@ -154,20 +179,117 @@ function removeRunFolder(folder: string) {
 	});
 }
 
-/**
- * Removes run folders whose test process on this machine is gone. The owner is in the folder's name
- * rather than in a file inside it, so a folder that a failed removal emptied halfway is still known.
- */
-function removeOrphanedRunFolders(runsRoot: string) {
-	if (!existsSync(runsRoot)) {
-		return;
+/** Removes a run folder, unlinking its links to the repository's modules before a recursive walk. */
+function removeRunFolder(folder: string) {
+	for (const workspace of ["workspace", "template-workspace"]) {
+		rmSync(path.join(folder, workspace, "node_modules"), { force: true });
 	}
-	for (const name of readdirSync(runsRoot)) {
-		const [, pid, host] = runFolderNamePattern.exec(name) ?? [];
-		if (host === hostTag && !isProcessAlive(Number(pid))) {
-			removeRunFolder(path.join(runsRoot, name));
+	removeFolder(folder);
+}
+
+/** Signals every process in a group, and ignores a group whose processes have all exited. */
+function signalProcessGroup(groupId: number, signal: NodeJS.Signals) {
+	try {
+		process.kill(-groupId, signal);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+			throw error;
 		}
 	}
+}
+
+/**
+ * Ends the processes that ran in the groups a dead run recorded, then removes its folder. A group ID
+ * cannot be reused while any process in it is alive, so a group that still exists is that run's.
+ */
+function removeOrphanedRunFolder(folder: string) {
+	const groups = path.join(folder, processGroupsFolderName);
+	if (usesProcessGroups && existsSync(groups)) {
+		for (const name of readdirSync(groups)) {
+			signalProcessGroup(Number(name), "SIGKILL");
+		}
+	}
+	removeRunFolder(folder);
+}
+
+/**
+ * Removes the folders of runs whose test process on this machine is gone. The owner is in each
+ * folder's name rather than in a file inside it, so a folder that a failed removal emptied halfway
+ * is still known.
+ */
+function removeOrphanedFolders(runsRoot: string) {
+	for (const [root, pattern, remove] of [
+		[runsRoot, runFolderNamePattern, removeOrphanedRunFolder],
+		[tmpdir(), temporaryFolderNamePattern, removeFolder],
+	] as const) {
+		if (!existsSync(root)) {
+			continue;
+		}
+		for (const name of readdirSync(root)) {
+			const [, pid, host] = pattern.exec(name) ?? [];
+			if (host === hostTag && !isProcessAlive(Number(pid))) {
+				remove(path.join(root, name));
+			}
+		}
+	}
+}
+
+/**
+ * Starts a process that this run owns with everything it starts in turn. On Linux a Node executor
+ * outlives a signal sent to the backend alone, so outside Windows each process leads its own group
+ * and the group is recorded, before any await, for a later run to end if this one dies.
+ */
+function spawnOwned(
+	context: RunContext,
+	command: string,
+	args: readonly string[],
+	options: Readonly<{ cwd?: string; environment?: Record<string, string> }>,
+) {
+	const child = spawn(command, args, {
+		cwd: options.cwd,
+		env: options.environment ?? context.environment,
+		stdio: ["ignore", "pipe", "pipe"],
+		detached: usesProcessGroups,
+	});
+	if (usesProcessGroups && child.pid !== undefined) {
+		const groups = path.join(context.folder, processGroupsFolderName);
+		mkdirSync(groups, { recursive: true });
+		writeFileSync(path.join(groups, String(child.pid)), "");
+	}
+	return child;
+}
+
+function waitForExit(child: ChildProcess, timeoutMs: number) {
+	return new Promise<void>((resolve) => {
+		if (child.exitCode !== null || child.signalCode !== null) {
+			resolve();
+			return;
+		}
+		const timer = setTimeout(resolve, timeoutMs);
+		child.once("exit", () => {
+			clearTimeout(timer);
+			resolve();
+		});
+	});
+}
+
+/** Stops a process started by spawnOwned and everything it started. */
+async function stopOwned(child: ChildProcess) {
+	if (child.pid === undefined) {
+		return;
+	}
+	if (!usesProcessGroups) {
+		// Windows ends only the process it is named, unless it is asked for the tree.
+		if (child.exitCode === null) {
+			spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
+		}
+		await waitForExit(child, stopTimeoutMs);
+		return;
+	}
+	signalProcessGroup(child.pid, "SIGTERM");
+	await waitForExit(child, stopTimeoutMs);
+	// Anything in the group that ignored the request is ended outright.
+	signalProcessGroup(child.pid, "SIGKILL");
 }
 
 /** Downloads the pinned backend once, refuses it unless its digest matches, and keeps it in tmp. */
@@ -222,50 +344,16 @@ async function requireBackendBinary() {
 	return binary;
 }
 
-type RunningBackend = Readonly<{
-	url: string;
-	stop: () => Promise<void>;
-}>;
-
-/**
- * Stops the backend and the Node executor it started. Windows ends only the process it is told to,
- * which would leave the executor holding the run folder until this whole test process exits.
- */
-function stopProcessTree(child: ChildProcess) {
-	if (child.pid === undefined || child.exitCode !== null) {
-		return;
-	}
-	if (process.platform === "win32") {
-		spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
-	} else {
-		child.kill("SIGTERM");
-	}
-}
-
-function waitForExit(child: ChildProcess, timeoutMs: number) {
-	return new Promise<void>((resolve) => {
-		if (child.exitCode !== null || child.signalCode !== null) {
-			resolve();
-			return;
-		}
-		const timer = setTimeout(resolve, timeoutMs);
-		child.once("exit", () => {
-			clearTimeout(timer);
-			resolve();
-		});
-	});
-}
-
 async function startBackend(
-	binary: string,
+	context: RunContext,
 	storage: string,
-	environment: Record<string, string>,
 ): Promise<RunningBackend> {
+	mkdirSync(storage, { recursive: true });
 	const cloudPort = await findFreePort();
 	const sitePort = await findFreePort();
-	const log: string[] = [];
-	const child = spawn(
-		binary,
+	const child = spawnOwned(
+		context,
+		context.binary,
 		[
 			path.join(storage, "backend.sqlite3"),
 			"--port",
@@ -279,8 +367,9 @@ async function startBackend(
 			"--local-storage",
 			storage,
 		],
-		{ env: environment, stdio: ["ignore", "pipe", "pipe"] },
+		{},
 	);
+	const log: string[] = [];
 	const keep = (chunk: Buffer) => {
 		log.push(...chunk.toString().split(lineBreakPattern).filter(Boolean));
 		log.splice(0, Math.max(0, log.length - logLineLimit));
@@ -288,39 +377,36 @@ async function startBackend(
 	child.stdout?.on("data", keep);
 	child.stderr?.on("data", keep);
 	const url = `http://127.0.0.1:${cloudPort}`;
-	const stop = async () => {
-		stopProcessTree(child);
-		await waitForExit(child, stopTimeoutMs);
+	const backend: RunningBackend = {
+		url,
+		stop: () => stopOwned(child),
+		readLog: () => log.join("\n"),
 	};
 	const deadline = Date.now() + readinessTimeoutMs;
-	while (Date.now() < deadline) {
-		if (child.exitCode !== null) {
-			break;
-		}
-		if (
-			await fetch(`${url}/version`).then(
-				(reply) => reply.ok,
-				() => false,
-			)
-		) {
-			return { url, stop };
+	while (Date.now() < deadline && child.exitCode === null) {
+		const isReady = await fetch(`${url}/version`).then(
+			(reply) => reply.ok,
+			() => false,
+		);
+		if (isReady) {
+			return backend;
 		}
 		await Bun.sleep(readinessDelayMs);
 	}
-	await stop();
-	throw new Error(`The Convex backend did not start:\n${log.join("\n")}`);
+	await backend.stop();
+	throw new Error(`The Convex backend did not start:\n${backend.readLog()}`);
 }
 
 async function setEnvironmentVariables(
-	url: string,
-	adminKey: string,
+	context: RunContext,
+	backend: RunningBackend,
 	variables: Record<string, string>,
 ) {
-	const reply = await fetch(`${url}/api/update_environment_variables`, {
+	const reply = await fetch(`${backend.url}/api/update_environment_variables`, {
 		method: "POST",
 		headers: {
 			// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name
-			Authorization: `Convex ${adminKey}`,
+			Authorization: `Convex ${context.adminKey}`,
 			"Content-Type": "application/json",
 		},
 		body: JSON.stringify({
@@ -353,11 +439,11 @@ function toRequiredVariables(issuer: SignInIssuer) {
  * resolves inside the project folder, so the functions sit beside a link to the repository's modules.
  */
 async function pushFunctions(
-	workspace: string,
-	url: string,
-	adminKey: string,
-	environment: Record<string, string>,
+	context: RunContext,
+	backend: RunningBackend,
+	workspaceName: string,
 ) {
+	const workspace = path.join(context.folder, workspaceName);
 	mkdirSync(workspace, { recursive: true });
 	for (const file of ["package.json", "tsconfig.base.json", "convex.json"]) {
 		copyFileSync(path.join(repositoryRoot, file), path.join(workspace, file));
@@ -370,7 +456,8 @@ async function pushFunctions(
 		path.join(workspace, "node_modules"),
 		"dir",
 	);
-	const push = spawn(
+	const push = spawnOwned(
+		context,
 		"node",
 		[
 			path.join(repositoryRoot, "node_modules", "convex", "bin", "main.js"),
@@ -385,14 +472,13 @@ async function pushFunctions(
 		],
 		{
 			cwd: workspace,
-			env: {
-				...environment,
+			environment: {
+				...context.environment,
 				// biome-ignore-start lint/style/useNamingConvention: the Convex CLI reads these names
-				CONVEX_SELF_HOSTED_URL: url,
-				CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
+				CONVEX_SELF_HOSTED_URL: backend.url,
+				CONVEX_SELF_HOSTED_ADMIN_KEY: context.adminKey,
 				// biome-ignore-end lint/style/useNamingConvention: the Convex CLI reads these names
 			},
-			stdio: ["ignore", "pipe", "pipe"],
 		},
 	);
 	let output = "";
@@ -402,11 +488,30 @@ async function pushFunctions(
 	push.stderr?.on("data", (chunk: Buffer) => {
 		output += chunk.toString();
 	});
-	const code = await new Promise<number | null>((resolve) =>
-		push.once("exit", resolve),
-	);
+	const timedOut = Symbol("timed out");
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const code = await Promise.race([
+		new Promise<number | null>((resolve) => push.once("exit", resolve)),
+		new Promise<typeof timedOut>((resolve) => {
+			timer = setTimeout(() => resolve(timedOut), pushTimeoutMs);
+		}),
+	]);
+	clearTimeout(timer);
+	if (code === timedOut) {
+		await stopOwned(push);
+	}
 	if (code !== 0) {
-		throw new Error(`Pushing functions to the test backend failed:\n${output}`);
+		throw new Error(
+			[
+				code === timedOut
+					? `Pushing functions to the test backend did not finish in ${pushTimeoutMs} ms.`
+					: `Pushing functions to the test backend failed with exit code ${String(code)}.`,
+				"--- push output ---",
+				output.trim(),
+				"--- backend log ---",
+				backend.readLog(),
+			].join("\n"),
+		);
 	}
 }
 
@@ -425,12 +530,7 @@ function readPackageVersion(name: string) {
  * storage already holds them. It holds functions and no data, and a change to what it depends on
  * names a new template.
  */
-async function requireStorageTemplate(
-	binary: string,
-	adminKey: string,
-	runDirectory: string,
-	environment: Record<string, string>,
-) {
+async function requireStorageTemplate(context: RunContext) {
 	const key = createHash("sha256")
 		.update(
 			JSON.stringify([
@@ -446,22 +546,16 @@ async function requireStorageTemplate(
 	if (existsSync(template)) {
 		return template;
 	}
-	const building = path.join(runDirectory, "template");
-	mkdirSync(building, { recursive: true });
+	const building = path.join(context.folder, "template");
 	const issuer = startSignInIssuer();
-	const backend = await startBackend(binary, building, environment);
+	const backend = await startBackend(context, building);
 	try {
 		await setEnvironmentVariables(
-			backend.url,
-			adminKey,
+			context,
+			backend,
 			toRequiredVariables(issuer),
 		);
-		await pushFunctions(
-			path.join(runDirectory, "template-workspace"),
-			backend.url,
-			adminKey,
-			environment,
-		);
+		await pushFunctions(context, backend, "template-workspace");
 	} finally {
 		await backend.stop();
 		issuer.stop();
@@ -513,17 +607,16 @@ async function callFunction<Reference extends AnyFunction>(
 async function startConvexBackend(): Promise<ConvexBackend> {
 	const binary = await requireBackendBinary();
 	const runsRoot = path.join(cacheRoot, "runs");
-	removeOrphanedRunFolders(runsRoot);
-	const runDirectory = path.join(
-		runsRoot,
-		`${Date.now()}-${process.pid}-${hostTag}`,
-	);
-	mkdirSync(runDirectory, { recursive: true });
-	// Registered first, so it runs last: after the backend has stopped and released its files.
+	removeOrphanedFolders(runsRoot);
+	const folder = path.join(runsRoot, `${Date.now()}-${process.pid}-${hostTag}`);
+	mkdirSync(folder, { recursive: true });
+	const temporary = toTemporaryFolder();
+	// Registered first, so it runs last: after every process has stopped and released its files.
 	registerCleanup(() => {
-		removeRunFolder(runDirectory);
+		removeRunFolder(folder);
+		removeFolder(temporary);
 	});
-	const environment = toChildEnvironment(runDirectory);
+	const environment = toChildEnvironment(temporary);
 	const adminKey = execFileSync(
 		binary,
 		[
@@ -536,31 +629,17 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		],
 		{ encoding: "utf8", env: environment },
 	).trim();
-	const template = await requireStorageTemplate(
-		binary,
-		adminKey,
-		runDirectory,
-		environment,
-	);
-	const storage = path.join(runDirectory, "storage");
-	cpSync(template, storage, { recursive: true });
-	mkdirSync(storage, { recursive: true });
+	const context: RunContext = { binary, adminKey, folder, environment };
 
+	const template = await requireStorageTemplate(context);
+	const storage = path.join(folder, "storage");
+	cpSync(template, storage, { recursive: true });
 	const issuer = startSignInIssuer();
 	registerCleanup(issuer.stop);
-	const backend = await startBackend(binary, storage, environment);
+	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
-	await setEnvironmentVariables(
-		backend.url,
-		adminKey,
-		toRequiredVariables(issuer),
-	);
-	await pushFunctions(
-		path.join(runDirectory, "workspace"),
-		backend.url,
-		adminKey,
-		environment,
-	);
+	await setEnvironmentVariables(context, backend, toRequiredVariables(issuer));
+	await pushFunctions(context, backend, "workspace");
 
 	return {
 		url: backend.url,
