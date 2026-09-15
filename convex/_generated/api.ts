@@ -36,6 +36,7 @@ import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_inspect_public_key from "../ssh/inspect_public_key.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
 import type * as ssh_remove_authorized_keys from "../ssh/remove_authorized_keys.js";
+import type * as ssh_repair_command from "../ssh/repair_command.js";
 import type * as ssh_report_host_key_script from "../ssh/report_host_key_script.js";
 import type * as ssh_write_file from "../ssh/write_file.js";
 import type * as ssh_write_file_script from "../ssh/write_file_script.js";
@@ -77,6 +78,7 @@ const fullApi: ApiFromModules<{
   "ssh/inspect_public_key": typeof ssh_inspect_public_key;
   "ssh/read_file": typeof ssh_read_file;
   "ssh/remove_authorized_keys": typeof ssh_remove_authorized_keys;
+  "ssh/repair_command": typeof ssh_repair_command;
   "ssh/report_host_key_script": typeof ssh_report_host_key_script;
   "ssh/write_file": typeof ssh_write_file;
   "ssh/write_file_script": typeof ssh_write_file_script;

@@ -34,6 +34,7 @@ export function isSshAccessConfigured() {
 	return true;
 }
 
+export const bootstrapLifetimeMs = 900_000;
 const ipv6GroupPattern = /^[0-9a-fA-F]{1,4}$/;
 const ipv6Groups = 8;
 const ipv6GroupBits = 16;
@@ -158,6 +159,29 @@ export async function storeAllocationSshAccess(
 	};
 }
 
+/** Opens one repair window: the next report from the machine may replace the pinned host key. */
+export const storeRepair = internalMutation({
+	args: {
+		allocationId: v.id("serverAllocations"),
+		encryptedSecrets: v.string(),
+		bootstrapTokenDigest: v.string(),
+	},
+	returns: v.null(),
+	handler: async (ctx, { allocationId, ...secrets }) => {
+		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
+		if (sshAccess === null) {
+			throw new Error("The allocation has no SSH access.");
+		}
+		const until = Date.now() + bootstrapLifetimeMs;
+		await ctx.db.patch("allocationSshAccess", sshAccess._id, {
+			...secrets,
+			bootstrapExpiresAt: until,
+			hostKeyReplaceUntil: until,
+		});
+		return null;
+	},
+});
+
 export const get = internalQuery({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.union(schema.doc("allocationSshAccess"), v.null()),
@@ -165,18 +189,22 @@ export const get = internalQuery({
 		await getAllocationSshAccess(ctx, allocationId),
 });
 
-/** A repeated report can confirm the pinned host key, never replace it. A different key is recorded. */
+/**
+ * A repeated report confirms the pinned host key. A different key replaces it only inside a
+ * repair window that a member with the SSH permission opened; otherwise it is refused and recorded.
+ */
 export const registerHostKey = internalMutation({
 	args: {
 		allocationId: v.string(),
 		bootstrapTokenDigest: v.string(),
 		hostKey: v.string(),
+		port: v.union(v.number(), v.null()),
 		source: v.union(v.string(), v.null()),
 	},
 	returns: v.boolean(),
 	handler: async (
 		ctx,
-		{ allocationId, bootstrapTokenDigest, hostKey, source },
+		{ allocationId, bootstrapTokenDigest, hostKey, port, source },
 	) => {
 		const id = ctx.db.normalizeId("serverAllocations", allocationId);
 		const allocation =
@@ -199,10 +227,12 @@ export const registerHostKey = internalMutation({
 			});
 			return false;
 		}
-		if (sshAccess.hostKey !== undefined) {
-			if (sshAccess.hostKey === hostKey) {
-				return true;
-			}
+		const isRepair = (sshAccess.hostKeyReplaceUntil ?? 0) > Date.now();
+		if (
+			sshAccess.hostKey !== undefined &&
+			sshAccess.hostKey !== hostKey &&
+			!isRepair
+		) {
 			// Two machines answered for one allocation: a copied bootstrap token, or a replacement.
 			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
 				hostKeyConflictAt: Date.now(),
@@ -211,7 +241,10 @@ export const registerHostKey = internalMutation({
 		}
 		await ctx.db.patch("allocationSshAccess", sshAccess._id, {
 			hostKey,
+			hostKeyConflictAt: undefined,
+			hostKeyReplaceUntil: undefined,
 			...(source === null ? {} : { hostKeySource: source }),
+			...(port === null ? {} : { port }),
 		});
 		return true;
 	},

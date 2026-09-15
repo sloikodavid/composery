@@ -1,6 +1,6 @@
 import { type Infer, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import { internalQuery, type QueryCtx } from "../_generated/server";
 import { requireServerAllocation } from "../allocations/operations";
 import { toConvexError } from "../errors";
 import { requireUser } from "../users";
@@ -127,6 +127,16 @@ export async function requireServerAccess(
 	}
 	return { user, server, ...access };
 }
+
+/** The allocation of a server whose SSH access the caller may change. */
+export const requireSshAccess = internalQuery({
+	args: { serverId: v.id("servers") },
+	returns: v.id("serverAllocations"),
+	handler: async (ctx, { serverId }) => {
+		await requireServerAccess(ctx, serverId, "manageSsh");
+		return (await requireServerAllocation(ctx, serverId))._id;
+	},
+});
 
 export async function requireServerOwner(
 	ctx: QueryCtx,

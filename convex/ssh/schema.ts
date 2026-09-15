@@ -11,5 +11,7 @@ export const sshTables = {
 		hostKey: v.optional(v.string()),
 		hostKeySource: v.optional(v.string()),
 		hostKeyConflictAt: v.optional(v.number()),
+		hostKeyReplaceUntil: v.optional(v.number()),
+		port: v.optional(v.number()),
 	}).index("by_allocation_id", ["allocationId"]),
 };

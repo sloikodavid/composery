@@ -1,20 +1,23 @@
 "use node";
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { v } from "convex/values";
 import ssh2 from "ssh2";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { type ActionCtx, env } from "../_generated/server";
+import { type ActionCtx, action, env } from "../_generated/server";
+import { toConvexError } from "../errors";
 import {
+	bootstrapLifetimeMs,
 	isSshAccessEncryptionKey,
 	toBootstrapTokenDigest,
 } from "./access_state";
 import type { SshBootstrapFile } from "./cloud_init";
 import type { SshConnectionOptions } from "./connection";
+import { toSshRepairCommand } from "./repair_command";
 
 const { utils } = ssh2;
 
-const bootstrapLifetimeMs = 900_000;
 const bootstrapTokenBytes = 32;
 const nonceBytes = 12;
 const authTagBytes = 16;
@@ -120,7 +123,7 @@ export async function requireSshConnection(
 	}
 	return {
 		address: allocation.ipv4,
-		port: sshPort,
+		port: sshAccess.port ?? sshPort,
 		username: "root",
 		privateKey: decrypt(sshAccess).privateKey,
 		hostKey: Buffer.from(sshAccess.hostKey.split(" ")[1] ?? "", "base64"),
@@ -156,12 +159,48 @@ export async function generateAllocationSshAccess(
 	};
 }
 
-export function requireSshBootstrapFile(
-	sshAccess: AllocationSshAccess,
-): SshBootstrapFile {
-	if (sshAccess.bootstrapExpiresAt <= Date.now()) {
-		throw new SshAccessError("bootstrap_expired");
-	}
+/**
+ * Gives a member the one command that makes Composery's access work again after the customer
+ * changed the machine: it puts the management key back, and reports the host key and port.
+ * The command must run on the machine, and the report is refused from any other address.
+ */
+export const repair = action({
+	args: { serverId: v.id("servers") },
+	returns: v.object({ command: v.string() }),
+	handler: async (ctx, { serverId }): Promise<{ command: string }> => {
+		const allocationId: Id<"serverAllocations"> = await ctx.runQuery(
+			internal.servers.permissions.requireSshAccess,
+			{ serverId },
+		);
+		const sshAccess: AllocationSshAccess | null = await ctx.runQuery(
+			internal.ssh.access_state.get,
+			{ allocationId },
+		);
+		if (sshAccess === null) {
+			throw toConvexError("server_busy");
+		}
+		const token = randomBytes(bootstrapTokenBytes).toString("base64url");
+		await ctx.runMutation(internal.ssh.access_state.storeRepair, {
+			allocationId,
+			encryptedSecrets: encrypt(allocationId, {
+				privateKey: decrypt(sshAccess).privateKey,
+				token,
+			}),
+			bootstrapTokenDigest: await toBootstrapTokenDigest(token),
+		});
+		return {
+			command: toSshRepairCommand(
+				{
+					...toSshBootstrapFile(sshAccess),
+					token,
+				},
+				sshAccess.publicKey,
+			),
+		};
+	},
+});
+
+function toSshBootstrapFile(sshAccess: AllocationSshAccess): SshBootstrapFile {
 	const url = `${env.CONVEX_SITE_URL}/ssh/host-keys`;
 	// The token travels in this URL's request body, so a plain HTTP report would expose it.
 	if (!url.startsWith("https://")) {
@@ -172,4 +211,13 @@ export function requireSshBootstrapFile(
 		token: decrypt(sshAccess).token,
 		url,
 	};
+}
+
+export function requireSshBootstrapFile(
+	sshAccess: AllocationSshAccess,
+): SshBootstrapFile {
+	if (sshAccess.bootstrapExpiresAt <= Date.now()) {
+		throw new SshAccessError("bootstrap_expired");
+	}
+	return toSshBootstrapFile(sshAccess);
 }

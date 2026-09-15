@@ -6,6 +6,7 @@ import { toBootstrapTokenDigest } from "./access_state";
 const maxBodyBytes = 4096;
 const maxAllocationIdLength = 100;
 const bootstrapTokenPattern = /^[A-Za-z0-9_-]{43}$/;
+const maxPort = 65_535;
 const hostKeyType = "ssh-ed25519";
 const hostKeyBytes = 32;
 // SSH wire format (RFC 8709): the type string, then the 32-byte public key, each after a 4-byte length.
@@ -75,10 +76,21 @@ function toRegistration(bytes: Uint8Array) {
 	) {
 		return null;
 	}
+	const port = "port" in input ? input.port : null;
+	if (
+		port !== null &&
+		(typeof port !== "number" ||
+			!Number.isInteger(port) ||
+			port < 1 ||
+			port > maxPort)
+	) {
+		return null;
+	}
 	return {
 		allocationId: input.allocationId,
 		token: input.token,
 		hostKey: input.hostKey,
+		port,
 	};
 }
 
@@ -138,6 +150,7 @@ export const registerSshHostKey = httpAction(async (ctx, request) => {
 				allocationId: registration.allocationId,
 				bootstrapTokenDigest: await toBootstrapTokenDigest(registration.token),
 				hostKey: registration.hostKey,
+				port: registration.port,
 				source: toSource(request),
 			},
 		);
