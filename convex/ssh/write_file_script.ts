@@ -140,15 +140,17 @@ def perform(request):
             os.close(verified_parent)
         return "written"
     finally:
-        if temporary is not None:
-            os.close(temporary)
-        if original is not None:
-            os.close(original)
+        # Unlink the staging file before any close, so a signal cannot leave it behind.
         try:
             if temp_name is not None:
                 os.unlink(temp_name, dir_fd=directory)
         finally:
-            os.close(directory)
+            for descriptor in (temporary, original, directory):
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
 
 replaced = False
 try:

@@ -74,8 +74,9 @@ export async function writeSshFile(
 			attributes: expected.attributes,
 		}),
 	);
+	// UTF-8 mode makes the remote path encode as the SFTP read did, whatever the locale is.
 	// Only repository-owned source enters shell syntax. All caller data uses stdin.
-	const command = `/usr/bin/python3 -I -c '${writeFileScript.replaceAll("'", "'\\''")}'`;
+	const command = `/usr/bin/python3 -I -X utf8 -c '${writeFileScript.replaceAll("'", "'\\''")}'`;
 	const startedAt = Date.now();
 	let dispatched = false;
 	try {
