@@ -16,7 +16,7 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 				userProfile: {
 					deletePage: {
 						messageLine2:
-							"This also deletes the servers that you own. You cannot undo this.",
+							"All owned servers will be deleted. You cannot undo this.",
 					},
 				},
 			}}
