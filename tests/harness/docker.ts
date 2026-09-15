@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
+import { isProcessAlive } from "./cleanup";
 
 const maxOutputBytes = 16_777_216;
 const ownerLabel = "composery.test.owner";
@@ -45,16 +46,6 @@ export function requireDocker() {
 			(result.error?.message ?? result.stderr).trim() ||
 				"the daemon did not answer",
 		);
-	}
-}
-
-function isProcessAlive(pid: number) {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		// A process that exists but belongs to someone else refuses the signal instead of vanishing.
-		return (error as NodeJS.ErrnoException).code === "EPERM";
 	}
 }
 

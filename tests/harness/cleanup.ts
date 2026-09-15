@@ -1,5 +1,16 @@
 type Cleanup = () => void | Promise<void>;
 
+/** Whether a process that left resources behind is still running, and may still be using them. */
+export function isProcessAlive(pid: number) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		// A process that exists but belongs to someone else refuses the signal instead of vanishing.
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
 const cleanups: Cleanup[] = [];
 
 /**
