@@ -15,8 +15,10 @@ export const sshdLogPath = "/var/log/sshd.log";
 const image = "composery-test-sshd";
 const kind = "sshd";
 const startCommand = `/usr/sbin/sshd -E ${sshdLogPath}`;
-// The server under test is pinned twice: the image by digest, and its packages by the day of the Ubuntu
-// archive they come from. Moving either one is a deliberate change to what the tests run against.
+// The tests must run against what customers run, so this is the same Ubuntu release that
+// `HCLOUD_IMAGE` gives a new server, and it moves when that one moves. It is pinned twice: the
+// image by digest, and its packages by the day of the Ubuntu archive they come from. Moving
+// either one is a deliberate change to what the tests run against.
 const baseImage =
 	"ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254";
 const archiveSnapshot = "20260915T000000Z";
