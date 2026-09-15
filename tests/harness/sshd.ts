@@ -15,9 +15,19 @@ export const sshdLogPath = "/var/log/sshd.log";
 const image = "composery-test-sshd";
 const kind = "sshd";
 const startCommand = `/usr/sbin/sshd -E ${sshdLogPath}`;
-// A digest, not a tag: the tag moves, and a moved image is a different server under test.
-const dockerfile = `FROM ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254
+// The server under test is pinned twice: the image by digest, and its packages by the day of the Ubuntu
+// archive they come from. Moving either one is a deliberate change to what the tests run against.
+const baseImage =
+	"ubuntu:24.04@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254";
+const archiveSnapshot = "20260915T000000Z";
+// The snapshot archive is served over HTTPS only, so its certificates come from the current archive
+// first; apt checks every package's signature either way.
+const dockerfile = `FROM ${baseImage}
 RUN apt-get update \\
+ && apt-get install -y --no-install-recommends ca-certificates \\
+ && sed -i -E 's#URIs: http://(archive|security).ubuntu.com/ubuntu/?#URIs: https://snapshot.ubuntu.com/ubuntu/${archiveSnapshot}/#' /etc/apt/sources.list.d/ubuntu.sources \\
+ && ! grep -qE 'URIs: http://(archive|security)' /etc/apt/sources.list.d/ubuntu.sources \\
+ && apt-get update \\
  && apt-get install -y --no-install-recommends openssh-server python3 \\
  && rm -rf /var/lib/apt/lists/*
 RUN ssh-keygen -A && mkdir -p /run/sshd /root/.ssh && chmod 700 /root/.ssh
