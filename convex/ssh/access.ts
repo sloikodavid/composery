@@ -2,7 +2,6 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { v } from "convex/values";
-import ssh2 from "ssh2";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, action, env } from "../_generated/server";
@@ -15,8 +14,7 @@ import {
 import { toSshBootstrapCommand } from "./bootstrap_command";
 import type { SshBootstrapFile } from "./cloud_init";
 import type { SshConnectionOptions } from "./connection";
-
-const { utils } = ssh2;
+import { generateSshKeyPair } from "./key_pair";
 
 const bootstrapTokenBytes = 32;
 const nonceBytes = 12;
@@ -145,13 +143,13 @@ export function canReuseAllocationSshAccess(
 export async function generateAllocationSshAccess(
 	allocationId: Id<"serverAllocations">,
 ) {
-	const keyPair = utils.generateKeyPairSync("ed25519");
+	const keyPair = generateSshKeyPair();
 	const token = randomBytes(bootstrapTokenBytes).toString("base64url");
 	return {
 		allocationId,
-		publicKey: keyPair.public,
+		publicKey: keyPair.publicKey,
 		encryptedSecrets: encrypt(allocationId, {
-			privateKey: keyPair.private,
+			privateKey: keyPair.privateKey,
 			token,
 		}),
 		bootstrapTokenDigest: await toBootstrapTokenDigest(token),
