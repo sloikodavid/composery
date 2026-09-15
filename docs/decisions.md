@@ -26,7 +26,7 @@ Server ownership is stored on the server, separate from memberships. The owner h
 
 Platform permissions do not restrict direct SSH or filesystem access. Membership removal does not remove native SSH authorizations. SSH entries have no required platform-member association.
 
-An authorized key entry is an occurrence in one file revision, not a key fingerprint: the same key can appear twice with different options, and an edit names the line it changes. Option order is meaningful to OpenSSH, so edits preserve ordered options and every untouched byte. `sshd -T` reports the configuration on disk, not the settings of the running daemon, and `sshd -t` accepts entries that authentication later rejects, so neither validates an entry.
+An authorized key entry is an occurrence in one file revision, not a key fingerprint: the same key can appear twice with different options, and an edit names the line it changes. Option order is meaningful to OpenSSH, so edits preserve ordered options and every untouched byte. `sshd -T` reports the configuration on disk, not the settings of the running daemon, and `sshd -t` accepts entries that authentication later rejects, so neither validates an entry. An `expiry-time` value without a `Z` suffix uses the server's timezone, and a date without a time means midnight at the start of that date, so new values are written in UTC with `Z` and shown in both forms.
 
 SSH files remain authoritative on the server. Explicit file updates compare observed bytes and metadata, coordinate cooperating writes, replace the file, and verify the result. This is not compare-and-swap against independent editors. An uncertain outcome must not trigger a blind retry or rollback. OpenSSH authentication and sessions retain their native behavior.
 
