@@ -103,7 +103,7 @@ export const get = internalQuery({
 		await getAllocationSshAccess(ctx, allocationId),
 });
 
-/** A repeated registration can confirm the pinned host key but never replace it. */
+/** A repeated report can confirm the pinned host key, never replace it. A different key is recorded. */
 export const registerHostKey = internalMutation({
 	args: {
 		allocationId: v.string(),
@@ -127,7 +127,14 @@ export const registerHostKey = internalMutation({
 			return false;
 		}
 		if (sshAccess.hostKey !== undefined) {
-			return sshAccess.hostKey === hostKey;
+			if (sshAccess.hostKey === hostKey) {
+				return true;
+			}
+			// Two machines answered for one allocation: a copied bootstrap token, or a replacement.
+			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
+				hostKeyConflictAt: Date.now(),
+			});
+			return false;
 		}
 		await ctx.db.patch("allocationSshAccess", sshAccess._id, { hostKey });
 		return true;

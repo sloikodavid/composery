@@ -28,6 +28,7 @@ export class SshAccessError extends Error {
 	readonly code:
 		| "allocation_unavailable"
 		| "bootstrap_expired"
+		| "bootstrap_url_insecure"
 		| "encryption_key_invalid"
 		| "encryption_key_missing"
 		| "host_key_missing"
@@ -161,9 +162,14 @@ export function requireSshBootstrapFile(
 	if (sshAccess.bootstrapExpiresAt <= Date.now()) {
 		throw new SshAccessError("bootstrap_expired");
 	}
+	const url = `${env.CONVEX_SITE_URL}/ssh/host-keys`;
+	// The token travels in this URL's request body, so a plain HTTP report would expose it.
+	if (!url.startsWith("https://")) {
+		throw new SshAccessError("bootstrap_url_insecure");
+	}
 	return {
 		allocationId: sshAccess.allocationId,
 		token: decrypt(sshAccess).token,
-		url: `${env.CONVEX_SITE_URL}/ssh/host-keys`,
+		url,
 	};
 }

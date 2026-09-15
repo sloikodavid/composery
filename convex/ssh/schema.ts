@@ -9,5 +9,6 @@ export const sshTables = {
 		bootstrapTokenDigest: v.string(),
 		bootstrapExpiresAt: v.number(),
 		hostKey: v.optional(v.string()),
+		hostKeyConflictAt: v.optional(v.number()),
 	}).index("by_allocation_id", ["allocationId"]),
 };

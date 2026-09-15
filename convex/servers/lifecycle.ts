@@ -138,6 +138,7 @@ export const getStatus = query({
 		observedAt: v.union(v.number(), v.null()),
 		// The pinned host key, which a client compares with the key the server offers.
 		hostKey: v.union(v.string(), v.null()),
+		hostKeyConflictAt: v.union(v.number(), v.null()),
 		operation: v.object({
 			_id: v.id("serverOperations"),
 			kind: operationKind,
@@ -163,6 +164,7 @@ export const getStatus = query({
 			ipv6: allocation.ipv6 ?? null,
 			observedAt: allocation.observedAt ?? null,
 			hostKey: sshAccess?.hostKey ?? null,
+			hostKeyConflictAt: sshAccess?.hostKeyConflictAt ?? null,
 			operation: {
 				_id: operation._id,
 				kind: operation.kind,
