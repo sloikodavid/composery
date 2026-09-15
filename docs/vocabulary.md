@@ -38,6 +38,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `acceptance` | Whether the running SSH server lets a public key sign in to an account, as it answers Composery's address | probe, validity |
 | `host key` | The key pair that identifies a server to SSH clients | fingerprint (for the key itself) |
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
+| `harness` | Test code that starts, isolates, and stops what tests need, such as an SSH server or a Convex backend | fixture |
+| `stand-in` | Test code that plays a part of another system to produce an outcome, and never answers for that system | mock, fake |
 
 ## Verbs
 
