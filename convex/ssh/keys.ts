@@ -18,7 +18,7 @@ import {
 	SshError,
 	type SshFailure,
 } from "./connection";
-import { readSshFile } from "./read_file";
+import { readSshFile, type SshFileObservation } from "./read_file";
 import { type SshFileWriteResult, writeSshFile } from "./write_file";
 
 const maxFileBytes = 131_072;
@@ -68,7 +68,7 @@ const writeCodes: Record<SshFileWriteResult["status"], ErrorCode | null> = {
 
 type KeyFileListing = {
 	files: Awaited<ReturnType<typeof readKeyFile>>[];
-	limits: string[];
+	unknowns: string[];
 };
 
 const authorizedKey = v.object({
@@ -105,8 +105,17 @@ function toPublicError(error: unknown): never {
 	throw error;
 }
 
-function toRevision(bytes: Uint8Array) {
-	return createHash("sha256").update(bytes).digest("hex");
+/**
+ * Names one state of one file: its bytes and the metadata around them. Metadata belongs in it
+ * because bytes alone repeat: a file restored to what it held before would otherwise let a
+ * request that was planned against that earlier state apply a second time.
+ */
+function toRevision(observation: SshFileObservation) {
+	const { size, uid, gid, mode, mtime } = observation.attributes;
+	return createHash("sha256")
+		.update(observation.bytes)
+		.update(`:${size}:${uid}:${gid}:${mode}:${mtime}`)
+		.digest("hex");
 }
 
 function toFingerprint(base64: string) {
@@ -150,7 +159,7 @@ async function readKeyFile(
 	return {
 		account,
 		path,
-		revision: toRevision(observation.bytes),
+		revision: toRevision(observation),
 		lines: file.lines.map(toKeyLine),
 	};
 }
@@ -163,27 +172,33 @@ export const list = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({
 		files: v.array(keyFile),
-		limits: v.array(v.string()),
+		unknowns: v.array(v.string()),
 	}),
 	handler: async (ctx, { serverId }): Promise<KeyFileListing> => {
 		const connection = await requireConnection(ctx, serverId);
 		try {
 			const discovery = await discoverSshAccounts(connection);
 			const files: KeyFileListing["files"] = [];
+			const unknowns = [...discovery.unknowns];
+			let skipped = 0;
 			for (const account of discovery.accounts) {
 				for (const source of account.sources) {
-					if (
-						source.kind === "file" &&
-						source.state === "present" &&
-						files.length < maxFilesRead
-					) {
-						files.push(
-							await readKeyFile(connection, account.name, source.path),
-						);
+					if (source.kind !== "file" || source.state !== "present") {
+						continue;
 					}
+					if (files.length >= maxFilesRead) {
+						skipped += 1;
+						continue;
+					}
+					files.push(await readKeyFile(connection, account.name, source.path));
 				}
 			}
-			return { files, limits: [...discovery.unknowns] };
+			if (skipped > 0) {
+				unknowns.push(
+					`This server has more key files than one listing reads, and ${skipped} of them are not shown.`,
+				);
+			}
+			return { files, unknowns };
 		} catch (error) {
 			return toPublicError(error);
 		}
@@ -209,7 +224,7 @@ async function applyEdits(
 			path: request.path,
 			maxBytes: maxFileBytes,
 		});
-		if (toRevision(observation.bytes) !== request.revision) {
+		if (toRevision(observation) !== request.revision) {
 			throw toConvexError("file_changed");
 		}
 		const file = new AuthorizedKeysFile(observation.bytes);
@@ -229,7 +244,20 @@ async function applyEdits(
 		if (code !== null) {
 			throw toConvexError(code);
 		}
-		return { revision: toRevision(plan.candidate) };
+		// The written file names its own new state; a read that fails leaves the caller to list again.
+		try {
+			return {
+				revision: toRevision(
+					await readSshFile({
+						...connection,
+						path: request.path,
+						maxBytes: maxFileBytes,
+					}),
+				),
+			};
+		} catch {
+			return { revision: null };
+		}
 	} catch (error) {
 		return toPublicError(error);
 	}
@@ -244,11 +272,11 @@ export const add = action({
 		options: v.array(v.string()),
 		comment: v.string(),
 	},
-	returns: v.object({ revision: v.string() }),
+	returns: v.object({ revision: v.union(v.string(), v.null()) }),
 	handler: async (
 		ctx,
 		{ serverId, path, revision, key, options, comment },
-	): Promise<{ revision: string }> =>
+	): Promise<{ revision: string | null }> =>
 		await applyEdits(ctx, {
 			serverId,
 			path,
@@ -267,11 +295,11 @@ export const update = action({
 		options: v.optional(v.array(v.string())),
 		comment: v.optional(v.string()),
 	},
-	returns: v.object({ revision: v.string() }),
+	returns: v.object({ revision: v.union(v.string(), v.null()) }),
 	handler: async (
 		ctx,
 		{ serverId, path, revision, line, key, options, comment },
-	): Promise<{ revision: string }> =>
+	): Promise<{ revision: string | null }> =>
 		await applyEdits(ctx, {
 			serverId,
 			path,
@@ -295,11 +323,11 @@ export const remove = action({
 		revision: v.string(),
 		lines: v.array(v.number()),
 	},
-	returns: v.object({ revision: v.string() }),
+	returns: v.object({ revision: v.union(v.string(), v.null()) }),
 	handler: async (
 		ctx,
 		{ serverId, path, revision, lines },
-	): Promise<{ revision: string }> =>
+	): Promise<{ revision: string | null }> =>
 		await applyEdits(ctx, {
 			serverId,
 			path,

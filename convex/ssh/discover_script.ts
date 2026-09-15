@@ -1,5 +1,5 @@
 /** Fixed remote Linux program. It reports what the SSH server says, and never guesses. */
-export const discoverScript = `import glob, json, os, pwd, shutil, subprocess
+export const discoverScript = `import fnmatch, grp, json, os, pwd, shutil, stat, subprocess
 
 MAX_ACCOUNTS = 50
 MAX_FILES = 20
@@ -27,43 +27,137 @@ def parse(text):
             settings.setdefault(name, []).append(value)
     return settings
 
+def first(settings, name, fallback):
+    values = settings.get(name)
+    return values[0] if values else fallback
+
+def words(settings, name):
+    return " ".join(settings.get(name, [])).split()
+
+def split_paths(value):
+    # sshd's parser separates on whitespace and lets double quotes hold a name together.
+    parts, current, quoted, started = [], "", False, False
+    for character in value:
+        if character == '"':
+            quoted, started = not quoted, True
+        elif character.isspace() and not quoted:
+            if current or started:
+                parts.append(current)
+            current, started = "", False
+        else:
+            current += character
+    if current or started:
+        parts.append(current)
+    return parts
+
 def expand(pattern, account):
-    path = pattern.replace("%%", "\\x00").replace("%h", account.pw_dir)
-    path = path.replace("%u", account.pw_name).replace("%U", str(account.pw_uid))
-    path = path.replace("\\x00", "%")
-    return path if path.startswith("/") else os.path.join(account.pw_dir, path)
+    # One pass: a home directory that itself contains a token is not expanded again.
+    tokens = {"%%": "%", "%h": account.pw_dir, "%u": account.pw_name,
+              "%U": str(account.pw_uid)}
+    out, index = "", 0
+    while index < len(pattern):
+        token = pattern[index:index + 2]
+        if token in tokens:
+            out += tokens[token]
+            index += 2
+        else:
+            out += pattern[index]
+            index += 1
+    return out if out.startswith("/") else os.path.join(account.pw_dir, out)
 
-def describe(path):
+def is_safe(path, account):
+    # StrictModes: the file and every canonical parent up to the home directory must be owned
+    # by the account or by root, and must not be writable by group or others.
+    current = os.path.realpath(path)
+    home = os.path.realpath(account.pw_dir)
+    while True:
+        try:
+            status = os.stat(current)
+        except OSError:
+            return False
+        if status.st_uid not in (0, account.pw_uid) or status.st_mode & 0o022:
+            return False
+        if current in ("/", home):
+            return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return True
+        current = parent
+
+def describe(path, account, strict):
     try:
-        status = os.stat(path, follow_symlinks=False)
+        status = os.stat(path)
     except FileNotFoundError:
-        return {"path": path, "state": "missing"}
+        return {"kind": "file", "path": path, "state": "missing"}
     except OSError:
-        return {"path": path, "state": "unreadable"}
-    # StrictModes refuses a file that others can write, or a path that others own.
-    unsafe = bool(status.st_mode & 0o022) or status.st_uid not in (0, os.stat(os.path.dirname(path)).st_uid)
-    return {"path": path, "state": "unsafe" if unsafe else "present",
-            "size": status.st_size, "mode": status.st_mode & 0o7777}
+        return {"kind": "file", "path": path, "state": "unreadable"}
+    if not stat.S_ISREG(status.st_mode):
+        return {"kind": "file", "path": path, "state": "unusable"}
+    if strict and not is_safe(path, account):
+        return {"kind": "file", "path": path, "state": "unsafe"}
+    return {"kind": "file", "path": path, "state": "present"}
 
-def sources(settings, account):
-    found = []
-    patterns = (settings.get("authorizedkeysfile") or [".ssh/authorized_keys"])[0].split()
+def sources(settings, account, strict):
+    found, ambiguous = [], False
+    # sshd reads these paths literally: it does not expand shell patterns in them.
+    patterns = [p for p in split_paths(first(settings, "authorizedkeysfile",
+                                             ".ssh/authorized_keys")) if p != "none"]
     for pattern in patterns[:MAX_FILES]:
-        if pattern == "none":
-            continue
-        path = expand(pattern, account)
-        is_pattern = any(character in path for character in "*?[")
-        matches = sorted(glob.glob(path))[:MAX_FILES] if is_pattern else [path]
-        for match in matches or [path]:
-            found.append(dict(describe(match), kind="file"))
-    command = (settings.get("authorizedkeyscommand") or ["none"])[0]
+        found.append(describe(expand(pattern, account), account, strict))
+    # The effective configuration prints a quoted name unquoted, so one name that holds a
+    # space cannot be told from several names. A file that exists under the joined name says
+    # which reading was meant, and the caller is told that the names were ambiguous.
+    if len(patterns) > 1 and any(entry["state"] == "missing" for entry in found):
+        joined = describe(expand(" ".join(patterns), account), account, strict)
+        if joined["state"] != "missing":
+            found.append(joined)
+            ambiguous = True
+    command = first(settings, "authorizedkeyscommand", "none")
     if command and command != "none":
         found.append({"kind": "command", "command": command})
     for name in ("trustedusercakeys", "authorizedprincipalsfile"):
-        value = (settings.get(name) or ["none"])[0]
+        value = first(settings, name, "none")
         if value and value != "none":
             found.append({"kind": "certificate", "setting": name, "value": value})
-    return found
+    return found, ambiguous
+
+def groups_of(account):
+    names = set()
+    try:
+        names.add(grp.getgrgid(account.pw_gid).gr_name)
+    except Exception:
+        pass
+    for group in grp.getgrall():
+        if account.pw_name in group.gr_mem:
+            names.add(group.gr_name)
+    return names
+
+def matches(patterns, name):
+    return any(fnmatch.fnmatch(name, pattern.split("@")[0]) for pattern in patterns)
+
+def admitted(settings, account):
+    try:
+        groups = groups_of(account)
+    except Exception:
+        groups = set()
+    deny_users, allow_users = words(settings, "denyusers"), words(settings, "allowusers")
+    deny_groups, allow_groups = words(settings, "denygroups"), words(settings, "allowgroups")
+    if matches(deny_users, account.pw_name):
+        return False
+    if any(matches(deny_groups, group) for group in groups):
+        return False
+    if allow_users and not matches(allow_users, account.pw_name):
+        return False
+    if allow_groups and not any(matches(allow_groups, group) for group in groups):
+        return False
+    return True
+
+def conditional(settings):
+    # A pattern that names a host or an address is decided per connection, not here.
+    for name in ("denyusers", "allowusers", "denygroups", "allowgroups"):
+        if any("@" in pattern for pattern in words(settings, name)):
+            return True
+    return False
 
 connection = (os.environ.get("SSH_CONNECTION") or "").split()
 # One -C carries every field: sshd takes the last option, not the union of several.
@@ -74,28 +168,42 @@ if not global_settings:
     print(json.dumps({"error": "sshd_unavailable"}))
     raise SystemExit(0)
 
+everyone = sorted(pwd.getpwall(), key=lambda account: account.pw_uid)
 accounts = []
-for account in sorted(pwd.getpwall(), key=lambda a: a.pw_uid)[:MAX_ACCOUNTS]:
-    fields = ",".join(context + ["user=" + account.pw_name])
-    settings = parse(ask(["-C", fields])) or global_settings
-    methods = (settings.get("authenticationmethods") or ["any"])[0]
-    root_login = (settings.get("permitrootlogin") or ["prohibit-password"])[0]
+for account in everyone[:MAX_ACCOUNTS]:
+    answer = ask(["-C", ",".join(context + ["user=" + account.pw_name])])
+    settings = parse(answer) if answer else global_settings
+    methods = first(settings, "authenticationmethods", "any")
+    chains = methods.split()
+    root_login = first(settings, "permitrootlogin", "prohibit-password")
+    is_root = account.pw_uid == 0
+    found, ambiguous = sources(settings, account,
+                               first(settings, "strictmodes", "yes") == "yes")
+    accepts = (first(settings, "pubkeyauthentication", "yes") == "yes"
+               and (methods == "any" or any(chain.split(",")[0] == "publickey"
+                                            for chain in chains))
+               and admitted(settings, account)
+               and (not is_root or root_login != "no"))
     accounts.append({
         "name": account.pw_name,
         "home": account.pw_dir,
         "shell": account.pw_shell,
-        "acceptsPublicKeys": (settings.get("pubkeyauthentication") or ["yes"])[0] == "yes"
-            and (account.pw_uid != 0 or root_login in ("yes", "prohibit-password", "without-password")),
-        "publicKeyAloneSignsIn": methods == "any" or any(
-            chain.split(",")[0] == "publickey" and len(chain.split(",")) == 1
-            for chain in methods.split()),
-        "sources": sources(settings, account),
+        "acceptsPublicKeys": bool(accepts),
+        "publicKeyAloneSignsIn": bool(accepts and (methods == "any"
+                                                   or any(chain == "publickey"
+                                                          for chain in chains))),
+        "settingsAnswered": bool(answer),
+        "decidedPerConnection": bool(conditional(settings)),
+        "forcedCommandOnly": bool(is_root and root_login == "forced-commands-only"),
+        "sources": found,
+        "namesAmbiguous": ambiguous,
     })
 
 print(json.dumps({
-    "port": int((global_settings.get("port") or ["22"])[0]),
-    "usesPam": (global_settings.get("usepam") or ["no"])[0] == "yes",
-    "strictModes": (global_settings.get("strictmodes") or ["yes"])[0] == "yes",
+    "port": int(first(global_settings, "port", "22")),
+    "usesPam": first(global_settings, "usepam", "no") == "yes",
+    "strictModes": first(global_settings, "strictmodes", "yes") == "yes",
+    "accountsTruncated": len(everyone) > MAX_ACCOUNTS,
     "accounts": accounts,
 }))
 `;

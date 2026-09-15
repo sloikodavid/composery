@@ -11,13 +11,20 @@ const maxOutputBytes = 262_144;
 const maxAccounts = 50;
 const maxSources = 40;
 const maxTextLength = 4096;
+const maxPort = 65_535;
+
+const fileStates = [
+	"present",
+	"missing",
+	"unsafe",
+	"unreadable",
+	"unusable",
+] as const;
+
+type FileState = (typeof fileStates)[number];
 
 export type SshKeySource =
-	| Readonly<{
-			kind: "file";
-			path: string;
-			state: "present" | "missing" | "unsafe" | "unreadable";
-	  }>
+	| Readonly<{ kind: "file"; path: string; state: FileState }>
 	| Readonly<{ kind: "command"; command: string }>
 	| Readonly<{ kind: "certificate"; setting: string; value: string }>;
 
@@ -25,7 +32,7 @@ export type SshAccount = Readonly<{
 	name: string;
 	home: string;
 	shell: string;
-	/** The SSH server accepts public keys for this account, in the context we asked about. */
+	/** The SSH server accepts public keys for this account, in the context that was asked about. */
 	acceptsPublicKeys: boolean;
 	/** A key alone completes a login, rather than being one step of several. */
 	publicKeyAloneSignsIn: boolean;
@@ -41,97 +48,129 @@ export type SshDiscovery = Readonly<{
 	unknowns: readonly string[];
 }>;
 
+type Reported = Record<string, unknown>;
+
+function fail(): never {
+	throw new SshError("invalid_response");
+}
+
+function toObject(value: unknown): Reported {
+	return value !== null && typeof value === "object" && !Array.isArray(value)
+		? (value as Reported)
+		: fail();
+}
+
 function toText(value: unknown) {
 	return typeof value === "string" && value.length <= maxTextLength
 		? value
-		: null;
+		: fail();
 }
 
-function toSource(value: unknown): SshKeySource | null {
-	if (value === null || typeof value !== "object") {
-		return null;
-	}
-	const source = value as Record<string, unknown>;
-	const path = toText(source.path);
-	const state = toText(source.state);
-	if (
-		source.kind === "file" &&
-		path !== null &&
-		(state === "present" ||
-			state === "missing" ||
-			state === "unsafe" ||
-			state === "unreadable")
-	) {
-		return { kind: "file", path, state };
-	}
-	const command = toText(source.command);
-	if (source.kind === "command" && command !== null) {
-		return { kind: "command", command };
-	}
-	const setting = toText(source.setting);
-	const settingValue = toText(source.value);
-	if (
-		source.kind === "certificate" &&
-		setting !== null &&
-		settingValue !== null
-	) {
-		return { kind: "certificate", setting, value: settingValue };
-	}
-	return null;
+function toFlag(value: unknown) {
+	return typeof value === "boolean" ? value : fail();
 }
 
-function toAccount(value: unknown): SshAccount | null {
-	if (value === null || typeof value !== "object") {
-		return null;
+function toFileState(value: unknown): FileState {
+	const state = toText(value);
+	const known = fileStates.find((candidate) => candidate === state);
+	return known ?? fail();
+}
+
+function toSource(value: unknown): SshKeySource {
+	const source = toObject(value);
+	switch (source.kind) {
+		case "file":
+			return {
+				kind: "file",
+				path: toText(source.path),
+				state: toFileState(source.state),
+			};
+		case "command":
+			return { kind: "command", command: toText(source.command) };
+		case "certificate":
+			return {
+				kind: "certificate",
+				setting: toText(source.setting),
+				value: toText(source.value),
+			};
+		default:
+			return fail();
 	}
-	const account = value as Record<string, unknown>;
-	const name = toText(account.name);
-	const home = toText(account.home);
-	const shell = toText(account.shell);
-	if (name === null || home === null || shell === null) {
-		return null;
+}
+
+function toAccount(value: unknown) {
+	const account = toObject(value);
+	const sources = Array.isArray(account.sources) ? account.sources : fail();
+	if (sources.length > maxSources) {
+		fail();
 	}
-	const sources = Array.isArray(account.sources)
-		? account.sources.slice(0, maxSources).map(toSource)
-		: [];
 	return {
-		name,
-		home,
-		shell,
-		acceptsPublicKeys: account.acceptsPublicKeys === true,
-		publicKeyAloneSignsIn: account.publicKeyAloneSignsIn === true,
-		sources: sources.filter(
-			(source): source is SshKeySource => source !== null,
-		),
+		account: {
+			name: toText(account.name),
+			home: toText(account.home),
+			shell: toText(account.shell),
+			acceptsPublicKeys: toFlag(account.acceptsPublicKeys),
+			publicKeyAloneSignsIn: toFlag(account.publicKeyAloneSignsIn),
+			sources: sources.map(toSource),
+		},
+		settingsAnswered: toFlag(account.settingsAnswered),
+		decidedPerConnection: toFlag(account.decidedPerConnection),
+		forcedCommandOnly: toFlag(account.forcedCommandOnly),
+		namesAmbiguous: toFlag(account.namesAmbiguous),
 	};
 }
 
-function toUnknowns(discovery: SshDiscovery) {
+type ReportedAccount = ReturnType<typeof toAccount>;
+
+/** Everything the report says it could not settle, stated once, in words a caller can pass on. */
+function toUnknowns(report: Reported, accounts: readonly ReportedAccount[]) {
 	const unknowns = [
 		"The SSH server's configuration was read from disk, which the running daemon need not have reloaded.",
 		"An account that a directory service resolves on demand need not appear in this list.",
 	];
-	if (discovery.usesPam) {
-		unknowns.push(
-			"PAM decides whether an account may finish a login, and its policy was not evaluated.",
-		);
-	}
-	if (
-		discovery.accounts.some((account) =>
+	const add = (condition: boolean, text: string) => {
+		if (condition) {
+			unknowns.push(text);
+		}
+	};
+	add(
+		toFlag(report.usesPam),
+		"PAM decides whether an account may finish a login, and its policy was not evaluated.",
+	);
+	add(
+		toFlag(report.accountsTruncated),
+		`This server has more than ${maxAccounts} accounts, and the rest are not listed.`,
+	);
+	add(
+		accounts.some(({ account }) =>
 			account.sources.some((source) => source.kind === "command"),
-		)
-	) {
-		unknowns.push(
-			"A key command answers for each key and connection, so its keys cannot be listed.",
-		);
-	}
+		),
+		"A key command answers for each key and connection, so its keys cannot be listed.",
+	);
+	add(
+		accounts.some((entry) => !entry.settingsAnswered),
+		"The SSH server did not answer for every account, so some rows show the settings that apply to everyone.",
+	);
+	add(
+		accounts.some((entry) => entry.decidedPerConnection),
+		"Some accounts are allowed or denied by where a connection comes from, which is decided for each connection.",
+	);
+	add(
+		accounts.some((entry) => entry.forcedCommandOnly),
+		"Root may sign in only with a key that forces a command.",
+	);
+	add(
+		accounts.some((entry) => entry.namesAmbiguous),
+		"A key file's name holds a space, which the SSH server states in a way that cannot be split with certainty.",
+	);
 	return unknowns;
 }
 
 /**
  * Asks a server which accounts can sign in with a key, and which key sources apply to each.
  * The server's own SSH server answers; nothing here assumes a path or an account. The reply is
- * validated as untrusted input, because the customer controls the program that produced it.
+ * validated as untrusted input, because the customer controls the program that produced it, and
+ * a reply that does not hold together is refused rather than repaired into something plausible.
  */
 export async function discoverSshAccounts(
 	connection: SshConnectionOptions,
@@ -151,27 +190,29 @@ export async function discoverSshAccounts(
 	} catch {
 		throw new SshError("invalid_response");
 	}
-	if (reported === null || typeof reported !== "object") {
-		throw new SshError("invalid_response");
-	}
-	const report = reported as Record<string, unknown>;
+	const report = toObject(reported);
 	if (report.error === "sshd_unavailable") {
 		throw new SshError("command_unavailable");
 	}
-	const accounts = Array.isArray(report.accounts)
-		? report.accounts.slice(0, maxAccounts).map(toAccount)
-		: null;
-	if (accounts === null || typeof report.port !== "number") {
-		throw new SshError("invalid_response");
+	const port = report.port;
+	if (
+		typeof port !== "number" ||
+		!Number.isInteger(port) ||
+		port < 1 ||
+		port > maxPort
+	) {
+		fail();
 	}
-	const discovery: SshDiscovery = {
-		port: report.port,
-		usesPam: report.usesPam === true,
-		strictModes: report.strictModes === true,
-		accounts: accounts.filter(
-			(account): account is SshAccount => account !== null,
-		),
-		unknowns: [],
+	const listed = Array.isArray(report.accounts) ? report.accounts : fail();
+	if (listed.length > maxAccounts) {
+		fail();
+	}
+	const accounts = listed.map(toAccount);
+	return {
+		port,
+		usesPam: toFlag(report.usesPam),
+		strictModes: toFlag(report.strictModes),
+		accounts: accounts.map((entry) => entry.account),
+		unknowns: toUnknowns(report, accounts),
 	};
-	return { ...discovery, unknowns: toUnknowns(discovery) };
 }

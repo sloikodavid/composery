@@ -325,3 +325,149 @@ test.skipIf(!hasDocker)(
 	},
 	testTimeoutMs,
 );
+
+/** Writes one SSH server setting, and removes it after the check. */
+async function withSetting<T>(setting: string, check: () => Promise<T>) {
+	exec(
+		"sh",
+		"-c",
+		`mkdir -p /etc/ssh/sshd_config.d && printf '%s\n' '${setting}' > /etc/ssh/sshd_config.d/check.conf`,
+	);
+	try {
+		return await check();
+	} finally {
+		exec("rm", "-f", "/etc/ssh/sshd_config.d/check.conf");
+	}
+}
+
+async function rootAccount() {
+	const discovery = await discoverSshAccounts(connection);
+	const root = discovery.accounts.find((account) => account.name === "root");
+	if (root === undefined) {
+		throw new Error("The container reported no root account.");
+	}
+	return { discovery, root };
+}
+
+test.skipIf(!hasDocker)(
+	"reads a key file whose name the configuration quotes",
+	async () => {
+		exec(
+			"sh",
+			"-c",
+			"touch '/root/.ssh/key file' && chmod 600 '/root/.ssh/key file'",
+		);
+		await withSetting('AuthorizedKeysFile "/root/.ssh/key file"', async () => {
+			const { discovery, root } = await rootAccount();
+			// The effective configuration prints the name unquoted, so both readings are reported.
+			expect(root.sources).toContainEqual({
+				kind: "file",
+				path: "/root/.ssh/key file",
+				state: "present",
+			});
+			expect(discovery.unknowns).toContain(
+				"A key file's name holds a space, which the SSH server states in a way that cannot be split with certainty.",
+			);
+		});
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"does not pretend sshd expands a pattern that it reads literally",
+	async () => {
+		await withSetting("AuthorizedKeysFile /root/.ssh/*.keys", async () => {
+			const { root } = await rootAccount();
+			expect(root.sources).toContainEqual({
+				kind: "file",
+				path: "/root/.ssh/*.keys",
+				state: "missing",
+			});
+		});
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"calls a file unsafe when a parent directory lets others write it",
+	async () => {
+		// Composery's own key file must stay safe, or this very connection would be refused.
+		exec(
+			"sh",
+			"-c",
+			"mkdir -p /srv/open && chmod 777 /srv/open && touch /srv/open/keys && chmod 600 /srv/open/keys",
+		);
+		await withSetting(
+			`AuthorizedKeysFile ${keyPath} /srv/open/keys`,
+			async () => {
+				const { root } = await rootAccount();
+				expect(root.sources).toContainEqual({
+					kind: "file",
+					path: "/srv/open/keys",
+					state: "unsafe",
+				});
+				expect(root.sources).toContainEqual({
+					kind: "file",
+					path: keyPath,
+					state: "present",
+				});
+			},
+		);
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"calls a configured path that is not a regular file unusable",
+	async () => {
+		exec("mkdir", "-p", "/root/.ssh/directory_keys");
+		await withSetting(
+			"AuthorizedKeysFile /root/.ssh/directory_keys",
+			async () => {
+				const { root } = await rootAccount();
+				expect(root.sources).toContainEqual({
+					kind: "file",
+					path: "/root/.ssh/directory_keys",
+					state: "unusable",
+				});
+			},
+		);
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"does not claim an account signs in with keys when the server forbids it",
+	async () => {
+		for (const setting of [
+			"DenyUsers root",
+			"PubkeyAuthentication no",
+			"AuthenticationMethods password",
+			"PermitRootLogin no",
+		]) {
+			await withSetting(setting, async () => {
+				const { root } = await rootAccount();
+				expect({ setting, ...root }).toMatchObject({
+					setting,
+					acceptsPublicKeys: false,
+					publicKeyAloneSignsIn: false,
+				});
+			});
+		}
+	},
+	testTimeoutMs,
+);
+
+test.skipIf(!hasDocker)(
+	"says a key alone is not enough when the server asks for more",
+	async () => {
+		await withSetting("AuthenticationMethods publickey,password", async () => {
+			const { root } = await rootAccount();
+			expect(root).toMatchObject({
+				acceptsPublicKeys: true,
+				publicKeyAloneSignsIn: false,
+			});
+		});
+	},
+	testTimeoutMs,
+);
