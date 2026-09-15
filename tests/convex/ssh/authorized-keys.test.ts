@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AuthorizedKeysFile } from "../../convex/ssh/authorized_keys";
+import { AuthorizedKeysFile } from "../../../convex/ssh/authorized_keys";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 const key = { type: "ssh-ed25519", base64: "AAAA" };

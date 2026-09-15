@@ -42,7 +42,7 @@ Convex agent skills for common tasks can be installed by running
 
 - "A function name, except a component's, must start with a verb: `getLoan`, not `loan`. A name must state what is true when the call returns: `renew` has extended the loan, and `requestRenewal` has only recorded the request. A registered Convex function must omit what its path states: `api.loans.renew`, not `api.loans.renewLoan`. Every other export must include a noun that identifies its domain, because callers import it by name: `renewLoan`."
 
-- "Files must be grouped by domain. Outside framework-defined folders, such as Next.js routes, a folder must hold at least two files. A file name must not repeat its folder name: `lending/loans.ts`, not `lending/lending_loans.ts`. When Convex requires one concern to span runtimes, its files must be named `<concern>.ts` for Node actions, `<concern>_state.ts` for queries and mutations, and `<concern>_http.ts` for HTTP actions. A table name is what one row is, plural when the noun has a plural: `loanRenewals`. A folder must define the tables that its code owns in its own `schema.ts` and must include the tables of its immediate subfolders; the root `convex/schema.ts` must define the tables of top-level files and must include the rest."
+- "Files must be grouped by domain. Outside folders that a framework defines, such as Next.js routes, and folders that mirror source folders, such as those under `tests/`, a folder must hold at least two files. A file name must not repeat its folder name: `lending/loans.ts`, not `lending/lending_loans.ts`. When Convex requires one concern to span runtimes, its files must be named `<concern>.ts` for Node actions, `<concern>_state.ts` for queries and mutations, and `<concern>_http.ts` for HTTP actions. A table name is what one row is, plural when the noun has a plural: `loanRenewals`. A folder must define the tables that its code owns in its own `schema.ts` and must include the tables of its immediate subfolders; the root `convex/schema.ts` must define the tables of top-level files and must include the rest."
 
 - "When behavior depends on a kind, handle every kind explicitly, with a `switch` over every kind or a `Record` keyed by the kind, so that a new kind fails to compile until every place handles it."
 
@@ -91,6 +91,8 @@ Convex agent skills for common tasks can be installed by running
 - Prevent secrets from entering the context window so they don't stay retained on the provider's servers and can't later leak.
 
 - Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
+
+- Write, name, and place tests as `docs/testing.md` describes.
 
 - Every public Convex function is public API. Check `docs/api.md`, ensuring you build with authorization, error codes, repeatable requests, pagination, and compatible changes in mind.
 

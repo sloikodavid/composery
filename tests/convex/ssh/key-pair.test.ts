@@ -1,7 +1,10 @@
 import { beforeAll, expect, test } from "bun:test";
-import { runSshCommand } from "../../convex/ssh/connection";
-import { generateSshKeyPair, type SshKeyPair } from "../../convex/ssh/key_pair";
-import { quoteShell, type SshdServer, useSshd } from "../harness/sshd";
+import { runSshCommand } from "../../../convex/ssh/connection";
+import {
+	generateSshKeyPair,
+	type SshKeyPair,
+} from "../../../convex/ssh/key_pair";
+import { quoteShell, type SshdServer, useSshd } from "../../harness/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

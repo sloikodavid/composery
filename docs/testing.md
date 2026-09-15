@@ -27,7 +27,7 @@ Stand in for what a test is not about. Never stand in for what decides whether i
 
 ## Layout
 
-Tests live under `tests/`, grouped by domain like the code they test. `bunfig.toml` sets `tests` as the test root, and `check:test-files` fails when a test file exists anywhere else, because Bun would silently never run it. The code that starts and stops what tests need lives in `tests/harness/`.
+Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key-pair.test.ts`. A test of one module is named after that module. A test of a behavior that spans modules is named after the behavior, such as `authorized-keys-agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file. The harness lives in `tests/harness/`.
 
 ## Running
 

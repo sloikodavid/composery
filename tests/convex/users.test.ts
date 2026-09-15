@@ -1,8 +1,11 @@
 import { beforeAll, expect, test } from "bun:test";
 import { createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { ConvexError } from "convex/values";
-import { api, internal } from "../convex/_generated/api";
-import { type ConvexBackend, useConvexBackend } from "./harness/convex-backend";
+import { api, internal } from "../../convex/_generated/api";
+import {
+	type ConvexBackend,
+	useConvexBackend,
+} from "../harness/convex-backend";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 60_000;

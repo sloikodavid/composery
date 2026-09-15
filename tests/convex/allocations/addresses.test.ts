@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
 	isAddressInNetwork,
 	isAllocationAddress,
-} from "../convex/allocations/addresses";
+} from "../../../convex/allocations/addresses";
 
 const network = "2a01:4f8:1c1c:328::/64";
 

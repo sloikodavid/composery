@@ -12,7 +12,6 @@
 		"check:biome": "biome check --error-on-warnings",
 		"check:convex": "tsc --noEmit --project convex/tsconfig.json",
 		"check:scripts": "tsc --noEmit --project scripts/tsconfig.json",
-		"check:test-files": "bun scripts/test-files.ts",
 		"check:tests": "tsc --noEmit --project tests/tsconfig.json",
 		"check:types": "next typegen && tsc --noEmit",
 		"fix": "bun --sequential --no-exit-on-error \"fix:*\"",
