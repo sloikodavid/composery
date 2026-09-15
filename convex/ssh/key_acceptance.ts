@@ -5,7 +5,8 @@ import ssh2, {
 	type ParsedKey,
 	type SignCallback,
 } from "ssh2";
-import { callSsh, SshError, type SshTarget, withSshClient } from "./connection";
+import { callSsh, type SshTarget, withSshClient } from "./connection";
+import { SshError } from "./errors";
 
 const { BaseAgent, utils } = ssh2;
 

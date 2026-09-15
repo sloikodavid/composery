@@ -4,7 +4,7 @@ import {
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
 } from "../../../convex/ssh/authorized_keys";
-import { SshError } from "../../../convex/ssh/connection";
+import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { readSshFile } from "../../../convex/ssh/read_file";
 import { writeSshFile } from "../../../convex/ssh/write_file";

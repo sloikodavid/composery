@@ -2,25 +2,7 @@
 
 import { isIP } from "node:net";
 import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
-
-export type SshFailure =
-	| "invalid_request"
-	| "host_key_mismatch"
-	| "authentication_failed"
-	| "connection_failed"
-	| "connection_closed"
-	| "deadline_exceeded"
-	| "aborted"
-	| "sftp_unavailable"
-	| "file_missing"
-	| "permission_denied"
-	| "not_regular_file"
-	| "too_large"
-	| "changed_during_read"
-	| "remote_error"
-	| "command_unavailable"
-	| "output_limit"
-	| "invalid_response";
+import { SshError, type SshFailure } from "./errors";
 
 const maxPort = 65_535;
 const maxTimeoutMs = 60_000;
@@ -32,16 +14,6 @@ export const commandExitCodes: ReadonlySet<number> = new Set([
 	commandNotExecutableExitCode,
 	commandNotFoundExitCode,
 ]);
-
-/** Only stable codes escape this boundary; server text and secrets do not. */
-export class SshError extends Error {
-	readonly code: SshFailure;
-	constructor(code: SshFailure) {
-		super(code);
-		this.name = "SshError";
-		this.code = code;
-	}
-}
 
 /** A server that Composery connects to, and the account it names there. */
 export type SshTarget = Readonly<{

@@ -3,10 +3,10 @@
 import {
 	runSshCommand,
 	type SshConnectionOptions,
-	SshError,
 	toSshProgramCommand,
 } from "./connection";
 import { discoveryScript } from "./discovery_script";
+import { SshError } from "./errors";
 
 const maxOutputBytes = 262_144;
 const maxAccounts = 50;

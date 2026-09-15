@@ -4,10 +4,9 @@ import type { SFTPWrapper, Stats } from "ssh2";
 import {
 	callSsh,
 	type SshConnectionOptions,
-	SshError,
-	type SshFailure,
 	withSshConnection,
 } from "./connection";
+import { SshError, type SshFailure } from "./errors";
 
 /** Remote SSH file operations read and write at most this many bytes. */
 /** 512 KiB. */

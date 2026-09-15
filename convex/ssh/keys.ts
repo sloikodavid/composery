@@ -5,67 +5,23 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, action } from "../_generated/server";
-import { type ErrorCode, toConvexError } from "../errors";
+import { toConvexError } from "../errors";
 import { requireSshConnection } from "./access";
 import {
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
 	type AuthorizedKeysLine,
 } from "./authorized_keys";
-import {
-	type SshConnectionOptions,
-	SshError,
-	type SshFailure,
-} from "./connection";
+import type { SshConnectionOptions } from "./connection";
 import { discoverSshServer } from "./discovery";
+import { toPublicSshError, writeCodes } from "./failures";
 import { discoverSshKeyAcceptance } from "./key_acceptance";
 import { readSshFile, type SshFileObservation } from "./read_file";
-import { type SshFileWriteResult, writeSshFile } from "./write_file";
+import { writeSshFile } from "./write_file";
 
 const maxFileBytes = 131_072;
 const maxFilesRead = 10;
 const maxEdits = 64;
-
-// biome-ignore-start lint/style/useNamingConvention: SSH failures and error codes use snake_case
-/** Every way the server can refuse, stated as one public code. */
-const failureCodes: Record<SshFailure, ErrorCode> = {
-	aborted: "server_unreachable",
-	authentication_failed: "server_unreachable",
-	changed_during_read: "file_changed",
-	command_unavailable: "server_unsupported",
-	connection_closed: "server_unreachable",
-	connection_failed: "server_unreachable",
-	deadline_exceeded: "server_unreachable",
-	file_missing: "file_unwritable",
-	host_key_mismatch: "server_unreachable",
-	invalid_request: "edit_invalid",
-	invalid_response: "server_unsupported",
-	not_regular_file: "file_unwritable",
-	output_limit: "server_unsupported",
-	permission_denied: "file_unwritable",
-	remote_error: "server_unreachable",
-	sftp_unavailable: "server_unsupported",
-	too_large: "file_unwritable",
-};
-
-/** Every outcome the write program reports, stated as one public code. */
-const writeCodes: Record<SshFileWriteResult["status"], ErrorCode | null> = {
-	busy: "file_changed",
-	changed: "file_changed",
-	command_unavailable: "server_unsupported",
-	deadline_exceeded: "server_unreachable",
-	file_missing: "file_unwritable",
-	invalid_request: "edit_invalid",
-	metadata_not_preserved: "file_unwritable",
-	permission_denied: "file_unwritable",
-	too_large: "file_unwritable",
-	uncertain: "edit_uncertain",
-	unchanged: null,
-	unsupported_file: "file_unwritable",
-	write_failed: "file_unwritable",
-	written: null,
-};
-// biome-ignore-end lint/style/useNamingConvention: SSH failures and error codes use snake_case
 
 type KeyFileListing = {
 	files: Awaited<ReturnType<typeof readKeyFile>>[];
@@ -115,13 +71,6 @@ const keyFile = v.object({
 	revision: v.string(),
 	lines: v.array(keyLine),
 });
-
-function toPublicError(error: unknown): never {
-	if (error instanceof SshError) {
-		throw toConvexError(failureCodes[error.code]);
-	}
-	throw error;
-}
 
 /**
  * Names one state of one file: its bytes and the metadata around them. Metadata belongs in it
@@ -218,7 +167,7 @@ export const list = action({
 			}
 			return { files, unknowns };
 		} catch (error) {
-			return toPublicError(error);
+			return toPublicSshError(error);
 		}
 	},
 });
@@ -315,7 +264,7 @@ async function applyEdits(
 			return { revision: null, acceptance: acceptanceResult };
 		}
 	} catch (error) {
-		return toPublicError(error);
+		return toPublicSshError(error);
 	}
 }
 

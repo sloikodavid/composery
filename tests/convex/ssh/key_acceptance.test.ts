@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
-import { SshError } from "../../../convex/ssh/connection";
+import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { generateAuthorizedKey } from "../../harness/keys";
 import {

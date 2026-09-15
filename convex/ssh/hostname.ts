@@ -8,9 +8,9 @@ import { requireSshConnection } from "./access";
 import {
 	runSshCommand,
 	type SshConnectionOptions,
-	SshError,
 	toSshProgramCommand,
 } from "./connection";
+import { SshError } from "./errors";
 import { hostnameScript } from "./hostname_script";
 
 const maxOutputBytes = 4096;

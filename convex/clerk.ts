@@ -1,13 +1,11 @@
 import { createClerkClient, type User } from "@clerk/backend";
 import { isClerkAPIResponseError } from "@clerk/backend/errors";
-import { verifyWebhook } from "@clerk/backend/webhooks";
 import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
 	type ActionCtx,
 	action,
 	env,
-	httpAction,
 	internalAction,
 } from "./_generated/server";
 import { toConvexError } from "./errors";
@@ -16,7 +14,6 @@ import { requireRateLimit } from "./rate_limits";
 import type { userFields } from "./schema";
 
 const clerkPageSize = 100;
-const userEvents = new Set(["user.created", "user.updated", "user.deleted"]);
 
 type UserFields = Infer<typeof userFields>;
 
@@ -60,7 +57,7 @@ async function storeUsers(ctx: ActionCtx, users: User[]) {
 }
 
 // Reads the current state from Clerk, so the order in which events arrive does not matter.
-async function syncUser(ctx: ActionCtx, clerkUserId: string) {
+export async function syncClerkUser(ctx: ActionCtx, clerkUserId: string) {
 	let user: User;
 	try {
 		user = await createClient().users.getUser(clerkUserId);
@@ -92,7 +89,7 @@ export const syncCurrent = action({
 			clerkUserId: identity.subject,
 		});
 		if (!isEnabled) {
-			await syncUser(ctx, identity.subject);
+			await syncClerkUser(ctx, identity.subject);
 		}
 		return null;
 	},
@@ -143,29 +140,4 @@ export const reconcile = internalAction({
 		}
 		return null;
 	},
-});
-
-export const receiveClerkWebhook = httpAction(async (ctx, request) => {
-	let event: Awaited<ReturnType<typeof verifyWebhook>>;
-	try {
-		event = await verifyWebhook(request, {
-			signingSecret: env.CLERK_WEBHOOK_SIGNING_SECRET,
-		});
-	} catch {
-		return new Response("Invalid webhook signature.", {
-			status: httpStatus.badRequest,
-		});
-	}
-
-	if (userEvents.has(event.type)) {
-		const clerkUserId = event.data.id;
-		if (clerkUserId === undefined) {
-			return new Response("The event has no user ID.", {
-				status: httpStatus.badRequest,
-			});
-		}
-		await syncUser(ctx, clerkUserId);
-	}
-
-	return new Response(null, { status: httpStatus.noContent });
 });

@@ -9,6 +9,5 @@ bun = false
 noOrphans = true
 
 [test]
-# Scratch work in tmp can hold test files that are not part of the suite.
-pathIgnorePatterns = ["tmp/**"]
+root = "tests"
 preload = ["./tests/harness/preload.ts"]

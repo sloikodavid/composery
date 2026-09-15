@@ -129,7 +129,7 @@ function toSource(request: Request) {
 	);
 }
 
-/** cloud_init.ts makes the server report its host key once, during first boot. */
+/** Where a server reports its host key: once from cloud-init at first boot, and again after a renewal. */
 export const registerSshHostKey = httpAction(async (ctx, request) => {
 	const body = await readBody(request);
 	if (body === "tooLarge") {
