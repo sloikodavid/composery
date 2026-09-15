@@ -7,16 +7,13 @@ import {
 	type QueryCtx,
 	query,
 } from "../_generated/server";
+import { requireChangeableServerAllocation } from "../allocations/operations";
 import { type Failure, fail, failure } from "../errors";
 import { checkRateLimit } from "../rate_limits";
 import { getCurrentUser } from "../users";
-import {
-	getServerAccess,
-	requireServerAccess,
-	serverSummary,
-	toServerSummary,
-} from "./permissions";
+import { getServerAccess, requireServerAccess } from "./permissions";
 import { reservedServerNames } from "./reserved_names";
+import { serverSummary, toServerSummary } from "./summary";
 
 const namePattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
@@ -74,6 +71,7 @@ export const rename = mutation({
 	),
 	handler: async (ctx, { serverId, name }) => {
 		const { user, server } = await requireServerAccess(ctx, serverId, "rename");
+		await requireChangeableServerAllocation(ctx, serverId);
 		if (server.name === name) {
 			return { ok: true as const, name };
 		}

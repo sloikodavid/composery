@@ -9,8 +9,10 @@ import {
 	internalMutation,
 	type MutationCtx,
 	mutation,
+	type QueryCtx,
 	query,
 } from "../_generated/server";
+import { requireChangeableServerAllocation } from "../allocations/operations";
 import { fail, failure, toConvexError } from "../errors";
 import { toBoundedPagination } from "../pagination";
 import { checkRateLimit, requireRateLimit } from "../rate_limits";
@@ -19,12 +21,22 @@ import {
 	getServerMembership,
 	hasServerPermissions,
 	requireServerAccess,
-	requireServerMembership,
 	type ServerPermissions,
-	serverSummary,
-	toServerSummary,
 } from "./permissions";
 import { serverPermissions } from "./schema";
+import { serverSummary, toServerSummary } from "./summary";
+
+/** A membership that a caller named by ID, which may already be gone. */
+export async function requireServerMembership(
+	ctx: QueryCtx,
+	membershipId: Id<"serverMemberships">,
+) {
+	const membership = await ctx.db.get("serverMemberships", membershipId);
+	if (membership === null) {
+		throw toConvexError("membership_not_found");
+	}
+	return membership;
+}
 
 const removeBatchSize = 100;
 // Bounds the people on one server, so each access check and member list stays small.
@@ -122,6 +134,7 @@ export const add = mutation({
 	returns: v.union(v.object({ ok: v.literal(true) }), failure),
 	handler: async (ctx, { serverId, username, permissions }) => {
 		const access = await requireServerAccess(ctx, serverId, "manageMembers");
+		await requireChangeableServerAllocation(ctx, serverId);
 		const granted = permissions ?? access.permissions;
 		requireDelegation(access.permissions, granted);
 		const lookupFailure = await checkRateLimit(
@@ -175,6 +188,7 @@ export const setPermissions = mutation({
 			membership.serverId,
 			"manageMembers",
 		);
+		await requireChangeableServerAllocation(ctx, membership.serverId);
 		requireDelegation(access.permissions, membership.permissions);
 		requireDelegation(access.permissions, permissions);
 		await requireRateLimit(ctx, "serverChange", access.user._id);
@@ -199,6 +213,7 @@ export const remove = mutation({
 			isLeaving ? undefined : "manageMembers",
 		);
 		if (!isLeaving) {
+			await requireChangeableServerAllocation(ctx, membership.serverId);
 			requireDelegation(access.permissions, membership.permissions);
 		}
 		await requireRateLimit(ctx, "serverChange", access.user._id);

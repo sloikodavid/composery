@@ -55,6 +55,18 @@ export async function requireServerAllocation(
 	return allocation;
 }
 
+/** The allocation of a server that can still change: one whose deletion nobody requested. */
+export async function requireChangeableServerAllocation(
+	ctx: QueryCtx,
+	serverId: Id<"servers">,
+) {
+	const allocation = await requireServerAllocation(ctx, serverId);
+	if (allocation.deleteRequested) {
+		throw toConvexError("server_deleting");
+	}
+	return allocation;
+}
+
 export async function getOperationByRequest(
 	ctx: QueryCtx,
 	requesterId: Id<"users">,

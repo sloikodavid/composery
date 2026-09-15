@@ -157,7 +157,7 @@ function toKeyLine(line: AuthorizedKeysLine) {
 
 async function requireConnection(ctx: ActionCtx, serverId: Id<"servers">) {
 	const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
-		internal.servers.permissions.requireSshAccess,
+		internal.ssh.permissions.requireAllocation,
 		{ serverId },
 	);
 	return await requireSshConnection(ctx, allocation);

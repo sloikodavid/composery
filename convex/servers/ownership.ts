@@ -5,21 +5,21 @@ import {
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation, mutation, query } from "../_generated/server";
+import { requireChangeableServerAllocation } from "../allocations/operations";
 import { toConvexError } from "../errors";
 import { toBoundedPagination } from "../pagination";
 import { transferServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getCurrentUser, isUserDisabled } from "../users";
 import { requestServerDelete } from "./lifecycle";
+import { requireServerMembership } from "./memberships";
 import {
 	allServerPermissions,
 	ownerAccess,
 	requireServerAccess,
-	requireServerMembership,
 	requireServerOwner,
-	serverSummary,
-	toServerSummary,
 } from "./permissions";
+import { serverSummary, toServerSummary } from "./summary";
 
 const deleteBatchSize = 20;
 
@@ -74,6 +74,7 @@ export const transfer = mutation({
 	handler: async (ctx, { membershipId }) => {
 		const membership = await requireServerMembership(ctx, membershipId);
 		const access = await requireServerOwner(ctx, membership.serverId);
+		await requireChangeableServerAllocation(ctx, membership.serverId);
 		const newOwner = await ctx.db.get("users", membership.userId);
 		if (newOwner === null) {
 			throw toConvexError("membership_not_found");

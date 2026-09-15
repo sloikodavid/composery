@@ -13,6 +13,7 @@ import {
 	requestAllocationCreate,
 	requestAllocationDelete,
 	requestAllocationPower,
+	requireChangeableServerAllocation,
 	requireRequestId,
 	requireServerAllocation,
 } from "../allocations/operations";
@@ -101,6 +102,7 @@ export const requestPower = mutation({
 	),
 	handler: async (ctx, { serverId, requestId, kind }) => {
 		const { user } = await requireServerAccess(ctx, serverId, "power");
+		const allocation = await requireChangeableServerAllocation(ctx, serverId);
 		requireRequestId(requestId);
 		const previous = await getOperationByRequest(ctx, user._id, requestId);
 		if (previous !== null) {
@@ -109,11 +111,11 @@ export const requestPower = mutation({
 				: fail("request_id_conflict");
 		}
 		await requireRateLimit(ctx, "serverChange", user._id);
-		return await requestAllocationPower(
-			ctx,
-			await requireServerAllocation(ctx, serverId),
-			{ requesterId: user._id, requestId, kind },
-		);
+		return await requestAllocationPower(ctx, allocation, {
+			requesterId: user._id,
+			requestId,
+			kind,
+		});
 	},
 });
 
@@ -122,6 +124,7 @@ export const requestDelete = mutation({
 	returns: v.null(),
 	handler: async (ctx, { serverId }) => {
 		const { user } = await requireServerAccess(ctx, serverId, "delete");
+		await requireChangeableServerAllocation(ctx, serverId);
 		await requireRateLimit(ctx, "serverChange", user._id);
 		await requestServerDelete(ctx, serverId, user._id);
 		return null;

@@ -87,7 +87,7 @@ export const renew = action({
 	returns: v.object({ script: v.string() }),
 	handler: async (ctx, { serverId }): Promise<{ script: string }> => {
 		const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
-			internal.servers.permissions.requireSshAccess,
+			internal.ssh.permissions.requireAllocation,
 			{ serverId },
 		);
 		const allocationId = allocation._id;

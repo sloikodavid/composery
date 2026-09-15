@@ -1,11 +1,9 @@
-import { type Infer, v } from "convex/values";
+import type { Infer } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import { internalQuery, type QueryCtx } from "../_generated/server";
-import { requireServerAllocation } from "../allocations/operations";
+import type { QueryCtx } from "../_generated/server";
 import { toConvexError } from "../errors";
-import schema from "../schema";
 import { requireUser } from "../users";
-import { serverPermissions } from "./schema";
+import type { serverPermissions } from "./schema";
 
 export type ServerPermissions = Infer<typeof serverPermissions>;
 export type ServerPermission = keyof ServerPermissions;
@@ -26,13 +24,6 @@ export const allServerPermissions: Readonly<ServerPermissions> = Object.freeze({
 export const ownerAccess: Readonly<ServerAccess> = Object.freeze({
 	isOwner: true,
 	permissions: allServerPermissions,
-});
-
-export const serverSummary = v.object({
-	_id: v.id("servers"),
-	name: v.string(),
-	isOwner: v.boolean(),
-	permissions: serverPermissions,
 });
 
 /** A delegate cannot grant or remove authority outside their own permissions. */
@@ -59,17 +50,6 @@ export async function getServerMembership(
 		.unique();
 }
 
-export async function requireServerMembership(
-	ctx: QueryCtx,
-	membershipId: Id<"serverMemberships">,
-) {
-	const membership = await ctx.db.get("serverMemberships", membershipId);
-	if (membership === null) {
-		throw toConvexError("membership_not_found");
-	}
-	return membership;
-}
-
 /** Returns null for a user who neither owns the server nor has a membership. */
 export async function getServerAccess(
 	ctx: QueryCtx,
@@ -85,27 +65,10 @@ export async function getServerAccess(
 		: { isOwner: false, permissions: membership.permissions };
 }
 
-export function toServerSummary(
-	server: Doc<"servers">,
-	access: ServerAccess,
-): Infer<typeof serverSummary> {
-	return {
-		_id: server._id,
-		name: server.name,
-		isOwner: access.isOwner,
-		permissions: access.permissions,
-	};
-}
-
-async function requireServerChangeable(ctx: QueryCtx, serverId: Id<"servers">) {
-	if ((await requireServerAllocation(ctx, serverId)).deleteRequested) {
-		throw toConvexError("server_deleting");
-	}
-}
-
 /**
- * Access alone allows reads. A change also needs its permission, and a server
- * that is being deleted accepts no change.
+ * Access alone allows reads; a change also needs its permission. A caller that changes the
+ * server asks for its allocation with `requireChangeableServerAllocation`, which is what
+ * refuses a server that is being deleted.
  */
 export async function requireServerAccess(
 	ctx: QueryCtx,
@@ -120,24 +83,11 @@ export async function requireServerAccess(
 	if (server === null || access === null) {
 		throw toConvexError("server_not_found");
 	}
-	if (permission !== undefined) {
-		if (!access.permissions[permission]) {
-			throw toConvexError("permission_denied");
-		}
-		await requireServerChangeable(ctx, serverId);
+	if (permission !== undefined && !access.permissions[permission]) {
+		throw toConvexError("permission_denied");
 	}
 	return { user, server, ...access };
 }
-
-/** The allocation of a server whose SSH access the caller may change. */
-export const requireSshAccess = internalQuery({
-	args: { serverId: v.id("servers") },
-	returns: schema.doc("serverAllocations"),
-	handler: async (ctx, { serverId }) => {
-		await requireServerAccess(ctx, serverId, "manageSsh");
-		return await requireServerAllocation(ctx, serverId);
-	},
-});
 
 export async function requireServerOwner(
 	ctx: QueryCtx,
@@ -147,6 +97,5 @@ export async function requireServerOwner(
 	if (!access.isOwner) {
 		throw toConvexError("permission_denied");
 	}
-	await requireServerChangeable(ctx, serverId);
 	return access;
 }
