@@ -2,6 +2,13 @@ import { ConvexError, type Infer, v } from "convex/values";
 
 // biome-ignore-start lint/style/useNamingConvention: error codes use snake_case
 const errorMessages = {
+	edit_invalid: "This change cannot be written as a valid entry.",
+	edit_uncertain:
+		"The result of this change is unknown. Read the file again before you try once more.",
+	file_changed: "This file changed since you read it. Read it again.",
+	file_unwritable: "This file cannot be written on the server.",
+	machine_unreachable: "Composery cannot sign in to this server.",
+	machine_unsupported: "This server does not provide what this feature needs.",
 	membership_limit_reached: "This server has reached its member limit.",
 	membership_not_found: "This member no longer exists.",
 	name_invalid:

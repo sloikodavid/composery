@@ -37,6 +37,7 @@ import type * as ssh_cloud_init from "../ssh/cloud_init.js";
 import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_discover_script from "../ssh/discover_script.js";
 import type * as ssh_inspect_public_key from "../ssh/inspect_public_key.js";
+import type * as ssh_keys from "../ssh/keys.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
 import type * as ssh_remove_authorized_keys from "../ssh/remove_authorized_keys.js";
 import type * as ssh_report_host_key_script from "../ssh/report_host_key_script.js";
@@ -81,6 +82,7 @@ const fullApi: ApiFromModules<{
   "ssh/connection": typeof ssh_connection;
   "ssh/discover_script": typeof ssh_discover_script;
   "ssh/inspect_public_key": typeof ssh_inspect_public_key;
+  "ssh/keys": typeof ssh_keys;
   "ssh/read_file": typeof ssh_read_file;
   "ssh/remove_authorized_keys": typeof ssh_remove_authorized_keys;
   "ssh/report_host_key_script": typeof ssh_report_host_key_script;

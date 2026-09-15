@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { internalQuery, type QueryCtx } from "../_generated/server";
 import { requireServerAllocation } from "../allocations/operations";
 import { toConvexError } from "../errors";
+import schema from "../schema";
 import { requireUser } from "../users";
 import { serverPermissions } from "./schema";
 
@@ -131,10 +132,10 @@ export async function requireServerAccess(
 /** The allocation of a server whose SSH access the caller may change. */
 export const requireSshAccess = internalQuery({
 	args: { serverId: v.id("servers") },
-	returns: v.id("serverAllocations"),
+	returns: schema.doc("serverAllocations"),
 	handler: async (ctx, { serverId }) => {
 		await requireServerAccess(ctx, serverId, "manageSsh");
-		return (await requireServerAllocation(ctx, serverId))._id;
+		return await requireServerAllocation(ctx, serverId);
 	},
 });
 

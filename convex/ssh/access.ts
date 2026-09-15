@@ -168,10 +168,11 @@ export const renewBootstrap = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({ command: v.string() }),
 	handler: async (ctx, { serverId }): Promise<{ command: string }> => {
-		const allocationId: Id<"serverAllocations"> = await ctx.runQuery(
+		const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
 			internal.servers.permissions.requireSshAccess,
 			{ serverId },
 		);
+		const allocationId = allocation._id;
 		const sshAccess: AllocationSshAccess | null = await ctx.runQuery(
 			internal.ssh.access_state.get,
 			{ allocationId },
