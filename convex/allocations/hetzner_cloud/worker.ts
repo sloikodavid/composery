@@ -1,14 +1,9 @@
 "use node";
 
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Doc, Id } from "../../_generated/dataModel";
+import type { Doc } from "../../_generated/dataModel";
 import { type ActionCtx, internalAction } from "../../_generated/server";
-import {
-	httpStatus,
-	isHttpClientError,
-	isHttpServerError,
-} from "../../http_status";
 import {
 	canReuseAllocationSshAccess,
 	generateAllocationSshAccess,
@@ -16,87 +11,47 @@ import {
 	SshAccessError,
 } from "../../ssh/access";
 import { renderCloudInit } from "../../ssh/cloud_init";
+import type { powerOperationKind } from "../schema";
 import {
-	callHetznerCloud,
+	createHetznerCloudResource,
+	findHetznerCloudResource,
+	findHetznerCloudServer,
+	getHetznerCloudActionStatus,
+	type HetznerCloudCreateRequest,
 	HetznerCloudError,
-	requireController,
-	requireId,
-	requireList,
-	requireObject,
-	requireOwnedResource,
-	requireText,
-	resolveSpec,
+	type HetznerCloudOwner,
+	type HetznerCloudResource,
+	type HetznerCloudServer,
+	requireHetznerCloudController,
+	resolveHetznerCloudSpec,
+	sendHetznerCloudDelete,
+	sendHetznerCloudPower,
 } from "./api";
+import type { hetznerCloudResourceKind } from "./schema";
 import {
 	type HetznerCloudWorkerUpdate,
 	hetznerCloudPowerDeadlineMs,
 } from "./worker_state";
 
-type ResourceKind = "server" | "ipv4" | "ipv6";
-type PowerKind = "start" | "stop" | "forceStop";
+type ResourceKind = Infer<typeof hetznerCloudResourceKind>;
+type PowerKind = Infer<typeof powerOperationKind>;
 type ObservedStatus = "running" | "stopped";
+type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
 type Lease = {
 	allocation: Doc<"serverAllocations">;
-	hetznerCloudAllocation: Doc<"hetznerCloudAllocations">;
+	hetznerCloudAllocation: HetznerCloudAllocation;
 	operation: Doc<"serverOperations">;
 };
 
 const actionTimeoutMs = 600_000;
-const lookupPageSize = "2";
 const createOrder = ["ipv4", "ipv6", "server"] as const;
 const deleteOrder = ["server", "ipv6", "ipv4"] as const;
-const retryableStatuses: ReadonlySet<number> = new Set([
-	httpStatus.preconditionFailed,
-	httpStatus.locked,
-	httpStatus.tooManyRequests,
-]);
-const uncertainCreateStatuses: ReadonlySet<number> = new Set([
-	httpStatus.requestTimeout,
-	httpStatus.conflict,
-]);
-
-const collections = {
-	server: "servers",
-	ipv4: "primary_ips",
-	ipv6: "primary_ips",
-} as const satisfies Record<ResourceKind, string>;
-
-const resourceKeys = {
-	server: "server",
-	ipv4: "primary_ip",
-	ipv6: "primary_ip",
-} as const satisfies Record<ResourceKind, string>;
-
-const powerActions = {
-	start: "poweron",
-	stop: "shutdown",
-	forceStop: "poweroff",
-} as const satisfies Record<PowerKind, string>;
 
 const powerTargets = {
 	start: "running",
 	stop: "stopped",
 	forceStop: "stopped",
 } as const satisfies Record<PowerKind, ObservedStatus>;
-
-// Hetzner's documented server statuses. Only a settled status is an observation.
-const observedStatuses = {
-	initializing: null,
-	starting: null,
-	running: "running",
-	stopping: null,
-	off: "stopped",
-	deleting: null,
-	migrating: null,
-	rebuilding: null,
-	unknown: null,
-} as const satisfies Record<string, ObservedStatus | null>;
-
-type HetznerServerStatus = keyof typeof observedStatuses;
-
-function isHetznerServerStatus(value: string): value is HetznerServerStatus {
-	return Object.hasOwn(observedStatuses, value);
-}
 
 function toFailure(
 	error: string,
@@ -105,89 +60,46 @@ function toFailure(
 	return { failure: { error, ...details } };
 }
 
-function getResourceName(
-	allocationId: Id<"serverAllocations">,
-	kind: ResourceKind,
-) {
-	return `c-${allocationId}-${kind}`;
+function toProviderFailure(error: HetznerCloudError) {
+	return {
+		error: error.code,
+		retry: error.isRetryable,
+		retryAfterMs: error.retryAfterMs,
+		...(error.hetznerErrorCode === undefined
+			? {}
+			: { hetznerErrorCode: error.hetznerErrorCode }),
+	};
 }
 
-/** A Primary IP carries its address; a server's addresses come from its own record. */
-function toResourceAddress(
-	kind: ResourceKind,
-	resource: Record<string, unknown>,
-) {
-	return kind === "server" ? {} : { address: requireText(resource.ip) };
+function toOwner(
+	hetznerCloudAllocation: HetznerCloudAllocation,
+): HetznerCloudOwner {
+	return {
+		controllerId: hetznerCloudAllocation.controllerId,
+		allocationId: hetznerCloudAllocation.allocationId,
+	};
 }
 
-function getActionId(response: Record<string, unknown> | null) {
-	return response?.action ? requireId(requireObject(response.action).id) : null;
-}
-
-function requireOneMatch(
-	matches: unknown[],
-	hetznerCloudAllocation: Doc<"hetznerCloudAllocations">,
-	kind: ResourceKind,
+/** A recorded ID finds the resource directly. Without one, it is found by its labels and name. */
+function getKnownId(
+	resource: HetznerCloudAllocation["resources"][ResourceKind],
 ) {
-	if (matches.length > 1) {
-		throw new HetznerCloudError("duplicate_resources", {
-			status: httpStatus.conflict,
-		});
+	switch (resource.status) {
+		case "present":
+		case "absent":
+			return resource.id;
+		case "pending":
+		case "uncertain":
+			return undefined;
 	}
-	if (matches.length === 0) {
-		return null;
-	}
-	const resource = requireObject(matches[0]);
-	requireOwnedResource(resource, hetznerCloudAllocation.controllerId, {
-		id: hetznerCloudAllocation.allocationId,
+}
+
+function toPresentResource(kind: ResourceKind, resource: HetznerCloudResource) {
+	return {
 		kind,
-	});
-	return resource;
-}
-
-async function findResource(
-	hetznerCloudAllocation: Doc<"hetznerCloudAllocations">,
-	kind: ResourceKind,
-) {
-	const { allocationId, controllerId } = hetznerCloudAllocation;
-	const collection = collections[kind];
-	const resource = hetznerCloudAllocation.resources[kind];
-	if (
-		resource.status === "present" ||
-		(resource.status === "absent" && resource.id)
-	) {
-		const response = await callHetznerCloud(`${collection}/${resource.id}`);
-		if (response === null) {
-			return null;
-		}
-		const found = requireObject(response[resourceKeys[kind]]);
-		requireOwnedResource(found, controllerId, { id: allocationId, kind });
-		return found;
-	}
-	// Labels also find a resource that was renamed at Hetzner after a lost create response.
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-	const labelQuery = new URLSearchParams({
-		label_selector: `controller-id=${controllerId},allocation-id=${allocationId},resource-kind=${kind}`,
-		per_page: lookupPageSize,
-	});
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-	const labeled = await callHetznerCloud(`${collection}?${labelQuery}`);
-	const labeledMatch = requireOneMatch(
-		requireList(labeled?.[collection]),
-		hetznerCloudAllocation,
-		kind,
-	);
-	if (labeledMatch !== null) {
-		return labeledMatch;
-	}
-	const named = await callHetznerCloud(
-		`${collection}?name=${getResourceName(allocationId, kind)}&per_page=${lookupPageSize}`,
-	);
-	return requireOneMatch(
-		requireList(named?.[collection]),
-		hetznerCloudAllocation,
-		kind,
-	);
+		status: { status: "present" as const, id: resource.id },
+		...(resource.address === undefined ? {} : { address: resource.address }),
+	};
 }
 
 async function renderUserData(ctx: ActionCtx, lease: Lease) {
@@ -213,60 +125,45 @@ async function renderUserData(ctx: ActionCtx, lease: Lease) {
 	});
 }
 
-async function toCreateBody(ctx: ActionCtx, lease: Lease, kind: ResourceKind) {
-	const hetznerCloudAllocation = lease.hetznerCloudAllocation;
-	const { allocationId, controllerId, resources, spec } =
-		hetznerCloudAllocation;
+/** Returns an update instead when the request cannot be built yet. */
+async function toCreateRequest(
+	ctx: ActionCtx,
+	lease: Lease,
+	kind: ResourceKind,
+): Promise<
+	{ request: HetznerCloudCreateRequest } | { update: HetznerCloudWorkerUpdate }
+> {
+	const { firewallId, resources, spec } = lease.hetznerCloudAllocation;
 	if (spec === undefined) {
-		throw new HetznerCloudError("spec_missing");
+		return { update: toFailure("spec_missing", { retry: true }) };
 	}
-	const body = {
-		name: getResourceName(allocationId, kind),
-		location: spec.location,
-		labels: {
-			"controller-id": controllerId,
-			"allocation-id": allocationId,
-			"resource-kind": kind,
-		},
-	};
 	switch (kind) {
 		case "ipv4":
 		case "ipv6":
-			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
-			return {
-				...body,
-				type: kind,
-				assignee_type: "server",
-				auto_delete: true,
-			};
-		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+			return { request: { kind, location: spec.location } };
 		case "server": {
 			if (
 				resources.ipv4.status !== "present" ||
 				resources.ipv6.status !== "present"
 			) {
-				throw new HetznerCloudError("addresses_missing");
+				return { update: toFailure("addresses_missing", { retry: true }) };
 			}
 			const userData = await renderUserData(ctx, lease);
 			if (userData === null) {
-				return null;
+				return { update: {} };
 			}
-			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
 			return {
-				...body,
-				server_type: spec.serverType,
-				image: spec.imageId,
-				start_after_create: true,
-				public_net: {
-					enable_ipv4: true,
-					enable_ipv6: true,
-					ipv4: resources.ipv4.id,
-					ipv6: resources.ipv6.id,
+				request: {
+					kind,
+					location: spec.location,
+					serverType: spec.serverType,
+					imageId: spec.imageId,
+					ipv4Id: resources.ipv4.id,
+					ipv6Id: resources.ipv6.id,
+					firewallId,
+					userData,
 				},
-				firewalls: [{ firewall: hetznerCloudAllocation.firewallId }],
-				user_data: userData,
 			};
-			// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
 		}
 	}
 }
@@ -277,17 +174,16 @@ async function createResource(
 	kind: ResourceKind,
 ): Promise<HetznerCloudWorkerUpdate> {
 	const { allocation, hetznerCloudAllocation } = lease;
-	const found = await findResource(hetznerCloudAllocation, kind);
-	if (found !== null) {
-		return {
-			resource: {
-				kind,
-				status: { status: "present", id: requireId(found.id) },
-				...toResourceAddress(kind, found),
-			},
-		};
-	}
+	const owner = toOwner(hetznerCloudAllocation);
 	const resource = hetznerCloudAllocation.resources[kind];
+	const found = await findHetznerCloudResource(
+		owner,
+		kind,
+		getKnownId(resource),
+	);
+	if (found !== null) {
+		return { resource: toPresentResource(kind, found) };
+	}
 	if (resource.status === "uncertain") {
 		return toFailure("create_outcome_unknown", { retry: false });
 	}
@@ -299,9 +195,9 @@ async function createResource(
 			retry: false,
 		});
 	}
-	const body = await toCreateBody(ctx, lease, kind);
-	if (body === null) {
-		return {};
+	const prepared = await toCreateRequest(ctx, lease, kind);
+	if ("update" in prepared) {
+		return prepared.update;
 	}
 	const canCreate: boolean = await ctx.runMutation(
 		internal.allocations.hetzner_cloud.worker_state.markUncertain,
@@ -315,64 +211,18 @@ async function createResource(
 		return {};
 	}
 	try {
-		const response = await callHetznerCloud(collections[kind], "POST", body);
-		const created = requireObject(response?.[resourceKeys[kind]]);
-		requireOwnedResource(created, hetznerCloudAllocation.controllerId, {
-			id: allocation._id,
-			kind,
-		});
-		const actionId = getActionId(response);
+		const created = await createHetznerCloudResource(owner, prepared.request);
 		return {
-			resource: {
-				kind,
-				status: { status: "present", id: requireId(created.id) },
-				...toResourceAddress(kind, created),
-			},
-			...(actionId === null ? {} : { actionId }),
+			resource: toPresentResource(kind, created),
+			...(created.actionId === null ? {} : { actionId: created.actionId }),
 		};
 	} catch (error) {
-		// A definite rejection returns the resource to pending. Any other outcome stays uncertain.
-		if (
-			error instanceof HetznerCloudError &&
-			isHttpClientError(error.status) &&
-			!uncertainCreateStatuses.has(error.status)
-		) {
+		// A rejection returns the resource to pending. Any other outcome stays uncertain.
+		if (error instanceof HetznerCloudError && error.isRejected) {
 			return {
 				resource: { kind, status: { status: "pending" } },
-				failure: {
-					error: error.code,
-					retry: retryableStatuses.has(error.status),
-					retryAfterMs: error.retryAfterMs,
-					...(error.hetznerErrorCode === undefined
-						? {}
-						: { hetznerErrorCode: error.hetznerErrorCode }),
-				},
+				failure: toProviderFailure(error),
 			};
-		}
-		throw error;
-	}
-}
-
-async function sendDelete(
-	kind: ResourceKind,
-	id: number,
-): Promise<HetznerCloudWorkerUpdate> {
-	try {
-		const response = await callHetznerCloud(
-			`${collections[kind]}/${id}`,
-			"DELETE",
-		);
-		const actionId = getActionId(response);
-		return {
-			resource: { kind, status: { status: "present", id } },
-			...(actionId === null ? {} : { actionId }),
-		};
-	} catch (error) {
-		if (
-			error instanceof HetznerCloudError &&
-			error.status === httpStatus.notFound
-		) {
-			return { resource: { kind, status: { status: "absent", id } } };
 		}
 		throw error;
 	}
@@ -387,7 +237,11 @@ async function deleteResource(
 	if (resource.status === "pending") {
 		return { resource: { kind, status: { status: "absent" } } };
 	}
-	const found = await findResource(hetznerCloudAllocation, kind);
+	const found = await findHetznerCloudResource(
+		toOwner(hetznerCloudAllocation),
+		kind,
+		getKnownId(resource),
+	);
 	if (found === null && resource.status === "uncertain") {
 		return toFailure("create_outcome_unknown", { retry: false });
 	}
@@ -406,46 +260,48 @@ async function deleteResource(
 	}
 	if (resource.status === "uncertain") {
 		// An uncertain resource that appears takes its identity first, which unblocks the allocation.
-		return {
-			resource: {
-				kind,
-				status: { status: "present", id: requireId(found.id) },
-			},
-		};
+		return { resource: { kind, status: { status: "present", id: found.id } } };
 	}
 	if (allocation.status === "blocked") {
 		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
 			retry: false,
 		});
 	}
-	if (kind !== "server" && found.assignee_id !== null) {
+	if (found.isAssigned) {
 		return toFailure("address_assigned_to_another_resource", {
 			retry: false,
 		});
 	}
-	return await sendDelete(kind, requireId(found.id));
+	const sent = await sendHetznerCloudDelete(kind, found.id);
+	switch (sent.status) {
+		case "absent":
+			return { resource: { kind, status: { status: "absent", id: found.id } } };
+		case "deleting":
+			return {
+				resource: { kind, status: { status: "present", id: found.id } },
+				...(sent.actionId === null ? {} : { actionId: sent.actionId }),
+			};
+	}
 }
 
 async function stepAction(
-	action: NonNullable<Doc<"hetznerCloudAllocations">["action"]>,
+	action: NonNullable<HetznerCloudAllocation["action"]>,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const response = await callHetznerCloud(`actions/${action.id}`);
-	if (response === null) {
-		return { clearAction: true };
+	const status = await getHetznerCloudActionStatus(action.id);
+	switch (status) {
+		case null:
+		case "succeeded":
+			return { clearAction: true };
+		case "running":
+			return Date.now() - action.startedAt > actionTimeoutMs
+				? toFailure("action_stalled", { retry: false })
+				: {};
+		case "failed":
+			return {
+				clearAction: true,
+				failure: { error: "action_failed", retry: false },
+			};
 	}
-	const status = requireObject(response.action).status;
-	if (status === "running") {
-		return Date.now() - action.startedAt > actionTimeoutMs
-			? toFailure("action_stalled", { retry: false })
-			: {};
-	}
-	if (status === "error") {
-		return {
-			clearAction: true,
-			failure: { error: "action_failed", retry: false },
-		};
-	}
-	return { clearAction: true };
 }
 
 async function stepPower(
@@ -486,80 +342,69 @@ async function stepPower(
 	if (!canSend) {
 		return {};
 	}
-	const response = await callHetznerCloud(
-		`servers/${serverId}/actions/${powerActions[operation.kind]}`,
-		"POST",
-	);
-	const actionId = getActionId(response);
+	const actionId = await sendHetznerCloudPower(serverId, operation.kind);
 	return actionId === null ? {} : { actionId };
 }
 
-function requireConfiguredServer(
-	hetznerCloudAllocation: Doc<"hetznerCloudAllocations">,
-	server: Record<string, unknown>,
-) {
+/** A server that differs from what this allocation created is not adopted as it. */
+function checkServer(
+	hetznerCloudAllocation: HetznerCloudAllocation,
+	server: HetznerCloudServer,
+): HetznerCloudWorkerUpdate | null {
 	const { resources, spec, firewallId } = hetznerCloudAllocation;
-	const publicNet = requireObject(server.public_net);
-	const ipv4 = requireObject(publicNet.ipv4);
-	const ipv6 = requireObject(publicNet.ipv6);
 	if (
-		ipv4.id !== (resources.ipv4.status === "present" ? resources.ipv4.id : 0) ||
-		ipv6.id !== (resources.ipv6.status === "present" ? resources.ipv6.id : 0)
+		server.ipv4.id !==
+			(resources.ipv4.status === "present" ? resources.ipv4.id : 0) ||
+		server.ipv6.id !==
+			(resources.ipv6.status === "present" ? resources.ipv6.id : 0)
 	) {
-		throw new HetznerCloudError("address_identity_mismatch", {
-			status: httpStatus.conflict,
-		});
+		return toFailure("address_identity_mismatch", { retry: false });
 	}
 	if (
-		requireObject(server.server_type).name !== spec?.serverType ||
-		requireObject(server.location).name !== spec?.location
+		server.serverType !== spec?.serverType ||
+		server.location !== spec?.location
 	) {
-		throw new HetznerCloudError("server_configuration_mismatch", {
-			status: httpStatus.conflict,
-		});
+		return toFailure("server_configuration_mismatch", { retry: false });
 	}
-	const firewall = requireList(publicNet.firewalls)
-		.map(requireObject)
-		.find((attached) => attached.id === firewallId);
+	const firewall = server.firewalls.find(
+		(attached) => attached.id === firewallId,
+	);
 	if (firewall === undefined) {
-		throw new HetznerCloudError("firewall_detached", {
-			status: httpStatus.conflict,
-		});
+		return toFailure("firewall_detached", { retry: false });
 	}
-	return {
-		isFirewallApplied: firewall.status === "applied",
-		ipv4: requireText(ipv4.ip),
-		ipv6: requireText(ipv6.ip),
-	};
+	if (!firewall.isApplied) {
+		return toFailure("firewall_not_applied", { retry: true });
+	}
+	return null;
 }
 
 async function observeServer(
 	ctx: ActionCtx,
 	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const server = await findResource(lease.hetznerCloudAllocation, "server");
+	const { hetznerCloudAllocation } = lease;
+	const server = await findHetznerCloudServer(
+		toOwner(hetznerCloudAllocation),
+		getKnownId(hetznerCloudAllocation.resources.server),
+	);
 	if (server === null) {
 		return toFailure("server_missing", { retry: false, missing: true });
 	}
-	const hetznerStatus = requireText(server.status);
-	if (!isHetznerServerStatus(hetznerStatus)) {
-		throw new HetznerCloudError("invalid_response");
-	}
-	const status = observedStatuses[hetznerStatus];
-	if (status === null) {
+	if (server.status === "changing") {
 		return toFailure("server_status_changing", { retry: true });
 	}
-	const configured = requireConfiguredServer(
-		lease.hetznerCloudAllocation,
-		server,
-	);
-	if (!configured.isFirewallApplied) {
-		return toFailure("firewall_not_applied", { retry: true });
+	const mismatch = checkServer(hetznerCloudAllocation, server);
+	if (mismatch !== null) {
+		return mismatch;
 	}
-	const powerUpdate = await stepPower(ctx, lease, requireId(server.id), status);
+	const powerUpdate = await stepPower(ctx, lease, server.id, server.status);
 	return (
 		powerUpdate ?? {
-			observation: { status, ipv4: configured.ipv4, ipv6: configured.ipv6 },
+			observation: {
+				status: server.status,
+				ipv4: server.ipv4.address,
+				ipv6: server.ipv6.address,
+			},
 		}
 	);
 }
@@ -569,7 +414,7 @@ async function step(
 	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
 	const { allocation, hetznerCloudAllocation } = lease;
-	await requireController(
+	await requireHetznerCloudController(
 		hetznerCloudAllocation.firewallId,
 		hetznerCloudAllocation.controllerId,
 	);
@@ -586,7 +431,7 @@ async function step(
 	}
 	if (hetznerCloudAllocation.spec === undefined) {
 		return {
-			spec: await resolveSpec(
+			spec: await resolveHetznerCloudSpec(
 				hetznerCloudAllocation.locations,
 				hetznerCloudAllocation.image,
 			),
@@ -602,19 +447,7 @@ async function step(
 
 function toErrorUpdate(error: unknown): HetznerCloudWorkerUpdate {
 	if (error instanceof HetznerCloudError) {
-		return {
-			failure: {
-				error: error.code,
-				retry:
-					error.status === 0 ||
-					isHttpServerError(error.status) ||
-					retryableStatuses.has(error.status),
-				retryAfterMs: error.retryAfterMs,
-				...(error.hetznerErrorCode === undefined
-					? {}
-					: { hetznerErrorCode: error.hetznerErrorCode }),
-			},
-		};
+		return { failure: toProviderFailure(error) };
 	}
 	if (error instanceof SshAccessError) {
 		return toFailure(error.code, { retry: false });

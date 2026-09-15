@@ -1,7 +1,17 @@
 import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
+import type { Infer } from "convex/values";
 import { components } from "../../_generated/api";
 import { env } from "../../_generated/server";
-import { httpStatus } from "../../http_status";
+import {
+	httpStatus,
+	isHttpClientError,
+	isHttpServerError,
+} from "../../http_status";
+import type { powerOperationKind } from "../schema";
+import type {
+	hetznerCloudCollection,
+	hetznerCloudResourceKind,
+} from "./schema";
 
 const apiUrl = "https://api.hetzner.cloud/v1";
 const requestTimeoutMs = 20_000;
@@ -11,9 +21,60 @@ const serverType = "cx23";
 const architecture = "x86";
 const defaultImage = "ubuntu-24.04";
 const maxLocations = 20;
+const lookupPageSize = "2";
+const listPageSize = "50";
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
 const controllerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]$/;
+
+type ResourceKind = Infer<typeof hetznerCloudResourceKind>;
+type Collection = Infer<typeof hetznerCloudCollection>;
+type PowerKind = Infer<typeof powerOperationKind>;
+type Reply = Record<string, unknown>;
+
+/** Statuses after which the same request can succeed later, unchanged. */
+const retryableStatuses: ReadonlySet<number> = new Set([
+	httpStatus.preconditionFailed,
+	httpStatus.locked,
+	httpStatus.tooManyRequests,
+]);
+
+/** Client errors that do not prove a request had no effect. */
+const inconclusiveStatuses: ReadonlySet<number> = new Set([
+	httpStatus.requestTimeout,
+	httpStatus.conflict,
+]);
+
+const collections = {
+	server: "servers",
+	ipv4: "primary_ips",
+	ipv6: "primary_ips",
+} as const satisfies Record<ResourceKind, Collection>;
+
+const replyKeys = {
+	server: "server",
+	ipv4: "primary_ip",
+	ipv6: "primary_ip",
+} as const satisfies Record<ResourceKind, string>;
+
+const powerActions = {
+	start: "poweron",
+	stop: "shutdown",
+	forceStop: "poweroff",
+} as const satisfies Record<PowerKind, string>;
+
+// Hetzner's documented server statuses. Only a settled status says whether the server runs.
+const serverStatuses = {
+	initializing: "changing",
+	starting: "changing",
+	running: "running",
+	stopping: "changing",
+	off: "stopped",
+	deleting: "changing",
+	migrating: "changing",
+	rebuilding: "changing",
+	unknown: "changing",
+} as const satisfies Record<string, HetznerCloudServer["status"]>;
 
 /** Paces this deployment's requests. Cleanup has its own allowance, so new work cannot block it. */
 export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
@@ -32,27 +93,23 @@ export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
 });
 
 export type HetznerCloudErrorCode =
-	| "address_identity_mismatch"
-	| "addresses_missing"
 	| "capacity_unavailable"
-	| "token_missing"
 	| "duplicate_resources"
-	| "firewall_detached"
 	| "image_unavailable"
 	| "invalid_response"
 	| "project_firewall_missing"
 	| "request_rejected"
 	| "resource_identity_mismatch"
-	| "server_configuration_mismatch"
 	| "server_type_unavailable"
-	| "spec_missing"
+	| "token_missing"
 	| "transport_uncertain";
 
-/** `status` is 0 when no HTTP response exists. `hetznerErrorCode` is Hetzner's own code, when it sent one. */
 export class HetznerCloudError extends Error {
 	readonly code: HetznerCloudErrorCode;
+	/** 0 when no HTTP response exists. */
 	readonly status: number;
 	readonly retryAfterMs: number;
+	/** Hetzner's own code, when it sent one. */
 	readonly hetznerErrorCode: string | undefined;
 
 	constructor(
@@ -70,6 +127,22 @@ export class HetznerCloudError extends Error {
 		this.retryAfterMs = details.retryAfterMs ?? 0;
 		this.hetznerErrorCode = details.hetznerErrorCode;
 	}
+
+	/** Hetzner answered and refused, so the request did not take effect. */
+	get isRejected() {
+		return (
+			isHttpClientError(this.status) && !inconclusiveStatuses.has(this.status)
+		);
+	}
+
+	/** The same request can succeed if it is sent again later. */
+	get isRetryable() {
+		return (
+			this.status === 0 ||
+			isHttpServerError(this.status) ||
+			retryableStatuses.has(this.status)
+		);
+	}
 }
 
 export type HetznerCloudConfig = {
@@ -78,6 +151,43 @@ export type HetznerCloudConfig = {
 	locations: string[];
 	image: string;
 };
+
+/** The labels that make a resource this controller's, for one allocation. */
+export type HetznerCloudOwner = {
+	controllerId: string;
+	allocationId: string;
+};
+
+export type HetznerCloudResource = {
+	id: number;
+	/** A Primary IP's address. A server's addresses come from its own record. */
+	address?: string;
+	/** A Primary IP that is attached to a server. Always false for a server. */
+	isAssigned: boolean;
+};
+
+export type HetznerCloudServer = {
+	id: number;
+	status: "running" | "stopped" | "changing";
+	ipv4: { id: number; address: string };
+	ipv6: { id: number; address: string };
+	serverType: string;
+	location: string;
+	firewalls: { id: number; isApplied: boolean }[];
+};
+
+export type HetznerCloudCreateRequest =
+	| { kind: "ipv4" | "ipv6"; location: string }
+	| {
+			kind: "server";
+			location: string;
+			serverType: string;
+			imageId: number;
+			ipv4Id: number;
+			ipv6Id: number;
+			firewallId: number;
+			userData: string;
+	  };
 
 /** Returns null when Hetzner Cloud is not configured. Throws when the configuration is invalid. */
 export function getHetznerCloudConfig(): HetznerCloudConfig | null {
@@ -115,28 +225,28 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 	};
 }
 
-export function requireObject(value: unknown): Record<string, unknown> {
+function requireObject(value: unknown): Reply {
 	if (value === null || typeof value !== "object" || Array.isArray(value)) {
 		throw new HetznerCloudError("invalid_response");
 	}
-	return value as Record<string, unknown>;
+	return value as Reply;
 }
 
-export function requireList(value: unknown): unknown[] {
+function requireList(value: unknown): unknown[] {
 	if (!Array.isArray(value)) {
 		throw new HetznerCloudError("invalid_response");
 	}
 	return value;
 }
 
-export function requireText(value: unknown): string {
+function requireText(value: unknown): string {
 	if (typeof value !== "string") {
 		throw new HetznerCloudError("invalid_response");
 	}
 	return value;
 }
 
-export function requireId(value: unknown): number {
+function requireId(value: unknown): number {
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
 		throw new HetznerCloudError("invalid_response");
 	}
@@ -160,11 +270,11 @@ function toRetryAfterMs(response: Response) {
 }
 
 /** No implicit retries. A request that failed can still have reached Hetzner. */
-export async function callHetznerCloud(
+async function callHetznerCloud(
 	path: string,
 	method = "GET",
 	body?: unknown,
-): Promise<Record<string, unknown> | null> {
+): Promise<Reply | null> {
 	if (!env.HCLOUD_TOKEN) {
 		throw new HetznerCloudError("token_missing", {
 			status: httpStatus.unauthorized,
@@ -191,7 +301,7 @@ export async function callHetznerCloud(
 	if (response.status === httpStatus.noContent) {
 		return {};
 	}
-	let data: Record<string, unknown>;
+	let data: Reply;
 	try {
 		data = requireObject(await response.json());
 	} catch {
@@ -213,18 +323,26 @@ export async function callHetznerCloud(
 	return data;
 }
 
+function getResourceName(allocationId: string, kind: ResourceKind) {
+	return `c-${allocationId}-${kind}`;
+}
+
+function getActionId(reply: Reply | null) {
+	return reply?.action ? requireId(requireObject(reply.action).id) : null;
+}
+
 /** Throws unless the resource carries this controller's labels, and the allocation's labels when given. */
-export function requireOwnedResource(
-	resource: Record<string, unknown>,
+function requireOwnedResource(
+	resource: Reply,
 	controllerId: string,
-	allocation?: { id: string; kind: string },
+	owned?: { allocationId: string; kind: ResourceKind },
 ) {
 	const labels = requireObject(resource.labels);
 	if (
 		labels["controller-id"] !== controllerId ||
-		(allocation !== undefined &&
-			(labels["allocation-id"] !== allocation.id ||
-				labels["resource-kind"] !== allocation.kind))
+		(owned !== undefined &&
+			(labels["allocation-id"] !== owned.allocationId ||
+				labels["resource-kind"] !== owned.kind))
 	) {
 		throw new HetznerCloudError("resource_identity_mismatch", {
 			status: httpStatus.conflict,
@@ -233,22 +351,286 @@ export function requireOwnedResource(
 	requireId(resource.id);
 }
 
+function requireOneMatch(
+	matches: unknown[],
+	owner: HetznerCloudOwner,
+	kind: ResourceKind,
+) {
+	if (matches.length > 1) {
+		throw new HetznerCloudError("duplicate_resources", {
+			status: httpStatus.conflict,
+		});
+	}
+	if (matches.length === 0) {
+		return null;
+	}
+	const resource = requireObject(matches[0]);
+	requireOwnedResource(resource, owner.controllerId, {
+		allocationId: owner.allocationId,
+		kind,
+	});
+	return resource;
+}
+
+async function findReply(
+	owner: HetznerCloudOwner,
+	kind: ResourceKind,
+	knownId: number | undefined,
+) {
+	const collection = collections[kind];
+	if (knownId !== undefined) {
+		const reply = await callHetznerCloud(`${collection}/${knownId}`);
+		if (reply === null) {
+			return null;
+		}
+		const found = requireObject(reply[replyKeys[kind]]);
+		requireOwnedResource(found, owner.controllerId, {
+			allocationId: owner.allocationId,
+			kind,
+		});
+		return found;
+	}
+	// Labels also find a resource that was renamed at Hetzner after a lost create response.
+	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	const labelQuery = new URLSearchParams({
+		label_selector: `controller-id=${owner.controllerId},allocation-id=${owner.allocationId},resource-kind=${kind}`,
+		per_page: lookupPageSize,
+	});
+	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	const labeled = await callHetznerCloud(`${collection}?${labelQuery}`);
+	const labeledMatch = requireOneMatch(
+		requireList(labeled?.[collection]),
+		owner,
+		kind,
+	);
+	if (labeledMatch !== null) {
+		return labeledMatch;
+	}
+	const named = await callHetznerCloud(
+		`${collection}?name=${getResourceName(owner.allocationId, kind)}&per_page=${lookupPageSize}`,
+	);
+	return requireOneMatch(requireList(named?.[collection]), owner, kind);
+}
+
+function toResource(kind: ResourceKind, reply: Reply): HetznerCloudResource {
+	const id = requireId(reply.id);
+	switch (kind) {
+		case "server":
+			return { id, isAssigned: false };
+		case "ipv4":
+		case "ipv6":
+			return {
+				id,
+				address: requireText(reply.ip),
+				isAssigned: reply.assignee_id !== null,
+			};
+	}
+}
+
+function isHetznerServerStatus(
+	value: string,
+): value is keyof typeof serverStatuses {
+	return Object.hasOwn(serverStatuses, value);
+}
+
+function toServer(reply: Reply): HetznerCloudServer {
+	const status = requireText(reply.status);
+	if (!isHetznerServerStatus(status)) {
+		throw new HetznerCloudError("invalid_response");
+	}
+	const publicNet = requireObject(reply.public_net);
+	const ipv4 = requireObject(publicNet.ipv4);
+	const ipv6 = requireObject(publicNet.ipv6);
+	return {
+		id: requireId(reply.id),
+		status: serverStatuses[status],
+		ipv4: { id: requireId(ipv4.id), address: requireText(ipv4.ip) },
+		ipv6: { id: requireId(ipv6.id), address: requireText(ipv6.ip) },
+		serverType: requireText(requireObject(reply.server_type).name),
+		location: requireText(requireObject(reply.location).name),
+		firewalls: requireList(publicNet.firewalls)
+			.map(requireObject)
+			.map((firewall) => ({
+				id: requireId(firewall.id),
+				isApplied: firewall.status === "applied",
+			})),
+	};
+}
+
+/** Finds the allocation's resource by its known ID, or by its labels and then its name. */
+export async function findHetznerCloudResource(
+	owner: HetznerCloudOwner,
+	kind: ResourceKind,
+	knownId: number | undefined,
+): Promise<HetznerCloudResource | null> {
+	const reply = await findReply(owner, kind, knownId);
+	return reply === null ? null : toResource(kind, reply);
+}
+
+export async function findHetznerCloudServer(
+	owner: HetznerCloudOwner,
+	knownId: number | undefined,
+): Promise<HetznerCloudServer | null> {
+	const reply = await findReply(owner, "server", knownId);
+	return reply === null ? null : toServer(reply);
+}
+
+function toCreateBody(
+	owner: HetznerCloudOwner,
+	controllerId: string,
+	request: HetznerCloudCreateRequest,
+) {
+	const body = {
+		name: getResourceName(owner.allocationId, request.kind),
+		location: request.location,
+		labels: {
+			"controller-id": controllerId,
+			"allocation-id": owner.allocationId,
+			"resource-kind": request.kind,
+		},
+	};
+	switch (request.kind) {
+		case "ipv4":
+		case "ipv6":
+			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+			return {
+				...body,
+				type: request.kind,
+				assignee_type: "server",
+				auto_delete: true,
+			};
+		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+		case "server":
+			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+			return {
+				...body,
+				server_type: request.serverType,
+				image: request.imageId,
+				start_after_create: true,
+				public_net: {
+					enable_ipv4: true,
+					enable_ipv6: true,
+					ipv4: request.ipv4Id,
+					ipv6: request.ipv6Id,
+				},
+				firewalls: [{ firewall: request.firewallId }],
+				user_data: request.userData,
+			};
+		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+	}
+}
+
+/** Sends one create request. It throws when Hetzner's answer is lost, so the caller must look the resource up before creating it again. */
+export async function createHetznerCloudResource(
+	owner: HetznerCloudOwner,
+	request: HetznerCloudCreateRequest,
+): Promise<HetznerCloudResource & { actionId: number | null }> {
+	const reply = await callHetznerCloud(
+		collections[request.kind],
+		"POST",
+		toCreateBody(owner, owner.controllerId, request),
+	);
+	const created = requireObject(reply?.[replyKeys[request.kind]]);
+	requireOwnedResource(created, owner.controllerId, {
+		allocationId: owner.allocationId,
+		kind: request.kind,
+	});
+	return { ...toResource(request.kind, created), actionId: getActionId(reply) };
+}
+
+/** Hetzner may still be deleting a resource it has accepted a delete request for. */
+export async function sendHetznerCloudDelete(
+	kind: ResourceKind,
+	id: number,
+): Promise<
+	{ status: "deleting"; actionId: number | null } | { status: "absent" }
+> {
+	try {
+		const reply = await callHetznerCloud(
+			`${collections[kind]}/${id}`,
+			"DELETE",
+		);
+		return { status: "deleting", actionId: getActionId(reply) };
+	} catch (error) {
+		if (
+			error instanceof HetznerCloudError &&
+			error.status === httpStatus.notFound
+		) {
+			return { status: "absent" };
+		}
+		throw error;
+	}
+}
+
+/** Returns the action ID when Hetzner started an action for the request. */
+export async function sendHetznerCloudPower(serverId: number, kind: PowerKind) {
+	const reply = await callHetznerCloud(
+		`servers/${serverId}/actions/${powerActions[kind]}`,
+		"POST",
+	);
+	return getActionId(reply);
+}
+
+/** Returns null when Hetzner no longer knows the action. */
+export async function getHetznerCloudActionStatus(
+	actionId: number,
+): Promise<"running" | "succeeded" | "failed" | null> {
+	const reply = await callHetznerCloud(`actions/${actionId}`);
+	if (reply === null) {
+		return null;
+	}
+	const status = requireObject(reply.action).status;
+	if (status === "running") {
+		return "running";
+	}
+	return status === "error" ? "failed" : "succeeded";
+}
+
+/** One page of every resource that carries this controller's label, known or not. */
+export async function listHetznerCloudResources(
+	controllerId: string,
+	collection: Collection,
+	page: number,
+) {
+	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	const query = new URLSearchParams({
+		label_selector: `controller-id=${controllerId}`,
+		per_page: listPageSize,
+		page: String(page),
+	});
+	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	const reply = await callHetznerCloud(`${collection}?${query}`);
+	const resources = requireList(reply?.[collection]).map((value) => {
+		const resource = requireObject(value);
+		const labels = requireObject(resource.labels);
+		const allocationId = labels["allocation-id"];
+		const kind = labels["resource-kind"];
+		return {
+			id: requireId(resource.id),
+			allocationId: typeof allocationId === "string" ? allocationId : "",
+			kind: typeof kind === "string" ? kind : "",
+		};
+	});
+	const next = requireObject(requireObject(reply?.meta).pagination).next_page;
+	return { resources, nextPage: next === null ? null : requireId(next) };
+}
+
 /** The labeled firewall proves that the token belongs to this controller's project. */
-export async function requireController(
+export async function requireHetznerCloudController(
 	firewallId: number,
 	controllerId: string,
 ) {
-	const response = await callHetznerCloud(`firewalls/${firewallId}`);
-	if (response === null) {
+	const reply = await callHetznerCloud(`firewalls/${firewallId}`);
+	if (reply === null) {
 		throw new HetznerCloudError("project_firewall_missing", {
 			status: httpStatus.forbidden,
 		});
 	}
-	requireOwnedResource(requireObject(response.firewall), controllerId);
+	requireOwnedResource(requireObject(reply.firewall), controllerId);
 }
 
 function isSupportedLocation(
-	supported: Record<string, unknown>[],
+	supported: Reply[],
 	name: string,
 	requireCapacity: boolean,
 ) {
@@ -260,7 +642,10 @@ function isSupportedLocation(
 	);
 }
 
-export async function resolveSpec(locations: string[], image: string) {
+export async function resolveHetznerCloudSpec(
+	locations: string[],
+	image: string,
+) {
 	const types = await callHetznerCloud(`server_types?name=${serverType}`);
 	const type = requireObject(requireList(types?.server_types)[0]);
 	if (type.name !== serverType || type.architecture !== architecture) {

@@ -8,14 +8,11 @@ import {
 } from "../../_generated/server";
 import schema from "../../schema";
 import {
-	callHetznerCloud,
 	getHetznerCloudConfig,
 	HetznerCloudError,
 	hetznerCloudRateLimiter,
-	requireController,
-	requireId,
-	requireList,
-	requireObject,
+	listHetznerCloudResources,
+	requireHetznerCloudController,
 } from "./api";
 import type { hetznerCloudFindingReason } from "./schema";
 import {
@@ -28,7 +25,6 @@ const pageDelayMs = 10_000;
 const cycleDelayMs = 300_000;
 const errorDelayMs = 300_000;
 const requestsPerScan = 2;
-const pageSize = 50;
 
 const scannedResource = v.object({
 	id: v.number(),
@@ -220,18 +216,6 @@ export const record = internalMutation({
 	},
 });
 
-function toScannedResource(value: unknown): ScannedResource {
-	const resource = requireObject(value);
-	const labels = requireObject(resource.labels);
-	const allocationId = labels["allocation-id"];
-	const kind = labels["resource-kind"];
-	return {
-		id: requireId(resource.id),
-		allocationId: typeof allocationId === "string" ? allocationId : "",
-		kind: typeof kind === "string" ? kind : "",
-	};
-}
-
 export const run = internalAction({
 	args: { scan: schema.doc("hetznerCloudScans"), firewallId: v.number() },
 	returns: v.null(),
@@ -240,22 +224,14 @@ export const run = internalAction({
 		let nextPage: number | null = null;
 		let error: string | null = null;
 		try {
-			await requireController(firewallId, scan.controllerId);
-			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-			const query = new URLSearchParams({
-				label_selector: `controller-id=${scan.controllerId}`,
-				per_page: String(pageSize),
-				page: String(scan.page),
-			});
-			// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-			const response = await callHetznerCloud(`${scan.collection}?${query}`);
-			resources = requireList(response?.[scan.collection]).map(
-				toScannedResource,
+			await requireHetznerCloudController(firewallId, scan.controllerId);
+			const listed = await listHetznerCloudResources(
+				scan.controllerId,
+				scan.collection,
+				scan.page,
 			);
-			const next = requireObject(
-				requireObject(response?.meta).pagination,
-			).next_page;
-			nextPage = next === null ? null : requireId(next);
+			resources = listed.resources;
+			nextPage = listed.nextPage;
 		} catch (scanError) {
 			error =
 				scanError instanceof HetznerCloudError
