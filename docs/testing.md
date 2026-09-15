@@ -15,7 +15,7 @@ Every test asks one authority whether the result is right, and the authority mus
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
 | Hetzner | that the provider really did it | not built; see below |
 
-A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/ssh/authorized-keys-agreement.test.ts` does.
+A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized-keys-agreement.test.ts` does.
 
 ## Stand-ins
 
