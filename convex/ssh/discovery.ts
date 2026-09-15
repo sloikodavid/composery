@@ -5,7 +5,7 @@ import {
 	type SshConnectionOptions,
 	SshError,
 } from "./connection";
-import { discoverScript } from "./discover_script";
+import { discoveryScript } from "./discovery_script";
 
 const maxOutputBytes = 262_144;
 const maxAccounts = 50;
@@ -172,13 +172,13 @@ function toUnknowns(report: Reported, accounts: readonly ReportedAccount[]) {
  * validated as untrusted input, because the customer controls the program that produced it, and
  * a reply that does not hold together is refused rather than repaired into something plausible.
  */
-export async function discoverSshAccounts(
+export async function discoverSshServer(
 	connection: SshConnectionOptions,
 ): Promise<SshDiscovery> {
 	const result = await runSshCommand(
 		connection,
 		// Only repository-owned source enters the command; the server's own data comes back as JSON.
-		`/usr/bin/python3 -I -X utf8 -c '${discoverScript.replaceAll("'", "'\\''")}'`,
+		`/usr/bin/python3 -I -X utf8 -c '${discoveryScript.replaceAll("'", "'\\''")}'`,
 		{ maxOutputBytes },
 	);
 	if (result.exitCode !== 0) {

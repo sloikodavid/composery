@@ -1,5 +1,5 @@
 /** Fixed remote Linux program. It reports what the SSH server says, and never guesses. */
-export const discoverScript = `import fnmatch, grp, json, os, pwd, shutil, stat, subprocess
+export const discoveryScript = `import fnmatch, grp, json, os, pwd, shutil, stat, subprocess
 
 MAX_ACCOUNTS = 50
 MAX_FILES = 20

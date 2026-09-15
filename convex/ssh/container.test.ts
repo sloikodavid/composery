@@ -3,9 +3,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import ssh2 from "ssh2";
-import { discoverSshAccounts } from "./accounts";
 import { AuthorizedKeysFile } from "./authorized_keys";
 import { type SshConnectionOptions, SshError } from "./connection";
+import { discoverSshServer } from "./discovery";
 import { setSshHostname } from "./hostname";
 import { inspectSshPublicKey } from "./inspect_public_key";
 import { readSshFile } from "./read_file";
@@ -254,7 +254,7 @@ test.skipIf(!hasDocker)(
 test.skipIf(!hasDocker)(
 	"asks the server which accounts sign in with keys, and which files apply",
 	async () => {
-		const discovery = await discoverSshAccounts(connection);
+		const discovery = await discoverSshServer(connection);
 		expect(discovery.port).toBe(sshPort);
 		const root = discovery.accounts.find((account) => account.name === "root");
 		expect(root).toMatchObject({
@@ -289,7 +289,7 @@ test.skipIf(!hasDocker)(
 				"touch /srv/keys/root.keys && chmod 600 /srv/keys/root.keys",
 			].join(" && "),
 		);
-		const discovery = await discoverSshAccounts(connection);
+		const discovery = await discoverSshServer(connection);
 		const root = discovery.accounts.find((account) => account.name === "root");
 		expect(root?.sources).toContainEqual({
 			kind: "file",
@@ -341,7 +341,7 @@ async function withSetting<T>(setting: string, check: () => Promise<T>) {
 }
 
 async function rootAccount() {
-	const discovery = await discoverSshAccounts(connection);
+	const discovery = await discoverSshServer(connection);
 	const root = discovery.accounts.find((account) => account.name === "root");
 	if (root === undefined) {
 		throw new Error("The container reported no root account.");

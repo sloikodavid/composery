@@ -57,6 +57,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `claim` | Take a lease on work, or permanently associate a name. The file says which |
 | `encrypt` / `decrypt` | Protect or read a stored secret |
 | `register` | Record a fact that another system reports, such as a host key |
+| `discover` | Ask another system what its state is, instead of assuming it |
+| `update` | Change part of something that keeps its identity, such as one line of a file |
 | `renew` | Make an expired thing valid again, such as a bootstrap window |
 | `generate` | Make new random key material |
 | `transfer` | Move ownership, and the quota that it uses, to another user |

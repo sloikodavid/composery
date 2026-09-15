@@ -7,7 +7,6 @@ import type { Doc } from "../_generated/dataModel";
 import { type ActionCtx, action } from "../_generated/server";
 import { type ErrorCode, toConvexError } from "../errors";
 import { requireSshConnection } from "./access";
-import { discoverSshAccounts } from "./accounts";
 import {
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
@@ -18,6 +17,7 @@ import {
 	SshError,
 	type SshFailure,
 } from "./connection";
+import { discoverSshServer } from "./discovery";
 import { readSshFile, type SshFileObservation } from "./read_file";
 import { type SshFileWriteResult, writeSshFile } from "./write_file";
 
@@ -177,7 +177,7 @@ export const list = action({
 	handler: async (ctx, { serverId }): Promise<KeyFileListing> => {
 		const connection = await requireConnection(ctx, serverId);
 		try {
-			const discovery = await discoverSshAccounts(connection);
+			const discovery = await discoverSshServer(connection);
 			const files: KeyFileListing["files"] = [];
 			const unknowns = [...discovery.unknowns];
 			let skipped = 0;
