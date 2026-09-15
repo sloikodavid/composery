@@ -34,6 +34,68 @@ export function isSshAccessConfigured() {
 	return true;
 }
 
+const ipv6GroupPattern = /^[0-9a-fA-F]{1,4}$/;
+const ipv6Groups = 8;
+const ipv6GroupBits = 16;
+const ipv6Bits = ipv6Groups * ipv6GroupBits;
+
+function toIpv6Number(address: string) {
+	const [head, tail] = address.split("::");
+	const left = head === undefined || head === "" ? [] : head.split(":");
+	const right = tail === undefined || tail === "" ? [] : tail.split(":");
+	const groups =
+		tail === undefined
+			? left
+			: [
+					...left,
+					...Array(ipv6Groups - left.length - right.length).fill("0"),
+					...right,
+				];
+	if (groups.length !== ipv6Groups) {
+		return null;
+	}
+	let value = 0n;
+	for (const group of groups) {
+		if (!ipv6GroupPattern.test(group)) {
+			return null;
+		}
+		value = (value << BigInt(ipv6GroupBits)) + BigInt(`0x${group}`);
+	}
+	return value;
+}
+
+/** Hetzner states an IPv6 address as a network, so any address inside it is the machine. */
+function isInIpv6Network(source: string, network: string) {
+	const [prefix, length] = network.split("/");
+	const bits = Number(length ?? ipv6Bits);
+	const networkValue = prefix === undefined ? null : toIpv6Number(prefix);
+	const sourceValue = toIpv6Number(source);
+	if (
+		networkValue === null ||
+		sourceValue === null ||
+		!Number.isInteger(bits) ||
+		bits < 1 ||
+		bits > ipv6Bits
+	) {
+		return false;
+	}
+	const mask = ((1n << BigInt(bits)) - 1n) << BigInt(ipv6Bits - bits);
+	return (networkValue & mask) === (sourceValue & mask);
+}
+
+function isAllocationAddress(
+	source: string,
+	allocation: { ipv4?: string; ipv6?: string },
+) {
+	if (allocation.ipv4 === undefined && allocation.ipv6 === undefined) {
+		return null;
+	}
+	return (
+		source === allocation.ipv4 ||
+		(allocation.ipv6 !== undefined && isInIpv6Network(source, allocation.ipv6))
+	);
+}
+
 export async function toBootstrapTokenDigest(token: string) {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
@@ -109,9 +171,13 @@ export const registerHostKey = internalMutation({
 		allocationId: v.string(),
 		bootstrapTokenDigest: v.string(),
 		hostKey: v.string(),
+		source: v.union(v.string(), v.null()),
 	},
 	returns: v.boolean(),
-	handler: async (ctx, { allocationId, bootstrapTokenDigest, hostKey }) => {
+	handler: async (
+		ctx,
+		{ allocationId, bootstrapTokenDigest, hostKey, source },
+	) => {
 		const id = ctx.db.normalizeId("serverAllocations", allocationId);
 		const allocation =
 			id === null ? null : await ctx.db.get("serverAllocations", id);
@@ -126,6 +192,13 @@ export const registerHostKey = internalMutation({
 		) {
 			return false;
 		}
+		// A copied bootstrap token is useless from anywhere but the machine's own addresses.
+		if (source !== null && isAllocationAddress(source, allocation) === false) {
+			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
+				hostKeyConflictAt: Date.now(),
+			});
+			return false;
+		}
 		if (sshAccess.hostKey !== undefined) {
 			if (sshAccess.hostKey === hostKey) {
 				return true;
@@ -136,7 +209,10 @@ export const registerHostKey = internalMutation({
 			});
 			return false;
 		}
-		await ctx.db.patch("allocationSshAccess", sshAccess._id, { hostKey });
+		await ctx.db.patch("allocationSshAccess", sshAccess._id, {
+			hostKey,
+			...(source === null ? {} : { hostKeySource: source }),
+		});
 		return true;
 	},
 });

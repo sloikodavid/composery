@@ -66,6 +66,7 @@ export const hetznerCloudWorkerUpdate = v.object({
 		v.object({
 			kind: hetznerCloudResourceKind,
 			status: hetznerCloudResourceStatus,
+			address: v.optional(v.string()),
 		}),
 	),
 	spec: v.optional(hetznerCloudSpec),
@@ -438,6 +439,19 @@ async function recordResource(
 		...hetznerCloudAllocation.resources,
 		[resource.kind]: resource.status,
 	};
+	// Knowing the address before the machine boots lets the host key report be bound to it.
+	if (resource.address !== undefined) {
+		switch (resource.kind) {
+			case "ipv4":
+				recording.allocationPatch.ipv4 = resource.address;
+				break;
+			case "ipv6":
+				recording.allocationPatch.ipv6 = resource.address;
+				break;
+			case "server":
+				break;
+		}
+	}
 	if (
 		resource.status.status === "present" &&
 		hetznerCloudAllocation.resources[resource.kind].status === "uncertain" &&

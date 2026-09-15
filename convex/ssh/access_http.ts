@@ -104,6 +104,19 @@ function isHostKey(text: string) {
 	);
 }
 
+/**
+ * The proxy in front of this deployment replaces a client's own forwarding headers, so the
+ * address it reports is the address the request came from. A missing header is not a match
+ * and not a failure: the report is then accepted without this check.
+ */
+function toSource(request: Request) {
+	return (
+		request.headers.get("cf-connecting-ip") ??
+		request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+		null
+	);
+}
+
 /** cloud_init.ts makes the server report its host key once, during first boot. */
 export const registerSshHostKey = httpAction(async (ctx, request) => {
 	const body = await readBody(request);
@@ -125,6 +138,7 @@ export const registerSshHostKey = httpAction(async (ctx, request) => {
 				allocationId: registration.allocationId,
 				bootstrapTokenDigest: await toBootstrapTokenDigest(registration.token),
 				hostKey: registration.hostKey,
+				source: toSource(request),
 			},
 		);
 		return new Response(null, {

@@ -14,7 +14,7 @@ import type { SshConnectionOptions } from "./connection";
 
 const { utils } = ssh2;
 
-const bootstrapLifetimeMs = 3_600_000;
+const bootstrapLifetimeMs = 900_000;
 const bootstrapTokenBytes = 32;
 const nonceBytes = 12;
 const authTagBytes = 16;

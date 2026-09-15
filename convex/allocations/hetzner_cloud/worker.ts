@@ -112,6 +112,14 @@ function getResourceName(
 	return `c-${allocationId}-${kind}`;
 }
 
+/** A Primary IP carries its address; a server's addresses come from its own record. */
+function toResourceAddress(
+	kind: ResourceKind,
+	resource: Record<string, unknown>,
+) {
+	return kind === "server" ? {} : { address: requireText(resource.ip) };
+}
+
 function getActionId(response: Record<string, unknown> | null) {
 	return response?.action ? requireId(requireObject(response.action).id) : null;
 }
@@ -273,6 +281,7 @@ async function createResource(
 			resource: {
 				kind,
 				status: { status: "present", id: requireId(found.id) },
+				...toResourceAddress(kind, found),
 			},
 		};
 	}
@@ -315,6 +324,7 @@ async function createResource(
 			resource: {
 				kind,
 				status: { status: "present", id: requireId(created.id) },
+				...toResourceAddress(kind, created),
 			},
 			...(actionId === null ? {} : { actionId }),
 		};
