@@ -47,7 +47,9 @@
 				"useBlockStatements": "error",
 				"useConsistentTypeDefinitions": {
 					"level": "error",
-					"options": { "style": "type" }
+					"options": {
+						"style": "type"
+					}
 				},
 				"useExplicitLengthCheck": "error",
 				"useFilenamingConvention": {
@@ -61,7 +63,10 @@
 					"options": {
 						"conventions": [
 							{
-								"selector": { "kind": "const", "scope": "global" },
+								"selector": {
+									"kind": "const",
+									"scope": "global"
+								},
 								"formats": ["camelCase"]
 							}
 						]
@@ -101,7 +106,29 @@
 					"style": {
 						"useFilenamingConvention": {
 							"level": "error",
-							"options": { "filenameCases": ["snake_case"] }
+							"options": {
+								"filenameCases": ["snake_case"]
+							}
+						}
+					}
+				}
+			}
+		},
+		{
+			"includes": ["convex/**", "src/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": ["**/tests/**", "**/contracts/**"],
+										"message": "Product code must not read test code or a pinned contract. A contract describes an outside system for a test to hold it to; production asks the system itself."
+									}
+								]
+							}
 						}
 					}
 				}
