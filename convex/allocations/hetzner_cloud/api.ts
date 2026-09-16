@@ -344,8 +344,34 @@ function getActionId(reply: Reply | null) {
 	return reply?.action ? requireId(requireObject(reply.action).id) : null;
 }
 
-/** Throws unless the resource carries this controller's labels, and the allocation's labels when given. */
-function requireOwnedResource(
+/**
+ * The server type Composery uses, read from Hetzner's answer to asking for it by name. A name that
+ * matches nothing answers with an empty list, which is Hetzner saying the type is gone rather than
+ * failing to answer. A retired type does not come back, so this is permanent like a missing image,
+ * and unlike capacity, which is the other thing a precondition failure would mean. Exported so a
+ * test can put Hetzner's own shapes through it: the request is one every allocation makes, so no
+ * test can script it for one allocation alone.
+ */
+export function requireOfferedServerType(reply: Reply | null) {
+	const offered = requireList(reply?.server_types)
+		.map(requireObject)
+		.find(
+			(type) => type.name === serverType && type.architecture === architecture,
+		);
+	if (offered === undefined) {
+		throw new HetznerCloudError("server_type_unavailable", {
+			status: httpStatus.badRequest,
+		});
+	}
+	return offered;
+}
+
+/**
+ * Throws unless the resource carries this controller's labels, and the allocation's labels when
+ * given. Exported so a test can put Hetzner's own shapes through it: the project firewall is read at
+ * the start of every allocation's work, so no test can script that read for one allocation alone.
+ */
+export function requireOwnedResource(
 	resource: Reply,
 	controllerId: string,
 	owned?: { allocationId: string; kind: ResourceKind },
@@ -697,22 +723,9 @@ export async function resolveHetznerCloudSpec(
 	locations: string[],
 	image: string,
 ) {
-	const types = await callHetznerCloud(`server_types?name=${serverType}`);
-	// A name that matches nothing answers with an empty list, which is Hetzner saying the type is
-	// gone, not Hetzner failing to answer.
-	const type = requireList(types?.server_types)
-		.map(requireObject)
-		.find(
-			(offered) =>
-				offered.name === serverType && offered.architecture === architecture,
-		);
-	if (type === undefined) {
-		// A type Hetzner has retired does not come back, so this is permanent like a missing image
-		// and unlike capacity, which is the other thing a precondition failure would mean.
-		throw new HetznerCloudError("server_type_unavailable", {
-			status: httpStatus.badRequest,
-		});
-	}
+	const type = requireOfferedServerType(
+		await callHetznerCloud(`server_types?name=${serverType}`),
+	);
 	const supported = requireList(type.locations).map(requireObject);
 	const location =
 		locations.find((name) => isSupportedLocation(supported, name, true)) ??

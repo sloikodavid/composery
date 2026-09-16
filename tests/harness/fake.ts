@@ -35,7 +35,24 @@ export type FakeReply = Readonly<{ status: number; body: unknown }>;
  */
 export type FakeOutcome = "answer" | "lose" | FakeReply;
 
-export type FakeMatch = Readonly<{ method: string; path: RegExp }>;
+/**
+ * Which requests a count or a scripted outcome is about. One fake and one worker serve the whole
+ * run, so a match that names only a method and a path also catches every other test's servers.
+ * Name what belongs to the test: its server's ID in the path, or its allocation in the body.
+ */
+export type FakeMatch = Readonly<{
+	method: string;
+	path: RegExp;
+	body?: (body: unknown) => boolean;
+}>;
+
+function isMatch(match: FakeMatch, request: FakeRequest) {
+	return (
+		match.method === request.method &&
+		match.path.test(request.path) &&
+		(match.body?.(request.body) ?? true)
+	);
+}
 
 export type Fake = Readonly<{
 	/** The loopback address to give the setting that points at this system. */
@@ -46,9 +63,13 @@ export type Fake = Readonly<{
 	problems: () => readonly string[];
 	/** Anything else this fake noticed, such as a promise the system's own client makes. */
 	noteProblem: (problem: string) => void;
-	countRequests: (method: string, path: RegExp) => number;
-	/** Applies once, to the next request that matches. */
-	scriptOnce: (match: FakeMatch, outcome: FakeOutcome) => void;
+	countRequests: (match: FakeMatch) => number;
+	/**
+	 * Applies once, to the next request that matches, and returns whether it has applied yet. A test
+	 * must check that: a scripted failure that never happens leaves the ordinary path, which usually
+	 * passes the same assertions, and the test then proves nothing while looking green.
+	 */
+	scriptOnce: (match: FakeMatch, outcome: FakeOutcome) => () => boolean;
 	stop: () => void;
 }>;
 
@@ -91,16 +112,19 @@ function send(response: ServerResponse, reply: FakeReply) {
 
 export async function startFake(options: FakeOptions): Promise<Fake> {
 	const requests: FakeRequest[] = [];
-	const scripts: (FakeMatch & { outcome: FakeOutcome })[] = [];
+	const scripts: (FakeMatch & {
+		outcome: FakeOutcome;
+		markFired: () => void;
+	})[] = [];
 
-	const takeScript = (method: string, path: string): FakeOutcome => {
-		const index = scripts.findIndex(
-			(candidate) => candidate.method === method && candidate.path.test(path),
-		);
-		if (index === -1) {
+	const takeScript = (request: FakeRequest): FakeOutcome => {
+		const index = scripts.findIndex((candidate) => isMatch(candidate, request));
+		const [script] = index === -1 ? [] : scripts.splice(index, 1);
+		if (script === undefined) {
 			return "answer";
 		}
-		return scripts.splice(index, 1)[0]?.outcome ?? "answer";
+		script.markFired();
+		return script.outcome;
 	};
 
 	const handle = (
@@ -125,7 +149,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			options.checker.noteProblem(problem);
 		}
 
-		const outcome = takeScript(method, path);
+		const outcome = takeScript(request);
 		if (outcome === "lose") {
 			// The system did the work; the answer never arrives. Composery must not assume it failed.
 			options.answer(request);
@@ -169,12 +193,18 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		requests: () => requests,
 		problems: () => options.checker.listProblems(),
 		noteProblem: options.checker.noteProblem,
-		countRequests: (method, path) =>
-			requests.filter(
-				(request) => request.method === method && path.test(request.path),
-			).length,
+		countRequests: (match) =>
+			requests.filter((request) => isMatch(match, request)).length,
 		scriptOnce: (match, outcome) => {
-			scripts.push({ ...match, outcome });
+			let fired = false;
+			scripts.push({
+				...match,
+				outcome,
+				markFired: () => {
+					fired = true;
+				},
+			});
+			return () => fired;
 		},
 		stop,
 	};

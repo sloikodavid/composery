@@ -61,19 +61,11 @@ test(
 );
 
 test(
-	"a verified sign-in without a synced record, or with a disabled one, resolves to nothing",
+	"a verified sign-in without a synced record resolves to nothing",
 	async () => {
 		const unsynced = createSubject();
 		expect(
 			await backend.createClient(unsynced).query(api.users.getCurrent, {}),
-		).toBe(null);
-		const disabled = createSubject();
-		await syncUser(disabled);
-		await backend.runAsAdmin(internal.users.disable, {
-			clerkUserIds: [disabled],
-		});
-		expect(
-			await backend.createClient(disabled).query(api.users.getCurrent, {}),
 		).toBe(null);
 	},
 	testTimeoutMs,

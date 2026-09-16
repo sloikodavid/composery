@@ -4,7 +4,6 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import {
 	internalMutation,
 	internalQuery,
@@ -22,27 +21,12 @@ async function getUserByClerkId(ctx: QueryCtx, clerkUserId: string) {
 		.unique();
 }
 
-async function getDisabledUser(ctx: QueryCtx, userId: Id<"users">) {
-	return await ctx.db
-		.query("disabledUsers")
-		.withIndex("by_user_id", (q) => q.eq("userId", userId))
-		.unique();
-}
-
-export async function isUserDisabled(ctx: QueryCtx, userId: Id<"users">) {
-	return (await getDisabledUser(ctx, userId)) !== null;
-}
-
 export async function getCurrentUser(ctx: QueryCtx) {
 	const identity = await ctx.auth.getUserIdentity();
 	if (identity === null) {
 		return null;
 	}
-	const user = await getUserByClerkId(ctx, identity.subject);
-	if (user === null || (await isUserDisabled(ctx, user._id))) {
-		return null;
-	}
-	return user;
+	return await getUserByClerkId(ctx, identity.subject);
 }
 
 export async function requireUser(ctx: QueryCtx) {
@@ -59,13 +43,11 @@ export const getCurrent = query({
 	handler: async (ctx) => await getCurrentUser(ctx),
 });
 
-export const isEnabled = internalQuery({
+export const isSynced = internalQuery({
 	args: { clerkUserId: v.string() },
 	returns: v.boolean(),
-	handler: async (ctx, { clerkUserId }) => {
-		const user = await getUserByClerkId(ctx, clerkUserId);
-		return user !== null && !(await isUserDisabled(ctx, user._id));
-	},
+	handler: async (ctx, { clerkUserId }) =>
+		(await getUserByClerkId(ctx, clerkUserId)) !== null,
 });
 
 export const listClerkIds = internalQuery({
@@ -87,25 +69,9 @@ export const store = internalMutation({
 				await ctx.db.insert("users", fields);
 				continue;
 			}
-			await ctx.db.patch("users", existing._id, fields);
-			const disabledUser = await getDisabledUser(ctx, existing._id);
-			if (disabledUser !== null) {
-				await ctx.db.delete("disabledUsers", disabledUser._id);
-			}
-		}
-		return null;
-	},
-});
-
-export const disable = internalMutation({
-	args: { clerkUserIds: v.array(v.string()) },
-	returns: v.null(),
-	handler: async (ctx, { clerkUserIds }) => {
-		for (const clerkUserId of clerkUserIds) {
-			const user = await getUserByClerkId(ctx, clerkUserId);
-			if (user !== null && !(await isUserDisabled(ctx, user._id))) {
-				await ctx.db.insert("disabledUsers", { userId: user._id });
-			}
+			// `replace` rather than `patch`: a field Clerk no longer sends, such as a removed username,
+			// must go too, and a patch would keep the old value.
+			await ctx.db.replace("users", existing._id, fields);
 		}
 		return null;
 	},
@@ -119,10 +85,6 @@ export const remove = internalMutation({
 			const user = await getUserByClerkId(ctx, clerkUserId);
 			if (user === null) {
 				continue;
-			}
-			const disabledUser = await getDisabledUser(ctx, user._id);
-			if (disabledUser !== null) {
-				await ctx.db.delete("disabledUsers", disabledUser._id);
 			}
 			await deleteUserQuotas(ctx, user._id);
 			await ctx.db.delete("users", user._id);

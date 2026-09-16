@@ -97,7 +97,7 @@ export async function startClerkFake(): Promise<ClerkFake> {
 			return sent === clerkApiVersion
 				? []
 				: [
-						`Clerk's client asks for API version ${String(sent)}, and contracts/clerk/selection.ts pins ${clerkApiVersion}. Run bun contracts:clerk.`,
+						`Clerk's client asks for API version ${String(sent)}, and contracts/clerk.ts pins ${clerkApiVersion}. Move the pin, then run bun contracts.`,
 					];
 		},
 	});

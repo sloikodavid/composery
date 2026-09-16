@@ -35,7 +35,7 @@ export type ContractSource = Readonly<{
 	digest: string;
 }>;
 
-/** What a system's published descriptions said, on the day `scripts/contracts/` read them. */
+/** What a system's published descriptions said, on the day `scripts/contracts.ts` read them. */
 export type Contract = Readonly<{
 	sources: readonly ContractSource[];
 	paths: Record<string, Record<string, Operation>>;

@@ -13,7 +13,6 @@ const millisecondsPerSecond = 1000;
 const noContent = 204;
 const badRequest = 400;
 const serviceUnavailable = 503;
-const accountReadPath = /^\/users\//;
 
 let backend: ConvexBackend;
 
@@ -89,8 +88,8 @@ test(
 		const account = toAccount();
 		backend.clerk.setUser(account);
 		// Clerk refuses the read the route makes, so the route never learns the account's state.
-		backend.clerk.scriptOnce(
-			{ method: "GET", path: accountReadPath },
+		const hasRefused = backend.clerk.scriptOnce(
+			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
 			{
 				status: serviceUnavailable,
 				body: null,
@@ -104,6 +103,7 @@ test(
 		);
 
 		// Clerk sends a webhook again when it is not accepted, so a failure must ask for that.
+		expect(hasRefused()).toBe(true);
 		expect(reply.status).toBe(serviceUnavailable);
 		expect(await reply.text()).toBe("");
 		expect(

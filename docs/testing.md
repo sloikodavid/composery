@@ -14,7 +14,7 @@ Every test asks one authority whether the result is right, and the authority mus
 | OpenSSH | whether a key signs in, what a key file means, what a setting does | a real `sshd` in Docker |
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
 | Clerk's own SDK | that a webhook is genuine | a fake Clerk on loopback |
-| A system's published description | the shape of what we send, and of what a fake answers | `contracts/<system>/contract.json` |
+| A system's published description | the shape of what we send, and of what a fake answers | `contracts/<system>.json` |
 | Hetzner | that the provider really did it | not built; see below |
 
 A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.

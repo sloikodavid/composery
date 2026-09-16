@@ -22,23 +22,6 @@ const sweepEveryMs = 2000;
 const trailLength = 12;
 const createdServers = /^\/servers$/;
 const createdPrimaryIps = /^\/primary_ips$/;
-const shutdownActions = /^\/servers\/\d+\/actions\/shutdown$/;
-const poweronActions = /^\/servers\/\d+\/actions\/poweron$/;
-const poweroffActions = /^\/servers\/\d+\/actions\/poweroff$/;
-const deletedServers = /^\/servers\/\d+$/;
-const serverTypeLookups = /^\/server_types/;
-const firewallLookups = /^\/firewalls\/\d+$/;
-const httpOk = 200;
-const emptyPagination = {
-	page: 1,
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-	per_page: 25,
-	previous_page: null,
-	next_page: null,
-	last_page: 1,
-	total_entries: 0,
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-};
 
 let backend: ConvexBackend;
 let fake: Fake;
@@ -102,6 +85,32 @@ async function readBackendRecord(serverId: Id<"servers">) {
 			{ allocationId: allocation._id },
 		),
 	};
+}
+
+/** The allocation a server is running on, which every request the worker sends for it names. */
+async function requireAllocationId(serverId: Id<"servers">) {
+	const allocationId = (await readBackendRecord(serverId))?.allocation._id;
+	if (allocationId === undefined) {
+		throw new Error("The server has no allocation.");
+	}
+	return allocationId;
+}
+
+/** Hetzner's number for a server, which a request about that server carries in its path. */
+async function requireHetznerServerId(serverId: Id<"servers">) {
+	const server = (await readBackendRecord(serverId))?.backend?.resources.server;
+	if (server?.status !== "present") {
+		throw new Error("The server does not exist at Hetzner yet.");
+	}
+	return server.id;
+}
+
+/** Whether a create request is for this allocation, by the label Composery puts on everything. */
+function isForAllocation(allocationId: string) {
+	return (body: unknown) =>
+		(body as { labels?: Record<string, string> } | undefined)?.labels?.[
+			"allocation-id"
+		] === allocationId;
 }
 
 /** What the fake still holds for one allocation, which is what "deleted" has to mean. */
@@ -183,17 +192,30 @@ test(
 	"a created server reaches running, with one server and two addresses at the provider",
 	async () => {
 		const client = await createOwner();
-		const before = fake.countRequests("POST", createdServers);
 		const serverId = await createServer(client);
 		const status = await settle(
 			client,
 			serverId,
 			(value) => value === "running" || value === "blocked",
 		);
+		const allocationId = await requireAllocationId(serverId);
 
 		expect(status.status).toBe("running");
 		expect(status.ipv4).not.toBe(null);
-		expect(fake.countRequests("POST", createdServers) - before).toBe(1);
+		expect(
+			fake.countRequests({
+				method: "POST",
+				path: createdServers,
+				body: isForAllocation(allocationId),
+			}),
+		).toBe(1);
+		expect(
+			fake.countRequests({
+				method: "POST",
+				path: createdPrimaryIps,
+				body: isForAllocation(allocationId),
+			}),
+		).toBe(2);
 	},
 	testTimeoutMs,
 );
@@ -202,19 +224,38 @@ test(
 	"a create whose reply never arrives makes one server, not two",
 	async () => {
 		const client = await createOwner();
-		const before = fake.countRequests("POST", createdPrimaryIps);
-		// Hetzner takes the request and answers nothing: the outcome is unknown, not failed.
-		fake.scriptOnce({ method: "POST", path: createdPrimaryIps }, "lose");
+		// The server is asked for only after both of its addresses exist, so this test learns its own
+		// allocation well before that request can be sent, and loses only that one reply.
+		let allocationId: string | undefined;
+		const hasLostReply = fake.scriptOnce(
+			{
+				method: "POST",
+				path: createdServers,
+				body: (body) =>
+					allocationId !== undefined && isForAllocation(allocationId)(body),
+			},
+			"lose",
+		);
 		const serverId = await createServer(client);
+		allocationId = await requireAllocationId(serverId);
+
 		const status = await settle(
 			client,
 			serverId,
 			(value) => value === "running" || value === "blocked",
 		);
 
+		// Hetzner made the server and the answer never came. Composery found it again instead of
+		// asking twice, which would have made a second server nobody can see.
+		expect(hasLostReply()).toBe(true);
 		expect(status.status).toBe("running");
-		// One address was lost to the silence and found again; the second is the other kind.
-		expect(fake.countRequests("POST", createdPrimaryIps) - before).toBe(2);
+		expect(
+			fake.countRequests({
+				method: "POST",
+				path: createdServers,
+				body: isForAllocation(allocationId),
+			}),
+		).toBe(1);
 	},
 	testTimeoutMs,
 );
@@ -247,11 +288,12 @@ test(
 		const client = await createOwner();
 		const serverId = await createServer(client);
 		await settle(client, serverId, (value) => value === "running");
-		const before = {
-			graceful: fake.countRequests("POST", shutdownActions),
-			on: fake.countRequests("POST", poweronActions),
-			forced: fake.countRequests("POST", poweroffActions),
-		};
+		const hetznerServerId = await requireHetznerServerId(serverId);
+		const countAction = (action: string) =>
+			fake.countRequests({
+				method: "POST",
+				path: new RegExp(`^/servers/${hetznerServerId}/actions/${action}$`),
+			});
 
 		expect(
 			(await changePower(client, serverId, "stop", "stopped")).status,
@@ -264,11 +306,9 @@ test(
 		).toBe("stopped");
 
 		// Three commands, three different Hetzner actions, none of them repeated.
-		expect(fake.countRequests("POST", shutdownActions) - before.graceful).toBe(
-			1,
-		);
-		expect(fake.countRequests("POST", poweronActions) - before.on).toBe(1);
-		expect(fake.countRequests("POST", poweroffActions) - before.forced).toBe(1);
+		expect(countAction("shutdown")).toBe(1);
+		expect(countAction("poweron")).toBe(1);
+		expect(countAction("poweroff")).toBe(1);
 	},
 	testTimeoutMs,
 );
@@ -284,10 +324,13 @@ test(
 		if (allocationId === undefined) {
 			throw new Error("The server has no allocation.");
 		}
-		const before = fake.countRequests("DELETE", deletedServers);
+		const deletedThisServer = {
+			method: "DELETE",
+			path: new RegExp(`^/servers/${await requireHetznerServerId(serverId)}$`),
+		};
 		// Hetzner deletes the server and answers nothing. Asking again must not delete a second
 		// thing: by then the identifier could belong to somebody else.
-		fake.scriptOnce({ method: "DELETE", path: deletedServers }, "lose");
+		const hasLostReply = fake.scriptOnce(deletedThisServer, "lose");
 
 		await client.mutation(api.servers.lifecycle.requestDelete, { serverId });
 		await settle(client, serverId, (value) => value === "gone");
@@ -295,75 +338,10 @@ test(
 		// Everything Composery made for this allocation is gone, not merely forgotten: at the
 		// provider, and in our own tables, where a row left behind would name a server that is not
 		// there.
+		expect(hasLostReply()).toBe(true);
 		expect(await readOwnedResources(allocationId)).toEqual([]);
 		expect(await readBackendRecord(serverId)).toBe(null);
-		expect(fake.countRequests("DELETE", deletedServers) - before).toBe(1);
-	},
-	testTimeoutMs,
-);
-
-test(
-	"a server type Hetzner no longer offers stops the allocation instead of retrying forever",
-	async () => {
-		const client = await createOwner();
-		// A name filter that matches nothing answers with an empty list. Hetzner has retired server
-		// types before, and an empty list is its answer, not a failure to answer.
-		fake.scriptOnce(
-			{ method: "GET", path: serverTypeLookups },
-			{
-				status: httpOk,
-				// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-				body: { server_types: [], meta: { pagination: emptyPagination } },
-			},
-		);
-		const serverId = await createServer(client);
-
-		const status = await settle(
-			client,
-			serverId,
-			(value) => value === "blocked",
-		);
-
-		expect(status.status).toBe("blocked");
-		const record = await readBackendRecord(serverId);
-		expect(record?.backend?.error).toBe("server_type_unavailable");
-	},
-	testTimeoutMs,
-);
-
-test(
-	"a project firewall without our label is not ours, and says so",
-	async () => {
-		const client = await createOwner();
-		// An admin who removes the label in Hetzner's console produces this. Hetzner requires labels
-		// on a server and on a Primary IP, and not on a firewall, so there is no key at all.
-		fake.scriptOnce(
-			{ method: "GET", path: firewallLookups },
-			{
-				status: httpOk,
-				body: {
-					firewall: {
-						id: 77,
-						name: "composery",
-						created: "2026-09-15T10:00:00+00:00",
-						rules: [],
-						// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
-						applied_to: [],
-					},
-				},
-			},
-		);
-		const serverId = await createServer(client);
-
-		const status = await settle(
-			client,
-			serverId,
-			(value) => value === "blocked",
-		);
-
-		expect(status.status).toBe("blocked");
-		const record = await readBackendRecord(serverId);
-		expect(record?.backend?.error).toBe("resource_identity_mismatch");
+		expect(fake.countRequests(deletedThisServer)).toBe(1);
 	},
 	testTimeoutMs,
 );

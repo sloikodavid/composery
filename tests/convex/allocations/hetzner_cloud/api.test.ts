@@ -1,10 +1,18 @@
 import { expect, test } from "bun:test";
-import { hetznerContract } from "../../../../contracts/hetzner";
+import { createHetznerContractChecker } from "../../../../contracts/hetzner";
 import {
+	HetznerCloudError,
 	isUsable,
+	requireOfferedServerType,
+	requireOwnedResource,
 	toServer,
 } from "../../../../convex/allocations/hetzner_cloud/api";
-import { toServerReply } from "../../../harness/hetzner/replies";
+import {
+	toFirewallReply,
+	toPaginationReply,
+	toServerReply,
+	toServerTypeReply,
+} from "../../../harness/hetzner/replies";
 
 /**
  * Reading a server Hetzner describes. The shapes here are not invented: each one is put through
@@ -16,6 +24,24 @@ const serverId = 1005;
 const firewallId = 77;
 const imageId = 501;
 const httpOk = 200;
+const controllerId = "composery-test";
+
+// This file's own checker. The one a run shares records what ran for its waivers, and a test of
+// reading shapes must not write into that.
+const hetznerContract = createHetznerContractChecker();
+
+/** The Hetzner error a call threw, or null when it returned. */
+function catchHetznerError(run: () => unknown) {
+	try {
+		run();
+	} catch (error) {
+		if (error instanceof HetznerCloudError) {
+			return error;
+		}
+		throw error;
+	}
+	return null;
+}
 
 function toReply(
 	addresses: Partial<
@@ -91,4 +117,56 @@ test("a deprecation that has only been announced does not make a thing unusable"
 	expect(isUsable({ announced: past, unavailable_after: future })).toBe(true);
 	expect(isUsable({ announced: past, unavailable_after: past })).toBe(false);
 	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+});
+
+test("a server type Hetzner no longer offers is refused for good, not read as a broken reply", () => {
+	const offered = {
+		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+		server_types: [toServerTypeReply("cx23", ["nbg1"])],
+		meta: toPaginationReply(1),
+	};
+	const retired = {
+		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+		server_types: [],
+		meta: toPaginationReply(0),
+	};
+	for (const reply of [offered, retired]) {
+		expect(
+			hetznerContract.listReplyProblems("GET", "/server_types", httpOk, reply),
+		).toEqual([]);
+	}
+
+	expect(requireOfferedServerType(offered).name).toBe("cx23");
+	// A name that matches nothing is Hetzner's answer that the type is gone, and waiting does not
+	// bring a retired type back.
+	const refusal = catchHetznerError(() => requireOfferedServerType(retired));
+	expect(refusal?.code).toBe("server_type_unavailable");
+	expect(refusal?.isRetryable).toBe(false);
+});
+
+test("a firewall without our label is not ours, and says so", () => {
+	const labelled = toFirewallReply(firewallId, controllerId);
+	// Hetzner requires labels on a server and on a Primary IP, and not on a firewall, so an admin who
+	// removes ours leaves no key at all.
+	const { labels: _, ...unlabelled } = labelled;
+	for (const firewall of [labelled, unlabelled]) {
+		expect(
+			hetznerContract.listReplyProblems(
+				"GET",
+				`/firewalls/${firewallId}`,
+				httpOk,
+				{
+					firewall,
+				},
+			),
+		).toEqual([]);
+	}
+
+	expect(
+		catchHetznerError(() => requireOwnedResource(labelled, controllerId)),
+	).toBe(null);
+	expect(
+		catchHetznerError(() => requireOwnedResource(unlabelled, controllerId))
+			?.code,
+	).toBe("resource_identity_mismatch");
 });

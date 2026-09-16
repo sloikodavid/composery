@@ -6,8 +6,11 @@ import { sshTables } from "./ssh/schema";
 
 export const userFields = v.object({
 	clerkUserId: v.string(),
-	/** How one user names another to share a server with them, so a user without one cannot be found. */
-	username: v.string(),
+	/**
+	 * How one user finds another to share a server with them. Clerk makes it optional and lets it
+	 * change, so it is a way to look somebody up and never who holds a grant: that is the user ID.
+	 */
+	username: v.optional(v.string()),
 	// Clerk does not promise either of these, and nothing here depends on them, so they are what
 	// Clerk gave rather than something invented to fill the shape.
 	email: v.optional(v.string()),
@@ -20,10 +23,6 @@ export default defineSchema({
 	users: defineTable(userFields)
 		.index("by_clerk_user_id", ["clerkUserId"])
 		.index("by_username", ["username"]),
-
-	disabledUsers: defineTable({ userId: v.id("users") }).index("by_user_id", [
-		"userId",
-	]),
 
 	userQuotas: defineTable({
 		userId: v.id("users"),

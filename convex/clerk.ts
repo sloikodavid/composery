@@ -1,4 +1,4 @@
-import { createClerkClient, type User } from "@clerk/backend";
+import { type ClerkClient, createClerkClient, type User } from "@clerk/backend";
 import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -34,41 +34,27 @@ function createClient() {
 	});
 }
 
-// Returns null until the Clerk account has every field that sign-up requires.
-function toUserFields(user: User): UserFields | null {
+/**
+ * An account as we keep it. Clerk's `id` is who the account is. Clerk makes the username, the
+ * primary email address and the picture optional, and lets each change, so each is kept exactly as
+ * Clerk sends it and is absent when Clerk sends nothing. Every account is kept: one without a
+ * username simply cannot be found to be shared with, which is the truth and needs no other rule.
+ */
+function toUserFields(user: User): UserFields {
 	const email = user.primaryEmailAddress?.emailAddress;
-	if (email === undefined || user.username === null) {
-		return null;
-	}
 	return {
 		clerkUserId: user.id,
-		username: user.username,
-		email,
-		// Clerk does not promise to send an image, and an account without one is a whole account.
-		// Reading it as missing would refuse the account, and on the hourly reconcile one such
-		// account would stop every other account being read.
+		...(user.username === null ? {} : { username: user.username }),
+		...(email === undefined ? {} : { email }),
 		// biome-ignore lint/suspicious/noUnnecessaryConditions: Clerk's own description makes image_url optional, and its client passes the field straight through, so the type says string where undefined can arrive
-		imageUrl: user.imageUrl ?? "",
+		...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),
 	};
 }
 
 async function storeUsers(ctx: ActionCtx, users: User[]) {
-	const complete: UserFields[] = [];
-	const incomplete: string[] = [];
-	for (const user of users) {
-		const fields = toUserFields(user);
-		if (fields === null) {
-			incomplete.push(user.id);
-		} else {
-			complete.push(fields);
-		}
-	}
-	if (complete.length > 0) {
-		await ctx.runMutation(internal.users.store, { users: complete });
-	}
-	if (incomplete.length > 0) {
-		await ctx.runMutation(internal.users.disable, {
-			clerkUserIds: incomplete,
+	if (users.length > 0) {
+		await ctx.runMutation(internal.users.store, {
+			users: users.map(toUserFields),
 		});
 	}
 }
@@ -102,15 +88,48 @@ export const syncCurrent = action({
 			throw toConvexError("unauthenticated");
 		}
 		await requireRateLimit(ctx, "userSync", identity.subject);
-		const isEnabled: boolean = await ctx.runQuery(internal.users.isEnabled, {
+		// A person signed in to Clerk before its webhook reached us has no account here yet.
+		const isSynced: boolean = await ctx.runQuery(internal.users.isSynced, {
 			clerkUserId: identity.subject,
 		});
-		if (!isEnabled) {
+		if (!isSynced) {
 			await syncClerkUser(ctx, identity.subject);
 		}
 		return null;
 	},
 });
+
+/**
+ * Checks accounts the list did not return, one direct read each, and returns how many could not be
+ * checked.
+ *
+ * A list that leaves an account out is weak evidence that it is gone: an answer can be short for
+ * reasons that have nothing to do with the account. Removing somebody deletes every server they
+ * own, so it needs the evidence the webhook acts on: a direct read that says the account does not
+ * exist. One account that cannot be checked must not keep the accounts after it from being checked.
+ */
+async function syncUnlistedClerkUsers(
+	ctx: ActionCtx,
+	clerk: ClerkClient,
+	clerkUserIds: string[],
+) {
+	const { data } = await clerk.users.getUserList({
+		userId: clerkUserIds,
+		limit: clerkUserIds.length,
+	});
+	const listed = new Set(data.map((user) => user.id));
+	let unchecked = 0;
+	for (const clerkUserId of clerkUserIds) {
+		if (!listed.has(clerkUserId)) {
+			try {
+				await syncClerkUser(ctx, clerkUserId);
+			} catch {
+				unchecked += 1;
+			}
+		}
+	}
+	return unchecked;
+}
 
 /** Webhook delivery is not guaranteed, so this runs every hour. */
 export const reconcile = internalAction({
@@ -136,26 +155,22 @@ export const reconcile = internalAction({
 		}
 
 		let cursor: string | null = null;
+		let unchecked = 0;
 		for (let asked = 0; asked < maxPages; asked += 1) {
 			const page: { page: string[]; isDone: boolean; continueCursor: string } =
 				await ctx.runQuery(internal.users.listClerkIds, {
 					paginationOpts: { numItems: clerkPageSize, cursor },
 				});
 			if (page.page.length > 0) {
-				const { data } = await clerk.users.getUserList({
-					userId: page.page,
-					limit: page.page.length,
-				});
-				// Only an account Clerk was asked about, and did not return, is gone.
-				const existing = new Set(data.map((user) => user.id));
-				const missing = page.page.filter((id) => !existing.has(id));
-				if (missing.length > 0) {
-					await ctx.runMutation(internal.users.remove, {
-						clerkUserIds: missing,
-					});
-				}
+				unchecked += await syncUnlistedClerkUsers(ctx, clerk, page.page);
 			}
 			if (page.isDone) {
+				// The accounts after it were checked, and the run still fails, so the logs show it.
+				if (unchecked > 0) {
+					throw new Error(
+						`${unchecked} accounts could not be checked at Clerk, so they stay as they were.`,
+					);
+				}
 				return null;
 			}
 			cursor = page.continueCursor;

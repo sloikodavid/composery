@@ -27,9 +27,10 @@ const errorMessages = {
 	server_not_found: "You do not have access to this server.",
 	server_quota_reached: "The account has reached its server quota.",
 	unauthenticated: "Sign in to continue.",
-	user_disabled: "This account is disabled.",
 	user_has_access: "This user already has access to this server.",
 	user_not_found: "No user has this username.",
+	user_not_unique:
+		"More than one account has this username for a moment. Try again shortly.",
 } as const;
 // biome-ignore-end lint/style/useNamingConvention: error codes use snake_case
 

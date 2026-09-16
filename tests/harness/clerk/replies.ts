@@ -1,5 +1,5 @@
 /**
- * The shapes Clerk sends, as `contracts/clerk/contract.json` describes them. Composery reads a
+ * The shapes Clerk sends, as `contracts/clerk.json` describes them. Composery reads a
  * few of these fields; the rest are here because Clerk always sends them, and a fake that sends
  * less would let our code depend on a Clerk that does not exist. The values are invented; the
  * shape is not, and every reply is checked against Clerk's own description.
@@ -9,7 +9,6 @@
 
 const created = 1_789_000_000_000;
 
-/** What a test says a Clerk account holds. Clerk's own words, because this answers as Clerk. */
 /**
  * What a test says a Clerk account holds. Clerk's own words, because this answers as Clerk.
  *
@@ -20,7 +19,7 @@ const created = 1_789_000_000_000;
  */
 export type ClerkUser = Readonly<{
 	id: string;
-	username: string;
+	username?: string;
 	email?: string;
 	imageUrl?: string;
 	hasImage?: boolean;
@@ -35,7 +34,8 @@ export function toUserReply(user: ClerkUser) {
 		primary_email_address_id: user.email === undefined ? null : emailId,
 		primary_phone_number_id: null,
 		primary_web3_wallet_id: null,
-		username: user.username,
+		// Clerk sends null rather than leaving the member out, and its own example shows one.
+		username: user.username ?? null,
 		first_name: null,
 		last_name: null,
 		...(user.imageUrl === undefined ? {} : { image_url: user.imageUrl }),

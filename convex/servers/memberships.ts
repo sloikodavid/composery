@@ -16,7 +16,7 @@ import { requireChangeableServerAllocation } from "../allocations/operations";
 import { fail, failure, toConvexError } from "../errors";
 import { toBoundedPagination } from "../pagination";
 import { checkRateLimit, requireRateLimit } from "../rate_limits";
-import { getCurrentUser, isUserDisabled, requireUser } from "../users";
+import { getCurrentUser, requireUser } from "../users";
 import {
 	getServerMembership,
 	hasServerPermissions,
@@ -45,8 +45,8 @@ const maxMembershipsPerServer = 100;
 const membershipSummary = v.object({
 	_id: v.id("serverMemberships"),
 	userId: v.id("users"),
-	username: v.string(),
-	// Clerk does not promise a picture, and a caller must not be told there is always one.
+	// Clerk makes both optional, so a caller must not be told there is always one.
+	username: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 	permissions: serverPermissions,
 });
@@ -116,7 +116,7 @@ export const list = query({
 				page.push({
 					_id: membership._id,
 					userId: user._id,
-					username: user.username,
+					...(user.username === undefined ? {} : { username: user.username }),
 					...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),
 					permissions: membership.permissions,
 				});
@@ -146,17 +146,21 @@ export const add = mutation({
 		if (lookupFailure !== null) {
 			return lookupFailure;
 		}
-		const user = await ctx.db
+		// The username only finds somebody; the grant is kept against their ID. Clerk lets a username
+		// be released and taken, and each account reaches us on its own webhook, so for a moment two
+		// accounts here can hold the same one. Choosing between them would be guessing who was meant.
+		const matches = await ctx.db
 			.query("users")
 			.withIndex("by_username", (q) =>
 				q.eq("username", username.trim().toLowerCase()),
 			)
-			.unique();
-		if (user === null) {
+			.take(2);
+		const [user] = matches;
+		if (user === undefined) {
 			return fail("user_not_found", "username");
 		}
-		if (await isUserDisabled(ctx, user._id)) {
-			return fail("user_disabled", "username");
+		if (matches.length > 1) {
+			return fail("user_not_unique", "username");
 		}
 		if (
 			user._id === access.server.ownerId ||

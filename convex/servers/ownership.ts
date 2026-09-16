@@ -10,7 +10,7 @@ import { toConvexError } from "../errors";
 import { toBoundedPagination } from "../pagination";
 import { transferServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
-import { getCurrentUser, isUserDisabled } from "../users";
+import { getCurrentUser } from "../users";
 import { requestServerDelete } from "./lifecycle";
 import { requireServerMembership } from "./memberships";
 import {
@@ -25,8 +25,8 @@ const deleteBatchSize = 20;
 
 const ownerSummary = v.object({
 	userId: v.id("users"),
-	username: v.string(),
-	// Clerk does not promise a picture, and a caller must not be told there is always one.
+	// Clerk makes both optional, so a caller must not be told there is always one.
+	username: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 });
 
@@ -60,7 +60,7 @@ export const getOwner = query({
 			? null
 			: {
 					userId: owner._id,
-					username: owner.username,
+					...(owner.username === undefined ? {} : { username: owner.username }),
 					...(owner.imageUrl === undefined ? {} : { imageUrl: owner.imageUrl }),
 				};
 	},
@@ -79,9 +79,6 @@ export const transfer = mutation({
 		const newOwner = await ctx.db.get("users", membership.userId);
 		if (newOwner === null) {
 			throw toConvexError("membership_not_found");
-		}
-		if (await isUserDisabled(ctx, newOwner._id)) {
-			throw toConvexError("user_disabled");
 		}
 		const quotaFailure = await transferServerQuota(
 			ctx,

@@ -346,12 +346,11 @@ async function stepPower(
 	return actionId === null ? {} : { actionId };
 }
 
-/** A server that differs from what this allocation created is not adopted as it. */
 /**
  * Whether the server Hetzner describes is the one this allocation records, and its addresses when
- * it is. An address Hetzner no longer reports is a mismatch like any other: somebody deleted a
- * Primary IP, which Hetzner allows while the server is off, and the allocation is not what we
- * wrote down any more.
+ * it is. A server that differs is never adopted as it. An address Hetzner no longer reports is a
+ * mismatch like any other: somebody deleted a Primary IP, which Hetzner allows while the server is
+ * off, and the allocation is not what we wrote down any more.
  */
 function checkServer(
 	hetznerCloudAllocation: HetznerCloudAllocation,
