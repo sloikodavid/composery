@@ -26,6 +26,10 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `finding` | Evidence about an unknown resource, for admin review | alert |
 | `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
 | `lease` | A worker's claim on one allocation for a time, so two runs never act at once | lock |
+| `reply` | What an outside system sends back to one request of ours | response |
+| `problem` | One way a value disagreed with what a description says about it | violation, error (which is ours) |
+| `pin` | A version, day, or digest written down so that a run is the same tomorrow | lock, freeze |
+| `digest` | The fixed-length value that names some bytes, such as SHA-256 of a file or a key | hash, checksum |
 | `contract` | What an outside system publishes about itself, such as an API description, and what we hold our own requests and our fakes to | schema, spec |
 | `waiver` | A named exception to a contract, with the evidence that the system disagrees with its own description, which fails when it stops being needed | ignore, override |
 | `SSH access` | Composery's management key and the server's pinned host key for one allocation | credential |
@@ -69,6 +73,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `encrypt` / `decrypt` | Protect or read a stored secret |
 | `register` | Record a fact that another system reports, such as a host key |
 | `discover` | Ask another system what its state is, instead of assuming it |
+| `observe` | Read an allocation's state at its provider and write down what it said |
 | `update` | Change part of something that keeps its identity, such as one line of a file |
 | `renew` | Make an expired thing valid again, such as a bootstrap window |
 | `generate` | Make new random secret material, such as a key pair or a token |

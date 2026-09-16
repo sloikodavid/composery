@@ -1,4 +1,4 @@
-import { hetznerContract } from "../../../contracts/hetzner/check";
+import { hetznerContract } from "../../../contracts/hetzner";
 import { type Fake, type FakeReply, startFake } from "../fake";
 import {
 	toActionReply,

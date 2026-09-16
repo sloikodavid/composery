@@ -279,8 +279,11 @@ test(
 		await client.mutation(api.servers.lifecycle.requestDelete, { serverId });
 		await settle(client, serverId, (value) => value === "gone");
 
-		// Everything Composery made for this allocation is gone, not merely forgotten.
+		// Everything Composery made for this allocation is gone, not merely forgotten: at the
+		// provider, and in our own tables, where a row left behind would name a server that is not
+		// there.
 		expect(await readOwnedResources(allocationId)).toEqual([]);
+		expect(await readBackendRecord(serverId)).toBe(null);
 		expect(fake.countRequests("DELETE", deletedServers) - before).toBe(1);
 	},
 	testTimeoutMs,

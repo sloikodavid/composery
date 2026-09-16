@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { createContractChecker, readContract } from "../../../contracts/check";
-import { createHetznerContractChecker } from "../../../contracts/hetzner/check";
-import { hetznerSelection } from "../../../contracts/hetzner/selection";
-import { hetznerWaivers } from "../../../contracts/hetzner/waivers";
+import { createContractChecker, readContract } from "../../contracts/check";
+import {
+	createHetznerContractChecker,
+	hetznerWaivers,
+} from "../../contracts/hetzner";
 
 /**
  * Every waiver must still be needed. A run of part of the suite cannot prove that, so each waiver
@@ -10,10 +11,7 @@ import { hetznerWaivers } from "../../../contracts/hetzner/waivers";
  * itself accepts. Adding a waiver without one fails this file.
  */
 
-const contractUrl = new URL(
-	"../../../contracts/hetzner/check.ts",
-	import.meta.url,
-).href;
+const contractUrl = new URL("../../contracts/hetzner.ts", import.meta.url).href;
 
 /** What Composery sends when it creates a server, with the parts a waiver is about. */
 const createServerBody = {
@@ -32,7 +30,7 @@ const reproducers: Record<string, () => string[]> = {
 /** The same request, read by a checker that holds no waivers at all. */
 function listUnwaivedProblems(method: string, path: string, body: unknown) {
 	return createContractChecker({
-		system: hetznerSelection.system,
+		system: "Hetzner",
 		contract: readContract(contractUrl),
 		waivers: [],
 	}).listRequestProblems(method, path, body);

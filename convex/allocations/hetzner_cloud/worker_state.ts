@@ -691,3 +691,25 @@ export const retry = internalMutation({
 		return null;
 	},
 });
+
+/**
+ * Removes what this backend held for an allocation that no longer exists. The worker has already
+ * set the row's next run to never, so nothing else reads or writes it.
+ */
+export const forget = internalMutation({
+	args: { allocationId: v.id("serverAllocations") },
+	returns: v.null(),
+	handler: async (ctx, { allocationId }) => {
+		const hetznerCloudAllocation = await getHetznerCloudAllocation(
+			ctx,
+			allocationId,
+		);
+		if (hetznerCloudAllocation !== null) {
+			await ctx.db.delete(
+				"hetznerCloudAllocations",
+				hetznerCloudAllocation._id,
+			);
+		}
+		return null;
+	},
+});

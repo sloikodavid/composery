@@ -1,15 +1,19 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import type { Described } from "../contracts/check";
+import { clerkDescribed } from "../contracts/clerk";
+import { hetznerDescribed } from "../contracts/hetzner";
 import type {
 	Contract,
 	ContractSource,
 	Operation,
 	Schema,
-} from "../../contracts/schema";
-import type { SelectedDocument, Selection } from "../../contracts/selection";
+} from "../contracts/schema";
 
 /**
- * Turns the descriptions a system publishes into the pinned contract beside its checker.
+ * Writes down the part of each system's published description that Composery depends on, beside
+ * the checker that reads it. Run it with `bun contracts`; it is the only thing in the repository
+ * that fetches a description, so nothing a test runs reaches the network.
  *
  * The filter is deterministic: it selects the operations named in `selection.ts`, follows every
  * reference, and keeps only the members that decide whether a value fits. Prose, examples and
@@ -193,7 +197,7 @@ async function readDocument(source: string) {
 function toSelectedPaths(
 	system: string,
 	document: Document,
-	selected: SelectedDocument,
+	selected: Described,
 ) {
 	const holder = document[selected.holder];
 	if (!isRecord(holder)) {
@@ -217,22 +221,22 @@ function toSelectedPaths(
 	return paths;
 }
 
-/** Reads every description a system publishes and writes the part we depend on. */
-export async function writePinnedContract(
-	selection: Selection,
-	directory: string,
+/** Reads every description one system publishes and writes the part we depend on. */
+async function writePinnedContract(
+	system: string,
+	described: readonly Described[],
+	output: string,
 ) {
 	const paths: Record<string, Record<string, Operation>> = {};
 	const sources: ContractSource[] = [];
 	const readAt = new Date().toISOString().slice(0, 10);
 
-	for (const selected of selection.documents) {
+	for (const selected of described) {
 		const { document, digest } = await readDocument(selected.source);
 		sources.push({ source: selected.source, readAt, digest });
-		Object.assign(paths, toSelectedPaths(selection.system, document, selected));
+		Object.assign(paths, toSelectedPaths(system, document, selected));
 	}
 
-	const output = path.join(directory, "contract.json");
 	const contract: Contract = { sources, paths };
 	const text = `${JSON.stringify(contract, null, "\t")}\n`;
 	const previous = await Bun.file(output)
@@ -244,7 +248,19 @@ export async function writePinnedContract(
 		value.replace(/"readAt": "[^"]*"/g, '"readAt": ""');
 	console.log(
 		withoutDate(previous) === withoutDate(text)
-			? `${output} is unchanged: ${selection.system} still describes what we send the same way.`
-			: `${output} changed. Read the difference: ${selection.system}'s contract moved.`,
+			? `${output} is unchanged: ${system} still describes what we send the same way.`
+			: `${output} changed. Read the difference: ${system}'s contract moved.`,
 	);
 }
+
+const here = path.join(import.meta.dir, "..", "contracts");
+await writePinnedContract(
+	"Hetzner",
+	[hetznerDescribed],
+	path.join(here, "hetzner.json"),
+);
+await writePinnedContract(
+	"Clerk",
+	clerkDescribed,
+	path.join(here, "clerk.json"),
+);

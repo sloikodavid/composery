@@ -1,3 +1,4 @@
+import type { FunctionReference } from "convex/server";
 import { type Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -26,6 +27,8 @@ import {
 import type { allocationBackend, powerOperationKind } from "./schema";
 
 const requestIdPattern = /^[a-zA-Z0-9_-]{8,100}$/;
+// A server asks for few operations, so one pass almost always finishes.
+const operationsPerPass = 100;
 
 type AllocationBackend = Infer<typeof allocationBackend>;
 
@@ -240,6 +243,30 @@ export const storeHostname = internalMutation({
 	},
 });
 
+/**
+ * What each backend removes once its allocation is gone. A backend owns its own table, so it does
+ * its own forgetting, and a new backend fails to compile until it says how.
+ */
+const forgetAllocation: Record<
+	AllocationBackend,
+	FunctionReference<
+		"mutation",
+		"internal",
+		{ allocationId: Id<"serverAllocations"> }
+	>
+> = {
+	hetznerCloud: internal.allocations.hetzner_cloud.worker_state.forget,
+};
+
+/**
+ * The last step of a deletion: nothing that described the allocation outlives the server it ran.
+ * The operations are removed a page at a time, because one server can have asked for many.
+ *
+ * This keeps no history on purpose. Every way of reading an allocation starts from its server, so
+ * a row left behind could never be read again, and it would hold an identifier that resolves to
+ * nothing. A record that outlives a server is a different thing with a shape of its own, and it
+ * will be built when something needs it.
+ */
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
@@ -248,7 +275,28 @@ export const finishDelete = internalMutation({
 		if (allocation === null || allocation.status !== "deleted") {
 			throw new Error("An allocation must be deleted before it is finished.");
 		}
+		const operations = await ctx.db
+			.query("serverOperations")
+			.withIndex("by_server_id", (q) => q.eq("serverId", allocation.serverId))
+			.take(operationsPerPass);
+		for (const operation of operations) {
+			await ctx.db.delete("serverOperations", operation._id);
+		}
+		if (operations.length === operationsPerPass) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.allocations.operations.finishDelete,
+				{
+					allocationId,
+				},
+			);
+			return null;
+		}
 		await deleteAllocationSshAccess(ctx, allocationId);
+		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
+			allocationId,
+		});
+		await ctx.db.delete("serverAllocations", allocationId);
 		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
 			serverId: allocation.serverId,
 		});

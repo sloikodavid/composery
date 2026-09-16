@@ -33,7 +33,9 @@ Fake what a test is not about. Never fake what decides whether it passes.
 
 The mirror decides where a test goes, never that one must exist. A source file with nothing worth testing has no test, and a file never gets a second test file for a second kind of case: that would be symmetry for its own sake, and the reader would have to guess which of the two to open.
 
-One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world: it starts, isolates and stops an `sshd`, a Convex backend, or a fake. It is the only folder under `tests/` that mirrors nothing, and it holds no `.test.ts` file at all. That is not a carve-out but the same rule read backwards: a thing under `tests/` has nowhere to put its own test, because `tests/tests/` is not a place. So code that needs proving of its own does not belong under `tests/`, and a test file appearing in the harness means something living there should live elsewhere. That is how the contract checkers came to be in `contracts/`.
+One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world: it starts, isolates and stops an `sshd`, a Convex backend, or a fake. Nothing in it decides whether a test passes, so nothing in it needs proving on its own; the tests that use it are what show it works, and it holds no `.test.ts` file.
+
+That is the line, and it is about what a thing is rather than where its test could go: code that has to be proved right before anything can rely on it is not harness code. A contract checker is an oracle, and an oracle nothing checks is worse than none, so the checkers live in `contracts/` and are tested through the mirror like any other source.
 
 ## Running
 
@@ -56,16 +58,16 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 
 A fake is code we wrote, so nothing in a test can contradict it. That is what a contract is for.
 
-Where a system publishes a machine-readable description of itself, `contracts/<system>/` holds the part we depend on:
+Where a system publishes a machine-readable description of itself, `contracts/` holds the part we depend on. There are two files for each system and two shared ones:
 
-- `selection.ts` says which operations we use and where the descriptions are published. The filter is a rule, not a hand-cut subset, so a reviewer can rerun it.
-- `contract.json` is what that filter produced, with the source, the day it was read, and a digest of the whole published document. A difference here is a change at the system, reviewed like any other change.
-- `check.ts` reads it and holds both halves of an exchange to it: what Composery sends, and what a fake answers.
-- `waivers.ts` names each place where the system and its own description disagree.
+- `contracts/<system>.ts` says which operations we use, where the descriptions are published, and where the system disagrees with its own description. The subset is a declared list, not a hand-cut file, so a reviewer can rerun it.
+- `contracts/<system>.json` is what that list produced, with the source, the day it was read, and a digest of the whole published document. A difference here is a change at the system, reviewed like any other change.
+- `contracts/schema.ts` is the part of JSON Schema a description uses, and what it says about one value.
+- `contracts/check.ts` holds both halves of an exchange to a description: what Composery sends, and what a fake answers.
 
-`bun contracts` reads the descriptions again. It is how we find out that a system has changed, and it is the only part that reaches the network; nothing a test runs does.
+`bun contracts` reads the published descriptions again and rewrites the two JSON files. It is how we find out that a system has changed, and it is the only thing in the repository that fetches one: a test never reaches the network, so a run is the same on a train as in an office, and a change at a vendor arrives as a diff somebody reads rather than as a red build nobody asked for.
 
-A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. A waiver must be able to fail, or it is an ignore with a comment: it stops applying when the description at that place changes, it fails the run when its operation runs and the difference no longer appears, and `tests/contracts/<system>/waivers.test.ts` carries a reproducer for each one, so a waiver added without proof fails there. One of the first two waivers we wrote turned out to be invented; the stale check deleted it.
+A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. A waiver must be able to fail, or it is an ignore with a comment: it stops applying when the description at that place changes, it fails the run when its operation runs and the difference no longer appears, and `tests/contracts/<system>.test.ts` carries a reproducer for each one, so a waiver added without proof fails there. One of the first two waivers we wrote turned out to be invented; the stale check deleted it.
 
 There is a trap in all of this worth naming: if the same wrong description both shapes the fake and judges our requests, the two agree with each other and neither is right. Only the real system settles that. We have run against real Hetzner; we have not run against real Clerk, so Clerk's contract proves shape and nothing more.
 

@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!convex/_generated", "!contracts/*/contract.json"]
+		"includes": ["**", "!convex/_generated", "!contracts/*.json"]
 	},
 	"formatter": {
 		"enabled": true,
