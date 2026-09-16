@@ -1,5 +1,5 @@
 /**
- * The shapes Hetzner sends, as `hetzner-contract.json` describes them. Composery reads a few of
+ * The shapes Hetzner sends, as `contracts/hetzner/contract.json` describes them. Composery reads a few of
  * these fields; the rest are here because Hetzner always sends them, and a fake that sends less
  * would let our code depend on a Hetzner that does not exist. The values are invented; the shape
  * is not, and the fake checks every reply against Hetzner's own description.

@@ -13,8 +13,8 @@ Every test asks one authority whether the result is right, and the authority mus
 | The code's own rules | parsing, arithmetic, formats that Composery defines | nothing |
 | OpenSSH | whether a key signs in, what a key file means, what a setting does | a real `sshd` in Docker |
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
-| Clerk's own SDK | that a webhook is genuine, and that an account reply is shaped as Clerk shapes one | a fake Clerk on loopback |
-| Hetzner's published API description | the shape of what we send and what we accept | `tests/harness/hetzner-contract.json` |
+| Clerk's own SDK | that a webhook is genuine | a fake Clerk on loopback |
+| A system's published description | the shape of what we send, and of what a fake answers | `contracts/<system>/contract.json` |
 | Hetzner | that the provider really did it | not built; see below |
 
 A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.
@@ -29,7 +29,9 @@ Fake what a test is not about. Never fake what decides whether it passes.
 
 ## Layout
 
-Tests live under `tests/`, in folders that mirror the source folders they test, so every test has one place: the test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`. A folder under `tests/` follows the source tree, so it can hold a single file, as `tests/convex/ssh/scripts/` does. The harness is not a mirror: it is our own code, in `tests/harness/`, named as every other folder of ours is.
+`tests/` lies over the repository: a path under it is the same path, with `.test.ts` in place of `.ts`. The test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`, and the test of `contracts/waiver.ts` is `tests/contracts/waiver.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`.
+
+One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world: it starts, isolates and stops an `sshd`, a Convex backend, or a fake. It is the only folder under `tests/` that mirrors nothing, and it holds no `.test.ts` file at all. That is not a carve-out but the same rule read backwards: a thing under `tests/` has nowhere to put its own test, because `tests/tests/` is not a place. So code that needs proving of its own does not belong under `tests/`, and a test file appearing in the harness means something living there should live elsewhere. That is how the contract checkers came to be in `contracts/`.
 
 ## Running
 
@@ -47,16 +49,37 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 - One `sshd` and one Convex backend serve a whole run. Each test creates its own accounts and users, so tests do not share state and can run in any order.
 - Every resource that a run starts is registered for cleanup at the end of the run. A run that is killed leaves resources that name their owner, and the next run removes those whose owner is gone.
 
+## Contracts
+
+A fake is code we wrote, so nothing in a test can contradict it. That is what a contract is for.
+
+Where a system publishes a machine-readable description of itself, `contracts/<system>/` holds the part we depend on:
+
+- `selection.ts` says which operations we use and where the descriptions are published. The filter is a rule, not a hand-cut subset, so a reviewer can rerun it.
+- `contract.json` is what that filter produced, with the source, the day it was read, and a digest of the whole published document. A difference here is a change at the system, reviewed like any other change.
+- `check.ts` reads it and holds both halves of an exchange to it: what Composery sends, and what a fake answers.
+- `waivers.ts` names each place where the system and its own description disagree.
+
+`bun contracts` reads the descriptions again. It is how we find out that a system has changed, and it is the only part that reaches the network; nothing a test runs does.
+
+A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. A waiver must be able to fail, or it is an ignore with a comment: it stops applying when the description at that place changes, it fails the run when its operation runs and the difference no longer appears, and `tests/contracts/<system>/waivers.test.ts` carries a reproducer for each one, so a waiver added without proof fails there. One of the first two waivers we wrote turned out to be invented; the stale check deleted it.
+
+There is a trap in all of this worth naming: if the same wrong description both shapes the fake and judges our requests, the two agree with each other and neither is right. Only the real system settles that. We have run against real Hetzner; we have not run against real Clerk, so Clerk's contract proves shape and nothing more.
+
 ## Hetzner
 
 No test reaches Hetzner. A run starts a fake on loopback and gives the deployment its address in `HCLOUD_FAKE_URL`, with a token that is not a token. Hetzner's own address is built in and no deployment can replace it: the variable accepts only `127.0.0.1` or `[::1]`, so a deployment that sets it by mistake reaches nothing and sends nothing anywhere.
 
 The fake answers what Composery asks, and produces what Hetzner cannot be asked for: a reply that never arrives. It never decides whether a test passes.
 
-The fake cannot drift on its own, and neither can we. Hetzner publishes a description of its API, and `scripts/hetzner-contract.ts` writes down the part we depend on. Every request Composery sends and every reply the fake gives is checked against it, and a difference fails the run at the end, whichever test made the request. Running that script again is how we find out that Hetzner has changed: the file changes, and the change is reviewed.
-
-A description is what a system says about itself, not the system. Where the two disagree, running it wins, and the difference is named in `knownDifferences` with the evidence that settled it.
-
 Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
 
 Hetzner itself is still to be tested, with a separate token and project, and never from plain `bun test`.
+
+## Clerk
+
+No test reaches Clerk either. A run starts a fake on loopback and gives the deployment its address in `CLERK_API_URL`, under the same rule as Hetzner's.
+
+Clerk's own client builds our requests, so checking those checks Clerk's code, not ours. What is worth checking is everything we accept: the client reads a reply without validating it, so a field a fake invents would never be refused, and a hand-written webhook body would never be questioned. Both are held to Clerk's published descriptions of its backend API and of its events.
+
+The version of Clerk's API is pinned by the one its own client asks for. The fake refuses a request that carries any other, so an upgrade that changes it says so rather than quietly leaving the contract behind.

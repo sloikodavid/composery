@@ -31,8 +31,9 @@ import {
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
 import { isProcessAlive, registerCleanup } from "./cleanup";
-import { type ClerkFake, useClerkFake } from "./clerk";
-import { type HetznerFake, useHetznerFake } from "./hetzner";
+import { type ClerkFake, useClerkFake } from "./clerk/fake";
+import type { Fake } from "./fake";
+import { useHetznerFake } from "./hetzner/fake";
 import { convexBackendAssets, convexBackendVersion } from "./pins";
 import { type SignInIssuer, startSignInIssuer } from "./sign-in";
 
@@ -426,7 +427,7 @@ async function setEnvironmentVariables(
  */
 function toDeploymentVariables(
 	issuer: SignInIssuer,
-	fake: HetznerFake,
+	fake: Fake,
 	clerk: ClerkFake,
 ) {
 	return {

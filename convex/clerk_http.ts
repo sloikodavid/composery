@@ -1,9 +1,22 @@
+import type { UserWebhookEvent } from "@clerk/backend";
 import { verifyWebhook } from "@clerk/backend/webhooks";
 import { env, httpAction } from "./_generated/server";
 import { syncClerkUser } from "./clerk";
 import { httpStatus } from "./http_status";
 
-const userEvents = new Set(["user.created", "user.updated", "user.deleted"]);
+/**
+ * Every event Clerk sends about an account, and whether it changes what we hold. Clerk's own type
+ * names them, so an event Clerk adds later fails to compile here until somebody decides about it.
+ */
+const accountEvents: Record<UserWebhookEvent["type"], true> = {
+	"user.created": true,
+	"user.updated": true,
+	"user.deleted": true,
+};
+
+function isAccountEvent(type: string): type is UserWebhookEvent["type"] {
+	return Object.hasOwn(accountEvents, type);
+}
 
 export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 	let event: Awaited<ReturnType<typeof verifyWebhook>>;
@@ -17,7 +30,7 @@ export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 		});
 	}
 
-	if (userEvents.has(event.type)) {
+	if (isAccountEvent(event.type)) {
 		const clerkUserId = event.data.id;
 		if (clerkUserId === undefined) {
 			return new Response("The event has no user ID.", {
@@ -27,7 +40,8 @@ export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 		try {
 			await syncClerkUser(ctx, clerkUserId);
 		} catch {
-			// Clerk retries what it cannot deliver, and no detail of the failure goes back to it.
+			// Clerk sends a webhook again when it is not accepted, and no detail of the failure
+			// goes back to it.
 			return new Response(null, { status: httpStatus.serviceUnavailable });
 		}
 	}

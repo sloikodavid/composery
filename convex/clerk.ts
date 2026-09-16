@@ -14,7 +14,14 @@ import { httpStatus } from "./http_status";
 import { requireRateLimit } from "./rate_limits";
 import type { userFields } from "./schema";
 
-const clerkPageSize = 100;
+/** How many accounts Clerk is asked for at once. A test reads it to make Clerk page its answer. */
+export const clerkPageSize = 100;
+/**
+ * How many pages either side may hold before we stop asking. Reading a page is a request to Clerk
+ * and a write here, so a page that never says it is the last one must end the run rather than
+ * repeat every hour until something else stops it.
+ */
+const maxPages = 1000;
 
 type UserFields = Infer<typeof userFields>;
 
@@ -108,20 +115,24 @@ export const reconcile = internalAction({
 	handler: async (ctx) => {
 		const clerk = createClient();
 
-		for (let offset = 0; ; offset += clerkPageSize) {
+		let read = false;
+		for (let asked = 0; asked < maxPages && !read; asked += 1) {
 			const { data } = await clerk.users.getUserList({
 				limit: clerkPageSize,
-				offset,
+				offset: asked * clerkPageSize,
 				orderBy: "+created_at",
 			});
 			await storeUsers(ctx, data);
-			if (data.length < clerkPageSize) {
-				break;
-			}
+			read = data.length < clerkPageSize;
+		}
+		if (!read) {
+			throw new Error(
+				`Clerk still had accounts after ${maxPages} pages, so none were removed.`,
+			);
 		}
 
 		let cursor: string | null = null;
-		for (;;) {
+		for (let asked = 0; asked < maxPages; asked += 1) {
 			const page: { page: string[]; isDone: boolean; continueCursor: string } =
 				await ctx.runQuery(internal.users.listClerkIds, {
 					paginationOpts: { numItems: clerkPageSize, cursor },
@@ -131,6 +142,7 @@ export const reconcile = internalAction({
 					userId: page.page,
 					limit: page.page.length,
 				});
+				// Only an account Clerk was asked about, and did not return, is gone.
 				const existing = new Set(data.map((user) => user.id));
 				const missing = page.page.filter((id) => !existing.has(id));
 				if (missing.length > 0) {
@@ -140,10 +152,12 @@ export const reconcile = internalAction({
 				}
 			}
 			if (page.isDone) {
-				break;
+				return null;
 			}
 			cursor = page.continueCursor;
 		}
-		return null;
+		throw new Error(
+			`Composery still held accounts after ${maxPages} pages of its own.`,
+		);
 	},
 });

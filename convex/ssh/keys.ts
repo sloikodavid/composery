@@ -14,7 +14,7 @@ import {
 } from "./authorized_keys";
 import type { SshConnectionOptions } from "./connection";
 import { discoverSshServer } from "./discovery";
-import { rethrowPublicSshError, writeCodes } from "./failures";
+import { throwPublicSshError, writeCodes } from "./failures";
 import { discoverSshKeyAcceptance } from "./key_acceptance";
 import { readSshFile, type SshFileObservation } from "./read_file";
 import { writeSshFile } from "./write_file";
@@ -167,7 +167,7 @@ export const list = action({
 			}
 			return { files, unknowns };
 		} catch (error) {
-			return rethrowPublicSshError(error);
+			return throwPublicSshError(error);
 		}
 	},
 });
@@ -264,7 +264,7 @@ async function applyEdits(
 			return { revision: null, acceptance: acceptanceResult };
 		}
 	} catch (error) {
-		return rethrowPublicSshError(error);
+		return throwPublicSshError(error);
 	}
 }
 

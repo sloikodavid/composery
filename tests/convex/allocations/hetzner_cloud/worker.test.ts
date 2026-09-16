@@ -6,7 +6,8 @@ import {
 	type ConvexBackend,
 	useConvexBackend,
 } from "../../../harness/convex-backend";
-import { type HetznerFake, useHetznerFake } from "../../../harness/hetzner";
+import type { Fake } from "../../../harness/fake";
+import { useHetznerFake } from "../../../harness/hetzner/fake";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 120_000;
@@ -18,11 +19,11 @@ const settleDelayMs = 250;
 const sweepEveryMs = 2000;
 // Enough of the trail to show where a stuck allocation stopped.
 const trailLength = 12;
-const createdServers = /^servers$/;
-const createdPrimaryIps = /^primary_ips$/;
+const createdServers = /^\/servers$/;
+const createdPrimaryIps = /^\/primary_ips$/;
 
 let backend: ConvexBackend;
-let fake: HetznerFake;
+let fake: Fake;
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
