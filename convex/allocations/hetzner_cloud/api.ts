@@ -2,6 +2,7 @@ import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
 import type { Infer } from "convex/values";
 import { components } from "../../_generated/api";
 import { env } from "../../_generated/server";
+import { getFakeAddress } from "../../fake_address";
 import {
 	httpStatus,
 	isHttpClientError,
@@ -15,9 +16,6 @@ import type {
 
 const liveApiOrigin = "https://api.hetzner.cloud";
 const apiPrefix = "/v1";
-// Only this machine's own addresses, written exactly. A name would be resolved, and what it
-// resolves to is not ours to decide.
-const loopbackHosts: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
 const requestTimeoutMs = 20_000;
 const maxRetryAfterMs = 86_400_000;
 const millisecondsPerSecond = 1000;
@@ -273,40 +271,6 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
-/** Whether this deployment is one a test started: it answers on this machine and nowhere else. */
-function isLocalDeployment() {
-	try {
-		return loopbackHosts.has(new URL(env.CONVEX_SITE_URL).hostname);
-	} catch {
-		return false;
-	}
-}
-
-/**
- * Hetzner's own address, or the fake that a test runs. Hetzner's address is built in and no
- * deployment can change it. A replacement has to pass two checks that a real deployment cannot:
- * the deployment itself answers only on this machine, and the address is this machine's own. So a
- * variable set by mistake in production changes nothing, and the token never leaves the machine.
- */
-function toApiUrl() {
-	const fake = env.HCLOUD_FAKE_URL;
-	if (!fake || !isLocalDeployment()) {
-		return `${liveApiOrigin}${apiPrefix}`;
-	}
-	let url: URL;
-	try {
-		url = new URL(fake);
-	} catch {
-		throw new Error("HCLOUD_FAKE_URL is not a URL.");
-	}
-	if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
-		throw new Error(
-			"HCLOUD_FAKE_URL must be http on 127.0.0.1 or [::1], because only a test sets it.",
-		);
-	}
-	return `${url.origin}${apiPrefix}`;
-}
-
 /** No implicit retries. A request that failed can still have reached Hetzner. */
 async function callHetznerCloud(
 	path: string,
@@ -320,7 +284,9 @@ async function callHetznerCloud(
 	}
 	let response: Response;
 	try {
-		response = await fetch(`${toApiUrl()}/${path}`, {
+		const apiUrl =
+			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ?? liveApiOrigin;
+		response = await fetch(`${apiUrl}${apiPrefix}/${path}`, {
 			method,
 			headers: {
 				// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name

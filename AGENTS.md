@@ -42,7 +42,7 @@ Convex agent skills for common tasks can be installed by running
 
 - "A function name, except a component's, must start with a verb: `getLoan`, not `loan`. A name must state what is true when the call returns: `renew` has extended the loan, and `requestRenewal` has only recorded the request. A registered Convex function must omit what its path states: `api.loans.renew`, not `api.loans.renewLoan`. Every other export must include a noun that identifies its domain, because callers import it by name: `renewLoan`."
 
-- "Files must be grouped by domain, and a folder must earn its place: it holds files that are read and changed together, and never one file dressed as a group. A folder that another thing defines follows that thing instead, such as a framework's routes or a mirror of the source tree under `tests/`. Structure must never be changed to satisfy a count. A file name must not repeat its folder name: `lending/loans.ts`, not `lending/lending_loans.ts`. When Convex requires one concern to span runtimes, its files must be named `<concern>.ts` for Node actions, `<concern>_state.ts` for queries and mutations, and `<concern>_http.ts` for HTTP actions. A table name is what one row is, plural when the noun has a plural: `loanRenewals`. A folder must define the tables that its code owns in its own `schema.ts` and must include the tables of its immediate subfolders; the root `convex/schema.ts` must define the tables of top-level files and must include the rest."
+- "Files must be grouped by domain. A file name must not repeat its folder name: `lending/loans.ts`, not `lending/lending_loans.ts`. When Convex requires one concern to span runtimes, its files must be named `<concern>.ts` for Node actions, `<concern>_state.ts` for queries and mutations, and `<concern>_http.ts` for HTTP actions. A table name is what one row is, plural when the noun has a plural: `loanRenewals`. A folder must define the tables that its code owns in its own `schema.ts` and must include the tables of its immediate subfolders; the root `convex/schema.ts` must define the tables of top-level files and must include the rest."
 
 - "When behavior depends on a kind, handle every kind explicitly, with a `switch` over every kind or a `Record` keyed by the kind, so that a new kind fails to compile until every place handles it."
 
@@ -95,6 +95,8 @@ Convex agent skills for common tasks can be installed by running
 - Prevent secrets from entering the context window so they don't stay retained on the provider's servers and can't later leak.
 
 - Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
+
+- Give a folder work to do: it holds files that are read and changed together, never one file dressed as a group. A folder that something else defines follows that thing instead, such as a framework's routes or the mirror of the source tree under `tests/`. Never change structure to satisfy a count, and say so when a grouping would make the names worse.
 
 - Write, name, and place tests as `docs/testing.md` describes.
 

@@ -18,6 +18,7 @@ import type * as clerk from "../clerk.js";
 import type * as clerk_http from "../clerk_http.js";
 import type * as crons from "../crons.js";
 import type * as errors from "../errors.js";
+import type * as fake_address from "../fake_address.js";
 import type * as http from "../http.js";
 import type * as http_status from "../http_status.js";
 import type * as pagination from "../pagination.js";
@@ -74,6 +75,7 @@ const fullApi: ApiFromModules<{
   clerk_http: typeof clerk_http;
   crons: typeof crons;
   errors: typeof errors;
+  fake_address: typeof fake_address;
   http: typeof http;
   http_status: typeof http_status;
   pagination: typeof pagination;

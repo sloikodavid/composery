@@ -44,7 +44,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `host key` | The key pair that identifies a server to SSH clients | fingerprint (for the key itself) |
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
 | `harness` | Test code that starts, isolates, and stops what tests need, such as an SSH server or a Convex backend | fixture |
-| `fake` | A working, simplified copy of another system that tests run instead of it. It may be told what to answer for one request, and it never decides whether a test passes | mock, stub, stand-in |
+| `fake` | A working, simplified copy of another system that tests run instead of it, in the sense the xUnit test patterns give the word. It may be told what to answer for one request, and it never decides whether a test passes | mock, stub, stand-in |
 | `live test` | A test that reaches the real outside system, costs money or quota, and never runs from plain `bun test` | lane, smoke test |
 
 ## Verbs
