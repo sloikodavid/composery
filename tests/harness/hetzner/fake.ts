@@ -54,6 +54,22 @@ function toAddress(id: number, collection: string, kind: string) {
 	return `2001:db8::${id.toString(hexRadix)}`;
 }
 
+/**
+ * What a server says about one of its addresses. Once an allocation has made any address, the
+ * absence of one means it was deleted; before that, a server created on its own gets a made-up
+ * pair, because Hetzner gives every server an address unless it is told not to.
+ */
+function toReplyAddress(
+	held: { id: number; address: string } | undefined,
+	hadAddresses: boolean,
+	invented: { id: number; ip: string },
+) {
+	if (held !== undefined) {
+		return { id: held.id, ip: held.address };
+	}
+	return hadAddresses ? null : invented;
+}
+
 function notFound(): FakeReply {
 	return {
 		status: httpNotFound,
@@ -97,21 +113,24 @@ export function startHetznerFake(): Promise<Fake> {
 				item.collection === "primary_ips" &&
 				item.labels["allocation-id"] === resource.labels["allocation-id"],
 		);
+		// A server reports the addresses it still has. One that was deleted is gone from the reply,
+		// which is what Hetzner sends and what Composery has to read.
 		const ipv4 = owned.find((item) => item.kind === "ipv4");
 		const ipv6 = owned.find((item) => item.kind === "ipv6");
+		const hadAddresses = owned.length > 0;
 		return toServerReply({
 			id: resource.id,
 			name: resource.name,
 			status: resource.status,
 			labels: resource.labels,
-			ipv4: {
-				id: ipv4?.id ?? resource.id + ipv4Offset,
-				ip: ipv4?.address ?? toAddress(resource.id, "servers", "ipv4"),
-			},
-			ipv6: {
-				id: ipv6?.id ?? resource.id + ipv6Offset,
-				ip: ipv6?.address ?? toAddress(resource.id, "primary_ips", "ipv6"),
-			},
+			ipv4: toReplyAddress(ipv4, hadAddresses, {
+				id: resource.id + ipv4Offset,
+				ip: toAddress(resource.id, "servers", "ipv4"),
+			}),
+			ipv6: toReplyAddress(ipv6, hadAddresses, {
+				id: resource.id + ipv6Offset,
+				ip: toAddress(resource.id, "primary_ips", "ipv6"),
+			}),
 			firewallId: controllerFirewallId,
 			serverType: serverTypeName,
 			location: resource.location,

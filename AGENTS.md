@@ -97,6 +97,8 @@ Convex agent skills for common tasks can be installed by running
 - Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
 
 
+- Read `docs/policy.md` before deciding what happens when something outside our control goes wrong: what degrades, what is repaired, what is only reported. It says what the product is trying to be, so a judgement the rules do not cover is still made the same way twice.
+
 - Write, name, and place tests as `docs/testing.md` describes.
 
 - For iterating before the final full verification, running `bun test --changed` might be faster.

@@ -151,8 +151,9 @@ export function toServerReply(
 		name: string;
 		status: string;
 		labels: Record<string, string>;
-		ipv4: ReplyAddress;
-		ipv6: ReplyAddress;
+		/** Null when the server has no address of that kind, as Hetzner reports it. */
+		ipv4: ReplyAddress | null;
+		ipv6: ReplyAddress | null;
 		firewallId: number;
 		serverType: string;
 		location: string;
@@ -166,8 +167,14 @@ export function toServerReply(
 		status: fields.status,
 		created,
 		public_net: {
-			ipv4: { ...fields.ipv4, blocked: false, dns_ptr: fields.ipv4.ip },
-			ipv6: { ...fields.ipv6, blocked: false, dns_ptr: [] },
+			ipv4:
+				fields.ipv4 === null
+					? null
+					: { ...fields.ipv4, blocked: false, dns_ptr: fields.ipv4.ip },
+			ipv6:
+				fields.ipv6 === null
+					? null
+					: { ...fields.ipv6, blocked: false, dns_ptr: [] },
 			floating_ips: [],
 			firewalls: [{ id: fields.firewallId, status: "applied" }],
 		},

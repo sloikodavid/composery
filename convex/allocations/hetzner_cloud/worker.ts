@@ -347,35 +347,48 @@ async function stepPower(
 }
 
 /** A server that differs from what this allocation created is not adopted as it. */
+/**
+ * Whether the server Hetzner describes is the one this allocation records, and its addresses when
+ * it is. An address Hetzner no longer reports is a mismatch like any other: somebody deleted a
+ * Primary IP, which Hetzner allows while the server is off, and the allocation is not what we
+ * wrote down any more.
+ */
 function checkServer(
 	hetznerCloudAllocation: HetznerCloudAllocation,
 	server: HetznerCloudServer,
-): HetznerCloudWorkerUpdate | null {
+):
+	| { failure: HetznerCloudWorkerUpdate }
+	| { addresses: { ipv4: string; ipv6: string } } {
 	const { resources, spec, firewallId } = hetznerCloudAllocation;
+	const { ipv4, ipv6 } = server;
 	if (
-		server.ipv4.id !==
-			(resources.ipv4.status === "present" ? resources.ipv4.id : 0) ||
-		server.ipv6.id !==
-			(resources.ipv6.status === "present" ? resources.ipv6.id : 0)
+		ipv4 === null ||
+		ipv6 === null ||
+		ipv4.id !== (resources.ipv4.status === "present" ? resources.ipv4.id : 0) ||
+		ipv6.id !== (resources.ipv6.status === "present" ? resources.ipv6.id : 0)
 	) {
-		return toFailure("address_identity_mismatch", { retry: false });
+		return {
+			failure: toFailure("address_identity_mismatch", { retry: false }),
+		};
 	}
 	if (
 		server.serverType !== spec?.serverType ||
 		server.location !== spec?.location
 	) {
-		return toFailure("server_configuration_mismatch", { retry: false });
+		return {
+			failure: toFailure("server_configuration_mismatch", { retry: false }),
+		};
 	}
 	const firewall = server.firewalls.find(
 		(attached) => attached.id === firewallId,
 	);
 	if (firewall === undefined) {
-		return toFailure("firewall_detached", { retry: false });
+		return { failure: toFailure("firewall_detached", { retry: false }) };
 	}
 	if (!firewall.isApplied) {
-		return toFailure("firewall_not_applied", { retry: true });
+		return { failure: toFailure("firewall_not_applied", { retry: true }) };
 	}
-	return null;
+	return { addresses: { ipv4: ipv4.address, ipv6: ipv6.address } };
 }
 
 async function observeServer(
@@ -393,18 +406,14 @@ async function observeServer(
 	if (server.status === "changing") {
 		return toFailure("server_status_changing", { retry: true });
 	}
-	const mismatch = checkServer(hetznerCloudAllocation, server);
-	if (mismatch !== null) {
-		return mismatch;
+	const checked = checkServer(hetznerCloudAllocation, server);
+	if ("failure" in checked) {
+		return checked.failure;
 	}
 	const powerUpdate = await stepPower(ctx, lease, server.id, server.status);
 	return (
 		powerUpdate ?? {
-			observation: {
-				status: server.status,
-				ipv4: server.ipv4.address,
-				ipv6: server.ipv6.address,
-			},
+			observation: { status: server.status, ...checked.addresses },
 		}
 	);
 }

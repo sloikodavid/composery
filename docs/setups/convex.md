@@ -17,3 +17,15 @@ That last point decides what has to be kept somewhere else, because losing it ca
 - **The other environment variables**, so a deployment can be rebuilt.
 
 Restoring data alone also does not restore infrastructure: rows describe servers that Hetzner still owns. After any restore, compare `serverAllocations` and `hetznerCloudAllocations` with the project's real resources before letting the worker run, or it acts on stale state.
+
+## Rotating the SSH access keys
+
+Set `SSH_ACCESS_ENCRYPTION_KEYS` to 32 cryptographically random bytes encoded as base64. Pipe the value into `convex env set SSH_ACCESS_ENCRYPTION_KEYS` without displaying it. Keep a secure backup; losing every key in the list makes the stored SSH access secrets unreadable, and no customer can be given that access back. Each allocation has a separate Ed25519 management key, encrypted with AES-256-GCM and bound to its allocation ID.
+
+The setting is an ordered, comma-separated list. The first key encrypts every new value, and every key in the list can read one. Each envelope records which key encrypted it, so rotation is three steps and its progress is a fact rather than a hope:
+
+1. Append the new key: `K_old,K_new`. Every reader now knows it; nothing uses it yet.
+2. Move it to the front: `K_new,K_old`. New values are encrypted with it; old ones still read.
+3. Run `convex run ssh/secrets:reEncrypt '{}'`. It reports how many values it encrypted again and which keys are still named. When only the new key is named, remove the old one from the list.
+
+Doing this in one step would leave values that a deployment still holding only the old key cannot read. Never overwrite the list with a single new key while allocations hold secrets encrypted by the old one.

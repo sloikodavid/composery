@@ -178,8 +178,10 @@ export type HetznerCloudResource = {
 export type HetznerCloudServer = {
 	id: number;
 	status: "running" | "stopped" | "changing";
-	ipv4: { id: number; address: string };
-	ipv6: { id: number; address: string };
+	// Hetzner sends null for an address a server does not have, which a customer or an admin can
+	// arrange by deleting the Primary IP while the server is off.
+	ipv4: { id: number; address: string } | null;
+	ipv6: { id: number; address: string } | null;
 	serverType: string;
 	location: string;
 	firewalls: { id: number; isApplied: boolean }[];
@@ -444,19 +446,27 @@ function isHetznerServerStatus(
 	return Object.hasOwn(serverStatuses, value);
 }
 
-function toServer(reply: Reply): HetznerCloudServer {
+/** One of a server's public addresses, or null when Hetzner says it has none of that kind. */
+function toServerAddress(value: unknown) {
+	if (value === null || value === undefined) {
+		return null;
+	}
+	const address = requireObject(value);
+	return { id: requireId(address.id), address: requireText(address.ip) };
+}
+
+/** Reads one server as Hetzner describes it. Exported so a test can put its own shapes through. */
+export function toServer(reply: Reply): HetznerCloudServer {
 	const status = requireText(reply.status);
 	if (!isHetznerServerStatus(status)) {
 		throw new HetznerCloudError("invalid_response");
 	}
 	const publicNet = requireObject(reply.public_net);
-	const ipv4 = requireObject(publicNet.ipv4);
-	const ipv6 = requireObject(publicNet.ipv6);
 	return {
 		id: requireId(reply.id),
 		status: serverStatuses[status],
-		ipv4: { id: requireId(ipv4.id), address: requireText(ipv4.ip) },
-		ipv6: { id: requireId(ipv6.id), address: requireText(ipv6.ip) },
+		ipv4: toServerAddress(publicNet.ipv4),
+		ipv6: toServerAddress(publicNet.ipv6),
 		serverType: requireText(requireObject(reply.server_type).name),
 		location: requireText(requireObject(reply.location).name),
 		firewalls: requireList(publicNet.firewalls)

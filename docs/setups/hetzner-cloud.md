@@ -11,17 +11,7 @@ Use one Hetzner Cloud project per environment. Each Convex deployment needs its 
 5. Optionally set `HCLOUD_IMAGE`; the default is `ubuntu-24.04`. The resolved image ID is stored with each allocation. Changing the setting affects new allocations only.
 6. Push the backend to the intended deployment. Use internal `quotas:setForDeployment` with kind `server` and a limit at or below the project's server limit, which Hetzner sets for each project and does not report through the API. Request an increase from Hetzner support before raising it. Then use internal `quotas:setForUser` with a local user ID, kind `server`, and a limit. Both start at zero, so nothing is created until they are set, and a zero limit stops new servers without deleting existing ones.
 
-All variables are listed in `.env.convex.example`. They are optional at deployment time so an environment can run without provisioning. Creating a server requires the token, controller identifier, firewall ID, locations, `SSH_ACCESS_ENCRYPTION_KEYS`, and both quotas.
-
-Set `SSH_ACCESS_ENCRYPTION_KEYS` to 32 cryptographically random bytes encoded as base64. Pipe the value into `convex env set SSH_ACCESS_ENCRYPTION_KEYS` without displaying it. Keep a secure backup; losing every key in the list makes the stored SSH access secrets unreadable, and no customer can be given that access back. Each allocation has a separate Ed25519 management key, encrypted with AES-256-GCM and bound to its allocation ID.
-
-The setting is an ordered, comma-separated list. The first key encrypts every new value, and every key in the list can read one. Each envelope records which key encrypted it, so rotation is three steps and its progress is a fact rather than a hope:
-
-1. Append the new key: `K_old,K_new`. Every reader now knows it; nothing uses it yet.
-2. Move it to the front: `K_new,K_old`. New values are encrypted with it; old ones still read.
-3. Run `convex run ssh/secrets:reEncrypt '{}'`. It reports how many values it encrypted again and which keys are still named. When only the new key is named, remove the old one from the list.
-
-Doing this in one step would leave values that a deployment still holding only the old key cannot read. Never overwrite the list with a single new key while allocations hold secrets encrypted by the old one.
+All variables are listed in `.env.convex.example`. They are optional at deployment time so an environment can run without provisioning. Creating a server requires the token, controller identifier, firewall ID, locations, both quotas, and the SSH access keys that `docs/setups/convex.md` describes.
 
 The initial Ubuntu image must include Python 3 and cloud-init. Allow outbound HTTPS to the deployment's `CONVEX_SITE_URL`. Cloud-init installs the public management key for root, generates the native host keys, and reports the public Ed25519 host key to `/ssh/host-keys`. A provisioning-delivered token authenticates the report, expires after one hour, and cannot replace an already registered host key. The report retries for a bounded period. Provider running state does not establish that registration or SSH login succeeded. Callback failure must not fall back to trusting a network-observed key. Cloud-init and provider metadata can retain the expired bootstrap token; they never receive the management private key.
 

@@ -1,6 +1,6 @@
-# Recovery
+# Failure modes
 
-What happens when an allocation is not what Composery recorded, and what is built to answer it. Nothing here is a plan to build now. It is written down so the question is not rediscovered later, and so that what is built now leaves room for it.
+What can be true about an allocation that Composery did not ask for, what it costs, and what is decided about each. `docs/policy.md` says how we choose; this says what there is to choose about.
 
 ## What can change under us
 
@@ -29,6 +29,14 @@ Hetzner publishes no webhooks, so the scan is how state at the provider is notic
 2. **A support runbook.** What a person is told to do for each row above, written before there is anyone to tell. Until it exists, these are answered case by case, which is right while there are no customers and wrong immediately after.
 3. **Restoring management access.** Rescue, driven through the provider's API. Built as an admin action or as something that keeps trying on a schedule, not as a button for the customer: it reboots their server, and the customer did not necessarily do anything wrong. Keeping the customer's system free to be anything does not stop us from putting our own key back on a schedule.
 4. **Replacing an address.** Only after 1, and only with the identity change stated plainly to whoever asks for it.
+
+## What Composery does about it
+
+The worker compares what the provider reports against what was recorded, and refuses to act on a difference rather than writing over it. An allocation that does not match becomes `blocked`, which stops nothing on the customer's server: it runs, and power and deletion still work. A blocked allocation is looked at again every hour, so a difference that goes away is picked up without anybody doing anything.
+
+Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it. Hetzner publishes no webhooks, so scanning and the worker's own polling are how anything at the provider is noticed; Clerk does publish webhooks and is reconciled hourly as well, because delivery is not guaranteed.
+
+Nothing repairs anything, and per `docs/policy.md` nothing is owed. What is missing is that `blocked` tells nobody: there is no alerting and no admin surface, so it waits to be noticed.
 
 ## What is undecided
 
