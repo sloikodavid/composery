@@ -20,6 +20,14 @@ A failure must leave the system in a state a person can act on.
 - **Never make it worse.** No destructive action recovers from an unexpected state.
 - **Never promise more than is enforced.** This one is checkable, so it is an inviolable rule in `AGENTS.md` rather than a principle here.
 
+## The smallest surface that does everything
+
+Two kinds of person use this. Someone who does not want to know what SSH is should be able to get to a working server in one step. Someone who does should find the whole native surface, unsimplified, with no presets deciding for them.
+
+What must not exist is the middle: a panel control that does part of what the underlying tool does, so that the simple path is limiting and the advanced path is somewhere else. Where a thing can be done with the full native surface, that is the surface, and the one-step path is a convenience on top of it rather than a different, smaller system.
+
+This is also why something is shown rather than hidden when a customer needs it to do anything else with their server. Hiding a fact they cannot change does not simplify anything; it just moves where they have to go to find it.
+
 ## Do not repair what may have been meant
 
 A missing management key can mean "help, I broke it" or "I do not want you in here". We cannot tell which, so we do not decide for them.
