@@ -103,6 +103,14 @@ export async function getHetznerCloudAllocation(
 		.unique();
 }
 
+/** What the backend last recorded for one allocation, which is where a stuck allocation says why. */
+export const get = internalQuery({
+	args: { allocationId: v.id("serverAllocations") },
+	returns: v.union(schema.doc("hetznerCloudAllocations"), v.null()),
+	handler: async (ctx, { allocationId }) =>
+		await getHetznerCloudAllocation(ctx, allocationId),
+});
+
 async function requireHetznerCloudAllocation(
 	ctx: QueryCtx,
 	allocationId: Id<"serverAllocations">,

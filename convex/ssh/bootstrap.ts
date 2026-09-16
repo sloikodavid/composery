@@ -17,6 +17,8 @@ import { renderSshBootstrapScript } from "./scripts/bootstrap";
 import { decryptSshSecrets, encryptSshSecrets } from "./secrets";
 
 const bootstrapTokenBytes = 32;
+// Written exactly, because what a name resolves to is not ours to decide.
+const loopbackHosts: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
 
 type AllocationSshAccess = Doc<"allocationSshAccess">;
 
@@ -24,13 +26,22 @@ function generateBootstrapToken() {
 	return randomBytes(bootstrapTokenBytes).toString("base64url");
 }
 
+/**
+ * Where a server sends its report. The token travels in the request body, so the report must be
+ * encrypted on its way: HTTPS, or a loopback address, which never leaves the machine that sends it.
+ */
 function requireReportUrl() {
-	const url = `${env.CONVEX_SITE_URL}/ssh/host-keys`;
-	// The token travels in this URL's request body, so a plain HTTP report would expose it.
-	if (!url.startsWith("https://")) {
+	const site = env.CONVEX_SITE_URL;
+	let url: URL;
+	try {
+		url = new URL(site);
+	} catch {
 		throw new SshAccessError("bootstrap_url_insecure");
 	}
-	return url;
+	if (url.protocol !== "https:" && !loopbackHosts.has(url.hostname)) {
+		throw new SshAccessError("bootstrap_url_insecure");
+	}
+	return `${site}/ssh/host-keys`;
 }
 
 /** Only an expired bootstrap without a registered host key needs new access. */

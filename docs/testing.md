@@ -15,7 +15,7 @@ Every test asks one authority whether the result is right, and the authority mus
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
 | Hetzner | that the provider really did it | not built; see below |
 
-A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized-keys-agreement.test.ts` does.
+A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.
 
 ## Stand-ins
 
@@ -61,4 +61,10 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 
 ## Hetzner
 
-No test creates Hetzner resources yet. When one does, plain `bun test` must never run it, it must use a separate token and project, and a reply that never arrives is tested against a stand-in, because Hetzner cannot produce one on demand.
+No test reaches Hetzner. A run starts a stand-in on loopback and gives the deployment its address in `HCLOUD_STAND_IN_URL`, with a token that is not a token. Hetzner's own address is built in and no deployment can replace it: the variable accepts only `127.0.0.1` or `[::1]`, so a deployment that sets it by mistake reaches nothing and sends nothing anywhere.
+
+The stand-in answers what Composery asks, and produces what Hetzner cannot be asked for: a reply that never arrives. It never decides whether a test passes, and what it knows about Hetzner is only what real runs have shown.
+
+Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
+
+Hetzner itself is still to be tested, with a separate token and project, and never from plain `bun test`.
