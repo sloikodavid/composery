@@ -14,7 +14,8 @@ export type ClerkUser = Readonly<{
 	id: string;
 	username: string;
 	email: string;
-	imageUrl: string;
+	/** Clerk requires `has_image` and not `image_url`, so an account may carry no picture. */
+	imageUrl?: string;
 }>;
 
 export function toUserReply(user: ClerkUser) {
@@ -29,8 +30,8 @@ export function toUserReply(user: ClerkUser) {
 		username: user.username,
 		first_name: null,
 		last_name: null,
-		image_url: user.imageUrl,
-		has_image: true,
+		...(user.imageUrl === undefined ? {} : { image_url: user.imageUrl }),
+		has_image: user.imageUrl !== undefined,
 		password_enabled: true,
 		two_factor_enabled: false,
 		totp_enabled: false,

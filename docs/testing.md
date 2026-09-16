@@ -69,6 +69,8 @@ Where a system publishes a machine-readable description of itself, `contracts/` 
 
 A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. A waiver must be able to fail, or it is an ignore with a comment: it stops applying when the description at that place changes, it fails the run when its operation runs and the difference no longer appears, and `tests/contracts/<system>.test.ts` carries a reproducer for each one, so a waiver added without proof fails there. One of the first two waivers we wrote turned out to be invented; the stale check deleted it.
 
+A fake hides a defect by being unable to produce a value the description permits. These are the ones known to be unreachable today, and each is a path nothing exercises: a Hetzner list that comes back empty, a server type that is not the one asked for, an image that is deprecated or not `available`, a firewall with no labels or another controller's, an action that is `running` or `error`, a second page of anything, a 429 with `Retry-After`, a Clerk account with `username` null or no primary email, and a `user.deleted` event with no `data.id`. Widening a reply builder so a test can express one of these is worth more than another test of what it can already say.
+
 There is a trap in all of this worth naming: if the same wrong description both shapes the fake and judges our requests, the two agree with each other and neither is right. Only the real system settles that. We have run against real Hetzner; we have not run against real Clerk, so Clerk's contract proves shape and nothing more.
 
 ## Hetzner

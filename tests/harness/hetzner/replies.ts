@@ -20,8 +20,11 @@ const pricePerHour = "0.0082";
 const pricePerMonth = "5.39";
 const finishedProgress = 100;
 
-/** What one address looks like inside a server's public network. */
-export type ReplyAddress = Readonly<{ id: number; ip: string }>;
+/**
+ * What one address looks like inside a server's public network. Hetzner requires `ip` here but
+ * not `id`, so a test can leave the number out.
+ */
+export type ReplyAddress = Readonly<{ id?: number; ip: string }>;
 
 function toPrice(location: string) {
 	return {
@@ -154,7 +157,8 @@ export function toServerReply(
 		/** Null when the server has no address of that kind, as Hetzner reports it. */
 		ipv4: ReplyAddress | null;
 		ipv6: ReplyAddress | null;
-		firewallId: number;
+		/** Null leaves the member out, as Hetzner may for a server with no firewall. */
+		firewallId: number | null;
 		serverType: string;
 		location: string;
 		imageId: number;
@@ -176,7 +180,9 @@ export function toServerReply(
 					? null
 					: { ...fields.ipv6, blocked: false, dns_ptr: [] },
 			floating_ips: [],
-			firewalls: [{ id: fields.firewallId, status: "applied" }],
+			...(fields.firewallId === null
+				? {}
+				: { firewalls: [{ id: fields.firewallId, status: "applied" }] }),
 		},
 		private_net: [],
 		server_type: toServerTypeReply(fields.serverType, [fields.location]),

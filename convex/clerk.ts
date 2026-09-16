@@ -44,7 +44,11 @@ function toUserFields(user: User): UserFields | null {
 		clerkUserId: user.id,
 		username: user.username,
 		email,
-		imageUrl: user.imageUrl,
+		// Clerk does not promise to send an image, and an account without one is a whole account.
+		// Reading it as missing would refuse the account, and on the hourly reconcile one such
+		// account would stop every other account being read.
+		// biome-ignore lint/suspicious/noUnnecessaryConditions: Clerk's own description makes image_url optional, and its client passes the field straight through, so the type says string where undefined can arrive
+		imageUrl: user.imageUrl ?? "",
 	};
 }
 

@@ -350,7 +350,10 @@ function requireOwnedResource(
 	controllerId: string,
 	owned?: { allocationId: string; kind: ResourceKind },
 ) {
-	const labels = requireObject(resource.labels);
+	// Hetzner requires labels on a server and on a Primary IP, but not on a firewall. One that
+	// carries none is a resource that is not ours, which is a verdict, not a reply we cannot read.
+	const labels =
+		resource.labels === undefined ? {} : requireObject(resource.labels);
 	if (
 		labels["controller-id"] !== controllerId ||
 		(owned !== undefined &&
@@ -452,7 +455,11 @@ function toServerAddress(value: unknown) {
 		return null;
 	}
 	const address = requireObject(value);
-	return { id: requireId(address.id), address: requireText(address.ip) };
+	// `id` is not required here, and an address without one cannot be matched to the Primary IP
+	// this allocation recorded, which is the mismatch the worker already handles.
+	return address.id === undefined
+		? null
+		: { id: requireId(address.id), address: requireText(address.ip) };
 }
 
 /** Reads one server as Hetzner describes it. Exported so a test can put its own shapes through. */
@@ -469,8 +476,11 @@ export function toServer(reply: Reply): HetznerCloudServer {
 		ipv6: toServerAddress(publicNet.ipv6),
 		serverType: requireText(requireObject(reply.server_type).name),
 		location: requireText(requireObject(reply.location).name),
-		firewalls: requireList(publicNet.firewalls)
+		// Neither `firewalls` nor the fields of one are required. A server with none is a server
+		// whose firewall was detached, which the worker reports; it is not an unreadable reply.
+		firewalls: requireList(publicNet.firewalls ?? [])
 			.map(requireObject)
+			.filter((firewall) => firewall.id !== undefined)
 			.map((firewall) => ({
 				id: requireId(firewall.id),
 				isApplied: firewall.status === "applied",
@@ -623,7 +633,10 @@ export async function listHetznerCloudResources(
 	const reply = await callHetznerCloud(`${collection}?${query}`);
 	const resources = requireList(reply?.[collection]).map((value) => {
 		const resource = requireObject(value);
-		const labels = requireObject(resource.labels);
+		// Hetzner requires labels on a server and on a Primary IP, but not on a firewall. One that
+		// carries none is a resource that is not ours, which is a verdict, not a reply we cannot read.
+		const labels =
+			resource.labels === undefined ? {} : requireObject(resource.labels);
 		const allocationId = labels["allocation-id"];
 		const kind = labels["resource-kind"];
 		return {
@@ -650,6 +663,23 @@ export async function requireHetznerCloudController(
 	requireOwnedResource(requireObject(reply.firewall), controllerId);
 }
 
+/**
+ * Whether something Hetzner has announced the deprecation of can still be used. Deprecation
+ * carries the day it was announced and the day it stops working, and Hetzner announces months
+ * ahead. Reading the announcement as "gone" would refuse every new server from the day Hetzner
+ * says a word, which is a date it chooses and we would not see coming. Exported so a test can put
+ * Hetzner's own shapes through the decision.
+ */
+export function isUsable(deprecation: unknown) {
+	if (deprecation === null || deprecation === undefined) {
+		return true;
+	}
+	const until = Date.parse(
+		requireText(requireObject(deprecation).unavailable_after),
+	);
+	return Number.isNaN(until) || until > Date.now();
+}
+
 function isSupportedLocation(
 	supported: Reply[],
 	name: string,
@@ -658,7 +688,7 @@ function isSupportedLocation(
 	return supported.some(
 		(location) =>
 			location.name === name &&
-			location.deprecation === null &&
+			isUsable(location.deprecation) &&
 			(!requireCapacity || location.available === true),
 	);
 }
@@ -668,8 +698,15 @@ export async function resolveHetznerCloudSpec(
 	image: string,
 ) {
 	const types = await callHetznerCloud(`server_types?name=${serverType}`);
-	const type = requireObject(requireList(types?.server_types)[0]);
-	if (type.name !== serverType || type.architecture !== architecture) {
+	// A name that matches nothing answers with an empty list, which is Hetzner saying the type is
+	// gone, not Hetzner failing to answer.
+	const type = requireList(types?.server_types)
+		.map(requireObject)
+		.find(
+			(offered) =>
+				offered.name === serverType && offered.architecture === architecture,
+		);
+	if (type === undefined) {
 		throw new HetznerCloudError("server_type_unavailable", {
 			status: httpStatus.preconditionFailed,
 		});
@@ -693,7 +730,7 @@ export async function resolveHetznerCloudSpec(
 				item.name === image &&
 				item.architecture === architecture &&
 				item.status === "available" &&
-				item.deprecation === null,
+				isUsable(item.deprecation),
 		);
 	if (candidate === undefined) {
 		throw new HetznerCloudError("image_unavailable", {

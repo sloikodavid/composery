@@ -25,13 +25,14 @@ beforeAll(async () => {
 	backend = await useConvexBackend();
 }, setupTimeoutMs);
 
-function toAccount() {
+function toAccount(hasPicture = true) {
 	const id = `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 	return {
 		id,
 		username: id.toLowerCase(),
 		email: `${id}@example.com`,
-		imageUrl: "https://example.com/avatar.png",
+		// Clerk leaves the member out for an account with no picture; it does not send an empty one.
+		...(hasPicture ? { imageUrl: "https://example.com/avatar.png" } : {}),
 	};
 }
 
@@ -51,7 +52,7 @@ test(
 						clerkUserId: account.id,
 						username: account.username,
 						email: account.email,
-						imageUrl: account.imageUrl,
+						imageUrl: account.imageUrl ?? "",
 					},
 				],
 			});
@@ -93,6 +94,33 @@ test(
 		// An account only on the second page proves the first page was not the whole answer.
 		expect(await readAccount(last.id)).toMatchObject({ clerkUserId: last.id });
 		for (const account of accounts) {
+			backend.clerk.removeUser(account.id);
+		}
+	},
+	testTimeoutMs,
+);
+
+test(
+	"an account with no picture is stored, and does not stop the rest being read",
+	async () => {
+		const withPicture = toAccount();
+		const withoutPicture = toAccount(false);
+		// Clerk requires `has_image` and not `image_url`. Reading a missing picture as a missing
+		// account would refuse this one, and take every account after it in the same run with it.
+		for (const account of [withoutPicture, withPicture]) {
+			backend.clerk.setUser(account);
+		}
+
+		await backend.runAsAdmin(internal.clerk.reconcile, {});
+
+		expect(await readAccount(withoutPicture.id)).toMatchObject({
+			clerkUserId: withoutPicture.id,
+			imageUrl: "",
+		});
+		expect(await readAccount(withPicture.id)).toMatchObject({
+			clerkUserId: withPicture.id,
+		});
+		for (const account of [withoutPicture, withPicture]) {
 			backend.clerk.removeUser(account.id);
 		}
 	},
