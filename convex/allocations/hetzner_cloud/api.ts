@@ -283,25 +283,25 @@ function isLocalDeployment() {
 }
 
 /**
- * Hetzner's own address, or the stand-in that a test runs. Hetzner's address is built in and no
+ * Hetzner's own address, or the fake that a test runs. Hetzner's address is built in and no
  * deployment can change it. A replacement has to pass two checks that a real deployment cannot:
  * the deployment itself answers only on this machine, and the address is this machine's own. So a
  * variable set by mistake in production changes nothing, and the token never leaves the machine.
  */
 function toApiUrl() {
-	const standIn = env.HCLOUD_STAND_IN_URL;
-	if (!standIn || !isLocalDeployment()) {
+	const fake = env.HCLOUD_FAKE_URL;
+	if (!fake || !isLocalDeployment()) {
 		return `${liveApiOrigin}${apiPrefix}`;
 	}
 	let url: URL;
 	try {
-		url = new URL(standIn);
+		url = new URL(fake);
 	} catch {
-		throw new Error("HCLOUD_STAND_IN_URL is not a URL.");
+		throw new Error("HCLOUD_FAKE_URL is not a URL.");
 	}
 	if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
 		throw new Error(
-			"HCLOUD_STAND_IN_URL must be http on 127.0.0.1 or [::1], because only a test sets it.",
+			"HCLOUD_FAKE_URL must be http on 127.0.0.1 or [::1], because only a test sets it.",
 		);
 	}
 	return `${url.origin}${apiPrefix}`;

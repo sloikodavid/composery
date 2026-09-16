@@ -1,0 +1,3367 @@
+{
+	"source": "https://docs.hetzner.cloud/cloud.spec.json",
+	"paths": {
+		"/servers": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"servers": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer"
+									},
+									"name": {
+										"type": "string"
+									},
+									"status": {
+										"type": "string",
+										"enum": [
+											"running",
+											"initializing",
+											"starting",
+											"stopping",
+											"off",
+											"deleting",
+											"migrating",
+											"rebuilding",
+											"unknown"
+										]
+									},
+									"created": {
+										"type": "string"
+									},
+									"public_net": {
+										"type": "object",
+										"properties": {
+											"ipv4": {
+												"type": ["object", "null"],
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"ip": {
+														"type": "string"
+													},
+													"blocked": {
+														"type": "boolean"
+													},
+													"dns_ptr": {
+														"type": "string"
+													}
+												},
+												"required": ["ip", "blocked", "dns_ptr"]
+											},
+											"ipv6": {
+												"type": ["object", "null"],
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"ip": {
+														"type": "string"
+													},
+													"blocked": {
+														"type": "boolean"
+													},
+													"dns_ptr": {
+														"type": ["array", "null"],
+														"items": {
+															"type": "object",
+															"properties": {
+																"ip": {
+																	"type": "string"
+																},
+																"dns_ptr": {
+																	"type": "string"
+																}
+															},
+															"required": ["ip", "dns_ptr"]
+														}
+													}
+												},
+												"required": ["ip", "blocked", "dns_ptr"]
+											},
+											"floating_ips": {
+												"type": "array",
+												"items": {
+													"type": "integer"
+												}
+											},
+											"firewalls": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"id": {
+															"type": "integer"
+														},
+														"status": {
+															"type": "string",
+															"enum": ["applied", "pending"]
+														}
+													}
+												}
+											}
+										},
+										"required": ["ipv4", "ipv6", "floating_ips"]
+									},
+									"private_net": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"network": {
+													"type": "integer"
+												},
+												"ip": {
+													"type": "string"
+												},
+												"alias_ips": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"mac_address": {
+													"type": "string"
+												}
+											}
+										}
+									},
+									"server_type": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": "string"
+											},
+											"description": {
+												"type": "string"
+											},
+											"cores": {
+												"type": "number"
+											},
+											"memory": {
+												"type": "number"
+											},
+											"disk": {
+												"type": "number"
+											},
+											"deprecated": {
+												"type": "boolean"
+											},
+											"prices": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"location": {
+															"type": "string"
+														},
+														"price_hourly": {
+															"type": "object",
+															"properties": {
+																"net": {
+																	"type": "string"
+																},
+																"gross": {
+																	"type": "string"
+																}
+															},
+															"required": ["net", "gross"]
+														},
+														"price_monthly": {
+															"type": "object",
+															"properties": {
+																"net": {
+																	"type": "string"
+																},
+																"gross": {
+																	"type": "string"
+																}
+															},
+															"required": ["net", "gross"]
+														},
+														"included_traffic": {
+															"type": "integer"
+														},
+														"price_per_tb_traffic": {
+															"type": "object",
+															"properties": {
+																"net": {
+																	"type": "string"
+																},
+																"gross": {
+																	"type": "string"
+																}
+															},
+															"required": ["net", "gross"]
+														}
+													},
+													"required": [
+														"location",
+														"price_hourly",
+														"price_monthly",
+														"included_traffic",
+														"price_per_tb_traffic"
+													]
+												}
+											},
+											"storage_type": {
+												"type": "string",
+												"enum": ["local", "network"]
+											},
+											"cpu_type": {
+												"type": "string",
+												"enum": ["shared", "dedicated"]
+											},
+											"category": {
+												"type": "string"
+											},
+											"architecture": {
+												"type": "string",
+												"enum": ["x86", "arm"]
+											},
+											"deprecation": {
+												"type": ["object", "null"],
+												"properties": {
+													"unavailable_after": {
+														"type": "string"
+													},
+													"announced": {
+														"type": "string"
+													}
+												},
+												"required": ["unavailable_after", "announced"]
+											},
+											"locations": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"id": {
+															"type": "integer"
+														},
+														"name": {
+															"type": "string"
+														},
+														"deprecation": {
+															"type": ["object", "null"],
+															"properties": {
+																"unavailable_after": {
+																	"type": "string"
+																},
+																"announced": {
+																	"type": "string"
+																}
+															},
+															"required": ["unavailable_after", "announced"]
+														},
+														"recommended": {
+															"type": "boolean"
+														},
+														"available": {
+															"type": "boolean"
+														}
+													},
+													"required": [
+														"id",
+														"name",
+														"deprecation",
+														"recommended",
+														"available"
+													]
+												}
+											}
+										},
+										"required": [
+											"id",
+											"name",
+											"description",
+											"cores",
+											"memory",
+											"disk",
+											"deprecated",
+											"prices",
+											"storage_type",
+											"cpu_type",
+											"architecture",
+											"locations"
+										]
+									},
+									"location": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": "string"
+											},
+											"description": {
+												"type": "string"
+											},
+											"country": {
+												"type": "string"
+											},
+											"city": {
+												"type": "string"
+											},
+											"latitude": {
+												"type": "number"
+											},
+											"longitude": {
+												"type": "number"
+											},
+											"network_zone": {
+												"type": "string"
+											}
+										},
+										"required": [
+											"id",
+											"name",
+											"description",
+											"country",
+											"city",
+											"latitude",
+											"longitude",
+											"network_zone"
+										]
+									},
+									"image": {
+										"type": ["object", "null"],
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string",
+												"enum": ["system", "app", "snapshot", "backup"]
+											},
+											"status": {
+												"type": "string",
+												"enum": ["available", "creating", "unavailable"]
+											},
+											"name": {
+												"type": ["string", "null"]
+											},
+											"description": {
+												"type": "string"
+											},
+											"image_size": {
+												"type": ["number", "null"]
+											},
+											"disk_size": {
+												"type": "number"
+											},
+											"created": {
+												"type": "string"
+											},
+											"created_from": {
+												"type": ["object", "null"],
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													}
+												},
+												"required": ["id", "name"]
+											},
+											"bound_to": {
+												"type": ["integer", "null"]
+											},
+											"os_flavor": {
+												"type": "string",
+												"enum": [
+													"ubuntu",
+													"centos",
+													"debian",
+													"fedora",
+													"rocky",
+													"alma",
+													"opensuse",
+													"unknown"
+												]
+											},
+											"os_version": {
+												"type": ["string", "null"]
+											},
+											"rapid_deploy": {
+												"type": "boolean"
+											},
+											"protection": {
+												"type": "object",
+												"properties": {
+													"delete": {
+														"type": "boolean"
+													}
+												},
+												"required": ["delete"]
+											},
+											"deprecated": {
+												"type": ["string", "null"]
+											},
+											"deprecation": {
+												"type": ["object", "null"],
+												"properties": {
+													"unavailable_after": {
+														"type": "string"
+													},
+													"announced": {
+														"type": "string"
+													}
+												},
+												"required": ["unavailable_after", "announced"]
+											},
+											"deleted": {
+												"type": ["string", "null"]
+											},
+											"labels": {
+												"type": "object",
+												"additionalProperties": {
+													"type": "string"
+												}
+											},
+											"architecture": {
+												"type": "string",
+												"enum": ["x86", "arm"]
+											}
+										},
+										"required": [
+											"id",
+											"type",
+											"status",
+											"name",
+											"description",
+											"image_size",
+											"disk_size",
+											"created",
+											"created_from",
+											"bound_to",
+											"os_flavor",
+											"os_version",
+											"protection",
+											"deprecated",
+											"deprecation",
+											"deleted",
+											"labels",
+											"architecture"
+										]
+									},
+									"iso": {
+										"type": ["object", "null"],
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": ["string", "null"]
+											},
+											"description": {
+												"type": "string"
+											},
+											"type": {
+												"type": ["string", "null"],
+												"enum": ["public", "private"]
+											},
+											"deprecation": {
+												"type": ["object", "null"],
+												"properties": {
+													"unavailable_after": {
+														"type": "string"
+													},
+													"announced": {
+														"type": "string"
+													}
+												},
+												"required": ["unavailable_after", "announced"]
+											},
+											"architecture": {
+												"type": ["string", "null"],
+												"enum": ["x86", "arm"]
+											}
+										},
+										"required": [
+											"id",
+											"name",
+											"description",
+											"type",
+											"deprecation",
+											"architecture"
+										]
+									},
+									"rescue_enabled": {
+										"type": "boolean"
+									},
+									"locked": {
+										"type": "boolean"
+									},
+									"backup_window": {
+										"type": ["string", "null"]
+									},
+									"outgoing_traffic": {
+										"type": ["integer", "null"]
+									},
+									"ingoing_traffic": {
+										"type": ["integer", "null"]
+									},
+									"included_traffic": {
+										"type": ["integer", "null"]
+									},
+									"protection": {
+										"type": "object",
+										"properties": {
+											"delete": {
+												"type": "boolean"
+											},
+											"rebuild": {
+												"type": "boolean"
+											}
+										},
+										"required": ["delete", "rebuild"]
+									},
+									"labels": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									},
+									"volumes": {
+										"type": "array",
+										"items": {
+											"type": "integer"
+										}
+									},
+									"load_balancers": {
+										"type": "array",
+										"items": {
+											"type": "integer"
+										}
+									},
+									"primary_disk_size": {
+										"type": "number"
+									},
+									"placement_group": {
+										"type": ["object", "null"],
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": "string"
+											},
+											"labels": {
+												"type": "object",
+												"additionalProperties": {
+													"type": "string"
+												}
+											},
+											"type": {
+												"type": "string",
+												"enum": ["spread"]
+											},
+											"created": {
+												"type": "string"
+											},
+											"servers": {
+												"type": "array",
+												"items": {
+													"type": "integer"
+												}
+											}
+										},
+										"required": [
+											"id",
+											"name",
+											"labels",
+											"type",
+											"created",
+											"servers"
+										]
+									}
+								},
+								"required": [
+									"id",
+									"name",
+									"status",
+									"created",
+									"public_net",
+									"private_net",
+									"server_type",
+									"location",
+									"image",
+									"iso",
+									"rescue_enabled",
+									"locked",
+									"backup_window",
+									"outgoing_traffic",
+									"ingoing_traffic",
+									"included_traffic",
+									"protection",
+									"labels",
+									"primary_disk_size"
+								]
+							}
+						},
+						"meta": {
+							"type": "object",
+							"properties": {
+								"pagination": {
+									"type": "object",
+									"properties": {
+										"page": {
+											"type": "integer"
+										},
+										"per_page": {
+											"type": "integer"
+										},
+										"previous_page": {
+											"type": ["integer", "null"]
+										},
+										"next_page": {
+											"type": ["integer", "null"]
+										},
+										"last_page": {
+											"type": ["integer", "null"]
+										},
+										"total_entries": {
+											"type": ["integer", "null"]
+										}
+									},
+									"required": [
+										"page",
+										"per_page",
+										"previous_page",
+										"next_page",
+										"last_page",
+										"total_entries"
+									]
+								}
+							},
+							"required": ["pagination"]
+						}
+					},
+					"required": ["servers", "meta"]
+				}
+			},
+			"post": {
+				"201": {
+					"type": "object",
+					"properties": {
+						"server": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"name": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": [
+										"running",
+										"initializing",
+										"starting",
+										"stopping",
+										"off",
+										"deleting",
+										"migrating",
+										"rebuilding",
+										"unknown"
+									]
+								},
+								"created": {
+									"type": "string"
+								},
+								"public_net": {
+									"type": "object",
+									"properties": {
+										"ipv4": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"ip": {
+													"type": "string"
+												},
+												"blocked": {
+													"type": "boolean"
+												},
+												"dns_ptr": {
+													"type": "string"
+												}
+											},
+											"required": ["ip", "blocked", "dns_ptr"]
+										},
+										"ipv6": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"ip": {
+													"type": "string"
+												},
+												"blocked": {
+													"type": "boolean"
+												},
+												"dns_ptr": {
+													"type": ["array", "null"],
+													"items": {
+														"type": "object",
+														"properties": {
+															"ip": {
+																"type": "string"
+															},
+															"dns_ptr": {
+																"type": "string"
+															}
+														},
+														"required": ["ip", "dns_ptr"]
+													}
+												}
+											},
+											"required": ["ip", "blocked", "dns_ptr"]
+										},
+										"floating_ips": {
+											"type": "array",
+											"items": {
+												"type": "integer"
+											}
+										},
+										"firewalls": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"status": {
+														"type": "string",
+														"enum": ["applied", "pending"]
+													}
+												}
+											}
+										}
+									},
+									"required": ["ipv4", "ipv6", "floating_ips"]
+								},
+								"private_net": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"network": {
+												"type": "integer"
+											},
+											"ip": {
+												"type": "string"
+											},
+											"alias_ips": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"mac_address": {
+												"type": "string"
+											}
+										}
+									}
+								},
+								"server_type": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"cores": {
+											"type": "number"
+										},
+										"memory": {
+											"type": "number"
+										},
+										"disk": {
+											"type": "number"
+										},
+										"deprecated": {
+											"type": "boolean"
+										},
+										"prices": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"location": {
+														"type": "string"
+													},
+													"price_hourly": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													},
+													"price_monthly": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													},
+													"included_traffic": {
+														"type": "integer"
+													},
+													"price_per_tb_traffic": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													}
+												},
+												"required": [
+													"location",
+													"price_hourly",
+													"price_monthly",
+													"included_traffic",
+													"price_per_tb_traffic"
+												]
+											}
+										},
+										"storage_type": {
+											"type": "string",
+											"enum": ["local", "network"]
+										},
+										"cpu_type": {
+											"type": "string",
+											"enum": ["shared", "dedicated"]
+										},
+										"category": {
+											"type": "string"
+										},
+										"architecture": {
+											"type": "string",
+											"enum": ["x86", "arm"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"locations": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"deprecation": {
+														"type": ["object", "null"],
+														"properties": {
+															"unavailable_after": {
+																"type": "string"
+															},
+															"announced": {
+																"type": "string"
+															}
+														},
+														"required": ["unavailable_after", "announced"]
+													},
+													"recommended": {
+														"type": "boolean"
+													},
+													"available": {
+														"type": "boolean"
+													}
+												},
+												"required": [
+													"id",
+													"name",
+													"deprecation",
+													"recommended",
+													"available"
+												]
+											}
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"cores",
+										"memory",
+										"disk",
+										"deprecated",
+										"prices",
+										"storage_type",
+										"cpu_type",
+										"architecture",
+										"locations"
+									]
+								},
+								"location": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"country": {
+											"type": "string"
+										},
+										"city": {
+											"type": "string"
+										},
+										"latitude": {
+											"type": "number"
+										},
+										"longitude": {
+											"type": "number"
+										},
+										"network_zone": {
+											"type": "string"
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"country",
+										"city",
+										"latitude",
+										"longitude",
+										"network_zone"
+									]
+								},
+								"image": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"type": {
+											"type": "string",
+											"enum": ["system", "app", "snapshot", "backup"]
+										},
+										"status": {
+											"type": "string",
+											"enum": ["available", "creating", "unavailable"]
+										},
+										"name": {
+											"type": ["string", "null"]
+										},
+										"description": {
+											"type": "string"
+										},
+										"image_size": {
+											"type": ["number", "null"]
+										},
+										"disk_size": {
+											"type": "number"
+										},
+										"created": {
+											"type": "string"
+										},
+										"created_from": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"name": {
+													"type": "string"
+												}
+											},
+											"required": ["id", "name"]
+										},
+										"bound_to": {
+											"type": ["integer", "null"]
+										},
+										"os_flavor": {
+											"type": "string",
+											"enum": [
+												"ubuntu",
+												"centos",
+												"debian",
+												"fedora",
+												"rocky",
+												"alma",
+												"opensuse",
+												"unknown"
+											]
+										},
+										"os_version": {
+											"type": ["string", "null"]
+										},
+										"rapid_deploy": {
+											"type": "boolean"
+										},
+										"protection": {
+											"type": "object",
+											"properties": {
+												"delete": {
+													"type": "boolean"
+												}
+											},
+											"required": ["delete"]
+										},
+										"deprecated": {
+											"type": ["string", "null"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"deleted": {
+											"type": ["string", "null"]
+										},
+										"labels": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "string"
+											}
+										},
+										"architecture": {
+											"type": "string",
+											"enum": ["x86", "arm"]
+										}
+									},
+									"required": [
+										"id",
+										"type",
+										"status",
+										"name",
+										"description",
+										"image_size",
+										"disk_size",
+										"created",
+										"created_from",
+										"bound_to",
+										"os_flavor",
+										"os_version",
+										"protection",
+										"deprecated",
+										"deprecation",
+										"deleted",
+										"labels",
+										"architecture"
+									]
+								},
+								"iso": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": ["string", "null"]
+										},
+										"description": {
+											"type": "string"
+										},
+										"type": {
+											"type": ["string", "null"],
+											"enum": ["public", "private"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"architecture": {
+											"type": ["string", "null"],
+											"enum": ["x86", "arm"]
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"type",
+										"deprecation",
+										"architecture"
+									]
+								},
+								"rescue_enabled": {
+									"type": "boolean"
+								},
+								"locked": {
+									"type": "boolean"
+								},
+								"backup_window": {
+									"type": ["string", "null"]
+								},
+								"outgoing_traffic": {
+									"type": ["integer", "null"]
+								},
+								"ingoing_traffic": {
+									"type": ["integer", "null"]
+								},
+								"included_traffic": {
+									"type": ["integer", "null"]
+								},
+								"protection": {
+									"type": "object",
+									"properties": {
+										"delete": {
+											"type": "boolean"
+										},
+										"rebuild": {
+											"type": "boolean"
+										}
+									},
+									"required": ["delete", "rebuild"]
+								},
+								"labels": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								},
+								"volumes": {
+									"type": "array",
+									"items": {
+										"type": "integer"
+									}
+								},
+								"load_balancers": {
+									"type": "array",
+									"items": {
+										"type": "integer"
+									}
+								},
+								"primary_disk_size": {
+									"type": "number"
+								},
+								"placement_group": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"labels": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "string"
+											}
+										},
+										"type": {
+											"type": "string",
+											"enum": ["spread"]
+										},
+										"created": {
+											"type": "string"
+										},
+										"servers": {
+											"type": "array",
+											"items": {
+												"type": "integer"
+											}
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"labels",
+										"type",
+										"created",
+										"servers"
+									]
+								}
+							},
+							"required": [
+								"id",
+								"name",
+								"status",
+								"created",
+								"public_net",
+								"private_net",
+								"server_type",
+								"location",
+								"image",
+								"iso",
+								"rescue_enabled",
+								"locked",
+								"backup_window",
+								"outgoing_traffic",
+								"ingoing_traffic",
+								"included_traffic",
+								"protection",
+								"labels",
+								"primary_disk_size"
+							]
+						},
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						},
+						"next_actions": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer"
+									},
+									"command": {
+										"type": "string"
+									},
+									"status": {
+										"type": "string",
+										"enum": ["running", "success", "error"]
+									},
+									"started": {
+										"type": "string"
+									},
+									"finished": {
+										"type": ["string", "null"]
+									},
+									"progress": {
+										"type": "integer"
+									},
+									"resources": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"type": {
+													"type": "string"
+												}
+											},
+											"required": ["id", "type"]
+										}
+									},
+									"error": {
+										"type": ["object", "null"],
+										"properties": {
+											"code": {
+												"type": "string"
+											},
+											"message": {
+												"type": "string"
+											}
+										},
+										"required": ["code", "message"]
+									}
+								},
+								"required": [
+									"id",
+									"command",
+									"status",
+									"progress",
+									"started",
+									"finished",
+									"resources",
+									"error"
+								]
+							}
+						},
+						"root_password": {
+							"type": ["string", "null"]
+						}
+					},
+					"required": ["server", "action", "next_actions", "root_password"]
+				}
+			}
+		},
+		"/servers/{id}": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"server": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"name": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": [
+										"running",
+										"initializing",
+										"starting",
+										"stopping",
+										"off",
+										"deleting",
+										"migrating",
+										"rebuilding",
+										"unknown"
+									]
+								},
+								"created": {
+									"type": "string"
+								},
+								"public_net": {
+									"type": "object",
+									"properties": {
+										"ipv4": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"ip": {
+													"type": "string"
+												},
+												"blocked": {
+													"type": "boolean"
+												},
+												"dns_ptr": {
+													"type": "string"
+												}
+											},
+											"required": ["ip", "blocked", "dns_ptr"]
+										},
+										"ipv6": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"ip": {
+													"type": "string"
+												},
+												"blocked": {
+													"type": "boolean"
+												},
+												"dns_ptr": {
+													"type": ["array", "null"],
+													"items": {
+														"type": "object",
+														"properties": {
+															"ip": {
+																"type": "string"
+															},
+															"dns_ptr": {
+																"type": "string"
+															}
+														},
+														"required": ["ip", "dns_ptr"]
+													}
+												}
+											},
+											"required": ["ip", "blocked", "dns_ptr"]
+										},
+										"floating_ips": {
+											"type": "array",
+											"items": {
+												"type": "integer"
+											}
+										},
+										"firewalls": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"status": {
+														"type": "string",
+														"enum": ["applied", "pending"]
+													}
+												}
+											}
+										}
+									},
+									"required": ["ipv4", "ipv6", "floating_ips"]
+								},
+								"private_net": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"network": {
+												"type": "integer"
+											},
+											"ip": {
+												"type": "string"
+											},
+											"alias_ips": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"mac_address": {
+												"type": "string"
+											}
+										}
+									}
+								},
+								"server_type": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"cores": {
+											"type": "number"
+										},
+										"memory": {
+											"type": "number"
+										},
+										"disk": {
+											"type": "number"
+										},
+										"deprecated": {
+											"type": "boolean"
+										},
+										"prices": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"location": {
+														"type": "string"
+													},
+													"price_hourly": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													},
+													"price_monthly": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													},
+													"included_traffic": {
+														"type": "integer"
+													},
+													"price_per_tb_traffic": {
+														"type": "object",
+														"properties": {
+															"net": {
+																"type": "string"
+															},
+															"gross": {
+																"type": "string"
+															}
+														},
+														"required": ["net", "gross"]
+													}
+												},
+												"required": [
+													"location",
+													"price_hourly",
+													"price_monthly",
+													"included_traffic",
+													"price_per_tb_traffic"
+												]
+											}
+										},
+										"storage_type": {
+											"type": "string",
+											"enum": ["local", "network"]
+										},
+										"cpu_type": {
+											"type": "string",
+											"enum": ["shared", "dedicated"]
+										},
+										"category": {
+											"type": "string"
+										},
+										"architecture": {
+											"type": "string",
+											"enum": ["x86", "arm"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"locations": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer"
+													},
+													"name": {
+														"type": "string"
+													},
+													"deprecation": {
+														"type": ["object", "null"],
+														"properties": {
+															"unavailable_after": {
+																"type": "string"
+															},
+															"announced": {
+																"type": "string"
+															}
+														},
+														"required": ["unavailable_after", "announced"]
+													},
+													"recommended": {
+														"type": "boolean"
+													},
+													"available": {
+														"type": "boolean"
+													}
+												},
+												"required": [
+													"id",
+													"name",
+													"deprecation",
+													"recommended",
+													"available"
+												]
+											}
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"cores",
+										"memory",
+										"disk",
+										"deprecated",
+										"prices",
+										"storage_type",
+										"cpu_type",
+										"architecture",
+										"locations"
+									]
+								},
+								"location": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"country": {
+											"type": "string"
+										},
+										"city": {
+											"type": "string"
+										},
+										"latitude": {
+											"type": "number"
+										},
+										"longitude": {
+											"type": "number"
+										},
+										"network_zone": {
+											"type": "string"
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"country",
+										"city",
+										"latitude",
+										"longitude",
+										"network_zone"
+									]
+								},
+								"image": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"type": {
+											"type": "string",
+											"enum": ["system", "app", "snapshot", "backup"]
+										},
+										"status": {
+											"type": "string",
+											"enum": ["available", "creating", "unavailable"]
+										},
+										"name": {
+											"type": ["string", "null"]
+										},
+										"description": {
+											"type": "string"
+										},
+										"image_size": {
+											"type": ["number", "null"]
+										},
+										"disk_size": {
+											"type": "number"
+										},
+										"created": {
+											"type": "string"
+										},
+										"created_from": {
+											"type": ["object", "null"],
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"name": {
+													"type": "string"
+												}
+											},
+											"required": ["id", "name"]
+										},
+										"bound_to": {
+											"type": ["integer", "null"]
+										},
+										"os_flavor": {
+											"type": "string",
+											"enum": [
+												"ubuntu",
+												"centos",
+												"debian",
+												"fedora",
+												"rocky",
+												"alma",
+												"opensuse",
+												"unknown"
+											]
+										},
+										"os_version": {
+											"type": ["string", "null"]
+										},
+										"rapid_deploy": {
+											"type": "boolean"
+										},
+										"protection": {
+											"type": "object",
+											"properties": {
+												"delete": {
+													"type": "boolean"
+												}
+											},
+											"required": ["delete"]
+										},
+										"deprecated": {
+											"type": ["string", "null"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"deleted": {
+											"type": ["string", "null"]
+										},
+										"labels": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "string"
+											}
+										},
+										"architecture": {
+											"type": "string",
+											"enum": ["x86", "arm"]
+										}
+									},
+									"required": [
+										"id",
+										"type",
+										"status",
+										"name",
+										"description",
+										"image_size",
+										"disk_size",
+										"created",
+										"created_from",
+										"bound_to",
+										"os_flavor",
+										"os_version",
+										"protection",
+										"deprecated",
+										"deprecation",
+										"deleted",
+										"labels",
+										"architecture"
+									]
+								},
+								"iso": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": ["string", "null"]
+										},
+										"description": {
+											"type": "string"
+										},
+										"type": {
+											"type": ["string", "null"],
+											"enum": ["public", "private"]
+										},
+										"deprecation": {
+											"type": ["object", "null"],
+											"properties": {
+												"unavailable_after": {
+													"type": "string"
+												},
+												"announced": {
+													"type": "string"
+												}
+											},
+											"required": ["unavailable_after", "announced"]
+										},
+										"architecture": {
+											"type": ["string", "null"],
+											"enum": ["x86", "arm"]
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"type",
+										"deprecation",
+										"architecture"
+									]
+								},
+								"rescue_enabled": {
+									"type": "boolean"
+								},
+								"locked": {
+									"type": "boolean"
+								},
+								"backup_window": {
+									"type": ["string", "null"]
+								},
+								"outgoing_traffic": {
+									"type": ["integer", "null"]
+								},
+								"ingoing_traffic": {
+									"type": ["integer", "null"]
+								},
+								"included_traffic": {
+									"type": ["integer", "null"]
+								},
+								"protection": {
+									"type": "object",
+									"properties": {
+										"delete": {
+											"type": "boolean"
+										},
+										"rebuild": {
+											"type": "boolean"
+										}
+									},
+									"required": ["delete", "rebuild"]
+								},
+								"labels": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								},
+								"volumes": {
+									"type": "array",
+									"items": {
+										"type": "integer"
+									}
+								},
+								"load_balancers": {
+									"type": "array",
+									"items": {
+										"type": "integer"
+									}
+								},
+								"primary_disk_size": {
+									"type": "number"
+								},
+								"placement_group": {
+									"type": ["object", "null"],
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"labels": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "string"
+											}
+										},
+										"type": {
+											"type": "string",
+											"enum": ["spread"]
+										},
+										"created": {
+											"type": "string"
+										},
+										"servers": {
+											"type": "array",
+											"items": {
+												"type": "integer"
+											}
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"labels",
+										"type",
+										"created",
+										"servers"
+									]
+								}
+							},
+							"required": [
+								"id",
+								"name",
+								"status",
+								"created",
+								"public_net",
+								"private_net",
+								"server_type",
+								"location",
+								"image",
+								"iso",
+								"rescue_enabled",
+								"locked",
+								"backup_window",
+								"outgoing_traffic",
+								"ingoing_traffic",
+								"included_traffic",
+								"protection",
+								"labels",
+								"primary_disk_size"
+							]
+						}
+					}
+				}
+			},
+			"delete": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					}
+				}
+			}
+		},
+		"/servers/{id}/actions/poweron": {
+			"post": {
+				"201": {
+					"type": "object",
+					"properties": {
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					},
+					"required": ["action"]
+				}
+			}
+		},
+		"/servers/{id}/actions/shutdown": {
+			"post": {
+				"201": {
+					"type": "object",
+					"properties": {
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					},
+					"required": ["action"]
+				}
+			}
+		},
+		"/servers/{id}/actions/poweroff": {
+			"post": {
+				"201": {
+					"type": "object",
+					"properties": {
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					},
+					"required": ["action"]
+				}
+			}
+		},
+		"/primary_ips": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"primary_ips": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer"
+									},
+									"name": {
+										"type": "string"
+									},
+									"labels": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									},
+									"created": {
+										"type": "string"
+									},
+									"blocked": {
+										"type": "boolean"
+									},
+									"location": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": "string"
+											},
+											"description": {
+												"type": "string"
+											},
+											"country": {
+												"type": "string"
+											},
+											"city": {
+												"type": "string"
+											},
+											"latitude": {
+												"type": "number"
+											},
+											"longitude": {
+												"type": "number"
+											},
+											"network_zone": {
+												"type": "string"
+											}
+										},
+										"required": [
+											"id",
+											"name",
+											"description",
+											"country",
+											"city",
+											"latitude",
+											"longitude",
+											"network_zone"
+										]
+									},
+									"ip": {
+										"type": "string"
+									},
+									"dns_ptr": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"ip": {
+													"type": "string"
+												},
+												"dns_ptr": {
+													"type": "string"
+												}
+											},
+											"required": ["ip", "dns_ptr"]
+										}
+									},
+									"protection": {
+										"type": "object",
+										"properties": {
+											"delete": {
+												"type": "boolean"
+											}
+										},
+										"required": ["delete"]
+									},
+									"type": {
+										"type": "string",
+										"enum": ["ipv4", "ipv6"]
+									},
+									"auto_delete": {
+										"type": "boolean"
+									},
+									"assignee_type": {
+										"type": "string",
+										"enum": ["server"]
+									},
+									"assignee_id": {
+										"type": ["integer", "null"]
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"id",
+									"name",
+									"labels",
+									"created",
+									"blocked",
+									"location",
+									"ip",
+									"dns_ptr",
+									"protection",
+									"type",
+									"auto_delete",
+									"assignee_type",
+									"assignee_id"
+								]
+							}
+						},
+						"meta": {
+							"type": "object",
+							"properties": {
+								"pagination": {
+									"type": "object",
+									"properties": {
+										"page": {
+											"type": "integer"
+										},
+										"per_page": {
+											"type": "integer"
+										},
+										"previous_page": {
+											"type": ["integer", "null"]
+										},
+										"next_page": {
+											"type": ["integer", "null"]
+										},
+										"last_page": {
+											"type": ["integer", "null"]
+										},
+										"total_entries": {
+											"type": ["integer", "null"]
+										}
+									},
+									"required": [
+										"page",
+										"per_page",
+										"previous_page",
+										"next_page",
+										"last_page",
+										"total_entries"
+									]
+								}
+							},
+							"required": ["pagination"]
+						}
+					},
+					"additionalProperties": false,
+					"required": ["primary_ips", "meta"]
+				}
+			},
+			"post": {
+				"201": {
+					"type": "object",
+					"properties": {
+						"primary_ip": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"name": {
+									"type": "string"
+								},
+								"labels": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								},
+								"created": {
+									"type": "string"
+								},
+								"blocked": {
+									"type": "boolean"
+								},
+								"location": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"country": {
+											"type": "string"
+										},
+										"city": {
+											"type": "string"
+										},
+										"latitude": {
+											"type": "number"
+										},
+										"longitude": {
+											"type": "number"
+										},
+										"network_zone": {
+											"type": "string"
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"country",
+										"city",
+										"latitude",
+										"longitude",
+										"network_zone"
+									]
+								},
+								"ip": {
+									"type": "string"
+								},
+								"dns_ptr": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"ip": {
+												"type": "string"
+											},
+											"dns_ptr": {
+												"type": "string"
+											}
+										},
+										"required": ["ip", "dns_ptr"]
+									}
+								},
+								"protection": {
+									"type": "object",
+									"properties": {
+										"delete": {
+											"type": "boolean"
+										}
+									},
+									"required": ["delete"]
+								},
+								"type": {
+									"type": "string",
+									"enum": ["ipv4", "ipv6"]
+								},
+								"auto_delete": {
+									"type": "boolean"
+								},
+								"assignee_type": {
+									"type": "string",
+									"enum": ["server"]
+								},
+								"assignee_id": {
+									"type": ["integer", "null"]
+								}
+							},
+							"additionalProperties": false,
+							"required": [
+								"id",
+								"name",
+								"labels",
+								"created",
+								"blocked",
+								"location",
+								"ip",
+								"dns_ptr",
+								"protection",
+								"type",
+								"auto_delete",
+								"assignee_type",
+								"assignee_id"
+							]
+						},
+						"action": {
+							"type": ["object", "null"],
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					},
+					"additionalProperties": false,
+					"required": ["primary_ip"]
+				}
+			}
+		},
+		"/primary_ips/{id}": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"primary_ip": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"name": {
+									"type": "string"
+								},
+								"labels": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								},
+								"created": {
+									"type": "string"
+								},
+								"blocked": {
+									"type": "boolean"
+								},
+								"location": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer"
+										},
+										"name": {
+											"type": "string"
+										},
+										"description": {
+											"type": "string"
+										},
+										"country": {
+											"type": "string"
+										},
+										"city": {
+											"type": "string"
+										},
+										"latitude": {
+											"type": "number"
+										},
+										"longitude": {
+											"type": "number"
+										},
+										"network_zone": {
+											"type": "string"
+										}
+									},
+									"required": [
+										"id",
+										"name",
+										"description",
+										"country",
+										"city",
+										"latitude",
+										"longitude",
+										"network_zone"
+									]
+								},
+								"ip": {
+									"type": "string"
+								},
+								"dns_ptr": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"ip": {
+												"type": "string"
+											},
+											"dns_ptr": {
+												"type": "string"
+											}
+										},
+										"required": ["ip", "dns_ptr"]
+									}
+								},
+								"protection": {
+									"type": "object",
+									"properties": {
+										"delete": {
+											"type": "boolean"
+										}
+									},
+									"required": ["delete"]
+								},
+								"type": {
+									"type": "string",
+									"enum": ["ipv4", "ipv6"]
+								},
+								"auto_delete": {
+									"type": "boolean"
+								},
+								"assignee_type": {
+									"type": "string",
+									"enum": ["server"]
+								},
+								"assignee_id": {
+									"type": ["integer", "null"]
+								}
+							},
+							"additionalProperties": false,
+							"required": [
+								"id",
+								"name",
+								"labels",
+								"created",
+								"blocked",
+								"location",
+								"ip",
+								"dns_ptr",
+								"protection",
+								"type",
+								"auto_delete",
+								"assignee_type",
+								"assignee_id"
+							]
+						}
+					},
+					"additionalProperties": false,
+					"required": ["primary_ip"]
+				}
+			},
+			"delete": {
+				"204": {}
+			}
+		},
+		"/actions/{id}": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"action": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"command": {
+									"type": "string"
+								},
+								"status": {
+									"type": "string",
+									"enum": ["running", "success", "error"]
+								},
+								"started": {
+									"type": "string"
+								},
+								"finished": {
+									"type": ["string", "null"]
+								},
+								"progress": {
+									"type": "integer"
+								},
+								"resources": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"type": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "type"]
+									}
+								},
+								"error": {
+									"type": ["object", "null"],
+									"properties": {
+										"code": {
+											"type": "string"
+										},
+										"message": {
+											"type": "string"
+										}
+									},
+									"required": ["code", "message"]
+								}
+							},
+							"required": [
+								"id",
+								"command",
+								"status",
+								"progress",
+								"started",
+								"finished",
+								"resources",
+								"error"
+							]
+						}
+					},
+					"required": ["action"]
+				}
+			}
+		},
+		"/firewalls/{id}": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"firewall": {
+							"type": "object",
+							"properties": {
+								"id": {
+									"type": "integer"
+								},
+								"name": {
+									"type": "string"
+								},
+								"labels": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "string"
+									}
+								},
+								"created": {
+									"type": "string"
+								},
+								"rules": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"description": {
+												"type": ["string", "null"]
+											},
+											"direction": {
+												"type": "string",
+												"enum": ["in", "out"]
+											},
+											"source_ips": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"destination_ips": {
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											},
+											"protocol": {
+												"type": "string",
+												"enum": ["tcp", "udp", "icmp", "esp", "gre"]
+											},
+											"port": {
+												"type": ["string", "null"]
+											}
+										},
+										"additionalProperties": false,
+										"required": [
+											"direction",
+											"protocol",
+											"destination_ips",
+											"source_ips",
+											"port"
+										]
+									}
+								},
+								"applied_to": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"type": {
+												"type": "string",
+												"enum": ["server", "label_selector"]
+											},
+											"server": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer"
+													}
+												},
+												"additionalProperties": false,
+												"required": ["id"]
+											},
+											"label_selector": {
+												"type": "object",
+												"properties": {
+													"selector": {
+														"type": "string"
+													}
+												},
+												"additionalProperties": false,
+												"required": ["selector"]
+											},
+											"applied_to_resources": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"type": {
+															"type": "string",
+															"enum": ["server"]
+														},
+														"server": {
+															"type": "object",
+															"properties": {
+																"id": {
+																	"type": "integer"
+																}
+															},
+															"additionalProperties": false,
+															"required": ["id"]
+														}
+													},
+													"additionalProperties": false
+												}
+											}
+										},
+										"additionalProperties": false,
+										"required": ["type"]
+									}
+								}
+							},
+							"additionalProperties": false,
+							"required": ["id", "name", "created", "rules", "applied_to"]
+						}
+					},
+					"additionalProperties": false,
+					"required": ["firewall"]
+				}
+			}
+		},
+		"/server_types": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"server_types": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer"
+									},
+									"name": {
+										"type": "string"
+									},
+									"description": {
+										"type": "string"
+									},
+									"cores": {
+										"type": "number"
+									},
+									"memory": {
+										"type": "number"
+									},
+									"disk": {
+										"type": "number"
+									},
+									"deprecated": {
+										"type": "boolean"
+									},
+									"prices": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"location": {
+													"type": "string"
+												},
+												"price_hourly": {
+													"type": "object",
+													"properties": {
+														"net": {
+															"type": "string"
+														},
+														"gross": {
+															"type": "string"
+														}
+													},
+													"required": ["net", "gross"]
+												},
+												"price_monthly": {
+													"type": "object",
+													"properties": {
+														"net": {
+															"type": "string"
+														},
+														"gross": {
+															"type": "string"
+														}
+													},
+													"required": ["net", "gross"]
+												},
+												"included_traffic": {
+													"type": "integer"
+												},
+												"price_per_tb_traffic": {
+													"type": "object",
+													"properties": {
+														"net": {
+															"type": "string"
+														},
+														"gross": {
+															"type": "string"
+														}
+													},
+													"required": ["net", "gross"]
+												}
+											},
+											"required": [
+												"location",
+												"price_hourly",
+												"price_monthly",
+												"included_traffic",
+												"price_per_tb_traffic"
+											]
+										}
+									},
+									"storage_type": {
+										"type": "string",
+										"enum": ["local", "network"]
+									},
+									"cpu_type": {
+										"type": "string",
+										"enum": ["shared", "dedicated"]
+									},
+									"category": {
+										"type": "string"
+									},
+									"architecture": {
+										"type": "string",
+										"enum": ["x86", "arm"]
+									},
+									"deprecation": {
+										"type": ["object", "null"],
+										"properties": {
+											"unavailable_after": {
+												"type": "string"
+											},
+											"announced": {
+												"type": "string"
+											}
+										},
+										"required": ["unavailable_after", "announced"]
+									},
+									"locations": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"id": {
+													"type": "integer"
+												},
+												"name": {
+													"type": "string"
+												},
+												"deprecation": {
+													"type": ["object", "null"],
+													"properties": {
+														"unavailable_after": {
+															"type": "string"
+														},
+														"announced": {
+															"type": "string"
+														}
+													},
+													"required": ["unavailable_after", "announced"]
+												},
+												"recommended": {
+													"type": "boolean"
+												},
+												"available": {
+													"type": "boolean"
+												}
+											},
+											"required": [
+												"id",
+												"name",
+												"deprecation",
+												"recommended",
+												"available"
+											]
+										}
+									}
+								},
+								"required": [
+									"id",
+									"name",
+									"description",
+									"cores",
+									"memory",
+									"disk",
+									"deprecated",
+									"prices",
+									"storage_type",
+									"cpu_type",
+									"architecture",
+									"locations"
+								]
+							}
+						},
+						"meta": {
+							"type": "object",
+							"properties": {
+								"pagination": {
+									"type": "object",
+									"properties": {
+										"page": {
+											"type": "integer"
+										},
+										"per_page": {
+											"type": "integer"
+										},
+										"previous_page": {
+											"type": ["integer", "null"]
+										},
+										"next_page": {
+											"type": ["integer", "null"]
+										},
+										"last_page": {
+											"type": ["integer", "null"]
+										},
+										"total_entries": {
+											"type": ["integer", "null"]
+										}
+									},
+									"required": [
+										"page",
+										"per_page",
+										"previous_page",
+										"next_page",
+										"last_page",
+										"total_entries"
+									]
+								}
+							},
+							"required": ["pagination"]
+						}
+					},
+					"required": ["server_types", "meta"]
+				}
+			}
+		},
+		"/images": {
+			"get": {
+				"200": {
+					"type": "object",
+					"properties": {
+						"images": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer"
+									},
+									"type": {
+										"type": "string",
+										"enum": ["system", "app", "snapshot", "backup"]
+									},
+									"status": {
+										"type": "string",
+										"enum": ["available", "creating", "unavailable"]
+									},
+									"name": {
+										"type": ["string", "null"]
+									},
+									"description": {
+										"type": "string"
+									},
+									"image_size": {
+										"type": ["number", "null"]
+									},
+									"disk_size": {
+										"type": "number"
+									},
+									"created": {
+										"type": "string"
+									},
+									"created_from": {
+										"type": ["object", "null"],
+										"properties": {
+											"id": {
+												"type": "integer"
+											},
+											"name": {
+												"type": "string"
+											}
+										},
+										"required": ["id", "name"]
+									},
+									"bound_to": {
+										"type": ["integer", "null"]
+									},
+									"os_flavor": {
+										"type": "string",
+										"enum": [
+											"ubuntu",
+											"centos",
+											"debian",
+											"fedora",
+											"rocky",
+											"alma",
+											"opensuse",
+											"unknown"
+										]
+									},
+									"os_version": {
+										"type": ["string", "null"]
+									},
+									"rapid_deploy": {
+										"type": "boolean"
+									},
+									"protection": {
+										"type": "object",
+										"properties": {
+											"delete": {
+												"type": "boolean"
+											}
+										},
+										"required": ["delete"]
+									},
+									"deprecated": {
+										"type": ["string", "null"]
+									},
+									"deprecation": {
+										"type": ["object", "null"],
+										"properties": {
+											"unavailable_after": {
+												"type": "string"
+											},
+											"announced": {
+												"type": "string"
+											}
+										},
+										"required": ["unavailable_after", "announced"]
+									},
+									"deleted": {
+										"type": ["string", "null"]
+									},
+									"labels": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									},
+									"architecture": {
+										"type": "string",
+										"enum": ["x86", "arm"]
+									}
+								},
+								"required": [
+									"id",
+									"type",
+									"status",
+									"name",
+									"description",
+									"image_size",
+									"disk_size",
+									"created",
+									"created_from",
+									"bound_to",
+									"os_flavor",
+									"os_version",
+									"protection",
+									"deprecated",
+									"deprecation",
+									"deleted",
+									"labels",
+									"architecture"
+								]
+							}
+						},
+						"meta": {
+							"type": "object",
+							"properties": {
+								"pagination": {
+									"type": "object",
+									"properties": {
+										"page": {
+											"type": "integer"
+										},
+										"per_page": {
+											"type": "integer"
+										},
+										"previous_page": {
+											"type": ["integer", "null"]
+										},
+										"next_page": {
+											"type": ["integer", "null"]
+										},
+										"last_page": {
+											"type": ["integer", "null"]
+										},
+										"total_entries": {
+											"type": ["integer", "null"]
+										}
+									},
+									"required": [
+										"page",
+										"per_page",
+										"previous_page",
+										"next_page",
+										"last_page",
+										"total_entries"
+									]
+								}
+							},
+							"required": ["pagination"]
+						}
+					},
+					"required": ["images", "meta"]
+				}
+			}
+		}
+	}
+}

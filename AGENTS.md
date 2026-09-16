@@ -46,9 +46,11 @@ Convex agent skills for common tasks can be installed by running
 
 - "When behavior depends on a kind, handle every kind explicitly, with a `switch` over every kind or a `Record` keyed by the kind, so that a new kind fails to compile until every place handles it."
 
+- "A setting that exists only so that tests can replace something must be unusable anywhere else. Its absence must be the working default, and its presence must take effect only when a condition that production cannot satisfy also holds, such as the deployment answering on this machine alone. Set by mistake in production, it must change nothing."
+
 - "A permission, a label, or a limit must not suggest a protection that the underlying system does not enforce. Where a boundary cannot be enforced, what is actually true must be stated instead of implying more. When one authority contains another, it must be modelled as an ordered level, never as separate flags with dependencies between them."
 
-- "State that belongs to an external system must be discovered from that system, not assumed from defaults, from documentation, or from memory. When something a feature depends on is missing, the feature must report which part is unavailable and must keep working where it still can."
+- "State that belongs to an external system must be discovered from that system, not assumed from defaults, from documentation, or from memory. Where that system publishes a machine-readable description of itself, such as an API specification, that description is the authority, and the code that speaks to the system must be checked against it. When something a feature depends on is missing, the feature must report which part is unavailable and must keep working where it still can."
 
 - "A thing that several places need must be stated once, in its own place, and each place must name it. It must never be left inside one of the places that need it, where the others get it by accident: a requirement of the repository does not belong to the one file that first needed it, and knowledge two features share does not belong to whichever feature was written first. When one place is found to depend on another only because of where something happens to live, the shared thing must be moved out and named."
 
@@ -95,6 +97,8 @@ Convex agent skills for common tasks can be installed by running
 - Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
 
 - Write, name, and place tests as `docs/testing.md` describes.
+
+- For iterating before the final full verification, running `bun test --changed` might be faster.
 
 - Every public Convex function is public API. Check `docs/api.md`, ensuring you build with authorization, error codes, repeatable requests, pagination, and compatible changes in mind.
 

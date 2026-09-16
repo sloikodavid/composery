@@ -31,7 +31,7 @@ import {
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
 import { isProcessAlive, registerCleanup } from "./cleanup";
-import { type HetznerStandIn, useHetznerStandIn } from "./hetzner";
+import { type HetznerFake, useHetznerFake } from "./hetzner";
 import { convexBackendAssets, convexBackendVersion } from "./pins";
 import { type SignInIssuer, startSignInIssuer } from "./sign-in";
 
@@ -63,10 +63,10 @@ const lineBreakPattern = /\r?\n/;
 const executableMode = 0o755;
 const templateKeyLength = 16;
 const encryptionKeyBytes = 32;
-// The stand-in answers for these, and they are not Hetzner's.
-const standInControllerId = "composery-test";
-const standInFirewallId = 77;
-const standInLocations = "nbg1,fsn1,hel1";
+// The fake answers for these, and they are not Hetzner's.
+const fakeControllerId = "composery-test";
+const fakeFirewallId = 77;
+const fakeLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
 const usesProcessGroups = process.platform !== "win32";
 
@@ -410,20 +410,20 @@ async function setEnvironmentVariables(
 
 /**
  * What the deployment reads, all of it made up here: sign-in answers to this run's issuer, and
- * Hetzner is this run's stand-in on loopback. No value of yours can reach a test.
+ * Hetzner is this run's fake on loopback. No value of yours can reach a test.
  */
-function toDeploymentVariables(issuer: SignInIssuer, standIn: HetznerStandIn) {
+function toDeploymentVariables(issuer: SignInIssuer, fake: HetznerFake) {
 	return {
 		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 		CLERK_FRONTEND_API_URL: issuer.url,
 		CLERK_SECRET_KEY: "sk_test_composery_tests_never_reach_clerk",
 		CLERK_WEBHOOK_SIGNING_SECRET: `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
-		HCLOUD_LOCATIONS: standInLocations,
-		HCLOUD_FIREWALL_ID: String(standInFirewallId),
-		HCLOUD_CONTROLLER_ID: standInControllerId,
+		HCLOUD_LOCATIONS: fakeLocations,
+		HCLOUD_FIREWALL_ID: String(fakeFirewallId),
+		HCLOUD_CONTROLLER_ID: fakeControllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
-		HCLOUD_STAND_IN_URL: standIn.url,
+		HCLOUD_FAKE_URL: fake.url,
 		SSH_ACCESS_ENCRYPTION_KEY:
 			randomBytes(encryptionKeyBytes).toString("base64"),
 		// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
@@ -545,13 +545,13 @@ async function requireStorageTemplate(context: RunContext) {
 	const building = path.join(context.folder, "template");
 	const issuer = startSignInIssuer();
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
-	const standIn = await useHetznerStandIn();
+	const fake = await useHetznerFake();
 	const backend = await startBackend(context, building);
 	try {
 		await setEnvironmentVariables(
 			context,
 			backend,
-			toDeploymentVariables(issuer, standIn),
+			toDeploymentVariables(issuer, fake),
 		);
 		await pushFunctions(context, backend, "template-workspace");
 	} finally {
@@ -635,13 +635,13 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const issuer = startSignInIssuer();
 	registerCleanup(issuer.stop);
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
-	const standIn = await useHetznerStandIn();
+	const fake = await useHetznerFake();
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
 	await setEnvironmentVariables(
 		context,
 		backend,
-		toDeploymentVariables(issuer, standIn),
+		toDeploymentVariables(issuer, fake),
 	);
 	await pushFunctions(context, backend, "workspace");
 

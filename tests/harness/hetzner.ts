@@ -4,9 +4,19 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { registerCleanup } from "./cleanup";
+import { checkHetznerReply } from "./hetzner-contract";
+import {
+	toActionReply,
+	toFirewallReply,
+	toImageReply,
+	toPaginationReply,
+	toPrimaryIpReply,
+	toServerReply,
+	toServerTypeReply,
+} from "./hetzner-replies";
 
 /**
- * A stand-in for Hetzner: it answers the requests Composery sends, and it can produce the
+ * A fake for Hetzner: it answers the requests Composery sends, and it can produce the
  * outcomes Hetzner cannot be asked for, such as a reply that never arrives. It never decides
  * whether a test passes. What it knows about Hetzner is only what Composery reads: the fields
  * below, and the shapes that real runs have shown.
@@ -39,11 +49,13 @@ export type HetznerOutcome =
 	| "lose"
 	| Readonly<{ status: number; code: string }>;
 
-export type HetznerStandIn = Readonly<{
+export type HetznerFake = Readonly<{
 	/** The loopback address to give `HCLOUD_STAND_IN_URL`. */
 	url: string;
 	/** Every request in order, oldest first. */
 	requests: () => readonly HetznerRequest[];
+	/** Every way a reply differed from Hetzner's own description of it. */
+	problems: () => readonly string[];
 	countRequests: (method: string, path: RegExp) => number;
 	/** Applies once, to the next request that matches. */
 	scriptOnce: (
@@ -56,6 +68,8 @@ export type HetznerStandIn = Readonly<{
 type Resource = {
 	id: number;
 	collection: "servers" | "primary_ips";
+	/** What Composery's own label says this is: `ipv4`, `ipv6`, or `server`. */
+	kind: string;
 	name: string;
 	labels: Record<string, string>;
 	address: string;
@@ -70,9 +84,11 @@ type Script = {
 };
 
 const controllerFirewallId = 77;
+const controllerId = "composery-test";
 const imageId = 501;
 const serverTypeName = "cx23";
 const locations = ["nbg1", "fsn1", "hel1"];
+const firstLocation = "nbg1";
 
 function toAddress(
 	id: number,
@@ -86,26 +102,9 @@ function toAddress(
 	return `2001:db8::${id.toString(hexRadix)}`;
 }
 
-function toPublicNet(resource: Resource, owned: readonly Resource[]) {
-	const ipv4 = owned.find((item) => item.labels["resource-kind"] === "ipv4");
-	const ipv6 = owned.find((item) => item.labels["resource-kind"] === "ipv6");
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-	return {
-		ipv4: {
-			id: ipv4?.id ?? resource.id + ipv4Offset,
-			ip: ipv4?.address ?? `203.0.113.${resource.id % addressBytes}`,
-		},
-		ipv6: {
-			id: ipv6?.id ?? resource.id + ipv6Offset,
-			ip: ipv6?.address ?? `2001:db8::${resource.id.toString(hexRadix)}`,
-		},
-		firewalls: [{ id: controllerFirewallId, status: "applied" }],
-	};
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-}
-
-async function startHetznerStandIn(): Promise<HetznerStandIn> {
+async function startHetznerFake(): Promise<HetznerFake> {
 	const requests: HetznerRequest[] = [];
+	const problems: string[] = [];
 	const resources = new Map<number, Resource>();
 	const actions = new Map<number, string>();
 	const scripts: Script[] = [];
@@ -125,7 +124,7 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 	const startAction = () => {
 		nextId += 1;
 		actions.set(nextId, "success");
-		return { id: nextId, status: "success", error: null };
+		return toActionReply(nextId, "success");
 	};
 
 	const toResourceReply = (resource: Resource) => {
@@ -133,26 +132,38 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			(item) =>
 				item.labels["allocation-id"] === resource.labels["allocation-id"],
 		);
-		// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
-		return resource.collection === "servers"
-			? {
-					id: resource.id,
-					name: resource.name,
-					status: resource.status,
-					labels: resource.labels,
-					server_type: { name: serverTypeName },
-					location: { name: locations[0] },
-					public_net: toPublicNet(resource, owned),
-				}
-			: {
-					id: resource.id,
-					name: resource.name,
-					labels: resource.labels,
-					ip: resource.address,
-					type: resource.labels["resource-kind"],
-					assignee_id: resource.assigneeId,
-				};
-		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+		const ipv4 = owned.find((item) => item.labels["resource-kind"] === "ipv4");
+		const ipv6 = owned.find((item) => item.labels["resource-kind"] === "ipv6");
+		if (resource.collection === "primary_ips") {
+			return toPrimaryIpReply({
+				id: resource.id,
+				name: resource.name,
+				labels: resource.labels,
+				ip: resource.address,
+				type: resource.kind,
+				assigneeId: resource.assigneeId,
+				location: firstLocation,
+			});
+		}
+		return toServerReply({
+			id: resource.id,
+			name: resource.name,
+			status: resource.status,
+			labels: resource.labels,
+			ipv4: {
+				id: ipv4?.id ?? resource.id + ipv4Offset,
+				ip: ipv4?.address ?? `203.0.113.${resource.id % addressBytes}`,
+			},
+			ipv6: {
+				id: ipv6?.id ?? resource.id + ipv6Offset,
+				ip: ipv6?.address ?? `2001:db8::${resource.id.toString(hexRadix)}`,
+			},
+			firewallId: controllerFirewallId,
+			serverType: serverTypeName,
+			location: firstLocation,
+			imageId,
+			imageName: "ubuntu-24.04",
+		});
 	};
 
 	const create = (collection: Resource["collection"], body: unknown) => {
@@ -164,10 +175,16 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 		};
 		nextId += 1;
 		const labels = fields.labels ?? {};
+		// Composery labels everything it creates; anything else is named by its collection.
+		const kind =
+			typeof labels["resource-kind"] === "string"
+				? labels["resource-kind"]
+				: collection;
 		const resource: Resource = {
 			id: nextId,
 			collection,
 			name: fields.name ?? `resource-${nextId}`,
+			kind,
 			labels,
 			address: toAddress(nextId, collection, labels),
 			assigneeId: null,
@@ -218,10 +235,7 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			return {
 				status: httpOk,
 				body: {
-					firewall: {
-						id: Number(id),
-						labels: { "controller-id": "composery-test" },
-					},
+					firewall: toFirewallReply(Number(id), controllerId),
 				},
 			};
 		}
@@ -230,17 +244,8 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 				status: httpOk,
 				body: {
 					// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
-					server_types: [
-						{
-							name: serverTypeName,
-							architecture: "x86",
-							locations: locations.map((supported) => ({
-								name: supported,
-								deprecation: null,
-								available: true,
-							})),
-						},
-					],
+					server_types: [toServerTypeReply(serverTypeName, locations)],
+					meta: toPaginationReply(1),
 				},
 			};
 		}
@@ -248,15 +253,8 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			return {
 				status: httpOk,
 				body: {
-					images: [
-						{
-							id: imageId,
-							name: query.get("name"),
-							architecture: "x86",
-							status: "available",
-							deprecation: null,
-						},
-					],
+					images: [toImageReply(imageId, query.get("name") ?? "")],
+					meta: toPaginationReply(1),
 				},
 			};
 		}
@@ -264,7 +262,10 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			const status = actions.get(Number(id));
 			return status === undefined
 				? { status: httpNotFound, body: { error: { code: "not_found" } } }
-				: { status: httpOk, body: { action: { id: Number(id), status } } };
+				: {
+						status: httpOk,
+						body: { action: toActionReply(Number(id), status) },
+					};
 		}
 		if (collection !== "servers" && collection !== "primary_ips") {
 			return { status: httpNotFound, body: { error: { code: "not_found" } } };
@@ -274,7 +275,14 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			const key = collection === "servers" ? "server" : "primary_ip";
 			return {
 				status: httpCreated,
-				body: { [key]: toResourceReply(resource), action: startAction() },
+				body: {
+					[key]: toResourceReply(resource),
+					action: startAction(),
+					...(collection === "servers"
+						? // biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+							{ next_actions: [], root_password: null }
+						: {}),
+				},
 			};
 		}
 		if (method === "POST" && group === "actions" && action !== undefined) {
@@ -286,13 +294,10 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			return { status: httpCreated, body: { action: startAction() } };
 		}
 		if (method === "GET" && id === undefined) {
+			const found = list(collection, query).map(toResourceReply);
 			return {
 				status: httpOk,
-				body: {
-					[collection]: list(collection, query).map(toResourceReply),
-					// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
-					meta: { pagination: { next_page: null } },
-				},
+				body: { [collection]: found, meta: toPaginationReply(found.length) },
 			};
 		}
 		if (method === "GET") {
@@ -342,6 +347,11 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 			return;
 		}
 		const result = answer(method, path, body);
+		// Hetzner's own description decides whether it could have sent this. The reply is already
+		// on its way, so a difference is recorded and fails the run at the end.
+		void checkHetznerReply(method, path, result.status, result.body ?? {}).then(
+			(found) => problems.push(...found),
+		);
 		if (result.body === null) {
 			response.writeHead(result.status);
 			response.end();
@@ -378,12 +388,13 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 	const address = server.address();
 	if (typeof address !== "object" || address === null) {
 		stop();
-		throw new Error("The Hetzner stand-in did not take a port.");
+		throw new Error("The Hetzner fake did not take a port.");
 	}
 
 	return {
 		url: `http://127.0.0.1:${address.port}`,
 		requests: () => requests,
+		problems: () => problems,
 		countRequests: (method, path) =>
 			requests.filter(
 				(request) => request.method === method && path.test(request.path),
@@ -395,10 +406,29 @@ async function startHetznerStandIn(): Promise<HetznerStandIn> {
 	};
 }
 
-let standIn: Promise<HetznerStandIn> | undefined;
+let fake: Promise<HetznerFake> | undefined;
+let running: HetznerFake | undefined;
 
-/** One stand-in for the whole run, because the deployment holds its address. */
-export function useHetznerStandIn() {
-	standIn ??= startHetznerStandIn();
-	return standIn;
+/**
+ * Fails the run when the fake answered in a shape Hetzner never would. It is checked once for the
+ * whole run, because the test that makes a request is not always the one that would read it.
+ */
+export function requireHetznerFakeKeptContract() {
+	const problems = running?.problems() ?? [];
+	if (problems.length > 0) {
+		const lines = [
+			"The fake answered in ways Hetzner would not:",
+			...new Set(problems),
+		];
+		throw new Error(lines.join("\n"));
+	}
+}
+
+/** One fake for the whole run, because the deployment holds its address. */
+export function useHetznerFake() {
+	fake ??= startHetznerFake().then((started) => {
+		running = started;
+		return started;
+	});
+	return fake;
 }

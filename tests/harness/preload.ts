@@ -1,5 +1,13 @@
 import { afterAll } from "bun:test";
 import { runCleanups } from "./cleanup";
+import { requireHetznerFakeKeptContract } from "./hetzner";
 
 // A preload's afterAll runs once, after every test file in the run.
-afterAll(runCleanups);
+afterAll(async () => {
+	try {
+		// Whichever test made the requests, the fake must have answered as Hetzner would.
+		requireHetznerFakeKeptContract();
+	} finally {
+		await runCleanups();
+	}
+});

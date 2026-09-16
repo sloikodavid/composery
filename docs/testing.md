@@ -13,16 +13,17 @@ Every test asks one authority whether the result is right, and the authority mus
 | The code's own rules | parsing, arithmetic, formats that Composery defines | nothing |
 | OpenSSH | whether a key signs in, what a key file means, what a setting does | a real `sshd` in Docker |
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
+| Hetzner's published API description | the shape of what we send and what we accept | `tests/harness/hetzner-contract.json` |
 | Hetzner | that the provider really did it | not built; see below |
 
 A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.
 
-## Stand-ins
+## Fakes
 
-Stand in for what a test is not about. Never stand in for what decides whether it passes.
+Fake what a test is not about. Never fake what decides whether it passes.
 
 - Do not reimplement another system to test against it, such as `convex-test` for Convex or a fake SSH server for OpenSSH. A reimplementation can give a plausible wrong answer that no test detects.
-- A stand-in may script an outcome that Composery must survive, such as a provider reply that never arrives. It uses only outcomes that the real system has been seen to produce.
+- A fake may script an outcome that Composery must survive, such as a provider reply that never arrives. It uses only outcomes that the real system has been seen to produce.
 - Do not replace modules at import time. Pass a dependency in, or point a configurable address at a server that the test controls.
 
 ## Layout
@@ -47,9 +48,11 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 
 ## Hetzner
 
-No test reaches Hetzner. A run starts a stand-in on loopback and gives the deployment its address in `HCLOUD_STAND_IN_URL`, with a token that is not a token. Hetzner's own address is built in and no deployment can replace it: the variable accepts only `127.0.0.1` or `[::1]`, so a deployment that sets it by mistake reaches nothing and sends nothing anywhere.
+No test reaches Hetzner. A run starts a fake on loopback and gives the deployment its address in `HCLOUD_FAKE_URL`, with a token that is not a token. Hetzner's own address is built in and no deployment can replace it: the variable accepts only `127.0.0.1` or `[::1]`, so a deployment that sets it by mistake reaches nothing and sends nothing anywhere.
 
-The stand-in answers what Composery asks, and produces what Hetzner cannot be asked for: a reply that never arrives. It never decides whether a test passes, and what it knows about Hetzner is only what real runs have shown.
+The fake answers what Composery asks, and produces what Hetzner cannot be asked for: a reply that never arrives. It never decides whether a test passes.
+
+The fake cannot drift on its own. Hetzner publishes a description of its API, and `scripts/hetzner-contract.ts` writes down the part we depend on. Every reply the fake sends is checked against it, and a difference fails the run at the end, whichever test made the request. Running that script again is how we find out that Hetzner has changed: the file changes, and the change is reviewed.
 
 Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
 

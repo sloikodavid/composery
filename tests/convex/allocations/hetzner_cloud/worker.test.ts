@@ -6,10 +6,7 @@ import {
 	type ConvexBackend,
 	useConvexBackend,
 } from "../../../harness/convex-backend";
-import {
-	type HetznerStandIn,
-	useHetznerStandIn,
-} from "../../../harness/hetzner";
+import { type HetznerFake, useHetznerFake } from "../../../harness/hetzner";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 120_000;
@@ -25,11 +22,11 @@ const createdServers = /^servers$/;
 const createdPrimaryIps = /^primary_ips$/;
 
 let backend: ConvexBackend;
-let standIn: HetznerStandIn;
+let fake: HetznerFake;
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
-	standIn = await useHetznerStandIn();
+	fake = await useHetznerFake();
 }, setupTimeoutMs);
 
 /** One owner with room for servers, so no test waits on another's quota. */
@@ -125,7 +122,7 @@ async function settle(
 		}
 		await Bun.sleep(settleDelayMs);
 	}
-	const trail = standIn
+	const trail = fake
 		.requests()
 		.slice(-trailLength)
 		.map((request) => `${request.method} ${request.path}`);
@@ -138,7 +135,7 @@ test(
 	"a created server reaches running, with one server and two addresses at the provider",
 	async () => {
 		const client = await createOwner();
-		const before = standIn.countRequests("POST", createdServers);
+		const before = fake.countRequests("POST", createdServers);
 		const serverId = await createServer(client);
 		const status = await settle(
 			client,
@@ -148,7 +145,7 @@ test(
 
 		expect(status.status).toBe("running");
 		expect(status.ipv4).not.toBe(null);
-		expect(standIn.countRequests("POST", createdServers) - before).toBe(1);
+		expect(fake.countRequests("POST", createdServers) - before).toBe(1);
 	},
 	testTimeoutMs,
 );
@@ -157,9 +154,9 @@ test(
 	"a create whose reply never arrives makes one server, not two",
 	async () => {
 		const client = await createOwner();
-		const before = standIn.countRequests("POST", createdPrimaryIps);
+		const before = fake.countRequests("POST", createdPrimaryIps);
 		// Hetzner takes the request and answers nothing: the outcome is unknown, not failed.
-		standIn.scriptOnce({ method: "POST", path: createdPrimaryIps }, "lose");
+		fake.scriptOnce({ method: "POST", path: createdPrimaryIps }, "lose");
 		const serverId = await createServer(client);
 		const status = await settle(
 			client,
@@ -169,7 +166,7 @@ test(
 
 		expect(status.status).toBe("running");
 		// One address was lost to the silence and found again; the second is the other kind.
-		expect(standIn.countRequests("POST", createdPrimaryIps) - before).toBe(2);
+		expect(fake.countRequests("POST", createdPrimaryIps) - before).toBe(2);
 	},
 	testTimeoutMs,
 );

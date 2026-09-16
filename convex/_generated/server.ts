@@ -43,10 +43,10 @@ type Env = {
   readonly CLERK_SECRET_KEY: string;
   readonly CLERK_WEBHOOK_SIGNING_SECRET: string;
   readonly HCLOUD_CONTROLLER_ID: string | undefined;
+  readonly HCLOUD_FAKE_URL: string | undefined;
   readonly HCLOUD_FIREWALL_ID: string | undefined;
   readonly HCLOUD_IMAGE: string | undefined;
   readonly HCLOUD_LOCATIONS: string | undefined;
-  readonly HCLOUD_STAND_IN_URL: string | undefined;
   readonly HCLOUD_TOKEN: string | undefined;
   readonly SSH_ACCESS_ENCRYPTION_KEY: string | undefined;
 };
