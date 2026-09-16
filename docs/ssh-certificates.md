@@ -1,6 +1,6 @@
 # SSH certificates
 
-Not built, and not decided. This note exists so that a later attempt starts from the reasoning instead of from nothing. `docs/decisions.md` holds what is actually decided; everything here is a sketch, with the basis of each claim named. The session that produced it is `sessions/2026-09-15-claude-ssh.md`.
+Not built, and not decided. This note exists so that a later attempt starts from the reasoning instead of from nothing. `docs/decisions.md` holds what is actually decided; everything here is a sketch, with the basis of each claim named. The session that produced it is `sessions/2026-09-14-claude-code-names-funnel-refactoring-and-repository-reorganization.md`.
 
 ## What a certificate would change
 
@@ -31,5 +31,5 @@ Any of: the app naming scheme lands and servers get names anyway; customers repo
 
 ## Basis
 
-- `research/2026-09-14-ssh-host-key-trust-methods.md` and `research/2026-09-15-ssh-trust-recovery-methods.md` for the comparison of pinning, certificates, DNS and provider channels, with the counterexamples for each.
+- `sessions/2026-09-14-chat-gpt-ssh-host-key-trust-methods.md` and `sessions/2026-09-15-chat-gpt-ssh-trust-recovery-methods.md` for the comparison of pinning, certificates, DNS and provider channels, with the counterexamples for each.
 - An abandoned earlier prototype in a sibling repository, which implemented host-certificate-only issuance with 90 day lifetimes, pre-allocated serials and a name tombstone rule, and never shipped its revocation list. Its code was not read into this repository, and none of it is evidence of correctness.

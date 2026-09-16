@@ -20,7 +20,6 @@
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
 		"verify": "bun check && bun test && next build",
-		"research:import": "bun scripts/research/import.ts",
 		"session:import": "bun scripts/sessions/import.ts"
 	},
 	"dependencies": {

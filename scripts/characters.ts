@@ -25,7 +25,6 @@ const directivePattern =
 const excludedPathspecs = [
 	":!bun.lock",
 	":!convex/_generated",
-	":!docs/research",
 	":!docs/sessions",
 ];
 const usage = "Usage: bun scripts/characters.ts check|fix";

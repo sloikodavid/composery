@@ -1,25 +1,30 @@
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import type { Session, SessionItem } from "./markdown";
 
-type JsonObject = Record<string, unknown>;
+type Row = Record<string, unknown>;
 
 type Transcript = {
-	file: string;
 	sessionId: string;
-	rows: JsonObject[];
+	rows: Row[];
 };
 
-type SessionExport = {
-	markdown: string;
-	sessionIds: string[];
+type IndexedRows = {
+	rows: Row[];
+	indexesByUuid: Map<string, number>;
 };
 
-const continuationPrefix =
-	"This session is being continued from a previous conversation that ran out of context.";
-const secretAssignment =
-	/^(\s*[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY)[A-Z0-9_]*\s*[=:]\s*)(.+)$/gm;
+export const claudeCodeSessionId =
+	/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
-function isObject(value: unknown): value is JsonObject {
+// Claude Code writes these into a user row for what the harness did, not for what the person wrote.
+const harnessTag =
+	/^<(local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|task-notification)>/;
+const commandPattern =
+	/^<command-name>([^<]*)<\/command-name>(?:[\s\S]*?<command-args>([\s\S]*?)<\/command-args>)?/;
+const interruptionPrefix = "[Request interrupted by user";
+
+function isRow(value: unknown): value is Row {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -27,227 +32,393 @@ function readString(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-function redactSecrets(text: string): string {
-	return text.replace(secretAssignment, "$1[redacted]");
+function readTimestamp(row: Row): Date | undefined {
+	const timestamp = readString(row.timestamp);
+	return timestamp === undefined ? undefined : new Date(timestamp);
+}
+
+/** Claude Code keeps its files in `CLAUDE_CONFIG_DIR`, or in `~/.claude` when that is not set. */
+function getClaudeCodeConfigDirectory(): string {
+	return process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 }
 
 async function readTranscript(file: string): Promise<Transcript> {
 	const rows = (await Bun.file(file).text())
 		.split("\n")
 		.filter((line) => line.length > 0)
-		.map((line) => JSON.parse(line) as JsonObject);
-	const sessionId = basename(file, ".jsonl");
-	return { file, sessionId, rows };
+		.map((line) => JSON.parse(line) as Row);
+	return { sessionId: basename(file, ".jsonl"), rows };
 }
 
-async function findTranscriptFiles(
-	configDirectories: string[],
-): Promise<string[]> {
-	const files = new Set<string>();
-	const pattern = new Bun.Glob("projects/*/*.jsonl");
-	for (const directory of configDirectories) {
-		for await (const file of pattern.scan({ cwd: directory, absolute: true })) {
-			files.add(file);
-		}
-	}
-	return [...files];
-}
-
-async function findChain(
-	files: string[],
-	finalSessionId: string,
-): Promise<Transcript[]> {
-	const chain: Transcript[] = [];
-	const visited = new Set<string>();
-	let sessionId: string | undefined = finalSessionId;
-	while (sessionId) {
-		if (visited.has(sessionId)) {
-			throw new Error(
-				`Claude Code session chain contains a cycle at ${sessionId}.`,
-			);
-		}
-		visited.add(sessionId);
-		const file = files.find(
-			(candidate) => basename(candidate, ".jsonl") === sessionId,
+async function findTranscriptFile(
+	configDirectory: string,
+	sessionId: string,
+): Promise<string> {
+	const files = await Array.fromAsync(
+		new Bun.Glob(`projects/*/${sessionId}.jsonl`).scan({
+			cwd: configDirectory,
+			absolute: true,
+		}),
+	);
+	const [file, ...others] = files;
+	if (!file) {
+		throw new Error(
+			`Claude Code session ${sessionId} was not found in ${configDirectory}.`,
 		);
-		if (!file) {
-			throw new Error(`Claude Code session ${sessionId} was not found.`);
-		}
-		const transcript = await readTranscript(file);
-		chain.unshift(transcript);
-		const continuationNeedle = `"continuedInSessionId":"${sessionId}"`;
-		sessionId = undefined;
-		for (const candidate of files) {
-			if ((await Bun.file(candidate).text()).includes(continuationNeedle)) {
-				sessionId = basename(candidate, ".jsonl");
-				break;
+	}
+	if (others.length > 0) {
+		throw new Error(
+			`Claude Code session ${sessionId} exists in more than one project.`,
+		);
+	}
+	return file;
+}
+
+/** Maps each session to the session it continued, as the `continued-in` rows in one project state. */
+async function findPredecessors(
+	projectDirectory: string,
+): Promise<Map<string, string>> {
+	const predecessors = new Map<string, string>();
+	for await (const file of new Bun.Glob("*.jsonl").scan({
+		cwd: projectDirectory,
+		absolute: true,
+	})) {
+		const lines = (await Bun.file(file).text())
+			.split("\n")
+			.filter((line) => line.includes('"continued-in"'));
+		for (const line of lines) {
+			const row = JSON.parse(line) as Row;
+			const successor = readString(row.continuedInSessionId);
+			if (row.type === "continued-in" && successor) {
+				predecessors.set(successor, basename(file, ".jsonl"));
 			}
 		}
+	}
+	return predecessors;
+}
+
+async function readSessionChain(
+	configDirectory: string,
+	finalSessionId: string,
+): Promise<Transcript[]> {
+	const finalFile = await findTranscriptFile(configDirectory, finalSessionId);
+	const projectDirectory = dirname(finalFile);
+	const predecessors = await findPredecessors(projectDirectory);
+	const chain = [await readTranscript(finalFile)];
+	const visited = new Set([finalSessionId]);
+	for (
+		let sessionId = predecessors.get(finalSessionId);
+		sessionId !== undefined;
+		sessionId = predecessors.get(sessionId)
+	) {
+		if (visited.has(sessionId)) {
+			throw new Error(`Claude Code session chain repeats ${sessionId}.`);
+		}
+		visited.add(sessionId);
+		chain.unshift(
+			await readTranscript(join(projectDirectory, `${sessionId}.jsonl`)),
+		);
 	}
 	return chain;
 }
 
-function renderFence(text: string, language = "text"): string {
-	let fence = "```";
-	while (text.includes(fence)) {
-		fence += "`";
-	}
-	return `${fence}${language}\n${redactSecrets(text)}\n${fence}`;
-}
-
-function renderToolUse(block: JsonObject): string {
-	const name = readString(block.name) ?? "unknown";
-	const input = JSON.stringify(block.input ?? {}, null, 2);
-	return `**Tool: ${name}**\n\n${renderFence(input, "json")}`;
-}
-
-function renderToolResult(block: JsonObject): string {
-	const toolUseId = readString(block.tool_use_id) ?? "unknown";
-	const content = block.content;
-	const text =
-		typeof content === "string"
-			? content
-			: JSON.stringify(content ?? "", null, 2);
-	return `**Tool result: ${toolUseId}**\n\n${renderFence(text)}`;
-}
-
-function renderBlocks(
-	content: unknown,
-): { kind: "message" | "toolResult"; text: string }[] {
-	if (typeof content === "string") {
-		return [{ kind: "message", text: redactSecrets(content) }];
-	}
-	if (!Array.isArray(content)) {
-		return [];
-	}
-	const rendered: { kind: "message" | "toolResult"; text: string }[] = [];
-	for (const value of content) {
-		if (!isObject(value)) {
-			continue;
-		}
-		switch (value.type) {
-			case "text": {
-				const text = readString(value.text);
-				if (text) {
-					rendered.push({ kind: "message", text: redactSecrets(text) });
-				}
-				break;
-			}
-			case "tool_use":
-			case "server_tool_use":
-				rendered.push({ kind: "message", text: renderToolUse(value) });
-				break;
-			case "tool_result":
-				rendered.push({ kind: "toolResult", text: renderToolResult(value) });
-				break;
-			case "thinking":
-				break;
-			default:
-				rendered.push({
-					kind: "message",
-					text: renderFence(JSON.stringify(value, null, 2), "json"),
-				});
-		}
-	}
-	return rendered;
-}
-
-function renderTimestamp(row: JsonObject): string {
-	const timestamp = readString(row.timestamp);
-	return timestamp ? ` · ${timestamp}` : "";
-}
-
-function isContinuationSummary(
-	blocks: { kind: "message" | "toolResult"; text: string }[],
-): boolean {
-	return blocks.some(
-		(block) =>
-			block.kind === "message" && block.text.startsWith(continuationPrefix),
+function isMessageRow(row: Row): boolean {
+	return (
+		readString(row.uuid) !== undefined &&
+		row.isSidechain !== true &&
+		(row.type === "user" ||
+			row.type === "assistant" ||
+			row.type === "system" ||
+			row.type === "attachment")
 	);
 }
 
-function renderCompactBoundary(row: JsonObject): string[] {
-	if (row.type === "system" && row.subtype === "compact_boundary") {
-		const metadata = isObject(row.compactMetadata) ? row.compactMetadata : {};
+/** Message rows in the order they were written. A continued session copies rows from its predecessor, and the first copy keeps the original session. */
+function indexMessageRows(chain: Transcript[]): IndexedRows {
+	const rows: Row[] = [];
+	const indexesByUuid = new Map<string, number>();
+	for (const row of chain.flatMap((transcript) => transcript.rows)) {
+		const uuid = readString(row.uuid);
+		if (uuid && isMessageRow(row) && !indexesByUuid.has(uuid)) {
+			indexesByUuid.set(uuid, rows.length);
+			rows.push(row);
+		}
+	}
+	return { rows, indexesByUuid };
+}
+
+function findPreviousIndex(
+	{ rows, indexesByUuid }: IndexedRows,
+	index: number,
+	visited: Set<number>,
+): number | undefined {
+	const row = rows[index];
+	const parentUuid = readString(row?.parentUuid);
+	if (parentUuid !== undefined) {
+		const parentIndex = indexesByUuid.get(parentUuid);
+		if (parentIndex === undefined) {
+			throw new Error(
+				`Claude Code session refers to missing message ${parentUuid}.`,
+			);
+		}
+		return parentIndex;
+	}
+	if (row?.subtype !== "compact_boundary") {
+		return undefined;
+	}
+	for (let before = index - 1; before >= 0; before -= 1) {
+		if (!visited.has(before)) {
+			return before;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * The rows of the conversation as it stands. A rewound or resent message leaves a branch under the
+ * same parent, so the path from the last message back through each parent is the only one the
+ * session kept. A compaction boundary starts a new path with no parent, and may move the messages it
+ * keeps to after itself, so the path before it continues from the last message written before it.
+ */
+function findActivePath(chain: Transcript[]): Row[] {
+	const indexed = indexMessageRows(chain);
+	const finalUuids = new Set(chain.at(-1)?.rows.map((row) => row.uuid));
+	const leaf = indexed.rows.findLastIndex((row) => finalUuids.has(row.uuid));
+	const path: Row[] = [];
+	const visited = new Set<number>();
+	for (
+		let index: number | undefined = leaf === -1 ? undefined : leaf;
+		index !== undefined;
+		index = findPreviousIndex(indexed, index, visited)
+	) {
+		const row = indexed.rows[index];
+		if (!row || visited.has(index)) {
+			throw new Error(
+				`Claude Code session repeats message ${String(row?.uuid)}.`,
+			);
+		}
+		visited.add(index);
+		path.unshift(row);
+	}
+	return path;
+}
+
+function renderAskUserOption(option: unknown): string | undefined {
+	const label = isRow(option) ? readString(option.label) : undefined;
+	if (!(isRow(option) && label)) {
+		return undefined;
+	}
+	const description = readString(option.description);
+	return `- ${label}${description ? `: ${description}` : ""}`;
+}
+
+function renderAskUserQuestion(value: unknown): string | undefined {
+	const question = isRow(value) ? readString(value.question) : undefined;
+	if (!(isRow(value) && question)) {
+		return undefined;
+	}
+	const header = readString(value.header);
+	const options = (Array.isArray(value.options) ? value.options : [])
+		.map(renderAskUserOption)
+		.filter((option) => option !== undefined);
+	return [
+		header ? `**${header}**\n\n${question}` : question,
+		options.join("\n"),
+	]
+		.filter((part) => part.length > 0)
+		.join("\n\n");
+}
+
+function renderAskUserQuestions(input: unknown): string | undefined {
+	const values =
+		isRow(input) && Array.isArray(input.questions) ? input.questions : [];
+	const questions = values
+		.map(renderAskUserQuestion)
+		.filter((question) => question !== undefined);
+	return questions.length > 0 ? questions.join("\n\n") : undefined;
+}
+
+function renderAskUserAnswer(row: Row, fallback: string): string {
+	const result = isRow(row.toolUseResult) ? row.toolUseResult : undefined;
+	const answers = result && isRow(result.answers) ? result.answers : undefined;
+	if (!answers) {
+		return fallback;
+	}
+	return Object.entries(answers)
+		.map(([question, answer]) => `${question}\n\n**Answer:** ${String(answer)}`)
+		.join("\n\n");
+}
+
+function readCommandEvent(text: string): string | undefined {
+	const match = commandPattern.exec(text);
+	if (!match) {
+		return undefined;
+	}
+	const args = match[2]?.trim();
+	return args ? `${match[1]} ${args}` : match[1];
+}
+
+function readUserText(text: string): SessionItem | undefined {
+	if (harnessTag.test(text)) {
+		return undefined;
+	}
+	const command = readCommandEvent(text);
+	if (command !== undefined) {
+		return { kind: "event", text: `Command: ${command}` };
+	}
+	if (text.startsWith(interruptionPrefix)) {
+		return { kind: "event", text: "Interrupted by the user" };
+	}
+	return { kind: "turn", author: "user", text };
+}
+
+function readUserBlock(
+	row: Row,
+	block: unknown,
+	questionIds: Set<string>,
+): SessionItem | undefined {
+	if (!isRow(block)) {
+		return undefined;
+	}
+	const text = readString(block.text);
+	if (block.type === "text" && text) {
+		return readUserText(text);
+	}
+	if (block.type === "image") {
+		return { kind: "turn", author: "user", text: "_(image not exported)_" };
+	}
+	const toolUseId = readString(block.tool_use_id);
+	if (block.type === "tool_result" && toolUseId && questionIds.has(toolUseId)) {
+		const answer = renderAskUserAnswer(row, readString(block.content) ?? "");
+		return { kind: "turn", author: "user", text: answer };
+	}
+	return undefined;
+}
+
+function readUserRow(row: Row, questionIds: Set<string>): SessionItem[] {
+	if (row.isMeta === true || row.isCompactSummary === true) {
+		return [];
+	}
+	const content = isRow(row.message) ? row.message.content : undefined;
+	const blocks =
+		typeof content === "string" ? [{ type: "text", text: content }] : content;
+	return (Array.isArray(blocks) ? blocks : [])
+		.map((block) => readUserBlock(row, block, questionIds))
+		.filter((item) => item !== undefined);
+}
+
+function readAssistantBlock(
+	block: unknown,
+	questionIds: Set<string>,
+): SessionItem | undefined {
+	if (!isRow(block)) {
+		return undefined;
+	}
+	const text = readString(block.text);
+	if (block.type === "text" && text) {
+		return { kind: "turn", author: "assistant", text };
+	}
+	const id = readString(block.id);
+	const question =
+		block.type === "tool_use" && block.name === "AskUserQuestion"
+			? renderAskUserQuestions(block.input)
+			: undefined;
+	if (!(question && id)) {
+		return undefined;
+	}
+	questionIds.add(id);
+	return { kind: "turn", author: "assistant", text: question };
+}
+
+function readAssistantRow(row: Row, questionIds: Set<string>): SessionItem[] {
+	const content = isRow(row.message) ? row.message.content : undefined;
+	return (Array.isArray(content) ? content : [])
+		.map((block) => readAssistantBlock(block, questionIds))
+		.filter((item) => item !== undefined);
+}
+
+function readSystemRow(row: Row): SessionItem[] {
+	if (row.subtype === "compact_boundary") {
+		const metadata = isRow(row.compactMetadata) ? row.compactMetadata : {};
 		const trigger = readString(metadata.trigger) ?? "unknown";
-		return [
-			`---\n\n> Conversation compacted (${trigger})${renderTimestamp(row)}.`,
-		];
+		return [{ kind: "event", text: `Compacted (${trigger})` }];
+	}
+	const content = readString(row.content);
+	if (row.subtype === "local_command" && content) {
+		const item = readUserText(content);
+		return item?.kind === "event" ? [item] : [];
 	}
 	return [];
 }
 
-function renderMessageRow(row: JsonObject, hasPredecessor: boolean): string[] {
-	if (row.type !== "user" && row.type !== "assistant") {
-		return [];
+function readRow(row: Row, questionIds: Set<string>): SessionItem[] {
+	switch (row.type) {
+		case "user":
+			return readUserRow(row, questionIds);
+		case "assistant":
+			return readAssistantRow(row, questionIds);
+		case "system":
+			return readSystemRow(row);
+		default:
+			return [];
 	}
-	const message = isObject(row.message) ? row.message : undefined;
-	if (!message) {
-		return [];
-	}
-	const blocks = renderBlocks(message.content);
-	if (hasPredecessor && isContinuationSummary(blocks)) {
-		return [];
-	}
-	const onlyToolResults =
-		blocks.length > 0 && blocks.every((block) => block.kind === "toolResult");
-	const role = row.type === "assistant" ? "Assistant" : "User";
-	const heading = onlyToolResults ? "Tool" : role;
-	const body = blocks.map((block) => block.text).join("\n\n");
-	return body ? [`---\n\n## ${heading}${renderTimestamp(row)}\n\n${body}`] : [];
 }
 
-function renderRow(row: JsonObject, hasPredecessor: boolean): string[] {
-	if (row.isSidechain === true) {
-		return [];
-	}
-	return [
-		...renderCompactBoundary(row),
-		...renderMessageRow(row, hasPredecessor),
-	];
-}
-
-export async function exportClaudeCodeSession(
-	finalSessionId: string,
-	configDirectories = [
-		join(homedir(), ".claude"),
-		join(homedir(), ".claude2"),
-		join(homedir(), ".claude3"),
-	],
-): Promise<SessionExport> {
-	const chain = await findChain(
-		await findTranscriptFiles(configDirectories),
-		finalSessionId,
-	);
-	const seen = new Set<string>();
-	const rows: string[] = [];
-	for (const [index, transcript] of chain.entries()) {
-		for (const row of transcript.rows) {
-			const uuid = readString(row.uuid);
-			if (uuid && seen.has(uuid)) {
-				continue;
-			}
-			if (uuid) {
-				seen.add(uuid);
-			}
-			rows.push(...renderRow(row, index > 0));
+/** Joins what one author said between the other's turns, since the tool calls that separated it are gone. */
+function mergeSessionItems(items: SessionItem[]): SessionItem[] {
+	const merged: SessionItem[] = [];
+	for (const item of items) {
+		const previous = merged.at(-1);
+		if (
+			item.kind === "turn" &&
+			previous?.kind === "turn" &&
+			previous.author === item.author
+		) {
+			previous.text = `${previous.text}\n\n${item.text}`;
+		} else {
+			merged.push({ ...item });
 		}
 	}
-	const titleRow = chain
+	return merged;
+}
+
+export async function readClaudeCodeSession(
+	finalSessionId: string,
+	configDirectory = getClaudeCodeConfigDirectory(),
+): Promise<Session> {
+	const chain = await readSessionChain(configDirectory, finalSessionId);
+	const path = findActivePath(chain);
+	const questionIds = new Set<string>();
+	const items: SessionItem[] = [];
+	let sessionId: string | undefined;
+	for (const row of path) {
+		const rowSessionId = readString(row.sessionId);
+		if (sessionId && rowSessionId && rowSessionId !== sessionId) {
+			items.push({
+				kind: "event",
+				text: `Continued as Claude Code session \`${rowSessionId}\``,
+			});
+		}
+		sessionId = rowSessionId ?? sessionId;
+		const timestamp = readTimestamp(row);
+		for (const item of readRow(row, questionIds)) {
+			items.push(timestamp ? { ...item, timestamp } : item);
+		}
+	}
+	const createdAt = path.map(readTimestamp).find((date) => date !== undefined);
+	if (!createdAt) {
+		throw new Error(`Claude Code session ${finalSessionId} has no messages.`);
+	}
+	const title = chain
 		.flatMap((transcript) => transcript.rows)
-		.find((row) => row.type === "ai-title");
-	const title = readString(titleRow?.aiTitle) ?? "Claude Code session";
-	const sessionIds = chain.map((transcript) => transcript.sessionId);
-	const header = [
-		`# ${title}`,
-		"",
-		`Source: \`claude-code://${finalSessionId}\``,
-		`Session chain: ${sessionIds.map((id) => `\`${id}\``).join(" → ")}`,
-		"",
-		"This export contains the complete visible user, assistant, tool, and compaction transcript from Claude Code's official local JSONL records. It omits hidden context attachments, internal reasoning, signatures, token accounting, and other runtime telemetry. Secret-like environment assignments are redacted.",
-	];
+		.findLast((row) => row.type === "ai-title");
 	return {
-		markdown: `${header.join("\n")}\n\n${rows.join("\n\n")}\n`,
-		sessionIds,
+		title: readString(title?.aiTitle) ?? "Claude Code session",
+		createdAt,
+		assistant: "Claude",
+		sources: chain.map(
+			(transcript) => `Claude Code session \`${transcript.sessionId}\``,
+		),
+		items: mergeSessionItems(items),
 	};
 }

@@ -1,0 +1,1024 @@
+# New chat
+
+Source: https://chatgpt.com/share/6aa6a4f7-39d0-83ed-9c8a-e61a07562be9
+
+---
+
+## Turn 1: User
+
+_2026-09-13T13:03:42.604Z_
+
+Context (September 2026). A single-package web app (not a
+  monorepo):
+  - Bun 1.4.2 (package manager, scripts, `bun test`), Node 24
+  runtime for Next.js
+  - Next.js 16.3.5 App Router in `src/`, React 19.3, React Compiler
+  on, typedRoutes on. `cacheComponents` and `partialPrefetching` are
+  currently OFF (undecided).
+  - Convex 1.45.0 (cloud deployments), root `convex/` directory
+  - Clerk (@clerk/nextjs 7.9.2) using the HOSTED Account Portal for
+  sign-in, sign-up and the user profile. No Clerk UI components in
+  our app. Clerk FREE plan (no passkeys, no MFA, session length
+  fixed at 7 days). `clerkMiddleware()` runs in `src/proxy.ts`;
+  `ClerkProvider` + Convex's `ConvexProviderWithClerk` wrap the root
+  layout. Clerk's native Convex integration (session token `aud:
+  "convex"`).
+  - Base UI + Tailwind 4, Biome, TypeScript 7. Static CSP in
+  next.config.ts (no nonces). Deploying to Vercel later.
+  - Product shape: NO pricing page and no separate dashboard. The
+  home route `/` is both the public marketing funnel (SEO matters)
+  and the signed-in app.
+  - Hard UI rules: no avoidable layout shift (CLS) in
+  loading/empty/error/success states, no animated skeletons, no
+  page-level spinners, no decorative motion.
+
+  Rules for your answer:
+  - Ground every claim in official docs, source code, changelogs, or
+  GitHub issues for these exact versions, with links. Mark anything
+  you could not verify for these versions as UNVERIFIED.
+  - Separate what the frameworks guarantee from what is your
+  recommendation.
+  - End with: (1) a recommended policy stated as short rules we can
+  adopt, (2) concrete code shapes for Next 16.3 + Convex 1.45 +
+  Clerk 7.9, (3) the trade-offs you rejected and why, (4) open
+  risks.
+
+  Design the complete user-lifecycle and account-deletion
+  architecture for Clerk 7.9 (hosted Account Portal lets users
+  delete their own account; free plan) + Convex 1.45, BEFORE we have
+  user data tables, so the foundation is right from day one.
+  1. Identity model in Convex: a `users` table keyed by Clerk user
+  ID (`identity.subject`) vs `tokenIdentifier`; creating rows lazily
+  on first authenticated call vs from Clerk `user.created` webhooks
+  vs both. Races, duplicates, and what current Convex and Clerk
+  docs recommend.
+  2. Receiving `user.deleted` (and `user.created`/`user.updated` if
+  used) in a Convex HTTP action: signature verification that works
+  in the Convex runtime (`@clerk/backend` `verifyWebhook` vs `svix`
+  vs Standard Webhooks), required env vars, raw-body handling,
+  idempotency by `svix-id`, response codes and Clerk/Svix retry
+  schedules. Does Clerk guarantee delivery? Quote it.
+  3. Closing the gaps: session tokens remain valid for up to ~60s
+  after deletion — do we need a tombstone that authenticated Convex
+  functions consult? A scheduled reconciliation that asks Clerk's
+  Backend API which users no longer exist (rate limits, pagination,
+  instance checks). Is this necessary or over-engineering for a new
+  product?
+  4. Cascading cleanup at scale in Convex: transaction limits
+  (documents read/written per mutation, time limits), bounded
+  batches with the scheduler vs the Workflow / Workpool / Migrations
+  components, retries, and making cleanup resumable and observable.
+  Also file storage deletion.
+  5. A convention that forces every future user-owned table to
+  register its cleanup (a registry pattern, a typed list, or a test
+  that fails when a table with a user reference lacks a handler).
+  How do teams enforce this?
+  6. Legal and data: GDPR/UK GDPR erasure ("without undue delay"),
+  what may be retained (billing and legal obligations, abuse
+  prevention), logs, Convex backups/exports and snapshot retention,
+  and third-party processors. What counts as "deleted" in practice?
+  7. Recommend the minimal foundation to build now (with no user
+  tables yet) versus what to add per table later, with code shapes
+  and a test strategy using a real isolated local Convex backend (no
+  convex-test mocks).
+
+---
+
+## Turn 2: ChatGPT
+
+_2026-09-13T13:03:44.633Z_
+
+I’ll treat this as an architecture review, not a generic checklist. I’ll verify the exact Clerk 7.9 / Convex 1.45 behaviors from official docs and tagged source where possible, then separate guarantees from recommendations and flag any version-specific gaps as **UNVERIFIED**.
+
+---
+
+## Turn 3: ChatGPT
+
+_2026-09-13T13:04:18.165Z_
+
+The first material finding is already clear: Clerk explicitly says webhook delivery is **not guaranteed**, and Convex’s own auth docs permit either `tokenIdentifier` or `subject`. That pushes the design away from “webhook-created users as the source of truth” and toward authenticated lazy upsert plus webhooks for lifecycle synchronization.
+
+---
+
+## Turn 4: ChatGPT
+
+_2026-09-13T13:07:41.019Z_
+
+For deletion execution, Convex’s current limits are generous but finite: a mutation can write at most 16,000 documents / 16 MiB, scan 32,000 documents, and gets 1 second of user-code CPU. Its scheduler gives the useful guarantee here: scheduled **mutations** are durable and exactly-once; scheduled **actions** are only at-most-once. That strongly favors a resumable chain of small internal mutations for Convex-only cleanup, not one giant delete.
+
+---
+
+## Turn 5: ChatGPT
+
+_2026-09-13T13:25:44.280Z_
+
+## Executive decision
+
+Use **Clerk `user.id` / Convex `identity.subject` as the external identity key**, and use the Convex `users._id` as the owner foreign key everywhere else. Create the Convex `users` document **lazily, transactionally, on the first authenticated mutation that actually needs it**. Do **not** make `user.created` webhook delivery a prerequisite for using the product. Subscribe to **`user.deleted` only at first**; add `user.created` / `user.updated` later only if you deliberately mirror Clerk fields that are unavailable in the session JWT.
+
+That follows both systems' failure models. Convex explicitly documents both `tokenIdentifier` and `subject` as valid ways to identify a stored user, and in its Clerk-webhook example says `subject` “should be set to the Clerk user ID.” Clerk, meanwhile, explicitly warns that webhooks are asynchronous and says delivery is **“not guaranteed to be delivered immediately or at all.”** ([Convex](https://docs.convex.dev/auth/database-auth))
+
+Deletion should be a **durable state machine**:
+
+```text
+Clerk Account Portal deletes user
+            │
+            ▼
+Clerk user.deleted webhook
+            │
+            ▼
+Convex HTTP action
+ verify signature
+ verify instance
+ dedupe svix-id
+            │
+            ▼
+single mutation:
+  create deletion guard/tombstone
+  create/reuse deletion job
+  record webhook receipt
+  schedule batch worker
+            │
+            ▼
+bounded internal mutations
+  delete/anonymize every registered ownership class
+  delete storage objects
+  delete users row LAST
+            │
+            ▼
+guard = deleted
+retain guard briefly
+then purge guard
+```
+
+The important distinction is that the **guard means “this Clerk identity must no longer be allowed to create/use product data”**, while the deletion job means “cleanup is still progressing.” That separation closes race conditions without making a permanent tombstone part of your user database.
+
+There is one version caveat throughout this answer: `convex@1.45.0` is your package version, but Convex's cloud resource limits and service behavior are documented as current hosted-service limits rather than semver-pinned client-library behavior. I therefore treat those as **verified for Convex cloud as documented on 13 September 2026, not guaranteed by npm version 1.45.0 itself**. Component packages such as Workflow/Workpool have independent versions; since you did not specify them, detailed component-version behavior is **UNVERIFIED**.
+
+---
+
+# 1. Identity model
+
+### Framework guarantees
+
+Convex's current user-storage guide gives two supported approaches: store the authenticated identity from a mutation, or maintain it with identity-provider webhooks. Its examples use `tokenIdentifier`, but explicitly say you can instead use `subject`, which is “usually set to the unique user ID from your auth provider.” The Clerk-specific webhook section goes further: it uses `subject` and says it “should be set to the Clerk user ID.” ([Convex](https://docs.convex.dev/auth/database-auth))
+
+`tokenIdentifier` is useful because it incorporates the identity issuer/provider namespace, but that becomes a disadvantage for your deletion path: Clerk's `user.deleted` event and Backend API identify the account by the Clerk user ID, not by Convex's composed `tokenIdentifier`. Using `subject` therefore makes the webhook, reconciliation, session identity, and Convex row all speak the same identifier. This choice is specifically appropriate because you have one Clerk identity provider; it would need revisiting for genuine multi-provider identities. ([Convex](https://docs.convex.dev/auth/database-auth))
+
+Convex mutations are transactional, and its optimistic concurrency control provides serializable transactions and retries conflicting deterministic mutations. That is the mechanism you should rely on for two simultaneous “first authenticated use” calls racing to create the same user. `.unique()` itself is an assertion about query cardinality, not a declarative SQL-style uniqueness constraint. ([Convex](https://docs.convex.dev/database/advanced/occ))
+
+### Recommendation
+
+Your canonical relationship should be:
+
+```text
+Clerk user_abc
+      │
+      │ identity.subject
+      ▼
+users {
+  _id: Id<"users">,        // internal durable FK
+  clerkUserId: "user_abc", // external identity
+  issuer: "...",
+  tokenIdentifier: "...",  // optional diagnostic/migration aid
+}
+
+notes.ownerId ─────┐
+uploads.ownerId ───┼────► users._id
+projects.ownerId ──┘
+```
+
+Do **not** put the Clerk user ID directly into every future table. `ownerId: v.id("users")` gives you one internal ownership edge and means an auth-provider migration does not require rewriting every owned row.
+
+Also do not make `users` a Clerk-profile cache. Initially it needs no email, name, avatar, username, etc. If the current user can obtain something safely from Clerk/session claims, don't duplicate it merely because you have a table. Convex itself frames storing user data as useful when functions need fields beyond the JWT or need information about other users. ([Convex](https://docs.convex.dev/auth/database-auth))
+
+I would **not subscribe to `user.created` today**. It provides no capability you need and introduces eventual-consistency ordering you then have to reason about. Clerk explicitly warns not to depend on webhooks for synchronous onboarding. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+If you later need mirrored profile data, then use **both** lazy upsert and `user.created`/`user.updated`, through one common internal upsert primitive. Crucially, that primitive must check the deletion guard in the same mutation before inserting. Then all interesting races reduce correctly:
+
+```text
+lazy-create commits first
+  → delete transaction subsequently sees and deletes it
+
+delete commits first
+  → lazy-create conflicts/retries
+  → sees tombstone
+  → refuses to recreate user
+
+late user.created/user.updated after deletion
+  → sees tombstone
+  → does not resurrect user
+```
+
+That last property is much more important than whether `user.created` happens to arrive before or after the first application mutation.
+
+---
+
+# 2. Webhook receiving, verification and idempotency
+
+## Exact Clerk 7.9.2 finding
+
+At the exact Git tag `@clerk/nextjs@7.9.2`, Clerk's monorepo contains `@clerk/backend` **3.17.2**. That backend package exports `./webhooks`, depends on `standardwebhooks ^1.0.0`, and has both Node and edge-runtime tests. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/package.json))
+
+The exact 7.9.2-tagged `verifyWebhook()` implementation:
+
+- imports `Webhook` from `standardwebhooks`;
+- reads `CLERK_WEBHOOK_SIGNING_SECRET` unless `signingSecret` is passed;
+- reads `svix-id`, `svix-timestamp`, and `svix-signature`;
+- maps them to Standard Webhooks headers;
+- consumes the request body itself. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/src/webhooks.ts))
+
+That makes `@clerk/backend/webhooks` the correct abstraction here. I would add it as an **explicit dependency pinned to 3.17.2**, rather than depend on a transitive copy brought in by `@clerk/nextjs`:
+
+```bash
+bun add @clerk/backend@3.17.2
+```
+
+Do **not** add `svix` merely for verification. Clerk 7.9.2's own helper has already moved verification through Standard Webhooks while accepting the Svix headers Clerk actually sends. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/package.json))
+
+The cross-product statement “Clerk's helper is formally supported/tested by Clerk against the Convex 1.45 runtime” is **UNVERIFIED**. What is verified is that the exact Clerk package has an edge/browser runtime path and edge-runtime tests, while Convex HTTP actions expose web-standard `Request`/`Response` APIs. I would still make your real-local-backend webhook test the final compatibility proof.
+
+## Raw-body rule
+
+Do not do this:
+
+```ts
+const payload = await request.json();
+await verifyWebhook(request); // wrong: body already consumed
+```
+
+Use a clone:
+
+```ts
+const event = await verifyWebhook(request.clone());
+const envelope = await request.json();
+```
+
+The clone matters for another exact-version reason: the raw Clerk envelope includes `instance_id` and `timestamp`, but the exact helper's returned event object does not preserve all of those top-level envelope fields. Clerk documents both fields as part of the webhook envelope. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+### Environment variables
+
+Use:
+
+```text
+CLERK_WEBHOOK_SIGNING_SECRET=[redacted]
+CLERK_INSTANCE_ID=ins_...       # our defense-in-depth setting
+CLERK_SECRET_KEY=[redacted]
+```
+
+`CLERK_WEBHOOK_SIGNING_SECRET` is Clerk 7.9.2's own exact helper convention. Note that Convex's current webhook tutorial still shows `CLERK_WEBHOOK_SECRET`; that is an example-specific name, not what Clerk's current helper reads automatically. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/src/webhooks.ts))
+
+`CLERK_INSTANCE_ID` is **our recommendation**, not a Clerk-required verification variable. The signing secret is the cryptographic authentication. Comparing the verified envelope's `instance_id` adds cheap defense against accidentally wiring the wrong Clerk instance/endpoint.
+
+## Concrete `convex/http.ts`
+
+```ts
+import { verifyWebhook } from "@clerk/backend/webhooks";
+import { httpRouter } from "convex/server";
+
+import { internal } from "./_generated/api";
+import { httpAction } from "./_generated/server";
+
+const http = httpRouter();
+
+http.route({
+  path: "/clerk-users-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const messageId = request.headers.get("svix-id");
+
+    if (!messageId) {
+      return new Response("Missing webhook id", { status: 400 });
+    }
+
+    let event;
+    try {
+      // verifyWebhook consumes its Request body.
+      event = await verifyWebhook(request.clone());
+    } catch {
+      return new Response("Invalid webhook", { status: 400 });
+    }
+
+    // Only parse after successful signature verification.
+    const envelope = (await request.json()) as {
+      instance_id?: string;
+      timestamp?: number;
+    };
+
+    const expectedInstance = process.env.CLERK_INSTANCE_ID;
+    if (
+      expectedInstance !== undefined &&
+      envelope.instance_id !== expectedInstance
+    ) {
+      return new Response("Wrong Clerk instance", { status: 400 });
+    }
+
+    // Subscribe only to user.deleted for now, but remain defensive.
+    if (event.type !== "user.deleted") {
+      return new Response(null, { status: 204 });
+    }
+
+    const clerkUserId = event.data.id;
+
+    // Clerk's deleted-object ID is optional in the SDK type.
+    if (!clerkUserId) {
+      console.error("Verified user.deleted lacked user id", { messageId });
+      return new Response("Malformed user.deleted", { status: 500 });
+    }
+
+    try {
+      await ctx.runMutation(
+        internal.accountDeletion.acceptClerkDeletion,
+        {
+          messageId,
+          clerkUserId,
+          eventTimestamp: envelope.timestamp ?? Date.now(),
+        },
+      );
+
+      return new Response(null, { status: 204 });
+    } catch {
+      console.error("Could not persist deletion request", { messageId });
+      return new Response("Retry later", { status: 500 });
+    }
+  }),
+});
+
+export default http;
+```
+
+### Retry semantics
+
+Clerk says it uses Svix and explicitly links Svix's retry schedule. As of 28 August 2026, Svix documents attempts immediately, then after 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours, and another 10 hours. Any `2xx` indicates success; non-2xx, including 3xx, is failure. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+So your response policy should be:
+
+```text
+verified + durably persisted                → 204
+duplicate already durably persisted         → 204
+irrelevant valid event                      → 204
+bad signature / malformed authentication    → 400
+wrong Clerk instance                        → 400
+verified deletion missing required user id  → 500
+temporary Convex/internal failure           → 500
+```
+
+And again, **retrying is not a delivery guarantee**. Clerk's own statement is stronger than merely “webhooks are eventual”: it says delivery may not happen “at all.” ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+## `svix-id` idempotency
+
+Store the message ID before acknowledging the event. Signature schemes incorporate the webhook/message ID into the signed material, and Clerk's exact helper maps `svix-id` into the Standard Webhooks `webhook-id`. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/src/webhooks.ts))
+
+I would have **two levels of idempotency**:
+
+```text
+webhookReceipts.messageId
+    → protects against retries/replays of one message
+
+accountDeletionGuards.clerkUserId
+deletionJobs.clerkUserId
+    → protects against two distinct deletion events for same account
+```
+
+That means manually replaying the same event is harmless, and two different valid message IDs for one user still produce only one semantic deletion.
+
+---
+
+# 3. The 60-second JWT gap and missed-webhook gap
+
+### What Clerk guarantees
+
+Clerk documents its session token as a short-lived JWT that refreshes every **60 seconds**. ([Clerk](https://clerk.com/docs/guides/sessions/force-token-refresh))
+
+What I could **not** verify for Clerk 7.9.2 + native Convex specifically is the stronger proposition: “after a Hosted Account Portal self-delete, the exact token that was already issued will definitely continue authorizing Convex for exactly N seconds.” **UNVERIFIED.** JWTs being short lived makes such a residual window plausible, but don't build a security assertion around an undocumented exact post-deletion timeline.
+
+### Recommendation: yes, use a deletion guard
+
+Every private Convex operation should go through one shared identity helper:
+
+```ts
+// convex/lib/auth.ts
+import { ConvexError } from "convex/values";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
+
+type DbCtx = Pick<QueryCtx, "auth" | "db"> | Pick<MutationCtx, "auth" | "db">;
+
+export async function requireActiveIdentity(ctx: DbCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+
+  if (!identity) {
+    throw new ConvexError("UNAUTHENTICATED");
+  }
+
+  const clerkUserId = identity.subject;
+
+  const deletion = await ctx.db
+    .query("accountDeletionGuards")
+    .withIndex("by_clerk_user_id", (q) =>
+      q.eq("clerkUserId", clerkUserId),
+    )
+    .unique();
+
+  if (deletion) {
+    throw new ConvexError("ACCOUNT_DELETED");
+  }
+
+  return {
+    clerkUserId,
+    issuer: identity.issuer,
+    tokenIdentifier: identity.tokenIdentifier,
+  };
+}
+```
+
+This guard handles an important race that token verification alone cannot: **once Convex has observed the deletion, old credentials can no longer recreate/use application state**.
+
+It does *not* solve a Clerk webhook that never arrives. That requires reconciliation.
+
+## Reconciliation
+
+Clerk's Backend API rate limit is currently **1,000 requests per 10 seconds per production instance** and **100 per 10 seconds per development instance**, keyed by Secret Key. ([Clerk](https://clerk.com/docs/guides/how-clerk-works/system-limits))
+
+The efficient reconciliation direction is therefore not “enumerate every Clerk user and compare databases.” It is:
+
+```text
+Convex users
+   │
+   ├─ take bounded page
+   ├─ gather Clerk IDs
+   ▼
+Clerk getUserList({ userId: [...] })
+   │
+   ├─ present → still active
+   └─ apparently missing
+         │
+         ▼
+       confirm individual getUser()
+         │
+         └─ confirmed not-found → same requestDeletion mutation
+```
+
+Clerk's user-list API accepts a list of user IDs, with up to 100 user IDs per request in the current API. 
+
+The individual confirmation matters because “not in this response” should never directly become “delete everything”: API/transient/rate-limit errors must fail closed. Respect `429`/`Retry-After` and retry later. ([Clerk](https://clerk.com/docs/guides/how-clerk-works/system-limits))
+
+### Is reconciliation over-engineering now?
+
+With **literally no user-owned product data**, I would implement the reconciliation *interface/state transition* now but not necessarily turn on a recurring job this week.
+
+Once the first meaningful user-owned table ships, I would enable a **daily reconciliation**. That is not because daily has any special framework guarantee; it is an operational SLO recommendation. Clerk has documented that webhook delivery can fail entirely, so without some reconciliation mechanism you knowingly have a permanent orphan-data path. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+A minute-by-minute scan is over-engineering. No reconciliation at all once personal application data exists is under-engineering.
+
+---
+
+# 4. Cascading cleanup at Convex scale
+
+### Current Convex service limits
+
+Current Convex cloud documentation limits each query/mutation transaction to 16 MiB read, 16 MiB written, 32,000 documents scanned, 4,096 index ranges, and 16,000 documents written. Query/mutation user code gets one second of execution time. These are current hosted-service limits, **not a guarantee tied specifically to npm `convex@1.45.0`**. ([Convex](https://docs.convex.dev/production/state/limits))
+
+Therefore “delete everything for this user in one mutation” is not a scalable architecture.
+
+### Native scheduler is the right starting primitive
+
+Convex makes a particularly useful distinction:
+
+> Scheduled mutations are guaranteed to execute exactly once and retry transient failures; scheduled actions are at-most-once and are not retried.
+
+That is an explicit Convex guarantee. ([Convex](https://docs.convex.dev/api/interfaces/server.Scheduler))
+
+So keep pure-Convex account cleanup in **small scheduled internal mutations**.
+
+Your acceptance mutation should atomically create the guard/job and schedule the first batch. Scheduling from a mutation executes after that mutation commits; failed mutations roll back their transactional effects. ([Convex](https://docs.convex.dev/api/interfaces/server.Scheduler))
+
+A job can look like:
+
+```ts
+deletionJobs: defineTable({
+  clerkUserId: v.string(),
+  userId: v.optional(v.id("users")),
+  state: v.union(
+    v.literal("queued"),
+    v.literal("running"),
+    v.literal("blocked"),
+    v.literal("completed"),
+  ),
+  phase: v.string(),
+  processed: v.number(),
+  requestedAt: v.number(),
+  updatedAt: v.number(),
+  completedAt: v.optional(v.number()),
+  lastError: v.optional(v.string()),
+})
+  .index("by_clerk_user_id", ["clerkUserId"])
+  .index("by_state", ["state"]),
+```
+
+Each cleanup handler should be idempotent and operate through an ownership index:
+
+```ts
+const rows = await ctx.db
+  .query("notes")
+  .withIndex("by_owner", (q) => q.eq("ownerId", userId))
+  .take(200);
+
+for (const row of rows) {
+  await ctx.db.delete("notes", row._id);
+}
+
+if (rows.length === 200) {
+  await ctx.scheduler.runAfter(
+    0,
+    internal.accountDeletion.runBatch,
+    { jobId },
+  );
+  return;
+}
+
+// Advance to next phase.
+```
+
+Convex's own data-writing guidance also documents bounded/resumable mutation patterns and transaction metrics as a way to stop before hard transaction limits rather than relying purely on a document count. ([Convex](https://docs.convex.dev/database/writing-data))
+
+For a deletion-only index, a cursor is often unnecessary: after each committed batch, deleted documents simply disappear from `by_owner`; rerunning “take first N” is inherently resumable. An anonymization handler may instead need a cursor or explicit phase state.
+
+### Delete the `users` row last
+
+The cleanup sequence should be:
+
+```text
+1. deletion guard already exists
+2. delete/anonymize every dependent table
+3. delete owned storage
+4. complete third-party cleanup
+5. delete users row
+6. job = completed
+7. guard = deleted/completed
+8. purge guard after retention window
+```
+
+Keeping the user row until dependents are gone makes ownership queries easy and leaves a natural resumable anchor.
+
+## Files
+
+Convex exposes `ctx.storage.delete(storageId)` for deleting a stored file; after deletion, its file URL no longer serves that file. ([Convex](https://docs.convex.dev/api/interfaces/server.StorageWriter))
+
+Do not scatter storage IDs through arbitrary owned rows with no inventory. Introduce an owned metadata table whenever uploads arrive:
+
+```ts
+userFiles: defineTable({
+  ownerId: v.id("users"),
+  storageId: v.id("_storage"),
+  kind: v.string(),
+})
+  .index("by_owner", ["ownerId"]),
+```
+
+Then `userFiles` is an ordinary cleanup registration.
+
+Whether a missing-file `ctx.storage.delete` is guaranteed idempotent in precisely the way your retry worker needs, and the exact atomic relationship between a storage deletion and arbitrary DB mutations, were **UNVERIFIED** from the exact-version/current documentation I found. Code the file phase so “already absent” is considered success and test it against the real local backend.
+
+## Scheduler vs Workflow / Workpool / Migrations
+
+Use the built-in scheduler today. Convex's own docs position Workflow/Workpool for richer durable multi-step execution, concurrency control, retries and rate management, while Migrations is for resumable online data/schema migration. ([Convex](https://docs.convex.dev/agents/workflows))
+
+My threshold for Workflow later is **external processors**. Once deletion involves Stripe, an email platform, analytics/CDP, object storage outside Convex, etc., you need actions/network calls. Scheduled actions are at-most-once, so a naked chain of scheduled actions is insufficient for a deletion obligation. ([Convex](https://docs.convex.dev/api/interfaces/server.Scheduler))
+
+At that point either use a durable persisted state machine yourself or adopt Workflow. The exact Workflow/Workpool package releases compatible with your future codebase are **UNVERIFIED** because no component versions were specified here.
+
+Migrations should not be your account deletion engine.
+
+---
+
+# 5. Make future tables impossible to forget
+
+Convex does not provide a built-in “ON DELETE CASCADE across every table referencing `users`” facility that I could verify. Your enforcement therefore belongs in your application/schema discipline.
+
+I recommend a **typed ownership registry plus a structural schema test**.
+
+Every table whose schema contains:
+
+```ts
+ownerId: v.id("users")
+```
+
+must have a policy:
+
+```ts
+export const USER_DATA_POLICIES = {
+  notes: {
+    disposition: "delete",
+    index: "by_owner",
+  },
+
+  userFiles: {
+    disposition: "delete",
+    index: "by_owner",
+  },
+
+  // Example:
+  // invoices: {
+  //   disposition: "retain_legal",
+  //   handler: ...
+  // },
+} as const;
+```
+
+Then make CI independently inspect `convex/schema.ts` with the TypeScript compiler API and extract every `defineTable(...)` containing `v.id("users")`.
+
+The invariant is:
+
+```ts
+expect(
+  tablesReferencingUsersInSchema,
+).toEqual(
+  tablesDeclaredInUserDataPolicies,
+);
+```
+
+This is stronger than relying on developers to remember a checklist because someone adding:
+
+```ts
+comments: defineTable({
+  ownerId: v.id("users"),
+})
+```
+
+without modifying the cleanup registry breaks CI.
+
+I would also standardize all directly owned indexes as:
+
+```ts
+.index("by_owner", ["ownerId"])
+```
+
+unless a table has a deliberate documented reason not to. That gives the cleanup worker predictable bounded access and prevents accidental full scans.
+
+The second enforcement layer is behavioral: an integration fixture should create at least one row for **every registry entry**, run real deletion, and then assert each entry's promised disposition.
+
+That is the convention I would expect a team to enforce:
+
+```text
+schema ownership edge
+        ↓
+compile/type registry
+        ↓
+AST completeness test
+        ↓
+real-backend deletion integration test
+```
+
+The registry is not merely code organization; it becomes your machine-readable data-retention inventory.
+
+---
+
+# 6. GDPR / UK GDPR and what “deleted” means
+
+Under UK GDPR guidance, an erasure request must be handled **without undue delay**, and the response must be made at the latest within one month. The right is not absolute; data needed to meet a legal obligation or establish/exercise/defend legal claims can in appropriate cases be retained. The ICO explicitly warns against blanket treatment and gives examples involving statutory payroll records and legal claims. ([ICO](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/))
+
+That does **not** mean “keep the account because billing might matter.” It means isolate the minimum invoice/accounting evidence actually subject to a retention obligation, document the purpose and retention period, and remove it from normal product use. Likewise, “abuse prevention” is not a blanket Article 17 exemption: any retained anti-abuse identifier needs an identified lawful basis, necessity/proportionality analysis, limited access, and a retention period. That legal determination should be reviewed for your actual jurisdiction/use case rather than inferred from framework docs.
+
+### Backups
+
+Convex documents backups as snapshots that can optionally include file storage. Manual backups are stored for seven days; periodic daily backups for seven days and weekly backups for fourteen days. It also documents that downloaded exports contain table data and, when selected, storage files. ([Convex](https://docs.convex.dev/database/backup-restore))
+
+There is a small documentation inconsistency on that page: the detailed periodic-backup section says weekly backups last 14 days, while a later FAQ says each backup is accessible up to seven days. I would therefore treat **14 days as the conservative documented managed-backup horizon** unless Convex confirms otherwise. ([Convex](https://docs.convex.dev/database/backup-restore))
+
+A restore is particularly relevant to deletion architecture because Convex says restoring replaces database data with the backup, while existing files are not necessarily removed and missing backed-up files can be restored. Your disaster-recovery runbook therefore needs an **erasure replay step before restored production traffic is reopened**. ([Convex](https://docs.convex.dev/database/backup-restore))
+
+ICO guidance permits erased data to remain temporarily in backup systems when it is effectively put beyond use and disappears according to the backup lifecycle rather than being restored into normal processing. ([ICO](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/))
+
+This is why I recommend a **30-day deletion guard/ledger**, not a permanent tombstone. Thirty days is **our operational policy**, not a GDPR rule: it covers Convex's documented 14-day managed-backup horizon with margin and gives a restored deployment enough history to reapply deletions. The guard itself is still linkable personal data, so keeping it indefinitely would work against storage minimisation.
+
+### “Deleted” in practice
+
+For your system, a deletion job should be considered operationally complete when:
+
+```text
+live product tables        deleted or deliberately anonymized
+users row                  deleted
+Convex file storage        deleted
+third-party processors     deletion propagated / recorded
+legally retained records   segregated + purpose/TTL constrained
+application logs           removed/aged out under retention policy
+managed backups            beyond active use, aging out
+manual exports             tracked under their own retention controls
+restore procedure          reapplies previously completed deletions
+```
+
+Logs deserve particular attention. Don't log Clerk's full webhook payload: a `user.*` payload can contain profile, contact and metadata fields, as Clerk's documented webhook example illustrates. Log the message ID, event type, job ID/status and narrowly needed diagnostics instead. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview))
+
+Downloaded Convex ZIP exports are your copies; deleting the live document obviously does not reach into an already-downloaded ZIP. Convex explicitly documents that exports can contain all table documents and storage data. ([Convex](https://docs.convex.dev/database/backup-restore))
+
+Clerk's public DPA establishes the broader controller/processor arrangement and deletion obligations under that contract, but I did **not** find exact Clerk 7.9/current documentation establishing how long every internal copy of an individual Clerk user persists following that user's Hosted Account Portal self-deletion. **UNVERIFIED.** The DPA's separate “within 90 days” language on termination of the customer agreement should not be misrepresented as the per-user Account Portal deletion period. ([Clerk](https://clerk.com/legal/dpa))
+
+Similarly, Convex's public backup retention is documented, but provider-internal disaster-recovery replicas/snapshots and every processor-level erasure interval were **UNVERIFIED** from the public material retrieved. Get those from the current Convex DPA/Trust documentation before writing a precise privacy-policy promise.
+
+---
+
+# 7. Minimal foundation to build now
+
+I would create these tables immediately even before there is any meaningful user content:
+
+```ts
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    clerkUserId: v.string(),
+    issuer: v.string(),
+    tokenIdentifier: v.string(),
+  }).index("by_clerk_user_id", ["clerkUserId"]),
+
+  accountDeletionGuards: defineTable({
+    clerkUserId: v.string(),
+    state: v.union(
+      v.literal("deleting"),
+      v.literal("deleted"),
+    ),
+    source: v.union(
+      v.literal("clerk_webhook"),
+      v.literal("reconciliation"),
+      v.literal("admin"),
+    ),
+    requestedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("by_clerk_user_id", ["clerkUserId"])
+    .index("by_expires_at", ["expiresAt"]),
+
+  deletionJobs: defineTable({
+    clerkUserId: v.string(),
+    userId: v.optional(v.id("users")),
+    state: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("blocked"),
+      v.literal("completed"),
+    ),
+    phase: v.string(),
+    processed: v.number(),
+    requestedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_clerk_user_id", ["clerkUserId"])
+    .index("by_state", ["state"]),
+
+  webhookReceipts: defineTable({
+    messageId: v.string(),
+    type: v.string(),
+    receivedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_message_id", ["messageId"])
+    .index("by_expires_at", ["expiresAt"]),
+});
+```
+
+The lazy create shape is:
+
+```ts
+// convex/lib/currentUser.ts
+import type { MutationCtx } from "../_generated/server";
+import { requireActiveIdentity } from "./auth";
+
+export async function getOrCreateCurrentUser(ctx: MutationCtx) {
+  const identity = await requireActiveIdentity(ctx);
+
+  const existing = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_user_id", (q) =>
+      q.eq("clerkUserId", identity.clerkUserId),
+    )
+    .unique();
+
+  if (existing) {
+    return existing;
+  }
+
+  const userId = await ctx.db.insert("users", {
+    clerkUserId: identity.clerkUserId,
+    issuer: identity.issuer,
+    tokenIdentifier: identity.tokenIdentifier,
+  });
+
+  const created = await ctx.db.get("users", userId);
+  if (!created) throw new Error("Inserted user missing");
+
+  return created;
+}
+```
+
+Use that **inside a real write that requires a user**, rather than a top-level React “ensure user exists” loading gate. Convex's documentation demonstrates the client-effect approach, but it is not required by the framework. ([Convex](https://docs.convex.dev/auth/database-auth))
+
+For your `/` route, the latter is especially useful: the signed-in branch needn't introduce a special “creating account row…” render state, which fits your no-avoidable-CLS requirement. Public marketing rendering remains independent from Convex user-row creation.
+
+The deletion acceptance shape is:
+
+```ts
+export const acceptClerkDeletion = internalMutation({
+  args: {
+    messageId: v.string(),
+    clerkUserId: v.string(),
+    eventTimestamp: v.number(),
+  },
+
+  handler: async (ctx, args) => {
+    const duplicate = await ctx.db
+      .query("webhookReceipts")
+      .withIndex("by_message_id", (q) =>
+        q.eq("messageId", args.messageId),
+      )
+      .unique();
+
+    if (duplicate) return;
+
+    const now = Date.now();
+    const expiresAt = now + 30 * 24 * 60 * 60 * 1000;
+
+    await ctx.db.insert("webhookReceipts", {
+      messageId: args.messageId,
+      type: "user.deleted",
+      receivedAt: now,
+      expiresAt,
+    });
+
+    let guard = await ctx.db
+      .query("accountDeletionGuards")
+      .withIndex("by_clerk_user_id", (q) =>
+        q.eq("clerkUserId", args.clerkUserId),
+      )
+      .unique();
+
+    if (!guard) {
+      const guardId = await ctx.db.insert("accountDeletionGuards", {
+        clerkUserId: args.clerkUserId,
+        state: "deleting",
+        source: "clerk_webhook",
+        requestedAt: args.eventTimestamp,
+        expiresAt,
+      });
+      guard = await ctx.db.get("accountDeletionGuards", guardId);
+    }
+
+    const existingJob = await ctx.db
+      .query("deletionJobs")
+      .withIndex("by_clerk_user_id", (q) =>
+        q.eq("clerkUserId", args.clerkUserId),
+      )
+      .unique();
+
+    if (existingJob) return;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q) =>
+        q.eq("clerkUserId", args.clerkUserId),
+      )
+      .unique();
+
+    const jobId = await ctx.db.insert("deletionJobs", {
+      clerkUserId: args.clerkUserId,
+      userId: user?._id,
+      state: "queued",
+      phase: "owned-data",
+      processed: 0,
+      requestedAt: args.eventTimestamp,
+      updatedAt: now,
+    });
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.accountDeletion.runBatch,
+      { jobId },
+    );
+  },
+});
+```
+
+The important property is architectural rather than syntactic: receipt, tombstone, semantic job dedupe, and scheduling happen in **one transaction**. Convex then gives the scheduled mutation its exactly-once/transient-retry behavior. ([Convex](https://docs.convex.dev/api/interfaces/server.Scheduler))
+
+Your code layout can stay very small:
+
+```text
+src/
+  proxy.ts                    existing Clerk middleware
+  app/
+    layout.tsx                existing Clerk + Convex providers
+
+convex/
+  auth.config.ts              existing Clerk aud:"convex"
+  schema.ts
+  http.ts
+  lib/
+    auth.ts
+    currentUser.ts
+  accountDeletion.ts
+  userDataPolicies.ts
+
+test/
+  integration/
+    accountDeletion.test.ts
+    userDataPolicy.test.ts
+```
+
+No Next Route Handler is needed for Clerk lifecycle webhooks; point Clerk directly at:
+
+```text
+https://<deployment>.convex.site/clerk-users-webhook
+```
+
+That direct Convex HTTP endpoint shape is the one Convex itself documents for Clerk webhooks. ([Convex](https://docs.convex.dev/auth/database-auth))
+
+---
+
+# 8. Real-backend test strategy
+
+Convex explicitly documents testing against the open-source local backend as an alternative to `convex-test`; it says this runs against the same backend code as production when kept up to date and enforces argument/data/query limits. It also warns that scheduled functions really run, crons really run unless disabled, fetch/dependencies cannot be mocked, and environment variables cannot be changed from inside a test. ([Convex](https://docs.convex.dev/testing/convex-backend))
+
+That is exactly what you want for this subsystem.
+
+Run an isolated local deployment per CI workspace and drive the tests with Bun. Convex added local deployments and the `convex dev --start ...` workflow before 1.45, so they are available in your stated version. ([GitHub](https://github.com/get-convex/convex-js/blob/main/CHANGELOG.md))
+
+Your integration suite should exercise these cases:
+
+| Case | Assertion |
+|---|---|
+| Two simultaneous first-user mutations | exactly one logical `users` row |
+| Same `svix-id` delivered twice | one receipt, one deletion job |
+| Two valid delete event IDs for same Clerk ID | one semantic deletion job |
+| Delete races lazy creation | final state guarded/deleted, never resurrected |
+| Late `user.created` later, if you add it | cannot resurrect tombstoned identity |
+| Invalid signature | no Convex state changed |
+| Valid signature, wrong `instance_id` | no Convex state changed |
+| >1 batch of owned rows | deletion resumes until empty |
+| Worker failure mid-process | committed prior batches remain; job visible and resumable |
+| File ownership | file and ownership row disappear |
+| Every registered table fixture | promised delete/anonymize/retain policy holds |
+| New schema `v.id("users")` without registry entry | structural test fails |
+| Reconciliation confirmed Clerk 404 | enters same deletion state machine |
+| Reconciliation transient/429 | user is **not** deleted |
+| Restored pre-deletion snapshot | erasure ledger/reconciliation removes resurrected state before service resumes |
+
+The local backend has no reason to involve `convex-test` at all. For webhook tests, generate a correctly signed Standard/Svix-format request and send it to the local Convex HTTP endpoint so you exercise Clerk's actual `verifyWebhook()` code, raw-body handling, your HTTP action, database mutation, and scheduler together.
+
+One thing the local identity-injection tooling cannot prove is “a real Clerk development JWT, minted and then invalidated by deleting that Clerk user, behaves identically through the complete Clerk→Convex native integration.” Make that a small cloud-development smoke test. The exact post-delete stale-token behavior remains **UNVERIFIED** until you run that experiment.
+
+---
+
+# 9. Recommended policy to adopt
+
+1. **Clerk `identity.subject` is our external user key; `users._id` is every app table's owner key.**
+2. **Create `users` lazily from authenticated mutations; never depend on `user.created` for onboarding.**
+3. **Subscribe to `user.deleted` now; add created/updated only when we intentionally mirror Clerk data.**
+4. **Every private Convex function goes through `requireActiveIdentity()` and therefore the deletion guard.**
+5. **A verified deletion is durably accepted before returning 2xx; `svix-id` and Clerk user ID are both idempotency keys.**
+6. **Deletion is a resumable bounded job; `users` is deleted last.**
+7. **Every `v.id("users")` ownership edge must appear in the central retention/cleanup registry or CI fails.**
+8. **Files are owned through indexed metadata and participate in the same cleanup registry.**
+9. **No permanent tombstones: retain the minimal deletion guard for 30 days, then purge it.**
+10. **Enable daily Clerk reconciliation when the first meaningful personal-data table ships; earlier is optional.**
+11. **Restore from backup is incomplete until completed erasures have been reapplied.**
+12. **Legal-retention records are minimal, segregated, purpose-limited and time-limited—not exceptions that preserve an account wholesale.**
+
+---
+
+# 10. Trade-offs rejected
+
+| Rejected design | Why |
+|---|---|
+| `tokenIdentifier` as the primary external key | Valid Convex choice, but awkward for joining Clerk webhook/BAPI IDs; `subject` directly corresponds to Clerk's user ID in the documented integration. ([Convex](https://docs.convex.dev/auth/database-auth)) |
+| Webhook-only `user.created` | Clerk explicitly does not guarantee webhook delivery, so onboarding would have an avoidable availability hole. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview)) |
+| Lazy-create + created/updated webhooks immediately | More race/order/PII-sync surface without a present requirement. |
+| One huge cascade mutation | Hard transaction and CPU limits eventually make it fail. ([Convex](https://docs.convex.dev/production/state/limits)) |
+| Scheduled actions for DB cleanup | Convex promises at-most-once, no automatic retry, whereas scheduled mutations get the stronger semantics needed here. ([Convex](https://docs.convex.dev/api/interfaces/server.Scheduler)) |
+| Workflow/Workpool immediately | Native scheduled mutations already fit today's Convex-only deletion graph; add richer orchestration when external side effects justify it. |
+| Migrations component for deletes | Migrations solve deployment/data-migration work, not per-user lifecycle jobs. ([Convex](https://docs.convex.dev/database/writing-data)) |
+| Permanent deleted-user tombstones | Prevent resurrection but unnecessarily retain a stable personal identifier forever. |
+| Never reconcile Clerk | Leaves a known permanent deletion gap because Clerk explicitly disclaims guaranteed delivery. ([Clerk](https://clerk.com/docs/guides/development/webhooks/overview)) |
+| Aggressive continuous Clerk polling | Adds Backend API traffic/complexity without corresponding need; current API is rate-limited. ([Clerk](https://clerk.com/docs/guides/how-clerk-works/system-limits)) |
+| Direct `svix` verification dependency | Clerk 7.9.2 already provides the exact verification abstraction and internally uses Standard Webhooks. ([GitHub](https://github.com/clerk/javascript/blob/%40clerk%2Fnextjs%407.9.2/packages/backend/package.json)) |
+| Putting the webhook through Next/Vercel first | Adds another availability/runtime hop and no value when Convex itself documents direct `.convex.site` webhooks. ([Convex](https://docs.convex.dev/auth/database-auth)) |
+
+---
+
+# 11. Open risks
+
+| Risk | Status |
+|---|---|
+| Exact validity of an already-issued native Convex Clerk token immediately after Account Portal deletion | **UNVERIFIED**; Clerk documents 60-second token refresh, not this exact cross-product deletion behavior. ([Clerk](https://clerk.com/docs/guides/sessions/force-token-refresh)) |
+| `@clerk/backend@3.17.2 verifyWebhook()` tested upstream specifically in Convex 1.45 runtime | **UNVERIFIED**; API/runtime compatibility is strong, but prove it with your real-local test. |
+| Clerk's internal per-user data-retention period after Hosted Account Portal self-delete | **UNVERIFIED** from the retrieved public exact-version material. |
+| Convex provider-internal DR snapshot/subprocessor erasure periods beyond documented customer backups | **UNVERIFIED**; obtain current DPA/Trust commitments. |
+| Exact Workflow/Workpool behavior/version if adopted later | **UNVERIFIED** until you select concrete component versions. |
+| Exact missing-file/retry semantics of `ctx.storage.delete()` needed for your idempotent worker | **UNVERIFIED**; include in local-backend integration tests. |
+| Weekly-backup retention documentation conflict | Detailed section says 14 days; FAQ says “up to 7 days”; design conservatively around 14 days. ([Convex](https://docs.convex.dev/database/backup-restore)) |
+| GDPR/UK-GDPR grounds for tax, legal-claim, anti-abuse or other retained records | Product-specific legal determination; framework documentation cannot decide your lawful basis. ([ICO](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/)) |
+
+The part I would be most reluctant to postpone is **the deletion guard + central ownership registry**. Both are extremely cheap while you have zero owned tables and disproportionately expensive to retrofit after dozens of features exist. Reconciliation, Workflow/Workpool and external-processor orchestration can legitimately wait until there is data or integrations that make them necessary.

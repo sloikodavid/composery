@@ -1,0 +1,41 @@
+# New chat
+
+Source: https://chatgpt.com/share/6aa774c6-6790-83eb-807f-a66ac9f1a040
+
+---
+
+## Turn 1: User
+
+_2026-09-14T04:04:34.863Z_
+
+We are designing Composery, a web control panel for customer-controlled VPSs. The current backend is Convex with TypeScript and Node.js 24, Clerk authentication, and Hetzner Cloud for the first allocation backend. Ubuntu 24.04 is the initial server image. Clients must support Windows, macOS, and Linux. A later allocation backend may run our own VMs.
+
+Product requirements: owners can administer their servers; platform ownership and membership permissions are distinct from Linux privileges. Initially one platform permission can cover SSH administration. Ordinary customer SSH should work independently of Composery after setup. Customer private keys should remain on the client. A client agent is not guaranteed an authenticated browser session. UI and programmatic clients must use the same application operations and authorization rules.
+
+Working direction, open to evidence-based challenge: structured controls over native OpenSSH authorizations; server state is authoritative; live reads and explicit edits; no mandatory per-member key ownership, automatic key deletion on membership removal, persistent key inventory, or continuous enforcement. These are not implemented facts. Do not treat them as protocol requirements.
+
+Your task: Build a complete inventory of authorized_keys entry types and options for a justified supported OpenSSH release, using Ubuntu 24.04's package as a concrete reference and identifying differences from current upstream. Include ordinary keys, FIDO keys, certificate-authority entries, and certificate-related options.
+
+For each option, give syntax, allowed repetitions, defaults, parsing behavior, dependencies on other options and daemon policy, and effect at authentication or session time. Investigate ordering, duplicates, restrictive combinations, forced commands, source patterns, forwarding, expiry and timezone handling, user rc, environment, tunnel devices, and FIDO presence/verification.
+
+Trace the relevant parsing and enforcement functions in source. Explain what sshd -t, sshd -T, ssh-keygen, or other native tools do and do not validate. Separate syntax validation from proof that the intended access works. Identify combinations that look restrictive but still allow arbitrary commands or another route to authority. Provide a versioned support matrix and representative executable probes. Do not invent product permission meanings for native options.
+Research rules: use primary documentation and source code. Identify the exact release, commit, platform, and date for claims that depend on them; distinguish OpenSSH Portable, OpenBSD-current, Ubuntu packages, and SSH RFCs. Separate verified facts, deductions, recommendations, and unknowns. Link to the source supporting each material claim. Never claim to have run an experiment unless you did. If repository access or execution is unavailable, say so and supply a reproducible check instead. Do not request or print secrets.
+
+Evaluate alternatives against the same requirements. State the strongest simpler alternative and the conditions that would make it preferable. Do not optimize for agreement with the working direction or for producing a novel architecture. Return a concise recommendation, decisive evidence, unresolved questions, and explicit pass/fail checks. Ask for a product decision only when evidence cannot resolve it. Stay within this prompt's scope; name dependencies instead of redesigning the whole product.
+```
+
+---
+
+## Turn 2: ChatGPT
+
+_2026-09-14T04:04:35.817Z_
+
+I’ll anchor the analysis to Ubuntu 24.04’s actual OpenSSH package, then compare that code path with the current Portable upstream release. I’ll separate four things throughout: what the parser accepts, what sshd policy permits, what takes effect at authentication/session time, and what native tools can actually validate.
+
+---
+
+## Turn 3: ChatGPT
+
+_2026-09-14T04:04:45.565Z_
+
+The concrete Ubuntu reference is now pinned: **Ubuntu 24.04 LTS (Noble), `openssh-server` 1:9.6p1-3ubuntu13.19 on amd64/i386 as of 14 Sep 2026**; Noble’s upstream base is OpenSSH Portable 9.6p1. I’m also treating **Portable 10.5p1** as the current stable comparison point, not `master`, so “current upstream” is reproducible rather than a moving branch.

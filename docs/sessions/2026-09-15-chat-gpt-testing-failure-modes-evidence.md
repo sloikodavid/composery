@@ -1,0 +1,133 @@
+# Testing Failure Modes Evidence
+
+Source: https://chatgpt.com/share/6aa92d0f-7d70-83eb-be70-d9ec18ff4fbe
+
+---
+
+## Turn 1: User
+
+_2026-09-15T11:26:19.328Z_
+
+Context: A team is choosing a testing approach they will still want in two years.
+
+Question: What are the documented failure modes of automated test suites, and what interventions are reported to work?
+
+Cover: flaky tests and their measured causes; suites that grew too slow to run; tests that had to be rewritten wholesale during a refactor; coverage targets and what the evidence says about them; false confidence, where a green suite accompanied a production incident; tests that encoded a bug as expected behaviour; and the maintenance cost of fixtures and helpers.
+
+Include published data from large organisations on flakiness rates and on what they did about it.
+
+Evidence rules: prefer measured reports over opinion, and label which is which, with dates and links. Where an intervention is reported to work, say in what context and whether anyone reports it failing.
+
+---
+
+## Turn 2: ChatGPT
+
+_2026-09-15T11:26:19.646Z_
+
+I’ll treat this as an evidence review rather than a testing-style argument: large-org measurements first, then case reports, then opinion only where measurement is absent. I’ll also separate “reported to work” from “plausible advice,” and note counterexamples or limits for each intervention.
+
+---
+
+## Turn 3: ChatGPT
+
+_2026-09-15T11:29:22.157Z_
+
+Two themes are already emerging from the measured reports. First, “more tests” is not monotonic with better signal: Google found large tests far flakier than small ones, while Meta got high regression recall running a selected subset. Second, several seemingly sensible fixes—especially simply lengthening timeouts—have published cases where they did not fix the failure rate.
+
+---
+
+## Turn 4: ChatGPT
+
+_2026-09-15T11:30:30.157Z_
+
+The strongest evidence points to a fairly specific design for a test suite that is meant to survive two years of change: **keep most tests small, deterministic and close to stable behavioural contracts; treat end-to-end tests as a scarce resource; measure flakiness and runtime as properties of the suite itself; use coverage to find gaps rather than as a quality score; and keep deployment safeguards independent of the test suite.**
+
+I would distinguish three evidence levels below: **Measured** means an empirical study or quantitative production report; **case report** means an organisation or practitioner describing one system without a controlled comparison; **guidance** is informed practice but not evidence that the intervention caused an improvement.
+
+### Flaky tests: large organisations have measured this, and the numbers are not small
+
+| Organisation / source | What was measured | What they did | Evidence that the intervention works / fails |
+|---|---|---|---|
+| **Google, 27 May 2016 — Measured production data.** [Flaky Tests at Google and How We Mitigate Them](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html?hl=de_AT&utm_source=chatgpt.com) | About **1.5% of all test executions** produced a flaky result; almost **16% of tests had some flakiness**. More strikingly, **84% of observed pass→fail transitions involved a flaky test**. Google listed concurrency, nondeterministic/undefined behaviour, third-party failures and infrastructure as causes. Its flake insertion rate was roughly equal to its fix rate. ([Google Testing Blog](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html?hl=de_AT)) | Selective/automatic retries; tests marked flaky could require three consecutive failures; automated quarantine plus a bug; monitoring changes in each test's flakiness. | Google explicitly says these mitigations are imperfect. Three retries can turn a 15-minute test into **45 minutes** before a real regression is recognised; quarantine can conceal a real race or product bug; repeated false alarms caused developers to dismiss genuine failures. ([Google Testing Blog](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html?hl=de_AT)) |
+| **Google, 17 Apr 2017 — Measured.** [Where do our flaky tests come from?](https://testing.googleblog.com/2017/04/where-do-our-flaky-tests-come-from.html?hl=it_IT&utm_source=chatgpt.com) | Among ~**4.2 million tests**, ~63,000 had a flaky execution in a week. Flakiness was **0.5% for small, 1.6% for medium and 14% for large tests**. Some technologies looked worse—Android-emulator tests 25.46%, Python WebDriver 18.72%—but test size was a major confounder. ([Google Testing Blog](https://testing.googleblog.com/2017/04/where-do-our-flaky-tests-come-from.html?hl=it_IT&utm_source=chatgpt.com)) | Push functionality toward smaller tests rather than assuming that choosing a different test runner fixes the problem. | This is correlation, not an experiment proving that shrinking any particular test will cure it. But Google later published a concrete migration with measured before/after results, discussed below. |
+| **Microsoft, ICSE 2020 — Measured study of six proprietary projects.** [A Study on the Lifecycle of Flaky Tests](https://www.microsoft.com/en-us/research/publication/a-study-on-the-lifecycle-of-flaky-tests/?utm_source=chatgpt.com) | Researchers identified **2,089 flaky tests**, of which 1,040 had been fixed. Among categorized fixes, **Async Wait was 78%**, network 14%, with concurrency, resource leaks, randomness, I/O and time also represented. ([Microsoft](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/07/LamETAL20FaTB.pdf?utm_source=chatgpt.com)) The operational impact varied enormously: one project had only 176 flaky tests yet they would have affected **35.7% of builds**; another had 1,453 but affected only **0.4% of builds**. ([Department of Computer Science](https://cs.gmu.edu/~winglam/Lam21PhD.pdf?utm_source=chatgpt.com)) | Microsoft built tooling around identifying/suppressing known flakes and experimented with **FaTB**, which derives appropriate waits for asynchronous tests instead of guessing. | On five flaky tests, FaTB made tests **up to 78% faster without increasing their observed flaky-failure rate**. Crucially, the authors also reran tests where developers claimed to have fixed flakiness by increasing waits and found cases where the longer waits **did not reduce flakiness at all**. ([Microsoft](https://www.microsoft.com/en-us/research/publication/a-study-on-the-lifecycle-of-flaky-tests/?utm_source=chatgpt.com)) |
+| **Meta, 10 Dec 2020 — Measured production system, though no controlled before/after flake-rate experiment.** [Probabilistic flakiness at Facebook](https://engineering.fb.com/2020/12/10/developer-tools/probabilistic-flakiness/?utm_source=chatgpt.com) | Meta calculates a probabilistic flakiness score for **millions of tests** from normal CI history. It reports an irreducible framework-dependent floor: well below 1% for unit-test frameworks, but as high as **~10% for some end-to-end frameworks**. ([Engineering at Meta](https://engineering.fb.com/2020/12/10/developer-tools/probabilistic-flakiness/?utm_source=chatgpt.com)) | Retries; continuous per-test flakiness measurement; owner tickets when reliability regresses; sufficiently bad/unfixed tests become ineligible for change-based CI selection. | Meta calls retries its most powerful tool but explicitly calls them **resource-intensive**. PFS became widely used internally, but the post does not give a clean experimental “before X%, after Y%” result. Its strongest finding is organisational: continuous ownership/incentives make flakiness visible rather than normalising it. ([Engineering at Meta](https://engineering.fb.com/2020/12/10/developer-tools/probabilistic-flakiness/?utm_source=chatgpt.com)) |
+
+The most defensible intervention from these reports is therefore **not “retry flaky tests until green.”** Retries are useful diagnostically and to keep CI moving, but Google documents how they delay recognition and create alarm fatigue. Better-supported changes are to reduce test size and dependencies, explicitly await asynchronous work rather than guessing sleeps, measure each test's reliability, and give flaky tests an owner and an expiry path rather than letting “known flaky” become permanent.
+
+### Suites that became too slow to run
+
+This failure mode is plainly documented. GitLab says its full suite, without parallelisation, **takes hours**. Its measured profiling identified recurring sources: unnecessary database-persisted factories and factory cascades, full browser tests where HTML-level tests suffice, widely included slow shared examples, waits for elements expected to be absent, and invoking real external operations such as compilation or Git commands. GitLab now collects timings centrally, profiles tests, and automatically raises work for tests above thresholds. ([GitLab Docs](https://docs.gitlab.com/development/testing_guide/best_practices/?utm_source=chatgpt.com)) [GitLab testing best practices](https://docs.gitlab.com/development/testing_guide/best_practices/?utm_source=chatgpt.com)
+
+There are two unusually useful measured interventions. First, **Meta's predictive test selection**, published 21 November 2018 after more than a year in production, ran only about **one-third of transitively affected tests**, while reporting over **99.9% of faulty changes** and cutting change-testing infrastructure cost by a factor of two. Meta had to account explicitly for flaky failures, including aggressive retries in training data. This is compelling evidence that “run everything on every edit” is not a necessary endpoint for a very large suite. It is, however, evidence from Facebook's monorepo and workload rather than proof that ML selection is worthwhile for a 20-person product team. ([Engineering at Meta](https://engineering.fb.com/2018/11/21/developer-tools/predictive-test-selection/?utm_source=chatgpt.com)) [Predictive test selection at Facebook](https://engineering.fb.com/2018/11/21/developer-tools/predictive-test-selection/?utm_source=chatgpt.com)
+
+Second, a Google team replacing a brittle legacy system reported a much simpler architectural intervention. Their old end-to-end tests started many external services and took about **30 minutes**. After moving functional checking toward unit-level RPC-stub tests, the replacement suite took about **3 minutes**; the client-side tests were reported as **0% flaky**, and after comparing the new and old suites Google judged them equally effective at finding bugs. They consequently retained E2E mainly for service-configuration problems. That comparison was made once about 80% of tests had been converted. ([Google Testing Blog](https://testing.googleblog.com/2016/11/what-test-engineers-do-at-google.html?hl=sk&utm_source=chatgpt.com)) [Google: Building Test Infrastructure, 18 Nov 2016](https://testing.googleblog.com/2016/11/what-test-engineers-do-at-google.html?hl=sk&utm_source=chatgpt.com)
+
+There are important failures in the same Google case. Trying simply to split the existing large tests was **impossible without refactoring the entire legacy system and its dependencies**. A second attempt—mocking unnecessary services in the large tests—merely shifted the burden into maintaining mocks and a dependency graph of more than 200 services. That is unusually valuable evidence because the source reports the failed interventions as well as the successful one. ([Google Testing Blog](https://testing.googleblog.com/2016/11/what-test-engineers-do-at-google.html?hl=sk&utm_source=chatgpt.com))
+
+### Tests that become liabilities during refactoring
+
+The empirical literature has much less clean “we rewrote 4,217 tests during refactor X” data than it has flakiness data. The best large-company evidence is therefore the Google case above: inappropriate coupling between tests and system structure made existing tests difficult to decompose; migration to a different testing boundary took **months and migration of all existing unit tests** to the new framework. That is a **case report with measurements**, not a controlled study. ([Google Testing Blog](https://testing.googleblog.com/2016/11/what-test-engineers-do-at-google.html?hl=sk&utm_source=chatgpt.com))
+
+A useful counterexample shows what survives a refactor. In a 2024 InfoQ practitioner presentation, a team described roughly **8,000 outside-in contract tests** around a service. When a new requirement invalidated the database design, the team rewrote the service's entire internal implementation while keeping its external contracts; the old tests still passed. This is **a practitioner case report, not independently measured research**, but it illustrates the architectural distinction cleanly: a test tied to a stable observable contract can survive a wholesale implementation replacement; a test tied to internal collaborators, call sequences or object layout often cannot. ([InfoQ](https://www.infoq.com/presentations/microservices-outside-in/?utm_source=chatgpt.com)) [Production Comes First — InfoQ case report](https://www.infoq.com/presentations/microservices-outside-in/?utm_source=chatgpt.com)
+
+So “unit test” versus “integration test” is not quite the durable distinction. **Coupling to volatile implementation detail versus stable behaviour is.** Small tests still win strongly on speed and flakiness, but small tests that mock every internal call can be extremely refactor-sensitive.
+
+### Coverage targets: useful measurement, weak quality objective
+
+The strongest direct experiment remains Inozemtseva and Holmes, ICSE 2014. They generated **31,000 test suites** for five Java systems, up to **724,000 LOC**, measured statement, decision and modified-condition coverage, and used mutation testing for effectiveness. Once they controlled for the number of tests, coverage had only **low-to-moderate correlation with effectiveness**, and stronger coverage criteria did not give greater insight. Their conclusion is unusually explicit: coverage is useful for finding under-tested code, but **should not be used as a test-suite quality target**. ([Computer Science at UBC](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf?utm_source=chatgpt.com)) [Coverage Is Not Strongly Correlated with Test Suite Effectiveness — ICSE 2014](https://www.cs.ubc.ca/~rtholmes/papers/icse_2014_inozemtseva.pdf?utm_source=chatgpt.com)
+
+Google's industrial practice is consistent with that result, though not a replication of it. Its 2019 FSE paper reports computing coverage for roughly **one billion lines of code every day** and emphasizes making it actionable at **changelist/code-review level**. Google had voluntary levels—60/70%, 75/80%, 90/90% project/change coverage—but **did not mandate a single threshold across the codebase**. ([Google Research](https://research.google/pubs/code-coverage-at-google/?utm_source=chatgpt.com)) [Code Coverage at Google — FSE 2019](https://research.google/pubs/code-coverage-at-google/?utm_source=chatgpt.com)
+
+Google's 2020 guidance makes the caveat stronger: there is no ideal universal percentage; top-down targets can become a checkbox, and teams should not obsess about moving from 90% to 95%. Its 60/75/90 labels are internal guidelines, not empirical boundaries at which software suddenly becomes safe. ([Google Testing Blog](https://testing.googleblog.com/2020/08/code-coverage-best-practices.html?hl=fr&utm_source=chatgpt.com))
+
+**Practical implication:** a coverage floor can be an organisational nudge, but don't make “85% coverage” the definition of done. More defensible uses are “show me what this change leaves unexercised” and “why is this critical path untested?”
+
+### False confidence: a green validation pipeline can precede a severe production incident
+
+The July 2024 CrowdStrike incident is an unusually clear documented example. CrowdStrike's official post-incident report describes an extensive sensor QA process including unit, integration, performance and stress testing and staged sensor rollout. The relevant IPC template type passed a **5 March 2024 stress test**, and four earlier template instances subsequently operated successfully in production. On **19 July 2024**, however, a buggy Content Validator accepted problematic content; CrowdStrike says trust in the prior tests, validator and previous successful deployments contributed to the decision to release it. On affected Windows systems it triggered an out-of-bounds read and a BSOD. ([CrowdStrike.com](https://www.crowdstrike.com/en-us/blog/falcon-content-update-preliminary-post-incident-report/)) [CrowdStrike Preliminary Post Incident Review, 24 Jul 2024](https://www.crowdstrike.com/en-us/blog/falcon-content-update-preliminary-post-incident-report/)
+
+This isn't evidence that automated tests are ineffective. It is evidence that **passing the tests only establishes the properties represented by those tests and their oracle**. Here the validating component itself was wrong, and the production path contained a failure mode the existing checks had not exercised.
+
+CrowdStrike's announced interventions were broader Rapid Response Content testing—including rollback tests, fuzzing, fault injection, stability and interface tests—additional validator checks, better interpreter error handling, and, importantly, **canary/staggered deployment plus monitoring before expanding rollout**. ([CrowdStrike.com](https://www.crowdstrike.com/en-us/blog/falcon-content-update-preliminary-post-incident-report/)) These are sensible incident-derived interventions, but they should be labelled correctly: CrowdStrike announced or implemented them after the incident; the PIR is **not a controlled study demonstrating their subsequent effectiveness**.
+
+A subtler green-suite failure has been measured academically. A 2021 study examined roughly 100 mature projects in **each of Java, Pharo and Python** for “rotten green tests”: tests that pass because some or all assertions never execute. Researchers found them in all three ecosystems and found **actual program bugs hidden by rotten tests in Pharo and Python**. ([ETS Research Portal](https://pure.etsmtl.ca/en/publications/rotten-green-tests-in-java-pharo-and-python-an-empirical-study/?utm_source=chatgpt.com)) [Rotten Green Tests — Empirical Software Engineering, 2021](https://pure.etsmtl.ca/en/publications/rotten-green-tests-in-java-pharo-and-python-an-empirical-study/?utm_source=chatgpt.com)
+
+That suggests two independent controls: test the testing machinery itself where practical, and do not make pre-production tests your only protection. Canary releases, runtime observability and rollback are safeguards against classes of defect that a suite simply never represented.
+
+### A test can faithfully preserve a bug
+
+There is both measured and practical evidence for this.
+
+A 2017 Defects4J study of automated program repair demonstrates the oracle problem directly. Regression-test generators ran the **currently buggy program** and therefore sometimes generated “bug-exposing tests” whose expected result was the program's incorrect output. In one bug, Math 53, all 30 repair runs produced a correct patch, yet the generated suite contained on average **1.1 tests that failed against that correct patch**; naïvely trusting those tests would therefore tend to reject the fix. The broader study covered 224 bugs and found that its attempted automated handling of this oracle problem was not very successful—only one additional correct patch was obtained—so this is also evidence of an intervention **failing to solve the problem generally**. ([ResearchGate](https://www.researchgate.net/publication/314152764_Test_Case_Generation_for_Program_Repair_A_Study_of_Feasibility_and_Effectiveness?utm_source=chatgpt.com)) [Test Case Generation for Program Repair, 2017](https://arxiv.org/abs/1703.00198?utm_source=chatgpt.com)
+
+Snapshot frameworks expose the same risk in everyday engineering. Deno's current documentation, updated **25 June 2026**, explicitly warns that its snapshot-update command will record bugs as the new expected output and that snapshots prove that output is unchanged, **not that it is correct**. It therefore recommends human diff review and precise assertions where practical. That is **tool-author guidance rather than an experiment**, but it describes the exact mechanism. ([Deno](https://docs.deno.com/runtime/test/snapshots/?utm_source=chatgpt.com)) [Deno snapshot-testing guidance](https://docs.deno.com/runtime/test/snapshots/?utm_source=chatgpt.com)
+
+The durable rule is: **never derive the normative oracle solely from the implementation you are trying to check.** Characterisation tests and snapshots are useful while preserving legacy behaviour, but someone has to classify that observed behaviour as “contract” or “bug” before it becomes permanent specification.
+
+### Fixtures and helpers really do acquire maintenance cost—but be careful with simplistic “test smell” rules
+
+Bavota et al.'s 2015 empirical study found at least one defined test smell in **86% of the JUnit tests** they examined across open-source and industrial systems; in a controlled comprehension experiment, comprehension was about **30% better when test smells were absent**. “General Fixture”—setup that constructs substantially more context than individual tests need—is one of the established fixture smells. ([SciSpace](https://scispace.com/papers/are-test-smells-really-harmful-an-empirical-study-4m3nh359qn?utm_source=chatgpt.com)) [Are test smells really harmful? — 2015](https://scispace.com/papers/are-test-smells-really-harmful-an-empirical-study-4m3nh359qn?utm_source=chatgpt.com)
+
+A broader 2018 study of **221 releases, ten systems and more than one million test cases** found tests containing smells to be more change- and defect-prone, with Indirect Testing, Eager Test and Assertion Roulette particularly associated with change-proneness. This is **observational correlation**, not proof that removing a helper automatically reduces defects. ([TU Delft Research Portal](https://research.tudelft.nl/en/publications/on-the-relation-of-test-smells-to-software-code-quality/?utm_source=chatgpt.com)) [On the Relation of Test Smells to Software Code Quality — ICSME 2018](https://research.tudelft.nl/en/publications/on-the-relation-of-test-smells-to-software-code-quality/?utm_source=chatgpt.com)
+
+There is an important counter-result. A 2022 validation study manually checked hundreds of suites and found that conventional automated smell detectors badly mismatch genuine maintainability problems; one older detector **misclassified more than 70%** of cases. So “run a test-smell linter and eliminate every fixture” is not evidence-based either. ([Springer](https://link.springer.com/article/10.1007/s10664-022-10207-5?utm_source=chatgpt.com))
+
+The recent **ICSE-SEIP 2026 Hamster study**, covering about **1.7 million developer-written Java tests**, helps put fixtures in perspective: 43.1% of test classes had setup methods and 16.2% teardown methods. The authors explicitly observe both benefits—reuse and modularity—and costs from layered inheritance and shared state. ([DOI](https://doi.org/10.1145/3786583.3786857?utm_source=chatgpt.com)) [Hamster, ICSE-SEIP 2026](https://doi.org/10.1145/3786583.3786857?utm_source=chatgpt.com)
+
+For helpers, the best large-company material is guidance rather than an intervention trial. Google's “DAMP, not excessively DRY” advice is to tolerate duplication where it makes the test's cause, action and assertion locally understandable; helpers are useful for irrelevant construction detail, but abstractions that hide the behaviour being tested make tests harder to audit. Microsoft independently recommends explicit helper methods over broad setup/teardown because setup tends to create too much context and hidden shared state. ([Google Testing Blog](https://testing.googleblog.com/2019/12/testing-on-toilet-tests-too-dry-make.html?utm_source=chatgpt.com))
+
+### What I would choose for a suite you still want in 2028
+
+The evidence supports a **layered but strongly bottom-heavy** strategy:
+
+1. Make the default test small, deterministic, independently runnable and expressed against observable behaviour. Treat network, wall-clock time, real databases, browsers and whole service graphs as dependencies that require justification. Google's 0.5% versus 14% small/large flakiness difference and its 30→3 minute migration are unusually strong reasons for that choice. ([Google Testing Blog](https://testing.googleblog.com/2017/04/where-do-our-flaky-tests-come-from.html?hl=it_IT&utm_source=chatgpt.com))
+2. Keep a smaller set of integration/contract/E2E tests for risks that small tests genuinely cannot expose. Do **not** implement every business rule a second time through an E2E path.
+3. Give the test suite its own SLOs: runtime distribution, flaky-failure rate, retry rate and number/age of quarantined tests. A test repeatedly needing retries is a defect in the engineering system, not “normal CI.”
+4. Make quarantine temporary and owned. Google explicitly documents the danger that retry/quarantine turns genuine failures into ignored alarms. ([Google Testing Blog](https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html?hl=de_AT))
+5. Use coverage as a **map**, not a score. Look at missing change coverage and critical untested paths; do not infer reliability from 90%.
+6. Keep test data and helpers boring and local. Extract construction detail when it clarifies intent; don't build a second application framework underneath the tests.
+7. For snapshots/characterisation tests, require review of the expected output and distinguish “current behaviour” from “required behaviour.”
+8. Finally, keep production risk controls—canaries, monitoring and rollback—outside the suite. CrowdStrike is a concrete demonstration of why “CI is green” cannot safely mean “deployment is safe.” ([CrowdStrike.com](https://www.crowdstrike.com/en-us/blog/falcon-content-update-preliminary-post-incident-report/))
+
+The recurring pattern across Google, Microsoft, Meta and the empirical literature is that the long-term enemy is less “too few automated tests” than **loss of signal**: flaky failures that people ignore, a suite too expensive to run, assertions coupled to yesterday's implementation, coverage that becomes a target rather than evidence, and abstractions that make nobody quite sure what a green test actually proved.
