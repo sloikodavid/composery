@@ -26,6 +26,19 @@ const shutdownActions = /^\/servers\/\d+\/actions\/shutdown$/;
 const poweronActions = /^\/servers\/\d+\/actions\/poweron$/;
 const poweroffActions = /^\/servers\/\d+\/actions\/poweroff$/;
 const deletedServers = /^\/servers\/\d+$/;
+const serverTypeLookups = /^\/server_types/;
+const firewallLookups = /^\/firewalls\/\d+$/;
+const httpOk = 200;
+const emptyPagination = {
+	page: 1,
+	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+	per_page: 25,
+	previous_page: null,
+	next_page: null,
+	last_page: 1,
+	total_entries: 0,
+	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+};
 
 let backend: ConvexBackend;
 let fake: Fake;
@@ -285,6 +298,72 @@ test(
 		expect(await readOwnedResources(allocationId)).toEqual([]);
 		expect(await readBackendRecord(serverId)).toBe(null);
 		expect(fake.countRequests("DELETE", deletedServers) - before).toBe(1);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a server type Hetzner no longer offers stops the allocation instead of retrying forever",
+	async () => {
+		const client = await createOwner();
+		// A name filter that matches nothing answers with an empty list. Hetzner has retired server
+		// types before, and an empty list is its answer, not a failure to answer.
+		fake.scriptOnce(
+			{ method: "GET", path: serverTypeLookups },
+			{
+				status: httpOk,
+				// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+				body: { server_types: [], meta: { pagination: emptyPagination } },
+			},
+		);
+		const serverId = await createServer(client);
+
+		const status = await settle(
+			client,
+			serverId,
+			(value) => value === "blocked",
+		);
+
+		expect(status.status).toBe("blocked");
+		const record = await readBackendRecord(serverId);
+		expect(record?.backend?.error).toBe("server_type_unavailable");
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a project firewall without our label is not ours, and says so",
+	async () => {
+		const client = await createOwner();
+		// An admin who removes the label in Hetzner's console produces this. Hetzner requires labels
+		// on a server and on a Primary IP, and not on a firewall, so there is no key at all.
+		fake.scriptOnce(
+			{ method: "GET", path: firewallLookups },
+			{
+				status: httpOk,
+				body: {
+					firewall: {
+						id: 77,
+						name: "composery",
+						created: "2026-09-15T10:00:00+00:00",
+						rules: [],
+						// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+						applied_to: [],
+					},
+				},
+			},
+		);
+		const serverId = await createServer(client);
+
+		const status = await settle(
+			client,
+			serverId,
+			(value) => value === "blocked",
+		);
+
+		expect(status.status).toBe("blocked");
+		const record = await readBackendRecord(serverId);
+		expect(record?.backend?.error).toBe("resource_identity_mismatch");
 	},
 	testTimeoutMs,
 );

@@ -26,7 +26,8 @@ const deleteBatchSize = 20;
 const ownerSummary = v.object({
 	userId: v.id("users"),
 	username: v.string(),
-	imageUrl: v.string(),
+	// Clerk does not promise a picture, and a caller must not be told there is always one.
+	imageUrl: v.optional(v.string()),
 });
 
 /** Servers that the user owns. Shared servers are in memberships.listMine. */
@@ -60,7 +61,7 @@ export const getOwner = query({
 			: {
 					userId: owner._id,
 					username: owner.username,
-					imageUrl: owner.imageUrl,
+					...(owner.imageUrl === undefined ? {} : { imageUrl: owner.imageUrl }),
 				};
 	},
 });

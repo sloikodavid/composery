@@ -707,8 +707,10 @@ export async function resolveHetznerCloudSpec(
 				offered.name === serverType && offered.architecture === architecture,
 		);
 	if (type === undefined) {
+		// A type Hetzner has retired does not come back, so this is permanent like a missing image
+		// and unlike capacity, which is the other thing a precondition failure would mean.
 		throw new HetznerCloudError("server_type_unavailable", {
-			status: httpStatus.preconditionFailed,
+			status: httpStatus.badRequest,
 		});
 	}
 	const supported = requireList(type.locations).map(requireObject);

@@ -46,7 +46,8 @@ const membershipSummary = v.object({
 	_id: v.id("serverMemberships"),
 	userId: v.id("users"),
 	username: v.string(),
-	imageUrl: v.string(),
+	// Clerk does not promise a picture, and a caller must not be told there is always one.
+	imageUrl: v.optional(v.string()),
 	permissions: serverPermissions,
 });
 
@@ -116,7 +117,7 @@ export const list = query({
 					_id: membership._id,
 					userId: user._id,
 					username: user.username,
-					imageUrl: user.imageUrl,
+					...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),
 					permissions: membership.permissions,
 				});
 			}

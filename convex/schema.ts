@@ -6,9 +6,12 @@ import { sshTables } from "./ssh/schema";
 
 export const userFields = v.object({
 	clerkUserId: v.string(),
+	/** How one user names another to share a server with them, so a user without one cannot be found. */
 	username: v.string(),
-	email: v.string(),
-	imageUrl: v.string(),
+	// Clerk does not promise either of these, and nothing here depends on them, so they are what
+	// Clerk gave rather than something invented to fill the shape.
+	email: v.optional(v.string()),
+	imageUrl: v.optional(v.string()),
 });
 
 export const quotaKind = v.literal("server");
