@@ -38,7 +38,16 @@ function notFound(): FakeReply {
 	return {
 		status: httpNotFound,
 		body: {
-			errors: [{ message: "not found", code: "resource_not_found" }],
+			// biome-ignore-start lint/style/useNamingConvention: Clerk names these fields
+			errors: [
+				{
+					message: "not found",
+					long_message: "No user was found with that identifier.",
+					code: "resource_not_found",
+				},
+			],
+			clerk_trace_id: "trace_composery_test",
+			// biome-ignore-end lint/style/useNamingConvention: Clerk names these fields
 		},
 	};
 }

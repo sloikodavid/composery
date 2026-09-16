@@ -93,7 +93,7 @@ test(
 			{ method: "GET", path: accountReadPath },
 			{
 				status: serviceUnavailable,
-				body: { errors: [{ message: "busy", code: "busy" }] },
+				body: null,
 			},
 		);
 		const body = backend.clerk.toEvent("user.updated", account);

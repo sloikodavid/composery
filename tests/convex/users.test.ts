@@ -24,14 +24,22 @@ function createSubject() {
 	return `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 }
 
+/** A whole account: Clerk holds it, and it is synced here, as it always is in production. */
 async function syncUser(subject: string) {
+	const account = {
+		id: subject,
+		username: subject.toLowerCase(),
+		email: `${subject}@example.com`,
+		imageUrl: "",
+	};
+	backend.clerk.setUser(account);
 	await backend.runAsAdmin(internal.users.store, {
 		users: [
 			{
-				clerkUserId: subject,
-				username: subject.toLowerCase(),
-				email: `${subject}@example.com`,
-				imageUrl: "",
+				clerkUserId: account.id,
+				username: account.username,
+				email: account.email,
+				imageUrl: account.imageUrl,
 			},
 		],
 	});

@@ -21,6 +21,11 @@ export const allServerPermissions: Readonly<ServerPermissions> = Object.freeze({
 	delete: true,
 });
 
+/** Every permission there is, so a new one is covered by every check that reads this. */
+const everyServerPermission = Object.keys(
+	allServerPermissions,
+) as readonly ServerPermission[];
+
 export const ownerAccess: Readonly<ServerAccess> = Object.freeze({
 	isOwner: true,
 	permissions: allServerPermissions,
@@ -31,9 +36,8 @@ export function hasServerPermissions(
 	available: Readonly<ServerPermissions>,
 	requested: Readonly<ServerPermissions>,
 ) {
-	return Object.entries(requested).every(
-		([permission, isGranted]) =>
-			!isGranted || available[permission as ServerPermission],
+	return everyServerPermission.every(
+		(permission) => !requested[permission] || available[permission],
 	);
 }
 

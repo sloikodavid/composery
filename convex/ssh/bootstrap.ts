@@ -6,6 +6,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, env } from "../_generated/server";
 import { toConvexError } from "../errors";
+import { isLoopbackHost } from "../loopback";
 import {
 	bootstrapLifetimeMs,
 	type SshBootstrapFile,
@@ -17,8 +18,6 @@ import { renderSshBootstrapScript } from "./scripts/bootstrap";
 import { decryptSshSecrets, encryptSshSecrets } from "./secrets";
 
 const bootstrapTokenBytes = 32;
-// Written exactly, because what a name resolves to is not ours to decide.
-const loopbackHosts: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
 
 type AllocationSshAccess = Doc<"allocationSshAccess">;
 
@@ -38,7 +37,7 @@ function requireReportUrl() {
 	} catch {
 		throw new SshAccessError("bootstrap_url_insecure");
 	}
-	if (url.protocol !== "https:" && !loopbackHosts.has(url.hostname)) {
+	if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) {
 		throw new SshAccessError("bootstrap_url_insecure");
 	}
 	return `${site}/ssh/host-keys`;

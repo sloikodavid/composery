@@ -55,7 +55,18 @@ function toAddress(id: number, collection: string, kind: string) {
 }
 
 function notFound(): FakeReply {
-	return { status: httpNotFound, body: { error: { code: "not_found" } } };
+	return {
+		status: httpNotFound,
+		// Hetzner always names a refusal and explains it; a fake that sent less would let our code
+		// depend on a Hetzner that does not exist.
+		body: {
+			error: {
+				code: "not_found",
+				message: "resource not found",
+				details: null,
+			},
+		},
+	};
 }
 
 export function startHetznerFake(): Promise<Fake> {

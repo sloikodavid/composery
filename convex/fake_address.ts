@@ -1,4 +1,5 @@
 import { env } from "./_generated/server";
+import { isLoopbackHost } from "./loopback";
 
 /**
  * Where a test may point Composery instead of an outside system, and why that can only ever be a
@@ -7,12 +8,9 @@ import { env } from "./_generated/server";
  * there changes nothing, and no secret leaves the machine that set it.
  */
 
-// Written exactly, because what a name resolves to is not ours to decide.
-const loopbackHosts: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
-
 function isLocalDeployment() {
 	try {
-		return loopbackHosts.has(new URL(env.CONVEX_SITE_URL).hostname);
+		return isLoopbackHost(new URL(env.CONVEX_SITE_URL).hostname);
 	} catch {
 		return false;
 	}
@@ -33,7 +31,7 @@ export function getFakeAddress(value: string | undefined, name: string) {
 	} catch {
 		throw new Error(`${name} is not a URL.`);
 	}
-	if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
+	if (url.protocol !== "http:" || !isLoopbackHost(url.hostname)) {
 		throw new Error(
 			`${name} must be http on 127.0.0.1 or [::1], because only a test sets it.`,
 		);

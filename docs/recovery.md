@@ -30,6 +30,10 @@ Hetzner publishes no webhooks, so the scan is how state at the provider is notic
 3. **Restoring management access.** Rescue, driven through the provider's API. Built as an admin action or as something that keeps trying on a schedule, not as a button for the customer: it reboots their server, and the customer did not necessarily do anything wrong. Keeping the customer's system free to be anything does not stop us from putting our own key back on a schedule.
 4. **Replacing an address.** Only after 1, and only with the identity change stated plainly to whoever asks for it.
 
+## What is undecided
+
+When a server is deleted, its row goes and so does its SSH access, but the allocation, its operations and the backend's own row stay, holding a `serverId` that no longer resolves. That may be right: an allocation is the record of what ran a server, billing will want it, and name claims are already kept on purpose. It may also be an oversight. Nothing says which, and the two look identical from the code, so decide it and write one line in `docs/decisions.md`.
+
 ## What is decided
 
 Addresses are not exposed. A customer cannot disable, change or release one, because every address is part of an allocation and is released with it. Floating IPs are a separate provider resource with their own quota, and are not sold. A server always has one IPv4 and one IPv6; an IPv6-only server would be cheaper and would fail for anyone on an IPv4-only network.

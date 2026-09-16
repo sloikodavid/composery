@@ -21,6 +21,7 @@ import type * as errors from "../errors.js";
 import type * as fake_address from "../fake_address.js";
 import type * as http from "../http.js";
 import type * as http_status from "../http_status.js";
+import type * as loopback from "../loopback.js";
 import type * as pagination from "../pagination.js";
 import type * as quotas from "../quotas.js";
 import type * as rate_limits from "../rate_limits.js";
@@ -40,6 +41,7 @@ import type * as ssh_bootstrap_state from "../ssh/bootstrap_state.js";
 import type * as ssh_cloud_init from "../ssh/cloud_init.js";
 import type * as ssh_connection from "../ssh/connection.js";
 import type * as ssh_discovery from "../ssh/discovery.js";
+import type * as ssh_encryption_keys from "../ssh/encryption_keys.js";
 import type * as ssh_errors from "../ssh/errors.js";
 import type * as ssh_failures from "../ssh/failures.js";
 import type * as ssh_hostname from "../ssh/hostname.js";
@@ -54,6 +56,7 @@ import type * as ssh_scripts_hostname from "../ssh/scripts/hostname.js";
 import type * as ssh_scripts_report_host_key from "../ssh/scripts/report_host_key.js";
 import type * as ssh_scripts_write_file from "../ssh/scripts/write_file.js";
 import type * as ssh_secrets from "../ssh/secrets.js";
+import type * as ssh_secrets_state from "../ssh/secrets_state.js";
 import type * as ssh_write_file from "../ssh/write_file.js";
 import type * as users from "../users.js";
 
@@ -78,6 +81,7 @@ const fullApi: ApiFromModules<{
   fake_address: typeof fake_address;
   http: typeof http;
   http_status: typeof http_status;
+  loopback: typeof loopback;
   pagination: typeof pagination;
   quotas: typeof quotas;
   rate_limits: typeof rate_limits;
@@ -97,6 +101,7 @@ const fullApi: ApiFromModules<{
   "ssh/cloud_init": typeof ssh_cloud_init;
   "ssh/connection": typeof ssh_connection;
   "ssh/discovery": typeof ssh_discovery;
+  "ssh/encryption_keys": typeof ssh_encryption_keys;
   "ssh/errors": typeof ssh_errors;
   "ssh/failures": typeof ssh_failures;
   "ssh/hostname": typeof ssh_hostname;
@@ -111,6 +116,7 @@ const fullApi: ApiFromModules<{
   "ssh/scripts/report_host_key": typeof ssh_scripts_report_host_key;
   "ssh/scripts/write_file": typeof ssh_scripts_write_file;
   "ssh/secrets": typeof ssh_secrets;
+  "ssh/secrets_state": typeof ssh_secrets_state;
   "ssh/write_file": typeof ssh_write_file;
   users: typeof users;
 }> = anyApi as any;

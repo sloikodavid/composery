@@ -1,6 +1,6 @@
 # Convex
 
-One deployment for each environment. A deployment holds its own data, environment variables, crons, and HTTP routes, so a production deployment needs every variable in `.env.convex.example` set again with production values, including a new `SSH_ACCESS_ENCRYPTION_KEY`.
+One deployment for each environment. A deployment holds its own data, environment variables, crons, and HTTP routes, so a production deployment needs every variable in `.env.convex.example` set again with production values, including a new `SSH_ACCESS_ENCRYPTION_KEYS`.
 
 ## Backups
 
@@ -13,7 +13,7 @@ Convex backs up one deployment at a time, from the dashboard's backup page.
 
 That last point decides what has to be kept somewhere else, because losing it cannot be repaired from a backup:
 
-- **`SSH_ACCESS_ENCRYPTION_KEY`.** Every allocation's management key is encrypted with it. Without the key, Composery can never sign in to a server that is already running, and the customer cannot be given that access back.
+- **`SSH_ACCESS_ENCRYPTION_KEYS`.** Every allocation's management key is encrypted with the first key in this list. Without a key that encrypted a value, Composery can never sign in to the server it belongs to, and the customer cannot be given that access back. `docs/setups/hetzner-cloud.md` says how to rotate it.
 - **The other environment variables**, so a deployment can be rebuilt.
 
 Restoring data alone also does not restore infrastructure: rows describe servers that Hetzner still owns. After any restore, compare `serverAllocations` and `hetznerCloudAllocations` with the project's real resources before letting the worker run, or it acts on stale state.

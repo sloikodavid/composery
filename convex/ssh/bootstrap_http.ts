@@ -4,6 +4,8 @@ import { httpStatus } from "../http_status";
 import { toBootstrapTokenDigest } from "./bootstrap_state";
 
 const maxBodyBytes = 4096;
+// A body this small needs very few chunks, and a sender that keeps sending empty ones is refused.
+const maxBodyChunks = 64;
 const maxAllocationIdLength = 100;
 const bootstrapTokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const maxPort = 65_535;
@@ -30,13 +32,14 @@ async function readBody(request: Request) {
 	let size = 0;
 	const chunks: Uint8Array[] = [];
 	try {
-		for (;;) {
+		// A chunk may be empty, so counting bytes alone would never end a stream of empty ones.
+		for (let read = 0; read <= maxBodyChunks; read += 1) {
 			const next = await reader.read();
 			if (next.done) {
 				break;
 			}
 			size += next.value.length;
-			if (size > maxBodyBytes) {
+			if (size > maxBodyBytes || read === maxBodyChunks) {
 				await reader.cancel();
 				return "tooLarge" as const;
 			}

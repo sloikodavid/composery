@@ -31,6 +31,8 @@ Fake what a test is not about. Never fake what decides whether it passes.
 
 `tests/` lies over the repository: a path under it is the same path, with `.test.ts` in place of `.ts`. The test of `convex/ssh/key_pair.ts` is `tests/convex/ssh/key_pair.test.ts`, and the test of `contracts/waiver.ts` is `tests/contracts/waiver.test.ts`. A test keeps the name of what it tests, letter for letter, so a search for the name finds both files. A test of a behavior that spans modules is named for the behavior, in the spelling of the folder it sits in, such as `tests/convex/ssh/authorized_keys_agreement.test.ts`.
 
+The mirror decides where a test goes, never that one must exist. A source file with nothing worth testing has no test, and a file never gets a second test file for a second kind of case: that would be symmetry for its own sake, and the reader would have to guess which of the two to open.
+
 One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world: it starts, isolates and stops an `sshd`, a Convex backend, or a fake. It is the only folder under `tests/` that mirrors nothing, and it holds no `.test.ts` file at all. That is not a carve-out but the same rule read backwards: a thing under `tests/` has nowhere to put its own test, because `tests/tests/` is not a place. So code that needs proving of its own does not belong under `tests/`, and a test file appearing in the harness means something living there should live elsewhere. That is how the contract checkers came to be in `contracts/`.
 
 ## Running
@@ -47,6 +49,7 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 
 - A child process gets an environment built from nothing. It never inherits the shell's variables, which can name a real deployment or hold a real token.
 - One `sshd` and one Convex backend serve a whole run. Each test creates its own accounts and users, so tests do not share state and can run in any order.
+- A test that needs a user makes a whole one, with `createAccount`: held by Clerk and synced into our tables. Half of one is a person Clerk never heard of, and the hourly reconcile deletes them part way through the test, which is exactly what it is for.
 - Every resource that a run starts is registered for cleanup at the end of the run. A run that is killed leaves resources that name their owner, and the next run removes those whose owner is gone.
 
 ## Contracts

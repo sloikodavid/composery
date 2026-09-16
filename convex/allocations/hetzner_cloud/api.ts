@@ -78,7 +78,14 @@ const serverStatuses = {
 	unknown: "changing",
 } as const satisfies Record<string, HetznerCloudServer["status"]>;
 
-/** Paces this deployment's requests. Cleanup has its own allowance, so new work cannot block it. */
+/**
+ * Paces this deployment's requests. Each queue has its own allowance, so neither can starve the
+ * other, and both together stay under Hetzner's own hourly limit.
+ *
+ * Cleanup is not the smaller of the two. Taking an allocation apart costs more claims than putting
+ * one together, and it is the path that releases a customer's addresses and quota, so a burst that
+ * cannot finish one deletion would leave those held for minutes for no reason.
+ */
 export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
 	hetznerCloudWork: {
 		kind: "token bucket",
@@ -88,9 +95,9 @@ export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
 	},
 	hetznerCloudCleanup: {
 		kind: "token bucket",
-		rate: 500,
+		rate: 1000,
 		period: HOUR,
-		capacity: 16,
+		capacity: 30,
 	},
 });
 

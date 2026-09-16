@@ -7,29 +7,16 @@ import {
 	type QueryCtx,
 } from "../_generated/server";
 import schema from "../schema";
+import { isSshAccessConfigured as isConfigured } from "./encryption_keys";
 import type { sshTables } from "./schema";
-
-// Canonical base64 of exactly 32 bytes.
-const encryptionKeyPattern = /^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/;
 
 type AllocationSshAccessFields = Infer<
 	typeof sshTables.allocationSshAccess.validator
 >;
 
-export function isSshAccessEncryptionKey(value: string) {
-	return encryptionKeyPattern.test(value);
-}
-
-/** Throws when the encryption key is set but invalid. */
+/** Throws when the keys are set but any of them is not one. */
 export function isSshAccessConfigured() {
-	const value = env.SSH_ACCESS_ENCRYPTION_KEY;
-	if (!value) {
-		return false;
-	}
-	if (!isSshAccessEncryptionKey(value)) {
-		throw new Error("SSH_ACCESS_ENCRYPTION_KEY is not base64 of 32 bytes.");
-	}
-	return true;
+	return isConfigured(env.SSH_ACCESS_ENCRYPTION_KEYS);
 }
 
 export async function getAllocationSshAccess(

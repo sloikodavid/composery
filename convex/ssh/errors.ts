@@ -38,6 +38,7 @@ export class SshAccessError extends Error {
 		| "bootstrap_url_insecure"
 		| "encryption_key_invalid"
 		| "encryption_key_missing"
+		| "encryption_key_unknown"
 		| "host_key_missing"
 		| "secrets_unreadable";
 

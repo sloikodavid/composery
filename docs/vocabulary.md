@@ -29,6 +29,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `contract` | What an outside system publishes about itself, such as an API description, and what we hold our own requests and our fakes to | schema, spec |
 | `waiver` | A named exception to a contract, with the evidence that the system disagrees with its own description, which fails when it stops being needed | ignore, override |
 | `SSH access` | Composery's management key and the server's pinned host key for one allocation | credential |
+| `envelope` | One stored secret as it is written down: the version, the key that encrypted it, and the encrypted bytes | blob, ciphertext |
 | `secret` | A value that must stay private, such as a private key or a token | credential |
 | `bootstrap` | The window after creation in which a new server reports its host key once | enrollment |
 | `admin` | A person on the Composery team who uses the Convex dashboard or CLI | operator |
@@ -83,7 +84,7 @@ JavaScript reserves `delete`, so a registered Convex function that deletes is na
 | `get` | One item, or `null` |
 | `list` | Many items |
 | `find` | An item that a search can miss, or `null` |
-| `require` | A value, or throws |
+| `require` | A value, or throws. Where there is no value to return, it throws unless what it names is true |
 | `check` | A failure, or `null` |
 | `set` | Nothing; replaces a value |
 | `to` | A converted value |

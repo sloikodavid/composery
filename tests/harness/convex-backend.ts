@@ -30,8 +30,10 @@ import {
 } from "convex/server";
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
+import { internal } from "../../convex/_generated/api";
 import { isProcessAlive, registerCleanup } from "./cleanup";
 import { type ClerkFake, useClerkFake } from "./clerk/fake";
+import type { ClerkUser } from "./clerk/replies";
 import type { Fake } from "./fake";
 import { useHetznerFake } from "./hetzner/fake";
 import { convexBackendAssets, convexBackendVersion } from "./pins";
@@ -97,7 +99,15 @@ export type ConvexBackend = Readonly<{
 	webhookSecret: string;
 	/** The accounts Clerk would hold, which a test fills before it asks Composery to read them. */
 	clerk: ClerkFake;
+	/**
+	 * One account, as it really exists: held by Clerk and synced into our tables. A test that made
+	 * only the second half would be describing a person Clerk never heard of, and the hourly
+	 * reconcile would rightly delete them part way through the test.
+	 */
+	createAccount: () => Promise<ClerkUser>;
 }>;
+
+const accountSuffixBytes = 6;
 
 /** What every process of one test run shares. */
 type RunContext = Readonly<{
@@ -174,6 +184,23 @@ function removeFolder(folder: string) {
 		maxRetries: removalRetries,
 		retryDelay: removalDelayMs,
 	});
+}
+
+/**
+ * Removes what this run made, and says so rather than failing when the operating system still
+ * holds a file. Both folders name the process that made them, so the next run removes what is left
+ * once this process is gone. A green suite must not go red because Windows was slow to let go.
+ */
+function removeWhenPossible(remove: () => void, folder: string) {
+	try {
+		remove();
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error);
+		process.stderr.write(
+			`${folder} is still held, so the next run will remove it: ${reason}
+`,
+		);
+	}
 }
 
 /** Removes a run folder, unlinking its links to the repository's modules before a recursive walk. */
@@ -442,7 +469,7 @@ function toDeploymentVariables(
 		HCLOUD_CONTROLLER_ID: fakeControllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
 		HCLOUD_FAKE_URL: fake.url,
-		SSH_ACCESS_ENCRYPTION_KEY:
+		SSH_ACCESS_ENCRYPTION_KEYS:
 			randomBytes(encryptionKeyBytes).toString("base64"),
 		// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 	};
@@ -631,8 +658,8 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const temporary = toTemporaryFolder();
 	// Registered first, so it runs last: after every process has stopped and released its files.
 	registerCleanup(() => {
-		removeRunFolder(folder);
-		removeFolder(temporary);
+		removeWhenPossible(() => removeRunFolder(folder), folder);
+		removeWhenPossible(() => removeFolder(temporary), temporary);
 	});
 	const environment = toChildEnvironment(temporary);
 	const adminKey = execFileSync(
@@ -680,6 +707,32 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 				client.setAuth(issuer.signIn(subject));
 			}
 			return client;
+		},
+		createAccount: async () => {
+			const id = `user_${randomBytes(accountSuffixBytes).toString("hex")}`;
+			const account = {
+				id,
+				username: id.toLowerCase(),
+				email: `${id}@example.com`,
+				imageUrl: "",
+			};
+			clerk.setUser(account);
+			await callFunction(
+				backend.url,
+				`Convex ${adminKey}`,
+				internal.users.store,
+				{
+					users: [
+						{
+							clerkUserId: account.id,
+							username: account.username,
+							email: account.email,
+							imageUrl: account.imageUrl,
+						},
+					],
+				},
+			);
+			return account;
 		},
 		signIn: issuer.signIn,
 		readLog: backend.readLog,
