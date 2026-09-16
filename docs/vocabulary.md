@@ -24,6 +24,9 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `provider` | The company and API that a backend calls, such as Hetzner | vendor |
 | `resource` | One thing that a backend owns at its provider | |
 | `finding` | Evidence about an unknown resource, for admin review | alert |
+| `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
+| `lease` | A worker's claim on one allocation for a time, so two runs never act at once | lock |
+| `contract` | What an outside system publishes about itself, such as an API description, and what we hold our own requests and our fakes to | schema, spec |
 | `SSH access` | Composery's management key and the server's pinned host key for one allocation | credential |
 | `secret` | A value that must stay private, such as a private key or a token | credential |
 | `bootstrap` | The window after creation in which a new server reports its host key once | enrollment |
@@ -63,10 +66,11 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `claim` | Take a lease on work, or permanently associate a name. The file says which |
 | `encrypt` / `decrypt` | Protect or read a stored secret |
 | `register` | Record a fact that another system reports, such as a host key |
+| `rethrow` | Throw a failure again as the error a caller may see |
 | `discover` | Ask another system what its state is, instead of assuming it |
 | `update` | Change part of something that keeps its identity, such as one line of a file |
 | `renew` | Make an expired thing valid again, such as a bootstrap window |
-| `generate` | Make new random key material |
+| `generate` | Make new random secret material, such as a key pair or a token |
 | `transfer` | Move ownership, and the quota that it uses, to another user |
 
 JavaScript reserves `delete`, so a registered Convex function that deletes is named `remove`.

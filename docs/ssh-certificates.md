@@ -8,7 +8,7 @@ Composery pins each server's host key at creation, through an authenticated repo
 
 A **host certificate** moves that trust to a name. Composery's certificate authority signs a server's host key, with the server's name as the certificate's principal. A customer adds one `@cert-authority` line to their `known_hosts` once, for every server they will ever have, and their client then verifies any Composery server by name and refuses an impostor. A host key that the customer regenerates stops being an incident and becomes a re-signing.
 
-A **user certificate** is a different feature: short-lived credentials for people instead of keys in a file. It costs client tooling for every person who connects, and it is not proposed here.
+A **user certificate** is a different feature: short-lived certificates for people instead of keys in a file. It costs client tooling for every person who connects, and it is not proposed here.
 
 ## What it would require
 

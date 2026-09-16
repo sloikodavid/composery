@@ -47,7 +47,7 @@ export const writeCodes: Record<
 // biome-ignore-end lint/style/useNamingConvention: SSH failures and error codes use snake_case
 
 /** Throws what a caller may see. Anything that is not an SSH failure is not ours to translate. */
-export function toPublicSshError(error: unknown): never {
+export function rethrowPublicSshError(error: unknown): never {
 	if (error instanceof SshError) {
 		throw toConvexError(failureCodes[error.code]);
 	}

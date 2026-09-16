@@ -52,7 +52,9 @@ No test reaches Hetzner. A run starts a fake on loopback and gives the deploymen
 
 The fake answers what Composery asks, and produces what Hetzner cannot be asked for: a reply that never arrives. It never decides whether a test passes.
 
-The fake cannot drift on its own. Hetzner publishes a description of its API, and `scripts/hetzner-contract.ts` writes down the part we depend on. Every reply the fake sends is checked against it, and a difference fails the run at the end, whichever test made the request. Running that script again is how we find out that Hetzner has changed: the file changes, and the change is reviewed.
+The fake cannot drift on its own, and neither can we. Hetzner publishes a description of its API, and `scripts/hetzner-contract.ts` writes down the part we depend on. Every request Composery sends and every reply the fake gives is checked against it, and a difference fails the run at the end, whichever test made the request. Running that script again is how we find out that Hetzner has changed: the file changes, and the change is reviewed.
+
+A description is what a system says about itself, not the system. Where the two disagree, running it wins, and the difference is named in `knownDifferences` with the evidence that settled it.
 
 Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
 

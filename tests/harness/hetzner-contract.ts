@@ -18,16 +18,44 @@ type Schema = {
 	allOf?: Schema[];
 };
 
+type Operation = {
+	parameters: { name: string; in: string; required: boolean }[];
+	request: Schema;
+	responses: Record<string, Schema>;
+};
+
 type Contract = {
 	source: string;
-	paths: Record<string, Record<string, Record<string, Schema>>>;
+	paths: Record<string, Record<string, Operation>>;
 };
 
 const contractPath = path.join(import.meta.dir, "hetzner-contract.json");
 const templatePattern = /\{[^}]+\}/;
 const queryPattern = /\?.*$/;
 
+/**
+ * Where Hetzner's description and Hetzner itself disagree, with the evidence. A description is
+ * Hetzner's word about itself, not Hetzner: when running it says otherwise, running wins, and the
+ * difference is named here rather than quietly ignored.
+ */
+const knownDifferences: Record<string, string> = {
+	// The description says `image` and `server_type` are strings. Hetzner's own Go client sends
+	// the ID as a number (`IDOrName.MarshalJSON` marshals `o.ID`), and servers were created this
+	// way against real Hetzner in this repository.
+	"POST /servers body.image": "Hetzner reads an ID here as well as a name",
+	"POST /servers body.server_type":
+		"Hetzner reads an ID here as well as a name",
+};
+
 let contract: Contract | undefined;
+
+/** Drops the differences we have already chased down, so only new ones are reported. */
+function withoutKnownDifferences(problems: readonly string[]) {
+	return problems.filter(
+		(problem) =>
+			!Object.keys(knownDifferences).some((known) => problem.startsWith(known)),
+	);
+}
 
 async function requireContract() {
 	contract ??= (await Bun.file(contractPath).json()) as Contract;
@@ -126,11 +154,64 @@ function collectProblems(
 }
 
 /**
+ * What is wrong with one request Composery sent: a query it asks for that Hetzner does not
+ * have, or a body that Hetzner would refuse. This is the half that checks our own code.
+ */
+export async function listHetznerRequestProblems(
+	method: string,
+	requested: string,
+	body: unknown,
+): Promise<string[]> {
+	const described = await requireContract();
+	const template = findTemplate(Object.keys(described.paths), requested);
+	const operation =
+		template === undefined
+			? undefined
+			: described.paths[template]?.[method.toLowerCase()];
+	if (template === undefined || operation === undefined) {
+		return [`Hetzner does not describe ${method} ${requested}`];
+	}
+	const problems: string[] = [];
+	const query = new URLSearchParams(requested.split("?")[1] ?? "");
+	const known = new Set(
+		operation.parameters
+			.filter((parameter) => parameter.in === "query")
+			.map((parameter) => parameter.name),
+	);
+	for (const name of query.keys()) {
+		if (!known.has(name)) {
+			problems.push(
+				`${method} ${template} asks for ${name}, which Hetzner does not read`,
+			);
+		}
+	}
+	if (body !== undefined) {
+		collectProblems(
+			operation.request,
+			body,
+			`${method} ${template} body`,
+			problems,
+		);
+		for (const name of Object.keys(body as Record<string, unknown>)) {
+			if (
+				operation.request.properties !== undefined &&
+				!(name in operation.request.properties)
+			) {
+				problems.push(
+					`${method} ${template} body sends ${name}, which Hetzner does not read`,
+				);
+			}
+		}
+	}
+	return withoutKnownDifferences(problems);
+}
+
+/**
  * What is wrong with one reply, against Hetzner's description of that request. An empty list
  * means Hetzner could have sent it. A request Hetzner does not describe is a problem too: it
  * means we ask for something that no longer exists.
  */
-export async function checkHetznerReply(
+export async function listHetznerReplyProblems(
 	method: string,
 	requested: string,
 	status: number,
@@ -145,11 +226,11 @@ export async function checkHetznerReply(
 	if (operation === undefined) {
 		return [`Hetzner does not describe ${method} ${template}`];
 	}
-	const schema = operation[String(status)];
+	const schema = operation.responses[String(status)];
 	if (schema === undefined) {
 		return [`Hetzner does not describe a ${status} for ${method} ${template}`];
 	}
 	const problems: string[] = [];
 	collectProblems(schema, body, `${method} ${template} ${status}`, problems);
-	return problems;
+	return withoutKnownDifferences(problems);
 }

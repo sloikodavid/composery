@@ -24,7 +24,7 @@ These changes break clients: moving or renaming a function, removing or renaming
 
 ## Not built yet
 
-- Credentials for clients other than the web app, such as API tokens that `requireUser` accepts.
+- Secrets for clients other than the web app, such as API tokens that `requireUser` accepts.
 - Rate limits for each such token.
 - The choice between calling Convex functions directly and a versioned HTTP layer over the same helpers.
 - Public documentation of each function.

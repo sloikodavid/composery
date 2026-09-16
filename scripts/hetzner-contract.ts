@@ -71,7 +71,16 @@ if (!reply.ok) {
 const spec = (await reply.json()) as {
 	paths: Record<
 		string,
-		Record<string, { responses?: Record<string, unknown> }>
+		Record<
+			string,
+			{
+				parameters?: { name: string; in: string; required?: boolean }[];
+				requestBody?: {
+					content?: { "application/json"?: { schema?: unknown } };
+				};
+				responses?: Record<string, unknown>;
+			}
+		>
 	>;
 };
 const paths: Record<string, Record<string, unknown>> = {};
@@ -86,6 +95,13 @@ for (const [path, methods] of Object.entries(operations)) {
 		if (operation === undefined) {
 			throw new Error(`Hetzner no longer describes ${method} ${path}.`);
 		}
+		const parameters = (operation.parameters ?? []).map((parameter) => ({
+			name: parameter.name,
+			in: parameter.in,
+			required: parameter.required === true,
+		}));
+		const request =
+			operation.requestBody?.content?.["application/json"]?.schema;
 		const responses: Record<string, unknown> = {};
 		for (const [status, response] of Object.entries(
 			operation.responses ?? {},
@@ -100,7 +116,11 @@ for (const [path, methods] of Object.entries(operations)) {
 			).content?.["application/json"]?.schema;
 			responses[status] = schema === undefined ? {} : toShape(schema);
 		}
-		paths[path][method] = responses;
+		paths[path][method] = {
+			parameters,
+			request: request === undefined ? {} : toShape(request),
+			responses,
+		};
 	}
 }
 const text = `${JSON.stringify({ source: specUrl, paths }, null, "\t")}\n`;

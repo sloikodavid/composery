@@ -4,7 +4,10 @@ import {
 	type ServerResponse,
 } from "node:http";
 import { registerCleanup } from "./cleanup";
-import { checkHetznerReply } from "./hetzner-contract";
+import {
+	listHetznerReplyProblems,
+	listHetznerRequestProblems,
+} from "./hetzner-contract";
 import {
 	toActionReply,
 	toFirewallReply,
@@ -50,7 +53,7 @@ export type HetznerOutcome =
 	| Readonly<{ status: number; code: string }>;
 
 export type HetznerFake = Readonly<{
-	/** The loopback address to give `HCLOUD_STAND_IN_URL`. */
+	/** The loopback address to give `HCLOUD_FAKE_URL`. */
 	url: string;
 	/** Every request in order, oldest first. */
 	requests: () => readonly HetznerRequest[];
@@ -332,6 +335,10 @@ async function startHetznerFake(): Promise<HetznerFake> {
 		// Composery calls the same paths it calls at Hetzner, under the same prefix.
 		const path = (request.url ?? "").replace(apiPrefixPattern, "");
 		requests.push({ method, path, body });
+		// Composery's own request is held to the same description as the reply.
+		void listHetznerRequestProblems(method, path, body).then((found) =>
+			problems.push(...found),
+		);
 		const outcome = takeScript(method, path);
 		if (outcome === "lose") {
 			// Hetzner did the work; the answer never arrives. Composery must not assume it failed.
@@ -349,9 +356,12 @@ async function startHetznerFake(): Promise<HetznerFake> {
 		const result = answer(method, path, body);
 		// Hetzner's own description decides whether it could have sent this. The reply is already
 		// on its way, so a difference is recorded and fails the run at the end.
-		void checkHetznerReply(method, path, result.status, result.body ?? {}).then(
-			(found) => problems.push(...found),
-		);
+		void listHetznerReplyProblems(
+			method,
+			path,
+			result.status,
+			result.body ?? {},
+		).then((found) => problems.push(...found));
 		if (result.body === null) {
 			response.writeHead(result.status);
 			response.end();
@@ -413,8 +423,13 @@ let running: HetznerFake | undefined;
  * Fails the run when the fake answered in a shape Hetzner never would. It is checked once for the
  * whole run, because the test that makes a request is not always the one that would read it.
  */
-export function requireHetznerFakeKeptContract() {
-	const problems = running?.problems() ?? [];
+export function listHetznerFakeProblems() {
+	return running?.problems() ?? [];
+}
+
+/** Fails the run when the fake, or Composery, spoke to Hetzner in a way Hetzner describes otherwise. */
+export function requireHetznerContractKept() {
+	const problems = listHetznerFakeProblems();
 	if (problems.length > 0) {
 		const lines = [
 			"The fake answered in ways Hetzner would not:",
