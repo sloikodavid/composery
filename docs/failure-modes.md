@@ -36,7 +36,7 @@ The worker compares what the provider reports against what was recorded, and ref
 
 Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it. Hetzner publishes no webhooks, so scanning and the worker's own polling are how anything at the provider is noticed; Clerk does publish webhooks and is reconciled hourly as well, because delivery is not guaranteed.
 
-Nothing repairs anything, and per `docs/policy.md` nothing is owed. What is missing is that `blocked` tells nobody: there is no alerting and no admin surface, so it waits to be noticed.
+Nothing repairs anything, and per `docs/policy.md` nothing is owed. What `blocked` does not do is reach anybody; `docs/notices.md` says what is missing and `docs/admin.md` says what a person can do about it once they know.
 
 ## What is undecided
 

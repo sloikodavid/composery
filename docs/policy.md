@@ -18,6 +18,7 @@ A failure must leave the system in a state a person can act on.
 - **Keep working where we still can.** Power, deletion, status and quota come from the provider and do not depend on anything inside the server. A customer who breaks SSH keeps all of them.
 - **Never write over what we do not understand.** When the provider reports something other than what we recorded, stop and keep the record. An allocation that does not match is not repaired by guessing.
 - **Never make it worse.** No destructive action recovers from an unexpected state.
+- **Never promise more than is enforced.** This one is checkable, so it is an inviolable rule in `AGENTS.md` rather than a principle here.
 
 ## Do not repair what may have been meant
 
@@ -47,10 +48,6 @@ What is not acceptable is discovering it and moving on.
 
 When something we depend on is missing, the feature that needs it reports what is unavailable and every other feature keeps working. This is why the SSH features can fail without touching power, and why an unreadable secret stops management rather than the machine.
 
-## Promise only what is enforced
+## Saying it out loud
 
-A permission, a label or a limit must not suggest a protection the underlying system does not give. Where a boundary cannot be enforced, say what is actually true. This one is also an inviolable rule, because it is checkable.
-
-## Before release
-
-Alerting is the gap this policy cannot close on its own. A state that is recorded but that nobody is told about satisfies the letter of "break cleanly" and not the point of it. Notices to an admin, and to the customer where it is their server that changed, are needed before there are customers.
+Breaking cleanly is only half of it. A state that is recorded but that nobody is told about satisfies the letter of every rule above and not the point of any of them. What has to be said, and to whom, is in `docs/notices.md`.

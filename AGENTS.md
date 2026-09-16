@@ -97,7 +97,7 @@ Convex agent skills for common tasks can be installed by running
 - Use floating UI primitives for transient outcomes, reserved field-level messages for validation, and a deliberate error boundary or dialog for blocking failures.
 
 
-- Read `docs/policy.md` before deciding what happens when something outside our control goes wrong: what degrades, what is repaired, what is only reported. It says what the product is trying to be, so a judgement the rules do not cover is still made the same way twice.
+- Read `docs/policy.md` before deciding what happens when something outside our control goes wrong: what degrades, what is repaired, what is only reported. It says what the product is trying to be, so a judgement the rules do not cover is still made the same way twice. `docs/failure-modes.md` lists what can go wrong, `docs/notices.md` what has to be said about it, and `docs/admin.md` what a person can do.
 
 - Write, name, and place tests as `docs/testing.md` describes.
 

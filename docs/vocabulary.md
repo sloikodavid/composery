@@ -24,6 +24,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `backend` | The mechanism that makes an allocation real, such as `hetznerCloud` | version, v1, v2 |
 | `provider` | The company and API that a backend calls, such as Hetzner | vendor |
 | `resource` | One thing that a backend owns at its provider | |
+| `notice` | A statement that a state needs someone's attention, addressed to whoever can act on it. Where it appears is an attribute of it | notification, alert |
 | `finding` | Evidence about an unknown resource, for admin review | alert |
 | `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
 | `lease` | A worker's claim on one allocation for a time, so two runs never act at once | lock |
