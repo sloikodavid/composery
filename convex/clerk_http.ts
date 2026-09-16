@@ -24,7 +24,12 @@ export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 				status: httpStatus.badRequest,
 			});
 		}
-		await syncClerkUser(ctx, clerkUserId);
+		try {
+			await syncClerkUser(ctx, clerkUserId);
+		} catch {
+			// Clerk retries what it cannot deliver, and no detail of the failure goes back to it.
+			return new Response(null, { status: httpStatus.serviceUnavailable });
+		}
 	}
 
 	return new Response(null, { status: httpStatus.noContent });

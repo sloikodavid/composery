@@ -39,6 +39,7 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
+  readonly CLERK_API_URL: string | undefined;
   readonly CLERK_FRONTEND_API_URL: string;
   readonly CLERK_SECRET_KEY: string;
   readonly CLERK_WEBHOOK_SIGNING_SECRET: string;

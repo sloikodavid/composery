@@ -31,6 +31,7 @@ import {
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
 import { isProcessAlive, registerCleanup } from "./cleanup";
+import { type ClerkFake, useClerkFake } from "./clerk";
 import { type HetznerFake, useHetznerFake } from "./hetzner";
 import { convexBackendAssets, convexBackendVersion } from "./pins";
 import { type SignInIssuer, startSignInIssuer } from "./sign-in";
@@ -68,6 +69,8 @@ const fakeControllerId = "composery-test";
 const fakeFirewallId = 77;
 const fakeLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
+// One secret for the run: the deployment gets it, and a test signs with it as Clerk would.
+const webhookSecret = `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`;
 const usesProcessGroups = process.platform !== "win32";
 
 type AnyFunction = FunctionReference<
@@ -87,6 +90,12 @@ export type ConvexBackend = Readonly<{
 	signIn: SignInIssuer["signIn"];
 	/** Everything the backend has written, which is where a function's own failure is named. */
 	readLog: () => string;
+	/** Where HTTP actions answer, such as the Clerk webhook and a server's host key report. */
+	siteUrl: string;
+	/** The signing secret this run gave the deployment, so a test can sign a webhook as Clerk does. */
+	webhookSecret: string;
+	/** The accounts Clerk would hold, which a test fills before it asks Composery to read them. */
+	clerk: ClerkFake;
 }>;
 
 /** What every process of one test run shares. */
@@ -99,6 +108,8 @@ type RunContext = Readonly<{
 
 type RunningBackend = Readonly<{
 	url: string;
+	/** Where HTTP actions answer, which is a second port of the same backend. */
+	siteUrl: string;
 	stop: () => Promise<void>;
 	/** The backend's latest log lines, which say why a push or a request failed. */
 	readLog: () => string;
@@ -364,6 +375,7 @@ async function startBackend(
 	const url = `http://127.0.0.1:${cloudPort}`;
 	const backend: RunningBackend = {
 		url,
+		siteUrl: `http://127.0.0.1:${sitePort}`,
 		stop: () => stopOwned(child),
 		readLog: () => log.join("\n"),
 	};
@@ -412,12 +424,17 @@ async function setEnvironmentVariables(
  * What the deployment reads, all of it made up here: sign-in answers to this run's issuer, and
  * Hetzner is this run's fake on loopback. No value of yours can reach a test.
  */
-function toDeploymentVariables(issuer: SignInIssuer, fake: HetznerFake) {
+function toDeploymentVariables(
+	issuer: SignInIssuer,
+	fake: HetznerFake,
+	clerk: ClerkFake,
+) {
 	return {
 		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 		CLERK_FRONTEND_API_URL: issuer.url,
 		CLERK_SECRET_KEY: "sk_test_composery_tests_never_reach_clerk",
-		CLERK_WEBHOOK_SIGNING_SECRET: `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`,
+		CLERK_WEBHOOK_SIGNING_SECRET: webhookSecret,
+		CLERK_API_URL: clerk.url,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
 		HCLOUD_LOCATIONS: fakeLocations,
 		HCLOUD_FIREWALL_ID: String(fakeFirewallId),
@@ -546,12 +563,14 @@ async function requireStorageTemplate(context: RunContext) {
 	const issuer = startSignInIssuer();
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
 	const fake = await useHetznerFake();
+	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	const clerk = await useClerkFake();
 	const backend = await startBackend(context, building);
 	try {
 		await setEnvironmentVariables(
 			context,
 			backend,
-			toDeploymentVariables(issuer, fake),
+			toDeploymentVariables(issuer, fake, clerk),
 		);
 		await pushFunctions(context, backend, "template-workspace");
 	} finally {
@@ -636,12 +655,14 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	registerCleanup(issuer.stop);
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
 	const fake = await useHetznerFake();
+	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	const clerk = await useClerkFake();
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
 	await setEnvironmentVariables(
 		context,
 		backend,
-		toDeploymentVariables(issuer, fake),
+		toDeploymentVariables(issuer, fake, clerk),
 	);
 	await pushFunctions(context, backend, "workspace");
 
@@ -661,6 +682,9 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		},
 		signIn: issuer.signIn,
 		readLog: backend.readLog,
+		siteUrl: backend.siteUrl,
+		webhookSecret,
+		clerk,
 	};
 }
 

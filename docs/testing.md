@@ -13,6 +13,7 @@ Every test asks one authority whether the result is right, and the authority mus
 | The code's own rules | parsing, arithmetic, formats that Composery defines | nothing |
 | OpenSSH | whether a key signs in, what a key file means, what a setting does | a real `sshd` in Docker |
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
+| Clerk's own SDK | that a webhook is genuine, and that an account reply is shaped as Clerk shapes one | a fake Clerk on loopback |
 | Hetzner's published API description | the shape of what we send and what we accept | `tests/harness/hetzner-contract.json` |
 | Hetzner | that the provider really did it | not built; see below |
 

@@ -17,8 +17,38 @@ const clerkPageSize = 100;
 
 type UserFields = Infer<typeof userFields>;
 
+// Written exactly, because what a name resolves to is not ours to decide.
+const loopbackHosts: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
+
+/** Whether this deployment is one a test started: it answers on this machine and nowhere else. */
+function isLocalDeployment() {
+	try {
+		return loopbackHosts.has(new URL(env.CONVEX_SITE_URL).hostname);
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Clerk's own address, or the fake that a test runs. As with the provider, a replacement counts
+ * only when the deployment itself answers on this machine and the address is this machine's own,
+ * so the same variable set on a real deployment changes nothing.
+ */
 function createClient() {
-	return createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+	const fake = env.CLERK_API_URL;
+	if (!fake || !isLocalDeployment()) {
+		return createClerkClient({ secretKey: env.CLERK_SECRET_KEY });
+	}
+	const url = new URL(fake);
+	if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) {
+		throw new Error(
+			"CLERK_API_URL must be http on 127.0.0.1 or [::1], because only a test sets it.",
+		);
+	}
+	return createClerkClient({
+		secretKey: env.CLERK_SECRET_KEY,
+		apiUrl: url.origin,
+	});
 }
 
 // Returns null until the Clerk account has every field that sign-up requires.
