@@ -273,14 +273,24 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
+/** Whether this deployment is one a test started: it answers on this machine and nowhere else. */
+function isLocalDeployment() {
+	try {
+		return loopbackHosts.has(new URL(env.CONVEX_SITE_URL).hostname);
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Hetzner's own address, or the stand-in that a test runs. Hetzner's address is built in and no
- * deployment can change it; the only address that may replace it is this machine's own. A
- * deployment that sets the variable by mistake reaches nothing, and the token stays on the machine.
+ * deployment can change it. A replacement has to pass two checks that a real deployment cannot:
+ * the deployment itself answers only on this machine, and the address is this machine's own. So a
+ * variable set by mistake in production changes nothing, and the token never leaves the machine.
  */
 function toApiUrl() {
 	const standIn = env.HCLOUD_STAND_IN_URL;
-	if (!standIn) {
+	if (!standIn || !isLocalDeployment()) {
 		return `${liveApiOrigin}${apiPrefix}`;
 	}
 	let url: URL;

@@ -32,11 +32,12 @@ import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
 import { isProcessAlive, registerCleanup } from "./cleanup";
 import { type HetznerStandIn, useHetznerStandIn } from "./hetzner";
+import { convexBackendAssets, convexBackendVersion } from "./pins";
 import { type SignInIssuer, startSignInIssuer } from "./sign-in";
 
 const repositoryRoot = path.resolve(import.meta.dir, "..", "..");
 const cacheRoot = path.join(repositoryRoot, "tmp", "convex-backend");
-const backendVersion = "precompiled-2026-09-11-157eb19";
+
 // Test deployments share one instance identity, because a storage template belongs to it.
 const instanceName = "composery-test";
 const instanceSecret = createHash("sha256").update(instanceName).digest("hex");
@@ -68,30 +69,6 @@ const standInFirewallId = 77;
 const standInLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
 const usesProcessGroups = process.platform !== "win32";
-
-/** The release asset and its SHA-256 digest, as GitHub published them, for each supported platform. */
-const releaseAssets: Record<string, { name: string; sha256: string }> = {
-	"win32-x64": {
-		name: "convex-local-backend-x86_64-pc-windows-msvc.zip",
-		sha256: "c4c51220c9a0b3dd799150608f54dd5a01370da7f9b94eea50268c2afdc7bc93",
-	},
-	"linux-x64": {
-		name: "convex-local-backend-x86_64-unknown-linux-gnu.zip",
-		sha256: "c64b3339f9c4fa97b146741a1ed551b4b2a99dbcbe539ee1063c49069b7b49c4",
-	},
-	"linux-arm64": {
-		name: "convex-local-backend-aarch64-unknown-linux-gnu.zip",
-		sha256: "ef3d79aeec748ae8511c5b560ad9c0a43e617111fee803543aecb5d0c98364ae",
-	},
-	"darwin-x64": {
-		name: "convex-local-backend-x86_64-apple-darwin.zip",
-		sha256: "83ca7eed58ae269e0daf9d55f2aebbba48db55c16b6341db89db517ffb8e413a",
-	},
-	"darwin-arm64": {
-		name: "convex-local-backend-aarch64-apple-darwin.zip",
-		sha256: "a61d352b0501ac6e0e56c25efc2a1e6a2a59a28076ef1168e042317946653641",
-	},
-};
 
 type AnyFunction = FunctionReference<
 	"query" | "mutation" | "action",
@@ -302,7 +279,7 @@ async function stopOwned(child: ChildProcess) {
 
 /** Downloads the pinned backend once, refuses it unless its digest matches, and keeps it in tmp. */
 async function requireBackendBinary() {
-	const asset = releaseAssets[`${process.platform}-${process.arch}`];
+	const asset = convexBackendAssets[`${process.platform}-${process.arch}`];
 	if (asset === undefined) {
 		throw new Error(
 			`No Convex backend release is pinned for ${process.platform}-${process.arch}.`,
@@ -312,13 +289,13 @@ async function requireBackendBinary() {
 		process.platform === "win32"
 			? "convex-local-backend.exe"
 			: "convex-local-backend";
-	const directory = path.join(cacheRoot, "binaries", backendVersion);
+	const directory = path.join(cacheRoot, "binaries", convexBackendVersion);
 	const binary = path.join(directory, fileName);
 	if (existsSync(binary)) {
 		return binary;
 	}
 	const response = await fetch(
-		`https://github.com/get-convex/convex-backend/releases/download/${backendVersion}/${asset.name}`,
+		`https://github.com/get-convex/convex-backend/releases/download/${convexBackendVersion}/${asset.name}`,
 	);
 	if (!response.ok) {
 		throw new Error(
@@ -553,7 +530,7 @@ async function requireStorageTemplate(context: RunContext) {
 	const key = createHash("sha256")
 		.update(
 			JSON.stringify([
-				backendVersion,
+				convexBackendVersion,
 				readPackageVersion("convex"),
 				readPackageVersion("ssh2"),
 				readFileSync(path.join(repositoryRoot, "convex.json"), "utf8"),

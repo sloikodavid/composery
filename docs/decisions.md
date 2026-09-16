@@ -46,7 +46,7 @@ A Hetzner create request is recorded as uncertain before it is sent, so a lost r
 
 Each backend keeps its own state in its own table, with one row for each allocation, instead of fields or a nested object in `serverAllocations`. The worker changes its lease fields every few seconds, and a change to `serverAllocations` reruns every status query that reads it. A second backend adds its own table and one `backend` value, and changes no existing table. A backend's own error codes stay in its table, for admins; the shared status says only that an allocation is blocked or missing.
 
-Hetzner's address is a constant in `hetzner_cloud/api.ts`. `HCLOUD_STAND_IN_URL` may replace it only with a loopback address, so a test can point the deployment at its own stand-in, and no configuration can send the token to a third party. A bootstrap report may travel over plain HTTP only to a loopback address, for the same reason: the token stays on the machine that sends it.
+Hetzner's address is a constant in `hetzner_cloud/api.ts`. `HCLOUD_STAND_IN_URL` may replace it only when both the deployment and the address answer on this machine alone, so a test can point the deployment at its own stand-in, and the same variable set on a real deployment changes nothing. A bootstrap report may travel over plain HTTP only to a loopback address, for the same reason: the token stays on the machine that sends it.
 
 A Convex module path accepts only letters, digits, underscores, and periods: the backend refuses `hyphen-probe.js` on push. So Convex modules use snake_case with a directory-specific filename lint rule, and a test that mirrors one keeps its name. Every other file is kebab-case, because a Next.js route folder becomes a URL segment.
 

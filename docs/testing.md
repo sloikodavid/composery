@@ -31,27 +31,13 @@ Tests live under `tests/`, in folders that mirror the source folders they test, 
 
 ## Running
 
-`bun test` runs every test that is safe to run: nothing it starts costs money or reaches a system that someone depends on. It needs:
-
-- Docker, for `sshd`.
-- Node on the path, for the Convex CLI and the backend's Node runtime.
-- On Windows, permission to create symbolic links (Developer Mode). The repository already needs it for `CLAUDE.md`.
-- The network on the first run: the harness downloads the pinned Convex backend, checks its SHA-256 digest, and builds a storage template, which takes about a minute. Later runs start from the template in seconds.
-
-A missing requirement fails the run with a message that says what to do. Nothing is skipped quietly.
+`bun test` runs every test that is safe to run: nothing it starts costs money or reaches a system that someone depends on. `docs/requirements.md` says what a machine needs; a missing requirement fails the run with a message that says what to do, and nothing is skipped quietly.
 
 ## Pins
 
-Every version a test depends on is written down, so a run today and a run next year test the same thing.
+`tests/harness/pins.ts` holds every external version a test depends on: the Ubuntu image and the day of the archive its packages come from, and the Convex backend release with its digest for each platform. Each one says what it is and when to move it.
 
-| Pin | Where | How to move it |
-|---|---|---|
-| npm packages | `bun.lock`, with `exact = true` | `bun outdated`, then `bun add <name>@<version>` |
-| The Ubuntu image | `baseImage` in `tests/harness/sshd.ts` | take the new digest from the registry |
-| The `sshd` packages | `archiveSnapshot` in the same file | pick a later day of the Ubuntu archive |
-| The Convex backend | `releaseAssets` in `tests/harness/convex-backend.ts` | take the release and its SHA-256 for every platform |
-
-A pin here cannot rot the way an apt version pin does. We pin the day of the archive, not the version of a package, and the snapshot archive keeps every day: a snapshot from June 2024 still installs today. So an old pin gives an old OpenSSH, never a broken build. That is the reason to move these on purpose: to test against what people really run, not to keep the tests working.
+A pin here cannot rot the way an apt version pin does. We pin the day of the archive, not the version of a package, and the archive keeps every day: a snapshot from June 2024 still installs today. So an old pin gives an old OpenSSH, never a broken build. That is the reason to move these on purpose: to test against what people really run, not to keep the tests working.
 
 ## Isolation
 
