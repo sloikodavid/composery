@@ -1,6 +1,6 @@
 # Vocabulary
 
-The words that code, copy, and docs use for one meaning each. AGENTS.md holds the rules; this file holds the words those rules choose. Change it in the same commit as the code, and add a concept before using it. [The session that set this vocabulary](sessions/2026-09-14-claude-vocabulary.md) shows a nice snapshot of the reasoning and back and forth behind most of these choices, and explains how to think about structure and naming things in the repo.
+The words that code, copy, and docs use for one meaning each. AGENTS.md holds the rules; this file holds the words those rules choose. Change it in the same commit as the code, and add a concept before using it. [The session that set this vocabulary](sessions/2026-09-14-claude-vocabulary.md) shows the reasoning and back and forth behind most of these choices, and explains how to think about structure and naming things in the repo.
 
 ## Domain nouns
 
@@ -18,6 +18,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `limit` | A fixed cap in the code, such as members for one server | |
 | `unknown` | What a report about another system cannot establish, stated with the report | limit, caveat |
 | `rate limit` | How often one account may do something | throttle |
+| `snapshot` | A copy of one server's disk, held by the provider, that another server can be made from | image (which is what a server is created from), backup |
 | `allocation` | One real instance of a server: what currently runs it, for its lifetime | provisioning, incarnation |
 | `operation` | A recorded command on a server: `create`, `start`, `stop`, `forceStop`, `delete` | command, job |
 | `backend` | The mechanism that makes an allocation real, such as `hetznerCloud` | version, v1, v2 |
