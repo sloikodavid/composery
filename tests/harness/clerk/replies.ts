@@ -10,12 +10,20 @@
 const created = 1_789_000_000_000;
 
 /** What a test says a Clerk account holds. Clerk's own words, because this answers as Clerk. */
+/**
+ * What a test says a Clerk account holds. Clerk's own words, because this answers as Clerk.
+ *
+ * Each member is separate because Clerk keeps them separate. `has_image` says whether the person
+ * uploaded a picture; `image_url` is usually present either way, because Clerk generates one. A
+ * fake that tied the two together would be inventing a rule Clerk does not have, and a test could
+ * then only ever see the pairs that rule allows.
+ */
 export type ClerkUser = Readonly<{
 	id: string;
 	username: string;
-	email: string;
-	/** Clerk requires `has_image` and not `image_url`, so an account may carry no picture. */
+	email?: string;
 	imageUrl?: string;
+	hasImage?: boolean;
 }>;
 
 export function toUserReply(user: ClerkUser) {
@@ -24,30 +32,33 @@ export function toUserReply(user: ClerkUser) {
 		id: user.id,
 		object: "user",
 		external_id: null,
-		primary_email_address_id: emailId,
+		primary_email_address_id: user.email === undefined ? null : emailId,
 		primary_phone_number_id: null,
 		primary_web3_wallet_id: null,
 		username: user.username,
 		first_name: null,
 		last_name: null,
 		...(user.imageUrl === undefined ? {} : { image_url: user.imageUrl }),
-		has_image: user.imageUrl !== undefined,
+		has_image: user.hasImage ?? false,
 		password_enabled: true,
 		two_factor_enabled: false,
 		totp_enabled: false,
 		backup_code_enabled: false,
-		email_addresses: [
-			{
-				id: emailId,
-				object: "email_address",
-				email_address: user.email,
-				reserved: false,
-				verification: null,
-				linked_to: [],
-				created_at: created,
-				updated_at: created,
-			},
-		],
+		email_addresses:
+			user.email === undefined
+				? []
+				: [
+						{
+							id: emailId,
+							object: "email_address",
+							email_address: user.email,
+							reserved: false,
+							verification: null,
+							linked_to: [],
+							created_at: created,
+							updated_at: created,
+						},
+					],
 		phone_numbers: [],
 		web3_wallets: [],
 		passkeys: [],
