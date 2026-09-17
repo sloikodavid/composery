@@ -144,6 +144,11 @@ function collect(
 	value: unknown,
 	at: string,
 ) {
+	for (const alternatives of [schema.oneOf, schema.anyOf]) {
+		if (alternatives !== undefined) {
+			collectAlternatives(collector, alternatives, value, at);
+		}
+	}
 	const types = toTypes(schema);
 	if (types.length > 0 && !types.some((type) => isType(value, type))) {
 		const claims = types.join(" or ");
@@ -184,6 +189,30 @@ function collect(
 	}
 	for (const part of schema.allOf ?? []) {
 		collect(collector, part, value, at);
+	}
+}
+
+/**
+ * A description can allow a value to take one of several shapes. The value has to fit one of them,
+ * and which one it fits is not ours to decide, so only failing every shape is a problem.
+ */
+function collectAlternatives(
+	collector: Collector,
+	alternatives: readonly Schema[],
+	value: unknown,
+	at: string,
+) {
+	const fits = alternatives.some(
+		(alternative) =>
+			listSchemaProblems(collector, alternative, value, at).length === 0,
+	);
+	if (!fits) {
+		add(
+			collector,
+			at,
+			`one of ${alternatives.length} shapes`,
+			`is ${JSON.stringify(value)}, which fits none of the shapes ${collector.system} describes here`,
+		);
 	}
 }
 

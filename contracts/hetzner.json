@@ -2,7 +2,7 @@
 	"sources": [
 		{
 			"source": "https://docs.hetzner.cloud/cloud.spec.json",
-			"readAt": "2026-09-16",
+			"readAt": "2026-09-17",
 			"digest": "e886b44dd817012d10cbfb72ec62ec56166805e611c350711ac8a9bd207363bb"
 		}
 	],

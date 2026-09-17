@@ -13,6 +13,9 @@ const millisecondsPerSecond = 1000;
 const noContent = 204;
 const badRequest = 400;
 const serviceUnavailable = 503;
+const notFound = 404;
+const httpOk = 200;
+const keysPath = /^\/jwks$/;
 
 let backend: ConvexBackend;
 
@@ -53,6 +56,35 @@ function toAccount() {
 		email: `${id}@example.com`,
 		imageUrl: "https://example.com/avatar.png",
 	};
+}
+
+/** An account that Clerk holds and Composery has stored, which is where a deletion starts. */
+async function syncAccount() {
+	const account = toAccount();
+	backend.clerk.setUser(account);
+	const reply = await fetch(
+		`${backend.siteUrl}/webhooks/clerk`,
+		toSignedRequest(
+			backend.clerk.toEvent("user.created", account),
+			backend.webhookSecret,
+		),
+	);
+	expect(reply.status).toBe(noContent);
+	return account;
+}
+
+async function sendDeleted(account: ReturnType<typeof toAccount>) {
+	return await fetch(
+		`${backend.siteUrl}/webhooks/clerk`,
+		toSignedRequest(
+			backend.clerk.toEvent("user.deleted", account),
+			backend.webhookSecret,
+		),
+	);
+}
+
+async function readAccount(account: ReturnType<typeof toAccount>) {
+	return await backend.createClient(account.id).query(api.users.getCurrent, {});
 }
 
 test(
@@ -109,6 +141,78 @@ test(
 		expect(
 			await backend.createClient(account.id).query(api.users.getCurrent, {}),
 		).toBe(null);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"an account is removed only when Clerk itself says it is gone",
+	async () => {
+		const account = await syncAccount();
+		// Something at that address answers with the status but is not Clerk: a proxy, a gateway, a
+		// misdirected request. Removing an account deletes every server it owns.
+		const hasAnswered = backend.clerk.scriptOnce(
+			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
+			{ status: notFound, body: {} },
+		);
+
+		const refused = await sendDeleted(account);
+
+		expect(hasAnswered()).toBe(true);
+		expect(refused.status).toBe(serviceUnavailable);
+		expect(await readAccount(account)).toMatchObject({
+			clerkUserId: account.id,
+		});
+
+		// Clerk's own answer, with its own code, is what removes it.
+		backend.clerk.removeUser(account.id);
+		const accepted = await sendDeleted(account);
+		expect(accepted.status).toBe(noContent);
+		expect(await readAccount(account)).toBe(null);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"an account is kept when the secret key belongs to another Clerk instance",
+	async () => {
+		const account = await syncAccount();
+		backend.clerk.removeUser(account.id);
+		// A key from another instance answers "no such account" for every account we hold. The two
+		// sides publish the keys that tokens are signed by, and they do not agree here.
+		const hasAnswered = backend.clerk.scriptOnce(
+			{ method: "GET", path: keysPath },
+			{
+				status: httpOk,
+				body: { keys: [{ kid: "another-instance", kty: "RSA" }] },
+			},
+		);
+
+		const refused = await sendDeleted(account);
+
+		expect(hasAnswered()).toBe(true);
+		expect(refused.status).toBe(serviceUnavailable);
+		expect(await readAccount(account)).toMatchObject({
+			clerkUserId: account.id,
+		});
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a deletion Clerk's own read does not agree with is asked for again",
+	async () => {
+		const account = await syncAccount();
+
+		// Clerk says the account is gone and still returns it. Accepting would be the last time
+		// Clerk mentions it, and the account would stay until the next reconcile.
+		const reply = await sendDeleted(account);
+
+		expect(reply.status).toBe(serviceUnavailable);
+		expect(await readAccount(account)).toMatchObject({
+			clerkUserId: account.id,
+		});
+		backend.clerk.removeUser(account.id);
 	},
 	testTimeoutMs,
 );

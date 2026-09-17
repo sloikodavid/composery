@@ -2,12 +2,12 @@
 	"sources": [
 		{
 			"source": "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2026-05-12.yml",
-			"readAt": "2026-09-16",
+			"readAt": "2026-09-17",
 			"digest": "f68590b6ae4a4a63b5b8282457ddfc55d200a2ed2a7848246c0f8336d9aa2418"
 		},
 		{
 			"source": "https://raw.githubusercontent.com/clerk/openapi-specs/main/webhooks/2025-04-15.yml",
-			"readAt": "2026-09-16",
+			"readAt": "2026-09-17",
 			"digest": "5b3ea93aadd959e973c7ab161598aba91e8ea30f172498a8bbd6f675585ea2b3"
 		}
 	],
@@ -5207,6 +5207,410 @@
 						"required": [
 							"errors"
 						]
+					}
+				}
+			}
+		},
+		"/jwks": {
+			"get": {
+				"parameters": [],
+				"request": {},
+				"responses": {
+					"200": {
+						"type": "object",
+						"additionalProperties": false,
+						"properties": {
+							"keys": {
+								"type": "array",
+								"items": {
+									"oneOf": [
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"OKP"
+													]
+												},
+												"crv": {
+													"type": "string",
+													"enum": [
+														"Ed25519"
+													]
+												},
+												"x": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"crv",
+												"x"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"EC"
+													]
+												},
+												"crv": {
+													"type": "string"
+												},
+												"x": {
+													"type": "string"
+												},
+												"y": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"crv",
+												"x",
+												"y"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"RSA"
+													]
+												},
+												"n": {
+													"type": "string"
+												},
+												"e": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"n",
+												"e"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"OKP"
+													]
+												},
+												"crv": {
+													"type": "string",
+													"enum": [
+														"Ed25519"
+													]
+												},
+												"x": {
+													"type": "string"
+												},
+												"d": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"crv",
+												"x",
+												"d"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"EC"
+													]
+												},
+												"crv": {
+													"type": "string"
+												},
+												"x": {
+													"type": "string"
+												},
+												"y": {
+													"type": "string"
+												},
+												"d": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"crv",
+												"x",
+												"y",
+												"d"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"RSA"
+													]
+												},
+												"n": {
+													"type": "string"
+												},
+												"e": {
+													"type": "string"
+												},
+												"d": {
+													"type": "string"
+												},
+												"p": {
+													"type": "string"
+												},
+												"q": {
+													"type": "string"
+												},
+												"dp": {
+													"type": "string"
+												},
+												"dq": {
+													"type": "string"
+												},
+												"qi": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"crv",
+												"n",
+												"e",
+												"d",
+												"p",
+												"q"
+											]
+										},
+										{
+											"type": "object",
+											"properties": {
+												"kid": {
+													"type": "string"
+												},
+												"alg": {
+													"type": "string"
+												},
+												"use": {
+													"type": "string"
+												},
+												"kty": {
+													"type": "string",
+													"enum": [
+														"oct"
+													]
+												},
+												"k": {
+													"type": "string"
+												},
+												"x5c": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"x5t": {
+													"type": "string"
+												},
+												"x5t#S256": {
+													"type": "string"
+												},
+												"x5u": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"kid",
+												"alg",
+												"use",
+												"kty",
+												"k"
+											]
+										}
+									]
+								}
+							}
+						}
 					}
 				}
 			}

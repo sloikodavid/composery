@@ -9,11 +9,11 @@ import {
 } from "../../../harness/convex-backend";
 import type { Fake } from "../../../harness/fake";
 import { useHetznerFake } from "../../../harness/hetzner/fake";
+import { createServer, createServerOwner } from "../../../harness/servers";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 300_000;
 const subjectSuffixBytes = 6;
-const quotaLimit = 10;
 const settleTimeoutMs = 240_000;
 const settleDelayMs = 250;
 // The deployment paces its own work, so asking for a sweep faster than that starves the worker.
@@ -31,43 +31,7 @@ beforeAll(async () => {
 	fake = await useHetznerFake();
 }, setupTimeoutMs);
 
-/** One owner with room for servers, so no test waits on another's quota. */
-async function createOwner() {
-	const account = await backend.createAccount();
-	const client = backend.createClient(account.id);
-	const user = await client.query(api.users.getCurrent, {});
-	if (user === null) {
-		throw new Error("The user did not sync.");
-	}
-	await backend.runAsAdmin(internal.quotas.setForUser, {
-		userId: user._id,
-		kind: "server",
-		limit: quotaLimit,
-	});
-	await backend.runAsAdmin(internal.quotas.setForDeployment, {
-		kind: "server",
-		limit: quotaLimit,
-	});
-	return client;
-}
-
-type ServerClient = Awaited<ReturnType<typeof createOwner>>;
-
-async function createServer(client: ServerClient) {
-	const name = `test-${randomBytes(subjectSuffixBytes).toString("hex")}`;
-	const result = await client.mutation(api.servers.lifecycle.create, {
-		name,
-		requestId: `request-${randomBytes(subjectSuffixBytes).toString("hex")}`,
-	});
-	if (!result.ok) {
-		throw new Error(`Creating the server failed: ${result.code}`);
-	}
-	const server = await client.query(api.servers.names.getByName, { name });
-	if (server === null) {
-		throw new Error("The created server is not readable.");
-	}
-	return server._id;
-}
+type ServerClient = Awaited<ReturnType<typeof createServerOwner>>;
 
 /** What the backend recorded, which is where a stuck allocation says why it stopped. */
 async function readBackendRecord(serverId: Id<"servers">) {
@@ -191,7 +155,7 @@ async function settle(
 test(
 	"a created server reaches running, with one server and two addresses at the provider",
 	async () => {
-		const client = await createOwner();
+		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
 		const status = await settle(
 			client,
@@ -223,7 +187,7 @@ test(
 test(
 	"a create whose reply never arrives makes one server, not two",
 	async () => {
-		const client = await createOwner();
+		const client = await createServerOwner(backend);
 		// The server is asked for only after both of its addresses exist, so this test learns its own
 		// allocation well before that request can be sent, and loses only that one reply.
 		let allocationId: string | undefined;
@@ -285,7 +249,7 @@ async function changePower(
 test(
 	"each power command is sent once, and a graceful stop never becomes a forced one",
 	async () => {
-		const client = await createOwner();
+		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
 		await settle(client, serverId, (value) => value === "running");
 		const hetznerServerId = await requireHetznerServerId(serverId);
@@ -316,7 +280,7 @@ test(
 test(
 	"a delete finishes and leaves nothing, even when a reply never arrives",
 	async () => {
-		const client = await createOwner();
+		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
 		await settle(client, serverId, (value) => value === "running");
 		const record = await readBackendRecord(serverId);

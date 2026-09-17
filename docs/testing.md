@@ -62,7 +62,7 @@ Where a system publishes a machine-readable description of itself, `contracts/` 
 
 - `contracts/<system>.ts` says which operations we use, where the descriptions are published, and where the system disagrees with its own description. The subset is a declared list, not a hand-cut file, so a reviewer can rerun it.
 - `contracts/<system>.json` is what that list produced, with the source, the day it was read, and a digest of the whole published document. A difference here is a change at the system, reviewed like any other change.
-- `contracts/schema.ts` is the part of JSON Schema a description uses, and what it says about one value.
+- `contracts/schema.ts` is the part of JSON Schema a description uses, and what it says about one value. Where a description allows a value to take one of several shapes, fitting none of them is the problem; which one it fits is the system's business, not ours.
 - `contracts/check.ts` holds both halves of an exchange to a description: what Composery sends, and what a fake answers.
 
 `bun contracts` reads the published descriptions again and rewrites the two JSON files. It is how we find out that a system has changed, and it is the only thing in the repository that fetches one: a test never reaches the network, so a run is the same on a train as in an office, and a change at a vendor arrives as a diff somebody reads rather than as a red build nobody asked for.

@@ -105,6 +105,12 @@ export type ConvexBackend = Readonly<{
 	 * reconcile would rightly delete them part way through the test.
 	 */
 	createAccount: () => Promise<ClerkUser>;
+	/**
+	 * The keys this run gave the deployment, the one that encrypts first. The deployment runs with a
+	 * second key from the start, as it does part way through a rotation, so a test can hold a stored
+	 * value to either.
+	 */
+	sshAccessEncryptionKeys: readonly [string, string];
 }>;
 
 const accountSuffixBytes = 6;
@@ -452,10 +458,24 @@ async function setEnvironmentVariables(
  * What the deployment reads, all of it made up here: sign-in answers to this run's issuer, and
  * Hetzner is this run's fake on loopback. No value of yours can reach a test.
  */
+/** Two new keys, the one that encrypts first. */
+async function readIssuerKeys(issuer: SignInIssuer) {
+	const reply = await fetch(`${issuer.url}/.well-known/jwks.json`);
+	return await reply.json();
+}
+
+function toSshAccessEncryptionKeys() {
+	return [
+		randomBytes(encryptionKeyBytes).toString("base64"),
+		randomBytes(encryptionKeyBytes).toString("base64"),
+	] as const;
+}
+
 function toDeploymentVariables(
 	issuer: SignInIssuer,
 	fake: Fake,
 	clerk: ClerkFake,
+	sshAccessEncryptionKeys: readonly string[],
 ) {
 	return {
 		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
@@ -469,8 +489,7 @@ function toDeploymentVariables(
 		HCLOUD_CONTROLLER_ID: fakeControllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
 		HCLOUD_FAKE_URL: fake.url,
-		SSH_ACCESS_ENCRYPTION_KEYS:
-			randomBytes(encryptionKeyBytes).toString("base64"),
+		SSH_ACCESS_ENCRYPTION_KEYS: sshAccessEncryptionKeys.join(","),
 		// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 	};
 }
@@ -598,7 +617,7 @@ async function requireStorageTemplate(context: RunContext) {
 		await setEnvironmentVariables(
 			context,
 			backend,
-			toDeploymentVariables(issuer, fake, clerk),
+			toDeploymentVariables(issuer, fake, clerk, toSshAccessEncryptionKeys()),
 		);
 		await pushFunctions(context, backend, "template-workspace");
 	} finally {
@@ -685,12 +704,16 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const fake = await useHetznerFake();
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
 	const clerk = await useClerkFake();
+	// The deployment holds an account gone only when both sides name one Clerk instance, so the fake
+	// publishes the keys the sign-in tokens are signed by.
+	clerk.setKeys(await readIssuerKeys(issuer));
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
+	const sshAccessEncryptionKeys = toSshAccessEncryptionKeys();
 	await setEnvironmentVariables(
 		context,
 		backend,
-		toDeploymentVariables(issuer, fake, clerk),
+		toDeploymentVariables(issuer, fake, clerk, sshAccessEncryptionKeys),
 	);
 	await pushFunctions(context, backend, "workspace");
 
@@ -714,7 +737,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 				id,
 				username: id.toLowerCase(),
 				email: `${id}@example.com`,
-				imageUrl: "",
 			};
 			clerk.setUser(account);
 			await callFunction(
@@ -727,7 +749,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 							clerkUserId: account.id,
 							username: account.username,
 							email: account.email,
-							imageUrl: account.imageUrl,
 						},
 					],
 				},
@@ -739,6 +760,7 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		siteUrl: backend.siteUrl,
 		webhookSecret,
 		clerk,
+		sshAccessEncryptionKeys,
 	};
 }
 

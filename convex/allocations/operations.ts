@@ -44,6 +44,14 @@ export function requireRequestId(requestId: string) {
 }
 
 /** Every server has exactly one allocation from creation until the server is deleted. */
+/** Removes the allocation itself, in the same change that removes the server it ran. */
+export async function deleteServerAllocation(
+	ctx: MutationCtx,
+	allocationId: Id<"serverAllocations">,
+) {
+	await ctx.db.delete("serverAllocations", allocationId);
+}
+
 export async function requireServerAllocation(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
@@ -296,9 +304,10 @@ export const finishDelete = internalMutation({
 		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
 			allocationId,
 		});
-		await ctx.db.delete("serverAllocations", allocationId);
+		// The server's own last step deletes this row with it. A server that had no allocation, even
+		// for the moment between two mutations, would fail every read that starts from the server.
 		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
-			serverId: allocation.serverId,
+			allocationId,
 		});
 		return null;
 	},

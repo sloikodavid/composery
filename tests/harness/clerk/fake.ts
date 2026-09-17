@@ -20,6 +20,7 @@ const httpNotFound = 404;
 const userPathPattern = /^\/users\/([^/?]+)/;
 const listPath = "/users";
 const countPath = "/users/count";
+const keysPath = "/jwks";
 
 export type ClerkFake = Fake &
 	Readonly<{
@@ -27,6 +28,12 @@ export type ClerkFake = Fake &
 		setUser: (user: ClerkUser) => void;
 		/** Removes one account, as if it were deleted at Clerk. */
 		removeUser: (id: string) => void;
+		/**
+		 * The signing keys Clerk publishes for this instance. Composery compares them with the ones
+		 * the tokens are signed by before it believes that an account is gone, so a test that makes
+		 * the two disagree is a deployment whose secret key belongs to another Clerk instance.
+		 */
+		setKeys: (keys: unknown) => void;
 		/** The body Clerk would sign for an account, in the shape Clerk describes. */
 		toEvent: (
 			type: "user.created" | "user.updated" | "user.deleted",
@@ -54,6 +61,7 @@ function notFound(): FakeReply {
 
 export async function startClerkFake(): Promise<ClerkFake> {
 	const users = new Map<string, ClerkUser>();
+	let keys: unknown = { keys: [] };
 
 	// Clerk filters a list by the accounts asked for, and pages it. A fake that answered with
 	// everything would hide the code that decides an account is gone.
@@ -72,6 +80,9 @@ export async function startClerkFake(): Promise<ClerkFake> {
 		const query = new URLSearchParams(rawQuery ?? "");
 		if (method !== "GET") {
 			return notFound();
+		}
+		if (route === keysPath) {
+			return { status: httpOk, body: keys };
 		}
 		if (route === countPath) {
 			return { status: httpOk, body: toCountReply(select(query).all.length) };
@@ -104,6 +115,9 @@ export async function startClerkFake(): Promise<ClerkFake> {
 
 	return {
 		...fake,
+		setKeys: (published) => {
+			keys = published;
+		},
 		setUser: (user) => {
 			users.set(user.id, user);
 		},

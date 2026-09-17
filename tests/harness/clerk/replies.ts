@@ -53,7 +53,15 @@ export function toUserReply(user: ClerkUser) {
 							object: "email_address",
 							email_address: user.email,
 							reserved: false,
-							verification: null,
+							// An account reaches us with its email address checked, which is how the
+							// instance is configured: Clerk asks for a code at sign-up.
+							verification: {
+								object: "verification_otp",
+								status: "verified",
+								strategy: "email_code",
+								attempts: 1,
+								expire_at: null,
+							},
 							linked_to: [],
 							created_at: created,
 							updated_at: created,

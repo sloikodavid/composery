@@ -38,7 +38,12 @@ export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 			});
 		}
 		try {
-			await syncClerkUser(ctx, clerkUserId);
+			const outcome = await syncClerkUser(ctx, clerkUserId);
+			if (event.type === "user.deleted" && outcome === "stored") {
+				// Clerk says the account is gone and its own read still returns it. Accepting the event
+				// would be the last time Clerk mentions it, so it is asked for again instead.
+				return new Response(null, { status: httpStatus.serviceUnavailable });
+			}
 		} catch {
 			// Clerk sends a webhook again when it is not accepted, and no detail of the failure
 			// goes back to it.

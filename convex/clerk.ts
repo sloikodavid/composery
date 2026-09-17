@@ -22,6 +22,8 @@ export const clerkPageSize = 100;
  * repeat every hour until something else stops it.
  */
 const maxPages = 1000;
+/** Clerk's own code for "no such account", which is the only evidence that removes one. */
+const clerkAccountGoneCode = "resource_not_found";
 
 type UserFields = Infer<typeof userFields>;
 
@@ -59,24 +61,66 @@ async function storeUsers(ctx: ActionCtx, users: User[]) {
 	}
 }
 
-// Reads the current state from Clerk, so the order in which events arrive does not matter.
+/**
+ * Whether Clerk itself said the account does not exist. Any other answer with that status is a
+ * different thing: an address that is not Clerk, or a proxy in front of it. Removing an account
+ * deletes every server it owns, so only Clerk's own code counts.
+ */
+function isClerkAccountGone(error: unknown) {
+	return (
+		isClerkAPIResponseError(error) &&
+		error.status === httpStatus.notFound &&
+		error.errors.some(({ code }) => code === clerkAccountGoneCode)
+	);
+}
+
+/** The key identifiers a set names, whoever published it. */
+function toKeyIds(keys: { kid?: string }[]) {
+	return new Set(keys.map(({ kid }) => kid).filter((kid) => kid !== undefined));
+}
+
+/**
+ * Proves that the secret key and the tokens our clients sign in with belong to one Clerk instance,
+ * by the signing keys the two sides publish. A key from another instance answers "no such account"
+ * for every account we hold, and that would otherwise delete every server on the deployment.
+ */
+async function requireOneClerkInstance(clerk: ClerkClient) {
+	const clientKeys = await fetch(
+		`${env.CLERK_FRONTEND_API_URL}/.well-known/jwks.json`,
+	);
+	if (!clientKeys.ok) {
+		throw new Error(
+			`The sign-in keys could not be read: ${clientKeys.status}.`,
+		);
+	}
+	const published = (await clientKeys.json()) as { keys?: { kid?: string }[] };
+	const clientKeyIds = toKeyIds(published.keys ?? []);
+	const backendKeyIds = toKeyIds((await clerk.jwks.getJwks()).keys ?? []);
+	if (![...backendKeyIds].some((keyId) => clientKeyIds.has(keyId))) {
+		throw new Error(
+			"CLERK_SECRET_KEY and CLERK_FRONTEND_API_URL name different Clerk instances.",
+		);
+	}
+}
+
+/** Reads the current state from Clerk, so the order in which events arrive does not matter. */
 export async function syncClerkUser(ctx: ActionCtx, clerkUserId: string) {
+	const clerk = createClient();
 	let user: User;
 	try {
-		user = await createClient().users.getUser(clerkUserId);
+		user = await clerk.users.getUser(clerkUserId);
 	} catch (error) {
-		if (
-			isClerkAPIResponseError(error) &&
-			error.status === httpStatus.notFound
-		) {
-			await ctx.runMutation(internal.users.remove, {
-				clerkUserIds: [clerkUserId],
-			});
-			return;
+		if (!isClerkAccountGone(error)) {
+			throw error;
 		}
-		throw error;
+		await requireOneClerkInstance(clerk);
+		await ctx.runMutation(internal.users.remove, {
+			clerkUserIds: [clerkUserId],
+		});
+		return "removed" as const;
 	}
 	await storeUsers(ctx, [user]);
+	return "stored" as const;
 }
 
 export const syncCurrent = action({
@@ -131,52 +175,77 @@ async function syncUnlistedClerkUsers(
 	return unchecked;
 }
 
-/** Webhook delivery is not guaranteed, so this runs every hour. */
+/**
+ * Reads every account Clerk holds and keeps ours current. A `user.created` nobody delivered is what
+ * this is for; an account nobody has signed in as since is only known this way.
+ */
+async function storeClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
+	for (let asked = 0; asked < maxPages; asked += 1) {
+		const { data } = await clerk.users.getUserList({
+			limit: clerkPageSize,
+			offset: asked * clerkPageSize,
+			orderBy: "+created_at",
+		});
+		await storeUsers(ctx, data);
+		if (data.length < clerkPageSize) {
+			return;
+		}
+	}
+	throw new Error(`Clerk still had accounts after ${maxPages} pages.`);
+}
+
+/** Checks every account we hold against Clerk, and returns how many could not be checked. */
+async function checkOurClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
+	let cursor: string | null = null;
+	let unchecked = 0;
+	for (let asked = 0; asked < maxPages; asked += 1) {
+		const page: { page: string[]; isDone: boolean; continueCursor: string } =
+			await ctx.runQuery(internal.users.listClerkIds, {
+				paginationOpts: { numItems: clerkPageSize, cursor },
+			});
+		if (page.page.length > 0) {
+			unchecked += await syncUnlistedClerkUsers(ctx, clerk, page.page);
+		}
+		if (page.isDone) {
+			return unchecked;
+		}
+		cursor = page.continueCursor;
+	}
+	throw new Error(
+		`Composery still held accounts after ${maxPages} pages of its own.`,
+	);
+}
+
+/**
+ * Webhook delivery is not guaranteed, so this runs every hour. The two halves are independent: an
+ * account we hold is checked against Clerk even when reading every account Clerk holds fails, or a
+ * deletion nobody delivered would wait for a working list.
+ */
 export const reconcile = internalAction({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
 		const clerk = createClient();
-
-		let read = false;
-		for (let asked = 0; asked < maxPages && !read; asked += 1) {
-			const { data } = await clerk.users.getUserList({
-				limit: clerkPageSize,
-				offset: asked * clerkPageSize,
-				orderBy: "+created_at",
-			});
-			await storeUsers(ctx, data);
-			read = data.length < clerkPageSize;
+		const problems: string[] = [];
+		try {
+			await storeClerkUsers(ctx, clerk);
+		} catch (error) {
+			problems.push(`reading Clerk's accounts failed: ${String(error)}`);
 		}
-		if (!read) {
-			throw new Error(
-				`Clerk still had accounts after ${maxPages} pages, so none were removed.`,
-			);
-		}
-
-		let cursor: string | null = null;
-		let unchecked = 0;
-		for (let asked = 0; asked < maxPages; asked += 1) {
-			const page: { page: string[]; isDone: boolean; continueCursor: string } =
-				await ctx.runQuery(internal.users.listClerkIds, {
-					paginationOpts: { numItems: clerkPageSize, cursor },
-				});
-			if (page.page.length > 0) {
-				unchecked += await syncUnlistedClerkUsers(ctx, clerk, page.page);
+		try {
+			const unchecked = await checkOurClerkUsers(ctx, clerk);
+			if (unchecked > 0) {
+				problems.push(
+					`${unchecked} accounts could not be checked at Clerk, so they stay as they were`,
+				);
 			}
-			if (page.isDone) {
-				// The accounts after it were checked, and the run still fails, so the logs show it.
-				if (unchecked > 0) {
-					throw new Error(
-						`${unchecked} accounts could not be checked at Clerk, so they stay as they were.`,
-					);
-				}
-				return null;
-			}
-			cursor = page.continueCursor;
+		} catch (error) {
+			problems.push(`checking our accounts failed: ${String(error)}`);
 		}
-		throw new Error(
-			`Composery still held accounts after ${maxPages} pages of its own.`,
-		);
+		// Whatever could be done was done, and the run still fails, so the logs show it.
+		if (problems.length > 0) {
+			throw new Error(problems.join("; "));
+		}
+		return null;
 	},
 });

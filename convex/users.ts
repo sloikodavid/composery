@@ -2,8 +2,9 @@ import {
 	paginationOptsValidator,
 	paginationResultValidator,
 } from "convex/server";
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import {
 	internalMutation,
 	internalQuery,
@@ -59,6 +60,18 @@ export const listClerkIds = internalQuery({
 	},
 });
 
+/**
+ * Whether Clerk describes the account exactly as we hold it. Rewriting an unchanged row would rerun
+ * every query that reads it, once an hour, for every account on the deployment.
+ */
+function isSameUser(existing: Doc<"users">, fields: Infer<typeof userFields>) {
+	return (
+		existing.username === fields.username &&
+		existing.email === fields.email &&
+		existing.imageUrl === fields.imageUrl
+	);
+}
+
 export const store = internalMutation({
 	args: { users: v.array(userFields) },
 	returns: v.null(),
@@ -67,6 +80,9 @@ export const store = internalMutation({
 			const existing = await getUserByClerkId(ctx, fields.clerkUserId);
 			if (existing === null) {
 				await ctx.db.insert("users", fields);
+				continue;
+			}
+			if (isSameUser(existing, fields)) {
 				continue;
 			}
 			// `replace` rather than `patch`: a field Clerk no longer sends, such as a removed username,

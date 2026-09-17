@@ -8,6 +8,7 @@ import {
 	query,
 } from "../_generated/server";
 import {
+	deleteServerAllocation,
 	getAllocationConfig,
 	getOperationByRequest,
 	requestAllocationCreate,
@@ -184,12 +185,21 @@ export const getStatus = query({
 	},
 });
 
-/** Runs after the allocation confirms that its infrastructure is gone. */
+/**
+ * Runs after the allocation confirms that its infrastructure is gone. The server and the allocation
+ * go in one change, so a server is never readable without the allocation that ran it.
+ */
 export const finishDelete = internalMutation({
-	args: { serverId: v.id("servers") },
+	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
-	handler: async (ctx, { serverId }) => {
+	handler: async (ctx, { allocationId }) => {
+		const allocation = await ctx.db.get("serverAllocations", allocationId);
+		if (allocation === null) {
+			return null;
+		}
+		const { serverId } = allocation;
 		const server = await ctx.db.get("servers", serverId);
+		await deleteServerAllocation(ctx, allocationId);
 		if (server === null) {
 			return null;
 		}

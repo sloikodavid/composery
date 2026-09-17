@@ -22,6 +22,8 @@ export const clerkDescribed: readonly Described[] = [
 			"/users": ["get"],
 			"/users/count": ["get"],
 			"/users/{user_id}": ["get"],
+			// Composery reads the instance's signing keys before it believes an account is gone.
+			"/jwks": ["get"],
 		},
 	},
 	{

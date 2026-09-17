@@ -1,56 +1,28 @@
 import { beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
+import type { ConvexHttpClient } from "convex/browser";
 import { api, internal } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
 	useConvexBackend,
 } from "../../harness/convex-backend";
+import { createServer, createServerOwner } from "../../harness/servers";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 120_000;
 const suffixBytes = 6;
-const quotaLimit = 10;
 
 let backend: ConvexBackend;
-let shared: Awaited<ReturnType<typeof createServerAsOwner>>;
+let shared: { client: ConvexHttpClient; serverId: Id<"servers"> };
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
 	// Every server a test makes is driven by the deployment's own worker, which paces itself and is
 	// shared by the whole run. Both tests only need a server to share, so they share one.
-	shared = await createServerAsOwner();
+	const client = await createServerOwner(backend);
+	shared = { client, serverId: await createServer(client) };
 }, setupTimeoutMs);
-
-async function createServerAsOwner() {
-	const owner = await backend.createAccount();
-	const client = backend.createClient(owner.id);
-	const user = await client.query(api.users.getCurrent, {});
-	if (user === null) {
-		throw new Error("The owner did not sync.");
-	}
-	await backend.runAsAdmin(internal.quotas.setForUser, {
-		userId: user._id,
-		kind: "server",
-		limit: quotaLimit,
-	});
-	await backend.runAsAdmin(internal.quotas.setForDeployment, {
-		kind: "server",
-		limit: quotaLimit,
-	});
-	const name = `test-${randomBytes(suffixBytes).toString("hex")}`;
-	const created = await client.mutation(api.servers.lifecycle.create, {
-		name,
-		requestId: `request-${randomBytes(suffixBytes).toString("hex")}`,
-	});
-	if (!created.ok) {
-		throw new Error(`Creating the server failed: ${created.code}`);
-	}
-	const server = await client.query(api.servers.names.getByName, { name });
-	if (server === null) {
-		throw new Error("The created server is not readable.");
-	}
-	return { client, serverId: server._id };
-}
 
 test(
 	"a username two accounts hold for a moment finds nobody, rather than a guess",
