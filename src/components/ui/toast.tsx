@@ -1,7 +1,9 @@
 "use client";
 
 import { Toast } from "@base-ui/react/toast";
+import clsx from "clsx";
 import type { ReactNode } from "react";
+import { cardSurface } from "@/components/ui/card";
 
 /** Adds a floating message for a transient outcome, from any code on the client. */
 export const toastManager = Toast.createToastManager();
@@ -12,7 +14,10 @@ function ToastList() {
 		<Toast.Root
 			key={toast.id}
 			toast={toast}
-			className="flex items-start gap-3 border border-border bg-surface p-4 text-sm shadow-lg"
+			className={clsx(
+				cardSurface,
+				"flex items-start gap-3 p-4 text-sm shadow-lg",
+			)}
 		>
 			<div className="flex flex-1 flex-col gap-1">
 				<Toast.Title className="font-brand text-foreground" />

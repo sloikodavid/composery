@@ -67,6 +67,14 @@
 	--primary-active: var(--color-stone-700);
 	--primary-foreground: var(--color-stone-50);
 
+	/*
+	 * The color the glow keeps where its shapes have thinned out. The brand color thinned toward the page turns brown
+	 * over a dark one and peach over a light one, so this shade holds its chroma instead.
+	 */
+	--glow-halo: oklch(
+		from var(--color-brand) calc(l - 0.04) calc(c * 0.98) calc(h + 2)
+	);
+
 	@media (prefers-color-scheme: dark) {
 		--background: var(--color-stone-950);
 		--foreground: var(--color-stone-50);
@@ -79,6 +87,10 @@
 		--surface: var(--color-stone-900);
 		--surface-hover: var(--color-stone-800);
 		--surface-active: var(--color-stone-700);
+
+		--glow-halo: oklch(
+			from var(--color-brand) calc(l - 0.13) calc(c * 0.9) calc(h - 5)
+		);
 
 		--primary: var(--color-stone-50);
 		--primary-hover: var(--color-stone-200);
@@ -116,34 +128,95 @@
 }
 
 @layer components {
+	/* The glow reaches nothing exactly at the top of its box. A fade of two stops, or one the edge cuts off, draws a line across the page. */
+	.glow-fade {
+		mask-image: linear-gradient(
+			to top,
+			#000 0%,
+			rgb(0 0 0 / 0.991) 10%,
+			rgb(0 0 0 / 0.942) 20%,
+			rgb(0 0 0 / 0.837) 30%,
+			rgb(0 0 0 / 0.683) 40%,
+			rgb(0 0 0 / 0.5) 50%,
+			rgb(0 0 0 / 0.317) 60%,
+			rgb(0 0 0 / 0.163) 70%,
+			rgb(0 0 0 / 0.058) 80%,
+			rgb(0 0 0 / 0.009) 90%,
+			transparent 100%
+		);
+	}
+
 	/* One continuous glow in shades of the brand color. Broad shapes raise it higher in some places, and the blur blends them. */
 	.glow {
 		--glow-rich: var(--color-brand);
-		--glow-deep: oklch(from var(--color-brand) calc(l - 0.07) c h);
-		--glow-light: oklch(from var(--color-brand) calc(l + 0.1) c h);
+		--glow-deep: oklch(from var(--color-brand) calc(l - 0.1) c calc(h - 4));
+
+		/* Smootherstep, whose slope is nothing at both ends. A fade straight to transparent ends at full slope, which draws an edge around every shape. */
+		--fade-rich:
+			var(--glow-rich) 0%,
+			oklch(from var(--glow-rich) l c h / 0.991) 10%,
+			oklch(from var(--glow-rich) l c h / 0.942) 20%,
+			oklch(from var(--glow-rich) l c h / 0.837) 30%,
+			oklch(from var(--glow-rich) l c h / 0.683) 40%,
+			oklch(from var(--glow-rich) l c h / 0.5) 50%,
+			oklch(from var(--glow-rich) l c h / 0.317) 60%,
+			oklch(from var(--glow-rich) l c h / 0.163) 70%,
+			oklch(from var(--glow-rich) l c h / 0.058) 80%,
+			oklch(from var(--glow-rich) l c h / 0.009) 90%,
+			transparent 100%;
+		--fade-deep:
+			var(--glow-deep) 0%,
+			oklch(from var(--glow-deep) l c h / 0.991) 10%,
+			oklch(from var(--glow-deep) l c h / 0.942) 20%,
+			oklch(from var(--glow-deep) l c h / 0.837) 30%,
+			oklch(from var(--glow-deep) l c h / 0.683) 40%,
+			oklch(from var(--glow-deep) l c h / 0.5) 50%,
+			oklch(from var(--glow-deep) l c h / 0.317) 60%,
+			oklch(from var(--glow-deep) l c h / 0.163) 70%,
+			oklch(from var(--glow-deep) l c h / 0.058) 80%,
+			oklch(from var(--glow-deep) l c h / 0.009) 90%,
+			transparent 100%;
+		--fade-halo:
+			var(--glow-halo) 0%,
+			oklch(from var(--glow-halo) l c h / 0.991) 10%,
+			oklch(from var(--glow-halo) l c h / 0.942) 20%,
+			oklch(from var(--glow-halo) l c h / 0.837) 30%,
+			oklch(from var(--glow-halo) l c h / 0.683) 40%,
+			oklch(from var(--glow-halo) l c h / 0.5) 50%,
+			oklch(from var(--glow-halo) l c h / 0.317) 60%,
+			oklch(from var(--glow-halo) l c h / 0.163) 70%,
+			oklch(from var(--glow-halo) l c h / 0.058) 80%,
+			oklch(from var(--glow-halo) l c h / 0.009) 90%,
+			transparent 100%;
 
 		background-image:
-			radial-gradient(
-				in oklch ellipse 40% 100% at 14% 100%,
-				var(--glow-rich),
-				transparent
+			radial-gradient(in oklch ellipse 34% 64% at 16% 100%, var(--fade-rich)),
+			radial-gradient(in oklch ellipse 28% 44% at 42% 100%, var(--fade-rich)),
+			radial-gradient(in oklch ellipse 32% 74% at 70% 100%, var(--fade-rich)),
+			radial-gradient(in oklch ellipse 26% 52% at 95% 100%, var(--fade-deep)),
+			linear-gradient(
+				in oklch to top,
+				var(--glow-deep) 0%,
+				oklch(from var(--glow-deep) l c h / 0.991) 6.8%,
+				oklch(from var(--glow-deep) l c h / 0.942) 13.6%,
+				oklch(from var(--glow-deep) l c h / 0.837) 20.4%,
+				oklch(from var(--glow-deep) l c h / 0.683) 27.2%,
+				oklch(from var(--glow-deep) l c h / 0.5) 34%,
+				oklch(from var(--glow-deep) l c h / 0.317) 40.8%,
+				oklch(from var(--glow-deep) l c h / 0.163) 47.6%,
+				oklch(from var(--glow-deep) l c h / 0.058) 54.4%,
+				oklch(from var(--glow-deep) l c h / 0.009) 61.2%,
+				transparent 68%
 			),
-			radial-gradient(
-				in oklch ellipse 34% 62% at 42% 100%,
-				var(--glow-deep),
-				transparent
-			),
-			radial-gradient(
-				in oklch ellipse 38% 90% at 70% 100%,
-				var(--glow-light),
-				transparent
-			),
-			radial-gradient(
-				in oklch ellipse 30% 70% at 96% 100%,
-				var(--glow-rich),
-				transparent
-			),
-			linear-gradient(in oklch to top, var(--glow-rich), transparent 60%);
+			radial-gradient(in oklch ellipse 46% 88% at 18% 106%, var(--fade-halo)),
+			radial-gradient(in oklch ellipse 92% 144% at 58% 116%, var(--fade-halo));
 		filter: blur(48px);
+
+		/*
+		 * Eight bits per channel cannot hold a ramp this gradual, so it steps. The mask varies what passes by a tenth,
+		 * which scatters the steps, and it comes after the blur, which would otherwise wipe it out.
+		 */
+		mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.1 0 0 0 0.9'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+		mask-size: 180px 180px;
 	}
 }

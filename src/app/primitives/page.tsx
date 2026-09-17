@@ -11,6 +11,7 @@ import {
 	buttonSizes,
 	buttonVariants,
 } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
 import { Link } from "@/components/ui/link";
 
@@ -125,6 +126,10 @@ export default function PrimitivesPage() {
 							</div>
 						))}
 					</div>
+				</Section>
+
+				<Section title="Card">
+					<Card>Content on a card.</Card>
 				</Section>
 
 				<Section title="Glow">

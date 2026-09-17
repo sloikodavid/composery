@@ -13,8 +13,6 @@ export const wordmarkMetrics = {
 	descender: 0.218_75,
 	/** Space before the ink of the "C". */
 	inkStart: 0.0625,
-	/** Width of the ink, with the display letter spacing. */
-	inkWidth: 5.119_125,
 } as const;
 
 export function Wordmark({
