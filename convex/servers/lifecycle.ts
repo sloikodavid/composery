@@ -208,6 +208,11 @@ export const finishDelete = internalMutation({
 		await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
 			serverId,
 		});
+		await ctx.scheduler.runAfter(
+			0,
+			internal.allocations.operations.removeOperations,
+			{ serverId },
+		);
 		return null;
 	},
 });

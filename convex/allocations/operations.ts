@@ -268,7 +268,6 @@ const forgetAllocation: Record<
 
 /**
  * The last step of a deletion: nothing that described the allocation outlives the server it ran.
- * The operations are removed a page at a time, because one server can have asked for many.
  *
  * This keeps no history on purpose. Every way of reading an allocation starts from its server, so
  * a row left behind could never be read again, and it would hold an identifier that resolves to
@@ -283,9 +282,30 @@ export const finishDelete = internalMutation({
 		if (allocation === null || allocation.status !== "deleted") {
 			throw new Error("An allocation must be deleted before it is finished.");
 		}
+		await deleteAllocationSshAccess(ctx, allocationId);
+		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
+			allocationId,
+		});
+		// The server and its allocation go together, and what described their work goes after them:
+		// until they are gone, a status read must still find the operation the allocation names.
+		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
+			allocationId,
+		});
+		return null;
+	},
+});
+
+/**
+ * Removes what one server asked for, once the server itself is gone. A page at a time, because one
+ * server can have asked for many, and nothing reads these rows any more.
+ */
+export const removeOperations = internalMutation({
+	args: { serverId: v.id("servers") },
+	returns: v.null(),
+	handler: async (ctx, { serverId }) => {
 		const operations = await ctx.db
 			.query("serverOperations")
-			.withIndex("by_server_id", (q) => q.eq("serverId", allocation.serverId))
+			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 			.take(operationsPerPass);
 		for (const operation of operations) {
 			await ctx.db.delete("serverOperations", operation._id);
@@ -293,22 +313,10 @@ export const finishDelete = internalMutation({
 		if (operations.length === operationsPerPass) {
 			await ctx.scheduler.runAfter(
 				0,
-				internal.allocations.operations.finishDelete,
-				{
-					allocationId,
-				},
+				internal.allocations.operations.removeOperations,
+				{ serverId },
 			);
-			return null;
 		}
-		await deleteAllocationSshAccess(ctx, allocationId);
-		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
-			allocationId,
-		});
-		// The server's own last step deletes this row with it. A server that had no allocation, even
-		// for the moment between two mutations, would fail every read that starts from the server.
-		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
-			allocationId,
-		});
 		return null;
 	},
 });

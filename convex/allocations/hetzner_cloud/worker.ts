@@ -11,6 +11,7 @@ import {
 } from "../../ssh/bootstrap";
 import { renderCloudInit } from "../../ssh/cloud_init";
 import { SshAccessError } from "../../ssh/errors";
+import type { FailureClass } from "../retries";
 import type { powerOperationKind } from "../schema";
 import {
 	createHetznerCloudResource,
@@ -55,15 +56,16 @@ const powerTargets = {
 
 function toFailure(
 	error: string,
-	details: { retry: boolean; missing?: true },
+	kind: FailureClass,
+	details: { missing?: true; final?: true } = {},
 ): HetznerCloudWorkerUpdate {
-	return { failure: { error, ...details } };
+	return { failure: { error, class: kind, ...details } };
 }
 
 function toProviderFailure(error: HetznerCloudError) {
 	return {
 		error: error.code,
-		retry: error.isRetryable,
+		class: error.failureClass,
 		retryAfterMs: error.retryAfterMs,
 		...(error.hetznerErrorCode === undefined
 			? {}
@@ -135,7 +137,7 @@ async function toCreateRequest(
 > {
 	const { firewallId, resources, spec } = lease.hetznerCloudAllocation;
 	if (spec === undefined) {
-		return { update: toFailure("spec_missing", { retry: true }) };
+		return { update: toFailure("spec_missing", "transient") };
 	}
 	switch (kind) {
 		case "ipv4":
@@ -146,7 +148,7 @@ async function toCreateRequest(
 				resources.ipv4.status !== "present" ||
 				resources.ipv6.status !== "present"
 			) {
-				return { update: toFailure("addresses_missing", { retry: true }) };
+				return { update: toFailure("addresses_missing", "transient") };
 			}
 			const userData = await renderUserData(ctx, lease);
 			if (userData === null) {
@@ -185,15 +187,10 @@ async function createResource(
 		return { resource: toPresentResource(kind, found) };
 	}
 	if (resource.status === "uncertain") {
-		return toFailure("create_outcome_unknown", { retry: false });
+		return toFailure("create_outcome_unknown", "indeterminate");
 	}
 	if (resource.status !== "pending") {
-		return toFailure("resource_missing", { retry: false, missing: true });
-	}
-	if (allocation.status === "blocked") {
-		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
-			retry: false,
-		});
+		return toFailure("resource_missing", "waiting", { missing: true });
 	}
 	const prepared = await toCreateRequest(ctx, lease, kind);
 	if ("update" in prepared) {
@@ -232,7 +229,7 @@ async function deleteResource(
 	lease: Lease,
 	kind: ResourceKind,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const { allocation, hetznerCloudAllocation } = lease;
+	const { hetznerCloudAllocation } = lease;
 	const resource = hetznerCloudAllocation.resources[kind];
 	if (resource.status === "pending") {
 		return { resource: { kind, status: { status: "absent" } } };
@@ -243,7 +240,7 @@ async function deleteResource(
 		getKnownId(resource),
 	);
 	if (found === null && resource.status === "uncertain") {
-		return toFailure("create_outcome_unknown", { retry: false });
+		return toFailure("create_outcome_unknown", "indeterminate");
 	}
 	if (found === null) {
 		const knownId = "id" in resource ? resource.id : undefined;
@@ -262,15 +259,8 @@ async function deleteResource(
 		// An uncertain resource that appears takes its identity first, which unblocks the allocation.
 		return { resource: { kind, status: { status: "present", id: found.id } } };
 	}
-	if (allocation.status === "blocked") {
-		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
-			retry: false,
-		});
-	}
 	if (found.isAssigned) {
-		return toFailure("address_assigned_to_another_resource", {
-			retry: false,
-		});
+		return toFailure("address_assigned_to_another_resource", "waiting");
 	}
 	const sent = await sendHetznerCloudDelete(kind, found.id);
 	switch (sent.status) {
@@ -294,12 +284,12 @@ async function stepAction(
 			return { clearAction: true };
 		case "running":
 			return Date.now() - action.startedAt > actionTimeoutMs
-				? toFailure("action_stalled", { retry: false })
+				? toFailure("action_stalled", "waiting")
 				: {};
 		case "failed":
 			return {
 				clearAction: true,
-				failure: { error: "action_failed", retry: false },
+				failure: { error: "action_failed", class: "transient" },
 			};
 	}
 }
@@ -319,17 +309,12 @@ async function stepPower(
 	) {
 		return null;
 	}
-	if (operation.status === "blocked") {
-		return toFailure(hetznerCloudAllocation.error ?? "admin_retry_required", {
-			retry: false,
-		});
-	}
 	if (
 		Date.now() >
 		(operation.deadlineAt ??
 			operation._creationTime + hetznerCloudPowerDeadlineMs)
 	) {
-		return toFailure("power_change_timed_out", { retry: false });
+		return toFailure("power_change_timed_out", "invalid", { final: true });
 	}
 	const canSend: boolean = await ctx.runQuery(
 		internal.allocations.hetzner_cloud.worker_state.canSendPower,
@@ -367,7 +352,7 @@ function checkServer(
 		ipv6.id !== (resources.ipv6.status === "present" ? resources.ipv6.id : 0)
 	) {
 		return {
-			failure: toFailure("address_identity_mismatch", { retry: false }),
+			failure: toFailure("address_identity_mismatch", "waiting"),
 		};
 	}
 	if (
@@ -375,17 +360,17 @@ function checkServer(
 		server.location !== spec?.location
 	) {
 		return {
-			failure: toFailure("server_configuration_mismatch", { retry: false }),
+			failure: toFailure("server_configuration_mismatch", "waiting"),
 		};
 	}
 	const firewall = server.firewalls.find(
 		(attached) => attached.id === firewallId,
 	);
 	if (firewall === undefined) {
-		return { failure: toFailure("firewall_detached", { retry: false }) };
+		return { failure: toFailure("firewall_detached", "waiting") };
 	}
 	if (!firewall.isApplied) {
-		return { failure: toFailure("firewall_not_applied", { retry: true }) };
+		return { failure: toFailure("firewall_not_applied", "transient") };
 	}
 	return { addresses: { ipv4: ipv4.address, ipv6: ipv6.address } };
 }
@@ -400,10 +385,10 @@ async function observeServer(
 		getKnownId(hetznerCloudAllocation.resources.server),
 	);
 	if (server === null) {
-		return toFailure("server_missing", { retry: false, missing: true });
+		return toFailure("server_missing", "waiting", { missing: true });
 	}
 	if (server.status === "changing") {
-		return toFailure("server_status_changing", { retry: true });
+		return toFailure("server_status_changing", "transient");
 	}
 	const checked = checkServer(hetznerCloudAllocation, server);
 	if ("failure" in checked) {
@@ -458,9 +443,9 @@ function toErrorUpdate(error: unknown): HetznerCloudWorkerUpdate {
 		return { failure: toProviderFailure(error) };
 	}
 	if (error instanceof SshAccessError) {
-		return toFailure(error.code, { retry: false });
+		return toFailure(error.code, "waiting");
 	}
-	return toFailure("worker_failed", { retry: true });
+	return toFailure("worker_failed", "bug");
 }
 
 export const run = internalAction({

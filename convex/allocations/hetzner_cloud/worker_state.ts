@@ -12,6 +12,7 @@ import { type Failure, fail } from "../../errors";
 import schema from "../../schema";
 import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
+import { failureClass, isStuck, toRetryDelayMs } from "../retries";
 import { type HetznerCloudConfig, hetznerCloudRateLimiter } from "./api";
 import {
 	type hetznerCloudQueue,
@@ -24,11 +25,6 @@ export const hetznerCloudPowerDeadlineMs = 300_000;
 const leaseMs = 120_000;
 const idleMs = 300_000;
 const recordDelayMs = 5000;
-const firstBackoffMs = 10_000;
-const maxBackoffMs = 3_600_000;
-const backoffJitterMs = 5000;
-const maxFailures = 8;
-const blockedRecheckMs = 3_600_000;
 const sweepBatchSize = 10;
 // One lease can lead to several Hetzner requests in one step.
 const requestsPerClaim = 8;
@@ -84,9 +80,12 @@ export const hetznerCloudWorkerUpdate = v.object({
 		v.object({
 			error: v.string(),
 			hetznerErrorCode: v.optional(v.string()),
-			retry: v.boolean(),
+			class: failureClass,
 			retryAfterMs: v.optional(v.number()),
+			// The resource this allocation ran on is not there any more.
 			missing: v.optional(v.literal(true)),
+			// The operation itself is over: its own deadline passed, so asking again is not the job.
+			final: v.optional(v.literal(true)),
 		}),
 	),
 });
@@ -395,15 +394,6 @@ export const storeSshAccess = internalMutation({
 	},
 });
 
-function toBackoffMs(failures: number) {
-	return (
-		Math.min(
-			maxBackoffMs,
-			firstBackoffMs * 2 ** Math.min(failures, maxFailures),
-		) + Math.floor(Math.random() * backoffJitterMs)
-	);
-}
-
 async function blockOperation(
 	ctx: MutationCtx,
 	operationId: Id<"serverOperations">,
@@ -495,37 +485,40 @@ async function recordObservation(
 	recording.hetznerCloudPatch.dueAt = Date.now() + idleMs;
 }
 
+/**
+ * Writes down what went wrong and when to come back to it. How often a failure has happened decides
+ * only how long the wait is: it never decides that a passing condition has become a permanent one.
+ * An allocation that is stuck says so and is still picked up again, forever, because a customer's
+ * server nobody comes back to is worse than one request an hour.
+ */
 async function recordFailure(
 	recording: Recording,
 	failure: NonNullable<HetznerCloudWorkerUpdate["failure"]>,
 ) {
 	const { ctx, allocation, hetznerCloudAllocation, allocationPatch } =
 		recording;
-	const retryAt =
-		Date.now() +
-		Math.max(
-			toBackoffMs(hetznerCloudAllocation.failures),
-			failure.retryAfterMs ?? 0,
-		);
 	recording.hetznerCloudPatch.error = failure.error;
 	if (failure.missing) {
 		allocationPatch.observedAt = Date.now();
 	}
 	recording.hetznerCloudPatch.hetznerErrorCode = failure.hetznerErrorCode;
-	recording.hetznerCloudPatch.failures = hetznerCloudAllocation.failures + 1;
-	recording.hetznerCloudPatch.dueAt = retryAt;
-	if (
-		!recording.isCurrentOperation ||
-		(failure.retry && hetznerCloudAllocation.failures < maxFailures)
-	) {
+	const failures = hetznerCloudAllocation.failures + 1;
+	recording.hetznerCloudPatch.failures = failures;
+	recording.hetznerCloudPatch.dueAt =
+		Date.now() +
+		Math.max(
+			toRetryDelayMs(failure.class, hetznerCloudAllocation.failures),
+			// Hetzner says when its own budget comes back; asking sooner spends what is left.
+			failure.retryAfterMs ?? 0,
+		);
+	if (!recording.isCurrentOperation || !isStuck(failure.class, failures)) {
 		return;
 	}
 	allocationPatch.status = failure.missing ? "missing" : "blocked";
-	recording.hetznerCloudPatch.dueAt = Math.max(
-		retryAt,
-		Date.now() + blockedRecheckMs,
-	);
-	await blockOperation(ctx, allocation.operationId);
+	if (failure.final) {
+		// The operation asked for something by a time that has passed. Another request is not it.
+		await blockOperation(ctx, allocation.operationId);
+	}
 }
 
 async function recordDeleted(recording: Recording) {

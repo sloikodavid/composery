@@ -16,6 +16,10 @@ const testTimeoutMs = 300_000;
 const subjectSuffixBytes = 6;
 const settleTimeoutMs = 240_000;
 const settleDelayMs = 250;
+// A refusal that waits on something outside comes back after a minute, and then has to finish.
+const waitingTimeoutMs = 420_000;
+const waitingTestTimeoutMs = 600_000;
+const forbidden = 403;
 // The deployment paces its own work, so asking for a sweep faster than that starves the worker.
 const sweepEveryMs = 2000;
 // Enough of the trail to show where a stuck allocation stopped.
@@ -121,8 +125,9 @@ async function settle(
 	client: ServerClient,
 	serverId: Id<"servers">,
 	until: (status: string) => boolean,
+	timeoutMs = settleTimeoutMs,
 ) {
-	const deadline = Date.now() + settleTimeoutMs;
+	const deadline = Date.now() + timeoutMs;
 	let status = "creating";
 	let sweptAt = 0;
 	while (Date.now() < deadline) {
@@ -308,4 +313,52 @@ test(
 		expect(fake.countRequests(deletedThisServer)).toBe(1);
 	},
 	testTimeoutMs,
+);
+
+test(
+	"a refusal that waits on something outside is asked again, not given up on",
+	async () => {
+		const client = await createServerOwner(backend);
+		// The project is at its limit. Nothing about the request is wrong, and nobody here can fix
+		// it: an admin raises the limit, and until then the only right move is to ask again later.
+		let allocationId: string | undefined;
+		const hasRefused = fake.scriptOnce(
+			{
+				method: "POST",
+				path: createdServers,
+				body: (body) =>
+					allocationId !== undefined && isForAllocation(allocationId)(body),
+			},
+			{
+				status: forbidden,
+				body: {
+					error: {
+						code: "resource_limit_exceeded",
+						message: "project limit exceeded",
+					},
+				},
+			},
+		);
+		const serverId = await createServer(client);
+		allocationId = await requireAllocationId(serverId);
+
+		const status = await settle(
+			client,
+			serverId,
+			(value) => value === "running",
+			waitingTimeoutMs,
+		);
+
+		// The allocation says it is stuck while it waits, and then it finishes by itself.
+		expect(hasRefused()).toBe(true);
+		expect(status.status).toBe("running");
+		expect(
+			fake.countRequests({
+				method: "POST",
+				path: createdServers,
+				body: isForAllocation(allocationId),
+			}),
+		).toBe(2);
+	},
+	waitingTestTimeoutMs,
 );

@@ -8,6 +8,7 @@ import {
 	isHttpClientError,
 	isHttpServerError,
 } from "../../http_status";
+import type { FailureClass } from "../retries";
 import type { powerOperationKind } from "../schema";
 import type {
 	hetznerCloudCollection,
@@ -34,18 +35,33 @@ type Collection = Infer<typeof hetznerCloudCollection>;
 type PowerKind = Infer<typeof powerOperationKind>;
 type Reply = Record<string, unknown>;
 
-/** Statuses after which the same request can succeed later, unchanged. */
-const retryableStatuses: ReadonlySet<number> = new Set([
-	httpStatus.preconditionFailed,
-	httpStatus.locked,
-	httpStatus.tooManyRequests,
-]);
-
 /** Client errors that do not prove a request had no effect. */
 const inconclusiveStatuses: ReadonlySet<number> = new Set([
 	httpStatus.requestTimeout,
 	httpStatus.conflict,
 ]);
+
+/** Statuses that mean the request is right and something outside it has to change first. */
+const waitingStatuses: ReadonlySet<number> = new Set([
+	httpStatus.forbidden,
+	httpStatus.preconditionFailed,
+	httpStatus.locked,
+]);
+
+/** What our own codes mean, where the status alone would say the wrong thing. */
+// biome-ignore-start lint/style/useNamingConvention: error codes use snake_case
+const failureClasses: Partial<Record<HetznerCloudErrorCode, FailureClass>> = {
+	capacity_unavailable: "waiting",
+	duplicate_resources: "waiting",
+	image_unavailable: "waiting",
+	invalid_response: "bug",
+	project_firewall_missing: "waiting",
+	resource_identity_mismatch: "waiting",
+	server_type_unavailable: "waiting",
+	token_missing: "waiting",
+	transport_uncertain: "indeterminate",
+};
+// biome-ignore-end lint/style/useNamingConvention: error codes use snake_case
 
 const collections = {
 	server: "servers",
@@ -144,13 +160,27 @@ export class HetznerCloudError extends Error {
 		);
 	}
 
-	/** The same request can succeed if it is sent again later. */
-	get isRetryable() {
-		return (
-			this.status === 0 ||
+	/**
+	 * What this failure means for what to do next, by what Hetzner's own description says each
+	 * answer means. Its status alone does not decide: 403 is a quota to raise, 412 is capacity to
+	 * wait for, and 409 is Hetzner asking for the request again.
+	 */
+	get failureClass(): FailureClass {
+		const byCode = failureClasses[this.code];
+		if (byCode !== undefined) {
+			return byCode;
+		}
+		if (this.status === 0 || inconclusiveStatuses.has(this.status)) {
+			// Nothing answered, or the answer does not prove the request had no effect.
+			return "indeterminate";
+		}
+		if (
 			isHttpServerError(this.status) ||
-			retryableStatuses.has(this.status)
-		);
+			this.status === httpStatus.tooManyRequests
+		) {
+			return "transient";
+		}
+		return waitingStatuses.has(this.status) ? "waiting" : "invalid";
 	}
 }
 

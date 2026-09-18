@@ -141,7 +141,8 @@ test("a server type Hetzner no longer offers is refused for good, not read as a 
 	// bring a retired type back.
 	const refusal = catchHetznerError(() => requireOfferedServerType(retired));
 	expect(refusal?.code).toBe("server_type_unavailable");
-	expect(refusal?.isRetryable).toBe(false);
+	// Nothing Composery can send brings a retired type back: an admin picks another one.
+	expect(refusal?.failureClass).toBe("waiting");
 });
 
 test("a firewall without our label is not ours, and says so", () => {

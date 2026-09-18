@@ -14,6 +14,7 @@ import type * as allocations_hetzner_cloud_inventory from "../allocations/hetzne
 import type * as allocations_hetzner_cloud_worker from "../allocations/hetzner_cloud/worker.js";
 import type * as allocations_hetzner_cloud_worker_state from "../allocations/hetzner_cloud/worker_state.js";
 import type * as allocations_operations from "../allocations/operations.js";
+import type * as allocations_retries from "../allocations/retries.js";
 import type * as clerk from "../clerk.js";
 import type * as clerk_http from "../clerk_http.js";
 import type * as crons from "../crons.js";
@@ -74,6 +75,7 @@ const fullApi: ApiFromModules<{
   "allocations/hetzner_cloud/worker": typeof allocations_hetzner_cloud_worker;
   "allocations/hetzner_cloud/worker_state": typeof allocations_hetzner_cloud_worker_state;
   "allocations/operations": typeof allocations_operations;
+  "allocations/retries": typeof allocations_retries;
   clerk: typeof clerk;
   clerk_http: typeof clerk_http;
   crons: typeof crons;

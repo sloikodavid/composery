@@ -19,7 +19,7 @@ The middle row is the one to be careful about. Replacing an address looks like r
 
 - The worker compares what Hetzner reports against what Composery recorded, and refuses to act on a mismatch instead of writing over it.
 - Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it.
-- Nothing repairs anything. An allocation that does not match is blocked, and an admin decides.
+- Nothing repairs anything. An allocation that does not match says so and is tried again, on a schedule that depends on what went wrong; an admin can decide sooner.
 
 Hetzner publishes no webhooks, so the scan is how state at the provider is noticed. Clerk does publish webhooks, and is reconciled hourly as well, because delivery is not guaranteed.
 
@@ -32,7 +32,7 @@ Hetzner publishes no webhooks, so the scan is how state at the provider is notic
 
 ## What Composery does about it
 
-The worker compares what the provider reports against what was recorded, and refuses to act on a difference rather than writing over it. An allocation that does not match becomes `blocked`, which stops nothing on the customer's server: it runs, and power and deletion still work. A blocked allocation is looked at again every hour, so a difference that goes away is picked up without anybody doing anything.
+The worker compares what the provider reports against what was recorded, and refuses to act on a difference rather than writing over it. An allocation that does not match becomes `blocked`, which stops nothing on the customer's server: it runs, and power and deletion still work. Nothing is given up on. What the failure means decides how long the wait is, from ten seconds for a provider that was busy to an hour for something only a person can change, and the allocation is picked up again after it, so a difference that goes away is acted on without anybody doing anything. An admin can bring that forward with `retry`.
 
 Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it. Hetzner publishes no webhooks, so scanning and the worker's own polling are how anything at the provider is noticed; Clerk does publish webhooks and is reconciled hourly as well, because delivery is not guaranteed.
 
