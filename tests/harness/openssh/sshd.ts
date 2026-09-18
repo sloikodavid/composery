@@ -1,15 +1,15 @@
 import { randomBytes } from "node:crypto";
-import type { SshConnectionOptions } from "../../convex/ssh/connection";
-import { generateSshKeyPair } from "../../convex/ssh/key_pair";
-import { readSshFile } from "../../convex/ssh/read_file";
-import { registerCleanup } from "./cleanup";
+import type { SshConnectionOptions } from "../../../convex/ssh/connection";
+import { generateSshKeyPair } from "../../../convex/ssh/key_pair";
+import { readSshFile } from "../../../convex/ssh/read_file";
+import { registerCleanup } from "../cleanup";
 import {
 	removeOrphanedDockerContainers,
 	requireDocker,
 	runDocker,
 	toDockerOwnerLabels,
-} from "./docker";
-import { ubuntuArchiveSnapshot, ubuntuImage } from "./pins";
+} from "../docker";
+import { ubuntuArchiveSnapshot, ubuntuImage } from "../pins";
 
 /** Where the SSH server writes its log, which is the evidence of what it allowed. */
 export const sshdLogPath = "/var/log/sshd.log";

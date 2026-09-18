@@ -5,7 +5,7 @@ import { clerkPageSize } from "../../convex/clerk";
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../harness/convex-backend";
+} from "../harness/convex/backend";
 
 /**
  * `reconcile` reads Clerk and deletes every account Clerk no longer has, so the one thing it must

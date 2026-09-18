@@ -23,8 +23,7 @@ jobs:
         with:
           node-version-file: package.json
       - run: bun install --frozen-lockfile
-        # The build reads the values the browser is given, and they live in one file rather than
-        # here, so that a variable the app starts reading cannot go missing from only one of them.
-      - run: cp .env.verify .env.local
+        # The app's own configuration, in the shape the checks and the build read it.
+      - run: cp .env.local.example .env.local
         # The same command a person runs before pushing: the checks, the tests, and the build.
       - run: bun verify

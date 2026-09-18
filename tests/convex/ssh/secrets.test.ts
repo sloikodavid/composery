@@ -12,7 +12,7 @@ import {
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../../harness/convex-backend";
+} from "../../harness/convex/backend";
 import { createServer, createServerOwner } from "../../harness/servers";
 
 /**

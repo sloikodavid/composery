@@ -33,7 +33,7 @@ Fake what a test is not about. Never fake what decides whether it passes.
 
 The mirror decides where a test goes, never that one must exist. A source file with nothing worth testing has no test, and a file never gets a second test file for a second kind of case: that would be symmetry for its own sake, and the reader would have to guess which of the two to open.
 
-One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world: it starts, isolates and stops an `sshd`, a Convex backend, or a fake. Nothing in it decides whether a test passes, so nothing in it needs proving on its own; the tests that use it are what show it works, and it holds no `.test.ts` file.
+One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world, and it is grouped by the world each file builds: `clerk/`, `convex/`, `hetzner/` and `openssh/` each hold what it takes to stand that system up or to stand in for it, and what every world uses sits beside them. Nothing in it decides whether a test passes, so nothing in it needs proving on its own; the tests that use it are what show it works, and it holds no `.test.ts` file.
 
 That is the line, and it is about what a thing is rather than where its test could go: code that has to be proved right before anything can rely on it is not harness code. A contract checker is an oracle, and an oracle nothing checks is worse than none, so the checkers live in `contracts/` and are tested through the mirror like any other source.
 

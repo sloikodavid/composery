@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import { api, internal } from "../../convex/_generated/api";
-import type { ConvexBackend } from "./convex-backend";
+import type { ConvexBackend } from "./convex/backend";
 
 const suffixBytes = 6;
 /** Room enough that no test waits on another test's servers. */

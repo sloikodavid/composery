@@ -8,13 +8,13 @@ import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { readSshFile } from "../../../convex/ssh/read_file";
 import { writeSshFile } from "../../../convex/ssh/write_file";
-import { generateAuthorizedKey } from "../../harness/keys";
+import { generateAuthorizedKey } from "../../harness/openssh/keys";
 import {
 	quoteShell,
 	type SshdAccount,
 	type SshdServer,
 	useSshd,
-} from "../../harness/sshd";
+} from "../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

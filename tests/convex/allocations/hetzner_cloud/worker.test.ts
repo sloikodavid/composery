@@ -6,7 +6,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../../../harness/convex-backend";
+} from "../../../harness/convex/backend";
 import {
 	type HetznerFake,
 	useHetznerFake,
