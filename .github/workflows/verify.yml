@@ -1,4 +1,4 @@
-name: check
+name: verify
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
 
 # A later push replaces an earlier one: only the newest commit has to be proved.
 concurrency:
-  group: check-${{ github.ref }}
+  group: verify-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
+  verify:
     # Linux runs the tests that need Docker; docs/requirements.md says what a machine needs.
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -23,5 +23,12 @@ jobs:
         with:
           node-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bun check
-      - run: bun test
+        # The same command a person runs before pushing: the checks, the tests, and the build.
+      - run: bun verify
+        env:
+          # The build needs the values the browser is given. Nothing here reaches a real deployment:
+          # the tests build their own, and this only has to be the shape the app reads at build time.
+          NEXT_PUBLIC_CONVEX_URL: https://verify.convex.cloud
+          NEXT_PUBLIC_CONVEX_SITE_URL: https://verify.convex.site
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dmVyaWZ5LmNsZXJrLmFjY291bnRzLmRldiQ
+          CLERK_FRONTEND_API_URL: https://verify.clerk.accounts.dev
