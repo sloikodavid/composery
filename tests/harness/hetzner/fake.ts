@@ -85,8 +85,18 @@ function notFound(): FakeReply {
 	};
 }
 
-export function startHetznerFake(): Promise<Fake> {
+export type HetznerFake = Fake &
+	Readonly<{
+		/**
+		 * Takes the project's rules off one server, as an admin can in Hetzner's own console. The
+		 * server keeps running; what changes is what it is protected by.
+		 */
+		detachFirewall: (serverId: number) => void;
+	}>;
+
+export async function startHetznerFake(): Promise<HetznerFake> {
 	const resources = new Map<number, Resource>();
+	const detachedFirewalls = new Set<number>();
 	const actions = new Map<number, string>();
 	let nextId = firstId;
 
@@ -131,7 +141,9 @@ export function startHetznerFake(): Promise<Fake> {
 				id: resource.id + ipv6Offset,
 				ip: toAddress(resource.id, "primary_ips", "ipv6"),
 			}),
-			firewallId: controllerFirewallId,
+			firewallId: detachedFirewalls.has(resource.id)
+				? null
+				: controllerFirewallId,
 			serverType: serverTypeName,
 			location: resource.location,
 			imageId,
@@ -298,14 +310,21 @@ export function startHetznerFake(): Promise<Fake> {
 		return notFound();
 	};
 
-	return startFake({
+	const fake = await startFake({
 		system: "Hetzner",
 		checker: hetznerContract,
 		answer: (request) => answer(request.method, request.path, request.body),
 	});
+
+	return {
+		...fake,
+		detachFirewall: (serverId) => {
+			detachedFirewalls.add(serverId);
+		},
+	};
 }
 
-let started: Promise<Fake> | undefined;
+let started: Promise<HetznerFake> | undefined;
 
 /** One fake for the whole run, because the deployment holds its address. */
 export function useHetznerFake() {

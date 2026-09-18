@@ -13,6 +13,7 @@ import schema from "../../schema";
 import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
 import { failureClass, isStuck, toRetryDelayMs } from "../retries";
+import { allocationParts } from "../schema";
 import { type HetznerCloudConfig, hetznerCloudRateLimiter } from "./api";
 import {
 	type hetznerCloudQueue,
@@ -69,8 +70,9 @@ export const hetznerCloudWorkerUpdate = v.object({
 	observation: v.optional(
 		v.object({
 			status: v.union(v.literal("running"), v.literal("stopped")),
-			ipv4: v.string(),
-			ipv6: v.string(),
+			parts: allocationParts,
+			ipv4: v.optional(v.string()),
+			ipv6: v.optional(v.string()),
 		}),
 	),
 	deleted: v.optional(v.literal(true)),
@@ -450,15 +452,14 @@ async function recordResource(
 				break;
 		}
 	}
+	// A resource that turns up after an uncertain create is the answer nobody had: the allocation
+	// is not stuck on it any more.
 	if (
 		resource.status.status === "present" &&
 		hetznerCloudAllocation.resources[resource.kind].status === "uncertain" &&
-		allocation.status === "blocked" &&
 		recording.isCurrentOperation
 	) {
-		recording.allocationPatch.status = allocation.deleteRequested
-			? "deleting"
-			: "creating";
+		recording.allocationPatch.stuck = undefined;
 		await ctx.db.patch("serverOperations", allocation.operationId, {
 			status: "pending",
 		});
@@ -473,6 +474,9 @@ async function recordObservation(
 	allocationPatch.observedAt = Date.now();
 	allocationPatch.ipv4 = observation.ipv4;
 	allocationPatch.ipv6 = observation.ipv6;
+	allocationPatch.parts = observation.parts;
+	// Seeing the server is the answer to whatever the last attempt ran into.
+	allocationPatch.stuck = undefined;
 	if (!recording.isCurrentOperation) {
 		return;
 	}
@@ -514,7 +518,14 @@ async function recordFailure(
 	if (!recording.isCurrentOperation || !isStuck(failure.class, failures)) {
 		return;
 	}
-	allocationPatch.status = failure.missing ? "missing" : "blocked";
+	allocationPatch.stuck = {
+		since: allocation.stuck?.since ?? Date.now(),
+		code: failure.error,
+		class: failure.class,
+	};
+	if (failure.missing) {
+		allocationPatch.parts = { ...allocation.parts, server: "missing" };
+	}
 	if (failure.final) {
 		// The operation asked for something by a time that has passed. Another request is not it.
 		await blockOperation(ctx, allocation.operationId);

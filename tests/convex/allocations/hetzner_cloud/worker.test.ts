@@ -7,8 +7,10 @@ import {
 	type ConvexBackend,
 	useConvexBackend,
 } from "../../../harness/convex-backend";
-import type { Fake } from "../../../harness/fake";
-import { useHetznerFake } from "../../../harness/hetzner/fake";
+import {
+	type HetznerFake,
+	useHetznerFake,
+} from "../../../harness/hetzner/fake";
 import { createServer, createServerOwner } from "../../../harness/servers";
 
 const setupTimeoutMs = 600_000;
@@ -28,7 +30,7 @@ const createdServers = /^\/servers$/;
 const createdPrimaryIps = /^\/primary_ips$/;
 
 let backend: ConvexBackend;
-let fake: Fake;
+let fake: HetznerFake;
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
@@ -98,9 +100,16 @@ async function readOwnedResources(allocationId: string) {
 
 type ServerStatus = Readonly<{
 	status: string;
+	parts: { server: string; addresses: string; firewall: string };
 	ipv4: string | null;
 	ipv6: string | null;
 }>;
+
+const goneParts = {
+	server: "missing",
+	addresses: "missing",
+	firewall: "missing",
+} as const;
 
 /** What the panel shows for a server, or `gone` once deletion has removed it. */
 async function readStatus(
@@ -114,7 +123,7 @@ async function readStatus(
 			error instanceof ConvexError &&
 			(error.data as { code?: string }).code === "server_not_found"
 		) {
-			return { status: "gone", ipv4: null, ipv6: null };
+			return { status: "gone", parts: goneParts, ipv4: null, ipv6: null };
 		}
 		throw error;
 	}
@@ -165,7 +174,7 @@ test(
 		const status = await settle(
 			client,
 			serverId,
-			(value) => value === "running" || value === "blocked",
+			(value) => value === "running",
 		);
 		const allocationId = await requireAllocationId(serverId);
 
@@ -211,7 +220,7 @@ test(
 		const status = await settle(
 			client,
 			serverId,
-			(value) => value === "running" || value === "blocked",
+			(value) => value === "running",
 		);
 
 		// Hetzner made the server and the answer never came. Composery found it again instead of
@@ -244,11 +253,7 @@ async function changePower(
 	if (!result.ok) {
 		throw new Error(`Asking to ${kind} failed: ${result.code}`);
 	}
-	return await settle(
-		client,
-		serverId,
-		(value) => value === until || value === "blocked",
-	);
+	return await settle(client, serverId, (value) => value === until);
 }
 
 test(
@@ -361,4 +366,23 @@ test(
 		).toBe(2);
 	},
 	waitingTestTimeoutMs,
+);
+
+test(
+	"rules taken off a server do not stop a power command, and are reported",
+	async () => {
+		const client = await createServerOwner(backend);
+		const serverId = await createServer(client);
+		await settle(client, serverId, (value) => value === "running");
+		// An admin can take the project's rules off a server in Hetzner's own console. The server
+		// keeps running, and stopping it has nothing to do with what protects it.
+		fake.detachFirewall(await requireHetznerServerId(serverId));
+
+		const stopped = await changePower(client, serverId, "stop", "stopped");
+
+		expect(stopped.status).toBe("stopped");
+		expect(stopped.parts.firewall).toBe("missing");
+		expect(stopped.parts.server).toBe("ok");
+	},
+	testTimeoutMs,
 );

@@ -132,6 +132,8 @@ export async function requestAllocationCreate(
 		operationId,
 		backend: request.config.backend,
 		status: "creating",
+		// Nothing has been seen yet, which is not the same as anything being wrong.
+		parts: { server: "unknown", addresses: "unknown", firewall: "unknown" },
 		deleteRequested: false,
 	});
 	switch (request.config.backend) {

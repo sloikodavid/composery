@@ -19,6 +19,7 @@ import {
 	requireServerAllocation,
 } from "../allocations/operations";
 import {
+	allocationParts,
 	allocationStatus,
 	operationKind,
 	operationStatus,
@@ -136,6 +137,11 @@ export const getStatus = query({
 	args: { serverId: v.id("servers") },
 	returns: v.object({
 		status: allocationStatus,
+		// What each part of the server looked like when it was last seen, so that one part being
+		// wrong says which, rather than stopping everything.
+		parts: allocationParts,
+		// Why the allocation is not moving, when it is not. It is still being tried.
+		stuck: v.union(v.object({ since: v.number(), code: v.string() }), v.null()),
 		location: v.union(v.string(), v.null()),
 		ipv4: v.union(v.string(), v.null()),
 		ipv6: v.union(v.string(), v.null()),
@@ -167,6 +173,11 @@ export const getStatus = query({
 		}
 		return {
 			status: allocation.status,
+			parts: allocation.parts,
+			stuck:
+				allocation.stuck === undefined
+					? null
+					: { since: allocation.stuck.since, code: allocation.stuck.code },
 			location: allocation.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
 			ipv6: allocation.ipv6 ?? null,
