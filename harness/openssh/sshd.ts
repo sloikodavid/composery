@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import type { SshConnectionOptions } from "../../../convex/ssh/connection";
-import { generateSshKeyPair } from "../../../convex/ssh/key_pair";
-import { readSshFile } from "../../../convex/ssh/read_file";
+import type { SshConnectionOptions } from "../../convex/ssh/connection";
+import { generateSshKeyPair } from "../../convex/ssh/key_pair";
+import { readSshFile } from "../../convex/ssh/read_file";
 import { registerCleanup } from "../cleanup";
 import {
 	removeOrphanedDockerContainers,

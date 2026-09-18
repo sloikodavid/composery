@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 import { setSshHostname } from "../../../convex/ssh/hostname";
-import { type SshdServer, useSshd } from "../../harness/openssh/sshd";
+import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

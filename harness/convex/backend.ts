@@ -30,7 +30,7 @@ import {
 } from "convex/server";
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
-import { internal } from "../../../convex/_generated/api";
+import { internal } from "../../convex/_generated/api";
 import { isProcessAlive, registerCleanup } from "../cleanup";
 import { type ClerkFake, useClerkFake } from "../clerk/fake";
 import type { ClerkUser } from "../clerk/replies";
@@ -40,7 +40,7 @@ import { useHetznerFake } from "../hetzner/fake";
 import { createHetznerRun, getHetznerToken } from "../hetzner/real";
 import { convexBackendAssets, convexBackendVersion } from "../pins";
 
-const repositoryRoot = path.resolve(import.meta.dir, "..", "..", "..");
+const repositoryRoot = path.resolve(import.meta.dir, "..", "..");
 const cacheRoot = path.join(repositoryRoot, "tmp", "convex-backend");
 
 // Test deployments share one instance identity, because a storage template belongs to it.

@@ -33,9 +33,9 @@ Fake what a test is not about. Never fake what decides whether it passes.
 
 The mirror decides where a test goes, never that one must exist. A source file with nothing worth testing has no test, and a file never gets a second test file for a second kind of case: that would be symmetry for its own sake, and the reader would have to guess which of the two to open.
 
-One folder is not part of that mirror. `tests/harness/` is what a test uses to build a world, and it is grouped by the world each file builds: `clerk/`, `convex/`, `hetzner/` and `openssh/` each hold what it takes to stand that system up or to stand in for it, and what every world uses sits beside them. Nothing in it decides whether a test passes, so nothing in it needs proving on its own; the tests that use it are what show it works, and it holds no `.test.ts` file.
+The mirror has no exception. `harness/` sits at the top of the repository beside `convex/`, `contracts/` and `src/`, because it is source like any of them: it starts, isolates and stops what a test needs. It is grouped by the world each file builds, so `clerk/`, `convex/`, `hetzner/` and `openssh/` each hold what it takes to stand that system up or to stand in for it, and what every world uses sits beside them.
 
-That is the line, and it is about what a thing is rather than where its test could go: code that has to be proved right before anything can rely on it is not harness code. A contract checker is an oracle, and an oracle nothing checks is worse than none, so the checkers live in `contracts/` and are tested through the mirror like any other source.
+So the harness can be tested like anything else, at `tests/harness/<path>.test.ts`, and today nothing there is: no file in it decides whether a test passes, and the tests that use it are what show it works. The place exists for the day one of them earns a test of its own, which is the point of having no exception. A contract checker does decide, which is why the checkers are not harness code at all: an oracle nothing proves is worse than none, so they live in `contracts/` and are tested through the mirror like any other source.
 
 ## Running
 
@@ -45,7 +45,7 @@ That is the line, and it is about what a thing is rather than where its test cou
 
 ## Pins
 
-`tests/harness/pins.ts` holds every external version a test depends on: the Ubuntu image and the day of the archive its packages come from, and the Convex backend release with its digest for each platform. Each one says what it is and when to move it.
+`harness/pins.ts` holds every external version a test depends on: the Ubuntu image and the day of the archive its packages come from, and the Convex backend release with its digest for each platform. Each one says what it is and when to move it.
 
 A pin here cannot rot the way an apt version pin does. We pin the day of the archive, not the version of a package, and the archive keeps every day: a snapshot from June 2024 still installs today. So an old pin gives an old OpenSSH, never a broken build. That is the reason to move these on purpose: to test against what people really run, not to keep the tests working.
 

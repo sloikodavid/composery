@@ -12,7 +12,7 @@ import {
 	toPaginationReply,
 	toServerReply,
 	toServerTypeReply,
-} from "../../../harness/hetzner/replies";
+} from "../../../../harness/hetzner/replies";
 
 /**
  * Reading a server Hetzner describes. The shapes here are not invented: each one is put through

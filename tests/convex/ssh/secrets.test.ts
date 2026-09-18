@@ -12,8 +12,8 @@ import {
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../../harness/convex/backend";
-import { createServer, createServerOwner } from "../../harness/servers";
+} from "../../../harness/convex/backend";
+import { createServer, createServerOwner } from "../../../harness/servers";
 
 /**
  * Rotation is the point of all of this: a value encrypted by a key the deployment still holds must

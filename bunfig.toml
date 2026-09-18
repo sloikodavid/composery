@@ -10,4 +10,4 @@ noOrphans = true
 
 [test]
 root = "tests"
-preload = ["./tests/harness/preload.ts"]
+preload = ["./harness/preload.ts"]

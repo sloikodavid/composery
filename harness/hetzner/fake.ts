@@ -1,4 +1,4 @@
-import { hetznerContract } from "../../../contracts/hetzner";
+import { hetznerContract } from "../../contracts/hetzner";
 import { type Fake, type FakeReply, startFake } from "../fake";
 import { getHetznerToken, toHetznerForward } from "./real";
 import {

@@ -1,14 +1,14 @@
 import { beforeAll, expect, test } from "bun:test";
 import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
-import { generateAuthorizedKey } from "../../harness/openssh/keys";
+import { generateAuthorizedKey } from "../../../harness/openssh/keys";
 import {
 	quoteShell,
 	type SshdAccount,
 	type SshdServer,
 	sshdLogPath,
 	useSshd,
-} from "../../harness/openssh/sshd";
+} from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

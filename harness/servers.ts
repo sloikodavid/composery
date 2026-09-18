@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
-import { api, internal } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import { api, internal } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 import type { ConvexBackend } from "./convex/backend";
 
 const suffixBytes = 6;

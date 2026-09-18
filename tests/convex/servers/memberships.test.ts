@@ -6,8 +6,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../../harness/convex/backend";
-import { createServer, createServerOwner } from "../../harness/servers";
+} from "../../../harness/convex/backend";
+import { createServer, createServerOwner } from "../../../harness/servers";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 120_000;

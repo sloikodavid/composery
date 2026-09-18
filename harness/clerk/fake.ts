@@ -1,4 +1,4 @@
-import { clerkApiVersion, clerkContract } from "../../../contracts/clerk";
+import { clerkApiVersion, clerkContract } from "../../contracts/clerk";
 
 import { type Fake, type FakeReply, startFake } from "../fake";
 import {

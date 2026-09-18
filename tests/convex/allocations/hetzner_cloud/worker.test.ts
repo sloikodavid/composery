@@ -5,11 +5,11 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../../../harness/convex/backend";
+} from "../../../../harness/convex/backend";
 import {
 	type HetznerFake,
 	useHetznerFake,
-} from "../../../harness/hetzner/fake";
+} from "../../../../harness/hetzner/fake";
 import {
 	createServer,
 	createServerOwner,
@@ -17,7 +17,7 @@ import {
 	requireHetznerServerId,
 	type ServerClient,
 	settleServer,
-} from "../../../harness/servers";
+} from "../../../../harness/servers";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 300_000;

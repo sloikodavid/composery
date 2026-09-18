@@ -3,7 +3,7 @@ import {
 	type IncomingMessage,
 	type ServerResponse,
 } from "node:http";
-import type { ContractChecker } from "../../contracts/check";
+import type { ContractChecker } from "../contracts/check";
 import { registerCleanup } from "./cleanup";
 
 /**

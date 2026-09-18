@@ -1,5 +1,5 @@
-import { clerkContract } from "../../contracts/clerk";
-import { hetznerContract } from "../../contracts/hetzner";
+import { clerkContract } from "../contracts/clerk";
+import { hetznerContract } from "../contracts/hetzner";
 
 /**
  * Fails the run when a fake answered in a shape the system never would, when Composery spoke to a

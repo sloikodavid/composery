@@ -4,7 +4,7 @@ import { api } from "../../convex/_generated/api";
 import {
 	type ConvexBackend,
 	useConvexBackend,
-} from "../harness/convex/backend";
+} from "../../harness/convex/backend";
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 60_000;
