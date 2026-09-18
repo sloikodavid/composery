@@ -19,8 +19,6 @@ import {
 	requireServerAllocation,
 } from "../allocations/operations";
 import {
-	allocationPartState,
-	allocationParts,
 	allocationStatus,
 	operationKind,
 	operationStatus,
@@ -33,6 +31,7 @@ import { getAllocationSshAccess } from "../ssh/access_state";
 import { requireUser } from "../users";
 import { checkServerNameClaim, claimServerName } from "./names";
 import { requireServerAccess } from "./permissions";
+import { serverFeatures, serverParts, toServerFeatures } from "./summary";
 
 export async function requestServerDelete(
 	ctx: MutationCtx,
@@ -140,11 +139,9 @@ export const getStatus = query({
 		status: allocationStatus,
 		// What each part of the server looked like when it was last seen, so that one part being
 		// wrong says which, rather than stopping everything.
-		parts: v.object({
-			...allocationParts.fields,
-			// What Composery's own way in looked like the last time anything used it.
-			managementAccess: allocationPartState,
-		}),
+		parts: serverParts,
+		// What a member can do with it right now, worked out from those parts in one place.
+		features: serverFeatures,
 		// Why the allocation is not moving, when it is not. It is still being tried.
 		stuck: v.union(v.object({ since: v.number(), code: v.string() }), v.null()),
 		location: v.union(v.string(), v.null()),
@@ -169,6 +166,10 @@ export const getStatus = query({
 		await requireServerAccess(ctx, serverId);
 		const allocation = await requireServerAllocation(ctx, serverId);
 		const sshAccess = await getAllocationSshAccess(ctx, allocation._id);
+		const parts = {
+			...allocation.parts,
+			managementAccess: sshAccess?.access?.state ?? "unknown",
+		};
 		const operation = await ctx.db.get(
 			"serverOperations",
 			allocation.operationId,
@@ -178,10 +179,8 @@ export const getStatus = query({
 		}
 		return {
 			status: allocation.status,
-			parts: {
-				...allocation.parts,
-				managementAccess: sshAccess?.access?.state ?? "unknown",
-			},
+			parts,
+			features: toServerFeatures(parts),
 			stuck:
 				allocation.stuck === undefined
 					? null

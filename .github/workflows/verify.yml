@@ -4,11 +4,6 @@ on:
   push:
   pull_request:
 
-# A later push replaces an earlier one: only the newest commit has to be proved.
-concurrency:
-  group: verify-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   verify:
     # Linux runs the tests that need Docker; docs/requirements.md says what a machine needs.
