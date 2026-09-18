@@ -156,3 +156,20 @@ export function isAllocationAddress(
 		? null
 		: networks.some((network) => isAddressInNetwork(source, network));
 }
+
+/**
+ * The address a client connects to, which is only ever one the server itself has used. A provider
+ * states an IPv4 assignment as one address and an IPv6 one as a range, and which address of that
+ * range answers is the server's own business: it is configured inside the server, where a customer
+ * with root can change it. So the range is never shown as an address, and nothing is derived from
+ * it; until the server has been seen using an address, there is none to give out.
+ */
+export function toReportedAddress(
+	network: string | undefined,
+	reported: string | undefined,
+) {
+	if (network === undefined || reported === undefined) {
+		return null;
+	}
+	return isAddressInNetwork(reported, network) ? reported : null;
+}

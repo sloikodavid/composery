@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
 	isAddressInNetwork,
 	isAllocationAddress,
+	toReportedAddress,
 } from "../../../convex/allocations/addresses";
 
 const network = "2a01:4f8:1c1c:328::/64";
@@ -83,4 +84,19 @@ test("says it cannot tell when an allocation has no address yet", () => {
 	expect(isAllocationAddress("2a01:4f8:1c1c:328::1", { ipv6: network })).toBe(
 		true,
 	);
+});
+
+test("shows only an address the server has been seen using", () => {
+	// The range is what the provider gave; which address inside it answers is set in the server.
+	expect(toReportedAddress(network, undefined)).toBe(null);
+	expect(toReportedAddress(network, network)).toBe(null);
+	expect(toReportedAddress(network, "2a01:4f8:1c1c:328::1")).toBe(
+		"2a01:4f8:1c1c:328::1",
+	);
+	// A server that reached us over IPv4 has said nothing about which IPv6 address it answers on.
+	expect(toReportedAddress(network, "192.0.2.1")).toBe(null);
+	expect(toReportedAddress(undefined, "2a01:4f8:1c1c:328::1")).toBe(null);
+	// An IPv4 assignment is one address, and the server reporting from it says the same thing.
+	expect(toReportedAddress("192.0.2.1", "192.0.2.1")).toBe("192.0.2.1");
+	expect(toReportedAddress("192.0.2.1", "192.0.2.2")).toBe(null);
 });

@@ -7,6 +7,7 @@ import {
 	mutation,
 	query,
 } from "../_generated/server";
+import { toReportedAddress } from "../allocations/addresses";
 import {
 	deleteServerAllocation,
 	getAllocationConfig,
@@ -145,8 +146,11 @@ export const getStatus = query({
 		// Why the allocation is not moving, when it is not. It is still being tried.
 		stuck: v.union(v.object({ since: v.number(), code: v.string() }), v.null()),
 		location: v.union(v.string(), v.null()),
+		// The addresses a client connects to, each one the server itself has been seen using.
 		ipv4: v.union(v.string(), v.null()),
 		ipv6: v.union(v.string(), v.null()),
+		// The range the provider gave the server, which is not an address and reaches nothing.
+		ipv6Network: v.union(v.string(), v.null()),
 		observedAt: v.union(v.number(), v.null()),
 		// The pinned host key, which a client compares with the key the server offers.
 		hostKey: v.union(v.string(), v.null()),
@@ -187,7 +191,8 @@ export const getStatus = query({
 					: { since: allocation.stuck.since, code: allocation.stuck.code },
 			location: allocation.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
-			ipv6: allocation.ipv6 ?? null,
+			ipv6: toReportedAddress(allocation.ipv6, sshAccess?.hostKeySource),
+			ipv6Network: allocation.ipv6 ?? null,
 			observedAt: allocation.observedAt ?? null,
 			hostKey: sshAccess?.hostKey ?? null,
 			hostKeyConflictAt: sshAccess?.hostKeyConflictAt ?? null,
