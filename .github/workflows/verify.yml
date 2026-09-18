@@ -23,12 +23,8 @@ jobs:
         with:
           node-version-file: package.json
       - run: bun install --frozen-lockfile
+        # The build reads the values the browser is given, and they live in one file rather than
+        # here, so that a variable the app starts reading cannot go missing from only one of them.
+      - run: cp .env.verify .env.local
         # The same command a person runs before pushing: the checks, the tests, and the build.
       - run: bun verify
-        env:
-          # The build needs the values the browser is given. Nothing here reaches a real deployment:
-          # the tests build their own, and this only has to be the shape the app reads at build time.
-          NEXT_PUBLIC_CONVEX_URL: https://verify.convex.cloud
-          NEXT_PUBLIC_CONVEX_SITE_URL: https://verify.convex.site
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dmVyaWZ5LmNsZXJrLmFjY291bnRzLmRldiQ
-          CLERK_FRONTEND_API_URL: https://verify.clerk.accounts.dev

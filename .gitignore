@@ -18,6 +18,8 @@ yarn-error.log*
 .pnpm-debug.log*
 .env*
 !.env*.example
+# Placeholders for `bun verify`, and the only .env file that is not somebody's own.
+!.env.verify
 .vercel
 *.tsbuildinfo
 next-env.d.ts
