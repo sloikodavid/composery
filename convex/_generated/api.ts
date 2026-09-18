@@ -52,6 +52,7 @@ import type * as ssh_key_pair from "../ssh/key_pair.js";
 import type * as ssh_keys from "../ssh/keys.js";
 import type * as ssh_permissions from "../ssh/permissions.js";
 import type * as ssh_read_file from "../ssh/read_file.js";
+import type * as ssh_scripts_addresses from "../ssh/scripts/addresses.js";
 import type * as ssh_scripts_bootstrap from "../ssh/scripts/bootstrap.js";
 import type * as ssh_scripts_discovery from "../ssh/scripts/discovery.js";
 import type * as ssh_scripts_hostname from "../ssh/scripts/hostname.js";
@@ -114,6 +115,7 @@ const fullApi: ApiFromModules<{
   "ssh/keys": typeof ssh_keys;
   "ssh/permissions": typeof ssh_permissions;
   "ssh/read_file": typeof ssh_read_file;
+  "ssh/scripts/addresses": typeof ssh_scripts_addresses;
   "ssh/scripts/bootstrap": typeof ssh_scripts_bootstrap;
   "ssh/scripts/discovery": typeof ssh_scripts_discovery;
   "ssh/scripts/hostname": typeof ssh_scripts_hostname;

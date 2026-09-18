@@ -3,6 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalMutation } from "../_generated/server";
 import { isAllocationAddress } from "../allocations/addresses";
+import { storeReportedAddress } from "../allocations/operations";
 import { getAllocationSshAccess } from "./access_state";
 
 const hexRadix = 16;
@@ -143,6 +144,9 @@ export const registerHostKey = internalMutation({
 			...(source === null ? {} : { hostKeySource: source }),
 			...(port === null ? {} : { port }),
 		});
+		if (source !== null) {
+			await storeReportedAddress(ctx, allocation, source);
+		}
 		// The first sign-in after a pin both records the hostname and proves the access works.
 		const server = await ctx.db.get("servers", allocation.serverId);
 		if (server !== null) {

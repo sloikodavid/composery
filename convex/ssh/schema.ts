@@ -20,5 +20,7 @@ export const sshTables = {
 		access: v.optional(
 			v.object({ status: allocationPartStatus, at: v.number() }),
 		),
-	}).index("by_allocation_id", ["allocationId"]),
+	})
+		.index("by_allocation_id", ["allocationId"])
+		.index("by_access_at", ["access.at"]),
 };

@@ -14,6 +14,7 @@ import {
 	deleteAllocationSshAccess,
 	isSshAccessConfigured,
 } from "../ssh/access_state";
+import { toReportedAddress } from "./addresses";
 import {
 	getHetznerCloudConfig,
 	type HetznerCloudConfig,
@@ -234,6 +235,14 @@ export async function requestAllocationDelete(
 	await wakeBackend(ctx, { ...allocation, deleteRequested: true });
 }
 
+/** One allocation, for work that already knows which one it is about. */
+export const get = internalQuery({
+	args: { allocationId: v.id("serverAllocations") },
+	returns: v.union(schema.doc("serverAllocations"), v.null()),
+	handler: async (ctx, { allocationId }) =>
+		await ctx.db.get("serverAllocations", allocationId),
+});
+
 export const getForServer = internalQuery({
 	args: { serverId: v.id("servers") },
 	returns: v.union(schema.doc("serverAllocations"), v.null()),
@@ -242,6 +251,42 @@ export const getForServer = internalQuery({
 			.query("serverAllocations")
 			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 			.unique(),
+});
+
+/**
+ * Writes down an address a server has been seen answering on, when it is one of its own. A
+ * provider states an IPv6 assignment as a range and the server chooses inside it, so the only
+ * addresses that count are the ones the server has used: the one it reached us from when it
+ * reported its host key, and the ones it lists for itself when asked.
+ */
+export async function storeReportedAddress(
+	ctx: MutationCtx,
+	allocation: Doc<"serverAllocations">,
+	reported: string | undefined,
+) {
+	const address = toReportedAddress(allocation.ipv6, reported);
+	if (address !== null && address !== allocation.ipv6Address) {
+		await ctx.db.patch("serverAllocations", allocation._id, {
+			ipv6Address: address,
+		});
+	}
+}
+
+export const recordReportedAddress = internalMutation({
+	args: {
+		allocationId: v.id("serverAllocations"),
+		addresses: v.array(v.string()),
+	},
+	returns: v.null(),
+	handler: async (ctx, { allocationId, addresses }) => {
+		const allocation = await ctx.db.get("serverAllocations", allocationId);
+		if (allocation !== null) {
+			for (const address of addresses) {
+				await storeReportedAddress(ctx, allocation, address);
+			}
+		}
+		return null;
+	},
 });
 
 export const storeHostname = internalMutation({

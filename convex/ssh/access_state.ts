@@ -1,4 +1,5 @@
 import { type Infer, v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
 	env,
@@ -96,4 +97,34 @@ export const get = internalQuery({
 	returns: v.union(schema.doc("allocationSshAccess"), v.null()),
 	handler: async (ctx, { allocationId }) =>
 		await getAllocationSshAccess(ctx, allocationId),
+});
+
+/** How long a server's way in may go unlooked-at before it is looked at again. */
+const checkEveryMs = 21_600_000;
+// Enough that a large fleet comes round inside the interval, and small enough that a minute of
+// checks is a minute of ordinary connections.
+const checkBatchSize = 5;
+
+/**
+ * Hands the oldest looks to the check, and a row nobody has looked at first of all. Each one is
+ * stamped by what the check finds, so the queue always moves: a server that cannot answer says
+ * so and goes to the back, rather than holding the front for everyone behind it.
+ */
+export const sweep = internalMutation({
+	args: {},
+	returns: v.null(),
+	handler: async (ctx) => {
+		const due = await ctx.db
+			.query("allocationSshAccess")
+			.withIndex("by_access_at", (q) =>
+				q.lt("access.at", Date.now() - checkEveryMs),
+			)
+			.take(checkBatchSize);
+		for (const sshAccess of due) {
+			await ctx.scheduler.runAfter(0, internal.ssh.access.check, {
+				allocationId: sshAccess.allocationId,
+			});
+		}
+		return null;
+	},
 });

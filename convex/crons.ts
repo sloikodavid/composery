@@ -18,6 +18,13 @@ crons.interval(
 );
 
 crons.interval(
+	"check Composery's way in to each server",
+	{ minutes: 1 },
+	internal.ssh.access_state.sweep,
+	{},
+);
+
+crons.interval(
 	"reconcile users with Clerk",
 	{ hours: 1 },
 	internal.clerk.reconcile,

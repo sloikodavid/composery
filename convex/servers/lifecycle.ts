@@ -7,7 +7,6 @@ import {
 	mutation,
 	query,
 } from "../_generated/server";
-import { toReportedAddress } from "../allocations/addresses";
 import {
 	deleteServerAllocation,
 	getAllocationConfig,
@@ -191,7 +190,7 @@ export const getStatus = query({
 					: { since: allocation.stuck.since, code: allocation.stuck.code },
 			location: allocation.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
-			ipv6: toReportedAddress(allocation.ipv6, sshAccess?.hostKeySource),
+			ipv6: allocation.ipv6Address ?? null,
 			ipv6Network: allocation.ipv6 ?? null,
 			observedAt: allocation.observedAt ?? null,
 			hostKey: sshAccess?.hostKey ?? null,
