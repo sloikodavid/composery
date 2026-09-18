@@ -30,12 +30,10 @@ Also not built, and not ordered against the rest:
 
 ## Wrong today
 
-- **The IPv6 address a customer is shown is a network, not an address.** A Primary IP of that kind is a `/64`, and what a client connects to is one address inside it. Hetzner's own description settles what the field holds; the server settles what answers.
 - **A run that was given no token for a real service says nothing about it.** It passes, in the same words as a run that met the provider, so what did not happen is invisible.
 
 ## Not decided
 
-- **Whether anything checks Composery's way in to a server on a schedule.** Today only an SSH operation discovers that the management key is gone, so a customer who is not using the panel is not told and, when notices exist, cannot be. Against: a probe costs one SSH connection per server per interval and leaves failed logins in the customer's own auth log. For: the customer is paying for a service whose parts we claim to report. Worth settling with notices, because a notice needs somebody to notice first.
 - **Whether customers get notices before release, and through which channel.** `docs/notices.md`.
 - **Whether Composery ever writes a server's SSH configuration.** It only writes authorized keys today, and reads the configuration to know which files apply. One wrong line there locks out every user, including us, which is the whole argument; the counter-argument is that a customer who forbade root login cannot be helped without it.
 - **Whether a person here is ever public.** Sharing is by email address, which answers nothing about who exists. Names, profiles and search all follow from one question nobody has answered: whether this is a place people are seen, or a tool people use.
