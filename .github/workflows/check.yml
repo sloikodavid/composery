@@ -1,0 +1,27 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+# A later push replaces an earlier one: only the newest commit has to be proved.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Linux runs the tests that need Docker; docs/requirements.md says what a machine needs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun check
+      - run: bun test

@@ -1,0 +1,27 @@
+name: contracts
+
+# The only thing here that reaches a vendor. A description changing is not a broken commit, so it
+# is a job of its own: it fails on the day the vendor moves, whoever pushed last.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun contracts
+      - name: Report what moved
+        run: |
+          if ! git diff --quiet -- contracts; then
+            echo "A vendor changed what it says about itself. Read the difference, then commit it:"
+            git --no-pager diff -- contracts
+            exit 1
+          fi
