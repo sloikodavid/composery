@@ -46,7 +46,7 @@ const membershipSummary = v.object({
 	_id: v.id("serverMemberships"),
 	userId: v.id("users"),
 	// Clerk makes both optional, so a caller must not be told there is always one.
-	username: v.optional(v.string()),
+	email: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 	permissions: serverPermissions,
 });
@@ -116,7 +116,7 @@ export const list = query({
 				page.push({
 					_id: membership._id,
 					userId: user._id,
-					...(user.username === undefined ? {} : { username: user.username }),
+					...(user.email === undefined ? {} : { email: user.email }),
 					...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),
 					permissions: membership.permissions,
 				});
@@ -129,11 +129,11 @@ export const list = query({
 export const add = mutation({
 	args: {
 		serverId: v.id("servers"),
-		username: v.string(),
+		email: v.string(),
 		permissions: v.optional(serverPermissions),
 	},
 	returns: v.union(v.object({ ok: v.literal(true) }), failure),
-	handler: async (ctx, { serverId, username, permissions }) => {
+	handler: async (ctx, { serverId, email, permissions }) => {
 		const access = await requireServerAccess(ctx, serverId, "manageMembers");
 		await requireChangeableServerAllocation(ctx, serverId);
 		const granted = permissions ?? access.permissions;
@@ -146,27 +146,25 @@ export const add = mutation({
 		if (lookupFailure !== null) {
 			return lookupFailure;
 		}
-		// The username only finds somebody; the grant is kept against their ID. Clerk lets a username
-		// be released and taken, and each account reaches us on its own webhook, so for a moment two
-		// accounts here can hold the same one. Choosing between them would be guessing who was meant.
+		// The address only finds somebody; the grant is kept against their ID. An address can move
+		// from one account to another, and each account reaches us on its own webhook, so for a
+		// moment two accounts here can hold the same one. Choosing between them would be guessing.
 		const matches = await ctx.db
 			.query("users")
-			.withIndex("by_username", (q) =>
-				q.eq("username", username.trim().toLowerCase()),
-			)
+			.withIndex("by_email", (q) => q.eq("email", email.trim().toLowerCase()))
 			.take(2);
 		const [user] = matches;
 		if (user === undefined) {
-			return fail("user_not_found", "username");
+			return fail("user_not_found", "email");
 		}
 		if (matches.length > 1) {
-			return fail("user_not_unique", "username");
+			return fail("user_not_unique", "email");
 		}
 		if (
 			user._id === access.server.ownerId ||
 			(await getServerMembership(ctx, serverId, user._id)) !== null
 		) {
-			return fail("user_has_access", "username");
+			return fail("user_has_access", "email");
 		}
 		if (await isMembershipLimitReached(ctx, serverId)) {
 			return fail("membership_limit_reached");

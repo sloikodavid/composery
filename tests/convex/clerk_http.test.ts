@@ -52,7 +52,6 @@ function toAccount() {
 	const id = `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 	return {
 		id,
-		username: id.toLowerCase(),
 		email: `${id}@example.com`,
 		imageUrl: "https://example.com/avatar.png",
 	};

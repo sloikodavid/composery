@@ -4,7 +4,7 @@ Every public Convex function (`query`, `mutation`, `action`) is the application 
 
 ## Rules for public functions
 
-- **Authorize inside the function.** Use `requireUser`, `requireServerAccess`, and `requireServerOwner`. Never trust an ID, username, or permission that the client sends.
+- **Authorize inside the function.** Use `requireUser`, `requireServerAccess`, and `requireServerOwner`. Never trust an ID, an address, or a permission that the client sends.
 - **Validate the contract.** Every function has argument and return validators. The return validator is the documented response.
 - **Report failures with a code.** `convex/errors.ts` holds every code and its message, so one condition has one code and one wording. A function returns `failure` (`{ ok: false, code, field, message }`) when it has already counted a rate limit attempt, because a thrown error would roll that attempt back. Otherwise it throws `toConvexError(code)`, whose data is `{ code, message }`. A client handles both by `code`. Internal state, such as a backend's own error codes, stays out of public results.
 - **Make repeatable requests safe.** A request that starts work outside Convex takes a client-generated `requestId`. Repeating the same request returns the same operation instead of starting new work.

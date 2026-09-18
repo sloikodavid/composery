@@ -25,28 +25,28 @@ beforeAll(async () => {
 }, setupTimeoutMs);
 
 test(
-	"a username two accounts hold for a moment finds nobody, rather than a guess",
+	"an address two accounts hold for a moment finds nobody, rather than a guess",
 	async () => {
 		const { client, serverId } = shared;
-		// Clerk lets a username be released and taken, and each account reaches us on its own
-		// webhook. Until the older one arrives, two accounts here hold the same name.
-		const username = `shared-${randomBytes(suffixBytes).toString("hex")}`;
+		// An address can move from one account to another, and each account reaches us on its own
+		// webhook. Until the older one arrives, two accounts here hold the same address.
+		const email = `shared-${randomBytes(suffixBytes).toString("hex")}@example.com`;
 		await backend.runAsAdmin(internal.users.store, {
 			users: [
 				{
 					clerkUserId: `user_${randomBytes(suffixBytes).toString("hex")}`,
-					username,
+					email,
 				},
 				{
 					clerkUserId: `user_${randomBytes(suffixBytes).toString("hex")}`,
-					username,
+					email,
 				},
 			],
 		});
 
 		const result = await client.mutation(api.servers.memberships.add, {
 			serverId,
-			username,
+			email,
 		});
 
 		// Sharing a server with one of them would be deciding who was meant. Only one person can be.
@@ -56,7 +56,7 @@ test(
 );
 
 test(
-	"an account without a username cannot be found to be shared with",
+	"an account with no address cannot be found to be shared with",
 	async () => {
 		const { client, serverId } = shared;
 		const clerkUserId = `user_${randomBytes(suffixBytes).toString("hex")}`;
@@ -66,7 +66,7 @@ test(
 
 		const result = await client.mutation(api.servers.memberships.add, {
 			serverId,
-			username: clerkUserId,
+			email: `${clerkUserId}@example.com`,
 		});
 
 		expect(result).toMatchObject({ ok: false, code: "user_not_found" });

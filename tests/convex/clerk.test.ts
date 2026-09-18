@@ -33,7 +33,6 @@ function toAccount(hasPicture = true) {
 	const id = `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 	return {
 		id,
-		username: id.toLowerCase(),
 		email: `${id}@example.com`,
 		// Clerk leaves the member out for an account with no picture; it does not send an empty one.
 		...(hasPicture ? { imageUrl: "https://example.com/avatar.png" } : {}),
@@ -54,9 +53,10 @@ test(
 				users: [
 					{
 						clerkUserId: account.id,
-						username: account.username,
 						email: account.email,
-						imageUrl: account.imageUrl ?? "",
+						...(account.imageUrl === undefined
+							? {}
+							: { imageUrl: account.imageUrl }),
 					},
 				],
 			});
@@ -132,36 +132,36 @@ test(
 );
 
 test(
-	"an account without a username is kept, and can use the app",
+	"an account with no email address is kept, and can use the app",
 	async () => {
-		// Clerk's own documentation shows a completed account with a null username. Keeping it out
-		// would lock somebody out of their own servers over a field that only exists to find people.
-		const { username: _, ...account } = toAccount();
+		// Clerk does not promise a primary email address. Keeping such an account out would lock
+		// somebody out of their own servers over a field that only exists to find people.
+		const { email: _, ...account } = toAccount();
 		backend.clerk.setUser(account);
 
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
 
 		const stored = await readAccount(account.id);
 		expect(stored).toMatchObject({ clerkUserId: account.id });
-		expect(stored?.username).toBeUndefined();
+		expect(stored?.email).toBeUndefined();
 		backend.clerk.removeUser(account.id);
 	},
 	testTimeoutMs,
 );
 
 test(
-	"a username removed at Clerk is removed here, so nobody can be found by a name they gave up",
+	"an address removed at Clerk is removed here, so nobody is found by an address they gave up",
 	async () => {
 		const account = toAccount();
 		backend.clerk.setUser(account);
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
-		expect((await readAccount(account.id))?.username).toBe(account.username);
+		expect((await readAccount(account.id))?.email).toBe(account.email);
 
-		const { username: _, ...renamed } = account;
-		backend.clerk.setUser(renamed);
+		const { email: _, ...moved } = account;
+		backend.clerk.setUser(moved);
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
 
-		expect((await readAccount(account.id))?.username).toBeUndefined();
+		expect((await readAccount(account.id))?.email).toBeUndefined();
 		backend.clerk.removeUser(account.id);
 	},
 	testTimeoutMs,

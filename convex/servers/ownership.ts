@@ -26,7 +26,7 @@ const deleteBatchSize = 20;
 const ownerSummary = v.object({
 	userId: v.id("users"),
 	// Clerk makes both optional, so a caller must not be told there is always one.
-	username: v.optional(v.string()),
+	email: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 });
 
@@ -60,7 +60,7 @@ export const getOwner = query({
 			? null
 			: {
 					userId: owner._id,
-					...(owner.username === undefined ? {} : { username: owner.username }),
+					...(owner.email === undefined ? {} : { email: owner.email }),
 					...(owner.imageUrl === undefined ? {} : { imageUrl: owner.imageUrl }),
 				};
 	},

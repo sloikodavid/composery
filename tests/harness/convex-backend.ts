@@ -104,7 +104,7 @@ export type ConvexBackend = Readonly<{
 	 * only the second half would be describing a person Clerk never heard of, and the hourly
 	 * reconcile would rightly delete them part way through the test.
 	 */
-	createAccount: () => Promise<ClerkUser>;
+	createAccount: (clerkUserId?: string) => Promise<ClerkUser>;
 	/**
 	 * The keys this run gave the deployment, the one that encrypts first. The deployment runs with a
 	 * second key from the start, as it does part way through a rotation, so a test can hold a stored
@@ -731,11 +731,12 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 			}
 			return client;
 		},
-		createAccount: async () => {
-			const id = `user_${randomBytes(accountSuffixBytes).toString("hex")}`;
+		createAccount: async (clerkUserId) => {
+			const id =
+				clerkUserId ??
+				`user_${randomBytes(accountSuffixBytes).toString("hex")}`;
 			const account = {
 				id,
-				username: id.toLowerCase(),
 				email: `${id}@example.com`,
 			};
 			clerk.setUser(account);
@@ -747,7 +748,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 					users: [
 						{
 							clerkUserId: account.id,
-							username: account.username,
 							email: account.email,
 						},
 					],

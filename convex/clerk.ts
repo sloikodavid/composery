@@ -37,16 +37,15 @@ function createClient() {
 }
 
 /**
- * An account as we keep it. Clerk's `id` is who the account is. Clerk makes the username, the
- * primary email address and the picture optional, and lets each change, so each is kept exactly as
- * Clerk sends it and is absent when Clerk sends nothing. Every account is kept: one without a
- * username simply cannot be found to be shared with, which is the truth and needs no other rule.
+ * An account as we keep it. Clerk's `id` is who the account is. Clerk makes the primary email
+ * address and the picture optional, and lets each change, so each is kept exactly as Clerk sends it
+ * and is absent when Clerk sends nothing. Every account is kept: one without an email address
+ * simply cannot be found to be shared with, which is the truth and needs no other rule.
  */
 function toUserFields(user: User): UserFields {
 	const email = user.primaryEmailAddress?.emailAddress;
 	return {
 		clerkUserId: user.id,
-		...(user.username === null ? {} : { username: user.username }),
 		...(email === undefined ? {} : { email }),
 		// biome-ignore lint/suspicious/noUnnecessaryConditions: Clerk's own description makes image_url optional, and its client passes the field straight through, so the type says string where undefined can arrive
 		...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),

@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 import { createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 import { ConvexError } from "convex/values";
-import { api, internal } from "../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import {
 	type ConvexBackend,
 	useConvexBackend,
@@ -24,32 +24,11 @@ function createSubject() {
 	return `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 }
 
-/** A whole account: Clerk holds it, and it is synced here, as it always is in production. */
-async function syncUser(subject: string) {
-	const account = {
-		id: subject,
-		username: subject.toLowerCase(),
-		email: `${subject}@example.com`,
-		imageUrl: "",
-	};
-	backend.clerk.setUser(account);
-	await backend.runAsAdmin(internal.users.store, {
-		users: [
-			{
-				clerkUserId: account.id,
-				username: account.username,
-				email: account.email,
-				imageUrl: account.imageUrl,
-			},
-		],
-	});
-}
-
 test(
 	"a signed-in user resolves to the record synced for them, and a signed-out caller to nothing",
 	async () => {
 		const subject = createSubject();
-		await syncUser(subject);
+		await backend.createAccount(subject);
 		expect(
 			await backend.createClient(subject).query(api.users.getCurrent, {}),
 		).toMatchObject({ clerkUserId: subject });
@@ -75,7 +54,7 @@ test(
 	"a token that the issuer did not sign is refused, even when it names a synced user",
 	async () => {
 		const subject = createSubject();
-		await syncUser(subject);
+		await backend.createAccount(subject);
 		const genuine = backend.signIn(subject).split(".");
 		const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 		const issuedAt = Math.floor(Date.now() / millisecondsPerSecond);

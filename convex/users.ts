@@ -66,9 +66,7 @@ export const listClerkIds = internalQuery({
  */
 function isSameUser(existing: Doc<"users">, fields: Infer<typeof userFields>) {
 	return (
-		existing.username === fields.username &&
-		existing.email === fields.email &&
-		existing.imageUrl === fields.imageUrl
+		existing.email === fields.email && existing.imageUrl === fields.imageUrl
 	);
 }
 
@@ -85,8 +83,8 @@ export const store = internalMutation({
 			if (isSameUser(existing, fields)) {
 				continue;
 			}
-			// `replace` rather than `patch`: a field Clerk no longer sends, such as a removed username,
-			// must go too, and a patch would keep the old value.
+			// `replace` rather than `patch`: a field Clerk no longer sends, such as an address somebody
+			// removed, must go too, and a patch would keep the old value.
 			await ctx.db.replace("users", existing._id, fields);
 		}
 		return null;
