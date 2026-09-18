@@ -10,12 +10,13 @@ import {
 } from "../../http_status";
 import type { FailureClass } from "../retries";
 import type { powerOperationKind } from "../schema";
+import type { HetznerCloudServer } from "./observation";
 import type {
 	hetznerCloudCollection,
 	hetznerCloudResourceKind,
 } from "./schema";
 
-const liveApiOrigin = "https://api.hetzner.cloud";
+const hetznerOrigin = "https://api.hetzner.cloud";
 const apiPrefix = "/v1";
 const requestTimeoutMs = 20_000;
 const maxRetryAfterMs = 86_400_000;
@@ -205,18 +206,6 @@ export type HetznerCloudResource = {
 	isAssigned: boolean;
 };
 
-export type HetznerCloudServer = {
-	id: number;
-	status: "running" | "stopped" | "changing";
-	// Hetzner sends null for an address a server does not have, which a customer or an admin can
-	// arrange by deleting the Primary IP while the server is off.
-	ipv4: { id: number; address: string } | null;
-	ipv6: { id: number; address: string } | null;
-	serverType: string;
-	location: string;
-	firewalls: { id: number; isApplied: boolean }[];
-};
-
 export type HetznerCloudCreateRequest =
 	| { kind: "ipv4" | "ipv6"; location: string }
 	| {
@@ -324,7 +313,7 @@ async function callHetznerCloud(
 	let response: Response;
 	try {
 		const apiUrl =
-			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ?? liveApiOrigin;
+			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ?? hetznerOrigin;
 		response = await fetch(`${apiUrl}${apiPrefix}/${path}`, {
 			method,
 			headers: {
@@ -673,6 +662,18 @@ export async function getHetznerCloudActionStatus(
 	return status === "error" ? "failed" : "succeeded";
 }
 
+/**
+ * One server from a page, or nothing when Hetzner described it in a way we cannot read. One odd
+ * server must not stop a scan that is also how every other server stays current.
+ */
+function toScannedServer(resource: Reply) {
+	try {
+		return toServer(resource);
+	} catch {
+		return undefined;
+	}
+}
+
 /** One page of every resource that carries this controller's label, known or not. */
 export async function listHetznerCloudResources(
 	controllerId: string,
@@ -695,10 +696,13 @@ export async function listHetznerCloudResources(
 			resource.labels === undefined ? {} : requireObject(resource.labels);
 		const allocationId = labels["allocation-id"];
 		const kind = labels["resource-kind"];
+		const server =
+			collection === "servers" ? toScannedServer(resource) : undefined;
 		return {
 			id: requireId(resource.id),
 			allocationId: typeof allocationId === "string" ? allocationId : "",
 			kind: typeof kind === "string" ? kind : "",
+			...(server === undefined ? {} : { server }),
 		};
 	});
 	const next = requireObject(requireObject(reply?.meta).pagination).next_page;

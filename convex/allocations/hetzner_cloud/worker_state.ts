@@ -13,8 +13,14 @@ import schema from "../../schema";
 import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
 import { failureClass, isStuck, toRetryDelayMs } from "../retries";
-import { allocationParts } from "../schema";
+import type { allocationParts } from "../schema";
 import { type HetznerCloudConfig, hetznerCloudRateLimiter } from "./api";
+import {
+	type HetznerCloudServer,
+	hetznerCloudServerState,
+	observeHetznerCloudServer,
+	type ServerObservation,
+} from "./observation";
 import {
 	type hetznerCloudQueue,
 	hetznerCloudResourceKind,
@@ -24,7 +30,6 @@ import {
 
 export const hetznerCloudPowerDeadlineMs = 300_000;
 const leaseMs = 120_000;
-const idleMs = 300_000;
 const recordDelayMs = 5000;
 const sweepBatchSize = 10;
 // One lease can lead to several Hetzner requests in one step.
@@ -67,14 +72,10 @@ export const hetznerCloudWorkerUpdate = v.object({
 		}),
 	),
 	spec: v.optional(hetznerCloudSpec),
-	observation: v.optional(
-		v.object({
-			status: v.union(v.literal("running"), v.literal("stopped")),
-			parts: allocationParts,
-			ipv4: v.optional(v.string()),
-			ipv6: v.optional(v.string()),
-		}),
-	),
+	// The server as the worker found it. What it means for the allocation is worked out here,
+	// from the allocation as it is now, so that the scan's look and the worker's say the same
+	// things about it.
+	observation: v.optional(hetznerCloudServerState),
 	deleted: v.optional(v.literal(true)),
 	actionId: v.optional(v.number()),
 	clearAction: v.optional(v.literal(true)),
@@ -466,27 +467,107 @@ async function recordResource(
 	}
 }
 
-async function recordObservation(
-	recording: Recording,
-	observation: NonNullable<HetznerCloudWorkerUpdate["observation"]>,
+const mismatchedParts = {
+	server: "mismatch",
+	addresses: "unknown",
+	firewall: "unknown",
+} as const satisfies Infer<typeof allocationParts>;
+
+/** What one look at the server changes about the allocation, whoever looked at it. */
+function toObservationPatch(observed: ServerObservation | null) {
+	return {
+		observedAt: Date.now(),
+		// A server that is not the one this allocation recorded says nothing about its other parts.
+		parts: observed?.parts ?? mismatchedParts,
+		// An address that is not the one this allocation holds is not this server's to give out,
+		// so none is shown until the allocation has it back.
+		...(observed === null
+			? {}
+			: { ipv4: observed.addresses.ipv4, ipv6: observed.addresses.ipv6 }),
+	} satisfies Patch<Doc<"serverAllocations">>;
+}
+
+/**
+ * Whether nothing is being done to this allocation, so that a server seen from a page is the
+ * state it settled on rather than a step in the middle of a change somebody asked for.
+ */
+async function isSettled(
+	ctx: MutationCtx,
+	allocation: Doc<"serverAllocations">,
+	hetznerCloudAllocation: HetznerCloudAllocation,
 ) {
-	const { ctx, allocation, allocationPatch } = recording;
-	allocationPatch.observedAt = Date.now();
-	allocationPatch.ipv4 = observation.ipv4;
-	allocationPatch.ipv6 = observation.ipv6;
-	allocationPatch.parts = observation.parts;
-	// Seeing the server is the answer to whatever the last attempt ran into.
-	allocationPatch.stuck = undefined;
-	if (!recording.isCurrentOperation) {
+	if (
+		allocation.deleteRequested ||
+		hetznerCloudAllocation.action !== undefined ||
+		hetznerCloudAllocation.leaseExpiresAt > Date.now()
+	) {
+		return false;
+	}
+	const operation = await ctx.db.get(
+		"serverOperations",
+		allocation.operationId,
+	);
+	return operation !== null && operation.status !== "pending";
+}
+
+/**
+ * Records a server that the inventory scan saw. The scan reads fifty servers in one request,
+ * so an allocation nobody is working on stays current without a request of its own. It writes
+ * down only what was seen: an operation belongs to whoever holds the lease, and a stuck
+ * allocation stays stuck, because seeing the server is no answer to what the work ran into.
+ */
+export async function storeHetznerCloudObservation(
+	ctx: MutationCtx,
+	hetznerCloudAllocation: HetznerCloudAllocation,
+	server: HetznerCloudServer,
+) {
+	const allocation = await ctx.db.get(
+		"serverAllocations",
+		hetznerCloudAllocation.allocationId,
+	);
+	if (allocation === null) {
 		return;
 	}
+	const observed = observeHetznerCloudServer(hetznerCloudAllocation, server);
+	const settled =
+		observed !== null &&
+		(await isSettled(ctx, allocation, hetznerCloudAllocation));
+	await ctx.db.patch("serverAllocations", allocation._id, {
+		...toObservationPatch(observed),
+		// A server that is still changing says nothing about where it will stop.
+		...(settled && server.status !== "changing"
+			? { status: server.status }
+			: {}),
+	});
+}
+
+async function recordObservation(
+	recording: Recording,
+	server: NonNullable<HetznerCloudWorkerUpdate["observation"]>,
+) {
+	const { ctx, allocation, hetznerCloudAllocation, allocationPatch } =
+		recording;
+	const observed = observeHetznerCloudServer(hetznerCloudAllocation, server);
+	Object.assign(allocationPatch, toObservationPatch(observed));
+	if (
+		observed === null ||
+		server.status === "changing" ||
+		!recording.isCurrentOperation
+	) {
+		return;
+	}
+	// Seeing the server as this allocation recorded it is the answer to whatever the last attempt
+	// ran into.
+	allocationPatch.stuck = undefined;
 	if (allocation.deleteRequested) {
 		allocationPatch.status = "deleting";
 		return;
 	}
-	allocationPatch.status = observation.status;
+	allocationPatch.status = server.status;
 	await succeedOperation(ctx, allocation.operationId);
-	recording.hetznerCloudPatch.dueAt = Date.now() + idleMs;
+	// A settled allocation is then left alone. The scan reads every server anyway, which is what
+	// notices a change nobody asked us for, at one request for fifty of them instead of one each.
+	recording.hetznerCloudPatch.dueAt = never;
 }
 
 /**

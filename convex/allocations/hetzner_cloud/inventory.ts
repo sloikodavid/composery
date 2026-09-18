@@ -14,15 +14,19 @@ import {
 	listHetznerCloudResources,
 	requireHetznerCloudController,
 } from "./api";
+import { hetznerCloudServerState } from "./observation";
 import type { hetznerCloudFindingReason } from "./schema";
 import {
 	getHetznerCloudAllocation,
 	hetznerCloudWorkPool,
+	storeHetznerCloudObservation,
 } from "./worker_state";
 
 const scanLeaseMs = 120_000;
+// The scan never stops walking: it is what keeps every allocation current, so the last page of a
+// cycle is followed by the first page of the next one. One page every ten seconds costs the same
+// whatever the fleet is, and how long a cycle takes is how old an observation can be.
 const pageDelayMs = 10_000;
-const cycleDelayMs = 300_000;
 const errorDelayMs = 300_000;
 const requestsPerScan = 2;
 
@@ -30,10 +34,14 @@ const scannedResource = v.object({
 	id: v.number(),
 	allocationId: v.string(),
 	kind: v.string(),
+	// A page of servers already says what each one is doing, so an allocation nobody is working on
+	// stays current for the price of one request per fifty servers rather than one request each.
+	server: v.optional(hetznerCloudServerState),
 });
 
 type ScannedResource = Infer<typeof scannedResource>;
 type Scan = Doc<"hetznerCloudScans">;
+type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
 
 const nextCollections = {
 	servers: "primary_ips",
@@ -91,23 +99,33 @@ export const sweep = internalMutation({
 	},
 });
 
-async function checkResource(
+/** What this backend holds for the allocation named on a resource, when that name is one of ours. */
+async function getScannedAllocation(
 	ctx: MutationCtx,
-	scan: Scan,
 	resource: ScannedResource,
-): Promise<Infer<typeof hetznerCloudFindingReason> | null> {
+) {
 	const allocationId = ctx.db.normalizeId(
 		"serverAllocations",
 		resource.allocationId,
 	);
+	return allocationId === null
+		? null
+		: await getHetznerCloudAllocation(ctx, allocationId);
+}
+
+async function checkResource(
+	ctx: MutationCtx,
+	scan: Scan,
+	resource: ScannedResource,
+	hetznerCloudAllocation: HetznerCloudAllocation | null,
+): Promise<Infer<typeof hetznerCloudFindingReason> | null> {
 	const allocation =
-		allocationId === null
+		hetznerCloudAllocation === null
 			? null
-			: await ctx.db.get("serverAllocations", allocationId);
-	const hetznerCloudAllocation =
-		allocationId === null
-			? null
-			: await getHetznerCloudAllocation(ctx, allocationId);
+			: await ctx.db.get(
+					"serverAllocations",
+					hetznerCloudAllocation.allocationId,
+				);
 	if (
 		allocation === null ||
 		hetznerCloudAllocation === null ||
@@ -135,6 +153,34 @@ async function checkResource(
 		return null;
 	}
 	return "unexpected_resource";
+}
+
+/**
+ * Keeps an allocation's own record of its server current from the page the scan already read.
+ * Only what was seen is written: an operation is still the worker's to carry out and to finish,
+ * because it holds the lease that decides whose answer is the current one.
+ */
+async function recordScannedServer(
+	ctx: MutationCtx,
+	scan: Scan,
+	resource: ScannedResource,
+	hetznerCloudAllocation: HetznerCloudAllocation | null,
+) {
+	const recorded = hetznerCloudAllocation?.resources.server;
+	if (
+		resource.server === undefined ||
+		hetznerCloudAllocation === null ||
+		hetznerCloudAllocation.controllerId !== scan.controllerId ||
+		recorded?.status !== "present" ||
+		recorded.id !== resource.server.id
+	) {
+		return;
+	}
+	await storeHetznerCloudObservation(
+		ctx,
+		hetznerCloudAllocation,
+		resource.server,
+	);
 }
 
 async function recordFinding(
@@ -196,20 +242,20 @@ export const record = internalMutation({
 			return null;
 		}
 		for (const resource of resources) {
+			const hetznerCloudAllocation = await getScannedAllocation(ctx, resource);
 			await recordFinding(
 				ctx,
 				scan,
 				resource,
-				await checkResource(ctx, scan, resource),
+				await checkResource(ctx, scan, resource, hetznerCloudAllocation),
 			);
+			await recordScannedServer(ctx, scan, resource, hetznerCloudAllocation);
 		}
-		const isCycleFinished =
-			nextPage === null && scan.collection === "primary_ips";
 		await ctx.db.patch("hetznerCloudScans", scan._id, {
 			page: nextPage ?? 1,
 			collection:
 				nextPage === null ? nextCollections[scan.collection] : scan.collection,
-			dueAt: Date.now() + (isCycleFinished ? cycleDelayMs : pageDelayMs),
+			dueAt: Date.now() + pageDelayMs,
 			error: undefined,
 		});
 		return null;

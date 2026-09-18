@@ -12,7 +12,7 @@ import {
 import { renderCloudInit } from "../../ssh/cloud_init";
 import { SshAccessError } from "../../ssh/errors";
 import type { FailureClass } from "../retries";
-import type { allocationParts, powerOperationKind } from "../schema";
+import type { powerOperationKind } from "../schema";
 import {
 	createHetznerCloudResource,
 	findHetznerCloudResource,
@@ -22,12 +22,12 @@ import {
 	HetznerCloudError,
 	type HetznerCloudOwner,
 	type HetznerCloudResource,
-	type HetznerCloudServer,
 	requireHetznerCloudController,
 	resolveHetznerCloudSpec,
 	sendHetznerCloudDelete,
 	sendHetznerCloudPower,
 } from "./api";
+import { observeHetznerCloudServer } from "./observation";
 import type { hetznerCloudResourceKind } from "./schema";
 import {
 	type HetznerCloudWorkerUpdate,
@@ -332,72 +332,10 @@ async function stepPower(
 }
 
 /**
- * What Hetzner says about each part of this allocation, in our own words. An address somebody
- * detached, or rules somebody took off, is a part that is not as it should be: it does not stop the
- * server being seen, and it does not stop a power command that has nothing to do with it. A server
- * of another type or in another place is the one thing that stops everything, because it is not
- * the server this allocation recorded.
+ * Looks at the server, and either carries the operation one step further or reports what was seen.
+ * A server that cannot be looked at, or that is not the one this allocation recorded, is a failure
+ * to come back to rather than an observation, because nothing here was confirmed.
  */
-/**
- * Hetzner takes a few seconds to apply rules it has been given, so one on its way is not yet
- * anything to say about.
- */
-function toFirewallPart(
-	firewall: HetznerCloudServer["firewalls"][number] | undefined,
-) {
-	if (firewall === undefined) {
-		return "missing" as const;
-	}
-	return firewall.isApplied ? ("ok" as const) : ("unknown" as const);
-}
-
-function checkServer(
-	hetznerCloudAllocation: HetznerCloudAllocation,
-	server: HetznerCloudServer,
-):
-	| { failure: HetznerCloudWorkerUpdate }
-	| {
-			parts: Infer<typeof allocationParts>;
-			addresses: { ipv4?: string; ipv6?: string };
-	  } {
-	const { resources, spec, firewallId } = hetznerCloudAllocation;
-	if (
-		server.serverType !== spec?.serverType ||
-		server.location !== spec?.location
-	) {
-		return {
-			failure: toFailure("server_configuration_mismatch", "waiting"),
-		};
-	}
-	const recorded = {
-		ipv4: resources.ipv4.status === "present" ? resources.ipv4.id : 0,
-		ipv6: resources.ipv6.status === "present" ? resources.ipv6.id : 0,
-	};
-	const keptAddresses =
-		server.ipv4?.id === recorded.ipv4 && server.ipv6?.id === recorded.ipv6;
-	const firewall = server.firewalls.find(
-		(attached) => attached.id === firewallId,
-	);
-	// Hetzner takes a few seconds to apply rules it has been given, so one that is on its way is
-	// not yet anything to say.
-	const firewallPart = toFirewallPart(firewall);
-	return {
-		parts: {
-			server: "ok",
-			addresses: keptAddresses ? "ok" : "mismatch",
-			firewall: firewallPart,
-		},
-		addresses: {
-			...(keptAddresses && server.ipv4 !== null
-				? { ipv4: server.ipv4.address }
-				: {}),
-			...(keptAddresses && server.ipv6 !== null
-				? { ipv6: server.ipv6.address }
-				: {}),
-		},
-	};
-}
-
 async function observeServer(
 	ctx: ActionCtx,
 	lease: Lease,
@@ -413,20 +351,11 @@ async function observeServer(
 	if (server.status === "changing") {
 		return toFailure("server_status_changing", "transient");
 	}
-	const checked = checkServer(hetznerCloudAllocation, server);
-	if ("failure" in checked) {
-		return checked.failure;
+	if (observeHetznerCloudServer(hetznerCloudAllocation, server) === null) {
+		return toFailure("server_configuration_mismatch", "waiting");
 	}
 	const powerUpdate = await stepPower(ctx, lease, server.id, server.status);
-	return (
-		powerUpdate ?? {
-			observation: {
-				status: server.status,
-				parts: checked.parts,
-				...checked.addresses,
-			},
-		}
-	);
+	return powerUpdate ?? { observation: server };
 }
 
 async function step(

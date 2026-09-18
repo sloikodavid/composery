@@ -93,6 +93,8 @@ export type HetznerFake = Fake &
 		 * server keeps running; what changes is what it is protected by.
 		 */
 		detachFirewall: (serverId: number) => void;
+		/** Stops one server without Composery asking, as an admin can in Hetzner's own console. */
+		stopServer: (serverId: number) => void;
 	}>;
 
 export async function startHetznerFake(): Promise<HetznerFake> {
@@ -326,6 +328,13 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		...fake,
 		detachFirewall: (serverId) => {
 			detachedFirewalls.add(serverId);
+		},
+		stopServer: (serverId) => {
+			const resource = resources.get(serverId);
+			if (resource === undefined) {
+				throw new Error(`Hetzner holds no server ${serverId}.`);
+			}
+			resource.status = "off";
 		},
 	};
 }

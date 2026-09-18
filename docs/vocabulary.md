@@ -24,6 +24,10 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `backend` | The mechanism that makes an allocation real, such as `hetznerCloud` | version, v1, v2 |
 | `provider` | The company and API that a backend calls, such as Hetzner | vendor |
 | `resource` | One thing that a backend owns at its provider | |
+| `part` | One piece of an allocation that can be right or wrong on its own: the server, its addresses, the project's rules, and Composery's management access | component, aspect |
+| `feature` | Something a member can do with a server, such as power or SSH keys, worked out from the parts | capability, action |
+| `observation` | What one look at an allocation said about it, and when it was seen | poll, check |
+| `scan` | One walk through every resource that a controller labelled at its provider, a page at a time | sweep, which enqueues work that is due |
 | `notice` | A statement that a state needs someone's attention, addressed to whoever can act on it. Where it appears is an attribute of it | notification, alert |
 | `finding` | Evidence about an unknown resource, for admin review | alert |
 | `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
@@ -53,7 +57,6 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
 | `harness` | Test code that starts, isolates, and stops what tests need, such as an SSH server or a Convex backend | fixture |
 | `fake` | A working, simplified copy of another system that tests run instead of it, in the sense the xUnit test patterns give the word. It may be told what to answer for one request, and it never decides whether a test passes | mock, stub, stand-in |
-| `live test` | A test that reaches the real outside system, costs money or quota, and never runs from plain `bun test` | lane, smoke test |
 | `session` | A recorded exchange between a person and an AI assistant, kept in `docs/sessions/` | conversation, transcript, research |
 | `turn` | What one side of a session says before the other answers | |
 | `session event` | A point in a session that neither side said, such as a command, an interruption, or a compaction | |
@@ -103,7 +106,9 @@ JavaScript reserves `delete`, so a registered Convex function that deletes is na
 
 ## Status words
 
-A command is a verb (`create`), its progress adds `-ing` (`creating`), and its outcome describes the result (`running`, `stopped`, `deleted`). Operation outcomes are `pending`, `succeeded`, `blocked`, and `superseded`. Whether a resource exists is `pending`, `uncertain`, `present`, or `absent`. All of these are `status`, never `state` or `phase`.
+A command is a verb (`create`), its progress adds `-ing` (`creating`), and its outcome describes the result (`running`, `stopped`, `deleted`). Operation outcomes are `pending`, `succeeded`, `blocked`, and `superseded`. Whether a resource exists is `pending`, `uncertain`, `present`, or `absent`. One part of an allocation is `ok`, `missing`, `mismatch`, or `unknown`. All of these are `status`, never `state` or `phase`.
+
+An allocation with nothing in flight has `settled`, and one that keeps running into the same thing is `stuck`. Neither is a status: settling is a question asked of the lease and the operation, and `stuck` is a record of what stopped it and since when.
 
 ## External words
 
