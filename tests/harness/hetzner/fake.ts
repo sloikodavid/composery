@@ -1,5 +1,6 @@
 import { hetznerContract } from "../../../contracts/hetzner";
 import { type Fake, type FakeReply, startFake } from "../fake";
+import { getHetznerToken, toHetznerForward } from "./real";
 import {
 	toActionReply,
 	toFirewallReply,
@@ -310,10 +311,15 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		return notFound();
 	};
 
+	// A run given a token for a project of its own asks Hetzner itself, through the same fake, so
+	// the requests are still counted, the answers are still held to Hetzner's description, and a
+	// test that loses a reply loses a real one.
+	const token = getHetznerToken();
 	const fake = await startFake({
 		system: "Hetzner",
 		checker: hetznerContract,
 		answer: (request) => answer(request.method, request.path, request.body),
+		...(token === null ? {} : { forward: toHetznerForward(token) }),
 	});
 
 	return {

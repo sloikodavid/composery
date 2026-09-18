@@ -78,6 +78,13 @@ export type FakeOptions = Readonly<{
 	system: string;
 	checker: ContractChecker;
 	answer: (request: FakeRequest) => FakeReply;
+	/**
+	 * The real system, when a run was given its credentials. Every request is passed on and every
+	 * answer is the system's own, so the same tests ask the same questions of the thing itself:
+	 * what it accepts, what it sends back, and how long it takes. What a test scripts still
+	 * happens, which is how a reply that never arrives is a real one that never arrives.
+	 */
+	forward?: (request: FakeRequest) => Promise<FakeReply>;
 	/** Anything else this system promises about a request, such as a version header. */
 	check?: (request: FakeRequest) => readonly string[];
 }>;
@@ -127,7 +134,12 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		return script.outcome;
 	};
 
-	const handle = (
+	const answer = async (request: FakeRequest) =>
+		options.forward === undefined
+			? options.answer(request)
+			: await options.forward(request);
+
+	const handle = async (
 		incoming: IncomingMessage,
 		response: ServerResponse,
 		body: unknown,
@@ -152,7 +164,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		const outcome = takeScript(request);
 		if (outcome === "lose") {
 			// The system did the work; the answer never arrives. Composery must not assume it failed.
-			options.answer(request);
+			await answer(request);
 			incoming.socket.destroy();
 			return;
 		}
@@ -160,7 +172,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			send(response, outcome);
 			return;
 		}
-		const reply = options.answer(request);
+		const reply = await answer(request);
 		// The system's own description decides whether it could have sent this.
 		options.checker.listReplyProblems(
 			method,
@@ -172,7 +184,9 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 	};
 
 	const server = createServer((incoming, response) => {
-		void readBody(incoming).then((body) => handle(incoming, response, body));
+		void readBody(incoming).then(
+			async (body) => await handle(incoming, response, body),
+		);
 	});
 	const stop = () => {
 		server.closeAllConnections();

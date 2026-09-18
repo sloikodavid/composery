@@ -37,6 +37,7 @@ import type { ClerkUser } from "../clerk/replies";
 import { type SignInIssuer, startSignInIssuer } from "../clerk/sign-in";
 import type { Fake } from "../fake";
 import { useHetznerFake } from "../hetzner/fake";
+import { createHetznerRun, getHetznerToken } from "../hetzner/real";
 import { convexBackendAssets, convexBackendVersion } from "../pins";
 
 const repositoryRoot = path.resolve(import.meta.dir, "..", "..", "..");
@@ -471,12 +472,28 @@ function toSshAccessEncryptionKeys() {
 	] as const;
 }
 
-function toDeploymentVariables(
-	issuer: SignInIssuer,
-	fake: Fake,
-	clerk: ClerkFake,
-	sshAccessEncryptionKeys: readonly string[],
-) {
+type HetznerProject = Readonly<{ controllerId: string; firewallId: number }>;
+
+const fakeHetznerProject: HetznerProject = {
+	controllerId: fakeControllerId,
+	firewallId: fakeFirewallId,
+};
+
+type World = Readonly<{
+	issuer: SignInIssuer;
+	fake: Fake;
+	clerk: ClerkFake;
+	sshAccessEncryptionKeys: readonly string[];
+	hetzner: HetznerProject;
+}>;
+
+function toDeploymentVariables({
+	issuer,
+	fake,
+	clerk,
+	sshAccessEncryptionKeys,
+	hetzner,
+}: World) {
 	return {
 		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
 		CLERK_FRONTEND_API_URL: issuer.url,
@@ -485,8 +502,8 @@ function toDeploymentVariables(
 		CLERK_API_URL: clerk.url,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
 		HCLOUD_LOCATIONS: fakeLocations,
-		HCLOUD_FIREWALL_ID: String(fakeFirewallId),
-		HCLOUD_CONTROLLER_ID: fakeControllerId,
+		HCLOUD_FIREWALL_ID: String(hetzner.firewallId),
+		HCLOUD_CONTROLLER_ID: hetzner.controllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
 		HCLOUD_FAKE_URL: fake.url,
 		SSH_ACCESS_ENCRYPTION_KEYS: sshAccessEncryptionKeys.join(","),
@@ -617,7 +634,13 @@ async function requireStorageTemplate(context: RunContext) {
 		await setEnvironmentVariables(
 			context,
 			backend,
-			toDeploymentVariables(issuer, fake, clerk, toSshAccessEncryptionKeys()),
+			toDeploymentVariables({
+				issuer,
+				fake,
+				clerk,
+				sshAccessEncryptionKeys: toSshAccessEncryptionKeys(),
+				hetzner: fakeHetznerProject,
+			}),
 		);
 		await pushFunctions(context, backend, "template-workspace");
 	} finally {
@@ -710,10 +733,23 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
 	const sshAccessEncryptionKeys = toSshAccessEncryptionKeys();
+	// A run given a token works in a project of its own, with its own controller identifier and its
+	// own firewall. Without one, the fake answers and both are made up.
+	const hetznerToken = getHetznerToken();
+	const hetzner =
+		hetznerToken === null
+			? fakeHetznerProject
+			: await createHetznerRun(hetznerToken);
 	await setEnvironmentVariables(
 		context,
 		backend,
-		toDeploymentVariables(issuer, fake, clerk, sshAccessEncryptionKeys),
+		toDeploymentVariables({
+			issuer,
+			fake,
+			clerk,
+			sshAccessEncryptionKeys,
+			hetzner,
+		}),
 	);
 	await pushFunctions(context, backend, "workspace");
 

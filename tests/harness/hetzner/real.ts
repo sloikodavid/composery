@@ -1,0 +1,114 @@
+import { randomBytes } from "node:crypto";
+import { registerCleanup } from "../cleanup";
+import type { FakeReply, FakeRequest } from "../fake";
+
+/**
+ * The real Hetzner Cloud API, for a run that was given a token for it. Everything here is about a
+ * project that holds nothing else: the run labels what it makes, removes it at the end, and removes
+ * what an earlier run left behind, so anything still in that project is a leak somebody can see.
+ *
+ * Put the token in `.env.hetzner` and pass it to one run:
+ * `bun --env-file=.env.hetzner test tests/convex/allocations`.
+ */
+
+const apiUrl = "https://api.hetzner.cloud/v1";
+const controllerPrefix = "test-";
+const runTagBytes = 5;
+const leftoverAgeMs = 3_600_000;
+const collections = ["servers", "primary_ips", "firewalls"] as const;
+const httpNoContent = 204;
+
+type Collection = (typeof collections)[number];
+type Owned = { id: number; created: string; labels: Record<string, string> };
+
+/** The token for the project the tests may use, when a run was given one. */
+export function getHetznerToken() {
+	const token = process.env.HCLOUD_TOKEN;
+	return token === undefined || token === "" ? null : token;
+}
+
+async function call(
+	token: string,
+	method: string,
+	path: string,
+	body?: unknown,
+) {
+	const reply = await fetch(`${apiUrl}${path}`, {
+		method,
+		headers: {
+			authorization: `Bearer ${token}`,
+			...(body === undefined ? {} : { "content-type": "application/json" }),
+		},
+		...(body === undefined ? {} : { body: JSON.stringify(body) }),
+	});
+	const text = await reply.text();
+	return {
+		status: reply.status,
+		body: text === "" ? null : (JSON.parse(text) as unknown),
+	};
+}
+
+/** Passes one request on to Hetzner and brings back exactly what Hetzner said. */
+export function toHetznerForward(token: string) {
+	return async (request: FakeRequest): Promise<FakeReply> =>
+		await call(token, request.method, request.path, request.body);
+}
+
+async function listOwned(token: string, collection: Collection) {
+	const { body } = await call(
+		token,
+		"GET",
+		`${collection.startsWith("/") ? "" : "/"}${collection}?per_page=50`,
+	);
+	const held = (body as Record<string, Owned[]> | null)?.[collection] ?? [];
+	return held.filter((item) =>
+		(item.labels["controller-id"] ?? "").startsWith(controllerPrefix),
+	);
+}
+
+async function remove(token: string, collection: Collection, id: number) {
+	const { status } = await call(token, "DELETE", `/${collection}/${id}`);
+	return status < httpNoContent + 1;
+}
+
+/**
+ * Removes what this run made, and what a run that was killed left behind. A server is deleted
+ * first: Hetzner frees the addresses it held, and a firewall still applied to it cannot go.
+ */
+export async function removeHetznerLeftovers(
+	token: string,
+	controllerId: string | null,
+) {
+	const isOurs = (item: Owned) =>
+		controllerId === null
+			? Date.now() - Date.parse(item.created) > leftoverAgeMs
+			: item.labels["controller-id"] === controllerId;
+	for (const collection of collections) {
+		for (const item of (await listOwned(token, collection)).filter(isOurs)) {
+			await remove(token, collection, item.id);
+		}
+	}
+}
+
+/**
+ * Makes this run its own place in the project: one controller identifier that belongs to it alone,
+ * and one firewall labelled with that, because the deployment refuses a firewall that is not its
+ * own. What an earlier run left behind goes first, and what this one makes goes at the end.
+ */
+export async function createHetznerRun(token: string) {
+	const controllerId = `${controllerPrefix}${randomBytes(runTagBytes).toString("hex")}`;
+	await removeHetznerLeftovers(token, null);
+	const { body } = await call(token, "POST", "/firewalls", {
+		name: controllerId,
+		labels: { "controller-id": controllerId },
+		rules: [],
+	});
+	const firewall = (body as { firewall?: { id?: number } } | null)?.firewall;
+	if (firewall?.id === undefined) {
+		throw new Error(`Hetzner did not make a firewall: ${JSON.stringify(body)}`);
+	}
+	registerCleanup(async () => {
+		await removeHetznerLeftovers(token, controllerId);
+	});
+	return { controllerId, firewallId: firewall.id };
+}
