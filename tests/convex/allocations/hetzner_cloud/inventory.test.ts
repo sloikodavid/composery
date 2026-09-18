@@ -20,13 +20,16 @@ import {
 } from "../../../../harness/servers";
 
 const setupTimeoutMs = 600_000;
-const testTimeoutMs = 300_000;
+const testTimeoutMs = 600_000;
 // A cycle is one page of servers and one of addresses, ten seconds apart, so a fleet this size
-// comes round about every twenty seconds.
-const scanTimeoutMs = 120_000;
+// comes round about every twenty seconds. The bound is longer than that: a sweep takes the
+// scan's lease before its run starts, so a run that waits behind other work holds the lease
+// for its two minutes, and the worst a change can wait is that lease and then a cycle.
+const scanTimeoutMs = 240_000;
 const scanDelayMs = 250;
 // The deployment paces its own scan; asking for a sweep faster than that spends nothing.
 const sweepEveryMs = 2000;
+const pageTrailLength = 6;
 
 let backend: ConvexBackend;
 let fake: HetznerFake;
@@ -60,7 +63,15 @@ async function scanUntil(
 		}
 		await Bun.sleep(scanDelayMs);
 	}
-	throw new Error(`The scan left the server ${status}.`);
+	// What the scan did while it was waited on: a page it never read is a different fault from
+	// a page it read and made nothing of.
+	const pages = fake
+		.requests()
+		.slice(-pageTrailLength)
+		.map((request) => `${request.method} ${request.path.slice(0, 60)}`);
+	throw new Error(
+		`The scan left the server ${status}, after ${pages.length} pages: ${pages.join(" ;; ")}`,
+	);
 }
 
 test(
