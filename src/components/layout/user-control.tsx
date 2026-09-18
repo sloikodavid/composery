@@ -16,6 +16,7 @@ export function UserControl() {
 		clerk.redirectToSignIn().catch((error: unknown) => {
 			console.error("Could not open the sign-in page.", error);
 			toastManager.add({
+				id: "signInOpenFailed",
 				title: "Could not open the sign-in page",
 				description: "Try again.",
 			});

@@ -30,6 +30,7 @@ function CurrentUserSync() {
 			syncCurrentUser().catch((error: unknown) => {
 				console.error("Could not sync the signed-in user.", error);
 				toastManager.add({
+					id: "accountSyncFailed",
 					title: "Could not load your account",
 					description: "Reload the page to try again.",
 				});

@@ -22,50 +22,76 @@
 	--font-wordmark:
 		var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
 
-	--color-brand-hover: oklch(from var(--color-brand) calc(l - 0.04) c h);
-	--color-brand-active: oklch(from var(--color-brand) calc(l - 0.08) c h);
+	--color-brand-hover: oklch(from var(--color-brand) calc(l - 0.07) c h);
+	--color-brand-active: oklch(from var(--color-brand) calc(l - 0.14) c h);
 	--color-brand-foreground: var(--color-white);
+	--color-danger: var(--app-danger);
+	--color-danger-hover: var(--app-danger-hover);
+	--color-danger-active: var(--app-danger-active);
+	--color-danger-foreground: var(--app-danger-foreground);
+	--color-danger-text: var(--app-danger-text);
+	--color-danger-surface-hover: var(--app-danger-surface-hover);
+	--color-danger-surface-active: var(--app-danger-surface-active);
 
-	--color-background: var(--background);
-	--color-foreground: var(--foreground);
-	--color-muted: var(--muted);
+	--color-background: var(--app-background);
+	--color-foreground: var(--app-foreground);
+	--color-muted: var(--app-muted);
+	--color-muted-surface: var(--app-muted-surface);
 
-	--color-border: var(--border);
-	--color-border-hover: var(--border-hover);
-	--color-border-active: var(--border-active);
+	--color-border: var(--app-border);
+	--color-control-border: var(--app-control-border);
+	--color-control-border-hover: var(--app-control-border-hover);
+	--color-control-border-active: var(--app-control-border-active);
+	--color-input-border-focus: var(--app-input-border-focus);
+	--color-focus: var(--app-focus);
 
-	--color-surface: var(--surface);
-	--color-surface-hover: var(--surface-hover);
-	--color-surface-active: var(--surface-active);
+	--color-surface: var(--app-surface);
+	--color-surface-hover: var(--app-surface-hover);
+	--color-surface-active: var(--app-surface-active);
+	--color-split-panel-content: var(--app-split-panel-content);
+	--color-split-panel-navigation: var(--app-split-panel-navigation);
 
-	--color-primary: var(--primary);
-	--color-primary-hover: var(--primary-hover);
-	--color-primary-active: var(--primary-active);
-	--color-primary-foreground: var(--primary-foreground);
+	--color-primary: var(--app-primary);
+	--color-primary-hover: var(--app-primary-hover);
+	--color-primary-active: var(--app-primary-active);
+	--color-primary-foreground: var(--app-primary-foreground);
 }
 
 /*
- * Neutrals are steps of Tailwind's stone palette. Dark mode uses the mirrored
- * step (50 and 950, 200 and 800), and every hover or active state is one step
- * further toward the foreground than the state before it.
+ * Neutrals use Tailwind's stone palette. Each interactive state moves toward
+ * the foreground; its step is selected by the visible change, not by numeric symmetry.
  */
 :root {
-	--background: var(--color-stone-50);
-	--foreground: var(--color-stone-950);
-	--muted: var(--color-stone-600);
+	--app-background: var(--color-stone-50);
+	--app-foreground: var(--color-stone-950);
+	--app-muted: var(--color-stone-600);
+	--app-muted-surface: var(--color-stone-100);
 
-	--border: var(--color-stone-200);
-	--border-hover: var(--color-stone-400);
-	--border-active: var(--color-stone-500);
+	--app-border: var(--color-stone-200);
+	--app-control-border: var(--color-stone-200);
+	--app-control-border-hover: var(--color-stone-300);
+	--app-control-border-active: var(--color-stone-400);
+	--app-input-border-focus: var(--color-stone-400);
+	--app-focus: var(--color-stone-500);
 
-	--surface: var(--color-white);
-	--surface-hover: var(--color-stone-100);
-	--surface-active: var(--color-stone-200);
+	--app-surface: var(--color-white);
+	--app-surface-hover: var(--color-stone-100);
+	--app-surface-active: var(--color-stone-200);
+	--app-split-panel-content: var(--app-surface);
+	--app-split-panel-navigation: var(--app-background);
 
-	--primary: var(--color-stone-950);
-	--primary-hover: var(--color-stone-800);
-	--primary-active: var(--color-stone-700);
-	--primary-foreground: var(--color-stone-50);
+	--app-primary: var(--color-stone-950);
+	--app-primary-hover: var(--color-stone-700);
+	--app-primary-active: var(--color-stone-600);
+	--app-primary-foreground: var(--color-stone-50);
+
+	--app-danger: var(--color-red-600);
+	--app-danger-hover: var(--color-red-700);
+	--app-danger-active: var(--color-red-800);
+	--app-danger-foreground: var(--color-white);
+	--app-danger-text: var(--color-red-600);
+	--app-danger-surface-hover: var(--color-red-50);
+	--app-danger-surface-active: var(--color-red-100);
 
 	/*
 	 * The color the glow keeps where its shapes have thinned out. The brand color thinned toward the page turns brown
@@ -76,26 +102,39 @@
 	);
 
 	@media (prefers-color-scheme: dark) {
-		--background: var(--color-stone-950);
-		--foreground: var(--color-stone-50);
-		--muted: var(--color-stone-400);
+		--app-background: var(--color-stone-950);
+		--app-foreground: var(--color-stone-50);
+		--app-muted: var(--color-stone-400);
+		--app-muted-surface: var(--color-stone-900);
 
-		--border: var(--color-stone-800);
-		--border-hover: var(--color-stone-600);
-		--border-active: var(--color-stone-500);
+		--app-border: var(--color-stone-800);
+		--app-control-border: var(--color-stone-700);
+		--app-control-border-hover: var(--color-stone-600);
+		--app-control-border-active: var(--color-stone-500);
+		--app-input-border-focus: var(--color-stone-600);
 
-		--surface: var(--color-stone-900);
-		--surface-hover: var(--color-stone-800);
-		--surface-active: var(--color-stone-700);
+		--app-surface: color-mix(
+			in oklab,
+			var(--app-background) 75%,
+			var(--color-stone-900)
+		);
+		--app-surface-hover: var(--color-stone-900);
+		--app-surface-active: var(--color-stone-800);
+		--app-split-panel-content: var(--app-background);
+		--app-split-panel-navigation: var(--app-surface);
 
 		--glow-halo: oklch(
 			from var(--color-brand) calc(l - 0.13) calc(c * 0.9) calc(h - 5)
 		);
 
-		--primary: var(--color-stone-50);
-		--primary-hover: var(--color-stone-200);
-		--primary-active: var(--color-stone-300);
-		--primary-foreground: var(--color-stone-950);
+		--app-primary: var(--color-stone-50);
+		--app-primary-hover: var(--color-stone-300);
+		--app-primary-active: var(--color-stone-400);
+		--app-primary-foreground: var(--color-stone-950);
+
+		--app-danger-text: var(--color-red-400);
+		--app-danger-surface-hover: var(--color-red-950);
+		--app-danger-surface-active: var(--color-red-900);
 	}
 }
 
@@ -118,12 +157,15 @@
 		@apply font-heading tracking-display;
 	}
 
-	:focus-visible {
-		@apply outline-2 outline-foreground outline-offset-2;
-	}
-
 	::selection {
 		@apply bg-brand text-brand-foreground;
+	}
+}
+
+@layer utilities {
+	:focus-visible {
+		outline: 1px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 }
 
