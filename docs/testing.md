@@ -85,7 +85,7 @@ The fake answers what Composery asks, and produces what Hetzner cannot be asked 
 
 Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
 
-Hetzner itself is still to be tested, with a separate token and project, and never from plain `bun test`.
+The same tests can meet Hetzner itself, and never from plain `bun test`. Given a token in `.env.hetzner`, passed to one run with `bun --env-file=.env.hetzner test tests/convex/allocations`, the fake passes every request on to Hetzner and brings back exactly what Hetzner said: the tests do not change, the contract still holds both halves, and a test that loses a reply loses a real one. The run makes its own firewall, labels everything it creates with its own identity, removes all of it at the end, and removes what a killed run left behind, so anything still in that project is a leak. `docs/setups/hetzner-cloud.md` says what the project needs. Nobody has run it yet, which `docs/roadmap.md` says as well, so nothing here has met the real provider since the harness was built.
 
 ## Clerk
 

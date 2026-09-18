@@ -17,11 +17,18 @@ The initial Ubuntu image must include Python 3 and cloud-init. Allow outbound HT
 
 Do not delete or change the controller label on the shared firewall while it manages allocations. If it must be replaced, reconcile existing allocations with the replacement deliberately; changing the environment variable alone does not rewrite stored allocation bindings. Rotate tokens within the same project. Moving to another project is not token rotation.
 
-## Local verification
+## A project for the tests
 
-An authenticated Convex CLI can retrieve `HCLOUD_TOKEN` into a private subprocess or shell variable for local API checks. Capture stdout without displaying it, use it only in authorization headers, and discard it. Never print environment values, raw create responses, root passwords, or authorization headers. A second persistent token copy in `.env.local` is unnecessary.
+Tests reach a fake by default and can reach Hetzner itself for one run. That run needs a project of its own, holding nothing else, so that what it removes can be everything it finds.
 
-Use one disposable CX23 at a time and the agreed approximately EUR 1 total ceiling. Verify the provider VM and both Primary IP IDs are absent after deletion, including after interrupted tests. Stopping a VM does not end its allocation charges. Leave the shared `servers` firewall in place.
+1. Create a second Hetzner Cloud project, used by nothing that anybody depends on.
+2. In its **Security > API Tokens**, create a **Read & Write** token.
+3. Copy `.env.hetzner.example` to `.env.hetzner`, which is ignored by git, and put the token in `HCLOUD_TOKEN`. Nothing loads that file on its own: a plain `bun test` must not be able to reach a real project, spend money, or leave anything behind.
+4. Run `bun --env-file=.env.hetzner test tests/convex/allocations`.
+
+The run makes its own firewall and labels everything it creates with its own identity, removes all of it at the end, and removes what a run that was killed left behind. Anything still in that project afterwards is a leak, and it is visible as one. Nothing else in the repository needs a Hetzner token, and none is needed to run the tests.
+
+One CX23 exists at a time, for the minutes a test takes. Stopping a server does not end its charges, and only deleting it does. Never print environment values, raw create responses, root passwords, or authorization headers; an authenticated Convex CLI can put a deployment's token into a subprocess for a check, without showing it.
 
 Guest login is a separate check from provider running state. A host key callback proves neither inbound reachability nor login. Do not open inbound ports beyond the firewall rules above to make a check pass.
 

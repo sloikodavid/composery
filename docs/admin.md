@@ -18,7 +18,7 @@ Every one of these is `convex run <path> '<arguments>'`, or the equivalent in th
 | `convex data <table>` | read what the deployment holds |
 | `convex env set` / `remove` | change a deployment's settings, including the encryption keys |
 
-Reading a blocked allocation means reading `hetznerCloudAllocations` for its `error` and `hetznerErrorCode`, which name what the provider said.
+An allocation that is not moving says so in `serverAllocations`, with the code and the day it stopped; what the provider itself said is in `hetznerCloudAllocations`, as `error` and `hetznerErrorCode`.
 
 ## What an admin deliberately cannot do
 
@@ -26,8 +26,4 @@ Reading a blocked allocation means reading `hetznerCloudAllocations` for its `er
 - **Delete a resource a finding names.** A finding is evidence for a person, and the controller never acts on one. An admin who decides a resource is not ours removes it at the provider by hand.
 - **Read a secret.** Stored secrets are encrypted with a key held in the deployment's settings, and nothing returns the plaintext.
 
-## What is missing
-
-Nothing tells an admin that any of this is needed; `docs/notices.md` has the inventory. Until that exists, the operations above are found by looking, which does not scale past the person who wrote them.
-
-There is also no record of an admin having acted. `retry` leaves a new epoch and `setForUser` leaves a quota row, but neither says who did it or why, which is the first thing wanted the second time somebody asks.
+Nothing tells an admin that any of this is needed, and nothing records that an admin acted. Both are in `docs/roadmap.md`, with what they cost and what they wait on.

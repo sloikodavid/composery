@@ -10,8 +10,8 @@ Every row here exists in the code today, is recorded, and reaches nobody.
 
 | State | Who can act | What they would do |
 |---|---|---|
-| An allocation is `blocked` | admin | read the recorded error, fix the difference at the provider, or retry it |
-| An allocation is `missing` | admin | establish whether the server is really gone |
+| An allocation is stuck: it has run into the same thing often enough to say so | admin | read the recorded error, fix the difference at the provider, or retry it |
+| A part of an allocation is missing or is not what was recorded | admin | establish what happened to it at the provider |
 | A `hetznerCloudFindings` row: a resource at the provider that Composery does not own | admin | decide whether it is ours, and remove it by hand if not |
 | A stored secret names an encryption key the deployment no longer holds | admin | put the key back in `SSH_ACCESS_ENCRYPTION_KEYS` |
 | An operation is `blocked` | customer, then admin | know that the thing they asked for did not happen |

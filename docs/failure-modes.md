@@ -15,32 +15,15 @@ An allocation is one server, its two addresses, and Composery's SSH access to it
 
 The middle row is the one to be careful about. Replacing an address looks like repair and is not: it is a customer-visible identifier changing. Panels that hide that cause the damage. The observable sequence is `degraded → a replacement exists → the endpoint changed → access re-established`, never `degraded → healthy`.
 
-## What is built now
-
-- The worker compares what Hetzner reports against what Composery recorded, and refuses to act on a mismatch instead of writing over it.
-- Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it.
-- Nothing repairs anything. An allocation that does not match says so and is tried again, on a schedule that depends on what went wrong; an admin can decide sooner.
-
-Hetzner publishes no webhooks, so the scan is how state at the provider is noticed. Clerk does publish webhooks, and is reconciled hourly as well, because delivery is not guaranteed.
-
-## What is missing, in the order it matters
-
-1. **Say which part is unavailable.** `blocked` means both "we do not know" and "this one part is broken", so a lost management key can stop a power operation that would have worked. The parts of an allocation already have their own status; what is missing is reporting them separately and deriving the customer-facing one, rather than collapsing them. This is worth doing before any repair, because every repair needs to know what is broken. It is also what the rule about not promising more than the system enforces asks for.
-2. **A support runbook.** What a person is told to do for each row above, written before there is anyone to tell. Until it exists, these are answered case by case, which is right while there are no customers and wrong immediately after.
-3. **Restoring management access.** Rescue, driven through the provider's API. Built as an admin action or as something that keeps trying on a schedule, not as a button for the customer: it reboots their server, and the customer did not necessarily do anything wrong. Keeping the customer's system free to be anything does not stop us from putting our own key back on a schedule.
-4. **Replacing an address.** Only after 1, and only with the identity change stated plainly to whoever asks for it.
-
 ## What Composery does about it
 
-The worker compares what the provider reports against what was recorded, and refuses to act on a difference rather than writing over it. An allocation that does not match becomes `blocked`, which stops nothing on the customer's server: it runs, and power and deletion still work. Nothing is given up on. What the failure means decides how long the wait is, from ten seconds for a provider that was busy to an hour for something only a person can change, and the allocation is picked up again after it, so a difference that goes away is acted on without anybody doing anything. An admin can bring that forward with `retry`.
+The worker compares what Hetzner reports against what Composery recorded, and refuses to act on a difference rather than writing over it. Each part of an allocation is reported on its own: the server, its addresses, the project's rules, and Composery's management access. A part that is wrong then stops only what depends on it, so rules somebody took off do not stop a power command, and a management key the customer removed does not stop deletion. What a member can do is worked out from those parts in one place, so nothing offers an ability that is not there and nothing claims a protection the provider is not enforcing.
 
-Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it. Hetzner publishes no webhooks, so scanning and the worker's own polling are how anything at the provider is noticed; Clerk does publish webhooks and is reconciled hourly as well, because delivery is not guaranteed.
+Nothing is given up on. What the failure means decides how long the wait is, from ten seconds for a provider that was busy to an hour for something only a person can change, and the allocation is picked up again after it, so a difference that goes away is acted on without anybody doing anything. An allocation that is stuck says so, with the code the provider sent and since when, and an admin can bring the next attempt forward with `retry`.
 
-Nothing repairs anything, and per `docs/policy.md` nothing is owed. What `blocked` does not do is reach anybody; `docs/notices.md` says what is missing and `docs/admin.md` says what a person can do about it once they know.
+Inventory scans record a resource Composery does not own as a finding for an admin, and never delete it. Hetzner publishes no webhooks, so the scan is how anything at the provider is noticed, including a server that somebody stopped in Hetzner's own console. Clerk does publish webhooks and is reconciled hourly as well, because delivery is not guaranteed.
 
-## What is undecided
-
-When a server is deleted, its row goes and so does its SSH access, but the allocation, its operations and the backend's own row stay, holding a `serverId` that no longer resolves. That may be right: an allocation is the record of what ran a server, billing will want it, and name claims are already kept on purpose. It may also be an oversight. Nothing says which, and the two look identical from the code, so decide it and write one line in `docs/decisions.md`.
+Nothing repairs anything, and per `docs/policy.md` nothing is owed. What none of this does is reach anybody: `docs/notices.md` says what is missing, `docs/admin.md` says what a person can do about it once they know, and `docs/roadmap.md` says where both sit against everything else that is not built.
 
 ## What is decided
 
