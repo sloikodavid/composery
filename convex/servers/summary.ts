@@ -1,8 +1,8 @@
 import { type Infer, v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import {
-	type AllocationPartState,
-	allocationPartState,
+	type AllocationPartStatus,
+	allocationPartStatus,
 	allocationParts,
 } from "../allocations/schema";
 import type { ServerAccess } from "./permissions";
@@ -19,7 +19,7 @@ export const serverPart = v.union(
 export const serverParts = v.object({
 	...allocationParts.fields,
 	/** What Composery's own way in looked like the last time anything used it. */
-	managementAccess: allocationPartState,
+	managementAccess: allocationPartStatus,
 });
 
 /** What a server is to a user who may see it: its name, and what they may do with it. */
@@ -48,7 +48,7 @@ export function toServerSummary(
  * second copy of the rules, and the two would disagree the first time one part changed meaning.
  */
 export const serverFeature = v.object({
-	state: v.union(
+	status: v.union(
 		v.literal("available"),
 		v.literal("unavailable"),
 		v.literal("unknown"),
@@ -68,13 +68,13 @@ export const serverFeatures = v.object({
 
 function toFeature(
 	part: Infer<typeof serverPart>,
-	state: AllocationPartState,
+	status: AllocationPartStatus,
 ): Infer<typeof serverFeature> {
-	if (state === "ok") {
-		return { state: "available" };
+	if (status === "ok") {
+		return { status: "available" };
 	}
 	return {
-		state: state === "unknown" ? "unknown" : "unavailable",
+		status: status === "unknown" ? "unknown" : "unavailable",
 		because: part,
 	};
 }
@@ -87,9 +87,9 @@ export function toServerFeatures(
 		power: server,
 		// Signing in needs the server to be there as well as a way in, so the server answers first.
 		sshKeys:
-			server.state === "available"
+			server.status === "available"
 				? toFeature("managementAccess", parts.managementAccess)
 				: server,
-		deletion: { state: "available" },
+		deletion: { status: "available" },
 	};
 }

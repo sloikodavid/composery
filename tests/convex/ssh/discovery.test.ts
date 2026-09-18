@@ -32,12 +32,12 @@ test(
 		expect(root.sources).toContainEqual({
 			kind: "file",
 			path: rootKeyPath,
-			state: "present",
+			status: "present",
 		});
 		expect(root.sources).toContainEqual({
 			kind: "file",
 			path: "/root/.ssh/authorized_keys2",
-			state: "missing",
+			status: "missing",
 		});
 		expect(discovery.unknowns).toContain(
 			"The SSH server's configuration was read from disk, which the running daemon need not have reloaded.",
@@ -62,7 +62,7 @@ test(
 			expect(root.sources).toContainEqual({
 				kind: "file",
 				path: "/srv/moved/root.keys",
-				state: "present",
+				status: "present",
 			});
 			expect(root.sources).toContainEqual({
 				kind: "command",
@@ -89,7 +89,7 @@ test(
 				expect(root.sources).toContainEqual({
 					kind: "file",
 					path: "/root/.ssh/key file",
-					state: "present",
+					status: "present",
 				});
 				expect(discovery.unknowns).toContain(
 					"A key file's name holds a space, which the SSH server states in a way that cannot be split with certainty.",
@@ -111,12 +111,12 @@ test(
 				expect(root.sources).toContainEqual({
 					kind: "file",
 					path: "/root/.ssh/*.keys",
-					state: "missing",
+					status: "missing",
 				});
 				expect(root.sources).not.toContainEqual({
 					kind: "file",
 					path: "/root/.ssh/one.keys",
-					state: "present",
+					status: "present",
 				});
 			},
 		);
@@ -137,17 +137,17 @@ test(
 				expect(root.sources).toContainEqual({
 					kind: "file",
 					path: "/srv/open/keys",
-					state: "unsafe",
+					status: "unsafe",
 				});
 				expect(root.sources).toContainEqual({
 					kind: "file",
 					path: "/root/.ssh/directory_keys",
-					state: "unusable",
+					status: "unusable",
 				});
 				expect(root.sources).toContainEqual({
 					kind: "file",
 					path: rootKeyPath,
-					state: "present",
+					status: "present",
 				});
 			},
 		);

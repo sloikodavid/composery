@@ -168,7 +168,7 @@ export const getStatus = query({
 		const sshAccess = await getAllocationSshAccess(ctx, allocation._id);
 		const parts = {
 			...allocation.parts,
-			managementAccess: sshAccess?.access?.state ?? "unknown",
+			managementAccess: sshAccess?.access?.status ?? "unknown",
 		};
 		const operation = await ctx.db.get(
 			"serverOperations",

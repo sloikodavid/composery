@@ -88,14 +88,14 @@ def describe(path, account, strict):
     try:
         status = os.stat(path)
     except FileNotFoundError:
-        return {"kind": "file", "path": path, "state": "missing"}
+        return {"kind": "file", "path": path, "status": "missing"}
     except OSError:
-        return {"kind": "file", "path": path, "state": "unreadable"}
+        return {"kind": "file", "path": path, "status": "unreadable"}
     if not stat.S_ISREG(status.st_mode):
-        return {"kind": "file", "path": path, "state": "unusable"}
+        return {"kind": "file", "path": path, "status": "unusable"}
     if strict and not is_safe(path, account):
-        return {"kind": "file", "path": path, "state": "unsafe"}
-    return {"kind": "file", "path": path, "state": "present"}
+        return {"kind": "file", "path": path, "status": "unsafe"}
+    return {"kind": "file", "path": path, "status": "present"}
 
 def sources(settings, account, strict):
     found, ambiguous = [], False
@@ -107,9 +107,9 @@ def sources(settings, account, strict):
     # The effective configuration prints a quoted name unquoted, so one name that holds a
     # space cannot be told from several names. A file that exists under the joined name says
     # which reading was meant, and the caller is told that the names were ambiguous.
-    if len(patterns) > 1 and any(entry["state"] == "missing" for entry in found):
+    if len(patterns) > 1 and any(entry["status"] == "missing" for entry in found):
         joined = describe(expand(" ".join(patterns), account), account, strict)
-        if joined["state"] != "missing":
+        if joined["status"] != "missing":
             found.append(joined)
             ambiguous = True
     command = first(settings, "authorizedkeyscommand", "none")

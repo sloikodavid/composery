@@ -7,7 +7,7 @@ import {
 	type MutationCtx,
 	type QueryCtx,
 } from "../_generated/server";
-import { allocationPartState } from "../allocations/schema";
+import { allocationPartStatus } from "../allocations/schema";
 import schema from "../schema";
 import { isSshAccessConfigured as isConfigured } from "./encryption_keys";
 import type { sshTables } from "./schema";
@@ -77,14 +77,14 @@ export async function storeAllocationSshAccess(
 export const recordAccess = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
-		state: allocationPartState,
+		status: allocationPartStatus,
 	},
 	returns: v.null(),
-	handler: async (ctx, { allocationId, state }) => {
+	handler: async (ctx, { allocationId, status }) => {
 		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
 		if (sshAccess !== null) {
 			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
-				access: { state, at: Date.now() },
+				access: { status, at: Date.now() },
 			});
 		}
 		return null;

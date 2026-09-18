@@ -15,9 +15,9 @@ const working = {
 
 test("a server with nothing wrong can be used for everything", () => {
 	expect(toServerFeatures(working)).toEqual({
-		power: { state: "available" },
-		sshKeys: { state: "available" },
-		deletion: { state: "available" },
+		power: { status: "available" },
+		sshKeys: { status: "available" },
+		deletion: { status: "available" },
 	});
 });
 
@@ -26,10 +26,10 @@ test("what Composery cannot get into can still be started, stopped and deleted",
 	// and none of that has anything to do with turning it off.
 	for (const managementAccess of ["missing", "mismatch"] as const) {
 		const features = toServerFeatures({ ...working, managementAccess });
-		expect(features.power).toEqual({ state: "available" });
-		expect(features.deletion).toEqual({ state: "available" });
+		expect(features.power).toEqual({ status: "available" });
+		expect(features.deletion).toEqual({ status: "available" });
 		expect(features.sshKeys).toEqual({
-			state: "unavailable",
+			status: "unavailable",
 			because: "managementAccess",
 		});
 	}
@@ -43,8 +43,8 @@ test("rules or addresses that are not what we recorded stop nothing", () => {
 		firewall: "missing",
 		addresses: "mismatch",
 	});
-	expect(features.power).toEqual({ state: "available" });
-	expect(features.sshKeys).toEqual({ state: "available" });
+	expect(features.power).toEqual({ status: "available" });
+	expect(features.sshKeys).toEqual({ status: "available" });
 });
 
 test("a server nobody has looked at yet claims nothing", () => {
@@ -54,15 +54,18 @@ test("a server nobody has looked at yet claims nothing", () => {
 		firewall: "unknown",
 		managementAccess: "unknown",
 	});
-	expect(features.power).toEqual({ state: "unknown", because: "server" });
+	expect(features.power).toEqual({ status: "unknown", because: "server" });
 	// Not knowing whether we can sign in is not the same as knowing we cannot.
-	expect(features.sshKeys).toEqual({ state: "unknown", because: "server" });
-	expect(features.deletion).toEqual({ state: "available" });
+	expect(features.sshKeys).toEqual({ status: "unknown", because: "server" });
+	expect(features.deletion).toEqual({ status: "available" });
 });
 
 test("a server that is gone cannot be powered, and can still be deleted", () => {
 	const features = toServerFeatures({ ...working, server: "missing" });
-	expect(features.power).toEqual({ state: "unavailable", because: "server" });
-	expect(features.sshKeys).toEqual({ state: "unavailable", because: "server" });
-	expect(features.deletion).toEqual({ state: "available" });
+	expect(features.power).toEqual({ status: "unavailable", because: "server" });
+	expect(features.sshKeys).toEqual({
+		status: "unavailable",
+		because: "server",
+	});
+	expect(features.deletion).toEqual({ status: "available" });
 });

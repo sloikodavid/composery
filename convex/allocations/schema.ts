@@ -29,7 +29,7 @@ export const operationStatus = v.union(
  * Each part of an allocation, in Composery's words rather than a provider's, so that a later
  * backend with different resources says the same things about them.
  */
-export const allocationPartState = v.union(
+export const allocationPartStatus = v.union(
 	// Last seen as it should be.
 	v.literal("ok"),
 	// Last seen to be gone.
@@ -40,15 +40,15 @@ export const allocationPartState = v.union(
 	v.literal("unknown"),
 );
 
-export type AllocationPartState = Infer<typeof allocationPartState>;
+export type AllocationPartStatus = Infer<typeof allocationPartStatus>;
 
 export const allocationParts = v.object({
 	/** The computer itself. */
-	server: allocationPartState,
+	server: allocationPartStatus,
 	/** Its addresses, which a customer's own things point at. */
-	addresses: allocationPartState,
+	addresses: allocationPartStatus,
 	/** The rules in front of it. */
-	firewall: allocationPartState,
+	firewall: allocationPartStatus,
 });
 
 /**

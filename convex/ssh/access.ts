@@ -3,7 +3,7 @@
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import type { AllocationPartState } from "../allocations/schema";
+import type { AllocationPartStatus } from "../allocations/schema";
 import type { SshConnectionOptions } from "./connection";
 import { SshAccessError, SshError, type SshFailure } from "./errors";
 import { decryptSshSecrets } from "./secrets";
@@ -16,17 +16,19 @@ const connectionTimeoutMs = 30_000;
  * key is not the same as one nobody could reach, and neither means the server is unwell.
  */
 // biome-ignore-start lint/style/useNamingConvention: failure codes use snake_case
-const accessStates = {
+const accessStatuses = {
 	host_key_mismatch: "mismatch",
 	authentication_failed: "missing",
 	permission_denied: "missing",
-} as const satisfies Partial<Record<SshFailure, AllocationPartState>>;
+} as const satisfies Partial<Record<SshFailure, AllocationPartStatus>>;
 // biome-ignore-end lint/style/useNamingConvention: failure codes use snake_case
 
-function toAccessState(error: unknown): AllocationPartState {
+function toAccessStatus(error: unknown): AllocationPartStatus {
 	if (error instanceof SshError) {
 		// Anything else stopped the attempt without saying anything about the way in.
-		return accessStates[error.code as keyof typeof accessStates] ?? "unknown";
+		return (
+			accessStatuses[error.code as keyof typeof accessStatuses] ?? "unknown"
+		);
 	}
 	return error instanceof SshAccessError ? "missing" : "unknown";
 }
@@ -51,7 +53,7 @@ export async function withSshConnection<Result>(
 		await recordAccess(ctx, allocation, "ok");
 		return result;
 	} catch (error) {
-		await recordAccess(ctx, allocation, toAccessState(error));
+		await recordAccess(ctx, allocation, toAccessStatus(error));
 		throw error;
 	}
 }
@@ -59,11 +61,11 @@ export async function withSshConnection<Result>(
 async function recordAccess(
 	ctx: ActionCtx,
 	allocation: Doc<"serverAllocations">,
-	state: AllocationPartState,
+	status: AllocationPartStatus,
 ) {
 	await ctx.runMutation(internal.ssh.access_state.recordAccess, {
 		allocationId: allocation._id,
-		state,
+		status,
 	});
 }
 

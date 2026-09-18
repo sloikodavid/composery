@@ -13,7 +13,7 @@ const maxAccounts = 50;
 const maxSources = 40;
 const maxTextLength = 4096;
 
-const fileStates = [
+const fileStatuses = [
 	"present",
 	"missing",
 	"unsafe",
@@ -21,10 +21,10 @@ const fileStates = [
 	"unusable",
 ] as const;
 
-type FileState = (typeof fileStates)[number];
+type FileStatus = (typeof fileStatuses)[number];
 
 export type SshKeySource =
-	| Readonly<{ kind: "file"; path: string; state: FileState }>
+	| Readonly<{ kind: "file"; path: string; status: FileStatus }>
 	| Readonly<{ kind: "command"; command: string }>
 	| Readonly<{ kind: "certificate"; setting: string; value: string }>;
 
@@ -69,9 +69,9 @@ function toFlag(value: unknown) {
 	return typeof value === "boolean" ? value : fail();
 }
 
-function toFileState(value: unknown): FileState {
-	const state = toText(value);
-	const known = fileStates.find((candidate) => candidate === state);
+function toFileStatus(value: unknown): FileStatus {
+	const status = toText(value);
+	const known = fileStatuses.find((candidate) => candidate === status);
 	return known ?? fail();
 }
 
@@ -82,7 +82,7 @@ function toSource(value: unknown): SshKeySource {
 			return {
 				kind: "file",
 				path: toText(source.path),
-				state: toFileState(source.state),
+				status: toFileStatus(source.status),
 			};
 		case "command":
 			return { kind: "command", command: toText(source.command) };

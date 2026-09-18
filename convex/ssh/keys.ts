@@ -150,7 +150,7 @@ async function listKeyFiles(
 	let skipped = 0;
 	for (const account of discovery.accounts) {
 		for (const source of account.sources) {
-			if (source.kind !== "file" || source.state !== "present") {
+			if (source.kind !== "file" || source.status !== "present") {
 				continue;
 			}
 			if (files.length >= maxFilesRead) {
