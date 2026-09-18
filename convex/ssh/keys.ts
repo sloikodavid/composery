@@ -6,7 +6,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, action } from "../_generated/server";
 import { toConvexError } from "../errors";
-import { requireSshConnection } from "./access";
+import { withSshConnection } from "./access";
 import {
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
@@ -104,12 +104,17 @@ function toKeyLine(line: AuthorizedKeysLine) {
 	};
 }
 
-async function requireConnection(ctx: ActionCtx, serverId: Id<"servers">) {
+/** Everything here signs in to the server the same way, and every attempt says what it found. */
+async function onServer<Result>(
+	ctx: ActionCtx,
+	serverId: Id<"servers">,
+	run: (connection: SshConnectionOptions) => Promise<Result>,
+) {
 	const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
 		internal.ssh.permissions.requireAllocation,
 		{ serverId },
 	);
-	return await requireSshConnection(ctx, allocation);
+	return await withSshConnection(ctx, allocation, run);
 }
 
 async function readKeyFile(
@@ -135,6 +140,34 @@ async function readKeyFile(
  * Reads the key files that the server says apply, as they are right now. Composery keeps no
  * copy: a later edit names the revision it saw, and the server refuses a stale one.
  */
+/** The key files the server says apply, as far as one listing reads. */
+async function listKeyFiles(
+	connection: SshConnectionOptions,
+): Promise<KeyFileListing> {
+	const discovery = await discoverSshServer(connection);
+	const files: KeyFileListing["files"] = [];
+	const unknowns = [...discovery.unknowns];
+	let skipped = 0;
+	for (const account of discovery.accounts) {
+		for (const source of account.sources) {
+			if (source.kind !== "file" || source.state !== "present") {
+				continue;
+			}
+			if (files.length >= maxFilesRead) {
+				skipped += 1;
+				continue;
+			}
+			files.push(await readKeyFile(connection, account.name, source.path));
+		}
+	}
+	if (skipped > 0) {
+		unknowns.push(
+			`This server has more key files than one listing reads, and ${skipped} of them are not shown.`,
+		);
+	}
+	return { files, unknowns };
+}
+
 export const list = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({
@@ -142,30 +175,8 @@ export const list = action({
 		unknowns: v.array(v.string()),
 	}),
 	handler: async (ctx, { serverId }): Promise<KeyFileListing> => {
-		const connection = await requireConnection(ctx, serverId);
 		try {
-			const discovery = await discoverSshServer(connection);
-			const files: KeyFileListing["files"] = [];
-			const unknowns = [...discovery.unknowns];
-			let skipped = 0;
-			for (const account of discovery.accounts) {
-				for (const source of account.sources) {
-					if (source.kind !== "file" || source.state !== "present") {
-						continue;
-					}
-					if (files.length >= maxFilesRead) {
-						skipped += 1;
-						continue;
-					}
-					files.push(await readKeyFile(connection, account.name, source.path));
-				}
-			}
-			if (skipped > 0) {
-				unknowns.push(
-					`This server has more key files than one listing reads, and ${skipped} of them are not shown.`,
-				);
-			}
-			return { files, unknowns };
+			return await onServer(ctx, serverId, listKeyFiles);
 		} catch (error) {
 			return throwPublicSshError(error);
 		}
@@ -213,56 +224,57 @@ async function applyEdits(
 	if (request.edits.length === 0 || request.edits.length > maxEdits) {
 		throw toConvexError("edit_invalid");
 	}
-	const connection = await requireConnection(ctx, request.serverId);
 	try {
-		const observation = await readSshFile({
-			...connection,
-			path: request.path,
-			maxBytes: maxFileBytes,
-		});
-		if (toRevision(observation) !== request.revision) {
-			throw toConvexError("file_changed");
-		}
-		const file = new AuthorizedKeysFile(observation.bytes);
-		const plan = file.plan(observation.bytes, request.edits);
-		if (!plan.ok) {
-			throw toConvexError(
-				plan.reason === "changed" ? "file_changed" : "edit_invalid",
+		return await onServer(ctx, request.serverId, async (connection) => {
+			const observation = await readSshFile({
+				...connection,
+				path: request.path,
+				maxBytes: maxFileBytes,
+			});
+			if (toRevision(observation) !== request.revision) {
+				throw toConvexError("file_changed");
+			}
+			const file = new AuthorizedKeysFile(observation.bytes);
+			const plan = file.plan(observation.bytes, request.edits);
+			if (!plan.ok) {
+				throw toConvexError(
+					plan.reason === "changed" ? "file_changed" : "edit_invalid",
+				);
+			}
+			const result = await writeSshFile(
+				connection,
+				request.path,
+				observation,
+				plan.candidate,
 			);
-		}
-		const result = await writeSshFile(
-			connection,
-			request.path,
-			observation,
-			plan.candidate,
-		);
-		const code = writeCodes[result.status];
-		if (code !== null) {
-			throw toConvexError(code);
-		}
-		const acceptanceResult =
-			request.question === undefined
-				? null
-				: await getKeyAcceptance(
-						connection,
-						request.question.account,
-						request.question.toEntry(file),
-					);
-		// The written file names its own new state; a read that fails leaves the caller to list again.
-		try {
-			return {
-				revision: toRevision(
-					await readSshFile({
-						...connection,
-						path: request.path,
-						maxBytes: maxFileBytes,
-					}),
-				),
-				acceptance: acceptanceResult,
-			};
-		} catch {
-			return { revision: null, acceptance: acceptanceResult };
-		}
+			const code = writeCodes[result.status];
+			if (code !== null) {
+				throw toConvexError(code);
+			}
+			const acceptanceResult =
+				request.question === undefined
+					? null
+					: await getKeyAcceptance(
+							connection,
+							request.question.account,
+							request.question.toEntry(file),
+						);
+			// The written file names its own new state; a read that fails leaves the caller to list again.
+			try {
+				return {
+					revision: toRevision(
+						await readSshFile({
+							...connection,
+							path: request.path,
+							maxBytes: maxFileBytes,
+						}),
+					),
+					acceptance: acceptanceResult,
+				};
+			} catch {
+				return { revision: null, acceptance: acceptanceResult };
+			}
+		});
 	} catch (error) {
 		return throwPublicSshError(error);
 	}

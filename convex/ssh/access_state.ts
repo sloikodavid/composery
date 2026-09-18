@@ -2,10 +2,12 @@ import { type Infer, v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import {
 	env,
+	internalMutation,
 	internalQuery,
 	type MutationCtx,
 	type QueryCtx,
 } from "../_generated/server";
+import { allocationPartState } from "../allocations/schema";
 import schema from "../schema";
 import { isSshAccessConfigured as isConfigured } from "./encryption_keys";
 import type { sshTables } from "./schema";
@@ -70,6 +72,24 @@ export async function storeAllocationSshAccess(
 		_creationTime: existing._creationTime,
 	};
 }
+
+/** Writes down what the last attempt to sign in found, for whoever reads the server's state. */
+export const recordAccess = internalMutation({
+	args: {
+		allocationId: v.id("serverAllocations"),
+		state: allocationPartState,
+	},
+	returns: v.null(),
+	handler: async (ctx, { allocationId, state }) => {
+		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
+		if (sshAccess !== null) {
+			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
+				access: { state, at: Date.now() },
+			});
+		}
+		return null;
+	},
+});
 
 export const get = internalQuery({
 	args: { allocationId: v.id("serverAllocations") },

@@ -1,5 +1,5 @@
 import { defineTable } from "convex/server";
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { hetznerCloudTables } from "./hetzner_cloud/schema";
 import { failureClass } from "./retries";
 
@@ -39,6 +39,8 @@ export const allocationPartState = v.union(
 	// Never seen, or not seen since something stopped us looking.
 	v.literal("unknown"),
 );
+
+export type AllocationPartState = Infer<typeof allocationPartState>;
 
 export const allocationParts = v.object({
 	/** The computer itself. */

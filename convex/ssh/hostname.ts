@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalAction } from "../_generated/server";
-import { requireSshConnection } from "./access";
+import { withSshConnection } from "./access";
 import {
 	runSshCommand,
 	type SshConnectionOptions,
@@ -77,8 +77,12 @@ export const apply = internalAction({
 			return null;
 		}
 		try {
-			const connection = await requireSshConnection(ctx, allocation);
-			const hostname = await setSshHostname(connection, { expected, next });
+			const hostname = await withSshConnection(
+				ctx,
+				allocation,
+				async (connection) =>
+					await setSshHostname(connection, { expected, next }),
+			);
 			if (hostname !== null) {
 				await ctx.runMutation(internal.allocations.operations.storeHostname, {
 					allocationId: allocation._id,

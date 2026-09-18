@@ -19,6 +19,7 @@ import {
 	requireServerAllocation,
 } from "../allocations/operations";
 import {
+	allocationPartState,
 	allocationParts,
 	allocationStatus,
 	operationKind,
@@ -139,7 +140,11 @@ export const getStatus = query({
 		status: allocationStatus,
 		// What each part of the server looked like when it was last seen, so that one part being
 		// wrong says which, rather than stopping everything.
-		parts: allocationParts,
+		parts: v.object({
+			...allocationParts.fields,
+			// What Composery's own way in looked like the last time anything used it.
+			managementAccess: allocationPartState,
+		}),
 		// Why the allocation is not moving, when it is not. It is still being tried.
 		stuck: v.union(v.object({ since: v.number(), code: v.string() }), v.null()),
 		location: v.union(v.string(), v.null()),
@@ -173,7 +178,10 @@ export const getStatus = query({
 		}
 		return {
 			status: allocation.status,
-			parts: allocation.parts,
+			parts: {
+				...allocation.parts,
+				managementAccess: sshAccess?.access?.state ?? "unknown",
+			},
 			stuck:
 				allocation.stuck === undefined
 					? null

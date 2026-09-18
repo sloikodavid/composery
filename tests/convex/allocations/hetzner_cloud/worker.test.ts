@@ -100,7 +100,12 @@ async function readOwnedResources(allocationId: string) {
 
 type ServerStatus = Readonly<{
 	status: string;
-	parts: { server: string; addresses: string; firewall: string };
+	parts: {
+		server: string;
+		addresses: string;
+		firewall: string;
+		managementAccess: string;
+	};
 	ipv4: string | null;
 	ipv6: string | null;
 }>;
@@ -109,6 +114,7 @@ const goneParts = {
 	server: "missing",
 	addresses: "missing",
 	firewall: "missing",
+	managementAccess: "missing",
 } as const;
 
 /** What the panel shows for a server, or `gone` once deletion has removed it. */

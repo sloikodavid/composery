@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
+import { allocationPartState } from "../allocations/schema";
 
 export const sshTables = {
 	allocationSshAccess: defineTable({
@@ -15,5 +16,9 @@ export const sshTables = {
 		hostKeyConflictAt: v.optional(v.number()),
 		hostKeyReplaceUntil: v.optional(v.number()),
 		port: v.optional(v.number()),
+		/** What the last real attempt to sign in found, and when, which is all anybody knows. */
+		access: v.optional(
+			v.object({ state: allocationPartState, at: v.number() }),
+		),
 	}).index("by_allocation_id", ["allocationId"]),
 };
