@@ -108,6 +108,20 @@ export async function removeHetznerLeftovers(
 	}
 }
 
+/** What this run holds at Hetzner, for whoever has to take it away again. */
+let run: Readonly<{ token: string; controllerId: string }> | undefined;
+
+/**
+ * Removes what this run has made so far, and does nothing at all for a run that never met Hetzner.
+ * A test's server is nobody's once that test ends, and a project holds a fixed number of them, so
+ * clearing them as they are finished with keeps what a run holds at once away from that limit.
+ */
+export async function removeHetznerRunResources() {
+	if (run !== undefined) {
+		await removeHetznerLeftovers(run.token, run.controllerId);
+	}
+}
+
 /**
  * Makes this run its own place in the project: one controller identifier that belongs to it alone,
  * and one firewall labelled with that, because the deployment refuses a firewall that is not its
@@ -125,8 +139,56 @@ export async function createHetznerRun(token: string) {
 	if (firewall?.id === undefined) {
 		throw new Error(`Hetzner did not make a firewall: ${JSON.stringify(body)}`);
 	}
+	run = { token, controllerId };
 	registerCleanup(async () => {
 		await removeHetznerLeftovers(token, controllerId);
 	});
 	return { controllerId, firewallId: firewall.id };
+}
+
+const httpMultipleChoices = 300;
+
+async function require2xx(
+	token: string,
+	method: string,
+	path: string,
+	body?: unknown,
+) {
+	const reply = await call(token, method, path, body);
+	if (reply.status >= httpMultipleChoices) {
+		throw new Error(`Hetzner refused ${method} ${path}: ${reply.status}`);
+	}
+	return reply.body;
+}
+
+/**
+ * Stops one server at Hetzner itself, which is what the fake's own control stands in for. A test
+ * that says somebody stopped a server in the console must mean it when the console is real.
+ */
+export async function stopHetznerServer(token: string, serverId: number) {
+	await require2xx(token, "POST", `/servers/${serverId}/actions/poweroff`);
+}
+
+/**
+ * Takes every firewall off one server at Hetzner itself. The rules a server is behind are the
+ * project's, so which firewall it is belongs to the project, not to this run: whatever is on the
+ * server comes off.
+ */
+export async function detachHetznerFirewalls(token: string, serverId: number) {
+	const body = await require2xx(token, "GET", `/servers/${serverId}`);
+	const attached =
+		(body as { server?: { firewalls?: { id?: number }[] } } | null)?.server
+			?.firewalls ?? [];
+	for (const firewall of attached) {
+		if (typeof firewall.id !== "number") {
+			continue;
+		}
+		await require2xx(
+			token,
+			"POST",
+			`/firewalls/${firewall.id}/actions/remove_from_resources`,
+			// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+			{ remove_from: [{ type: "server", server: { id: serverId } }] },
+		);
+	}
 }

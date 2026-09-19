@@ -276,7 +276,7 @@ test(
 		await settleServer(backend, client, serverId, { until: "running" });
 		// An admin can take the project's rules off a server in Hetzner's own console. The server
 		// keeps running, and stopping it has nothing to do with what protects it.
-		fake.detachFirewall(await requireHetznerServerId(backend, serverId));
+		await fake.detachFirewall(await requireHetznerServerId(backend, serverId));
 
 		const stopped = await changePower(client, serverId, "stop", "stopped");
 

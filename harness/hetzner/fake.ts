@@ -1,6 +1,11 @@
 import { hetznerContract } from "../../contracts/hetzner";
 import { type Fake, type FakeReply, startFake } from "../fake";
-import { getHetznerToken, toHetznerForward } from "./real";
+import {
+	detachHetznerFirewalls,
+	getHetznerToken,
+	stopHetznerServer,
+	toHetznerForward,
+} from "./real";
 import {
 	toActionReply,
 	toFirewallReply,
@@ -90,11 +95,12 @@ export type HetznerFake = Fake &
 	Readonly<{
 		/**
 		 * Takes the project's rules off one server, as an admin can in Hetzner's own console. The
-		 * server keeps running; what changes is what it is protected by.
+		 * server keeps running; what changes is what it is protected by. A run that meets Hetzner
+		 * does it there, because a change to this fake's own memory would be a change to nothing.
 		 */
-		detachFirewall: (serverId: number) => void;
+		detachFirewall: (serverId: number) => Promise<void>;
 		/** Stops one server without Composery asking, as an admin can in Hetzner's own console. */
-		stopServer: (serverId: number) => void;
+		stopServer: (serverId: number) => Promise<void>;
 	}>;
 
 export async function startHetznerFake(): Promise<HetznerFake> {
@@ -326,10 +332,18 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 
 	return {
 		...fake,
-		detachFirewall: (serverId) => {
+		detachFirewall: async (serverId) => {
+			if (token !== null) {
+				await detachHetznerFirewalls(token, serverId);
+				return;
+			}
 			detachedFirewalls.add(serverId);
 		},
-		stopServer: (serverId) => {
+		stopServer: async (serverId) => {
+			if (token !== null) {
+				await stopHetznerServer(token, serverId);
+				return;
+			}
 			const resource = resources.get(serverId);
 			if (resource === undefined) {
 				throw new Error(`Hetzner holds no server ${serverId}.`);

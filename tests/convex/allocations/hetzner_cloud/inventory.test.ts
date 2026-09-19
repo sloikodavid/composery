@@ -88,7 +88,7 @@ test(
 		const askedBefore = fake.countRequests(askedAbout);
 		// Somebody stops the server in Hetzner's own console. Nobody tells Composery, and nothing
 		// wakes the allocation: one that has settled is not asked about again.
-		fake.stopServer(hetznerServerId);
+		await fake.stopServer(hetznerServerId);
 
 		const stopped = await scanUntil(client, serverId, "stopped");
 
