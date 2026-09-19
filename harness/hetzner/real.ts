@@ -96,12 +96,13 @@ async function remove(token: string, collection: Collection, id: number) {
 export async function removeHetznerLeftovers(
 	token: string,
 	controllerId: string | null,
+	kinds: readonly Collection[] = collections,
 ) {
 	const isOurs = (item: Owned) =>
 		controllerId === null
 			? Date.now() - Date.parse(item.created) > leftoverAgeMs
 			: item.labels["controller-id"] === controllerId;
-	for (const collection of collections) {
+	for (const collection of kinds) {
 		for (const item of (await listOwned(token, collection)).filter(isOurs)) {
 			await remove(token, collection, item.id);
 		}
@@ -112,13 +113,20 @@ export async function removeHetznerLeftovers(
 let run: Readonly<{ token: string; controllerId: string }> | undefined;
 
 /**
- * Removes what this run has made so far, and does nothing at all for a run that never met Hetzner.
- * A test's server is nobody's once that test ends, and a project holds a fixed number of them, so
+ * Removes what a finished test made, and does nothing at all for a run that never met Hetzner. A
+ * test's server is nobody's once that test ends, and a project holds a fixed number of them, so
  * clearing them as they are finished with keeps what a run holds at once away from that limit.
+ *
+ * The firewall is not a test's: the deployment refuses to act on an allocation whose project
+ * firewall is gone, so taking it away between tests would leave every later one stuck on it. It
+ * belongs to the run and goes with the run.
  */
 export async function removeHetznerRunResources() {
 	if (run !== undefined) {
-		await removeHetznerLeftovers(run.token, run.controllerId);
+		await removeHetznerLeftovers(run.token, run.controllerId, [
+			"servers",
+			"primary_ips",
+		]);
 	}
 }
 
