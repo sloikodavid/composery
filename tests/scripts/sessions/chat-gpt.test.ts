@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { readChatGptShare } from "../../../scripts/sessions/chat-gpt";
+import { readChatGptShare } from "../../../scripts/session/chat-gpt";
 
 // Longer than the share that once read as empty: its streamed payload was about 1.6 MB.
 const longAnswerCharacters = 3_000_000;

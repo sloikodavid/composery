@@ -1,6 +1,7 @@
 import { clerkApiVersion, clerkContract } from "../../contracts/clerk";
 
 import { type Fake, type FakeReply, startFake } from "../fake";
+import { getClerkSecret, toClerkForward } from "./real";
 import {
 	type ClerkUser,
 	toCountReply,
@@ -24,6 +25,8 @@ const keysPath = "/jwks";
 
 export type ClerkFake = Fake &
 	Readonly<{
+		/** Whether this run answers for Clerk itself. A test that scripts Clerk needs it to be true. */
+		isFake: boolean;
 		/** Adds or replaces one account, as if somebody signed up. */
 		setUser: (user: ClerkUser) => void;
 		/** Removes one account, as if it were deleted at Clerk. */
@@ -97,10 +100,14 @@ export async function startClerkFake(): Promise<ClerkFake> {
 			: { status: httpOk, body: toUserReply(user) };
 	};
 
+	// A run given a secret for an instance of its own asks Clerk itself, through the same fake, so
+	// the requests are still counted and the answers are still held to Clerk's description.
+	const secret = getClerkSecret();
 	const fake = await startFake({
 		system: "Clerk",
 		checker: clerkContract,
 		answer: (request) => answer(request.method, request.path),
+		...(secret === null ? {} : { forward: toClerkForward(secret) }),
 		// Clerk's own client states which version of the API it speaks. When an upgrade changes it,
 		// the pinned description is no longer the one we are held to.
 		check: (request) => {
@@ -113,15 +120,32 @@ export async function startClerkFake(): Promise<ClerkFake> {
 		},
 	});
 
+	/**
+	 * What only a fake can do. A run that meets Clerk reads Clerk's own answers, so changing what
+	 * this fake holds would change nothing and the test would be asserting about a world nobody
+	 * is in. Refusing says which test does not belong in that run.
+	 */
+	const onlyFake = (what: string) => {
+		if (secret !== null) {
+			throw new Error(
+				`This run meets Clerk itself, so it cannot ${what}. Run this test with CLERK_MODE=fake.`,
+			);
+		}
+	};
+
 	return {
 		...fake,
+		isFake: secret === null,
 		setKeys: (published) => {
+			onlyFake("publish signing keys of its own");
 			keys = published;
 		},
 		setUser: (user) => {
+			onlyFake("put an account there by hand");
 			users.set(user.id, user);
 		},
 		removeUser: (id) => {
+			onlyFake("take an account away by hand");
 			users.delete(id);
 		},
 		toEvent: (type, user) => {

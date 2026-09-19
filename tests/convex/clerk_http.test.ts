@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 import { createHmac, randomBytes } from "node:crypto";
 import { api } from "../../convex/_generated/api";
+import { getClerkSecret } from "../../harness/clerk/real";
 import {
 	type ConvexBackend,
 	useConvexBackend,
@@ -16,6 +17,13 @@ const serviceUnavailable = 503;
 const notFound = 404;
 const httpOk = 200;
 const keysPath = /^\/jwks$/;
+
+/**
+ * These hold Clerk to answers a test chooses: an account that is there, one that is gone, a
+ * refusal, keys from another instance. A run that meets Clerk itself reads Clerk's own answers,
+ * so there is nothing here for it to do and every test in this file says so rather than passing.
+ */
+const scripted = test.skipIf(getClerkSecret() !== null);
 
 let backend: ConvexBackend;
 
@@ -86,7 +94,7 @@ async function readAccount(account: ReturnType<typeof toAccount>) {
 	return await backend.createClient(account.id).query(api.users.getCurrent, {});
 }
 
-test(
+scripted(
 	"a webhook Clerk signed syncs the account, and one it did not is refused",
 	async () => {
 		const account = toAccount();
@@ -113,7 +121,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"a webhook Clerk cannot answer for is asked for again, and says nothing about why",
 	async () => {
 		const account = toAccount();
@@ -144,7 +152,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"an account is removed only when Clerk itself says it is gone",
 	async () => {
 		const account = await syncAccount();
@@ -172,7 +180,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"an account is kept when the secret key belongs to another Clerk instance",
 	async () => {
 		const account = await syncAccount();
@@ -198,7 +206,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"a deletion Clerk's own read does not agree with is asked for again",
 	async () => {
 		const account = await syncAccount();

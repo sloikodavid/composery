@@ -93,8 +93,16 @@ The same tests can meet Hetzner itself, and never by accident. Given a token in 
 
 ## Clerk
 
-No test reaches Clerk either. A run starts a fake on loopback and gives the deployment its address in `CLERK_API_URL`, under the same rule as Hetzner's.
+By default no test reaches Clerk. A run starts a fake on loopback and gives the deployment its address in `CLERK_API_URL`, under the same rule as Hetzner's.
 
 Clerk's own client builds our requests, so checking those checks Clerk's code, not ours. What is worth checking is everything we accept: the client reads a reply without validating it, so a field a fake invents would never be refused, and a hand-written webhook body would never be questioned. Both are held to Clerk's published descriptions of its backend API and of its events.
 
 The version of Clerk's API is pinned by the one its own client asks for. The fake refuses a request that carries any other, so an upgrade that changes it says so rather than quietly leaving the contract behind.
+
+The same tests can meet Clerk itself, given `CLERK_SECRET_KEY` and `CLERK_FRONTEND_API_URL` in `.env.test` and `CLERK_MODE=real` for that run. Accounts are then real: the run makes them through Clerk's own API, marks each with an `external_id` of its own, and signs in by asking Clerk for a session and a token for it, which Clerk documents for tests and allows on a development instance alone. So a signed-in test takes the verification path a signed-in person takes, down to whose key signed the token. Every account the run made is deleted at the end, and what a killed run left behind goes first: a development instance holds a hundred accounts, and one that fills up refuses sign-ups.
+
+Two things such a run does not cover, and it says so rather than passing quietly.
+
+A test that scripts Clerk cannot run against Clerk: an account that is there, one that is gone, a refusal, keys from another instance. Those are what `tests/convex/clerk.test.ts` and `tests/convex/clerk_http.test.ts` are made of, and each test in them is skipped and reported when the run meets Clerk. The controls behind them refuse too, so a test that reaches for one is told which run it belongs in rather than changing a fake nobody is reading.
+
+Clerk delivering a webhook is the other. Those arrive over the internet, and a test runs a backend on this machine. The webhook tests sign the body themselves, which proves what the route does with an event and never that Clerk sent one.

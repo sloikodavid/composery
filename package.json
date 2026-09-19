@@ -22,7 +22,7 @@
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
 		"verify": "bun check && bun test && next build",
-		"session:import": "bun scripts/sessions/import.ts"
+		"session:import": "bun scripts/session/import.ts"
 	},
 	"dependencies": {
 		"@base-ui/react": "1.8.0",

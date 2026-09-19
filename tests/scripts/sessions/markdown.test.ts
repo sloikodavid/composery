@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { renderSessionMarkdown } from "../../../scripts/sessions/markdown";
+import { renderSessionMarkdown } from "../../../scripts/session/markdown";
 
 test("numbers turns, keeps events unnumbered, and redacts secret assignments", () => {
 	const markdown = renderSessionMarkdown({

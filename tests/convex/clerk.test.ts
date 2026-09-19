@@ -2,6 +2,7 @@ import { beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { api, internal } from "../../convex/_generated/api";
 import { clerkPageSize } from "../../convex/clerk";
+import { getClerkSecret } from "../../harness/clerk/real";
 import {
 	type ConvexBackend,
 	useConvexBackend,
@@ -23,6 +24,13 @@ const serviceUnavailable = 503;
 // The list of named accounts, and not their count, which asks with the same query.
 const accountsAskedAbout = /^\/users\?.*user_id=/;
 
+/**
+ * These hold Clerk to answers a test chooses: an account that is there, one that is gone, a
+ * refusal, keys from another instance. A run that meets Clerk itself reads Clerk's own answers,
+ * so there is nothing here for it to do and every test in this file says so rather than passing.
+ */
+const scripted = test.skipIf(getClerkSecret() !== null);
+
 let backend: ConvexBackend;
 
 beforeAll(async () => {
@@ -43,7 +51,7 @@ async function readAccount(id: string) {
 	return await backend.createClient(id).query(api.users.getCurrent, {});
 }
 
-test(
+scripted(
 	"reconcile removes only the accounts Clerk no longer holds",
 	async () => {
 		const accounts = Array.from({ length: accountCount }, toAccount);
@@ -80,7 +88,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"reconcile reads every account when Clerk needs more than one page",
 	async () => {
 		// One more than a page, so Clerk answers twice and the loop has to ask for the second.
@@ -104,7 +112,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"an account with no picture is stored, and does not stop the rest being read",
 	async () => {
 		const withPicture = toAccount();
@@ -131,7 +139,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"an account with no email address is kept, and can use the app",
 	async () => {
 		// Clerk does not promise a primary email address. Keeping such an account out would lock
@@ -151,7 +159,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"an address removed at Clerk is removed here, so nobody is found by an address they gave up",
 	async () => {
 		const account = toAccount();
@@ -169,7 +177,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"reconcile keeps an account that a short list left out, when Clerk still has it",
 	async () => {
 		const account = toAccount();
@@ -196,7 +204,7 @@ test(
 	testTimeoutMs,
 );
 
-test(
+scripted(
 	"reconcile goes past an account Clerk cannot answer for, and still fails",
 	async () => {
 		// Stored in this order, so the account Clerk cannot answer for is checked first.

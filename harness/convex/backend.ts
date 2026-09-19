@@ -33,6 +33,13 @@ import { unzipSync } from "fflate";
 import { internal } from "../../convex/_generated/api";
 import { isProcessAlive, registerCleanup } from "../cleanup";
 import { type ClerkFake, useClerkFake } from "../clerk/fake";
+import {
+	type ClerkRun,
+	createClerkRun,
+	getClerkSecret,
+	requireClerkIssuer,
+	toClerkTestEmail,
+} from "../clerk/real";
 import type { ClerkUser } from "../clerk/replies";
 import { type SignInIssuer, startSignInIssuer } from "../clerk/sign-in";
 import type { Fake } from "../fake";
@@ -474,13 +481,34 @@ function toSshAccessEncryptionKeys() {
 
 type HetznerProject = Readonly<{ controllerId: string; firewallId: number }>;
 
+/**
+ * One account where the deployment will look for it: at Clerk when a run meets Clerk, and in the
+ * fake otherwise. Clerk names its own accounts, so only a run with a fake can be told which ID to
+ * make, which is what a test asking for a particular one is really asking for.
+ */
+async function makeAccount(
+	clerk: ClerkFake,
+	clerkRun: ClerkRun | null,
+	clerkUserId: string | undefined,
+): Promise<ClerkUser> {
+	if (clerkRun !== null) {
+		return await clerkRun.createUser(toClerkTestEmail());
+	}
+	const id =
+		clerkUserId ?? `user_${randomBytes(accountSuffixBytes).toString("hex")}`;
+	const account = { id, email: `${id}@example.com` };
+	clerk.setUser(account);
+	return account;
+}
+
 const fakeHetznerProject: HetznerProject = {
 	controllerId: fakeControllerId,
 	firewallId: fakeFirewallId,
 };
 
 type World = Readonly<{
-	issuer: SignInIssuer;
+	/** Where the deployment fetches the keys that sign-in tokens are signed by. */
+	issuerUrl: string;
 	fake: Fake;
 	clerk: ClerkFake;
 	sshAccessEncryptionKeys: readonly string[];
@@ -488,7 +516,7 @@ type World = Readonly<{
 }>;
 
 function toDeploymentVariables({
-	issuer,
+	issuerUrl,
 	fake,
 	clerk,
 	sshAccessEncryptionKeys,
@@ -496,7 +524,7 @@ function toDeploymentVariables({
 }: World) {
 	return {
 		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
-		CLERK_FRONTEND_API_URL: issuer.url,
+		CLERK_FRONTEND_API_URL: issuerUrl,
 		CLERK_SECRET_KEY: "sk_test_composery_tests_never_reach_clerk",
 		CLERK_WEBHOOK_SIGNING_SECRET: webhookSecret,
 		CLERK_API_URL: clerk.url,
@@ -635,7 +663,7 @@ async function requireStorageTemplate(context: RunContext) {
 			context,
 			backend,
 			toDeploymentVariables({
-				issuer,
+				issuerUrl: issuer.url,
 				fake,
 				clerk,
 				sshAccessEncryptionKeys: toSshAccessEncryptionKeys(),
@@ -727,9 +755,16 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const fake = await useHetznerFake();
 	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
 	const clerk = await useClerkFake();
-	// The deployment holds an account gone only when both sides name one Clerk instance, so the fake
-	// publishes the keys the sign-in tokens are signed by.
-	clerk.setKeys(await readIssuerKeys(issuer));
+	// A run given a secret works in an instance of its own, making accounts there and signing in as
+	// them. Without one, the fake holds the accounts and this run's issuer signs the tokens.
+	const clerkSecret = getClerkSecret();
+	const clerkRun =
+		clerkSecret === null ? null : await createClerkRun(clerkSecret);
+	if (clerkRun === null) {
+		// The deployment holds an account gone only when both sides name one Clerk instance, so the
+		// fake publishes the keys the sign-in tokens are signed by. A real instance publishes its own.
+		clerk.setKeys(await readIssuerKeys(issuer));
+	}
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
 	const sshAccessEncryptionKeys = toSshAccessEncryptionKeys();
@@ -744,7 +779,9 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		context,
 		backend,
 		toDeploymentVariables({
-			issuer,
+			// A run that meets Clerk is signed in with tokens Clerk signed, so the deployment trusts
+			// that instance rather than this run's own issuer.
+			issuerUrl: clerkRun === null ? issuer.url : requireClerkIssuer(),
 			fake,
 			clerk,
 			sshAccessEncryptionKeys,
@@ -763,19 +800,23 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 				logger: false,
 			});
 			if (subject !== undefined) {
-				client.setAuth(issuer.signIn(subject));
+				// Clerk mints the token when a run meets Clerk, so a signed-in test takes the same
+				// verification path a signed-in person takes, down to whose key signed it.
+				client.setAuth(
+					clerkRun === null
+						? issuer.signIn(subject)
+						: clerkRun.tokenFor(subject),
+				);
 			}
 			return client;
 		},
 		createAccount: async (clerkUserId) => {
-			const id =
-				clerkUserId ??
-				`user_${randomBytes(accountSuffixBytes).toString("hex")}`;
-			const account = {
-				id,
-				email: `${id}@example.com`,
-			};
-			clerk.setUser(account);
+			if (clerkUserId !== undefined && clerkRun !== null) {
+				throw new Error(
+					"A run that meets Clerk cannot be told which account ID to make: Clerk gives it one.",
+				);
+			}
+			const account = await makeAccount(clerk, clerkRun, clerkUserId);
 			await callFunction(
 				backend.url,
 				`Convex ${adminKey}`,
@@ -784,7 +825,7 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 					users: [
 						{
 							clerkUserId: account.id,
-							email: account.email,
+							...(account.email === undefined ? {} : { email: account.email }),
 						},
 					],
 				},

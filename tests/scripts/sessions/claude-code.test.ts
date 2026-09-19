@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { readClaudeCodeSession } from "../../../scripts/sessions/claude-code";
+import { readClaudeCodeSession } from "../../../scripts/session/claude-code";
 
 const configDirectory = join(
 	process.cwd(),
