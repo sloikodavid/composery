@@ -22,9 +22,19 @@ These changes break clients: moving or renaming a function, removing or renaming
 
 `convex/http.ts` holds routes for callers that cannot use a Convex client. `/webhooks/<system>` receives events from another system. Other paths name the resource they act on, such as `/ssh/host-keys`. A route authenticates its caller itself and does no work before it has checked the request.
 
+## Repeatable requests, in practice
+
+A `requestId` is one of three ways a repeat is made safe, and the other two are already in use where they fit better. `requestDelete` needs none: a deletion is a flag on the allocation, so asking twice asks for the state it is already in. `ssh.keys.add`, `update` and `remove` need none either: an edit names the revision of the file it was planned against, and the second attempt cannot apply because the first one changed the file. `ssh.bootstrap.renew` is the third kind: asking again inside the window hands back the same program rather than minting one that would invalidate it.
+
+What matters is that a repeat cannot do the work twice, not which of the three does it. A function that starts outside work and has none of them is a defect.
+
 ## Not built yet
 
-- Secrets for clients other than the web app, such as API tokens that `requireUser` accepts.
+- Secrets for clients other than the web app, such as API tokens that `requireUser` accepts. Scoped ones: to one server, to what may be done with it, and to what it may spend. A server holding a credential to act on itself is one of the shapes wanted, and it must not be able to read anything about another server.
 - Rate limits for each such token.
 - The choice between calling Convex functions directly and a versioned HTTP layer over the same helpers.
 - Public documentation of each function.
+- A client cannot read a quota before it is refused, so it learns its room by failing.
+- An operation that has been superseded cannot be read by its own id, so a client holding one from `requestPower` cannot learn how it ended.
+- Sharing refuses an address no account holds, and nothing records a grant for somebody who has not signed up yet.
+- Servers a caller owns and servers shared with them are two paginated lists, so a client that wants everything it can see pages both and merges them itself.

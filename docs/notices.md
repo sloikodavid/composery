@@ -20,7 +20,17 @@ Every row here exists in the code today, is recorded, and reaches nobody.
 | `reconcile` fails against Clerk | admin | Clerk is unreachable, and accounts are drifting |
 | A pinned contract moved: a vendor changed its published description | admin | read the difference and decide |
 
-The last one is different from the rest: it is about the repository rather than a running server, so it belongs in whatever runs on a schedule outside the deployment. The others are about state the deployment holds, and belong to the deployment.
+Every one of these is a state that lasts. A notice is also owed where nothing is wrong any more but something a person relied on has changed under them, which is easy to miss because the system is healthy at the time:
+
+| What happened | Who is told | Why it is not obvious |
+|---|---|---|
+| An address was replaced | customer | Everything pointing at the old one breaks: a DNS record, an allowlist, a `known_hosts` entry. The server is fine, which is exactly why nobody would look |
+| The project's rules went back on a server | admin | The repair worked, and it says somebody took them off, which is a person or a provider incident either way |
+| A renewal of Composery's way in was issued | customer, then admin | One script exists that installs a new management key. That it was asked for is the only trace, and a second request makes the first script useless |
+| A claim put a project's firewall rules back | admin | The rules had been changed at the provider. Nothing is broken afterwards, and the change itself is what wants reading |
+| A server was seen stopped that nobody here stopped | customer | It is a state, not a failure, and the panel shows it; but a server that stops on its own has a reason somebody should know |
+
+The last row of the first table is different from the rest: it is about the repository rather than a running server, so it belongs in whatever runs on a schedule outside the deployment. The others are about state the deployment holds, and belong to the deployment.
 
 ## Why this is not optional
 

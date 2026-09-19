@@ -14,6 +14,7 @@ import {
 	createServer,
 	createServerOwner,
 	readServerBackendRecord,
+	readServerStatus,
 	requireHetznerServerId,
 	type ServerClient,
 	settleServer,
@@ -28,6 +29,10 @@ const waitingTestTimeoutMs = 600_000;
 const forbidden = 403;
 const createdServers = /^\/servers$/;
 const createdPrimaryIps = /^\/primary_ips$/;
+// The worker puts the rules back after it has done what was asked of it, so this waits for one
+// more of its own cycles rather than for anything a test can ask for.
+const partTimeoutMs = 120_000;
+const partDelayMs = 500;
 
 let backend: ConvexBackend;
 let fake: HetznerFake;
@@ -268,21 +273,45 @@ test(
 	waitingTestTimeoutMs,
 );
 
+/** Waits for one part of a server to say what it should, without asking for any work. */
+async function settlePart(
+	client: ServerClient,
+	serverId: Id<"servers">,
+	part: "firewall" | "server" | "addresses",
+	until: string,
+) {
+	const deadline = Date.now() + partTimeoutMs;
+	let seen = "";
+	while (Date.now() < deadline) {
+		const status = await readServerStatus(client, serverId);
+		seen = status.parts[part];
+		if (seen === until) {
+			return status;
+		}
+		await Bun.sleep(partDelayMs);
+	}
+	throw new Error(`The ${part} stayed ${seen}.`);
+}
+
 test(
-	"rules taken off a server do not stop a power command, and are reported",
+	"rules taken off a server stop nothing, and go back on by themselves",
 	async () => {
 		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
 		await settleServer(backend, client, serverId, { until: "running" });
-		// An admin can take the project's rules off a server in Hetzner's own console. The server
-		// keeps running, and stopping it has nothing to do with what protects it.
+		// An admin can take the project's rules off a server in Hetzner's own console, and a
+		// customer cannot: they have no account in this project. So it is never a choice to
+		// respect, and the server keeps running while it is unprotected.
 		await fake.detachFirewall(await requireHetznerServerId(backend, serverId));
 
+		// What the customer asked for happens first, and is not held up by what protects the server.
 		const stopped = await changePower(client, serverId, "stop", "stopped");
-
 		expect(stopped.status).toBe("stopped");
-		expect(stopped.parts.firewall).toBe("missing");
 		expect(stopped.parts.server).toBe("ok");
+
+		// Then the rules go back, without anybody asking.
+		const repaired = await settlePart(client, serverId, "firewall", "ok");
+		expect(repaired.status).toBe("stopped");
 	},
 	testTimeoutMs,
 );

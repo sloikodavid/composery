@@ -18,13 +18,14 @@ import {
 	requireRequestId,
 	requireServerAllocation,
 } from "../allocations/operations";
+import { failureClass } from "../allocations/retries";
 import {
 	allocationStatus,
 	operationKind,
 	operationStatus,
 	powerOperationKind,
 } from "../allocations/schema";
-import { fail, failure } from "../errors";
+import { fail, failure, toConvexError } from "../errors";
 import { releaseServerQuota, reserveServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getAllocationSshAccess } from "../ssh/access_state";
@@ -48,7 +49,11 @@ export async function requestServerDelete(
 export const create = mutation({
 	args: { name: v.string(), requestId: v.string() },
 	returns: v.union(
-		v.object({ ok: v.literal(true), name: v.string() }),
+		v.object({
+			ok: v.literal(true),
+			serverId: v.id("servers"),
+			name: v.string(),
+		}),
 		failure,
 	),
 	handler: async (ctx, { name, requestId }) => {
@@ -62,7 +67,7 @@ export const create = mutation({
 			const server = await ctx.db.get("servers", previous.serverId);
 			return server === null
 				? fail("server_deleted")
-				: { ok: true as const, name: server.name };
+				: { ok: true as const, serverId: server._id, name: server.name };
 		}
 		const claimFailure = await checkServerNameClaim(ctx, user._id, name);
 		if (claimFailure !== null) {
@@ -88,7 +93,7 @@ export const create = mutation({
 			name,
 			config,
 		});
-		return { ok: true as const, name };
+		return { ok: true as const, serverId, name };
 	},
 });
 
@@ -142,8 +147,12 @@ export const getStatus = query({
 		parts: serverParts,
 		// What a member can do with it right now, worked out from those parts in one place.
 		features: serverFeatures,
-		// Why the allocation is not moving, when it is not. It is still being tried.
-		stuck: v.union(v.object({ since: v.number(), code: v.string() }), v.null()),
+		// Why the allocation is not moving, when it is not. It is still being tried, and the class
+		// says what kind of wait it is, which is what decides whether anybody need do anything.
+		stuck: v.union(
+			v.object({ since: v.number(), code: v.string(), class: failureClass }),
+			v.null(),
+		),
 		location: v.union(v.string(), v.null()),
 		// The addresses a client connects to, each one the server itself has been seen using.
 		ipv4: v.union(v.string(), v.null()),
@@ -178,16 +187,14 @@ export const getStatus = query({
 			allocation.operationId,
 		);
 		if (operation === null) {
-			throw new Error("The allocation's operation is missing.");
+			// An allocation always names the operation it is carrying out, so this is a defect.
+			throw toConvexError("server_broken");
 		}
 		return {
 			status: allocation.status,
 			parts,
 			features: toServerFeatures(parts),
-			stuck:
-				allocation.stuck === undefined
-					? null
-					: { since: allocation.stuck.since, code: allocation.stuck.code },
+			stuck: allocation.stuck ?? null,
 			location: allocation.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
 			ipv6: allocation.ipv6Address ?? null,

@@ -14,6 +14,7 @@ import { SshAccessError } from "../../ssh/errors";
 import type { FailureClass } from "../retries";
 import type { powerOperationKind } from "../schema";
 import {
+	applyHetznerCloudFirewall,
 	createHetznerCloudResource,
 	findHetznerCloudResource,
 	findHetznerCloudServer,
@@ -23,11 +24,15 @@ import {
 	type HetznerCloudOwner,
 	type HetznerCloudResource,
 	requireHetznerCloudController,
+	requireHetznerCloudFirewall,
 	resolveHetznerCloudSpec,
 	sendHetznerCloudDelete,
 	sendHetznerCloudPower,
 } from "./api";
-import { observeHetznerCloudServer } from "./observation";
+import {
+	observeHetznerCloudServer,
+	type ServerObservation,
+} from "./observation";
 import type { hetznerCloudResourceKind } from "./schema";
 import {
 	type HetznerCloudWorkerUpdate,
@@ -136,7 +141,7 @@ async function toCreateRequest(
 	{ request: HetznerCloudCreateRequest } | { update: HetznerCloudWorkerUpdate }
 > {
 	const { firewallId, resources, spec } = lease.hetznerCloudAllocation;
-	if (spec === undefined) {
+	if (spec === undefined || firewallId === undefined) {
 		return { update: toFailure("spec_missing", "transient") };
 	}
 	switch (kind) {
@@ -351,11 +356,39 @@ async function observeServer(
 	if (server.status === "changing") {
 		return toFailure("server_status_changing", "transient");
 	}
-	if (observeHetznerCloudServer(hetznerCloudAllocation, server) === null) {
+	const checked = observeHetznerCloudServer(hetznerCloudAllocation, server);
+	if (checked === null) {
 		return toFailure("server_configuration_mismatch", "waiting");
 	}
 	const powerUpdate = await stepPower(ctx, lease, server.id, server.status);
-	return powerUpdate ?? { observation: server };
+	if (powerUpdate !== null) {
+		return powerUpdate;
+	}
+	return (
+		(await stepFirewall(lease, checked, server.id)) ?? { observation: server }
+	);
+}
+
+/**
+ * Puts the project's rules back on a server that lost them. A customer cannot detach a firewall:
+ * they have no account in this project, so a server without ours was changed by an admin or by
+ * the provider, and neither is a choice to respect. Nothing else about the server is touched.
+ */
+async function stepFirewall(
+	lease: Lease,
+	checked: ServerObservation,
+	serverId: number,
+): Promise<HetznerCloudWorkerUpdate | null> {
+	const { firewallId } = lease.hetznerCloudAllocation;
+	if (
+		checked.parts.firewall !== "missing" ||
+		firewallId === undefined ||
+		lease.allocation.deleteRequested
+	) {
+		return null;
+	}
+	const actionId = await applyHetznerCloudFirewall(firewallId, serverId);
+	return actionId === null ? {} : { actionId };
 }
 
 async function step(
@@ -363,10 +396,12 @@ async function step(
 	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
 	const { allocation, hetznerCloudAllocation } = lease;
-	await requireHetznerCloudController(
-		hetznerCloudAllocation.firewallId,
-		hetznerCloudAllocation.controllerId,
-	);
+	const { controllerId, firewallId } = hetznerCloudAllocation;
+	if (firewallId === undefined) {
+		// Nothing is made in a project until the firewall that proves it is ours is found there.
+		return { firewallId: (await requireHetznerCloudFirewall(controllerId)).id };
+	}
+	await requireHetznerCloudController(firewallId, controllerId);
 	if (hetznerCloudAllocation.action !== undefined) {
 		return await stepAction(hetznerCloudAllocation.action);
 	}

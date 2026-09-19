@@ -45,7 +45,6 @@ type Env = {
   readonly CLERK_WEBHOOK_SIGNING_SECRET: string;
   readonly HCLOUD_CONTROLLER_ID: string | undefined;
   readonly HCLOUD_FAKE_URL: string | undefined;
-  readonly HCLOUD_FIREWALL_ID: string | undefined;
   readonly HCLOUD_IMAGE: string | undefined;
   readonly HCLOUD_LOCATIONS: string | undefined;
   readonly HCLOUD_SERVER_TYPE: string | undefined;

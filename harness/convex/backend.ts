@@ -502,7 +502,6 @@ function toDeploymentVariables({
 		CLERK_API_URL: clerk.url,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
 		HCLOUD_LOCATIONS: fakeLocations,
-		HCLOUD_FIREWALL_ID: String(hetzner.firewallId),
 		HCLOUD_CONTROLLER_ID: hetzner.controllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
 		HCLOUD_SERVER_TYPE: fakeServerType,

@@ -20,6 +20,8 @@ const errorMessages = {
 	request_id_conflict: "This request ID was used for a different request.",
 	request_id_invalid:
 		"Use a request ID with 8 to 100 letters, digits, hyphens, or underscores.",
+	server_broken:
+		"Something about this server is not as it should be. Composery has been told.",
 	server_busy: "This server is busy. Try again shortly.",
 	server_capacity_unavailable: "No capacity for new servers is available now.",
 	server_deleted: "This server was deleted.",

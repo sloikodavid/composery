@@ -6,7 +6,8 @@ on:
 
 jobs:
   verify:
-    # Linux runs the tests that need Docker; docs/requirements.md says what a machine needs.
+    # Linux runs everything, including the tests that need Docker; docs/requirements.md says what
+    # a machine needs.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -22,3 +23,31 @@ jobs:
       - run: cp .env.local.example .env.local
         # The same command a person runs before pushing: the checks, the tests, and the build.
       - run: bun verify
+
+  check:
+    # What differs between platforms is this repository's own code and the tools that read it:
+    # path handling, line endings, what a shell does with a script. That is what runs here.
+    #
+    # Not the tests, and not quietly: they need Docker, which a hosted macOS runner has not, so a
+    # run here would report on the runner rather than on the code. Not the build either, because
+    # `verify` is the only thing that builds and there is no script that builds alone; one added
+    # for CI would be a path nobody runs before pushing, which is how CI and a working copy drift.
+    name: check on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: cp .env.local.example .env.local
+        shell: bash
+      - run: bun check

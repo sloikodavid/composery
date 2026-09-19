@@ -1,4 +1,9 @@
 import { randomBytes } from "node:crypto";
+import { hetznerCloudFirewallRules } from "../../convex/allocations/hetzner_cloud/firewall";
+import {
+	hetznerCloudApiPrefix,
+	hetznerCloudOrigin,
+} from "../../convex/allocations/hetzner_cloud/origin";
 import { registerCleanup } from "../cleanup";
 import type { FakeReply, FakeRequest } from "../fake";
 
@@ -10,7 +15,6 @@ import type { FakeReply, FakeRequest } from "../fake";
  * Put the token in `.env.test` and run `HCLOUD_MODE=real bun test tests/convex/allocations`.
  */
 
-const apiUrl = "https://api.hetzner.cloud/v1";
 const controllerPrefix = "test-";
 const runTagBytes = 5;
 const leftoverAgeMs = 3_600_000;
@@ -51,14 +55,17 @@ async function call(
 	path: string,
 	body?: unknown,
 ) {
-	const reply = await fetch(`${apiUrl}${path}`, {
-		method,
-		headers: {
-			authorization: `Bearer ${token}`,
-			...(body === undefined ? {} : { "content-type": "application/json" }),
+	const reply = await fetch(
+		`${hetznerCloudOrigin}${hetznerCloudApiPrefix}${path}`,
+		{
+			method,
+			headers: {
+				authorization: `Bearer ${token}`,
+				...(body === undefined ? {} : { "content-type": "application/json" }),
+			},
+			...(body === undefined ? {} : { body: JSON.stringify(body) }),
 		},
-		...(body === undefined ? {} : { body: JSON.stringify(body) }),
-	});
+	);
 	const text = await reply.text();
 	return {
 		status: reply.status,
@@ -141,7 +148,8 @@ export async function createHetznerRun(token: string) {
 	const { body } = await call(token, "POST", "/firewalls", {
 		name: controllerId,
 		labels: { "controller-id": controllerId },
-		rules: [],
+		// The rules a deployment states, so a run meets the project a deployment would have.
+		rules: hetznerCloudFirewallRules,
 	});
 	const firewall = (body as { firewall?: { id?: number } } | null)?.firewall;
 	if (firewall?.id === undefined) {

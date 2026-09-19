@@ -41,6 +41,16 @@ const firstLocation = "nbg1";
 
 type Collection = "servers" | "primary_ips";
 
+/** One request, already taken apart the way this fake reads it. */
+type Asked = Readonly<{
+	method: string;
+	id: string | undefined;
+	group: string | undefined;
+	action: string | undefined;
+	query: URLSearchParams;
+	body: unknown;
+}>;
+
 type Resource = {
 	id: number;
 	collection: Collection;
@@ -107,6 +117,7 @@ export type HetznerFake = Fake &
 export async function startHetznerFake(): Promise<HetznerFake> {
 	const resources = new Map<number, Resource>();
 	const detachedFirewalls = new Set<number>();
+	let firewallRules: unknown[] = [];
 	const actions = new Map<number, string>();
 	let nextId = firstId;
 
@@ -221,6 +232,73 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		);
 	};
 
+	/**
+	 * The project's own firewall: found by its label, made when a deployment claims the project,
+	 * and put back onto a server that lost it. This fake holds one, because one controller has one.
+	 */
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each request about a firewall
+	const answerFirewall = (request: Asked): FakeReply => {
+		const { method, id, group, action, query, body } = request;
+		if (method === "GET" && id === undefined) {
+			const wanted = query.get("label_selector") ?? "";
+			const mine = wanted === `controller-id=${controllerId}`;
+			return {
+				status: httpOk,
+				body: {
+					firewalls: mine
+						? [
+								toFirewallReply(
+									controllerFirewallId,
+									controllerId,
+									firewallRules,
+								),
+							]
+						: [],
+					meta: toPaginationReply(mine ? 1 : 0),
+				},
+			};
+		}
+		if (method === "GET") {
+			return {
+				status: httpOk,
+				body: {
+					firewall: toFirewallReply(Number(id), controllerId, firewallRules),
+				},
+			};
+		}
+		if (method === "POST" && id === undefined) {
+			firewallRules = toRules(body);
+			return {
+				status: httpCreated,
+				body: {
+					firewall: toFirewallReply(
+						controllerFirewallId,
+						controllerId,
+						firewallRules,
+					),
+					actions: [],
+				},
+			};
+		}
+		if (method === "POST" && group === "actions" && action === "set_rules") {
+			firewallRules = toRules(body);
+			return { status: httpCreated, body: { actions: [startAction()] } };
+		}
+		if (
+			method === "POST" &&
+			group === "actions" &&
+			action === "apply_to_resources"
+		) {
+			// Hetzner puts the firewall back on whatever the request names, so the server stops
+			// being one this fake reports as having none.
+			for (const serverId of toAppliedServerIds(body)) {
+				detachedFirewalls.delete(serverId);
+			}
+			return { status: httpCreated, body: { actions: [startAction()] } };
+		}
+		return notFound();
+	};
+
 	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each request Composery sends
 	const answer = (method: string, path: string, body: unknown): FakeReply => {
 		const [route, rawQuery] = path.split("?");
@@ -228,11 +306,8 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		const [collection, id, group, action] = (route ?? "")
 			.split("/")
 			.filter(Boolean);
-		if (method === "GET" && collection === "firewalls") {
-			return {
-				status: httpOk,
-				body: { firewall: toFirewallReply(Number(id), controllerId) },
-			};
+		if (collection === "firewalls") {
+			return answerFirewall({ method, id, group, action, query, body });
 		}
 		if (method === "GET" && collection === "server_types") {
 			return {
@@ -360,4 +435,19 @@ let started: Promise<HetznerFake> | undefined;
 export function useHetznerFake() {
 	started ??= startHetznerFake();
 	return started;
+}
+
+/** The rules a request states, which this fake keeps as the firewall's own. */
+function toRules(body: unknown) {
+	const rules = (body as { rules?: unknown } | undefined)?.rules;
+	return Array.isArray(rules) ? rules : [];
+}
+
+/** Which servers a request puts a firewall onto. */
+function toAppliedServerIds(body: unknown) {
+	// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+	const applied = (body as { apply_to?: unknown } | undefined)?.apply_to;
+	return (Array.isArray(applied) ? applied : [])
+		.map((item) => (item as { server?: { id?: unknown } }).server?.id)
+		.filter((id): id is number => typeof id === "number");
 }

@@ -33,21 +33,16 @@ export async function createServerOwner(backend: ConvexBackend) {
 	return client;
 }
 
-/** Asks for a server under a name no other test uses, and returns it once it can be read. */
+/** Asks for a server under a name no other test uses. */
 export async function createServer(client: ConvexHttpClient) {
-	const name = `test-${randomBytes(suffixBytes).toString("hex")}`;
 	const created = await client.mutation(api.servers.lifecycle.create, {
-		name,
+		name: `test-${randomBytes(suffixBytes).toString("hex")}`,
 		requestId: `request-${randomBytes(suffixBytes).toString("hex")}`,
 	});
 	if (!created.ok) {
 		throw new Error(`Creating the server failed: ${created.code}`);
 	}
-	const server = await client.query(api.servers.names.getByName, { name });
-	if (server === null) {
-		throw new Error("The created server is not readable.");
-	}
-	return server._id;
+	return created.serverId;
 }
 
 export type ServerClient = Awaited<ReturnType<typeof createServerOwner>>;

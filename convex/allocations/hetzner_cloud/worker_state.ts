@@ -72,6 +72,8 @@ export const hetznerCloudWorkerUpdate = v.object({
 		}),
 	),
 	spec: v.optional(hetznerCloudSpec),
+	// Which firewall this allocation is behind, learnt from the label it carries.
+	firewallId: v.optional(v.number()),
 	// The server as the worker found it. What it means for the allocation is worked out here,
 	// from the allocation as it is now, so that the scan's look and the worker's say the same
 	// things about it.
@@ -539,6 +541,14 @@ export async function storeHetznerCloudObservation(
 			? { status: server.status }
 			: {}),
 	});
+	// A settled allocation is never looked at by its own worker, so what the scan sees is all there
+	// is. Something the worker can put right is the one reason to wake it: rules taken off a server
+	// go back on, and nothing else here decides anything.
+	if (settled && observed?.parts.firewall === "missing") {
+		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
+			dueAt: Date.now(),
+		});
+	}
 }
 
 async function recordObservation(
@@ -639,6 +649,9 @@ async function recordDeleted(recording: Recording) {
 }
 
 function recordAction(recording: Recording, update: HetznerCloudWorkerUpdate) {
+	if (update.firewallId !== undefined) {
+		recording.hetznerCloudPatch.firewallId = update.firewallId;
+	}
 	if (update.spec) {
 		recording.hetznerCloudPatch.spec = update.spec;
 		recording.allocationPatch.location = update.spec.location;

@@ -12,7 +12,6 @@ const app = defineApp({
 		CLERK_API_URL: v.optional(v.string()),
 		HCLOUD_TOKEN: v.optional(v.string()),
 		HCLOUD_LOCATIONS: v.optional(v.string()),
-		HCLOUD_FIREWALL_ID: v.optional(v.string()),
 		HCLOUD_CONTROLLER_ID: v.optional(v.string()),
 		HCLOUD_IMAGE: v.optional(v.string()),
 		HCLOUD_SERVER_TYPE: v.optional(v.string()),

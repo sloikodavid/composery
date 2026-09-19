@@ -40,7 +40,7 @@ export const hetznerCloudTables = {
 	hetznerCloudAllocations: defineTable({
 		allocationId: v.id("serverAllocations"),
 		controllerId: v.string(),
-		firewallId: v.number(),
+		firewallId: v.optional(v.number()),
 		locations: v.array(v.string()),
 		image: v.string(),
 		serverType: v.string(),

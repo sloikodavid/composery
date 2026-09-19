@@ -62,7 +62,9 @@ export async function requireServerAllocation(
 		.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 		.unique();
 	if (allocation === null) {
-		throw new Error("The server has no allocation.");
+		// Every server is made with one, and they are deleted together, so this is a defect rather
+		// than a state. A caller still gets a code it can tell apart from every other refusal.
+		throw toConvexError("server_broken");
 	}
 	return allocation;
 }

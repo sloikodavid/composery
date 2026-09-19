@@ -15,13 +15,12 @@ import {
 	hetznerCloudFirewallRules,
 } from "./firewall";
 import type { HetznerCloudServer } from "./observation";
+import { hetznerCloudApiPrefix, hetznerCloudOrigin } from "./origin";
 import type {
 	hetznerCloudCollection,
 	hetznerCloudResourceKind,
 } from "./schema";
 
-const hetznerOrigin = "https://api.hetzner.cloud";
-const apiPrefix = "/v1";
 const requestTimeoutMs = 20_000;
 const maxRetryAfterMs = 86_400_000;
 const millisecondsPerSecond = 1000;
@@ -191,7 +190,6 @@ export class HetznerCloudError extends Error {
 
 export type HetznerCloudConfig = {
 	controllerId: string;
-	firewallId: number;
 	locations: string[];
 	image: string;
 	serverType: string;
@@ -233,7 +231,6 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 		!env.HCLOUD_TOKEN ||
 		!env.HCLOUD_CONTROLLER_ID ||
 		!env.HCLOUD_LOCATIONS ||
-		!env.HCLOUD_FIREWALL_ID ||
 		!env.HCLOUD_IMAGE ||
 		!env.HCLOUD_SERVER_TYPE
 	) {
@@ -253,13 +250,8 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 	if (!controllerIdPattern.test(env.HCLOUD_CONTROLLER_ID)) {
 		throw new Error("The Hetzner Cloud controller ID is invalid.");
 	}
-	const firewallId = Number(env.HCLOUD_FIREWALL_ID);
-	if (!Number.isSafeInteger(firewallId) || firewallId <= 0) {
-		throw new Error("The Hetzner Cloud firewall ID is invalid.");
-	}
 	return {
 		controllerId: env.HCLOUD_CONTROLLER_ID,
-		firewallId,
 		locations,
 		image: env.HCLOUD_IMAGE,
 		serverType: env.HCLOUD_SERVER_TYPE,
@@ -324,8 +316,9 @@ async function callHetznerCloud(
 	let response: Response;
 	try {
 		const apiUrl =
-			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ?? hetznerOrigin;
-		response = await fetch(`${apiUrl}${apiPrefix}/${path}`, {
+			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ??
+			hetznerCloudOrigin;
+		response = await fetch(`${apiUrl}${hetznerCloudApiPrefix}/${path}`, {
 			method,
 			headers: {
 				// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name
@@ -861,15 +854,34 @@ export async function setHetznerCloudFirewallRules(firewallId: number) {
 	});
 }
 
-/** Puts one server behind this controller's firewall again. */
+/** Puts one server behind this controller's firewall again, and says which action to watch. */
 export async function applyHetznerCloudFirewall(
 	firewallId: number,
 	serverId: number,
 ) {
-	await callHetznerCloud(
+	const reply = await callHetznerCloud(
 		`firewalls/${firewallId}/actions/apply_to_resources`,
 		"POST",
 		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
 		{ apply_to: [{ type: "server", server: { id: serverId } }] },
 	);
+	// One request can apply a firewall to several resources, so Hetzner answers with one action
+	// for each. This one names a single server, and its action is the one to wait on.
+	const [action] = requireList(reply?.actions).map(requireObject);
+	return action === undefined ? null : requireId(action.id);
+}
+
+/**
+ * The firewall this deployment must be behind, or a refusal. A project without it is either not
+ * ours or not set up, and either way nothing may be created in it: an empty project would
+ * otherwise read as one where every server had been deleted.
+ */
+export async function requireHetznerCloudFirewall(controllerId: string) {
+	const found = await findHetznerCloudFirewall(controllerId);
+	if (found === null) {
+		throw new HetznerCloudError("project_firewall_missing", {
+			status: httpStatus.forbidden,
+		});
+	}
+	return found;
 }

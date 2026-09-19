@@ -119,8 +119,8 @@ test(
 
 		const stored = await readAccount(withoutPicture.id);
 		expect(stored).toMatchObject({ clerkUserId: withoutPicture.id });
-		// Absent, as Clerk sent it, and not an empty string standing in for one.
-		expect(stored?.imageUrl).toBeUndefined();
+		// Nothing, as Clerk sent nothing, and not an empty string standing in for one.
+		expect(stored?.imageUrl).toBeNull();
 		expect(await readAccount(withPicture.id)).toMatchObject({
 			clerkUserId: withPicture.id,
 		});
@@ -143,7 +143,9 @@ test(
 
 		const stored = await readAccount(account.id);
 		expect(stored).toMatchObject({ clerkUserId: account.id });
-		expect(stored?.email).toBeUndefined();
+		// A caller is told the address is not there, rather than being handed a missing key to
+		// tell apart from one that was never named.
+		expect(stored?.email).toBeNull();
 		backend.clerk.removeUser(account.id);
 	},
 	testTimeoutMs,
@@ -161,7 +163,7 @@ test(
 		backend.clerk.setUser(moved);
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
 
-		expect((await readAccount(account.id))?.email).toBeUndefined();
+		expect((await readAccount(account.id))?.email).toBeNull();
 		backend.clerk.removeUser(account.id);
 	},
 	testTimeoutMs,

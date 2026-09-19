@@ -23,6 +23,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `operation` | A recorded command on a server: `create`, `start`, `stop`, `forceStop`, `delete` | command, job |
 | `backend` | The mechanism that makes an allocation real, such as `hetznerCloud` | version, v1, v2 |
 | `provider` | The company and API that a backend calls, such as Hetzner | vendor |
+| `controller` | One deployment's identity inside a provider's project. Everything it makes there carries that identity, so one project can hold several deployments and each knows its own | tenant, instance |
 | `resource` | One thing that a backend owns at its provider | |
 | `part` | One piece of an allocation that can be right or wrong on its own: the server, its addresses, the project's rules, and Composery's management access | component, aspect |
 | `feature` | Something a member can do with a server, such as power or SSH keys, worked out from the parts | capability, action |

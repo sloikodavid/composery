@@ -12,7 +12,7 @@ import {
 	HetznerCloudError,
 	hetznerCloudRateLimiter,
 	listHetznerCloudResources,
-	requireHetznerCloudController,
+	requireHetznerCloudFirewall,
 } from "./api";
 import { hetznerCloudServerState } from "./observation";
 import type { hetznerCloudFindingReason } from "./schema";
@@ -92,7 +92,7 @@ export const sweep = internalMutation({
 		await hetznerCloudWorkPool.enqueueAction(
 			ctx,
 			internal.allocations.hetzner_cloud.inventory.run,
-			{ scan: { ...scan, epoch }, firewallId: config.firewallId },
+			{ scan: { ...scan, epoch } },
 			{ retry: false },
 		);
 		return null;
@@ -263,14 +263,14 @@ export const record = internalMutation({
 });
 
 export const run = internalAction({
-	args: { scan: schema.doc("hetznerCloudScans"), firewallId: v.number() },
+	args: { scan: schema.doc("hetznerCloudScans") },
 	returns: v.null(),
-	handler: async (ctx, { scan, firewallId }) => {
+	handler: async (ctx, { scan }) => {
 		let resources: ScannedResource[] = [];
 		let nextPage: number | null = null;
 		let error: string | null = null;
 		try {
-			await requireHetznerCloudController(firewallId, scan.controllerId);
+			await requireHetznerCloudFirewall(scan.controllerId);
 			const listed = await listHetznerCloudResources(
 				scan.controllerId,
 				scan.collection,

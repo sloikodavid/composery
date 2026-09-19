@@ -108,6 +108,30 @@ export const renew = action({
 		if (sshAccess === null) {
 			throw toConvexError("server_busy");
 		}
+		// A renewal that is already open is handed back as it is. The program carries a token that
+		// only works until the window closes, and minting a second one would make the first useless:
+		// a member who lost the reply, or ran it already, would be left with a script the server now
+		// refuses. Asking again buys no more time either, because the window is from when it opened.
+		if (
+			sshAccess.pendingPublicKey !== undefined &&
+			sshAccess.pendingEncryptedSecrets !== undefined &&
+			sshAccess.bootstrapExpiresAt > Date.now()
+		) {
+			return {
+				script: renderSshBootstrapScript({
+					bootstrapFile: {
+						allocationId,
+						token: decryptSshSecrets(
+							allocationId,
+							sshAccess.pendingEncryptedSecrets,
+						).token,
+						url: requireReportUrl(),
+					},
+					publicKey: sshAccess.pendingPublicKey,
+					previousPublicKey: sshAccess.publicKey,
+				}),
+			};
+		}
 		const keyPair = generateSshKeyPair();
 		const token = generateBootstrapToken();
 		await ctx.runMutation(internal.ssh.bootstrap_state.storeRenewal, {

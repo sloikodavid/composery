@@ -13,7 +13,7 @@ import {
 } from "./_generated/server";
 import { toConvexError } from "./errors";
 import { deleteUserQuotas } from "./quotas";
-import schema, { userFields } from "./schema";
+import { userFields } from "./schema";
 
 async function getUserByClerkId(ctx: QueryCtx, clerkUserId: string) {
 	return await ctx.db
@@ -38,10 +38,29 @@ export async function requireUser(ctx: QueryCtx) {
 	return user;
 }
 
+/** Who the caller is here, or nothing when Clerk has not been synced to this deployment yet. */
 export const getCurrent = query({
 	args: {},
-	returns: v.union(schema.doc("users"), v.null()),
-	handler: async (ctx) => await getCurrentUser(ctx),
+	returns: v.union(
+		v.object({
+			_id: v.id("users"),
+			clerkUserId: v.string(),
+			email: v.union(v.string(), v.null()),
+			imageUrl: v.union(v.string(), v.null()),
+		}),
+		v.null(),
+	),
+	handler: async (ctx) => {
+		const user = await getCurrentUser(ctx);
+		return user === null
+			? null
+			: {
+					_id: user._id,
+					clerkUserId: user.clerkUserId,
+					email: user.email ?? null,
+					imageUrl: user.imageUrl ?? null,
+				};
+	},
 });
 
 export const isSynced = internalQuery({

@@ -96,13 +96,17 @@ export function toImageReply(id: number, name: string) {
 	};
 }
 
-export function toFirewallReply(id: number, controllerId: string) {
+export function toFirewallReply(
+	id: number,
+	controllerId: string,
+	rules: readonly unknown[] = [],
+) {
 	return {
 		id,
 		name: "composery",
 		labels: { "controller-id": controllerId },
 		created,
-		rules: [],
+		rules,
 		applied_to: [],
 	};
 }

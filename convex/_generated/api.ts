@@ -13,6 +13,7 @@ import type * as allocations_hetzner_cloud_api from "../allocations/hetzner_clou
 import type * as allocations_hetzner_cloud_firewall from "../allocations/hetzner_cloud/firewall.js";
 import type * as allocations_hetzner_cloud_inventory from "../allocations/hetzner_cloud/inventory.js";
 import type * as allocations_hetzner_cloud_observation from "../allocations/hetzner_cloud/observation.js";
+import type * as allocations_hetzner_cloud_origin from "../allocations/hetzner_cloud/origin.js";
 import type * as allocations_hetzner_cloud_project from "../allocations/hetzner_cloud/project.js";
 import type * as allocations_hetzner_cloud_worker from "../allocations/hetzner_cloud/worker.js";
 import type * as allocations_hetzner_cloud_worker_state from "../allocations/hetzner_cloud/worker_state.js";
@@ -78,6 +79,7 @@ const fullApi: ApiFromModules<{
   "allocations/hetzner_cloud/firewall": typeof allocations_hetzner_cloud_firewall;
   "allocations/hetzner_cloud/inventory": typeof allocations_hetzner_cloud_inventory;
   "allocations/hetzner_cloud/observation": typeof allocations_hetzner_cloud_observation;
+  "allocations/hetzner_cloud/origin": typeof allocations_hetzner_cloud_origin;
   "allocations/hetzner_cloud/project": typeof allocations_hetzner_cloud_project;
   "allocations/hetzner_cloud/worker": typeof allocations_hetzner_cloud_worker;
   "allocations/hetzner_cloud/worker_state": typeof allocations_hetzner_cloud_worker_state;
