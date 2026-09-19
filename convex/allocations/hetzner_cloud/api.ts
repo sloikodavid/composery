@@ -30,6 +30,8 @@ const lookupPageSize = "2";
 // and what a page holds is read from the reply, so this only decides how many requests a walk
 // takes. `meta.pagination.next_page` is what says whether another one follows.
 const listPageSize = "50";
+// What is held back for work already under way when Hetzner says the hour is nearly spent.
+const budgetReserve = 20;
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
 const controllerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]$/;
@@ -302,6 +304,42 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
+/**
+ * What Hetzner says is left of this project's hour, read from whatever it last answered. Every
+ * reply carries it, so the deployment need not guess: its own allowance shapes bursts, and this is
+ * the number that says when to stop.
+ *
+ * It lives here because it belongs to the token rather than to any one allocation, and an action
+ * that made a request carries it back to whoever records what that run did.
+ */
+let lastBudget: { remaining: number; resetAt: number } | undefined;
+
+/** Hetzner names these on every reply. A reply that names neither leaves what we knew. */
+function readBudget(response: Response) {
+	const remaining = Number(response.headers.get("RateLimit-Remaining"));
+	const reset = Number(response.headers.get("RateLimit-Reset"));
+	if (!(Number.isSafeInteger(remaining) && Number.isSafeInteger(reset))) {
+		return;
+	}
+	lastBudget = { remaining, resetAt: reset * millisecondsPerSecond };
+}
+
+/**
+ * When to stop asking, or nothing while there is room. What is left is spent on the allocations
+ * already under way rather than on new ones, so the reserve is a few requests and not none: a run
+ * that has made a server still has addresses to attach and a report to wait for.
+ */
+export function getHetznerCloudPauseUntil(): number | undefined {
+	if (
+		lastBudget === undefined ||
+		lastBudget.remaining > budgetReserve ||
+		lastBudget.resetAt <= Date.now()
+	) {
+		return;
+	}
+	return lastBudget.resetAt;
+}
+
 /** No implicit retries. A request that failed can still have reached Hetzner. */
 async function callHetznerCloud(
 	path: string,
@@ -331,6 +369,7 @@ async function callHetznerCloud(
 	} catch {
 		throw new HetznerCloudError("transport_uncertain");
 	}
+	readBudget(response);
 	if (response.status === httpStatus.notFound && method === "GET") {
 		return null;
 	}

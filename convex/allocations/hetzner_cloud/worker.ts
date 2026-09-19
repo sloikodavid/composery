@@ -19,6 +19,7 @@ import {
 	findHetznerCloudResource,
 	findHetznerCloudServer,
 	getHetznerCloudActionStatus,
+	getHetznerCloudPauseUntil,
 	type HetznerCloudCreateRequest,
 	HetznerCloudError,
 	type HetznerCloudOwner,
@@ -456,6 +457,13 @@ export const run = internalAction({
 			update = await step(ctx, lease);
 		} catch (error) {
 			update = toErrorUpdate(error);
+		}
+		// Hetzner counts what this project has left of its hour and says so on every reply. When it
+		// is nearly spent, what is left belongs to the work already under way, so this allocation
+		// waits for the hour to turn rather than finding out by being refused.
+		const pauseUntil = getHetznerCloudPauseUntil();
+		if (pauseUntil !== undefined) {
+			update = { ...update, pauseUntil };
 		}
 		await ctx.runMutation(
 			internal.allocations.hetzner_cloud.worker_state.record,

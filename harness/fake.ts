@@ -26,8 +26,15 @@ export type FakeRequest = Readonly<{
 	body: unknown;
 }>;
 
-/** A reply as the system would send it. A null body means no content. */
-export type FakeReply = Readonly<{ status: number; body: unknown }>;
+/**
+ * A reply as the system would send it. A null body means no content. Headers are for what a system
+ * says beside the body and Composery reads, such as what is left of an hour's requests.
+ */
+export type FakeReply = Readonly<{
+	status: number;
+	body: unknown;
+	headers?: Readonly<Record<string, string>>;
+}>;
 
 /**
  * `answer` acts as the system would. `lose` acts too, and then drops the connection, so Composery
@@ -109,11 +116,14 @@ function readBody(request: IncomingMessage) {
 
 function send(response: ServerResponse, reply: FakeReply) {
 	if (reply.body === null) {
-		response.writeHead(reply.status);
+		response.writeHead(reply.status, { ...reply.headers });
 		response.end();
 		return;
 	}
-	response.writeHead(reply.status, { "content-type": "application/json" });
+	response.writeHead(reply.status, {
+		"content-type": "application/json",
+		...reply.headers,
+	});
 	response.end(JSON.stringify(reply.body));
 }
 

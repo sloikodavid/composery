@@ -74,6 +74,9 @@ export const hetznerCloudWorkerUpdate = v.object({
 	spec: v.optional(hetznerCloudSpec),
 	// Which firewall this allocation is behind, learnt from the label it carries.
 	firewallId: v.optional(v.number()),
+	// When Hetzner says its hour is spent, whatever this run decided about itself. It is a floor
+	// under the next attempt and never brings one forward.
+	pauseUntil: v.optional(v.number()),
 	// The server as the worker found it. What it means for the allocation is worked out here,
 	// from the allocation as it is now, so that the scan's look and the worker's say the same
 	// things about it.
@@ -720,6 +723,12 @@ export const record = internalMutation({
 			allocationId,
 			recording.allocationPatch,
 		);
+		if (update.pauseUntil !== undefined) {
+			recording.hetznerCloudPatch.dueAt = Math.max(
+				recording.hetznerCloudPatch.dueAt ?? 0,
+				update.pauseUntil,
+			);
+		}
 		await ctx.db.patch(
 			"hetznerCloudAllocations",
 			hetznerCloudAllocation._id,
