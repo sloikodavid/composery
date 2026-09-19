@@ -1,5 +1,5 @@
-import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
+import { Field, FieldLabel, FieldMessage } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const whitespacePattern = /\s+/;
@@ -7,8 +7,8 @@ const whitespacePattern = /\s+/;
 type InputFieldProps = Omit<ComponentProps<typeof Input>, "id"> & {
 	id: string;
 	label: ReactNode;
-	description?: string | undefined;
-	error?: string | undefined;
+	description?: ReactNode | undefined;
+	error?: ReactNode | undefined;
 };
 
 /** A labeled input with one stable message row for help or validation. */
@@ -21,8 +21,8 @@ export function InputField({
 	"aria-invalid": ariaInvalid,
 	...inputProps
 }: InputFieldProps) {
-	const hasError = Boolean(error);
-	const hasDescription = Boolean(description);
+	const hasError = error !== undefined && error !== null;
+	const hasDescription = description !== undefined && description !== null;
 	const hasMessage = hasError || hasDescription;
 	const messageId = `${id}Message`;
 	const describedBy = [
@@ -34,27 +34,23 @@ export function InputField({
 	].join(" ");
 
 	return (
-		<div className="grid content-start gap-2">
-			<label htmlFor={id} className="text-sm">
+		<Field>
+			<FieldLabel data-disabled={inputProps.disabled || undefined} htmlFor={id}>
 				{label}
-			</label>
+			</FieldLabel>
 			<Input
 				{...inputProps}
 				id={id}
 				aria-describedby={describedBy || undefined}
 				aria-invalid={hasError ? true : ariaInvalid}
 			/>
-			<p
+			<FieldMessage
 				id={hasMessage ? messageId : undefined}
-				aria-atomic="true"
-				aria-live="polite"
-				className={clsx(
-					"min-h-4 text-xs",
-					hasError ? "text-danger" : "text-muted",
-				)}
+				reserveSpace
+				variant={hasError ? "error" : "info"}
 			>
 				{hasError ? error : description}
-			</p>
-		</div>
+			</FieldMessage>
+		</Field>
 	);
 }

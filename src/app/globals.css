@@ -29,9 +29,17 @@
 	--color-danger-hover: var(--app-danger-hover);
 	--color-danger-active: var(--app-danger-active);
 	--color-danger-foreground: var(--app-danger-foreground);
+	--color-danger-border: var(--app-danger-border);
 	--color-danger-text: var(--app-danger-text);
 	--color-danger-surface-hover: var(--app-danger-surface-hover);
 	--color-danger-surface-active: var(--app-danger-surface-active);
+	--color-danger-surface: var(--app-danger-surface);
+	--color-success-text: var(--app-success-text);
+	--color-success-border: var(--app-success-border);
+	--color-success-surface: var(--app-success-surface);
+	--color-warning-text: var(--app-warning-text);
+	--color-warning-border: var(--app-warning-border);
+	--color-warning-surface: var(--app-warning-surface);
 
 	--color-background: var(--app-background);
 	--color-foreground: var(--app-foreground);
@@ -39,7 +47,6 @@
 	--color-muted-surface: var(--app-muted-surface);
 
 	--color-border: var(--app-border);
-	--color-control-border: var(--app-control-border);
 	--color-control-border-hover: var(--app-control-border-hover);
 	--color-control-border-active: var(--app-control-border-active);
 	--color-input-border-focus: var(--app-input-border-focus);
@@ -68,7 +75,6 @@
 	--app-muted-surface: var(--color-stone-100);
 
 	--app-border: var(--color-stone-200);
-	--app-control-border: var(--color-stone-200);
 	--app-control-border-hover: var(--color-stone-300);
 	--app-control-border-active: var(--color-stone-400);
 	--app-input-border-focus: var(--color-stone-400);
@@ -89,9 +95,25 @@
 	--app-danger-hover: var(--color-red-700);
 	--app-danger-active: var(--color-red-800);
 	--app-danger-foreground: var(--color-white);
+	--app-danger-border: var(--color-red-200);
 	--app-danger-text: var(--color-red-600);
+	--app-danger-surface: var(--color-red-50);
 	--app-danger-surface-hover: var(--color-red-50);
 	--app-danger-surface-active: var(--color-red-100);
+	--app-success-text: var(--color-green-700);
+	--app-success-border: var(--color-green-200);
+	--app-success-surface: color-mix(
+		in oklab,
+		var(--color-green-50) 94%,
+		var(--color-green-100)
+	);
+	--app-warning-text: var(--color-amber-700);
+	--app-warning-border: var(--color-amber-200);
+	--app-warning-surface: color-mix(
+		in oklab,
+		var(--color-amber-50) 94%,
+		var(--color-amber-100)
+	);
 
 	/*
 	 * The color the glow keeps where its shapes have thinned out. The brand color thinned toward the page turns brown
@@ -108,9 +130,8 @@
 		--app-muted-surface: var(--color-stone-900);
 
 		--app-border: var(--color-stone-800);
-		--app-control-border: var(--color-stone-700);
-		--app-control-border-hover: var(--color-stone-600);
-		--app-control-border-active: var(--color-stone-500);
+		--app-control-border-hover: var(--color-stone-700);
+		--app-control-border-active: var(--color-stone-600);
 		--app-input-border-focus: var(--color-stone-600);
 
 		--app-surface: color-mix(
@@ -133,8 +154,16 @@
 		--app-primary-foreground: var(--color-stone-950);
 
 		--app-danger-text: var(--color-red-400);
+		--app-danger-border: var(--color-red-800);
+		--app-danger-surface: var(--color-red-950);
 		--app-danger-surface-hover: var(--color-red-950);
 		--app-danger-surface-active: var(--color-red-900);
+		--app-success-text: var(--color-green-400);
+		--app-success-border: var(--color-green-800);
+		--app-success-surface: var(--color-green-950);
+		--app-warning-text: var(--color-amber-400);
+		--app-warning-border: var(--color-amber-800);
+		--app-warning-surface: var(--color-amber-950);
 	}
 }
 

@@ -20,12 +20,11 @@
 	--clerk-spacing: 1rem;
 }
 
-/* Clerk draws elevation and some borders with shadows. Stable element classes replace both with the shared borders. */
+/* Clerk draws elevation with shadows. Its semantic color variables and mapped panel surfaces provide the borders. */
 @layer utilities {
 	.cl-button,
 	.cl-input,
 	.cl-badge,
-	.cl-tagPillContainer,
 	.cl-phoneInputBox,
 	.cl-formInputGroup,
 	.cl-cardBox,
@@ -33,13 +32,11 @@
 	.cl-drawerContent,
 	.cl-popoverBox,
 	.cl-card,
-	.cl-pricingTableCard,
 	.cl-scrollBox,
 	.cl-userButtonPopoverMain,
 	.cl-organizationSwitcherPopoverMain,
 	.cl-menuList,
-	.cl-actionCard,
-	.cl-table {
+	.cl-actionCard {
 		box-shadow: none;
 	}
 }

@@ -91,6 +91,26 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 
 JavaScript reserves `delete`, so a registered Convex function that deletes is named `remove`.
 
+## Interface nouns
+
+| Word | Meaning |
+|---|---|
+| `field` | One labeled place where a person enters or selects a value, including its help and validation message |
+| `input` | A one-line text control |
+| `textarea` | A multiline text control |
+| `input group` | One input and fixed content or controls inside one shared frame |
+| `checkbox` | An independent on-or-off choice |
+| `radio group` | A set in which one option can be selected |
+| `switch` | A checkbox presented as an immediate on-or-off setting |
+| `badge` | A short status or category label |
+| `avatar` | A user or organization image with a text fallback |
+| `icon` | A small symbol that supports a control or label |
+| `icon button` | A button whose visible content is only an icon and whose accessible name is text |
+| `spinner` | An indicator for work with no measurable completion value |
+| `separator` | A structural line between adjacent regions |
+| `alert` | A persistent message inside the current page layout, not a domain `notice` or a transient `toast` |
+| `toast` | A transient result that floats above the page layout |
+
 ## Name prefixes
 
 | Prefix | Returns |

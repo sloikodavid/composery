@@ -37,7 +37,7 @@ export function Table<const Columns extends TableColumns>({
 							<th
 								key={column.id}
 								scope="col"
-								className="border-border border-l px-3 py-2 font-normal text-muted text-xs uppercase tracking-label first:border-l-0"
+								className="border-border border-l px-3 py-2 font-normal text-muted first:border-l-0"
 							>
 								<Link href={column.href} font="brand">
 									{column.text}

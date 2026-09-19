@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
  * The look of a panel: the surface color inside a border. Name it where the panel is another library's element and
  * cannot be a `Card`, such as a floating message.
  */
-export const cardSurface = "border border-border bg-surface";
+export const surfaceClassName = "bg-surface shadow-none";
+export const cardSurface = `border border-border ${surfaceClassName}`;
 
 /** A panel that holds content on the page background. */
 export function Card({
