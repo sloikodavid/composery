@@ -4733,6 +4733,778 @@
 				}
 			}
 		},
+		"/firewalls": {
+			"get": {
+				"parameters": [
+					{
+						"name": "sort",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"id",
+									"id:asc",
+									"id:desc",
+									"name",
+									"name:asc",
+									"name:desc",
+									"created",
+									"created:asc",
+									"created:desc"
+								]
+							}
+						}
+					},
+					{
+						"name": "name",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "label_selector",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
+					},
+					{
+						"name": "per_page",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
+					}
+				],
+				"request": {},
+				"responses": {
+					"200": {
+						"type": "object",
+						"properties": {
+							"firewalls": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
+										},
+										"name": {
+											"type": "string"
+										},
+										"labels": {
+											"type": "object",
+											"additionalProperties": {
+												"type": "string"
+											}
+										},
+										"created": {
+											"type": "string"
+										},
+										"rules": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"description": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"direction": {
+														"type": "string",
+														"enum": [
+															"in",
+															"out"
+														]
+													},
+													"source_ips": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													"destination_ips": {
+														"type": "array",
+														"items": {
+															"type": "string"
+														}
+													},
+													"protocol": {
+														"type": "string",
+														"enum": [
+															"tcp",
+															"udp",
+															"icmp",
+															"esp",
+															"gre"
+														]
+													},
+													"port": {
+														"type": [
+															"string",
+															"null"
+														]
+													}
+												},
+												"additionalProperties": false,
+												"required": [
+													"direction",
+													"protocol",
+													"destination_ips",
+													"source_ips",
+													"port"
+												]
+											}
+										},
+										"applied_to": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"type": {
+														"type": "string",
+														"enum": [
+															"server",
+															"label_selector"
+														]
+													},
+													"server": {
+														"type": "object",
+														"properties": {
+															"id": {
+																"type": "integer",
+																"minimum": 1,
+																"maximum": 9007199254740991
+															}
+														},
+														"additionalProperties": false,
+														"required": [
+															"id"
+														]
+													},
+													"label_selector": {
+														"type": "object",
+														"properties": {
+															"selector": {
+																"type": "string"
+															}
+														},
+														"additionalProperties": false,
+														"required": [
+															"selector"
+														]
+													},
+													"applied_to_resources": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"properties": {
+																"type": {
+																	"type": "string",
+																	"enum": [
+																		"server"
+																	]
+																},
+																"server": {
+																	"type": "object",
+																	"properties": {
+																		"id": {
+																			"type": "integer",
+																			"minimum": 1,
+																			"maximum": 9007199254740991
+																		}
+																	},
+																	"additionalProperties": false,
+																	"required": [
+																		"id"
+																	]
+																}
+															},
+															"additionalProperties": false
+														}
+													}
+												},
+												"additionalProperties": false,
+												"required": [
+													"type"
+												]
+											}
+										}
+									},
+									"additionalProperties": false,
+									"required": [
+										"id",
+										"name",
+										"created",
+										"rules",
+										"applied_to"
+									]
+								}
+							},
+							"meta": {
+								"type": "object",
+								"properties": {
+									"pagination": {
+										"type": "object",
+										"properties": {
+											"page": {
+												"type": "integer"
+											},
+											"per_page": {
+												"type": "integer"
+											},
+											"previous_page": {
+												"type": [
+													"integer",
+													"null"
+												]
+											},
+											"next_page": {
+												"type": [
+													"integer",
+													"null"
+												]
+											},
+											"last_page": {
+												"type": [
+													"integer",
+													"null"
+												]
+											},
+											"total_entries": {
+												"type": [
+													"integer",
+													"null"
+												]
+											}
+										},
+										"required": [
+											"page",
+											"per_page",
+											"previous_page",
+											"next_page",
+											"last_page",
+											"total_entries"
+										]
+									}
+								},
+								"required": [
+									"pagination"
+								]
+							}
+						},
+						"additionalProperties": false,
+						"required": [
+							"firewalls",
+							"meta"
+						]
+					},
+					"4xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					},
+					"5xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					}
+				}
+			},
+			"post": {
+				"parameters": [],
+				"request": {
+					"type": "object",
+					"properties": {
+						"name": {
+							"type": "string"
+						},
+						"labels": {
+							"type": "object",
+							"additionalProperties": {
+								"type": "string"
+							}
+						},
+						"rules": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"description": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"direction": {
+										"type": "string",
+										"enum": [
+											"in",
+											"out"
+										]
+									},
+									"source_ips": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									"destination_ips": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									"protocol": {
+										"type": "string",
+										"enum": [
+											"tcp",
+											"udp",
+											"icmp",
+											"esp",
+											"gre"
+										]
+									},
+									"port": {
+										"type": "string"
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"direction",
+									"protocol"
+								]
+							}
+						},
+						"apply_to": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"type": {
+										"type": "string",
+										"enum": [
+											"server",
+											"label_selector"
+										]
+									},
+									"server": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											}
+										},
+										"additionalProperties": false,
+										"required": [
+											"id"
+										]
+									},
+									"label_selector": {
+										"type": "object",
+										"properties": {
+											"selector": {
+												"type": "string"
+											}
+										},
+										"additionalProperties": false,
+										"required": [
+											"selector"
+										]
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"type"
+								]
+							}
+						}
+					},
+					"additionalProperties": false,
+					"required": [
+						"name"
+					]
+				},
+				"responses": {
+					"201": {
+						"type": "object",
+						"properties": {
+							"firewall": {
+								"type": "object",
+								"properties": {
+									"id": {
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
+									},
+									"name": {
+										"type": "string"
+									},
+									"labels": {
+										"type": "object",
+										"additionalProperties": {
+											"type": "string"
+										}
+									},
+									"created": {
+										"type": "string"
+									},
+									"rules": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"description": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"direction": {
+													"type": "string",
+													"enum": [
+														"in",
+														"out"
+													]
+												},
+												"source_ips": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"destination_ips": {
+													"type": "array",
+													"items": {
+														"type": "string"
+													}
+												},
+												"protocol": {
+													"type": "string",
+													"enum": [
+														"tcp",
+														"udp",
+														"icmp",
+														"esp",
+														"gre"
+													]
+												},
+												"port": {
+													"type": [
+														"string",
+														"null"
+													]
+												}
+											},
+											"additionalProperties": false,
+											"required": [
+												"direction",
+												"protocol",
+												"destination_ips",
+												"source_ips",
+												"port"
+											]
+										}
+									},
+									"applied_to": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"type": {
+													"type": "string",
+													"enum": [
+														"server",
+														"label_selector"
+													]
+												},
+												"server": {
+													"type": "object",
+													"properties": {
+														"id": {
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
+														}
+													},
+													"additionalProperties": false,
+													"required": [
+														"id"
+													]
+												},
+												"label_selector": {
+													"type": "object",
+													"properties": {
+														"selector": {
+															"type": "string"
+														}
+													},
+													"additionalProperties": false,
+													"required": [
+														"selector"
+													]
+												},
+												"applied_to_resources": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"properties": {
+															"type": {
+																"type": "string",
+																"enum": [
+																	"server"
+																]
+															},
+															"server": {
+																"type": "object",
+																"properties": {
+																	"id": {
+																		"type": "integer",
+																		"minimum": 1,
+																		"maximum": 9007199254740991
+																	}
+																},
+																"additionalProperties": false,
+																"required": [
+																	"id"
+																]
+															}
+														},
+														"additionalProperties": false
+													}
+												}
+											},
+											"additionalProperties": false,
+											"required": [
+												"type"
+											]
+										}
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"id",
+									"name",
+									"created",
+									"rules",
+									"applied_to"
+								]
+							},
+							"actions": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
+										},
+										"command": {
+											"type": "string"
+										},
+										"status": {
+											"type": "string",
+											"enum": [
+												"running",
+												"success",
+												"error"
+											]
+										},
+										"started": {
+											"type": "string"
+										},
+										"finished": {
+											"type": [
+												"string",
+												"null"
+											]
+										},
+										"progress": {
+											"type": "integer"
+										},
+										"resources": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
+													},
+													"type": {
+														"type": "string"
+													}
+												},
+												"required": [
+													"id",
+													"type"
+												]
+											}
+										},
+										"error": {
+											"type": [
+												"object",
+												"null"
+											],
+											"properties": {
+												"code": {
+													"type": "string"
+												},
+												"message": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"code",
+												"message"
+											]
+										}
+									},
+									"required": [
+										"id",
+										"command",
+										"status",
+										"progress",
+										"started",
+										"finished",
+										"resources",
+										"error"
+									]
+								}
+							}
+						},
+						"additionalProperties": false
+					},
+					"4xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					},
+					"5xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					}
+				}
+			}
+		},
 		"/firewalls/{id}": {
 			"get": {
 				"parameters": [
@@ -4917,6 +5689,454 @@
 						"additionalProperties": false,
 						"required": [
 							"firewall"
+						]
+					},
+					"4xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					},
+					"5xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					}
+				}
+			}
+		},
+		"/firewalls/{id}/actions/set_rules": {
+			"post": {
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
+					}
+				],
+				"request": {
+					"type": "object",
+					"properties": {
+						"rules": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"description": {
+										"type": [
+											"string",
+											"null"
+										]
+									},
+									"direction": {
+										"type": "string",
+										"enum": [
+											"in",
+											"out"
+										]
+									},
+									"source_ips": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									"destination_ips": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										}
+									},
+									"protocol": {
+										"type": "string",
+										"enum": [
+											"tcp",
+											"udp",
+											"icmp",
+											"esp",
+											"gre"
+										]
+									},
+									"port": {
+										"type": "string"
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"direction",
+									"protocol"
+								]
+							}
+						}
+					},
+					"additionalProperties": false,
+					"required": [
+						"rules"
+					]
+				},
+				"responses": {
+					"201": {
+						"type": "object",
+						"properties": {
+							"actions": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
+										},
+										"command": {
+											"type": "string"
+										},
+										"status": {
+											"type": "string",
+											"enum": [
+												"running",
+												"success",
+												"error"
+											]
+										},
+										"started": {
+											"type": "string"
+										},
+										"finished": {
+											"type": [
+												"string",
+												"null"
+											]
+										},
+										"progress": {
+											"type": "integer"
+										},
+										"resources": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
+													},
+													"type": {
+														"type": "string"
+													}
+												},
+												"required": [
+													"id",
+													"type"
+												]
+											}
+										},
+										"error": {
+											"type": [
+												"object",
+												"null"
+											],
+											"properties": {
+												"code": {
+													"type": "string"
+												},
+												"message": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"code",
+												"message"
+											]
+										}
+									},
+									"required": [
+										"id",
+										"command",
+										"status",
+										"progress",
+										"started",
+										"finished",
+										"resources",
+										"error"
+									]
+								}
+							}
+						},
+						"required": [
+							"actions"
+						]
+					},
+					"4xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					},
+					"5xx": {
+						"type": "object",
+						"properties": {
+							"error": {
+								"type": "object",
+								"properties": {
+									"code": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
+									},
+									"details": {
+										"type": [
+											"object",
+											"null"
+										]
+									}
+								},
+								"required": [
+									"code",
+									"message"
+								]
+							}
+						},
+						"required": [
+							"error"
+						]
+					}
+				}
+			}
+		},
+		"/firewalls/{id}/actions/apply_to_resources": {
+			"post": {
+				"parameters": [
+					{
+						"name": "id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
+					}
+				],
+				"request": {
+					"type": "object",
+					"properties": {
+						"apply_to": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"type": {
+										"type": "string",
+										"enum": [
+											"server",
+											"label_selector"
+										]
+									},
+									"server": {
+										"type": "object",
+										"properties": {
+											"id": {
+												"type": "integer"
+											}
+										},
+										"additionalProperties": false,
+										"required": [
+											"id"
+										]
+									},
+									"label_selector": {
+										"type": "object",
+										"properties": {
+											"selector": {
+												"type": "string"
+											}
+										},
+										"additionalProperties": false,
+										"required": [
+											"selector"
+										]
+									}
+								},
+								"additionalProperties": false,
+								"required": [
+									"type"
+								]
+							}
+						}
+					},
+					"additionalProperties": false,
+					"required": [
+						"apply_to"
+					]
+				},
+				"responses": {
+					"201": {
+						"type": "object",
+						"properties": {
+							"actions": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"id": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
+										},
+										"command": {
+											"type": "string"
+										},
+										"status": {
+											"type": "string",
+											"enum": [
+												"running",
+												"success",
+												"error"
+											]
+										},
+										"started": {
+											"type": "string"
+										},
+										"finished": {
+											"type": [
+												"string",
+												"null"
+											]
+										},
+										"progress": {
+											"type": "integer"
+										},
+										"resources": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"id": {
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
+													},
+													"type": {
+														"type": "string"
+													}
+												},
+												"required": [
+													"id",
+													"type"
+												]
+											}
+										},
+										"error": {
+											"type": [
+												"object",
+												"null"
+											],
+											"properties": {
+												"code": {
+													"type": "string"
+												},
+												"message": {
+													"type": "string"
+												}
+											},
+											"required": [
+												"code",
+												"message"
+											]
+										}
+									},
+									"required": [
+										"id",
+										"command",
+										"status",
+										"progress",
+										"started",
+										"finished",
+										"resources",
+										"error"
+									]
+								}
+							}
+						},
+						"required": [
+							"actions"
 						]
 					},
 					"4xx": {

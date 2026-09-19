@@ -36,7 +36,7 @@ import { type ClerkFake, useClerkFake } from "../clerk/fake";
 import type { ClerkUser } from "../clerk/replies";
 import { type SignInIssuer, startSignInIssuer } from "../clerk/sign-in";
 import type { Fake } from "../fake";
-import { useHetznerFake } from "../hetzner/fake";
+import { fakeServerType, useHetznerFake } from "../hetzner/fake";
 import { createHetznerRun, getHetznerToken } from "../hetzner/real";
 import { convexBackendAssets, convexBackendVersion } from "../pins";
 
@@ -505,6 +505,7 @@ function toDeploymentVariables({
 		HCLOUD_FIREWALL_ID: String(hetzner.firewallId),
 		HCLOUD_CONTROLLER_ID: hetzner.controllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
+		HCLOUD_SERVER_TYPE: fakeServerType,
 		HCLOUD_FAKE_URL: fake.url,
 		SSH_ACCESS_ENCRYPTION_KEYS: sshAccessEncryptionKeys.join(","),
 		// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE

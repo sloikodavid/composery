@@ -34,7 +34,8 @@ const ipv6Offset = 2;
 const controllerFirewallId = 77;
 const controllerId = "composery-test";
 const imageId = 501;
-const serverTypeName = "cx23";
+/** The one type this fake offers, which is what a deployment reading it must be told to ask for. */
+export const fakeServerType = "cx23";
 const locations = ["nbg1", "fsn1", "hel1"];
 const firstLocation = "nbg1";
 
@@ -153,7 +154,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			firewallId: detachedFirewalls.has(resource.id)
 				? null
 				: controllerFirewallId,
-			serverType: serverTypeName,
+			serverType: fakeServerType,
 			location: resource.location,
 			imageId,
 			imageName: "ubuntu-24.04",
@@ -238,7 +239,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 				status: httpOk,
 				body: {
 					// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
-					server_types: [toServerTypeReply(serverTypeName, locations)],
+					server_types: [toServerTypeReply(fakeServerType, locations)],
 					meta: toPaginationReply(1),
 				},
 			};

@@ -136,10 +136,12 @@ test("a server type Hetzner no longer offers is refused for good, not read as a 
 		).toEqual([]);
 	}
 
-	expect(requireOfferedServerType(offered).name).toBe("cx23");
+	expect(requireOfferedServerType(offered, "cx23").name).toBe("cx23");
 	// A name that matches nothing is Hetzner's answer that the type is gone, and waiting does not
 	// bring a retired type back.
-	const refusal = catchHetznerError(() => requireOfferedServerType(retired));
+	const refusal = catchHetznerError(() =>
+		requireOfferedServerType(retired, "cx23"),
+	);
 	expect(refusal?.code).toBe("server_type_unavailable");
 	// Nothing Composery can send brings a retired type back: an admin picks another one.
 	expect(refusal?.failureClass).toBe("waiting");

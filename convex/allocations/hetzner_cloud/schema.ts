@@ -43,6 +43,7 @@ export const hetznerCloudTables = {
 		firewallId: v.number(),
 		locations: v.array(v.string()),
 		image: v.string(),
+		serverType: v.string(),
 		spec: v.optional(hetznerCloudSpec),
 		resources: v.object({
 			ipv4: hetznerCloudResourceStatus,

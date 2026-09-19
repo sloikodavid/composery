@@ -10,8 +10,10 @@
 
 import type * as allocations_addresses from "../allocations/addresses.js";
 import type * as allocations_hetzner_cloud_api from "../allocations/hetzner_cloud/api.js";
+import type * as allocations_hetzner_cloud_firewall from "../allocations/hetzner_cloud/firewall.js";
 import type * as allocations_hetzner_cloud_inventory from "../allocations/hetzner_cloud/inventory.js";
 import type * as allocations_hetzner_cloud_observation from "../allocations/hetzner_cloud/observation.js";
+import type * as allocations_hetzner_cloud_project from "../allocations/hetzner_cloud/project.js";
 import type * as allocations_hetzner_cloud_worker from "../allocations/hetzner_cloud/worker.js";
 import type * as allocations_hetzner_cloud_worker_state from "../allocations/hetzner_cloud/worker_state.js";
 import type * as allocations_operations from "../allocations/operations.js";
@@ -73,8 +75,10 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   "allocations/addresses": typeof allocations_addresses;
   "allocations/hetzner_cloud/api": typeof allocations_hetzner_cloud_api;
+  "allocations/hetzner_cloud/firewall": typeof allocations_hetzner_cloud_firewall;
   "allocations/hetzner_cloud/inventory": typeof allocations_hetzner_cloud_inventory;
   "allocations/hetzner_cloud/observation": typeof allocations_hetzner_cloud_observation;
+  "allocations/hetzner_cloud/project": typeof allocations_hetzner_cloud_project;
   "allocations/hetzner_cloud/worker": typeof allocations_hetzner_cloud_worker;
   "allocations/hetzner_cloud/worker_state": typeof allocations_hetzner_cloud_worker_state;
   "allocations/operations": typeof allocations_operations;

@@ -48,6 +48,7 @@ type Env = {
   readonly HCLOUD_FIREWALL_ID: string | undefined;
   readonly HCLOUD_IMAGE: string | undefined;
   readonly HCLOUD_LOCATIONS: string | undefined;
+  readonly HCLOUD_SERVER_TYPE: string | undefined;
   readonly HCLOUD_TOKEN: string | undefined;
   readonly SSH_ACCESS_ENCRYPTION_KEYS: string | undefined;
 };

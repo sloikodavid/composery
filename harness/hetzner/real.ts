@@ -169,12 +169,46 @@ async function require2xx(
 	return reply.body;
 }
 
+const settleTimeoutMs = 60_000;
+const settleDelayMs = 500;
+
+/** What Hetzner says about one server right now. */
+async function readServer(token: string, serverId: number) {
+	const body = await require2xx(token, "GET", `/servers/${serverId}`);
+	return (
+		(body as { server?: { status?: string; firewalls?: { id?: number }[] } })
+			.server ?? {}
+	);
+}
+
+/**
+ * Waits until Hetzner itself says the change happened. Every one of these is an action Hetzner
+ * carries out after answering, so a control that returned before it finished would hand a test a
+ * world it only asked for, and the test would read the state it was trying to change.
+ */
+async function waitUntil(
+	token: string,
+	serverId: number,
+	done: (server: Awaited<ReturnType<typeof readServer>>) => boolean,
+	what: string,
+) {
+	const deadline = Date.now() + settleTimeoutMs;
+	while (Date.now() < deadline) {
+		if (done(await readServer(token, serverId))) {
+			return;
+		}
+		await Bun.sleep(settleDelayMs);
+	}
+	throw new Error(`Hetzner did not ${what} server ${serverId} in time.`);
+}
+
 /**
  * Stops one server at Hetzner itself, which is what the fake's own control stands in for. A test
  * that says somebody stopped a server in the console must mean it when the console is real.
  */
 export async function stopHetznerServer(token: string, serverId: number) {
 	await require2xx(token, "POST", `/servers/${serverId}/actions/poweroff`);
+	await waitUntil(token, serverId, (server) => server.status === "off", "stop");
 }
 
 /**
@@ -183,10 +217,7 @@ export async function stopHetznerServer(token: string, serverId: number) {
  * server comes off.
  */
 export async function detachHetznerFirewalls(token: string, serverId: number) {
-	const body = await require2xx(token, "GET", `/servers/${serverId}`);
-	const attached =
-		(body as { server?: { firewalls?: { id?: number }[] } } | null)?.server
-			?.firewalls ?? [];
+	const attached = (await readServer(token, serverId)).firewalls ?? [];
 	for (const firewall of attached) {
 		if (typeof firewall.id !== "number") {
 			continue;
@@ -199,4 +230,10 @@ export async function detachHetznerFirewalls(token: string, serverId: number) {
 			{ remove_from: [{ type: "server", server: { id: serverId } }] },
 		);
 	}
+	await waitUntil(
+		token,
+		serverId,
+		(server) => (server.firewalls ?? []).length === 0,
+		"take the rules off",
+	);
 }

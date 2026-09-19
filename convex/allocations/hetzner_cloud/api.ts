@@ -10,6 +10,10 @@ import {
 } from "../../http_status";
 import type { FailureClass } from "../retries";
 import type { powerOperationKind } from "../schema";
+import {
+	type HetznerCloudFirewallRule,
+	hetznerCloudFirewallRules,
+} from "./firewall";
 import type { HetznerCloudServer } from "./observation";
 import type {
 	hetznerCloudCollection,
@@ -21,9 +25,6 @@ const apiPrefix = "/v1";
 const requestTimeoutMs = 20_000;
 const maxRetryAfterMs = 86_400_000;
 const millisecondsPerSecond = 1000;
-const serverType = "cx23";
-const architecture = "x86";
-const defaultImage = "ubuntu-24.04";
 const maxLocations = 20;
 const lookupPageSize = "2";
 // The most Hetzner gives at once. Asking for more is answered with fifty rather than refused,
@@ -193,6 +194,7 @@ export type HetznerCloudConfig = {
 	firewallId: number;
 	locations: string[];
 	image: string;
+	serverType: string;
 };
 
 /** The labels that make a resource this controller's, for one allocation. */
@@ -224,11 +226,16 @@ export type HetznerCloudCreateRequest =
 
 /** Returns null when Hetzner Cloud is not configured. Throws when the configuration is invalid. */
 export function getHetznerCloudConfig(): HetznerCloudConfig | null {
+	// Everything a server is made of is said by the deployment. Nothing here falls back to a value
+	// somebody wrote down once: a fallback decides for a deployment that never chose, and the first
+	// anybody would know of it is a server built from something nobody asked for.
 	if (
 		!env.HCLOUD_TOKEN ||
 		!env.HCLOUD_CONTROLLER_ID ||
 		!env.HCLOUD_LOCATIONS ||
-		!env.HCLOUD_FIREWALL_ID
+		!env.HCLOUD_FIREWALL_ID ||
+		!env.HCLOUD_IMAGE ||
+		!env.HCLOUD_SERVER_TYPE
 	) {
 		return null;
 	}
@@ -254,7 +261,8 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 		controllerId: env.HCLOUD_CONTROLLER_ID,
 		firewallId,
 		locations,
-		image: env.HCLOUD_IMAGE ?? defaultImage,
+		image: env.HCLOUD_IMAGE,
+		serverType: env.HCLOUD_SERVER_TYPE,
 	};
 }
 
@@ -374,12 +382,10 @@ function getActionId(reply: Reply | null) {
  * test can put Hetzner's own shapes through it: the request is one every allocation makes, so no
  * test can script it for one allocation alone.
  */
-export function requireOfferedServerType(reply: Reply | null) {
+export function requireOfferedServerType(reply: Reply | null, name: string) {
 	const offered = requireList(reply?.server_types)
 		.map(requireObject)
-		.find(
-			(type) => type.name === serverType && type.architecture === architecture,
-		);
+		.find((type) => type.name === name);
 	if (offered === undefined) {
 		throw new HetznerCloudError("server_type_unavailable", {
 			status: httpStatus.badRequest,
@@ -759,10 +765,14 @@ function isSupportedLocation(
 export async function resolveHetznerCloudSpec(
 	locations: string[],
 	image: string,
+	serverType: string,
 ) {
 	const type = requireOfferedServerType(
 		await callHetznerCloud(`server_types?name=${serverType}`),
+		serverType,
 	);
+	// The image must be built for what the server runs on, and the type is what says which that is.
+	const architecture = requireText(type.architecture);
 	const supported = requireList(type.locations).map(requireObject);
 	const location =
 		locations.find((name) => isSupportedLocation(supported, name, true)) ??
@@ -790,4 +800,76 @@ export async function resolveHetznerCloudSpec(
 		});
 	}
 	return { location, imageId: requireId(candidate.id), serverType };
+}
+
+function toFirewallRules(value: unknown): HetznerCloudFirewallRule[] {
+	return requireList(value).map((item) => {
+		const rule = requireObject(item);
+		return {
+			direction: requireText(rule.direction),
+			protocol: requireText(rule.protocol),
+			...(typeof rule.port === "string" ? { port: rule.port } : {}),
+			sourceIps: requireList(rule.source_ips).map((source) =>
+				requireText(source),
+			),
+		};
+	});
+}
+
+/**
+ * The firewall this controller made for itself, found by the label it carries rather than by a
+ * number somebody copied. Nothing here creates one: a token for another project would then be
+ * given a firewall of its own, and the check that proves which project we are in would prove
+ * nothing. `project.claimFirewall` is where one is made, deliberately and once.
+ */
+export async function findHetznerCloudFirewall(controllerId: string) {
+	const query = new URLSearchParams({
+		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+		label_selector: `controller-id=${controllerId}`,
+	});
+	const found = requireList(
+		(await callHetznerCloud(`firewalls?${query}`))?.firewalls,
+	);
+	if (found.length === 0) {
+		return null;
+	}
+	if (found.length > 1) {
+		// Two firewalls with one controller's label: nothing here can tell which one is meant.
+		throw new HetznerCloudError("duplicate_resources");
+	}
+	const firewall = requireObject(found[0]);
+	return {
+		id: requireId(firewall.id),
+		rules: toFirewallRules(firewall.rules ?? []),
+	};
+}
+
+/** Makes this controller's firewall, with the rules Composery states. */
+export async function createHetznerCloudFirewall(controllerId: string) {
+	const reply = await callHetznerCloud("firewalls", "POST", {
+		name: `composery-${controllerId}`,
+		labels: { "controller-id": controllerId },
+		rules: hetznerCloudFirewallRules,
+	});
+	return requireId(requireObject(reply?.firewall).id);
+}
+
+/** Puts the rules back to what Composery states, whatever they were. */
+export async function setHetznerCloudFirewallRules(firewallId: number) {
+	await callHetznerCloud(`firewalls/${firewallId}/actions/set_rules`, "POST", {
+		rules: hetznerCloudFirewallRules,
+	});
+}
+
+/** Puts one server behind this controller's firewall again. */
+export async function applyHetznerCloudFirewall(
+	firewallId: number,
+	serverId: number,
+) {
+	await callHetznerCloud(
+		`firewalls/${firewallId}/actions/apply_to_resources`,
+		"POST",
+		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+		{ apply_to: [{ type: "server", server: { id: serverId } }] },
+	);
 }

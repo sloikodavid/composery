@@ -383,6 +383,7 @@ async function step(
 			spec: await resolveHetznerCloudSpec(
 				hetznerCloudAllocation.locations,
 				hetznerCloudAllocation.image,
+				hetznerCloudAllocation.serverType,
 			),
 		};
 	}
