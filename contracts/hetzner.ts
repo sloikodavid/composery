@@ -5,7 +5,6 @@ import {
 	type Waiver,
 } from "./check";
 
-/** Every request Composery sends to Hetzner, by the path and method it sends it with. */
 export const hetznerDescribed: Described = {
 	source: "https://docs.hetzner.cloud/cloud.spec.json",
 	holder: "paths",
@@ -27,11 +26,6 @@ export const hetznerDescribed: Described = {
 	},
 };
 
-/**
- * Where Hetzner and Hetzner's description of itself disagree. Each entry must be able to fail:
- * `claims` is what the pinned contract says today, so a correction upstream stops the waiver from
- * applying and asks for review.
- */
 export const hetznerWaivers: readonly Waiver[] = [
 	{
 		operation: "POST /servers",
@@ -43,7 +37,6 @@ export const hetznerWaivers: readonly Waiver[] = [
 	},
 ];
 
-/** Holds Composery's requests, and the Hetzner fake's replies, to Hetzner's own description. */
 export function createHetznerContractChecker() {
 	return createContractChecker({
 		system: "Hetzner",
@@ -52,5 +45,4 @@ export function createHetznerContractChecker() {
 	});
 }
 
-/** The one a run shares, so every request reaches the same record. */
 export const hetznerContract = createHetznerContractChecker();

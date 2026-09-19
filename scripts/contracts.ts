@@ -10,20 +10,10 @@ import type {
 	Schema,
 } from "../contracts/schema";
 
-/**
- * Writes down the part of each system's published description that Composery depends on, beside
- * the checker that reads it. Run it with `bun contracts`; it is the only thing in the repository
- * that fetches a description, so nothing a test runs reaches the network.
- *
- * The filter is deterministic: it selects the operations named in `selection.ts`, follows every
- * reference, and keeps only the members that decide whether a value fits. Prose, examples and
- * every operation we do not use are left behind, so a reviewer reads a shape rather than a
- * document. A difference in the written file is a change at the system, reviewed like any other.
- */
-
 type Document = Record<string, unknown>;
 
-// What a check reads. Everything else describes the description, not the shape.
+/** Fetches vendor descriptions only here; tests read the pinned files offline. */
+
 const shapeKeys = new Set([
 	"type",
 	"properties",
@@ -44,7 +34,6 @@ function isRecord(value: unknown): value is Document {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Follows one `$ref` into the document it points inside. */
 function follow(document: Document, pointer: string): unknown {
 	if (!pointer.startsWith(jsonPointerPrefix)) {
 		throw new Error(`Only pointers inside the document are read: ${pointer}`);
@@ -63,11 +52,6 @@ function follow(document: Document, pointer: string): unknown {
 	return node;
 }
 
-/**
- * Keeps what a check reads from one schema, with every reference followed. A schema that refers
- * to itself becomes unconstrained at the point it repeats, because a contract describes one
- * value at a time and cannot describe an endless one.
- */
 function toShape(
 	document: Document,
 	value: unknown,
@@ -94,7 +78,6 @@ function toShape(
 	return withNullable(value, shape);
 }
 
-/** One member of a schema. Lists of names stay as they are; everything else is a schema itself. */
 function toMember(
 	document: Document,
 	key: string,
@@ -115,10 +98,6 @@ function toMember(
 	return toShape(document, item, open);
 }
 
-/**
- * OpenAPI 3.0 says "may also be null" beside the type; 3.1 says it inside the type. A pinned
- * contract holds one shape, so the older spelling is read into the newer one.
- */
 function withNullable(value: Document, shape: Document) {
 	if (value.nullable !== true || shape.type === undefined) {
 		return shape;
@@ -156,8 +135,6 @@ function toOperation(document: Document, described: Document): Operation {
 	const describedReplies = isRecord(described.responses)
 		? described.responses
 		: {};
-	// Every reply the system describes, not only the ones that went well: a fake refuses too, and
-	// a refusal it invents would be as wrong as an answer it invents.
 	for (const [status, response] of Object.entries(describedReplies)) {
 		const resolved =
 			isRecord(response) && typeof response.$ref === "string"
@@ -204,7 +181,6 @@ async function readDocument(source: string) {
 	return { document: parsed, digest };
 }
 
-/** The operations one document describes, or a refusal naming what the system stopped publishing. */
 function toSelectedPaths(
 	system: string,
 	document: Document,
@@ -232,7 +208,6 @@ function toSelectedPaths(
 	return paths;
 }
 
-/** Reads every description one system publishes and writes the part we depend on. */
 async function writePinnedContract(
 	system: string,
 	described: readonly Described[],
@@ -254,7 +229,6 @@ async function writePinnedContract(
 		.text()
 		.catch(() => "");
 	await Bun.write(output, text);
-	// The date alone changes on every run, so it never counts as a difference on its own.
 	const withoutDate = (value: string) =>
 		value.replace(/"readAt": "[^"]*"/g, '"readAt": ""');
 	console.log(

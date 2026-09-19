@@ -30,10 +30,7 @@ function generateBootstrapToken() {
 	return randomBytes(bootstrapTokenBytes).toString("base64url");
 }
 
-/**
- * Where a server sends its report. The token travels in the request body, so the report must be
- * encrypted on its way: HTTPS, or a loopback address, which never leaves the machine that sends it.
- */
+/** The token-bearing report must use HTTPS or loopback. */
 function requireReportUrl() {
 	const site = env.CONVEX_SITE_URL;
 	let url: URL;
@@ -48,7 +45,7 @@ function requireReportUrl() {
 	return `${site}/ssh/host-keys`;
 }
 
-/** Only an expired bootstrap without a registered host key needs new access. */
+/** Reuses access only while the host key is pinned and the bootstrap is open. */
 export function canReuseAllocationSshAccess(
 	sshAccess: AllocationSshAccess | null,
 ) {
@@ -76,7 +73,6 @@ export async function generateAllocationSshAccess(
 	};
 }
 
-/** The file cloud-init writes, for a window that is still open. */
 export function requireSshBootstrapFile(
 	sshAccess: AllocationSshAccess,
 ): SshBootstrapFile {
@@ -91,17 +87,7 @@ export function requireSshBootstrapFile(
 	};
 }
 
-/**
- * Opens one more bootstrap window and returns the program that completes it, for a server that no
- * longer accepts Composery. The program must run on the server itself: the report it sends is
- * refused from any other address. It installs a new management key, and the old one keeps working
- * until the server reports with the new one.
- *
- * A renewal that is already open is handed back as it is. The program carries a token that only
- * works until the window closes, and minting a second one would make the first useless: whoever
- * lost the reply, or ran it already, would be left with a script the server now refuses. Asking
- * again buys no more time either, because the window runs from when it opened.
- */
+/** Keeps the old key until the server reports with the replacement key. */
 async function renewSshAccess(
 	ctx: ActionCtx,
 	allocationId: Id<"serverAllocations">,
@@ -154,7 +140,6 @@ async function renewSshAccess(
 	};
 }
 
-/** For a member with the SSH permission, on their own server. */
 export const renew = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({ script: v.string() }),
@@ -167,13 +152,6 @@ export const renew = action({
 	},
 });
 
-/**
- * The same renewal, for a person holding this deployment's key who is working a support case. It
- * exists so that putting Composery's way back into a server is never hand-rolled: minting a key,
- * sealing it, and holding the window open are what a support case must not reinvent. What to do
- * with the program it returns is the case's own business, because how a server is reached when it
- * no longer accepts us is not something to decide in advance.
- */
 export const renewForAdmin = internalAction({
 	args: { serverId: v.id("servers") },
 	returns: v.object({ script: v.string() }),

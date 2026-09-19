@@ -10,10 +10,8 @@ import {
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
-// The report is the script's last step. A port that refuses connections makes it fail there,
-// after the key file is written, so the test reads what a real run leaves behind.
 const unreachableReportUrl = "https://127.0.0.1:1/ssh/host-keys";
-// The report never happens here, so any token of the right length stands for one.
+// The report fails after the key-file edit, so the test inspects the partial real outcome.
 const tokenLength = 43;
 const token = "a".repeat(tokenLength);
 
@@ -48,7 +46,6 @@ test(
 			publicKey: next.publicKey,
 			previousPublicKey: previous.publicKey,
 		});
-		// The report fails, so the script's own exit code says nothing about the key file.
 		server.run(
 			`su -s /bin/sh -c ${quoteShell(script)} ${account.name} || true`,
 		);

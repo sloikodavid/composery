@@ -17,7 +17,6 @@ export type SshFailure =
 	| "output_limit"
 	| "invalid_response";
 
-/** Only stable codes escape this boundary; server text and secrets do not. */
 export class SshError extends Error {
 	readonly code: SshFailure;
 	constructor(code: SshFailure) {
@@ -27,10 +26,6 @@ export class SshError extends Error {
 	}
 }
 
-/**
- * One error for everything that can stop Composery from reaching a server with its own key.
- * The worker records the code, so a member sees which part is unavailable.
- */
 export class SshAccessError extends Error {
 	readonly code:
 		| "allocation_unavailable"

@@ -10,12 +10,7 @@ export type SessionItem =
 export type Session = {
 	title: string;
 	createdAt: Date;
-	/** The assistant's product name, which labels its turns. */
 	assistant: string;
-	/**
-	 * Where the session was read from, oldest first. The first entry names the session across later
-	 * continuations.
-	 */
 	sources: string[];
 	items: SessionItem[];
 };

@@ -25,12 +25,10 @@ const deleteBatchSize = 20;
 
 const ownerSummary = v.object({
 	userId: v.id("users"),
-	// Clerk makes both optional, so a caller must not be told there is always one.
 	email: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 });
 
-/** Servers that the user owns. Shared servers are in memberships.listMine. */
 export const listMine = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: paginationResultValidator(serverSummary),
@@ -66,9 +64,6 @@ export const getOwner = query({
 	},
 });
 
-/**
- * The new owner must already be a member. The previous owner keeps a membership with every permission.
- */
 export const transfer = mutation({
 	args: { membershipId: v.id("serverMemberships") },
 	returns: v.null(),
@@ -102,9 +97,6 @@ export const transfer = mutation({
 	},
 });
 
-/**
- * Runs after a user is deleted. A server keeps its row until its infrastructure is gone, so the batches follow a cursor.
- */
 export const requestDeleteForOwner = internalMutation({
 	args: { userId: v.id("users"), cursor: v.union(v.string(), v.null()) },
 	returns: v.null(),

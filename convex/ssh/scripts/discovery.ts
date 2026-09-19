@@ -1,4 +1,4 @@
-/** Fixed remote Linux program. It reports what the SSH server says, and never guesses. */
+/** Fixed remote program; reports effective sshd behavior without guessing paths. */
 export const discoveryScript = `import fnmatch, grp, json, os, pwd, shutil, stat, subprocess
 
 MAX_ACCOUNTS = 50
@@ -8,7 +8,6 @@ def sshd():
     return shutil.which("sshd") or "/usr/sbin/sshd"
 
 def ask(arguments):
-    # -G prints the effective configuration; -T also runs checks that fail for unrelated reasons.
     for flag in ("-G", "-T"):
         try:
             done = subprocess.run([sshd(), flag] + arguments, capture_output=True,
@@ -35,7 +34,6 @@ def words(settings, name):
     return " ".join(settings.get(name, [])).split()
 
 def split_paths(value):
-    # sshd's parser separates on whitespace and lets double quotes hold a name together.
     parts, current, quoted, started = [], "", False, False
     for character in value:
         if character == '"':
@@ -51,7 +49,6 @@ def split_paths(value):
     return parts
 
 def expand(pattern, account):
-    # One pass: a home directory that itself contains a token is not expanded again.
     tokens = {"%%": "%", "%h": account.pw_dir, "%u": account.pw_name,
               "%U": str(account.pw_uid)}
     out, index = "", 0
@@ -66,8 +63,6 @@ def expand(pattern, account):
     return out if out.startswith("/") else os.path.join(account.pw_dir, out)
 
 def is_safe(path, account):
-    # StrictModes: the file and every canonical parent up to the home directory must be owned
-    # by the account or by root, and must not be writable by group or others.
     current = os.path.realpath(path)
     home = os.path.realpath(account.pw_dir)
     while True:
@@ -99,14 +94,10 @@ def describe(path, account, strict):
 
 def sources(settings, account, strict):
     found, ambiguous = [], False
-    # sshd reads these paths literally: it does not expand shell patterns in them.
     patterns = [p for p in split_paths(first(settings, "authorizedkeysfile",
                                              ".ssh/authorized_keys")) if p != "none"]
     for pattern in patterns[:MAX_FILES]:
         found.append(describe(expand(pattern, account), account, strict))
-    # The effective configuration prints a quoted name unquoted, so one name that holds a
-    # space cannot be told from several names. A file that exists under the joined name says
-    # which reading was meant, and the caller is told that the names were ambiguous.
     if len(patterns) > 1 and any(entry["status"] == "missing" for entry in found):
         joined = describe(expand(" ".join(patterns), account), account, strict)
         if joined["status"] != "missing":
@@ -153,14 +144,12 @@ def admitted(settings, account):
     return True
 
 def conditional(settings):
-    # A pattern that names a host or an address is decided per connection, not here.
     for name in ("denyusers", "allowusers", "denygroups", "allowgroups"):
         if any("@" in pattern for pattern in words(settings, name)):
             return True
     return False
 
 connection = (os.environ.get("SSH_CONNECTION") or "").split()
-# One -C carries every field: sshd takes the last option, not the union of several.
 context = ["addr=" + connection[0], "host=" + connection[0],
            "laddr=" + connection[2], "lport=" + connection[3]] if len(connection) == 4 else []
 global_settings = parse(ask([]))

@@ -14,20 +14,15 @@ import { httpStatus } from "./http_status";
 import { requireRateLimit } from "./rate_limits";
 import type { userFields } from "./schema";
 
-/** How many accounts Clerk is asked for at once. A test reads it to make Clerk page its answer. */
+/** Page size used for both list reads and their bounded pagination. */
 export const clerkPageSize = 100;
-/**
- * How many pages either side may hold before we stop asking. Reading a page is a request to Clerk
- * and a write here, so a page that never says it is the last one must end the run rather than
- * repeat every hour until something else stops it.
- */
+// Bound a malformed or non-terminating pagination response.
 const maxPages = 1000;
-/** Clerk's own code for "no such account", which is the only evidence that removes one. */
+// Only Clerk's own not-found code permits deletion.
 const clerkAccountGoneCode = "resource_not_found";
 
 type UserFields = Infer<typeof userFields>;
 
-/** Clerk's own address, or the fake that a test runs on this machine. */
 function createClient() {
 	const apiUrl = getFakeAddress(env.CLERK_API_URL, "CLERK_API_URL");
 	return createClerkClient({
@@ -36,18 +31,13 @@ function createClient() {
 	});
 }
 
-/**
- * An account as we keep it. Clerk's `id` is who the account is. Clerk makes the primary email
- * address and the picture optional, and lets each change, so each is kept exactly as Clerk sends it
- * and is absent when Clerk sends nothing. Every account is kept: one without an email address
- * simply cannot be found to be shared with, which is the truth and needs no other rule.
- */
 function toUserFields(user: User): UserFields {
+	// Optional Clerk fields are omitted rather than stored as stale values.
 	const email = user.primaryEmailAddress?.emailAddress;
 	return {
 		clerkUserId: user.id,
 		...(email === undefined ? {} : { email }),
-		// biome-ignore lint/suspicious/noUnnecessaryConditions: Clerk's own description makes image_url optional, and its client passes the field straight through, so the type says string where undefined can arrive
+		// biome-ignore lint/suspicious/noUnnecessaryConditions: Clerk may omit image_url
 		...(user.imageUrl === undefined ? {} : { imageUrl: user.imageUrl }),
 	};
 }
@@ -60,12 +50,8 @@ async function storeUsers(ctx: ActionCtx, users: User[]) {
 	}
 }
 
-/**
- * Whether Clerk itself said the account does not exist. Any other answer with that status is a
- * different thing: an address that is not Clerk, or a proxy in front of it. Removing an account
- * deletes every server it owns, so only Clerk's own code counts.
- */
 function isClerkAccountGone(error: unknown) {
+	// A proxy or another Clerk instance must not delete local servers.
 	return (
 		isClerkAPIResponseError(error) &&
 		error.status === httpStatus.notFound &&
@@ -73,17 +59,12 @@ function isClerkAccountGone(error: unknown) {
 	);
 }
 
-/** The key identifiers a set names, whoever published it. */
 function toKeyIds(keys: { kid?: string }[]) {
 	return new Set(keys.map(({ kid }) => kid).filter((kid) => kid !== undefined));
 }
 
-/**
- * Proves that the secret key and the tokens our clients sign in with belong to one Clerk instance,
- * by the signing keys the two sides publish. A key from another instance answers "no such account"
- * for every account we hold, and that would otherwise delete every server on the deployment.
- */
 async function requireOneClerkInstance(clerk: ClerkClient) {
+	// Match the backend secret to the issuer's signing keys before reconciling deletions.
 	const clientKeys = await fetch(
 		`${env.CLERK_FRONTEND_API_URL}/.well-known/jwks.json`,
 	);
@@ -102,7 +83,6 @@ async function requireOneClerkInstance(clerk: ClerkClient) {
 	}
 }
 
-/** Reads the current state from Clerk, so the order in which events arrive does not matter. */
 export async function syncClerkUser(ctx: ActionCtx, clerkUserId: string) {
 	const clerk = createClient();
 	let user: User;
@@ -131,7 +111,7 @@ export const syncCurrent = action({
 			throw toConvexError("unauthenticated");
 		}
 		await requireRateLimit(ctx, "userSync", identity.subject);
-		// A person signed in to Clerk before its webhook reached us has no account here yet.
+		// A sign-in can arrive before its webhook.
 		const isSynced: boolean = await ctx.runQuery(internal.users.isSynced, {
 			clerkUserId: identity.subject,
 		});
@@ -142,20 +122,12 @@ export const syncCurrent = action({
 	},
 });
 
-/**
- * Checks accounts the list did not return, one direct read each, and returns how many could not be
- * checked.
- *
- * A list that leaves an account out is weak evidence that it is gone: an answer can be short for
- * reasons that have nothing to do with the account. Removing somebody deletes every server they
- * own, so it needs the evidence the webhook acts on: a direct read that says the account does not
- * exist. One account that cannot be checked must not keep the accounts after it from being checked.
- */
 async function syncUnlistedClerkUsers(
 	ctx: ActionCtx,
 	clerk: ClerkClient,
 	clerkUserIds: string[],
 ) {
+	// A missing list entry is weak evidence; confirm each account with a direct read.
 	const { data } = await clerk.users.getUserList({
 		userId: clerkUserIds,
 		limit: clerkUserIds.length,
@@ -174,10 +146,6 @@ async function syncUnlistedClerkUsers(
 	return unchecked;
 }
 
-/**
- * Reads every account Clerk holds and keeps ours current. A `user.created` nobody delivered is what
- * this is for; an account nobody has signed in as since is only known this way.
- */
 async function storeClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
 	for (let asked = 0; asked < maxPages; asked += 1) {
 		const { data } = await clerk.users.getUserList({
@@ -193,7 +161,6 @@ async function storeClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
 	throw new Error(`Clerk still had accounts after ${maxPages} pages.`);
 }
 
-/** Checks every account we hold against Clerk, and returns how many could not be checked. */
 async function checkOurClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
 	let cursor: string | null = null;
 	let unchecked = 0;
@@ -215,15 +182,11 @@ async function checkOurClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
 	);
 }
 
-/**
- * Webhook delivery is not guaranteed, so this runs every hour. The two halves are independent: an
- * account we hold is checked against Clerk even when reading every account Clerk holds fails, or a
- * deletion nobody delivered would wait for a working list.
- */
 export const reconcile = internalAction({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
+		// Webhooks are not guaranteed, so reconcile both directions independently.
 		const clerk = createClient();
 		const problems: string[] = [];
 		try {
@@ -241,7 +204,6 @@ export const reconcile = internalAction({
 		} catch (error) {
 			problems.push(`checking our accounts failed: ${String(error)}`);
 		}
-		// Whatever could be done was done, and the run still fails, so the logs show it.
 		if (problems.length > 0) {
 			throw new Error(problems.join("; "));
 		}

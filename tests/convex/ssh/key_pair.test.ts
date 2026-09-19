@@ -12,11 +12,10 @@ import {
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
-// One key in 256 starts with a zero byte, so missing one in this many tries has odds near e^-39.
 const maxAttempts = 10_000;
+// Covers the leading-zero public-key case that breaks naive encoders.
 const lengthPrefixBytes = 4;
 const ed25519KeyBytes = 32;
-// The public blob is the length-prefixed type "ssh-ed25519" followed by the key's own length prefix.
 const keyBytesOffset =
 	lengthPrefixBytes + "ssh-ed25519".length + lengthPrefixBytes;
 const maxOutputBytes = 1024;
@@ -58,7 +57,6 @@ for (const [name, generate] of [
 			server.run(
 				`printf '%s' ${quoteShell(pair.privateKey)} > /tmp/key-pair-check && chmod 600 /tmp/key-pair-check`,
 			);
-			// OpenSSH derives the public key from our private key file, independently of our encoder.
 			expect(server.run("ssh-keygen -y -f /tmp/key-pair-check")).toBe(
 				pair.publicKey,
 			);

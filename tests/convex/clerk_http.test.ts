@@ -18,11 +18,8 @@ const notFound = 404;
 const httpOk = 200;
 const keysPath = /^\/jwks$/;
 
-/**
- * These hold Clerk to answers a test chooses: an account that is there, one that is gone, a
- * refusal, keys from another instance. A run that meets Clerk itself reads Clerk's own answers,
- * so there is nothing here for it to do and every test in this file says so rather than passing.
- */
+// Scripted fake responses exercise webhook verification and retry behavior.
+
 const scripted = test.skipIf(getClerkSecret() !== null);
 
 let backend: ConvexBackend;
@@ -31,10 +28,7 @@ beforeAll(async () => {
 	backend = await useConvexBackend();
 }, setupTimeoutMs);
 
-/**
- * Signs a webhook the way Clerk does, so the route's own verification decides whether it is
- * genuine. Standard Webhooks signs `<id>.<timestamp>.<body>` with the secret after `whsec_`.
- */
+/** Signs the exact body Clerk would send; the route performs the verification. */
 function toSignedRequest(body: string, secret: string) {
 	const id = `msg_${randomBytes(subjectSuffixBytes).toString("hex")}`;
 	const timestamp = Math.floor(Date.now() / millisecondsPerSecond);
@@ -65,7 +59,6 @@ function toAccount() {
 	};
 }
 
-/** An account that Clerk holds and Composery has stored, which is where a deletion starts. */
 async function syncAccount() {
 	const account = toAccount();
 	backend.clerk.setUser(account);
@@ -98,7 +91,6 @@ scripted(
 	"a webhook Clerk signed syncs the account, and one it did not is refused",
 	async () => {
 		const account = toAccount();
-		// Clerk holds the account; the webhook only says that something about it changed.
 		backend.clerk.setUser(account);
 		const url = `${backend.siteUrl}/webhooks/clerk`;
 		const body = backend.clerk.toEvent("user.created", account);
@@ -126,7 +118,6 @@ scripted(
 	async () => {
 		const account = toAccount();
 		backend.clerk.setUser(account);
-		// Clerk refuses the read the route makes, so the route never learns the account's state.
 		const hasRefused = backend.clerk.scriptOnce(
 			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
 			{
@@ -141,7 +132,6 @@ scripted(
 			toSignedRequest(body, backend.webhookSecret),
 		);
 
-		// Clerk sends a webhook again when it is not accepted, so a failure must ask for that.
 		expect(hasRefused()).toBe(true);
 		expect(reply.status).toBe(serviceUnavailable);
 		expect(await reply.text()).toBe("");
@@ -156,8 +146,7 @@ scripted(
 	"an account is removed only when Clerk itself says it is gone",
 	async () => {
 		const account = await syncAccount();
-		// Something at that address answers with the status but is not Clerk: a proxy, a gateway, a
-		// misdirected request. Removing an account deletes every server it owns.
+		// A 404 from another service or proxy is not proof of Clerk deletion.
 		const hasAnswered = backend.clerk.scriptOnce(
 			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
 			{ status: notFound, body: {} },
@@ -171,8 +160,8 @@ scripted(
 			clerkUserId: account.id,
 		});
 
-		// Clerk's own answer, with its own code, is what removes it.
 		backend.clerk.removeUser(account.id);
+		// Matching Clerk's own not-found code permits deletion.
 		const accepted = await sendDeleted(account);
 		expect(accepted.status).toBe(noContent);
 		expect(await readAccount(account)).toBe(null);
@@ -185,8 +174,7 @@ scripted(
 	async () => {
 		const account = await syncAccount();
 		backend.clerk.removeUser(account.id);
-		// A key from another instance answers "no such account" for every account we hold. The two
-		// sides publish the keys that tokens are signed by, and they do not agree here.
+		// Different signing keys mean the secret and issuer are different instances.
 		const hasAnswered = backend.clerk.scriptOnce(
 			{ method: "GET", path: keysPath },
 			{
@@ -211,8 +199,6 @@ scripted(
 	async () => {
 		const account = await syncAccount();
 
-		// Clerk says the account is gone and still returns it. Accepting would be the last time
-		// Clerk mentions it, and the account would stay until the next reconcile.
 		const reply = await sendDeleted(account);
 
 		expect(reply.status).toBe(serviceUnavailable);

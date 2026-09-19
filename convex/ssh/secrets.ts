@@ -20,16 +20,13 @@ import {
 import { SshAccessError } from "./errors";
 
 const nonceBytes = 12;
-// A page of stored values is small, so this is a ceiling on mistakes, not on real deployments.
 const maxPages = 1000;
 const authTagBytes = 16;
 const keyBytes = 32;
 const prefixBytes = 1 + envelopeKeyIdBytes;
 
-/** What only Composery may read: the management key it signs in with, and the token the server reports with. */
 export type SshAccessSecrets = { privateKey: string; token: string };
 
-/** Names a key by a digest of it, so a stored value can say which key encrypted it. */
 export function toEncryptionKeyId(key: string) {
 	return createHash("sha256")
 		.update(key)
@@ -49,12 +46,8 @@ function toKeyBytes(key: string) {
 	return bytes;
 }
 
-/**
- * What the encryption is bound to. The allocation ID stops a value being moved to another
- * allocation, and the prefix is included so the key a value names cannot be changed without
- * making the value unreadable.
- */
 function toAuthenticatedData(allocationId: string, prefix: Buffer) {
+	// Bind ciphertext to its allocation and key identifier.
 	return Buffer.concat([
 		Buffer.from(`allocationSshAccess:${allocationId}`),
 		prefix,
@@ -68,7 +61,6 @@ function toPrefix(keyId: string) {
 	]);
 }
 
-/** Encrypts secrets with the first key in the list, which is the one every new value uses. */
 export function encryptSshSecretsWith(
 	keys: readonly string[],
 	allocationId: string,
@@ -102,7 +94,6 @@ function isSecrets(value: unknown): value is SshAccessSecrets {
 	);
 }
 
-/** Decrypts secrets with whichever key in the list encrypted them. */
 export function decryptSshSecretsWith(
 	keys: readonly string[],
 	allocationId: string,
@@ -119,7 +110,6 @@ export function decryptSshSecretsWith(
 	const keyId = prefix.subarray(1).toString("hex");
 	const key = keys.find((candidate) => toEncryptionKeyId(candidate) === keyId);
 	if (key === undefined) {
-		// The key that encrypted this is not one the deployment holds any more.
 		throw new SshAccessError("encryption_key_unknown");
 	}
 	try {
@@ -151,7 +141,6 @@ export function decryptSshSecretsWith(
 	}
 }
 
-/** The same secrets, encrypted again with the key that encrypts now. */
 function toReEncrypted(
 	keys: readonly string[],
 	allocationId: string,
@@ -164,7 +153,6 @@ function toReEncrypted(
 	);
 }
 
-/** Every key this deployment holds, in the order that decides which one encrypts. */
 export function requireSshAccessEncryptionKeys() {
 	const keys = listSshAccessEncryptionKeys(env.SSH_ACCESS_ENCRYPTION_KEYS);
 	if (keys.length === 0) {
@@ -206,11 +194,6 @@ type EncryptedPage = {
 	continueCursor: string;
 };
 
-/**
- * The same row's envelopes, encrypted again with the key that encrypts now, or null when this
- * deployment holds no key that reads them. One stranded row must not stop the rest being rotated,
- * and the report says how many are stranded and under which key.
- */
 function toNextEnvelopes(
 	keys: readonly string[],
 	row: EncryptedPage["page"][number],
@@ -239,7 +222,6 @@ function toEncryptedAgain(
 	};
 }
 
-/** Adds what a row holds to the tally of which key each stored value still names. */
 function countEnvelopes(
 	remaining: Map<string, number>,
 	held: Readonly<{
@@ -265,14 +247,7 @@ type ReEncryptReport = {
 	remaining: { keyId: string; count: number }[];
 };
 
-/**
- * Encrypts every stored value again with the key that encrypts now, and reports what is left. Run
- * it after moving a new key to the front of `SSH_ACCESS_ENCRYPTION_KEYS`; when nothing names the
- * old key any more, the old key can be dropped from the list.
- *
- * A row that changed while this ran is left for the next run rather than overwritten: a renewal
- * writes the same fields, and its secrets are the newer ones.
- */
+/** Re-encrypts with the current key and reports rows whose old key is still required. */
 export const reEncrypt = internalAction({
 	args: {},
 	returns: v.object({
@@ -314,8 +289,6 @@ export const reEncrypt = internalAction({
 				} else {
 					skipped += 1;
 				}
-				// What the row holds now: the current key when it was stored, the old one when a
-				// renewal got there first. Counting here means no second walk of the table.
 				countEnvelopes(remaining, outcome === "stored" ? next : row);
 			}
 			if (page.isDone) {

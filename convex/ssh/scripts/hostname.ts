@@ -1,4 +1,4 @@
-/** Fixed remote Linux program. It changes the hostname only when it is still the old one. */
+/** Changes the hostname only when it still matches the expected previous value. */
 export const hostnameScript = `import json, shutil, subprocess, sys
 
 def now():
@@ -10,7 +10,6 @@ def now():
 
 request = json.loads(sys.stdin.read(4096))
 current = now()
-# A hostname the customer chose is theirs; only one that still matches the old name moves.
 if current is not None and (request["expected"] is None or current == request["expected"]):
     tool = shutil.which("hostnamectl")
     try:

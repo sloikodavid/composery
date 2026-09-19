@@ -18,8 +18,6 @@ let shared: { client: ConvexHttpClient; serverId: Id<"servers"> };
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
-	// Every server a test makes is driven by the deployment's own worker, which paces itself and is
-	// shared by the whole run. Both tests only need a server to share, so they share one.
 	const client = await createServerOwner(backend);
 	shared = { client, serverId: await createServer(client) };
 }, setupTimeoutMs);
@@ -28,8 +26,7 @@ test(
 	"an address two accounts hold for a moment finds nobody, rather than a guess",
 	async () => {
 		const { client, serverId } = shared;
-		// An address can move from one account to another, and each account reaches us on its own
-		// webhook. Until the older one arrives, two accounts here hold the same address.
+		// An email can temporarily identify two users; choosing one would grant access by guess.
 		const email = `shared-${randomBytes(suffixBytes).toString("hex")}@example.com`;
 		await backend.runAsAdmin(internal.users.store, {
 			users: [
@@ -49,7 +46,6 @@ test(
 			email,
 		});
 
-		// Sharing a server with one of them would be deciding who was meant. Only one person can be.
 		expect(result).toMatchObject({ ok: false, code: "user_not_unique" });
 	},
 	testTimeoutMs,

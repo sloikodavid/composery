@@ -32,9 +32,7 @@ export type SshAccount = Readonly<{
 	name: string;
 	home: string;
 	shell: string;
-	/** The SSH server accepts public keys for this account, in the context that was asked about. */
 	acceptsPublicKeys: boolean;
-	/** A key alone completes a login, rather than being one step of several. */
 	publicKeyAloneSignsIn: boolean;
 	sources: readonly SshKeySource[];
 }>;
@@ -43,7 +41,6 @@ export type SshDiscovery = Readonly<{
 	usesPam: boolean;
 	strictModes: boolean;
 	accounts: readonly SshAccount[];
-	/** What this report cannot establish, in our words, for a caller to pass on unchanged. */
 	unknowns: readonly string[];
 }>;
 
@@ -121,7 +118,6 @@ function toAccount(value: unknown) {
 
 type ReportedAccount = ReturnType<typeof toAccount>;
 
-/** Everything the report says it could not settle, stated once, in words a caller can pass on. */
 function toUnknowns(report: Reported, accounts: readonly ReportedAccount[]) {
 	const unknowns = [
 		"The SSH server's configuration was read from disk, which the running daemon need not have reloaded.",
@@ -165,12 +161,7 @@ function toUnknowns(report: Reported, accounts: readonly ReportedAccount[]) {
 	return unknowns;
 }
 
-/**
- * Asks a server which accounts can sign in with a key, and which key sources apply to each.
- * The server's own SSH server answers; nothing here assumes a path or an account. The reply is
- * validated as untrusted input, because the customer controls the program that produced it, and
- * a reply that does not hold together is refused rather than repaired into something plausible.
- */
+/** Reads effective SSH configuration and validates the untrusted report. */
 export async function discoverSshServer(
 	connection: SshConnectionOptions,
 ): Promise<SshDiscovery> {

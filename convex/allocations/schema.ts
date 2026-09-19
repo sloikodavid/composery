@@ -20,42 +20,28 @@ export const operationKind = v.union(
 export const operationStatus = v.union(
 	v.literal("pending"),
 	v.literal("succeeded"),
-	// Nothing more will be done about it: its own deadline passed.
 	v.literal("blocked"),
 	v.literal("superseded"),
 );
 
-/**
- * Each part of an allocation, in Composery's words rather than a provider's, so that a later
- * backend with different resources says the same things about them.
- */
 export const allocationPartStatus = v.union(
-	// Last seen as it should be.
+	// `mismatch` is present but not the recorded resource; `unknown` was not observed.
 	v.literal("ok"),
-	// Last seen to be gone.
 	v.literal("missing"),
-	// There, but not what this allocation recorded: somebody changed it somewhere else.
 	v.literal("mismatch"),
-	// Never seen, or not seen since something stopped us looking.
 	v.literal("unknown"),
 );
 
 export type AllocationPartStatus = Infer<typeof allocationPartStatus>;
 
 export const allocationParts = v.object({
-	/** The computer itself. */
 	server: allocationPartStatus,
-	/** Its addresses, which a customer's own things point at. */
 	addresses: allocationPartStatus,
-	/** The rules in front of it. */
 	firewall: allocationPartStatus,
 });
 
-/**
- * Where the allocation is in its life. What is wrong with it, if anything, is a separate thing:
- * one word for both made a lost management key stop a power command that would have worked.
- */
 export const allocationStatus = v.union(
+	/** Lifecycle state; failure details live in `stuck`. */
 	v.literal("creating"),
 	v.literal("running"),
 	v.literal("stopped"),
@@ -72,21 +58,16 @@ export const allocationTables = {
 		deleteRequested: v.boolean(),
 		observedAt: v.optional(v.number()),
 		parts: allocationParts,
-		/**
-		 * Why the allocation is not moving, when it is not. It is still picked up again: this says
-		 * what the last attempt ran into, not that anybody has given up.
-		 */
+		/** Last failure; the worker continues to retry it. */
 		stuck: v.optional(
 			v.object({ since: v.number(), code: v.string(), class: failureClass }),
 		),
 		location: v.optional(v.string()),
 		ipv4: v.optional(v.string()),
-		// A network in CIDR form, not one address: a backend assigns a server a range of its own.
+		// IPv6 is a provider-assigned network, not the server's address.
 		ipv6: v.optional(v.string()),
-		// The one address inside that range the server has been seen answering on. Which address
-		// it uses is configured in the server, so nothing here derives it: it is observed or absent.
+		// Learned from the server, never derived from the network.
 		ipv6Address: v.optional(v.string()),
-		// The hostname the server last reported, which the customer may have chosen themselves.
 		hostname: v.optional(v.string()),
 	}).index("by_server_id", ["serverId"]),
 

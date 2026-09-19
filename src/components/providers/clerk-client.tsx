@@ -45,7 +45,7 @@ const clerkAvatarClassName = controlRadiusClassName;
 const clerkBadgeClassName = `${badgeClassName} border-border bg-muted-surface text-foreground data-[color=secondary]:border-primary data-[color=secondary]:bg-primary data-[color=secondary]:text-primary-foreground data-[color=danger]:border-danger-border data-[color=danger]:bg-danger-surface data-[color=danger]:text-danger-text data-[color=success]:border-success-border data-[color=success]:bg-success-surface data-[color=success]:text-success-text data-[color=warning]:border-warning-border data-[color=warning]:bg-warning-surface data-[color=warning]:text-warning-text`;
 const clerkSwitchIndicatorClassName = `${switchIndicatorClassName} data-[checked=true]:border-primary data-[checked=true]:bg-primary data-[checked=true]:[&>span]:ms-3 data-[checked=true]:[&>span]:bg-primary-foreground data-[disabled=true]:cursor-default`;
 
-// biome-ignore-start lint/style/useNamingConvention: Clerk appearance element IDs combine Clerk's element and field identifiers with double underscores.
+// biome-ignore-start lint/style/useNamingConvention: external IDs use double underscores
 const clerkTextInputElements = {
 	formFieldInput__acsUrl: inputClassName,
 	formFieldInput__affiliationEmailAddress: inputClassName,
@@ -86,9 +86,9 @@ const clerkTextareaElements = {
 	formFieldInput__idpCertificate: textareaClassName,
 	formFieldInput__idpMetadata: textareaClassName,
 } as const;
-// biome-ignore-end lint/style/useNamingConvention: Clerk appearance element IDs combine Clerk's element and field identifiers with double underscores.
+// biome-ignore-end lint/style/useNamingConvention: external IDs use double underscores
 
-// biome-ignore-start lint/style/useNamingConvention: Clerk appearance element IDs keep Clerk's acronym casing.
+// biome-ignore-start lint/style/useNamingConvention: external acronym casing
 const clerkDirectInputElements = {
 	apiKeysCopyModalInput: inputClassName,
 	apiKeysCreateFormDescriptionInput: inputClassName,
@@ -102,9 +102,8 @@ const clerkDirectInputElements = {
 	searchInput: inputClassName,
 	selectSearchInput: inputClassName,
 } as const;
-// biome-ignore-end lint/style/useNamingConvention: Clerk appearance element IDs keep Clerk's acronym casing.
+// biome-ignore-end lint/style/useNamingConvention: external acronym casing
 
-/** Clerk's own theme variables are set in app/clerk.css. */
 export function ClerkClientProvider({ children }: { children: ReactNode }) {
 	return (
 		<ClerkProvider
@@ -118,11 +117,11 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 					accordionTriggerButton: buttonVariants.ghost,
 					actionCard: cardSurface,
 					alert: alertClassName,
-					// biome-ignore lint/style/useNamingConvention: Clerk appearance element IDs use double underscores.
+					// biome-ignore lint/style/useNamingConvention: external IDs use double underscores
 					alert__danger: alertVariantClassNames.danger,
-					// biome-ignore lint/style/useNamingConvention: Clerk appearance element IDs use double underscores.
+					// biome-ignore lint/style/useNamingConvention: external IDs use double underscores
 					alert__info: alertVariantClassNames.neutral,
-					// biome-ignore lint/style/useNamingConvention: Clerk appearance element IDs use double underscores.
+					// biome-ignore lint/style/useNamingConvention: external IDs use double underscores
 					alert__warning: alertVariantClassNames.warning,
 					alternativeMethodsBlockButton: buttonVariants.secondary,
 					avatarImageActionsRemove: buttonVariants.dangerGhost,

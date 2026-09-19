@@ -21,7 +21,6 @@ export const allServerPermissions: Readonly<ServerPermissions> = Object.freeze({
 	delete: true,
 });
 
-/** Every permission there is, so a new one is covered by every check that reads this. */
 const everyServerPermission = Object.keys(
 	allServerPermissions,
 ) as readonly ServerPermission[];
@@ -31,7 +30,6 @@ export const ownerAccess: Readonly<ServerAccess> = Object.freeze({
 	permissions: allServerPermissions,
 });
 
-/** A delegate cannot grant or remove authority outside their own permissions. */
 export function hasServerPermissions(
 	available: Readonly<ServerPermissions>,
 	requested: Readonly<ServerPermissions>,
@@ -54,7 +52,6 @@ export async function getServerMembership(
 		.unique();
 }
 
-/** Returns null for a user who neither owns the server nor has a membership. */
 export async function getServerAccess(
 	ctx: QueryCtx,
 	server: Doc<"servers">,
@@ -69,11 +66,6 @@ export async function getServerAccess(
 		: { isOwner: false, permissions: membership.permissions };
 }
 
-/**
- * Access alone allows reads; a change also needs its permission. A caller that changes the
- * server asks for its allocation with `requireChangeableServerAllocation`, which is what
- * refuses a server that is being deleted.
- */
 export async function requireServerAccess(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
@@ -83,7 +75,7 @@ export async function requireServerAccess(
 	const server = await ctx.db.get("servers", serverId);
 	const access =
 		server === null ? null : await getServerAccess(ctx, server, user._id);
-	// A server that the user cannot access looks the same as one that does not exist.
+	// Hide whether an inaccessible server exists.
 	if (server === null || access === null) {
 		throw toConvexError("server_not_found");
 	}

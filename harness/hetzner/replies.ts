@@ -1,11 +1,6 @@
-/**
- * The shapes Hetzner sends, as `contracts/hetzner.json` describes them. Composery reads a few of
- * these fields; the rest are here because Hetzner always sends them, and a fake that sends less
- * would let our code depend on a Hetzner that does not exist. The values are invented; the shape
- * is not, and the fake checks every reply against Hetzner's own description.
- */
+// biome-ignore-start lint/style/useNamingConvention: external field names
 
-// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+/** Fixture values are invented; field presence and nullability follow Hetzner's contract. */
 
 const created = "2026-09-15T10:00:00+00:00";
 const serverTypeId = 22;
@@ -20,10 +15,6 @@ const pricePerHour = "0.0082";
 const pricePerMonth = "5.39";
 const finishedProgress = 100;
 
-/**
- * What one address looks like inside a server's public network. Hetzner requires `ip` here but
- * not `id`, so a test can leave the number out.
- */
 export type ReplyAddress = Readonly<{ id?: number; ip: string }>;
 
 function toPrice(location: string) {
@@ -158,10 +149,8 @@ export function toServerReply(
 		name: string;
 		status: string;
 		labels: Record<string, string>;
-		/** Null when the server has no address of that kind, as Hetzner reports it. */
 		ipv4: ReplyAddress | null;
 		ipv6: ReplyAddress | null;
-		/** Null leaves the member out, as Hetzner may for a server with no firewall. */
 		firewallId: number | null;
 		serverType: string;
 		location: string;
@@ -208,7 +197,6 @@ export function toServerReply(
 	};
 }
 
-/** One page that holds everything, because a fake never has more than a test made. */
 export function toPaginationReply(count: number) {
 	return {
 		pagination: {
@@ -222,4 +210,4 @@ export function toPaginationReply(count: number) {
 	};
 }
 
-// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+// biome-ignore-end lint/style/useNamingConvention: external field names

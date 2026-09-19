@@ -8,17 +8,16 @@ import { getAllocationSshAccess } from "./access_state";
 
 const hexRadix = 16;
 
-/** How long a server has to report its host key, from creation or from a renewal. */
+/** Host-key reports are accepted for 15 minutes after creation or renewal. */
 export const bootstrapLifetimeMs = 900_000;
 
-/** What the server reports with: the allocation it belongs to, its one-time token, and where to send it. */
 export type SshBootstrapFile = {
 	allocationId: string;
 	token: string;
 	url: string;
 };
 
-/** Only the digest is stored, so a reader of the table cannot report on a server's behalf. */
+/** Store only the digest so a database reader cannot authenticate a report. */
 export async function toBootstrapTokenDigest(token: string) {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
@@ -29,10 +28,6 @@ export async function toBootstrapTokenDigest(token: string) {
 	).join("");
 }
 
-/**
- * Opens one more bootstrap window, with the key pair that replaces the management key. The
- * replacement waits until the server reports with it, so an unrun renewal leaves access as it was.
- */
 export const storeRenewal = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -56,10 +51,7 @@ export const storeRenewal = internalMutation({
 	},
 });
 
-/**
- * A report inside a renewal's window proves the server holds the pending key, so that key
- * becomes the management key. Without a renewal there is nothing to promote.
- */
+/** A report with the pending key promotes it to management access. */
 function toPendingPromotion(sshAccess: Doc<"allocationSshAccess">) {
 	if (
 		sshAccess.pendingPublicKey === undefined ||
@@ -75,10 +67,6 @@ function toPendingPromotion(sshAccess: Doc<"allocationSshAccess">) {
 	};
 }
 
-/**
- * A repeated report confirms the pinned host key. A different key replaces it only inside a new
- * bootstrap window that a member opened; otherwise it is refused and recorded as a conflict.
- */
 export const registerHostKey = internalMutation({
 	args: {
 		allocationId: v.string(),
@@ -106,8 +94,6 @@ export const registerHostKey = internalMutation({
 		) {
 			return false;
 		}
-		// A copied bootstrap token is useless from anywhere but the server's own addresses. An
-		// unknown source or an allocation without addresses cannot be checked, so it is refused.
 		const isOwnAddress =
 			source === null ? null : isAllocationAddress(source, allocation);
 		if (isOwnAddress !== true) {
@@ -116,7 +102,6 @@ export const registerHostKey = internalMutation({
 			});
 			return false;
 		}
-		// A repeat of the same report changes nothing, so a retry cannot churn the stored state.
 		if (
 			sshAccess.hostKey === hostKey &&
 			sshAccess.hostKeyReplaceUntil === undefined &&
@@ -130,7 +115,6 @@ export const registerHostKey = internalMutation({
 			sshAccess.hostKey !== hostKey &&
 			!isBootstrapOpen
 		) {
-			// Two servers answered for one allocation: a copied bootstrap token, or a replacement.
 			await ctx.db.patch("allocationSshAccess", sshAccess._id, {
 				hostKeyConflictAt: Date.now(),
 			});
@@ -147,7 +131,6 @@ export const registerHostKey = internalMutation({
 		if (source !== null) {
 			await storeReportedAddress(ctx, allocation, source);
 		}
-		// The first sign-in after a pin both records the hostname and proves the access works.
 		const server = await ctx.db.get("servers", allocation.serverId);
 		if (server !== null) {
 			await ctx.scheduler.runAfter(0, internal.ssh.hostname.apply, {

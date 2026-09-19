@@ -17,7 +17,8 @@ afterAll(async () => {
 
 type Row = Record<string, unknown>;
 
-/** Rows in the shape Claude Code writes them, each linked to the row before it unless it says otherwise. */
+// Rows are linked like Claude Code transcripts, including continuation and compaction edges.
+
 function linkRows(sessionId: string, rows: Row[]): Row[] {
 	let parentUuid: string | null = null;
 	return rows.map((row, index) => {
@@ -64,7 +65,7 @@ test("reads the active path of continued sessions, across rewinds and compaction
 		createUserRow("result", [
 			{
 				type: "tool_result",
-				// biome-ignore lint/style/useNamingConvention: Claude Code's transcript rows use snake_case
+				// biome-ignore lint/style/useNamingConvention: external snake_case fields
 				tool_use_id: "tool-one",
 				content: "API_TOKEN=tool-output",
 			},
@@ -99,7 +100,6 @@ test("reads the active path of continued sessions, across rewinds and compaction
 			sessionId: "first",
 			isCompactSummary: true,
 		},
-		// A compaction moves the messages it keeps to after its summary.
 		{
 			...createAssistantRow("kept", [{ type: "text", text: "Kept reply" }]),
 			parentUuid: "summary",
@@ -137,7 +137,7 @@ test("reads the active path of continued sessions, across rewinds and compaction
 				...createUserRow("ask-result", [
 					{
 						type: "tool_result",
-						// biome-ignore lint/style/useNamingConvention: Claude Code's transcript rows use snake_case
+						// biome-ignore lint/style/useNamingConvention: external snake_case fields
 						tool_use_id: "ask-one",
 						content: "answered",
 					},

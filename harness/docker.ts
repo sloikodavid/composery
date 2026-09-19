@@ -15,7 +15,6 @@ export class DockerUnavailableError extends Error {
 	}
 }
 
-/** Runs one Docker CLI command and returns its trimmed output, or throws with Docker's own words. */
 export function runDocker(args: readonly string[], input?: string) {
 	const result = spawnSync("docker", args, {
 		encoding: "utf8",
@@ -49,10 +48,7 @@ export function requireDocker() {
 	}
 }
 
-/**
- * The labels that let a later run find this run's containers. A container outlives a test process
- * that is killed, because Docker, not the process, owns it.
- */
+/** Labels let a later run find containers left by a killed process. */
 export function toDockerOwnerLabels(kind: string) {
 	return [
 		"--label",
@@ -64,7 +60,7 @@ export function toDockerOwnerLabels(kind: string) {
 	];
 }
 
-/** Removes containers of this kind that a test process on this machine started and did not live to remove. */
+/** Removes only containers carrying this harness's owner labels. */
 export function removeOrphanedDockerContainers(kind: string) {
 	const listing = runDocker([
 		"ps",

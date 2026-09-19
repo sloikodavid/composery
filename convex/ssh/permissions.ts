@@ -4,10 +4,7 @@ import { requireChangeableServerAllocation } from "../allocations/operations";
 import schema from "../schema";
 import { requireServerAccess } from "../servers/permissions";
 
-/**
- * The allocation whose SSH the caller may change. Every SSH action runs in Node, where the
- * database is out of reach, so each one asks this query first.
- */
+/** Node actions call this query before accessing the SSH allocation. */
 export const requireAllocation = internalQuery({
 	args: { serverId: v.id("servers") },
 	returns: schema.doc("serverAllocations"),

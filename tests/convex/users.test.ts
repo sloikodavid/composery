@@ -35,7 +35,7 @@ test(
 test(
 	"a verified sign-in without a synced record resolves to nothing",
 	async () => {
-		// Held by Clerk, and nothing here knows of them yet, which is every caller's first request.
+		// Clerk can authenticate before its webhook creates the local row.
 		const { id } = await backend.createAccount({ synced: false });
 		expect(await backend.createClient(id).query(api.users.getCurrent, {})).toBe(
 			null,

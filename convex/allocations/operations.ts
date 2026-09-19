@@ -28,7 +28,6 @@ import {
 import type { allocationBackend, powerOperationKind } from "./schema";
 
 const requestIdPattern = /^[a-zA-Z0-9_-]{8,100}$/;
-// A server asks for few operations, so one pass almost always finishes.
 const operationsPerPass = 100;
 
 type AllocationBackend = Infer<typeof allocationBackend>;
@@ -44,8 +43,6 @@ export function requireRequestId(requestId: string) {
 	}
 }
 
-/** Every server has exactly one allocation from creation until the server is deleted. */
-/** Removes the allocation itself, in the same change that removes the server it ran. */
 export async function deleteServerAllocation(
 	ctx: MutationCtx,
 	allocationId: Id<"serverAllocations">,
@@ -62,14 +59,12 @@ export async function requireServerAllocation(
 		.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
 		.unique();
 	if (allocation === null) {
-		// Every server is made with one, and they are deleted together, so this is a defect rather
-		// than a state. A caller still gets a code it can tell apart from every other refusal.
+		// Every server is created with an allocation and deleted with it.
 		throw toConvexError("server_broken");
 	}
 	return allocation;
 }
 
-/** The allocation of a server that can still change: one whose deletion nobody requested. */
 export async function requireChangeableServerAllocation(
 	ctx: QueryCtx,
 	serverId: Id<"servers">,
@@ -94,8 +89,8 @@ export async function getOperationByRequest(
 		.unique();
 }
 
-/** Returns null when creation is not configured. An existing allocation keeps the configuration that it was created with. */
 export function getAllocationConfig(): AllocationConfig | null {
+	// Existing allocations keep their stored configuration; this only starts new ones.
 	if (!isSshAccessConfigured()) {
 		return null;
 	}
@@ -135,7 +130,6 @@ export async function requestAllocationCreate(
 		operationId,
 		backend: request.config.backend,
 		status: "creating",
-		// Nothing has been seen yet, which is not the same as anything being wrong.
 		parts: { server: "unknown", addresses: "unknown", firewall: "unknown" },
 		deleteRequested: false,
 	});
@@ -206,7 +200,6 @@ async function wakeBackend(
 	}
 }
 
-/** The backend deletes the infrastructure and then calls `finishDelete`. */
 export async function requestAllocationDelete(
 	ctx: MutationCtx,
 	allocation: Doc<"serverAllocations">,
@@ -237,7 +230,6 @@ export async function requestAllocationDelete(
 	await wakeBackend(ctx, { ...allocation, deleteRequested: true });
 }
 
-/** One allocation, for work that already knows which one it is about. */
 export const get = internalQuery({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.union(schema.doc("serverAllocations"), v.null()),
@@ -255,17 +247,12 @@ export const getForServer = internalQuery({
 			.unique(),
 });
 
-/**
- * Writes down an address a server has been seen answering on, when it is one of its own. A
- * provider states an IPv6 assignment as a range and the server chooses inside it, so the only
- * addresses that count are the ones the server has used: the one it reached us from when it
- * reported its host key, and the ones it lists for itself when asked.
- */
 export async function storeReportedAddress(
 	ctx: MutationCtx,
 	allocation: Doc<"serverAllocations">,
 	reported: string | undefined,
 ) {
+	// Providers give IPv6 networks; only an address observed from the server is usable.
 	const address = toReportedAddress(allocation.ipv6, reported);
 	if (address !== null && address !== allocation.ipv6Address) {
 		await ctx.db.patch("serverAllocations", allocation._id, {
@@ -300,10 +287,6 @@ export const storeHostname = internalMutation({
 	},
 });
 
-/**
- * What each backend removes once its allocation is gone. A backend owns its own table, so it does
- * its own forgetting, and a new backend fails to compile until it says how.
- */
 const forgetAllocation: Record<
 	AllocationBackend,
 	FunctionReference<
@@ -315,18 +298,11 @@ const forgetAllocation: Record<
 	hetznerCloud: internal.allocations.hetzner_cloud.worker_state.forget,
 };
 
-/**
- * The last step of a deletion: nothing that described the allocation outlives the server it ran.
- *
- * This keeps no history on purpose. Every way of reading an allocation starts from its server, so
- * a row left behind could never be read again, and it would hold an identifier that resolves to
- * nothing. A record that outlives a server is a different thing with a shape of its own, and it
- * will be built when something needs it.
- */
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
 	handler: async (ctx, { allocationId }) => {
+		// Keep the allocation readable until its server and operation are removed.
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
 		if (allocation === null || allocation.status !== "deleted") {
 			throw new Error("An allocation must be deleted before it is finished.");
@@ -335,8 +311,6 @@ export const finishDelete = internalMutation({
 		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
 			allocationId,
 		});
-		// The server and its allocation go together, and what described their work goes after them:
-		// until they are gone, a status read must still find the operation the allocation names.
 		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
 			allocationId,
 		});
@@ -344,15 +318,6 @@ export const finishDelete = internalMutation({
 	},
 });
 
-/**
- * Removes what one server asked for, once the server itself is gone. A page at a time, because one
- * server can have asked for many, and nothing reads these rows any more.
- */
-/**
- * Takes away the operations of a server that is gone, a page at a time. The first page goes in
- * whatever change asked for it, so the usual server, with a handful of operations, leaves nothing
- * behind even if nothing scheduled ever runs again.
- */
 export async function removeServerOperations(
 	ctx: MutationCtx,
 	serverId: Id<"servers">,

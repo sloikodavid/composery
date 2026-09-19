@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 
 export const linkClassName = "transition-opacity hover:opacity-80";
 
-/** An internal link. Hover fades the content, which works for text, the logo, and any background. */
 export function Link({
 	href,
 	font = "body",

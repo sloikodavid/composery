@@ -5,9 +5,7 @@ import clsx from "clsx";
 import { Button } from "@/components/ui/button";
 import { toastManager } from "@/components/ui/toast";
 
-/**
- * The sign-in button and Clerk's user button share one grid cell, so the header keeps its size while Clerk loads and when the user signs in or out.
- */
+/** Shared grid cell prevents header reflow while Clerk loads or changes auth state. */
 export function UserControl() {
 	const { isLoaded, isSignedIn } = useAuth();
 	const clerk = useClerk();

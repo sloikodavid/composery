@@ -4,7 +4,6 @@ import { AuthorizedKeysFile } from "../../../convex/ssh/authorized_keys";
 const encode = (text: string) => new TextEncoder().encode(text);
 const key = { type: "ssh-ed25519", base64: "AAAA" };
 const line = `${key.type} ${key.base64}`;
-// A byte that is not valid UTF-8 on its own.
 const invalidUtf8Byte = 255;
 const carriageReturnByte = 13;
 const newlineByte = 10;
@@ -16,7 +15,6 @@ const nonEntryLines = Array.from(
 	(_, index) => index + 1,
 );
 const sampleCount = 256;
-// Numerical Recipes linear congruential generator, so the corpus is the same on every run.
 const generatorMultiplier = 1_664_525;
 const generatorIncrement = 1_013_904_223;
 const byteShift = 24;

@@ -1,7 +1,6 @@
 name: contracts
 
-# The only thing here that reaches a vendor. A description changing is not a broken commit, so it
-# is a job of its own: it fails on the day the vendor moves, whoever pushed last.
+# Fails when a vendor contract changes.
 on:
   schedule:
     - cron: "17 6 * * *"

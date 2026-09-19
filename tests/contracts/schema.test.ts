@@ -110,13 +110,10 @@ test("a query value is read as the type the description gives it", () => {
 	const ask = (query: string) =>
 		listQueryValueProblems(subject, parameters, new URLSearchParams(query));
 
-	// What the system reads is a number, and it says how large it may be.
 	expect(ask("per_page=50")).toEqual([]);
 	expect(ask("per_page=51")).toHaveLength(1);
 	expect(ask("per_page=all")).toHaveLength(1);
-	// A list is written as one name repeated, so asking once is a list of one.
 	expect(ask("user_id=user_1")).toEqual([]);
 	expect(ask("user_id=user_1&user_id=user_2")).toEqual([]);
-	// A name the description says nothing about is somebody else's problem to report.
 	expect(ask("page=2")).toEqual([]);
 });

@@ -11,7 +11,6 @@ type InputFieldProps = Omit<ComponentProps<typeof Input>, "id"> & {
 	error?: ReactNode | undefined;
 };
 
-/** A labeled input with one stable message row for help or validation. */
 export function InputField({
 	id,
 	label,

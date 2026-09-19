@@ -25,7 +25,6 @@ type SpinnerProps = Omit<ComponentProps<"span">, "children"> & {
 	variant?: keyof typeof spinnerVariants | undefined;
 };
 
-/** An indicator for work with no measurable completion value. */
 export function Spinner({
 	className,
 	label = "Loading",

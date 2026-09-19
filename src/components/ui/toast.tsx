@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/button";
 import { cardSurface } from "@/components/ui/card";
 
-/** Adds a floating message for a transient outcome, from any code on the client. */
 export const toastManager = Toast.createToastManager();
 
 function ToastList() {
@@ -55,7 +54,6 @@ function ToastList() {
 	));
 }
 
-/** The viewport floats above the page, so a message never moves the layout. */
 export function ToastProvider({ children }: { children: ReactNode }) {
 	return (
 		<Toast.Provider

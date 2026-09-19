@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 test("keeps the fake a fake while the token sits in the file", () => {
-	// The token being there is not an instruction to spend money: a plain run stays a fake run.
+	// Credentials alone must not select a real provider project.
 	set("HCLOUD_MODE", "fake");
 	set("HCLOUD_TOKEN", "not-a-token");
 
@@ -36,7 +36,7 @@ test("keeps the fake a fake when nothing said which to use", () => {
 });
 
 test("refuses a run that asked for the real Hetzner with no token", () => {
-	// Falling back would report success in the same words as a run that met the provider.
+	// Never fall back to fake after an explicit real-mode request.
 	set("HCLOUD_MODE", "real");
 	set("HCLOUD_TOKEN", "");
 

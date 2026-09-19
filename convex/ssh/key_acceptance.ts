@@ -12,7 +12,7 @@ const { BaseAgent, utils } = ssh2;
 
 export type SshKeyAcceptance = "accepted" | "refused";
 
-/** Offers one public key and reports when the server asks for its signature, which it never gives. */
+/** Probes public-key acceptance without signing in or sending the private key. */
 class AcceptanceAgent extends BaseAgent<ParsedKey> {
 	readonly #key: ParsedKey;
 	readonly #onAccepted: () => void;
@@ -42,13 +42,6 @@ class AcceptanceAgent extends BaseAgent<ParsedKey> {
 	}
 }
 
-/**
- * Asks the running SSH server whether it would let this public key sign in to the target's account.
- * The protocol lets a client ask with the public key alone: the server either refuses it or asks for
- * a signature, and the question stops there, so no private key is needed and no session opens. The
- * server answers from Composery's own address, so a key restricted to other addresses reads as
- * refused here and still works for its owner.
- */
 export async function discoverSshKeyAcceptance(
 	target: SshTarget,
 	publicKey: Readonly<{ type: string; base64: string }>,

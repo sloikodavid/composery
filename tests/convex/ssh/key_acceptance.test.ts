@@ -133,7 +133,6 @@ test(
 		writeKeyFile(account, [`${key.type} ${key.base64}`]);
 		expect(await askAbout(account.name, key)).toBe("accepted");
 		const log = server.run(`cat ${sshdLogPath}`);
-		// The connection ends while the account is still being authenticated, and no login is logged.
 		expect(log).toContain(
 			`Disconnected from authenticating user ${account.name} `,
 		);

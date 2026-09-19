@@ -1,6 +1,3 @@
-/**
- * Where Hetzner Cloud answers. One line, read by the deployment and by the harness that stands in
- * for it, because two copies of an address are two things to change and one of them gets missed.
- */
+// Shared by the deployment and harness so the API endpoint has one owner.
 export const hetznerCloudOrigin = "https://api.hetzner.cloud";
 export const hetznerCloudApiPrefix = "/v1";

@@ -1,15 +1,7 @@
-/**
- * What every server Composery makes is protected by, stated here rather than in a console. The
- * rules are the product's, not a project's: a deployment that makes servers makes them the same
- * way, and a reader can see what a customer's server allows without an account at the provider.
- *
- * Inbound is closed except for what a customer's own server needs to be reachable at all, and
- * outbound is left alone: Hetzner applies no outbound rules unless some are given, and a server
- * that cannot reach the internet cannot install anything or report its host key.
- */
-
-// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+// biome-ignore-start lint/style/useNamingConvention: external field names
 const anySource = ["0.0.0.0/0", "::/0"];
+
+/** Product-owned rules; outbound remains open for bootstrap and host-key reports. */
 
 export const hetznerCloudFirewallRules = [
 	{
@@ -48,7 +40,7 @@ export const hetznerCloudFirewallRules = [
 		source_ips: anySource,
 	},
 ] as const;
-// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+// biome-ignore-end lint/style/useNamingConvention: external field names
 
 export type HetznerCloudFirewallRule = Readonly<{
 	direction: string;
@@ -57,10 +49,7 @@ export type HetznerCloudFirewallRule = Readonly<{
 	sourceIps: readonly string[];
 }>;
 
-/**
- * Whether a firewall allows exactly what Composery says it should. Order is not part of it, and
- * neither is the description Hetzner keeps beside each rule: what matters is what passes.
- */
+/** Compares effective rules; provider order and descriptions are not state. */
 export function isFirewallAsStated(rules: readonly HetznerCloudFirewallRule[]) {
 	const stated = hetznerCloudFirewallRules.map(toComparable);
 	const held = rules.map(toComparable);

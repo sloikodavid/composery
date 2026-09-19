@@ -16,12 +16,12 @@ if (!clerkFrontendApiUrl) {
 	throw new Error("CLERK_FRONTEND_API_URL is not set.");
 }
 
-// Without it, Clerk sends users to its hosted Account Portal instead of the app's sign-in page.
+// Without this, Clerk redirects to its hosted Account Portal.
 if (!process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL) {
 	throw new Error("NEXT_PUBLIC_CLERK_SIGN_IN_URL is not set.");
 }
 
-// Clerk's bot protection runs Cloudflare Turnstile and Clerk's fraud protection, which connects on ports other than 443.
+// Clerk fraud checks connect to both Cloudflare Turnstile and Clerk protection.
 const clerkChallengeOrigins =
 	"https://challenges.cloudflare.com https://*.protect.clerk.com";
 
@@ -57,7 +57,7 @@ const nextConfig: NextConfig = {
 	reactCompiler: true,
 	typedRoutes: true,
 	poweredByHeader: false,
-	// biome-ignore lint/suspicious/useAwait: Next.js requires headers() to return a promise
+	// biome-ignore lint/suspicious/useAwait: Next.js API
 	async headers() {
 		return [{ source: "/(.*)", headers: securityHeaders }];
 	},

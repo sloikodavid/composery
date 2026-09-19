@@ -14,23 +14,16 @@ import {
 	toServerTypeReply,
 } from "../../../../harness/hetzner/replies";
 
-/**
- * Reading a server Hetzner describes. The shapes here are not invented: each one is put through
- * Hetzner's own published description first, so a test cannot pass by asking our code to read
- * something Hetzner would never send.
- */
-
 const serverId = 1005;
 const firewallId = 77;
 const imageId = 501;
 const httpOk = 200;
 const controllerId = "composery-test";
 
-// This file's own checker. The one a run shares records what ran for its waivers, and a test of
-// reading shapes must not write into that.
+// Replies are checked against Hetzner's contract before the parser sees them.
+
 const hetznerContract = createHetznerContractChecker();
 
-/** The Hetzner error a call threw, or null when it returned. */
 function catchHetznerError(run: () => unknown) {
 	try {
 		run();
@@ -62,7 +55,6 @@ function toReply(
 		imageName: "ubuntu-24.04",
 		...addresses,
 	});
-	// Hetzner's description decides whether it could have sent this.
 	expect(
 		hetznerContract.listReplyProblems("GET", `/servers/${serverId}`, httpOk, {
 			server: reply,
@@ -79,8 +71,7 @@ test("a server with both addresses reads as both addresses", () => {
 });
 
 test("a server whose address was deleted reads as having none of that kind", () => {
-	// Hetzner lets an address be deleted while the server is off, and then sends null here. Reading
-	// that as a reply we cannot understand would hide a real change behind the wrong failure.
+	// Hetzner reports a deleted Primary IP as null while the server remains valid.
 	const withoutIpv4 = toServer(toReply({ ipv4: null }));
 	expect(withoutIpv4.ipv4).toBe(null);
 	expect(withoutIpv4.ipv6).toEqual({ id: 1003, address: "2001:db8::1" });
@@ -91,15 +82,13 @@ test("a server whose address was deleted reads as having none of that kind", () 
 });
 
 test("a server whose firewall was detached reads as having none", () => {
-	// Hetzner requires `ipv4`, `ipv6` and `floating_ips` in a public network, and not `firewalls`.
-	// An admin who removes the firewall in Hetzner's console produces exactly this.
+	// A detached firewall is an external change, not an unreadable provider reply.
 	const server = toServer(toReply({ firewallId: null }));
 	expect(server.firewalls).toEqual([]);
 });
 
 test("an address Hetzner does not number cannot be matched, and says so as one", () => {
-	// `id` is not required inside a public network. Without it there is nothing to compare against
-	// the Primary IP this allocation recorded, which is a mismatch rather than an unreadable reply.
+	// Without the Primary IP ID, the address cannot be matched to this allocation.
 	const server = toServer(toReply({ ipv4: { ip: "203.0.113.1" } }));
 	expect(server.ipv4).toBe(null);
 });
@@ -111,22 +100,21 @@ test("a deprecation that has only been announced does not make a thing unusable"
 
 	expect(isUsable(null)).toBe(true);
 	expect(isUsable(undefined)).toBe(true);
-	// Hetzner announces months ahead. Refusing on the announcement would fail every new server on
-	// a date Hetzner picks, with nothing yet actually gone.
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+	// Announcement is not unavailability; only the provider's cutoff makes it unusable.
+	// biome-ignore-start lint/style/useNamingConvention: external field names
 	expect(isUsable({ announced: past, unavailable_after: future })).toBe(true);
 	expect(isUsable({ announced: past, unavailable_after: past })).toBe(false);
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+	// biome-ignore-end lint/style/useNamingConvention: external field names
 });
 
 test("a server type Hetzner no longer offers is refused for good, not read as a broken reply", () => {
 	const offered = {
-		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+		// biome-ignore lint/style/useNamingConvention: external field name
 		server_types: [toServerTypeReply("cx23", ["nbg1"])],
 		meta: toPaginationReply(1),
 	};
 	const retired = {
-		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+		// biome-ignore lint/style/useNamingConvention: external field name
 		server_types: [],
 		meta: toPaginationReply(0),
 	};
@@ -137,20 +125,15 @@ test("a server type Hetzner no longer offers is refused for good, not read as a 
 	}
 
 	expect(requireOfferedServerType(offered, "cx23").name).toBe("cx23");
-	// A name that matches nothing is Hetzner's answer that the type is gone, and waiting does not
-	// bring a retired type back.
 	const refusal = catchHetznerError(() =>
 		requireOfferedServerType(retired, "cx23"),
 	);
 	expect(refusal?.code).toBe("server_type_unavailable");
-	// Nothing Composery can send brings a retired type back: an admin picks another one.
 	expect(refusal?.failureClass).toBe("waiting");
 });
 
 test("a firewall without our label is not ours, and says so", () => {
 	const labelled = toFirewallReply(firewallId, controllerId);
-	// Hetzner requires labels on a server and on a Primary IP, and not on a firewall, so an admin who
-	// removes ours leaves no key at all.
 	const { labels: _, ...unlabelled } = labelled;
 	for (const firewall of [labelled, unlabelled]) {
 		expect(

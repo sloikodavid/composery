@@ -18,14 +18,8 @@ const maxHostnameLength = 253;
 const halfMinuteMs = 30_000;
 const twoMinutesMs = 120_000;
 const tenMinutesMs = 600_000;
-// A server can be starting, rebooting, or briefly unreachable when a rename happens.
 const retryDelaysMs = [halfMinuteMs, twoMinutesMs, tenMinutesMs];
 
-/**
- * Sets the server's hostname, but only while it still matches the name Composery gave it.
- * Returns the hostname the server reports afterwards, which is what the panel shows: a
- * hostname the customer chose stays, and the panel states that it differs.
- */
 export async function setSshHostname(
 	connection: SshConnectionOptions,
 	request: Readonly<{ expected: string | null; next: string }>,
@@ -55,11 +49,6 @@ export async function setSshHostname(
 	return hostname;
 }
 
-/**
- * Runs after a rename, and after a host key is pinned. A server that is starting, rebooting or
- * briefly unreachable gets a few more attempts; after that its hostname stays as it is, and the
- * status shows a hostname that differs from the server's name.
- */
 export const apply = internalAction({
 	args: {
 		serverId: v.id("servers"),

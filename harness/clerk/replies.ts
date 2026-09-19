@@ -1,22 +1,9 @@
-/**
- * The shapes Clerk sends, as `contracts/clerk.json` describes them. Composery reads a
- * few of these fields; the rest are here because Clerk always sends them, and a fake that sends
- * less would let our code depend on a Clerk that does not exist. The values are invented; the
- * shape is not, and every reply is checked against Clerk's own description.
- */
+// biome-ignore-start lint/style/useNamingConvention: external field names
 
-// biome-ignore-start lint/style/useNamingConvention: the Clerk Backend API names these fields
+/** Fixture values are invented; field presence and nullability follow Clerk's contract. */
 
 const created = 1_789_000_000_000;
 
-/**
- * What a test says a Clerk account holds. Clerk's own words, because this answers as Clerk.
- *
- * Each member is separate because Clerk keeps them separate. `has_image` says whether the person
- * uploaded a picture; `image_url` is usually present either way, because Clerk generates one. A
- * fake that tied the two together would be inventing a rule Clerk does not have, and a test could
- * then only ever see the pairs that rule allows.
- */
 export type ClerkUser = Readonly<{
 	id: string;
 	username?: string;
@@ -34,7 +21,6 @@ export function toUserReply(user: ClerkUser) {
 		primary_email_address_id: user.email === undefined ? null : emailId,
 		primary_phone_number_id: null,
 		primary_web3_wallet_id: null,
-		// Clerk sends null rather than leaving the member out, and its own example shows one.
 		username: user.username ?? null,
 		first_name: null,
 		last_name: null,
@@ -53,8 +39,6 @@ export function toUserReply(user: ClerkUser) {
 							object: "email_address",
 							email_address: user.email,
 							reserved: false,
-							// An account reaches us with its email address checked, which is how the
-							// instance is configured: Clerk asks for a code at sign-up.
 							verification: {
 								object: "verification_otp",
 								status: "verified",
@@ -96,7 +80,6 @@ export function toCountReply(count: number) {
 	return { object: "total_count", total_count: count };
 }
 
-/** The body Clerk signs and sends when something about an account changed. */
 export function toUserEvent(
 	type: "user.created" | "user.updated" | "user.deleted",
 	user: ClerkUser,
@@ -116,4 +99,4 @@ export function toUserEvent(
 	};
 }
 
-// biome-ignore-end lint/style/useNamingConvention: the Clerk Backend API names these fields
+// biome-ignore-end lint/style/useNamingConvention: external field names

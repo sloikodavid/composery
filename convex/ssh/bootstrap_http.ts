@@ -4,14 +4,13 @@ import { httpStatus } from "../http_status";
 import { toBootstrapTokenDigest } from "./bootstrap_state";
 
 const maxBodyBytes = 4096;
-// A body this small needs very few chunks, and a sender that keeps sending empty ones is refused.
 const maxBodyChunks = 64;
 const maxAllocationIdLength = 100;
 const bootstrapTokenPattern = /^[A-Za-z0-9_-]{43}$/;
 const maxPort = 65_535;
 const hostKeyType = "ssh-ed25519";
 const hostKeyBytes = 32;
-// SSH wire format (RFC 8709): the type string, then the 32-byte public key, each after a 4-byte length.
+// SSH wire format: length-prefixed type followed by the 32-byte Ed25519 key.
 const hostKeyPrefix = new Uint8Array([
 	0,
 	0,
@@ -32,7 +31,6 @@ async function readBody(request: Request) {
 	let size = 0;
 	const chunks: Uint8Array[] = [];
 	try {
-		// A chunk may be empty, so counting bytes alone would never end a stream of empty ones.
 		for (let read = 0; read <= maxBodyChunks; read += 1) {
 			const next = await reader.read();
 			if (next.done) {
@@ -97,7 +95,7 @@ function toRegistration(bytes: Uint8Array) {
 	};
 }
 
-/** Accepts only the canonical `ssh-ed25519 <base64>` form, so a pinned key has one spelling. */
+/** Accept only one canonical host-key spelling. */
 function isHostKey(text: string) {
 	const [type, base64, ...rest] = text.split(" ");
 	if (type !== hostKeyType || base64 === undefined || rest.length > 0) {
@@ -119,11 +117,7 @@ function isHostKey(text: string) {
 	);
 }
 
-/**
- * The proxy in front of this deployment replaces a client's own forwarding headers, so the
- * address it reports is the address the request came from. A missing header is not a match
- * and not a failure: the report is then accepted without this check.
- */
+/** Proxy headers are trusted only as source addresses; missing source is unknown. */
 function toSource(request: Request) {
 	return (
 		request.headers.get("cf-connecting-ip") ??
@@ -132,7 +126,6 @@ function toSource(request: Request) {
 	);
 }
 
-/** Where a server reports its host key: once from cloud-init at first boot, and again after a renewal. */
 export const registerSshHostKey = httpAction(async (ctx, request) => {
 	const body = await readBody(request);
 	if (body === "tooLarge") {
@@ -161,7 +154,7 @@ export const registerSshHostKey = httpAction(async (ctx, request) => {
 			status: isRegistered ? httpStatus.noContent : httpStatus.forbidden,
 		});
 	} catch {
-		// No request body, token, or error detail enters logs or responses.
+		// Do not expose the token, body, or internal error to the caller.
 		return new Response(null, { status: httpStatus.serviceUnavailable });
 	}
 });

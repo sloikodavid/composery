@@ -6,14 +6,7 @@ on:
 
 jobs:
   check:
-    # What differs between platforms is this repository's own code and the tools that read it:
-    # path handling, line endings, what a shell does with a script. Linux runs the same checks
-    # inside `verify`, so this is the other two.
-    #
-    # Not the tests, and not quietly: they need Docker, which a hosted macOS runner has not, so a
-    # run here would report on the runner rather than on the code. Not the build either, because
-    # `verify` is the only thing that builds and there is no script that builds alone; one added
-    # for CI would be a path nobody runs before pushing, which is how CI and a working copy drift.
+    # Runs platform-specific checks; Linux runs verify.
     name: check on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

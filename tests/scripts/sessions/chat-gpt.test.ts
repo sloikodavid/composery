@@ -1,15 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { readChatGptShare } from "../../../scripts/session/chat-gpt";
 
-// Longer than the share that once read as empty: its streamed payload was about 1.6 MB.
+// Regression size: the old parser treated a roughly 1.6 MB share as empty.
 const longAnswerCharacters = 3_000_000;
 const createdAtSeconds = 1_789_000_000;
 const millisecondsPerSecond = 1000;
 
-/**
- * A share page in the shape ChatGPT serves: one streamed literal holding a flat, index-linked
- * encoding, where each object key names the index of its key text and its value's index.
- */
 function renderSharePage(questionText: string, answerText: string) {
 	const flat = [
 		{ _1: 2 },
@@ -20,7 +16,7 @@ function renderSharePage(questionText: string, answerText: string) {
 		"create_time",
 		createdAtSeconds,
 		"linear_conversation",
-		// biome-ignore lint/style/noMagicNumbers: React Router's turbo-stream encoding links values by array index
+		// biome-ignore lint/style/noMagicNumbers: external array index
 		[9, 17],
 		{ _10: 11 },
 		"message",

@@ -2,8 +2,7 @@ import { type ErrorCode, toConvexError } from "../errors";
 import { SshError, type SshFailure } from "./errors";
 import type { SshFileWriteResult } from "./write_file";
 
-// biome-ignore-start lint/style/useNamingConvention: SSH failures and error codes use snake_case
-/** Every way the server can refuse, stated as one public code. */
+// biome-ignore-start lint/style/useNamingConvention: external failure code names
 export const failureCodes: Record<SshFailure, ErrorCode> = {
 	aborted: "server_unreachable",
 	authentication_failed: "server_unreachable",
@@ -24,7 +23,6 @@ export const failureCodes: Record<SshFailure, ErrorCode> = {
 	too_large: "file_unwritable",
 };
 
-/** Every outcome the write program reports, stated as one public code. */
 export const writeCodes: Record<
 	SshFileWriteResult["status"],
 	ErrorCode | null
@@ -44,12 +42,8 @@ export const writeCodes: Record<
 	write_failed: "file_unwritable",
 	written: null,
 };
-// biome-ignore-end lint/style/useNamingConvention: SSH failures and error codes use snake_case
+// biome-ignore-end lint/style/useNamingConvention: external failure code names
 
-/**
- * Throws what a caller may see. An SSH failure becomes its public code; anything else is not ours
- * to translate, so it travels on unchanged.
- */
 export function throwPublicSshError(error: unknown): never {
 	if (error instanceof SshError) {
 		throw toConvexError(failureCodes[error.code]);

@@ -10,8 +10,9 @@ import {
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
-// Written as a code point, because the character itself is invisible in source.
 const byteOrderMark = 0xfe_ff;
+
+// Parser acceptance must agree with the running OpenSSH server, not just fixture expectations.
 
 let server: SshdServer;
 
@@ -21,12 +22,6 @@ beforeAll(async () => {
 
 type Line = (key: string) => string;
 
-/**
- * Lines whose syntax an editor could read differently from OpenSSH. The parser may call a line an
- * entry that the server then refuses: the panel shows it, and its acceptance says refused. It must
- * never call a line opaque that the server accepts, because the panel could then neither show nor
- * remove a key that signs in.
- */
 const lines: Record<string, Line> = {
 	"leading whitespace": (key) => ` \t${key}`,
 	"doubled separator between type and key": (key) => key.replace(" ", "  "),
@@ -46,14 +41,12 @@ const lines: Record<string, Line> = {
 	"carriage return inside the line": (key) => `${key}\rtail`,
 };
 
-/** Writes one line as exact bytes and returns how the parser and the running server each read it. */
 async function readBothWays(render: Line) {
 	const account = server.createAccount();
 	const key = generateAuthorizedKey();
 	const bytes = new TextEncoder().encode(
 		`${render(`${key.type} ${key.base64}`)}\n`,
 	);
-	// Exact bytes, including NUL, travel as base64 so no shell reinterprets them.
 	server.run(
 		`python3 -c 'import base64, sys; open(sys.argv[1], "wb").write(base64.b64decode(sys.argv[2]))' ${quoteShell(account.keyPath)} ${Buffer.from(bytes).toString("base64")}`,
 	);
@@ -66,7 +59,6 @@ async function readBothWays(render: Line) {
 	};
 }
 
-// Without this, a question that always answered "refused" would let every check below pass.
 test(
 	"the parser and the server agree on a plain key, so the checks below can fail",
 	async () => {

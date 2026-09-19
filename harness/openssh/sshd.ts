@@ -11,13 +11,11 @@ import {
 } from "../docker";
 import { ubuntuArchiveSnapshot, ubuntuImage } from "../pins";
 
-/** Where the SSH server writes its log, which is the evidence of what it allowed. */
+/** The log is the evidence of what the test server accepted. */
 export const sshdLogPath = "/var/log/sshd.log";
 const image = "composery-test-sshd";
 const kind = "sshd";
 const startCommand = `/usr/sbin/sshd -E ${sshdLogPath}`;
-// The snapshot archive is served over HTTPS only, so its certificates come from the current archive
-// first; apt checks every package's signature either way.
 const dockerfile = `FROM ${ubuntuImage}
 RUN apt-get update \\
  && apt-get install -y --no-install-recommends ca-certificates \\
@@ -37,7 +35,7 @@ const readinessAttempts = 60;
 const readinessDelayMs = 250;
 const readLimitBytes = 4096;
 const accountSuffixBytes = 3;
-// A signal to reload can race a new connection, so a restart stops the old daemon before starting one.
+// Stop the old daemon before restart; reload can race a new connection.
 const restartScript = `sshd -t && pid="$(cat /run/sshd.pid)" && kill "$pid" && while kill -0 "$pid" 2>/dev/null; do sleep 0.05; done && ${startCommand}`;
 
 export type SshdAccount = Readonly<{
@@ -47,25 +45,20 @@ export type SshdAccount = Readonly<{
 }>;
 
 export type SshdServer = Readonly<{
-	/** Composery's own connection: root, with a management key generated for this run. */
 	connection: SshConnectionOptions;
-	/** Runs one shell script in the container as root and returns its output. */
 	run: (script: string) => string;
-	/** A new account with an empty key file, so no test shares a file with another. */
 	createAccount: () => SshdAccount;
-	/** Writes one setting to the configuration on disk while `check` runs, and leaves the running daemon alone. */
 	withSettingOnDisk: <T>(
 		setting: string,
 		check: () => Promise<T>,
 	) => Promise<T>;
-	/** Writes one setting and restarts the daemon, so the running server applies it while `check` runs. */
 	withSettingApplied: <T>(
 		setting: string,
 		check: () => Promise<T>,
 	) => Promise<T>;
 }>;
 
-/** Quotes a value for a POSIX shell, so paths and names stay data. */
+/** Quotes a value so paths and names remain shell data. */
 export function quoteShell(value: string) {
 	return `'${value.replaceAll("'", "'\\''")}'`;
 }
@@ -100,14 +93,12 @@ async function startSshd(): Promise<SshdServer> {
 	const container = runDocker([
 		"run",
 		"--detach",
-		// An init process reaps the daemons that a restart leaves behind.
 		"--init",
 		...toDockerOwnerLabels(kind),
 		"--publish",
 		`127.0.0.1::${sshPort}`,
 		image,
 	]);
-	// Docker owns the container, so it outlives this process unless removed at the end of the run.
 	registerCleanup(() => {
 		runDocker(["rm", "--force", container]);
 	});
@@ -145,7 +136,6 @@ async function startSshd(): Promise<SshdServer> {
 			const name = `test${randomBytes(accountSuffixBytes).toString("hex")}`;
 			const home = `/home/${name}`;
 			const keyPath = `${home}/.ssh/authorized_keys`;
-			// useradd locks the password with "!", and sshd refuses every login to a locked account.
 			run(
 				[
 					`useradd --create-home --shell /bin/bash ${name}`,
@@ -179,7 +169,6 @@ async function startSshd(): Promise<SshdServer> {
 
 let sshd: Promise<SshdServer> | undefined;
 
-/** One SSH server for the whole run: a container costs seconds to start, and each test gets its own account. */
 export function useSshd() {
 	sshd ??= startSshd();
 	return sshd;

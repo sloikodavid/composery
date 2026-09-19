@@ -1,6 +1,6 @@
 import { ConvexError, type Infer, v } from "convex/values";
 
-// biome-ignore-start lint/style/useNamingConvention: error codes use snake_case
+// biome-ignore-start lint/style/useNamingConvention: error code names
 const errorMessages = {
 	edit_invalid: "This change cannot be written as a valid entry.",
 	edit_uncertain:
@@ -34,9 +34,9 @@ const errorMessages = {
 	user_not_unique:
 		"More than one account has this email address for a moment. Try again shortly.",
 } as const;
-// biome-ignore-end lint/style/useNamingConvention: error codes use snake_case
+// biome-ignore-end lint/style/useNamingConvention: error code names
 
-/** A code is public API. Add codes freely; never rename or remove one. */
+/** Public API: add codes, but do not rename or remove existing ones. */
 export type ErrorCode = keyof typeof errorMessages;
 
 const errorCodes = Object.keys(errorMessages) as ErrorCode[];
@@ -50,7 +50,7 @@ export const failure = v.object({
 
 export type Failure = Infer<typeof failure>;
 
-/** Return a failure instead of throwing after a rate limit attempt was counted, because throwing rolls the attempt back. */
+/** Return a failure after a counted rate-limit attempt; throwing would roll it back. */
 export function fail(code: ErrorCode, field: string | null = null): Failure {
 	return { ok: false, code, field, message: errorMessages[code] };
 }

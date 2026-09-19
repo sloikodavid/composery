@@ -18,7 +18,6 @@ type BadgeProps = ComponentProps<"span"> & {
 	variant?: BadgeVariant | undefined;
 };
 
-/** A short status or category label. */
 export function Badge({
 	variant = "neutral",
 	className,

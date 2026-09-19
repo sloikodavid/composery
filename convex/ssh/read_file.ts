@@ -8,15 +8,12 @@ import {
 } from "./connection";
 import { SshError, type SshFailure } from "./errors";
 
-/** Remote SSH file operations read and write at most this many bytes. */
-/** 512 KiB. */
+/** Bounded regular-file reads; equal-size concurrent writes are not detected. */
 export const maxSshFileBytes = 524_288;
-// 32 KiB.
 const readChunkBytes = 32_768;
 const fileTypeMask = 0o17_0000;
 const regularFileType = 0o10_0000;
 
-// SFTP status codes from draft-ietf-secsh-filexfer-02.
 const sftpNoSuchFile = 2;
 const sftpPermissionDenied = 3;
 const sftpStatusFailures = new Map<unknown, SshFailure>([
@@ -78,7 +75,6 @@ async function read(
 	input: SshReadOptions,
 	signal: AbortSignal,
 ) {
-	// Refuse a known special file before open. The handle is checked again below.
 	toFileAttributes(
 		await callSftp<Stats>(signal, (done) => sftp.lstat(input.path, done)),
 	);
@@ -137,10 +133,6 @@ async function read(
 	};
 }
 
-/**
- * Read one bounded regular file. No retries or atomic-snapshot claim: a path can
- * change after open, and equal-size writes can evade SFTP's timestamp precision.
- */
 export async function readSshFile(
 	options: SshReadOptions,
 ): Promise<SshFileObservation> {

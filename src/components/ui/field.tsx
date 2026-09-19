@@ -20,7 +20,7 @@ export function Field({ className, ...props }: ComponentProps<"div">) {
 }
 
 export function FieldLabel({ className, ...props }: ComponentProps<"label">) {
-	// biome-ignore lint/a11y/noLabelWithoutControl: callers supply htmlFor or put the control inside this shared label.
+	// biome-ignore lint/a11y/noLabelWithoutControl: callers provide the control
 	return <label className={clsx(fieldLabelClassName, className)} {...props} />;
 }
 
@@ -36,7 +36,6 @@ type FieldMessageProps = ComponentProps<"p"> & {
 	variant?: FieldMessageVariant | undefined;
 };
 
-/** A field-level message for help or validation. */
 export function FieldMessage({
 	children,
 	className,

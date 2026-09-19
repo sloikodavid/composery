@@ -18,9 +18,7 @@ const testTimeoutMs = 300_000;
 const waitDelayMs = 250;
 const millisecondsPerSecond = 1000;
 const hourlyLimit = 3600;
-// Hetzner gives one request back each second, so a few seconds bring back what the deployment
-// waits for. The next attempt of an allocation that is not waiting on anything comes within
-// seconds as well, so the bound is well past that and still an hour short of the reset.
+// The fake refills one request per second; the bound covers pacing, not a full reset.
 const leastPauseMs = 15_000;
 const mostPauseMs = 120_000;
 const createdPrimaryIps = /^\/primary_ips$/;
@@ -39,8 +37,7 @@ test(
 		const client = await createServerOwner(backend);
 		const resetAt =
 			Math.floor(Date.now() / millisecondsPerSecond) + hourlyLimit - 1;
-		// Every reply says what is left of the project's hour. This one is an ordinary answer that
-		// says almost nothing is, which no scripted refusal could say: the request itself succeeds.
+		// A successful response can still leave only one request in the budget.
 		const hasAnswered = fake.scriptOnce(
 			{ method: "POST", path: createdPrimaryIps },
 			{
@@ -58,8 +55,6 @@ test(
 			await Bun.sleep(waitDelayMs);
 		}
 		const answeredAt = Date.now();
-		// While the run holds its lease, the next attempt is the lease's own end. What the run
-		// recorded is there once the lease is given back.
 		let dueAt = 0;
 		while (Date.now() < deadline) {
 			const record = (await readServerBackendRecord(backend, serverId))
@@ -75,7 +70,6 @@ test(
 			await Bun.sleep(waitDelayMs);
 		}
 
-		// The allocation waits for what it needs to come back, and not for the whole hour.
 		expect(hasAnswered()).toBe(true);
 		expect(dueAt).toBeGreaterThanOrEqual(answeredAt + leastPauseMs);
 		expect(dueAt).toBeLessThan(answeredAt + mostPauseMs);

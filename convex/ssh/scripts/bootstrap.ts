@@ -1,19 +1,6 @@
 import type { SshBootstrapFile } from "../bootstrap_state";
 
-/**
- * The program a person runs on their own server when Composery can no longer sign in.
- * It asks the server where its own key file, host key and port are, through the SSH server's
- * own effective configuration, so a moved file or a changed port needs no new version of this
- * program. It asks with `-G` first, because `-T` also runs sanity checks that fail for reasons
- * that have nothing to do with the configuration, such as a missing privilege separation
- * directory. What it cannot ask for is the shell, `awk`, and either `curl` or Python 3; a
- * server without those reports which line failed instead of leaving a half-finished state.
- *
- * It installs the key pair that the renewal generated and removes the one Composery used
- * before, by the key itself rather than by the whole line, so an entry that a person gave
- * options or a comment goes too, as does any earlier copy of the new key, so a second run
- * changes nothing. Composery keeps the old key until the server reports back.
- */
+/** Uses sshd's effective configuration and updates only the managed key entries. */
 export function renderSshBootstrapScript({
 	bootstrapFile,
 	publicKey,

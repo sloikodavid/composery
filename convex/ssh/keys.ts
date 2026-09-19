@@ -38,7 +38,7 @@ type Acceptance = "accepted" | "refused" | "unknown";
 
 type AcceptanceQuestion = Readonly<{
 	account: string;
-	/** The key and options that the edited line holds afterwards, from the file as it was read. */
+	/** The key and options the edited line should hold. */
 	toEntry: (file: AuthorizedKeysFile) => Readonly<{
 		key: Readonly<{ type: string; base64: string }>;
 		options: readonly string[];
@@ -67,16 +67,12 @@ const keyLine = v.object({
 const keyFile = v.object({
 	account: v.string(),
 	path: v.string(),
-	/** What the file held when it was read. Every edit names it, and a stale one is refused. */
+	/** Digest of bytes and metadata observed before the edit. */
 	revision: v.string(),
 	lines: v.array(keyLine),
 });
 
-/**
- * Names one state of one file: its bytes and the metadata around them. Metadata belongs in it
- * because bytes alone repeat: a file restored to what it held before would otherwise let a
- * request that was planned against that earlier state apply a second time.
- */
+/** Metadata is included so a restored byte sequence cannot reuse an old revision. */
 function toRevision(observation: SshFileObservation) {
 	const { size, uid, gid, mode, mtime } = observation.attributes;
 	return createHash("sha256")
@@ -104,7 +100,6 @@ function toKeyLine(line: AuthorizedKeysLine) {
 	};
 }
 
-/** Everything here signs in to the server the same way, and every attempt says what it found. */
 async function onServer<Result>(
 	ctx: ActionCtx,
 	serverId: Id<"servers">,
@@ -136,11 +131,7 @@ async function readKeyFile(
 	};
 }
 
-/**
- * Reads the key files that the server says apply, as they are right now. Composery keeps no
- * copy: a later edit names the revision it saw, and the server refuses a stale one.
- */
-/** The key files the server says apply, as far as one listing reads. */
+/** Reads current files; edits name the revision they observed. */
 async function listKeyFiles(
 	connection: SshConnectionOptions,
 ): Promise<KeyFileListing> {
@@ -183,11 +174,7 @@ export const list = action({
 	},
 });
 
-/**
- * Asks the running server about the key an edit left behind. The server judges from Composery's
- * address, so a key limited to other addresses cannot be answered for; and a write that succeeded
- * stays a success when the question itself fails.
- */
+/** A successful write remains successful if the follow-up acceptance probe fails. */
 async function getKeyAcceptance(
 	connection: SshConnectionOptions,
 	account: string,
@@ -259,7 +246,6 @@ async function applyEdits(
 							request.question.account,
 							request.question.toEntry(file),
 						);
-			// The written file names its own new state; a read that fails leaves the caller to list again.
 			try {
 				return {
 					revision: toRevision(

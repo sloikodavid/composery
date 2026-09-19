@@ -90,10 +90,10 @@ function toOwner(
 	};
 }
 
-/** A recorded ID finds the resource directly. Without one, it is found by its labels and name. */
 function getKnownId(
 	resource: HetznerCloudAllocation["resources"][ResourceKind],
 ) {
+	// Pending and uncertain resources must be found by ownership, not retried by ID.
 	switch (resource.status) {
 		case "present":
 		case "absent":
@@ -130,12 +130,10 @@ async function renderUserData(ctx: ActionCtx, lease: Lease) {
 	return renderCloudInit({
 		publicKey: sshAccess.publicKey,
 		bootstrapFile: requireSshBootstrapFile(sshAccess),
-		// The create operation carries the name the server had when it was requested.
 		hostname: lease.operation.name ?? "",
 	});
 }
 
-/** Returns an update instead when the request cannot be built yet. */
 async function toCreateRequest(
 	ctx: ActionCtx,
 	lease: Lease,
@@ -227,8 +225,8 @@ async function createResource(
 			...(created.actionId === null ? {} : { actionId: created.actionId }),
 		};
 	} catch (error) {
-		// A rejection returns the resource to pending. Any other outcome stays uncertain.
 		if (error instanceof HetznerCloudError && error.isRejected) {
+			// Rejections are known not to have created the resource; other outcomes remain uncertain.
 			return {
 				resource: { kind, status: { status: "pending" } },
 				failure: toProviderFailure(error),
@@ -270,7 +268,7 @@ async function deleteResource(
 		};
 	}
 	if (resource.status === "uncertain") {
-		// An uncertain resource that appears takes its identity first, which unblocks the allocation.
+		// A resource found after an uncertain create belongs to that request.
 		return { resource: { kind, status: { status: "present", id: found.id } } };
 	}
 	if (found.isAssigned) {
@@ -350,15 +348,11 @@ async function stepPower(
 	return actionId === null ? {} : { actionId };
 }
 
-/**
- * Looks at the server, and either carries the operation one step further or reports what was seen.
- * A server that cannot be looked at, or that is not the one this allocation recorded, is a failure
- * to come back to rather than an observation, because nothing here was confirmed.
- */
 async function observeServer(
 	ctx: ActionCtx,
 	lease: Lease,
 ): Promise<HetznerCloudWorkerUpdate> {
+	// A missing or mismatched server is a failure to observe, not proof of deletion.
 	const { hetznerCloudAllocation } = lease;
 	const server = await findHetznerCloudServer(
 		lease.usage,
@@ -384,16 +378,12 @@ async function observeServer(
 	);
 }
 
-/**
- * Puts the project's rules back on a server that lost them. A customer cannot detach a firewall:
- * they have no account in this project, so a server without ours was changed by an admin or by
- * the provider, and neither is a choice to respect. Nothing else about the server is touched.
- */
 async function stepFirewall(
 	lease: Lease,
 	checked: ServerObservation,
 	serverId: number,
 ): Promise<HetznerCloudWorkerUpdate | null> {
+	// The controller owns the firewall; a detached firewall is repaired on the next pass.
 	const { firewallId } = lease.hetznerCloudAllocation;
 	if (
 		checked.parts.firewall !== "missing" ||
@@ -417,7 +407,7 @@ async function step(
 	const { allocation, hetznerCloudAllocation } = lease;
 	const { controllerId, firewallId } = hetznerCloudAllocation;
 	if (firewallId === undefined) {
-		// Nothing is made in a project until the firewall that proves it is ours is found there.
+		// Do not create provider resources until the project firewall proves ownership.
 		return {
 			firewallId: (await requireHetznerCloudFirewall(lease.usage, controllerId))
 				.id,

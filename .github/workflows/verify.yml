@@ -6,8 +6,7 @@ on:
 
 jobs:
   verify:
-    # Linux runs everything, including the tests that need Docker; docs/requirements.md says what
-    # a machine needs.
+    # Linux runs tests and the build; see docs/requirements.md.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -19,7 +18,5 @@ jobs:
         with:
           node-version-file: package.json
       - run: bun install --frozen-lockfile
-        # The app's own configuration, in the shape the checks and the build read it.
       - run: cp .env.local.example .env.local
-        # The same command a person runs before pushing: the checks, the tests, and the build.
       - run: bun verify

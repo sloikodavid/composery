@@ -2,12 +2,6 @@ import { type Infer, v } from "convex/values";
 import type { Doc } from "../../_generated/dataModel";
 import type { allocationParts } from "../schema";
 
-/**
- * What one look at a server says about the allocation it belongs to. The worker looks at one
- * server because it is about to act on it; the inventory scan looks at every server anyway, a page
- * at a time. Both have the same question and it is answered here once.
- */
-
 export const hetznerCloudServerState = v.object({
 	id: v.number(),
 	status: v.union(
@@ -15,8 +9,7 @@ export const hetznerCloudServerState = v.object({
 		v.literal("stopped"),
 		v.literal("changing"),
 	),
-	// Hetzner sends nothing for an address a server does not have, which somebody can arrange by
-	// deleting the Primary IP while the server is off.
+	// A deleted Primary IP is reported as null while the server remains observable.
 	ipv4: v.union(v.object({ id: v.number(), address: v.string() }), v.null()),
 	ipv6: v.union(v.object({ id: v.number(), address: v.string() }), v.null()),
 	serverType: v.string(),
@@ -31,10 +24,7 @@ export type ServerObservation = Readonly<{
 	addresses: { ipv4?: string; ipv6?: string };
 }>;
 
-/**
- * Hetzner takes a few seconds to apply rules it has been given, so one on its way is not yet
- * anything to say about.
- */
+/** A missing or unapplied firewall is a repairable part failure, not a missing server. */
 function toFirewallPart(
 	firewall: HetznerCloudServer["firewalls"][number] | undefined,
 ) {
@@ -44,12 +34,7 @@ function toFirewallPart(
 	return firewall.isApplied ? ("ok" as const) : ("unknown" as const);
 }
 
-/**
- * What each part of this allocation looks like, in our own words. An address somebody detached, or
- * rules somebody took off, is a part that is not as it should be: it does not stop the server being
- * seen, and it does not stop what has nothing to do with it. A server of another type or in another
- * place is the one difference that stops the rest, because it is not the server we recorded.
- */
+/** Returns null for a different server; otherwise reports each owned part independently. */
 export function observeHetznerCloudServer(
 	allocation: Doc<"hetznerCloudAllocations">,
 	server: HetznerCloudServer,

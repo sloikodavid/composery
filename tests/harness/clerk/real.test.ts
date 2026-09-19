@@ -7,11 +7,11 @@ const namesTheIssuer = /CLERK_FRONTEND_API_URL/;
 type Named = "CLERK_MODE" | "CLERK_SECRET_KEY" | "CLERK_FRONTEND_API_URL";
 
 const held: Record<Named, string | undefined> = {
-	// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+	// biome-ignore-start lint/style/useNamingConvention: environment variable names
 	CLERK_MODE: process.env.CLERK_MODE,
 	CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 	CLERK_FRONTEND_API_URL: process.env.CLERK_FRONTEND_API_URL,
-	// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+	// biome-ignore-end lint/style/useNamingConvention: environment variable names
 };
 
 function set(name: Named, value: string | undefined) {
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 test("keeps the fake a fake while the secret sits in the file", () => {
-	// Holding a secret is not an instruction to make accounts in somebody's instance.
+	// Credentials alone must not select a billable or destructive integration.
 	set("CLERK_MODE", "fake");
 	set("CLERK_SECRET_KEY", "sk_test_not_a_secret");
 	set("CLERK_FRONTEND_API_URL", "https://example.clerk.accounts.dev");
@@ -45,7 +45,7 @@ test("keeps the fake a fake when nothing said which to use", () => {
 });
 
 test("refuses a run that asked for the real Clerk with no secret", () => {
-	// Falling back would report success in the same words as a run that met Clerk.
+	// Never fall back to fake after an explicit real-mode request.
 	set("CLERK_MODE", "real");
 	set("CLERK_SECRET_KEY", "");
 	set("CLERK_FRONTEND_API_URL", "https://example.clerk.accounts.dev");
@@ -54,8 +54,6 @@ test("refuses a run that asked for the real Clerk with no secret", () => {
 });
 
 test("refuses a run that has the secret and not the instance it belongs to", () => {
-	// The deployment trusts one issuer. Without it, every token Clerk signs is refused, which
-	// would look like a broken sign-in rather than a run that was set up incompletely.
 	set("CLERK_MODE", "real");
 	set("CLERK_SECRET_KEY", "sk_test_not_a_secret");
 	set("CLERK_FRONTEND_API_URL", undefined);

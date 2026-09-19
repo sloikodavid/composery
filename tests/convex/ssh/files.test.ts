@@ -50,7 +50,6 @@ function askAbout(account: SshdAccount, key: AuthorizedKey) {
 	);
 }
 
-/** Plans edits against the file as it is now, writes them, and returns the file as it was before. */
 async function editKeyFile(
 	account: SshdAccount,
 	edits: (file: AuthorizedKeysFile) => AuthorizedKeysEdit[],
@@ -129,7 +128,6 @@ test(
 		const account = server.createAccount();
 		const held = generateAuthorizedKey();
 		const added = generateAuthorizedKey();
-		// Bytes that a careless rewrite would normalize: a comment, a blank line, and tabs.
 		writeKeyFile(account, [
 			"# kept by hand",
 			"",

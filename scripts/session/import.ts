@@ -17,7 +17,6 @@ const sessionDirectory = join(
 );
 
 const readers: {
-	/** Names the reader's file, and the files it imports. */
 	name: string;
 	source: RegExp;
 	read: (source: string) => Promise<Session>;
@@ -51,7 +50,7 @@ async function importSession(source: string, output?: string): Promise<string> {
 				sessionDirectory,
 				`${date}-${reader.name}-${toKebabCase(session.title)}.md`,
 			);
-	// A later continuation adds sources after the first, so the first names the session.
+	// The first source names the session; later continuations append to it.
 	const origin = renderSessionSource(session.sources.slice(0, 1));
 	const existing = Bun.file(file);
 	if (

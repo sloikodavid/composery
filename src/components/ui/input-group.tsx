@@ -15,7 +15,6 @@ type InputGroupProps = Omit<ComponentProps<"input">, "className" | "prefix"> & {
 	suffix?: ReactNode | undefined;
 };
 
-/** One input with fixed content before or after its editable value. */
 export function InputGroup({
 	"aria-invalid": ariaInvalid,
 	className,

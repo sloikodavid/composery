@@ -143,30 +143,20 @@ export const getStatus = query({
 	args: { serverId: v.id("servers") },
 	returns: v.object({
 		status: allocationStatus,
-		// What each part of the server looked like when it was last seen, so that one part being
-		// wrong says which, rather than stopping everything.
 		parts: serverParts,
-		// What a member can do with it right now, worked out from those parts in one place.
 		features: serverFeatures,
-		// Why the allocation is not moving, when it is not. It is still being tried, and the class
-		// says what kind of wait it is, which is what decides whether anybody need do anything.
 		stuck: v.union(
 			v.object({ since: v.number(), code: v.string(), class: failureClass }),
 			v.null(),
 		),
 		location: v.union(v.string(), v.null()),
-		// The addresses a client connects to, each one the server itself has been seen using.
 		ipv4: v.union(v.string(), v.null()),
 		ipv6: v.union(v.string(), v.null()),
-		// The range the provider gave the server, which is not an address and reaches nothing.
 		ipv6Network: v.union(v.string(), v.null()),
 		observedAt: v.union(v.number(), v.null()),
-		// The pinned host key, which a client compares with the key the server offers.
 		hostKey: v.union(v.string(), v.null()),
 		hostKeyConflictAt: v.union(v.number(), v.null()),
-		// The port that the server last reported, which a client needs to connect.
 		port: v.union(v.number(), v.null()),
-		// The hostname the server reports, which the customer may have changed themselves.
 		hostname: v.union(v.string(), v.null()),
 		operation: v.object({
 			_id: v.id("serverOperations"),
@@ -188,7 +178,7 @@ export const getStatus = query({
 			allocation.operationId,
 		);
 		if (operation === null) {
-			// An allocation always names the operation it is carrying out, so this is a defect.
+			// Every allocation names its current operation; absence is a data defect.
 			throw toConvexError("server_broken");
 		}
 		return {
@@ -215,10 +205,6 @@ export const getStatus = query({
 	},
 });
 
-/**
- * Runs after the allocation confirms that its infrastructure is gone. The server and the allocation
- * go in one change, so a server is never readable without the allocation that ran it.
- */
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
@@ -238,8 +224,6 @@ export const finishDelete = internalMutation({
 		await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
 			serverId,
 		});
-		// In the same change as the server, so a handful of operations leave nothing behind even if
-		// nothing scheduled ever runs. A server with more than one page of them finishes later.
 		await removeServerOperations(ctx, serverId);
 		return null;
 	},

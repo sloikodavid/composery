@@ -17,7 +17,6 @@ type AllocationSshAccessFields = Infer<
 	typeof sshTables.allocationSshAccess.validator
 >;
 
-/** Throws when the keys are set but any of them is not one. */
 export function isSshAccessConfigured() {
 	return isConfigured(env.SSH_ACCESS_ENCRYPTION_KEYS);
 }
@@ -42,15 +41,11 @@ export async function deleteAllocationSshAccess(
 	}
 }
 
-/**
- * Keeps access that cloud-init can already hold, and replaces only an expired
- * bootstrap without a registered host key. The caller must confirm that the
- * server was not requested yet.
- */
 export async function storeAllocationSshAccess(
 	ctx: MutationCtx,
 	fields: AllocationSshAccessFields,
 ) {
+	// Only pending servers can still receive this public key through cloud-init.
 	const existing = await getAllocationSshAccess(ctx, fields.allocationId);
 	if (existing === null) {
 		const id = await ctx.db.insert("allocationSshAccess", fields);
@@ -74,7 +69,6 @@ export async function storeAllocationSshAccess(
 	};
 }
 
-/** Writes down what the last attempt to sign in found, for whoever reads the server's state. */
 export const recordAccess = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -99,18 +93,10 @@ export const get = internalQuery({
 		await getAllocationSshAccess(ctx, allocationId),
 });
 
-/** How long a server's way in may go unlooked-at before it is looked at again. */
 const checkEveryMs = 21_600_000;
-// Checks started each minute, so a fleet of up to 7,200 servers comes round inside the interval.
-// A larger one is looked at less often than that, oldest first. A minute of checks is still a
-// minute of ordinary connections.
+// The sweep handles 20 checks per minute, oldest first.
 const checkBatchSize = 20;
 
-/**
- * Hands the oldest looks to the check, and a row nobody has looked at first of all. Each one is
- * stamped by what the check finds, so the queue always moves: a server that cannot answer says
- * so and goes to the back, rather than holding the front for everyone behind it.
- */
 export const sweep = internalMutation({
 	args: {},
 	returns: v.null(),

@@ -21,14 +21,10 @@ import {
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 600_000;
-// A cycle is one page of servers and one of addresses, ten seconds apart, so a fleet this size
-// comes round about every twenty seconds. The bound is longer than that: a sweep takes the
-// scan's lease before its run starts, so a run that waits behind other work holds the lease
-// for its two minutes, and the worst a change can wait is that lease and then a cycle.
 const scanTimeoutMs = 240_000;
 const scanDelayMs = 250;
-// The deployment paces its own scan; asking for a sweep faster than that spends nothing.
 const sweepEveryMs = 2000;
+// This helper waits for the inventory scan, not the allocation worker.
 const pageTrailLength = 6;
 
 let backend: ConvexBackend;
@@ -39,7 +35,6 @@ beforeAll(async () => {
 	fake = await useHetznerFake();
 }, setupTimeoutMs);
 
-/** Waits for the inventory scan, and nothing else, to bring one server's status up to date. */
 async function scanUntil(
 	client: ServerClient,
 	serverId: Id<"servers">,
@@ -63,8 +58,6 @@ async function scanUntil(
 		}
 		await Bun.sleep(scanDelayMs);
 	}
-	// What the scan did while it was waited on: a page it never read is a different fault from
-	// a page it read and made nothing of.
 	const pages = fake
 		.requests()
 		.slice(-pageTrailLength)
@@ -86,14 +79,11 @@ test(
 			path: new RegExp(`^/servers/${hetznerServerId}$`),
 		};
 		const askedBefore = fake.countRequests(askedAbout);
-		// Somebody stops the server in Hetzner's own console. Nobody tells Composery, and nothing
-		// wakes the allocation: one that has settled is not asked about again.
+		// External stop is not a local event; only the next scan observes it.
 		await fake.stopServer(hetznerServerId);
 
 		const stopped = await scanUntil(client, serverId, "stopped");
 
-		// The scan reads fifty servers in one request, so noticing costs the same whatever the fleet
-		// is. An allocation that polled its own server would have made it cost one request each.
 		expect(stopped.status).toBe("stopped");
 		expect(stopped.parts.server).toBe("ok");
 		expect(stopped.ipv4).not.toBe(null);

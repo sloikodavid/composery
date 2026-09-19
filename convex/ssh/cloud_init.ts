@@ -3,7 +3,7 @@ import { reportHostKeyScript } from "./scripts/report_host_key";
 
 const bootstrapFilePath = "/run/composery-bootstrap.json";
 
-/** Returns cloud-config user data that installs the management key and reports the server's host key. */
+/** Installs management access and reports the host key during bootstrap. */
 export function renderCloudInit({
 	publicKey,
 	bootstrapFile,
@@ -13,7 +13,7 @@ export function renderCloudInit({
 	bootstrapFile: SshBootstrapFile;
 	hostname: string;
 }) {
-	// biome-ignore-start lint/style/useNamingConvention: cloud-init requires snake_case keys
+	// biome-ignore-start lint/style/useNamingConvention: external snake_case keys
 	const config = {
 		hostname,
 		preserve_hostname: false,
@@ -38,7 +38,6 @@ export function renderCloudInit({
 		],
 		runcmd: [["/usr/bin/python3", "-I", "-c", reportHostKeyScript]],
 	};
-	// biome-ignore-end lint/style/useNamingConvention: cloud-init requires snake_case keys
-	// JSON is a subset of YAML, so no value can become cloud-config structure.
+	// biome-ignore-end lint/style/useNamingConvention: external snake_case keys
 	return `#cloud-config\n${JSON.stringify(config)}\n`;
 }

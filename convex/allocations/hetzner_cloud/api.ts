@@ -25,9 +25,7 @@ const maxRetryAfterMs = 86_400_000;
 const millisecondsPerSecond = 1000;
 const maxLocations = 20;
 const lookupPageSize = "2";
-// The most Hetzner gives at once. Asking for more is answered with fifty rather than refused,
-// and what a page holds is read from the reply, so this only decides how many requests a walk
-// takes. `meta.pagination.next_page` is what says whether another one follows.
+// Hetzner caps page size at 50; pagination is driven by next_page.
 const listPageSize = "50";
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
@@ -38,21 +36,20 @@ type Collection = Infer<typeof hetznerCloudCollection>;
 type PowerKind = Infer<typeof powerOperationKind>;
 type Reply = Record<string, unknown>;
 
-/** Client errors that do not prove a request had no effect. */
 const inconclusiveStatuses: ReadonlySet<number> = new Set([
+	// The request may have reached Hetzner, so do not resend it automatically.
 	httpStatus.requestTimeout,
 	httpStatus.conflict,
 ]);
 
-/** Statuses that mean the request is right and something outside it has to change first. */
 const waitingStatuses: ReadonlySet<number> = new Set([
+	// The request is valid but needs capacity, quota, or an external change.
 	httpStatus.forbidden,
 	httpStatus.preconditionFailed,
 	httpStatus.locked,
 ]);
 
-/** What our own codes mean, where the status alone would say the wrong thing. */
-// biome-ignore-start lint/style/useNamingConvention: error codes use snake_case
+// biome-ignore-start lint/style/useNamingConvention: error code names
 const failureClasses: Partial<Record<HetznerCloudErrorCode, FailureClass>> = {
 	capacity_unavailable: "waiting",
 	duplicate_resources: "waiting",
@@ -64,7 +61,7 @@ const failureClasses: Partial<Record<HetznerCloudErrorCode, FailureClass>> = {
 	token_missing: "waiting",
 	transport_uncertain: "indeterminate",
 };
-// biome-ignore-end lint/style/useNamingConvention: error codes use snake_case
+// biome-ignore-end lint/style/useNamingConvention: error code names
 
 const collections = {
 	server: "servers",
@@ -84,7 +81,6 @@ const powerActions = {
 	forceStop: "poweroff",
 } as const satisfies Record<PowerKind, string>;
 
-// Hetzner's documented server statuses. Only a settled status says whether the server runs.
 const serverStatuses = {
 	initializing: "changing",
 	starting: "changing",
@@ -96,6 +92,7 @@ const serverStatuses = {
 	rebuilding: "changing",
 	unknown: "changing",
 } as const satisfies Record<string, HetznerCloudServer["status"]>;
+// Only settled provider statuses map to a usable server state; all transitions are changing.
 
 export type HetznerCloudErrorCode =
 	| "capacity_unavailable"
@@ -111,10 +108,8 @@ export type HetznerCloudErrorCode =
 
 export class HetznerCloudError extends Error {
 	readonly code: HetznerCloudErrorCode;
-	/** 0 when no HTTP response exists. */
 	readonly status: number;
 	readonly retryAfterMs: number;
-	/** Hetzner's own code, when it sent one. */
 	readonly hetznerErrorCode: string | undefined;
 
 	constructor(
@@ -133,25 +128,19 @@ export class HetznerCloudError extends Error {
 		this.hetznerErrorCode = details.hetznerErrorCode;
 	}
 
-	/** Hetzner answered and refused, so the request did not take effect. */
 	get isRejected() {
 		return (
 			isHttpClientError(this.status) && !inconclusiveStatuses.has(this.status)
 		);
 	}
 
-	/**
-	 * What this failure means for what to do next, by what Hetzner's own description says each
-	 * answer means. Its status alone does not decide: 403 is a quota to raise, 412 is capacity to
-	 * wait for, and 409 is Hetzner asking for the request again.
-	 */
 	get failureClass(): FailureClass {
+		// HTTP status alone cannot distinguish a quota, capacity, or lost request.
 		const byCode = failureClasses[this.code];
 		if (byCode !== undefined) {
 			return byCode;
 		}
 		if (this.status === 0 || inconclusiveStatuses.has(this.status)) {
-			// Nothing answered, or the answer does not prove the request had no effect.
 			return "indeterminate";
 		}
 		if (
@@ -171,7 +160,6 @@ export type HetznerCloudConfig = {
 	serverType: string;
 };
 
-/** The labels that make a resource this controller's, for one allocation. */
 export type HetznerCloudOwner = {
 	controllerId: string;
 	allocationId: string;
@@ -179,9 +167,7 @@ export type HetznerCloudOwner = {
 
 export type HetznerCloudResource = {
 	id: number;
-	/** A Primary IP's address. A server's addresses come from its own record. */
 	address?: string;
-	/** A Primary IP that is attached to a server. Always false for a server. */
 	isAssigned: boolean;
 };
 
@@ -198,11 +184,9 @@ export type HetznerCloudCreateRequest =
 			userData: string;
 	  };
 
-/** Returns null when Hetzner Cloud is not configured. Throws when the configuration is invalid. */
+/** Returns null when unconfigured; invalid partial configuration throws. */
 export function getHetznerCloudConfig(): HetznerCloudConfig | null {
-	// Everything a server is made of is said by the deployment. Nothing here falls back to a value
-	// somebody wrote down once: a fallback decides for a deployment that never chose, and the first
-	// anybody would know of it is a server built from something nobody asked for.
+	// No defaults: a deployment must choose every provider resource explicitly.
 	if (
 		!env.HCLOUD_TOKEN ||
 		!env.HCLOUD_CONTROLLER_ID ||
@@ -278,7 +262,6 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
-/** Hetzner states these on every reply. A reply that states none of them leaves what we knew. */
 function readBudget(usage: HetznerCloudUsage, response: Response) {
 	const limit = Number(response.headers.get("RateLimit-Limit"));
 	const remaining = Number(response.headers.get("RateLimit-Remaining"));
@@ -301,15 +284,11 @@ function readBudget(usage: HetznerCloudUsage, response: Response) {
 	};
 }
 
-/**
- * What one action spends. Each action makes its own, so that two runs in one process never count
- * each other's requests.
- */
+/** Per-operation usage; concurrent runs must not share a budget counter. */
 export function createHetznerCloudUsage(): HetznerCloudUsage {
 	return { requests: 0 };
 }
 
-/** No implicit retries. A request that failed can still have reached Hetzner. */
 async function callHetznerCloud(
 	usage: HetznerCloudUsage,
 	path: string,
@@ -322,7 +301,7 @@ async function callHetznerCloud(
 		});
 	}
 	let response: Response;
-	// Counted before it is sent: a request whose answer is lost has still reached Hetzner.
+	// Count before sending because a lost response may still represent provider-side work.
 	usage.requests += 1;
 	try {
 		const apiUrl =
@@ -331,7 +310,7 @@ async function callHetznerCloud(
 		response = await fetch(`${apiUrl}${hetznerCloudApiPrefix}/${path}`, {
 			method,
 			headers: {
-				// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name
+				// biome-ignore lint/style/useNamingConvention: external header name
 				Authorization: `Bearer ${env.HCLOUD_TOKEN}`,
 				"Content-Type": "application/json",
 			},
@@ -378,15 +357,8 @@ function getActionId(reply: Reply | null) {
 	return reply?.action ? requireId(requireObject(reply.action).id) : null;
 }
 
-/**
- * The server type Composery uses, read from Hetzner's answer to asking for it by name. A name that
- * matches nothing answers with an empty list, which is Hetzner saying the type is gone rather than
- * failing to answer. A retired type does not come back, so this is permanent like a missing image,
- * and unlike capacity, which is the other thing a precondition failure would mean. Exported so a
- * test can put Hetzner's own shapes through it: the request is one every allocation makes, so no
- * test can script it for one allocation alone.
- */
 export function requireOfferedServerType(reply: Reply | null, name: string) {
+	// A type absent from the provider list is unavailable, not an unreadable response.
 	const offered = requireList(reply?.server_types)
 		.map(requireObject)
 		.find((type) => type.name === name);
@@ -398,18 +370,12 @@ export function requireOfferedServerType(reply: Reply | null, name: string) {
 	return offered;
 }
 
-/**
- * Throws unless the resource carries this controller's labels, and the allocation's labels when
- * given. Exported so a test can put Hetzner's own shapes through it: the project firewall is read at
- * the start of every allocation's work, so no test can script that read for one allocation alone.
- */
 export function requireOwnedResource(
 	resource: Reply,
 	controllerId: string,
 	owned?: { allocationId: string; kind: ResourceKind },
 ) {
-	// Hetzner requires labels on a server and on a Primary IP, but not on a firewall. One that
-	// carries none is a resource that is not ours, which is a verdict, not a reply we cannot read.
+	// Labels are the ownership proof used after a lost create response.
 	const labels =
 		resource.labels === undefined ? {} : requireObject(resource.labels);
 	if (
@@ -466,13 +432,12 @@ async function findReply(
 		});
 		return found;
 	}
-	// Labels also find a resource that was renamed at Hetzner after a lost create response.
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	// biome-ignore-start lint/style/useNamingConvention: external snake_case parameters
 	const labelQuery = new URLSearchParams({
 		label_selector: `controller-id=${owner.controllerId},allocation-id=${owner.allocationId},resource-kind=${kind}`,
 		per_page: lookupPageSize,
 	});
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	// biome-ignore-end lint/style/useNamingConvention: external snake_case parameters
 	const labeled = await callHetznerCloud(usage, `${collection}?${labelQuery}`);
 	const labeledMatch = requireOneMatch(
 		requireList(labeled?.[collection]),
@@ -510,20 +475,17 @@ function isHetznerServerStatus(
 	return Object.hasOwn(serverStatuses, value);
 }
 
-/** One of a server's public addresses, or null when Hetzner says it has none of that kind. */
 function toServerAddress(value: unknown) {
 	if (value === null || value === undefined) {
 		return null;
 	}
 	const address = requireObject(value);
-	// `id` is not required here, and an address without one cannot be matched to the Primary IP
-	// this allocation recorded, which is the mismatch the worker already handles.
 	return address.id === undefined
 		? null
 		: { id: requireId(address.id), address: requireText(address.ip) };
 }
 
-/** Reads one server as Hetzner describes it. Exported so a test can put its own shapes through. */
+/** Maps a provider reply; missing addresses and firewalls are valid observations. */
 export function toServer(reply: Reply): HetznerCloudServer {
 	const status = requireText(reply.status);
 	if (!isHetznerServerStatus(status)) {
@@ -537,8 +499,6 @@ export function toServer(reply: Reply): HetznerCloudServer {
 		ipv6: toServerAddress(publicNet.ipv6),
 		serverType: requireText(requireObject(reply.server_type).name),
 		location: requireText(requireObject(reply.location).name),
-		// Neither `firewalls` nor the fields of one are required. A server with none is a server
-		// whose firewall was detached, which the worker reports; it is not an unreadable reply.
 		firewalls: requireList(publicNet.firewalls ?? [])
 			.map(requireObject)
 			.filter((firewall) => firewall.id !== undefined)
@@ -549,7 +509,6 @@ export function toServer(reply: Reply): HetznerCloudServer {
 	};
 }
 
-/** Finds the allocation's resource by its known ID, or by its labels and then its name. */
 export async function findHetznerCloudResource(
 	usage: HetznerCloudUsage,
 
@@ -588,16 +547,16 @@ function toCreateBody(
 	switch (request.kind) {
 		case "ipv4":
 		case "ipv6":
-			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+			// biome-ignore-start lint/style/useNamingConvention: external snake_case fields
 			return {
 				...body,
 				type: request.kind,
 				assignee_type: "server",
 				auto_delete: true,
 			};
-		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+		// biome-ignore-end lint/style/useNamingConvention: external snake_case fields
 		case "server":
-			// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+			// biome-ignore-start lint/style/useNamingConvention: external snake_case fields
 			return {
 				...body,
 				server_type: request.serverType,
@@ -612,17 +571,17 @@ function toCreateBody(
 				firewalls: [{ firewall: request.firewallId }],
 				user_data: request.userData,
 			};
-		// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case fields
+		// biome-ignore-end lint/style/useNamingConvention: external snake_case fields
 	}
 }
 
-/** Sends one create request. It throws when Hetzner's answer is lost, so the caller must look the resource up before creating it again. */
 export async function createHetznerCloudResource(
 	usage: HetznerCloudUsage,
 
 	owner: HetznerCloudOwner,
 	request: HetznerCloudCreateRequest,
 ): Promise<HetznerCloudResource & { actionId: number | null }> {
+	// The caller records uncertainty before this request and must look up a lost response.
 	const reply = await callHetznerCloud(
 		usage,
 		collections[request.kind],
@@ -637,7 +596,7 @@ export async function createHetznerCloudResource(
 	return { ...toResource(request.kind, created), actionId: getActionId(reply) };
 }
 
-/** Hetzner may still be deleting a resource it has accepted a delete request for. */
+/** Provider may still be deleting after acknowledging this request. */
 export async function sendHetznerCloudDelete(
 	usage: HetznerCloudUsage,
 
@@ -664,7 +623,6 @@ export async function sendHetznerCloudDelete(
 	}
 }
 
-/** Returns the action ID when Hetzner started an action for the request. */
 export async function sendHetznerCloudPower(
 	usage: HetznerCloudUsage,
 	serverId: number,
@@ -678,7 +636,6 @@ export async function sendHetznerCloudPower(
 	return getActionId(reply);
 }
 
-/** Returns null when Hetzner no longer knows the action. */
 export async function getHetznerCloudActionStatus(
 	usage: HetznerCloudUsage,
 
@@ -695,10 +652,6 @@ export async function getHetznerCloudActionStatus(
 	return status === "error" ? "failed" : "succeeded";
 }
 
-/**
- * One server from a page, or nothing when Hetzner described it in a way we cannot read. One odd
- * server must not stop a scan that is also how every other server stays current.
- */
 function toScannedServer(resource: Reply) {
 	try {
 		return toServer(resource);
@@ -707,7 +660,6 @@ function toScannedServer(resource: Reply) {
 	}
 }
 
-/** One page of every resource that carries this controller's label, known or not. */
 export async function listHetznerCloudResources(
 	usage: HetznerCloudUsage,
 
@@ -715,18 +667,17 @@ export async function listHetznerCloudResources(
 	collection: Collection,
 	page: number,
 ) {
-	// biome-ignore-start lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	// Inventory is the reconciliation path for resources created before a response was lost.
+	// biome-ignore-start lint/style/useNamingConvention: external snake_case parameters
 	const query = new URLSearchParams({
 		label_selector: `controller-id=${controllerId}`,
 		per_page: listPageSize,
 		page: String(page),
 	});
-	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+	// biome-ignore-end lint/style/useNamingConvention: external snake_case parameters
 	const reply = await callHetznerCloud(usage, `${collection}?${query}`);
 	const resources = requireList(reply?.[collection]).map((value) => {
 		const resource = requireObject(value);
-		// Hetzner requires labels on a server and on a Primary IP, but not on a firewall. One that
-		// carries none is a resource that is not ours, which is a verdict, not a reply we cannot read.
 		const labels =
 			resource.labels === undefined ? {} : requireObject(resource.labels);
 		const allocationId = labels["allocation-id"];
@@ -760,14 +711,8 @@ export async function requireHetznerCloudController(
 	requireOwnedResource(requireObject(reply.firewall), controllerId);
 }
 
-/**
- * Whether something Hetzner has announced the deprecation of can still be used. Deprecation
- * carries the day it was announced and the day it stops working, and Hetzner announces months
- * ahead. Reading the announcement as "gone" would refuse every new server from the day Hetzner
- * says a word, which is a date it chooses and we would not see coming. Exported so a test can put
- * Hetzner's own shapes through the decision.
- */
 export function isUsable(deprecation: unknown) {
+	// A future deprecation date does not make a resource unusable today.
 	if (deprecation === null || deprecation === undefined) {
 		return true;
 	}
@@ -801,7 +746,6 @@ export async function resolveHetznerCloudSpec(
 		await callHetznerCloud(usage, `server_types?name=${serverType}`),
 		serverType,
 	);
-	// The image must be built for what the server runs on, and the type is what says which that is.
 	const architecture = requireText(type.architecture);
 	const supported = requireList(type.locations).map(requireObject);
 	const location =
@@ -847,18 +791,13 @@ function toFirewallRules(value: unknown): HetznerCloudFirewallRule[] {
 	});
 }
 
-/**
- * The firewall this controller made for itself, found by the label it carries rather than by a
- * number somebody copied. Nothing here creates one: a token for another project would then be
- * given a firewall of its own, and the check that proves which project we are in would prove
- * nothing. `project.claimFirewall` is where one is made, deliberately and once.
- */
+/** Finds, but never creates, the firewall that proves project ownership. */
 export async function findHetznerCloudFirewall(
 	usage: HetznerCloudUsage,
 	controllerId: string,
 ) {
 	const query = new URLSearchParams({
-		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
+		// biome-ignore lint/style/useNamingConvention: external snake_case parameters
 		label_selector: `controller-id=${controllerId}`,
 	});
 	const found = requireList(
@@ -868,7 +807,6 @@ export async function findHetznerCloudFirewall(
 		return null;
 	}
 	if (found.length > 1) {
-		// Two firewalls with one controller's label: nothing here can tell which one is meant.
 		throw new HetznerCloudError("duplicate_resources");
 	}
 	const firewall = requireObject(found[0]);
@@ -878,7 +816,6 @@ export async function findHetznerCloudFirewall(
 	};
 }
 
-/** Makes this controller's firewall, with the rules Composery states. */
 export async function createHetznerCloudFirewall(
 	usage: HetznerCloudUsage,
 	controllerId: string,
@@ -891,7 +828,6 @@ export async function createHetznerCloudFirewall(
 	return requireId(requireObject(reply?.firewall).id);
 }
 
-/** Puts the rules back to what Composery states, whatever they were. */
 export async function setHetznerCloudFirewallRules(
 	usage: HetznerCloudUsage,
 	firewallId: number,
@@ -906,7 +842,6 @@ export async function setHetznerCloudFirewallRules(
 	);
 }
 
-/** Puts one server behind this controller's firewall again, and says which action to watch. */
 export async function applyHetznerCloudFirewall(
 	usage: HetznerCloudUsage,
 
@@ -917,24 +852,18 @@ export async function applyHetznerCloudFirewall(
 		usage,
 		`firewalls/${firewallId}/actions/apply_to_resources`,
 		"POST",
-		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
+		// biome-ignore lint/style/useNamingConvention: external field names
 		{ apply_to: [{ type: "server", server: { id: serverId } }] },
 	);
-	// One request can apply a firewall to several resources, so Hetzner answers with one action
-	// for each. This one names a single server, and its action is the one to wait on.
 	const [action] = requireList(reply?.actions).map(requireObject);
 	return action === undefined ? null : requireId(action.id);
 }
 
-/**
- * The firewall this deployment must be behind, or a refusal. A project without it is either not
- * ours or not set up, and either way nothing may be created in it: an empty project would
- * otherwise read as one where every server had been deleted.
- */
 export async function requireHetznerCloudFirewall(
 	usage: HetznerCloudUsage,
 	controllerId: string,
 ) {
+	// The controller firewall proves that the token points at the expected project.
 	const found = await findHetznerCloudFirewall(usage, controllerId);
 	if (found === null) {
 		throw new HetznerCloudError("project_firewall_missing", {

@@ -17,7 +17,7 @@ type IndexedRows = {
 export const claudeCodeSessionId =
 	/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
-// Claude Code writes these into a user row for what the harness did, not for what the person wrote.
+// These rows describe harness activity, not user messages.
 const harnessTag =
 	/^<(local-command-stdout|local-command-stderr|local-command-caveat|bash-input|bash-stdout|bash-stderr|task-notification)>/;
 const commandPattern =
@@ -37,7 +37,6 @@ function readTimestamp(row: Row): Date | undefined {
 	return timestamp === undefined ? undefined : new Date(timestamp);
 }
 
-/** Claude Code keeps its files in `CLAUDE_CONFIG_DIR`, or in `~/.claude` when that is not set. */
 function getClaudeCodeConfigDirectory(): string {
 	return process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 }
@@ -74,7 +73,6 @@ async function findTranscriptFile(
 	return file;
 }
 
-/** Maps each session to the session it continued, as the `continued-in` rows in one project state. */
 async function findPredecessors(
 	projectDirectory: string,
 ): Promise<Map<string, string>> {
@@ -133,7 +131,6 @@ function isMessageRow(row: Row): boolean {
 	);
 }
 
-/** Message rows in the order they were written. A continued session copies rows from its predecessor, and the first copy keeps the original session. */
 function indexMessageRows(chain: Transcript[]): IndexedRows {
 	const rows: Row[] = [];
 	const indexesByUuid = new Map<string, number>();
@@ -174,12 +171,7 @@ function findPreviousIndex(
 	return undefined;
 }
 
-/**
- * The rows of the conversation as it stands. A rewound or resent message leaves a branch under the
- * same parent, so the path from the last message back through each parent is the only one the
- * session kept. A compaction boundary starts a new path with no parent, and may move the messages it
- * keeps to after itself, so the path before it continues from the last message written before it.
- */
+/** Follows the active parent chain across rewinds and compaction boundaries. */
 function findActivePath(chain: Transcript[]): Row[] {
 	const indexed = indexMessageRows(chain);
 	const finalUuids = new Set(chain.at(-1)?.rows.map((row) => row.uuid));
@@ -364,7 +356,6 @@ function readRow(row: Row, questionIds: Set<string>): SessionItem[] {
 	}
 }
 
-/** Joins what one author said between the other's turns, since the tool calls that separated it are gone. */
 function mergeSessionItems(items: SessionItem[]): SessionItem[] {
 	const merged: SessionItem[] = [];
 	for (const item of items) {

@@ -1,6 +1,6 @@
 import { lstat } from "node:fs/promises";
 
-// characters-ignore-start: this table lists the characters that the check replaces
+// characters-ignore-start: replacement table
 const replacements = new Map([
 	["‘", "'"],
 	["’", "'"],
@@ -10,18 +10,16 @@ const replacements = new Map([
 	["–", "-"],
 	["—", "-"],
 	["−", "-"],
-	[" ", " "], // no-break space
-	["​", ""], // zero-width space
+	[" ", " "],
+	["​", ""],
 ]);
 // characters-ignore-end
 const characterPattern = new RegExp(
 	`[${[...replacements.keys()].join("")}]`,
 	"gu",
 );
-// A directive is the only content of its comment line.
 const directivePattern =
 	/^\s*(?:\/\/|\/\*|<!--|#)\s*characters-ignore(-start|-end)?(?::\s*(.*?))?\s*(?:\*\/|-->)?\s*$/;
-// Generated and imported files keep their characters.
 const excludedPathspecs = [
 	":!bun.lock",
 	":!convex/_generated",
@@ -111,7 +109,6 @@ type Ignores = {
 	findings: Finding[];
 };
 
-/** Updates the ignores for a directive line. Returns false for a line that is not a directive. */
 function applyDirective(
 	ignores: Ignores,
 	directive: string | null,

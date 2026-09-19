@@ -19,36 +19,24 @@ const connectionTimeoutMs = 30_000;
 const maxAddressBytes = 4096;
 const maxAddresses = 8;
 
-/**
- * What one attempt to sign in says about Composery's own way in. A server that did not accept our
- * key is not the same as one nobody could reach, and neither means the server is unwell.
- */
-// biome-ignore-start lint/style/useNamingConvention: failure codes use snake_case
+// biome-ignore-start lint/style/useNamingConvention: failure code names
 const accessStatuses = {
 	host_key_mismatch: "mismatch",
 	authentication_failed: "missing",
 	permission_denied: "missing",
 } as const satisfies Partial<Record<SshFailure, AllocationPartStatus>>;
-// biome-ignore-end lint/style/useNamingConvention: failure codes use snake_case
+// biome-ignore-end lint/style/useNamingConvention: failure code names
 
 export function toAccessStatus(error: unknown): AllocationPartStatus {
 	if (error instanceof SshError) {
-		// Anything else stopped the attempt without saying anything about the way in.
+		// A refusal is different from an attempt that never reached the server.
 		return (
 			accessStatuses[error.code as keyof typeof accessStatuses] ?? "unknown"
 		);
 	}
-	// Every one of these stopped before the server was asked anything: a host key that was never
-	// reported, a key of ours that cannot be read, an allocation on its way out. None of them is
-	// the server refusing us, and saying the key is gone would name the wrong thing as broken.
 	return "unknown";
 }
 
-/**
- * Runs one thing over Composery's own way in, and writes down what the attempt found. Every real
- * use of that way in passes through here, and so does the check that runs on a schedule, so the
- * panel says what the last attempt found whether or not anybody asked for one.
- */
 export async function withSshConnection<Result>(
 	ctx: ActionCtx,
 	allocation: Doc<"serverAllocations">,
@@ -102,7 +90,6 @@ export async function requireSshConnection(
 	};
 }
 
-/** What a server says it answers on, which is the only place that knows. */
 function toReportedAddresses(stdout: string): string[] {
 	const reported: unknown = JSON.parse(stdout);
 	const addresses =
@@ -117,15 +104,6 @@ function toReportedAddresses(stdout: string): string[] {
 		.slice(0, maxAddresses);
 }
 
-/**
- * Looks at Composery's own way in to one server, and at what only the server can say. A customer
- * who never opens the SSH features would otherwise learn that our key is gone at the moment they
- * first need it, and the address a client connects to would stay unknown for any server that
- * reported its host key over IPv4.
- *
- * A server that cannot answer is not a server that refused us: everything but a refusal is
- * recorded as unknown, which is what `withSshConnection` already decides for every other caller.
- */
 export const check = internalAction({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
@@ -138,7 +116,7 @@ export const check = internalAction({
 			return null;
 		}
 		if (allocation.status !== "running" || allocation.deleteRequested) {
-			// A server that is not running cannot answer, and saying so is the honest answer.
+			// A server that cannot answer is unknown, not refused.
 			await ctx.runMutation(internal.ssh.access_state.recordAccess, {
 				allocationId,
 				status: "unknown",
@@ -160,9 +138,7 @@ export const check = internalAction({
 				internal.allocations.operations.recordReportedAddress,
 				{ allocationId, addresses: toReportedAddresses(result.stdout) },
 			);
-		} catch {
-			// What the attempt found is already written down, and nothing else is owed.
-		}
+		} catch {}
 		return null;
 	},
 });

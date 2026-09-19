@@ -25,12 +25,10 @@ beforeAll(async () => {
 }, setupTimeoutMs);
 
 test("tells a refusal apart from an attempt that never happened", () => {
-	// The server answered and said no. That is the one thing that means our key is gone.
+	// Authentication refusal means the server answered; transport failure does not.
 	expect(toAccessStatus(new SshError("authentication_failed"))).toBe("missing");
 	expect(toAccessStatus(new SshError("permission_denied"))).toBe("missing");
-	// The server answered with a key that is not the one we pinned.
 	expect(toAccessStatus(new SshError("host_key_mismatch"))).toBe("mismatch");
-	// Nothing was asked of the server, so nothing about it was established.
 	expect(toAccessStatus(new SshError("connection_failed"))).toBe("unknown");
 	expect(toAccessStatus(new SshError("deadline_exceeded"))).toBe("unknown");
 	expect(toAccessStatus(new SshAccessError("host_key_missing"))).toBe(
@@ -54,8 +52,6 @@ test(
 			throw new Error("The server has no allocation.");
 		}
 
-		// Nothing has pinned a host key, so there is nothing to check the server against and no
-		// connection is made. Saying the key is gone would blame the server for our own silence.
 		await backend.runAsAdmin(internal.ssh.access.check, { allocationId });
 
 		const status = await client.query(api.servers.lifecycle.getStatus, {
@@ -63,7 +59,6 @@ test(
 		});
 		expect(status.parts.managementAccess).toBe("unknown");
 		expect(status.features.sshKeys.status).toBe("unknown");
-		// The provider gave the allocation a range; which address answers is still unknown.
 		expect(status.ipv6Network).not.toBe(null);
 		expect(status.ipv6).toBe(null);
 	},

@@ -37,12 +37,8 @@ export type SshFileWriteResult = {
 	finishedAt: number;
 };
 
-/**
- * Replaces one file only when its observed bytes and metadata still match. The
- * caller binds the observation to this server and path, and validates the candidate.
- * A lost response after dispatch is uncertain: never retry an edit automatically.
- * Needs /usr/bin/python3. A crash can leave a private staging file behind.
- */
+/** Lost responses are uncertain; callers must not retry this write automatically. */
+/** Replaces only the observed file; lost responses are uncertain and must not be retried. */
 export async function writeSshFile(
 	connection: SshConnectionOptions,
 	path: string,

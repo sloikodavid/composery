@@ -24,9 +24,7 @@ import {
 } from "./worker_state";
 
 const scanLeaseMs = 120_000;
-// The scan never stops walking: it is what keeps every allocation current, so the last page of a
-// cycle is followed by the first page of the next one. One page every ten seconds costs the same
-// whatever the fleet is, and how long a cycle takes is how old an observation can be.
+// One page per interval keeps scan cost bounded while allocations stay current.
 const pageDelayMs = 10_000;
 const errorDelayMs = 300_000;
 
@@ -34,8 +32,7 @@ const scannedResource = v.object({
 	id: v.number(),
 	allocationId: v.string(),
 	kind: v.string(),
-	// A page of servers already says what each one is doing, so an allocation nobody is working on
-	// stays current for the price of one request per fifty servers rather than one request each.
+	// A scan observes active work; it must not replace the worker's operation state.
 	server: v.optional(hetznerCloudServerState),
 });
 
@@ -45,14 +42,10 @@ type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
 
 const nextCollections = {
 	servers: "primary_ips",
-	// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this collection
+	// biome-ignore lint/style/useNamingConvention: external collection name
 	primary_ips: "servers",
 } as const satisfies Record<Scan["collection"], Scan["collection"]>;
 
-/**
- * Asks for the next page when it is due. The cron that also sweeps runs less often than a page is
- * read, and stays only for a run that ends without an answer.
- */
 async function scheduleHetznerCloudScan(ctx: MutationCtx, dueAt: number) {
 	await ctx.scheduler.runAt(
 		dueAt,
@@ -88,7 +81,6 @@ export const sweep = internalMutation({
 		if (scan === null || scan.dueAt > Date.now()) {
 			return null;
 		}
-		// The scan spends the work queue's share: what it reads is what keeps that work current.
 		const retryAt = await checkHetznerCloudPacing(
 			ctx,
 			scan.controllerId,
@@ -114,7 +106,6 @@ export const sweep = internalMutation({
 	},
 });
 
-/** What this backend holds for the allocation named on a resource, when that name is one of ours. */
 async function getScannedAllocation(
 	ctx: MutationCtx,
 	resource: ScannedResource,
@@ -161,7 +152,6 @@ async function checkResource(
 		return null;
 	}
 	if (status.status === "pending" || status.status === "uncertain") {
-		// Wake the allocation, so that its worker adopts the resource.
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			dueAt: Math.max(Date.now(), hetznerCloudAllocation.leaseExpiresAt),
 		});
@@ -170,11 +160,6 @@ async function checkResource(
 	return "unexpected_resource";
 }
 
-/**
- * Keeps an allocation's own record of its server current from the page the scan already read.
- * Only what was seen is written: an operation is still the worker's to carry out and to finish,
- * because it holds the lease that decides whose answer is the current one.
- */
 async function recordScannedServer(
 	ctx: MutationCtx,
 	scan: Scan,

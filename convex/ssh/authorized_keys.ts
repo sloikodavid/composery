@@ -1,9 +1,4 @@
-/**
- * Lossless file observations and candidate edits, without I/O or authorization. An entry is a line
- * that OpenSSH reads a key from, and OpenSSH may still refuse it; the running server's acceptance
- * answers that. The reverse must not happen: a line that OpenSSH signs in with is an entry, so a key
- * that works can always be listed and removed.
- */
+/** Parses losslessly; runtime acceptance is checked separately by OpenSSH. */
 export type AuthorizedKey = Readonly<{ type: string; base64: string }>;
 export type AuthorizedKeyOption = Readonly<{
 	name: string;
@@ -17,7 +12,7 @@ export type AuthorizedKeyEntry = Readonly<{
 }>;
 export type AuthorizedKeysLine = Readonly<
 	{
-		/** One-based occurrence within this observation, never a durable identity. */
+		/** One-based occurrence in this observation, not a durable identity. */
 		line: number;
 		start: number;
 		end: number;
@@ -56,8 +51,7 @@ export type AuthorizedKeysPlan =
 	  };
 
 const encoder = new TextEncoder();
-// Keep a BOM visible so it cannot silently turn into an active entry.
-// biome-ignore lint/style/useNamingConvention: the WHATWG Encoding API names this option
+// biome-ignore lint/style/useNamingConvention: external option name
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const newlineByte = 10;
 const carriageReturnByte = 13;
@@ -120,7 +114,6 @@ function skipSpaces(text: string, start: number) {
 	return index;
 }
 
-/** Scan one field; only backslash followed by a quote escapes a quote. */
 function findFieldEnd(text: string, start: number) {
 	let isQuoted = false;
 	let index = start;
@@ -136,7 +129,6 @@ function findFieldEnd(text: string, start: number) {
 	return isQuoted ? -1 : index;
 }
 
-/** Reads a quoted value that starts at `start`. */
 function parseOptionValue(text: string, start: number) {
 	if (text[start] !== '"') {
 		return null;
@@ -186,7 +178,6 @@ function parseOptions(text: string): readonly AuthorizedKeyOption[] | null {
 	const options: AuthorizedKeyOption[] = [];
 	let index = 0;
 	while (index < text.length) {
-		// OpenSSH signs in with "restrict,,pty" and "restrict," alike, so an empty option is skipped.
 		if (text[index] === ",") {
 			index++;
 			continue;
@@ -204,7 +195,6 @@ function parseOptions(text: string): readonly AuthorizedKeyOption[] | null {
 	return Object.freeze(options);
 }
 
-/** Finds the key type field, after the options field when one is present. */
 function parseKeyStart(text: string, start: number) {
 	const firstEnd = findFieldEnd(text, start);
 	if (firstEnd < 0) {
@@ -224,7 +214,6 @@ function parseKeyStart(text: string, start: number) {
 }
 
 function parseFields(line: string): Fields | null {
-	// OpenSSH reads a line as a C string, so it ends at the first NUL and signs in with what came before.
 	const text = line.split("\0", 1)[0] ?? "";
 	if (lineBreakPattern.test(text)) {
 		return null;
@@ -280,7 +269,6 @@ function joinBytes(parts: readonly Uint8Array[]) {
 }
 
 function isValidText(text: string) {
-	// TextEncoder replaces lone surrogates. Reject rather than change the input.
 	return (
 		!lineBreakOrNulPattern.test(text) &&
 		decoder.decode(encoder.encode(text)) === text
@@ -296,7 +284,6 @@ function renderKey(key: AuthorizedKey) {
 
 function renderOptions(options: readonly string[]) {
 	for (const option of options) {
-		// Reading skips empty options, but writing one token must write exactly one option.
 		const parsed = parseOptions(option);
 		if (
 			!isValidText(option) ||
@@ -363,7 +350,7 @@ function renderAppend(
 	);
 }
 
-/** A copied observation of one concrete file. It contains no remote path or identity. */
+/** A copied observation; plans must be bound to the same remote file and revision. */
 export class AuthorizedKeysFile {
 	readonly lines: readonly AuthorizedKeysLine[];
 	readonly #bytes: Uint8Array;
@@ -388,16 +375,11 @@ export class AuthorizedKeysFile {
 		Object.freeze(this);
 	}
 
-	/** Return a copy; mutations cannot change the observation. */
 	bytes() {
 		return Uint8Array.from(this.#bytes);
 	}
 
-	/**
-	 * Compare supplied bytes and plan edits against original line numbers.
-	 * This comparison is neither remote CAS nor an operation retry receipt.
-	 * The caller must bind both observations to the same remote file.
-	 */
+	/** This is a local comparison, not remote CAS or a retry receipt. */
 	plan(
 		current: Uint8Array,
 		edits: readonly AuthorizedKeysEdit[],
@@ -466,8 +448,6 @@ export class AuthorizedKeysFile {
 		const text = this.#text[edit.line - 1];
 		const fields =
 			text === null || text === undefined ? null : parseFields(text);
-		// Bytes after a NUL are invisible to OpenSSH and to anyone reading the line, so such a line is
-		// removed whole and never rewritten.
 		if (
 			fields === null ||
 			text === null ||

@@ -1,4 +1,3 @@
-/** HTTP status codes from RFC 9110 that this backend sends or reads. */
 export const httpStatus = {
 	noContent: 204,
 	badRequest: 400,

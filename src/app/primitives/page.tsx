@@ -89,7 +89,6 @@ function Caption({ children }: { children: ReactNode }) {
 	return <span className="w-20 shrink-0 text-muted text-xs">{children}</span>;
 }
 
-/** Isolated states for primitives that are not already visible throughout the app. */
 export default function PrimitivesPage() {
 	if (process.env.NODE_ENV === "production") {
 		notFound();

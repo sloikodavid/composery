@@ -9,13 +9,6 @@ import {
 	toUserReply,
 } from "./replies";
 
-/**
- * A fake for Clerk's backend API. Clerk holds the accounts, so a test puts one here and Composery
- * reads it back through the path it uses for real. Clerk's own client deserializes a reply without
- * checking it, so Clerk's published description is what decides whether a reply is one Clerk could
- * have sent.
- */
-
 const httpOk = 200;
 const httpNotFound = 404;
 const userPathPattern = /^\/users\/([^/?]+)/;
@@ -25,19 +18,10 @@ const keysPath = "/jwks";
 
 export type ClerkFake = Fake &
 	Readonly<{
-		/** Whether this run answers for Clerk itself. A test that scripts Clerk needs it to be true. */
 		isFake: boolean;
-		/** Adds or replaces one account, as if somebody signed up. */
 		setUser: (user: ClerkUser) => void;
-		/** Removes one account, as if it were deleted at Clerk. */
 		removeUser: (id: string) => void;
-		/**
-		 * The signing keys Clerk publishes for this instance. Composery compares them with the ones
-		 * the tokens are signed by before it believes that an account is gone, so a test that makes
-		 * the two disagree is a deployment whose secret key belongs to another Clerk instance.
-		 */
 		setKeys: (keys: unknown) => void;
-		/** The body Clerk would sign for an account, in the shape Clerk describes. */
 		toEvent: (
 			type: "user.created" | "user.updated" | "user.deleted",
 			user: ClerkUser,
@@ -48,7 +32,7 @@ function notFound(): FakeReply {
 	return {
 		status: httpNotFound,
 		body: {
-			// biome-ignore-start lint/style/useNamingConvention: Clerk names these fields
+			// biome-ignore-start lint/style/useNamingConvention: external field names
 			errors: [
 				{
 					message: "not found",
@@ -57,17 +41,16 @@ function notFound(): FakeReply {
 				},
 			],
 			clerk_trace_id: "trace_composery_test",
-			// biome-ignore-end lint/style/useNamingConvention: Clerk names these fields
+			// biome-ignore-end lint/style/useNamingConvention: external field names
 		},
 	};
 }
 
+/** Fake replies are checked against Clerk's contract; real mode forwards instead. */
 export async function startClerkFake(): Promise<ClerkFake> {
 	const users = new Map<string, ClerkUser>();
 	let keys: unknown = { keys: [] };
 
-	// Clerk filters a list by the accounts asked for, and pages it. A fake that answered with
-	// everything would hide the code that decides an account is gone.
 	const select = (query: URLSearchParams) => {
 		const wanted = query.getAll("user_id");
 		const all = [...users.values()].filter(
@@ -100,16 +83,12 @@ export async function startClerkFake(): Promise<ClerkFake> {
 			: { status: httpOk, body: toUserReply(user) };
 	};
 
-	// A run given a secret for an instance of its own asks Clerk itself, through the same fake, so
-	// the requests are still counted and the answers are still held to Clerk's description.
 	const secret = getClerkSecret();
 	const fake = await startFake({
 		system: "Clerk",
 		checker: clerkContract,
 		answer: (request) => answer(request.method, request.path),
 		...(secret === null ? {} : { forward: toClerkForward(secret) }),
-		// Clerk's own client states which version of the API it speaks. When an upgrade changes it,
-		// the pinned description is no longer the one we are held to.
 		check: (request) => {
 			const sent = request.headers["clerk-api-version"];
 			return sent === clerkApiVersion
@@ -120,11 +99,6 @@ export async function startClerkFake(): Promise<ClerkFake> {
 		},
 	});
 
-	/**
-	 * What only a fake can do. A run that meets Clerk reads Clerk's own answers, so changing what
-	 * this fake holds would change nothing and the test would be asserting about a world nobody
-	 * is in. Refusing says which test does not belong in that run.
-	 */
 	const onlyFake = (what: string) => {
 		if (secret !== null) {
 			throw new Error(
@@ -150,8 +124,6 @@ export async function startClerkFake(): Promise<ClerkFake> {
 		},
 		toEvent: (type, user) => {
 			const event = toUserEvent(type, user);
-			// The body a test signs is held to Clerk's description of that event, so a forged event
-			// cannot be a shape Clerk never sends.
 			for (const problem of clerkContract.listRequestProblems(
 				"POST",
 				type,
@@ -166,7 +138,6 @@ export async function startClerkFake(): Promise<ClerkFake> {
 
 let started: Promise<ClerkFake> | undefined;
 
-/** One fake for the whole run, because the deployment holds its address. */
 export function useClerkFake() {
 	started ??= startClerkFake();
 	return started;

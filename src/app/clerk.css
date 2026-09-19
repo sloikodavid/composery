@@ -1,4 +1,4 @@
-/* Clerk's prebuilt components read these variables. They refer to the semantic tokens, so Clerk follows the theme and dark mode. */
+/* Clerk reads these semantic variables so its theme follows the app. */
 :root {
 	--clerk-color-primary: var(--app-primary);
 	--clerk-color-primary-foreground: var(--app-primary-foreground);
@@ -20,7 +20,7 @@
 	--clerk-spacing: 1rem;
 }
 
-/* Clerk draws elevation with shadows. Its semantic color variables and mapped panel surfaces provide the borders. */
+/* Clerk supplies elevation; mapped surfaces supply the borders. */
 @layer utilities {
 	.cl-button,
 	.cl-input,

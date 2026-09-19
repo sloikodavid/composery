@@ -28,7 +28,6 @@ async function getNameClaim(ctx: QueryCtx, name: string) {
 		.unique();
 }
 
-/** Counts every check as an attempt, and only an available name as a claim. */
 export async function checkServerNameClaim(
 	ctx: MutationCtx,
 	userId: Id<"users">,
@@ -52,7 +51,6 @@ export async function checkServerNameClaim(
 	return await checkRateLimit(ctx, "serverNameClaim", userId);
 }
 
-/** Claims the name permanently, unless this server claimed it before. */
 export async function claimServerName(
 	ctx: MutationCtx,
 	name: string,
@@ -86,7 +84,7 @@ export const rename = mutation({
 		}
 		await claimServerName(ctx, name, serverId);
 		await ctx.db.patch("servers", serverId, { name });
-		// Best effort: the rename stands whether or not the server can be reached.
+		// The database rename succeeds even if SSH is unavailable.
 		await ctx.scheduler.runAfter(0, internal.ssh.hostname.apply, {
 			serverId,
 			expected: server.name,
@@ -97,9 +95,6 @@ export const rename = mutation({
 	},
 });
 
-/**
- * Returns null for an unknown name or a user who is not a member, so the response does not reveal which servers exist.
- */
 export const getByName = query({
 	args: { name: v.string() },
 	returns: v.union(serverSummary, v.null()),

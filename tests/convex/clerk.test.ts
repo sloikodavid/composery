@@ -8,27 +8,15 @@ import {
 	useConvexBackend,
 } from "../../harness/convex/backend";
 
-/**
- * `reconcile` reads Clerk and deletes every account Clerk no longer has, so the one thing it must
- * never do is delete an account Clerk still holds. Clerk pages its answer and filters it by the
- * accounts asked for, and a fake that answered with everything would make this test pass while the
- * real path deleted people.
- */
-
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 120_000;
 const subjectSuffixBytes = 6;
 const accountCount = 3;
 const httpOk = 200;
 const serviceUnavailable = 503;
-// The list of named accounts, and not their count, which asks with the same query.
+// Reconcile must not delete a Clerk account from a short or malformed list response.
 const accountsAskedAbout = /^\/users\?.*user_id=/;
 
-/**
- * These hold Clerk to answers a test chooses: an account that is there, one that is gone, a
- * refusal, keys from another instance. A run that meets Clerk itself reads Clerk's own answers,
- * so there is nothing here for it to do and every test in this file says so rather than passing.
- */
 const scripted = test.skipIf(getClerkSecret() !== null);
 
 let backend: ConvexBackend;
@@ -42,7 +30,6 @@ function toAccount(hasPicture = true) {
 	return {
 		id,
 		email: `${id}@example.com`,
-		// Clerk leaves the member out for an account with no picture; it does not send an empty one.
 		...(hasPicture ? { imageUrl: "https://example.com/avatar.png" } : {}),
 	};
 }
@@ -73,7 +60,6 @@ scripted(
 		if (gone === undefined) {
 			throw new Error("The test made no accounts.");
 		}
-		// Clerk deleted this one while nothing was listening, which is why reconcile exists.
 		backend.clerk.removeUser(gone.id);
 
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
@@ -91,7 +77,7 @@ scripted(
 scripted(
 	"reconcile reads every account when Clerk needs more than one page",
 	async () => {
-		// One more than a page, so Clerk answers twice and the loop has to ask for the second.
+		// One more than a page proves the pagination loop continues.
 		const accounts = Array.from({ length: clerkPageSize + 1 }, toAccount);
 		for (const account of accounts) {
 			backend.clerk.setUser(account);
@@ -103,7 +89,6 @@ scripted(
 		if (last === undefined) {
 			throw new Error("The test made no accounts.");
 		}
-		// An account only on the second page proves the first page was not the whole answer.
 		expect(await readAccount(last.id)).toMatchObject({ clerkUserId: last.id });
 		for (const account of accounts) {
 			backend.clerk.removeUser(account.id);
@@ -117,8 +102,6 @@ scripted(
 	async () => {
 		const withPicture = toAccount();
 		const withoutPicture = toAccount(false);
-		// Clerk requires `has_image` and not `image_url`. Reading a missing picture as a missing
-		// account would refuse this one, and take every account after it in the same run with it.
 		for (const account of [withoutPicture, withPicture]) {
 			backend.clerk.setUser(account);
 		}
@@ -127,7 +110,6 @@ scripted(
 
 		const stored = await readAccount(withoutPicture.id);
 		expect(stored).toMatchObject({ clerkUserId: withoutPicture.id });
-		// Nothing, as Clerk sent nothing, and not an empty string standing in for one.
 		expect(stored?.imageUrl).toBeNull();
 		expect(await readAccount(withPicture.id)).toMatchObject({
 			clerkUserId: withPicture.id,
@@ -142,8 +124,7 @@ scripted(
 scripted(
 	"an account with no email address is kept, and can use the app",
 	async () => {
-		// Clerk does not promise a primary email address. Keeping such an account out would lock
-		// somebody out of their own servers over a field that only exists to find people.
+		// Clerk permits accounts without a primary email.
 		const { email: _, ...account } = toAccount();
 		backend.clerk.setUser(account);
 
@@ -151,8 +132,6 @@ scripted(
 
 		const stored = await readAccount(account.id);
 		expect(stored).toMatchObject({ clerkUserId: account.id });
-		// A caller is told the address is not there, rather than being handed a missing key to
-		// tell apart from one that was never named.
 		expect(stored?.email).toBeNull();
 		backend.clerk.removeUser(account.id);
 	},
@@ -183,8 +162,6 @@ scripted(
 		const account = toAccount();
 		backend.clerk.setUser(account);
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
-		// The list of accounts asked about comes back without this one. Removing somebody deletes
-		// every server they own, so a list that says less than it should is not enough to do it.
 		const hasShortened = backend.clerk.scriptOnce(
 			{
 				method: "GET",
@@ -207,7 +184,6 @@ scripted(
 scripted(
 	"reconcile goes past an account Clerk cannot answer for, and still fails",
 	async () => {
-		// Stored in this order, so the account Clerk cannot answer for is checked first.
 		const unanswered = toAccount();
 		const gone = toAccount();
 		backend.clerk.setUser(unanswered);

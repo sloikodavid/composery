@@ -21,7 +21,6 @@ function toIpv4(text: string): bigint | null {
 	let value = 0n;
 	for (const octet of octets) {
 		const number = Number(octet);
-		// A leading zero means something else to some resolvers, so it is not an address here.
 		if (
 			!octetPattern.test(octet) ||
 			number > maxOctet ||
@@ -34,7 +33,6 @@ function toIpv4(text: string): bigint | null {
 	return value;
 }
 
-/** A dotted quad may end an IPv6 address, where it fills the last two groups. */
 function toGroups(parts: readonly string[]): string[] | null {
 	const last = parts.at(-1);
 	if (last === undefined || !last.includes(".")) {
@@ -50,7 +48,6 @@ function toGroups(parts: readonly string[]): string[] | null {
 			];
 }
 
-/** The eight groups an address states, with "::" standing for the zeroes between them. */
 function toIpv6Groups(text: string): string[] | null {
 	const halves = text.split("::");
 	if (halves.length > 2 || text.includes(":::")) {
@@ -66,7 +63,6 @@ function toIpv6Groups(text: string): string[] | null {
 		return null;
 	}
 	const filled = ipv6Groups - head.length - tail.length;
-	// "::" must stand for at least one group, and a full address needs exactly eight.
 	if (isCompressed ? filled < 1 : filled !== 0) {
 		return null;
 	}
@@ -122,11 +118,7 @@ function parseNetwork(text: string): (Address & { prefix: number }) | null {
 		: null;
 }
 
-/**
- * Whether one address lies inside a network, which a plain address states as itself. Both must be
- * of the same family: a backend states an IPv4 assignment as one address, and an IPv6 one as the
- * range it gave the server, any address of which is that server.
- */
+/** Matches an address to a network of the same family; invalid input is not a match. */
 export function isAddressInNetwork(source: string, network: string) {
 	const address = parse(source);
 	const range = parseNetwork(network);
@@ -141,10 +133,7 @@ export function isAddressInNetwork(source: string, network: string) {
 	return (address.value & mask) === (range.value & mask);
 }
 
-/**
- * Whether an address belongs to one allocation. Null when the allocation has no address yet, so a
- * caller can refuse rather than treat an unknown as a match.
- */
+/** Returns whether an observed address belongs to the allocation's recorded networks. */
 export function isAllocationAddress(
 	source: string,
 	allocation: Readonly<{ ipv4?: string; ipv6?: string }>,
@@ -157,13 +146,7 @@ export function isAllocationAddress(
 		: networks.some((network) => isAddressInNetwork(source, network));
 }
 
-/**
- * The address a client connects to, which is only ever one the server itself has used. A provider
- * states an IPv4 assignment as one address and an IPv6 one as a range, and which address of that
- * range answers is the server's own business: it is configured inside the server, where a customer
- * with root can change it. So the range is never shown as an address, and nothing is derived from
- * it; until the server has been seen using an address, there is none to give out.
- */
+/** Exposes only an address observed from the server, never an IPv6 network itself. */
 export function toReportedAddress(
 	network: string | undefined,
 	reported: string | undefined,

@@ -1,7 +1,7 @@
-/** Fixed remote Linux program. Requests arrive on stdin, never as shell code. */
+/** Performs a metadata-checked atomic replacement and reports uncertain outcomes. */
+/** Fixed remote program; input is data on stdin and replacement is metadata-checked. */
 export const writeFileScript = `import base64, errno, fcntl, json, os, secrets, signal, stat, sys
 
-# This helper targets Linux. No daemon configuration or SSH key semantics change.
 LIMIT = 524288
 class Refused(Exception):
     pass
@@ -103,7 +103,6 @@ def perform(request):
             offset += written
         os.fchown(temporary, before.st_uid, before.st_gid)
         os.fchmod(temporary, stat.S_IMODE(before.st_mode))
-        # Include ACLs and security labels; refuse if they cannot be preserved.
         for attr in os.listxattr(temporary):
             if attr not in attrs:
                 os.removexattr(temporary, attr)
@@ -119,7 +118,6 @@ def perform(request):
         if current != expected or identity(current_stat) != identity(before) or current_attrs != attrs:
             raise Refused("changed")
         check_path(request["path"], directory, before)
-        # Atomic replacement is not compare-and-swap against external writers.
         replaced = True
         os.replace(temp_name, name, src_dir_fd=directory, dst_dir_fd=directory)
         temp_name = None
@@ -140,7 +138,6 @@ def perform(request):
             os.close(verified_parent)
         return "written"
     finally:
-        # Unlink the staging file before any close, so a signal cannot leave it behind.
         try:
             if temp_name is not None:
                 os.unlink(temp_name, dir_fd=directory)

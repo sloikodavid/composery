@@ -33,7 +33,6 @@ type AlertDismissProps =
 
 type AlertProps = AlertBaseProps & AlertDismissProps;
 
-/** A persistent message inside the page layout. */
 export function Alert({
 	children,
 	className,

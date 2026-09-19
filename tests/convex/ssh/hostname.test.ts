@@ -30,7 +30,6 @@ test(
 	"writes the hostname when it still holds the expected name",
 	async () => {
 		const current = server.run("hostname");
-		// A container may not change its own hostname, so the write sets the name it already has.
 		expect(
 			await setSshHostname(server.connection, {
 				expected: current,

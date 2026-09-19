@@ -15,15 +15,11 @@ import {
 } from "../../../harness/convex/backend";
 import { createServer, createServerOwner } from "../../../harness/servers";
 
-/**
- * Rotation is the point of all of this: a value encrypted by a key the deployment still holds must
- * read, a value encrypted by a key it no longer holds must say so rather than look corrupt, and an
- * envelope must not move to another allocation.
- */
-
 const keyBytes = 32;
 const distinctKeys = 100;
 const allocationId = "k1000000000000000000000000000000";
+
+// Rotation preserves old values, identifies missing keys, and binds envelopes to an allocation.
 const otherAllocationId = "k2000000000000000000000000000000";
 const secrets = { privateKey: "PRIVATE KEY", token: "a-token" };
 const setupTimeoutMs = 600_000;
@@ -58,11 +54,9 @@ test("secrets read with the key that encrypted them", () => {
 
 test("the first key encrypts, and every key reads", () => {
 	const [older, newer] = [toKey(), toKey()];
-	// Before the rotation: the old key encrypts, and both deployments can read what it wrote.
 	const old = encryptSshSecretsWith([older, newer], allocationId, secrets);
 	expect(getEnvelopeKeyId(old)).toBe(toEncryptionKeyId(older));
 
-	// After moving the new key to the front, new values name it and old ones still read.
 	const fresh = encryptSshSecretsWith([newer, older], allocationId, secrets);
 	expect(getEnvelopeKeyId(fresh)).toBe(toEncryptionKeyId(newer));
 	expect(decryptSshSecretsWith([newer, older], allocationId, old)).toEqual(
@@ -76,7 +70,6 @@ test("the first key encrypts, and every key reads", () => {
 test("a value whose key is gone says which thing is missing", () => {
 	const [older, newer] = [toKey(), toKey()];
 	const old = encryptSshSecretsWith([older], allocationId, secrets);
-	// This is what dropping a key too early looks like, and it must not read as a broken value.
 	expect(toCode(() => decryptSshSecretsWith([newer], allocationId, old))).toBe(
 		"encryption_key_unknown",
 	);
@@ -92,7 +85,6 @@ test("an envelope belongs to one allocation and to the key it names", () => {
 		toCode(() => decryptSshSecretsWith([key], otherAllocationId, envelope)),
 	).toBe("secrets_unreadable");
 
-	// Changing the key identifier in front of the value fails the lookup, never a wrong key.
 	const bytes = Buffer.from(envelope, "base64");
 	const moved = Buffer.from(bytes);
 	const flip = 0xff;
@@ -121,7 +113,6 @@ test("two different keys are never named the same", () => {
 	expect(ids.size).toBe(distinctKeys);
 });
 
-/** The SSH access of a new server, once the worker has created the server and stopped writing it. */
 async function createSshAccess() {
 	const serverId = await createServer(await createServerOwner(backend));
 	const deadline = Date.now() + settleTimeoutMs;
@@ -155,7 +146,6 @@ async function readSshAccess(id: Id<"serverAllocations">) {
 	return sshAccess;
 }
 
-/** Puts a value in the row as a deployment with other keys would have written it. */
 async function storeEnvelope(
 	sshAccess: Awaited<ReturnType<typeof readSshAccess>>,
 	encryptedSecrets: string,
@@ -182,8 +172,6 @@ test(
 		const [currentKey, previousKey] = backend.sshAccessEncryptionKeys;
 		const created = await createSshAccess();
 
-		// A value written under a key this deployment never held is counted and kept: deleting it
-		// would lose a server's management key for good, and the missing key may yet be found.
 		const unheldKey = toKey();
 		const unheld = await storeEnvelope(
 			created,
@@ -198,8 +186,6 @@ test(
 			unheld.encryptedSecrets,
 		);
 
-		// A value the previous key wrote is written again under the current one, and after that the
-		// current key alone reads it, which is what makes dropping the previous key safe.
 		await storeEnvelope(
 			unheld,
 			encryptSshSecretsWith([previousKey], created.allocationId, secrets),

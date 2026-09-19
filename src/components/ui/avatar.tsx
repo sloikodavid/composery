@@ -106,7 +106,7 @@ function AvatarImage({
 	const showSpinner = showLoadingSpinner && isSpinnerVisible && !hasLoaded;
 	return (
 		<>
-			{/* biome-ignore lint/performance/noImgElement: an avatar can use an external URL that Next Image is not configured to serve. */}
+			{/* biome-ignore lint/performance/noImgElement: external avatar URL */}
 			<img
 				alt={alt}
 				decoding="sync"
@@ -135,7 +135,6 @@ type AvatarProps = Omit<ComponentProps<"span">, "children"> & {
 	src?: string | null | undefined;
 };
 
-/** A user image with a stable text fallback and optional delayed loading state. */
 export function Avatar({
 	alt,
 	className,

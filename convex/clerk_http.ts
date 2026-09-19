@@ -4,10 +4,7 @@ import { env, httpAction } from "./_generated/server";
 import { syncClerkUser } from "./clerk";
 import { httpStatus } from "./http_status";
 
-/**
- * Every event Clerk sends about an account, and whether it changes what we hold. Clerk's own type
- * names them, so an event Clerk adds later fails to compile here until somebody decides about it.
- */
+/** Exhaustive so a new Clerk event requires an explicit decision. */
 const accountEvents: Record<UserWebhookEvent["type"], true> = {
 	"user.created": true,
 	"user.updated": true,
@@ -40,13 +37,11 @@ export const receiveClerkWebhook = httpAction(async (ctx, request) => {
 		try {
 			const outcome = await syncClerkUser(ctx, clerkUserId);
 			if (event.type === "user.deleted" && outcome === "stored") {
-				// Clerk says the account is gone and its own read still returns it. Accepting the event
-				// would be the last time Clerk mentions it, so it is asked for again instead.
+				// Do not accept deletion until Clerk confirms the account is gone.
 				return new Response(null, { status: httpStatus.serviceUnavailable });
 			}
 		} catch {
-			// Clerk sends a webhook again when it is not accepted, and no detail of the failure
-			// goes back to it.
+			// A non-2xx response makes Clerk retry without exposing internal details.
 			return new Response(null, { status: httpStatus.serviceUnavailable });
 		}
 	}

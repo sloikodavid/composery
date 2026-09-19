@@ -38,7 +38,7 @@ const never = Number.MAX_SAFE_INTEGER;
 
 type HetznerCloudQueue = Infer<typeof hetznerCloudQueue>;
 type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
-// Mirrors Convex's patch value: only an optional field can be removed with undefined.
+// Convex uses undefined to remove optional fields in a patch.
 type Patch<Document> = {
 	[Field in keyof Document]?: undefined extends Document[Field]
 		? Document[Field] | undefined
@@ -67,11 +67,9 @@ export const hetznerCloudWorkerUpdate = v.object({
 		}),
 	),
 	spec: v.optional(hetznerCloudSpec),
-	// Which firewall this allocation is behind, learnt from the label it carries.
+	/** Resource identity learned from provider labels. */
 	firewallId: v.optional(v.number()),
-	// The server as the worker found it. What it means for the allocation is worked out here,
-	// from the allocation as it is now, so that the scan's look and the worker's say the same
-	// things about it.
+	/** Provider observation; the worker derives allocation state from it. */
 	observation: v.optional(hetznerCloudServerState),
 	deleted: v.optional(v.literal(true)),
 	actionId: v.optional(v.number()),
@@ -82,9 +80,9 @@ export const hetznerCloudWorkerUpdate = v.object({
 			hetznerErrorCode: v.optional(v.string()),
 			class: failureClass,
 			retryAfterMs: v.optional(v.number()),
-			// The resource this allocation ran on is not there any more.
+			/** The resource no longer exists. */
 			missing: v.optional(v.literal(true)),
-			// The operation itself is over: its own deadline passed, so asking again is not the job.
+			/** The operation deadline passed; do not retry the request. */
 			final: v.optional(v.literal(true)),
 		}),
 	),
@@ -102,7 +100,6 @@ export async function getHetznerCloudAllocation(
 		.unique();
 }
 
-/** What the backend last recorded for one allocation, which is where a stuck allocation says why. */
 export const get = internalQuery({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.union(schema.doc("hetznerCloudAllocations"), v.null()),
@@ -190,7 +187,6 @@ export async function checkHetznerCloudPower(
 	return null;
 }
 
-/** Keeps the epoch and resource identities, so a create request that is still running can be found later. */
 export async function wakeHetznerCloudAllocation(
 	ctx: MutationCtx,
 	allocationId: Id<"serverAllocations">,
@@ -215,10 +211,6 @@ export async function wakeHetznerCloudAllocation(
 	}
 }
 
-/**
- * Asks for a sweep when an allocation is next due, so that its next step waits for its own delay
- * and not for the cron as well. The cron stays, for a lease that runs out without an answer.
- */
 async function scheduleHetznerCloudSweep(ctx: MutationCtx, dueAt: number) {
 	if (dueAt !== never) {
 		await ctx.scheduler.runAt(
@@ -233,7 +225,6 @@ export const sweep = internalMutation({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
-		// Each queue gets its own share of every batch, so new work cannot delay cleanup.
 		for (const queue of ["cleanup", "work"] as const) {
 			const due = await ctx.db
 				.query("hetznerCloudAllocations")
@@ -337,9 +328,7 @@ async function getLeasedAllocation(
 	return { allocation, hetznerCloudAllocation };
 }
 
-/**
- * Recorded before the create request, so a lost response is later found by lookup and never sent again.
- */
+/** Records a sent request whose result was lost; the worker must look it up before retrying. */
 export const markUncertain = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -382,9 +371,7 @@ export const canSendPower = internalQuery({
 	},
 });
 
-/**
- * Stores SSH access only while the server is not requested yet, because cloud-init receives its public key.
- */
+/** Cloud-init can receive SSH access only while the server resource is still pending. */
 export const storeSshAccess = internalMutation({
 	args: {
 		epoch: v.number(),
@@ -434,23 +421,21 @@ type Recording = {
 	ctx: MutationCtx;
 	allocation: Doc<"serverAllocations">;
 	hetznerCloudAllocation: HetznerCloudAllocation;
-	/** False when the operation that the run acted on was replaced while the run was outstanding. */
 	isCurrentOperation: boolean;
 	allocationPatch: Patch<Doc<"serverAllocations">>;
 	hetznerCloudPatch: Patch<HetznerCloudAllocation>;
 };
 
-// A resource that appears after an uncertain create unblocks the operation.
 async function recordResource(
 	recording: Recording,
 	resource: NonNullable<HetznerCloudWorkerUpdate["resource"]>,
 ) {
+	// A resource found after an uncertain create is the result of that request.
 	const { ctx, allocation, hetznerCloudAllocation } = recording;
 	recording.hetznerCloudPatch.resources = {
 		...hetznerCloudAllocation.resources,
 		[resource.kind]: resource.status,
 	};
-	// Knowing the address before the server boots lets the host key report be bound to it.
 	if (resource.address !== undefined) {
 		switch (resource.kind) {
 			case "ipv4":
@@ -463,8 +448,6 @@ async function recordResource(
 				break;
 		}
 	}
-	// A resource that turns up after an uncertain create is the answer nobody had: the allocation
-	// is not stuck on it any more.
 	if (
 		resource.status.status === "present" &&
 		hetznerCloudAllocation.resources[resource.kind].status === "uncertain" &&
@@ -483,24 +466,17 @@ const mismatchedParts = {
 	firewall: "unknown",
 } as const satisfies Infer<typeof allocationParts>;
 
-/** What one look at the server changes about the allocation, whoever looked at it. */
 function toObservationPatch(observed: ServerObservation | null) {
+	// A mismatched server must not supply addresses to this allocation.
 	return {
 		observedAt: Date.now(),
-		// A server that is not the one this allocation recorded says nothing about its other parts.
 		parts: observed?.parts ?? mismatchedParts,
-		// An address that is not the one this allocation holds is not this server's to give out,
-		// so none is shown until the allocation has it back.
 		...(observed === null
 			? {}
 			: { ipv4: observed.addresses.ipv4, ipv6: observed.addresses.ipv6 }),
 	} satisfies Patch<Doc<"serverAllocations">>;
 }
 
-/**
- * Whether nothing is being done to this allocation, so that a server seen from a page is the
- * state it settled on rather than a step in the middle of a change somebody asked for.
- */
 async function isSettled(
 	ctx: MutationCtx,
 	allocation: Doc<"serverAllocations">,
@@ -520,12 +496,6 @@ async function isSettled(
 	return operation !== null && operation.status !== "pending";
 }
 
-/**
- * Records a server that the inventory scan saw. The scan reads fifty servers in one request,
- * so an allocation nobody is working on stays current without a request of its own. It writes
- * down only what was seen: an operation belongs to whoever holds the lease, and a stuck
- * allocation stays stuck, because seeing the server is no answer to what the work ran into.
- */
 export async function storeHetznerCloudObservation(
 	ctx: MutationCtx,
 	hetznerCloudAllocation: HetznerCloudAllocation,
@@ -544,14 +514,10 @@ export async function storeHetznerCloudObservation(
 		(await isSettled(ctx, allocation, hetznerCloudAllocation));
 	await ctx.db.patch("serverAllocations", allocation._id, {
 		...toObservationPatch(observed),
-		// A server that is still changing says nothing about where it will stop.
 		...(settled && server.status !== "changing"
 			? { status: server.status }
 			: {}),
 	});
-	// A settled allocation is never looked at by its own worker, so what the scan sees is all there
-	// is. Something the worker can put right is the one reason to wake it: rules taken off a server
-	// go back on, and nothing else here decides anything.
 	if (settled && observed?.parts.firewall === "missing") {
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			dueAt: Date.now(),
@@ -574,8 +540,6 @@ async function recordObservation(
 	) {
 		return;
 	}
-	// Seeing the server as this allocation recorded it is the answer to whatever the last attempt
-	// ran into.
 	allocationPatch.stuck = undefined;
 	if (allocation.deleteRequested) {
 		allocationPatch.status = "deleting";
@@ -583,21 +547,14 @@ async function recordObservation(
 	}
 	allocationPatch.status = server.status;
 	await succeedOperation(ctx, allocation.operationId);
-	// A settled allocation is then left alone. The scan reads every server anyway, which is what
-	// notices a change nobody asked us for, at one request for fifty of them instead of one each.
 	recording.hetznerCloudPatch.dueAt = never;
 }
 
-/**
- * Writes down what went wrong and when to come back to it. How often a failure has happened decides
- * only how long the wait is: it never decides that a passing condition has become a permanent one.
- * An allocation that is stuck says so and is still picked up again, forever, because a customer's
- * server nobody comes back to is worse than one request an hour.
- */
 async function recordFailure(
 	recording: Recording,
 	failure: NonNullable<HetznerCloudWorkerUpdate["failure"]>,
 ) {
+	// Failure count controls visibility and delay, not whether the worker retries.
 	const { ctx, allocation, hetznerCloudAllocation, allocationPatch } =
 		recording;
 	recording.hetznerCloudPatch.error = failure.error;
@@ -611,7 +568,6 @@ async function recordFailure(
 		Date.now() +
 		Math.max(
 			toRetryDelayMs(failure.class, hetznerCloudAllocation.failures),
-			// Hetzner says when its own budget comes back; asking sooner spends what is left.
 			failure.retryAfterMs ?? 0,
 		);
 	if (!recording.isCurrentOperation || !isStuck(failure.class, failures)) {
@@ -626,7 +582,7 @@ async function recordFailure(
 		allocationPatch.parts = { ...allocation.parts, server: "missing" };
 	}
 	if (failure.final) {
-		// The operation asked for something by a time that has passed. Another request is not it.
+		// A deadline failure blocks the operation; another request would violate its deadline.
 		await blockOperation(ctx, allocation.operationId);
 	}
 }
@@ -694,7 +650,6 @@ export const record = internalMutation({
 			ctx,
 			allocationId,
 		);
-		// What the run sent is spent whether or not its result still counts.
 		const resumeAt =
 			hetznerCloudAllocation === null
 				? Date.now()
@@ -743,7 +698,6 @@ export const record = internalMutation({
 			allocationId,
 			recording.allocationPatch,
 		);
-		// A floor under the next attempt when the budget is low, which never brings one forward.
 		const dueAt = Math.max(
 			recording.hetznerCloudPatch.dueAt ?? hetznerCloudAllocation.dueAt,
 			resumeAt,
@@ -759,9 +713,6 @@ export const record = internalMutation({
 	},
 });
 
-/**
- * Admin recovery. Confirm absence only after checking that no earlier request can still create the resource.
- */
 export const retry = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -808,7 +759,7 @@ export const retry = internalMutation({
 		});
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			resources,
-			// A new epoch fences a run that is still outstanding, so its result cannot undo this.
+			// Fences any run still in flight so its result cannot undo recovery.
 			epoch: hetznerCloudAllocation.epoch + 1,
 			failures: 0,
 			dueAt: Date.now(),
@@ -820,10 +771,6 @@ export const retry = internalMutation({
 	},
 });
 
-/**
- * Removes what this backend held for an allocation that no longer exists. The worker has already
- * set the row's next run to never, so nothing else reads or writes it.
- */
 export const forget = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),

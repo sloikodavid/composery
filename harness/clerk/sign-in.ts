@@ -1,15 +1,13 @@
 import { createSign, generateKeyPairSync, randomBytes } from "node:crypto";
 
-// Matches the application ID that convex/auth.config.ts expects in every token.
+// Must match convex/auth.config.ts.
 const audience = "convex";
 const keyIdBytes = 8;
 const tokenLifetimeSeconds = 600;
 const millisecondsPerSecond = 1000;
 
 export type SignInIssuer = Readonly<{
-	/** The issuer's address, which the deployment reads as CLERK_FRONTEND_API_URL. */
 	url: string;
-	/** A token that the deployment accepts as a sign-in by this subject, a Clerk user ID. */
 	signIn: (subject: string) => string;
 	stop: () => void;
 }>;
@@ -17,11 +15,7 @@ export type SignInIssuer = Readonly<{
 const toBase64Url = (value: Buffer | string) =>
 	Buffer.from(value).toString("base64url");
 
-/**
- * An OpenID issuer on a loopback port that stands in for Clerk. The deployment fetches its
- * configuration and signing keys exactly as it does Clerk's, so a signed-in test takes the same
- * verification path as a signed-in person.
- */
+/** Loopback issuer that exercises the same discovery and key verification as Clerk. */
 export function startSignInIssuer(): SignInIssuer {
 	const { privateKey, publicKey } = generateKeyPairSync("rsa", {
 		modulusLength: 2048,
@@ -36,7 +30,7 @@ export function startSignInIssuer(): SignInIssuer {
 				case "/.well-known/openid-configuration":
 					return Response.json({
 						issuer,
-						// biome-ignore lint/style/useNamingConvention: OpenID Connect Discovery names this field
+						// biome-ignore lint/style/useNamingConvention: external field name
 						jwks_uri: `${issuer}/.well-known/jwks.json`,
 					});
 				case "/.well-known/jwks.json":

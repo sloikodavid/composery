@@ -8,17 +8,13 @@ const lengthPrefixBytes = 4;
 const checkBytes = 4;
 const cipherBlockBytes = 8;
 const privateKeyMagic = "openssh-key-v1\0";
-// OpenSSH wraps the base64 of a private key file at 70 characters.
 const pemLinePattern = /.{1,70}/g;
 
 export type SshKeyPair = Readonly<{
-	/** One OpenSSH public key line: the type and the base64 key, with no comment. */
 	publicKey: string;
-	/** The private key in OpenSSH's own format, unencrypted. */
 	privateKey: string;
 }>;
 
-/** The SSH wire encoding of one string: its length as four big-endian bytes, then its bytes. */
 function toSshString(bytes: Uint8Array) {
 	const encoded = Buffer.alloc(lengthPrefixBytes + bytes.length);
 	encoded.writeUInt32BE(bytes.length, 0);
@@ -32,7 +28,6 @@ function toUint32(value: number) {
 	return encoded;
 }
 
-/** OpenSSH pads the private section with the bytes 1, 2, 3, and so on, to a whole cipher block. */
 function toPadding(length: number) {
 	const size =
 		(cipherBlockBytes - (length % cipherBlockBytes)) % cipherBlockBytes;
@@ -44,11 +39,7 @@ function toPem(label: string, bytes: Buffer) {
 	return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----\n`;
 }
 
-/**
- * Generates an Ed25519 key pair and encodes both halves itself, in the formats that OpenSSH defines
- * in PROTOCOL.key. An Ed25519 public key is exactly 32 bytes even when its first byte is zero; the
- * ssh2 package's generator strips leading zeros, which breaks one key in 256 so that it never signs in.
- */
+/** Re-encodes Ed25519 in OpenSSH format without losing leading-zero bytes. */
 export function generateSshKeyPair(): SshKeyPair {
 	const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 	const publicJwk = publicKey.export({ format: "jwk" });
@@ -66,7 +57,6 @@ export function generateSshKeyPair(): SshKeyPair {
 		toSshString(typeBytes),
 		toSshString(publicBytes),
 	]);
-	// The two check numbers match so that a reader can tell a wrong passphrase from a damaged file.
 	const check = randomBytes(checkBytes);
 	const section = Buffer.concat([
 		check,

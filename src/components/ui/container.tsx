@@ -12,7 +12,6 @@ export function Container({
 	children,
 }: {
 	width?: keyof typeof widths | undefined;
-	/** Do not set width or horizontal padding here. The container sets them. */
 	className?: string | undefined;
 	children: ReactNode;
 }) {

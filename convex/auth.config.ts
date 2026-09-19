@@ -9,7 +9,7 @@ export default {
 	providers: [
 		{
 			domain: clerkFrontendApiUrl,
-			// biome-ignore lint/style/useNamingConvention: Convex's AuthConfig names this field
+			// biome-ignore lint/style/useNamingConvention: external field name
 			applicationID: "convex",
 		},
 	],

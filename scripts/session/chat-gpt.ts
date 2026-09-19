@@ -2,7 +2,7 @@ import type { Session, SessionItem } from "./markdown";
 
 export const chatGptShareUrl = /^https:\/\/chatgpt\.com\/share\/[0-9a-f-]+$/;
 
-// React Router's turbo-stream encoding writes these values as the indices -1, -2, and so on.
+// Turbo-stream references use negative array indexes for special values.
 const specialValues: readonly unknown[] = [
 	undefined,
 	Number.NaN,
@@ -13,12 +13,11 @@ const specialValues: readonly unknown[] = [
 	undefined,
 ];
 
-// ChatGPT writes each citation as private-use characters in the text.
 const citationMarker = /[\uE200-\uE2FF]/u;
 const millisecondsPerSecond = 1000;
 const enqueueMarker = "streamController.enqueue(";
 
-// biome-ignore-start lint/style/useNamingConvention: ChatGPT's share data uses snake_case fields
+// biome-ignore-start lint/style/useNamingConvention: external snake_case fields
 type Reference = { matched_text?: unknown; alt?: unknown };
 type Message = {
 	author?: { role?: unknown };
@@ -35,7 +34,7 @@ type SharedConversation = {
 	create_time?: unknown;
 	linear_conversation?: unknown;
 };
-// biome-ignore-end lint/style/useNamingConvention: ChatGPT's share data uses snake_case fields
+// biome-ignore-end lint/style/useNamingConvention: external snake_case fields
 
 function decodeTurboStream(flat: unknown[]): unknown {
 	const decoded = new Map<number, unknown>();
@@ -127,11 +126,7 @@ function getVisibleText(message: Message): string | undefined {
 	return text === "" ? undefined : text;
 }
 
-/**
- * Reads every string the page hands to its stream. The literals are scanned rather than matched,
- * because a pattern for a quoted literal backtracks past the engine's limit on a long conversation
- * and then reports no match instead of an error, which cannot be told apart from an empty page.
- */
+/** Scan literals without a backtracking-heavy regex; long shares must still import. */
 function readEnqueuedChunks(html: string) {
 	const chunks: string[] = [];
 	let at = html.indexOf(enqueueMarker);

@@ -1,9 +1,4 @@
-/**
- * The part of a JSON Schema that a pinned contract keeps, and what it decides about one value.
- * A contract is an outside system's own description of itself, so a problem here always reads as
- * "the system would not have said this", never as "our rule refuses it".
- */
-
+/** Minimal JSON Schema needed by the pinned contract checker. */
 export type Schema = {
 	type?: string | string[];
 	properties?: Record<string, Schema>;
@@ -21,7 +16,6 @@ export type Parameter = Readonly<{
 	name: string;
 	in: string;
 	required: boolean;
-	/** What the system says the value may be, when it says anything about it. */
 	schema?: Schema;
 }>;
 
@@ -31,30 +25,20 @@ export type Operation = Readonly<{
 	responses: Record<string, Schema>;
 }>;
 
-/** Where one published document came from, and what it was when we read it. */
 export type ContractSource = Readonly<{
 	source: string;
 	readAt: string;
-	/** A digest of the whole published document, so a change upstream is visible as one line. */
 	digest: string;
 }>;
 
-/** What a system's published descriptions said, on the day `scripts/contracts.ts` read them. */
 export type Contract = Readonly<{
 	sources: readonly ContractSource[];
 	paths: Record<string, Record<string, Operation>>;
 }>;
 
-/**
- * One way a value disagreed with the description. It is split so that a waiver can name exactly
- * one place, instead of matching the beginning of a sentence.
- */
 export type ContractProblem = Readonly<{
-	/** The operation the description names: `POST /servers`. */
 	operation: string;
-	/** The place inside it: `body.image`, `query.name`, or `200.server.status`. */
 	at: string;
-	/** What the description says there, so a waiver stops applying when that changes. */
 	claims: string;
 	message: string;
 }>;
@@ -70,7 +54,6 @@ function toSegments(value: string) {
 	return value.replace(queryPattern, "").split("/").filter(Boolean);
 }
 
-/** The description's path for a request, such as `/servers/{id}` for `servers/1005`. */
 export function findPathTemplate(
 	templates: readonly string[],
 	requested: string,
@@ -117,11 +100,8 @@ function isType(value: unknown, type: string) {
 	}
 }
 
-/** Who is being read, and under which operation. The two always travel together. */
 export type ContractSubject = Readonly<{
-	/** The system's name, as it appears in a problem: `Hetzner`, `Clerk`. */
 	system: string;
-	/** The operation the description names: `POST /servers`. */
 	operation: string;
 }>;
 
@@ -141,7 +121,6 @@ function add(
 	});
 }
 
-/** What a system says a number may be. Sending more than it reads is asking for a silent answer. */
 function collectBounds(
 	collector: Collector,
 	schema: Schema,
@@ -166,7 +145,7 @@ function collectBounds(
 	}
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each part of a schema
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch per schema part
 function collect(
 	collector: Collector,
 	schema: Schema,
@@ -224,10 +203,6 @@ function collect(
 	}
 }
 
-/**
- * A description can allow a value to take one of several shapes. The value has to fit one of them,
- * and which one it fits is not ours to decide, so only failing every shape is a problem.
- */
 function collectAlternatives(
 	collector: Collector,
 	alternatives: readonly Schema[],
@@ -248,7 +223,6 @@ function collectAlternatives(
 	}
 }
 
-/** Every way one value disagrees with the schema the description gives for it. */
 export function listSchemaProblems(
 	subject: ContractSubject,
 	schema: Schema,
@@ -260,7 +234,6 @@ export function listSchemaProblems(
 	return collector.problems;
 }
 
-/** Every field a request sends that the description does not read. */
 export function listUnreadFieldProblems(
 	subject: ContractSubject,
 	schema: Schema,
@@ -285,7 +258,6 @@ export function listUnreadFieldProblems(
 		}));
 }
 
-/** Every query a request asks for that the description does not read. */
 export function listUnreadQueryProblems(
 	subject: ContractSubject,
 	parameters: readonly Parameter[],
@@ -306,11 +278,6 @@ export function listUnreadQueryProblems(
 		}));
 }
 
-/**
- * A query value is text, and the description says what it means. So it is read as the type the
- * system describes and then judged as that: `per_page=50` is the number fifty where Hetzner says
- * an integer, and a value the system cannot read is a problem before any bound applies.
- */
 export function listQueryValueProblems(
 	subject: ContractSubject,
 	parameters: readonly Parameter[],
@@ -334,10 +301,6 @@ export function listQueryValueProblems(
 	return collector.problems;
 }
 
-/**
- * What one query name asks for, in the shape the description gives it. A list is written as that
- * name repeated, so asking once is a list of one, not text where a list was described.
- */
 function toAskedValue(schema: Schema, query: URLSearchParams, name: string) {
 	if (!toTypes(schema).includes("array")) {
 		return toQueryValue(schema, query.get(name) ?? "");
@@ -347,7 +310,6 @@ function toAskedValue(schema: Schema, query: URLSearchParams, name: string) {
 		.map((item) => toQueryValue(schema.items ?? {}, item));
 }
 
-/** Reads text as the type a description gives it, and leaves it as text when it gives none. */
 function toQueryValue(schema: Schema, value: string): unknown {
 	const types = toTypes(schema);
 	if (types.includes("integer") || types.includes("number")) {

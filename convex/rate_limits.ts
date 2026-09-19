@@ -15,8 +15,6 @@ const rateLimits = {
 		period: HOUR,
 		capacity: 200,
 	},
-	// A claim is permanent, so this bounds how much of the namespace one account can hold, and
-	// still lets somebody create a hundred servers in one go.
 	serverNameClaim: {
 		kind: "token bucket",
 		rate: 100,
@@ -42,7 +40,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimits);
 
 type RateLimitName = keyof typeof rateLimits;
 
-/** Counts one attempt. Return the failure, so that the counted attempt stays counted. */
+/** Return a failure so the counted attempt remains counted. */
 export async function checkRateLimit(
 	ctx: RunMutationCtx,
 	name: RateLimitName,
@@ -52,7 +50,6 @@ export async function checkRateLimit(
 	return rateLimit.ok ? null : fail("rate_limited");
 }
 
-/** Counts one attempt and throws when the limit is reached. A refused attempt is not counted. */
 export async function requireRateLimit(
 	ctx: RunMutationCtx,
 	name: RateLimitName,

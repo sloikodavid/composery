@@ -1,12 +1,4 @@
-/**
- * Asks a server which addresses it answers on. A provider gives a server a range and the server
- * decides which address inside it to use, so this is the only place that knows: the kernel's own
- * list, in the form Python's library writes it, rather than anything we would have to guess.
- *
- * The kernel says which addresses are global and which reach nobody outside the machine, and it
- * is the only opinion here: whether a global one is the server's own is decided against the
- * range the provider gave it, which is a question this program cannot answer.
- */
+/** Reports global IPv6 addresses from the kernel; the provider range is checked elsewhere. */
 export const addressesScript = `
 import ipaddress
 import json

@@ -16,7 +16,6 @@ export const sshTables = {
 		hostKeyConflictAt: v.optional(v.number()),
 		hostKeyReplaceUntil: v.optional(v.number()),
 		port: v.optional(v.number()),
-		/** What the last attempt to sign in found, and when: a member's, or the scheduled look. */
 		access: v.optional(
 			v.object({ status: allocationPartStatus, at: v.number() }),
 		),

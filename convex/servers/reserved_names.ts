@@ -1,4 +1,3 @@
-/** The list is deliberately large. A reserved name is reported as taken. */
 export const reservedServerNames: ReadonlySet<string> = new Set([
 	"about",
 	"about-us",

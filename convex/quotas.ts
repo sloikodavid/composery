@@ -31,7 +31,7 @@ async function getDeploymentQuota(ctx: QueryCtx, kind: QuotaKind) {
 		.unique();
 }
 
-/** A missing quota has a limit of zero. */
+/** Missing quota has no capacity. */
 function hasRoom<T extends Quota>(quota: T | null): quota is T {
 	return quota !== null && quota.used < quota.limit;
 }
@@ -42,7 +42,7 @@ function requireLimit(limit: number) {
 	}
 }
 
-/** A server uses one unit of its owner's quota and of the deployment quota until its infrastructure is confirmed absent. */
+/** Reserve until provider infrastructure is confirmed absent. */
 export async function reserveServerQuota(
 	ctx: MutationCtx,
 	userId: Id<"users">,
@@ -112,7 +112,6 @@ export async function deleteUserQuotas(ctx: MutationCtx, userId: Id<"users">) {
 	}
 }
 
-/** A lower limit prevents new servers and does not delete existing ones. */
 export const setForUser = internalMutation({
 	args: { userId: v.id("users"), kind: quotaKind, limit: v.number() },
 	returns: v.null(),

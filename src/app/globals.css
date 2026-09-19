@@ -1,4 +1,4 @@
-/* Clerk puts its component styles in the clerk layer, so utilities override them. */
+/* Keep app utilities after Clerk's layer so local styles win. */
 @layer theme, base, clerk, components, utilities;
 
 @import "tailwindcss";
@@ -70,10 +70,6 @@
 	--color-primary-foreground: var(--app-primary-foreground);
 }
 
-/*
- * Neutrals use Tailwind's stone palette. Each interactive state moves toward
- * the foreground; its step is selected by the visible change, not by numeric symmetry.
- */
 :root {
 	--app-background: var(--color-stone-50);
 	--app-foreground: var(--color-stone-950);
@@ -121,10 +117,7 @@
 		var(--color-amber-100)
 	);
 
-	/*
-	 * The color the glow keeps where its shapes have thinned out. The brand color thinned toward the page turns brown
-	 * over a dark one and peach over a light one, so this shade holds its chroma instead.
-	 */
+	/* Preserve chroma as the glow fades into light and dark backgrounds. */
 	--glow-halo: oklch(
 		from var(--color-brand) calc(l - 0.04) calc(c * 0.98) calc(h + 2)
 	);
@@ -173,7 +166,6 @@
 	}
 }
 
-/* The brand typeface, Chakra Petch, scaled to the x-height of Onest, for interface text next to body text. */
 @utility font-brand {
 	font-family: var(--font-wordmark);
 	font-size-adjust: 0.53;
@@ -205,8 +197,8 @@
 }
 
 @layer components {
-	/* The glow reaches nothing exactly at the top of its box. A fade of two stops, or one the edge cuts off, draws a line across the page. */
 	.glow-fade {
+		/* Two-stop fades leave a visible line when the mask reaches the edge. */
 		mask-image: linear-gradient(
 			to top,
 			#000 0%,
@@ -223,12 +215,11 @@
 		);
 	}
 
-	/* One continuous glow in shades of the brand color. Broad shapes raise it higher in some places, and the blur blends them. */
 	.glow {
+		/* Smootherstep fades flatten both ends and avoid outlines around shapes. */
 		--glow-rich: var(--color-brand);
 		--glow-deep: oklch(from var(--color-brand) calc(l - 0.1) c calc(h - 4));
 
-		/* Smootherstep, whose slope is nothing at both ends. A fade straight to transparent ends at full slope, which draws an edge around every shape. */
 		--fade-rich:
 			var(--glow-rich) 0%,
 			oklch(from var(--glow-rich) l c h / 0.991) 10%,
@@ -289,10 +280,7 @@
 			radial-gradient(in oklch ellipse 92% 144% at 58% 116%, var(--fade-halo));
 		filter: blur(48px);
 
-		/*
-		 * Eight bits per channel cannot hold a ramp this gradual, so it steps. The mask varies what passes by a tenth,
-		 * which scatters the steps, and it comes after the blur, which would otherwise wipe it out.
-		 */
+		/* Dither the final mask to hide banding in the long gradient. */
 		mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='1' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.1 0 0 0 0.9'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 		mask-size: 180px 180px;
 	}

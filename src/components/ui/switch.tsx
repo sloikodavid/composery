@@ -21,9 +21,8 @@ type SwitchProps = Omit<
 	label: ReactNode;
 };
 
-/** A native checkbox exposed as a switch. */
 export function Switch({ className, label, ...props }: SwitchProps) {
-	// biome-ignore-start lint/a11y/useAriaPropsForRole: a native checkbox exposes its checked state to the switch role.
+	// biome-ignore-start lint/a11y/useAriaPropsForRole: native checkbox supplies switch state
 	return (
 		<label className={clsx(switchRootClassName, className)}>
 			<input
@@ -38,5 +37,5 @@ export function Switch({ className, label, ...props }: SwitchProps) {
 			<span className={switchLabelClassName}>{label}</span>
 		</label>
 	);
-	// biome-ignore-end lint/a11y/useAriaPropsForRole: a native checkbox exposes its checked state to the switch role.
+	// biome-ignore-end lint/a11y/useAriaPropsForRole: native checkbox supplies switch state
 }

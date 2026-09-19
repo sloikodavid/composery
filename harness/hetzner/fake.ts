@@ -16,12 +16,6 @@ import {
 	toServerTypeReply,
 } from "./replies";
 
-/**
- * A fake for Hetzner Cloud. What it knows about Hetzner is only what Composery reads, and every
- * reply is held to Hetzner's own description, so the fake cannot answer in a shape Hetzner never
- * would.
- */
-
 const httpOk = 200;
 const httpCreated = 201;
 const httpNoContent = 204;
@@ -34,17 +28,14 @@ const ipv6Offset = 2;
 const controllerFirewallId = 77;
 const controllerId = "composery-test";
 const imageId = 501;
-/** The one type this fake offers, which is what a deployment reading it must be told to ask for. */
 export const fakeServerType = "cx23";
 const locations = ["nbg1", "fsn1", "hel1"];
 const firstLocation = "nbg1";
-// The default limit Hetzner states for a project, and what a real reply said on 19 September.
 const hourlyLimit = 3600;
 const millisecondsPerSecond = 1000;
 
 type Collection = "servers" | "primary_ips";
 
-/** One request, already taken apart the way this fake reads it. */
 type Asked = Readonly<{
 	method: string;
 	id: string | undefined;
@@ -57,7 +48,6 @@ type Asked = Readonly<{
 type Resource = {
 	id: number;
 	collection: Collection;
-	/** What Composery's own label says this is: `ipv4`, `ipv6`, or `server`. */
 	kind: string;
 	name: string;
 	labels: Record<string, string>;
@@ -74,16 +64,12 @@ function toAddress(id: number, collection: string, kind: string) {
 	return `2001:db8::${id.toString(hexRadix)}`;
 }
 
-/**
- * What a server says about one of its addresses. Once an allocation has made any address, the
- * absence of one means it was deleted; before that, a server created on its own gets a made-up
- * pair, because Hetzner gives every server an address unless it is told not to.
- */
 function toReplyAddress(
 	held: { id: number; address: string } | undefined,
 	hadAddresses: boolean,
 	invented: { id: number; ip: string },
 ) {
+	// A deleted address disappears from the server reply.
 	if (held !== undefined) {
 		return { id: held.id, ip: held.address };
 	}
@@ -93,8 +79,6 @@ function toReplyAddress(
 function notFound(): FakeReply {
 	return {
 		status: httpNotFound,
-		// Hetzner always names a refusal and explains it; a fake that sent less would let our code
-		// depend on a Hetzner that does not exist.
 		body: {
 			error: {
 				code: "not_found",
@@ -107,16 +91,13 @@ function notFound(): FakeReply {
 
 export type HetznerFake = Fake &
 	Readonly<{
-		/**
-		 * Takes the project's rules off one server, as an admin can in Hetzner's own console. The
-		 * server keeps running; what changes is what it is protected by. A run that meets Hetzner
-		 * does it there, because a change to this fake's own memory would be a change to nothing.
-		 */
+		/** Simulates an admin detaching the controller firewall. */
 		detachFirewall: (serverId: number) => Promise<void>;
-		/** Stops one server without Composery asking, as an admin can in Hetzner's own console. */
+		/** Simulates an admin stopping a server. */
 		stopServer: (serverId: number) => Promise<void>;
 	}>;
 
+/** Fake provider responses are checked against the recorded Hetzner contract. */
 export async function startHetznerFake(): Promise<HetznerFake> {
 	const resources = new Map<number, Resource>();
 	const detachedFirewalls = new Set<number>();
@@ -147,8 +128,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 				item.collection === "primary_ips" &&
 				item.labels["allocation-id"] === resource.labels["allocation-id"],
 		);
-		// A server reports the addresses it still has. One that was deleted is gone from the reply,
-		// which is what Hetzner sends and what Composery has to read.
 		const ipv4 = owned.find((item) => item.kind === "ipv4");
 		const ipv6 = owned.find((item) => item.kind === "ipv6");
 		const hadAddresses = owned.length > 0;
@@ -180,12 +159,11 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			name?: string;
 			labels?: Record<string, string>;
 			location?: string;
-			// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+			// biome-ignore lint/style/useNamingConvention: external field name
 			public_net?: { ipv4?: number; ipv6?: number };
 		};
 		nextId += 1;
 		const labels = fields.labels ?? {};
-		// Composery labels everything it creates; anything else is named by its collection.
 		const kind =
 			typeof labels["resource-kind"] === "string"
 				? labels["resource-kind"]
@@ -202,7 +180,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			location: fields.location ?? firstLocation,
 		};
 		resources.set(resource.id, resource);
-		// A server takes the addresses it was created with, as Hetzner assigns them.
 		for (const addressId of [
 			fields.public_net?.ipv4,
 			fields.public_net?.ipv6,
@@ -235,11 +212,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		);
 	};
 
-	/**
-	 * The project's own firewall: found by its label, made when a deployment claims the project,
-	 * and put back onto a server that lost it. This fake holds one, because one controller has one.
-	 */
-	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each request about a firewall
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch per firewall request
 	const answerFirewall = (request: Asked): FakeReply => {
 		const { method, id, group, action, query, body } = request;
 		if (method === "GET" && id === undefined) {
@@ -292,8 +265,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			group === "actions" &&
 			action === "apply_to_resources"
 		) {
-			// Hetzner puts the firewall back on whatever the request names, so the server stops
-			// being one this fake reports as having none.
 			for (const serverId of toAppliedServerIds(body)) {
 				detachedFirewalls.delete(serverId);
 			}
@@ -302,7 +273,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		return notFound();
 	};
 
-	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each request Composery sends
+	// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch per request
 	const answer = (method: string, path: string, body: unknown): FakeReply => {
 		const [route, rawQuery] = path.split("?");
 		const query = new URLSearchParams(rawQuery ?? "");
@@ -316,7 +287,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			return {
 				status: httpOk,
 				body: {
-					// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+					// biome-ignore lint/style/useNamingConvention: external field name
 					server_types: [toServerTypeReply(fakeServerType, locations)],
 					meta: toPaginationReply(1),
 				},
@@ -352,7 +323,7 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 					[single]: toResourceReply(resource),
 					action: startAction(),
 					...(collection === "servers"
-						? // biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+						? // biome-ignore lint/style/useNamingConvention: external field name
 							{ next_actions: [], root_password: null }
 						: {}),
 				},
@@ -385,7 +356,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 				return notFound();
 			}
 			resources.delete(resource.id);
-			// Hetzner frees an address that a deleted server held.
 			for (const other of resources.values()) {
 				if (other.assigneeId === resource.id) {
 					other.assigneeId = null;
@@ -398,10 +368,9 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		return notFound();
 	};
 
-	// Hetzner states what is left of the project's hour on every reply, and gives one request back
-	// each second, as its own description says. What a test scripts replaces all of this.
 	let remaining = hourlyLimit;
 	let countedAt = Date.now();
+	// Match Hetzner's rate-limit headers and gradual refill.
 	const withBudget = (reply: FakeReply): FakeReply => {
 		const now = Date.now();
 		const returned = Math.floor((now - countedAt) / millisecondsPerSecond);
@@ -422,9 +391,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		};
 	};
 
-	// A run given a token for a project of its own asks Hetzner itself, through the same fake, so
-	// the requests are still counted, the answers are still held to Hetzner's description, and a
-	// test that loses a reply loses a real one.
 	const token = getHetznerToken();
 	const fake = await startFake({
 		system: "Hetzner",
@@ -466,21 +432,19 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 
 let started: Promise<HetznerFake> | undefined;
 
-/** One fake for the whole run, because the deployment holds its address. */
+/** One provider fake is shared by the deployment and the run. */
 export function useHetznerFake() {
 	started ??= startHetznerFake();
 	return started;
 }
 
-/** The rules a request states, which this fake keeps as the firewall's own. */
 function toRules(body: unknown) {
 	const rules = (body as { rules?: unknown } | undefined)?.rules;
 	return Array.isArray(rules) ? rules : [];
 }
 
-/** Which servers a request puts a firewall onto. */
 function toAppliedServerIds(body: unknown) {
-	// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this field
+	// biome-ignore lint/style/useNamingConvention: external field name
 	const applied = (body as { apply_to?: unknown } | undefined)?.apply_to;
 	return (Array.isArray(applied) ? applied : [])
 		.map((item) => (item as { server?: { id?: unknown } }).server?.id)

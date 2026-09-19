@@ -7,7 +7,6 @@ import { SshError, type SshFailure } from "./errors";
 const maxPort = 65_535;
 const maxTimeoutMs = 60_000;
 
-/** Exit codes that a POSIX shell returns when it cannot run a command. */
 const commandNotExecutableExitCode = 126;
 const commandNotFoundExitCode = 127;
 export const commandExitCodes: ReadonlySet<number> = new Set([
@@ -15,13 +14,11 @@ export const commandExitCodes: ReadonlySet<number> = new Set([
 	commandNotFoundExitCode,
 ]);
 
-/** A server that Composery connects to, and the account it names there. */
+/** Resolve address and host key from trusted allocation state, not caller input. */
 export type SshTarget = Readonly<{
-	/** Resolve from trusted allocation state, never a caller-supplied URL. */
 	address: string;
 	port: number;
 	username: string;
-	/** SSH wire-format public key from an independent trusted path. */
 	hostKey: Uint8Array;
 	timeoutMs: number;
 	signal?: AbortSignal;
@@ -97,10 +94,6 @@ function isValidSshTarget(target: SshTarget) {
 	);
 }
 
-/**
- * Owns one client, its deadline and its cancellation, and connects it to the pinned host with the
- * authentication the caller chooses. `run` must await all protocol work.
- */
 export async function withSshClient<T>(
 	target: SshTarget,
 	run: (
@@ -155,12 +148,10 @@ export async function withSshClient<T>(
 	} finally {
 		clearTimeout(timer);
 		input.signal?.removeEventListener("abort", cancel);
-		// Destroy also releases remote handles after errors, cancellation, or stalls.
 		client.destroy();
 	}
 }
 
-/** Own one signed-in connection and its deadline. Operations must await all protocol work. */
 export async function withSshConnection<T>(
 	options: SshConnectionOptions,
 	operation: (scope: SshClientScope) => Promise<T>,
@@ -180,11 +171,7 @@ export async function withSshConnection<T>(
 	);
 }
 
-/**
- * The command that runs one repository-owned program on a server. The interpreter is an absolute
- * path because a search path belongs to whoever owns the server, and the program is the only
- * thing that enters shell syntax: everything a caller supplies travels on stdin.
- */
+/** Runs a repository-owned program with caller data on stdin, never in shell syntax. */
 export function toSshProgramCommand(program: string) {
 	return `/usr/bin/python3 -I -X utf8 -c '${program.replaceAll("'", "'\\''")}'`;
 }
@@ -192,14 +179,10 @@ export function toSshProgramCommand(program: string) {
 export type SshCommandResult = Readonly<{
 	stdout: string;
 	stderr: string;
-	/** Null when a signal ended the command, so an outcome cannot be read from it. */
+	/** Null means cancellation ended the command before an outcome was read. */
 	exitCode: number | null;
 }>;
 
-/**
- * Runs one repository-owned command and returns its bounded output. Caller data belongs on
- * stdin, never in the command: the account names and paths a server reports are its own.
- */
 export async function runSshCommand(
 	connection: SshConnectionOptions,
 	command: string,

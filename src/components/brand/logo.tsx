@@ -7,7 +7,7 @@ import { Wordmark, wordmarkMetrics } from "./wordmark";
 
 const { capHeight, inkStart } = wordmarkMetrics;
 
-// icon.svg is 8 units wide, with a 6 unit square inside a 1 unit margin.
+// Scale the 8-unit icon to the wordmark's measured cap height.
 const iconUnits = 8;
 const squareUnits = 6;
 
@@ -15,7 +15,7 @@ const frame = (capHeight * iconUnits) / squareUnits;
 const border = frame / iconUnits;
 const gap = capHeight / 2;
 
-// The square is as tall as the "C", sits on the baseline, and is half its height away from the "C" ink.
+// The icon sits on the baseline with a half-cap-height gap.
 const iconStyle: CSSProperties = {
 	display: "inline-block",
 	width: `${frame}em`,

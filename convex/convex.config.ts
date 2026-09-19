@@ -4,7 +4,7 @@ import { defineApp } from "convex/server";
 import { v } from "convex/values";
 
 const app = defineApp({
-	// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+	// biome-ignore-start lint/style/useNamingConvention: environment variable names
 	env: {
 		CLERK_FRONTEND_API_URL: v.string(),
 		CLERK_SECRET_KEY: v.string(),
@@ -18,7 +18,7 @@ const app = defineApp({
 		HCLOUD_FAKE_URL: v.optional(v.string()),
 		SSH_ACCESS_ENCRYPTION_KEYS: v.optional(v.string()),
 	},
-	// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+	// biome-ignore-end lint/style/useNamingConvention: environment variable names
 });
 
 app.use(rateLimiter);

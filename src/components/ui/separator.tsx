@@ -8,7 +8,6 @@ type SeparatorProps = Omit<ComponentProps<"div">, "children" | "ref"> & {
 	orientation?: "horizontal" | "vertical" | undefined;
 };
 
-/** A structural line between adjacent regions. */
 export function Separator({
 	orientation = "horizontal",
 	className,

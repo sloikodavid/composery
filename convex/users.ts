@@ -38,7 +38,6 @@ export async function requireUser(ctx: QueryCtx) {
 	return user;
 }
 
-/** Who the caller is here, or nothing when Clerk has not been synced to this deployment yet. */
 export const getCurrent = query({
 	args: {},
 	returns: v.union(
@@ -79,10 +78,6 @@ export const listClerkIds = internalQuery({
 	},
 });
 
-/**
- * Whether Clerk describes the account exactly as we hold it. Rewriting an unchanged row would rerun
- * every query that reads it, once an hour, for every account on the deployment.
- */
 function isSameUser(existing: Doc<"users">, fields: Infer<typeof userFields>) {
 	return (
 		existing.email === fields.email && existing.imageUrl === fields.imageUrl
@@ -102,8 +97,7 @@ export const store = internalMutation({
 			if (isSameUser(existing, fields)) {
 				continue;
 			}
-			// `replace` rather than `patch`: a field Clerk no longer sends, such as an address somebody
-			// removed, must go too, and a patch would keep the old value.
+			// Replace removes fields Clerk no longer sends; patch would retain stale data.
 			await ctx.db.replace("users", existing._id, fields);
 		}
 		return null;

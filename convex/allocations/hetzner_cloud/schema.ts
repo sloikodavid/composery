@@ -1,7 +1,7 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 
-/** Whether a Hetzner resource exists. `uncertain` means that a create request can still take effect. */
+/** An uncertain request may have taken effect and must be reconciled before retrying. */
 export const hetznerCloudResourceStatus = v.union(
 	v.object({ status: v.literal("pending") }),
 	v.object({ status: v.literal("uncertain") }),
@@ -20,10 +20,7 @@ export const hetznerCloudQueue = v.union(
 	v.literal("cleanup"),
 );
 
-/**
- * What Hetzner last said is left of a project's requests, from the headers every reply carries.
- * `resetAt` is when all of `limit` is back; Hetzner gives it back gradually until then.
- */
+/** Provider budget observed from response headers; the limit returns gradually. */
 export const hetznerCloudBudget = v.object({
 	limit: v.number(),
 	remaining: v.number(),
@@ -31,7 +28,6 @@ export const hetznerCloudBudget = v.object({
 	observedAt: v.number(),
 });
 
-/** What one action sent to Hetzner, and what the last reply said is left. */
 export const hetznerCloudUsage = v.object({
 	requests: v.number(),
 	budget: v.optional(hetznerCloudBudget),
@@ -88,13 +84,11 @@ export const hetznerCloudTables = {
 		error: v.optional(v.string()),
 	}).index("by_controller_id", ["controllerId"]),
 
-	// One row for each project, because the budget belongs to the token and not to any one run.
 	hetznerCloudBudgets: defineTable({
 		controllerId: v.string(),
 		...hetznerCloudBudget.fields,
 	}).index("by_controller_id", ["controllerId"]),
 
-	// Evidence for admin review. The controller never deletes a resource because of a finding.
 	hetznerCloudFindings: defineTable({
 		controllerId: v.string(),
 		collection: hetznerCloudCollection,

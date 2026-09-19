@@ -19,7 +19,7 @@ if (!convexUrl) {
 
 const convex = new ConvexReactClient(convexUrl);
 
-// Creates the signed-in user's row when the Clerk webhook has not done so yet.
+// Fills the user row when the sign-in webhook has not arrived yet.
 function CurrentUserSync() {
 	const { isAuthenticated } = useConvexAuth();
 	const user = useQuery(api.users.getCurrent, isAuthenticated ? {} : "skip");
@@ -43,7 +43,7 @@ function CurrentUserSync() {
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
 	return (
-		// biome-ignore lint/nursery/useReactCompiler: Convex's Clerk adapter takes the hook itself and calls it at its own top level.
+		// biome-ignore lint/nursery/useReactCompiler: Convex adapter calls the hook
 		<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 			<CurrentUserSync />
 			{children}

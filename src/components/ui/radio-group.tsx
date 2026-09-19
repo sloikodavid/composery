@@ -43,7 +43,6 @@ type RadioGroupSelectionProps =
 
 type RadioGroupProps = RadioGroupBaseProps & RadioGroupSelectionProps;
 
-/** A native radio group whose label and error apply to every option. */
 export function RadioGroup({
 	className,
 	defaultValue,

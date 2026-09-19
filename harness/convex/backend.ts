@@ -50,20 +50,18 @@ import { convexBackendAssets, convexBackendVersion } from "../pins";
 const repositoryRoot = path.resolve(import.meta.dir, "..", "..");
 const cacheRoot = path.join(repositoryRoot, "tmp", "convex-backend");
 
-// Test deployments share one instance identity, because a storage template belongs to it.
+// Storage templates are tied to one self-hosted Convex instance identity.
 const instanceName = "composery-test";
 const instanceSecret = createHash("sha256").update(instanceName).digest("hex");
 const readinessTimeoutMs = 30_000;
 const readinessDelayMs = 100;
 const stopTimeoutMs = 10_000;
 const logLineLimit = 80;
-// The first push installs external packages from the network, which can take minutes.
 const pushTimeoutMs = 240_000;
 const httpUdfFailedStatus = 560;
 const removalRetries = 10;
 const removalDelayMs = 200;
 const hostTagLength = 8;
-// Folders name their test process and their machine, so a later run can tell whose they are.
 const hostTag = createHash("sha256")
 	.update(hostname())
 	.digest("hex")
@@ -75,12 +73,11 @@ const lineBreakPattern = /\r?\n/;
 const executableMode = 0o755;
 const templateKeyLength = 16;
 const encryptionKeyBytes = 32;
-// The fake answers for these, and they are not Hetzner's.
+// These values are fake-provider identifiers, never Hetzner resources.
 const fakeControllerId = "composery-test";
 const fakeFirewallId = 77;
 const fakeLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
-// One secret for the run: the deployment gets it, and a test signs with it as Clerk would.
 const webhookSecret = `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`;
 const usesProcessGroups = process.platform !== "win32";
 
@@ -91,43 +88,24 @@ type AnyFunction = FunctionReference<
 
 export type ConvexBackend = Readonly<{
 	url: string;
-	/** Calls any function, internal ones included, as the deployment's admin, to arrange a test. */
+	/** Runs a function with the deployment's admin key. */
 	runAsAdmin: <Reference extends AnyFunction>(
 		reference: Reference,
 		args: FunctionArgs<Reference>,
 	) => Promise<FunctionReturnType<Reference>>;
-	/** A client signed in as this Clerk user ID, or signed out without one, as the web app would be. */
 	createClient: (subject?: string) => ConvexHttpClient;
 	signIn: SignInIssuer["signIn"];
-	/** Everything the backend has written, which is where a function's own failure is named. */
+	/** Backend logs used to diagnose failed pushes and requests. */
 	readLog: () => string;
-	/** Where HTTP actions answer, such as the Clerk webhook and a server's host key report. */
 	siteUrl: string;
-	/** The signing secret this run gave the deployment, so a test can sign a webhook as Clerk does. */
 	webhookSecret: string;
-	/** The accounts Clerk would hold, which a test fills before it asks Composery to read them. */
 	clerk: ClerkFake;
-	/**
-	 * One account, as it really exists: held by Clerk and synced into our tables. A test that made
-	 * only the second half would be describing a person Clerk never heard of, and the hourly
-	 * reconcile would rightly delete them part way through the test.
-	 *
-	 * Clerk names its own accounts, so a test reads the ID back rather than choosing it. `synced`
-	 * false leaves the account known to Clerk and unknown here, which is a caller who has signed in
-	 * and has no record yet.
-	 */
 	createAccount: (options?: { synced?: boolean }) => Promise<ClerkUser>;
-	/**
-	 * The keys this run gave the deployment, the one that encrypts first. The deployment runs with a
-	 * second key from the start, as it does part way through a rotation, so a test can hold a stored
-	 * value to either.
-	 */
 	sshAccessEncryptionKeys: readonly [string, string];
 }>;
 
 const accountSuffixBytes = 6;
 
-/** What every process of one test run shares. */
 type RunContext = Readonly<{
 	binary: string;
 	adminKey: string;
@@ -137,10 +115,8 @@ type RunContext = Readonly<{
 
 type RunningBackend = Readonly<{
 	url: string;
-	/** Where HTTP actions answer, which is a second port of the same backend. */
 	siteUrl: string;
 	stop: () => Promise<void>;
-	/** The backend's latest log lines, which say why a push or a request failed. */
 	readLog: () => string;
 }>;
 
@@ -159,14 +135,10 @@ function findFreePort() {
 	});
 }
 
-/**
- * The environment of every process a run starts, built from nothing. A developer's own deployment,
- * login and tokens are exported in their shell, and a process that inherited them could act on the
- * real deployment.
- */
 function toChildEnvironment(temporary: string) {
+	// Start children with a clean environment so inherited credentials cannot reach a test deployment.
 	mkdirSync(temporary, { recursive: true });
-	// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+	// biome-ignore-start lint/style/useNamingConvention: environment variable names
 	const environment: Record<string, string> = {
 		PATH: process.env.PATH ?? "",
 		HOME: temporary,
@@ -175,8 +147,7 @@ function toChildEnvironment(temporary: string) {
 		TMP: temporary,
 		TMPDIR: temporary,
 	};
-	// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
-	// Windows programs need these to start at all.
+	// biome-ignore-end lint/style/useNamingConvention: environment variable names
 	for (const name of ["SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"]) {
 		const value = process.env[name];
 		if (value) {
@@ -186,12 +157,8 @@ function toChildEnvironment(temporary: string) {
 	return environment;
 }
 
-/**
- * A short temporary folder for one run. The backend's Node executor listens on a Unix socket inside
- * it, and Linux refuses a socket path longer than 108 bytes, which a folder inside the repository
- * exceeds.
- */
 function toTemporaryFolder() {
+	// Keep the backend's Unix socket below Linux's 108-byte path limit.
 	return path.join(tmpdir(), `cvx-${process.pid}-${hostTag}`);
 }
 
@@ -204,12 +171,8 @@ function removeFolder(folder: string) {
 	});
 }
 
-/**
- * Removes what this run made, and says so rather than failing when the operating system still
- * holds a file. Both folders name the process that made them, so the next run removes what is left
- * once this process is gone. A green suite must not go red because Windows was slow to let go.
- */
 function removeWhenPossible(remove: () => void, folder: string) {
+	// Windows may hold files briefly after a process exits; orphan cleanup handles the remainder.
 	try {
 		remove();
 	} catch (error) {
@@ -221,7 +184,6 @@ function removeWhenPossible(remove: () => void, folder: string) {
 	}
 }
 
-/** Removes a run folder, unlinking its links to the repository's modules before a recursive walk. */
 function removeRunFolder(folder: string) {
 	for (const workspace of ["workspace", "template-workspace"]) {
 		rmSync(path.join(folder, workspace, "node_modules"), { force: true });
@@ -229,7 +191,6 @@ function removeRunFolder(folder: string) {
 	removeFolder(folder);
 }
 
-/** Signals every process in a group, and ignores a group whose processes have all exited. */
 function signalProcessGroup(groupId: number, signal: NodeJS.Signals) {
 	try {
 		process.kill(-groupId, signal);
@@ -240,11 +201,8 @@ function signalProcessGroup(groupId: number, signal: NodeJS.Signals) {
 	}
 }
 
-/**
- * Ends the processes that ran in the groups a dead run recorded, then removes its folder. A group ID
- * cannot be reused while any process in it is alive, so a group that still exists is that run's.
- */
 function removeOrphanedRunFolder(folder: string) {
+	// End process groups recorded by a previous run before removing its files.
 	const groups = path.join(folder, processGroupsFolderName);
 	if (usesProcessGroups && existsSync(groups)) {
 		for (const name of readdirSync(groups)) {
@@ -254,11 +212,6 @@ function removeOrphanedRunFolder(folder: string) {
 	removeRunFolder(folder);
 }
 
-/**
- * Removes the folders of runs whose test process on this machine is gone. The owner is in each
- * folder's name rather than in a file inside it, so a folder that a failed removal emptied halfway
- * is still known.
- */
 function removeOrphanedFolders(runsRoot: string) {
 	for (const [root, pattern, remove] of [
 		[runsRoot, runFolderNamePattern, removeOrphanedRunFolder],
@@ -276,17 +229,13 @@ function removeOrphanedFolders(runsRoot: string) {
 	}
 }
 
-/**
- * Starts a process that this run owns with everything it starts in turn. On Linux a Node executor
- * outlives a signal sent to the backend alone, so outside Windows each process leads its own group
- * and the group is recorded, before any await, for a later run to end if this one dies.
- */
 function spawnOwned(
 	context: RunContext,
 	command: string,
 	args: readonly string[],
 	options: Readonly<{ cwd?: string; environment?: Record<string, string> }>,
 ) {
+	// Record ownership before awaiting so a killed run can be cleaned up later.
 	const child = spawn(command, args, {
 		cwd: options.cwd,
 		env: options.environment ?? context.environment,
@@ -315,13 +264,12 @@ function waitForExit(child: ChildProcess, timeoutMs: number) {
 	});
 }
 
-/** Stops a process started by spawnOwned and everything it started. */
 async function stopOwned(child: ChildProcess) {
 	if (child.pid === undefined) {
 		return;
 	}
 	if (!usesProcessGroups) {
-		// Windows ends only the process it is named, unless it is asked for the tree.
+		// Windows needs taskkill to include child processes.
 		if (child.exitCode === null) {
 			spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
 		}
@@ -330,12 +278,12 @@ async function stopOwned(child: ChildProcess) {
 	}
 	signalProcessGroup(child.pid, "SIGTERM");
 	await waitForExit(child, stopTimeoutMs);
-	// Anything in the group that ignored the request is ended outright.
+	// Escalate only after the graceful wait expires.
 	signalProcessGroup(child.pid, "SIGKILL");
 }
 
-/** Downloads the pinned backend once, refuses it unless its digest matches, and keeps it in tmp. */
 async function requireBackendBinary() {
+	// Verify the pinned archive before making it executable.
 	const asset = convexBackendAssets[`${process.platform}-${process.arch}`];
 	if (asset === undefined) {
 		throw new Error(
@@ -371,7 +319,7 @@ async function requireBackendBinary() {
 		throw new Error(`The Convex backend archive has no ${fileName}.`);
 	}
 	mkdirSync(directory, { recursive: true });
-	// Written beside its final name and renamed, so a concurrent run never executes half a file.
+	// Write beside the final path and rename so concurrent runs never see a partial binary.
 	const partial = `${binary}.${process.pid}.partial`;
 	writeFileSync(partial, extracted);
 	chmodSync(partial, executableMode);
@@ -448,7 +396,7 @@ async function setEnvironmentVariables(
 	const reply = await fetch(`${backend.url}/api/update_environment_variables`, {
 		method: "POST",
 		headers: {
-			// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name
+			// biome-ignore lint/style/useNamingConvention: external header name
 			Authorization: `Convex ${context.adminKey}`,
 			"Content-Type": "application/json",
 		},
@@ -466,12 +414,8 @@ async function setEnvironmentVariables(
 	}
 }
 
-/**
- * What the deployment reads, all of it made up here: sign-in answers to this run's issuer, and
- * Hetzner is this run's fake on loopback. No value of yours can reach a test.
- */
-/** Two new keys, the one that encrypts first. */
 async function readIssuerKeys(issuer: SignInIssuer) {
+	// The deployment must trust the issuer that signs the test token.
 	const reply = await fetch(`${issuer.url}/.well-known/jwks.json`);
 	return await reply.json();
 }
@@ -485,15 +429,11 @@ function toSshAccessEncryptionKeys() {
 
 type HetznerProject = Readonly<{ controllerId: string; firewallId: number }>;
 
-/**
- * One account where the deployment will look for it: at Clerk when a run meets Clerk, and in the
- * fake otherwise. Clerk names its own accounts, so only a run with a fake can be told which ID to
- * make, which is what a test asking for a particular one is really asking for.
- */
 async function makeAccount(
 	clerk: ClerkFake,
 	clerkRun: ClerkRun | null,
 ): Promise<ClerkUser> {
+	// Real Clerk assigns the ID; the fake can accept a test-chosen ID.
 	if (clerkRun !== null) {
 		return await clerkRun.createUser(toClerkTestEmail());
 	}
@@ -509,7 +449,6 @@ const fakeHetznerProject: HetznerProject = {
 };
 
 type World = Readonly<{
-	/** Where the deployment fetches the keys that sign-in tokens are signed by. */
 	issuerUrl: string;
 	fake: Fake;
 	clerk: ClerkFake;
@@ -525,7 +464,7 @@ function toDeploymentVariables({
 	hetzner,
 }: World) {
 	return {
-		// biome-ignore-start lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+		// biome-ignore-start lint/style/useNamingConvention: environment variable names
 		CLERK_FRONTEND_API_URL: issuerUrl,
 		CLERK_SECRET_KEY: "sk_test_composery_tests_never_reach_clerk",
 		CLERK_WEBHOOK_SIGNING_SECRET: webhookSecret,
@@ -537,19 +476,16 @@ function toDeploymentVariables({
 		HCLOUD_SERVER_TYPE: fakeServerType,
 		HCLOUD_FAKE_URL: fake.url,
 		SSH_ACCESS_ENCRYPTION_KEYS: sshAccessEncryptionKeys.join(","),
-		// biome-ignore-end lint/style/useNamingConvention: environment variable names use CONSTANT_CASE
+		// biome-ignore-end lint/style/useNamingConvention: environment variable names
 	};
 }
 
-/**
- * Pushes the repository's functions from a copy. Convex keeps a package external only when an import
- * resolves inside the project folder, so the functions sit beside a link to the repository's modules.
- */
 async function pushFunctions(
 	context: RunContext,
 	backend: RunningBackend,
 	workspaceName: string,
 ) {
+	// Push from a copy so generated backend state cannot modify the working tree.
 	const workspace = path.join(context.folder, workspaceName);
 	mkdirSync(workspace, { recursive: true });
 	for (const file of ["package.json", "tsconfig.base.json", "convex.json"]) {
@@ -581,10 +517,10 @@ async function pushFunctions(
 			cwd: workspace,
 			environment: {
 				...context.environment,
-				// biome-ignore-start lint/style/useNamingConvention: the Convex CLI reads these names
+				// biome-ignore-start lint/style/useNamingConvention: external variable names
 				CONVEX_SELF_HOSTED_URL: backend.url,
 				CONVEX_SELF_HOSTED_ADMIN_KEY: context.adminKey,
-				// biome-ignore-end lint/style/useNamingConvention: the Convex CLI reads these names
+				// biome-ignore-end lint/style/useNamingConvention: external variable names
 			},
 		},
 	);
@@ -631,13 +567,8 @@ function readPackageVersion(name: string) {
 	).version as string;
 }
 
-/**
- * A backend's storage after one push, kept so that later runs start from it. A fresh backend installs
- * external packages from the network during its first push, which takes a minute; a copy of this
- * storage already holds them. It holds functions and no data, and a change to what it depends on
- * names a new template.
- */
 async function requireStorageTemplate(context: RunContext) {
+	// Cache functions and installed packages, never test data.
 	const key = createHash("sha256")
 		.update(
 			JSON.stringify([
@@ -655,9 +586,9 @@ async function requireStorageTemplate(context: RunContext) {
 	}
 	const building = path.join(context.folder, "template");
 	const issuer = startSignInIssuer();
-	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
 	const fake = await useHetznerFake();
-	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
 	const clerk = await useClerkFake();
 	const backend = await startBackend(context, building);
 	try {
@@ -681,7 +612,7 @@ async function requireStorageTemplate(context: RunContext) {
 	try {
 		renameSync(building, template);
 	} catch (error) {
-		// Another run finished the same template first, which is just as good.
+		// Another run may have completed the same template first.
 		if (!existsSync(template)) {
 			throw error;
 		}
@@ -698,7 +629,7 @@ async function callFunction<Reference extends AnyFunction>(
 	const reply = await fetch(`${url}/api/function`, {
 		method: "POST",
 		headers: {
-			// biome-ignore lint/style/useNamingConvention: HTTP defines the Authorization header name
+			// biome-ignore lint/style/useNamingConvention: external header name
 			Authorization: authorization,
 			"Content-Type": "application/json",
 		},
@@ -728,7 +659,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	const folder = path.join(runsRoot, `${Date.now()}-${process.pid}-${hostTag}`);
 	mkdirSync(folder, { recursive: true });
 	const temporary = toTemporaryFolder();
-	// Registered first, so it runs last: after every process has stopped and released its files.
 	registerCleanup(() => {
 		removeWhenPossible(() => removeRunFolder(folder), folder);
 		removeWhenPossible(() => removeFolder(temporary), temporary);
@@ -753,25 +683,19 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 	cpSync(template, storage, { recursive: true });
 	const issuer = startSignInIssuer();
 	registerCleanup(issuer.stop);
-	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
 	const fake = await useHetznerFake();
-	// biome-ignore lint/correctness/useHookAtTopLevel: the harness names its per-run singletons use*, and this is not React
+	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
 	const clerk = await useClerkFake();
-	// A run given a secret works in an instance of its own, making accounts there and signing in as
-	// them. Without one, the fake holds the accounts and this run's issuer signs the tokens.
 	const clerkSecret = getClerkSecret();
 	const clerkRun =
 		clerkSecret === null ? null : await createClerkRun(clerkSecret);
 	if (clerkRun === null) {
-		// The deployment holds an account gone only when both sides name one Clerk instance, so the
-		// fake publishes the keys the sign-in tokens are signed by. A real instance publishes its own.
 		clerk.setKeys(await readIssuerKeys(issuer));
 	}
 	const backend = await startBackend(context, storage);
 	registerCleanup(backend.stop);
 	const sshAccessEncryptionKeys = toSshAccessEncryptionKeys();
-	// A run given a token works in a project of its own, with its own controller identifier and its
-	// own firewall. Without one, the fake answers and both are made up.
 	const hetznerToken = getHetznerToken();
 	const hetzner =
 		hetznerToken === null
@@ -781,8 +705,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		context,
 		backend,
 		toDeploymentVariables({
-			// A run that meets Clerk is signed in with tokens Clerk signed, so the deployment trusts
-			// that instance rather than this run's own issuer.
 			issuerUrl: clerkRun === null ? issuer.url : requireClerkIssuer(),
 			fake,
 			clerk,
@@ -802,8 +724,6 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 				logger: false,
 			});
 			if (subject !== undefined) {
-				// Clerk mints the token when a run meets Clerk, so a signed-in test takes the same
-				// verification path a signed-in person takes, down to whose key signed it.
 				client.setAuth(
 					clerkRun === null
 						? issuer.signIn(subject)
@@ -844,8 +764,8 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 
 let convexBackend: Promise<ConvexBackend> | undefined;
 
-/** One backend for the whole run: each test uses its own users and records, so none sees another's. */
 export function useConvexBackend() {
+	// One backend is shared; tests isolate themselves with their own records.
 	convexBackend ??= startConvexBackend();
 	return convexBackend;
 }

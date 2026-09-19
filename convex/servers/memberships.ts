@@ -26,7 +26,6 @@ import {
 import { serverPermissions } from "./schema";
 import { serverSummary, toServerSummary } from "./summary";
 
-/** A membership that a caller named by ID, which may already be gone. */
 export async function requireServerMembership(
 	ctx: QueryCtx,
 	membershipId: Id<"serverMemberships">,
@@ -39,13 +38,11 @@ export async function requireServerMembership(
 }
 
 const removeBatchSize = 100;
-// Bounds the people on one server, so each access check and member list stays small.
 const maxMembershipsPerServer = 100;
 
 const membershipSummary = v.object({
 	_id: v.id("serverMemberships"),
 	userId: v.id("users"),
-	// Clerk makes both optional, so a caller must not be told there is always one.
 	email: v.optional(v.string()),
 	imageUrl: v.optional(v.string()),
 	permissions: serverPermissions,
@@ -71,7 +68,6 @@ async function isMembershipLimitReached(
 	return memberships.length === maxMembershipsPerServer;
 }
 
-/** Servers that other people share with the user. Owned servers are in ownership.listMine. */
 export const listMine = query({
 	args: { paginationOpts: paginationOptsValidator },
 	returns: paginationResultValidator(serverSummary),
@@ -146,9 +142,7 @@ export const add = mutation({
 		if (lookupFailure !== null) {
 			return lookupFailure;
 		}
-		// The address only finds somebody; the grant is kept against their ID. An address can move
-		// from one account to another, and each account reaches us on its own webhook, so for a
-		// moment two accounts here can hold the same one. Choosing between them would be guessing.
+		// Email finds candidates; the grant is stored by user ID because addresses can move.
 		const matches = await ctx.db
 			.query("users")
 			.withIndex("by_email", (q) => q.eq("email", email.trim().toLowerCase()))
@@ -245,7 +239,6 @@ export const removeAll = internalMutation({
 	},
 });
 
-/** Runs after a user is deleted. */
 export const removeForUser = internalMutation({
 	args: { userId: v.id("users") },
 	returns: v.null(),

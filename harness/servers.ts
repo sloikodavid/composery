@@ -6,14 +6,13 @@ import type { Id } from "../convex/_generated/dataModel";
 import type { ConvexBackend } from "./convex/backend";
 
 const suffixBytes = 6;
-/** Room enough that no test waits on another test's servers. */
+// Leaves room for concurrent test-owned servers without waiting on another test.
 const quotaLimit = 10;
 const settleTimeoutMs = 240_000;
 const settleDelayMs = 250;
-// The deployment paces its own work, so asking for a sweep faster than that starves the worker.
+// Faster sweeps would compete with the worker's own pacing.
 const sweepEveryMs = 2000;
 
-/** A signed-in account with room for servers, at its own level and at the deployment's. */
 export async function createServerOwner(backend: ConvexBackend) {
 	const account = await backend.createAccount();
 	const client = backend.createClient(account.id);
@@ -33,7 +32,6 @@ export async function createServerOwner(backend: ConvexBackend) {
 	return client;
 }
 
-/** Asks for a server under a name no other test uses. */
 export async function createServer(client: ConvexHttpClient) {
 	const created = await client.mutation(api.servers.lifecycle.create, {
 		name: `test-${randomBytes(suffixBytes).toString("hex")}`,
@@ -47,7 +45,6 @@ export async function createServer(client: ConvexHttpClient) {
 
 export type ServerClient = Awaited<ReturnType<typeof createServerOwner>>;
 
-/** What the backend recorded, which is where a stuck allocation says why it stopped. */
 export async function readServerBackendRecord(
 	backend: ConvexBackend,
 	serverId: Id<"servers">,
@@ -68,7 +65,6 @@ export async function readServerBackendRecord(
 	};
 }
 
-/** Hetzner's number for a server, which a request about that server carries in its path. */
 export async function requireHetznerServerId(
 	backend: ConvexBackend,
 	serverId: Id<"servers">,
@@ -100,7 +96,6 @@ const goneParts = {
 	managementAccess: "missing",
 } as const;
 
-/** What the panel shows for a server, or `gone` once deletion has removed it. */
 export async function readServerStatus(
 	client: ServerClient,
 	serverId: Id<"servers">,
@@ -118,10 +113,6 @@ export async function readServerStatus(
 	}
 }
 
-/**
- * Waits until the worker has taken the allocation as far as it can, asking for the sweep that the
- * deployment's own cron runs, so that a test waits for the work rather than for the clock.
- */
 export async function settleServer(
 	backend: ConvexBackend,
 	client: ServerClient,
@@ -132,8 +123,6 @@ export async function settleServer(
 	let status = "creating";
 	let sweptAt = 0;
 	while (Date.now() < deadline) {
-		// A delete that finishes takes the server with it, so there is no status left to read.
-		// That absence is the outcome, and it is reported as one rather than as an error.
 		const state = await readServerStatus(client, serverId);
 		status = state.status;
 		if (status === until) {

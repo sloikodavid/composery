@@ -6,19 +6,9 @@ import {
 import type { ContractChecker } from "../contracts/check";
 import { registerCleanup } from "./cleanup";
 
-/**
- * What every fake of an outside system shares: it listens on this machine alone, records what
- * Composery sent, answers as the system would, and holds both halves of the exchange to that
- * system's own published description. It never decides whether a test passes.
- *
- * A fake can also produce outcomes the real system cannot be asked for, such as a reply that
- * never arrives, so a test can make a path fail on purpose.
- */
-
 const loopbackHost = "127.0.0.1";
 const apiPrefixPattern = /^\/v1\//;
 
-/** What Composery sent, so a test can count requests or read a body. */
 export type FakeRequest = Readonly<{
 	method: string;
 	path: string;
@@ -26,32 +16,20 @@ export type FakeRequest = Readonly<{
 	body: unknown;
 }>;
 
-/**
- * A reply as the system would send it. A null body means no content. Headers are for what a system
- * says beside the body and Composery reads, such as what is left of an hour's requests.
- */
 export type FakeReply = Readonly<{
 	status: number;
 	body: unknown;
 	headers?: Readonly<Record<string, string>>;
 }>;
 
-/**
- * `answer` acts as the system would. `lose` acts too, and then drops the connection, so Composery
- * learns nothing about a request that took effect. A status and body is a refusal. Headers alone
- * act as the system would and say these beside the answer, such as an hour that is nearly spent.
- */
+/** "lose" means the request may have taken effect without a response. */
 export type FakeOutcome =
 	| "answer"
 	| "lose"
 	| FakeReply
 	| Readonly<{ headers: Readonly<Record<string, string>> }>;
 
-/**
- * Which requests a count or a scripted outcome is about. One fake and one worker serve the whole
- * run, so a match that names only a method and a path also catches every other test's servers.
- * Name what belongs to the test: its server's ID in the path, or its allocation in the body.
- */
+/** Matches must include a test-owned path or body identity. */
 export type FakeMatch = Readonly<{
 	method: string;
 	path: RegExp;
@@ -67,39 +45,24 @@ function isMatch(match: FakeMatch, request: FakeRequest) {
 }
 
 export type Fake = Readonly<{
-	/** The loopback address to give the setting that points at this system. */
 	url: string;
-	/** Every request in order, oldest first. */
 	requests: () => readonly FakeRequest[];
-	/** Every way this run disagreed with the system's description of itself. */
 	problems: () => readonly string[];
-	/** Anything else this fake noticed, such as a promise the system's own client makes. */
 	noteProblem: (problem: string) => void;
 	countRequests: (match: FakeMatch) => number;
-	/**
-	 * Applies once, to the next request that matches, and returns whether it has applied yet. A test
-	 * must check that: a scripted failure that never happens leaves the ordinary path, which usually
-	 * passes the same assertions, and the test then proves nothing while looking green.
-	 */
+	/** Applies to the next match and reports whether it fired. */
 	scriptOnce: (match: FakeMatch, outcome: FakeOutcome) => () => boolean;
 	stop: () => void;
 }>;
 
 export type FakeOptions = Readonly<{
-	/** The system's name, for the message when the fake cannot start. */
 	system: string;
 	checker: ContractChecker;
 	answer: (request: FakeRequest) => FakeReply;
-	/**
-	 * The real system, when a run was given its credentials. Every request is passed on and every
-	 * answer is the system's own, so the same tests ask the same questions of the thing itself:
-	 * what it accepts, what it sends back, and how long it takes. What a test scripts still
-	 * happens, which is how a reply that never arrives is a real one that never arrives.
-	 */
+	/** Optional real-service forwarding for integration runs. */
 	forward?: (request: FakeRequest) => Promise<FakeReply>;
-	/** Sees every reply that is sent, so that the fake's own state can follow what a test scripted. */
+	/** Sees every reply, including scripted replies. */
 	observe?: (reply: FakeReply) => void;
-	/** Anything else this system promises about a request, such as a version header. */
 	check?: (request: FakeRequest) => readonly string[];
 }>;
 
@@ -162,8 +125,6 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		body: unknown,
 	) => {
 		const method = incoming.method ?? "GET";
-		// Composery calls the same paths it calls at the system, under the same prefix. What is
-		// left is spelled the way the description spells it, leading slash and all.
 		const path = (incoming.url ?? "").replace(apiPrefixPattern, "/");
 		const request: FakeRequest = {
 			method,
@@ -172,7 +133,6 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			body,
 		};
 		requests.push(request);
-		// Composery's own request is held to the same description as the reply.
 		options.checker.listRequestProblems(method, path, body);
 		for (const problem of options.check?.(request) ?? []) {
 			options.checker.noteProblem(problem);
@@ -180,7 +140,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 
 		const outcome = takeScript(request);
 		if (outcome === "lose") {
-			// The system did the work; the answer never arrives. Composery must not assume it failed.
+			// The request may have succeeded; the caller must reconcile.
 			await answer(request);
 			incoming.socket.destroy();
 			return;
@@ -198,7 +158,6 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 						...answered,
 						headers: { ...answered.headers, ...outcome.headers },
 					};
-		// The system's own description decides whether it could have sent this.
 		options.checker.listReplyProblems(
 			method,
 			path,

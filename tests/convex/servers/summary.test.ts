@@ -1,10 +1,7 @@
 import { expect, test } from "bun:test";
 import { toServerFeatures } from "../../../convex/servers/summary";
 
-/**
- * The promise the parts exist for: one part being wrong says which, and stops only what depends on
- * it. Every rule lives in this one function, so this is where it can be held to that promise.
- */
+// Part failures are independent: management access must not block power or deletion.
 
 const working = {
 	server: "ok",
@@ -22,8 +19,6 @@ test("a server with nothing wrong can be used for everything", () => {
 });
 
 test("what Composery cannot get into can still be started, stopped and deleted", () => {
-	// Somebody removed our key, or replaced the server's own. Their server is theirs to change,
-	// and none of that has anything to do with turning it off.
 	for (const managementAccess of ["missing", "mismatch"] as const) {
 		const features = toServerFeatures({ ...working, managementAccess });
 		expect(features.power).toEqual({ status: "available" });
@@ -36,8 +31,6 @@ test("what Composery cannot get into can still be started, stopped and deleted",
 });
 
 test("rules or addresses that are not what we recorded stop nothing", () => {
-	// An admin detached the firewall, or an address was deleted at the provider. Both are worth
-	// saying and neither stops a power command, which is what one word for everything used to do.
 	const features = toServerFeatures({
 		...working,
 		firewall: "missing",
@@ -55,7 +48,6 @@ test("a server nobody has looked at yet claims nothing", () => {
 		managementAccess: "unknown",
 	});
 	expect(features.power).toEqual({ status: "unknown", because: "server" });
-	// Not knowing whether we can sign in is not the same as knowing we cannot.
 	expect(features.sshKeys).toEqual({ status: "unknown", because: "server" });
 	expect(features.deletion).toEqual({ status: "available" });
 });

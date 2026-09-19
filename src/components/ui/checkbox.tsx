@@ -22,7 +22,6 @@ type CheckboxProps = Omit<
 	label: ReactNode;
 };
 
-/** A native checkbox with a label, optional help, and a stable message row. */
 export function Checkbox({
 	"aria-describedby": ariaDescribedBy,
 	"aria-invalid": ariaInvalid,
