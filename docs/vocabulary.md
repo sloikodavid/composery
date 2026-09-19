@@ -57,7 +57,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `host key conflict` | A second, different host key reported for one allocation after its host key was pinned | |
 | `harness` | Test code that starts, isolates, and stops what tests need, such as an SSH server or a Convex backend | fixture |
 | `fake` | A working, simplified copy of another system that tests run instead of it, in the sense the xUnit test patterns give the word. It may be told what to answer for one request, and it never decides whether a test passes | mock, stub, stand-in |
-| `real` | The system itself, rather than a fake of it. A run that reaches one is a real run, named for what it reaches: `bun run real:hetzner`. The tests are the same either way, so there is no such thing here as a real test | live, external, integration |
+| `real` | The system itself, rather than a fake of it. A run reaches one when it is asked to, by the system's own name: `HETZNER=real`. The tests are the same either way, so there is no such thing here as a real test | live, external, integration |
 | `session` | A recorded exchange between a person and an AI assistant, kept in `docs/sessions/` | conversation, transcript, research |
 | `turn` | What one side of a session says before the other answers | |
 | `session event` | A point in a session that neither side said, such as a command, an interruption, or a compaction | |

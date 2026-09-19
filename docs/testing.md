@@ -15,7 +15,7 @@ Every test asks one authority whether the result is right, and the authority mus
 | The Convex backend | functions, authorization, error codes, transactions | a real local Convex backend |
 | Clerk's own SDK | that a webhook is genuine | a fake Clerk on loopback |
 | A system's published description | the shape of what we send, and of what a fake answers | `contracts/<system>.json` |
-| Hetzner | that the provider really did it | a project of its own, and `bun run real:hetzner` |
+| Hetzner | that the provider really did it | a project of its own, and `HETZNER=real` |
 
 A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.
 
@@ -41,9 +41,9 @@ So the harness can be tested like anything else, at `tests/harness/<path>.test.t
 
 `bun test` runs every test that is safe to run: nothing it starts costs money or reaches a system that someone depends on. `docs/requirements.md` says what a machine needs; a missing requirement fails the run with a message that says what to do, and nothing is skipped quietly.
 
-`bun run real:hetzner` runs the same tests against a real Hetzner project, and is the only command that reaches one. Nothing about the tests changes: the fake passes each request on, so what is real is the run, not a second kind of test, and there is no category here to name or to keep in step. It is a script rather than a flag to remember, and it names the one file that holds credentials, `.env.real`, which nothing loads by itself. Bun reads `.env` and `.env.test` into every `bun test`, so `bun check` fails if either sets a variable that `.env.real.example` names.
+`HETZNER=real bun test tests/convex/allocations` runs the same tests against a real Hetzner project. Nothing about the tests changes: the fake passes each request on, so what is real is the run, not a second kind of test, and there is no category here to name or to keep in step.
 
-Each real run is asked for by the system it reaches, and there is deliberately no script that runs them together: they cost money at different vendors, and one command that spends at all of them is not a thing anybody should be able to type by accident.
+One variable per system says which of the two that run wants, and the credentials sit in `.env.test` between runs without meaning anything on their own. Bun loads that file into every run, so what it holds is the default; the environment beats the file, so a single run says otherwise with `HETZNER=real` or `HETZNER=fake` in front of the command. A run that asks for the real thing without a token fails rather than falling back, because a fake run that reports success in the same words as a real one hides what did not happen.
 
 ## Pins
 
@@ -89,7 +89,7 @@ The fake answers what Composery asks, and produces what Hetzner cannot be asked 
 
 Tests of the worker wait on the deployment's own pacing, which is slow on purpose: it sweeps every ten seconds and limits its own requests. A test may ask for a sweep, but not faster than the deployment's own pace, or the worker starves.
 
-The same tests can meet Hetzner itself, and never from plain `bun test`. Given a token in `.env.real`, which only `bun run real:hetzner` passes to a run, the fake passes every request on to Hetzner and brings back exactly what Hetzner said: the tests do not change, the contract still holds both halves, and a test that loses a reply loses a real one. The run makes its own firewall, labels everything it creates with its own identity, removes all of it at the end, and removes what a killed run left behind, so anything still in that project is a leak. `docs/setups/hetzner-cloud.md` says what the project needs. Nobody has run it yet, which `docs/roadmap.md` says as well, so nothing here has met the real provider since the harness was built.
+The same tests can meet Hetzner itself, and never by accident. Given a token in `.env.test` and `HETZNER=real` for that run, the fake passes every request on to Hetzner and brings back exactly what Hetzner said: the tests do not change, the contract still holds both halves, and a test that loses a reply loses a real one. The run makes its own firewall, labels everything it creates with its own identity, removes all of it at the end, and removes what a killed run left behind, so anything still in that project is a leak. `docs/setups/hetzner-cloud.md` says what the project needs. Nobody has run it yet, which `docs/roadmap.md` says as well, so nothing here has met the real provider since the harness was built.
 
 ## Clerk
 

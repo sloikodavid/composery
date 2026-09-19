@@ -23,8 +23,8 @@ Tests reach a fake by default and can reach Hetzner itself for one run. That run
 
 1. Create a second Hetzner Cloud project, used by nothing that anybody depends on.
 2. In its **Security > API Tokens**, create a **Read & Write** token.
-3. Copy `.env.real.example` to `.env.real`, which git ignores, and put the token in `HCLOUD_TOKEN`. Nothing loads that file on its own: a plain `bun test` must not be able to reach a real project, spend money, or leave anything behind. `bun check` fails if a file Bun would load by itself, such as `.env` or `.env.test`, exists here at all.
-4. Run `bun run real:hetzner`.
+3. Copy `.env.test.example` to `.env.test`, which git ignores, put the token in `HCLOUD_TOKEN`, and leave `HETZNER=fake`. The token alone changes nothing: a plain `bun test` keeps the fake, so the credentials can stay there between runs.
+4. Run `HETZNER=real bun test tests/convex/allocations`. Setting it to `real` in the file makes every run meet Hetzner instead, and `HETZNER=fake bun test` still keeps the fake for one run.
 
 The run makes its own firewall and labels everything it creates with its own identity, removes all of it at the end, and removes what a run that was killed left behind. Anything still in that project afterwards is a leak, and it is visible as one. Nothing else in the repository needs a Hetzner token, and none is needed to run the tests.
 

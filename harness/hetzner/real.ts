@@ -7,7 +7,7 @@ import type { FakeReply, FakeRequest } from "../fake";
  * project that holds nothing else: the run labels what it makes, removes it at the end, and removes
  * what an earlier run left behind, so anything still in that project is a leak somebody can see.
  *
- * Put the token in `.env.real` and run `bun run real:hetzner`.
+ * Put the token in `.env.test` and run `HETZNER=real bun test tests/convex/allocations`.
  */
 
 const apiUrl = "https://api.hetzner.cloud/v1";
@@ -21,21 +21,27 @@ type Collection = (typeof collections)[number];
 type Owned = { id: number; created: string; labels: Record<string, string> };
 
 /**
- * The token for the project a real run may use, or nothing, which keeps the fake a fake.
+ * The token for the project this run may use, or nothing, which keeps the fake a fake.
  *
- * A run that asked to meet Hetzner and holds no token fails here rather than passing quietly: it
- * would otherwise report success in the same words as a run that met the provider, and what did
- * not happen would be invisible.
+ * `HETZNER` says which one this run wants, and nothing else does: a token that is merely present
+ * changes nothing, so the credentials can stay in `.env.test` between runs. The file holds the
+ * default and the environment beats the file, so `HETZNER=real bun test ...` meets Hetzner for one
+ * run and `HETZNER=fake bun test` keeps the fake for one run.
+ *
+ * A run that asked for the real thing and was given no token fails here rather than falling back,
+ * because it would otherwise report success in the same words as a run that met Hetzner.
  */
 export function getHetznerToken() {
+	if (process.env.HETZNER !== "real") {
+		return null;
+	}
 	const token = process.env.HCLOUD_TOKEN;
-	const held = token === undefined || token === "" ? null : token;
-	if (held === null && process.env.COMPOSERY_REAL === "hetzner") {
+	if (token === undefined || token === "") {
 		throw new Error(
-			"This run was asked to meet Hetzner and .env.real holds no HCLOUD_TOKEN. Copy .env.real.example and fill it in, or run `bun test` for the fake.",
+			"This run asked for the real Hetzner and HCLOUD_TOKEN holds nothing. Fill it in, or set HETZNER=fake.",
 		);
 	}
-	return held;
+	return token;
 }
 
 async function call(

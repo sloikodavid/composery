@@ -22,7 +22,6 @@
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
 		"verify": "bun check && bun test && next build",
-		"real:hetzner": "COMPOSERY_REAL=hetzner bun --env-file=.env.real test tests/convex/allocations",
 		"session:import": "bun scripts/sessions/import.ts"
 	},
 	"dependencies": {

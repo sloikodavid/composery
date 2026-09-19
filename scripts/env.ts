@@ -1,16 +1,13 @@
 /**
- * Holds the repository's environment files to three rules, because each mistake is silent.
- *
- * Bun reads `.env` and `.env.test` into every `bun test`. A credential for a real service in one
- * of them would send a plain test run at that service, so no file Bun loads by itself may set a
- * variable that `.env.real.example` names. Those files may hold anything else.
+ * Holds the repository's environment files to two rules, because each mistake is silent.
  *
  * Every tool reads these from the directory it was started in, and none of them looks upwards, so
  * a `.env` file in a folder is loaded when somebody's shell happens to stand there and ignored
  * when it does not. They live at the top of the repository, where the commands run.
  *
- * An example file is how somebody learns that a variable exists, so a file with real values and
- * its example must name the same variables.
+ * An example file is how somebody learns that a variable exists, so a file with real values may
+ * only set what its example names. It need not set all of them: a variable left out is a service
+ * left as a fake, which is what an empty one means too.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -18,9 +15,6 @@ import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dir, "..");
 const exampleSuffix = ".example";
-const realCredentials = ".env.real.example";
-// What Bun loads into a test run on its own, whatever the run was asked to do.
-const loadedByBun = [".env", ".env.test", ".env.test.local"];
 const skippedDirectories = new Set(["node_modules", "tmp"]);
 
 function toVariables(file: string) {
@@ -61,7 +55,6 @@ const files = readdirSync(repositoryRoot).filter((file) =>
 	file.startsWith(".env"),
 );
 const problems: string[] = [];
-const credentials = toVariables(realCredentials);
 
 for (const file of listEnvFiles(".")) {
 	if (path.posix.dirname(file) !== ".") {
@@ -71,28 +64,13 @@ for (const file of listEnvFiles(".")) {
 	}
 }
 
-for (const file of loadedByBun) {
-	for (const name of toVariables(file)) {
-		if (credentials.has(name)) {
-			problems.push(
-				`${file} sets ${name}, and Bun reads that file into every \`bun test\`. It belongs in .env.real.`,
-			);
-		}
-	}
-}
-
 for (const example of files.filter((file) => file.endsWith(exampleSuffix))) {
 	const file = example.slice(0, -exampleSuffix.length);
 	if (!files.includes(file)) {
 		continue;
 	}
-	const named = toVariables(example);
-	const held = toVariables(file);
-	for (const name of toMissing(held, named)) {
+	for (const name of toMissing(toVariables(file), toVariables(example))) {
 		problems.push(`${file} sets ${name}, which ${example} does not name.`);
-	}
-	for (const name of toMissing(named, held)) {
-		problems.push(`${example} names ${name}, which ${file} does not set.`);
 	}
 }
 
