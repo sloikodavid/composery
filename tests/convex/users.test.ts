@@ -1,5 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
-import { createSign, generateKeyPairSync, randomBytes } from "node:crypto";
+import { createSign, generateKeyPairSync } from "node:crypto";
 import { ConvexError } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import {
@@ -9,7 +9,6 @@ import {
 
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 60_000;
-const subjectSuffixBytes = 6;
 const tokenLifetimeSeconds = 600;
 const millisecondsPerSecond = 1000;
 
@@ -19,19 +18,13 @@ beforeAll(async () => {
 	backend = await useConvexBackend();
 }, setupTimeoutMs);
 
-/** A Clerk user ID that no other test uses, so tests that share the backend never share a user. */
-function createSubject() {
-	return `user_${randomBytes(subjectSuffixBytes).toString("hex")}`;
-}
-
 test(
 	"a signed-in user resolves to the record synced for them, and a signed-out caller to nothing",
 	async () => {
-		const subject = createSubject();
-		await backend.createAccount(subject);
+		const { id } = await backend.createAccount();
 		expect(
-			await backend.createClient(subject).query(api.users.getCurrent, {}),
-		).toMatchObject({ clerkUserId: subject });
+			await backend.createClient(id).query(api.users.getCurrent, {}),
+		).toMatchObject({ clerkUserId: id });
 		expect(await backend.createClient().query(api.users.getCurrent, {})).toBe(
 			null,
 		);
@@ -42,10 +35,11 @@ test(
 test(
 	"a verified sign-in without a synced record resolves to nothing",
 	async () => {
-		const unsynced = createSubject();
-		expect(
-			await backend.createClient(unsynced).query(api.users.getCurrent, {}),
-		).toBe(null);
+		// Held by Clerk, and nothing here knows of them yet, which is every caller's first request.
+		const { id } = await backend.createAccount({ synced: false });
+		expect(await backend.createClient(id).query(api.users.getCurrent, {})).toBe(
+			null,
+		);
 	},
 	testTimeoutMs,
 );
@@ -53,9 +47,8 @@ test(
 test(
 	"a token that the issuer did not sign is refused, even when it names a synced user",
 	async () => {
-		const subject = createSubject();
-		await backend.createAccount(subject);
-		const genuine = backend.signIn(subject).split(".");
+		const { id } = await backend.createAccount();
+		const genuine = backend.signIn(id).split(".");
 		const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 		const issuedAt = Math.floor(Date.now() / millisecondsPerSecond);
 		const payload = Buffer.from(

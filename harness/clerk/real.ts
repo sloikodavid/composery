@@ -12,6 +12,7 @@ import type { FakeReply, FakeRequest } from "../fake";
 
 const apiUrl = "https://api.clerk.com/v1";
 const runTagBytes = 5;
+const passwordBytes = 24;
 const leftoverAgeMs = 3_600_000;
 // A delete is answered before Clerk has carried it out, so removal is asked for again until the
 // instance stops listing them.
@@ -49,6 +50,14 @@ export function getClerkSecret() {
 	if (!secret) {
 		throw new Error(
 			"This run asked for the real Clerk and CLERK_SECRET_KEY holds nothing. Fill it in, or set CLERK_MODE=fake.",
+		);
+	}
+	if (!secret.startsWith("sk_")) {
+		// Clerk's dashboard copies the whole assignment, so a pasted value can begin with the name
+		// of the variable it was pasted into. Clerk answers that with "key invalid", which reads as
+		// a wrong key rather than a line to look at.
+		throw new Error(
+			"CLERK_SECRET_KEY does not look like a Clerk secret key, which starts with sk_. A value copied from the dashboard may carry the variable name with it.",
 		);
 	}
 	if (!process.env.CLERK_FRONTEND_API_URL) {
@@ -136,16 +145,12 @@ export function toClerkForward(secret: string) {
 }
 
 /**
- * The accounts one run made, asked for by the mark it put on them, or every account any run left
- * behind. Clerk reads `external_id` as a filter, so its own answer is what a run acts on; there is
- * no filter for the prefix they share, which is why finding a dead run's accounts reads a page.
+ * Every account any run of this repository made. One page is the whole instance: a development
+ * instance holds a hundred accounts, which is why a run that leaves its own behind is the next
+ * run's problem, and why a page of that size needs no second request.
  */
-async function listOwned(secret: string, externalId: string | null) {
-	const query =
-		externalId === null
-			? `limit=${listPageSize}`
-			: `external_id=${encodeURIComponent(externalId)}&limit=${listPageSize}`;
-	const body = await require2xx(secret, "GET", `/users?${query}`);
+async function listOwned(secret: string) {
+	const body = await require2xx(secret, "GET", `/users?limit=${listPageSize}`);
 	const held = Array.isArray(body) ? (body as ClerkUserReply[]) : [];
 	return held.filter((user) =>
 		(user.external_id ?? "").startsWith(externalIdPrefix),
@@ -159,14 +164,14 @@ async function listOwned(secret: string, externalId: string | null) {
  */
 export async function removeClerkLeftovers(
 	secret: string,
-	externalId: string | null,
+	runTag: string | null,
 ) {
 	const isOurs = (user: ClerkUserReply) =>
-		externalId === null
+		runTag === null
 			? Date.now() - user.created_at > leftoverAgeMs
-			: user.external_id === externalId;
+			: (user.external_id ?? "").startsWith(`${externalIdPrefix}${runTag}-`);
 	const deadline = Date.now() + removeTimeoutMs;
-	let held = (await listOwned(secret, externalId)).filter(isOurs);
+	let held = (await listOwned(secret)).filter(isOurs);
 	while (held.length > 0) {
 		for (const user of held) {
 			await call(secret, "DELETE", `/users/${user.id}`);
@@ -178,7 +183,7 @@ export async function removeClerkLeftovers(
 					.join(", ")}`,
 			);
 		}
-		held = (await listOwned(secret, externalId)).filter(isOurs);
+		held = (await listOwned(secret)).filter(isOurs);
 	}
 }
 
@@ -200,18 +205,27 @@ export type ClerkRun = Readonly<{
  * an earlier run left behind goes first.
  */
 export async function createClerkRun(secret: string): Promise<ClerkRun> {
-	const externalId = `${externalIdPrefix}${randomBytes(runTagBytes).toString("hex")}`;
+	const runTag = randomBytes(runTagBytes).toString("hex");
 	await removeClerkLeftovers(secret, null);
 	registerCleanup(async () => {
-		await removeClerkLeftovers(secret, externalId);
+		await removeClerkLeftovers(secret, runTag);
 	});
 	const tokens = new Map<string, string>();
+	// Clerk keeps an external ID to one account, so each of a run's accounts carries its own and
+	// the run's own mark is what they share.
+	let made = 0;
 	return {
 		createUser: async (email) => {
+			made += 1;
 			const body = await require2xx(secret, "POST", "/users", {
 				// biome-ignore-start lint/style/useNamingConvention: the Clerk API names these fields
 				email_address: [email],
-				external_id: externalId,
+				external_id: `${externalIdPrefix}${runTag}-${made}`,
+				// An instance asks for whatever it asks of the people who sign up, and a default one
+				// asks for a password. Nothing here ever signs in with it: a run asks Clerk for a
+				// session instead, so this is a random value that leaves with the account.
+				password: randomBytes(passwordBytes).toString("base64url"),
+				skip_password_checks: true,
 				// biome-ignore-end lint/style/useNamingConvention: the Clerk API names these fields
 			});
 			const { id } = body as ClerkUserReply;

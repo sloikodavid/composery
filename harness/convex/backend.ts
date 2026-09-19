@@ -111,8 +111,12 @@ export type ConvexBackend = Readonly<{
 	 * One account, as it really exists: held by Clerk and synced into our tables. A test that made
 	 * only the second half would be describing a person Clerk never heard of, and the hourly
 	 * reconcile would rightly delete them part way through the test.
+	 *
+	 * Clerk names its own accounts, so a test reads the ID back rather than choosing it. `synced`
+	 * false leaves the account known to Clerk and unknown here, which is a caller who has signed in
+	 * and has no record yet.
 	 */
-	createAccount: (clerkUserId?: string) => Promise<ClerkUser>;
+	createAccount: (options?: { synced?: boolean }) => Promise<ClerkUser>;
 	/**
 	 * The keys this run gave the deployment, the one that encrypts first. The deployment runs with a
 	 * second key from the start, as it does part way through a rotation, so a test can hold a stored
@@ -489,13 +493,11 @@ type HetznerProject = Readonly<{ controllerId: string; firewallId: number }>;
 async function makeAccount(
 	clerk: ClerkFake,
 	clerkRun: ClerkRun | null,
-	clerkUserId: string | undefined,
 ): Promise<ClerkUser> {
 	if (clerkRun !== null) {
 		return await clerkRun.createUser(toClerkTestEmail());
 	}
-	const id =
-		clerkUserId ?? `user_${randomBytes(accountSuffixBytes).toString("hex")}`;
+	const id = `user_${randomBytes(accountSuffixBytes).toString("hex")}`;
 	const account = { id, email: `${id}@example.com` };
 	clerk.setUser(account);
 	return account;
@@ -810,13 +812,11 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 			}
 			return client;
 		},
-		createAccount: async (clerkUserId) => {
-			if (clerkUserId !== undefined && clerkRun !== null) {
-				throw new Error(
-					"A run that meets Clerk cannot be told which account ID to make: Clerk gives it one.",
-				);
+		createAccount: async (options) => {
+			const account = await makeAccount(clerk, clerkRun);
+			if (options?.synced === false) {
+				return account;
 			}
-			const account = await makeAccount(clerk, clerkRun, clerkUserId);
 			await callFunction(
 				backend.url,
 				`Convex ${adminKey}`,
@@ -832,7 +832,8 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 			);
 			return account;
 		},
-		signIn: issuer.signIn,
+		signIn: (subject) =>
+			clerkRun === null ? issuer.signIn(subject) : clerkRun.tokenFor(subject),
 		readLog: backend.readLog,
 		siteUrl: backend.siteUrl,
 		webhookSecret,

@@ -101,6 +101,8 @@ The version of Clerk's API is pinned by the one its own client asks for. The fak
 
 The same tests can meet Clerk itself, given `CLERK_SECRET_KEY` and `CLERK_FRONTEND_API_URL` in `.env.test` and `CLERK_MODE=real` for that run. Accounts are then real: the run makes them through Clerk's own API, marks each with an `external_id` of its own, and signs in by asking Clerk for a session and a token for it, which Clerk documents for tests and allows on a development instance alone. So a signed-in test takes the verification path a signed-in person takes, down to whose key signed the token. Every account the run made is deleted at the end, and what a killed run left behind goes first: a development instance holds a hundred accounts, and one that fills up refuses sign-ups.
 
+The account tests ran that way on 19 September 2026 and passed, which is what proved a token Clerk minted is one this deployment accepts, and that a run leaves no account behind. Three things only that run could find were fixed on the way: an instance asks for a password of any account it holds, an external ID belongs to one account rather than to a run, and a secret pasted from Clerk's dashboard carries the variable's own name with it.
+
 Two things such a run does not cover, and it says so rather than passing quietly.
 
 A test that scripts Clerk cannot run against Clerk: an account that is there, one that is gone, a refusal, keys from another instance. Those are what `tests/convex/clerk.test.ts` and `tests/convex/clerk_http.test.ts` are made of, and each test in them is skipped and reported when the run meets Clerk. The controls behind them refuse too, so a test that reaches for one is told which run it belongs in rather than changing a fake nobody is reading.
