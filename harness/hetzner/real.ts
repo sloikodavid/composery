@@ -18,6 +18,10 @@ import type { FakeReply, FakeRequest } from "../fake";
 const controllerPrefix = "test-";
 const runTagBytes = 5;
 const leftoverAgeMs = 3_600_000;
+// A delete is answered before the provider has carried it out, so removal is asked for again
+// until nothing of that kind is left, and given long enough for a server to actually go.
+const removeTimeoutMs = 180_000;
+const removeDelayMs = 3000;
 const collections = ["servers", "primary_ips", "firewalls"] as const;
 const httpNoContent = 204;
 
@@ -97,8 +101,15 @@ async function remove(token: string, collection: Collection, id: number) {
 }
 
 /**
- * Removes what this run made, and what a run that was killed left behind. A server is deleted
- * first: Hetzner frees the addresses it held, and a firewall still applied to it cannot go.
+ * Removes what this run made, and what a run that was killed left behind.
+ *
+ * A server is deleted first, because Hetzner frees the addresses it held and a firewall still
+ * applied to it cannot go. That order is not enough on its own: a delete is answered before it has
+ * happened, so each kind is asked for again until the provider says there are none left. Asking
+ * once and reading the first refusal as "done" is how a firewall survived a run that passed.
+ *
+ * What cannot be removed is raised, because the only thing that makes "anything left in this
+ * project is a leak" true is that a run says so when it leaves one.
  */
 export async function removeHetznerLeftovers(
 	token: string,
@@ -109,9 +120,22 @@ export async function removeHetznerLeftovers(
 		controllerId === null
 			? Date.now() - Date.parse(item.created) > leftoverAgeMs
 			: item.labels["controller-id"] === controllerId;
+	const deadline = Date.now() + removeTimeoutMs;
 	for (const collection of kinds) {
-		for (const item of (await listOwned(token, collection)).filter(isOurs)) {
-			await remove(token, collection, item.id);
+		let held = (await listOwned(token, collection)).filter(isOurs);
+		while (held.length > 0) {
+			for (const item of held) {
+				await remove(token, collection, item.id);
+			}
+			if (Date.now() > deadline) {
+				throw new Error(
+					`Hetzner still holds ${held.length} of this run's ${collection}: ${held
+						.map((item) => item.id)
+						.join(", ")}`,
+				);
+			}
+			await Bun.sleep(removeDelayMs);
+			held = (await listOwned(token, collection)).filter(isOurs);
 		}
 	}
 }
