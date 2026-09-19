@@ -50,6 +50,7 @@ const badgeVariants: BadgeVariant[] = [
 ];
 const alertVariants: AlertVariant[] = [
 	"neutral",
+	"primary",
 	"success",
 	"warning",
 	"danger",

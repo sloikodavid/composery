@@ -7,6 +7,7 @@ export const alertClassName = `${panelClassName} flex items-start gap-3 border-0
 
 export const alertVariantClassNames = {
 	neutral: "bg-muted-surface text-foreground",
+	primary: "bg-primary text-primary-foreground",
 	success: "bg-success-surface text-success-text",
 	warning: "bg-warning-surface text-warning-text",
 	danger: "bg-danger-surface text-danger-text",
