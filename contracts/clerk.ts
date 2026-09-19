@@ -19,11 +19,15 @@ export const clerkDescribed: readonly Described[] = [
 		holder: "paths",
 		operations: {
 			// `getUserList` asks for the page and the count together, so both are ours.
-			"/users": ["get"],
 			"/users/count": ["get"],
 			"/users/{user_id}": ["get"],
 			// Composery reads the instance's signing keys before it believes an account is gone.
 			"/jwks": ["get"],
+			// What a run that meets Clerk itself uses to make a test's account and sign in as it,
+			// which Clerk documents for exactly this and allows on a development instance only.
+			"/users": ["get", "post"],
+			"/sessions": ["post"],
+			"/sessions/{session_id}/tokens": ["post"],
 		},
 	},
 	{
