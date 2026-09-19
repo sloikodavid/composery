@@ -22,7 +22,7 @@
 		"fix:characters": "bun scripts/characters.ts fix",
 		"fix:biome": "biome check --write",
 		"verify": "bun check && bun test && next build",
-		"hetzner": "bun --env-file=.env.local.tests test tests/convex/allocations",
+		"real:hetzner": "bun --env-file=.env.tests test tests/convex/allocations",
 		"session:import": "bun scripts/sessions/import.ts"
 	},
 	"dependencies": {

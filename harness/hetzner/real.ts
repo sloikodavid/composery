@@ -7,7 +7,7 @@ import type { FakeReply, FakeRequest } from "../fake";
  * project that holds nothing else: the run labels what it makes, removes it at the end, and removes
  * what an earlier run left behind, so anything still in that project is a leak somebody can see.
  *
- * Put the token in `.env.local.tests` and run `bun run hetzner`.
+ * Put the token in `.env.tests` and run `bun run real:hetzner`.
  */
 
 const apiUrl = "https://api.hetzner.cloud/v1";
