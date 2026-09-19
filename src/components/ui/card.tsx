@@ -6,7 +6,9 @@ import type { ReactNode } from "react";
  * cannot be a `Card`, such as a floating message.
  */
 export const surfaceClassName = "bg-surface shadow-none";
-export const cardSurface = `border border-border ${surfaceClassName}`;
+export const panelClassName = "rounded-panel";
+export const cardSurface = `border border-border ${panelClassName} ${surfaceClassName}`;
+export const menuSurfaceClassName = `border border-border rounded-menu ${surfaceClassName}`;
 
 /** A panel that holds content on the page background. */
 export function Card({

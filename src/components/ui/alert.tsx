@@ -1,9 +1,9 @@
 import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 import { buttonLinkClassName } from "@/components/ui/button";
+import { panelClassName } from "@/components/ui/card";
 
-export const alertClassName =
-	"flex items-start gap-3 border-0 px-4 py-3 text-sm shadow-none";
+export const alertClassName = `${panelClassName} flex items-start gap-3 border-0 px-4 py-3 text-sm shadow-none`;
 
 export const alertVariantClassNames = {
 	neutral: "bg-muted-surface text-foreground",

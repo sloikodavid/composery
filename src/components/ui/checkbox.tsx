@@ -2,13 +2,13 @@ import { IconCheck } from "@tabler/icons-react";
 import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 import { FieldDescription, FieldMessage } from "@/components/ui/field";
+import { checkboxRadiusClassName } from "@/components/ui/interaction";
 
 export const checkboxLabelClassName =
 	"flex w-fit items-start gap-2 text-sm [&:has(:disabled)]:cursor-default [&:has(:disabled)>span]:opacity-50";
 export const checkboxTextClassName = "grid min-w-0 gap-1";
 const checkboxBoxClassName = "relative mt-0.5 size-4 shrink-0";
-const checkboxInputClassName =
-	"peer size-full appearance-none border border-border bg-background shadow-none checked:border-primary checked:bg-primary focus:ring-0 focus-visible:ring-0 disabled:pointer-events-none aria-invalid:border-danger aria-invalid:checked:border-danger";
+const checkboxInputClassName = `${checkboxRadiusClassName} peer size-full appearance-none border border-border bg-background shadow-none checked:border-primary checked:bg-primary focus:ring-0 focus-visible:ring-0 disabled:pointer-events-none aria-invalid:border-danger aria-invalid:checked:border-danger`;
 const checkboxIconClassName =
 	"pointer-events-none absolute inset-0.5 size-3 text-primary-foreground opacity-0 peer-checked:opacity-100";
 

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { alertClassName, alertVariantClassNames } from "@/components/ui/alert";
 import { badgeClassName } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { cardSurface } from "@/components/ui/card";
+import { cardSurface, menuSurfaceClassName } from "@/components/ui/card";
 import {
 	fieldDescriptionClassName,
 	fieldLabelClassName,
@@ -15,6 +15,7 @@ import {
 	inputFrameClassName,
 	textareaClassName,
 } from "@/components/ui/input";
+import { controlRadiusClassName } from "@/components/ui/interaction";
 import { linkClassName } from "@/components/ui/link";
 import {
 	radioGroupClassName,
@@ -24,7 +25,7 @@ import {
 	radioLabelTitleClassName,
 } from "@/components/ui/radio-group";
 import { separatorLineClassName } from "@/components/ui/separator";
-import { spinnerClassName } from "@/components/ui/spinner";
+import { spinnerDefaultClassName } from "@/components/ui/spinner";
 import {
 	switchIndicatorClassName,
 	switchLabelClassName,
@@ -40,7 +41,7 @@ const dataDangerGhostClassName =
 const clerkPrimaryButtonClassName = `${buttonVariants.primary} ${dataDangerFilledClassName}`;
 const clerkGhostButtonClassName = `${buttonVariants.ghost} ${dataDangerGhostClassName}`;
 const clerkContentSurfaceClassName = "bg-surface";
-const clerkAvatarClassName = "[border-radius:0]";
+const clerkAvatarClassName = controlRadiusClassName;
 const clerkBadgeClassName = `${badgeClassName} border-border bg-muted-surface text-foreground data-[color=secondary]:border-primary data-[color=secondary]:bg-primary data-[color=secondary]:text-primary-foreground data-[color=danger]:border-danger-border data-[color=danger]:bg-danger-surface data-[color=danger]:text-danger-text data-[color=success]:border-success-border data-[color=success]:bg-success-surface data-[color=success]:text-success-text data-[color=warning]:border-warning-border data-[color=warning]:bg-warning-surface data-[color=warning]:text-warning-text`;
 const clerkSwitchIndicatorClassName = `${switchIndicatorClassName} data-[checked=true]:border-primary data-[checked=true]:bg-primary data-[checked=true]:[&>span]:ms-3 data-[checked=true]:[&>span]:bg-primary-foreground data-[disabled=true]:cursor-default`;
 
@@ -164,7 +165,7 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 					lastAuthenticationStrategyBadge: clerkBadgeClassName,
 					menuButton: buttonVariants.ghost,
 					menuItem: clerkGhostButtonClassName,
-					menuList: cardSurface,
+					menuList: menuSurfaceClassName,
 					modalCloseButton: buttonVariants.ghost,
 					navbar: "border-0 border-border border-e bg-split-panel-navigation",
 					navbarButton: navbarButtonClassName,
@@ -174,15 +175,15 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 					otpCodeFieldInput: inputControlClassName,
 					pageScrollBox: "bg-split-panel-content",
 					phoneInputBox: inputFrameClassName,
-					popoverBox: cardSurface,
+					popoverBox: menuSurfaceClassName,
 					pricingTableCard: cardSurface,
 					profileSection: "border-border",
 					profileSectionPrimaryButton: clerkGhostButtonClassName,
-					spinner: spinnerClassName,
+					spinner: spinnerDefaultClassName,
 					scrollBox: "bg-split-panel-content",
 					searchInputClearButton: buttonVariants.ghost,
 					selectButton: buttonVariants.secondary,
-					selectOptionsContainer: cardSurface,
+					selectOptionsContainer: menuSurfaceClassName,
 					socialButtonsIconButton: buttonVariants.secondary,
 					socialButtonsBlockButton: buttonVariants.secondary,
 					switchIndicator: clerkSwitchIndicatorClassName,
@@ -192,7 +193,7 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 					userAvatarBox: clerkAvatarClassName,
 					userButtonAvatarBox: clerkAvatarClassName,
 					userButtonPopoverActionButton: buttonVariants.ghost,
-					userButtonPopoverCard: cardSurface,
+					userButtonPopoverCard: menuSurfaceClassName,
 					userButtonPopoverFooterPagesLink: linkClassName,
 					userButtonPopoverMain: clerkContentSurfaceClassName,
 					userPreviewAvatarBox: clerkAvatarClassName,

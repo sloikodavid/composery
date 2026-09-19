@@ -16,7 +16,7 @@
 	--clerk-font-family: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
 	--clerk-font-family-buttons:
 		var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
-	--clerk-border-radius: 0px;
+	--clerk-border-radius: var(--radius-control);
 	--clerk-spacing: 1rem;
 }
 

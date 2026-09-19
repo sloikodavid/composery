@@ -1,15 +1,18 @@
 import clsx from "clsx";
 import type { ComponentProps } from "react";
+import { controlRadiusClassNames } from "@/components/ui/interaction";
 
 export const spinnerClassName =
-	"inline-block shrink-0 animate-spin border-current border-b-transparent border-l-transparent [border-radius:9999px] motion-reduce:animate-none";
+	"inline-block shrink-0 animate-spin border-current border-b-transparent border-l-transparent motion-reduce:animate-none";
 
 export const spinnerSizes = {
-	extraSmall: "size-3 border",
-	small: "size-4 border",
-	medium: "size-5 border-2",
-	large: "size-6 border-2",
+	extraSmall: `${controlRadiusClassNames.small} size-3 border`,
+	small: `${controlRadiusClassNames.small} size-4 border`,
+	medium: `${controlRadiusClassNames.large} size-5 border-2`,
+	large: `${controlRadiusClassNames.large} size-6 border-2`,
 } as const;
+
+export const spinnerDefaultClassName = `${spinnerClassName} ${controlRadiusClassNames.medium}`;
 
 export const spinnerVariants = {
 	neutral: "text-foreground",

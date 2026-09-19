@@ -96,6 +96,7 @@ JavaScript reserves `delete`, so a registered Convex function that deletes is na
 | Word | Meaning |
 |---|---|
 | `field` | One labeled place where a person enters or selects a value, including its help and validation message |
+| `panel` | A self-contained surface that groups content, such as a card, table frame, alert, or popover | region |
 | `input` | A one-line text control |
 | `textarea` | A multiline text control |
 | `input group` | One input and fixed content or controls inside one shared frame |

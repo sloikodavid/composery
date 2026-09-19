@@ -1,12 +1,13 @@
 import clsx from "clsx";
 import { type ComponentProps, type ReactNode, useId } from "react";
+import { panelClassName } from "@/components/ui/card";
 import { FieldDescription, FieldMessage } from "@/components/ui/field";
+import { fullRadiusClassName } from "@/components/ui/interaction";
 
 export const radioGroupClassName =
-	"grid gap-3 [&>div]:border [&>div]:border-border [&>div]:bg-background [&>div]:p-3 [&>div]:shadow-none [&>div:has(:disabled)]:opacity-50";
-export const radioGroupItemClassName = "flex items-start";
-export const radioInputClassName =
-	"peer relative mt-0.5 size-4 shrink-0 appearance-none border border-border bg-background text-primary shadow-none before:absolute before:inset-[0.1875rem] before:bg-current before:opacity-0 before:content-[''] checked:border-control-border-active checked:bg-background checked:text-primary checked:before:opacity-100 focus:ring-0 focus-visible:ring-0 disabled:pointer-events-none aria-invalid:border-danger aria-invalid:checked:border-danger";
+	"grid gap-3 [&>div:has(:disabled)]:opacity-50";
+export const radioGroupItemClassName = `${panelClassName} flex items-start border border-border bg-background p-3 shadow-none`;
+export const radioInputClassName = `${fullRadiusClassName} peer relative mt-0.5 size-4 shrink-0 appearance-none border border-border bg-background text-primary shadow-none before:absolute before:inset-[0.1875rem] before:rounded-full before:bg-current before:opacity-0 before:content-[''] checked:border-control-border-active checked:bg-background checked:text-primary checked:before:opacity-100 focus:ring-0 focus-visible:ring-0 disabled:pointer-events-none aria-invalid:border-danger aria-invalid:checked:border-danger`;
 export const radioLabelClassName =
 	"grid min-w-0 flex-1 cursor-pointer gap-1 ps-2 text-sm peer-disabled:cursor-default";
 export const radioLabelTitleClassName = "font-brand text-foreground";

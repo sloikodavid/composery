@@ -7,6 +7,12 @@
 @theme {
 	--radius: initial;
 	--radius-*: initial;
+	--radius-control-small: 0.125rem;
+	--radius-control: 0.25rem;
+	--radius-control-large: 0.3125rem;
+	--radius-checkbox: 0.1875rem;
+	--radius-menu: 0.375rem;
+	--radius-panel: 0.5rem;
 
 	--color-brand: #f3511d;
 

@@ -1,6 +1,10 @@
 import clsx from "clsx";
 import type { ComponentProps, ReactElement } from "react";
-import { controlTransitionClassName } from "@/components/ui/interaction";
+import {
+	controlRadiusClassName,
+	controlRadiusClassNames,
+	controlTransitionClassName,
+} from "@/components/ui/interaction";
 import { linkClassName } from "@/components/ui/link";
 
 export const buttonVariants = {
@@ -15,21 +19,21 @@ export const buttonVariants = {
 export const buttonClassName =
 	"inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-brand tracking-display shadow-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50";
 
-export const buttonLinkClassName = `${buttonClassName} ${linkClassName} px-1 text-muted text-xs leading-5`;
+export const buttonLinkClassName = `${buttonClassName} ${controlRadiusClassName} ${linkClassName} px-1 text-muted text-xs leading-5`;
 
 export const buttonSizes = {
-	small: "h-8 px-3 text-xs",
-	medium: "h-9 px-4 text-sm",
-	large: "h-11 px-5 text-base",
+	small: `${controlRadiusClassNames.medium} h-8 px-3 text-xs`,
+	medium: `${controlRadiusClassNames.large} h-9 px-4 text-sm`,
+	large: `${controlRadiusClassNames.large} h-11 px-5 text-base`,
 } as const;
 
 export type ButtonVariant = keyof typeof buttonVariants;
 export type ButtonSize = keyof typeof buttonSizes;
 
 const iconOnlyButtonSizes: Record<ButtonSize, string> = {
-	small: "size-8 p-0 text-xs [&>svg]:size-4",
-	medium: "size-9 p-0 text-sm [&>svg]:size-4",
-	large: "size-11 p-0 text-base [&>svg]:size-5",
+	small: `${controlRadiusClassNames.medium} size-8 p-0 text-xs [&>svg]:size-4`,
+	medium: `${controlRadiusClassNames.large} size-9 p-0 text-sm [&>svg]:size-4`,
+	large: `${controlRadiusClassNames.large} size-11 p-0 text-base [&>svg]:size-5`,
 };
 
 type ButtonBaseProps = ComponentProps<"button"> & {

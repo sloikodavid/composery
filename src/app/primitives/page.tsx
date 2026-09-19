@@ -344,9 +344,9 @@ export default function PrimitivesPage() {
 				</Section>
 
 				<Section title="Container">
-					<div className="border border-border py-4">
+					<div className="overflow-hidden rounded-panel border border-border py-4">
 						<Container width="narrow">
-							<div className="bg-muted-surface p-3 text-sm">
+							<div className="rounded-control bg-muted-surface p-3 text-sm">
 								Narrow container
 							</div>
 						</Container>

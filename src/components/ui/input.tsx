@@ -1,9 +1,12 @@
 import clsx from "clsx";
 import type { ComponentProps } from "react";
-import { controlTransitionClassName } from "@/components/ui/interaction";
+import {
+	controlRadiusClassName,
+	controlTransitionClassName,
+} from "@/components/ui/interaction";
 
 /** The static surface shared by input elements and composite input frames. */
-export const inputSurfaceClassName = `${controlTransitionClassName} border border-border bg-background text-foreground shadow-none`;
+export const inputSurfaceClassName = `${controlRadiusClassName} ${controlTransitionClassName} border border-border bg-background text-foreground shadow-none`;
 
 /** The focus state for a frame that contains more than one input element. */
 export const inputFrameClassName = `${inputSurfaceClassName} focus-within:border-input-border-focus`;

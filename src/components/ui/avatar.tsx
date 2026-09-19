@@ -8,13 +8,17 @@ import {
 	useRef,
 	useState,
 } from "react";
+import {
+	controlRadiusClassName,
+	controlRadiusClassNames,
+} from "@/components/ui/interaction";
 import { Spinner } from "@/components/ui/spinner";
 
 const spinnerDelayMs = 150;
 const spinnerMinimumDurationMs = 400;
 
 export const avatarClassName =
-	"relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-muted-surface text-foreground shadow-none [border-radius:0]";
+	"relative inline-flex shrink-0 items-center justify-center overflow-hidden bg-muted-surface text-foreground shadow-none";
 export const avatarImageClassName = "size-full object-cover transition-opacity";
 export const avatarFallbackClassName =
 	"flex size-full items-center justify-center";
@@ -22,9 +26,9 @@ export const avatarLoadingClassName =
 	"absolute inset-0 flex items-center justify-center bg-muted-surface";
 
 export const avatarSizes = {
-	small: "size-8 text-xs",
-	medium: "size-10 text-sm",
-	large: "size-16 text-lg",
+	small: `${controlRadiusClassName} size-8 text-xs`,
+	medium: `${controlRadiusClassNames.large} size-10 text-sm`,
+	large: `${controlRadiusClassNames.large} size-16 text-lg`,
 } as const;
 
 type AvatarImageProps = {

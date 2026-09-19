@@ -1,8 +1,8 @@
 import clsx from "clsx";
 import type { ComponentProps } from "react";
+import { controlRadiusClassName } from "@/components/ui/interaction";
 
-export const badgeClassName =
-	"inline-flex shrink-0 items-center border px-1.5 py-0.5 font-brand text-xs leading-none shadow-none";
+export const badgeClassName = `${controlRadiusClassName} inline-flex shrink-0 items-center border px-1.5 py-0.5 font-brand text-xs leading-none shadow-none`;
 
 export const badgeVariantClassNames = {
 	neutral: "border-border bg-muted-surface text-foreground",
