@@ -30,7 +30,7 @@ Also not built, and not ordered against the rest:
 
 ## Wrong today
 
-- **A run that was given no token for a real service says nothing about it.** It passes, in the same words as a run that met the provider, so what did not happen is invisible.
+Nothing known.
 
 ## Not decided
 

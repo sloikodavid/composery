@@ -3,7 +3,7 @@
  *
  * Bun reads `.env` and `.env.test` into every `bun test`. A credential for a real service in one
  * of them would send a plain test run at that service, so no file Bun loads by itself may set a
- * variable that `.env.local.tests.example` names. Those files may hold anything else.
+ * variable that `.env.real.example` names. Those files may hold anything else.
  *
  * Every tool reads these from the directory it was started in, and none of them looks upwards, so
  * a `.env` file in a folder is loaded when somebody's shell happens to stand there and ignored
@@ -18,7 +18,7 @@ import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dir, "..");
 const exampleSuffix = ".example";
-const testCredentials = ".env.local.tests.example";
+const realCredentials = ".env.real.example";
 // What Bun loads into a test run on its own, whatever the run was asked to do.
 const loadedByBun = [".env", ".env.test", ".env.test.local"];
 const skippedDirectories = new Set(["node_modules", "tmp"]);
@@ -61,7 +61,7 @@ const files = readdirSync(repositoryRoot).filter((file) =>
 	file.startsWith(".env"),
 );
 const problems: string[] = [];
-const credentials = toVariables(testCredentials);
+const credentials = toVariables(realCredentials);
 
 for (const file of listEnvFiles(".")) {
 	if (path.posix.dirname(file) !== ".") {
@@ -75,7 +75,7 @@ for (const file of loadedByBun) {
 	for (const name of toVariables(file)) {
 		if (credentials.has(name)) {
 			problems.push(
-				`${file} sets ${name}, and Bun reads that file into every \`bun test\`. It belongs in .env.local.tests.`,
+				`${file} sets ${name}, and Bun reads that file into every \`bun test\`. It belongs in .env.real.`,
 			);
 		}
 	}

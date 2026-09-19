@@ -7,7 +7,7 @@ import type { FakeReply, FakeRequest } from "../fake";
  * project that holds nothing else: the run labels what it makes, removes it at the end, and removes
  * what an earlier run left behind, so anything still in that project is a leak somebody can see.
  *
- * Put the token in `.env.tests` and run `bun run real:hetzner`.
+ * Put the token in `.env.real` and run `bun run real:hetzner`.
  */
 
 const apiUrl = "https://api.hetzner.cloud/v1";
@@ -20,10 +20,22 @@ const httpNoContent = 204;
 type Collection = (typeof collections)[number];
 type Owned = { id: number; created: string; labels: Record<string, string> };
 
-/** The token for the project the tests may use, when a run was given one. */
+/**
+ * The token for the project a real run may use, or nothing, which keeps the fake a fake.
+ *
+ * A run that asked to meet Hetzner and holds no token fails here rather than passing quietly: it
+ * would otherwise report success in the same words as a run that met the provider, and what did
+ * not happen would be invisible.
+ */
 export function getHetznerToken() {
 	const token = process.env.HCLOUD_TOKEN;
-	return token === undefined || token === "" ? null : token;
+	const held = token === undefined || token === "" ? null : token;
+	if (held === null && process.env.COMPOSERY_REAL === "hetzner") {
+		throw new Error(
+			"This run was asked to meet Hetzner and .env.real holds no HCLOUD_TOKEN. Copy .env.real.example and fill it in, or run `bun test` for the fake.",
+		);
+	}
+	return held;
 }
 
 async function call(
