@@ -2,13 +2,13 @@
 	"sources": [
 		{
 			"source": "https://raw.githubusercontent.com/clerk/openapi-specs/main/bapi/2026-05-12.yml",
-			"readAt": "2026-09-17",
-			"digest": "f68590b6ae4a4a63b5b8282457ddfc55d200a2ed2a7848246c0f8336d9aa2418"
+			"readAt": "2026-09-19",
+			"digest": "4c42713b9fc0d68a5f5263286fb6c87bab6320d74be261acb8a77bc1ad26d2bd"
 		},
 		{
 			"source": "https://raw.githubusercontent.com/clerk/openapi-specs/main/webhooks/2025-04-15.yml",
-			"readAt": "2026-09-17",
-			"digest": "5b3ea93aadd959e973c7ab161598aba91e8ea30f172498a8bbd6f675585ea2b3"
+			"readAt": "2026-09-19",
+			"digest": "4e753662f2456454407ec216773b14ac9b64be707daa93283b213a1aa92f2ed3"
 		}
 	],
 	"paths": {
@@ -18,132 +18,237 @@
 					{
 						"name": "email_address",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "phone_number",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "external_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "username",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "web3_wallet",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "user_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "organization_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "email_address_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "phone_number_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "username_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "name_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "banned",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
 					},
 					{
 						"name": "last_active_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_active_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_active_at_since",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "created_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "created_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_sign_in_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_sign_in_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "provider",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "provider_user_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "limit",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 500
+						}
 					},
 					{
 						"name": "offset",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 0
+						}
 					},
 					{
 						"name": "starting_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "order_by",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"request": {},
@@ -2394,12 +2499,110 @@
 								"bypass_client_trust": {
 									"type": "boolean"
 								},
-								"scim": {
+								"directories": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"additionalProperties": false,
+										"properties": {
+											"id": {
+												"type": "string"
+											},
+											"directory_name": {
+												"type": "string"
+											},
+											"provider": {
+												"type": "string"
+											},
+											"enterprise_connection_id": {
+												"type": [
+													"string",
+													"null"
+												]
+											},
+											"groups": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"display_name": {
+															"type": "string"
+														}
+													},
+													"required": [
+														"id",
+														"display_name"
+													]
+												}
+											},
+											"directory_id": {
+												"type": "string"
+											},
+											"directory_enabled": {
+												"type": "boolean"
+											},
+											"external_id": {
+												"type": [
+													"string",
+													"null"
+												]
+											}
+										},
+										"required": [
+											"id",
+											"directory_name",
+											"provider",
+											"enterprise_connection_id",
+											"directory_enabled",
+											"directory_id",
+											"external_id"
+										]
+									}
+								},
+								"directory": {
 									"allOf": [
 										{
 											"type": "object",
 											"additionalProperties": false,
 											"properties": {
+												"id": {
+													"type": "string"
+												},
+												"directory_name": {
+													"type": "string"
+												},
+												"provider": {
+													"type": "string"
+												},
+												"enterprise_connection_id": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"groups": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"additionalProperties": false,
+														"properties": {
+															"id": {
+																"type": "string"
+															},
+															"display_name": {
+																"type": "string"
+															}
+														},
+														"required": [
+															"id",
+															"display_name"
+														]
+													}
+												},
 												"directory_id": {
 													"type": "string"
 												},
@@ -2414,6 +2617,76 @@
 												}
 											},
 											"required": [
+												"id",
+												"directory_name",
+												"provider",
+												"enterprise_connection_id",
+												"directory_enabled",
+												"directory_id",
+												"external_id"
+											]
+										}
+									]
+								},
+								"scim": {
+									"allOf": [
+										{
+											"type": "object",
+											"additionalProperties": false,
+											"properties": {
+												"id": {
+													"type": "string"
+												},
+												"directory_name": {
+													"type": "string"
+												},
+												"provider": {
+													"type": "string"
+												},
+												"enterprise_connection_id": {
+													"type": [
+														"string",
+														"null"
+													]
+												},
+												"groups": {
+													"type": "array",
+													"items": {
+														"type": "object",
+														"additionalProperties": false,
+														"properties": {
+															"id": {
+																"type": "string"
+															},
+															"display_name": {
+																"type": "string"
+															}
+														},
+														"required": [
+															"id",
+															"display_name"
+														]
+													}
+												},
+												"directory_id": {
+													"type": "string"
+												},
+												"directory_enabled": {
+													"type": "boolean"
+												},
+												"external_id": {
+													"type": [
+														"string",
+														"null"
+													]
+												}
+											},
+											"required": [
+												"id",
+												"directory_name",
+												"provider",
+												"enterprise_connection_id",
+												"directory_enabled",
 												"directory_id",
 												"external_id"
 											]
@@ -2592,112 +2865,202 @@
 					{
 						"name": "email_address",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "phone_number",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "external_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "username",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "web3_wallet",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "user_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "organization_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "email_address_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "phone_number_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "username_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "name_query",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "banned",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
 					},
 					{
 						"name": "last_active_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_active_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_active_at_since",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "created_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "created_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_sign_in_at_before",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "last_sign_in_at_after",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "provider",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "provider_user_id",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					}
 				],
 				"request": {},
@@ -2771,7 +3134,10 @@
 					{
 						"name": "user_id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
 					}
 				],
 				"request": {},
@@ -5020,12 +5386,110 @@
 							"bypass_client_trust": {
 								"type": "boolean"
 							},
-							"scim": {
+							"directories": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"additionalProperties": false,
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"directory_name": {
+											"type": "string"
+										},
+										"provider": {
+											"type": "string"
+										},
+										"enterprise_connection_id": {
+											"type": [
+												"string",
+												"null"
+											]
+										},
+										"groups": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": false,
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"display_name": {
+														"type": "string"
+													}
+												},
+												"required": [
+													"id",
+													"display_name"
+												]
+											}
+										},
+										"directory_id": {
+											"type": "string"
+										},
+										"directory_enabled": {
+											"type": "boolean"
+										},
+										"external_id": {
+											"type": [
+												"string",
+												"null"
+											]
+										}
+									},
+									"required": [
+										"id",
+										"directory_name",
+										"provider",
+										"enterprise_connection_id",
+										"directory_enabled",
+										"directory_id",
+										"external_id"
+									]
+								}
+							},
+							"directory": {
 								"allOf": [
 									{
 										"type": "object",
 										"additionalProperties": false,
 										"properties": {
+											"id": {
+												"type": "string"
+											},
+											"directory_name": {
+												"type": "string"
+											},
+											"provider": {
+												"type": "string"
+											},
+											"enterprise_connection_id": {
+												"type": [
+													"string",
+													"null"
+												]
+											},
+											"groups": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"display_name": {
+															"type": "string"
+														}
+													},
+													"required": [
+														"id",
+														"display_name"
+													]
+												}
+											},
 											"directory_id": {
 												"type": "string"
 											},
@@ -5040,6 +5504,76 @@
 											}
 										},
 										"required": [
+											"id",
+											"directory_name",
+											"provider",
+											"enterprise_connection_id",
+											"directory_enabled",
+											"directory_id",
+											"external_id"
+										]
+									}
+								]
+							},
+							"scim": {
+								"allOf": [
+									{
+										"type": "object",
+										"additionalProperties": false,
+										"properties": {
+											"id": {
+												"type": "string"
+											},
+											"directory_name": {
+												"type": "string"
+											},
+											"provider": {
+												"type": "string"
+											},
+											"enterprise_connection_id": {
+												"type": [
+													"string",
+													"null"
+												]
+											},
+											"groups": {
+												"type": "array",
+												"items": {
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"display_name": {
+															"type": "string"
+														}
+													},
+													"required": [
+														"id",
+														"display_name"
+													]
+												}
+											},
+											"directory_id": {
+												"type": "string"
+											},
+											"directory_enabled": {
+												"type": "boolean"
+											},
+											"external_id": {
+												"type": [
+													"string",
+													"null"
+												]
+											}
+										},
+										"required": [
+											"id",
+											"directory_name",
+											"provider",
+											"enterprise_connection_id",
+											"directory_enabled",
 											"directory_id",
 											"external_id"
 										]
@@ -7904,12 +8438,110 @@
 										"bypass_client_trust": {
 											"type": "boolean"
 										},
-										"scim": {
+										"directories": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": false,
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"directory_name": {
+														"type": "string"
+													},
+													"provider": {
+														"type": "string"
+													},
+													"enterprise_connection_id": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"groups": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"additionalProperties": false,
+															"properties": {
+																"id": {
+																	"type": "string"
+																},
+																"display_name": {
+																	"type": "string"
+																}
+															},
+															"required": [
+																"id",
+																"display_name"
+															]
+														}
+													},
+													"directory_id": {
+														"type": "string"
+													},
+													"directory_enabled": {
+														"type": "boolean"
+													},
+													"external_id": {
+														"type": [
+															"string",
+															"null"
+														]
+													}
+												},
+												"required": [
+													"id",
+													"directory_name",
+													"provider",
+													"enterprise_connection_id",
+													"directory_enabled",
+													"directory_id",
+													"external_id"
+												]
+											}
+										},
+										"directory": {
 											"allOf": [
 												{
 													"type": "object",
 													"additionalProperties": false,
 													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"directory_name": {
+															"type": "string"
+														},
+														"provider": {
+															"type": "string"
+														},
+														"enterprise_connection_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"groups": {
+															"type": "array",
+															"items": {
+																"type": "object",
+																"additionalProperties": false,
+																"properties": {
+																	"id": {
+																		"type": "string"
+																	},
+																	"display_name": {
+																		"type": "string"
+																	}
+																},
+																"required": [
+																	"id",
+																	"display_name"
+																]
+															}
+														},
 														"directory_id": {
 															"type": "string"
 														},
@@ -7924,6 +8556,76 @@
 														}
 													},
 													"required": [
+														"id",
+														"directory_name",
+														"provider",
+														"enterprise_connection_id",
+														"directory_enabled",
+														"directory_id",
+														"external_id"
+													]
+												}
+											]
+										},
+										"scim": {
+											"allOf": [
+												{
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"directory_name": {
+															"type": "string"
+														},
+														"provider": {
+															"type": "string"
+														},
+														"enterprise_connection_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"groups": {
+															"type": "array",
+															"items": {
+																"type": "object",
+																"additionalProperties": false,
+																"properties": {
+																	"id": {
+																		"type": "string"
+																	},
+																	"display_name": {
+																		"type": "string"
+																	}
+																},
+																"required": [
+																	"id",
+																	"display_name"
+																]
+															}
+														},
+														"directory_id": {
+															"type": "string"
+														},
+														"directory_enabled": {
+															"type": "boolean"
+														},
+														"external_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														}
+													},
+													"required": [
+														"id",
+														"directory_name",
+														"provider",
+														"enterprise_connection_id",
+														"directory_enabled",
 														"directory_id",
 														"external_id"
 													]
@@ -10268,12 +10970,110 @@
 										"bypass_client_trust": {
 											"type": "boolean"
 										},
-										"scim": {
+										"directories": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"additionalProperties": false,
+												"properties": {
+													"id": {
+														"type": "string"
+													},
+													"directory_name": {
+														"type": "string"
+													},
+													"provider": {
+														"type": "string"
+													},
+													"enterprise_connection_id": {
+														"type": [
+															"string",
+															"null"
+														]
+													},
+													"groups": {
+														"type": "array",
+														"items": {
+															"type": "object",
+															"additionalProperties": false,
+															"properties": {
+																"id": {
+																	"type": "string"
+																},
+																"display_name": {
+																	"type": "string"
+																}
+															},
+															"required": [
+																"id",
+																"display_name"
+															]
+														}
+													},
+													"directory_id": {
+														"type": "string"
+													},
+													"directory_enabled": {
+														"type": "boolean"
+													},
+													"external_id": {
+														"type": [
+															"string",
+															"null"
+														]
+													}
+												},
+												"required": [
+													"id",
+													"directory_name",
+													"provider",
+													"enterprise_connection_id",
+													"directory_enabled",
+													"directory_id",
+													"external_id"
+												]
+											}
+										},
+										"directory": {
 											"allOf": [
 												{
 													"type": "object",
 													"additionalProperties": false,
 													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"directory_name": {
+															"type": "string"
+														},
+														"provider": {
+															"type": "string"
+														},
+														"enterprise_connection_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"groups": {
+															"type": "array",
+															"items": {
+																"type": "object",
+																"additionalProperties": false,
+																"properties": {
+																	"id": {
+																		"type": "string"
+																	},
+																	"display_name": {
+																		"type": "string"
+																	}
+																},
+																"required": [
+																	"id",
+																	"display_name"
+																]
+															}
+														},
 														"directory_id": {
 															"type": "string"
 														},
@@ -10288,6 +11088,76 @@
 														}
 													},
 													"required": [
+														"id",
+														"directory_name",
+														"provider",
+														"enterprise_connection_id",
+														"directory_enabled",
+														"directory_id",
+														"external_id"
+													]
+												}
+											]
+										},
+										"scim": {
+											"allOf": [
+												{
+													"type": "object",
+													"additionalProperties": false,
+													"properties": {
+														"id": {
+															"type": "string"
+														},
+														"directory_name": {
+															"type": "string"
+														},
+														"provider": {
+															"type": "string"
+														},
+														"enterprise_connection_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														},
+														"groups": {
+															"type": "array",
+															"items": {
+																"type": "object",
+																"additionalProperties": false,
+																"properties": {
+																	"id": {
+																		"type": "string"
+																	},
+																	"display_name": {
+																		"type": "string"
+																	}
+																},
+																"required": [
+																	"id",
+																	"display_name"
+																]
+															}
+														},
+														"directory_id": {
+															"type": "string"
+														},
+														"directory_enabled": {
+															"type": "boolean"
+														},
+														"external_id": {
+															"type": [
+																"string",
+																"null"
+															]
+														}
+													},
+													"required": [
+														"id",
+														"directory_name",
+														"provider",
+														"enterprise_connection_id",
+														"directory_enabled",
 														"directory_id",
 														"external_id"
 													]

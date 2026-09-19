@@ -3,6 +3,7 @@ import {
 	type Contract,
 	type ContractProblem,
 	findPathTemplate,
+	listQueryValueProblems,
 	listSchemaProblems,
 	listUnreadFieldProblems,
 	listUnreadQueryProblems,
@@ -215,11 +216,10 @@ export function createContractChecker(
 			ranOperations.add(found.operation);
 			const subject = { system, operation: found.operation };
 			const query = new URLSearchParams(requested.split("?")[1] ?? "");
-			const problems = listUnreadQueryProblems(
-				subject,
-				found.described.parameters,
-				query,
-			);
+			const problems = [
+				...listUnreadQueryProblems(subject, found.described.parameters, query),
+				...listQueryValueProblems(subject, found.described.parameters, query),
+			];
 			if (body !== undefined) {
 				const { request } = found.described;
 				problems.push(

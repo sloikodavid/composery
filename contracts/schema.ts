@@ -10,6 +10,8 @@ export type Schema = {
 	required?: string[];
 	items?: Schema;
 	enum?: unknown[];
+	maximum?: number;
+	minimum?: number;
 	anyOf?: Schema[];
 	oneOf?: Schema[];
 	allOf?: Schema[];
@@ -19,6 +21,8 @@ export type Parameter = Readonly<{
 	name: string;
 	in: string;
 	required: boolean;
+	/** What the system says the value may be, when it says anything about it. */
+	schema?: Schema;
 }>;
 
 export type Operation = Readonly<{
@@ -137,6 +141,31 @@ function add(
 	});
 }
 
+/** What a system says a number may be. Sending more than it reads is asking for a silent answer. */
+function collectBounds(
+	collector: Collector,
+	schema: Schema,
+	value: number,
+	at: string,
+) {
+	if (schema.maximum !== undefined && value > schema.maximum) {
+		add(
+			collector,
+			at,
+			`at most ${schema.maximum}`,
+			`is ${value}, which is more than ${collector.system} reads`,
+		);
+	}
+	if (schema.minimum !== undefined && value < schema.minimum) {
+		add(
+			collector,
+			at,
+			`at least ${schema.minimum}`,
+			`is ${value}, which is less than ${collector.system} reads`,
+		);
+	}
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one branch for each part of a schema
 function collect(
 	collector: Collector,
@@ -162,6 +191,9 @@ function collect(
 			schema.enum.join(" or "),
 			`is ${JSON.stringify(value)}, which ${collector.system} never sends`,
 		);
+	}
+	if (typeof value === "number") {
+		collectBounds(collector, schema, value, at);
 	}
 	if (Array.isArray(value) && schema.items !== undefined) {
 		for (const [index, item] of value.entries()) {
@@ -272,4 +304,58 @@ export function listUnreadQueryProblems(
 			claims: "absent",
 			message: `is asked for, and ${subject.system} does not read it`,
 		}));
+}
+
+/**
+ * A query value is text, and the description says what it means. So it is read as the type the
+ * system describes and then judged as that: `per_page=50` is the number fifty where Hetzner says
+ * an integer, and a value the system cannot read is a problem before any bound applies.
+ */
+export function listQueryValueProblems(
+	subject: ContractSubject,
+	parameters: readonly Parameter[],
+	query: URLSearchParams,
+): ContractProblem[] {
+	const collector: Collector = { ...subject, problems: [] };
+	for (const parameter of parameters) {
+		const value = query.get(parameter.name);
+		if (parameter.in !== "query" || parameter.schema === undefined) {
+			continue;
+		}
+		if (value !== null) {
+			collect(
+				collector,
+				parameter.schema,
+				toAskedValue(parameter.schema, query, parameter.name),
+				`query.${parameter.name}`,
+			);
+		}
+	}
+	return collector.problems;
+}
+
+/**
+ * What one query name asks for, in the shape the description gives it. A list is written as that
+ * name repeated, so asking once is a list of one, not text where a list was described.
+ */
+function toAskedValue(schema: Schema, query: URLSearchParams, name: string) {
+	if (!toTypes(schema).includes("array")) {
+		return toQueryValue(schema, query.get(name) ?? "");
+	}
+	return query
+		.getAll(name)
+		.map((item) => toQueryValue(schema.items ?? {}, item));
+}
+
+/** Reads text as the type a description gives it, and leaves it as text when it gives none. */
+function toQueryValue(schema: Schema, value: string): unknown {
+	const types = toTypes(schema);
+	if (types.includes("integer") || types.includes("number")) {
+		const read = Number(value);
+		return value.trim() === "" || Number.isNaN(read) ? value : read;
+	}
+	if (types.includes("boolean") && (value === "true" || value === "false")) {
+		return value === "true";
+	}
+	return value;
 }

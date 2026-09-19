@@ -30,6 +30,8 @@ const shapeKeys = new Set([
 	"required",
 	"items",
 	"enum",
+	"maximum",
+	"minimum",
 	"additionalProperties",
 	"anyOf",
 	"oneOf",
@@ -139,10 +141,14 @@ function toOperation(document: Document, described: Document): Operation {
 	const parameters = Array.isArray(described.parameters)
 		? described.parameters.map((parameter) => {
 				const resolved = toShapeParameter(document, parameter);
+				const schema = isRecord(resolved.schema)
+					? (toShape(document, resolved.schema, []) as Schema)
+					: undefined;
 				return {
 					name: resolved.name,
 					in: resolved.in,
 					required: resolved.required === true,
+					...(schema === undefined ? {} : { schema }),
 				};
 			})
 		: [];
@@ -174,7 +180,12 @@ function toShapeParameter(document: Document, parameter: unknown) {
 	if (!isRecord(resolved)) {
 		throw new Error("A parameter is not an object.");
 	}
-	return resolved as { name: string; in: string; required?: boolean };
+	return resolved as {
+		name: string;
+		in: string;
+		required?: boolean;
+		schema?: unknown;
+	};
 }
 
 async function readDocument(source: string) {

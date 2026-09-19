@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
 	findPathTemplate,
+	listQueryValueProblems,
 	listSchemaProblems,
 	listUnreadFieldProblems,
 	listUnreadQueryProblems,
@@ -89,4 +90,33 @@ test("a path with an identifier in it finds the template that describes it", () 
 		"/servers/{id}/actions/poweron",
 	);
 	expect(findPathTemplate(templates, "volumes/1")).toBeUndefined();
+});
+
+test("a query value is read as the type the description gives it", () => {
+	const parameters = [
+		{
+			name: "per_page",
+			in: "query",
+			required: false,
+			schema: { type: "integer", maximum: 50 },
+		},
+		{
+			name: "user_id",
+			in: "query",
+			required: false,
+			schema: { type: "array", items: { type: "string" } },
+		},
+	];
+	const ask = (query: string) =>
+		listQueryValueProblems(subject, parameters, new URLSearchParams(query));
+
+	// What the system reads is a number, and it says how large it may be.
+	expect(ask("per_page=50")).toEqual([]);
+	expect(ask("per_page=51")).toHaveLength(1);
+	expect(ask("per_page=all")).toHaveLength(1);
+	// A list is written as one name repeated, so asking once is a list of one.
+	expect(ask("user_id=user_1")).toEqual([]);
+	expect(ask("user_id=user_1&user_id=user_2")).toEqual([]);
+	// A name the description says nothing about is somebody else's problem to report.
+	expect(ask("page=2")).toEqual([]);
 });

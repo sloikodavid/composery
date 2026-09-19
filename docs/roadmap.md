@@ -22,7 +22,7 @@ The order is what it costs to be without each one.
 
 Also not built, and not ordered against the rest:
 
-- **Pacing by what Hetzner says.** Every reply carries `RateLimit-*` headers, and the deployment paces itself by a constant instead, which can only ever be wrong in one of two directions. The constant is deliberately low, so this buys headroom rather than correctness.
+- **Pacing by what Hetzner says.** Every reply carries `ratelimit-limit`, `ratelimit-remaining` and `ratelimit-reset`, read from a real reply on 19 September: the limit is 3600 an hour and the reset is a unix second. The deployment paces itself by a constant under that instead, which can only ever be wrong in one of two directions. The constant is deliberately low, so this buys headroom rather than correctness.
 - **Suspending an account, and seeing what the deployment is doing.** An admin can take quota away, which stops new servers and leaves the running ones; nothing stops abuse in progress, and nothing shows the deployment's own rates and failures.
 - **A run of the suite on macOS.** It has never happened. The code is written for it and CI runs Linux only, so the claim rests on reasoning, which is the weakest kind of evidence this repository accepts.
 - **The flow that gives an agent access to a server.** Deferred on purpose: designing it beside everything else would have made hasty decisions.

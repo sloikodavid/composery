@@ -26,6 +26,9 @@ const architecture = "x86";
 const defaultImage = "ubuntu-24.04";
 const maxLocations = 20;
 const lookupPageSize = "2";
+// The most Hetzner gives at once. Asking for more is answered with fifty rather than refused,
+// and what a page holds is read from the reply, so this only decides how many requests a walk
+// takes. `meta.pagination.next_page` is what says whether another one follows.
 const listPageSize = "50";
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;

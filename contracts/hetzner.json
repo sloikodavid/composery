@@ -2,7 +2,7 @@
 	"sources": [
 		{
 			"source": "https://docs.hetzner.cloud/cloud.spec.json",
-			"readAt": "2026-09-17",
+			"readAt": "2026-09-19",
 			"digest": "e886b44dd817012d10cbfb72ec62ec56166805e611c350711ac8a9bd207363bb"
 		}
 	],
@@ -13,32 +13,78 @@
 					{
 						"name": "name",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "label_selector",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "sort",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"id",
+									"id:asc",
+									"id:desc",
+									"name",
+									"name:asc",
+									"name:desc",
+									"created",
+									"created:asc",
+									"created:desc"
+								]
+							}
+						}
 					},
 					{
 						"name": "status",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"running",
+									"initializing",
+									"starting",
+									"stopping",
+									"off",
+									"deleting",
+									"migrating",
+									"rebuilding",
+									"unknown"
+								]
+							}
+						}
 					},
 					{
 						"name": "page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "per_page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					}
 				],
 				"request": {},
@@ -52,7 +98,9 @@
 									"type": "object",
 									"properties": {
 										"id": {
-											"type": "integer"
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
 										},
 										"name": {
 											"type": "string"
@@ -84,7 +132,9 @@
 													],
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"ip": {
 															"type": "string"
@@ -109,7 +159,9 @@
 													],
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"ip": {
 															"type": "string"
@@ -157,7 +209,9 @@
 														"type": "object",
 														"properties": {
 															"id": {
-																"type": "integer"
+																"type": "integer",
+																"minimum": 1,
+																"maximum": 9007199254740991
 															},
 															"status": {
 																"type": "string",
@@ -337,7 +391,9 @@
 														"type": "object",
 														"properties": {
 															"id": {
-																"type": "integer"
+																"type": "integer",
+																"minimum": 1,
+																"maximum": 9007199254740991
 															},
 															"name": {
 																"type": "string"
@@ -396,7 +452,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"name": {
 													"type": "string"
@@ -438,7 +496,9 @@
 											],
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string",
@@ -607,7 +667,9 @@
 											],
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"name": {
 													"type": [
@@ -739,7 +801,9 @@
 											],
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"name": {
 													"type": "string"
@@ -1021,7 +1085,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"name": {
 										"type": "string"
@@ -1053,7 +1119,9 @@
 												],
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"ip": {
 														"type": "string"
@@ -1078,7 +1146,9 @@
 												],
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"ip": {
 														"type": "string"
@@ -1126,7 +1196,9 @@
 													"type": "object",
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"status": {
 															"type": "string",
@@ -1306,7 +1378,9 @@
 													"type": "object",
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"name": {
 															"type": "string"
@@ -1365,7 +1439,9 @@
 										"type": "object",
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -1407,7 +1483,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"type": {
 												"type": "string",
@@ -1576,7 +1654,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": [
@@ -1708,7 +1788,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -1771,7 +1853,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -1802,7 +1886,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -1850,7 +1936,9 @@
 									"type": "object",
 									"properties": {
 										"id": {
-											"type": "integer"
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
 										},
 										"command": {
 											"type": "string"
@@ -1881,7 +1969,9 @@
 												"type": "object",
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"type": {
 														"type": "string"
@@ -2005,7 +2095,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -2017,7 +2112,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"name": {
 										"type": "string"
@@ -2049,7 +2146,9 @@
 												],
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"ip": {
 														"type": "string"
@@ -2074,7 +2173,9 @@
 												],
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"ip": {
 														"type": "string"
@@ -2122,7 +2223,9 @@
 													"type": "object",
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"status": {
 															"type": "string",
@@ -2302,7 +2405,9 @@
 													"type": "object",
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														},
 														"name": {
 															"type": "string"
@@ -2361,7 +2466,9 @@
 										"type": "object",
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -2403,7 +2510,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"type": {
 												"type": "string",
@@ -2572,7 +2681,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": [
@@ -2704,7 +2815,9 @@
 										],
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -2830,7 +2943,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -2842,7 +2960,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -2873,7 +2993,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -2984,7 +3106,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -2996,7 +3123,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -3027,7 +3156,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -3141,7 +3272,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -3153,7 +3289,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -3184,7 +3322,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -3298,7 +3438,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -3310,7 +3455,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -3341,7 +3488,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -3455,32 +3604,61 @@
 					{
 						"name": "name",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "label_selector",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "ip",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "per_page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "sort",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"id",
+									"id:asc",
+									"id:desc",
+									"created",
+									"created:asc",
+									"created:desc"
+								]
+							}
+						}
 					}
 				],
 				"request": {},
@@ -3494,7 +3672,9 @@
 									"type": "object",
 									"properties": {
 										"id": {
-											"type": "integer"
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
 										},
 										"name": {
 											"type": "string"
@@ -3515,7 +3695,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"name": {
 													"type": "string"
@@ -3768,7 +3950,9 @@
 									"type": "string"
 								},
 								{
-									"type": "integer"
+									"type": "integer",
+									"minimum": 1,
+									"maximum": 9007199254740991
 								}
 							]
 						},
@@ -3802,7 +3986,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"name": {
 										"type": "string"
@@ -3823,7 +4009,9 @@
 										"type": "object",
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -3937,7 +4125,9 @@
 								],
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -3968,7 +4158,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -4083,7 +4275,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -4095,7 +4292,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"name": {
 										"type": "string"
@@ -4116,7 +4315,9 @@
 										"type": "object",
 										"properties": {
 											"id": {
-												"type": "integer"
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 9007199254740991
 											},
 											"name": {
 												"type": "string"
@@ -4294,7 +4495,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -4367,7 +4573,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -4379,7 +4590,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"command": {
 										"type": "string"
@@ -4410,7 +4623,9 @@
 											"type": "object",
 											"properties": {
 												"id": {
-													"type": "integer"
+													"type": "integer",
+													"minimum": 1,
+													"maximum": 9007199254740991
 												},
 												"type": {
 													"type": "string"
@@ -4524,7 +4739,12 @@
 					{
 						"name": "id",
 						"in": "path",
-						"required": true
+						"required": true,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 9007199254740991
+						}
 					}
 				],
 				"request": {},
@@ -4536,7 +4756,9 @@
 								"type": "object",
 								"properties": {
 									"id": {
-										"type": "integer"
+										"type": "integer",
+										"minimum": 1,
+										"maximum": 9007199254740991
 									},
 									"name": {
 										"type": "string"
@@ -4623,7 +4845,9 @@
 													"type": "object",
 													"properties": {
 														"id": {
-															"type": "integer"
+															"type": "integer",
+															"minimum": 1,
+															"maximum": 9007199254740991
 														}
 													},
 													"additionalProperties": false,
@@ -4658,7 +4882,9 @@
 																"type": "object",
 																"properties": {
 																	"id": {
-																		"type": "integer"
+																		"type": "integer",
+																		"minimum": 1,
+																		"maximum": 9007199254740991
 																	}
 																},
 																"additionalProperties": false,
@@ -4760,17 +4986,26 @@
 					{
 						"name": "name",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "per_page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					}
 				],
 				"request": {},
@@ -4918,7 +5153,9 @@
 												"type": "object",
 												"properties": {
 													"id": {
-														"type": "integer"
+														"type": "integer",
+														"minimum": 1,
+														"maximum": 9007199254740991
 													},
 													"name": {
 														"type": "string"
@@ -5098,52 +5335,120 @@
 					{
 						"name": "sort",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"id",
+									"id:asc",
+									"id:desc",
+									"name",
+									"name:asc",
+									"name:desc",
+									"created",
+									"created:asc",
+									"created:desc"
+								]
+							}
+						}
 					},
 					{
 						"name": "type",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"system",
+									"app",
+									"snapshot",
+									"backup"
+								]
+							}
+						}
 					},
 					{
 						"name": "status",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string",
+								"enum": [
+									"available",
+									"creating",
+									"unavailable"
+								]
+							}
+						}
 					},
 					{
 						"name": "bound_to",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
 					},
 					{
 						"name": "include_deprecated",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
 					},
 					{
 						"name": "name",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "label_selector",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
 					},
 					{
 						"name": "architecture",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"x86",
+								"arm"
+							]
+						}
 					},
 					{
 						"name": "page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					},
 					{
 						"name": "per_page",
 						"in": "query",
-						"required": false
+						"required": false,
+						"schema": {
+							"type": "integer"
+						}
 					}
 				],
 				"request": {},
@@ -5157,7 +5462,9 @@
 									"type": "object",
 									"properties": {
 										"id": {
-											"type": "integer"
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 9007199254740991
 										},
 										"type": {
 											"type": "string",
