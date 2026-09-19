@@ -62,7 +62,9 @@ Convex agent skills for common tasks can be installed by running
 
 - "Scripts must fan out to their immediate children (when present), e.g. `"check": "bun --parallel --no-exit-on-error \"check:*\""`."
 
-- "All working environment variables must have corresponding examples in either `.env.convex.example`, `.env.local.example`, or `.env.test.example`."
+- "All working environment variables must have corresponding examples in either `.env.convex.example`, `.env.local.example`, or `.env.test.example`. An example must give every variable a value of the right shape and never a blank: a blank teaches nobody what belongs there, and one of these files is copied as a working configuration."
+
+- "A version this repository pins, whether a dependency, an action, or an image, must be checked against what its vendor publishes at the moment it is pinned, and moved deliberately after that. Pinning whatever was to hand leaves a repository built on versions nobody chose."
 
 - "Commit messages must be terse, present tense, and lowercase, not documentation."
 
