@@ -22,6 +22,13 @@ Nothing here is ranked against everything else, because that order was invented 
 - **SSH host certificates.** Waits on ports, because a certificate's principal is a name and ports decide whether there is one. `docs/ssh-certificates.md` holds the sketch.
 - Billing, and a production environment separate from this one.
 
+## Behind what a vendor publishes
+
+Each of these is a version somebody chose once and nobody has moved since. Moving one is deliberate work, because the run that proves it is the whole suite.
+
+- **The Convex backend the tests run** is pinned a week behind what Convex has released. `harness/pins.ts` holds it, with a digest for each platform that has to move with it.
+- **Six dependencies have newer releases**, one of them a major: `@convex-dev/rate-limiter` 0.3 to 0.4, which shapes every limit this deployment keeps. The others are `@clerk/backend`, `@clerk/nextjs`, `@convex-dev/workpool`, `@biomejs/biome` and `@types/node`.
+
 ## Wrong today
 
 Nothing known.
