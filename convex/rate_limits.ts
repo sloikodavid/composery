@@ -15,11 +15,13 @@ const rateLimits = {
 		period: HOUR,
 		capacity: 200,
 	},
+	// A claim is permanent, so this bounds how much of the namespace one account can hold, and
+	// still lets somebody create a hundred servers in one go.
 	serverNameClaim: {
 		kind: "token bucket",
-		rate: 1000,
+		rate: 100,
 		period: DAY,
-		capacity: 200,
+		capacity: 100,
 	},
 	serverMemberLookup: {
 		kind: "token bucket",

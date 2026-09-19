@@ -4,11 +4,13 @@ import { v } from "convex/values";
 import { internalAction } from "../../_generated/server";
 import {
 	createHetznerCloudFirewall,
+	createHetznerCloudUsage,
 	findHetznerCloudFirewall,
 	getHetznerCloudConfig,
 	setHetznerCloudFirewallRules,
 } from "./api";
 import { isFirewallAsStated } from "./firewall";
+import type { HetznerCloudUsage } from "./pacing";
 
 const settleTimeoutMs = 60_000;
 const settleDelayMs = 1000;
@@ -18,10 +20,13 @@ const settleDelayMs = 1000;
  * rules before it has carried it out, so the answer is not the outcome: this says the rules are
  * back only once the provider says the same thing.
  */
-async function requireRulesAsStated(controllerId: string) {
+async function requireRulesAsStated(
+	usage: HetznerCloudUsage,
+	controllerId: string,
+) {
 	const deadline = Date.now() + settleTimeoutMs;
 	while (Date.now() < deadline) {
-		const found = await findHetznerCloudFirewall(controllerId);
+		const found = await findHetznerCloudFirewall(usage, controllerId);
 		if (found !== null && isFirewallAsStated(found.rules)) {
 			return;
 		}
@@ -60,18 +65,24 @@ export const claimFirewall = internalAction({
 				"This deployment has no Hetzner Cloud configuration to claim a project with.",
 			);
 		}
-		const found = await findHetznerCloudFirewall(config.controllerId);
+		// Claiming a project is rare and done by a person, so it is paced by the headroom that the
+		// queues leave rather than by either of them.
+		const usage = createHetznerCloudUsage();
+		const found = await findHetznerCloudFirewall(usage, config.controllerId);
 		if (found === null) {
 			return {
-				firewallId: await createHetznerCloudFirewall(config.controllerId),
+				firewallId: await createHetznerCloudFirewall(
+					usage,
+					config.controllerId,
+				),
 				did: "made" as const,
 			};
 		}
 		if (isFirewallAsStated(found.rules)) {
 			return { firewallId: found.id, did: "kept" as const };
 		}
-		await setHetznerCloudFirewallRules(found.id);
-		await requireRulesAsStated(config.controllerId);
+		await setHetznerCloudFirewallRules(usage, found.id);
+		await requireRulesAsStated(usage, config.controllerId);
 		return { firewallId: found.id, did: "put the rules back" as const };
 	},
 });

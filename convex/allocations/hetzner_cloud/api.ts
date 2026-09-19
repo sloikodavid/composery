@@ -1,6 +1,4 @@
-import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
 import type { Infer } from "convex/values";
-import { components } from "../../_generated/api";
 import { env } from "../../_generated/server";
 import { getFakeAddress } from "../../fake_address";
 import {
@@ -16,6 +14,7 @@ import {
 } from "./firewall";
 import type { HetznerCloudServer } from "./observation";
 import { hetznerCloudApiPrefix, hetznerCloudOrigin } from "./origin";
+import type { HetznerCloudUsage } from "./pacing";
 import type {
 	hetznerCloudCollection,
 	hetznerCloudResourceKind,
@@ -30,8 +29,6 @@ const lookupPageSize = "2";
 // and what a page holds is read from the reply, so this only decides how many requests a walk
 // takes. `meta.pagination.next_page` is what says whether another one follows.
 const listPageSize = "50";
-// What is held back for work already under way when Hetzner says the hour is nearly spent.
-const budgetReserve = 20;
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
 const controllerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]$/;
@@ -99,29 +96,6 @@ const serverStatuses = {
 	rebuilding: "changing",
 	unknown: "changing",
 } as const satisfies Record<string, HetznerCloudServer["status"]>;
-
-/**
- * Paces this deployment's requests. Each queue has its own allowance, so neither can starve the
- * other, and both together stay under Hetzner's own hourly limit.
- *
- * Cleanup is not the smaller of the two. Taking an allocation apart costs more claims than putting
- * one together, and it is the path that releases a customer's addresses and quota, so a burst that
- * cannot finish one deletion would leave those held for minutes for no reason.
- */
-export const hetznerCloudRateLimiter = new RateLimiter(components.rateLimiter, {
-	hetznerCloudWork: {
-		kind: "token bucket",
-		rate: 2000,
-		period: HOUR,
-		capacity: 30,
-	},
-	hetznerCloudCleanup: {
-		kind: "token bucket",
-		rate: 1000,
-		period: HOUR,
-		capacity: 30,
-	},
-});
 
 export type HetznerCloudErrorCode =
 	| "capacity_unavailable"
@@ -304,44 +278,40 @@ function toRetryAfterMs(response: Response) {
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
-/**
- * What Hetzner says is left of this project's hour, read from whatever it last answered. Every
- * reply carries it, so the deployment need not guess: its own allowance shapes bursts, and this is
- * the number that says when to stop.
- *
- * It lives here because it belongs to the token rather than to any one allocation, and an action
- * that made a request carries it back to whoever records what that run did.
- */
-let lastBudget: { remaining: number; resetAt: number } | undefined;
-
-/** Hetzner names these on every reply. A reply that names neither leaves what we knew. */
-function readBudget(response: Response) {
+/** Hetzner states these on every reply. A reply that states none of them leaves what we knew. */
+function readBudget(usage: HetznerCloudUsage, response: Response) {
+	const limit = Number(response.headers.get("RateLimit-Limit"));
 	const remaining = Number(response.headers.get("RateLimit-Remaining"));
 	const reset = Number(response.headers.get("RateLimit-Reset"));
-	if (!(Number.isSafeInteger(remaining) && Number.isSafeInteger(reset))) {
-		return;
-	}
-	lastBudget = { remaining, resetAt: reset * millisecondsPerSecond };
-}
-
-/**
- * When to stop asking, or nothing while there is room. What is left is spent on the allocations
- * already under way rather than on new ones, so the reserve is a few requests and not none: a run
- * that has made a server still has addresses to attach and a report to wait for.
- */
-export function getHetznerCloudPauseUntil(): number | undefined {
 	if (
-		lastBudget === undefined ||
-		lastBudget.remaining > budgetReserve ||
-		lastBudget.resetAt <= Date.now()
+		!(
+			Number.isSafeInteger(limit) &&
+			limit > 0 &&
+			Number.isSafeInteger(remaining) &&
+			Number.isSafeInteger(reset)
+		)
 	) {
 		return;
 	}
-	return lastBudget.resetAt;
+	usage.budget = {
+		limit,
+		remaining,
+		resetAt: reset * millisecondsPerSecond,
+		observedAt: Date.now(),
+	};
+}
+
+/**
+ * What one action spends. Each action makes its own, so that two runs in one process never count
+ * each other's requests.
+ */
+export function createHetznerCloudUsage(): HetznerCloudUsage {
+	return { requests: 0 };
 }
 
 /** No implicit retries. A request that failed can still have reached Hetzner. */
 async function callHetznerCloud(
+	usage: HetznerCloudUsage,
 	path: string,
 	method = "GET",
 	body?: unknown,
@@ -352,6 +322,8 @@ async function callHetznerCloud(
 		});
 	}
 	let response: Response;
+	// Counted before it is sent: a request whose answer is lost has still reached Hetzner.
+	usage.requests += 1;
 	try {
 		const apiUrl =
 			getFakeAddress(env.HCLOUD_FAKE_URL, "HCLOUD_FAKE_URL") ??
@@ -369,7 +341,7 @@ async function callHetznerCloud(
 	} catch {
 		throw new HetznerCloudError("transport_uncertain");
 	}
-	readBudget(response);
+	readBudget(usage, response);
 	if (response.status === httpStatus.notFound && method === "GET") {
 		return null;
 	}
@@ -475,13 +447,15 @@ function requireOneMatch(
 }
 
 async function findReply(
+	usage: HetznerCloudUsage,
+
 	owner: HetznerCloudOwner,
 	kind: ResourceKind,
 	knownId: number | undefined,
 ) {
 	const collection = collections[kind];
 	if (knownId !== undefined) {
-		const reply = await callHetznerCloud(`${collection}/${knownId}`);
+		const reply = await callHetznerCloud(usage, `${collection}/${knownId}`);
 		if (reply === null) {
 			return null;
 		}
@@ -499,7 +473,7 @@ async function findReply(
 		per_page: lookupPageSize,
 	});
 	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-	const labeled = await callHetznerCloud(`${collection}?${labelQuery}`);
+	const labeled = await callHetznerCloud(usage, `${collection}?${labelQuery}`);
 	const labeledMatch = requireOneMatch(
 		requireList(labeled?.[collection]),
 		owner,
@@ -509,6 +483,7 @@ async function findReply(
 		return labeledMatch;
 	}
 	const named = await callHetznerCloud(
+		usage,
 		`${collection}?name=${getResourceName(owner.allocationId, kind)}&per_page=${lookupPageSize}`,
 	);
 	return requireOneMatch(requireList(named?.[collection]), owner, kind);
@@ -576,19 +551,23 @@ export function toServer(reply: Reply): HetznerCloudServer {
 
 /** Finds the allocation's resource by its known ID, or by its labels and then its name. */
 export async function findHetznerCloudResource(
+	usage: HetznerCloudUsage,
+
 	owner: HetznerCloudOwner,
 	kind: ResourceKind,
 	knownId: number | undefined,
 ): Promise<HetznerCloudResource | null> {
-	const reply = await findReply(owner, kind, knownId);
+	const reply = await findReply(usage, owner, kind, knownId);
 	return reply === null ? null : toResource(kind, reply);
 }
 
 export async function findHetznerCloudServer(
+	usage: HetznerCloudUsage,
+
 	owner: HetznerCloudOwner,
 	knownId: number | undefined,
 ): Promise<HetznerCloudServer | null> {
-	const reply = await findReply(owner, "server", knownId);
+	const reply = await findReply(usage, owner, "server", knownId);
 	return reply === null ? null : toServer(reply);
 }
 
@@ -639,10 +618,13 @@ function toCreateBody(
 
 /** Sends one create request. It throws when Hetzner's answer is lost, so the caller must look the resource up before creating it again. */
 export async function createHetznerCloudResource(
+	usage: HetznerCloudUsage,
+
 	owner: HetznerCloudOwner,
 	request: HetznerCloudCreateRequest,
 ): Promise<HetznerCloudResource & { actionId: number | null }> {
 	const reply = await callHetznerCloud(
+		usage,
 		collections[request.kind],
 		"POST",
 		toCreateBody(owner, owner.controllerId, request),
@@ -657,6 +639,8 @@ export async function createHetznerCloudResource(
 
 /** Hetzner may still be deleting a resource it has accepted a delete request for. */
 export async function sendHetznerCloudDelete(
+	usage: HetznerCloudUsage,
+
 	kind: ResourceKind,
 	id: number,
 ): Promise<
@@ -664,6 +648,7 @@ export async function sendHetznerCloudDelete(
 > {
 	try {
 		const reply = await callHetznerCloud(
+			usage,
 			`${collections[kind]}/${id}`,
 			"DELETE",
 		);
@@ -680,8 +665,13 @@ export async function sendHetznerCloudDelete(
 }
 
 /** Returns the action ID when Hetzner started an action for the request. */
-export async function sendHetznerCloudPower(serverId: number, kind: PowerKind) {
+export async function sendHetznerCloudPower(
+	usage: HetznerCloudUsage,
+	serverId: number,
+	kind: PowerKind,
+) {
 	const reply = await callHetznerCloud(
+		usage,
 		`servers/${serverId}/actions/${powerActions[kind]}`,
 		"POST",
 	);
@@ -690,9 +680,11 @@ export async function sendHetznerCloudPower(serverId: number, kind: PowerKind) {
 
 /** Returns null when Hetzner no longer knows the action. */
 export async function getHetznerCloudActionStatus(
+	usage: HetznerCloudUsage,
+
 	actionId: number,
 ): Promise<"running" | "succeeded" | "failed" | null> {
-	const reply = await callHetznerCloud(`actions/${actionId}`);
+	const reply = await callHetznerCloud(usage, `actions/${actionId}`);
 	if (reply === null) {
 		return null;
 	}
@@ -717,6 +709,8 @@ function toScannedServer(resource: Reply) {
 
 /** One page of every resource that carries this controller's label, known or not. */
 export async function listHetznerCloudResources(
+	usage: HetznerCloudUsage,
+
 	controllerId: string,
 	collection: Collection,
 	page: number,
@@ -728,7 +722,7 @@ export async function listHetznerCloudResources(
 		page: String(page),
 	});
 	// biome-ignore-end lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
-	const reply = await callHetznerCloud(`${collection}?${query}`);
+	const reply = await callHetznerCloud(usage, `${collection}?${query}`);
 	const resources = requireList(reply?.[collection]).map((value) => {
 		const resource = requireObject(value);
 		// Hetzner requires labels on a server and on a Primary IP, but not on a firewall. One that
@@ -752,10 +746,12 @@ export async function listHetznerCloudResources(
 
 /** The labeled firewall proves that the token belongs to this controller's project. */
 export async function requireHetznerCloudController(
+	usage: HetznerCloudUsage,
+
 	firewallId: number,
 	controllerId: string,
 ) {
-	const reply = await callHetznerCloud(`firewalls/${firewallId}`);
+	const reply = await callHetznerCloud(usage, `firewalls/${firewallId}`);
 	if (reply === null) {
 		throw new HetznerCloudError("project_firewall_missing", {
 			status: httpStatus.forbidden,
@@ -795,12 +791,14 @@ function isSupportedLocation(
 }
 
 export async function resolveHetznerCloudSpec(
+	usage: HetznerCloudUsage,
+
 	locations: string[],
 	image: string,
 	serverType: string,
 ) {
 	const type = requireOfferedServerType(
-		await callHetznerCloud(`server_types?name=${serverType}`),
+		await callHetznerCloud(usage, `server_types?name=${serverType}`),
 		serverType,
 	);
 	// The image must be built for what the server runs on, and the type is what says which that is.
@@ -815,6 +813,7 @@ export async function resolveHetznerCloudSpec(
 		});
 	}
 	const images = await callHetznerCloud(
+		usage,
 		`images?name=${encodeURIComponent(image)}&architecture=${architecture}&type=system`,
 	);
 	const candidate = requireList(images?.images)
@@ -854,13 +853,16 @@ function toFirewallRules(value: unknown): HetznerCloudFirewallRule[] {
  * given a firewall of its own, and the check that proves which project we are in would prove
  * nothing. `project.claimFirewall` is where one is made, deliberately and once.
  */
-export async function findHetznerCloudFirewall(controllerId: string) {
+export async function findHetznerCloudFirewall(
+	usage: HetznerCloudUsage,
+	controllerId: string,
+) {
 	const query = new URLSearchParams({
 		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API requires snake_case parameters
 		label_selector: `controller-id=${controllerId}`,
 	});
 	const found = requireList(
-		(await callHetznerCloud(`firewalls?${query}`))?.firewalls,
+		(await callHetznerCloud(usage, `firewalls?${query}`))?.firewalls,
 	);
 	if (found.length === 0) {
 		return null;
@@ -877,8 +879,11 @@ export async function findHetznerCloudFirewall(controllerId: string) {
 }
 
 /** Makes this controller's firewall, with the rules Composery states. */
-export async function createHetznerCloudFirewall(controllerId: string) {
-	const reply = await callHetznerCloud("firewalls", "POST", {
+export async function createHetznerCloudFirewall(
+	usage: HetznerCloudUsage,
+	controllerId: string,
+) {
+	const reply = await callHetznerCloud(usage, "firewalls", "POST", {
 		name: `composery-${controllerId}`,
 		labels: { "controller-id": controllerId },
 		rules: hetznerCloudFirewallRules,
@@ -887,18 +892,29 @@ export async function createHetznerCloudFirewall(controllerId: string) {
 }
 
 /** Puts the rules back to what Composery states, whatever they were. */
-export async function setHetznerCloudFirewallRules(firewallId: number) {
-	await callHetznerCloud(`firewalls/${firewallId}/actions/set_rules`, "POST", {
-		rules: hetznerCloudFirewallRules,
-	});
+export async function setHetznerCloudFirewallRules(
+	usage: HetznerCloudUsage,
+	firewallId: number,
+) {
+	await callHetznerCloud(
+		usage,
+		`firewalls/${firewallId}/actions/set_rules`,
+		"POST",
+		{
+			rules: hetznerCloudFirewallRules,
+		},
+	);
 }
 
 /** Puts one server behind this controller's firewall again, and says which action to watch. */
 export async function applyHetznerCloudFirewall(
+	usage: HetznerCloudUsage,
+
 	firewallId: number,
 	serverId: number,
 ) {
 	const reply = await callHetznerCloud(
+		usage,
 		`firewalls/${firewallId}/actions/apply_to_resources`,
 		"POST",
 		// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names these fields
@@ -915,8 +931,11 @@ export async function applyHetznerCloudFirewall(
  * ours or not set up, and either way nothing may be created in it: an empty project would
  * otherwise read as one where every server had been deleted.
  */
-export async function requireHetznerCloudFirewall(controllerId: string) {
-	const found = await findHetznerCloudFirewall(controllerId);
+export async function requireHetznerCloudFirewall(
+	usage: HetznerCloudUsage,
+	controllerId: string,
+) {
+	const found = await findHetznerCloudFirewall(usage, controllerId);
 	if (found === null) {
 		throw new HetznerCloudError("project_firewall_missing", {
 			status: httpStatus.forbidden,

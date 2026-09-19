@@ -14,26 +14,26 @@ import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
 import { failureClass, isStuck, toRetryDelayMs } from "../retries";
 import type { allocationParts } from "../schema";
-import { type HetznerCloudConfig, hetznerCloudRateLimiter } from "./api";
+import type { HetznerCloudConfig } from "./api";
 import {
 	type HetznerCloudServer,
 	hetznerCloudServerState,
 	observeHetznerCloudServer,
 	type ServerObservation,
 } from "./observation";
+import { chargeHetznerCloudPacing, checkHetznerCloudPacing } from "./pacing";
 import {
-	type hetznerCloudQueue,
+	hetznerCloudQueue,
 	hetznerCloudResourceKind,
 	hetznerCloudResourceStatus,
 	hetznerCloudSpec,
+	hetznerCloudUsage,
 } from "./schema";
 
 export const hetznerCloudPowerDeadlineMs = 300_000;
 const leaseMs = 120_000;
 const recordDelayMs = 5000;
 const sweepBatchSize = 10;
-// One lease can lead to several Hetzner requests in one step.
-const requestsPerClaim = 8;
 const never = Number.MAX_SAFE_INTEGER;
 
 type HetznerCloudQueue = Infer<typeof hetznerCloudQueue>;
@@ -56,11 +56,6 @@ const workPools: Record<HetznerCloudQueue, Workpool> = {
 	}),
 };
 
-const rateLimitNames = {
-	work: "hetznerCloudWork",
-	cleanup: "hetznerCloudCleanup",
-} as const satisfies Record<HetznerCloudQueue, string>;
-
 export const hetznerCloudWorkPool = workPools.work;
 
 export const hetznerCloudWorkerUpdate = v.object({
@@ -74,9 +69,6 @@ export const hetznerCloudWorkerUpdate = v.object({
 	spec: v.optional(hetznerCloudSpec),
 	// Which firewall this allocation is behind, learnt from the label it carries.
 	firewallId: v.optional(v.number()),
-	// When Hetzner says its hour is spent, whatever this run decided about itself. It is a floor
-	// under the next attempt and never brings one forward.
-	pauseUntil: v.optional(v.number()),
 	// The server as the worker found it. What it means for the allocation is worked out here,
 	// from the allocation as it is now, so that the scan's look and the worker's say the same
 	// things about it.
@@ -223,6 +215,20 @@ export async function wakeHetznerCloudAllocation(
 	}
 }
 
+/**
+ * Asks for a sweep when an allocation is next due, so that its next step waits for its own delay
+ * and not for the cron as well. The cron stays, for a lease that runs out without an answer.
+ */
+async function scheduleHetznerCloudSweep(ctx: MutationCtx, dueAt: number) {
+	if (dueAt !== never) {
+		await ctx.scheduler.runAt(
+			dueAt,
+			internal.allocations.hetzner_cloud.worker_state.sweep,
+			{},
+		);
+	}
+}
+
 export const sweep = internalMutation({
 	args: {},
 	returns: v.null(),
@@ -270,19 +276,18 @@ export const lease = internalMutation({
 		) {
 			return null;
 		}
-		const rateLimit = await hetznerCloudRateLimiter.limit(
+		const retryAt = await checkHetznerCloudPacing(
 			ctx,
-			rateLimitNames[hetznerCloudAllocation.queue],
-			{ count: requestsPerClaim },
+			hetznerCloudAllocation.controllerId,
+			hetznerCloudAllocation.queue,
 		);
-		if (!rateLimit.ok) {
+		if (retryAt !== null) {
 			await ctx.db.patch(
 				"hetznerCloudAllocations",
 				hetznerCloudAllocation._id,
-				{
-					dueAt: Date.now() + rateLimit.retryAfter,
-				},
+				{ dueAt: retryAt },
 			);
+			await scheduleHetznerCloudSweep(ctx, retryAt);
 			return null;
 		}
 		const leaseFields = {
@@ -675,15 +680,30 @@ export const record = internalMutation({
 		allocationId: v.id("serverAllocations"),
 		epoch: v.number(),
 		operationId: v.id("serverOperations"),
+		queue: hetznerCloudQueue,
 		update: hetznerCloudWorkerUpdate,
+		usage: hetznerCloudUsage,
 	},
 	returns: v.null(),
-	handler: async (ctx, { allocationId, epoch, operationId, update }) => {
+	handler: async (
+		ctx,
+		{ allocationId, epoch, operationId, queue, update, usage },
+	) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
 		const hetznerCloudAllocation = await getHetznerCloudAllocation(
 			ctx,
 			allocationId,
 		);
+		// What the run sent is spent whether or not its result still counts.
+		const resumeAt =
+			hetznerCloudAllocation === null
+				? Date.now()
+				: await chargeHetznerCloudPacing(
+						ctx,
+						hetznerCloudAllocation.controllerId,
+						queue,
+						usage,
+					);
 		if (
 			allocation === null ||
 			hetznerCloudAllocation === null ||
@@ -723,17 +743,18 @@ export const record = internalMutation({
 			allocationId,
 			recording.allocationPatch,
 		);
-		if (update.pauseUntil !== undefined) {
-			recording.hetznerCloudPatch.dueAt = Math.max(
-				recording.hetznerCloudPatch.dueAt ?? 0,
-				update.pauseUntil,
-			);
-		}
+		// A floor under the next attempt when the budget is low, which never brings one forward.
+		const dueAt = Math.max(
+			recording.hetznerCloudPatch.dueAt ?? hetznerCloudAllocation.dueAt,
+			resumeAt,
+		);
+		recording.hetznerCloudPatch.dueAt = dueAt;
 		await ctx.db.patch(
 			"hetznerCloudAllocations",
 			hetznerCloudAllocation._id,
 			recording.hetznerCloudPatch,
 		);
+		await scheduleHetznerCloudSweep(ctx, dueAt);
 		return null;
 	},
 });

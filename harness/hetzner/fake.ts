@@ -38,6 +38,9 @@ const imageId = 501;
 export const fakeServerType = "cx23";
 const locations = ["nbg1", "fsn1", "hel1"];
 const firstLocation = "nbg1";
+// The default limit Hetzner states for a project, and what a real reply said on 19 September.
+const hourlyLimit = 3600;
+const millisecondsPerSecond = 1000;
 
 type Collection = "servers" | "primary_ips";
 
@@ -395,6 +398,30 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		return notFound();
 	};
 
+	// Hetzner states what is left of the project's hour on every reply, and gives one request back
+	// each second, as its own description says. What a test scripts replaces all of this.
+	let remaining = hourlyLimit;
+	let countedAt = Date.now();
+	const withBudget = (reply: FakeReply): FakeReply => {
+		const now = Date.now();
+		const returned = Math.floor((now - countedAt) / millisecondsPerSecond);
+		remaining = Math.min(hourlyLimit, remaining + returned);
+		countedAt += returned * millisecondsPerSecond;
+		remaining = Math.max(0, remaining - 1);
+		const resetAt = Math.ceil(
+			now / millisecondsPerSecond + (hourlyLimit - remaining),
+		);
+		return {
+			...reply,
+			headers: {
+				...reply.headers,
+				"RateLimit-Limit": String(hourlyLimit),
+				"RateLimit-Remaining": String(remaining),
+				"RateLimit-Reset": String(resetAt),
+			},
+		};
+	};
+
 	// A run given a token for a project of its own asks Hetzner itself, through the same fake, so
 	// the requests are still counted, the answers are still held to Hetzner's description, and a
 	// test that loses a reply loses a real one.
@@ -402,7 +429,15 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 	const fake = await startFake({
 		system: "Hetzner",
 		checker: hetznerContract,
-		answer: (request) => answer(request.method, request.path, request.body),
+		answer: (request) =>
+			withBudget(answer(request.method, request.path, request.body)),
+		observe: (reply) => {
+			const stated = Number(reply.headers?.["RateLimit-Remaining"]);
+			if (token === null && Number.isSafeInteger(stated)) {
+				remaining = stated;
+				countedAt = Date.now();
+			}
+		},
 		...(token === null ? {} : { forward: toHetznerForward(token) }),
 	});
 

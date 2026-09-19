@@ -101,9 +101,10 @@ export const get = internalQuery({
 
 /** How long a server's way in may go unlooked-at before it is looked at again. */
 const checkEveryMs = 21_600_000;
-// Enough that a large fleet comes round inside the interval, and small enough that a minute of
-// checks is a minute of ordinary connections.
-const checkBatchSize = 5;
+// Checks started each minute, so a fleet of up to 7,200 servers comes round inside the interval.
+// A larger one is looked at less often than that, oldest first. A minute of checks is still a
+// minute of ordinary connections.
+const checkBatchSize = 20;
 
 /**
  * Hands the oldest looks to the check, and a row nobody has looked at first of all. Each one is

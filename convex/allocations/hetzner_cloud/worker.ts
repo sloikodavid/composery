@@ -16,10 +16,10 @@ import type { powerOperationKind } from "../schema";
 import {
 	applyHetznerCloudFirewall,
 	createHetznerCloudResource,
+	createHetznerCloudUsage,
 	findHetznerCloudResource,
 	findHetznerCloudServer,
 	getHetznerCloudActionStatus,
-	getHetznerCloudPauseUntil,
 	type HetznerCloudCreateRequest,
 	HetznerCloudError,
 	type HetznerCloudOwner,
@@ -34,6 +34,7 @@ import {
 	observeHetznerCloudServer,
 	type ServerObservation,
 } from "./observation";
+import type { HetznerCloudUsage } from "./pacing";
 import type { hetznerCloudResourceKind } from "./schema";
 import {
 	type HetznerCloudWorkerUpdate,
@@ -45,6 +46,7 @@ type PowerKind = Infer<typeof powerOperationKind>;
 type ObservedStatus = "running" | "stopped";
 type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
 type Lease = {
+	usage: HetznerCloudUsage;
 	allocation: Doc<"serverAllocations">;
 	hetznerCloudAllocation: HetznerCloudAllocation;
 	operation: Doc<"serverOperations">;
@@ -185,6 +187,7 @@ async function createResource(
 	const owner = toOwner(hetznerCloudAllocation);
 	const resource = hetznerCloudAllocation.resources[kind];
 	const found = await findHetznerCloudResource(
+		lease.usage,
 		owner,
 		kind,
 		getKnownId(resource),
@@ -214,7 +217,11 @@ async function createResource(
 		return {};
 	}
 	try {
-		const created = await createHetznerCloudResource(owner, prepared.request);
+		const created = await createHetznerCloudResource(
+			lease.usage,
+			owner,
+			prepared.request,
+		);
 		return {
 			resource: toPresentResource(kind, created),
 			...(created.actionId === null ? {} : { actionId: created.actionId }),
@@ -241,6 +248,7 @@ async function deleteResource(
 		return { resource: { kind, status: { status: "absent" } } };
 	}
 	const found = await findHetznerCloudResource(
+		lease.usage,
 		toOwner(hetznerCloudAllocation),
 		kind,
 		getKnownId(resource),
@@ -268,7 +276,7 @@ async function deleteResource(
 	if (found.isAssigned) {
 		return toFailure("address_assigned_to_another_resource", "waiting");
 	}
-	const sent = await sendHetznerCloudDelete(kind, found.id);
+	const sent = await sendHetznerCloudDelete(lease.usage, kind, found.id);
 	switch (sent.status) {
 		case "absent":
 			return { resource: { kind, status: { status: "absent", id: found.id } } };
@@ -281,9 +289,10 @@ async function deleteResource(
 }
 
 async function stepAction(
+	lease: Lease,
 	action: NonNullable<HetznerCloudAllocation["action"]>,
 ): Promise<HetznerCloudWorkerUpdate> {
-	const status = await getHetznerCloudActionStatus(action.id);
+	const status = await getHetznerCloudActionStatus(lease.usage, action.id);
 	switch (status) {
 		case null:
 		case "succeeded":
@@ -333,7 +342,11 @@ async function stepPower(
 	if (!canSend) {
 		return {};
 	}
-	const actionId = await sendHetznerCloudPower(serverId, operation.kind);
+	const actionId = await sendHetznerCloudPower(
+		lease.usage,
+		serverId,
+		operation.kind,
+	);
 	return actionId === null ? {} : { actionId };
 }
 
@@ -348,6 +361,7 @@ async function observeServer(
 ): Promise<HetznerCloudWorkerUpdate> {
 	const { hetznerCloudAllocation } = lease;
 	const server = await findHetznerCloudServer(
+		lease.usage,
 		toOwner(hetznerCloudAllocation),
 		getKnownId(hetznerCloudAllocation.resources.server),
 	);
@@ -388,7 +402,11 @@ async function stepFirewall(
 	) {
 		return null;
 	}
-	const actionId = await applyHetznerCloudFirewall(firewallId, serverId);
+	const actionId = await applyHetznerCloudFirewall(
+		lease.usage,
+		firewallId,
+		serverId,
+	);
 	return actionId === null ? {} : { actionId };
 }
 
@@ -400,11 +418,14 @@ async function step(
 	const { controllerId, firewallId } = hetznerCloudAllocation;
 	if (firewallId === undefined) {
 		// Nothing is made in a project until the firewall that proves it is ours is found there.
-		return { firewallId: (await requireHetznerCloudFirewall(controllerId)).id };
+		return {
+			firewallId: (await requireHetznerCloudFirewall(lease.usage, controllerId))
+				.id,
+		};
 	}
-	await requireHetznerCloudController(firewallId, controllerId);
+	await requireHetznerCloudController(lease.usage, firewallId, controllerId);
 	if (hetznerCloudAllocation.action !== undefined) {
-		return await stepAction(hetznerCloudAllocation.action);
+		return await stepAction(lease, hetznerCloudAllocation.action);
 	}
 	if (allocation.deleteRequested) {
 		for (const kind of deleteOrder) {
@@ -417,6 +438,7 @@ async function step(
 	if (hetznerCloudAllocation.spec === undefined) {
 		return {
 			spec: await resolveHetznerCloudSpec(
+				lease.usage,
 				hetznerCloudAllocation.locations,
 				hetznerCloudAllocation.image,
 				hetznerCloudAllocation.serverType,
@@ -445,25 +467,19 @@ export const run = internalAction({
 	args: { allocationId: v.id("serverAllocations"), epoch: v.number() },
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const lease: Lease | null = await ctx.runMutation(
+		const leased = await ctx.runMutation(
 			internal.allocations.hetzner_cloud.worker_state.lease,
 			args,
 		);
-		if (lease === null) {
+		if (leased === null) {
 			return null;
 		}
+		const lease: Lease = { ...leased, usage: createHetznerCloudUsage() };
 		let update: HetznerCloudWorkerUpdate;
 		try {
 			update = await step(ctx, lease);
 		} catch (error) {
 			update = toErrorUpdate(error);
-		}
-		// Hetzner counts what this project has left of its hour and says so on every reply. When it
-		// is nearly spent, what is left belongs to the work already under way, so this allocation
-		// waits for the hour to turn rather than finding out by being refused.
-		const pauseUntil = getHetznerCloudPauseUntil();
-		if (pauseUntil !== undefined) {
-			update = { ...update, pauseUntil };
 		}
 		await ctx.runMutation(
 			internal.allocations.hetzner_cloud.worker_state.record,
@@ -471,7 +487,9 @@ export const run = internalAction({
 				allocationId: args.allocationId,
 				epoch: lease.hetznerCloudAllocation.epoch,
 				operationId: lease.operation._id,
+				queue: lease.hetznerCloudAllocation.queue,
 				update,
+				usage: lease.usage,
 			},
 		);
 		return null;

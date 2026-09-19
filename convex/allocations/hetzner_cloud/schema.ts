@@ -20,6 +20,23 @@ export const hetznerCloudQueue = v.union(
 	v.literal("cleanup"),
 );
 
+/**
+ * What Hetzner last said is left of a project's requests, from the headers every reply carries.
+ * `resetAt` is when all of `limit` is back; Hetzner gives it back gradually until then.
+ */
+export const hetznerCloudBudget = v.object({
+	limit: v.number(),
+	remaining: v.number(),
+	resetAt: v.number(),
+	observedAt: v.number(),
+});
+
+/** What one action sent to Hetzner, and what the last reply said is left. */
+export const hetznerCloudUsage = v.object({
+	requests: v.number(),
+	budget: v.optional(hetznerCloudBudget),
+});
+
 export const hetznerCloudSpec = v.object({
 	location: v.string(),
 	imageId: v.number(),
@@ -69,6 +86,12 @@ export const hetznerCloudTables = {
 		dueAt: v.number(),
 		epoch: v.number(),
 		error: v.optional(v.string()),
+	}).index("by_controller_id", ["controllerId"]),
+
+	// One row for each project, because the budget belongs to the token and not to any one run.
+	hetznerCloudBudgets: defineTable({
+		controllerId: v.string(),
+		...hetznerCloudBudget.fields,
 	}).index("by_controller_id", ["controllerId"]),
 
 	// Evidence for admin review. The controller never deletes a resource because of a finding.

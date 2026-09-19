@@ -38,9 +38,14 @@ export type FakeReply = Readonly<{
 
 /**
  * `answer` acts as the system would. `lose` acts too, and then drops the connection, so Composery
- * learns nothing about a request that took effect. A status and body is a refusal.
+ * learns nothing about a request that took effect. A status and body is a refusal. Headers alone
+ * act as the system would and say these beside the answer, such as an hour that is nearly spent.
  */
-export type FakeOutcome = "answer" | "lose" | FakeReply;
+export type FakeOutcome =
+	| "answer"
+	| "lose"
+	| FakeReply
+	| Readonly<{ headers: Readonly<Record<string, string>> }>;
 
 /**
  * Which requests a count or a scripted outcome is about. One fake and one worker serve the whole
@@ -92,6 +97,8 @@ export type FakeOptions = Readonly<{
 	 * happens, which is how a reply that never arrives is a real one that never arrives.
 	 */
 	forward?: (request: FakeRequest) => Promise<FakeReply>;
+	/** Sees every reply that is sent, so that the fake's own state can follow what a test scripted. */
+	observe?: (reply: FakeReply) => void;
 	/** Anything else this system promises about a request, such as a version header. */
 	check?: (request: FakeRequest) => readonly string[];
 }>;
@@ -178,11 +185,19 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			incoming.socket.destroy();
 			return;
 		}
-		if (outcome !== "answer") {
+		if (outcome !== "answer" && "status" in outcome) {
+			options.observe?.(outcome);
 			send(response, outcome);
 			return;
 		}
-		const reply = await answer(request);
+		const answered = await answer(request);
+		const reply =
+			outcome === "answer"
+				? answered
+				: {
+						...answered,
+						headers: { ...answered.headers, ...outcome.headers },
+					};
 		// The system's own description decides whether it could have sent this.
 		options.checker.listReplyProblems(
 			method,
@@ -190,6 +205,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			reply.status,
 			reply.body ?? {},
 		);
+		options.observe?.(reply);
 		send(response, reply);
 	};
 

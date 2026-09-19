@@ -33,6 +33,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `finding` | Evidence about an unknown resource, for admin review | alert |
 | `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
 | `lease` | A worker's claim on one allocation for a time, so two runs never act at once | lock |
+| `budget` | What a provider says is left of a project's requests for its period, and when all of it is back | quota, allowance |
+| `pacing` | How fast the deployment lets itself send requests to a provider: a share of the budget for each queue, charged by the requests a run sent | throttle, rate limit (which is per account) |
 | `reply` | What an outside system sends back to one request of ours | response |
 | `problem` | One way a value disagreed with what a description says about it | violation, error (which is ours) |
 | `pin` | A version, day, or digest written down so that a run is the same tomorrow | lock, freeze |

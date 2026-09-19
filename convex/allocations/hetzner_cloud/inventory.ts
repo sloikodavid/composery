@@ -8,14 +8,15 @@ import {
 } from "../../_generated/server";
 import schema from "../../schema";
 import {
+	createHetznerCloudUsage,
 	getHetznerCloudConfig,
 	HetznerCloudError,
-	hetznerCloudRateLimiter,
 	listHetznerCloudResources,
 	requireHetznerCloudFirewall,
 } from "./api";
 import { hetznerCloudServerState } from "./observation";
-import type { hetznerCloudFindingReason } from "./schema";
+import { chargeHetznerCloudPacing, checkHetznerCloudPacing } from "./pacing";
+import { type hetznerCloudFindingReason, hetznerCloudUsage } from "./schema";
 import {
 	getHetznerCloudAllocation,
 	hetznerCloudWorkPool,
@@ -28,7 +29,6 @@ const scanLeaseMs = 120_000;
 // whatever the fleet is, and how long a cycle takes is how old an observation can be.
 const pageDelayMs = 10_000;
 const errorDelayMs = 300_000;
-const requestsPerScan = 2;
 
 const scannedResource = v.object({
 	id: v.number(),
@@ -48,6 +48,18 @@ const nextCollections = {
 	// biome-ignore lint/style/useNamingConvention: the Hetzner Cloud API names this collection
 	primary_ips: "servers",
 } as const satisfies Record<Scan["collection"], Scan["collection"]>;
+
+/**
+ * Asks for the next page when it is due. The cron that also sweeps runs less often than a page is
+ * read, and stays only for a run that ends without an answer.
+ */
+async function scheduleHetznerCloudScan(ctx: MutationCtx, dueAt: number) {
+	await ctx.scheduler.runAt(
+		dueAt,
+		internal.allocations.hetzner_cloud.inventory.sweep,
+		{},
+	);
+}
 
 export const sweep = internalMutation({
 	args: {},
@@ -76,12 +88,15 @@ export const sweep = internalMutation({
 		if (scan === null || scan.dueAt > Date.now()) {
 			return null;
 		}
-		const rateLimit = await hetznerCloudRateLimiter.limit(
+		// The scan spends the work queue's share: what it reads is what keeps that work current.
+		const retryAt = await checkHetznerCloudPacing(
 			ctx,
-			"hetznerCloudWork",
-			{ count: requestsPerScan },
+			scan.controllerId,
+			"work",
 		);
-		if (!rateLimit.ok) {
+		if (retryAt !== null) {
+			await ctx.db.patch("hetznerCloudScans", scan._id, { dueAt: retryAt });
+			await scheduleHetznerCloudScan(ctx, retryAt);
 			return null;
 		}
 		const epoch = scan.epoch + 1;
@@ -227,18 +242,30 @@ export const record = internalMutation({
 		resources: v.array(scannedResource),
 		nextPage: v.union(v.number(), v.null()),
 		error: v.union(v.string(), v.null()),
+		usage: hetznerCloudUsage,
 	},
 	returns: v.null(),
-	handler: async (ctx, { scanId, epoch, resources, nextPage, error }) => {
+	handler: async (
+		ctx,
+		{ scanId, epoch, resources, nextPage, error, usage },
+	) => {
 		const scan = await ctx.db.get("hetznerCloudScans", scanId);
-		if (scan === null || scan.epoch !== epoch) {
+		if (scan === null) {
+			return null;
+		}
+		const resumeAt = await chargeHetznerCloudPacing(
+			ctx,
+			scan.controllerId,
+			"work",
+			usage,
+		);
+		if (scan.epoch !== epoch) {
 			return null;
 		}
 		if (error !== null) {
-			await ctx.db.patch("hetznerCloudScans", scan._id, {
-				error,
-				dueAt: Date.now() + errorDelayMs,
-			});
+			const dueAt = Math.max(Date.now() + errorDelayMs, resumeAt);
+			await ctx.db.patch("hetznerCloudScans", scan._id, { error, dueAt });
+			await scheduleHetznerCloudScan(ctx, dueAt);
 			return null;
 		}
 		for (const resource of resources) {
@@ -251,13 +278,15 @@ export const record = internalMutation({
 			);
 			await recordScannedServer(ctx, scan, resource, hetznerCloudAllocation);
 		}
+		const dueAt = Math.max(Date.now() + pageDelayMs, resumeAt);
 		await ctx.db.patch("hetznerCloudScans", scan._id, {
 			page: nextPage ?? 1,
 			collection:
 				nextPage === null ? nextCollections[scan.collection] : scan.collection,
-			dueAt: Date.now() + pageDelayMs,
+			dueAt,
 			error: undefined,
 		});
+		await scheduleHetznerCloudScan(ctx, dueAt);
 		return null;
 	},
 });
@@ -269,9 +298,11 @@ export const run = internalAction({
 		let resources: ScannedResource[] = [];
 		let nextPage: number | null = null;
 		let error: string | null = null;
+		const usage = createHetznerCloudUsage();
 		try {
-			await requireHetznerCloudFirewall(scan.controllerId);
+			await requireHetznerCloudFirewall(usage, scan.controllerId);
 			const listed = await listHetznerCloudResources(
+				usage,
 				scan.controllerId,
 				scan.collection,
 				scan.page,
@@ -290,6 +321,7 @@ export const run = internalAction({
 			resources,
 			nextPage,
 			error,
+			usage,
 		});
 		return null;
 	},

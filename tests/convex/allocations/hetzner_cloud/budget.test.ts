@@ -16,13 +16,13 @@ import {
 const setupTimeoutMs = 600_000;
 const testTimeoutMs = 300_000;
 const waitDelayMs = 250;
-const httpOk = 200;
-const secondsPerMinute = 60;
 const millisecondsPerSecond = 1000;
-// Long enough that no ordinary delay could be mistaken for it: the worker's own waits are
-// seconds, and an hour's budget is what this one is about.
-const minutesUntilReset = 30;
-const resetInSeconds = minutesUntilReset * secondsPerMinute;
+const hourlyLimit = 3600;
+// Hetzner gives one request back each second, so a few seconds bring back what the deployment
+// waits for. The next attempt of an allocation that is not waiting on anything comes within
+// seconds as well, so the bound is well past that and still an hour short of the reset.
+const leastPauseMs = 15_000;
+const mostPauseMs = 120_000;
 const createdPrimaryIps = /^\/primary_ips$/;
 
 let backend: ConvexBackend;
@@ -34,21 +34,18 @@ beforeAll(async () => {
 }, setupTimeoutMs);
 
 test(
-	"an hour Hetzner says is nearly spent stops the next attempt until it turns",
+	"an hour Hetzner says is nearly spent holds the next attempt until enough of it is back",
 	async () => {
 		const client = await createServerOwner(backend);
 		const resetAt =
-			Math.floor(Date.now() / millisecondsPerSecond) + resetInSeconds;
-		// Hetzner counts every request a project makes and says what is left on every reply. This
-		// is the first one answering that there is almost nothing, which no fake could be asked to
-		// do by scripting a refusal: the request itself succeeds.
+			Math.floor(Date.now() / millisecondsPerSecond) + hourlyLimit - 1;
+		// Every reply says what is left of the project's hour. This one is an ordinary answer that
+		// says almost nothing is, which no scripted refusal could say: the request itself succeeds.
 		const hasAnswered = fake.scriptOnce(
 			{ method: "POST", path: createdPrimaryIps },
 			{
-				status: httpOk,
-				body: null,
 				headers: {
-					"RateLimit-Limit": "3600",
+					"RateLimit-Limit": String(hourlyLimit),
 					"RateLimit-Remaining": "1",
 					"RateLimit-Reset": String(resetAt),
 				},
@@ -57,22 +54,31 @@ test(
 		const serverId = await createServer(client);
 
 		const deadline = Date.now() + testTimeoutMs / 2;
-		let dueAt = 0;
 		while (Date.now() < deadline && !hasAnswered()) {
 			await Bun.sleep(waitDelayMs);
 		}
+		const answeredAt = Date.now();
+		// While the run holds its lease, the next attempt is the lease's own end. What the run
+		// recorded is there once the lease is given back.
+		let dueAt = 0;
 		while (Date.now() < deadline) {
-			dueAt =
-				(await readServerBackendRecord(backend, serverId))?.backend?.dueAt ?? 0;
-			if (dueAt >= resetAt * millisecondsPerSecond) {
+			const record = (await readServerBackendRecord(backend, serverId))
+				?.backend;
+			if (
+				record !== undefined &&
+				record !== null &&
+				record.leaseExpiresAt === 0
+			) {
+				dueAt = record.dueAt;
 				break;
 			}
 			await Bun.sleep(waitDelayMs);
 		}
 
-		// The allocation waits for the hour to turn rather than learning it by being refused.
+		// The allocation waits for what it needs to come back, and not for the whole hour.
 		expect(hasAnswered()).toBe(true);
-		expect(dueAt).toBeGreaterThanOrEqual(resetAt * millisecondsPerSecond);
+		expect(dueAt).toBeGreaterThanOrEqual(answeredAt + leastPauseMs);
+		expect(dueAt).toBeLessThan(answeredAt + mostPauseMs);
 	},
 	testTimeoutMs,
 );
