@@ -11,6 +11,7 @@ import {
 	deleteServerAllocation,
 	getAllocationConfig,
 	getOperationByRequest,
+	removeServerOperations,
 	requestAllocationCreate,
 	requestAllocationDelete,
 	requestAllocationPower,
@@ -237,11 +238,9 @@ export const finishDelete = internalMutation({
 		await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
 			serverId,
 		});
-		await ctx.scheduler.runAfter(
-			0,
-			internal.allocations.operations.removeOperations,
-			{ serverId },
-		);
+		// In the same change as the server, so a handful of operations leave nothing behind even if
+		// nothing scheduled ever runs. A server with more than one page of them finishes later.
+		await removeServerOperations(ctx, serverId);
 		return null;
 	},
 });

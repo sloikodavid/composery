@@ -62,7 +62,7 @@ Convex agent skills for common tasks can be installed by running
 
 - "Scripts must fan out to their immediate children (when present), e.g. `"check": "bun --parallel --no-exit-on-error \"check:*\""`."
 
-- "All working environment variables must have corresponding examples in either `.env.convex.example` or `.env.local.example`."
+- "All working environment variables must have corresponding examples in either `.env.convex.example`, `.env.local.example`, or `.env.test.example`."
 
 - "Commit messages must be terse, present tense, and lowercase, not documentation."
 

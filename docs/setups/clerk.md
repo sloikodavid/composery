@@ -44,3 +44,22 @@ Do these steps once for each Clerk instance (development and production) and its
    ```
 
 Convex refuses to push functions until all three variables in `.env.convex.example` are set.
+
+## An instance for the tests
+
+Tests reach a fake by default and can reach Clerk itself for one run. That run makes accounts and deletes them, and a development instance holds a hundred, so it needs an instance nothing else uses.
+
+1. Create a second Clerk application, development instance, used by nothing that anybody depends on.
+2. Put the `aud` claim on it, exactly as step 3 above does for the instance the app uses. It is the one setting that has to match: the deployment accepts a token only if it says `convex`, and a run signs in with tokens Clerk itself signed rather than tokens of its own.
+
+   ```sh
+   bunx clerk config patch --json '{"session":{"claims":{"aud":"convex"}}}'
+   ```
+
+   The CLI acts on whichever instance is linked, so link that application first and link back afterwards.
+3. Copy `.env.test.example` to `.env.test`, and fill in `CLERK_SECRET_KEY` and `CLERK_FRONTEND_API_URL` from that application's **API keys** page.
+4. Run `CLERK_MODE=real bun test tests/convex/clerk.test.ts`.
+
+Nothing else has to match. A run makes its accounts through the Backend API and signs in by asking Clerk for a session and a token for it, which Clerk documents for testing and allows on a development instance only, so sign-in methods, bot protection and the Account Portal paths do not come into it.
+
+What such a run does **not** cover is Clerk delivering a webhook: those reach a deployment over the internet, and a test runs a backend on this machine. Tests of the webhook route sign the body themselves and stay with the fake, which proves what the route does with an event and not that Clerk sent one.

@@ -348,24 +348,36 @@ export const finishDelete = internalMutation({
  * Removes what one server asked for, once the server itself is gone. A page at a time, because one
  * server can have asked for many, and nothing reads these rows any more.
  */
+/**
+ * Takes away the operations of a server that is gone, a page at a time. The first page goes in
+ * whatever change asked for it, so the usual server, with a handful of operations, leaves nothing
+ * behind even if nothing scheduled ever runs again.
+ */
+export async function removeServerOperations(
+	ctx: MutationCtx,
+	serverId: Id<"servers">,
+) {
+	const operations = await ctx.db
+		.query("serverOperations")
+		.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
+		.take(operationsPerPass);
+	for (const operation of operations) {
+		await ctx.db.delete("serverOperations", operation._id);
+	}
+	if (operations.length === operationsPerPass) {
+		await ctx.scheduler.runAfter(
+			0,
+			internal.allocations.operations.removeOperations,
+			{ serverId },
+		);
+	}
+}
+
 export const removeOperations = internalMutation({
 	args: { serverId: v.id("servers") },
 	returns: v.null(),
 	handler: async (ctx, { serverId }) => {
-		const operations = await ctx.db
-			.query("serverOperations")
-			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
-			.take(operationsPerPass);
-		for (const operation of operations) {
-			await ctx.db.delete("serverOperations", operation._id);
-		}
-		if (operations.length === operationsPerPass) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.allocations.operations.removeOperations,
-				{ serverId },
-			);
-		}
+		await removeServerOperations(ctx, serverId);
 		return null;
 	},
 });

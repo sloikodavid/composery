@@ -23,7 +23,6 @@ const leftoverAgeMs = 3_600_000;
 const removeTimeoutMs = 180_000;
 const removeDelayMs = 3000;
 const collections = ["servers", "primary_ips", "firewalls"] as const;
-const httpNoContent = 204;
 
 type Collection = (typeof collections)[number];
 type Owned = { id: number; created: string; labels: Record<string, string> };
@@ -96,8 +95,9 @@ async function listOwned(token: string, collection: Collection) {
 }
 
 async function remove(token: string, collection: Collection, id: number) {
-	const { status } = await call(token, "DELETE", `/${collection}/${id}`);
-	return status < httpNoContent + 1;
+	// What it answers is not read: a refusal here is ordinary, because the provider is still
+	// deleting what this one is applied to. The caller asks again until nothing is left.
+	await call(token, "DELETE", `/${collection}/${id}`);
 }
 
 /**

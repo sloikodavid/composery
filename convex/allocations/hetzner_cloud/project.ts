@@ -10,6 +10,26 @@ import {
 } from "./api";
 import { isFirewallAsStated } from "./firewall";
 
+const settleTimeoutMs = 60_000;
+const settleDelayMs = 1000;
+
+/**
+ * Reads the firewall back until it allows what Composery states. Hetzner answers a request to set
+ * rules before it has carried it out, so the answer is not the outcome: this says the rules are
+ * back only once the provider says the same thing.
+ */
+async function requireRulesAsStated(controllerId: string) {
+	const deadline = Date.now() + settleTimeoutMs;
+	while (Date.now() < deadline) {
+		const found = await findHetznerCloudFirewall(controllerId);
+		if (found !== null && isFirewallAsStated(found.rules)) {
+			return;
+		}
+		await new Promise((wake) => setTimeout(wake, settleDelayMs));
+	}
+	throw new Error("Hetzner did not apply the firewall rules in time.");
+}
+
 /**
  * Claims a Hetzner project for this controller, which is the one thing here a person decides.
  *
@@ -51,6 +71,7 @@ export const claimFirewall = internalAction({
 			return { firewallId: found.id, did: "kept" as const };
 		}
 		await setHetznerCloudFirewallRules(found.id);
+		await requireRulesAsStated(config.controllerId);
 		return { firewallId: found.id, did: "put the rules back" as const };
 	},
 });
