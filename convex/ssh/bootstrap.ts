@@ -4,7 +4,12 @@ import { randomBytes } from "node:crypto";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { action, env } from "../_generated/server";
+import {
+	type ActionCtx,
+	action,
+	env,
+	internalAction,
+} from "../_generated/server";
 import { toConvexError } from "../errors";
 import { isLoopbackHost } from "../loopback";
 import {
@@ -87,11 +92,69 @@ export function requireSshBootstrapFile(
 }
 
 /**
- * Opens one more bootstrap window and returns the program that completes it, for a member whose
- * server no longer accepts Composery. The program must run on the server itself: the report
- * that it sends is refused from any other address. It installs a new management key, and the
- * old one keeps working until the server reports with the new one.
+ * Opens one more bootstrap window and returns the program that completes it, for a server that no
+ * longer accepts Composery. The program must run on the server itself: the report it sends is
+ * refused from any other address. It installs a new management key, and the old one keeps working
+ * until the server reports with the new one.
+ *
+ * A renewal that is already open is handed back as it is. The program carries a token that only
+ * works until the window closes, and minting a second one would make the first useless: whoever
+ * lost the reply, or ran it already, would be left with a script the server now refuses. Asking
+ * again buys no more time either, because the window runs from when it opened.
  */
+async function renewSshAccess(
+	ctx: ActionCtx,
+	allocationId: Id<"serverAllocations">,
+): Promise<{ script: string }> {
+	const sshAccess: AllocationSshAccess | null = await ctx.runQuery(
+		internal.ssh.access_state.get,
+		{ allocationId },
+	);
+	if (sshAccess === null) {
+		throw toConvexError("server_busy");
+	}
+	const url = requireReportUrl();
+	if (
+		sshAccess.pendingPublicKey !== undefined &&
+		sshAccess.pendingEncryptedSecrets !== undefined &&
+		sshAccess.bootstrapExpiresAt > Date.now()
+	) {
+		return {
+			script: renderSshBootstrapScript({
+				bootstrapFile: {
+					allocationId,
+					token: decryptSshSecrets(
+						allocationId,
+						sshAccess.pendingEncryptedSecrets,
+					).token,
+					url,
+				},
+				publicKey: sshAccess.pendingPublicKey,
+				previousPublicKey: sshAccess.publicKey,
+			}),
+		};
+	}
+	const keyPair = generateSshKeyPair();
+	const token = generateBootstrapToken();
+	await ctx.runMutation(internal.ssh.bootstrap_state.storeRenewal, {
+		allocationId,
+		pendingPublicKey: keyPair.publicKey,
+		pendingEncryptedSecrets: encryptSshSecrets(allocationId, {
+			privateKey: keyPair.privateKey,
+			token,
+		}),
+		bootstrapTokenDigest: await toBootstrapTokenDigest(token),
+	});
+	return {
+		script: renderSshBootstrapScript({
+			bootstrapFile: { allocationId, token, url },
+			publicKey: keyPair.publicKey,
+			previousPublicKey: sshAccess.publicKey,
+		}),
+	};
+}
+
+/** For a member with the SSH permission, on their own server. */
 export const renew = action({
 	args: { serverId: v.id("servers") },
 	returns: v.object({ script: v.string() }),
@@ -100,59 +163,28 @@ export const renew = action({
 			internal.ssh.permissions.requireAllocation,
 			{ serverId },
 		);
-		const allocationId = allocation._id;
-		const sshAccess: AllocationSshAccess | null = await ctx.runQuery(
-			internal.ssh.access_state.get,
-			{ allocationId },
+		return await renewSshAccess(ctx, allocation._id);
+	},
+});
+
+/**
+ * The same renewal, for a person holding this deployment's key who is working a support case. It
+ * exists so that putting Composery's way back into a server is never hand-rolled: minting a key,
+ * sealing it, and holding the window open are what a support case must not reinvent. What to do
+ * with the program it returns is the case's own business, because how a server is reached when it
+ * no longer accepts us is not something to decide in advance.
+ */
+export const renewForAdmin = internalAction({
+	args: { serverId: v.id("servers") },
+	returns: v.object({ script: v.string() }),
+	handler: async (ctx, { serverId }): Promise<{ script: string }> => {
+		const allocation: Doc<"serverAllocations"> | null = await ctx.runQuery(
+			internal.allocations.operations.getForServer,
+			{ serverId },
 		);
-		if (sshAccess === null) {
-			throw toConvexError("server_busy");
+		if (allocation === null) {
+			throw new Error("That server has no allocation.");
 		}
-		// A renewal that is already open is handed back as it is. The program carries a token that
-		// only works until the window closes, and minting a second one would make the first useless:
-		// a member who lost the reply, or ran it already, would be left with a script the server now
-		// refuses. Asking again buys no more time either, because the window is from when it opened.
-		if (
-			sshAccess.pendingPublicKey !== undefined &&
-			sshAccess.pendingEncryptedSecrets !== undefined &&
-			sshAccess.bootstrapExpiresAt > Date.now()
-		) {
-			return {
-				script: renderSshBootstrapScript({
-					bootstrapFile: {
-						allocationId,
-						token: decryptSshSecrets(
-							allocationId,
-							sshAccess.pendingEncryptedSecrets,
-						).token,
-						url: requireReportUrl(),
-					},
-					publicKey: sshAccess.pendingPublicKey,
-					previousPublicKey: sshAccess.publicKey,
-				}),
-			};
-		}
-		const keyPair = generateSshKeyPair();
-		const token = generateBootstrapToken();
-		await ctx.runMutation(internal.ssh.bootstrap_state.storeRenewal, {
-			allocationId,
-			pendingPublicKey: keyPair.publicKey,
-			pendingEncryptedSecrets: encryptSshSecrets(allocationId, {
-				privateKey: keyPair.privateKey,
-				token,
-			}),
-			bootstrapTokenDigest: await toBootstrapTokenDigest(token),
-		});
-		return {
-			script: renderSshBootstrapScript({
-				bootstrapFile: {
-					allocationId,
-					token,
-					url: requireReportUrl(),
-				},
-				publicKey: keyPair.publicKey,
-				previousPublicKey: sshAccess.publicKey,
-			}),
-		};
+		return await renewSshAccess(ctx, allocation._id);
 	},
 });

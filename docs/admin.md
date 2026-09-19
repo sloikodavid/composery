@@ -14,6 +14,7 @@ Every one of these is `convex run <path> '<arguments>'`, or the equivalent in th
 | `quotas:setForDeployment` | cap the whole deployment. Zero stops new servers and leaves existing ones running |
 | `allocations/hetzner_cloud/worker_state:retry` | take a blocked allocation and try again now, with a new epoch so an outstanding run cannot undo it. Takes `confirmedAbsent` when a resource was uncertain and the admin has established at the provider that it does not exist |
 | `allocations/hetzner_cloud/inventory:run` | scan the provider for resources Composery does not own, and record them as findings |
+| `ssh/bootstrap:renewForAdmin` | mint Composery's way back into one server and return the program that installs it. What gets that program onto a server nobody can reach is the case's own business; this is only so that minting, sealing and the window are never hand-rolled |
 | `ssh/secrets:reEncrypt` | encrypt every stored secret again with the key that encrypts now, and report which keys are still named |
 | `convex data <table>` | read what the deployment holds |
 | `convex env set` / `remove` | change a deployment's settings, including the encryption keys |
