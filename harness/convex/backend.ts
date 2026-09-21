@@ -1,9 +1,4 @@
-import {
-	type ChildProcess,
-	execFileSync,
-	spawn,
-	spawnSync,
-} from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
 	chmodSync,
@@ -46,6 +41,11 @@ import type { Fake } from "../fake";
 import { fakeServerType, useHetznerFake } from "../hetzner/fake";
 import { createHetznerRun, getHetznerToken } from "../hetzner/real";
 import { convexBackendAssets, convexBackendVersion } from "../pins";
+import {
+	killOwnedProcessGroups,
+	spawnOwnedProcess,
+	stopOwnedProcess,
+} from "../process";
 
 const repositoryRoot = path.resolve(import.meta.dir, "..", "..");
 const cacheRoot = path.join(repositoryRoot, "tmp", "convex-backend");
@@ -55,7 +55,6 @@ const instanceName = "composery-test";
 const instanceSecret = createHash("sha256").update(instanceName).digest("hex");
 const readinessTimeoutMs = 30_000;
 const readinessDelayMs = 100;
-const stopTimeoutMs = 10_000;
 const logLineLimit = 80;
 const pushTimeoutMs = 240_000;
 const httpUdfFailedStatus = 560;
@@ -68,7 +67,6 @@ const hostTag = createHash("sha256")
 	.slice(0, hostTagLength);
 const runFolderNamePattern = /^\d+-(\d+)-([0-9a-f]{8})$/;
 const temporaryFolderNamePattern = /^cvx-(\d+)-([0-9a-f]{8})$/;
-const processGroupsFolderName = "process-groups";
 const lineBreakPattern = /\r?\n/;
 const executableMode = 0o755;
 const templateKeyLength = 16;
@@ -79,7 +77,6 @@ const fakeFirewallId = 77;
 const fakeLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
 const webhookSecret = `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`;
-const usesProcessGroups = process.platform !== "win32";
 
 type AnyFunction = FunctionReference<
 	"query" | "mutation" | "action",
@@ -191,24 +188,8 @@ function removeRunFolder(folder: string) {
 	removeFolder(folder);
 }
 
-function signalProcessGroup(groupId: number, signal: NodeJS.Signals) {
-	try {
-		process.kill(-groupId, signal);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
-			throw error;
-		}
-	}
-}
-
 function removeOrphanedRunFolder(folder: string) {
-	// End process groups recorded by a previous run before removing its files.
-	const groups = path.join(folder, processGroupsFolderName);
-	if (usesProcessGroups && existsSync(groups)) {
-		for (const name of readdirSync(groups)) {
-			signalProcessGroup(Number(name), "SIGKILL");
-		}
-	}
+	killOwnedProcessGroups(folder);
 	removeRunFolder(folder);
 }
 
@@ -227,59 +208,6 @@ function removeOrphanedFolders(runsRoot: string) {
 			}
 		}
 	}
-}
-
-function spawnOwned(
-	context: RunContext,
-	command: string,
-	args: readonly string[],
-	options: Readonly<{ cwd?: string; environment?: Record<string, string> }>,
-) {
-	// Record ownership before awaiting so a killed run can be cleaned up later.
-	const child = spawn(command, args, {
-		cwd: options.cwd,
-		env: options.environment ?? context.environment,
-		stdio: ["ignore", "pipe", "pipe"],
-		detached: usesProcessGroups,
-	});
-	if (usesProcessGroups && child.pid !== undefined) {
-		const groups = path.join(context.folder, processGroupsFolderName);
-		mkdirSync(groups, { recursive: true });
-		writeFileSync(path.join(groups, String(child.pid)), "");
-	}
-	return child;
-}
-
-function waitForExit(child: ChildProcess, timeoutMs: number) {
-	return new Promise<void>((resolve) => {
-		if (child.exitCode !== null || child.signalCode !== null) {
-			resolve();
-			return;
-		}
-		const timer = setTimeout(resolve, timeoutMs);
-		child.once("exit", () => {
-			clearTimeout(timer);
-			resolve();
-		});
-	});
-}
-
-async function stopOwned(child: ChildProcess) {
-	if (child.pid === undefined) {
-		return;
-	}
-	if (!usesProcessGroups) {
-		// Windows needs taskkill to include child processes.
-		if (child.exitCode === null) {
-			spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
-		}
-		await waitForExit(child, stopTimeoutMs);
-		return;
-	}
-	signalProcessGroup(child.pid, "SIGTERM");
-	await waitForExit(child, stopTimeoutMs);
-	// Escalate only after the graceful wait expires.
-	signalProcessGroup(child.pid, "SIGKILL");
 }
 
 async function requireBackendBinary() {
@@ -341,8 +269,7 @@ async function startBackend(
 	mkdirSync(storage, { recursive: true });
 	const cloudPort = await findFreePort();
 	const sitePort = await findFreePort();
-	const child = spawnOwned(
-		context,
+	const child = spawnOwnedProcess(
 		context.binary,
 		[
 			path.join(storage, "backend.sqlite3"),
@@ -357,8 +284,12 @@ async function startBackend(
 			"--local-storage",
 			storage,
 		],
-		{},
+		{ environment: context.environment, runFolder: context.folder },
 	);
+	let spawnError: Error | undefined;
+	child.once("error", (error) => {
+		spawnError = error;
+	});
 	const log: string[] = [];
 	const keep = (chunk: Buffer) => {
 		log.push(...chunk.toString().split(lineBreakPattern).filter(Boolean));
@@ -370,11 +301,15 @@ async function startBackend(
 	const backend: RunningBackend = {
 		url,
 		siteUrl: `http://127.0.0.1:${sitePort}`,
-		stop: () => stopOwned(child),
+		stop: () => stopOwnedProcess(child),
 		readLog: () => log.join("\n"),
 	};
 	const deadline = Date.now() + readinessTimeoutMs;
-	while (Date.now() < deadline && child.exitCode === null) {
+	while (
+		Date.now() < deadline &&
+		child.exitCode === null &&
+		spawnError === undefined
+	) {
 		const isReady = await fetch(`${url}/version`).then(
 			(reply) => reply.ok,
 			() => false,
@@ -385,6 +320,11 @@ async function startBackend(
 		await Bun.sleep(readinessDelayMs);
 	}
 	await backend.stop();
+	if (spawnError !== undefined) {
+		throw new Error(
+			`The Convex backend could not start: ${spawnError.message}`,
+		);
+	}
 	throw new Error(`The Convex backend did not start:\n${backend.readLog()}`);
 }
 
@@ -468,7 +408,7 @@ function toDeploymentVariables({
 		CLERK_FRONTEND_API_URL: issuerUrl,
 		CLERK_SECRET_KEY: "sk_test_composery_tests_never_reach_clerk",
 		CLERK_WEBHOOK_SIGNING_SECRET: webhookSecret,
-		CLERK_API_URL: clerk.url,
+		CLERK_FAKE_URL: clerk.url,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
 		HCLOUD_LOCATIONS: fakeLocations,
 		HCLOUD_CONTROLLER_ID: hetzner.controllerId,
@@ -499,8 +439,7 @@ async function pushFunctions(
 		path.join(workspace, "node_modules"),
 		"dir",
 	);
-	const push = spawnOwned(
-		context,
+	const push = spawnOwnedProcess(
 		"node",
 		[
 			path.join(repositoryRoot, "node_modules", "convex", "bin", "main.js"),
@@ -515,6 +454,7 @@ async function pushFunctions(
 		],
 		{
 			cwd: workspace,
+			runFolder: context.folder,
 			environment: {
 				...context.environment,
 				// biome-ignore-start lint/style/useNamingConvention: external variable names
@@ -534,14 +474,17 @@ async function pushFunctions(
 	const timedOut = Symbol("timed out");
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const code = await Promise.race([
-		new Promise<number | null>((resolve) => push.once("exit", resolve)),
+		new Promise<number | null>((resolve) => {
+			push.once("exit", (exitCode) => resolve(exitCode));
+			push.once("error", () => resolve(null));
+		}),
 		new Promise<typeof timedOut>((resolve) => {
 			timer = setTimeout(() => resolve(timedOut), pushTimeoutMs);
 		}),
 	]);
 	clearTimeout(timer);
 	if (code === timedOut) {
-		await stopOwned(push);
+		await stopOwnedProcess(push);
 	}
 	if (code !== 0) {
 		throw new Error(
@@ -737,11 +680,18 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 			if (options?.synced === false) {
 				return account;
 			}
+			const epoch = await callFunction(
+				backend.url,
+				`Convex ${adminKey}`,
+				internal.users.issueListEpoch,
+				{},
+			);
 			await callFunction(
 				backend.url,
 				`Convex ${adminKey}`,
 				internal.users.store,
 				{
+					epoch,
 					users: [
 						{
 							clerkUserId: account.id,

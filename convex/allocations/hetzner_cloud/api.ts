@@ -14,7 +14,7 @@ import {
 } from "./firewall";
 import type { HetznerCloudServer } from "./observation";
 import { hetznerCloudApiPrefix, hetznerCloudOrigin } from "./origin";
-import type { HetznerCloudUsage } from "./pacing";
+import { type HetznerCloudUsage, isValidHetznerCloudBudget } from "./pacing";
 import type {
 	hetznerCloudCollection,
 	hetznerCloudResourceKind,
@@ -30,6 +30,7 @@ const listPageSize = "50";
 const hetznerErrorCodePattern = /^[a-z_]{1,80}$/;
 const locationPattern = /^[a-z0-9]+$/;
 const controllerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,61}[a-zA-Z0-9]$/;
+const headerIntegerPattern = /^\d+$/;
 
 type ResourceKind = Infer<typeof hetznerCloudResourceKind>;
 type Collection = Infer<typeof hetznerCloudCollection>;
@@ -184,21 +185,46 @@ export type HetznerCloudCreateRequest =
 			userData: string;
 	  };
 
-/** Returns null when unconfigured; invalid partial configuration throws. */
-export function getHetznerCloudConfig(): HetznerCloudConfig | null {
+type HetznerCloudEnvironment = Readonly<{
+	token: string | undefined;
+	controllerId: string | undefined;
+	locations: string | undefined;
+	image: string | undefined;
+	serverType: string | undefined;
+}>;
+
+/** Returns null when all provider settings are absent; partial settings throw. */
+export function toHetznerCloudConfig(
+	values: HetznerCloudEnvironment,
+): HetznerCloudConfig | null {
 	// No defaults: a deployment must choose every provider resource explicitly.
-	if (
-		!env.HCLOUD_TOKEN ||
-		!env.HCLOUD_CONTROLLER_ID ||
-		!env.HCLOUD_LOCATIONS ||
-		!env.HCLOUD_IMAGE ||
-		!env.HCLOUD_SERVER_TYPE
-	) {
+	const missing = [
+		["HCLOUD_TOKEN", values.token],
+		["HCLOUD_CONTROLLER_ID", values.controllerId],
+		["HCLOUD_LOCATIONS", values.locations],
+		["HCLOUD_IMAGE", values.image],
+		["HCLOUD_SERVER_TYPE", values.serverType],
+	].filter(([, value]) => !value);
+	if (missing.length === Object.keys(values).length) {
 		return null;
 	}
-	const locations = env.HCLOUD_LOCATIONS.split(",").map((location) =>
-		location.trim(),
-	);
+	if (missing.length > 0) {
+		throw new Error(
+			`The Hetzner Cloud configuration is missing: ${missing
+				.map(([name]) => name)
+				.join(", ")}.`,
+		);
+	}
+	const { controllerId, locations: locationValue, image, serverType } = values;
+	if (
+		controllerId === undefined ||
+		locationValue === undefined ||
+		image === undefined ||
+		serverType === undefined
+	) {
+		throw new Error("The Hetzner Cloud configuration is incomplete.");
+	}
+	const locations = locationValue.split(",").map((location) => location.trim());
 	if (
 		locations.length === 0 ||
 		locations.length > maxLocations ||
@@ -207,15 +233,25 @@ export function getHetznerCloudConfig(): HetznerCloudConfig | null {
 	) {
 		throw new Error("The Hetzner Cloud location configuration is invalid.");
 	}
-	if (!controllerIdPattern.test(env.HCLOUD_CONTROLLER_ID)) {
+	if (!controllerIdPattern.test(controllerId)) {
 		throw new Error("The Hetzner Cloud controller ID is invalid.");
 	}
 	return {
-		controllerId: env.HCLOUD_CONTROLLER_ID,
+		controllerId,
 		locations,
+		image,
+		serverType,
+	};
+}
+
+export function getHetznerCloudConfig(): HetznerCloudConfig | null {
+	return toHetznerCloudConfig({
+		token: env.HCLOUD_TOKEN,
+		controllerId: env.HCLOUD_CONTROLLER_ID,
+		locations: env.HCLOUD_LOCATIONS,
 		image: env.HCLOUD_IMAGE,
 		serverType: env.HCLOUD_SERVER_TYPE,
-	};
+	});
 }
 
 function requireObject(value: unknown): Reply {
@@ -251,37 +287,50 @@ function toRetryAfterMs(response: Response) {
 		return 0;
 	}
 	const retryAfter = response.headers.get("Retry-After");
-	const reset = Number(response.headers.get("RateLimit-Reset"));
+	const resetHeader = response.headers.get("RateLimit-Reset");
+	const reset = resetHeader === null ? undefined : Number(resetHeader);
 	const seconds = retryAfter === null ? 0 : Number(retryAfter);
 	const retryAfterMs = Number.isFinite(seconds)
 		? seconds * millisecondsPerSecond
 		: (Date.parse(retryAfter ?? "") || 0) - Date.now();
-	const resetMs = Number.isFinite(reset)
-		? reset * millisecondsPerSecond - Date.now()
-		: 0;
+	const resetMs =
+		reset !== undefined && Number.isFinite(reset)
+			? reset * millisecondsPerSecond - Date.now()
+			: 0;
 	return Math.min(Math.max(0, retryAfterMs, resetMs), maxRetryAfterMs);
 }
 
-function readBudget(usage: HetznerCloudUsage, response: Response) {
-	const limit = Number(response.headers.get("RateLimit-Limit"));
-	const remaining = Number(response.headers.get("RateLimit-Remaining"));
-	const reset = Number(response.headers.get("RateLimit-Reset"));
-	if (
-		!(
-			Number.isSafeInteger(limit) &&
-			limit > 0 &&
-			Number.isSafeInteger(remaining) &&
-			Number.isSafeInteger(reset)
-		)
-	) {
-		return;
+export function toHetznerCloudBudget(
+	headers: Headers,
+	observedAt = Date.now(),
+): HetznerCloudUsage["budget"] {
+	const limit = toHeaderInteger(headers, "RateLimit-Limit");
+	const remaining = toHeaderInteger(headers, "RateLimit-Remaining");
+	const reset = toHeaderInteger(headers, "RateLimit-Reset");
+	if (limit === undefined || remaining === undefined || reset === undefined) {
+		return undefined;
 	}
-	usage.budget = {
+	const budget = {
 		limit,
 		remaining,
 		resetAt: reset * millisecondsPerSecond,
-		observedAt: Date.now(),
+		observedAt,
 	};
+	return isValidHetznerCloudBudget(budget) ? budget : undefined;
+}
+
+function toHeaderInteger(headers: Headers, name: string) {
+	const value = headers.get(name);
+	return value !== null && headerIntegerPattern.test(value)
+		? Number(value)
+		: undefined;
+}
+
+function readBudget(usage: HetznerCloudUsage, response: Response) {
+	const budget = toHetznerCloudBudget(response.headers);
+	if (budget !== undefined) {
+		usage.budget = budget;
+	}
 }
 
 /** Per-operation usage; concurrent runs must not share a budget counter. */
@@ -392,10 +441,13 @@ export function requireOwnedResource(
 }
 
 function requireOneMatch(
-	matches: unknown[],
+	reply: Reply | null,
+	collection: Collection,
 	owner: HetznerCloudOwner,
 	kind: ResourceKind,
 ) {
+	const matches = requireList(reply?.[collection]);
+	requireSinglePageLookup(reply, collection, matches.length);
 	if (matches.length > 1) {
 		throw new HetznerCloudError("duplicate_resources", {
 			status: httpStatus.conflict,
@@ -410,6 +462,31 @@ function requireOneMatch(
 		kind,
 	});
 	return resource;
+}
+
+export function requireSinglePageLookup(
+	reply: Reply | null,
+	collection: Collection,
+	matchCount = requireList(reply?.[collection]).length,
+) {
+	const pagination = requireObject(requireObject(reply?.meta).pagination);
+	const nextPage = pagination.next_page;
+	if (nextPage === null) {
+		return;
+	}
+	if (
+		typeof nextPage !== "number" ||
+		!Number.isSafeInteger(nextPage) ||
+		nextPage <= 0
+	) {
+		throw new HetznerCloudError("invalid_response");
+	}
+	if (matchCount === 0) {
+		throw new HetznerCloudError("invalid_response");
+	}
+	throw new HetznerCloudError("duplicate_resources", {
+		status: httpStatus.conflict,
+	});
 }
 
 async function findReply(
@@ -439,11 +516,7 @@ async function findReply(
 	});
 	// biome-ignore-end lint/style/useNamingConvention: external snake_case parameters
 	const labeled = await callHetznerCloud(usage, `${collection}?${labelQuery}`);
-	const labeledMatch = requireOneMatch(
-		requireList(labeled?.[collection]),
-		owner,
-		kind,
-	);
+	const labeledMatch = requireOneMatch(labeled, collection, owner, kind);
 	if (labeledMatch !== null) {
 		return labeledMatch;
 	}
@@ -451,7 +524,7 @@ async function findReply(
 		usage,
 		`${collection}?name=${getResourceName(owner.allocationId, kind)}&per_page=${lookupPageSize}`,
 	);
-	return requireOneMatch(requireList(named?.[collection]), owner, kind);
+	return requireOneMatch(named, collection, owner, kind);
 }
 
 function toResource(kind: ResourceKind, reply: Reply): HetznerCloudResource {
@@ -645,11 +718,20 @@ export async function getHetznerCloudActionStatus(
 	if (reply === null) {
 		return null;
 	}
-	const status = requireObject(reply.action).status;
-	if (status === "running") {
-		return "running";
+	return toActionStatus(requireObject(reply.action).status);
+}
+
+export function toActionStatus(value: unknown) {
+	switch (value) {
+		case "running":
+			return "running" as const;
+		case "success":
+			return "succeeded" as const;
+		case "error":
+			return "failed" as const;
+		default:
+			throw new HetznerCloudError("invalid_response");
 	}
-	return status === "error" ? "failed" : "succeeded";
 }
 
 function toScannedServer(resource: Reply) {

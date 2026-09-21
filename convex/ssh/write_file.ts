@@ -37,8 +37,7 @@ export type SshFileWriteResult = {
 	finishedAt: number;
 };
 
-/** Lost responses are uncertain; callers must not retry this write automatically. */
-/** Replaces only the observed file; lost responses are uncertain and must not be retried. */
+/** Replaces only the observed file; lost responses are uncertain and callers must not retry automatically. */
 export async function writeSshFile(
 	connection: SshConnectionOptions,
 	path: string,

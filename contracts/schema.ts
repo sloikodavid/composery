@@ -2,6 +2,7 @@
 export type Schema = {
 	type?: string | string[];
 	properties?: Record<string, Schema>;
+	additionalProperties?: boolean | Schema;
 	required?: string[];
 	items?: Schema;
 	enum?: unknown[];
@@ -47,11 +48,13 @@ export function toProblemText(problem: ContractProblem) {
 	return `${problem.operation} ${problem.at} ${problem.message}`;
 }
 
-const templatePattern = /\{[^}]+\}/;
+const templatePattern = /^\{[^{}]+\}$/;
 const queryPattern = /\?.*$/;
 
 function toSegments(value: string) {
-	return value.replace(queryPattern, "").split("/").filter(Boolean);
+	const path = value.replace(queryPattern, "");
+	const normalized = path.startsWith("/") ? path : `/${path}`;
+	return normalized.split("/").slice(1);
 }
 
 export function findPathTemplate(
@@ -59,6 +62,14 @@ export function findPathTemplate(
 	requested: string,
 ) {
 	const segments = toSegments(requested);
+	const exact = templates.find(
+		(template) =>
+			toSegments(template).join("/") === segments.join("/") &&
+			toSegments(template).every((part) => !templatePattern.test(part)),
+	);
+	if (exact !== undefined) {
+		return exact;
+	}
 	return templates.find((template) => {
 		const parts = toSegments(template);
 		return (
@@ -77,6 +88,16 @@ function toTypes(schema: Schema) {
 	return Array.isArray(schema.type) ? schema.type : [schema.type];
 }
 
+const schemaTypes = new Set([
+	"array",
+	"boolean",
+	"integer",
+	"null",
+	"number",
+	"object",
+	"string",
+]);
+
 function isType(value: unknown, type: string) {
 	switch (type) {
 		case "object":
@@ -86,9 +107,13 @@ function isType(value: unknown, type: string) {
 		case "array":
 			return Array.isArray(value);
 		case "integer":
-			return typeof value === "number" && Number.isInteger(value);
+			return (
+				typeof value === "number" &&
+				Number.isFinite(value) &&
+				Number.isInteger(value)
+			);
 		case "number":
-			return typeof value === "number";
+			return typeof value === "number" && Number.isFinite(value);
 		case "string":
 			return typeof value === "string";
 		case "boolean":
@@ -96,7 +121,7 @@ function isType(value: unknown, type: string) {
 		case "null":
 			return value === null;
 		default:
-			return true;
+			return false;
 	}
 }
 
@@ -152,15 +177,49 @@ function collect(
 	value: unknown,
 	at: string,
 ) {
-	for (const alternatives of [schema.oneOf, schema.anyOf]) {
-		if (alternatives !== undefined) {
-			collectAlternatives(collector, alternatives, value, at);
-		}
+	if (schema.oneOf !== undefined) {
+		collectAlternatives({
+			collector,
+			alternatives: schema.oneOf,
+			value,
+			at,
+			mode: "one",
+		});
+	}
+	if (schema.anyOf !== undefined) {
+		collectAlternatives({
+			collector,
+			alternatives: schema.anyOf,
+			value,
+			at,
+			mode: "any",
+		});
+	}
+	// allOf applies to every JSON value. Keep it before the object and array
+	// branches so a scalar, array, or null value cannot skip a subschema.
+	for (const part of schema.allOf ?? []) {
+		collect(collector, part, value, at);
 	}
 	const types = toTypes(schema);
-	if (types.length > 0 && !types.some((type) => isType(value, type))) {
-		const claims = types.join(" or ");
+	const unknownTypes = types.filter((type) => !schemaTypes.has(type));
+	for (const type of unknownTypes) {
+		add(
+			collector,
+			at,
+			"a supported JSON Schema type",
+			`uses unsupported schema type ${JSON.stringify(type)}`,
+		);
+	}
+	const knownTypes = types.filter((type) => schemaTypes.has(type));
+	if (
+		knownTypes.length > 0 &&
+		!knownTypes.some((type) => isType(value, type))
+	) {
+		const claims = knownTypes.join(" or ");
 		add(collector, at, claims, `is ${JSON.stringify(value)}, not ${claims}`);
+		return;
+	}
+	if (types.length > 0 && knownTypes.length === 0) {
 		return;
 	}
 	if (schema.enum !== undefined && !schema.enum.includes(value)) {
@@ -184,7 +243,7 @@ function collect(
 	}
 	const fields = value as Record<string, unknown>;
 	for (const name of schema.required ?? []) {
-		if (!(name in fields)) {
+		if (!Object.hasOwn(fields, name)) {
 			add(
 				collector,
 				`${at}.${name}`,
@@ -194,31 +253,59 @@ function collect(
 		}
 	}
 	for (const [name, field] of Object.entries(schema.properties ?? {})) {
-		if (name in fields) {
+		if (Object.hasOwn(fields, name)) {
 			collect(collector, field, fields[name], `${at}.${name}`);
 		}
 	}
-	for (const part of schema.allOf ?? []) {
-		collect(collector, part, value, at);
+	const described = schema.properties ?? {};
+	for (const [name, field] of Object.entries(fields)) {
+		if (Object.hasOwn(described, name)) {
+			continue;
+		}
+		if (schema.additionalProperties === false) {
+			add(
+				collector,
+				`${at}.${name}`,
+				"no additional properties",
+				`is sent, and ${collector.system} does not describe it`,
+			);
+		} else if (
+			schema.additionalProperties !== undefined &&
+			schema.additionalProperties !== true
+		) {
+			collect(collector, schema.additionalProperties, field, `${at}.${name}`);
+		}
 	}
 }
 
-function collectAlternatives(
-	collector: Collector,
-	alternatives: readonly Schema[],
-	value: unknown,
-	at: string,
-) {
-	const fits = alternatives.some(
+function collectAlternatives({
+	collector,
+	alternatives,
+	value,
+	at,
+	mode,
+}: Readonly<{
+	collector: Collector;
+	alternatives: readonly Schema[];
+	value: unknown;
+	at: string;
+	mode: "one" | "any";
+}>) {
+	const fitCount = alternatives.filter(
 		(alternative) =>
 			listSchemaProblems(collector, alternative, value, at).length === 0,
-	);
+	).length;
+	const fits = mode === "one" ? fitCount === 1 : fitCount > 0;
 	if (!fits) {
 		add(
 			collector,
 			at,
-			`one of ${alternatives.length} shapes`,
-			`is ${JSON.stringify(value)}, which fits none of the shapes ${collector.system} describes here`,
+			mode === "one"
+				? `exactly one of ${alternatives.length} shapes`
+				: `one of ${alternatives.length} shapes`,
+			`is ${JSON.stringify(value)}, which fits ${
+				mode === "one" && fitCount > 1 ? "more than one" : "none"
+			} of the shapes ${collector.system} describes here`,
 		);
 	}
 }
@@ -245,6 +332,9 @@ export function listUnreadFieldProblems(
 		typeof body !== "object" ||
 		Array.isArray(body)
 	) {
+		return [];
+	}
+	if (schema.additionalProperties !== undefined) {
 		return [];
 	}
 	const described = schema.properties;
@@ -275,6 +365,26 @@ export function listUnreadQueryProblems(
 			at: `query.${name}`,
 			claims: "absent",
 			message: `is asked for, and ${subject.system} does not read it`,
+		}));
+}
+
+export function listMissingQueryProblems(
+	subject: ContractSubject,
+	parameters: readonly Parameter[],
+	query: URLSearchParams,
+): ContractProblem[] {
+	return parameters
+		.filter(
+			(parameter) =>
+				parameter.in === "query" &&
+				parameter.required &&
+				!query.has(parameter.name),
+		)
+		.map((parameter) => ({
+			operation: subject.operation,
+			at: `query.${parameter.name}`,
+			claims: "required",
+			message: `is missing, and ${subject.system} requires it`,
 		}));
 }
 

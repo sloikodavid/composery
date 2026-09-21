@@ -28,6 +28,7 @@ test(
 		const { client, serverId } = shared;
 		// An email can temporarily identify two users; choosing one would grant access by guess.
 		const email = `shared-${randomBytes(suffixBytes).toString("hex")}@example.com`;
+		const epoch = await backend.runAsAdmin(internal.users.issueListEpoch, {});
 		await backend.runAsAdmin(internal.users.store, {
 			users: [
 				{
@@ -39,6 +40,7 @@ test(
 					email,
 				},
 			],
+			epoch,
 		});
 
 		const result = await client.mutation(api.servers.memberships.add, {
@@ -56,8 +58,10 @@ test(
 	async () => {
 		const { client, serverId } = shared;
 		const clerkUserId = `user_${randomBytes(suffixBytes).toString("hex")}`;
+		const epoch = await backend.runAsAdmin(internal.users.issueListEpoch, {});
 		await backend.runAsAdmin(internal.users.store, {
 			users: [{ clerkUserId }],
+			epoch,
 		});
 
 		const result = await client.mutation(api.servers.memberships.add, {

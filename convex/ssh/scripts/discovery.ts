@@ -1,66 +1,17 @@
-/** Fixed remote program; reports effective sshd behavior without guessing paths. */
-export const discoveryScript = `import fnmatch, grp, json, os, pwd, shutil, stat, subprocess
+import { sshAccountPathScript } from "./account_path";
+import { sshAuthorizedPathsScript } from "./authorized_paths";
+import { sshConfigurationScript } from "./configuration";
 
+/** Fixed remote program; reports effective sshd behavior without guessing paths. */
+export const discoveryScript = `import fnmatch, grp, json, os, pwd, stat
+${sshConfigurationScript}
+${sshAuthorizedPathsScript}
+${sshAccountPathScript}
 MAX_ACCOUNTS = 50
 MAX_FILES = 20
 
-def sshd():
-    return shutil.which("sshd") or "/usr/sbin/sshd"
-
-def ask(arguments):
-    for flag in ("-G", "-T"):
-        try:
-            done = subprocess.run([sshd(), flag] + arguments, capture_output=True,
-                                  text=True, timeout=20)
-        except Exception:
-            return None
-        if done.returncode == 0:
-            return done.stdout
-    return None
-
-def parse(text):
-    settings = {}
-    for line in (text or "").splitlines():
-        name, _, value = line.strip().partition(" ")
-        if name:
-            settings.setdefault(name, []).append(value)
-    return settings
-
-def first(settings, name, fallback):
-    values = settings.get(name)
-    return values[0] if values else fallback
-
-def words(settings, name):
-    return " ".join(settings.get(name, [])).split()
-
-def split_paths(value):
-    parts, current, quoted, started = [], "", False, False
-    for character in value:
-        if character == '"':
-            quoted, started = not quoted, True
-        elif character.isspace() and not quoted:
-            if current or started:
-                parts.append(current)
-            current, started = "", False
-        else:
-            current += character
-    if current or started:
-        parts.append(current)
-    return parts
-
-def expand(pattern, account):
-    tokens = {"%%": "%", "%h": account.pw_dir, "%u": account.pw_name,
-              "%U": str(account.pw_uid)}
-    out, index = "", 0
-    while index < len(pattern):
-        token = pattern[index:index + 2]
-        if token in tokens:
-            out += tokens[token]
-            index += 2
-        else:
-            out += pattern[index]
-            index += 1
-    return out if out.startswith("/") else os.path.join(account.pw_dir, out)
+def words(directives, name):
+    return " ".join(directives.get(name, [])).split()
 
 def is_safe(path, account):
     current = os.path.realpath(path)
@@ -81,9 +32,15 @@ def is_safe(path, account):
 
 def describe(path, account, strict):
     try:
-        status = os.stat(path)
+        link = os.lstat(path)
     except FileNotFoundError:
         return {"kind": "file", "path": path, "status": "missing"}
+    except OSError:
+        return {"kind": "file", "path": path, "status": "unreadable"}
+    if stat.S_ISLNK(link.st_mode):
+        return {"kind": "file", "path": path, "status": "unsafe"}
+    try:
+        status = os.stat(path)
     except OSError:
         return {"kind": "file", "path": path, "status": "unreadable"}
     if not stat.S_ISREG(status.st_mode):
@@ -92,22 +49,18 @@ def describe(path, account, strict):
         return {"kind": "file", "path": path, "status": "unsafe"}
     return {"kind": "file", "path": path, "status": "present"}
 
-def sources(settings, account, strict):
+def sources(directives, diagnostics, account, strict):
     found, ambiguous = [], False
-    patterns = [p for p in split_paths(first(settings, "authorizedkeysfile",
-                                             ".ssh/authorized_keys")) if p != "none"]
+    paths = read_authorized_paths(first_directive(directives, "authorizedkeysfile", "none"), diagnostics)
+    ambiguous = paths is None
+    patterns = [p for p in (paths or []) if p != "none"]
     for pattern in patterns[:MAX_FILES]:
-        found.append(describe(expand(pattern, account), account, strict))
-    if len(patterns) > 1 and any(entry["status"] == "missing" for entry in found):
-        joined = describe(expand(" ".join(patterns), account), account, strict)
-        if joined["status"] != "missing":
-            found.append(joined)
-            ambiguous = True
-    command = first(settings, "authorizedkeyscommand", "none")
+        found.append(describe(expand_account_path(pattern, account), account, strict))
+    command = first_directive(directives, "authorizedkeyscommand", "none")
     if command and command != "none":
         found.append({"kind": "command", "command": command})
     for name in ("trustedusercakeys", "authorizedprincipalsfile"):
-        value = first(settings, name, "none")
+        value = first_directive(directives, name, "none")
         if value and value != "none":
             found.append({"kind": "certificate", "setting": name, "value": value})
     return found, ambiguous
@@ -126,13 +79,13 @@ def groups_of(account):
 def matches(patterns, name):
     return any(fnmatch.fnmatch(name, pattern.split("@")[0]) for pattern in patterns)
 
-def admitted(settings, account):
+def admitted(directives, account):
     try:
         groups = groups_of(account)
     except Exception:
         groups = set()
-    deny_users, allow_users = words(settings, "denyusers"), words(settings, "allowusers")
-    deny_groups, allow_groups = words(settings, "denygroups"), words(settings, "allowgroups")
+    deny_users, allow_users = words(directives, "denyusers"), words(directives, "allowusers")
+    deny_groups, allow_groups = words(directives, "denygroups"), words(directives, "allowgroups")
     if matches(deny_users, account.pw_name):
         return False
     if any(matches(deny_groups, group) for group in groups):
@@ -143,35 +96,37 @@ def admitted(settings, account):
         return False
     return True
 
-def conditional(settings):
+def conditional(directives):
     for name in ("denyusers", "allowusers", "denygroups", "allowgroups"):
-        if any("@" in pattern for pattern in words(settings, name)):
+        if any("@" in pattern for pattern in words(directives, name)):
             return True
     return False
 
 connection = (os.environ.get("SSH_CONNECTION") or "").split()
 context = ["addr=" + connection[0], "host=" + connection[0],
            "laddr=" + connection[2], "lport=" + connection[3]] if len(connection) == 4 else []
-global_settings = parse(ask([]))
-if not global_settings:
+global_answer = ask_sshd()
+global_directives = read_directives(global_answer[0] if global_answer else None)
+if not global_directives:
     print(json.dumps({"error": "sshd_unavailable"}))
     raise SystemExit(0)
 
 everyone = sorted(pwd.getpwall(), key=lambda account: account.pw_uid)
 accounts = []
 for account in everyone[:MAX_ACCOUNTS]:
-    answer = ask(["-C", ",".join(context + ["user=" + account.pw_name])])
-    settings = parse(answer) if answer else global_settings
-    methods = first(settings, "authenticationmethods", "any")
+    answer = ask_sshd(["-C", ",".join(context + ["user=" + account.pw_name])])
+    directives = read_directives(answer[0]) if answer else global_directives
+    diagnostics = answer[1] if answer else global_answer[1]
+    methods = first_directive(directives, "authenticationmethods", "any")
     chains = methods.split()
-    root_login = first(settings, "permitrootlogin", "prohibit-password")
+    root_login = first_directive(directives, "permitrootlogin", "prohibit-password")
     is_root = account.pw_uid == 0
-    found, ambiguous = sources(settings, account,
-                               first(settings, "strictmodes", "yes") == "yes")
-    accepts = (first(settings, "pubkeyauthentication", "yes") == "yes"
+    found, ambiguous = sources(directives, diagnostics, account,
+                               first_directive(directives, "strictmodes", "yes") == "yes")
+    accepts = (first_directive(directives, "pubkeyauthentication", "yes") == "yes"
                and (methods == "any" or any(chain.split(",")[0] == "publickey"
                                             for chain in chains))
-               and admitted(settings, account)
+               and admitted(directives, account)
                and (not is_root or root_login != "no"))
     accounts.append({
         "name": account.pw_name,
@@ -182,15 +137,15 @@ for account in everyone[:MAX_ACCOUNTS]:
                                                    or any(chain == "publickey"
                                                           for chain in chains))),
         "settingsAnswered": bool(answer),
-        "decidedPerConnection": bool(conditional(settings)),
+        "decidedPerConnection": bool(conditional(directives)),
         "forcedCommandOnly": bool(is_root and root_login == "forced-commands-only"),
         "sources": found,
         "namesAmbiguous": ambiguous,
     })
 
 print(json.dumps({
-    "usesPam": first(global_settings, "usepam", "no") == "yes",
-    "strictModes": first(global_settings, "strictmodes", "yes") == "yes",
+    "usesPam": first_directive(global_directives, "usepam", "no") == "yes",
+    "strictModes": first_directive(global_directives, "strictmodes", "yes") == "yes",
     "accountsTruncated": len(everyone) > MAX_ACCOUNTS,
     "accounts": accounts,
 }))

@@ -1,5 +1,4 @@
-/** Performs a metadata-checked atomic replacement and reports uncertain outcomes. */
-/** Fixed remote program; input is data on stdin and replacement is metadata-checked. */
+/** Fixed remote program that performs a metadata-checked atomic replacement and reports uncertain outcomes. */
 export const writeFileScript = `import base64, errno, fcntl, json, os, secrets, signal, stat, sys
 
 LIMIT = 524288

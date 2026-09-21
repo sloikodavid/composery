@@ -3,7 +3,6 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalMutation } from "../_generated/server";
 import { isAllocationAddress } from "../allocations/addresses";
-import { storeReportedAddress } from "../allocations/operations";
 import { getAllocationSshAccess } from "./access_state";
 
 const hexRadix = 16;
@@ -34,12 +33,35 @@ export const storeRenewal = internalMutation({
 		pendingPublicKey: v.string(),
 		pendingEncryptedSecrets: v.string(),
 		bootstrapTokenDigest: v.string(),
+		expected: v.object({
+			publicKey: v.string(),
+			pendingPublicKey: v.union(v.string(), v.null()),
+			pendingEncryptedSecrets: v.union(v.string(), v.null()),
+			bootstrapExpiresAt: v.number(),
+		}),
 	},
-	returns: v.null(),
-	handler: async (ctx, { allocationId, ...renewal }) => {
+	returns: v.union(
+		v.literal("stored"),
+		v.literal("changed"),
+		v.literal("gone"),
+	),
+	handler: async (ctx, { allocationId, expected, ...renewal }) => {
+		const allocation = await ctx.db.get("serverAllocations", allocationId);
+		if (allocation === null || allocation.deleteRequested) {
+			return "gone";
+		}
 		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
 		if (sshAccess === null) {
-			throw new Error("The allocation has no SSH access.");
+			return "gone";
+		}
+		if (
+			sshAccess.publicKey !== expected.publicKey ||
+			(sshAccess.pendingPublicKey ?? null) !== expected.pendingPublicKey ||
+			(sshAccess.pendingEncryptedSecrets ?? null) !==
+				expected.pendingEncryptedSecrets ||
+			sshAccess.bootstrapExpiresAt !== expected.bootstrapExpiresAt
+		) {
+			return "changed";
 		}
 		const until = Date.now() + bootstrapLifetimeMs;
 		await ctx.db.patch("allocationSshAccess", sshAccess._id, {
@@ -47,7 +69,7 @@ export const storeRenewal = internalMutation({
 			bootstrapExpiresAt: until,
 			hostKeyReplaceUntil: until,
 		});
-		return null;
+		return "stored";
 	},
 });
 
@@ -129,7 +151,10 @@ export const registerHostKey = internalMutation({
 			...(port === null ? {} : { port }),
 		});
 		if (source !== null) {
-			await storeReportedAddress(ctx, allocation, source);
+			await ctx.runMutation(
+				internal.allocations.operations.recordReportedAddress,
+				{ allocationId: allocation._id, addresses: [source] },
+			);
 		}
 		const server = await ctx.db.get("servers", allocation.serverId);
 		if (server !== null) {

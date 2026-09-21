@@ -27,7 +27,11 @@ import {
 	powerOperationKind,
 } from "../allocations/schema";
 import { fail, failure, toConvexError } from "../errors";
-import { releaseServerQuota, reserveServerQuota } from "../quotas";
+import {
+	bumpQuotaEpoch,
+	releaseServerQuota,
+	reserveServerQuota,
+} from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getAllocationSshAccess } from "../ssh/access_state";
 import { requireUser } from "../users";
@@ -94,6 +98,7 @@ export const create = mutation({
 			name,
 			config,
 		});
+		await bumpQuotaEpoch(ctx, "server");
 		return { ok: true as const, serverId, name };
 	},
 });
@@ -110,7 +115,6 @@ export const requestPower = mutation({
 	),
 	handler: async (ctx, { serverId, requestId, kind }) => {
 		const { user } = await requireServerAccess(ctx, serverId, "power");
-		const allocation = await requireChangeableServerAllocation(ctx, serverId);
 		requireRequestId(requestId);
 		const previous = await getOperationByRequest(ctx, user._id, requestId);
 		if (previous !== null) {
@@ -118,6 +122,7 @@ export const requestPower = mutation({
 				? { ok: true as const, operationId: previous._id }
 				: fail("request_id_conflict");
 		}
+		const allocation = await requireChangeableServerAllocation(ctx, serverId);
 		await requireRateLimit(ctx, "serverChange", user._id);
 		return await requestAllocationPower(ctx, allocation, {
 			requesterId: user._id,
@@ -132,9 +137,12 @@ export const requestDelete = mutation({
 	returns: v.null(),
 	handler: async (ctx, { serverId }) => {
 		const { user } = await requireServerAccess(ctx, serverId, "delete");
-		await requireChangeableServerAllocation(ctx, serverId);
+		const allocation = await requireServerAllocation(ctx, serverId);
+		if (allocation.deleteRequested) {
+			return null;
+		}
 		await requireRateLimit(ctx, "serverChange", user._id);
-		await requestServerDelete(ctx, serverId, user._id);
+		await requestAllocationDelete(ctx, allocation, user._id);
 		return null;
 	},
 });
@@ -216,6 +224,7 @@ export const finishDelete = internalMutation({
 		const { serverId } = allocation;
 		const server = await ctx.db.get("servers", serverId);
 		await deleteServerAllocation(ctx, allocationId);
+		await bumpQuotaEpoch(ctx, "server");
 		if (server === null) {
 			return null;
 		}

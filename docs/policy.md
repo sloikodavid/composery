@@ -56,6 +56,8 @@ What is not acceptable is discovering it and moving on.
 
 When something we depend on is missing, the feature that needs it reports what is unavailable and every other feature keeps working. This is why the SSH features can fail without touching power, and why an unreadable secret stops management rather than the machine.
 
+SSH management currently supports the POSIX shell, Python 3, and OpenSSH command surface used by its scripts. It discovers the executable paths and effective settings on each server. It pairs OpenSSH's effective configuration with its native debug assignments when quote boundaries are needed, and reports the operation as unsupported when those boundaries are ambiguous. Each operation reports its own missing guest interface: for example, IPv6 discovery needs the guest's kernel interface and hostname changes need a working native hostname tool. A missing tool, a different SSH implementation, or an operating system the scripts cannot inspect makes that SSH operation unsupported and is reported as such; it does not make the customer-controlled server unavailable. Windows guests remain allowed; their SSH management command surface needs a native implementation and an external system test before it can be supported.
+
 ## Saying it out loud
 
 Breaking cleanly is only half of it. A state that is recorded but that nobody is told about satisfies the letter of every rule above and not the point of any of them. What has to be said, and to whom, is in `docs/notices.md`.

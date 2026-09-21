@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { SshConnectionOptions } from "../../convex/ssh/connection";
 import { generateSshKeyPair } from "../../convex/ssh/key_pair";
 import { readSshFile } from "../../convex/ssh/read_file";
+import { quoteShell } from "../../convex/ssh/scripts/shell";
 import { registerCleanup } from "../cleanup";
 import {
 	removeOrphanedDockerContainers,
@@ -57,11 +58,6 @@ export type SshdServer = Readonly<{
 		check: () => Promise<T>,
 	) => Promise<T>;
 }>;
-
-/** Quotes a value so paths and names remain shell data. */
-export function quoteShell(value: string) {
-	return `'${value.replaceAll("'", "'\\''")}'`;
-}
 
 async function waitUntilReachable(connection: SshConnectionOptions) {
 	let lastError: unknown;

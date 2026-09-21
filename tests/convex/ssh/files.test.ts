@@ -7,10 +7,10 @@ import {
 import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { readSshFile } from "../../../convex/ssh/read_file";
+import { quoteShell } from "../../../convex/ssh/scripts/shell";
 import { writeSshFile } from "../../../convex/ssh/write_file";
 import { generateAuthorizedKey } from "../../../harness/openssh/keys";
 import {
-	quoteShell,
 	type SshdAccount,
 	type SshdServer,
 	useSshd,

@@ -6,6 +6,11 @@ const held = {
 	mode: process.env.HCLOUD_MODE,
 	token: process.env.HCLOUD_TOKEN,
 };
+const localServerId = 11;
+const firstPage = 1;
+const secondPage = 2;
+const nonProgressingPattern = /non-progressing/;
+const wrongPagePattern = /wrong .* cleanup page/;
 
 function set(name: "HCLOUD_MODE" | "HCLOUD_TOKEN", value: string | undefined) {
 	if (value === undefined) {
@@ -48,4 +53,135 @@ test("hands a run that asked for it the token it was given", () => {
 	set("HCLOUD_TOKEN", "not-a-token");
 
 	expect(getHetznerToken()).toBe("not-a-token");
+});
+
+function page(pageNumber: number, nextPage: number | null, servers: unknown[]) {
+	return {
+		servers,
+		meta: {
+			pagination: {
+				page: pageNumber,
+				// biome-ignore lint/style/useNamingConvention: Hetzner's API uses snake_case
+				next_page: nextPage,
+			},
+		},
+	};
+}
+
+test("cleanup reads every Hetzner page and validates rows", async () => {
+	const { removeHetznerLeftovers } = await import(
+		"../../../harness/hetzner/real"
+	);
+	const controllerId = "test-local-run";
+	const deleted = new Set<number>();
+	const paths: string[] = [];
+	const request = (_token: string, method: string, path: string) => {
+		const url = new URL(path, "https://local.test");
+		paths.push(`${url.pathname}${url.search}`);
+		if (method === "DELETE") {
+			deleted.add(Number(url.pathname.split("/").at(-1)));
+			return Promise.resolve({ status: 204, body: null });
+		}
+		const requestedPage = Number(url.searchParams.get("page"));
+		if (requestedPage === firstPage) {
+			return Promise.resolve({
+				status: 200,
+				body: page(
+					firstPage,
+					deleted.has(localServerId) ? null : secondPage,
+					deleted.has(localServerId)
+						? []
+						: [
+								{
+									id: 11,
+									created: new Date().toISOString(),
+									labels: { "controller-id": controllerId },
+								},
+							],
+				),
+			});
+		}
+		if (requestedPage === secondPage) {
+			return Promise.resolve({
+				status: 200,
+				body: page(
+					secondPage,
+					null,
+					deleted.has(localServerId)
+						? []
+						: [
+								{
+									id: 12,
+									created: new Date().toISOString(),
+									labels: { "controller-id": "other" },
+								},
+							],
+				),
+			});
+		}
+		throw new Error(`Unexpected page ${requestedPage}`);
+	};
+	await removeHetznerLeftovers(
+		"token_local",
+		controllerId,
+		["servers"],
+		request,
+	);
+
+	expect(paths).toContain("/servers?per_page=50&page=2");
+	expect(deleted).toEqual(new Set([localServerId]));
+});
+
+test("cleanup rejects malformed or non-progressing Hetzner pagination", async () => {
+	const { removeHetznerLeftovers } = await import(
+		"../../../harness/hetzner/real"
+	);
+	const request = (_token: string, _method: string, path: string) => {
+		const url = new URL(path, "https://local.test");
+		const requestedPage = Number(url.searchParams.get("page"));
+		return Promise.resolve({
+			status: 200,
+			body:
+				requestedPage === firstPage
+					? {
+							servers: [
+								{
+									id: localServerId,
+									created: new Date().toISOString(),
+									labels: { "controller-id": "test-local-run" },
+								},
+							],
+							meta: {
+								pagination: {
+									page: firstPage,
+									// biome-ignore lint/style/useNamingConvention: Hetzner's API uses snake_case
+									next_page: firstPage,
+								},
+							},
+						}
+					: page(requestedPage, null, []),
+		});
+	};
+	await expect(
+		removeHetznerLeftovers(
+			"token_local",
+			"test-local-run",
+			["servers"],
+			request,
+		),
+	).rejects.toThrow(nonProgressingPattern);
+
+	const malformedRequest = () =>
+		Promise.resolve({
+			status: 200,
+			body: { servers: [], meta: { pagination: {} } },
+		});
+	await expect(
+		removeHetznerLeftovers(
+			"token_local",
+			"test-local-run",
+			["servers"],
+			malformedRequest,
+		),
+	).rejects.toThrow(wrongPagePattern);
 });

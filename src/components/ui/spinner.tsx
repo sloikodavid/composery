@@ -1,25 +1,35 @@
 import clsx from "clsx";
 import type { ComponentProps } from "react";
-import { controlRadiusClassNames } from "@/components/ui/interaction";
 
-export const spinnerClassName =
-	"inline-block shrink-0 animate-spin border-current border-b-transparent border-l-transparent motion-reduce:animate-none";
-
-export const spinnerSizes = {
-	extraSmall: `${controlRadiusClassNames.small} size-3 border`,
-	small: `${controlRadiusClassNames.small} size-4 border`,
-	medium: `${controlRadiusClassNames.large} size-5 border-2`,
-	large: `${controlRadiusClassNames.large} size-6 border-2`,
+const spinnerSizes = {
+	extraSmall: {
+		box: 12,
+		stroke: 1,
+		radiusClassName: "[rx:var(--radius-control-small)]",
+	},
+	small: {
+		box: 16,
+		stroke: 1,
+		radiusClassName: "[rx:var(--radius-control-small)]",
+	},
+	medium: {
+		box: 20,
+		stroke: 2,
+		radiusClassName: "[rx:var(--radius-control-large)]",
+	},
+	large: {
+		box: 24,
+		stroke: 2,
+		radiusClassName: "[rx:var(--radius-control-large)]",
+	},
 } as const;
 
-export const spinnerDefaultClassName = `${spinnerClassName} ${controlRadiusClassNames.medium}`;
-
-export const spinnerVariants = {
+const spinnerVariants = {
 	neutral: "text-foreground",
 	primary: "text-primary",
 } as const;
 
-type SpinnerProps = Omit<ComponentProps<"span">, "children"> & {
+type SpinnerProps = Omit<ComponentProps<"svg">, "children"> & {
 	label?: string | undefined;
 	size?: keyof typeof spinnerSizes | undefined;
 	variant?: keyof typeof spinnerVariants | undefined;
@@ -32,18 +42,34 @@ export function Spinner({
 	variant = "neutral",
 	...props
 }: SpinnerProps) {
+	const { box, stroke, radiusClassName } = spinnerSizes[size];
 	return (
-		<span
+		<svg
 			aria-busy="true"
 			aria-label={label}
-			role="status"
 			className={clsx(
-				spinnerClassName,
-				spinnerSizes[size],
+				"inline-block shrink-0",
 				spinnerVariants[variant],
 				className,
 			)}
+			height={box}
+			role="status"
+			viewBox={`0 0 ${box} ${box}`}
+			width={box}
 			{...props}
-		/>
+		>
+			<rect
+				className={clsx(
+					"spinner-track motion-reduce:animate-none",
+					radiusClassName,
+				)}
+				height={box - stroke}
+				pathLength={100}
+				strokeWidth={stroke}
+				width={box - stroke}
+				x={stroke / 2}
+				y={stroke / 2}
+			/>
+		</svg>
 	);
 }

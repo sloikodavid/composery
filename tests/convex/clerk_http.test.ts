@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 import { createHmac, randomBytes } from "node:crypto";
-import { api } from "../../convex/_generated/api";
+import { api, internal } from "../../convex/_generated/api";
 import { getClerkSecret } from "../../harness/clerk/real";
 import {
 	type ConvexBackend,
@@ -17,6 +17,8 @@ const serviceUnavailable = 503;
 const notFound = 404;
 const httpOk = 200;
 const keysPath = /^\/jwks$/;
+const listPath = /^\/users\?(?!.*user_id=)/;
+const scriptPollDelayMs = 1;
 
 // Scripted fake responses exercise webhook verification and retry behavior.
 
@@ -87,6 +89,12 @@ async function readAccount(account: ReturnType<typeof toAccount>) {
 	return await backend.createClient(account.id).query(api.users.getCurrent, {});
 }
 
+async function waitForScript(fired: () => boolean) {
+	while (!fired()) {
+		await Bun.sleep(scriptPollDelayMs);
+	}
+}
+
 scripted(
 	"a webhook Clerk signed syncs the account, and one it did not is refused",
 	async () => {
@@ -121,8 +129,8 @@ scripted(
 		const hasRefused = backend.clerk.scriptOnce(
 			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
 			{
-				status: serviceUnavailable,
-				body: null,
+				kind: "uncheckedReply",
+				reply: { status: serviceUnavailable, body: null },
 			},
 		);
 		const body = backend.clerk.toEvent("user.updated", account);
@@ -149,7 +157,7 @@ scripted(
 		// A 404 from another service or proxy is not proof of Clerk deletion.
 		const hasAnswered = backend.clerk.scriptOnce(
 			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
-			{ status: notFound, body: {} },
+			{ kind: "uncheckedReply", reply: { status: notFound, body: {} } },
 		);
 
 		const refused = await sendDeleted(account);
@@ -170,6 +178,104 @@ scripted(
 );
 
 scripted(
+	"a delayed older webhook cannot restore an account deleted by a newer webhook",
+	async () => {
+		const account = await syncAccount();
+		const delayed = backend.clerk.scriptOnce(
+			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
+			{ kind: "delay", delayMs: 150 },
+		);
+		const update = fetch(
+			`${backend.siteUrl}/webhooks/clerk`,
+			toSignedRequest(
+				backend.clerk.toEvent("user.updated", account),
+				backend.webhookSecret,
+			),
+		);
+		await waitForScript(delayed);
+		backend.clerk.removeUser(account.id);
+		const deleted = await sendDeleted(account);
+		const updated = await update;
+
+		expect(delayed()).toBe(true);
+		expect(deleted.status).toBe(noContent);
+		expect(updated.status).toBe(noContent);
+		expect(await readAccount(account)).toBe(null);
+	},
+	testTimeoutMs,
+);
+
+scripted(
+	"a list read that started first cannot overwrite a newer direct read",
+	async () => {
+		const account = await syncAccount();
+		const updatedAccount = {
+			...account,
+			email: `${account.id}-new@example.com`,
+		};
+		const delayed = backend.clerk.scriptOnce(
+			{ method: "GET", path: listPath },
+			{ kind: "delay", delayMs: 150 },
+		);
+		const reconciliation = backend.runAsAdmin(internal.clerk.reconcile, {});
+		await waitForScript(delayed);
+		backend.clerk.setUser(updatedAccount);
+		const updated = await fetch(
+			`${backend.siteUrl}/webhooks/clerk`,
+			toSignedRequest(
+				backend.clerk.toEvent("user.updated", updatedAccount),
+				backend.webhookSecret,
+			),
+		);
+		await Promise.all([reconciliation, updated]);
+
+		expect(delayed()).toBe(true);
+		expect(updated.status).toBe(noContent);
+		expect(await readAccount(account)).toMatchObject({
+			email: updatedAccount.email,
+		});
+		backend.clerk.removeUser(account.id);
+	},
+	testTimeoutMs,
+);
+
+scripted(
+	"a failed direct read can be repaired by the next list reconciliation",
+	async () => {
+		const account = await syncAccount();
+		const updatedAccount = {
+			...account,
+			email: `${account.id}-recovered@example.com`,
+		};
+		backend.clerk.setUser(updatedAccount);
+		const refused = backend.clerk.scriptOnce(
+			{ method: "GET", path: new RegExp(`^/users/${account.id}$`) },
+			{
+				kind: "uncheckedReply",
+				reply: { status: serviceUnavailable, body: null },
+			},
+		);
+		const failed = await fetch(
+			`${backend.siteUrl}/webhooks/clerk`,
+			toSignedRequest(
+				backend.clerk.toEvent("user.updated", updatedAccount),
+				backend.webhookSecret,
+			),
+		);
+		expect(refused()).toBe(true);
+		expect(failed.status).toBe(serviceUnavailable);
+		expect((await readAccount(account))?.email).toBe(account.email);
+
+		await backend.runAsAdmin(internal.clerk.reconcile, {});
+		expect(await readAccount(account)).toMatchObject({
+			email: updatedAccount.email,
+		});
+		backend.clerk.removeUser(account.id);
+	},
+	testTimeoutMs,
+);
+
+scripted(
 	"an account is kept when the secret key belongs to another Clerk instance",
 	async () => {
 		const account = await syncAccount();
@@ -178,8 +284,11 @@ scripted(
 		const hasAnswered = backend.clerk.scriptOnce(
 			{ method: "GET", path: keysPath },
 			{
-				status: httpOk,
-				body: { keys: [{ kid: "another-instance", kty: "RSA" }] },
+				kind: "uncheckedReply",
+				reply: {
+					status: httpOk,
+					body: { keys: [{ kid: "another-instance", kty: "RSA" }] },
+				},
 			},
 		);
 

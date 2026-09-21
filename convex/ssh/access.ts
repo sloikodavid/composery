@@ -67,8 +67,11 @@ export async function requireSshConnection(
 	ctx: ActionCtx,
 	allocation: Doc<"serverAllocations">,
 ): Promise<SshConnectionOptions> {
-	if (allocation.deleteRequested || allocation.ipv4 === undefined) {
-		throw new SshAccessError("allocation_unavailable");
+	if (allocation.deleteRequested) {
+		throw new SshAccessError("allocation_deleting");
+	}
+	if (allocation.ipv4 === undefined) {
+		throw new SshAccessError("allocation_unaddressed");
 	}
 	const sshAccess: Doc<"allocationSshAccess"> | null = await ctx.runQuery(
 		internal.ssh.access_state.get,

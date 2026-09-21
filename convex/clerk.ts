@@ -17,14 +17,15 @@ import type { userFields } from "./schema";
 /** Page size used for both list reads and their bounded pagination. */
 export const clerkPageSize = 100;
 // Bound a malformed or non-terminating pagination response.
-const maxPages = 1000;
+const maxPages = 100;
+const maxFailedPages = 3;
 // Only Clerk's own not-found code permits deletion.
 const clerkAccountGoneCode = "resource_not_found";
 
 type UserFields = Infer<typeof userFields>;
 
 function createClient() {
-	const apiUrl = getFakeAddress(env.CLERK_API_URL, "CLERK_API_URL");
+	const apiUrl = getFakeAddress(env.CLERK_FAKE_URL, "CLERK_FAKE_URL");
 	return createClerkClient({
 		secretKey: env.CLERK_SECRET_KEY,
 		...(apiUrl === null ? {} : { apiUrl }),
@@ -42,10 +43,11 @@ function toUserFields(user: User): UserFields {
 	};
 }
 
-async function storeUsers(ctx: ActionCtx, users: User[]) {
+async function storeUsers(ctx: ActionCtx, users: User[], epoch: number) {
 	if (users.length > 0) {
 		await ctx.runMutation(internal.users.store, {
 			users: users.map(toUserFields),
+			epoch,
 		});
 	}
 }
@@ -59,8 +61,49 @@ function isClerkAccountGone(error: unknown) {
 	);
 }
 
-function toKeyIds(keys: { kid?: string }[]) {
-	return new Set(keys.map(({ kid }) => kid).filter((kid) => kid !== undefined));
+type ClerkRsaKey = {
+	kid: string;
+	kty: string;
+	n: string;
+	e: string;
+};
+
+function toKeyMaterial(value: unknown, source: string) {
+	if (!Array.isArray(value)) {
+		throw new Error(`${source} returned an invalid signing-key list.`);
+	}
+	const keyMaterial = new Set<string>();
+	for (const key of value) {
+		if (key === null || typeof key !== "object") {
+			continue;
+		}
+		const record = key as Record<string, unknown>;
+		if (
+			typeof record.kid !== "string" ||
+			typeof record.kty !== "string" ||
+			typeof record.n !== "string" ||
+			typeof record.e !== "string" ||
+			record.kid.length === 0 ||
+			record.n.length === 0 ||
+			record.e.length === 0
+		) {
+			continue;
+		}
+		if (record.kty !== "RSA") {
+			continue;
+		}
+		const fields: ClerkRsaKey = {
+			kid: record.kid,
+			kty: record.kty,
+			n: record.n,
+			e: record.e,
+		};
+		// The ID and RSA public material identify the same signing key. The JWK alg field is metadata.
+		keyMaterial.add(
+			JSON.stringify([fields.kid, fields.kty, fields.n, fields.e]),
+		);
+	}
+	return keyMaterial;
 }
 
 async function requireOneClerkInstance(clerk: ClerkClient) {
@@ -73,10 +116,15 @@ async function requireOneClerkInstance(clerk: ClerkClient) {
 			`The sign-in keys could not be read: ${clientKeys.status}.`,
 		);
 	}
-	const published = (await clientKeys.json()) as { keys?: { kid?: string }[] };
-	const clientKeyIds = toKeyIds(published.keys ?? []);
-	const backendKeyIds = toKeyIds((await clerk.jwks.getJwks()).keys ?? []);
-	if (![...backendKeyIds].some((keyId) => clientKeyIds.has(keyId))) {
+	const published = (await clientKeys.json()) as unknown;
+	const publishedKeys =
+		published !== null && typeof published === "object"
+			? (published as { keys?: unknown }).keys
+			: undefined;
+	const clientKeyMaterial = toKeyMaterial(publishedKeys, "The sign-in issuer");
+	const backend = await clerk.jwks.getJwks();
+	const backendKeyMaterial = toKeyMaterial(backend.keys, "The Clerk backend");
+	if (![...backendKeyMaterial].some((key) => clientKeyMaterial.has(key))) {
 		throw new Error(
 			"CLERK_SECRET_KEY and CLERK_FRONTEND_API_URL name different Clerk instances.",
 		);
@@ -85,6 +133,13 @@ async function requireOneClerkInstance(clerk: ClerkClient) {
 
 export async function syncClerkUser(ctx: ActionCtx, clerkUserId: string) {
 	const clerk = createClient();
+	const epoch: number | null = await ctx.runMutation(
+		internal.users.issueUserEpoch,
+		{ clerkUserId },
+	);
+	if (epoch === null) {
+		return "removed" as const;
+	}
 	let user: User;
 	try {
 		user = await clerk.users.getUser(clerkUserId);
@@ -95,10 +150,11 @@ export async function syncClerkUser(ctx: ActionCtx, clerkUserId: string) {
 		await requireOneClerkInstance(clerk);
 		await ctx.runMutation(internal.users.remove, {
 			clerkUserIds: [clerkUserId],
+			epoch,
 		});
 		return "removed" as const;
 	}
-	await storeUsers(ctx, [user]);
+	await storeUsers(ctx, [user], epoch);
 	return "stored" as const;
 }
 
@@ -147,15 +203,30 @@ async function syncUnlistedClerkUsers(
 }
 
 async function storeClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
+	let failedPages = 0;
 	for (let asked = 0; asked < maxPages; asked += 1) {
-		const { data } = await clerk.users.getUserList({
-			limit: clerkPageSize,
-			offset: asked * clerkPageSize,
-			orderBy: "+created_at",
-		});
-		await storeUsers(ctx, data);
+		const epoch: number = await ctx.runMutation(
+			internal.users.issueListEpoch,
+			{},
+		);
+		let data: User[];
+		try {
+			({ data } = await clerk.users.getUserList({
+				limit: clerkPageSize,
+				offset: asked * clerkPageSize,
+				orderBy: "+created_at",
+			}));
+		} catch {
+			failedPages += 1;
+			// Offset pagination still lets later pages be checked independently.
+			if (failedPages >= maxFailedPages) {
+				return failedPages;
+			}
+			continue;
+		}
+		await storeUsers(ctx, data, epoch);
 		if (data.length < clerkPageSize) {
-			return;
+			return failedPages;
 		}
 	}
 	throw new Error(`Clerk still had accounts after ${maxPages} pages.`);
@@ -170,7 +241,12 @@ async function checkOurClerkUsers(ctx: ActionCtx, clerk: ClerkClient) {
 				paginationOpts: { numItems: clerkPageSize, cursor },
 			});
 		if (page.page.length > 0) {
-			unchecked += await syncUnlistedClerkUsers(ctx, clerk, page.page);
+			try {
+				unchecked += await syncUnlistedClerkUsers(ctx, clerk, page.page);
+			} catch {
+				// A failed external page must not prevent later local pages from checking.
+				unchecked += page.page.length;
+			}
 		}
 		if (page.isDone) {
 			return unchecked;
@@ -190,7 +266,12 @@ export const reconcile = internalAction({
 		const clerk = createClient();
 		const problems: string[] = [];
 		try {
-			await storeClerkUsers(ctx, clerk);
+			const failedPages = await storeClerkUsers(ctx, clerk);
+			if (failedPages > 0) {
+				problems.push(
+					`${failedPages} Clerk account pages could not be read, so those accounts stay as they were`,
+				);
+			}
 		} catch (error) {
 			problems.push(`reading Clerk's accounts failed: ${String(error)}`);
 		}

@@ -13,7 +13,11 @@ import schema from "../../schema";
 import { storeAllocationSshAccess } from "../../ssh/access_state";
 import { sshTables } from "../../ssh/schema";
 import { failureClass, isStuck, toRetryDelayMs } from "../retries";
-import type { allocationParts } from "../schema";
+import type {
+	allocationParts,
+	allocationStatus,
+	operationKind,
+} from "../schema";
 import type { HetznerCloudConfig } from "./api";
 import {
 	type HetznerCloudServer,
@@ -38,12 +42,30 @@ const never = Number.MAX_SAFE_INTEGER;
 
 type HetznerCloudQueue = Infer<typeof hetznerCloudQueue>;
 type HetznerCloudAllocation = Doc<"hetznerCloudAllocations">;
+type AllocationStatus = Infer<typeof allocationStatus>;
+type OperationKind = Infer<typeof operationKind>;
 // Convex uses undefined to remove optional fields in a patch.
 type Patch<Document> = {
 	[Field in keyof Document]?: undefined extends Document[Field]
 		? Document[Field] | undefined
 		: Document[Field];
 };
+
+function getRetryAllocationStatus(
+	kind: OperationKind,
+	current: AllocationStatus,
+): AllocationStatus {
+	switch (kind) {
+		case "create":
+			return "creating";
+		case "delete":
+			return "deleting";
+		case "start":
+		case "stop":
+		case "forceStop":
+			return current;
+	}
+}
 
 const workPools: Record<HetznerCloudQueue, Workpool> = {
 	work: new Workpool(components.hetznerCloudWork, {
@@ -716,10 +738,14 @@ export const record = internalMutation({
 export const retry = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
+		recovery: v.object({
+			operationId: v.id("serverOperations"),
+			stuckSince: v.number(),
+		}),
 		confirmedAbsent: v.optional(hetznerCloudResourceKind),
 	},
 	returns: v.null(),
-	handler: async (ctx, { allocationId, confirmedAbsent }) => {
+	handler: async (ctx, { allocationId, recovery, confirmedAbsent }) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
 		const hetznerCloudAllocation = await getHetznerCloudAllocation(
 			ctx,
@@ -733,6 +759,19 @@ export const retry = internalMutation({
 		) {
 			throw new Error("The allocation cannot be retried now.");
 		}
+		const operation = await ctx.db.get(
+			"serverOperations",
+			allocation.operationId,
+		);
+		if (
+			operation === null ||
+			recovery.operationId !== allocation.operationId ||
+			operation.status === "superseded" ||
+			(operation.status !== "blocked" && allocation.stuck === undefined) ||
+			allocation.stuck?.since !== recovery.stuckSince
+		) {
+			throw new Error("The allocation recovery fence is stale.");
+		}
 		const resources = { ...hetznerCloudAllocation.resources };
 		if (confirmedAbsent !== undefined) {
 			if (resources[confirmedAbsent].status !== "uncertain") {
@@ -744,10 +783,6 @@ export const retry = internalMutation({
 				status: allocation.deleteRequested ? "absent" : "pending",
 			};
 		}
-		const operation = await ctx.db.get(
-			"serverOperations",
-			allocation.operationId,
-		);
 		await ctx.db.patch("serverOperations", allocation.operationId, {
 			status: "pending",
 			...(operation?.deadlineAt === undefined
@@ -755,7 +790,8 @@ export const retry = internalMutation({
 				: { deadlineAt: Date.now() + hetznerCloudPowerDeadlineMs }),
 		});
 		await ctx.db.patch("serverAllocations", allocationId, {
-			status: allocation.deleteRequested ? "deleting" : "creating",
+			status: getRetryAllocationStatus(operation.kind, allocation.status),
+			stuck: undefined,
 		});
 		await ctx.db.patch("hetznerCloudAllocations", hetznerCloudAllocation._id, {
 			resources,

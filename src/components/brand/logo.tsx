@@ -7,22 +7,16 @@ import { Wordmark, wordmarkMetrics } from "./wordmark";
 
 const { capHeight, inkStart } = wordmarkMetrics;
 
-// Scale the 8-unit icon to the wordmark's measured cap height.
-const iconUnits = 8;
-const squareUnits = 6;
-
-const frame = (capHeight * iconUnits) / squareUnits;
-const border = frame / iconUnits;
 const gap = capHeight / 2;
 
-// The icon sits on the baseline with a half-cap-height gap.
+// Matches the wordmark's cap height exactly, so it lines up with the "C".
 const iconStyle: CSSProperties = {
 	display: "inline-block",
-	width: `${frame}em`,
-	height: `${frame}em`,
-	verticalAlign: `${-border}em`,
-	marginInlineStart: `${-border}em`,
-	marginInlineEnd: `${gap - border - inkStart}em`,
+	width: `${capHeight}em`,
+	height: `${capHeight}em`,
+	// Tailwind's preflight sets img { vertical-align: middle }; pin it to the baseline instead.
+	verticalAlign: "baseline",
+	marginInlineEnd: `${gap - inkStart}em`,
 };
 
 export function Logo({ className }: { className?: string | undefined }) {

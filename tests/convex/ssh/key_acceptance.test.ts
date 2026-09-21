@@ -1,9 +1,9 @@
 import { beforeAll, expect, test } from "bun:test";
 import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
+import { quoteShell } from "../../../convex/ssh/scripts/shell";
 import { generateAuthorizedKey } from "../../../harness/openssh/keys";
 import {
-	quoteShell,
 	type SshdAccount,
 	type SshdServer,
 	sshdLogPath,

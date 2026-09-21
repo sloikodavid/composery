@@ -26,18 +26,22 @@ export class SshError extends Error {
 	}
 }
 
-export class SshAccessError extends Error {
-	readonly code:
-		| "allocation_unavailable"
-		| "bootstrap_expired"
-		| "bootstrap_url_insecure"
-		| "encryption_key_invalid"
-		| "encryption_key_missing"
-		| "encryption_key_unknown"
-		| "host_key_missing"
-		| "secrets_unreadable";
+/** Why Composery cannot use its own management access, before a server is reached. */
+export type SshAccessFailure =
+	| "allocation_deleting"
+	| "allocation_unaddressed"
+	| "bootstrap_expired"
+	| "bootstrap_url_insecure"
+	| "encryption_key_invalid"
+	| "encryption_key_missing"
+	| "encryption_key_unknown"
+	| "host_key_missing"
+	| "secrets_unreadable";
 
-	constructor(code: SshAccessError["code"]) {
+export class SshAccessError extends Error {
+	readonly code: SshAccessFailure;
+
+	constructor(code: SshAccessFailure) {
 		super(code);
 		this.name = "SshAccessError";
 		this.code = code;

@@ -6,9 +6,9 @@ const keySeparator = ",";
 export const envelopeVersion = 1;
 export const envelopeKeyIdBytes = 4;
 const envelopePrefixBytes = 1 + envelopeKeyIdBytes;
-const envelopePrefixCharacters = 8;
 const hexRadix = 16;
 const hexDigitsPerByte = 2;
+const envelopeBase64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
 
 export function isSshAccessEncryptionKey(value: string) {
 	return encryptionKeyPattern.test(value);
@@ -42,10 +42,16 @@ export function isSshAccessConfigured(value: string | undefined) {
 
 /** Reads the identifier without trusting it; decryption still authenticates the envelope. */
 export function getEnvelopeKeyId(encryptedSecrets: string) {
+	if (!envelopeBase64Pattern.test(encryptedSecrets)) {
+		return null;
+	}
 	let bytes: string;
 	try {
-		bytes = atob(encryptedSecrets.slice(0, envelopePrefixCharacters));
+		bytes = atob(encryptedSecrets);
 	} catch {
+		return null;
+	}
+	if (btoa(bytes) !== encryptedSecrets) {
 		return null;
 	}
 	if (

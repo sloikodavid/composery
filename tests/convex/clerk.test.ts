@@ -38,22 +38,131 @@ async function readAccount(id: string) {
 	return await backend.createClient(id).query(api.users.getCurrent, {});
 }
 
+async function storeAccount(user: {
+	clerkUserId: string;
+	email?: string;
+	imageUrl?: string;
+}) {
+	const epoch = await backend.runAsAdmin(internal.users.issueListEpoch, {});
+	await backend.runAsAdmin(internal.users.store, { users: [user], epoch });
+}
+
+async function issueUserEpoch(clerkUserId: string) {
+	return await backend.runAsAdmin(internal.users.issueUserEpoch, {
+		clerkUserId,
+	});
+}
+
+test(
+	"an older sync result cannot replace a newer result, and a failed newer read does not discard an older result",
+	async () => {
+		const account = toAccount();
+		await storeAccount({ clerkUserId: account.id, email: "old@example.com" });
+		const staleListEpoch = await backend.runAsAdmin(
+			internal.users.issueListEpoch,
+			{},
+		);
+		const pendingEpoch = await issueUserEpoch(account.id);
+		if (pendingEpoch === null) {
+			throw new Error("The test could not start the list-ordering sync.");
+		}
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "direct@example.com" }],
+			epoch: pendingEpoch,
+		});
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "stale-list@example.com" }],
+			epoch: staleListEpoch,
+		});
+		expect((await readAccount(account.id))?.email).toBe("direct@example.com");
+		const firstEpoch = await issueUserEpoch(account.id);
+		const secondEpoch = await issueUserEpoch(account.id);
+		if (firstEpoch === null || secondEpoch === null) {
+			throw new Error("The test could not start a user sync.");
+		}
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "new@example.com" }],
+			epoch: secondEpoch,
+		});
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "old@example.com" }],
+			epoch: firstEpoch,
+		});
+		expect((await readAccount(account.id))?.email).toBe("new@example.com");
+
+		const failedNewerEpoch = await issueUserEpoch(account.id);
+		const olderSuccessfulEpoch = await issueUserEpoch(account.id);
+		if (failedNewerEpoch === null || olderSuccessfulEpoch === null) {
+			throw new Error("The test could not start the second user sync pair.");
+		}
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "recovered@example.com" }],
+			epoch: failedNewerEpoch,
+		});
+		expect((await readAccount(account.id))?.email).toBe(
+			"recovered@example.com",
+		);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a confirmed deletion remains after every older sync result",
+	async () => {
+		const account = toAccount();
+		await storeAccount({ clerkUserId: account.id, email: account.email });
+		const oldEpoch = await issueUserEpoch(account.id);
+		const deleteEpoch = await issueUserEpoch(account.id);
+		if (oldEpoch === null || deleteEpoch === null) {
+			throw new Error("The test could not start a deletion sync.");
+		}
+		await backend.runAsAdmin(internal.users.remove, {
+			clerkUserIds: [account.id],
+			epoch: deleteEpoch,
+		});
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: "stale@example.com" }],
+			epoch: oldEpoch,
+		});
+		expect(await readAccount(account.id)).toBe(null);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a deletion of an unseen account fences an older in-flight result",
+	async () => {
+		const account = toAccount();
+		const oldEpoch = await issueUserEpoch(account.id);
+		const deleteEpoch = await issueUserEpoch(account.id);
+		if (oldEpoch === null || deleteEpoch === null) {
+			throw new Error("The test could not start an unseen-account deletion.");
+		}
+		await backend.runAsAdmin(internal.users.remove, {
+			clerkUserIds: [account.id],
+			epoch: deleteEpoch,
+		});
+		await backend.runAsAdmin(internal.users.store, {
+			users: [{ clerkUserId: account.id, email: account.email }],
+			epoch: oldEpoch,
+		});
+		expect(await readAccount(account.id)).toBe(null);
+	},
+	testTimeoutMs,
+);
+
 scripted(
 	"reconcile removes only the accounts Clerk no longer holds",
 	async () => {
 		const accounts = Array.from({ length: accountCount }, toAccount);
 		for (const account of accounts) {
 			backend.clerk.setUser(account);
-			await backend.runAsAdmin(internal.users.store, {
-				users: [
-					{
-						clerkUserId: account.id,
-						email: account.email,
-						...(account.imageUrl === undefined
-							? {}
-							: { imageUrl: account.imageUrl }),
-					},
-				],
+			await storeAccount({
+				clerkUserId: account.id,
+				email: account.email,
+				...(account.imageUrl === undefined
+					? {}
+					: { imageUrl: account.imageUrl }),
 			});
 		}
 		const [gone, ...kept] = accounts;
@@ -167,7 +276,7 @@ scripted(
 				method: "GET",
 				path: new RegExp(`${accountsAskedAbout.source}.*${account.id}`),
 			},
-			{ status: httpOk, body: [] },
+			{ kind: "uncheckedReply", reply: { status: httpOk, body: [] } },
 		);
 
 		await backend.runAsAdmin(internal.clerk.reconcile, {});
@@ -195,11 +304,14 @@ scripted(
 				method: "GET",
 				path: new RegExp(`${accountsAskedAbout.source}.*${unanswered.id}`),
 			},
-			{ status: httpOk, body: [] },
+			{ kind: "uncheckedReply", reply: { status: httpOk, body: [] } },
 		);
 		const hasRefused = backend.clerk.scriptOnce(
 			{ method: "GET", path: new RegExp(`^/users/${unanswered.id}$`) },
-			{ status: serviceUnavailable, body: null },
+			{
+				kind: "uncheckedReply",
+				reply: { status: serviceUnavailable, body: null },
+			},
 		);
 
 		const outcome = await backend.runAsAdmin(internal.clerk.reconcile, {}).then(

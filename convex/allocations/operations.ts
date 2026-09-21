@@ -14,7 +14,7 @@ import {
 	deleteAllocationSshAccess,
 	isSshAccessConfigured,
 } from "../ssh/access_state";
-import { toReportedAddress } from "./addresses";
+import { selectReportedAddress } from "./addresses";
 import {
 	getHetznerCloudConfig,
 	type HetznerCloudConfig,
@@ -35,6 +35,38 @@ type AllocationBackend = Infer<typeof allocationBackend>;
 export type AllocationConfig = {
 	backend: "hetznerCloud";
 	hetznerCloud: HetznerCloudConfig;
+};
+
+/**
+ * Everything a backend answers about an allocation that names no backend-specific
+ * value, so adding a backend is one entry here rather than an edit at each caller.
+ * Creation takes the backend's own configuration, so it stays with the config union.
+ */
+type AllocationDriver = Readonly<{
+	/** How long a power operation may run before its deadline passes. */
+	powerDeadlineMs: number;
+	checkPower: (
+		ctx: MutationCtx,
+		allocationId: Id<"serverAllocations">,
+	) => Promise<Failure | null>;
+	wake: (
+		ctx: MutationCtx,
+		allocationId: Id<"serverAllocations">,
+	) => Promise<void>;
+	forget: FunctionReference<
+		"mutation",
+		"internal",
+		{ allocationId: Id<"serverAllocations"> }
+	>;
+}>;
+
+const allocationDrivers: Record<AllocationBackend, AllocationDriver> = {
+	hetznerCloud: {
+		powerDeadlineMs: hetznerCloudPowerDeadlineMs,
+		checkPower: checkHetznerCloudPower,
+		wake: wakeHetznerCloudAllocation,
+		forget: internal.allocations.hetzner_cloud.worker_state.forget,
+	},
 };
 
 export function requireRequestId(requestId: string) {
@@ -100,13 +132,6 @@ export function getAllocationConfig(): AllocationConfig | null {
 		: { backend: "hetznerCloud", hetznerCloud };
 }
 
-function getPowerDeadlineMs(backend: AllocationBackend) {
-	switch (backend) {
-		case "hetznerCloud":
-			return hetznerCloudPowerDeadlineMs;
-	}
-}
-
 export async function requestAllocationCreate(
 	ctx: MutationCtx,
 	request: {
@@ -162,7 +187,8 @@ export async function requestAllocationPower(
 	if (current?.status === "pending") {
 		return fail("server_busy");
 	}
-	const backendFailure = await checkBackendPower(ctx, allocation);
+	const driver = allocationDrivers[allocation.backend];
+	const backendFailure = await driver.checkPower(ctx, allocation._id);
 	if (backendFailure !== null) {
 		return backendFailure;
 	}
@@ -172,32 +198,11 @@ export async function requestAllocationPower(
 		requestId: request.requestId,
 		kind: request.kind,
 		status: "pending",
-		deadlineAt: Date.now() + getPowerDeadlineMs(allocation.backend),
+		deadlineAt: Date.now() + driver.powerDeadlineMs,
 	});
 	await ctx.db.patch("serverAllocations", allocation._id, { operationId });
-	await wakeBackend(ctx, allocation);
+	await driver.wake(ctx, allocation._id);
 	return { ok: true, operationId };
-}
-
-async function checkBackendPower(
-	ctx: MutationCtx,
-	allocation: Doc<"serverAllocations">,
-) {
-	switch (allocation.backend) {
-		case "hetznerCloud":
-			return await checkHetznerCloudPower(ctx, allocation._id);
-	}
-}
-
-async function wakeBackend(
-	ctx: MutationCtx,
-	allocation: Doc<"serverAllocations">,
-) {
-	switch (allocation.backend) {
-		case "hetznerCloud":
-			await wakeHetznerCloudAllocation(ctx, allocation._id);
-			return;
-	}
 }
 
 export async function requestAllocationDelete(
@@ -227,7 +232,8 @@ export async function requestAllocationDelete(
 		deleteRequested: true,
 		status: "deleting",
 	});
-	await wakeBackend(ctx, { ...allocation, deleteRequested: true });
+	// The wake reads the allocation again, so it sees the deletion already recorded.
+	await allocationDrivers[allocation.backend].wake(ctx, allocation._id);
 }
 
 export const get = internalQuery({
@@ -247,20 +253,6 @@ export const getForServer = internalQuery({
 			.unique(),
 });
 
-export async function storeReportedAddress(
-	ctx: MutationCtx,
-	allocation: Doc<"serverAllocations">,
-	reported: string | undefined,
-) {
-	// Providers give IPv6 networks; only an address observed from the server is usable.
-	const address = toReportedAddress(allocation.ipv6, reported);
-	if (address !== null && address !== allocation.ipv6Address) {
-		await ctx.db.patch("serverAllocations", allocation._id, {
-			ipv6Address: address,
-		});
-	}
-}
-
 export const recordReportedAddress = internalMutation({
 	args: {
 		allocationId: v.id("serverAllocations"),
@@ -270,8 +262,11 @@ export const recordReportedAddress = internalMutation({
 	handler: async (ctx, { allocationId, addresses }) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
 		if (allocation !== null) {
-			for (const address of addresses) {
-				await storeReportedAddress(ctx, allocation, address);
+			const address = selectReportedAddress(allocation.ipv6, addresses);
+			if (address !== null && address !== allocation.ipv6Address) {
+				await ctx.db.patch("serverAllocations", allocation._id, {
+					ipv6Address: address,
+				});
 			}
 		}
 		return null;
@@ -287,30 +282,24 @@ export const storeHostname = internalMutation({
 	},
 });
 
-const forgetAllocation: Record<
-	AllocationBackend,
-	FunctionReference<
-		"mutation",
-		"internal",
-		{ allocationId: Id<"serverAllocations"> }
-	>
-> = {
-	hetznerCloud: internal.allocations.hetzner_cloud.worker_state.forget,
-};
-
 export const finishDelete = internalMutation({
 	args: { allocationId: v.id("serverAllocations") },
 	returns: v.null(),
 	handler: async (ctx, { allocationId }) => {
 		// Keep the allocation readable until its server and operation are removed.
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
-		if (allocation === null || allocation.status !== "deleted") {
+		if (allocation === null) {
+			return null;
+		}
+		if (allocation.status !== "deleted") {
 			throw new Error("An allocation must be deleted before it is finished.");
 		}
 		await deleteAllocationSshAccess(ctx, allocationId);
-		await ctx.scheduler.runAfter(0, forgetAllocation[allocation.backend], {
-			allocationId,
-		});
+		await ctx.scheduler.runAfter(
+			0,
+			allocationDrivers[allocation.backend].forget,
+			{ allocationId },
+		);
 		await ctx.scheduler.runAfter(0, internal.servers.lifecycle.finishDelete, {
 			allocationId,
 		});

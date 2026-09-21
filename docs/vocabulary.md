@@ -31,7 +31,8 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `scan` | One walk through every resource that a controller labelled at its provider, a page at a time | sweep, which enqueues work that is due |
 | `notice` | A statement that a state needs someone's attention, addressed to whoever can act on it. Where it appears is an attribute of it | notification, alert |
 | `finding` | Evidence about an unknown resource, for admin review | alert |
-| `epoch` | The number of a worker's attempt at an allocation, which fences writes from an older attempt | generation, version |
+| `epoch` | A number assigned before work starts, which fences results from older work | generation, version |
+| `tombstone` | A permanent record that says an external identity was removed, so an older read cannot restore it | |
 | `lease` | A worker's claim on one allocation for a time, so two runs never act at once | lock |
 | `budget` | What a provider says is left of a project's requests for its period, and when all of it is back | quota, allowance |
 | `pacing` | How fast the deployment lets itself send requests to a provider: a share of the budget for each queue, charged by the requests a run sent | throttle, rate limit (which is per account) |
@@ -110,6 +111,8 @@ JavaScript reserves `delete`, so a registered Convex function that deletes is na
 | `icon` | A small symbol that supports a control or label |
 | `icon button` | A button whose visible content is only an icon and whose accessible name is text |
 | `spinner` | An indicator for work with no measurable completion value |
+| `track` | The closed path a spinner's line travels |
+| `lap` | One trip of a spinner's line around its track |
 | `separator` | A structural line between adjacent regions |
 | `alert` | A persistent message inside the current page layout, not a domain `notice` or a transient `toast` |
 | `toast` | A transient result that floats above the page layout |

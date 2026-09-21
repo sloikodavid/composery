@@ -3,15 +3,17 @@
 import { isIP } from "node:net";
 import { Client, type ClientChannel, type ConnectConfig } from "ssh2";
 import { SshError, type SshFailure } from "./errors";
+import { sshUnsupportedExitCode } from "./scripts/failures";
+import { quoteShell } from "./scripts/shell";
 
 const maxPort = 65_535;
 const maxTimeoutMs = 60_000;
 
 const commandNotExecutableExitCode = 126;
-const commandNotFoundExitCode = 127;
+/** A shell that cannot run the program, and a program that says so itself, mean the same thing. */
 export const commandExitCodes: ReadonlySet<number> = new Set([
 	commandNotExecutableExitCode,
-	commandNotFoundExitCode,
+	sshUnsupportedExitCode,
 ]);
 
 /** Resolve address and host key from trusted allocation state, not caller input. */
@@ -173,7 +175,7 @@ export async function withSshConnection<T>(
 
 /** Runs a repository-owned program with caller data on stdin, never in shell syntax. */
 export function toSshProgramCommand(program: string) {
-	return `/usr/bin/python3 -I -X utf8 -c '${program.replaceAll("'", "'\\''")}'`;
+	return `python3 -I -X utf8 -c ${quoteShell(program)}`;
 }
 
 export type SshCommandResult = Readonly<{

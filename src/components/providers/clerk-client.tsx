@@ -25,7 +25,6 @@ import {
 	radioLabelTitleClassName,
 } from "@/components/ui/radio-group";
 import { separatorLineClassName } from "@/components/ui/separator";
-import { spinnerDefaultClassName } from "@/components/ui/spinner";
 import {
 	switchIndicatorClassName,
 	switchLabelClassName,
@@ -178,7 +177,6 @@ export function ClerkClientProvider({ children }: { children: ReactNode }) {
 					pricingTableCard: cardSurface,
 					profileSection: "border-border",
 					profileSectionPrimaryButton: clerkGhostButtonClassName,
-					spinner: spinnerDefaultClassName,
 					scrollBox: "bg-split-panel-content",
 					searchInputClearButton: buttonVariants.ghost,
 					selectButton: buttonVariants.secondary,

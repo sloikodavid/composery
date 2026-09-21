@@ -1,4 +1,5 @@
 import { beforeAll, expect, test } from "bun:test";
+import { getHetznerCloudResumeAt } from "../../../../convex/allocations/hetzner_cloud/pacing";
 import {
 	type ConvexBackend,
 	useConvexBackend,
@@ -22,9 +23,47 @@ const hourlyLimit = 3600;
 const leastPauseMs = 15_000;
 const mostPauseMs = 120_000;
 const createdPrimaryIps = /^\/primary_ips$/;
+const budgetObservedAt = 1000;
+const budgetResetAt = 2000;
+const budgetBeforeReset = 1500;
+const budgetAfterReset = 2001;
+const budgetResumeAt = 1110;
 
 let backend: ConvexBackend;
 let fake: HetznerFake;
+
+test("pacing returns finite, bounded resume times for budget edges", () => {
+	const exhausted = {
+		limit: 100,
+		remaining: 0,
+		resetAt: budgetResetAt,
+		observedAt: budgetObservedAt,
+	};
+	expect(getHetznerCloudResumeAt(exhausted, budgetObservedAt)).toBe(
+		budgetResumeAt,
+	);
+	expect(getHetznerCloudResumeAt(exhausted, budgetAfterReset)).toBe(
+		budgetAfterReset,
+	);
+	expect(
+		getHetznerCloudResumeAt(
+			{ ...exhausted, remaining: 100 },
+			budgetBeforeReset,
+		),
+	).toBe(budgetBeforeReset);
+	expect(
+		getHetznerCloudResumeAt({ ...exhausted, remaining: -1 }, budgetBeforeReset),
+	).toBe(budgetBeforeReset);
+	expect(
+		getHetznerCloudResumeAt({ ...exhausted, limit: 0 }, budgetBeforeReset),
+	).toBe(budgetBeforeReset);
+	expect(
+		getHetznerCloudResumeAt(
+			{ ...exhausted, observedAt: budgetResetAt + 1 },
+			budgetBeforeReset,
+		),
+	).toBe(budgetBeforeReset);
+});
 
 beforeAll(async () => {
 	backend = await useConvexBackend();
@@ -41,6 +80,7 @@ test(
 		const hasAnswered = fake.scriptOnce(
 			{ method: "POST", path: createdPrimaryIps },
 			{
+				kind: "extraHeaders",
 				headers: {
 					"RateLimit-Limit": String(hourlyLimit),
 					"RateLimit-Remaining": "1",

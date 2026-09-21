@@ -77,7 +77,7 @@ test(
 );
 
 test(
-	"reads a quoted file name and says that the effective configuration makes it ambiguous",
+	"uses native directive boundaries for a quoted key file name",
 	async () => {
 		server.run(
 			"touch '/root/.ssh/key file' && chmod 600 '/root/.ssh/key file'",
@@ -91,6 +91,25 @@ test(
 					path: "/root/.ssh/key file",
 					status: "present",
 				});
+				expect(discovery.unknowns).not.toContain(
+					"A key file's name holds a space, which the SSH server states in a way that cannot be split with certainty.",
+				);
+			},
+		);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"does not guess file boundaries when native directives have the same effective text",
+	async () => {
+		await server.withSettingOnDisk(
+			'AuthorizedKeysFile "/root/.ssh/key file"\nAuthorizedKeysFile /root/.ssh/key file',
+			async () => {
+				const { discovery, root } = await discoverRoot();
+				expect(root.sources.filter((source) => source.kind === "file")).toEqual(
+					[],
+				);
 				expect(discovery.unknowns).toContain(
 					"A key file's name holds a space, which the SSH server states in a way that cannot be split with certainty.",
 				);
@@ -148,6 +167,27 @@ test(
 					kind: "file",
 					path: rootKeyPath,
 					status: "present",
+				});
+			},
+		);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"calls a symbolic-link key source unsafe because edits do not follow it",
+	async () => {
+		server.run(
+			"touch /root/.ssh/real_keys && chmod 600 /root/.ssh/real_keys && ln -sf /root/.ssh/real_keys /root/.ssh/link_keys",
+		);
+		await server.withSettingOnDisk(
+			"AuthorizedKeysFile /root/.ssh/link_keys",
+			async () => {
+				const { root } = await discoverRoot();
+				expect(root.sources).toContainEqual({
+					kind: "file",
+					path: "/root/.ssh/link_keys",
+					status: "unsafe",
 				});
 			},
 		);

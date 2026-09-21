@@ -5,10 +5,13 @@ import {
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation, mutation, query } from "../_generated/server";
-import { requireChangeableServerAllocation } from "../allocations/operations";
+import {
+	requestAllocationDelete,
+	requireChangeableServerAllocation,
+} from "../allocations/operations";
 import { toConvexError } from "../errors";
 import { toBoundedPagination } from "../pagination";
-import { transferServerQuota } from "../quotas";
+import { bumpQuotaEpoch, transferServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getCurrentUser } from "../users";
 import { requestServerDelete } from "./lifecycle";
@@ -93,6 +96,7 @@ export const transfer = mutation({
 		await ctx.db.patch("servers", membership.serverId, {
 			ownerId: newOwner._id,
 		});
+		await bumpQuotaEpoch(ctx, "server");
 		return null;
 	},
 });
@@ -114,6 +118,22 @@ export const requestDeleteForOwner = internalMutation({
 				internal.servers.ownership.requestDeleteForOwner,
 				{ userId, cursor: result.continueCursor },
 			);
+		}
+		return null;
+	},
+});
+
+/** Test cleanup uses the same deletion flow without depending on the old owner. */
+export const requestDeleteForServer = internalMutation({
+	args: { serverId: v.id("servers") },
+	returns: v.null(),
+	handler: async (ctx, { serverId }) => {
+		const allocation = await ctx.db
+			.query("serverAllocations")
+			.withIndex("by_server_id", (q) => q.eq("serverId", serverId))
+			.unique();
+		if (allocation !== null) {
+			await requestAllocationDelete(ctx, allocation);
 		}
 		return null;
 	},

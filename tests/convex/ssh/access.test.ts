@@ -41,7 +41,7 @@ test("tells a refusal apart from an attempt that never happened", () => {
 });
 
 test(
-	"a server that has never reported a host key is unknown, and no address is invented",
+	"a server that has never reported a host key is unknown, says so by code, and no address is invented",
 	async () => {
 		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
@@ -61,6 +61,10 @@ test(
 		expect(status.features.sshKeys.status).toBe("unknown");
 		expect(status.ipv6Network).not.toBe(null);
 		expect(status.ipv6).toBe(null);
+		// Composery's own missing access is a code the caller can act on, not a server error.
+		await expect(
+			client.action(api.ssh.keys.list, { serverId }),
+		).rejects.toMatchObject({ data: { code: "server_unreachable" } });
 	},
 	testTimeoutMs,
 );

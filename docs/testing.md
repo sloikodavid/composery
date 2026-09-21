@@ -35,7 +35,7 @@ The mirror decides where a test goes, never that one must exist. A source file w
 
 The mirror has no exception. `harness/` sits at the top of the repository beside `convex/`, `contracts/` and `src/`, because it is source like any of them: it starts, isolates and stops what a test needs. It is grouped by the world each file builds, so `clerk/`, `convex/`, `hetzner/` and `openssh/` each hold what it takes to stand that system up or to stand in for it, and what every world uses sits beside them.
 
-So the harness can be tested like anything else, at `tests/harness/<path>.test.ts`, and today nothing there is: no file in it decides whether a test passes, and the tests that use it are what show it works. The place exists for the day one of them earns a test of its own, which is the point of having no exception. A contract checker does decide, which is why the checkers are not harness code at all: an oracle nothing proves is worse than none, so they live in `contracts/` and are tested through the mirror like any other source.
+So the harness can be tested like anything else, at `tests/harness/<path>.test.ts`. `tests/harness/fake.test.ts` proves that scripted and lost replies still pass through the contract oracle. A contract checker does decide, which is why the checkers are not harness code at all: an oracle nothing proves is worse than none, so they live in `contracts/` and are tested through the mirror like any other source.
 
 ## Running
 
@@ -93,7 +93,7 @@ The same tests can meet Hetzner itself, and never by accident. Given a token in 
 
 ## Clerk
 
-By default no test reaches Clerk. A run starts a fake on loopback and gives the deployment its address in `CLERK_API_URL`, under the same rule as Hetzner's.
+By default no test reaches Clerk. A run starts a fake on loopback and gives the deployment its address in `CLERK_FAKE_URL`, under the same rule as Hetzner's.
 
 Clerk's own client builds our requests, so checking those checks Clerk's code, not ours. What is worth checking is everything we accept: the client reads a reply without validating it, so a field a fake invents would never be refused, and a hand-written webhook body would never be questioned. Both are held to Clerk's published descriptions of its backend API and of its events.
 
@@ -101,7 +101,7 @@ The version of Clerk's API is pinned by the one its own client asks for. The fak
 
 The same tests can meet Clerk itself, given `CLERK_SECRET_KEY` and `CLERK_FRONTEND_API_URL` in `.env.test` and `CLERK_MODE=real` for that run. Accounts are then real: the run makes them through Clerk's own API, marks each with an `external_id` of its own, and signs in by asking Clerk for a session and a token for it, which Clerk documents for tests and allows on a development instance alone. So a signed-in test takes the verification path a signed-in person takes, down to whose key signed the token. Every account the run made is deleted at the end, and what a killed run left behind goes first: a development instance holds a hundred accounts, and one that fills up refuses sign-ups.
 
-The account tests ran that way on 19 September 2026 and passed, which is what proved a token Clerk minted is one this deployment accepts, and that a run leaves no account behind. Three things only that run could find were fixed on the way: an instance asks for a password of any account it holds, an external ID belongs to one account rather than to a run, and a secret pasted from Clerk's dashboard carries the variable's own name with it.
+The account tests run that way only when a person explicitly sets `CLERK_MODE=real` and supplies both Clerk values. They then exercise accounts Clerk creates and tokens it mints. The scripted account and webhook tests are skipped in that mode, because their controls intentionally change Clerk's replies; the real run cannot prove those scripted failure paths.
 
 Two things such a run does not cover, and it says so rather than passing quietly.
 

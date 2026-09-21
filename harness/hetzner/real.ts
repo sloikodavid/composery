@@ -14,9 +14,68 @@ const leftoverAgeMs = 3_600_000;
 const removeTimeoutMs = 180_000;
 const removeDelayMs = 3000;
 const collections = ["servers", "primary_ips", "firewalls"] as const;
+const httpNotFound = 404;
 
 type Collection = (typeof collections)[number];
 type Owned = { id: number; created: string; labels: Record<string, string> };
+type HetznerRequest = (
+	token: string,
+	method: string,
+	path: string,
+	body?: unknown,
+) => Promise<{ status: number; body: unknown }>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isOwned(value: unknown): value is Owned {
+	if (!isRecord(value)) {
+		return false;
+	}
+	if (
+		typeof value.id !== "number" ||
+		!Number.isInteger(value.id) ||
+		typeof value.created !== "string" ||
+		!isRecord(value.labels)
+	) {
+		return false;
+	}
+	return Object.values(value.labels).every(
+		(label) => typeof label === "string",
+	);
+}
+
+function readOwnedPage(collection: Collection, page: number, body: unknown) {
+	if (!isRecord(body)) {
+		throw new Error(`Hetzner returned no ${collection} list during cleanup.`);
+	}
+	const rawItems = body[collection];
+	if (!Array.isArray(rawItems) || !rawItems.every(isOwned)) {
+		throw new Error(
+			`Hetzner returned malformed ${collection} rows during cleanup.`,
+		);
+	}
+	const meta = body.meta;
+	const pagination = isRecord(meta) ? meta.pagination : undefined;
+	if (!isRecord(pagination)) {
+		throw new Error(
+			`Hetzner returned no pagination for ${collection} cleanup.`,
+		);
+	}
+	const reportedPage = pagination.page;
+	const next = pagination.next_page;
+	if (!Number.isInteger(reportedPage) || reportedPage !== page) {
+		throw new Error(`Hetzner returned the wrong ${collection} cleanup page.`);
+	}
+	if (
+		next !== null &&
+		(typeof next !== "number" || !Number.isInteger(next) || next <= page)
+	) {
+		throw new Error(`Hetzner returned a non-progressing ${collection} page.`);
+	}
+	return { items: rawItems, next };
+}
 
 /** Only HCLOUD_MODE=real enables Hetzner; credentials alone do not. */
 export function getHetznerToken() {
@@ -61,20 +120,47 @@ export function toHetznerForward(token: string) {
 		await call(token, request.method, request.path, request.body);
 }
 
-async function listOwned(token: string, collection: Collection) {
-	const { body } = await call(
-		token,
-		"GET",
-		`${collection.startsWith("/") ? "" : "/"}${collection}?per_page=50`,
-	);
-	const held = (body as Record<string, Owned[]> | null)?.[collection] ?? [];
+async function listOwned(
+	token: string,
+	collection: Collection,
+	request: HetznerRequest = call,
+) {
+	const held: Owned[] = [];
+	for (let page = 1; ; ) {
+		const reply = await request(
+			token,
+			"GET",
+			`${collection.startsWith("/") ? "" : "/"}${collection}?per_page=50&page=${page}`,
+		);
+		if (reply.status >= httpMultipleChoices) {
+			throw new Error(
+				`Hetzner refused the cleanup list for ${collection}: ${reply.status}`,
+			);
+		}
+		const { items, next } = readOwnedPage(collection, page, reply.body);
+		held.push(...items);
+		if (next === null) {
+			break;
+		}
+		page = next;
+	}
 	return held.filter((item) =>
 		(item.labels["controller-id"] ?? "").startsWith(controllerPrefix),
 	);
 }
 
-async function remove(token: string, collection: Collection, id: number) {
-	await call(token, "DELETE", `/${collection}/${id}`);
+async function remove(
+	token: string,
+	collection: Collection,
+	id: number,
+	request: HetznerRequest = call,
+) {
+	const reply = await request(token, "DELETE", `/${collection}/${id}`);
+	if (reply.status >= httpMultipleChoices && reply.status !== httpNotFound) {
+		throw new Error(
+			`Hetzner refused cleanup of ${collection} ${id}: ${reply.status}`,
+		);
+	}
 }
 
 /** Servers go before addresses and firewalls; leftovers are reported as leaks. */
@@ -82,6 +168,7 @@ export async function removeHetznerLeftovers(
 	token: string,
 	controllerId: string | null,
 	kinds: readonly Collection[] = collections,
+	request: HetznerRequest = call,
 ) {
 	const isOurs = (item: Owned) =>
 		controllerId === null
@@ -89,10 +176,10 @@ export async function removeHetznerLeftovers(
 			: item.labels["controller-id"] === controllerId;
 	const deadline = Date.now() + removeTimeoutMs;
 	for (const collection of kinds) {
-		let held = (await listOwned(token, collection)).filter(isOurs);
+		let held = (await listOwned(token, collection, request)).filter(isOurs);
 		while (held.length > 0) {
 			for (const item of held) {
-				await remove(token, collection, item.id);
+				await remove(token, collection, item.id, request);
 			}
 			if (Date.now() > deadline) {
 				throw new Error(
@@ -102,7 +189,7 @@ export async function removeHetznerLeftovers(
 				);
 			}
 			await Bun.sleep(removeDelayMs);
-			held = (await listOwned(token, collection)).filter(isOurs);
+			held = (await listOwned(token, collection, request)).filter(isOurs);
 		}
 	}
 }

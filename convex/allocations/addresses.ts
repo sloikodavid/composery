@@ -113,7 +113,10 @@ function parseNetwork(text: string): (Address & { prefix: number }) | null {
 	}
 	const written = parts[1] ?? "";
 	const prefix = Number.parseInt(written, decimal);
-	return prefixPattern.test(written) && prefix >= 0 && prefix <= address.bits
+	return prefixPattern.test(written) &&
+		String(prefix) === written &&
+		prefix >= 0 &&
+		prefix <= address.bits
 		? { ...address, prefix }
 		: null;
 }
@@ -155,4 +158,17 @@ export function toReportedAddress(
 		return null;
 	}
 	return isAddressInNetwork(reported, network) ? reported : null;
+}
+
+/** Selects one stable address from a report; the network itself is never returned. */
+export function selectReportedAddress(
+	network: string | undefined,
+	reported: readonly string[],
+) {
+	return (
+		reported
+			.map((address) => toReportedAddress(network, address))
+			.filter((address): address is string => address !== null)
+			.sort()[0] ?? null
+	);
 }

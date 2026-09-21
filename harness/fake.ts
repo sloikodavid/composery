@@ -22,12 +22,21 @@ export type FakeReply = Readonly<{
 	headers?: Readonly<Record<string, string>>;
 }>;
 
-/** "lose" means the request may have taken effect without a response. */
+/** What a fake does with one request instead of answering it as it normally would. */
 export type FakeOutcome =
-	| "answer"
-	| "lose"
-	| FakeReply
-	| Readonly<{ headers: Readonly<Record<string, string>> }>;
+	| Readonly<{ kind: "answer" }>
+	/** The answer takes effect, but the caller never sees it and must reconcile. */
+	| Readonly<{ kind: "lose" }>
+	| Readonly<{ kind: "reply"; reply: FakeReply }>
+	/** A deliberately malformed provider reply, so the contract cannot check it. */
+	| Readonly<{ kind: "uncheckedReply"; reply: FakeReply }>
+	/** A provider reply held long enough to overlap another action. */
+	| Readonly<{ kind: "delay"; delayMs: number }>
+	/** The answer as it would be, carrying headers a test needs it to state. */
+	| Readonly<{
+			kind: "extraHeaders";
+			headers: Readonly<Record<string, string>>;
+	  }>;
 
 /** Matches must include a test-owned path or body identity. */
 export type FakeMatch = Readonly<{
@@ -37,9 +46,14 @@ export type FakeMatch = Readonly<{
 }>;
 
 function isMatch(match: FakeMatch, request: FakeRequest) {
+	// A global or sticky expression keeps lastIndex between calls. Matches are
+	// predicates, so that state must never make the same request change result.
+	match.path.lastIndex = 0;
+	const pathMatches = match.path.test(request.path);
+	match.path.lastIndex = 0;
 	return (
 		match.method === request.method &&
-		match.path.test(request.path) &&
+		pathMatches &&
 		(match.body?.(request.body) ?? true)
 	);
 }
@@ -52,7 +66,7 @@ export type Fake = Readonly<{
 	countRequests: (match: FakeMatch) => number;
 	/** Applies to the next match and reports whether it fired. */
 	scriptOnce: (match: FakeMatch, outcome: FakeOutcome) => () => boolean;
-	stop: () => void;
+	stop: () => Promise<void>;
 }>;
 
 export type FakeOptions = Readonly<{
@@ -84,6 +98,15 @@ function readBody(request: IncomingMessage) {
 	});
 }
 
+function toHeaders(headers: IncomingMessage["headers"]) {
+	return Object.fromEntries(
+		Object.entries(headers).map(([name, value]) => [
+			name,
+			Array.isArray(value) ? value.join(", ") : value,
+		]),
+	) as Record<string, string | undefined>;
+}
+
 function send(response: ServerResponse, reply: FakeReply) {
 	if (reply.body === null) {
 		response.writeHead(reply.status, { ...reply.headers });
@@ -108,7 +131,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		const index = scripts.findIndex((candidate) => isMatch(candidate, request));
 		const [script] = index === -1 ? [] : scripts.splice(index, 1);
 		if (script === undefined) {
-			return "answer";
+			return { kind: "answer" };
 		}
 		script.markFired();
 		return script.outcome;
@@ -118,6 +141,67 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		options.forward === undefined
 			? options.answer(request)
 			: await options.forward(request);
+
+	const checkReply = (request: FakeRequest, reply: FakeReply) => {
+		for (const problem of options.checker.listReplyProblems(
+			request.method,
+			request.path,
+			reply.status,
+			reply.body,
+		)) {
+			options.checker.noteProblem(problem);
+		}
+	};
+
+	const sendChecked = (
+		request: FakeRequest,
+		response: ServerResponse,
+		reply: FakeReply,
+	) => {
+		checkReply(request, reply);
+		options.observe?.(reply);
+		send(response, reply);
+	};
+
+	const handleOutcome = async (
+		request: FakeRequest,
+		incoming: IncomingMessage,
+		response: ServerResponse,
+		outcome: FakeOutcome,
+	) => {
+		switch (outcome.kind) {
+			case "answer":
+				sendChecked(request, response, await answer(request));
+				return;
+			case "extraHeaders": {
+				const answered = await answer(request);
+				sendChecked(request, response, {
+					...answered,
+					headers: { ...answered.headers, ...outcome.headers },
+				});
+				return;
+			}
+			case "lose": {
+				// The request may have succeeded; the caller must reconcile.
+				checkReply(request, await answer(request));
+				incoming.socket.destroy();
+				return;
+			}
+			case "delay": {
+				const delayed = await answer(request);
+				await Bun.sleep(outcome.delayMs);
+				sendChecked(request, response, delayed);
+				return;
+			}
+			case "reply":
+				sendChecked(request, response, outcome.reply);
+				return;
+			case "uncheckedReply":
+				options.observe?.(outcome.reply);
+				send(response, outcome.reply);
+				return;
+		}
+	};
 
 	const handle = async (
 		incoming: IncomingMessage,
@@ -129,7 +213,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 		const request: FakeRequest = {
 			method,
 			path,
-			headers: incoming.headers as Record<string, string | undefined>,
+			headers: toHeaders(incoming.headers),
 			body,
 		};
 		requests.push(request);
@@ -138,52 +222,45 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			options.checker.noteProblem(problem);
 		}
 
-		const outcome = takeScript(request);
-		if (outcome === "lose") {
-			// The request may have succeeded; the caller must reconcile.
-			await answer(request);
-			incoming.socket.destroy();
-			return;
-		}
-		if (outcome !== "answer" && "status" in outcome) {
-			options.observe?.(outcome);
-			send(response, outcome);
-			return;
-		}
-		const answered = await answer(request);
-		const reply =
-			outcome === "answer"
-				? answered
-				: {
-						...answered,
-						headers: { ...answered.headers, ...outcome.headers },
-					};
-		options.checker.listReplyProblems(
-			method,
-			path,
-			reply.status,
-			reply.body ?? {},
-		);
-		options.observe?.(reply);
-		send(response, reply);
+		await handleOutcome(request, incoming, response, takeScript(request));
 	};
 
 	const server = createServer((incoming, response) => {
-		void readBody(incoming).then(
-			async (body) => await handle(incoming, response, body),
-		);
+		void readBody(incoming)
+			.then((body) => handle(incoming, response, body))
+			.catch(() => incoming.socket.destroy());
 	});
+	let stopped: Promise<void> | undefined;
 	const stop = () => {
-		server.closeAllConnections();
-		server.close();
+		if (stopped !== undefined) {
+			return stopped;
+		}
+		stopped = new Promise<void>((resolve, reject) => {
+			server.closeAllConnections();
+			server.close((error) => {
+				if (
+					error !== undefined &&
+					(error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING"
+				) {
+					reject(error);
+					return;
+				}
+				resolve();
+			});
+		});
+		return stopped;
 	};
-	await new Promise<void>((resolve) => {
-		server.listen(0, loopbackHost, resolve);
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, loopbackHost, () => {
+			server.removeListener("error", reject);
+			resolve();
+		});
 	});
 	registerCleanup(stop);
 	const address = server.address();
 	if (typeof address !== "object" || address === null) {
-		stop();
+		await stop();
 		throw new Error(`The ${options.system} fake did not take a port.`);
 	}
 

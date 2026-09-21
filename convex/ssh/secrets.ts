@@ -24,6 +24,7 @@ const maxPages = 1000;
 const authTagBytes = 16;
 const keyBytes = 32;
 const prefixBytes = 1 + envelopeKeyIdBytes;
+const envelopeBase64Pattern = /^[A-Za-z0-9+/]*={0,2}$/;
 
 export type SshAccessSecrets = { privateKey: string; token: string };
 
@@ -42,6 +43,17 @@ function toKeyBytes(key: string) {
 	const bytes = Buffer.from(key, "base64");
 	if (bytes.length !== keyBytes) {
 		throw new SshAccessError("encryption_key_invalid");
+	}
+	return bytes;
+}
+
+function toEnvelopeBytes(value: string) {
+	if (!envelopeBase64Pattern.test(value)) {
+		throw new SshAccessError("secrets_unreadable");
+	}
+	const bytes = Buffer.from(value, "base64");
+	if (bytes.toString("base64") !== value) {
+		throw new SshAccessError("secrets_unreadable");
 	}
 	return bytes;
 }
@@ -102,7 +114,7 @@ export function decryptSshSecretsWith(
 	if (keys.length === 0) {
 		throw new SshAccessError("encryption_key_missing");
 	}
-	const bytes = Buffer.from(encryptedSecrets, "base64");
+	const bytes = toEnvelopeBytes(encryptedSecrets);
 	if (bytes.length < prefixBytes || bytes[0] !== envelopeVersion) {
 		throw new SshAccessError("secrets_unreadable");
 	}

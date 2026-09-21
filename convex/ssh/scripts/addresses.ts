@@ -1,8 +1,8 @@
-/** Reports global IPv6 addresses from the kernel; the provider range is checked elsewhere. */
-export const addressesScript = `
-import ipaddress
-import json
+import { sshFailureScript } from "./failures";
 
+/** Reports global IPv6 addresses from the kernel; the provider range is checked elsewhere. */
+export const addressesScript = `import ipaddress, json
+${sshFailureScript}
 GLOBAL_SCOPE = "00"
 found = []
 try:
@@ -18,6 +18,6 @@ try:
             if str(address) not in found:
                 found.append(str(address))
 except OSError:
-    pass
+    unsupported("global IPv6 addresses")
 print(json.dumps({"ipv6": found}))
 `;

@@ -1,12 +1,9 @@
 import { beforeAll, expect, test } from "bun:test";
 import { AuthorizedKeysFile } from "../../../convex/ssh/authorized_keys";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
+import { quoteShell } from "../../../convex/ssh/scripts/shell";
 import { generateAuthorizedKey } from "../../../harness/openssh/keys";
-import {
-	quoteShell,
-	type SshdServer,
-	useSshd,
-} from "../../../harness/openssh/sshd";
+import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;

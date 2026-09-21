@@ -4,6 +4,7 @@ import { internal } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { getEnvelopeKeyId } from "../../../convex/ssh/encryption_keys";
 import { SshAccessError } from "../../../convex/ssh/errors";
+import { generateSshKeyPair } from "../../../convex/ssh/key_pair";
 import {
 	decryptSshSecretsWith,
 	encryptSshSecretsWith,
@@ -104,6 +105,13 @@ test("a value that is not one of ours is refused", () => {
 		),
 	).toBe("secrets_unreadable");
 	expect(getEnvelopeKeyId("not base64 at all")).toBe(null);
+	const envelope = encryptSshSecretsWith([key], allocationId, secrets);
+	for (const malformed of [envelope.slice(0, -1), `${envelope}!`]) {
+		expect(
+			toCode(() => decryptSshSecretsWith([key], allocationId, malformed)),
+		).toBe("secrets_unreadable");
+		expect(getEnvelopeKeyId(malformed)).toBe(null);
+	}
 });
 
 test("two different keys are never named the same", () => {
@@ -205,6 +213,93 @@ test(
 				moved.encryptedSecrets,
 			),
 		).toEqual(secrets);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"concurrent renewals keep the first pending key and reject the stale writer",
+	async () => {
+		const created = await createSshAccess();
+		const first = generateSshKeyPair();
+		const second = generateSshKeyPair();
+		const firstSecrets = encryptSshSecretsWith(
+			backend.sshAccessEncryptionKeys,
+			created.allocationId,
+			{ privateKey: first.privateKey, token: "first" },
+		);
+		const secondSecrets = encryptSshSecretsWith(
+			backend.sshAccessEncryptionKeys,
+			created.allocationId,
+			{ privateKey: second.privateKey, token: "second" },
+		);
+		const expected = {
+			publicKey: created.publicKey,
+			pendingPublicKey: created.pendingPublicKey ?? null,
+			pendingEncryptedSecrets: created.pendingEncryptedSecrets ?? null,
+			bootstrapExpiresAt: created.bootstrapExpiresAt,
+		};
+		const firstOutcome = await backend.runAsAdmin(
+			internal.ssh.bootstrap_state.storeRenewal,
+			{
+				allocationId: created.allocationId,
+				pendingPublicKey: first.publicKey,
+				pendingEncryptedSecrets: firstSecrets,
+				bootstrapTokenDigest: "first-digest",
+				expected,
+			},
+		);
+		const secondOutcome = await backend.runAsAdmin(
+			internal.ssh.bootstrap_state.storeRenewal,
+			{
+				allocationId: created.allocationId,
+				pendingPublicKey: second.publicKey,
+				pendingEncryptedSecrets: secondSecrets,
+				bootstrapTokenDigest: "second-digest",
+				expected,
+			},
+		);
+		expect(firstOutcome).toBe("stored");
+		expect(secondOutcome).toBe("changed");
+		expect((await readSshAccess(created.allocationId)).pendingPublicKey).toBe(
+			first.publicKey,
+		);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"a successful host-key report can be retried after its reply is lost",
+	async () => {
+		const created = await createSshAccess();
+		const allocation = await backend.runAsAdmin(
+			internal.allocations.operations.get,
+			{ allocationId: created.allocationId },
+		);
+		if (allocation?.ipv4 === undefined) {
+			throw new Error("The test allocation has no IPv4 address.");
+		}
+		const hostKey = generateSshKeyPair().publicKey;
+		const report = {
+			allocationId: created.allocationId,
+			bootstrapTokenDigest: created.bootstrapTokenDigest,
+			hostKey,
+			port: 22,
+			source: allocation.ipv4,
+		};
+		expect(
+			await backend.runAsAdmin(
+				internal.ssh.bootstrap_state.registerHostKey,
+				report,
+			),
+		).toBe(true);
+		expect(
+			await backend.runAsAdmin(
+				internal.ssh.bootstrap_state.registerHostKey,
+				report,
+			),
+		).toBe(true);
+		expect((await readSshAccess(created.allocationId)).hostKey).toBe(hostKey);
 	},
 	testTimeoutMs,
 );

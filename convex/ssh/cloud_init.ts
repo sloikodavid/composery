@@ -36,7 +36,7 @@ export function renderCloudInit({
 				content: JSON.stringify(bootstrapFile),
 			},
 		],
-		runcmd: [["/usr/bin/python3", "-I", "-c", reportHostKeyScript]],
+		runcmd: [["python3", "-I", "-c", reportHostKeyScript]],
 	};
 	// biome-ignore-end lint/style/useNamingConvention: external snake_case keys
 	return `#cloud-config\n${JSON.stringify(config)}\n`;

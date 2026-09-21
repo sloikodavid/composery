@@ -42,14 +42,36 @@ function getReserve(budget: HetznerCloudBudget) {
 	return Math.min(budgetReserve, Math.floor(budget.limit / 10));
 }
 
+export function isValidHetznerCloudBudget(budget: HetznerCloudBudget) {
+	return (
+		Number.isSafeInteger(budget.limit) &&
+		budget.limit > 0 &&
+		Number.isSafeInteger(budget.remaining) &&
+		budget.remaining >= 0 &&
+		budget.remaining <= budget.limit &&
+		Number.isSafeInteger(budget.resetAt) &&
+		Number.isSafeInteger(budget.observedAt) &&
+		budget.resetAt >= budget.observedAt
+	);
+}
+
 function getRemaining(budget: HetznerCloudBudget, now: number) {
+	if (!isValidHetznerCloudBudget(budget)) {
+		return budget.remaining;
+	}
 	if (now >= budget.resetAt || budget.remaining >= budget.limit) {
 		return budget.limit;
+	}
+	if (now <= budget.observedAt) {
+		return budget.remaining;
 	}
 	const returned =
 		((budget.limit - budget.remaining) * (now - budget.observedAt)) /
 		(budget.resetAt - budget.observedAt);
-	return budget.remaining + returned;
+	return Math.min(
+		budget.limit,
+		Math.max(budget.remaining, budget.remaining + returned),
+	);
 }
 
 /** Returns when enough of the provider's budget has returned. */
@@ -57,6 +79,9 @@ export function getHetznerCloudResumeAt(
 	budget: HetznerCloudBudget,
 	now: number,
 ) {
+	if (!isValidHetznerCloudBudget(budget)) {
+		return now;
+	}
 	const reserve = getReserve(budget);
 	if (getRemaining(budget, now) > reserve) {
 		return now;
@@ -89,7 +114,10 @@ async function storeHetznerCloudBudget(
 	const existing = await getHetznerCloudBudget(ctx, controllerId);
 	if (existing === null) {
 		await ctx.db.insert("hetznerCloudBudgets", { controllerId, ...budget });
-	} else if (existing.observedAt < budget.observedAt) {
+	} else if (
+		!isValidHetznerCloudBudget(existing) ||
+		existing.observedAt < budget.observedAt
+	) {
 		await ctx.db.patch("hetznerCloudBudgets", existing._id, budget);
 	}
 }
@@ -102,6 +130,9 @@ export async function checkHetznerCloudPacing(
 	const budget = await getHetznerCloudBudget(ctx, controllerId);
 	if (budget === null) {
 		// The first request discovers the provider's limit.
+		return null;
+	}
+	if (!isValidHetznerCloudBudget(budget)) {
 		return null;
 	}
 	const now = Date.now();
@@ -127,7 +158,7 @@ export async function chargeHetznerCloudPacing(
 	if (budget === null) {
 		return now;
 	}
-	if (usage.requests > 0) {
+	if (usage.requests > 0 && isValidHetznerCloudBudget(budget)) {
 		// Record usage even when it exceeds the current budget.
 		await pacingLimiter.limit(ctx, pacingNames[queue], {
 			count: usage.requests,

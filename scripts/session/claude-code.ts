@@ -38,7 +38,7 @@ function readTimestamp(row: Row): Date | undefined {
 }
 
 function getClaudeCodeConfigDirectory(): string {
-	return process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+	return process.env.CLAUDE_CODE_CONFIG_DIR || join(homedir(), ".claude");
 }
 
 async function readTranscript(file: string): Promise<Transcript> {

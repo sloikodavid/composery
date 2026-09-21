@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
 	isAddressInNetwork,
 	isAllocationAddress,
+	selectReportedAddress,
 	toReportedAddress,
 } from "../../../convex/allocations/addresses";
 
@@ -58,6 +59,8 @@ test("refuses a network whose prefix is not a plain length", () => {
 		"2001:db8::/129",
 		"2001:db8::/",
 		"2001:db8::/ 64",
+		"2001:db8::/064",
+		"2001:db8::/00",
 	]) {
 		expect(isAddressInNetwork("2001:db8::1", written)).toBe(false);
 	}
@@ -97,4 +100,13 @@ test("shows only an address the server has been seen using", () => {
 	expect(toReportedAddress(undefined, "2a01:4f8:1c1c:328::1")).toBe(null);
 	expect(toReportedAddress("192.0.2.1", "192.0.2.1")).toBe("192.0.2.1");
 	expect(toReportedAddress("192.0.2.1", "192.0.2.2")).toBe(null);
+});
+
+test("selects one stable address when a report contains several candidates", () => {
+	const second = "2a01:4f8:1c1c:328::2";
+	const first = "2a01:4f8:1c1c:328::1";
+	expect(selectReportedAddress(network, [second, "192.0.2.1", first])).toBe(
+		first,
+	);
+	expect(selectReportedAddress(network, ["192.0.2.1"])).toBe(null);
 });

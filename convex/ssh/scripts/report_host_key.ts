@@ -1,10 +1,23 @@
+import { sshConfigurationScript } from "./configuration";
+import { sshFailureScript } from "./failures";
+import { sshHostKeyScript } from "./host_key";
+
 /** Sends the host key without putting the bootstrap token in arguments or output. */
 export const reportHostKeyScript = `import json, pathlib, time, urllib.request
+${sshFailureScript}
+${sshConfigurationScript}
+${sshHostKeyScript}
 config_path = pathlib.Path("/run/composery-bootstrap.json")
 config = json.loads(config_path.read_text())
-host_key = pathlib.Path("/etc/ssh/ssh_host_ed25519_key.pub").read_text().split()
+
+answer = ask_sshd()
+if answer is None:
+    unsupported("the SSH server's own configuration")
+host_key = read_host_key(directive_values(read_directives(answer[0]), "hostkey"))
+if host_key is None:
+    unsupported("Ed25519 host key")
 body = json.dumps(dict(allocationId=config["allocationId"], token=config["token"],
-                       hostKey=" ".join(host_key[:2]))).encode()
+                       hostKey=host_key)).encode()
 request = urllib.request.Request(config["url"], data=body, headers={"Content-Type": "application/json"})
 success = False
 for attempt in range(30):

@@ -20,6 +20,61 @@
 	--clerk-spacing: 1rem;
 }
 
+/* Clerk draws its spinner on one element, which no stroke can reach, so its
+   line sweeps as an angle and the mask keeps it inside Clerk's own border. An
+   angle covers the corners of a square faster than the sides, so the line
+   cannot hold the corner easing that `.spinner-track` has. */
+@property --spinner-lap-angle {
+	syntax: "<angle>";
+	inherits: false;
+	initial-value: 45deg;
+}
+
+@keyframes spinner-sweep {
+	0% {
+		--spinner-lap-angle: 45deg;
+	}
+	25% {
+		--spinner-lap-angle: 135deg;
+	}
+	50% {
+		--spinner-lap-angle: 225deg;
+	}
+	75% {
+		--spinner-lap-angle: 315deg;
+	}
+	100% {
+		--spinner-lap-angle: 405deg;
+	}
+}
+
+@layer utilities {
+	.cl-spinner {
+		--spinner-line-angle: calc(var(--spinner-line-length) * 3.6deg);
+
+		border-color: transparent;
+		border-radius: var(--radius-control-small);
+		background: conic-gradient(
+			from calc(var(--spinner-lap-angle) - var(--spinner-line-angle)),
+			currentColor 0deg var(--spinner-line-angle),
+			transparent var(--spinner-line-angle) 360deg
+		);
+
+		background-origin: border-box;
+		mask:
+			linear-gradient(#000, #000) padding-box,
+			linear-gradient(#000, #000);
+		mask-composite: exclude;
+		animation: spinner-sweep var(--spinner-lap-duration) ease-in-out infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cl-spinner {
+			animation: none;
+		}
+	}
+}
+
 /* Clerk supplies elevation; mapped surfaces supply the borders. */
 @layer utilities {
 	.cl-button,

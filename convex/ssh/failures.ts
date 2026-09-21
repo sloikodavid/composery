@@ -1,8 +1,13 @@
 import { type ErrorCode, toConvexError } from "../errors";
-import { SshError, type SshFailure } from "./errors";
+import {
+	SshAccessError,
+	type SshAccessFailure,
+	SshError,
+	type SshFailure,
+} from "./errors";
 import type { SshFileWriteResult } from "./write_file";
 
-// biome-ignore-start lint/style/useNamingConvention: external failure code names
+// biome-ignore-start lint/style/useNamingConvention: failure code names
 export const failureCodes: Record<SshFailure, ErrorCode> = {
 	aborted: "server_unreachable",
 	authentication_failed: "server_unreachable",
@@ -42,11 +47,27 @@ export const writeCodes: Record<
 	write_failed: "file_unwritable",
 	written: null,
 };
-// biome-ignore-end lint/style/useNamingConvention: external failure code names
+
+/** Our own access is not a server's fault, so a caller is told what it can act on. */
+export const accessCodes: Record<SshAccessFailure, ErrorCode> = {
+	allocation_deleting: "server_deleting",
+	allocation_unaddressed: "server_busy",
+	bootstrap_expired: "server_busy",
+	bootstrap_url_insecure: "server_broken",
+	encryption_key_invalid: "server_broken",
+	encryption_key_missing: "server_broken",
+	encryption_key_unknown: "server_broken",
+	host_key_missing: "server_unreachable",
+	secrets_unreadable: "server_broken",
+};
+// biome-ignore-end lint/style/useNamingConvention: failure code names
 
 export function throwPublicSshError(error: unknown): never {
 	if (error instanceof SshError) {
 		throw toConvexError(failureCodes[error.code]);
+	}
+	if (error instanceof SshAccessError) {
+		throw toConvexError(accessCodes[error.code]);
 	}
 	throw error;
 }

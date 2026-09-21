@@ -5,6 +5,10 @@ import {
 	isUsable,
 	requireOfferedServerType,
 	requireOwnedResource,
+	requireSinglePageLookup,
+	toActionStatus,
+	toHetznerCloudBudget,
+	toHetznerCloudConfig,
 	toServer,
 } from "../../../../convex/allocations/hetzner_cloud/api";
 import {
@@ -155,4 +159,99 @@ test("a firewall without our label is not ours, and says so", () => {
 		catchHetznerError(() => requireOwnedResource(unlabelled, controllerId))
 			?.code,
 	).toBe("resource_identity_mismatch");
+});
+
+test("an action status outside the provider contract is rejected", () => {
+	expect(toActionStatus("running")).toBe("running");
+	expect(toActionStatus("success")).toBe("succeeded");
+	expect(toActionStatus("error")).toBe("failed");
+	for (const status of ["succeeded", "cancelled", 1, null]) {
+		expect(() => toActionStatus(status)).toThrowError(HetznerCloudError);
+	}
+});
+
+test("a budget is stored only when its counters and reset are coherent", () => {
+	const observedAt = 1_000_000;
+	const valid = new Headers({
+		"RateLimit-Limit": "100",
+		"RateLimit-Remaining": "20",
+		"RateLimit-Reset": "1001",
+	});
+	expect(toHetznerCloudBudget(valid, observedAt)).toEqual({
+		limit: 100,
+		remaining: 20,
+		resetAt: 1_001_000,
+		observedAt,
+	});
+	for (const remaining of ["-1", "101"]) {
+		const headers = new Headers(valid);
+		headers.set("RateLimit-Remaining", remaining);
+		expect(toHetznerCloudBudget(headers, observedAt)).toBeUndefined();
+	}
+	const stale = new Headers(valid);
+	stale.set("RateLimit-Reset", "999");
+	expect(toHetznerCloudBudget(stale, observedAt)).toBeUndefined();
+	for (const name of [
+		"RateLimit-Limit",
+		"RateLimit-Remaining",
+		"RateLimit-Reset",
+	]) {
+		const headers = new Headers(valid);
+		headers.delete(name);
+		expect(toHetznerCloudBudget(headers, observedAt)).toBeUndefined();
+	}
+	for (const value of ["1.0", "+100", "1e2"]) {
+		const headers = new Headers(valid);
+		headers.set("RateLimit-Limit", value);
+		expect(toHetznerCloudBudget(headers, observedAt)).toBeUndefined();
+	}
+});
+
+test("provider configuration reports partial setup", () => {
+	expect(
+		toHetznerCloudConfig({
+			token: undefined,
+			controllerId: undefined,
+			locations: undefined,
+			image: undefined,
+			serverType: undefined,
+		}),
+	).toBeNull();
+	expect(() =>
+		toHetznerCloudConfig({
+			token: "test-token",
+			controllerId: undefined,
+			locations: "fsn1",
+			image: "ubuntu",
+			serverType: "cx22",
+		}),
+	).toThrow("HCLOUD_CONTROLLER_ID");
+});
+
+test("a provider lookup with another page is treated as duplicate", () => {
+	// biome-ignore-start lint/style/useNamingConvention: external provider response keys
+	const page = {
+		primary_ips: [{}],
+		meta: { pagination: { next_page: 2 } },
+	};
+	expect(() => requireSinglePageLookup(page, "primary_ips", 1)).toThrow(
+		"duplicate_resources",
+	);
+	expect(() =>
+		requireSinglePageLookup(
+			{ primary_ips: [], meta: { pagination: { next_page: 2 } } },
+			"primary_ips",
+			0,
+		),
+	).toThrow("invalid_response");
+	for (const nextPage of [0, -1, "2"]) {
+		expect(() =>
+			requireSinglePageLookup(
+				{ primary_ips: [{}], meta: { pagination: { next_page: nextPage } } },
+				"primary_ips",
+				1,
+			),
+		).toThrow("invalid_response");
+	}
+	// biome-ignore-end lint/style/useNamingConvention: external provider response keys
 });

@@ -13,7 +13,8 @@ import {
 	type AuthorizedKeysLine,
 } from "./authorized_keys";
 import type { SshConnectionOptions } from "./connection";
-import { discoverSshServer } from "./discovery";
+import { discoverSshServer, type SshDiscovery } from "./discovery";
+import { SshError } from "./errors";
 import { throwPublicSshError, writeCodes } from "./failures";
 import { discoverSshKeyAcceptance } from "./key_acceptance";
 import { readSshFile, type SshFileObservation } from "./read_file";
@@ -27,6 +28,34 @@ type KeyFileListing = {
 	files: Awaited<ReturnType<typeof readKeyFile>>[];
 	unknowns: string[];
 };
+
+/** Restricts edits to files the running SSH configuration uses for this account. */
+export function isDiscoveredSshKeyFile(
+	discovery: SshDiscovery,
+	account: string | null,
+	path: string,
+) {
+	return discovery.accounts.some(
+		(candidate) =>
+			(account === null || candidate.name === account) &&
+			candidate.sources.some(
+				(source) =>
+					source.kind === "file" &&
+					source.status === "present" &&
+					source.path === path,
+			),
+	);
+}
+
+function requireDiscoveredSshKeyFile(
+	discovery: SshDiscovery,
+	account: string | null,
+	path: string,
+) {
+	if (!isDiscoveredSshKeyFile(discovery, account, path)) {
+		throw new SshError("invalid_request");
+	}
+}
 
 const acceptance = v.union(
 	v.literal("accepted"),
@@ -213,6 +242,12 @@ async function applyEdits(
 	}
 	try {
 		return await onServer(ctx, request.serverId, async (connection) => {
+			const discovery = await discoverSshServer(connection);
+			requireDiscoveredSshKeyFile(
+				discovery,
+				request.question?.account ?? null,
+				request.path,
+			);
 			const observation = await readSshFile({
 				...connection,
 				path: request.path,

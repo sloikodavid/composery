@@ -18,6 +18,7 @@ import {
 	toBootstrapTokenDigest,
 } from "./bootstrap_state";
 import { SshAccessError } from "./errors";
+import { throwPublicSshError } from "./failures";
 import { generateSshKeyPair } from "./key_pair";
 import { renderSshBootstrapScript } from "./scripts/bootstrap";
 import { decryptSshSecrets, encryptSshSecrets } from "./secrets";
@@ -39,7 +40,10 @@ function requireReportUrl() {
 	} catch {
 		throw new SshAccessError("bootstrap_url_insecure");
 	}
-	if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) {
+	if (
+		url.protocol !== "https:" &&
+		(url.protocol !== "http:" || !isLoopbackHost(url.hostname))
+	) {
 		throw new SshAccessError("bootstrap_url_insecure");
 	}
 	return `${site}/ssh/host-keys`;
@@ -87,6 +91,29 @@ export function requireSshBootstrapFile(
 	};
 }
 
+/** The program for a renewal that is already staged, or null when none is open. */
+function toStagedRenewal(sshAccess: AllocationSshAccess, url: string) {
+	const { allocationId, pendingPublicKey, pendingEncryptedSecrets } = sshAccess;
+	if (
+		pendingPublicKey === undefined ||
+		pendingEncryptedSecrets === undefined ||
+		sshAccess.bootstrapExpiresAt <= Date.now()
+	) {
+		return null;
+	}
+	return {
+		script: renderSshBootstrapScript({
+			bootstrapFile: {
+				allocationId,
+				token: decryptSshSecrets(allocationId, pendingEncryptedSecrets).token,
+				url,
+			},
+			publicKey: pendingPublicKey,
+			previousPublicKey: sshAccess.publicKey,
+		}),
+	};
+}
+
 /** Keeps the old key until the server reports with the replacement key. */
 async function renewSshAccess(
 	ctx: ActionCtx,
@@ -100,37 +127,48 @@ async function renewSshAccess(
 		throw toConvexError("server_busy");
 	}
 	const url = requireReportUrl();
-	if (
-		sshAccess.pendingPublicKey !== undefined &&
-		sshAccess.pendingEncryptedSecrets !== undefined &&
-		sshAccess.bootstrapExpiresAt > Date.now()
-	) {
-		return {
-			script: renderSshBootstrapScript({
-				bootstrapFile: {
-					allocationId,
-					token: decryptSshSecrets(
-						allocationId,
-						sshAccess.pendingEncryptedSecrets,
-					).token,
-					url,
-				},
-				publicKey: sshAccess.pendingPublicKey,
-				previousPublicKey: sshAccess.publicKey,
-			}),
-		};
+	const staged = toStagedRenewal(sshAccess, url);
+	if (staged !== null) {
+		return staged;
 	}
 	const keyPair = generateSshKeyPair();
 	const token = generateBootstrapToken();
-	await ctx.runMutation(internal.ssh.bootstrap_state.storeRenewal, {
-		allocationId,
-		pendingPublicKey: keyPair.publicKey,
-		pendingEncryptedSecrets: encryptSshSecrets(allocationId, {
-			privateKey: keyPair.privateKey,
-			token,
-		}),
-		bootstrapTokenDigest: await toBootstrapTokenDigest(token),
-	});
+	const outcome = await ctx.runMutation(
+		internal.ssh.bootstrap_state.storeRenewal,
+		{
+			allocationId,
+			pendingPublicKey: keyPair.publicKey,
+			pendingEncryptedSecrets: encryptSshSecrets(allocationId, {
+				privateKey: keyPair.privateKey,
+				token,
+			}),
+			bootstrapTokenDigest: await toBootstrapTokenDigest(token),
+			expected: {
+				publicKey: sshAccess.publicKey,
+				pendingPublicKey: sshAccess.pendingPublicKey ?? null,
+				pendingEncryptedSecrets: sshAccess.pendingEncryptedSecrets ?? null,
+				bootstrapExpiresAt: sshAccess.bootstrapExpiresAt,
+			},
+		},
+	);
+	switch (outcome) {
+		case "stored":
+			break;
+		case "gone":
+			throw toConvexError("server_busy");
+		case "changed": {
+			// Another renewal staged its own key pair first; hand back that one.
+			const current: AllocationSshAccess | null = await ctx.runQuery(
+				internal.ssh.access_state.get,
+				{ allocationId },
+			);
+			const other = current === null ? null : toStagedRenewal(current, url);
+			if (other === null) {
+				throw toConvexError("server_busy");
+			}
+			return other;
+		}
+	}
 	return {
 		script: renderSshBootstrapScript({
 			bootstrapFile: { allocationId, token, url },
@@ -148,7 +186,11 @@ export const renew = action({
 			internal.ssh.permissions.requireAllocation,
 			{ serverId },
 		);
-		return await renewSshAccess(ctx, allocation._id);
+		try {
+			return await renewSshAccess(ctx, allocation._id);
+		} catch (error) {
+			return throwPublicSshError(error);
+		}
 	},
 });
 

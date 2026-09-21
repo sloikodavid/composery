@@ -1,6 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { api } from "../../../../convex/_generated/api";
+import { api, internal } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
@@ -83,7 +83,7 @@ test(
 
 		expect(status.status).toBe("running");
 		expect(status.ipv4).not.toBe(null);
-		expect(
+		await expect(
 			fake.countRequests({
 				method: "POST",
 				path: createdServers,
@@ -113,7 +113,7 @@ test(
 				body: (body) =>
 					allocationId !== undefined && isForAllocation(allocationId)(body),
 			},
-			"lose",
+			{ kind: "lose" },
 		);
 		const serverId = await createServer(client);
 		allocationId = await requireAllocationId(serverId);
@@ -199,7 +199,7 @@ test(
 				`^/servers/${await requireHetznerServerId(backend, serverId)}$`,
 			),
 		};
-		const hasLostReply = fake.scriptOnce(deletedThisServer, "lose");
+		const hasLostReply = fake.scriptOnce(deletedThisServer, { kind: "lose" });
 		// A lost delete reply must not be retried against a possibly reused ID.
 
 		await client.mutation(api.servers.lifecycle.requestDelete, { serverId });
@@ -209,6 +209,73 @@ test(
 		expect(await readOwnedResources(allocationId)).toEqual([]);
 		expect(await readServerBackendRecord(backend, serverId)).toBe(null);
 		expect(fake.countRequests(deletedThisServer)).toBe(1);
+		await expect(
+			backend.runAsAdmin(internal.allocations.operations.finishDelete, {
+				allocationId,
+			}),
+		).resolves.toBe(null);
+	},
+	testTimeoutMs,
+);
+
+test(
+	"recovery requires the current blocked operation and stuck timestamp",
+	async () => {
+		const client = await createServerOwner(backend);
+		const serverId = await createServer(client);
+		await settleServer(backend, client, serverId, { until: "running" });
+		const record = await readServerBackendRecord(backend, serverId);
+		if (record?.backend === null || record?.backend === undefined) {
+			throw new Error("The server has no provider allocation.");
+		}
+		const { allocation, backend: provider } = record;
+		await backend.runAsAdmin(
+			internal.allocations.hetzner_cloud.worker_state.record,
+			{
+				allocationId: allocation._id,
+				epoch: provider.epoch,
+				operationId: allocation.operationId,
+				queue: "work",
+				update: {
+					failure: { error: "test_block", class: "invalid", final: true },
+				},
+				usage: { requests: 0 },
+			},
+		);
+		const blocked = await readServerBackendRecord(backend, serverId);
+		const stuckSince = blocked?.allocation.stuck?.since;
+		if (stuckSince === undefined) {
+			throw new Error("The test failure did not block the operation.");
+		}
+		await expect(
+			backend.runAsAdmin(
+				internal.allocations.hetzner_cloud.worker_state.retry,
+				{
+					allocationId: allocation._id,
+					recovery: {
+						operationId: allocation.operationId,
+						stuckSince: stuckSince + 1,
+					},
+				},
+			),
+		).rejects.toThrow();
+		await expect(
+			backend.runAsAdmin(
+				internal.allocations.hetzner_cloud.worker_state.retry,
+				{
+					allocationId: allocation._id,
+					recovery: {
+						operationId: allocation.operationId,
+						stuckSince,
+					},
+				},
+			),
+		).resolves.toBe(null);
+		expect(
+			(await readServerBackendRecord(backend, serverId))?.allocation.stuck,
+		).toBe(undefined);
+		await client.mutation(api.servers.lifecycle.requestDelete, { serverId });
+		await settleServer(backend, client, serverId, { until: "gone" });
 	},
 	testTimeoutMs,
 );
@@ -226,11 +293,14 @@ test(
 					allocationId !== undefined && isForAllocation(allocationId)(body),
 			},
 			{
-				status: forbidden,
-				body: {
-					error: {
-						code: "resource_limit_exceeded",
-						message: "project limit exceeded",
+				kind: "reply",
+				reply: {
+					status: forbidden,
+					body: {
+						error: {
+							code: "resource_limit_exceeded",
+							message: "project limit exceeded",
+						},
 					},
 				},
 			},
