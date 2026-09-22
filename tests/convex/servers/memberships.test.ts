@@ -1,11 +1,11 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import { api, internal } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../harness/convex/backend";
 import { createServer, createServerOwner } from "../../../harness/servers";
 
@@ -16,8 +16,11 @@ const suffixBytes = 6;
 let backend: ConvexBackend;
 let shared: { client: ConvexHttpClient; serverId: Id<"servers"> };
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 	const client = await createServerOwner(backend);
 	shared = { client, serverId: await createServer(client) };
 }, setupTimeoutMs);
@@ -73,3 +76,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

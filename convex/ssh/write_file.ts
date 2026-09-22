@@ -1,12 +1,10 @@
 "use node";
 
-import type { ClientChannel } from "ssh2";
 import {
-	callSsh,
 	commandExitCodes,
-	type SshConnectionOptions,
+	runSshCommand,
+	type SshConnection,
 	toSshProgramCommand,
-	withSshConnection,
 } from "./connection";
 import { SshError } from "./errors";
 import { maxSshFileBytes, type SshFileObservation } from "./read_file";
@@ -39,7 +37,7 @@ export type SshFileWriteResult = {
 
 /** Replaces only the observed file; lost responses are uncertain and callers must not retry automatically. */
 export async function writeSshFile(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 	path: string,
 	expected: SshFileObservation,
 	candidate: Uint8Array,
@@ -74,59 +72,31 @@ export async function writeSshFile(
 	const startedAt = Date.now();
 	let dispatched = false;
 	try {
-		const status = await withSshConnection(
-			connection,
-			async ({ client, signal, fail }) => {
-				const channel = await callSsh<ClientChannel>(signal, (done) => {
-					client.exec(command, (error, stream) =>
-						done(error ?? undefined, stream),
-					);
-				});
-				return callSsh<SshFileWriteResult["status"]>(signal, (done) => {
-					const output: Buffer[] = [];
-					let size = 0;
-					let exitCode: number | null | undefined;
-					channel.on("data", (chunk: Buffer) => {
-						size += chunk.length;
-						if (size > maxOutputBytes) {
-							fail(new SshError("output_limit"));
-						} else {
-							output.push(Buffer.from(chunk));
-						}
-					});
-					channel.stderr.on("data", (chunk: Buffer) => {
-						size += chunk.length;
-						if (size > maxOutputBytes) {
-							fail(new SshError("output_limit"));
-						}
-					});
-					channel.on("error", () => fail(new SshError("remote_error")));
-					channel.stderr.on("error", () => fail(new SshError("remote_error")));
-					channel.on("exit", (code: number | null) => {
-						exitCode = code;
-					});
-					channel.on("close", () => {
-						const text = Buffer.concat(output).toString("utf8");
-						if (
-							typeof exitCode === "number" &&
-							commandExitCodes.has(exitCode) &&
-							!text
-						) {
-							done(undefined, "command_unavailable");
-							return;
-						}
-						const result = writeStatuses.find((value) => text === `${value}\n`);
-						if (exitCode !== 0 || !result) {
-							fail(new SshError("invalid_response"));
-						} else {
-							done(undefined, result);
-						}
-					});
-					dispatched = true;
-					channel.end(input);
-				});
+		const result = await runSshCommand(connection, command, {
+			input,
+			maxOutputBytes,
+			onDispatch: () => {
+				dispatched = true;
 			},
+		});
+		if (
+			typeof result.exitCode === "number" &&
+			commandExitCodes.has(result.exitCode) &&
+			!result.stdout
+		) {
+			return {
+				status: "command_unavailable",
+				startedAt,
+				finishedAt: Date.now(),
+			};
+		}
+		const status = writeStatuses.find(
+			(value) => result.stdout === `${value}\n`,
 		);
+		if (result.exitCode !== 0 || status === undefined) {
+			throw new SshError("invalid_response");
+		}
+
 		return { status, startedAt, finishedAt: Date.now() };
 	} catch (error) {
 		if (!dispatched) {

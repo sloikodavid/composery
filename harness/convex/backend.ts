@@ -1,13 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
 	chmodSync,
 	copyFileSync,
 	cpSync,
 	existsSync,
 	mkdirSync,
+	mkdtempSync,
 	readdirSync,
-	readFileSync,
 	renameSync,
 	rmSync,
 	symlinkSync,
@@ -26,8 +26,7 @@ import {
 import { ConvexError, convexToJson, jsonToConvex } from "convex/values";
 import { unzipSync } from "fflate";
 import { internal } from "../../convex/_generated/api";
-import { isProcessAlive, registerCleanup } from "../cleanup";
-import { type ClerkFake, useClerkFake } from "../clerk/fake";
+import { type ClerkFake, startClerkFake } from "../clerk/fake";
 import {
 	type ClerkRun,
 	createClerkRun,
@@ -37,11 +36,12 @@ import {
 } from "../clerk/real";
 import type { ClerkUser } from "../clerk/replies";
 import { type SignInIssuer, startSignInIssuer } from "../clerk/sign-in";
-import type { Fake } from "../fake";
-import { fakeServerType, useHetznerFake } from "../hetzner/fake";
+import { requireContractsKept } from "../contracts";
+import { type HetznerFake, startHetznerFake } from "../hetzner/fake";
 import { createHetznerRun, getHetznerToken } from "../hetzner/real";
 import { convexBackendAssets, convexBackendVersion } from "../pins";
 import {
+	isProcessAlive,
 	killOwnedProcessGroups,
 	spawnOwnedProcess,
 	stopOwnedProcess,
@@ -50,9 +50,8 @@ import {
 const repositoryRoot = path.resolve(import.meta.dir, "..", "..");
 const cacheRoot = path.join(repositoryRoot, "tmp", "convex-backend");
 
-// Storage templates are tied to one self-hosted Convex instance identity.
 const instanceName = "composery-test";
-const instanceSecret = createHash("sha256").update(instanceName).digest("hex");
+const instanceSecretBytes = 32;
 const readinessTimeoutMs = 30_000;
 const readinessDelayMs = 100;
 const logLineLimit = 80;
@@ -60,23 +59,19 @@ const pushTimeoutMs = 240_000;
 const httpUdfFailedStatus = 560;
 const removalRetries = 10;
 const removalDelayMs = 200;
+const removeFolderScript =
+	"require('node:fs').rmSync(process.argv[1], { recursive: true, force: true, maxRetries: Number(process.argv[2]), retryDelay: Number(process.argv[3]) });";
 const hostTagLength = 8;
 const hostTag = createHash("sha256")
 	.update(hostname())
 	.digest("hex")
 	.slice(0, hostTagLength);
-const runFolderNamePattern = /^\d+-(\d+)-([0-9a-f]{8})$/;
-const temporaryFolderNamePattern = /^cvx-(\d+)-([0-9a-f]{8})$/;
+const runFolderNamePattern = /^\d+-(\d+)-([0-9a-f]{8})(?:-[\da-z]+)?$/i;
+const temporaryFolderNamePattern = /^cvx-(\d+)-([0-9a-f]{8})(?:-[\da-z]+)?$/i;
 const lineBreakPattern = /\r?\n/;
 const executableMode = 0o755;
-const templateKeyLength = 16;
 const encryptionKeyBytes = 32;
-// These values are fake-provider identifiers, never Hetzner resources.
-const fakeControllerId = "composery-test";
-const fakeFirewallId = 77;
-const fakeLocations = "nbg1,fsn1,hel1";
 const webhookSecretBytes = 24;
-const webhookSecret = `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`;
 
 type AnyFunction = FunctionReference<
 	"query" | "mutation" | "action",
@@ -84,6 +79,7 @@ type AnyFunction = FunctionReference<
 >;
 
 export type ConvexBackend = Readonly<{
+	stop: () => Promise<void>;
 	url: string;
 	/** Runs a function with the deployment's admin key. */
 	runAsAdmin: <Reference extends AnyFunction>(
@@ -97,6 +93,7 @@ export type ConvexBackend = Readonly<{
 	siteUrl: string;
 	webhookSecret: string;
 	clerk: ClerkFake;
+	hetzner: HetznerFake;
 	createAccount: (options?: { synced?: boolean }) => Promise<ClerkUser>;
 	sshAccessEncryptionKeys: readonly [string, string];
 }>;
@@ -104,6 +101,7 @@ export type ConvexBackend = Readonly<{
 const accountSuffixBytes = 6;
 
 type RunContext = Readonly<{
+	instanceSecret: string;
 	binary: string;
 	adminKey: string;
 	folder: string;
@@ -134,7 +132,6 @@ function findFreePort() {
 
 function toChildEnvironment(temporary: string) {
 	// Start children with a clean environment so inherited credentials cannot reach a test deployment.
-	mkdirSync(temporary, { recursive: true });
 	// biome-ignore-start lint/style/useNamingConvention: environment variable names
 	const environment: Record<string, string> = {
 		PATH: process.env.PATH ?? "",
@@ -156,16 +153,25 @@ function toChildEnvironment(temporary: string) {
 
 function toTemporaryFolder() {
 	// Keep the backend's Unix socket below Linux's 108-byte path limit.
-	return path.join(tmpdir(), `cvx-${process.pid}-${hostTag}`);
+	return mkdtempSync(path.join(tmpdir(), `cvx-${process.pid}-${hostTag}-`));
 }
 
 function removeFolder(folder: string) {
-	rmSync(folder, {
-		recursive: true,
-		force: true,
-		maxRetries: removalRetries,
-		retryDelay: removalDelayMs,
-	});
+	// Bun's Windows rm rejects some npm cache trees that Node removes correctly.
+	execFileSync(
+		"node",
+		[
+			"-e",
+			removeFolderScript,
+			folder,
+			String(removalRetries),
+			String(removalDelayMs),
+		],
+		{
+			env: toChildEnvironment(folder),
+			stdio: "pipe",
+		},
+	);
 }
 
 function removeWhenPossible(remove: () => void, folder: string) {
@@ -181,16 +187,9 @@ function removeWhenPossible(remove: () => void, folder: string) {
 	}
 }
 
-function removeRunFolder(folder: string) {
-	for (const workspace of ["workspace", "template-workspace"]) {
-		rmSync(path.join(folder, workspace, "node_modules"), { force: true });
-	}
-	removeFolder(folder);
-}
-
 function removeOrphanedRunFolder(folder: string) {
 	killOwnedProcessGroups(folder);
-	removeRunFolder(folder);
+	removeFolder(folder);
 }
 
 function removeOrphanedFolders(runsRoot: string) {
@@ -204,7 +203,8 @@ function removeOrphanedFolders(runsRoot: string) {
 		for (const name of readdirSync(root)) {
 			const [, pid, host] = pattern.exec(name) ?? [];
 			if (host === hostTag && !isProcessAlive(Number(pid))) {
-				remove(path.join(root, name));
+				const folder = path.join(root, name);
+				removeWhenPossible(() => remove(folder), folder);
 			}
 		}
 	}
@@ -248,7 +248,7 @@ async function requireBackendBinary() {
 	}
 	mkdirSync(directory, { recursive: true });
 	// Write beside the final path and rename so concurrent runs never see a partial binary.
-	const partial = `${binary}.${process.pid}.partial`;
+	const partial = `${binary}.${randomUUID()}.partial`;
 	writeFileSync(partial, extracted);
 	chmodSync(partial, executableMode);
 	try {
@@ -280,7 +280,7 @@ async function startBackend(
 			"--instance-name",
 			instanceName,
 			"--instance-secret",
-			instanceSecret,
+			context.instanceSecret,
 			"--local-storage",
 			storage,
 		],
@@ -367,8 +367,6 @@ function toSshAccessEncryptionKeys() {
 	] as const;
 }
 
-type HetznerProject = Readonly<{ controllerId: string; firewallId: number }>;
-
 async function makeAccount(
 	clerk: ClerkFake,
 	clerkRun: ClerkRun | null,
@@ -383,20 +381,17 @@ async function makeAccount(
 	return account;
 }
 
-const fakeHetznerProject: HetznerProject = {
-	controllerId: fakeControllerId,
-	firewallId: fakeFirewallId,
-};
-
 type World = Readonly<{
+	webhookSecret: string;
 	issuerUrl: string;
-	fake: Fake;
+	fake: HetznerFake;
 	clerk: ClerkFake;
 	sshAccessEncryptionKeys: readonly string[];
-	hetzner: HetznerProject;
+	hetzner: Readonly<{ controllerId: string }>;
 }>;
 
 function toDeploymentVariables({
+	webhookSecret,
 	issuerUrl,
 	fake,
 	clerk,
@@ -410,10 +405,10 @@ function toDeploymentVariables({
 		CLERK_WEBHOOK_SIGNING_SECRET: webhookSecret,
 		CLERK_FAKE_URL: clerk.url,
 		HCLOUD_TOKEN: "composery_tests_never_reach_hetzner",
-		HCLOUD_LOCATIONS: fakeLocations,
+		HCLOUD_LOCATIONS: fake.locations.join(","),
 		HCLOUD_CONTROLLER_ID: hetzner.controllerId,
 		HCLOUD_IMAGE: "ubuntu-24.04",
-		HCLOUD_SERVER_TYPE: fakeServerType,
+		HCLOUD_SERVER_TYPE: fake.serverType,
 		HCLOUD_FAKE_URL: fake.url,
 		SSH_ACCESS_ENCRYPTION_KEYS: sshAccessEncryptionKeys.join(","),
 		// biome-ignore-end lint/style/useNamingConvention: environment variable names
@@ -434,6 +429,16 @@ async function pushFunctions(
 	cpSync(path.join(repositoryRoot, "convex"), path.join(workspace, "convex"), {
 		recursive: true,
 	});
+	const fixtures = path.join(workspace, "harness", "convex");
+	mkdirSync(fixtures, { recursive: true });
+	copyFileSync(
+		path.join(repositoryRoot, "harness", "convex", "quota-writes.ts"),
+		path.join(fixtures, "quota-writes.ts"),
+	);
+	writeFileSync(
+		path.join(workspace, "convex", "test_quotas.ts"),
+		'export { write } from "../harness/convex/quota-writes";\n',
+	);
 	symlinkSync(
 		path.join(repositoryRoot, "node_modules"),
 		path.join(workspace, "node_modules"),
@@ -501,68 +506,6 @@ async function pushFunctions(
 	}
 }
 
-function readPackageVersion(name: string) {
-	return JSON.parse(
-		readFileSync(
-			path.join(repositoryRoot, "node_modules", name, "package.json"),
-			"utf8",
-		),
-	).version as string;
-}
-
-async function requireStorageTemplate(context: RunContext) {
-	// Cache functions and installed packages, never test data.
-	const key = createHash("sha256")
-		.update(
-			JSON.stringify([
-				convexBackendVersion,
-				readPackageVersion("convex"),
-				readPackageVersion("ssh2"),
-				readFileSync(path.join(repositoryRoot, "convex.json"), "utf8"),
-			]),
-		)
-		.digest("hex")
-		.slice(0, templateKeyLength);
-	const template = path.join(cacheRoot, "templates", key);
-	if (existsSync(template)) {
-		return template;
-	}
-	const building = path.join(context.folder, "template");
-	const issuer = startSignInIssuer();
-	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
-	const fake = await useHetznerFake();
-	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
-	const clerk = await useClerkFake();
-	const backend = await startBackend(context, building);
-	try {
-		await setEnvironmentVariables(
-			context,
-			backend,
-			toDeploymentVariables({
-				issuerUrl: issuer.url,
-				fake,
-				clerk,
-				sshAccessEncryptionKeys: toSshAccessEncryptionKeys(),
-				hetzner: fakeHetznerProject,
-			}),
-		);
-		await pushFunctions(context, backend, "template-workspace");
-	} finally {
-		await backend.stop();
-		issuer.stop();
-	}
-	mkdirSync(path.dirname(template), { recursive: true });
-	try {
-		renameSync(building, template);
-	} catch (error) {
-		// Another run may have completed the same template first.
-		if (!existsSync(template)) {
-			throw error;
-		}
-	}
-	return template;
-}
-
 async function callFunction<Reference extends AnyFunction>(
 	url: string,
 	authorization: string,
@@ -595,18 +538,22 @@ async function callFunction<Reference extends AnyFunction>(
 	throw new Error(result.errorMessage);
 }
 
-async function startConvexBackend(): Promise<ConvexBackend> {
+export async function startConvexBackend(): Promise<ConvexBackend> {
+	await using resources = new AsyncDisposableStack();
 	const binary = await requireBackendBinary();
 	const runsRoot = path.join(cacheRoot, "runs");
 	removeOrphanedFolders(runsRoot);
-	const folder = path.join(runsRoot, `${Date.now()}-${process.pid}-${hostTag}`);
-	mkdirSync(folder, { recursive: true });
+	mkdirSync(runsRoot, { recursive: true });
+	const folder = mkdtempSync(
+		path.join(runsRoot, `${Date.now()}-${process.pid}-${hostTag}-`),
+	);
+	resources.defer(() => removeWhenPossible(() => removeFolder(folder), folder));
 	const temporary = toTemporaryFolder();
-	registerCleanup(() => {
-		removeWhenPossible(() => removeRunFolder(folder), folder);
-		removeWhenPossible(() => removeFolder(temporary), temporary);
-	});
+	resources.defer(() =>
+		removeWhenPossible(() => removeFolder(temporary), temporary),
+	);
 	const environment = toChildEnvironment(temporary);
+	const instanceSecret = randomBytes(instanceSecretBytes).toString("hex");
 	const adminKey = execFileSync(
 		binary,
 		[
@@ -619,31 +566,38 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		],
 		{ encoding: "utf8", env: environment },
 	).trim();
-	const context: RunContext = { binary, adminKey, folder, environment };
-
-	const template = await requireStorageTemplate(context);
-	const storage = path.join(folder, "storage");
-	cpSync(template, storage, { recursive: true });
+	const context: RunContext = {
+		binary,
+		adminKey,
+		folder,
+		environment,
+		instanceSecret,
+	};
 	const issuer = startSignInIssuer();
-	registerCleanup(issuer.stop);
-	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
-	const fake = await useHetznerFake();
-	// biome-ignore lint/correctness/useHookAtTopLevel: harness singleton
-	const clerk = await useClerkFake();
+	resources.defer(issuer.stop);
+	const hetznerToken = getHetznerToken();
 	const clerkSecret = getClerkSecret();
+	const fake = await startHetznerFake(hetznerToken);
+	resources.defer(fake.stop);
+	const clerk = await startClerkFake(clerkSecret);
+	resources.defer(clerk.stop);
+	resources.defer(() => requireContractsKept([fake, clerk]));
 	const clerkRun =
 		clerkSecret === null ? null : await createClerkRun(clerkSecret);
 	if (clerkRun === null) {
 		clerk.setKeys(await readIssuerKeys(issuer));
+	} else {
+		resources.defer(clerkRun.stop);
 	}
-	const backend = await startBackend(context, storage);
-	registerCleanup(backend.stop);
+	const hetznerRun =
+		hetznerToken === null ? null : await createHetznerRun(hetznerToken);
+	if (hetznerRun !== null) {
+		resources.defer(hetznerRun.stop);
+	}
+	const backend = await startBackend(context, path.join(folder, "storage"));
+	resources.defer(backend.stop);
 	const sshAccessEncryptionKeys = toSshAccessEncryptionKeys();
-	const hetznerToken = getHetznerToken();
-	const hetzner =
-		hetznerToken === null
-			? fakeHetznerProject
-			: await createHetznerRun(hetznerToken);
+	const webhookSecret = `whsec_${randomBytes(webhookSecretBytes).toString("base64")}`;
 	await setEnvironmentVariables(
 		context,
 		backend,
@@ -652,12 +606,16 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 			fake,
 			clerk,
 			sshAccessEncryptionKeys,
-			hetzner,
+			webhookSecret,
+			hetzner: hetznerRun ?? fake,
 		}),
 	);
 	await pushFunctions(context, backend, "workspace");
+	const owned = resources.move();
 
 	return {
+		stop: () => owned.disposeAsync(),
+		hetzner: fake,
 		url: backend.url,
 		runAsAdmin: (reference, args) =>
 			callFunction(backend.url, `Convex ${adminKey}`, reference, args),
@@ -710,12 +668,4 @@ async function startConvexBackend(): Promise<ConvexBackend> {
 		clerk,
 		sshAccessEncryptionKeys,
 	};
-}
-
-let convexBackend: Promise<ConvexBackend> | undefined;
-
-export function useConvexBackend() {
-	// One backend is shared; tests isolate themselves with their own records.
-	convexBackend ??= startConvexBackend();
-	return convexBackend;
 }

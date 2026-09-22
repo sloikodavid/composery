@@ -67,9 +67,7 @@ export const hetznerCloudTables = {
 		dueAt: v.number(),
 		leaseExpiresAt: v.number(),
 		epoch: v.number(),
-		failures: v.number(),
 		action: v.optional(v.object({ id: v.number(), startedAt: v.number() })),
-		error: v.optional(v.string()),
 		hetznerErrorCode: v.optional(v.string()),
 	})
 		.index("by_allocation_id", ["allocationId"])

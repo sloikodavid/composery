@@ -3,27 +3,16 @@ import type { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { registerCleanup } from "./cleanup";
 import type { ConvexBackend } from "./convex/backend";
 
 const suffixBytes = 6;
 const userQuotaLimit = 10;
-// The shared test deployment has no aggregate cap; quota tests set one explicitly.
+// The test deployment has no aggregate cap; quota tests set one explicitly.
 const deploymentQuotaLimit = Number.MAX_SAFE_INTEGER;
 const settleTimeoutMs = 240_000;
 const settleDelayMs = 250;
 // Faster sweeps would compete with the worker's own pacing.
 const sweepEveryMs = 2000;
-
-type TestServerOwner = Readonly<{
-	backend: ConvexBackend;
-	client: ServerClient;
-	serverIds: Set<Id<"servers">>;
-}>;
-
-const owners = new WeakMap<ServerClient, TestServerOwner>();
-const ownerList = new Set<TestServerOwner>();
-let cleanupRegistered = false;
 
 async function removeTestServer(
 	backend: ConvexBackend,
@@ -87,27 +76,6 @@ async function settleTestServer(
 	throw new Error(`The test server ${serverId} was not removed in time.`);
 }
 
-async function removeTestServers() {
-	const results = await Promise.allSettled(
-		[...ownerList].flatMap((owner) =>
-			[...owner.serverIds].map((serverId) =>
-				removeTestServer(owner.backend, serverId),
-			),
-		),
-	);
-	const failures = results
-		.filter(
-			(result): result is PromiseRejectedResult => result.status === "rejected",
-		)
-		.map((result) => result.reason);
-	if (failures.length > 0) {
-		throw new AggregateError(
-			failures,
-			"Some test server owners failed cleanup.",
-		);
-	}
-}
-
 export async function createServerOwner(backend: ConvexBackend) {
 	const account = await backend.createAccount();
 	const client = backend.createClient(account.id);
@@ -115,34 +83,17 @@ export async function createServerOwner(backend: ConvexBackend) {
 	if (user === null) {
 		throw new Error("The owner did not sync.");
 	}
-	await backend.runAsAdmin(internal.quotas.set, {
+	await backend.runAsAdmin(internal.servers.quotas.set, {
 		userId: user._id,
-		kind: "server",
 		limit: userQuotaLimit,
 	});
-	await backend.runAsAdmin(internal.quotas.set, {
-		kind: "server",
+	await backend.runAsAdmin(internal.servers.quotas.set, {
 		limit: deploymentQuotaLimit,
 	});
-	const owner: TestServerOwner = {
-		backend,
-		client,
-		serverIds: new Set(),
-	};
-	owners.set(client, owner);
-	ownerList.add(owner);
-	if (!cleanupRegistered) {
-		cleanupRegistered = true;
-		registerCleanup(removeTestServers);
-	}
 	return client;
 }
 
 export async function createServer(client: ConvexHttpClient) {
-	const owner = owners.get(client);
-	if (owner === undefined) {
-		throw new Error("The test server client has no owner.");
-	}
 	const created = await client.mutation(api.servers.lifecycle.create, {
 		name: `test-${randomBytes(suffixBytes).toString("hex")}`,
 		requestId: `request-${randomBytes(suffixBytes).toString("hex")}`,
@@ -150,7 +101,6 @@ export async function createServer(client: ConvexHttpClient) {
 	if (!created.ok) {
 		throw new Error(`Creating the server failed: ${created.code}`);
 	}
-	owner.serverIds.add(created.serverId);
 	return created.serverId;
 }
 

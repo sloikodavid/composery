@@ -1,15 +1,19 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { withSshConnection } from "../../../convex/ssh/connection";
 import { setSshHostname } from "../../../convex/ssh/hostname";
 import { quoteShell } from "../../../convex/ssh/scripts/shell";
-import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 test(
@@ -17,10 +21,14 @@ test(
 	async () => {
 		const current = server.run("hostname");
 		expect(
-			await setSshHostname(server.connection, {
-				expected: "a-name-this-server-never-had",
-				next: "renamed",
-			}),
+			await withSshConnection(
+				server.connection,
+				async (connection) =>
+					await setSshHostname(connection, {
+						expected: "a-name-this-server-never-had",
+						next: "renamed",
+					}),
+			),
 		).toBe(current);
 		expect(server.run("hostname")).toBe(current);
 	},
@@ -32,10 +40,14 @@ test(
 	async () => {
 		const current = server.run("hostname");
 		expect(
-			await setSshHostname(server.connection, {
-				expected: current,
-				next: current,
-			}),
+			await withSshConnection(
+				server.connection,
+				async (connection) =>
+					await setSshHostname(connection, {
+						expected: current,
+						next: current,
+					}),
+			),
 		).toBe(current);
 	},
 	testTimeoutMs,
@@ -50,10 +62,14 @@ test(
 		);
 		try {
 			await expect(
-				setSshHostname(server.connection, {
-					expected: current,
-					next: `${current}-changed`,
-				}),
+				withSshConnection(
+					server.connection,
+					async (connection) =>
+						await setSshHostname(connection, {
+							expected: current,
+							next: `${current}-changed`,
+						}),
+				),
 			).rejects.toMatchObject({ code: "command_unavailable" });
 		} finally {
 			server.run(`rm -f ${quoteShell("/usr/local/bin/hostnamectl")}`);
@@ -62,3 +78,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

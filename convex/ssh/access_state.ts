@@ -3,12 +3,12 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
 	env,
-	internalMutation,
 	internalQuery,
 	type MutationCtx,
 	type QueryCtx,
 } from "../_generated/server";
 import { allocationPartStatus } from "../allocations/schema";
+import { internalMutation } from "../functions";
 import schema from "../schema";
 import { isSshAccessConfigured as isConfigured } from "./encryption_keys";
 import type { sshTables } from "./schema";

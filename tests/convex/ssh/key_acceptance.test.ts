@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { quoteShell } from "../../../convex/ssh/scripts/shell";
@@ -7,7 +7,7 @@ import {
 	type SshdAccount,
 	type SshdServer,
 	sshdLogPath,
-	useSshd,
+	startSshd,
 } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
@@ -15,8 +15,11 @@ const testTimeoutMs = 60_000;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 function writeKeyFile(account: SshdAccount, lines: readonly string[]) {
@@ -162,3 +165,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

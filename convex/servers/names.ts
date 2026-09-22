@@ -1,23 +1,20 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import {
-	type MutationCtx,
-	mutation,
-	type QueryCtx,
-	query,
-} from "../_generated/server";
+import { type MutationCtx, type QueryCtx, query } from "../_generated/server";
 import { requireChangeableServerAllocation } from "../allocations/operations";
 import { type Failure, fail, failure } from "../errors";
+import { mutation } from "../functions";
 import { checkRateLimit } from "../rate_limits";
 import { getCurrentUser } from "../users";
 import { getServerAccess, requireServerAccess } from "./permissions";
-import { reservedServerNames } from "./reserved_names";
+import { findReservedNameReason } from "./reserved_names";
 import { serverSummary, toServerSummary } from "./summary";
 
-const namePattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+/** A name is a DNS label: `docs/decisions.md` says what each part encodes. */
+export const namePattern = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 
-function isValidName(name: string) {
+export function isValidName(name: string) {
 	return namePattern.test(name) && !name.includes("--");
 }
 
@@ -45,7 +42,7 @@ export async function checkServerNameClaim(
 	if (claim !== null && claim.serverId === serverId) {
 		return null;
 	}
-	if (claim !== null || reservedServerNames.has(name)) {
+	if (claim !== null || findReservedNameReason(name) !== null) {
 		return fail("name_taken", "name");
 	}
 	return await checkRateLimit(ctx, "serverNameClaim", userId);

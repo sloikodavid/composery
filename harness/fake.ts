@@ -4,7 +4,6 @@ import {
 	type ServerResponse,
 } from "node:http";
 import type { ContractChecker } from "../contracts/check";
-import { registerCleanup } from "./cleanup";
 
 const loopbackHost = "127.0.0.1";
 const apiPrefixPattern = /^\/v1\//;
@@ -147,7 +146,7 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			request.method,
 			request.path,
 			reply.status,
-			reply.body,
+			reply.body === null ? undefined : reply.body,
 		)) {
 			options.checker.noteProblem(problem);
 		}
@@ -257,7 +256,6 @@ export async function startFake(options: FakeOptions): Promise<Fake> {
 			resolve();
 		});
 	});
-	registerCleanup(stop);
 	const address = server.address();
 	if (typeof address !== "object" || address === null) {
 		await stop();

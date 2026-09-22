@@ -8,19 +8,22 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 |---|---|---|
 | `user` | A person with a Clerk account, synced to `users` | account (except in copy for the person's own settings) |
 | `server` | What a user owns and shares. Never a thing at a provider | machine, vm, instance |
-| `name` | A server's DNS-safe label. There is no separate display name | slug, display name |
+| `name` | A server's label, which is its subdomain at `composery.cloud` and the Unix hostname set on the server itself. There is no separate display name | slug, display name |
 | `claim` | A permanent association of a name with one server | reservation |
 | `membership` | Another user's access to one server, with its permissions | member (for the row) |
 | `member` | The user in a membership | |
 | `owner` | The one user who owns a server and holds every permission. The owner has no membership | |
 | `permission` | One platform authority on a server, such as `rename` or `power` | role, right |
 | `quota` | How many of one kind of thing a user, or the whole deployment, may hold. An admin sets it, and billing sets it later | grant, allowance |
+| `usage` | How many servers a quota currently counts, stored as `used` | |
+| `trigger` | A function that runs in the same transaction as a database write | |
 | `limit` | A fixed cap in the code, such as members for one server | |
 | `unknown` | What a report about another system cannot establish, stated with the report | limit, caveat |
 | `rate limit` | How often one account may do something | throttle |
 | `snapshot` | A copy of one server's disk, held by the provider, that another server can be made from | image (which is what a server is created from), backup |
 | `allocation` | One real instance of a server: what currently runs it, for its lifetime | provisioning, incarnation |
 | `operation` | A recorded command on a server: `create`, `start`, `stop`, `forceStop`, `delete` | command, job |
+| `outcome` | One complete result of a worker pass, which selects the next transition | update, when it means a worker result |
 | `backend` | The mechanism that makes an allocation real, such as `hetznerCloud` | version, v1, v2 |
 | `provider` | The company and API that a backend calls, such as Hetzner | vendor |
 | `controller` | One deployment's identity inside a provider's project. Everything it makes there carries that identity, so one project can hold several deployments and each knows its own | tenant, instance |
@@ -41,6 +44,7 @@ The words that code, copy, and docs use for one meaning each. AGENTS.md holds th
 | `pin` | A version, day, or digest written down so that a run is the same tomorrow | lock, freeze |
 | `digest` | The fixed-length value that names some bytes, such as SHA-256 of a file or a key | hash, checksum |
 | `contract` | What an outside system publishes about itself, such as an API description, and what we hold our own requests and our fakes to | schema, spec |
+| `dialect` | The version of the schema language that a contract uses, which decides how its constraints are read | |
 | `waiver` | A named exception to a contract, with the evidence that the system disagrees with its own description, which fails when it stops being needed | ignore, override |
 | `SSH access` | Composery's management key and the server's pinned host key for one allocation | credential |
 | `envelope` | One stored secret as it is written down: the version, the key that encrypted it, and the encrypted bytes | blob, ciphertext |
@@ -136,7 +140,7 @@ JavaScript reserves `delete`, so a registered Convex function that deletes is na
 
 A command is a verb (`create`), its progress adds `-ing` (`creating`), and its outcome describes the result (`running`, `stopped`, `deleted`). Operation outcomes are `pending`, `succeeded`, `blocked`, and `superseded`. Whether a resource exists is `pending`, `uncertain`, `present`, or `absent`. One part of an allocation is `ok`, `missing`, `mismatch`, or `unknown`. All of these are `status`, never `state` or `phase`.
 
-An allocation with nothing in flight has `settled`, and one that keeps running into the same thing is `stuck`. Neither is a status: settling is a question asked of the lease and the operation, and `stuck` is a record of what stopped it and since when.
+An allocation with nothing in flight has `settled`, and one that keeps running into the same thing is `stuck`. Neither is a status: settling is a question asked of the lease and the operation, and `stuck` is calculated from the stored failure's class and count. It reports what stopped the allocation and since when.
 
 ## External words
 

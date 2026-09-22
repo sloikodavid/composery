@@ -19,6 +19,8 @@ Every test asks one authority whether the result is right, and the authority mus
 
 A test against Composery's own parser proves only that the parser agrees with itself. Where OpenSSH decides what a line means, the test asks OpenSSH too, as `tests/convex/ssh/authorized_keys_agreement.test.ts` does.
 
+`tests/convex/ssh/connection.test.ts` runs discovery, a read, a write, a separate key acceptance check, and a reread against OpenSSH, then counts successful management logins in the daemon's log. It also checks that file errors leave management access available and that transport closure changes its status. Allocation transition tests cover stale results and invalid completion combinations; worker tests use the deployed functions and provider fake to cover lost replies, deletion, and recovery.
+
 ## Fakes
 
 Fake what a test is not about. Never fake what decides whether it passes.
@@ -54,24 +56,29 @@ A pin here cannot rot the way an apt version pin does. We pin the day of the arc
 ## Isolation
 
 - A child process gets an environment built from nothing. It never inherits the shell's variables, which can name a real deployment or hold a real token.
-- One `sshd` and one Convex backend serve a whole run. Each test creates its own accounts and users, so tests do not share state and can run in any order.
 - A test that needs a user makes a whole one, with `createAccount`: held by Clerk and synced into our tables. Half of one is a person Clerk never heard of, and the hourly reconcile deletes them part way through the test, which is exactly what it is for.
-- Every resource that a run starts is registered for cleanup at the end of the run. A run that is killed leaves resources that name their owner, and the next run removes those whose owner is gone.
+- Each test file starts its own environment and closes it in `afterAll`. A standalone test uses a disposal scope. `startConvexBackend` owns its backend process, storage, issuer, provider fakes, contract checkers, secrets, and any real provider run. `stop()` closes these in reverse order, stopping the backend before removing provider resources. It is safe to call twice. Failed setup disposes everything already acquired, and one cleanup failure does not prevent the remaining cleanup. An OpenSSH server has the same explicit lifetime. There is no global cleanup list or provider singleton. A killed run leaves resources that name their owner, and the next run removes those whose owner is gone.
+
+Every Convex environment starts with empty storage and pushes the current code once. The backend executable remains cached by its pinned release; mutable database templates are not copied. Each environment has distinct accounts, provider state, signing keys, encryption keys, webhook secrets, and temporary folders. Tests obtain the provider fake from their backend rather than finding a process-wide fake. `tests/harness/convex/backend.test.ts` checks that two environments stay separate and that closing one leaves the other working.
+
+The disposable workspace also installs `harness/convex/quota-writes.ts` as a test-only Convex module. It writes through the same mutation boundary as product code, without calling the product lifecycle. `tests/convex/functions.test.ts` proves that these writes update quota usage and that a caught accounting failure still rolls back the whole mutation. This module is absent from the product's Convex directory.
 
 ## Contracts
 
 A fake is code we wrote, so nothing in a test can contradict it. That is what a contract is for.
 
-Where a system publishes a machine-readable description of itself, `contracts/` holds the part we depend on. There are two files for each system and two shared ones:
+Where a system publishes a machine-readable description of itself, `contracts/` holds the part we depend on:
 
 - `contracts/<system>.ts` says which operations we use, where the descriptions are published, and where the system disagrees with its own description. The subset is a declared list, not a hand-cut file, so a reviewer can rerun it.
-- `contracts/<system>.json` is what that list produced, with the source, the day it was read, and a digest of the whole published document. A difference here is a change at the system, reviewed like any other change.
-- `contracts/schema.ts` is the part of JSON Schema a description uses, and what it says about one value. Where a description allows a value to take one of several shapes, fitting none of them is the problem; which one it fits is the system's business, not ours.
-- `contracts/check.ts` holds both halves of an exchange to a description: what Composery sends, and what a fake answers.
+- `contracts/<system>.json` keeps the native OpenAPI operations and every referenced object they need. It records the source, the day it was read, and a digest of the whole published document. References stay references, including recursive ones. A difference here is a change at the system, reviewed like any other change. These generated files keep the publisher's text, so the character check excludes these two files.
+- `contracts/openapi.ts` selects that graph and reads its HTTP shapes. Ajv checks schemas using OpenAPI 3.0's Draft 4 rules or OpenAPI 3.1's 2020-12 rules. The compiler view removes example annotations and handles 3.0 reference and nullable semantics; the pinned document stays unchanged. Validation does not coerce JSON bodies, add defaults, or remove fields.
+- `contracts/check.ts` checks exchanges and tracks waivers. Required bodies, bodyless replies, path parameters, and query parameters are distinct checks. Unknown request fields remain allowed where the vendor's schema permits them.
 
-`bun contracts` reads the published descriptions again and rewrites the two JSON files. It is how we find out that a system has changed, and it is the only thing in the repository that fetches one: a test never reaches the network, so a run is the same on a train as in an office, and a change at a vendor arrives as a diff somebody reads rather than as a red build nobody asked for.
+The supported HTTP surface is JSON bodies and scalar or array path and query parameters. Query arrays use form, space, or pipe serialization. A missing reference, unsupported dialect, unsupported parameter shape, unknown schema keyword or format, or directional property fails compilation before traffic is checked. Tests do not fetch external references. Standard formats are checked; Hetzner's `decimal` is an explicit format annotation because it publishes no validation rule for that name. This checker does not check HTTP headers or authentication.
 
-A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. A waiver must be able to fail, or it is an ignore with a comment: it stops applying when the description at that place changes, it fails the run when its operation runs and the difference no longer appears, and `tests/contracts/<system>.test.ts` carries a reproducer for each one, so a waiver added without proof fails there. One of the first two waivers we wrote turned out to be invented; the stale check deleted it.
+`bun contracts` reads the published descriptions again and compiles both contracts before it rewrites either JSON file. It is how we find out that a system has changed, and it is the only thing in the repository that fetches one: a test never reaches the network, so a run is the same on a train as in an office, and a change at a vendor arrives as a diff somebody reads rather than as a red build nobody asked for.
+
+A description is a system's word about itself, not the system. Where running it says otherwise, running wins, and the difference is a waiver with the evidence that settled it. Each waiver names one operation, value location, and schema keyword, and accepts only the evidenced values. A changed claim or an operation that runs without using its waiver fails the check. `tests/contracts/<system>.test.ts` carries a reproducer for each waiver and checks values it must still refuse. The image waiver permits positive integer IDs, not arbitrary values that disagree with a string type.
 
 Running a contract and reading one find different things. Running it compares what a fake happens to send against the description, so it can only ever catch what a test already produces. Reading it catches what our code assumes: take every field the code pulls out of a reply, find the same field in the pinned contract, and ask whether the description permits a value that read would refuse. The cases worth looking for are a `type` that includes `"null"` read by something that rejects null, a field absent from `required` read unconditionally, a union type where one branch is assumed, an `enum` with a member nothing handles, and a field read that the description does not mention at all. Doing this once over the Hetzner and Clerk readers found six defects that running the same contracts had never tripped, so it is worth doing again whenever a reader or a contract changes.
 

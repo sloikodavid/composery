@@ -1,11 +1,14 @@
-import { beforeAll, expect, test } from "bun:test";
-import { runSshCommand } from "../../../convex/ssh/connection";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import {
+	runSshCommand,
+	withSshConnection,
+} from "../../../convex/ssh/connection";
 import {
 	generateSshKeyPair,
 	type SshKeyPair,
 } from "../../../convex/ssh/key_pair";
 import { quoteShell } from "../../../convex/ssh/scripts/shell";
-import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
@@ -19,8 +22,11 @@ const maxOutputBytes = 1024;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 function toKeyBytes(pair: SshKeyPair) {
@@ -61,17 +67,19 @@ for (const [name, generate] of [
 			server.run(
 				`printf '%s\\n' ${quoteShell(pair.publicKey)} > ${account.keyPath}`,
 			);
-			const result = await runSshCommand(
+			const result = await withSshConnection(
 				{
 					...server.connection,
 					username: account.name,
 					privateKey: pair.privateKey,
 				},
-				"id -un",
-				{ maxOutputBytes },
+				async (connection) =>
+					await runSshCommand(connection, "id -un", { maxOutputBytes }),
 			);
 			expect(result.stdout.trim()).toBe(account.name);
 		},
 		testTimeoutMs,
 	);
 }
+
+afterAll(() => resources.disposeAsync());

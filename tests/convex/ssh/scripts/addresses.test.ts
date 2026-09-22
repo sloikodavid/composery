@@ -1,10 +1,11 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import {
 	runSshCommand,
 	toSshProgramCommand,
+	withSshConnection,
 } from "../../../../convex/ssh/connection";
 import { addressesScript } from "../../../../convex/ssh/scripts/addresses";
-import { type SshdServer, useSshd } from "../../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
@@ -16,14 +17,21 @@ const spaces = /\s+/;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 async function run(command: string) {
-	const result = await runSshCommand(server.connection, command, {
-		maxOutputBytes,
-	});
+	const result = await withSshConnection(
+		server.connection,
+		async (connection) =>
+			await runSshCommand(connection, command, {
+				maxOutputBytes,
+			}),
+	);
 	expect(result.exitCode).toBe(0);
 	return result.stdout;
 }
@@ -50,3 +58,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

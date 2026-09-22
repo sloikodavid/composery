@@ -32,7 +32,42 @@ export type SshClientScope = {
 	client: Client;
 	signal: AbortSignal;
 	fail: (error: SshError) => void;
+	getAccessStatus: () => "ok" | "missing" | "mismatch" | "unknown";
 };
+
+/** An authenticated connection owned by the enclosing operation. */
+export type SshConnection = SshClientScope & { target: SshTarget };
+
+/** Only host verification and authentication refusals establish an access failure. */
+export function toSshAccessStatus(
+	error: unknown,
+): ReturnType<SshClientScope["getAccessStatus"]> {
+	if (!(error instanceof SshError)) {
+		return "unknown";
+	}
+	switch (error.code) {
+		case "host_key_mismatch":
+			return "mismatch";
+		case "authentication_failed":
+			return "missing";
+		case "invalid_request":
+		case "connection_failed":
+		case "connection_closed":
+		case "deadline_exceeded":
+		case "aborted":
+		case "sftp_unavailable":
+		case "file_missing":
+		case "permission_denied":
+		case "not_regular_file":
+		case "too_large":
+		case "changed_during_read":
+		case "remote_error":
+		case "command_unavailable":
+		case "output_limit":
+		case "invalid_response":
+			return "unknown";
+	}
+}
 
 /** Each pending protocol request owns and removes its cancellation listener. */
 export function callSsh<T>(
@@ -124,15 +159,27 @@ export async function withSshClient<T>(
 		input.timeoutMs,
 	);
 	let hostMismatch = false;
-	client.on("error", (error: Error & { level?: string }) => {
-		lifetime.abort(new SshError(toConnectionFailure(hostMismatch, error)));
+	let accessStatus: ReturnType<SshClientScope["getAccessStatus"]> = "unknown";
+	client.on("ready", () => {
+		accessStatus = "ok";
 	});
-	client.on("close", () => lifetime.abort(new SshError("connection_closed")));
+	client.on("error", (error: Error & { level?: string }) => {
+		const failure = toConnectionFailure(hostMismatch, error);
+		accessStatus = toSshAccessStatus(new SshError(failure));
+		lifetime.abort(new SshError(failure));
+	});
+	client.on("close", () => {
+		if (accessStatus === "ok") {
+			accessStatus = "unknown";
+		}
+		lifetime.abort(new SshError("connection_closed"));
+	});
 	try {
 		return await run({
 			client,
 			signal,
 			fail: (error) => lifetime.abort(error),
+			getAccessStatus: () => accessStatus,
 			connect: (authentication) =>
 				client.connect({
 					...authentication,
@@ -156,21 +203,29 @@ export async function withSshClient<T>(
 
 export async function withSshConnection<T>(
 	options: SshConnectionOptions,
-	operation: (scope: SshClientScope) => Promise<T>,
+	operation: (connection: SshConnection) => Promise<T>,
 ): Promise<T> {
 	if (!options.privateKey) {
 		throw new SshError("invalid_request");
 	}
-	return await withSshClient(
-		options,
-		async ({ client, signal, fail, connect }) => {
-			await callSsh<void>(signal, (done) => {
-				client.once("ready", () => done(undefined, undefined));
-				connect({ privateKey: options.privateKey, authHandler: ["publickey"] });
-			});
-			return await operation({ client, signal, fail });
-		},
-	);
+	return await withSshClient(options, async ({ connect, ...scope }) => {
+		const { client, signal } = scope;
+		await callSsh<void>(signal, (done) => {
+			client.once("ready", () => done(undefined, undefined));
+			connect({ privateKey: options.privateKey, authHandler: ["publickey"] });
+		});
+		return await operation({
+			...scope,
+			target: {
+				address: options.address,
+				port: options.port,
+				username: options.username,
+				hostKey: Uint8Array.from(options.hostKey),
+				timeoutMs: options.timeoutMs,
+				signal,
+			},
+		});
+	});
 }
 
 /** Runs a repository-owned program with caller data on stdin, never in shell syntax. */
@@ -186,47 +241,48 @@ export type SshCommandResult = Readonly<{
 }>;
 
 export async function runSshCommand(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 	command: string,
-	options: Readonly<{ input?: Buffer; maxOutputBytes: number }>,
+	options: Readonly<{
+		input?: Buffer;
+		maxOutputBytes: number;
+		onDispatch?: () => void;
+	}>,
 ): Promise<SshCommandResult> {
-	return await withSshConnection(
-		connection,
-		async ({ client, signal, fail }) => {
-			const channel = await callSsh<ClientChannel>(signal, (done) => {
-				client.exec(command, (error, stream) =>
-					done(error ? new SshError("command_unavailable") : undefined, stream),
-				);
-			});
-			return await callSsh<SshCommandResult>(signal, (done) => {
-				const stdout: Buffer[] = [];
-				const stderr: Buffer[] = [];
-				let size = 0;
-				let exitCode: number | null = null;
-				const receive = (data: Buffer, isStdout: boolean) => {
-					size += data.length;
-					if (size > options.maxOutputBytes) {
-						fail(new SshError("output_limit"));
-						return;
-					}
-					(isStdout ? stdout : stderr).push(Buffer.from(data));
-				};
-				channel.on("data", (data: Buffer) => receive(data, true));
-				channel.stderr.on("data", (data: Buffer) => receive(data, false));
-				channel.on("error", () => fail(new SshError("remote_error")));
-				channel.stderr.on("error", () => fail(new SshError("remote_error")));
-				channel.on("exit", (code: number | null) => {
-					exitCode = code;
-				});
-				channel.on("close", () =>
-					done(undefined, {
-						stdout: Buffer.concat(stdout).toString("utf8"),
-						stderr: Buffer.concat(stderr).toString("utf8"),
-						exitCode,
-					}),
-				);
-				channel.end(options.input);
-			});
-		},
-	);
+	const { client, signal, fail } = connection;
+	const channel = await callSsh<ClientChannel>(signal, (done) => {
+		client.exec(command, (error, stream) =>
+			done(error ? new SshError("command_unavailable") : undefined, stream),
+		);
+	});
+	return await callSsh<SshCommandResult>(signal, (done) => {
+		const stdout: Buffer[] = [];
+		const stderr: Buffer[] = [];
+		let size = 0;
+		let exitCode: number | null = null;
+		const receive = (data: Buffer, isStdout: boolean) => {
+			size += data.length;
+			if (size > options.maxOutputBytes) {
+				fail(new SshError("output_limit"));
+				return;
+			}
+			(isStdout ? stdout : stderr).push(Buffer.from(data));
+		};
+		channel.on("data", (data: Buffer) => receive(data, true));
+		channel.stderr.on("data", (data: Buffer) => receive(data, false));
+		channel.on("error", () => fail(new SshError("remote_error")));
+		channel.stderr.on("error", () => fail(new SshError("remote_error")));
+		channel.on("exit", (code: number | null) => {
+			exitCode = code;
+		});
+		channel.on("close", () =>
+			done(undefined, {
+				stdout: Buffer.concat(stdout).toString("utf8"),
+				stderr: Buffer.concat(stderr).toString("utf8"),
+				exitCode,
+			}),
+		);
+		options.onDispatch?.();
+		channel.end(options.input);
+	});
 }

@@ -10,8 +10,6 @@ export const userFields = v.object({
 	imageUrl: v.optional(v.string()),
 });
 
-export const quotaKind = v.literal("server");
-
 const userSyncStatus = v.union(v.literal("active"), v.literal("removed"));
 
 export default defineSchema({
@@ -29,20 +27,6 @@ export default defineSchema({
 
 	userSyncEpochs: defineTable({
 		kind: v.literal("users"),
-		epoch: v.number(),
-	}).index("by_kind", ["kind"]),
-
-	quotas: defineTable({
-		/** Absent is the whole deployment's quota for this kind. */
-		userId: v.optional(v.id("users")),
-		kind: quotaKind,
-		limit: v.number(),
-		used: v.number(),
-	}).index("by_user_id_and_kind", ["userId", "kind"]),
-
-	/** Fences a recount against the held rows, and their owners, changing under it. */
-	quotaEpochs: defineTable({
-		kind: quotaKind,
 		epoch: v.number(),
 	}).index("by_kind", ["kind"]),
 

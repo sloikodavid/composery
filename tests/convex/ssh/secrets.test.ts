@@ -1,4 +1,4 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { internal } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -12,7 +12,7 @@ import {
 } from "../../../convex/ssh/secrets";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../harness/convex/backend";
 import { createServer, createServerOwner } from "../../../harness/servers";
 
@@ -30,8 +30,11 @@ const settleDelayMs = 1000;
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 function toKey() {
@@ -303,3 +306,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

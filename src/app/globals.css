@@ -2,6 +2,7 @@
 @layer theme, base, clerk, components, utilities;
 
 @import "tailwindcss";
+@import "../components/ui/variants.css";
 @import "./clerk.css";
 
 @theme {

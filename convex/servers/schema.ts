@@ -10,6 +10,13 @@ export const serverPermissions = v.object({
 });
 
 export const serverTables = {
+	serverQuotas: defineTable({
+		/** Absent is the whole deployment's server quota. */
+		userId: v.optional(v.id("users")),
+		limit: v.number(),
+		used: v.number(),
+	}).index("by_user_id", ["userId"]),
+
 	servers: defineTable({
 		name: v.string(),
 		ownerId: v.id("users"),

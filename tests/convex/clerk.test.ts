@@ -1,11 +1,11 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { api, internal } from "../../convex/_generated/api";
 import { clerkPageSize } from "../../convex/clerk";
 import { getClerkSecret } from "../../harness/clerk/real";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../harness/convex/backend";
 
 const setupTimeoutMs = 600_000;
@@ -21,8 +21,11 @@ const scripted = test.skipIf(getClerkSecret() !== null);
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 function toAccount(hasPicture = true) {
@@ -56,7 +59,7 @@ async function issueUserEpoch(clerkUserId: string) {
 test(
 	"an older sync result cannot replace a newer result, and a failed newer read does not discard an older result",
 	async () => {
-		const account = toAccount();
+		const account = await backend.createAccount();
 		await storeAccount({ clerkUserId: account.id, email: "old@example.com" });
 		const staleListEpoch = await backend.runAsAdmin(
 			internal.users.issueListEpoch,
@@ -90,14 +93,14 @@ test(
 		});
 		expect((await readAccount(account.id))?.email).toBe("new@example.com");
 
-		const failedNewerEpoch = await issueUserEpoch(account.id);
 		const olderSuccessfulEpoch = await issueUserEpoch(account.id);
+		const failedNewerEpoch = await issueUserEpoch(account.id);
 		if (failedNewerEpoch === null || olderSuccessfulEpoch === null) {
 			throw new Error("The test could not start the second user sync pair.");
 		}
 		await backend.runAsAdmin(internal.users.store, {
 			users: [{ clerkUserId: account.id, email: "recovered@example.com" }],
-			epoch: failedNewerEpoch,
+			epoch: olderSuccessfulEpoch,
 		});
 		expect((await readAccount(account.id))?.email).toBe(
 			"recovered@example.com",
@@ -109,8 +112,7 @@ test(
 test(
 	"a confirmed deletion remains after every older sync result",
 	async () => {
-		const account = toAccount();
-		await storeAccount({ clerkUserId: account.id, email: account.email });
+		const account = await backend.createAccount();
 		const oldEpoch = await issueUserEpoch(account.id);
 		const deleteEpoch = await issueUserEpoch(account.id);
 		if (oldEpoch === null || deleteEpoch === null) {
@@ -146,7 +148,11 @@ test(
 			users: [{ clerkUserId: account.id, email: account.email }],
 			epoch: oldEpoch,
 		});
-		expect(await readAccount(account.id)).toBe(null);
+		expect(
+			await backend.runAsAdmin(internal.users.isSynced, {
+				clerkUserId: account.id,
+			}),
+		).toBe(false);
 	},
 	testTimeoutMs,
 );
@@ -330,3 +336,5 @@ scripted(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

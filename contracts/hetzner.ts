@@ -1,9 +1,5 @@
-import {
-	createContractChecker,
-	type Described,
-	readContract,
-	type Waiver,
-} from "./check";
+import { createContractChecker, readContract, type Waiver } from "./check";
+import type { Contract, Described } from "./openapi";
 
 export const hetznerDescribed: Described = {
 	source: "https://docs.hetzner.cloud/cloud.spec.json",
@@ -30,19 +26,24 @@ export const hetznerWaivers: readonly Waiver[] = [
 	{
 		operation: "POST /servers",
 		at: "body.image",
-		claims: "string",
+		keyword: "type",
+		claims: '"string"',
+		accepts: (value) =>
+			typeof value === "number" && Number.isSafeInteger(value) && value > 0,
 		reason: "Hetzner reads an ID here as well as a name",
 		evidence:
 			"Hetzner's own Go client marshals an ID as a number (IDOrName.MarshalJSON), and servers were created this way against real Hetzner from this repository",
 	},
 ];
 
-export function createHetznerContractChecker() {
+export function createHetznerContractChecker(
+	contract: Contract = readContract(import.meta.url),
+) {
 	return createContractChecker({
 		system: "Hetzner",
-		contract: readContract(import.meta.url),
+		contract,
 		waivers: hetznerWaivers,
+		// Hetzner publishes decimal as a format annotation without a validation rule.
+		annotationFormats: ["decimal"],
 	});
 }
-
-export const hetznerContract = createHetznerContractChecker();

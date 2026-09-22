@@ -1,10 +1,10 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import { ConvexError } from "convex/values";
 import { api } from "../../convex/_generated/api";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../harness/convex/backend";
 
 const setupTimeoutMs = 600_000;
@@ -14,8 +14,11 @@ const millisecondsPerSecond = 1000;
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 test(
@@ -87,3 +90,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

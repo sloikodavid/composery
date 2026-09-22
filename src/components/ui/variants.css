@@ -1,0 +1,55 @@
+@utility control-transition {
+	@apply transition-[background-color,border-color,color];
+}
+
+@utility button-brand {
+	@apply control-transition border border-brand bg-brand text-brand-foreground enabled:hover:border-brand-hover enabled:hover:bg-brand-hover enabled:active:border-brand-active enabled:active:bg-brand-active;
+}
+
+@utility button-primary {
+	@apply control-transition border border-primary bg-primary text-primary-foreground enabled:hover:border-primary-hover enabled:hover:bg-primary-hover enabled:active:border-primary-active enabled:active:bg-primary-active;
+}
+
+@utility button-danger {
+	@apply control-transition border border-danger bg-danger text-danger-foreground enabled:hover:border-danger-hover enabled:hover:bg-danger-hover enabled:active:border-danger-active enabled:active:bg-danger-active;
+}
+
+@utility button-danger-ghost {
+	@apply control-transition text-danger-text enabled:hover:bg-danger-surface-hover enabled:active:bg-danger-surface-active;
+}
+
+@utility button-secondary {
+	@apply control-transition border border-border bg-surface text-foreground enabled:hover:border-control-border-hover enabled:hover:bg-surface-hover enabled:active:border-control-border-active enabled:active:bg-surface-active;
+}
+
+@utility button-ghost {
+	@apply control-transition text-foreground enabled:hover:bg-surface-hover enabled:active:bg-surface-active;
+}
+
+@utility badge-neutral {
+	@apply border-border bg-muted-surface text-foreground;
+}
+
+@utility badge-primary {
+	@apply border-primary bg-primary text-primary-foreground;
+}
+
+@utility badge-danger {
+	@apply border-danger-border bg-danger-surface text-danger-text;
+}
+
+@utility badge-success {
+	@apply border-success-border bg-success-surface text-success-text;
+}
+
+@utility badge-warning {
+	@apply border-warning-border bg-warning-surface text-warning-text;
+}
+
+@utility switch-checked {
+	@apply border-primary bg-primary;
+
+	& > span {
+		@apply ms-3 bg-primary-foreground;
+	}
+}

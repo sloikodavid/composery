@@ -4,7 +4,6 @@ import {
 	hetznerCloudApiPrefix,
 	hetznerCloudOrigin,
 } from "../../convex/allocations/hetzner_cloud/origin";
-import { registerCleanup } from "../cleanup";
 import type { FakeReply, FakeRequest } from "../fake";
 
 const controllerPrefix = "test-";
@@ -194,21 +193,12 @@ export async function removeHetznerLeftovers(
 	}
 }
 
-let run: Readonly<{ token: string; controllerId: string }> | undefined;
-
-export async function removeHetznerRunResources() {
-	if (run !== undefined) {
-		await removeHetznerLeftovers(run.token, run.controllerId, [
-			"servers",
-			"primary_ips",
-		]);
-	}
-}
-
 /** Each real run owns one controller label and firewall. */
 export async function createHetznerRun(token: string) {
+	await using resources = new AsyncDisposableStack();
 	const controllerId = `${controllerPrefix}${randomBytes(runTagBytes).toString("hex")}`;
 	await removeHetznerLeftovers(token, null);
+	resources.defer(() => removeHetznerLeftovers(token, controllerId));
 	const { body } = await call(token, "POST", "/firewalls", {
 		name: controllerId,
 		labels: { "controller-id": controllerId },
@@ -218,11 +208,12 @@ export async function createHetznerRun(token: string) {
 	if (firewall?.id === undefined) {
 		throw new Error(`Hetzner did not make a firewall: ${JSON.stringify(body)}`);
 	}
-	run = { token, controllerId };
-	registerCleanup(async () => {
-		await removeHetznerLeftovers(token, controllerId);
-	});
-	return { controllerId, firewallId: firewall.id };
+	const owned = resources.move();
+	return {
+		controllerId,
+		firewallId: firewall.id,
+		stop: () => owned.disposeAsync(),
+	};
 }
 
 const httpMultipleChoices = 300;

@@ -1,8 +1,7 @@
-import { hetznerContract } from "../../contracts/hetzner";
+import { createHetznerContractChecker } from "../../contracts/hetzner";
 import { type Fake, type FakeReply, startFake } from "../fake";
 import {
 	detachHetznerFirewalls,
-	getHetznerToken,
 	stopHetznerServer,
 	toHetznerForward,
 } from "./real";
@@ -28,9 +27,9 @@ const ipv6Offset = 2;
 const controllerFirewallId = 77;
 const controllerId = "composery-test";
 const imageId = 501;
-export const fakeServerType = "cx23";
-const locations = ["nbg1", "fsn1", "hel1"];
-const firstLocation = "nbg1";
+const fakeServerType = "cx23";
+const locations = ["nbg1", "fsn1", "hel1"] as const;
+const firstLocation = locations[0];
 const hourlyLimit = 3600;
 const millisecondsPerSecond = 1000;
 
@@ -91,6 +90,9 @@ function notFound(): FakeReply {
 
 export type HetznerFake = Fake &
 	Readonly<{
+		controllerId: string;
+		serverType: string;
+		locations: readonly string[];
 		/** Simulates an admin detaching the controller firewall. */
 		detachFirewall: (serverId: number) => Promise<void>;
 		/** Simulates an admin stopping a server. */
@@ -98,7 +100,10 @@ export type HetznerFake = Fake &
 	}>;
 
 /** Fake provider responses are checked against the recorded Hetzner contract. */
-export async function startHetznerFake(): Promise<HetznerFake> {
+export async function startHetznerFake(
+	token: string | null,
+): Promise<HetznerFake> {
+	const hetznerContract = createHetznerContractChecker();
 	const resources = new Map<number, Resource>();
 	const detachedFirewalls = new Set<number>();
 	let firewallRules: unknown[] = [];
@@ -391,7 +396,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 		};
 	};
 
-	const token = getHetznerToken();
 	const fake = await startFake({
 		system: "Hetzner",
 		checker: hetznerContract,
@@ -409,6 +413,9 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 
 	return {
 		...fake,
+		controllerId,
+		serverType: fakeServerType,
+		locations,
 		detachFirewall: async (serverId) => {
 			if (token !== null) {
 				await detachHetznerFirewalls(token, serverId);
@@ -428,14 +435,6 @@ export async function startHetznerFake(): Promise<HetznerFake> {
 			resource.status = "off";
 		},
 	};
-}
-
-let started: Promise<HetznerFake> | undefined;
-
-/** One provider fake is shared by the deployment and the run. */
-export function useHetznerFake() {
-	started ??= startHetznerFake();
-	return started;
 }
 
 function toRules(body: unknown) {

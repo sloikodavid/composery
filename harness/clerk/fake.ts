@@ -1,7 +1,10 @@
-import { clerkApiVersion, clerkContract } from "../../contracts/clerk";
+import {
+	clerkApiVersion,
+	createClerkContractChecker,
+} from "../../contracts/clerk";
 
 import { type Fake, type FakeReply, startFake } from "../fake";
-import { getClerkSecret, toClerkForward } from "./real";
+import { toClerkForward } from "./real";
 import {
 	type ClerkUser,
 	toCountReply,
@@ -47,7 +50,10 @@ function notFound(): FakeReply {
 }
 
 /** Fake replies are checked against Clerk's contract; real mode forwards instead. */
-export async function startClerkFake(): Promise<ClerkFake> {
+export async function startClerkFake(
+	secret: string | null,
+): Promise<ClerkFake> {
+	const clerkContract = createClerkContractChecker();
 	const users = new Map<string, ClerkUser>();
 	let keys: unknown = { keys: [] };
 
@@ -83,7 +89,6 @@ export async function startClerkFake(): Promise<ClerkFake> {
 			: { status: httpOk, body: toUserReply(user) };
 	};
 
-	const secret = getClerkSecret();
 	const fake = await startFake({
 		system: "Clerk",
 		checker: clerkContract,
@@ -134,11 +139,4 @@ export async function startClerkFake(): Promise<ClerkFake> {
 			return JSON.stringify(event);
 		},
 	};
-}
-
-let started: Promise<ClerkFake> | undefined;
-
-export function useClerkFake() {
-	started ??= startClerkFake();
-	return started;
 }

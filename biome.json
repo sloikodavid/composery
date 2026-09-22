@@ -124,8 +124,25 @@
 							"options": {
 								"patterns": [
 									{
-										"group": ["**/tests/**", "**/contracts/**"],
+										"group": [
+											"**/tests/**",
+											"**/harness/**",
+											"**/contracts/**"
+										],
 										"message": "Product code must not read test code or a pinned contract. A contract describes an outside system for a test to hold it to; production asks the system itself."
+									},
+									{
+										"group": [
+											"**/_generated/server",
+											"**/_generated/server.js"
+										],
+										"importNamePattern": "(mutation|internalMutation|\\*)",
+										"message": "Import mutation builders from functions.ts so every server write updates quota usage."
+									},
+									{
+										"group": ["convex/server"],
+										"importNamePattern": "(mutationGeneric|internalMutationGeneric|\\*)",
+										"message": "Import mutation builders from functions.ts so every server write updates quota usage."
 									}
 								]
 							}

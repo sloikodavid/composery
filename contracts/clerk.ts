@@ -1,11 +1,7 @@
-import {
-	createContractChecker,
-	type Described,
-	readContract,
-	type Waiver,
-} from "./check";
+import { createContractChecker, readContract, type Waiver } from "./check";
+import type { Contract, Described } from "./openapi";
 
-// Must match @clerk/backend; the fake rejects requests for another API version.
+/** Must match @clerk/backend; the fake rejects requests for another API version. */
 export const clerkApiVersion = "2026-05-12";
 
 export const clerkDescribed: readonly Described[] = [
@@ -35,12 +31,12 @@ export const clerkDescribed: readonly Described[] = [
 
 export const clerkWaivers: readonly Waiver[] = [];
 
-export function createClerkContractChecker() {
+export function createClerkContractChecker(
+	contract: Contract = readContract(import.meta.url),
+) {
 	return createContractChecker({
 		system: "Clerk",
-		contract: readContract(import.meta.url),
+		contract,
 		waivers: clerkWaivers,
 	});
 }
-
-export const clerkContract = createClerkContractChecker();

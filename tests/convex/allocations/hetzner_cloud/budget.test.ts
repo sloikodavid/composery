@@ -1,13 +1,10 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { getHetznerCloudResumeAt } from "../../../../convex/allocations/hetzner_cloud/pacing";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../../harness/convex/backend";
-import {
-	type HetznerFake,
-	useHetznerFake,
-} from "../../../../harness/hetzner/fake";
+import type { HetznerFake } from "../../../../harness/hetzner/fake";
 import {
 	createServer,
 	createServerOwner,
@@ -65,9 +62,12 @@ test("pacing returns finite, bounded resume times for budget edges", () => {
 	).toBe(budgetBeforeReset);
 });
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
-	fake = await useHetznerFake();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
+	fake = backend.hetzner;
 }, setupTimeoutMs);
 
 test(
@@ -116,3 +116,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

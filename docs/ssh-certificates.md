@@ -12,7 +12,7 @@ A **user certificate** is a different feature: short-lived certificates for peop
 
 ## What it would require
 
-1. **A name for each server.** A principal is a name, so this waits for the naming scheme that the app feature will define. This is the reason the decision is deferred, not the cost of the cryptography.
+1. **A name for each server.** A principal is a name, and a server has one: its subdomain at `composery.cloud`. This was the reason the decision was deferred, and it no longer is; what is left is the cost of holding an authority, not of the cryptography.
 2. **A certificate authority key.** Generated once, held as a deployment secret, never present on a server, with a rotation plan: publish the new authority, let clients trust both, re-sign, then retire the old one. Teleport's documented rotation is phased for exactly this reason.
 3. **Signing.** An internal action signs one certificate for one allocation: principal is that server's name, lifetime short enough that expiry is a real control (30 to 90 days), renewed by the existing worker once inside the renewal window. Serials are allocated and committed before signing, never reused, and never zero, because a zero serial makes OpenSSH fall back to revoking by key identity.
 4. **Installation.** sshd needs a `HostCertificate` line, so creation writes a Composery drop-in under `/etc/ssh/sshd_config.d/`. That is provisioning our own file, not editing the customer's configuration, and renewal then replaces only the certificate file. A customer who deletes either one simply falls back to what they have today.

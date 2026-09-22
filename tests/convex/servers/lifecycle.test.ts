@@ -1,9 +1,9 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { api, internal } from "../../../convex/_generated/api";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../harness/convex/backend";
 import {
 	createServer,
@@ -17,8 +17,11 @@ const suffixBytes = 6;
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 test(
@@ -56,13 +59,12 @@ test(
 );
 
 test(
-	"deployment quota reconciliation counts allocations that still hold capacity",
+	"deployment quota counts servers until provider cleanup completes",
 	async () => {
 		const client = await createServerOwner(backend);
 		const serverId = await createServer(client);
 		await settleServer(backend, client, serverId, { until: "running" });
-		await backend.runAsAdmin(internal.quotas.reconcile, {
-			kind: "server",
+		await backend.runAsAdmin(internal.servers.quotas.set, {
 			limit: 1,
 		});
 		const refused = await client.mutation(api.servers.lifecycle.create, {
@@ -78,3 +80,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

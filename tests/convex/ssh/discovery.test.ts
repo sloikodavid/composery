@@ -1,6 +1,7 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { withSshConnection } from "../../../convex/ssh/connection";
 import { discoverSshServer } from "../../../convex/ssh/discovery";
-import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
@@ -8,12 +9,18 @@ const rootKeyPath = "/root/.ssh/authorized_keys";
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 async function discoverRoot() {
-	const discovery = await discoverSshServer(server.connection);
+	const discovery = await withSshConnection(
+		server.connection,
+		async (connection) => await discoverSshServer(connection),
+	);
 	const root = discovery.accounts.find((account) => account.name === "root");
 	if (root === undefined) {
 		throw new Error("The server reported no root account.");
@@ -233,3 +240,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

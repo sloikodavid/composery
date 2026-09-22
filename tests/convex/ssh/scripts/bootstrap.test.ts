@@ -1,10 +1,10 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { discoverSshKeyAcceptance } from "../../../../convex/ssh/key_acceptance";
 import { generateSshKeyPair } from "../../../../convex/ssh/key_pair";
 import { renderSshBootstrapScript } from "../../../../convex/ssh/scripts/bootstrap";
 import { reportHostKeyScript } from "../../../../convex/ssh/scripts/report_host_key";
 import { quoteShell } from "../../../../convex/ssh/scripts/shell";
-import { type SshdServer, useSshd } from "../../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
@@ -16,8 +16,11 @@ const processIdPattern = /^\d+$/;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 function toKey(publicKey: string) {
@@ -327,3 +330,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

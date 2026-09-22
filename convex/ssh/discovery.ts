@@ -2,7 +2,7 @@
 
 import {
 	runSshCommand,
-	type SshConnectionOptions,
+	type SshConnection,
 	toSshProgramCommand,
 } from "./connection";
 import { SshError } from "./errors";
@@ -163,7 +163,7 @@ function toUnknowns(report: Reported, accounts: readonly ReportedAccount[]) {
 
 /** Reads effective SSH configuration and validates the untrusted report. */
 export async function discoverSshServer(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 ): Promise<SshDiscovery> {
 	const result = await runSshCommand(
 		connection,

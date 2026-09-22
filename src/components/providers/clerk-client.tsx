@@ -33,16 +33,12 @@ import {
 } from "@/components/ui/switch";
 
 const navbarButtonClassName = `${buttonVariants.ghost} aria-[current=page]:bg-surface-active aria-[current=page]:hover:bg-surface-active data-[active=true]:bg-surface-active data-[active=true]:hover:bg-surface-active`;
-const dataDangerFilledClassName =
-	"data-[color=danger]:border-danger data-[color=danger]:bg-danger data-[color=danger]:text-danger-foreground data-[color=danger]:enabled:hover:border-danger-hover data-[color=danger]:enabled:hover:bg-danger-hover data-[color=danger]:enabled:active:border-danger-active data-[color=danger]:enabled:active:bg-danger-active";
-const dataDangerGhostClassName =
-	"data-[color=danger]:text-danger-text data-[color=danger]:enabled:hover:bg-danger-surface-hover data-[color=danger]:enabled:active:bg-danger-surface-active";
-const clerkPrimaryButtonClassName = `${buttonVariants.primary} ${dataDangerFilledClassName}`;
-const clerkGhostButtonClassName = `${buttonVariants.ghost} ${dataDangerGhostClassName}`;
+const clerkPrimaryButtonClassName = `${buttonVariants.primary} clerk-button-primary`;
+const clerkGhostButtonClassName = `${buttonVariants.ghost} clerk-button-ghost`;
 const clerkContentSurfaceClassName = "bg-surface";
 const clerkAvatarClassName = controlRadiusClassName;
-const clerkBadgeClassName = `${badgeClassName} border-border bg-muted-surface text-foreground data-[color=secondary]:border-primary data-[color=secondary]:bg-primary data-[color=secondary]:text-primary-foreground data-[color=danger]:border-danger-border data-[color=danger]:bg-danger-surface data-[color=danger]:text-danger-text data-[color=success]:border-success-border data-[color=success]:bg-success-surface data-[color=success]:text-success-text data-[color=warning]:border-warning-border data-[color=warning]:bg-warning-surface data-[color=warning]:text-warning-text`;
-const clerkSwitchIndicatorClassName = `${switchIndicatorClassName} data-[checked=true]:border-primary data-[checked=true]:bg-primary data-[checked=true]:[&>span]:ms-3 data-[checked=true]:[&>span]:bg-primary-foreground data-[disabled=true]:cursor-default`;
+const clerkBadgeClassName = `${badgeClassName} clerk-badge`;
+const clerkSwitchIndicatorClassName = `${switchIndicatorClassName} clerk-switch-indicator`;
 
 // biome-ignore-start lint/style/useNamingConvention: external IDs use double underscores
 const clerkTextInputElements = {

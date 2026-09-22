@@ -10,8 +10,8 @@ Every one of these is `convex run <path> '<arguments>'`, or the equivalent in th
 
 | Operation | What it is for |
 |---|---|
-| `quotas:set` | give one `userId` room for more servers, or take it away. Without a `userId` it caps the whole deployment, where zero stops new servers and leaves existing ones running |
-| `quotas:reconcile` | recount what the holder already holds after quota drift or a missing quota row, for one `userId` or, without one, the whole deployment; provide the intended limit |
+| `servers/quotas:set` | set `limit` for one `userId`, or omit `userId` to cap the whole deployment; zero stops new servers and leaves existing ones running |
+| `servers/quotas:get` | read the current limit and usage for one `userId`, or omit `userId` for the deployment |
 | `allocations/hetzner_cloud/worker_state:retry` | take a blocked allocation and try again now, with a new epoch so an outstanding run cannot undo it. Takes the current `operationId` and `stuckSince` as a recovery fence, plus `confirmedAbsent` when a resource was uncertain and the admin has established at the provider that it does not exist |
 | `allocations/hetzner_cloud/inventory:run` | scan the provider for resources Composery does not own, and record them as findings |
 | `ssh/bootstrap:renewForAdmin` | mint Composery's way back into one server and return the program that installs it. What gets that program onto a server nobody can reach is the case's own business; this is only so that minting, sealing and the window are never hand-rolled |
@@ -19,9 +19,9 @@ Every one of these is `convex run <path> '<arguments>'`, or the equivalent in th
 | `convex data <table>` | read what the deployment holds |
 | `convex env set` / `remove` | change a deployment's settings, including the encryption keys |
 
-An allocation that is not moving says so in `serverAllocations`, with the code and the day it stopped; what the provider itself said is in `hetznerCloudAllocations`, as `error` and `hetznerErrorCode`.
+An allocation's `failure` in `serverAllocations` holds its code, class, count, and `since` timestamp. Public status derives `stuck` from that record; its `since` is the `stuckSince` recovery fence. Hetzner's native error code stays in `hetznerCloudAllocations.hetznerErrorCode`.
 
-Changing a quota limit preserves its usage. If a quota row is missing while resources remain, use the corresponding reconciliation operation. Reconciliation counts bounded pages and checks an allocation revision before publishing the count. A concurrent creation, removal, or ownership transfer invalidates the count and triggers another attempt. After three conflicts it reports `quota_reconcile_retry`; run it again when capacity changes have settled. A scan beyond 100 pages reports `quota_reconcile_too_large` and changes no quota. These failures do not publish a partial count.
+Changing a quota limit preserves its usage, including when the new limit is below current usage. Server writes update usage in the same transaction; quota limits are changed only through `servers/quotas:set`. Direct table edits and data imports bypass the application triggers. Do not use them to change servers or quotas.
 
 ## What an admin deliberately cannot do
 

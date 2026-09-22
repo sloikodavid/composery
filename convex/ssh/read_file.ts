@@ -1,11 +1,7 @@
 "use node";
 
 import type { SFTPWrapper, Stats } from "ssh2";
-import {
-	callSsh,
-	type SshConnectionOptions,
-	withSshConnection,
-} from "./connection";
+import { callSsh, type SshConnection } from "./connection";
 import { SshError, type SshFailure } from "./errors";
 
 /** Bounded regular-file reads; equal-size concurrent writes are not detected. */
@@ -21,8 +17,7 @@ const sftpStatusFailures = new Map<unknown, SshFailure>([
 	[sftpPermissionDenied, "permission_denied"],
 ]);
 
-export type SshReadOptions = SshConnectionOptions &
-	Readonly<{ path: string; maxBytes: number }>;
+export type SshReadOptions = Readonly<{ path: string; maxBytes: number }>;
 
 export type SshFileObservation = Readonly<{
 	bytes: Uint8Array;
@@ -134,6 +129,7 @@ async function read(
 }
 
 export async function readSshFile(
+	connection: SshConnection,
 	options: SshReadOptions,
 ): Promise<SshFileObservation> {
 	const input = { ...options };
@@ -148,15 +144,28 @@ export async function readSshFile(
 		throw new SshError("invalid_request");
 	}
 	const startedAt = Date.now();
-	return await withSshConnection(input, async ({ client, signal, fail }) => {
-		const sftp = await callSsh<SFTPWrapper>(signal, (done) => {
-			client.sftp((error, channel) =>
-				done(error ? new SshError("sftp_unavailable") : undefined, channel),
-			);
-		});
-		sftp.on("error", () => fail(new SshError("remote_error")));
-		sftp.on("close", () => fail(new SshError("connection_closed")));
+	const { client, signal, fail } = connection;
+	const sftp = await callSsh<SFTPWrapper>(signal, (done) => {
+		client.sftp((error, channel) =>
+			done(error ? new SshError("sftp_unavailable") : undefined, channel),
+		);
+	});
+	let active = true;
+	sftp.on("error", () => {
+		if (active) {
+			fail(new SshError("remote_error"));
+		}
+	});
+	sftp.on("close", () => {
+		if (active) {
+			fail(new SshError("connection_closed"));
+		}
+	});
+	try {
 		const result = await read(sftp, input, signal);
 		return { ...result, startedAt, finishedAt: Date.now() };
-	});
+	} finally {
+		active = false;
+		sftp.end();
+	}
 }

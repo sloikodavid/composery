@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import type { SshConnectionOptions } from "../../convex/ssh/connection";
+import { withSshConnection } from "../../convex/ssh/connection";
 import { generateSshKeyPair } from "../../convex/ssh/key_pair";
 import { readSshFile } from "../../convex/ssh/read_file";
 import { quoteShell } from "../../convex/ssh/scripts/shell";
-import { registerCleanup } from "../cleanup";
 import {
 	removeOrphanedDockerContainers,
 	requireDocker,
@@ -46,6 +46,7 @@ export type SshdAccount = Readonly<{
 }>;
 
 export type SshdServer = Readonly<{
+	stop: () => Promise<void>;
 	connection: SshConnectionOptions;
 	run: (script: string) => string;
 	createAccount: () => SshdAccount;
@@ -59,15 +60,18 @@ export type SshdServer = Readonly<{
 	) => Promise<T>;
 }>;
 
-async function waitUntilReachable(connection: SshConnectionOptions) {
+async function waitUntilReachable(options: SshConnectionOptions) {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < readinessAttempts; attempt += 1) {
 		try {
-			await readSshFile({
-				...connection,
-				path: rootKeyPath,
-				maxBytes: readLimitBytes,
-			});
+			await withSshConnection(
+				options,
+				async (connection) =>
+					await readSshFile(connection, {
+						path: rootKeyPath,
+						maxBytes: readLimitBytes,
+					}),
+			);
 			return;
 		} catch (error) {
 			lastError = error;
@@ -79,7 +83,8 @@ async function waitUntilReachable(connection: SshConnectionOptions) {
 	);
 }
 
-async function startSshd(): Promise<SshdServer> {
+export async function startSshd(): Promise<SshdServer> {
+	await using resources = new AsyncDisposableStack();
 	requireDocker();
 	removeOrphanedDockerContainers(kind);
 	runDocker(
@@ -95,7 +100,7 @@ async function startSshd(): Promise<SshdServer> {
 		`127.0.0.1::${sshPort}`,
 		image,
 	]);
-	registerCleanup(() => {
+	resources.defer(() => {
 		runDocker(["rm", "--force", container]);
 	});
 	const run = (script: string) =>
@@ -125,7 +130,9 @@ async function startSshd(): Promise<SshdServer> {
 		run(`printf '%s\\n' ${quoteShell(setting)} > ${settingPath}`);
 	const removeSetting = () => run(`rm -f ${settingPath}`);
 
+	const owned = resources.move();
 	return {
+		stop: () => owned.disposeAsync(),
 		connection,
 		run,
 		createAccount: () => {
@@ -161,11 +168,4 @@ async function startSshd(): Promise<SshdServer> {
 			}
 		},
 	};
-}
-
-let sshd: Promise<SshdServer> | undefined;
-
-export function useSshd() {
-	sshd ??= startSshd();
-	return sshd;
 }

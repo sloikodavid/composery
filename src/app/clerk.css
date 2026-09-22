@@ -13,11 +13,51 @@
 	--clerk-color-neutral: var(--app-foreground);
 	--clerk-color-ring: var(--app-focus);
 	--clerk-color-shadow: transparent;
-	--clerk-font-family: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
-	--clerk-font-family-buttons:
-		var(--font-chakra-petch), ui-sans-serif, system-ui, sans-serif;
+	--clerk-font-family: var(--font-sans);
+	--clerk-font-family-buttons: var(--font-wordmark);
 	--clerk-border-radius: var(--radius-control);
 	--clerk-spacing: 1rem;
+}
+
+/* Clerk's attributes select shared control variants without owning their styles. */
+@layer utilities {
+	.clerk-button-primary[data-color="danger"] {
+		@apply button-danger;
+	}
+
+	.clerk-button-ghost[data-color="danger"] {
+		@apply button-danger-ghost;
+	}
+
+	.clerk-badge {
+		@apply badge-neutral;
+
+		&[data-color="secondary"] {
+			@apply badge-primary;
+		}
+
+		&[data-color="danger"] {
+			@apply badge-danger;
+		}
+
+		&[data-color="success"] {
+			@apply badge-success;
+		}
+
+		&[data-color="warning"] {
+			@apply badge-warning;
+		}
+	}
+
+	.clerk-switch-indicator {
+		&[data-checked="true"] {
+			@apply switch-checked;
+		}
+
+		&[data-disabled="true"] {
+			@apply cursor-default;
+		}
+	}
 }
 
 /* Clerk draws its spinner on one element, which no stroke can reach, so its

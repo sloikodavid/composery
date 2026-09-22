@@ -5,12 +5,16 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { type ActionCtx, internalAction } from "../_generated/server";
 import type { AllocationPartStatus } from "../allocations/schema";
+import { isAllocationDeleting } from "../allocations/schema";
 import {
 	runSshCommand,
+	type SshConnection,
 	type SshConnectionOptions,
+	toSshAccessStatus,
 	toSshProgramCommand,
+	withSshConnection,
 } from "./connection";
-import { SshAccessError, SshError, type SshFailure } from "./errors";
+import { SshAccessError, SshError } from "./errors";
 import { addressesScript } from "./scripts/addresses";
 import { decryptSshSecrets } from "./secrets";
 
@@ -19,36 +23,30 @@ const connectionTimeoutMs = 30_000;
 const maxAddressBytes = 4096;
 const maxAddresses = 8;
 
-// biome-ignore-start lint/style/useNamingConvention: failure code names
-const accessStatuses = {
-	host_key_mismatch: "mismatch",
-	authentication_failed: "missing",
-	permission_denied: "missing",
-} as const satisfies Partial<Record<SshFailure, AllocationPartStatus>>;
-// biome-ignore-end lint/style/useNamingConvention: failure code names
-
-export function toAccessStatus(error: unknown): AllocationPartStatus {
-	if (error instanceof SshError) {
-		// A refusal is different from an attempt that never reached the server.
-		return (
-			accessStatuses[error.code as keyof typeof accessStatuses] ?? "unknown"
-		);
-	}
-	return "unknown";
-}
-
-export async function withSshConnection<Result>(
+export async function withAllocationSshConnection<Result>(
 	ctx: ActionCtx,
 	allocation: Doc<"serverAllocations">,
-	run: (connection: SshConnectionOptions) => Promise<Result>,
+	run: (connection: SshConnection) => Promise<Result>,
 ): Promise<Result> {
+	let connected = false;
+	let status: AllocationPartStatus = "unknown";
 	try {
-		const result = await run(await requireSshConnection(ctx, allocation));
-		await recordAccess(ctx, allocation, "ok");
-		return result;
+		const options = await requireSshConnectionOptions(ctx, allocation);
+		return await withSshConnection(options, async (connection) => {
+			connected = true;
+			try {
+				return await run(connection);
+			} finally {
+				status = connection.getAccessStatus();
+			}
+		});
 	} catch (error) {
-		await recordAccess(ctx, allocation, toAccessStatus(error));
+		if (!connected) {
+			status = toSshAccessStatus(error);
+		}
 		throw error;
+	} finally {
+		await recordAccess(ctx, allocation, status);
 	}
 }
 
@@ -63,11 +61,11 @@ async function recordAccess(
 	});
 }
 
-export async function requireSshConnection(
+async function requireSshConnectionOptions(
 	ctx: ActionCtx,
 	allocation: Doc<"serverAllocations">,
 ): Promise<SshConnectionOptions> {
-	if (allocation.deleteRequested) {
+	if (isAllocationDeleting(allocation)) {
 		throw new SshAccessError("allocation_deleting");
 	}
 	if (allocation.ipv4 === undefined) {
@@ -118,7 +116,7 @@ export const check = internalAction({
 		if (allocation === null) {
 			return null;
 		}
-		if (allocation.status !== "running" || allocation.deleteRequested) {
+		if (allocation.status !== "running") {
 			// A server that cannot answer is unknown, not refused.
 			await ctx.runMutation(internal.ssh.access_state.recordAccess, {
 				allocationId,
@@ -127,7 +125,7 @@ export const check = internalAction({
 			return null;
 		}
 		try {
-			const result = await withSshConnection(
+			const result = await withAllocationSshConnection(
 				ctx,
 				allocation,
 				async (connection) =>

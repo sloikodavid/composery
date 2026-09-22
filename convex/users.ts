@@ -6,14 +6,13 @@ import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
-	internalMutation,
 	internalQuery,
 	type MutationCtx,
 	type QueryCtx,
 	query,
 } from "./_generated/server";
 import { toConvexError } from "./errors";
-import { deleteUserQuotas } from "./quotas";
+import { internalMutation } from "./functions";
 import { userFields } from "./schema";
 
 async function getUserByClerkId(ctx: QueryCtx, clerkUserId: string) {
@@ -155,7 +154,6 @@ async function removeUsers(
 		if (user === null) {
 			continue;
 		}
-		await deleteUserQuotas(ctx, user._id);
 		await ctx.db.delete("users", user._id);
 		await ctx.scheduler.runAfter(
 			0,

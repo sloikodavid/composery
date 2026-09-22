@@ -4,14 +4,14 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalMutation, mutation, query } from "../_generated/server";
+import { query } from "../_generated/server";
 import {
 	requestAllocationDelete,
 	requireChangeableServerAllocation,
 } from "../allocations/operations";
 import { toConvexError } from "../errors";
+import { internalMutation, mutation } from "../functions";
 import { toBoundedPagination } from "../pagination";
-import { bumpQuotaEpoch, transferServerQuota } from "../quotas";
 import { requireRateLimit } from "../rate_limits";
 import { getCurrentUser } from "../users";
 import { requestServerDelete } from "./lifecycle";
@@ -78,14 +78,6 @@ export const transfer = mutation({
 		if (newOwner === null) {
 			throw toConvexError("membership_not_found");
 		}
-		const quotaFailure = await transferServerQuota(
-			ctx,
-			access.user._id,
-			newOwner._id,
-		);
-		if (quotaFailure !== null) {
-			throw toConvexError(quotaFailure.code);
-		}
 		await requireRateLimit(ctx, "serverChange", access.user._id);
 		await ctx.db.delete("serverMemberships", membershipId);
 		await ctx.db.insert("serverMemberships", {
@@ -96,7 +88,6 @@ export const transfer = mutation({
 		await ctx.db.patch("servers", membership.serverId, {
 			ownerId: newOwner._id,
 		});
-		await bumpQuotaEpoch(ctx, "server");
 		return null;
 	},
 });

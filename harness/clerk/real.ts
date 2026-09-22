@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { registerCleanup } from "../cleanup";
 import type { FakeReply, FakeRequest } from "../fake";
 
 const apiUrl = "https://api.clerk.com/v1";
@@ -219,6 +218,7 @@ export async function removeClerkLeftovers(
 }
 
 export type ClerkRun = Readonly<{
+	stop: () => Promise<void>;
 	createUser: (email: string) => Promise<{ id: string; email: string }>;
 	tokenFor: (userId: string) => string;
 	removeUser: (userId: string) => Promise<void>;
@@ -228,12 +228,10 @@ export type ClerkRun = Readonly<{
 export async function createClerkRun(secret: string): Promise<ClerkRun> {
 	const runTag = randomBytes(runTagBytes).toString("hex");
 	await removeClerkLeftovers(secret, null);
-	registerCleanup(async () => {
-		await removeClerkLeftovers(secret, runTag);
-	});
 	const tokens = new Map<string, string>();
 	let made = 0;
 	return {
+		stop: () => removeClerkLeftovers(secret, runTag),
 		createUser: async (email) => {
 			made += 1;
 			const body = await require2xx(secret, "POST", "/users", {

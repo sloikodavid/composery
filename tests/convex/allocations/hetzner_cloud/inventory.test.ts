@@ -1,14 +1,11 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { internal } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../../harness/convex/backend";
-import {
-	type HetznerFake,
-	useHetznerFake,
-} from "../../../../harness/hetzner/fake";
+import type { HetznerFake } from "../../../../harness/hetzner/fake";
 import {
 	createServer,
 	createServerOwner,
@@ -30,9 +27,12 @@ const pageTrailLength = 6;
 let backend: ConvexBackend;
 let fake: HetznerFake;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
-	fake = await useHetznerFake();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
+	fake = backend.hetzner;
 }, setupTimeoutMs);
 
 async function scanUntil(
@@ -91,3 +91,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

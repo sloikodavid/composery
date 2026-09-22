@@ -1,10 +1,10 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHmac, randomBytes } from "node:crypto";
 import { api, internal } from "../../convex/_generated/api";
 import { getClerkSecret } from "../../harness/clerk/real";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../harness/convex/backend";
 
 const setupTimeoutMs = 600_000;
@@ -26,8 +26,11 @@ const scripted = test.skipIf(getClerkSecret() !== null);
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 /** Signs the exact body Clerk would send; the route performs the verification. */
@@ -318,3 +321,5 @@ scripted(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

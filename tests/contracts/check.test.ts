@@ -1,200 +1,221 @@
 import { expect, test } from "bun:test";
-import {
-	createContractChecker,
-	findWaiver,
-	listStaleWaiverProblems,
-	toWaiverKey,
-	type Waiver,
-} from "../../contracts/check";
-import type { Contract, ContractProblem } from "../../contracts/schema";
+import { createContractChecker, type Waiver } from "../../contracts/check";
+import type { Contract, Schema } from "../../contracts/openapi";
 
 const created = 201;
-const ok = 200;
+const noContent = 204;
+const tooManyRequests = 429;
+const serverError = 500;
+const nonInteger = 1.5;
 
-const contract: Contract = {
-	sources: [
-		{ source: "https://example.com/spec.json", readAt: "", digest: "" },
-	],
-	paths: {
-		"/servers": {
-			post: {
-				parameters: [],
-				request: {
-					type: "object",
-					required: ["name"],
-					properties: { name: { type: "string" } },
-				},
-				responses: {
-					"201": {
-						type: "object",
-						required: ["server"],
-						properties: {
-							server: {
-								type: "object",
-								required: ["id"],
-								properties: { id: { type: "integer" } },
+function createContract(
+	schema: Schema = {
+		type: "object",
+		required: ["name"],
+		properties: { name: { type: "string" } },
+	},
+): Contract {
+	return {
+		sources: [
+			{
+				source: "https://example.com/contract",
+				readAt: "2026-09-21",
+				digest: "example",
+				holder: "paths",
+				document: {
+					openapi: "3.1.2",
+					paths: {
+						"/servers": {
+							post: {
+								requestBody: {
+									required: true,
+									content: { "application/json": { schema } },
+								},
+								responses: {
+									"201": {
+										content: {
+											"application/json": {
+												schema: {
+													type: "object",
+													required: ["id"],
+													properties: { id: { type: "integer" } },
+												},
+											},
+										},
+									},
+									"204": { description: "No body" },
+									"4XX": {
+										content: {
+											"application/json": { schema: { type: "string" } },
+										},
+									},
+									default: {
+										content: {
+											"application/json": { schema: { type: "boolean" } },
+										},
+									},
+								},
+							},
+						},
+						"/servers/{id}": {
+							get: {
+								parameters: [
+									{
+										name: "id",
+										in: "path",
+										required: true,
+										schema: { type: "integer", minimum: 1 },
+									},
+									{
+										name: "page",
+										in: "query",
+										required: true,
+										schema: { type: "integer", minimum: 1 },
+									},
+								],
+								responses: {},
 							},
 						},
 					},
 				},
 			},
-		},
-		"/servers/{id}": {
-			get: {
-				parameters: [{ name: "detail", in: "query", required: false }],
-				request: {},
-				responses: { "200": { type: "object" } },
-			},
-		},
-	},
-};
-
-function createChecker() {
-	return createContractChecker({ system: "Example", contract, waivers: [] });
-}
-
-test("a request the description does not cover is a problem in itself", () => {
-	const checker = createChecker();
-	expect(checker.listRequestProblems("GET", "volumes", undefined)).toEqual([
-		"Example does not describe GET volumes",
-	]);
-	expect(checker.listRequestProblems("DELETE", "servers/1", undefined)).toEqual(
-		["Example does not describe DELETE /servers/{id}"],
-	);
-});
-
-test("a request is read against the description of the path it matches", () => {
-	const checker = createChecker();
-	expect(
-		checker.listRequestProblems("POST", "servers", { name: "one" }),
-	).toEqual([]);
-	expect(checker.listRequestProblems("POST", "servers", { name: 1 })).toEqual([
-		"POST /servers body.name is 1, not string",
-	]);
-	expect(
-		checker.listRequestProblems(
-			"GET",
-			"servers/1?detail=full&colour=red",
-			undefined,
-		),
-	).toEqual([
-		"GET /servers/{id} query.colour is asked for, and Example does not read it",
-	]);
-});
-
-test("a reply is read against the description of that status", () => {
-	const checker = createChecker();
-	expect(
-		checker.listReplyProblems("POST", "servers", created, {
-			server: { id: 1 },
-		}),
-	).toEqual([]);
-	expect(checker.listReplyProblems("POST", "servers", created, {})).toEqual([
-		"POST /servers 201.server is missing, and Example always sends it",
-	]);
-	expect(checker.listReplyProblems("POST", "servers", ok, {})).toEqual([
-		"Example does not describe a 200 for POST /servers",
-	]);
-});
-
-test("the checker keeps what it found, so a later reader sees every problem", () => {
-	const checker = createChecker();
-	checker.listRequestProblems("POST", "servers", { name: 1 });
-	checker.listReplyProblems("POST", "servers", created, {});
-	checker.noteProblem("something else was wrong");
-	expect(checker.listProblems()).toEqual([
-		"POST /servers body.name is 1, not string",
-		"POST /servers 201.server is missing, and Example always sends it",
-		"something else was wrong",
-	]);
-});
-
-test("a waiver takes one problem out, and says so when it stops being needed", () => {
-	const waivers = [
-		{
-			operation: "POST /servers",
-			at: "body.name",
-			claims: "string",
-			reason: "the system reads a number here too",
-			evidence: "a run against the real system",
-		},
-	];
-	const waived = createContractChecker({
-		system: "Example",
-		contract,
-		waivers,
-	});
-	expect(waived.listRequestProblems("POST", "servers", { name: 1 })).toEqual(
-		[],
-	);
-	expect(waived.listProblems()).toEqual([]);
-
-	const unused = createContractChecker({
-		system: "Example",
-		contract,
-		waivers,
-	});
-	unused.listRequestProblems("POST", "servers", { name: "one" });
-	expect(unused.listProblems().join("\n")).toContain("is stale");
-});
-
-const waivers: readonly Waiver[] = [
-	{
-		operation: "POST /servers",
-		at: "body.image",
-		claims: "string",
-		reason: "Hetzner reads an ID here as well as a name",
-		evidence: "Hetzner's own client sends a number",
-	},
-];
-
-function toProblem(fields: Partial<ContractProblem> = {}): ContractProblem {
-	return {
-		operation: "POST /servers",
-		at: "body.image",
-		claims: "string",
-		message: "is 501, not string",
-		...fields,
+		],
 	};
 }
 
-test("a waiver is found for the one place it names, and nothing else", () => {
-	expect(findWaiver(waivers, toProblem())).toBeDefined();
+function createChecker(
+	contract = createContract(),
+	waivers: readonly Waiver[] = [],
+) {
+	return createContractChecker({ system: "Example", contract, waivers });
+}
+
+test("required, absent, and empty request bodies stay distinct", () => {
+	const checker = createChecker();
+	expect(checker.listRequestProblems("POST", "/servers", undefined)).toEqual([
+		"POST /servers body is required",
+	]);
+	expect(checker.listRequestProblems("POST", "/servers", {})).toEqual([
+		"POST /servers body.name must have required property 'name'",
+	]);
 	expect(
-		findWaiver(waivers, toProblem({ at: "body.image_type" })),
-	).toBeUndefined();
-	expect(
-		findWaiver(waivers, toProblem({ operation: "POST /primary_ips" })),
-	).toBeUndefined();
+		checker.listRequestProblems("POST", "/servers", { name: "one" }),
+	).toEqual([]);
+	expect(checker.listRequestProblems("GET", "/servers/1?page=1", {})).toEqual([
+		"GET /servers/{id} body has no described body",
+	]);
 });
 
-test("a waiver whose operation ran without disagreeing is stale", () => {
+test("path values, query values, missing parameters, and unknown operations are checked", () => {
+	const checker = createChecker();
 	expect(
-		listStaleWaiverProblems({
-			waivers,
-			system: "Hetzner",
-			used: new Set(),
-			ranOperations: new Set(["POST /servers"]),
-		}).join("\n"),
-	).toContain("is stale");
+		checker.listRequestProblems("GET", "servers/1?page=1", undefined),
+	).toEqual([]);
+	expect(
+		checker
+			.listRequestProblems("GET", "/servers/no?page=0&extra=1", undefined)
+			.map((problem) => problem.split(" ")[2]),
+	).toEqual(["query.extra", "path.id", "query.page"]);
+	expect(checker.listRequestProblems("GET", "/servers/1", undefined)).toEqual([
+		"GET /servers/{id} query.page is required",
+	]);
+	expect(checker.listRequestProblems("GET", "/unknown", undefined)).toEqual([
+		"Example does not describe GET /unknown",
+	]);
+	expect(
+		checker.listRequestProblems("DELETE", "/servers/1", undefined),
+	).toEqual(["Example does not describe DELETE /servers/{id}"]);
 });
 
-test("a waiver that was used, or whose operation did not run, is not stale", () => {
-	const key = toWaiverKey({ operation: "POST /servers", at: "body.image" });
+test("reply bodies use the exact status before a range or default", () => {
+	const checker = createChecker();
 	expect(
-		listStaleWaiverProblems({
-			waivers,
-			system: "Hetzner",
-			used: new Set([key]),
-			ranOperations: new Set(["POST /servers"]),
-		}),
+		checker.listReplyProblems("POST", "/servers", created, { id: 1 }),
 	).toEqual([]);
 	expect(
-		listStaleWaiverProblems({
-			waivers,
-			system: "Hetzner",
-			used: new Set(),
-			ranOperations: new Set(["GET /servers"]),
-		}),
+		checker.listReplyProblems("POST", "/servers", created, undefined),
+	).toEqual(["POST /servers 201 is required"]);
+	expect(
+		checker.listReplyProblems("POST", "/servers", noContent, undefined),
 	).toEqual([]);
+	expect(
+		checker.listReplyProblems("POST", "/servers", noContent, {}),
+	).toHaveLength(1);
+	expect(
+		checker.listReplyProblems("POST", "/servers", tooManyRequests, "later"),
+	).toEqual([]);
+	expect(
+		checker.listReplyProblems("POST", "/servers", serverError, false),
+	).toEqual([]);
+});
+
+test("the checker keeps failures without including request secrets in messages", () => {
+	const checker = createChecker();
+	const problems = checker.listRequestProblems("POST", "/servers", {
+		name: { secret: "do-not-print" },
+	});
+	checker.noteProblem("another failure");
+	expect(checker.listProblems()).toEqual([...problems, "another failure"]);
+	expect(checker.listProblems().join(" ")).not.toContain("do-not-print");
+});
+
+const waiver: Waiver = {
+	operation: "POST /servers",
+	at: "body.name",
+	keyword: "type",
+	claims: '"string"',
+	accepts: (value) =>
+		typeof value === "number" && Number.isSafeInteger(value) && value > 0,
+	reason: "The example system also accepts an integer ID.",
+	evidence: "An example exchange.",
+};
+
+test("a waiver permits only its keyword and evidenced values", () => {
+	const checker = createChecker(createContract(), [waiver]);
+	expect(checker.listRequestProblems("POST", "/servers", { name: 1 })).toEqual(
+		[],
+	);
+	expect(checker.listProblems()).toEqual([]);
+	for (const name of [false, {}, -1, nonInteger]) {
+		expect(
+			checker.listRequestProblems("POST", "/servers", { name }),
+		).toHaveLength(1);
+	}
+	const pattern = createChecker(
+		createContract({
+			type: "object",
+			properties: { name: { type: "string", pattern: "^a" } },
+		}),
+		[waiver],
+	);
+	expect(
+		pattern.listRequestProblems("POST", "/servers", { name: "wrong" }),
+	).toHaveLength(1);
+});
+
+test("a changed claim and an unused waiver both fail", () => {
+	const changed = createChecker(
+		createContract({
+			type: "object",
+			properties: { name: { type: "boolean" } },
+		}),
+		[waiver],
+	);
+	expect(
+		changed.listRequestProblems("POST", "/servers", { name: 1 }).join(" "),
+	).toContain("has changed");
+	const stale = createChecker(createContract(), [waiver]);
+	expect(stale.listProblems()).toEqual([]);
+	stale.listRequestProblems("POST", "/servers", { name: "one" });
+	expect(stale.listProblems().join(" ")).toContain("is stale");
+});
+
+test("a duplicate waiver or operation is rejected before traffic", () => {
+	expect(() => createChecker(createContract(), [waiver, waiver])).toThrow(
+		"repeated",
+	);
+	const contract = createContract();
+	expect(() =>
+		createChecker({ sources: [...contract.sources, ...contract.sources] }),
+	).toThrow("repeats");
 });

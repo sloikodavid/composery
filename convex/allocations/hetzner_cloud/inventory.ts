@@ -1,11 +1,8 @@
 import { type Infer, v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
-import {
-	internalAction,
-	internalMutation,
-	type MutationCtx,
-} from "../../_generated/server";
+import { internalAction, type MutationCtx } from "../../_generated/server";
+import { internalMutation } from "../../functions";
 import schema from "../../schema";
 import {
 	createHetznerCloudUsage,
@@ -135,8 +132,7 @@ async function checkResource(
 	if (
 		allocation === null ||
 		hetznerCloudAllocation === null ||
-		hetznerCloudAllocation.controllerId !== scan.controllerId ||
-		allocation.status === "deleted"
+		hetznerCloudAllocation.controllerId !== scan.controllerId
 	) {
 		return "unknown_allocation";
 	}

@@ -7,6 +7,16 @@ const groupsFolderName = "process-groups";
 // Windows has no process groups, so a tree is ended with taskkill instead.
 const usesProcessGroups = process.platform !== "win32";
 
+export function isProcessAlive(pid: number) {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		// EPERM means the process exists but belongs to another user.
+		return (error as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
 function toGroupsFolder(runFolder: string) {
 	return path.join(runFolder, groupsFolderName);
 }

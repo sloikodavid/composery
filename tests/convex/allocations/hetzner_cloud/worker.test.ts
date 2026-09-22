@@ -1,15 +1,12 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { api, internal } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../../harness/convex/backend";
-import {
-	type HetznerFake,
-	useHetznerFake,
-} from "../../../../harness/hetzner/fake";
+import type { HetznerFake } from "../../../../harness/hetzner/fake";
 import {
 	createServer,
 	createServerOwner,
@@ -35,9 +32,12 @@ const partDelayMs = 500;
 let backend: ConvexBackend;
 let fake: HetznerFake;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
-	fake = await useHetznerFake();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
+	fake = backend.hetzner;
 }, setupTimeoutMs);
 
 async function requireAllocationId(serverId: Id<"servers">) {
@@ -74,7 +74,6 @@ test(
 	"a created server reaches running, with one server and two addresses at the provider",
 	async () => {
 		const client = await createServerOwner(backend);
-		// Lose only the server-create reply after the allocation ID is known.
 		const serverId = await createServer(client);
 		const status = await settleServer(backend, client, serverId, {
 			until: "running",
@@ -210,7 +209,7 @@ test(
 		expect(await readServerBackendRecord(backend, serverId)).toBe(null);
 		expect(fake.countRequests(deletedThisServer)).toBe(1);
 		await expect(
-			backend.runAsAdmin(internal.allocations.operations.finishDelete, {
+			backend.runAsAdmin(internal.servers.lifecycle.finishDelete, {
 				allocationId,
 			}),
 		).resolves.toBe(null);
@@ -236,14 +235,15 @@ test(
 				epoch: provider.epoch,
 				operationId: allocation.operationId,
 				queue: "work",
-				update: {
-					failure: { error: "test_block", class: "invalid", final: true },
+				outcome: {
+					kind: "deadlinePassed",
+					failure: { error: "test_block", class: "invalid" },
 				},
 				usage: { requests: 0 },
 			},
 		);
 		const blocked = await readServerBackendRecord(backend, serverId);
-		const stuckSince = blocked?.allocation.stuck?.since;
+		const stuckSince = blocked?.allocation.failure?.since;
 		if (stuckSince === undefined) {
 			throw new Error("The test failure did not block the operation.");
 		}
@@ -272,7 +272,7 @@ test(
 			),
 		).resolves.toBe(null);
 		expect(
-			(await readServerBackendRecord(backend, serverId))?.allocation.stuck,
+			(await readServerBackendRecord(backend, serverId))?.allocation.failure,
 		).toBe(undefined);
 		await client.mutation(api.servers.lifecycle.requestDelete, { serverId });
 		await settleServer(backend, client, serverId, { until: "gone" });
@@ -363,3 +363,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

@@ -1,9 +1,9 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { AuthorizedKeysFile } from "../../../convex/ssh/authorized_keys";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { quoteShell } from "../../../convex/ssh/scripts/shell";
 import { generateAuthorizedKey } from "../../../harness/openssh/keys";
-import { type SshdServer, useSshd } from "../../../harness/openssh/sshd";
+import { type SshdServer, startSshd } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
 const testTimeoutMs = 60_000;
@@ -13,8 +13,11 @@ const byteOrderMark = 0xfe_ff;
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 type Line = (key: string) => string;
@@ -79,3 +82,5 @@ for (const [name, render] of Object.entries(lines)) {
 		testTimeoutMs,
 	);
 }
+
+afterAll(() => resources.disposeAsync());

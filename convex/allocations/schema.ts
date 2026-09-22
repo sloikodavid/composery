@@ -1,9 +1,28 @@
 import { defineTable } from "convex/server";
 import { type Infer, v } from "convex/values";
 import { hetznerCloudTables } from "./hetzner_cloud/schema";
-import { failureClass } from "./retries";
+import { failureClass, isStuck } from "./retries";
 
-export const allocationBackend = v.literal("hetznerCloud");
+export const allocationFailure = v.object({
+	since: v.number(),
+	code: v.string(),
+	class: failureClass,
+	count: v.number(),
+});
+
+export function getAllocationStuck(
+	failure: Infer<typeof allocationFailure> | undefined,
+) {
+	return failure !== undefined && isStuck(failure.class, failure.count)
+		? { since: failure.since, code: failure.code, class: failure.class }
+		: null;
+}
+
+export function isAllocationDeleting(allocation: {
+	status: Infer<typeof allocationStatus>;
+}) {
+	return allocation.status === "deleting";
+}
 
 export const powerOperationKind = v.union(
 	v.literal("start"),
@@ -40,29 +59,23 @@ export const allocationParts = v.object({
 	firewall: allocationPartStatus,
 });
 
+/** Deletion completes by removing the allocation in the same transaction. */
 export const allocationStatus = v.union(
-	/** Lifecycle state; failure details live in `stuck`. */
 	v.literal("creating"),
 	v.literal("running"),
 	v.literal("stopped"),
 	v.literal("deleting"),
-	v.literal("deleted"),
 );
 
 export const allocationTables = {
 	serverAllocations: defineTable({
 		serverId: v.id("servers"),
 		operationId: v.id("serverOperations"),
-		backend: allocationBackend,
 		status: allocationStatus,
-		deleteRequested: v.boolean(),
 		observedAt: v.optional(v.number()),
 		parts: allocationParts,
 		/** Last failure; the worker continues to retry it. */
-		stuck: v.optional(
-			v.object({ since: v.number(), code: v.string(), class: failureClass }),
-		),
-		location: v.optional(v.string()),
+		failure: v.optional(allocationFailure),
 		ipv4: v.optional(v.string()),
 		// IPv6 is a provider-assigned network, not the server's address.
 		ipv6: v.optional(v.string()),

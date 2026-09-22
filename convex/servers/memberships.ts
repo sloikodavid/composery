@@ -5,15 +5,10 @@ import {
 import { type Infer, v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import {
-	internalMutation,
-	type MutationCtx,
-	mutation,
-	type QueryCtx,
-	query,
-} from "../_generated/server";
+import { type MutationCtx, type QueryCtx, query } from "../_generated/server";
 import { requireChangeableServerAllocation } from "../allocations/operations";
 import { fail, failure, toConvexError } from "../errors";
+import { internalMutation, mutation } from "../functions";
 import { toBoundedPagination } from "../pagination";
 import { checkRateLimit, requireRateLimit } from "../rate_limits";
 import { getCurrentUser, requireUser } from "../users";

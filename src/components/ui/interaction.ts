@@ -1,5 +1,4 @@
-export const controlTransitionClassName =
-	"transition-[background-color,border-color,color]";
+export const controlTransitionClassName = "control-transition";
 
 export const controlRadiusClassNames = {
 	small: "rounded-control-small",

@@ -1,12 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import {
-	internalMutation,
-	type MutationCtx,
-	mutation,
-	query,
-} from "../_generated/server";
+import { type MutationCtx, query } from "../_generated/server";
+import { getHetznerCloudAllocation } from "../allocations/hetzner_cloud/worker_state";
 import {
 	deleteServerAllocation,
 	getAllocationConfig,
@@ -22,21 +18,20 @@ import {
 import { failureClass } from "../allocations/retries";
 import {
 	allocationStatus,
+	getAllocationStuck,
+	isAllocationDeleting,
 	operationKind,
 	operationStatus,
 	powerOperationKind,
 } from "../allocations/schema";
 import { fail, failure, toConvexError } from "../errors";
-import {
-	bumpQuotaEpoch,
-	releaseServerQuota,
-	reserveServerQuota,
-} from "../quotas";
+import { internalMutation, mutation } from "../functions";
 import { requireRateLimit } from "../rate_limits";
 import { getAllocationSshAccess } from "../ssh/access_state";
 import { requireUser } from "../users";
 import { checkServerNameClaim, claimServerName } from "./names";
 import { requireServerAccess } from "./permissions";
+import { getServerQuotaFailure } from "./quota_usage";
 import { serverFeatures, serverParts, toServerFeatures } from "./summary";
 
 export async function requestServerDelete(
@@ -82,7 +77,7 @@ export const create = mutation({
 		if (config === null) {
 			return fail("server_capacity_unavailable");
 		}
-		const quotaFailure = await reserveServerQuota(ctx, user._id);
+		const quotaFailure = await getServerQuotaFailure(ctx, user._id);
 		if (quotaFailure !== null) {
 			return quotaFailure;
 		}
@@ -98,7 +93,6 @@ export const create = mutation({
 			name,
 			config,
 		});
-		await bumpQuotaEpoch(ctx, "server");
 		return { ok: true as const, serverId, name };
 	},
 });
@@ -138,7 +132,7 @@ export const requestDelete = mutation({
 	handler: async (ctx, { serverId }) => {
 		const { user } = await requireServerAccess(ctx, serverId, "delete");
 		const allocation = await requireServerAllocation(ctx, serverId);
-		if (allocation.deleteRequested) {
+		if (isAllocationDeleting(allocation)) {
 			return null;
 		}
 		await requireRateLimit(ctx, "serverChange", user._id);
@@ -177,6 +171,7 @@ export const getStatus = query({
 		await requireServerAccess(ctx, serverId);
 		const allocation = await requireServerAllocation(ctx, serverId);
 		const sshAccess = await getAllocationSshAccess(ctx, allocation._id);
+		const provider = await getHetznerCloudAllocation(ctx, allocation._id);
 		const parts = {
 			...allocation.parts,
 			managementAccess: sshAccess?.access?.status ?? "unknown",
@@ -193,8 +188,8 @@ export const getStatus = query({
 			status: allocation.status,
 			parts,
 			features: toServerFeatures(parts),
-			stuck: allocation.stuck ?? null,
-			location: allocation.location ?? null,
+			stuck: getAllocationStuck(allocation.failure),
+			location: provider?.spec?.location ?? null,
 			ipv4: allocation.ipv4 ?? null,
 			ipv6: allocation.ipv6Address ?? null,
 			ipv6Network: allocation.ipv6 ?? null,
@@ -224,11 +219,9 @@ export const finishDelete = internalMutation({
 		const { serverId } = allocation;
 		const server = await ctx.db.get("servers", serverId);
 		await deleteServerAllocation(ctx, allocationId);
-		await bumpQuotaEpoch(ctx, "server");
 		if (server === null) {
 			return null;
 		}
-		await releaseServerQuota(ctx, server.ownerId);
 		await ctx.db.delete("servers", serverId);
 		await ctx.scheduler.runAfter(0, internal.servers.memberships.removeAll, {
 			serverId,

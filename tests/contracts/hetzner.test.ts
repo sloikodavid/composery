@@ -6,6 +6,8 @@ import {
 } from "../../contracts/hetzner";
 
 const contractUrl = new URL("../../contracts/hetzner.ts", import.meta.url).href;
+const notFound = 404;
+const forbidden = 403;
 
 // Every waiver needs a reproducer and must not hide a second difference.
 
@@ -27,6 +29,7 @@ function listUnwaivedProblems(method: string, path: string, body: unknown) {
 		system: "Hetzner",
 		contract: readContract(contractUrl),
 		waivers: [],
+		annotationFormats: ["decimal"],
 	}).listRequestProblems(method, path, body);
 }
 
@@ -57,5 +60,33 @@ test("a waiver does not excuse a neighbouring field", () => {
 				name: 7,
 			})
 			.join("\n"),
-	).toContain("POST /servers body.name is 7, not string");
+	).toContain("POST /servers body.name must be string");
+});
+
+test("the image waiver refuses values outside positive integer IDs", () => {
+	const checker = createHetznerContractChecker();
+	const nonIntegerId = 1.5;
+	for (const image of [false, {}, 0, -1, nonIntegerId]) {
+		expect(
+			checker
+				.listRequestProblems("POST", "servers", { ...createServerBody, image })
+				.join(" "),
+		).toContain("body.image");
+	}
+});
+
+test("Hetzner's published lower-case status ranges still validate error bodies", () => {
+	const checker = createHetznerContractChecker();
+	for (const [method, path, status] of [
+		["GET", "/servers/1", notFound],
+		["GET", "/primary_ips/1", notFound],
+		["POST", "/servers", forbidden],
+	] as const) {
+		expect(
+			checker.listReplyProblems(method, path, status, {
+				error: { code: "not_found", message: "Not found" },
+			}),
+		).toEqual([]);
+		expect(checker.listReplyProblems(method, path, status, {})).toHaveLength(1);
+	}
 });

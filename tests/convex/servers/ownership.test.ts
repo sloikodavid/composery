@@ -1,8 +1,8 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { api, internal } from "../../../convex/_generated/api";
 import {
 	type ConvexBackend,
-	useConvexBackend,
+	startConvexBackend,
 } from "../../../harness/convex/backend";
 import { cleanupTestServer } from "../../../harness/servers";
 
@@ -11,12 +11,15 @@ const testTimeoutMs = 300_000;
 
 let backend: ConvexBackend;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	backend = await useConvexBackend();
+	backend = await startConvexBackend();
+	resources.defer(backend.stop);
 }, setupTimeoutMs);
 
 test(
-	"ownership transfer moves quota usage and fences a stale recount",
+	"ownership transfer moves user quota usage and leaves deployment usage unchanged",
 	async () => {
 		const firstAccount = await backend.createAccount();
 		const secondAccount = await backend.createAccount();
@@ -32,14 +35,12 @@ test(
 			throw new Error("The test accounts did not sync.");
 		}
 		for (const userId of [firstUser._id, secondUser._id]) {
-			await backend.runAsAdmin(internal.quotas.set, {
+			await backend.runAsAdmin(internal.servers.quotas.set, {
 				userId,
-				kind: "server",
 				limit: 1,
 			});
 		}
-		await backend.runAsAdmin(internal.quotas.set, {
-			kind: "server",
+		await backend.runAsAdmin(internal.servers.quotas.set, {
 			limit: 10,
 		});
 
@@ -52,8 +53,8 @@ test(
 		}
 		const serverId = created.serverId;
 		const beforeTransfer = await backend.runAsAdmin(
-			internal.quotas.readHeldPage,
-			{ kind: "server", cursor: null },
+			internal.servers.quotas.get,
+			{},
 		);
 
 		const added = await firstClient.mutation(api.servers.memberships.add, {
@@ -72,9 +73,8 @@ test(
 			throw new Error("The transfer target was not added.");
 		}
 
-		await backend.runAsAdmin(internal.quotas.set, {
+		await backend.runAsAdmin(internal.servers.quotas.set, {
 			userId: secondUser._id,
-			kind: "server",
 			limit: 0,
 		});
 		await expect(
@@ -90,32 +90,23 @@ test(
 		);
 		expect(ownerAfterRefusedTransfer?.userId).toBe(firstUser._id);
 		const afterRefusedTransfer = await backend.runAsAdmin(
-			internal.quotas.readHeldPage,
-			{ kind: "server", cursor: null },
+			internal.servers.quotas.get,
+			{},
 		);
-		expect(afterRefusedTransfer.epoch).toBe(beforeTransfer.epoch);
+		expect(afterRefusedTransfer).toEqual(beforeTransfer);
 
-		await backend.runAsAdmin(internal.quotas.set, {
+		await backend.runAsAdmin(internal.servers.quotas.set, {
 			userId: secondUser._id,
-			kind: "server",
 			limit: 1,
 		});
 		await firstClient.mutation(api.servers.ownership.transfer, {
 			membershipId: secondMembership._id,
 		});
 		const afterTransfer = await backend.runAsAdmin(
-			internal.quotas.readHeldPage,
-			{ kind: "server", cursor: null },
+			internal.servers.quotas.get,
+			{},
 		);
-		expect(afterTransfer.epoch).toBeGreaterThan(beforeTransfer.epoch);
-		expect(
-			await backend.runAsAdmin(internal.quotas.applyReconciliation, {
-				kind: "server",
-				limit: 10,
-				used: beforeTransfer.used,
-				epoch: beforeTransfer.epoch,
-			}),
-		).toBe(false);
+		expect(afterTransfer).toEqual(beforeTransfer);
 
 		const refusedForSecondOwner = await secondClient.mutation(
 			api.servers.lifecycle.create,
@@ -169,3 +160,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync(), setupTimeoutMs);

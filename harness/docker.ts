@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { hostname } from "node:os";
-import { isProcessAlive } from "./cleanup";
+import { isProcessAlive } from "./process";
 
 const maxOutputBytes = 16_777_216;
 const ownerLabel = "composery.test.owner";

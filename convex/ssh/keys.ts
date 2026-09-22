@@ -6,13 +6,13 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { type ActionCtx, action } from "../_generated/server";
 import { toConvexError } from "../errors";
-import { withSshConnection } from "./access";
+import { withAllocationSshConnection } from "./access";
 import {
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
 	type AuthorizedKeysLine,
 } from "./authorized_keys";
-import type { SshConnectionOptions } from "./connection";
+import type { SshConnection } from "./connection";
 import { discoverSshServer, type SshDiscovery } from "./discovery";
 import { SshError } from "./errors";
 import { throwPublicSshError, writeCodes } from "./failures";
@@ -132,22 +132,21 @@ function toKeyLine(line: AuthorizedKeysLine) {
 async function onServer<Result>(
 	ctx: ActionCtx,
 	serverId: Id<"servers">,
-	run: (connection: SshConnectionOptions) => Promise<Result>,
+	run: (connection: SshConnection) => Promise<Result>,
 ) {
 	const allocation: Doc<"serverAllocations"> = await ctx.runQuery(
 		internal.ssh.permissions.requireAllocation,
 		{ serverId },
 	);
-	return await withSshConnection(ctx, allocation, run);
+	return await withAllocationSshConnection(ctx, allocation, run);
 }
 
 async function readKeyFile(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 	account: string,
 	path: string,
 ) {
-	const observation = await readSshFile({
-		...connection,
+	const observation = await readSshFile(connection, {
 		path,
 		maxBytes: maxFileBytes,
 	});
@@ -162,7 +161,7 @@ async function readKeyFile(
 
 /** Reads current files; edits name the revision they observed. */
 async function listKeyFiles(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 ): Promise<KeyFileListing> {
 	const discovery = await discoverSshServer(connection);
 	const files: KeyFileListing["files"] = [];
@@ -205,7 +204,7 @@ export const list = action({
 
 /** A successful write remains successful if the follow-up acceptance probe fails. */
 async function getKeyAcceptance(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 	account: string,
 	entry: ReturnType<AcceptanceQuestion["toEntry"]>,
 ): Promise<Acceptance> {
@@ -219,7 +218,7 @@ async function getKeyAcceptance(
 	}
 	try {
 		return await discoverSshKeyAcceptance(
-			{ ...connection, username: account },
+			{ ...connection.target, username: account },
 			entry.key,
 		);
 	} catch {
@@ -248,8 +247,7 @@ async function applyEdits(
 				request.question?.account ?? null,
 				request.path,
 			);
-			const observation = await readSshFile({
-				...connection,
+			const observation = await readSshFile(connection, {
 				path: request.path,
 				maxBytes: maxFileBytes,
 			});
@@ -284,8 +282,7 @@ async function applyEdits(
 			try {
 				return {
 					revision: toRevision(
-						await readSshFile({
-							...connection,
+						await readSshFile(connection, {
 							path: request.path,
 							maxBytes: maxFileBytes,
 						}),

@@ -1,9 +1,10 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import {
 	type AuthorizedKey,
 	type AuthorizedKeysEdit,
 	AuthorizedKeysFile,
 } from "../../../convex/ssh/authorized_keys";
+import { withSshConnection } from "../../../convex/ssh/connection";
 import { SshError } from "../../../convex/ssh/errors";
 import { discoverSshKeyAcceptance } from "../../../convex/ssh/key_acceptance";
 import { readSshFile } from "../../../convex/ssh/read_file";
@@ -13,7 +14,7 @@ import { generateAuthorizedKey } from "../../../harness/openssh/keys";
 import {
 	type SshdAccount,
 	type SshdServer,
-	useSshd,
+	startSshd,
 } from "../../../harness/openssh/sshd";
 
 const setupTimeoutMs = 300_000;
@@ -25,8 +26,11 @@ const decoder = new TextDecoder();
 
 let server: SshdServer;
 
+const resources = new AsyncDisposableStack();
+
 beforeAll(async () => {
-	server = await useSshd();
+	server = await startSshd();
+	resources.defer(server.stop);
 }, setupTimeoutMs);
 
 function writeKeyFile(account: SshdAccount, lines: readonly string[]) {
@@ -36,11 +40,14 @@ function writeKeyFile(account: SshdAccount, lines: readonly string[]) {
 }
 
 function readKeyFile(account: SshdAccount) {
-	return readSshFile({
-		...server.connection,
-		path: account.keyPath,
-		maxBytes: readLimitBytes,
-	});
+	return withSshConnection(
+		{ ...server.connection },
+		async (connection) =>
+			await readSshFile(connection, {
+				path: account.keyPath,
+				maxBytes: readLimitBytes,
+			}),
+	);
 }
 
 function askAbout(account: SshdAccount, key: AuthorizedKey) {
@@ -60,11 +67,10 @@ async function editKeyFile(
 	if (!plan.ok) {
 		throw new Error(`The edit was refused before writing: ${plan.reason}`);
 	}
-	const result = await writeSshFile(
+	const result = await withSshConnection(
 		server.connection,
-		account.keyPath,
-		before,
-		plan.candidate,
+		async (connection) =>
+			await writeSshFile(connection, account.keyPath, before, plan.candidate),
 	);
 	return { before, result };
 }
@@ -102,18 +108,26 @@ test(
 	async () => {
 		const account = server.createAccount();
 		await expect(
-			readSshFile({
-				...server.connection,
-				path: `${account.home}/.ssh/not_here`,
-				maxBytes: readLimitBytes,
-			}),
+			withSshConnection(
+				{ ...server.connection },
+				async (connection) =>
+					await readSshFile(connection, {
+						path: `${account.home}/.ssh/not_here`,
+						maxBytes: readLimitBytes,
+					}),
+			),
 		).rejects.toMatchObject({ code: "file_missing" });
-		const impostor = readSshFile({
-			...server.connection,
-			hostKey: Buffer.alloc(server.connection.hostKey.length),
-			path: account.keyPath,
-			maxBytes: readLimitBytes,
-		});
+		const impostor = withSshConnection(
+			{
+				...server.connection,
+				hostKey: Buffer.alloc(server.connection.hostKey.length),
+			},
+			async (connection) =>
+				await readSshFile(connection, {
+					path: account.keyPath,
+					maxBytes: readLimitBytes,
+				}),
+		);
 		await expect(impostor).rejects.toBeInstanceOf(SshError);
 		await expect(impostor).rejects.toMatchObject({
 			code: "host_key_mismatch",
@@ -208,19 +222,27 @@ test(
 		const key = generateAuthorizedKey();
 		writeKeyFile(account, [`${key.type} ${key.base64} original`]);
 		const observation = await readKeyFile(account);
-		const unchanged = await writeSshFile(
+		const unchanged = await withSshConnection(
 			server.connection,
-			account.keyPath,
-			observation,
-			observation.bytes,
+			async (connection) =>
+				await writeSshFile(
+					connection,
+					account.keyPath,
+					observation,
+					observation.bytes,
+				),
 		);
 		expect(unchanged.status).toBe("unchanged");
 		server.run(`printf '# edited by hand\\n' >> ${account.keyPath}`);
-		const stale = await writeSshFile(
+		const stale = await withSshConnection(
 			server.connection,
-			account.keyPath,
-			observation,
-			new TextEncoder().encode("replaced\n"),
+			async (connection) =>
+				await writeSshFile(
+					connection,
+					account.keyPath,
+					observation,
+					new TextEncoder().encode("replaced\n"),
+				),
 		);
 		expect(stale.status).toBe("changed");
 		expect(decoder.decode((await readKeyFile(account)).bytes)).toBe(
@@ -229,3 +251,5 @@ test(
 	},
 	testTimeoutMs,
 );
+
+afterAll(() => resources.disposeAsync());

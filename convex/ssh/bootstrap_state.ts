@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { internalMutation } from "../_generated/server";
 import { isAllocationAddress } from "../allocations/addresses";
+import { isAllocationDeleting } from "../allocations/schema";
+import { internalMutation } from "../functions";
 import { getAllocationSshAccess } from "./access_state";
 
 const hexRadix = 16;
@@ -47,7 +48,7 @@ export const storeRenewal = internalMutation({
 	),
 	handler: async (ctx, { allocationId, expected, ...renewal }) => {
 		const allocation = await ctx.db.get("serverAllocations", allocationId);
-		if (allocation === null || allocation.deleteRequested) {
+		if (allocation === null || isAllocationDeleting(allocation)) {
 			return "gone";
 		}
 		const sshAccess = await getAllocationSshAccess(ctx, allocationId);
@@ -109,7 +110,7 @@ export const registerHostKey = internalMutation({
 			id === null ? null : await getAllocationSshAccess(ctx, id);
 		if (
 			allocation === null ||
-			allocation.deleteRequested ||
+			isAllocationDeleting(allocation) ||
 			sshAccess === null ||
 			sshAccess.bootstrapExpiresAt <= Date.now() ||
 			sshAccess.bootstrapTokenDigest !== bootstrapTokenDigest

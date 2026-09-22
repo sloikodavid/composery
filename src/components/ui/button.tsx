@@ -3,17 +3,16 @@ import type { ComponentProps, ReactElement } from "react";
 import {
 	controlRadiusClassName,
 	controlRadiusClassNames,
-	controlTransitionClassName,
 } from "@/components/ui/interaction";
 import { linkClassName } from "@/components/ui/link";
 
 export const buttonVariants = {
-	brand: `${controlTransitionClassName} border border-brand bg-brand text-brand-foreground enabled:hover:border-brand-hover enabled:hover:bg-brand-hover enabled:active:border-brand-active enabled:active:bg-brand-active`,
-	primary: `${controlTransitionClassName} border border-primary bg-primary text-primary-foreground enabled:hover:border-primary-hover enabled:hover:bg-primary-hover enabled:active:border-primary-active enabled:active:bg-primary-active`,
-	danger: `${controlTransitionClassName} border border-danger bg-danger text-danger-foreground enabled:hover:border-danger-hover enabled:hover:bg-danger-hover enabled:active:border-danger-active enabled:active:bg-danger-active`,
-	dangerGhost: `${controlTransitionClassName} text-danger-text enabled:hover:bg-danger-surface-hover enabled:active:bg-danger-surface-active`,
-	secondary: `${controlTransitionClassName} border border-border bg-surface text-foreground enabled:hover:border-control-border-hover enabled:hover:bg-surface-hover enabled:active:border-control-border-active enabled:active:bg-surface-active`,
-	ghost: `${controlTransitionClassName} text-foreground enabled:hover:bg-surface-hover enabled:active:bg-surface-active`,
+	brand: "button-brand",
+	primary: "button-primary",
+	danger: "button-danger",
+	dangerGhost: "button-danger-ghost",
+	secondary: "button-secondary",
+	ghost: "button-ghost",
 } as const;
 
 export const buttonClassName =

@@ -24,6 +24,9 @@ const excludedPathspecs = [
 	":!bun.lock",
 	":!convex/_generated",
 	":!docs/sessions",
+	// These generated OpenAPI documents keep the external publishers' text unchanged.
+	":!contracts/clerk.json",
+	":!contracts/hetzner.json",
 ];
 const usage = "Usage: bun scripts/characters.ts check|fix";
 

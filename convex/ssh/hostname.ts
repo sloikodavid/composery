@@ -4,10 +4,11 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalAction } from "../_generated/server";
-import { withSshConnection } from "./access";
+import { isAllocationDeleting } from "../allocations/schema";
+import { withAllocationSshConnection } from "./access";
 import {
 	runSshCommand,
-	type SshConnectionOptions,
+	type SshConnection,
 	toSshProgramCommand,
 } from "./connection";
 import { SshError } from "./errors";
@@ -21,7 +22,7 @@ const tenMinutesMs = 600_000;
 const retryDelaysMs = [halfMinuteMs, twoMinutesMs, tenMinutesMs];
 
 export async function setSshHostname(
-	connection: SshConnectionOptions,
+	connection: SshConnection,
 	request: Readonly<{ expected: string | null; next: string }>,
 ) {
 	const result = await runSshCommand(
@@ -62,11 +63,11 @@ export const apply = internalAction({
 			internal.allocations.operations.getForServer,
 			{ serverId },
 		);
-		if (allocation === null || allocation.deleteRequested) {
+		if (allocation === null || isAllocationDeleting(allocation)) {
 			return null;
 		}
 		try {
-			const hostname = await withSshConnection(
+			const hostname = await withAllocationSshConnection(
 				ctx,
 				allocation,
 				async (connection) =>
